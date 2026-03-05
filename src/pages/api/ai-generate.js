@@ -1,4 +1,4 @@
-// AI content generation endpoint - proxies to Anthropic Claude API
+// AI content generation endpoint - uses Cloudflare Workers AI
 export const prerender = false;
 
 import { verifyAuth, unauthorizedResponse, corsHeaders } from '../../lib/auth.js';
@@ -7,10 +7,10 @@ export async function POST({ request, locals }) {
   const env = locals.runtime?.env;
   if (!(await verifyAuth(request, env))) return unauthorizedResponse();
 
-  const apiKey = env?.ANTHROPIC_API_KEY;
-  if (!apiKey) {
+  const ai = env?.AI;
+  if (!ai) {
     return new Response(
-      JSON.stringify({ error: 'ANTHROPIC_API_KEY not configured' }),
+      JSON.stringify({ error: 'Workers AI binding not configured. Add [ai] binding in wrangler.jsonc' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
@@ -99,31 +99,15 @@ Return JSON with these exact keys:
         );
     }
 
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 1500,
-        system: systemPrompt,
-        messages: [{ role: 'user', content: userPrompt }],
-      }),
+    const result = await ai.run('@cf/meta/llama-3.1-70b-instruct', {
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+      max_tokens: 1500,
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      return new Response(
-        JSON.stringify({ error: `Anthropic API error: ${response.status}`, details: errorText }),
-        { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    const result = await response.json();
-    const text = result.content?.[0]?.text || '';
+    const text = result.response || '';
 
     let parsed;
     try {

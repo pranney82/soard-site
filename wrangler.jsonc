@@ -10,6 +10,9 @@
     "binding": "ASSETS",
     "directory": "dist"
   },
+  "ai": {
+    "binding": "AI"
+  },
   "observability": {
     "enabled": true
   },
