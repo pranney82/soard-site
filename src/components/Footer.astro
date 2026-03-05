@@ -1,0 +1,139 @@
+---
+// Footer component
+---
+
+<footer class="site-footer">
+  <div class="footer-inner">
+    <div class="footer-grid">
+      <div class="footer-about">
+        <div class="footer-logo">
+          <svg width="28" height="28" viewBox="0 0 38 38" fill="none" aria-hidden="true">
+            <circle cx="19" cy="19" r="8" fill="#FFD500" />
+            <line x1="19" y1="1" x2="19" y2="8" stroke="#FFD500" stroke-width="2.5" stroke-linecap="round" />
+            <line x1="19" y1="30" x2="19" y2="37" stroke="#FFD500" stroke-width="2.5" stroke-linecap="round" />
+            <line x1="1" y1="19" x2="8" y2="19" stroke="#FFD500" stroke-width="2.5" stroke-linecap="round" />
+            <line x1="30" y1="19" x2="37" y2="19" stroke="#FFD500" stroke-width="2.5" stroke-linecap="round" />
+            <line x1="6.3" y1="6.3" x2="11.2" y2="11.2" stroke="#FFD500" stroke-width="2.5" stroke-linecap="round" />
+            <line x1="26.8" y1="26.8" x2="31.7" y2="31.7" stroke="#FFD500" stroke-width="2.5" stroke-linecap="round" />
+            <line x1="6.3" y1="31.7" x2="11.2" y2="26.8" stroke="#FFD500" stroke-width="2.5" stroke-linecap="round" />
+            <line x1="26.8" y1="11.2" x2="31.7" y2="6.3" stroke="#FFD500" stroke-width="2.5" stroke-linecap="round" />
+          </svg>
+          <span>Sunshine on a Ranney Day</span>
+        </div>
+        <p>
+          A 501(c)(3) nonprofit creating life-changing home makeovers
+          for children with special needs and life-altering illnesses
+          in the greater Atlanta area.
+        </p>
+        <address>42-C Oak Street, Roswell GA 30075</address>
+      </div>
+
+      <div class="footer-col">
+        <h4>About</h4>
+        <a href="/about-us">Our Story</a>
+        <a href="/leadership">Leadership</a>
+        <a href="/about-us/financials">Financials</a>
+        <a href="/publicity">Publicity</a>
+      </div>
+
+      <div class="footer-col">
+        <h4>Programs</h4>
+        <a href="/what-we-do">Featured Rooms</a>
+        <a href="/meet-the-kids">Meet the Kids</a>
+        <a href="/community-projects">Community Projects</a>
+        <a href="/before">Before & After</a>
+      </div>
+
+      <div class="footer-col">
+        <h4>Get Involved</h4>
+        <a href="/donate">Donate</a>
+        <a href="https://www.sunnyandranney.com/events">Events</a>
+        <a href="/application">Apply</a>
+        <a href="https://www.sunnyandranney.com">Shop Sunny & Ranney</a>
+      </div>
+    </div>
+
+    <div class="footer-bottom">
+      <span>© {new Date().getFullYear()} Sunshine on a Ranney Day. All rights reserved.</span>
+      <span class="footer-ein">EIN: XX-XXXXXXX</span>
+    </div>
+  </div>
+</footer>
+
+<style>
+  .site-footer {
+    background: var(--c-dark-deep);
+    padding: 64px var(--page-padding) 32px;
+    color: rgba(255, 255, 255, 0.5);
+  }
+  .footer-inner {
+    max-width: var(--max-width);
+    margin: 0 auto;
+  }
+  .footer-grid {
+    display: grid;
+    grid-template-columns: 2.5fr 1fr 1fr 1fr;
+    gap: 48px;
+    margin-bottom: 48px;
+  }
+  .footer-logo {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+  .footer-logo span {
+    font-family: var(--f-display);
+    font-size: 16px;
+    font-weight: 700;
+    color: #fff;
+  }
+  .footer-about p {
+    font-size: 14px;
+    line-height: 1.75;
+    max-width: 340px;
+    color: rgba(255, 255, 255, 0.5);
+  }
+  .footer-about address {
+    font-style: normal;
+    margin-top: 20px;
+    font-size: 13px;
+  }
+  .footer-col h4 {
+    font-family: var(--f-body);
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--c-yellow);
+    margin-bottom: 18px;
+  }
+  .footer-col a {
+    display: block;
+    font-size: 14px;
+    margin-bottom: 12px;
+    color: rgba(255, 255, 255, 0.5);
+    transition: color 0.2s;
+  }
+  .footer-col a:hover {
+    color: #fff;
+  }
+  .footer-bottom {
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    padding-top: 24px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 13px;
+  }
+  .footer-ein {
+    color: var(--c-yellow);
+  }
+  @media (max-width: 768px) {
+    .footer-grid { grid-template-columns: 1fr 1fr; gap: 32px; }
+  }
+  @media (max-width: 480px) {
+    .footer-grid { grid-template-columns: 1fr; }
+    .footer-bottom { flex-direction: column; gap: 8px; text-align: center; }
+  }
+</style>

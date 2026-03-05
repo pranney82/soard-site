@@ -1,0 +1,102 @@
+---
+// Navigation component — sticky header with brand colors
+---
+
+<nav class="nav" id="main-nav">
+  <div class="nav-inner">
+    <!-- Logo -->
+    <a href="/" class="logo" aria-label="Home">
+      <svg width="38" height="38" viewBox="0 0 38 38" fill="none" aria-hidden="true">
+        <circle cx="19" cy="19" r="8" fill="#FFD500" />
+        <line x1="19" y1="1" x2="19" y2="8" stroke="#FFD500" stroke-width="2.5" stroke-linecap="round" />
+        <line x1="19" y1="30" x2="19" y2="37" stroke="#FFD500" stroke-width="2.5" stroke-linecap="round" />
+        <line x1="1" y1="19" x2="8" y2="19" stroke="#FFD500" stroke-width="2.5" stroke-linecap="round" />
+        <line x1="30" y1="19" x2="37" y2="19" stroke="#FFD500" stroke-width="2.5" stroke-linecap="round" />
+        <line x1="6.3" y1="6.3" x2="11.2" y2="11.2" stroke="#FFD500" stroke-width="2.5" stroke-linecap="round" />
+        <line x1="26.8" y1="26.8" x2="31.7" y2="31.7" stroke="#FFD500" stroke-width="2.5" stroke-linecap="round" />
+        <line x1="6.3" y1="31.7" x2="11.2" y2="26.8" stroke="#FFD500" stroke-width="2.5" stroke-linecap="round" />
+        <line x1="26.8" y1="11.2" x2="31.7" y2="6.3" stroke="#FFD500" stroke-width="2.5" stroke-linecap="round" />
+      </svg>
+      <div class="logo-text">
+        <span class="logo-top">Sunshine on</span>
+        <span class="logo-bottom">a Ranney Day</span>
+      </div>
+    </a>
+
+    <!-- Desktop Nav -->
+    <div class="nav-links">
+      <a href="/about-us" class="nav-link">About</a>
+      <a href="/what-we-do" class="nav-link">Kids & Projects</a>
+      <a href="/get-involved" class="nav-link">Partners</a>
+      <a href="/donate" class="nav-link">Get Involved</a>
+      <a href="/donate" class="btn btn-primary btn-sm">Donate ♥</a>
+    </div>
+
+    <!-- Mobile hamburger -->
+    <button class="mobile-toggle" id="mobile-toggle" aria-label="Menu">
+      <span></span>
+      <span></span>
+      <span></span>
+    </button>
+  </div>
+</nav>
+
+<style>
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    text-decoration: none;
+  }
+  .logo-text {
+    display: flex;
+    flex-direction: column;
+  }
+  .logo-top {
+    font-family: var(--f-display);
+    font-size: 17px;
+    font-weight: 700;
+    color: var(--c-dark);
+    line-height: 1.1;
+  }
+  .logo-bottom {
+    font-family: var(--f-display);
+    font-size: 14px;
+    font-weight: 400;
+    font-style: italic;
+    color: var(--c-purple);
+    line-height: 1.1;
+  }
+  .mobile-toggle {
+    display: none;
+    flex-direction: column;
+    gap: 5px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 8px;
+  }
+  .mobile-toggle span {
+    width: 24px;
+    height: 2px;
+    background: var(--c-dark);
+    border-radius: 2px;
+    transition: all 0.3s ease;
+  }
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+    .mobile-toggle { display: flex; }
+  }
+</style>
+
+<script>
+  // Scroll detection for nav background
+  const nav = document.getElementById('main-nav');
+  window.addEventListener('scroll', () => {
+    if (window.scrollY > 60) {
+      nav?.classList.add('scrolled');
+    } else {
+      nav?.classList.remove('scrolled');
+    }
+  }, { passive: true });
+</script>

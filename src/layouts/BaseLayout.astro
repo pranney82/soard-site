@@ -1,0 +1,87 @@
+---
+import '../styles/global.css';
+import Navigation from '../components/Navigation.astro';
+import Footer from '../components/Footer.astro';
+
+interface Props {
+  title: string;
+  description: string;
+  image?: string;
+  jsonLd?: object;
+}
+
+const { title, description, image, jsonLd } = Astro.props;
+const canonicalURL = new URL(Astro.url.pathname, Astro.site);
+const fullTitle = `${title} | Sunshine on a Ranney Day`;
+const ogImage = image || '/og-default.jpg';
+---
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{fullTitle}</title>
+  <meta name="description" content={description} />
+  <link rel="canonical" href={canonicalURL} />
+
+  <!-- Preconnect for image CDN (Cloudflare Images) -->
+  <link rel="preconnect" href="https://imagedelivery.net" />
+
+  <!-- Open Graph -->
+  <meta property="og:title" content={fullTitle} />
+  <meta property="og:description" content={description} />
+  <meta property="og:url" content={canonicalURL} />
+  <meta property="og:type" content="website" />
+  <meta property="og:image" content={ogImage} />
+  <meta property="og:site_name" content="Sunshine on a Ranney Day" />
+
+  <!-- Twitter -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content={fullTitle} />
+  <meta name="twitter:description" content={description} />
+  <meta name="twitter:image" content={ogImage} />
+
+  <!-- JSON-LD page-specific -->
+  {jsonLd && (
+    <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+  )}
+
+  <!-- JSON-LD Organization (every page) -->
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "NonprofitOrganization",
+    "name": "Sunshine on a Ranney Day",
+    "url": "https://sunshineonaranneyday.com",
+    "logo": "https://sunshineonaranneyday.com/logo.png",
+    "description": "501(c)(3) nonprofit creating life-changing home makeovers for children with special needs and life-altering illnesses.",
+    "address": {
+      "@type": "PostalAddress",
+      "streetAddress": "42-C Oak Street",
+      "addressLocality": "Roswell",
+      "addressRegion": "GA",
+      "postalCode": "30075",
+      "addressCountry": "US"
+    },
+    "telephone": "+17709902434",
+    "email": "info@soardcharity.com",
+    "foundingDate": "2012",
+    "sameAs": [
+      "https://www.facebook.com/sunshineonaranneyday",
+      "https://www.instagram.com/sunshineonaranneyday"
+    ]
+  })} />
+
+  <!-- Favicon (replace with real one) -->
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+</head>
+<body>
+  <Navigation />
+
+  <main id="tm-main">
+    <slot />
+  </main>
+
+  <Footer />
+</body>
+</html>
