@@ -1,12 +1,14 @@
 // GitHub commit endpoint - commits content JSON files to the repo
 export const prerender = false;
 
-import { verifyAuth, unauthorizedResponse, corsHeaders } from '../../lib/auth.js';
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type',
+};
 
 export async function POST({ request, locals }) {
   const env = locals.runtime?.env;
-  if (!(await verifyAuth(request, env))) return unauthorizedResponse();
-
   const githubToken = env?.GITHUB_TOKEN;
   const githubRepo = env?.GITHUB_REPO || 'pranney82/soard';
   const branch = env?.GITHUB_BRANCH || 'main';
@@ -36,7 +38,7 @@ export async function POST({ request, locals }) {
 
     const apiBase = `https://api.github.com/repos/${githubRepo}`;
 
-    // 1. Get the current commit SHA for the branch
+    // 1. Get the current commit SHA
     const refRes = await fetch(`${apiBase}/git/ref/heads/${branch}`, { headers });
     if (!refRes.ok) {
       const err = await refRes.text();
@@ -48,12 +50,12 @@ export async function POST({ request, locals }) {
     const refData = await refRes.json();
     const latestCommitSha = refData.object.sha;
 
-    // 2. Get the tree SHA from the latest commit
+    // 2. Get the tree SHA
     const commitRes = await fetch(`${apiBase}/git/commits/${latestCommitSha}`, { headers });
     const commitData = await commitRes.json();
     const baseTreeSha = commitData.tree.sha;
 
-    // 3. Create blobs for each file
+    // 3. Create blobs
     const tree = [];
     for (const file of files) {
       const blobRes = await fetch(`${apiBase}/git/blobs`, {
@@ -65,15 +67,10 @@ export async function POST({ request, locals }) {
         }),
       });
       const blobData = await blobRes.json();
-      tree.push({
-        path: file.path,
-        mode: '100644',
-        type: 'blob',
-        sha: blobData.sha,
-      });
+      tree.push({ path: file.path, mode: '100644', type: 'blob', sha: blobData.sha });
     }
 
-    // 4. Create a new tree
+    // 4. Create tree
     const treeRes = await fetch(`${apiBase}/git/trees`, {
       method: 'POST',
       headers,
@@ -81,7 +78,7 @@ export async function POST({ request, locals }) {
     });
     const treeData = await treeRes.json();
 
-    // 5. Create a new commit
+    // 5. Create commit
     const newCommitRes = await fetch(`${apiBase}/git/commits`, {
       method: 'POST',
       headers,
@@ -93,7 +90,7 @@ export async function POST({ request, locals }) {
     });
     const newCommitData = await newCommitRes.json();
 
-    // 6. Update the branch reference
+    // 6. Update branch ref
     const updateRefRes = await fetch(`${apiBase}/git/refs/heads/${branch}`, {
       method: 'PATCH',
       headers,
@@ -111,11 +108,7 @@ export async function POST({ request, locals }) {
     return new Response(
       JSON.stringify({
         success: true,
-        commit: {
-          sha: newCommitData.sha,
-          message: newCommitData.message,
-          url: newCommitData.html_url,
-        },
+        commit: { sha: newCommitData.sha, message: newCommitData.message, url: newCommitData.html_url },
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
@@ -127,11 +120,8 @@ export async function POST({ request, locals }) {
   }
 }
 
-// GET: Fetch existing content from repo
 export async function GET({ request, locals }) {
   const env = locals.runtime?.env;
-  if (!(await verifyAuth(request, env))) return unauthorizedResponse();
-
   const githubToken = env?.GITHUB_TOKEN;
   const githubRepo = env?.GITHUB_REPO || 'pranney82/soard';
 

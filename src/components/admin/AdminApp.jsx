@@ -2,26 +2,14 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 
 // ─── API Helper ────────────────────────────────────────
 const api = {
-  token: null,
-
   async request(endpoint, options = {}) {
     const headers = { ...options.headers };
-    if (this.token) headers['Authorization'] = `Bearer ${this.token}`;
     if (!(options.body instanceof FormData)) {
       headers['Content-Type'] = 'application/json';
     }
     const res = await fetch(`/api/${endpoint}`, { ...options, headers });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || `Request failed: ${res.status}`);
-    return data;
-  },
-
-  async login(passphrase) {
-    const data = await this.request('auth', {
-      method: 'POST',
-      body: JSON.stringify({ passphrase }),
-    });
-    this.token = data.token;
     return data;
   },
 
@@ -348,100 +336,6 @@ function ImageDropZone({ files, setFiles, label = 'Drop photos here or click to 
 
 // ─── Auth Gate ──────────────────────────────────────────
 
-function AuthGate({ onAuth }) {
-  const [passphrase, setPassphrase] = useState('');
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    setError('');
-    try {
-      await api.login(passphrase);
-      onAuth();
-    } catch (err) {
-      setError(err.message || 'Invalid passphrase');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div style={{
-      minHeight: '100vh',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      background: C.dark,
-      padding: 20,
-    }}>
-      <div style={{
-        background: C.white,
-        borderRadius: 16,
-        padding: '48px 40px',
-        width: '100%',
-        maxWidth: 420,
-        textAlign: 'center',
-        boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
-      }}>
-        {/* Logo area */}
-        <div style={{
-          width: 64, height: 64, borderRadius: '50%',
-          background: C.yellow, margin: '0 auto 20px',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 28,
-        }}>☀️</div>
-        <h1 style={{
-          fontFamily: font.display,
-          fontSize: 22,
-          fontWeight: 700,
-          marginBottom: 6,
-          color: C.dark,
-        }}>SOARD Admin</h1>
-        <p style={{
-          fontSize: 14,
-          color: C.textMuted,
-          marginBottom: 32,
-        }}>Sunshine on a Ranney Day — Content Manager</p>
-
-        <form onSubmit={handleSubmit}>
-          <input
-            type="password"
-            value={passphrase}
-            onChange={(e) => setPassphrase(e.target.value)}
-            placeholder="Enter admin passphrase"
-            autoFocus
-            style={{
-              ...s.input,
-              textAlign: 'center',
-              fontSize: 16,
-              padding: '14px 20px',
-              marginBottom: 16,
-            }}
-          />
-          {error && (
-            <p style={{ color: C.red, fontSize: 13, marginBottom: 12 }}>{error}</p>
-          )}
-          <button
-            type="submit"
-            disabled={loading || !passphrase}
-            style={{
-              ...s.btnPrimary,
-              width: '100%',
-              justifyContent: 'center',
-              fontSize: 15,
-              padding: '14px 24px',
-              opacity: loading || !passphrase ? 0.6 : 1,
-            }}
-          >
-            {loading ? <><Spinner /> Verifying…</> : 'Sign In'}
-          </button>
-        </form>
-      </div>
-    </div>
-  );
-}
 
 
 // ─── Dashboard ─────────────────────────────────────────
@@ -1327,18 +1221,8 @@ const NAV_ITEMS = [
 ];
 
 export default function AdminApp() {
-  const [authed, setAuthed] = useState(false);
   const [page, setPage] = useState('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(true);
-
-  if (!authed) {
-    return (
-      <>
-        <style>{`@keyframes admin-spin { to { transform: rotate(360deg); } }`}</style>
-        <AuthGate onAuth={() => setAuthed(true)} />
-      </>
-    );
-  }
 
   const renderPage = () => {
     switch (page) {

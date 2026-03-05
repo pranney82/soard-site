@@ -1,12 +1,14 @@
 // Image upload endpoint - proxies to Cloudflare Images API
 export const prerender = false;
 
-import { verifyAuth, unauthorizedResponse, corsHeaders } from '../../lib/auth.js';
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, DELETE, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type',
+};
 
 export async function POST({ request, locals }) {
   const env = locals.runtime?.env;
-  if (!(await verifyAuth(request, env))) return unauthorizedResponse();
-
   const accountId = env?.CF_ACCOUNT_ID;
   const imagesToken = env?.CF_IMAGES_TOKEN;
 
@@ -77,14 +79,11 @@ export async function POST({ request, locals }) {
 
 export async function DELETE({ request, locals }) {
   const env = locals.runtime?.env;
-  if (!(await verifyAuth(request, env))) return unauthorizedResponse();
-
   const accountId = env?.CF_ACCOUNT_ID;
   const imagesToken = env?.CF_IMAGES_TOKEN;
 
   try {
     const { imageId } = await request.json();
-
     const response = await fetch(
       `https://api.cloudflare.com/client/v4/accounts/${accountId}/images/v1/${imageId}`,
       {
@@ -92,7 +91,6 @@ export async function DELETE({ request, locals }) {
         headers: { Authorization: `Bearer ${imagesToken}` },
       }
     );
-
     const result = await response.json();
     return new Response(
       JSON.stringify({ success: result.success }),

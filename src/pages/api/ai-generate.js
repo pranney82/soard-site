@@ -1,13 +1,16 @@
 // AI content generation endpoint - uses Cloudflare Workers AI
 export const prerender = false;
 
-import { verifyAuth, unauthorizedResponse, corsHeaders } from '../../lib/auth.js';
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type',
+};
 
 export async function POST({ request, locals }) {
   const env = locals.runtime?.env;
-  if (!(await verifyAuth(request, env))) return unauthorizedResponse();
-
   const ai = env?.AI;
+
   if (!ai) {
     return new Response(
       JSON.stringify({ error: 'Workers AI binding not configured. Add [ai] binding in wrangler.jsonc' }),
