@@ -13,7 +13,7 @@ interface Props {
 const { title, description, image, jsonLd } = Astro.props;
 const canonicalURL = new URL(Astro.url.pathname, Astro.site);
 const fullTitle = `${title} | Sunshine on a Ranney Day`;
-const ogImage = image || '/og-default.jpg';
+const ogImage = image || 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/logo-circle/og';
 ---
 
 <!DOCTYPE html>
@@ -53,7 +53,7 @@ const ogImage = image || '/og-default.jpg';
     "@type": "NonprofitOrganization",
     "name": "Sunshine on a Ranney Day",
     "url": "https://sunshineonaranneyday.com",
-    "logo": "https://sunshineonaranneyday.com/logo.png",
+    "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/logo-light-bg/full",
     "description": "501(c)(3) nonprofit creating life-changing home makeovers for children with special needs and life-altering illnesses.",
     "address": {
       "@type": "PostalAddress",
