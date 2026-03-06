@@ -1,0 +1,294 @@
+---
+/**
+ * VideoEmbed.astro — Lite facade video embed
+ *
+ * Supports YouTube and Cloudflare Stream. Shows a static thumbnail
+ * with a play button; loads the actual iframe only on click.
+ * Saves ~800KB+ per embed vs eager-loading YouTube/Stream iframes.
+ *
+ * Usage:
+ *   <!-- YouTube (extracts ID automatically) -->
+ *   <VideoEmbed
+ *     src="https://youtu.be/sSlS_nIUoBg"
+ *     title="Hudson's Room Reveal"
+ *   />
+ *
+ *   <!-- Cloudflare Stream -->
+ *   <VideoEmbed
+ *     src="stream:abc123def456"
+ *     title="Hudson's Room Reveal"
+ *   />
+ *
+ *   <!-- Both: prefer Stream on-site, link to YouTube for sharing -->
+ *   <VideoEmbed
+ *     src="stream:abc123def456"
+ *     youtubeUrl="https://youtu.be/sSlS_nIUoBg"
+ *     title="Hudson's Room Reveal"
+ *   />
+ *
+ * Props:
+ *   src       — YouTube URL or "stream:{videoId}" for Cloudflare Stream
+ *   title     — Accessible title for the iframe (required)
+ *   youtubeUrl — Optional fallback YouTube link (shown as "Watch on YouTube" when using Stream)
+ *   autoplay  — Start playing on click (default: true)
+ *   poster    — Custom poster/thumbnail URL (overrides auto-detected)
+ */
+
+interface Props {
+  src: string;
+  title: string;
+  youtubeUrl?: string;
+  autoplay?: boolean;
+  poster?: string;
+  class?: string;
+}
+
+const {
+  src,
+  title,
+  youtubeUrl,
+  autoplay = true,
+  poster,
+  class: className = '',
+} = Astro.props;
+
+// ─── Parse video source ────────────────────
+type VideoProvider = 'youtube' | 'stream';
+
+function parseVideoSrc(raw: string): { provider: VideoProvider; id: string } | null {
+  if (!raw) return null;
+
+  // Cloudflare Stream: "stream:VIDEO_ID"
+  if (raw.startsWith('stream:')) {
+    return { provider: 'stream', id: raw.replace('stream:', '') };
+  }
+
+  // YouTube: various URL formats
+  // youtu.be/ID, youtube.com/watch?v=ID, youtube.com/embed/ID
+  const ytPatterns = [
+    /youtu\.be\/([a-zA-Z0-9_-]{11})/,
+    /youtube\.com\/watch\?v=([a-zA-Z0-9_-]{11})/,
+    /youtube\.com\/embed\/([a-zA-Z0-9_-]{11})/,
+    /youtube\.com\/v\/([a-zA-Z0-9_-]{11})/,
+  ];
+
+  for (const pattern of ytPatterns) {
+    const match = raw.match(pattern);
+    if (match) return { provider: 'youtube', id: match[1] };
+  }
+
+  return null;
+}
+
+const video = parseVideoSrc(src);
+
+// ─── Generate thumbnail & embed URLs ───────
+let thumbnailUrl = poster || '';
+let embedUrl = '';
+
+if (video?.provider === 'youtube') {
+  // YouTube thumbnails: maxresdefault is 1280x720, hqdefault is 480x360
+  if (!thumbnailUrl) {
+    thumbnailUrl = `https://i.ytimg.com/vi/${video.id}/maxresdefault.jpg`;
+  }
+  const params = new URLSearchParams({
+    autoplay: autoplay ? '1' : '0',
+    rel: '0',           // Don't show unrelated videos
+    modestbranding: '1', // Minimal YouTube branding
+    playsinline: '1',    // iOS inline playback
+  });
+  embedUrl = `https://www.youtube-nocookie.com/embed/${video.id}?${params}`;
+}
+
+if (video?.provider === 'stream') {
+  // Cloudflare Stream thumbnail API
+  if (!thumbnailUrl) {
+    thumbnailUrl = `https://customer-bgg2Xv7khuDAXXHwJTqXl.cloudflarestream.com/${video.id}/thumbnails/thumbnail.jpg?width=1280&height=720`;
+  }
+  const params = new URLSearchParams({
+    autoplay: autoplay ? 'true' : 'false',
+    preload: 'metadata',
+    letterboxColor: 'transparent',
+  });
+  embedUrl = `https://customer-bgg2Xv7khuDAXXHwJTqXl.cloudflarestream.com/${video.id}/iframe?${params}`;
+}
+---
+
+{video && (
+  <div
+    class:list={['video-facade', className]}
+    data-embed-url={embedUrl}
+    data-title={title}
+    role="button"
+    tabindex="0"
+    aria-label={`Play video: ${title}`}
+  >
+    {/* Thumbnail */}
+    <img
+      src={thumbnailUrl}
+      alt=""
+      class="video-facade__thumb"
+      loading="lazy"
+      decoding="async"
+      aria-hidden="true"
+    />
+
+    {/* Play button overlay */}
+    <div class="video-facade__play" aria-hidden="true">
+      <svg viewBox="0 0 68 48" width="68" height="48">
+        <path class="video-facade__play-bg" d="M66.52 7.74c-.78-2.93-2.49-5.41-5.42-6.19C55.79.13 34 0 34 0S12.21.13 6.9 1.55c-2.93.78-4.63 3.26-5.42 6.19C.06 13.05 0 24 0 24s.06 10.95 1.48 16.26c.78 2.93 2.49 5.41 5.42 6.19C12.21 47.87 34 48 34 48s21.79-.13 27.1-1.55c2.93-.78 4.64-3.26 5.42-6.19C67.94 34.95 68 24 68 24s-.06-10.95-1.48-16.26z" fill="rgba(0,0,0,0.7)"/>
+        <path d="M45 24L27 14v20" fill="#fff"/>
+      </svg>
+    </div>
+
+    {/* YouTube link when using Stream embed */}
+    {video.provider === 'stream' && youtubeUrl && (
+      <a
+        href={youtubeUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        class="video-facade__yt-link"
+        aria-label={`Watch "${title}" on YouTube`}
+        onclick="event.stopPropagation();"
+      >
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true">
+          <path d="M10 6V8H5V19H16V14H18V20C18 20.5523 17.5523 21 17 21H4C3.44772 21 3 20.5523 3 20V7C3 6.44772 3.44772 6 4 6H10ZM21 3V11H19V6.413L11.2071 14.2071L9.79289 12.7929L17.585 5H13V3H21Z"/>
+        </svg>
+        Watch on YouTube
+      </a>
+    )}
+  </div>
+)}
+
+{/* Inline script — only runs when facade is clicked */}
+<script>
+  function initVideoFacades() {
+    document.querySelectorAll('.video-facade').forEach((facade) => {
+      if (facade.dataset.initialized) return;
+      facade.dataset.initialized = 'true';
+
+      function activate() {
+        const url = facade.dataset.embedUrl;
+        const title = facade.dataset.title || 'Video';
+        if (!url) return;
+
+        const iframe = document.createElement('iframe');
+        iframe.src = url;
+        iframe.title = title;
+        iframe.setAttribute('frameborder', '0');
+        iframe.setAttribute('allowfullscreen', '');
+        iframe.setAttribute('allow', 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture');
+        iframe.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border:0;border-radius:inherit;';
+
+        // Replace facade content with iframe
+        facade.innerHTML = '';
+        facade.style.cursor = 'default';
+        facade.removeAttribute('role');
+        facade.removeAttribute('tabindex');
+        facade.removeAttribute('aria-label');
+        facade.appendChild(iframe);
+      }
+
+      facade.addEventListener('click', activate);
+      facade.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          activate();
+        }
+      });
+    });
+  }
+
+  // Run on initial load
+  initVideoFacades();
+
+  // Re-run after Astro page transitions (View Transitions)
+  document.addEventListener('astro:page-load', initVideoFacades);
+</script>
+
+<style>
+  .video-facade {
+    position: relative;
+    aspect-ratio: 16 / 9;
+    background: var(--c-dark, #2D2E33);
+    border-radius: var(--border-radius-lg, 16px);
+    overflow: hidden;
+    cursor: pointer;
+    isolation: isolate;
+  }
+
+  .video-facade:focus-visible {
+    outline: 3px solid var(--c-yellow, #FFD500);
+    outline-offset: 3px;
+  }
+
+  /* Thumbnail */
+  .video-facade__thumb {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform 300ms ease;
+  }
+
+  .video-facade:hover .video-facade__thumb {
+    transform: scale(1.03);
+  }
+
+  /* Play button */
+  .video-facade__play {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1;
+    transition: transform 150ms ease;
+  }
+
+  .video-facade:hover .video-facade__play {
+    transform: scale(1.1);
+  }
+
+  .video-facade__play-bg {
+    transition: fill 150ms ease;
+  }
+
+  .video-facade:hover .video-facade__play-bg {
+    fill: rgba(255, 213, 0, 0.9);
+  }
+
+  /* YouTube external link (when using Stream) */
+  .video-facade__yt-link {
+    position: absolute;
+    bottom: var(--space-md, 1rem);
+    right: var(--space-md, 1rem);
+    z-index: 2;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.375rem 0.75rem;
+    background: rgba(0, 0, 0, 0.7);
+    color: #fff;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    border-radius: 6px;
+    backdrop-filter: blur(4px);
+    transition: background 150ms ease;
+    text-decoration: none;
+  }
+
+  .video-facade__yt-link:hover {
+    background: rgba(0, 0, 0, 0.9);
+  }
+
+  /* ─── Reduced Motion ──────────────────── */
+  @media (prefers-reduced-motion: reduce) {
+    .video-facade__thumb,
+    .video-facade__play,
+    .video-facade__play-bg {
+      transition-duration: 0.01ms !important;
+    }
+  }
+</style>

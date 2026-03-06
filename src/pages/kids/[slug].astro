@@ -5,6 +5,7 @@
  */
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import Button from '../../components/ui/Button.astro';
+import VideoEmbed from '../../components/ui/VideoEmbed.astro';
 import { getCollection } from 'astro:content';
 
 export async function getStaticPaths() {
@@ -90,16 +91,15 @@ const photos = kid.photos || [];
     )}
 
     <!-- Video -->
-    {kid.videoUrl && (
+    {(kid.streamVideoId || kid.videoUrl) && (
       <section class="section">
         <div class="container container--narrow" style="text-align: center;">
           <h2 style="margin-bottom: var(--space-xl);">Watch {kid.name}'s Story</h2>
-          <div class="video-wrapper">
-            <!-- Lite embed facade — will be replaced with VideoEmbed component -->
-            <a href={kid.videoUrl} target="_blank" rel="noopener noreferrer" class="video-link">
-              ▶ Watch Video
-            </a>
-          </div>
+          <VideoEmbed
+            src={kid.streamVideoId ? `stream:${kid.streamVideoId}` : kid.videoUrl}
+            title={`${kid.name}'s Room Reveal — Sunshine on a Ranney Day`}
+            youtubeUrl={kid.streamVideoId ? kid.videoUrl : undefined}
+          />
         </div>
       </section>
     )}
@@ -214,31 +214,6 @@ const photos = kid.photos || [];
   }
 
   .photo-grid__item:hover img {
-    transform: scale(1.05);
-  }
-
-  /* ─── Video ────────────────────────────── */
-  .video-wrapper {
-    aspect-ratio: 16 / 9;
-    background: var(--c-dark);
-    border-radius: var(--border-radius-lg);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  .video-link {
-    color: var(--c-white);
-    font-size: 1.25rem;
-    font-weight: 600;
-    padding: var(--space-md) var(--space-xl);
-    background: var(--c-yellow);
-    color: var(--c-dark);
-    border-radius: 100px;
-    transition: transform var(--transition-fast);
-  }
-
-  .video-link:hover {
     transform: scale(1.05);
   }
 

@@ -22,6 +22,7 @@ const kids = defineCollection({
     })).default([]),
     photoCount: z.number().default(0),
     videoUrl: z.string().nullable().optional(),
+    streamVideoId: z.string().nullable().optional(),
     photographer: z.string().nullable().optional(),
     partnerLogos: z.array(z.object({
       wpPath: z.string().optional(),
