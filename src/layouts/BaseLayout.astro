@@ -130,6 +130,9 @@ const fullTitle = title === 'Home'
     <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
   )}
 
+  <!-- Page-specific head content (preload hints, etc.) -->
+  <slot name="head" />
+
   <!-- Facebook Pixel (async) -->
   <script is:inline>
     !function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?

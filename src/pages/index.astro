@@ -1,7 +1,7 @@
 ---
 /**
  * Home Page — Sunshine on a Ranney Day
- * Cinematic hero, editorial layout, scroll reveals
+ * Cinematic hero with video/photo crossfade, editorial layout, scroll reveals
  * Performance: self-hosted fonts, minimal JS, scoped CSS
  * SEO: JSON-LD NonprofitOrganization, semantic HTML5
  */
@@ -10,6 +10,20 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
 const stats = { totalKids: 132, totalRooms: 106, years: 13 };
 const partners = ['Gas South', 'Randall Paulson', 'Kids R Kids', 'Cambria', 'Mohawk', 'Jackson Healthcare', 'Crosby Design', 'MSI', 'CR Construction', 'Stag Partners', 'WYP'];
+
+/* Hero images — 4 recent reveal photos for crossfade rotation */
+const heroImages = [
+  { src: 'https://sunshineonaranneyday.com/wp-content/uploads/2025/10/IMG_2084-scaled.jpg', alt: 'Amari smiling in his newly transformed dinosaur-themed dream bedroom' },
+  { src: 'https://sunshineonaranneyday.com/wp-content/uploads/2025/01/matthew_2024_reveal_050-scaled.jpg', alt: 'Matthew\'s completed accessible bedroom reveal' },
+  { src: 'https://sunshineonaranneyday.com/wp-content/uploads/2024/07/Glenn-Reveal-2_-13-scaled.jpg', alt: 'Glenn\'s custom therapy room after the big reveal' },
+  { src: 'https://sunshineonaranneyday.com/wp-content/uploads/2025/06/Naji-Reveal-40-scaled.jpg', alt: 'Naji experiencing his newly designed dream bedroom for the first time' },
+];
+
+/* Hero video — set to your reveal video URL (MP4, ideally H.265, <5MB) */
+const heroVideo = '';  // e.g. 'https://customer-xxxxx.cloudflarestream.com/xxxxx/downloads/default.mp4'
+
+/* Partner logos shown in hero for social proof */
+const heroPartners = ['Gas South', 'Jackson Healthcare', 'Kids R Kids', 'Cambria'];
 
 const jsonLd = {
   "@context": "https://schema.org",
@@ -48,14 +62,48 @@ const jsonLd = {
   description="Sunshine on a Ranney Day is a 501(c)(3) nonprofit creating life-changing home makeovers for children with special needs — dream bedrooms, accessible bathrooms, and therapy spaces — all at no cost to families in greater Atlanta."
   jsonLd={jsonLd}
 >
+  <!-- Preload hero LCP image -->
+  <link slot="head" rel="preload" as="image" href={heroImages[0].src} />
 
-  <!-- ══════ HERO — CINEMATIC FULL-BLEED ══════ -->
+  <!-- ══════ HERO — CINEMATIC WITH VIDEO/PHOTO CROSSFADE ══════ -->
   <section class="hero" aria-label="Introduction">
+    <!-- Background media layer -->
     <div class="hero-media">
-      <div class="hero-photo-placeholder"></div>
+      {/* Video background (if available) */}
+      {heroVideo && (
+        <video
+          class="hero-video"
+          autoplay
+          muted
+          loop
+          playsinline
+          preload="metadata"
+          poster={heroImages[0].src}
+        >
+          <source src={heroVideo} type="video/mp4" />
+        </video>
+      )}
+
+      {/* Photo crossfade layer — always rendered, hidden when video plays */}
+      <div class="hero-photos" id="hero-photos">
+        {heroImages.map((img, i) => (
+          <img
+            src={img.src}
+            alt={img.alt}
+            class:list={['hero-photo', { 'is-active': i === 0 }]}
+            loading={i === 0 ? 'eager' : 'lazy'}
+            fetchpriority={i === 0 ? 'high' : 'auto'}
+            decoding={i === 0 ? 'sync' : 'async'}
+            width="1920"
+            height="1080"
+          />
+        ))}
+      </div>
+
       <div class="hero-overlay"></div>
     </div>
 
+    <!-- Content -->
     <div class="hero-inner">
       <div class="hero-content">
         <div class="hero-eyebrow" data-reveal>
@@ -63,10 +111,10 @@ const jsonLd = {
           501(c)(3) Nonprofit · Atlanta, GA · Since 2012
         </div>
         <h1 data-reveal data-delay="1">
-          Building <em>dreams</em>,<br/>one room at a time
+          Every child deserves a room that feels like <em>theirs</em>
         </h1>
         <p class="hero-lead" data-reveal data-delay="2">
-          We create life-changing spaces for children with special needs — dream bedrooms, accessible bathrooms, and therapy rooms — all at <strong>no cost to families</strong>.
+          When a child with special needs walks into a room designed just for them — everything changes. We make that moment happen, at <strong>no cost to families</strong>.
         </p>
         <div class="hero-ctas" data-reveal data-delay="3">
           <a href="/donate" class="btn btn-primary btn-glow">
@@ -75,42 +123,55 @@ const jsonLd = {
           </a>
           <a href="#stories" class="btn btn-ghost-light">See Our Work ↓</a>
         </div>
+
+        {/* Partner logos for social proof */}
+        <div class="hero-partners" data-reveal data-delay="4">
+          <span class="hero-partners-label">Trusted by</span>
+          <div class="hero-partners-logos">
+            {heroPartners.map(name => (
+              <span class="hero-partner-name">{name}</span>
+            ))}
+          </div>
+        </div>
       </div>
 
-      <div class="hero-impact" data-reveal data-delay="4">
+      {/* Impact counter — visible on desktop */}
+      <div class="hero-impact hero-impact--desktop" data-reveal data-delay="4">
         <div class="hero-impact-num">{stats.totalKids}<span>+</span></div>
         <div class="hero-impact-label">children's lives<br/>transformed</div>
       </div>
     </div>
 
-    <div class="hero-scroll" aria-hidden="true">
-      <div class="hero-scroll-line"></div>
+    {/* Stats ribbon — merged into hero bottom */}
+    <div class="hero-ribbon" aria-label="Impact numbers">
+      <div class="hero-ribbon-inner">
+        <div class="hero-ribbon-stat">
+          <span class="hero-ribbon-num">{stats.totalRooms}+</span>
+          <span class="hero-ribbon-label">Room Makeovers</span>
+        </div>
+        <div class="hero-ribbon-divider" role="presentation"></div>
+        <div class="hero-ribbon-stat">
+          <span class="hero-ribbon-num">{stats.totalKids}+</span>
+          <span class="hero-ribbon-label">Children Served</span>
+        </div>
+        <div class="hero-ribbon-divider" role="presentation"></div>
+        <div class="hero-ribbon-stat">
+          <span class="hero-ribbon-num">{stats.years}</span>
+          <span class="hero-ribbon-label">Years of Impact</span>
+        </div>
+        <div class="hero-ribbon-divider" role="presentation"></div>
+        <div class="hero-ribbon-stat">
+          <span class="hero-ribbon-num">100<span class="hero-ribbon-pct">%</span></span>
+          <span class="hero-ribbon-label">Goes to Kids</span>
+        </div>
+      </div>
     </div>
-  </section>
 
-  <!-- ══════ IMPACT RIBBON ══════ -->
-  <section class="ribbon" aria-label="Impact numbers">
-    <div class="ribbon-inner">
-      <div class="ribbon-stat" data-reveal>
-        <span class="ribbon-num">{stats.totalRooms}+</span>
-        <span class="ribbon-label">Room Makeovers</span>
-      </div>
-      <div class="ribbon-divider" role="presentation"></div>
-      <div class="ribbon-stat" data-reveal data-delay="1">
-        <span class="ribbon-num">{stats.totalKids}+</span>
-        <span class="ribbon-label">Children Served</span>
-      </div>
-      <div class="ribbon-divider" role="presentation"></div>
-      <div class="ribbon-stat" data-reveal data-delay="2">
-        <span class="ribbon-num">{stats.years}</span>
-        <span class="ribbon-label">Years of Impact</span>
-      </div>
-      <div class="ribbon-divider" role="presentation"></div>
-      <div class="ribbon-stat" data-reveal data-delay="3">
-        <span class="ribbon-num">100<span class="ribbon-pct">%</span></span>
-        <span class="ribbon-label">Goes to Kids</span>
-      </div>
-    </div>
+    {/* Scroll indicator with context */}
+    <a href="#stories" class="hero-scroll" aria-label="Scroll to see Amari's story">
+      <span class="hero-scroll-text">See Amari's story</span>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="hero-scroll-arrow" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>
+    </a>
   </section>
 
   <!-- ══════ MISSION — EDITORIAL SPREAD ══════ -->
@@ -341,50 +402,75 @@ const jsonLd = {
 
 <style>
   /* ══════════════════════════════════════════
-     HERO — Cinematic Full-Bleed
+     HERO — Cinematic with Video/Photo Crossfade
      ══════════════════════════════════════════ */
   .hero {
     position: relative;
     min-height: 100vh;
     min-height: 100dvh;
     display: flex;
-    align-items: flex-end;
-    padding-bottom: 80px;
+    flex-direction: column;
+    justify-content: flex-end;
     overflow: hidden;
   }
+
+  /* ── Background Media ── */
   .hero-media {
     position: absolute;
     inset: 0;
     z-index: 0;
   }
-  .hero-photo-placeholder {
+  .hero-video,
+  .hero-photos {
+    position: absolute;
+    inset: 0;
     width: 100%;
     height: 100%;
-    background: linear-gradient(135deg, #373A36 0%, #2D2E33 40%, #1A1B1F 100%);
+  }
+  .hero-video {
+    object-fit: cover;
+    z-index: 1;
+  }
+  .hero-photo {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    opacity: 0;
+    transition: opacity 1.5s ease-in-out;
+    will-change: opacity;
+  }
+  .hero-photo.is-active {
+    opacity: 1;
   }
   .hero-overlay {
     position: absolute;
     inset: 0;
+    z-index: 2;
     background: linear-gradient(
       to top,
-      rgba(26, 27, 31, 0.95) 0%,
-      rgba(26, 27, 31, 0.6) 40%,
-      rgba(26, 27, 31, 0.3) 70%,
-      rgba(26, 27, 31, 0.1) 100%
+      rgba(26, 27, 31, 0.97) 0%,
+      rgba(26, 27, 31, 0.75) 35%,
+      rgba(26, 27, 31, 0.45) 60%,
+      rgba(26, 27, 31, 0.25) 100%
     );
   }
+
+  /* ── Content ── */
   .hero-inner {
     position: relative;
-    z-index: 2;
+    z-index: 3;
     max-width: var(--max-width);
     margin: 0 auto;
     padding: 0 var(--page-padding);
+    padding-bottom: 140px; /* space for ribbon */
     width: 100%;
     display: flex;
     justify-content: space-between;
     align-items: flex-end;
   }
-  .hero-content { max-width: 680px; }
+  .hero-content { max-width: 700px; }
   .hero-eyebrow {
     display: flex;
     align-items: center;
@@ -403,28 +489,33 @@ const jsonLd = {
     flex-shrink: 0;
   }
   .hero h1 {
-    font-size: clamp(40px, 6vw, 72px);
+    font-size: clamp(36px, 6vw, 68px);
     color: #fff;
-    line-height: 1.08;
+    line-height: 1.1;
     margin-bottom: 24px;
     letter-spacing: -0.03em;
   }
   .hero h1 em {
     font-style: italic;
     color: var(--c-yellow);
+    background-image: linear-gradient(transparent 55%, rgba(255, 213, 0, 0.2) 55%);
+    background-repeat: no-repeat;
+    background-size: 100% 100%;
+    padding: 0 0.05em;
   }
   .hero-lead {
     font-size: clamp(16px, 2vw, 19px);
     color: rgba(255,255,255,0.6);
     line-height: 1.7;
-    max-width: 540px;
-    margin-bottom: 40px;
+    max-width: 560px;
+    margin-bottom: 36px;
   }
-  .hero-lead strong { color: #fff; }
+  .hero-lead strong { color: #fff; font-weight: 600; }
   .hero-ctas {
     display: flex;
     gap: 16px;
     flex-wrap: wrap;
+    margin-bottom: 32px;
   }
   .btn-glow {
     animation: pulseGlow 3s ease-in-out infinite;
@@ -445,14 +536,43 @@ const jsonLd = {
     transform: translateY(-3px);
   }
 
-  .hero-impact {
+  /* ── Partner Logos (social proof) ── */
+  .hero-partners {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  .hero-partners-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: rgba(255,255,255,0.25);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    white-space: nowrap;
+  }
+  .hero-partners-logos {
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+  }
+  .hero-partner-name {
+    font-size: 12px;
+    font-weight: 600;
+    color: rgba(255,255,255,0.3);
+    white-space: nowrap;
+  }
+
+  /* ── Impact Counter (desktop) ── */
+  .hero-impact--desktop {
     background: rgba(255,255,255,0.06);
     backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
     border: 1px solid rgba(255,255,255,0.1);
     border-radius: 20px;
     padding: 28px 32px;
     text-align: center;
     flex-shrink: 0;
+    margin-bottom: 64px; /* align above ribbon */
   }
   .hero-impact-num {
     font-family: var(--font-display);
@@ -470,41 +590,20 @@ const jsonLd = {
     line-height: 1.4;
   }
 
-  .hero-scroll {
+  /* ── Stats Ribbon (merged into hero bottom) ── */
+  .hero-ribbon {
     position: absolute;
-    bottom: 24px;
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 3;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 4;
+    background: rgba(26, 27, 31, 0.65);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-top: 1px solid rgba(255,255,255,0.06);
+    padding: 28px 0;
   }
-  .hero-scroll-line {
-    width: 1px;
-    height: 48px;
-    background: linear-gradient(to bottom, var(--c-yellow), transparent);
-    animation: scrollPulse 2s ease infinite;
-  }
-  @keyframes scrollPulse {
-    0% { opacity: 1; transform: scaleY(1); }
-    50% { opacity: 0.3; transform: scaleY(0.6); }
-    100% { opacity: 1; transform: scaleY(1); }
-  }
-
-  @media (max-width: 768px) {
-    .hero { align-items: center; padding: 100px 0 60px; min-height: 90vh; min-height: 90dvh; }
-    .hero-inner { flex-direction: column; align-items: flex-start; }
-    .hero-impact { display: none; }
-    .hero-ctas { width: 100%; }
-    .hero-ctas .btn { flex: 1; justify-content: center; min-width: 140px; }
-  }
-
-  /* ══════════════════════════════════════════
-     RIBBON
-     ══════════════════════════════════════════ */
-  .ribbon {
-    background: var(--c-dark-deep);
-    padding: 56px 0;
-  }
-  .ribbon-inner {
+  .hero-ribbon-inner {
     max-width: var(--max-width);
     margin: 0 auto;
     padding: 0 var(--page-padding);
@@ -514,33 +613,84 @@ const jsonLd = {
     gap: 48px;
     flex-wrap: wrap;
   }
-  .ribbon-stat { text-align: center; min-width: 130px; }
-  .ribbon-num {
+  .hero-ribbon-stat { text-align: center; min-width: 120px; }
+  .hero-ribbon-num {
     font-family: var(--font-display);
-    font-size: clamp(36px, 5vw, 52px);
+    font-size: clamp(28px, 4vw, 42px);
     font-weight: 700;
     color: var(--c-yellow);
     line-height: 1;
   }
-  .ribbon-pct { font-size: 0.6em; }
-  .ribbon-label {
+  .hero-ribbon-pct { font-size: 0.6em; }
+  .hero-ribbon-label {
     display: block;
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 600;
     color: rgba(255,255,255,0.35);
     text-transform: uppercase;
     letter-spacing: 0.12em;
-    margin-top: 8px;
+    margin-top: 6px;
   }
-  .ribbon-divider {
+  .hero-ribbon-divider {
     width: 1px;
-    height: 40px;
+    height: 36px;
     background: rgba(255,255,255,0.08);
   }
-  @media (max-width: 600px) {
-    .ribbon-inner { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; }
-    .ribbon-divider { display: none; }
-    .ribbon-stat { min-width: 0; }
+
+  /* ── Scroll Indicator ── */
+  .hero-scroll {
+    position: absolute;
+    bottom: 110px; /* above ribbon */
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 5;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    text-decoration: none;
+    opacity: 0.5;
+    transition: opacity 0.3s ease;
+  }
+  .hero-scroll:hover { opacity: 0.8; }
+  .hero-scroll-text {
+    font-size: 11px;
+    font-weight: 600;
+    color: rgba(255,255,255,0.6);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .hero-scroll-arrow {
+    animation: bounceDown 2s ease infinite;
+    color: var(--c-yellow);
+  }
+  @keyframes bounceDown {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(6px); }
+  }
+
+  /* ── Mobile ── */
+  @media (max-width: 768px) {
+    .hero { min-height: 100vh; min-height: 100dvh; }
+    .hero-inner {
+      flex-direction: column;
+      align-items: flex-start;
+      padding-bottom: 160px;
+    }
+    .hero-impact--desktop { display: none; }
+    .hero-partners { flex-wrap: wrap; }
+    .hero-ctas { width: 100%; }
+    .hero-ctas .btn { flex: 1; justify-content: center; min-width: 140px; }
+    .hero-ribbon-inner { gap: 24px; }
+    .hero-ribbon-divider { display: none; }
+    .hero-ribbon-stat { min-width: 0; flex: 1; }
+    .hero-ribbon-num { font-size: clamp(24px, 6vw, 32px); }
+    .hero-scroll { bottom: 120px; }
+    .hero-scroll-text { display: none; }
+  }
+  @media (max-width: 400px) {
+    .hero-ribbon-inner { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .hero-partners-logos { gap: 12px; }
   }
 
   /* ══════════════════════════════════════════
@@ -1080,21 +1230,52 @@ const jsonLd = {
       transition: none;
     }
     .btn-glow { animation: none; }
-    .hero-scroll-line { animation: none; }
+    .hero-scroll-arrow { animation: none; }
     .marquee-track { animation: none; }
+    .hero-photo { transition: none; }
+    .hero-video { display: none; }
   }
 </style>
 
 <script>
-  // Intersection Observer for scroll reveals
+  // ── Scroll Reveals (fire-once IntersectionObserver) ──
   const observer = new IntersectionObserver((entries) => {
     entries.forEach(entry => {
       if (entry.isIntersecting) {
         entry.target.classList.add('is-visible');
-        observer.unobserve(entry.target); // Fire once, stop watching
+        observer.unobserve(entry.target);
       }
     });
   }, { threshold: 0.15, rootMargin: '0px 0px -40px 0px' });
 
   document.querySelectorAll('[data-reveal]').forEach(el => observer.observe(el));
+
+  // ── Hero Photo Crossfade ──
+  // Rotates hero background photos every 6 seconds
+  // Respects prefers-reduced-motion (stays on first image)
+  const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const photos = document.querySelectorAll('.hero-photo');
+  const heroVideo = document.querySelector('.hero-video');
+
+  if (photos.length > 1 && !prefersReducedMotion && !heroVideo) {
+    let current = 0;
+    setInterval(() => {
+      photos[current].classList.remove('is-active');
+      current = (current + 1) % photos.length;
+      photos[current].classList.add('is-active');
+    }, 6000);
+  }
+
+  // If video is present and can play, hide photos layer
+  if (heroVideo) {
+    heroVideo.addEventListener('canplay', () => {
+      const photosContainer = document.getElementById('hero-photos');
+      if (photosContainer) photosContainer.style.opacity = '0';
+    }, { once: true });
+
+    // Fallback: if video fails to load, keep photos visible
+    heroVideo.addEventListener('error', () => {
+      heroVideo.style.display = 'none';
+    }, { once: true });
+  }
 </script>
