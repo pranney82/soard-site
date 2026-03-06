@@ -90,7 +90,14 @@ function isActive(href: string) {
   <div class="header-inner container--wide">
     <!-- Logo -->
     <a href="/" class="logo" aria-label="Sunshine on a Ranney Day — Home">
-      <span class="logo-icon" aria-hidden="true">☀️</span>
+      <img
+        src="/images/logos/sunny.png"
+        alt=""
+        class="logo-icon"
+        width="40"
+        height="40"
+        loading="eager"
+      />
       <span class="logo-text">
         <span class="logo-name">Sunshine on a Ranney Day</span>
       </span>
@@ -360,7 +367,7 @@ function isActive(href: string) {
 
   .logo:hover { opacity: 0.9; }
 
-  .logo-icon { font-size: 1.75rem; line-height: 1; }
+  .logo-icon { width: 40px; height: 40px; flex-shrink: 0; }
 
   .logo-text {
     display: flex;
