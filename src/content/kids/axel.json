@@ -1,0 +1,62 @@
+{
+  "name": "Axel",
+  "slug": "axel",
+  "wpSlug": "axel",
+  "wpUrl": "https://sunshineonaranneyday.com/blog/2026/03/05/axel/",
+  "age": 11,
+  "diagnosis": "Cerebral Palsy with Dystonia",
+  "roomTypes": [
+    "Accessible Bathroom",
+    "Dream Bedroom"
+  ],
+  "year": 2026,
+  "status": "in-progress",
+  "bio": "Born prematurely at just 28 weeks, Axel was later diagnosed with cerebral palsy with dystonia, a neurological movement disorder that causes painful, involuntary muscle contractions. These constant contractions make controlled movement extremely difficult and impact every aspect of his daily life. Axel lives with ongoing pain, and recently underwent major hip surgery that included the placement of a pump to deliver pain medication directly to the affected area, an important step in helping manage his discomfort. Axel's parents work hard to take care of him, taking opposite shifts in the housekeeping department at Northside hospital, to make sure one is home with Axel at all times.\n\nBecause his bedroom and bathroom are not wheelchair accessible, Axel is unable to move independently within those spaces. As a result, he must sleep in his parents' room, separated from his twin brother, Angelo, something that limits both his independence and their ability to simply be kids together.\n\nDespite these challenges, Axel is a bright and spirited pre-teen. He loves to sing, spin joyfully in his wheelchair, which he skillfully controls with his head, and watch HGTV. (He'll quickly tell you he has strong opinions about good design!)",
+  "quote": null,
+  "heroImage": "https://sunshineonaranneyday.com/wp-content/uploads/2026/03/Axel-scaled.jpg",
+  "photos": [
+    {
+      "wpPath": "wp-content/uploads/2025/10/ChatGPT-Image-Apr-23-2025-at-10_29_09-AM-7ab43c21.webp",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2025/10/ChatGPT-Image-Apr-23-2025-at-10_29_09-AM-7ab43c21.webp",
+      "alt": ""
+    }
+  ],
+  "photoCount": 1,
+  "videoUrl": null,
+  "photographer": null,
+  "partnerLogos": [
+    {
+      "wpPath": "wp-content/uploads/2024/03/logo_kids_r_kids.png",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2024/03/logo_kids_r_kids.png"
+    },
+    {
+      "wpPath": "wp-content/uploads/2024/07/logo_construction_partner_real_floors_commercial.png",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2024/07/logo_construction_partner_real_floors_commercial.png"
+    },
+    {
+      "wpPath": "wp-content/uploads/2025/03/WYP-Logo-e1742501745449.jpg",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2025/03/WYP-Logo-e1742501745449.jpg"
+    }
+  ],
+  "shortDescription": null,
+  "metaDescription": null,
+  "altTexts": null,
+  "jsonLd": null,
+  "_migration": {
+    "scrapedAt": "2026-03-06T13:32:09.507Z",
+    "source": "wordpress-xml-export",
+    "wpPostDate": "2026-03-05 16:27:30",
+    "wpCategories": [
+      "Meet the Kids"
+    ],
+    "wpTags": [
+      "2026",
+      "Accessible Bathroom",
+      "background-top-center",
+      "Dream Bedroom",
+      "In Progress"
+    ],
+    "thumbnailId": 10538,
+    "needsReview": []
+  }
+}

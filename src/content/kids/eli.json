@@ -1,0 +1,106 @@
+{
+  "name": "Eli",
+  "slug": "eli",
+  "wpSlug": "eli",
+  "wpUrl": "https://sunshineonaranneyday.com/blog/2021/06/18/eli/",
+  "age": 9,
+  "diagnosis": "Neuro-Degenerative Disease",
+  "roomTypes": [
+    "Concrete Carport"
+  ],
+  "year": 2019,
+  "status": "completed",
+  "bio": "A person with Tay-Sachs slowly loses functional abilities including walking, eating, hearing and vision. His family is cherishing every single moment they get to spend with him.",
+  "quote": "A person with Tay-Sachs slowly loses functional abilities including walking, eating, hearing and vision. His family is cherishing every single moment they get to spend with him.",
+  "heroImage": "https://sunshineonaranneyday.com/wp-content/uploads/2021/06/meet_the_kids_eli_2019.jpg",
+  "photos": [
+    {
+      "wpPath": "wp-content/uploads/2021/07/eli_2019_family_00005.jpg",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2021/07/eli_2019_family_00005.jpg",
+      "alt": ""
+    },
+    {
+      "wpPath": "wp-content/uploads/2021/07/eli_2019_family_00002.jpg",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2021/07/eli_2019_family_00002.jpg",
+      "alt": ""
+    },
+    {
+      "wpPath": "wp-content/uploads/2021/07/eli_2019_family_00001.jpg",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2021/07/eli_2019_family_00001.jpg",
+      "alt": ""
+    },
+    {
+      "wpPath": "wp-content/uploads/2021/07/eli_2019_family_00003.jpg",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2021/07/eli_2019_family_00003.jpg",
+      "alt": ""
+    },
+    {
+      "wpPath": "wp-content/uploads/2021/07/eli_2019_family_00004.jpg",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2021/07/eli_2019_family_00004.jpg",
+      "alt": ""
+    },
+    {
+      "wpPath": "wp-content/uploads/2021/07/eli_2019_family_00006.jpg",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2021/07/eli_2019_family_00006.jpg",
+      "alt": ""
+    },
+    {
+      "wpPath": "wp-content/uploads/2021/07/eli_2019_family_00007.jpg",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2021/07/eli_2019_family_00007.jpg",
+      "alt": ""
+    },
+    {
+      "wpPath": "wp-content/uploads/2021/07/eli_2019_reveal_00001.jpg",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2021/07/eli_2019_reveal_00001.jpg",
+      "alt": ""
+    },
+    {
+      "wpPath": "wp-content/uploads/2021/07/eli_2019_reveal_00002.jpg",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2021/07/eli_2019_reveal_00002.jpg",
+      "alt": ""
+    }
+  ],
+  "photoCount": 9,
+  "videoUrl": null,
+  "photographer": "Kristi Weaver Photography",
+  "partnerLogos": [
+    {
+      "wpPath": "wp-content/uploads/2021/06/logo_sugar_hill_outdoors.png",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2021/06/logo_sugar_hill_outdoors.png"
+    },
+    {
+      "wpPath": "wp-content/uploads/2021/06/logo_kids_r_kids.png",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2021/06/logo_kids_r_kids.png"
+    },
+    {
+      "wpPath": "wp-content/uploads/2021/06/logo_jackson_healthcare.png",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2021/06/logo_jackson_healthcare.png"
+    },
+    {
+      "wpPath": "wp-content/uploads/2021/06/logo_kristi_weaver_photography.png",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2021/06/logo_kristi_weaver_photography.png"
+    },
+    {
+      "wpPath": "wp-content/uploads/2021/07/logo_tafollas_concrete.png",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2021/07/logo_tafollas_concrete.png"
+    }
+  ],
+  "shortDescription": null,
+  "metaDescription": null,
+  "altTexts": null,
+  "jsonLd": null,
+  "_migration": {
+    "scrapedAt": "2026-03-06T13:32:09.448Z",
+    "source": "wordpress-xml-export",
+    "wpPostDate": "2021-06-18 23:08:00",
+    "wpCategories": [
+      "Meet the Kids"
+    ],
+    "wpTags": [
+      "2019",
+      "Concrete Carport"
+    ],
+    "thumbnailId": 1285,
+    "needsReview": []
+  }
+}

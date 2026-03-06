@@ -1,0 +1,62 @@
+{
+  "name": "Peter",
+  "slug": "peter",
+  "wpSlug": "peter",
+  "wpUrl": "https://sunshineonaranneyday.com/blog/2026/03/05/peter/",
+  "age": 14,
+  "diagnosis": "Leigh's Disease",
+  "roomTypes": [
+    "Accessible Bathroom",
+    "Dream Bedroom"
+  ],
+  "year": 2026,
+  "status": "in-progress",
+  "bio": "Peter was adopted from Russia when he was just over a year old. Peter has always had a natural charisma and an infectious happiness that draws people to him, so full of joy that even the adoption judge remarked on his remarkable personality.\n\nWhen Peter was two years old, he suffered a stroke. After further testing, he was diagnosed with Leigh's disease, a rare and progressive neurological disorder that affects the body's ability to produce energy at the cellular level. Over time, the condition gradually robs individuals of strength, mobility, and independence. Peter has experienced additional strokes, and as the disease progresses, more daily functions become challenging.\n\nToday, Peter is wheelchair-dependent. As he grows into his teenage years, he longs for greater independence—something every young person desires. At the same time, his parents are thoughtfully planning for the future, knowing his needs will continue to increase as they themselves grow older.\n\nDespite everything he faces, Peter's spirit remains bright. He loves the police and proudly says he wants to become a police officer when he \\u201cgrows up.\\u201d His determination, courage, and enduring joy continue to inspire everyone around him.",
+  "quote": null,
+  "heroImage": "https://sunshineonaranneyday.com/wp-content/uploads/2026/03/Peter-scaled.jpg",
+  "photos": [
+    {
+      "wpPath": "wp-content/uploads/2025/10/ChatGPT-Image-Apr-23-2025-at-10_29_09-AM-7ab43c21.webp",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2025/10/ChatGPT-Image-Apr-23-2025-at-10_29_09-AM-7ab43c21.webp",
+      "alt": ""
+    }
+  ],
+  "photoCount": 1,
+  "videoUrl": null,
+  "photographer": null,
+  "partnerLogos": [
+    {
+      "wpPath": "wp-content/uploads/2024/03/logo_kids_r_kids.png",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2024/03/logo_kids_r_kids.png"
+    },
+    {
+      "wpPath": "wp-content/uploads/2024/07/logo_construction_partner_real_floors_commercial.png",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2024/07/logo_construction_partner_real_floors_commercial.png"
+    },
+    {
+      "wpPath": "wp-content/uploads/2025/03/WYP-Logo-e1742501745449.jpg",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2025/03/WYP-Logo-e1742501745449.jpg"
+    }
+  ],
+  "shortDescription": null,
+  "metaDescription": null,
+  "altTexts": null,
+  "jsonLd": null,
+  "_migration": {
+    "scrapedAt": "2026-03-06T13:32:09.510Z",
+    "source": "wordpress-xml-export",
+    "wpPostDate": "2026-03-05 17:43:55",
+    "wpCategories": [
+      "Meet the Kids"
+    ],
+    "wpTags": [
+      "2026",
+      "Accessible Bathroom",
+      "background-bottom-center",
+      "Dream Bedroom",
+      "In Progress"
+    ],
+    "thumbnailId": 10607,
+    "needsReview": []
+  }
+}

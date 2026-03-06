@@ -1,0 +1,68 @@
+{
+  "name": "Junializ",
+  "slug": "junializ",
+  "wpSlug": "juaniliz",
+  "wpUrl": "https://sunshineonaranneyday.com/blog/2025/04/23/juaniliz/",
+  "age": 19,
+  "diagnosis": "Type III Stroke,",
+  "roomTypes": [
+    "Accessible Bathroom"
+  ],
+  "year": 2026,
+  "status": "in-progress",
+  "bio": "Junaliz was born prematurely at 29 weeks in Puerto Rico due to her mother's experience with domestic violence. She faced severe medical challenges, including a Type III stroke and hydrocephalus, requiring lifelong care from her single mother. After Hurricane Maria left them homeless in 2017, Juniliz and her mother were evacuated to Atlanta, where Junaliz's fragile health continues to demand extensive care.\n\nNow battling lupus and fibromyalgia, her mother struggles to manage Junaliz's needs. As both mother and daughter age and their medical conditions progress, caregiving will become increasingly difficult. SOARD aims to reduce future burdens on the mother and daughter by providing a wheelchair-accessible bathroom with a zero-entry shower.",
+  "quote": null,
+  "heroImage": "https://sunshineonaranneyday.com/wp-content/uploads/2025/04/Junializ-Castillio_2024_01-scaled.jpg",
+  "photos": [
+    {
+      "wpPath": "wp-content/uploads/2025/04/ChatGPT-Image-Apr-23-2025-at-10_29_09-AM.png",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2025/04/ChatGPT-Image-Apr-23-2025-at-10_29_09-AM.png",
+      "alt": ""
+    },
+    {
+      "wpPath": "wp-content/uploads/2021/07/meet_the_kids_makeover_in_progress.jpg",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2021/07/meet_the_kids_makeover_in_progress.jpg",
+      "alt": ""
+    }
+  ],
+  "photoCount": 2,
+  "videoUrl": "https://youtu.be/VbciIUNjSYI?si=Gct2-ahjQ9ZeIkNx",
+  "photographer": null,
+  "partnerLogos": [
+    {
+      "wpPath": "wp-content/uploads/2021/06/logo_gas_south.png",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2021/06/logo_gas_south.png"
+    },
+    {
+      "wpPath": "wp-content/uploads/2021/06/logo_kids_r_kids.png",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2021/06/logo_kids_r_kids.png"
+    },
+    {
+      "wpPath": "wp-content/uploads/2021/06/logo_jackson_healthcare.png",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2021/06/logo_jackson_healthcare.png"
+    },
+    {
+      "wpPath": "wp-content/uploads/2021/06/logo_cr_construction.png",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2021/06/logo_cr_construction.png"
+    }
+  ],
+  "shortDescription": null,
+  "metaDescription": null,
+  "altTexts": null,
+  "jsonLd": null,
+  "_migration": {
+    "scrapedAt": "2026-03-06T13:32:09.505Z",
+    "source": "wordpress-xml-export",
+    "wpPostDate": "2025-04-23 16:58:09",
+    "wpCategories": [
+      "Meet the Kids"
+    ],
+    "wpTags": [
+      "2026",
+      "Accessible Bathroom",
+      "In Progress"
+    ],
+    "thumbnailId": 9833,
+    "needsReview": []
+  }
+}
