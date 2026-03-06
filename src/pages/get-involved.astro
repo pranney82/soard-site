@@ -1,38 +1,86 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
 ---
-<BaseLayout title="Get Involved" description="Volunteer, attend events, apply for a room, or support Sunshine on a Ranney Day. Every effort makes a difference.">
+<BaseLayout title="Get Involved" description="Volunteer, attend events, apply for a room, or support Sunshine on a Ranney Day. Every effort changes a child's life.">
 
-  <section class="page-hero"><div class="container"><div class="section-label">Get Involved</div><h1>There are many ways to <span class="highlight">make a difference</span></h1><p class="page-hero-sub">Whether you're a skilled professional, a compassionate volunteer, or a family in need — there's a place for you in our mission.</p></div></section>
-
-  <section class="involve-ways"><div class="container">
-    <div class="ways-grid">
-      <div class="way-card way-card--highlight">
-        <span class="way-icon">💛</span>
-        <h2>Donate</h2>
-        <p>Your financial gift directly funds room makeovers. 100% of donations go to our room projects. All gifts are tax-deductible.</p>
-        <a href="/donate" class="btn btn-dark">Make a Donation →</a>
-      </div>
-      <div class="way-card"><span class="way-icon">🔨</span><h3>Volunteer Your Skills</h3><p>Painters, carpenters, electricians, designers — we need skilled hands to build dream rooms.</p><a href="mailto:info@soardcharity.com?subject=Volunteer" class="btn btn-ghost btn-sm">Contact Us →</a></div>
-      <div class="way-card"><span class="way-icon">🏢</span><h3>Corporate Partnership</h3><p>Organize team builds, sponsor rooms, or donate materials. Corporate partnerships fuel our mission.</p><a href="mailto:info@soardcharity.com?subject=Partnership" class="btn btn-ghost btn-sm">Partner With Us →</a></div>
-      <div class="way-card"><span class="way-icon">🛍️</span><h3>Shop Sunny & Ranney</h3><p>Every purchase from our retail store helps fund room projects. Great finds that help kids.</p><a href="https://sunnyandranney.com" target="_blank" rel="noopener" class="btn btn-ghost btn-sm">Visit Store →</a></div>
-      <div class="way-card"><span class="way-icon">📢</span><h3>Spread the Word</h3><p>Follow us on social media, share our stories, and tell your friends and family.</p></div>
-      <div class="way-card"><span class="way-icon">🎉</span><h3>Attend Events</h3><p>Join us at fundraisers, reveal events, and community gatherings throughout the year.</p></div>
+  <section class="page-hero">
+    <div class="container">
+      <div class="section-label" style="color:var(--c-yellow)">Get Involved</div>
+      <h1>Many ways to <em>make a difference</em></h1>
+      <p class="page-hero-sub">Whether you're a skilled professional, a compassionate volunteer, or a family in need — there's a place for you in our mission.</p>
     </div>
-  </div></section>
+  </section>
 
-  <section class="apply-section" id="apply">
-    <div class="apply-inner">
-      <div class="apply-text">
-        <div class="section-label" style="color:var(--c-yellow);">For Families</div>
-        <h2 style="color:#fff;">Apply for a <span class="highlight">room makeover</span></h2>
-        <p>If you have a child with special needs in the Greater Atlanta area and believe they could benefit from a room makeover, we'd love to hear from you.</p>
-        <div class="apply-criteria"><h4>Eligibility</h4><p>Child with a documented special need or disability, residing in the Greater Atlanta area, and referred by a medical professional, social worker, or community organization.</p></div>
-        <a href="mailto:info@soardcharity.com?subject=Room+Application" class="btn btn-primary">Start Your Application →</a>
+  <!-- ══════ WAYS TO HELP ══════ -->
+  <section class="ways">
+    <div class="container">
+      <div class="ways-featured" data-reveal>
+        <div class="ways-featured-inner">
+          <span class="ways-icon-lg">💛</span>
+          <h2>The simplest way to help? <em class="highlight">Donate.</em></h2>
+          <p>100% of your donation funds room projects. Our stores cover operational costs. Every dollar builds dreams.</p>
+          <a href="/donate" class="btn btn-dark btn-lg">Donate Now ♥</a>
+        </div>
       </div>
-      <div class="apply-stat">
-        <span class="apply-emoji">🌟</span>
-        <p><strong>132+ children</strong> have received dream rooms since 2012</p>
+
+      <div class="ways-grid">
+        <div class="ways-card card" data-reveal>
+          <span class="ways-icon">🔨</span>
+          <h3>Volunteer Your Skills</h3>
+          <p>Painters, carpenters, electricians, designers — your expertise builds rooms that change lives. Even a few hours make a difference.</p>
+          <a href="mailto:info@soardcharity.com?subject=Volunteer" class="ways-link">Contact us →</a>
+        </div>
+        <div class="ways-card card" data-reveal data-delay="1">
+          <span class="ways-icon">🏢</span>
+          <h3>Corporate Partnership</h3>
+          <p>Team build days, room sponsorships, material donations. Let your company's impact be tangible and visible.</p>
+          <a href="mailto:info@soardcharity.com?subject=Partnership" class="ways-link">Partner with us →</a>
+        </div>
+        <div class="ways-card card" data-reveal data-delay="2">
+          <span class="ways-icon">🛍️</span>
+          <h3>Shop Our Stores</h3>
+          <p>Sunny & Ranney and Partly Sunny sell designer furniture — 100% of profits fund room projects.</p>
+          <a href="https://sunnyandranney.com" target="_blank" rel="noopener" class="ways-link">Visit store →</a>
+        </div>
+        <div class="ways-card card" data-reveal>
+          <span class="ways-icon">📢</span>
+          <h3>Spread the Word</h3>
+          <p>Follow us, share our stories, tell your friends. Awareness creates action, and action changes lives.</p>
+          <a href="https://www.instagram.com/sunshineonaranneyday" target="_blank" rel="noopener" class="ways-link">Follow us →</a>
+        </div>
+        <div class="ways-card card" data-reveal data-delay="1">
+          <span class="ways-icon">🎉</span>
+          <h3>Attend Events</h3>
+          <p>Golf tournaments, reveal celebrations, fundraisers — join our community in person.</p>
+          <a href="https://sunnyandranney.com/events-benefiting-sunshine-on-a-ranney-day/" target="_blank" rel="noopener" class="ways-link">See events →</a>
+        </div>
+        <div class="ways-card card" data-reveal data-delay="2">
+          <span class="ways-icon">🎁</span>
+          <h3>In-Kind Donations</h3>
+          <p>Furniture, paint, materials, fixtures — direct contributions to our room projects are always welcome.</p>
+          <a href="mailto:info@soardcharity.com?subject=In-Kind+Donation" class="ways-link">Donate materials →</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════ APPLY FOR A ROOM ══════ -->
+  <section class="apply" id="apply">
+    <div class="apply-inner">
+      <div class="apply-content" data-reveal>
+        <div class="section-label" style="color:var(--c-yellow)">For Families</div>
+        <h2 style="color:#fff;">Does your child need a <em style="color:var(--c-yellow);">dream room</em>?</h2>
+        <p>If you have a child with special needs in the Greater Atlanta area, we'd love to hear from you. Our application is simple and confidential.</p>
+        <div class="apply-criteria">
+          <h4>Eligibility</h4>
+          <p>Child with a documented special need or disability, residing in the Greater Atlanta area. Referral from a medical professional, social worker, or community organization.</p>
+        </div>
+        <a href="mailto:info@soardcharity.com?subject=Room+Application" class="btn btn-primary">Start Application →</a>
+      </div>
+      <div class="apply-stats" data-reveal data-delay="1">
+        <div class="apply-stat"><span class="apply-big">132+</span><span>children served</span></div>
+        <div class="apply-stat"><span class="apply-big">$0</span><span>cost to families</span></div>
+        <div class="apply-stat"><span class="apply-big">3</span><span>room types available</span></div>
       </div>
     </div>
   </section>
@@ -40,34 +88,45 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 </BaseLayout>
 
 <style>
-  .page-hero{padding:120px var(--page-padding) 60px;background:var(--c-cream);}
-  .page-hero h1{margin-bottom:16px;}
-  .page-hero-sub{font-size:19px;color:var(--c-text-muted);max-width:580px;line-height:1.7;}
+  .ways{padding:var(--section-padding);}
+  .ways-featured{background:var(--c-yellow);border-radius:28px;padding:64px;text-align:center;margin-bottom:48px;}
+  .ways-featured-inner{max-width:520px;margin:0 auto;}
+  .ways-icon-lg{font-size:40px;display:block;margin-bottom:16px;}
+  .ways-featured h2{margin-bottom:16px;}
+  .ways-featured h2 em{font-style:italic;}
+  .ways-featured p{font-size:17px;color:rgba(45,46,51,0.65);margin-bottom:28px;}
+  .btn-lg{font-size:17px;padding:18px 44px;}
+  .ways-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:24px;}
+  .ways-card{padding:36px;}
+  .ways-icon{font-size:32px;display:block;margin-bottom:16px;}
+  .ways-card h3{font-family:var(--f-body);font-size:17px;margin-bottom:8px;}
+  .ways-card p{font-size:15px;line-height:1.65;margin-bottom:20px;}
+  .ways-link{font-size:14px;font-weight:600;color:var(--c-purple);transition:letter-spacing 0.3s;}
+  .ways-link:hover{letter-spacing:0.02em;}
 
-  .involve-ways{padding:var(--section-padding);}
-  .ways-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:24px;}
-  .way-card{background:var(--c-white);padding:36px;border-radius:20px;box-shadow:0 1px 3px rgba(0,0,0,0.04),inset 0 0 0 1px rgba(0,0,0,0.06);transition:all 0.4s cubic-bezier(0.16,1,0.3,1);}
-  .way-card:hover{transform:translateY(-4px);box-shadow:0 16px 40px rgba(0,0,0,0.06);}
-  .way-card--highlight{background:var(--c-yellow);grid-column:1/-1;text-align:center;padding:56px;}
-  .way-card--highlight p{max-width:520px;margin:0 auto 24px;color:rgba(45,46,51,0.7);}
-  .way-icon{font-size:32px;display:block;margin-bottom:16px;}
-  .way-card h2{font-size:24px;margin-bottom:8px;}
-  .way-card h3{font-family:var(--f-body);font-size:17px;margin-bottom:8px;}
-  .way-card p{font-size:15px;color:var(--c-text-muted);line-height:1.65;margin-bottom:20px;}
-
-  .apply-section{background:var(--c-dark-deep);color:rgba(255,255,255,0.6);}
-  .apply-inner{max-width:var(--max-width);margin:0 auto;padding:var(--section-padding);display:grid;grid-template-columns:1.3fr 1fr;gap:72px;align-items:center;}
-  .apply-text p{font-size:17px;line-height:1.7;margin-bottom:24px;}
-  .apply-criteria{padding:20px;background:rgba(255,255,255,0.05);border-radius:16px;border:1px solid rgba(255,255,255,0.08);margin-bottom:28px;}
+  .apply{background:var(--c-dark-deep);color:rgba(255,255,255,0.6);}
+  .apply-inner{max-width:var(--max-width);margin:0 auto;padding:var(--section-padding);display:grid;grid-template-columns:1.3fr 1fr;gap:80px;align-items:center;}
+  .apply-content h2{margin-bottom:20px;}
+  .apply-content p{font-size:17px;line-height:1.7;margin-bottom:24px;}
+  .apply-criteria{padding:24px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.06);border-radius:16px;margin-bottom:28px;}
   .apply-criteria h4{font-family:var(--f-body);font-size:12px;text-transform:uppercase;letter-spacing:0.1em;color:#fff;margin-bottom:8px;}
   .apply-criteria p{font-size:15px;margin-bottom:0;}
-  .apply-stat{background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);border-radius:24px;padding:56px;text-align:center;}
-  .apply-emoji{font-size:48px;display:block;margin-bottom:16px;}
-  .apply-stat p{font-size:18px;color:rgba(255,255,255,0.8);}
-  .apply-stat strong{color:var(--c-yellow);}
+  .apply-stats{display:flex;flex-direction:column;gap:20px;}
+  .apply-stat{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.06);border-radius:20px;padding:32px;text-align:center;transition:all 0.4s ease;}
+  .apply-stat:hover{background:rgba(255,255,255,0.07);}
+  .apply-big{display:block;font-family:var(--f-display);font-size:40px;font-weight:700;color:var(--c-yellow);margin-bottom:4px;}
+  .apply-stat span:last-child{font-size:14px;color:rgba(255,255,255,0.5);}
+
+  [data-reveal]{opacity:0;transform:translateY(32px);transition:opacity 0.7s cubic-bezier(0.16,1,0.3,1),transform 0.7s cubic-bezier(0.16,1,0.3,1);}
+  [data-reveal].is-visible{opacity:1;transform:translateY(0);}
+  [data-delay="1"]{transition-delay:0.1s;}[data-delay="2"]{transition-delay:0.2s;}
 
   @media(max-width:768px){
     .ways-grid{grid-template-columns:1fr;}
     .apply-inner{grid-template-columns:1fr;gap:40px;}
+    .apply-stats{flex-direction:row;gap:12px;}
+    .apply-stat{flex:1;}
   }
+  @media(max-width:480px){.apply-stats{flex-direction:column;}}
 </style>
+<script>const obs=new IntersectionObserver(e=>e.forEach(n=>{if(n.isIntersecting)n.target.classList.add('is-visible')}),{threshold:0.15,rootMargin:'0px 0px -40px 0px'});document.querySelectorAll('[data-reveal]').forEach(e=>obs.observe(e));</script>

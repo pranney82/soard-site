@@ -9,5 +9,17 @@
   "address": "250 Hembree Park Drive, Suite 106, Roswell GA 30076",
   "phone": "770.990.2434",
   "email": "info@soardcharity.com",
-  "ein": "45-4773997"
+  "ein": "45-4773997",
+  "social": {
+    "facebook": "https://www.facebook.com/sunshineonaranneyday",
+    "instagram": "https://www.instagram.com/sunshineonaranneyday"
+  },
+  "hero": {
+    "headline": "Building *dreams*, one room at a time",
+    "subheadline": "We create life-changing spaces for children with special needs — dream bedrooms, accessible bathrooms, and therapy rooms — all at no cost to families.",
+    "image": null,
+    "videoUrl": null
+  },
+  "featuredKid": "amari",
+  "cfImagesHash": "ROYFuPmfN2vPS6mt5sCkZQ"
 }

@@ -2,23 +2,24 @@
 import BaseLayout from '../layouts/BaseLayout.astro';
 ---
 <BaseLayout title="Page Not Found" description="The page you're looking for doesn't exist.">
-  <section class="not-found">
-    <div class="container not-found-inner">
-      <span class="not-found-code">404</span>
-      <h1>Page not found</h1>
-      <p>The page you're looking for doesn't exist or has been moved.</p>
-      <div class="not-found-actions">
+  <section class="lost">
+    <div class="lost-inner">
+      <span class="lost-num">404</span>
+      <h1>This page doesn't exist</h1>
+      <p>But these kids do — and they need your help. Let's get you somewhere useful.</p>
+      <div class="lost-btns">
         <a href="/" class="btn btn-primary">Go Home</a>
-        <a href="/donate" class="btn btn-ghost">Donate ♥</a>
+        <a href="/donate" class="btn btn-dark">Donate ♥</a>
+        <a href="/kids" class="btn btn-ghost">Meet Our Kids</a>
       </div>
     </div>
   </section>
 </BaseLayout>
-
 <style>
-  .not-found{min-height:calc(100vh - 76px);display:flex;align-items:center;justify-content:center;padding:var(--section-padding);text-align:center;}
-  .not-found-code{font-family:var(--f-display);font-size:clamp(80px,20vw,160px);font-weight:700;color:var(--c-yellow);line-height:1;display:block;margin-bottom:16px;}
-  .not-found h1{margin-bottom:12px;}
-  .not-found p{font-size:18px;color:var(--c-text-muted);max-width:400px;margin:0 auto 32px;}
-  .not-found-actions{display:flex;gap:14px;justify-content:center;}
+  .lost{min-height:calc(100vh - 76px);display:flex;align-items:center;justify-content:center;padding:80px var(--page-padding);text-align:center;}
+  .lost-inner{max-width:520px;}
+  .lost-num{font-family:var(--f-display);font-size:clamp(100px,20vw,180px);font-weight:700;color:var(--c-yellow);line-height:0.9;display:block;margin-bottom:12px;}
+  .lost h1{margin-bottom:12px;font-size:clamp(24px,3vw,32px);}
+  .lost p{font-size:18px;margin-bottom:36px;}
+  .lost-btns{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;}
 </style>
