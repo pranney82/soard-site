@@ -3,8 +3,63 @@
    Brand Colors: #FFD500 (yellow), #7A00DF (purple), #2D2E33 (dark)
    ══════════════════════════════════════════════════════════════ */
 
-/* ── Fonts (move to top per CSS spec) ── */
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&display=swap');
+/* ── Self-hosted Fonts (no render-blocking network request) ── */
+@font-face {
+  font-family: 'Libre Baskerville';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/libre-baskerville-latin-400-normal.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Libre Baskerville';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts/libre-baskerville-latin-700-normal.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Libre Baskerville';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/libre-baskerville-latin-400-italic.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Outfit';
+  font-style: normal;
+  font-weight: 300;
+  font-display: swap;
+  src: url('/fonts/outfit-latin-300-normal.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Outfit';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/outfit-latin-400-normal.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Outfit';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/fonts/outfit-latin-500-normal.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Outfit';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('/fonts/outfit-latin-600-normal.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Outfit';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts/outfit-latin-700-normal.woff2') format('woff2');
+}
 
 /* ── Reset ── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -40,7 +95,14 @@ ul, ol { list-style: none; }
   /* Spacing */
   --page-padding: clamp(20px, 5vw, 64px);
   --max-width: 1320px;
-  --section-padding: 120px var(--page-padding);
+  --section-padding: clamp(64px, 10vw, 120px) var(--page-padding);
+  --sp-xs: clamp(4px, 0.5vw, 8px);
+  --sp-sm: clamp(8px, 1vw, 12px);
+  --sp-md: clamp(12px, 1.5vw, 16px);
+  --sp-lg: clamp(16px, 2vw, 24px);
+  --sp-xl: clamp(24px, 3vw, 40px);
+  --sp-2xl: clamp(32px, 5vw, 64px);
+  --sp-3xl: clamp(48px, 8vw, 96px);
 }
 
 /* ── Base ── */
@@ -52,6 +114,7 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   overflow-x: hidden;
+  min-height: 100dvh;
 }
 
 .container {
@@ -117,6 +180,7 @@ p { color: var(--c-text-muted); line-height: 1.75; }
   text-decoration: none;
   line-height: 1;
   white-space: nowrap;
+  min-height: 48px; /* touch target */
 }
 .btn:hover { transform: translateY(-3px); }
 
@@ -348,13 +412,20 @@ p { color: var(--c-text-muted); line-height: 1.75; }
 @media (max-width: 768px) {
   .nav-links { display: none; }
   .page-hero { padding: 120px var(--page-padding) 56px; }
-  :root {
-    --section-padding: 80px var(--page-padding);
-  }
+  .page-hero-sub { font-size: 16px; }
+  .btn { padding: 14px 28px; font-size: 15px; }
 }
 
 @media (max-width: 480px) {
-  :root {
-    --section-padding: 64px var(--page-padding);
+  .page-hero { padding: 100px var(--page-padding) 48px; }
+}
+
+/* ── Reduced Motion ── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
