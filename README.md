@@ -45,3 +45,4 @@ Content lives in `src/content/` as JSON files:
 | Purple | `#7A00DF` | Secondary accent, labels |
 | Dark | `#2D2E33` | Text, dark sections |
 | Cream | `#FEFCF5` | Backgrounds |
+
