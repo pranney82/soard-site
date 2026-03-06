@@ -439,6 +439,10 @@
         const r = await fetch(`/api/read-content?dir=${encodeURIComponent(dir)}`);
         return r.json();
       },
+      async bulkListContent(dir) {
+        const r = await fetch(`/api/list-content?dir=${encodeURIComponent(dir)}`);
+        return r.json();
+      },
       async readContent(path) {
         const r = await fetch(`/api/read-content?path=${encodeURIComponent(path)}`);
         return r.json();
@@ -1323,34 +1327,18 @@
       const loadData = async () => {
         setLoading(true);
         try {
-          // Load kids
-          const kidsRes = await api.listContent('src/content/kids');
+          // Load kids (bulk — one API call)
+          const kidsRes = await api.bulkListContent('src/content/kids');
           if (kidsRes.success) {
-            const kidData = await Promise.all(
-              kidsRes.files.map(async f => {
-                try {
-                  const r = await api.readContent(f.path);
-                  if (r.success) return JSON.parse(r.content);
-                } catch {}
-                return null;
-              })
-            );
-            setKids(kidData.filter(Boolean).sort((a, b) => (b.year || 0) - (a.year || 0)));
+            const kidData = kidsRes.items.map(i => i.content).filter(Boolean);
+            setKids(kidData.sort((a, b) => (b.year || 0) - (a.year || 0)));
           }
 
-          // Load partners
-          const partRes = await api.listContent('src/content/partners');
+          // Load partners (bulk — one API call)
+          const partRes = await api.bulkListContent('src/content/partners');
           if (partRes.success) {
-            const partData = await Promise.all(
-              partRes.files.map(async f => {
-                try {
-                  const r = await api.readContent(f.path);
-                  if (r.success) return JSON.parse(r.content);
-                } catch {}
-                return null;
-              })
-            );
-            setPartners(partData.filter(Boolean).sort((a, b) => a.name.localeCompare(b.name)));
+            const partData = partRes.items.map(i => i.content).filter(Boolean);
+            setPartners(partData.sort((a, b) => a.name.localeCompare(b.name)));
           }
         } catch (err) {
           addToast('Failed to load content. Check API settings.', 'error');
