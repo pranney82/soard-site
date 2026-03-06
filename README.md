@@ -46,3 +46,4 @@ Content lives in `src/content/` as JSON files:
 | Dark | `#2D2E33` | Text, dark sections |
 | Cream | `#FEFCF5` | Backgrounds |
 
+<!-- build trigger -->
