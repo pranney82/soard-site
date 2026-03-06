@@ -4,15 +4,42 @@ import PageLayout from '../layouts/PageLayout.astro';
 
 <PageLayout
   title="Donate"
-  heroTitle="Donate"
-  heroSubtitle="Each donation builds accessible bathrooms, dream bedrooms, and therapy rooms"
+  heroTitle="Help Build a Brighter Home"
+  heroSubtitle="Every dollar goes directly toward building accessible bathrooms, dream bedrooms, and therapy rooms for children with special needs — all at no cost to families."
 >
+  <!-- Impact Cards -->
   <section class="section">
+    <div class="container">
+      <h2 class="donate-section-heading">Your Gift in Action</h2>
+      <div class="impact-grid">
+        <div class="impact-card">
+          <span class="impact-card__amount">$60</span>
+          <p class="impact-card__desc">Covers paint and supplies for a child's dream room</p>
+        </div>
+        <div class="impact-card">
+          <span class="impact-card__amount">$125</span>
+          <p class="impact-card__desc">Funds new bedding, curtains, and décor for a bedroom makeover</p>
+        </div>
+        <div class="impact-card impact-card--featured">
+          <span class="impact-card__amount">$500</span>
+          <p class="impact-card__desc">Sponsors flooring or furniture for an accessible bathroom</p>
+        </div>
+        <div class="impact-card">
+          <span class="impact-card__amount">$1,000</span>
+          <p class="impact-card__desc">Helps fund a complete room transformation for a child</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Donation Form -->
+  <section class="section section--gray" id="give">
     <div class="container container--narrow">
-      <div class="zeffy-embed" style="position: relative; overflow: hidden; height: 450px; width: 100%;">
+      <h2 class="donate-section-heading">Make Your Donation</h2>
+      <p class="donate-section-sub">Secure donations powered by Zeffy — 100% of your gift goes to our mission.</p>
+      <div class="zeffy-wrapper">
         <iframe
           title="Donation form powered by Zeffy"
-          style="position: absolute; border: 0; top: 0; left: 0; bottom: 0; right: 0; width: 100%; height: 100%;"
           src="https://www.zeffy.com/embed/donation-form/help-build-a-brighter-home"
           allowpaymentrequest
           loading="lazy"
@@ -20,4 +47,167 @@ import PageLayout from '../layouts/PageLayout.astro';
       </div>
     </div>
   </section>
+
+  <!-- Trust Signals -->
+  <section class="section">
+    <div class="container">
+      <div class="trust-grid">
+        <div class="trust-item">
+          <span class="trust-item__icon">✅</span>
+          <h3 class="trust-item__title">501(c)(3) Nonprofit</h3>
+          <p class="trust-item__desc">Your donation is tax-deductible. EIN available upon request.</p>
+        </div>
+        <div class="trust-item">
+          <span class="trust-item__icon">💛</span>
+          <h3 class="trust-item__title">100% to Mission</h3>
+          <p class="trust-item__desc">Zeffy charges zero platform fees — every cent reaches the families we serve.</p>
+        </div>
+        <div class="trust-item">
+          <span class="trust-item__icon">🏡</span>
+          <h3 class="trust-item__title">132+ Kids Served</h3>
+          <p class="trust-item__desc">Since 2012, we've completed over 106 room makeovers in the greater Atlanta area.</p>
+        </div>
+      </div>
+    </div>
+  </section>
 </PageLayout>
+
+<style>
+  /* ─── Section Headings ─────────────────── */
+  .donate-section-heading {
+    text-align: center;
+    margin-bottom: var(--space-md);
+  }
+
+  .donate-section-sub {
+    text-align: center;
+    color: var(--c-text-muted);
+    max-width: 520px;
+    margin-inline: auto;
+    margin-bottom: var(--space-2xl);
+  }
+
+  /* ─── Impact Cards ─────────────────────── */
+  .impact-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: var(--space-lg);
+    margin-top: var(--space-xl);
+  }
+
+  .impact-card {
+    background: var(--c-white);
+    border: 1px solid var(--c-border);
+    border-radius: var(--border-radius-lg);
+    padding: var(--space-xl) var(--space-lg);
+    text-align: center;
+    transition: transform var(--transition-base), box-shadow var(--transition-base);
+  }
+
+  .impact-card:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--shadow-md);
+  }
+
+  .impact-card--featured {
+    background: var(--c-dark);
+    border-color: var(--c-dark);
+    color: var(--c-white);
+  }
+
+  .impact-card__amount {
+    font-family: var(--font-display);
+    font-size: clamp(1.5rem, 2.5vw, 2rem);
+    font-weight: 700;
+    margin-bottom: var(--space-sm);
+    background-image: linear-gradient(transparent 55%, var(--c-yellow-soft) 55%);
+    display: inline;
+  }
+
+  .impact-card--featured .impact-card__amount {
+    color: var(--c-yellow);
+    background-image: none;
+  }
+
+  .impact-card__desc {
+    font-size: 0.925rem;
+    line-height: 1.5;
+    color: var(--c-text-muted);
+    margin-top: var(--space-sm);
+  }
+
+  .impact-card--featured .impact-card__desc {
+    color: rgba(255, 255, 255, 0.75);
+  }
+
+  /* ─── Zeffy Embed ──────────────────────── */
+  .zeffy-wrapper {
+    position: relative;
+    overflow: hidden;
+    width: 100%;
+    height: 700px;
+    border-radius: var(--border-radius-lg);
+    box-shadow: var(--shadow-lg);
+    background: var(--c-white);
+  }
+
+  .zeffy-wrapper iframe {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    border: 0;
+  }
+
+  /* ─── Trust Signals ────────────────────── */
+  .trust-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--space-xl);
+    text-align: center;
+  }
+
+  .trust-item__icon {
+    font-size: 2rem;
+    display: block;
+    margin-bottom: var(--space-sm);
+  }
+
+  .trust-item__title {
+    font-size: 1.1rem;
+    margin-bottom: var(--space-xs);
+  }
+
+  .trust-item__desc {
+    font-size: 0.925rem;
+    color: var(--c-text-muted);
+    line-height: 1.5;
+  }
+
+  /* ─── Responsive ───────────────────────── */
+  @media (max-width: 768px) {
+    .impact-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+
+    .trust-grid {
+      grid-template-columns: 1fr;
+      gap: var(--space-xl);
+    }
+
+    .zeffy-wrapper {
+      height: 600px;
+    }
+  }
+
+  @media (max-width: 480px) {
+    .impact-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .zeffy-wrapper {
+      height: 550px;
+      border-radius: var(--border-radius);
+    }
+  }
+</style>
