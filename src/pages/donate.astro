@@ -1,24 +1,40 @@
 ---
 /**
- * Donate Page — Best-in-class nonprofit donation experience
- * Emotional storytelling → impact context → frictionless giving → trust
+ * Donate Page — Performance-optimized, mobile-first donation experience
+ * 
+ * PERF NOTES:
+ * - Hero content has NO data-reveal (prevents LCP penalty from opacity:0)
+ * - Hero image: fetchpriority="high", explicit dimensions, eager loading
+ * - Zeffy iframe: loading="lazy" (defers ~800KB iframe until scroll)
+ * - All below-fold images: loading="lazy"
+ * - FAQ uses native <details> (zero JS)
+ * - Scroll observer is tiny (~300 bytes)
+ * - preconnect hint for WP image domain in BaseLayout
+ * - All sections use reduced padding on mobile
+ * 
+ * TODO: Migrate images to Cloudflare Images for AVIF/WebP + srcset
  */
 import BaseLayout from '../layouts/BaseLayout.astro';
-
-const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
 ---
 
 <BaseLayout
   title="Donate — Help Build a Brighter Home"
   description="Every dollar builds accessible bathrooms, dream bedrooms, and therapy rooms for children with special needs in Atlanta — all at no cost to families."
 >
+  <!-- 
+    TODO: Add preconnect hints to BaseLayout when images move to CF Images:
+    <link rel="preconnect" href="https://imagedelivery.net" />
+  -->
 
-  <!-- ══════ HERO — Emotional, Photo-Driven ══════ -->
+  <!-- ══════ HERO — No data-reveal on hero content (LCP critical) ══════ -->
   <section class="donate-hero">
     <div class="donate-hero-media">
       <img
-        src="https://sunshineonaranneyday.com/wp-content/uploads/2025/10/IMG_2149-scaled.jpg"
-        alt="A child seeing their new dream bedroom for the first time"
+        src="https://sunshineonaranneyday.com/wp-content/uploads/2023/07/Oakley_2023_family_0003-e1710961594224.jpg"
+        alt="A family seeing their child's new accessible room for the first time"
+        width="1024"
+        height="683"
+        fetchpriority="high"
         loading="eager"
         decoding="async"
         class="donate-hero-img"
@@ -26,8 +42,8 @@ const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
       <div class="donate-hero-overlay"></div>
     </div>
     <div class="donate-hero-inner">
-      <div class="donate-hero-content" data-reveal>
-        <div class="section-label" style="color: var(--c-yellow);">Give Today</div>
+      <div class="donate-hero-content">
+        <div class="section-label section-label--yellow">Give Today</div>
         <h1>A room can change<br/>a child's <em>entire</em> life.</h1>
         <p class="donate-hero-lead">Your gift builds dream bedrooms, accessible bathrooms, and therapy rooms for children with special needs — at <strong>no cost to families</strong>.</p>
         <div class="donate-hero-ctas">
@@ -35,7 +51,7 @@ const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
           <a href="#why" class="btn btn-ghost-light">See Your Impact</a>
         </div>
       </div>
-      <div class="donate-hero-stat" data-reveal data-delay="2">
+      <div class="donate-hero-stat">
         <span class="donate-hero-stat-num">100<span>%</span></span>
         <span class="donate-hero-stat-label">of your gift goes<br/>directly to kids</span>
       </div>
@@ -50,14 +66,8 @@ const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
           <img
             src="https://sunshineonaranneyday.com/wp-content/uploads/2025/10/IMG_2084-scaled.jpg"
             alt="Amari in his new accessible bedroom"
-            loading="lazy"
-            decoding="async"
-          />
-        </div>
-        <div class="why-photo why-photo--accent" data-reveal data-delay="1">
-          <img
-            src="https://sunshineonaranneyday.com/wp-content/uploads/2023/07/Oakley_2023_family_0003-e1710961594224.jpg"
-            alt="Oakley with their family during room reveal"
+            width="800"
+            height="600"
             loading="lazy"
             decoding="async"
           />
@@ -112,26 +122,26 @@ const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
   <section class="give-section" id="give">
     <div class="give-inner">
       <div class="give-context" data-reveal>
-        <div class="section-label" style="color: var(--c-yellow);">Donate Securely</div>
+        <div class="section-label section-label--yellow">Donate Securely</div>
         <h2>Ready to build a <em>dream</em>?</h2>
         <p>Choose a one-time gift or become a monthly supporter. Every recurring gift helps us plan future room makeovers with confidence.</p>
         <div class="give-perks">
           <div class="give-perk">
-            <span class="give-perk-icon">🔒</span>
+            <span class="give-perk-icon" aria-hidden="true">🔒</span>
             <div>
               <strong>Secure & Private</strong>
               <span>Encrypted payment processing</span>
             </div>
           </div>
           <div class="give-perk">
-            <span class="give-perk-icon">🧾</span>
+            <span class="give-perk-icon" aria-hidden="true">🧾</span>
             <div>
               <strong>Tax-Deductible</strong>
               <span>Instant receipt for your records</span>
             </div>
           </div>
           <div class="give-perk">
-            <span class="give-perk-icon">💛</span>
+            <span class="give-perk-icon" aria-hidden="true">💛</span>
             <div>
               <strong>Zero Platform Fees</strong>
               <span>Zeffy charges nothing — 100% to us</span>
@@ -161,19 +171,19 @@ const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
       </div>
       <div class="ways-grid">
         <div class="way-card" data-reveal>
-          <span class="way-icon">🛒</span>
+          <span class="way-icon" aria-hidden="true">🛒</span>
           <h3>Shop Our Stores</h3>
           <p>Every purchase at Sunny & Ranney or Partly Sunny directly funds room makeovers.</p>
           <a href="https://sunnyandranney.com" target="_blank" rel="noopener noreferrer" class="way-link">Shop Sunny & Ranney →</a>
         </div>
         <div class="way-card" data-reveal data-delay="1">
-          <span class="way-icon">🏗️</span>
+          <span class="way-icon" aria-hidden="true">🏗️</span>
           <h3>Volunteer or Partner</h3>
           <p>Contractors, designers, and handy helpers — we need your skills to build these rooms.</p>
           <a href="/get-involved" class="way-link">Get Involved →</a>
         </div>
         <div class="way-card" data-reveal data-delay="2">
-          <span class="way-icon">📣</span>
+          <span class="way-icon" aria-hidden="true">📣</span>
           <h3>Spread the Word</h3>
           <p>Share our mission with friends and family. A single share can connect us to the next partner or donor.</p>
           <a href="/about" class="way-link">Learn Our Story →</a>
@@ -186,7 +196,7 @@ const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
   <section class="donate-trust">
     <div class="donate-trust-inner">
       <div class="donate-trust-header" data-reveal>
-        <div class="section-label" style="color: var(--c-yellow);">Trust & Transparency</div>
+        <div class="section-label section-label--yellow">Trust & Transparency</div>
         <h2>We're an open book. <em>Always.</em></h2>
         <p class="donate-trust-subtitle">You should know exactly where every dollar goes. Our financials are public, our mission is clear, and our track record speaks for itself.</p>
       </div>
@@ -202,7 +212,7 @@ const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
           <p>Over 132 children served across the greater Atlanta area since 2012.</p>
         </div>
         <div class="dt-card" data-reveal data-delay="2">
-          <span class="dt-big">📋</span>
+          <span class="dt-big" aria-hidden="true">📋</span>
           <span class="dt-label">990 on File</span>
           <p>Our IRS Form 990 tax returns are available for anyone to review, anytime.</p>
         </div>
@@ -213,7 +223,7 @@ const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
     </div>
   </section>
 
-  <!-- ══════ FAQ ══════ -->
+  <!-- ══════ FAQ (native <details>, zero JS) ══════ -->
   <section class="faq">
     <div class="faq-inner">
       <div class="faq-header" data-reveal>
@@ -272,6 +282,7 @@ const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
     color: var(--c-purple);
     margin-bottom: 16px;
   }
+  .section-label--yellow { color: var(--c-yellow); }
   .highlight {
     font-style: italic;
     background-image: linear-gradient(transparent 55%, var(--c-yellow-soft) 55%);
@@ -292,9 +303,11 @@ const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
     border-radius: 100px;
     cursor: pointer;
     text-decoration: none;
-    transition: all 0.25s ease;
+    transition: transform 0.25s ease, box-shadow 0.25s ease, background 0.25s ease, color 0.25s ease;
+    min-height: 48px; /* mobile tap target */
   }
   .btn:hover { transform: translateY(-2px); }
+  .btn:active { transform: translateY(0); }
   .btn-lg { font-size: 17px; padding: 18px 44px; }
   .btn-primary { background: var(--c-yellow); color: var(--c-dark); }
   .btn-primary:hover { box-shadow: 0 8px 24px rgba(255,213,0,0.35); }
@@ -322,7 +335,7 @@ const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
   }
 
   /* ══════════════════════════════════════════
-     HERO
+     HERO — LCP-optimized (no opacity:0)
      ══════════════════════════════════════════ */
   .donate-hero {
     position: relative;
@@ -332,6 +345,7 @@ const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
     align-items: flex-end;
     padding-bottom: 80px;
     overflow: hidden;
+    contain: layout style;
   }
   .donate-hero-media {
     position: absolute;
@@ -348,10 +362,10 @@ const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
     inset: 0;
     background: linear-gradient(
       to top,
-      rgba(26, 27, 31, 0.95) 0%,
-      rgba(26, 27, 31, 0.65) 35%,
-      rgba(26, 27, 31, 0.35) 60%,
-      rgba(26, 27, 31, 0.2) 100%
+      rgba(26,27,31,0.95) 0%,
+      rgba(26,27,31,0.65) 35%,
+      rgba(26,27,31,0.35) 60%,
+      rgba(26,27,31,0.2) 100%
     );
   }
   .donate-hero-inner {
@@ -368,28 +382,28 @@ const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
   }
   .donate-hero-content { max-width: 640px; }
   .donate-hero h1 {
-    font-size: clamp(36px, 5.5vw, 64px);
+    font-size: clamp(32px, 5.5vw, 64px);
     color: #fff;
     line-height: 1.1;
     margin-bottom: 20px;
     letter-spacing: -0.03em;
   }
-  .donate-hero h1 em {
-    font-style: italic;
-    color: var(--c-yellow);
-  }
+  .donate-hero h1 em { font-style: italic; color: var(--c-yellow); }
   .donate-hero-lead {
-    font-size: 18px;
+    font-size: clamp(16px, 2vw, 18px);
     color: rgba(255,255,255,0.6);
     line-height: 1.7;
     max-width: 500px;
-    margin-bottom: 36px;
+    margin-bottom: 32px;
   }
   .donate-hero-lead strong { color: #fff; }
-  .donate-hero-ctas { display: flex; gap: 14px; flex-wrap: wrap; }
+  .donate-hero-ctas {
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+  }
   .donate-hero-stat {
     background: rgba(255,255,255,0.06);
-    backdrop-filter: blur(16px);
     border: 1px solid rgba(255,255,255,0.1);
     border-radius: 20px;
     padding: 28px 36px;
@@ -412,16 +426,10 @@ const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
     line-height: 1.4;
   }
 
-  @media (max-width: 768px) {
-    .donate-hero { min-height: 70vh; align-items: center; padding: 100px 0 60px; }
-    .donate-hero-inner { flex-direction: column; align-items: flex-start; }
-    .donate-hero-stat { display: none; }
-  }
-
   /* ══════════════════════════════════════════
-     WHY GIVE — Editorial Split
+     WHY GIVE
      ══════════════════════════════════════════ */
-  .why { padding: 120px 0; }
+  .why { padding: 100px 0; }
   .why-inner {
     max-width: var(--max-width);
     margin: 0 auto;
@@ -431,7 +439,7 @@ const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
     gap: 80px;
     align-items: center;
   }
-  .why-photos { position: relative; min-height: 460px; }
+  .why-photos { position: relative; min-height: 400px; }
   .why-photo {
     border-radius: 20px;
     overflow: hidden;
@@ -443,22 +451,12 @@ const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
     object-fit: cover;
   }
   .why-photo--main {
-    position: absolute;
-    top: 0; left: 0;
-    width: 75%;
-    height: 72%;
-    z-index: 1;
-  }
-  .why-photo--accent {
-    position: absolute;
-    bottom: 0; right: 0;
-    width: 58%;
-    height: 55%;
-    z-index: 2;
-    border: 5px solid var(--c-cream);
+    width: 100%;
+    height: 100%;
+    min-height: 400px;
   }
   .why-text h2 {
-    font-size: clamp(26px, 3vw, 36px);
+    font-size: clamp(24px, 3vw, 36px);
     line-height: 1.25;
     margin-bottom: 24px;
   }
@@ -468,16 +466,12 @@ const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
     margin-bottom: 16px;
   }
   .why-text p:last-of-type { margin-bottom: 32px; }
-  @media (max-width: 768px) {
-    .why-inner { grid-template-columns: 1fr; gap: 48px; }
-    .why-photos { min-height: 320px; }
-  }
 
   /* ══════════════════════════════════════════
      IMPACT TIERS
      ══════════════════════════════════════════ */
   .tiers {
-    padding: 120px 0;
+    padding: 100px 0;
     background: var(--c-warm-gray);
   }
   .tiers-inner {
@@ -489,7 +483,6 @@ const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
     text-align: center;
     margin-bottom: 56px;
   }
-  .tiers-header h2 { line-height: 1.25; }
   .tiers-grid {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
@@ -500,7 +493,7 @@ const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
     border-radius: 20px;
     padding: 36px 28px;
     text-align: center;
-    transition: all 0.5s cubic-bezier(0.16,1,0.3,1);
+    transition: transform 0.5s cubic-bezier(0.16,1,0.3,1), box-shadow 0.5s cubic-bezier(0.16,1,0.3,1);
     box-shadow: 0 1px 3px rgba(0,0,0,0.04);
     position: relative;
   }
@@ -508,10 +501,7 @@ const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
     transform: translateY(-8px);
     box-shadow: 0 24px 56px rgba(0,0,0,0.1);
   }
-  .tier-card--featured {
-    background: var(--c-dark);
-    color: #fff;
-  }
+  .tier-card--featured { background: var(--c-dark); color: #fff; }
   .tier-badge {
     position: absolute;
     top: -12px;
@@ -529,7 +519,7 @@ const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
   }
   .tier-amount {
     font-family: var(--font-display);
-    font-size: clamp(32px, 3vw, 44px);
+    font-size: clamp(28px, 3vw, 44px);
     font-weight: 700;
     line-height: 1;
     margin-bottom: 8px;
@@ -548,10 +538,7 @@ const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
   }
   .tier-card:not(.tier-card--featured) .tier-what { color: var(--c-purple); }
   .tier-card--featured .tier-what { color: rgba(255,255,255,0.5); }
-  .tier-card p {
-    font-size: 15px;
-    line-height: 1.6;
-  }
+  .tier-card p { font-size: 15px; line-height: 1.6; }
   .tier-card:not(.tier-card--featured) p { color: var(--c-text-muted); }
   .tier-card--featured p { color: rgba(255,255,255,0.6); }
   .tier-card p em { font-style: italic; }
@@ -561,14 +548,12 @@ const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
     font-size: 15px;
     color: var(--c-text-muted);
   }
-  @media (max-width: 900px) { .tiers-grid { grid-template-columns: repeat(2, 1fr); } }
-  @media (max-width: 520px) { .tiers-grid { grid-template-columns: 1fr; } }
 
   /* ══════════════════════════════════════════
-     DONATION FORM — Side-by-side
+     DONATION FORM
      ══════════════════════════════════════════ */
   .give-section {
-    padding: 120px 0;
+    padding: 100px 0;
     background: var(--c-dark-deep);
     color: #fff;
   }
@@ -583,7 +568,7 @@ const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
   }
   .give-context h2 {
     color: #fff;
-    font-size: clamp(28px, 3.5vw, 40px);
+    font-size: clamp(26px, 3.5vw, 40px);
     margin-bottom: 16px;
     line-height: 1.25;
   }
@@ -593,7 +578,7 @@ const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
     line-height: 1.7;
     margin-bottom: 40px;
   }
-  .give-perks { display: flex; flex-direction: column; gap: 20px; }
+  .give-perks { display: flex; flex-direction: column; gap: 16px; }
   .give-perk {
     display: flex;
     align-items: flex-start;
@@ -610,10 +595,7 @@ const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
     color: #fff;
     margin-bottom: 2px;
   }
-  .give-perk span {
-    font-size: 14px;
-    color: rgba(255,255,255,0.4);
-  }
+  .give-perk span { font-size: 14px; color: rgba(255,255,255,0.4); }
   .zeffy-wrapper {
     position: relative;
     overflow: hidden;
@@ -630,15 +612,11 @@ const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
     height: 100%;
     border: 0;
   }
-  @media (max-width: 900px) {
-    .give-inner { grid-template-columns: 1fr; }
-    .zeffy-wrapper { height: 650px; }
-  }
 
   /* ══════════════════════════════════════════
      OTHER WAYS
      ══════════════════════════════════════════ */
-  .other-ways { padding: 120px 0; }
+  .other-ways { padding: 100px 0; }
   .other-ways-inner {
     max-width: var(--max-width);
     margin: 0 auto;
@@ -646,12 +624,9 @@ const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
   }
   .other-ways-header {
     text-align: center;
-    margin-bottom: 56px;
     max-width: 600px;
-    margin-inline: auto;
-    margin-bottom: 56px;
+    margin: 0 auto 56px;
   }
-  .other-ways-header h2 { line-height: 1.25; }
   .ways-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
@@ -660,9 +635,9 @@ const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
   .way-card {
     background: var(--c-warm-gray);
     border-radius: 20px;
-    padding: 40px 32px;
+    padding: 40px 28px;
     text-align: center;
-    transition: all 0.5s cubic-bezier(0.16,1,0.3,1);
+    transition: transform 0.5s cubic-bezier(0.16,1,0.3,1), box-shadow 0.5s cubic-bezier(0.16,1,0.3,1);
   }
   .way-card:hover {
     transform: translateY(-6px);
@@ -678,13 +653,12 @@ const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
     transition: letter-spacing 0.3s ease;
   }
   .way-card:hover .way-link { letter-spacing: 0.02em; }
-  @media (max-width: 768px) { .ways-grid { grid-template-columns: 1fr; } }
 
   /* ══════════════════════════════════════════
-     TRUST — Dark
+     TRUST
      ══════════════════════════════════════════ */
   .donate-trust {
-    padding: 120px 0;
+    padding: 100px 0;
     background: var(--c-dark-deep);
     color: #fff;
   }
@@ -699,7 +673,7 @@ const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
   }
   .donate-trust-header h2 {
     color: #fff;
-    font-size: clamp(28px, 4vw, 44px);
+    font-size: clamp(26px, 4vw, 44px);
     margin-bottom: 16px;
   }
   .donate-trust-subtitle {
@@ -720,7 +694,7 @@ const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
     border: 1px solid rgba(255,255,255,0.06);
     border-radius: 20px;
     padding: 36px;
-    transition: all 0.4s ease;
+    transition: background 0.4s ease, transform 0.4s ease;
   }
   .dt-card:hover {
     background: rgba(255,255,255,0.07);
@@ -744,37 +718,25 @@ const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
     letter-spacing: 0.08em;
     margin-bottom: 16px;
   }
-  .dt-card p {
-    font-size: 15px;
-    color: rgba(255,255,255,0.4);
-    line-height: 1.65;
-  }
+  .dt-card p { font-size: 15px; color: rgba(255,255,255,0.4); line-height: 1.65; }
   .donate-trust-cta { text-align: center; }
-  @media (max-width: 768px) { .donate-trust-grid { grid-template-columns: 1fr; } }
 
   /* ══════════════════════════════════════════
      FAQ
      ══════════════════════════════════════════ */
-  .faq { padding: 120px 0; }
+  .faq { padding: 100px 0; }
   .faq-inner {
     max-width: 720px;
     margin: 0 auto;
     padding: 0 var(--space-xl);
   }
-  .faq-header {
-    text-align: center;
-    margin-bottom: 48px;
-  }
-  .faq-list { display: flex; flex-direction: column; gap: 0; }
-  .faq-item {
-    border-top: 1px solid var(--c-border);
-    padding: 0;
-  }
+  .faq-header { text-align: center; margin-bottom: 48px; }
+  .faq-item { border-top: 1px solid var(--c-border); }
   .faq-item:last-child { border-bottom: 1px solid var(--c-border); }
   .faq-item summary {
     padding: 24px 0;
     font-family: var(--font-display);
-    font-size: 18px;
+    font-size: clamp(16px, 2vw, 18px);
     font-weight: 700;
     cursor: pointer;
     list-style: none;
@@ -782,6 +744,7 @@ const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
     justify-content: space-between;
     align-items: center;
     transition: color 0.2s ease;
+    min-height: 48px; /* tap target */
   }
   .faq-item summary::-webkit-details-marker { display: none; }
   .faq-item summary::after {
@@ -793,10 +756,10 @@ const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
     transition: transform 0.3s ease;
     flex-shrink: 0;
     margin-left: 16px;
+    width: 32px;
+    text-align: center;
   }
-  .faq-item[open] summary::after {
-    transform: rotate(45deg);
-  }
+  .faq-item[open] summary::after { transform: rotate(45deg); }
   .faq-item summary:hover { color: var(--c-purple); }
   .faq-item p {
     padding: 0 0 24px;
@@ -811,10 +774,10 @@ const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
   }
 
   /* ══════════════════════════════════════════
-     FINALE — Yellow CTA
+     FINALE
      ══════════════════════════════════════════ */
   .donate-finale {
-    padding: 120px 0;
+    padding: 100px 0;
     background: var(--c-yellow);
     text-align: center;
   }
@@ -824,16 +787,11 @@ const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
     padding: 0 var(--space-xl);
   }
   .donate-finale h2 {
-    font-size: clamp(28px, 4vw, 40px);
+    font-size: clamp(26px, 4vw, 40px);
     line-height: 1.25;
     margin-bottom: 16px;
   }
-  .donate-finale h2 em { font-style: italic; color: var(--c-dark); }
-  .donate-finale > .donate-finale-inner > p:first-of-type {
-    font-size: 18px;
-    color: rgba(45,46,51,0.65);
-    margin-bottom: 36px;
-  }
+  .donate-finale h2 em { font-style: italic; }
   .donate-finale-inner > p {
     font-size: 18px;
     color: rgba(45,46,51,0.65);
@@ -853,38 +811,81 @@ const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
   }
 
   /* ══════════════════════════════════════════
-     SCROLL REVEALS
+     SCROLL REVEALS — below-fold only
      ══════════════════════════════════════════ */
   [data-reveal] {
     opacity: 0;
-    transform: translateY(32px);
+    transform: translateY(28px);
     transition: opacity 0.7s cubic-bezier(0.16,1,0.3,1), transform 0.7s cubic-bezier(0.16,1,0.3,1);
   }
-  [data-reveal].is-visible {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  [data-reveal].is-visible { opacity: 1; transform: translateY(0); }
   [data-delay="1"] { transition-delay: 0.1s; }
   [data-delay="2"] { transition-delay: 0.2s; }
   [data-delay="3"] { transition-delay: 0.3s; }
 
-  @media (prefers-reduced-motion: reduce) {
-    [data-reveal] {
-      opacity: 1;
-      transform: none;
-      transition: none;
+  /* ══════════════════════════════════════════
+     MOBILE — Aggressive optimization
+     ══════════════════════════════════════════ */
+  @media (max-width: 900px) {
+    .tiers-grid { grid-template-columns: repeat(2, 1fr); }
+    .give-inner { grid-template-columns: 1fr; }
+    .zeffy-wrapper { height: 650px; }
+  }
+
+  @media (max-width: 768px) {
+    .donate-hero {
+      min-height: 75vh;
+      min-height: 75dvh;
+      padding-bottom: 48px;
     }
+    .donate-hero-inner { flex-direction: column; align-items: flex-start; }
+    .donate-hero-stat { display: none; } /* Save space on mobile */
+    .donate-hero h1 { font-size: clamp(28px, 8vw, 40px); }
+    .donate-hero-ctas { width: 100%; }
+    .donate-hero-ctas .btn { flex: 1; min-width: 140px; justify-content: center; }
+
+    .why { padding: 64px 0; }
+    .why-inner { grid-template-columns: 1fr; gap: 40px; }
+    .why-photos { min-height: 280px; }
+
+    .tiers { padding: 64px 0; }
+    .tiers-grid { grid-template-columns: 1fr 1fr; gap: 16px; }
+    .tier-card { padding: 28px 20px; }
+
+    .give-section { padding: 64px 0; }
+    .zeffy-wrapper { height: 600px; border-radius: 16px; }
+
+    .other-ways { padding: 64px 0; }
+    .ways-grid { grid-template-columns: 1fr; }
+
+    .donate-trust { padding: 64px 0; }
+    .donate-trust-grid { grid-template-columns: 1fr; }
+    .dt-card { padding: 28px; }
+
+    .faq { padding: 64px 0; }
+    .donate-finale { padding: 64px 0; }
+  }
+
+  @media (max-width: 480px) {
+    .tiers-grid { grid-template-columns: 1fr; }
+    .zeffy-wrapper { height: 550px; border-radius: 12px; }
+    .donate-hero-lead { margin-bottom: 24px; }
+    .btn-lg { font-size: 15px; padding: 16px 32px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    [data-reveal] { opacity: 1; transform: none; transition: none; }
+    .btn-glow { animation: none; }
+    .btn:hover { transform: none; }
+    .tier-card:hover, .way-card:hover, .dt-card:hover { transform: none; }
   }
 </style>
 
 <script>
-  const observer = new IntersectionObserver((entries) => {
-    entries.forEach(entry => {
-      if (entry.isIntersecting) {
-        entry.target.classList.add('is-visible');
-      }
-    });
-  }, { threshold: 0.15, rootMargin: '0px 0px -40px 0px' });
-
-  document.querySelectorAll('[data-reveal]').forEach(el => observer.observe(el));
+  // Minimal scroll reveal observer (~300 bytes minified)
+  const o = new IntersectionObserver(
+    (e) => e.forEach((i) => { if (i.isIntersecting) i.target.classList.add('is-visible'); }),
+    { threshold: 0.1, rootMargin: '0px 0px -40px 0px' }
+  );
+  document.querySelectorAll('[data-reveal]').forEach((el) => o.observe(el));
 </script>
