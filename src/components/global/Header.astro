@@ -2,7 +2,7 @@
 /**
  * Header.astro
  * Sticky header with logo, desktop dropdowns, and mobile slide-out menu.
- * CSS-only mobile toggle (no JS required).
+ * Uses minimal JS for bulletproof mobile toggle with full a11y.
  */
 const currentPath = Astro.url.pathname;
 
@@ -107,41 +107,91 @@ function isActive(href: string) {
     <!-- Donate CTA (desktop) -->
     <a href="/donate/" class="header-cta">Donate</a>
 
-    <!-- Mobile Toggle -->
-    <input type="checkbox" id="mobile-toggle" class="mobile-toggle-input" aria-hidden="true" />
-    <label for="mobile-toggle" class="mobile-toggle" aria-label="Toggle menu">
-      <span class="hamburger-line"></span>
-      <span class="hamburger-line"></span>
-      <span class="hamburger-line"></span>
-    </label>
-
-    <!-- Mobile Menu -->
-    <label for="mobile-toggle" class="mobile-overlay" aria-hidden="true"></label>
-    <nav class="mobile-nav" aria-label="Mobile navigation">
-      <ul class="mobile-nav-list">
-        {nav.map((item) => (
-          <li class="mobile-nav-group">
-            <span class="mobile-nav-heading">{item.label}</span>
-            <ul>
-              {item.children.map((child) => (
-                <li>
-                  <a
-                    href={child.href}
-                    class:list={['mobile-nav-link', { active: isActive(child.href) }]}
-                    {...(child.external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
-                  >
-                    {child.label}
-                  </a>
-                </li>
-              ))}
-            </ul>
-          </li>
-        ))}
-      </ul>
-      <a href="/donate/" class="mobile-donate-btn">Donate</a>
-    </nav>
+    <!-- Mobile hamburger — real <button>, not a label or checkbox -->
+    <button
+      type="button"
+      class="mobile-toggle"
+      id="mobile-toggle-btn"
+      aria-label="Open menu"
+      aria-expanded="false"
+      aria-controls="mobile-nav-panel"
+    >
+      <span class="hamburger-line" aria-hidden="true"></span>
+      <span class="hamburger-line" aria-hidden="true"></span>
+      <span class="hamburger-line" aria-hidden="true"></span>
+    </button>
   </div>
+
+  <!-- Overlay (outside header-inner so it covers full viewport) -->
+  <div class="mobile-overlay" id="mobile-overlay" aria-hidden="true"></div>
+
+  <!-- Mobile slide-out panel -->
+  <nav
+    class="mobile-nav"
+    id="mobile-nav-panel"
+    aria-label="Mobile navigation"
+    aria-hidden="true"
+  >
+    <ul class="mobile-nav-list">
+      {nav.map((item) => (
+        <li class="mobile-nav-group">
+          <span class="mobile-nav-heading">{item.label}</span>
+          <ul>
+            {item.children.map((child) => (
+              <li>
+                <a
+                  href={child.href}
+                  class:list={['mobile-nav-link', { active: isActive(child.href) }]}
+                  {...(child.external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
+                >
+                  {child.label}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </li>
+      ))}
+    </ul>
+    <a href="/donate/" class="mobile-donate-btn">Donate</a>
+  </nav>
 </header>
+
+<script>
+  const btn = document.getElementById('mobile-toggle-btn');
+  const nav = document.getElementById('mobile-nav-panel');
+  const overlay = document.getElementById('mobile-overlay');
+  if (btn && nav && overlay) {
+    let open = false;
+    function show() {
+      open = true;
+      btn.setAttribute('aria-expanded', 'true');
+      btn.setAttribute('aria-label', 'Close menu');
+      btn.classList.add('is-open');
+      nav.classList.add('is-open');
+      nav.setAttribute('aria-hidden', 'false');
+      overlay.classList.add('is-open');
+      document.body.style.overflow = 'hidden';
+      const first = nav.querySelector('a');
+      if (first) first.focus();
+    }
+    function hide() {
+      open = false;
+      btn.setAttribute('aria-expanded', 'false');
+      btn.setAttribute('aria-label', 'Open menu');
+      btn.classList.remove('is-open');
+      nav.classList.remove('is-open');
+      nav.setAttribute('aria-hidden', 'true');
+      overlay.classList.remove('is-open');
+      document.body.style.overflow = '';
+      btn.focus();
+    }
+    btn.addEventListener('click', function () { open ? hide() : show(); });
+    overlay.addEventListener('click', hide);
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && open) hide(); });
+    window.matchMedia('(min-width: 1024px)').addEventListener('change', function (e) { if (e.matches && open) hide(); });
+    nav.querySelectorAll('a').forEach(function (a) { a.addEventListener('click', hide); });
+  }
+</script>
 
 <style>
   /* ─── Header Shell ─────────────────────── */
@@ -200,9 +250,7 @@ function isActive(href: string) {
   }
 
   @media (min-width: 1024px) {
-    .desktop-nav {
-      display: flex;
-    }
+    .desktop-nav { display: flex; }
   }
 
   .nav-list {
@@ -211,9 +259,7 @@ function isActive(href: string) {
     gap: var(--space-xs);
   }
 
-  .nav-item {
-    position: relative;
-  }
+  .nav-item { position: relative; }
 
   .nav-link {
     display: flex;
@@ -237,11 +283,9 @@ function isActive(href: string) {
     color: var(--c-yellow);
   }
 
-  .chevron {
-    transition: transform var(--transition-fast);
-  }
+  .chevron { transition: transform var(--transition-fast); }
 
-  /* ─── Dropdown ─────────────────────────── */
+  /* ─── Desktop Dropdown ─────────────────── */
   .dropdown {
     position: absolute;
     top: 100%;
@@ -266,9 +310,7 @@ function isActive(href: string) {
     pointer-events: auto;
   }
 
-  .nav-item:hover .chevron {
-    transform: rotate(180deg);
-  }
+  .nav-item:hover .chevron { transform: rotate(180deg); }
 
   .dropdown-link {
     display: flex;
@@ -291,10 +333,7 @@ function isActive(href: string) {
     font-weight: 600;
   }
 
-  .external-icon {
-    opacity: 0.4;
-    flex-shrink: 0;
-  }
+  .external-icon { opacity: 0.4; flex-shrink: 0; }
 
   /* ─── Header CTA ───────────────────────── */
   .header-cta {
@@ -317,25 +356,22 @@ function isActive(href: string) {
     .header-cta { display: inline-flex; }
   }
 
-  /* ─── Mobile Toggle ────────────────────── */
-  .mobile-toggle-input {
-    position: absolute;
-    opacity: 0;
-    width: 0;
-    height: 0;
-    pointer-events: none;
-  }
-
+  /* ─── Mobile Hamburger Button ──────────── */
   .mobile-toggle {
     display: flex;
     flex-direction: column;
     justify-content: center;
+    align-items: center;
     gap: 5px;
-    width: 40px;
-    height: 40px;
-    padding: 8px;
+    width: 48px;
+    height: 48px;
+    padding: 12px;
     cursor: pointer;
+    border: none;
+    background: none;
     z-index: 1001;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
   }
 
   @media (min-width: 1024px) {
@@ -348,62 +384,65 @@ function isActive(href: string) {
     height: 2px;
     background: var(--c-white);
     border-radius: 2px;
-    transition: transform var(--transition-base), opacity var(--transition-base);
+    transition: transform 0.3s ease, opacity 0.3s ease;
+    transform-origin: center;
+    pointer-events: none;
   }
 
-  .mobile-toggle-input:checked ~ .mobile-toggle .hamburger-line:nth-child(1) {
+  .mobile-toggle.is-open .hamburger-line:nth-child(1) {
     transform: translateY(7px) rotate(45deg);
   }
-
-  .mobile-toggle-input:checked ~ .mobile-toggle .hamburger-line:nth-child(2) {
+  .mobile-toggle.is-open .hamburger-line:nth-child(2) {
     opacity: 0;
   }
-
-  .mobile-toggle-input:checked ~ .mobile-toggle .hamburger-line:nth-child(3) {
+  .mobile-toggle.is-open .hamburger-line:nth-child(3) {
     transform: translateY(-7px) rotate(-45deg);
   }
 
   /* ─── Mobile Overlay ───────────────────── */
   .mobile-overlay {
-    display: block;
     position: fixed;
     inset: 0;
     background: rgba(0, 0, 0, 0.5);
     opacity: 0;
     visibility: hidden;
-    transition: opacity var(--transition-base), visibility var(--transition-base);
+    transition: opacity 0.3s ease, visibility 0.3s ease;
     z-index: 999;
-    cursor: default;
+    -webkit-tap-highlight-color: transparent;
   }
 
-  .mobile-toggle-input:checked ~ .mobile-overlay {
+  .mobile-overlay.is-open {
     opacity: 1;
     visibility: visible;
   }
 
-  /* ─── Mobile Nav ───────────────────────── */
+  /* ─── Mobile Nav Panel ─────────────────── */
   .mobile-nav {
     position: fixed;
     top: 0;
     right: 0;
     width: min(320px, 85vw);
+    height: 100vh;
     height: 100dvh;
     background: var(--c-white);
     padding: calc(var(--header-height) + var(--space-lg)) var(--space-lg) var(--space-lg);
     overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
     transform: translateX(100%);
-    transition: transform var(--transition-base);
+    transition: transform 0.3s ease;
     z-index: 1000;
   }
 
-  .mobile-toggle-input:checked ~ .mobile-nav {
+  .mobile-nav.is-open {
     transform: translateX(0);
   }
 
   @media (min-width: 1024px) {
-    .mobile-nav, .mobile-overlay { display: none; }
+    .mobile-nav, .mobile-overlay { display: none !important; }
   }
 
+  /* ─── Mobile Nav Content ───────────────── */
   .mobile-nav-group + .mobile-nav-group {
     margin-top: var(--space-lg);
     padding-top: var(--space-lg);
@@ -421,11 +460,13 @@ function isActive(href: string) {
   }
 
   .mobile-nav-link {
-    display: block;
+    display: flex;
+    align-items: center;
     padding: var(--space-sm) 0;
     font-size: 1rem;
     color: var(--c-text);
     transition: color var(--transition-fast);
+    min-height: 44px;
   }
 
   .mobile-nav-link:hover,
@@ -434,7 +475,9 @@ function isActive(href: string) {
   }
 
   .mobile-donate-btn {
-    display: block;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     text-align: center;
     margin-top: var(--space-xl);
     padding: var(--space-md) var(--space-xl);
@@ -444,6 +487,7 @@ function isActive(href: string) {
     font-size: 1rem;
     border-radius: 100px;
     transition: background var(--transition-fast);
+    min-height: 48px;
   }
 
   .mobile-donate-btn:hover {
