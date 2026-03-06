@@ -1,0 +1,1446 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SOARD Admin</title>
+  <link rel="icon" href="/favicon.svg">
+  <style>
+    /* ─── Reset & Base ──────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { font-size: 15px; }
+    body {
+      font-family: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #F5F4F0;
+      color: #2D2E33;
+      min-height: 100vh;
+    }
+    a { color: inherit; text-decoration: none; }
+    button { cursor: pointer; font-family: inherit; }
+    input, textarea, select { font-family: inherit; font-size: 1rem; }
+
+    /* ─── Layout ────────────────────────── */
+    .app { display: flex; min-height: 100vh; }
+    .sidebar {
+      width: 240px;
+      background: #1A1B1F;
+      color: #fff;
+      padding: 1.5rem 0;
+      position: fixed;
+      top: 0; left: 0; bottom: 0;
+      overflow-y: auto;
+      z-index: 100;
+      transition: transform 0.25s ease;
+    }
+    .main {
+      margin-left: 240px;
+      flex: 1;
+      padding: 2rem;
+      min-height: 100vh;
+    }
+    .sidebar-logo {
+      padding: 0 1.25rem 1.5rem;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      margin-bottom: 0.75rem;
+    }
+    .sidebar-logo h1 {
+      font-family: 'Libre Baskerville', Georgia, serif;
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: #FFD500;
+    }
+    .sidebar-logo small {
+      font-size: 0.75rem;
+      color: rgba(255,255,255,0.45);
+      display: block;
+      margin-top: 0.15rem;
+    }
+    .nav-item {
+      display: flex; align-items: center; gap: 0.75rem;
+      padding: 0.7rem 1.25rem;
+      font-size: 0.95rem;
+      color: rgba(255,255,255,0.65);
+      border: none; background: none; width: 100%;
+      text-align: left;
+      transition: all 0.15s;
+      border-left: 3px solid transparent;
+    }
+    .nav-item:hover { color: #fff; background: rgba(255,255,255,0.05); }
+    .nav-item.active {
+      color: #FFD500;
+      background: rgba(255, 213, 0, 0.08);
+      border-left-color: #FFD500;
+    }
+    .nav-icon { font-size: 1.2rem; width: 1.5rem; text-align: center; }
+    .nav-section {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: rgba(255,255,255,0.3);
+      padding: 1.25rem 1.25rem 0.4rem;
+    }
+
+    /* ─── Mobile hamburger ──────────────── */
+    .hamburger {
+      display: none;
+      position: fixed; top: 1rem; left: 1rem; z-index: 200;
+      background: #1A1B1F; color: #FFD500;
+      border: none; border-radius: 8px;
+      width: 44px; height: 44px; font-size: 1.4rem;
+      align-items: center; justify-content: center;
+    }
+    .overlay {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.5);
+      z-index: 99;
+    }
+    @media (max-width: 768px) {
+      .hamburger { display: flex; }
+      .sidebar { transform: translateX(-100%); }
+      .sidebar.open { transform: translateX(0); }
+      .overlay.open { display: block; }
+      .main { margin-left: 0; padding: 4rem 1rem 1rem; }
+    }
+
+    /* ─── Page Header ───────────────────── */
+    .page-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 1.75rem;
+      flex-wrap: wrap; gap: 1rem;
+    }
+    .page-header h2 {
+      font-family: 'Libre Baskerville', Georgia, serif;
+      font-size: 1.5rem;
+    }
+
+    /* ─── Cards ──────────────────────────── */
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      padding: 1.5rem;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+      margin-bottom: 1rem;
+    }
+    .card-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 1rem;
+    }
+    .stat-card {
+      background: #fff;
+      border-radius: 12px;
+      padding: 1.25rem;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+      text-align: center;
+    }
+    .stat-card .stat-number {
+      font-family: 'Libre Baskerville', Georgia, serif;
+      font-size: 2.25rem;
+      font-weight: 700;
+      color: #FFD500;
+    }
+    .stat-card .stat-label {
+      font-size: 0.85rem;
+      color: #6B6C72;
+      margin-top: 0.25rem;
+    }
+
+    /* ─── Buttons ────────────────────────── */
+    .btn {
+      display: inline-flex; align-items: center; gap: 0.5rem;
+      padding: 0.6rem 1.2rem;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      border: none;
+      transition: all 0.15s;
+    }
+    .btn-primary { background: #FFD500; color: #2D2E33; }
+    .btn-primary:hover { background: #E6C000; }
+    .btn-secondary { background: #2D2E33; color: #fff; }
+    .btn-secondary:hover { background: #3D3E43; }
+    .btn-danger { background: #E53E3E; color: #fff; }
+    .btn-danger:hover { background: #C53030; }
+    .btn-ghost { background: transparent; color: #6B6C72; border: 1px solid #E5E4E0; }
+    .btn-ghost:hover { background: #F5F4F0; }
+    .btn-sm { padding: 0.4rem 0.8rem; font-size: 0.8rem; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* ─── Forms ──────────────────────────── */
+    .form-group { margin-bottom: 1.25rem; }
+    .form-label {
+      display: block;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: #2D2E33;
+      margin-bottom: 0.35rem;
+    }
+    .form-hint {
+      font-size: 0.78rem;
+      color: #9B9CA0;
+      margin-top: 0.2rem;
+    }
+    .form-input, .form-textarea, .form-select {
+      width: 100%;
+      padding: 0.6rem 0.75rem;
+      border: 1px solid #E5E4E0;
+      border-radius: 8px;
+      background: #fff;
+      font-size: 0.95rem;
+      transition: border-color 0.15s;
+    }
+    .form-input:focus, .form-textarea:focus, .form-select:focus {
+      outline: none;
+      border-color: #FFD500;
+      box-shadow: 0 0 0 3px rgba(255,213,0,0.15);
+    }
+    .form-textarea { resize: vertical; min-height: 120px; }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    @media (max-width: 600px) { .form-row { grid-template-columns: 1fr; } }
+
+    .checkbox-label {
+      display: flex; align-items: center; gap: 0.5rem;
+      font-size: 0.9rem; cursor: pointer;
+    }
+    .checkbox-label input { width: 18px; height: 18px; accent-color: #FFD500; }
+
+    /* ─── Chips/Tags ─────────────────────── */
+    .chip {
+      display: inline-flex; align-items: center; gap: 0.3rem;
+      padding: 0.25rem 0.65rem;
+      background: rgba(122,0,223,0.08);
+      color: #7A00DF;
+      border-radius: 100px;
+      font-size: 0.78rem;
+      font-weight: 500;
+    }
+    .chip-remove {
+      background: none; border: none;
+      color: #7A00DF; font-size: 1rem;
+      line-height: 1; cursor: pointer;
+      padding: 0 0.1rem;
+    }
+
+    /* ─── Table ──────────────────────────── */
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; }
+    th {
+      text-align: left;
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: #6B6C72;
+      padding: 0.75rem;
+      border-bottom: 2px solid #E5E4E0;
+    }
+    td {
+      padding: 0.75rem;
+      border-bottom: 1px solid #F5F4F0;
+      font-size: 0.9rem;
+    }
+    tr:hover td { background: #FEFCF5; }
+    .td-thumb {
+      width: 48px; height: 48px;
+      border-radius: 8px;
+      object-fit: cover;
+      background: #E5E4E0;
+    }
+
+    /* ─── Drop Zone ──────────────────────── */
+    .dropzone {
+      border: 2px dashed #E5E4E0;
+      border-radius: 12px;
+      padding: 2rem;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+      background: #FEFCF5;
+    }
+    .dropzone:hover, .dropzone.drag-over {
+      border-color: #FFD500;
+      background: rgba(255,213,0,0.05);
+    }
+    .dropzone-icon { font-size: 2rem; margin-bottom: 0.5rem; }
+    .dropzone-text { color: #6B6C72; font-size: 0.9rem; }
+    .dropzone-text strong { color: #FFD500; }
+
+    /* ─── Photo Grid ─────────────────────── */
+    .photo-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+      gap: 0.75rem;
+      margin-top: 1rem;
+    }
+    .photo-item {
+      position: relative;
+      aspect-ratio: 4/3;
+      border-radius: 8px;
+      overflow: hidden;
+      background: #E5E4E0;
+      cursor: grab;
+    }
+    .photo-item img {
+      width: 100%; height: 100%;
+      object-fit: cover;
+    }
+    .photo-item.is-hero { outline: 3px solid #FFD500; outline-offset: -3px; }
+    .photo-actions {
+      position: absolute; top: 0.35rem; right: 0.35rem;
+      display: flex; gap: 0.25rem;
+    }
+    .photo-btn {
+      width: 28px; height: 28px;
+      border-radius: 6px;
+      border: none;
+      font-size: 0.85rem;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer;
+      background: rgba(0,0,0,0.6); color: #fff;
+      transition: background 0.15s;
+    }
+    .photo-btn:hover { background: rgba(0,0,0,0.85); }
+    .photo-btn.hero-btn { background: rgba(255,213,0,0.9); color: #2D2E33; }
+    .photo-uploading {
+      position: absolute; inset: 0;
+      background: rgba(0,0,0,0.5);
+      display: flex; align-items: center; justify-content: center;
+      color: #fff; font-size: 0.85rem;
+    }
+
+    /* ─── Toast ──────────────────────────── */
+    .toast-container {
+      position: fixed; bottom: 1.5rem; right: 1.5rem;
+      z-index: 1000;
+      display: flex; flex-direction: column; gap: 0.5rem;
+    }
+    .toast {
+      padding: 0.75rem 1.25rem;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      font-weight: 500;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      animation: slideIn 0.25s ease;
+    }
+    .toast-success { background: #38A169; color: #fff; }
+    .toast-error { background: #E53E3E; color: #fff; }
+    .toast-info { background: #2D2E33; color: #fff; }
+    @keyframes slideIn {
+      from { transform: translateY(1rem); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+
+    /* ─── Modal ──────────────────────────── */
+    .modal-overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.5);
+      z-index: 500;
+      display: flex; align-items: center; justify-content: center;
+      padding: 1rem;
+    }
+    .modal {
+      background: #fff; border-radius: 16px;
+      max-width: 500px; width: 100%;
+      padding: 1.75rem;
+    }
+    .modal h3 { font-family: 'Libre Baskerville', Georgia, serif; margin-bottom: 0.75rem; }
+    .modal p { color: #6B6C72; font-size: 0.9rem; margin-bottom: 1.25rem; }
+    .modal-buttons { display: flex; gap: 0.75rem; justify-content: flex-end; }
+
+    /* ─── Search ──────────────────────────── */
+    .search-bar {
+      position: relative;
+      max-width: 320px;
+    }
+    .search-bar input {
+      width: 100%;
+      padding: 0.55rem 0.75rem 0.55rem 2.25rem;
+      border: 1px solid #E5E4E0;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      background: #fff;
+    }
+    .search-bar input:focus { outline: none; border-color: #FFD500; }
+    .search-icon {
+      position: absolute; left: 0.7rem; top: 50%;
+      transform: translateY(-50%);
+      color: #9B9CA0; font-size: 0.9rem;
+      pointer-events: none;
+    }
+
+    /* ─── Empty State ────────────────────── */
+    .empty-state {
+      text-align: center; padding: 3rem 1rem;
+      color: #6B6C72;
+    }
+    .empty-state-icon { font-size: 3rem; margin-bottom: 0.75rem; }
+
+    /* ─── Back link ──────────────────────── */
+    .back-link {
+      display: inline-flex; align-items: center; gap: 0.35rem;
+      font-size: 0.85rem; color: #6B6C72;
+      margin-bottom: 1rem; cursor: pointer;
+      background: none; border: none;
+    }
+    .back-link:hover { color: #2D2E33; }
+
+    /* ─── Badge ──────────────────────────── */
+    .badge {
+      padding: 0.2rem 0.5rem;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+    .badge-green { background: #C6F6D5; color: #22543D; }
+    .badge-yellow { background: #FEFCBF; color: #744210; }
+    .badge-purple { background: rgba(122,0,223,0.1); color: #7A00DF; }
+
+    /* ─── Spinner ─────────────────────────── */
+    .spinner {
+      display: inline-block;
+      width: 18px; height: 18px;
+      border: 2px solid rgba(0,0,0,0.15);
+      border-top-color: #FFD500;
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ─── Utility ─────────────────────────── */
+    .text-muted { color: #6B6C72; }
+    .text-sm { font-size: 0.85rem; }
+    .mt-1 { margin-top: 0.5rem; }
+    .mt-2 { margin-top: 1rem; }
+    .mt-3 { margin-top: 1.5rem; }
+    .mb-1 { margin-bottom: 0.5rem; }
+    .flex { display: flex; }
+    .flex-wrap { flex-wrap: wrap; }
+    .gap-1 { gap: 0.5rem; }
+    .gap-2 { gap: 1rem; }
+    .items-center { align-items: center; }
+    .justify-between { justify-content: space-between; }
+  </style>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Libre+Baskerville:wght@400;700&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div id="app"></div>
+
+  <script type="module">
+    import { h, render, Component } from 'https://esm.sh/preact@10.25.4';
+    import { useState, useEffect, useCallback, useRef, useMemo } from 'https://esm.sh/preact@10.25.4/hooks';
+    import htm from 'https://esm.sh/htm@3.1.1';
+    const html = htm.bind(h);
+
+    // ─── API Helpers ────────────────────────
+    const api = {
+      async listContent(dir) {
+        const r = await fetch(`/api/read-content?dir=${encodeURIComponent(dir)}`);
+        return r.json();
+      },
+      async readContent(path) {
+        const r = await fetch(`/api/read-content?path=${encodeURIComponent(path)}`);
+        return r.json();
+      },
+      async saveContent(path, content, message, sha) {
+        const r = await fetch('/api/save-content', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path, content, message, sha }),
+        });
+        return r.json();
+      },
+      async deleteContent(path, sha, message) {
+        const r = await fetch('/api/delete-content', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path, sha, message }),
+        });
+        return r.json();
+      },
+      async uploadImage(file, id) {
+        const form = new FormData();
+        form.append('file', file);
+        if (id) form.append('id', id);
+        const r = await fetch('/api/upload-image', { method: 'POST', body: form });
+        return r.json();
+      },
+      async deleteImage(imageId) {
+        const r = await fetch('/api/delete-image', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ imageId }),
+        });
+        return r.json();
+      },
+      async uploadFile(file, path, message) {
+        const form = new FormData();
+        form.append('file', file);
+        form.append('path', path);
+        form.append('message', message || `Upload ${file.name}`);
+        const r = await fetch('/api/upload-file', { method: 'POST', body: form });
+        return r.json();
+      },
+    };
+
+    // ─── Slug Helper ────────────────────────
+    function slugify(text) {
+      return text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+    }
+
+    // ─── Toast System ───────────────────────
+    let toastId = 0;
+    function ToastContainer({ toasts }) {
+      return html`<div class="toast-container">
+        ${toasts.map(t => html`<div key=${t.id} class="toast toast-${t.type}">${t.msg}</div>`)}
+      </div>`;
+    }
+
+    // ─── Confirm Modal ──────────────────────
+    function ConfirmModal({ title, message, onConfirm, onCancel, danger }) {
+      return html`<div class="modal-overlay" onClick=${onCancel}>
+        <div class="modal" onClick=${e => e.stopPropagation()}>
+          <h3>${title}</h3>
+          <p>${message}</p>
+          <div class="modal-buttons">
+            <button class="btn btn-ghost" onClick=${onCancel}>Cancel</button>
+            <button class="btn ${danger ? 'btn-danger' : 'btn-primary'}" onClick=${onConfirm}>
+              ${danger ? 'Delete' : 'Confirm'}
+            </button>
+          </div>
+        </div>
+      </div>`;
+    }
+
+    // ─── Drop Zone ──────────────────────────
+    function DropZone({ onFiles, multiple = true, accept = 'image/*', label }) {
+      const [dragOver, setDragOver] = useState(false);
+      const inputRef = useRef();
+
+      const handleDrop = (e) => {
+        e.preventDefault();
+        setDragOver(false);
+        const files = Array.from(e.dataTransfer.files);
+        if (files.length) onFiles(multiple ? files : [files[0]]);
+      };
+
+      const handleChange = (e) => {
+        const files = Array.from(e.target.files);
+        if (files.length) onFiles(multiple ? files : [files[0]]);
+        e.target.value = '';
+      };
+
+      return html`
+        <div class="dropzone ${dragOver ? 'drag-over' : ''}"
+          onDragOver=${e => { e.preventDefault(); setDragOver(true); }}
+          onDragLeave=${() => setDragOver(false)}
+          onDrop=${handleDrop}
+          onClick=${() => inputRef.current?.click()}
+        >
+          <div class="dropzone-icon">${accept.includes('pdf') ? '📄' : '📸'}</div>
+          <div class="dropzone-text">
+            <strong>Click to browse</strong> or drag files here
+            <br/>${label || (multiple ? 'Upload multiple files' : 'Upload a file')}
+          </div>
+          <input ref=${inputRef} type="file" accept=${accept}
+            multiple=${multiple} style="display:none" onChange=${handleChange} />
+        </div>
+      `;
+    }
+
+    // ─── Room Type Selector ─────────────────
+    const ROOM_TYPES = ['Dream Bedroom', 'Accessible Bathroom', 'Therapy Room', 'Sensory Room', 'Play Room', 'Other'];
+
+    function RoomTypePicker({ value = [], onChange }) {
+      const toggle = (type) => {
+        if (value.includes(type)) {
+          onChange(value.filter(t => t !== type));
+        } else {
+          onChange([...value, type]);
+        }
+      };
+      return html`<div class="flex flex-wrap gap-1">
+        ${ROOM_TYPES.map(type => html`
+          <button key=${type} type="button"
+            class="chip" style="${value.includes(type)
+              ? 'background: #7A00DF; color: #fff;'
+              : 'background: rgba(122,0,223,0.08); color: #7A00DF; cursor: pointer;'}"
+            onClick=${() => toggle(type)}>
+            ${type}
+          </button>
+        `)}
+      </div>`;
+    }
+
+    // ═══════════════════════════════════════════
+    // DASHBOARD
+    // ═══════════════════════════════════════════
+    function Dashboard({ kids, partners }) {
+      return html`
+        <div class="page-header"><h2>Dashboard</h2></div>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
+          <div class="stat-card">
+            <div class="stat-number">${kids.length}</div>
+            <div class="stat-label">Kids</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-number">${partners.length}</div>
+            <div class="stat-label">Partners</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-number">${kids.filter(k => k.status === 'completed').length}</div>
+            <div class="stat-label">Completed Rooms</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-number">${kids.filter(k => k.status === 'in-progress').length}</div>
+            <div class="stat-label">In Progress</div>
+          </div>
+        </div>
+        <div class="card">
+          <h3 style="margin-bottom: 1rem;">Recent Kids</h3>
+          <div class="table-wrap"><table>
+            <thead><tr><th></th><th>Name</th><th>Year</th><th>Status</th><th>Photos</th></tr></thead>
+            <tbody>
+              ${kids.slice(0, 10).map(k => html`<tr key=${k.slug}>
+                <td>${k.heroImage ? html`<img class="td-thumb" src="${k.heroImage}" alt="" />` : '—'}</td>
+                <td><strong>${k.name}</strong></td>
+                <td>${k.year || '—'}</td>
+                <td><span class="badge ${k.status === 'completed' ? 'badge-green' : 'badge-yellow'}">${k.status}</span></td>
+                <td>${k.photoCount || 0}</td>
+              </tr>`)}
+            </tbody>
+          </table></div>
+        </div>
+      `;
+    }
+
+    // ═══════════════════════════════════════════
+    // KIDS LIST
+    // ═══════════════════════════════════════════
+    function KidsList({ kids, onEdit, onAdd }) {
+      const [search, setSearch] = useState('');
+      const filtered = useMemo(() => {
+        if (!search) return kids;
+        const q = search.toLowerCase();
+        return kids.filter(k =>
+          k.name.toLowerCase().includes(q) ||
+          (k.diagnosis || '').toLowerCase().includes(q) ||
+          (k.year + '').includes(q)
+        );
+      }, [kids, search]);
+
+      return html`
+        <div class="page-header">
+          <h2>Kids (${kids.length})</h2>
+          <button class="btn btn-primary" onClick=${onAdd}>+ Add Kid</button>
+        </div>
+        <div class="card" style="margin-bottom: 1rem; padding: 0.75rem 1rem;">
+          <div class="search-bar" style="max-width: 100%;">
+            <span class="search-icon">🔍</span>
+            <input placeholder="Search by name, diagnosis, or year..."
+              value=${search} onInput=${e => setSearch(e.target.value)} />
+          </div>
+        </div>
+        <div class="card">
+          <div class="table-wrap"><table>
+            <thead><tr><th></th><th>Name</th><th>Age</th><th>Diagnosis</th><th>Year</th><th>Status</th><th>Photos</th><th></th></tr></thead>
+            <tbody>
+              ${filtered.length === 0 ? html`<tr><td colspan="8" style="text-align:center; color: #6B6C72;">No kids found</td></tr>` : null}
+              ${filtered.map(k => html`<tr key=${k.slug}>
+                <td>${k.heroImage ? html`<img class="td-thumb" src="${k.heroImage}" alt="" />` : html`<div class="td-thumb" />`}</td>
+                <td><strong>${k.name}</strong></td>
+                <td>${k.age || '—'}</td>
+                <td class="text-sm">${(k.diagnosis || '—').slice(0, 50)}${(k.diagnosis || '').length > 50 ? '…' : ''}</td>
+                <td>${k.year || '—'}</td>
+                <td><span class="badge ${k.status === 'completed' ? 'badge-green' : 'badge-yellow'}">${k.status}</span></td>
+                <td>${k.photoCount || 0}</td>
+                <td><button class="btn btn-ghost btn-sm" onClick=${() => onEdit(k.slug)}>Edit</button></td>
+              </tr>`)}
+            </tbody>
+          </table></div>
+        </div>
+      `;
+    }
+
+    // ═══════════════════════════════════════════
+    // KID EDITOR
+    // ═══════════════════════════════════════════
+    function KidEditor({ slug, onBack, addToast }) {
+      const [loading, setLoading] = useState(!!slug);
+      const [saving, setSaving] = useState(false);
+      const [sha, setSha] = useState(null);
+      const [data, setData] = useState({
+        name: '', slug: '', age: '', diagnosis: '', roomTypes: [],
+        year: new Date().getFullYear(), status: 'completed', bio: '',
+        quote: '', heroImage: '', photos: [], photoCount: 0,
+        videoUrl: '', photographer: '', partnerLogos: [],
+        shortDescription: '', metaDescription: '',
+      });
+      const [uploading, setUploading] = useState({});
+
+      // Load existing kid
+      useEffect(() => {
+        if (!slug) return;
+        (async () => {
+          const res = await api.readContent(`src/content/kids/${slug}.json`);
+          if (res.success) {
+            const parsed = JSON.parse(res.content);
+            setData(parsed);
+            setSha(res.sha);
+          } else {
+            addToast('Failed to load kid data', 'error');
+          }
+          setLoading(false);
+        })();
+      }, [slug]);
+
+      const updateField = (field, value) => {
+        setData(d => {
+          const updated = { ...d, [field]: value };
+          // Auto-generate slug from name for new kids
+          if (field === 'name' && !slug) {
+            updated.slug = slugify(value);
+          }
+          return updated;
+        });
+      };
+
+      const handlePhotoUpload = async (files) => {
+        for (const file of files) {
+          const tempId = Date.now() + '-' + file.name;
+          // Add placeholder with local preview
+          const localUrl = URL.createObjectURL(file);
+          setData(d => ({
+            ...d,
+            photos: [...d.photos, { url: localUrl, alt: '', _tempId: tempId }],
+            photoCount: d.photoCount + 1,
+          }));
+          setUploading(u => ({ ...u, [tempId]: true }));
+
+          try {
+            const cfId = `kids/${data.slug || 'new'}/${Date.now()}-${file.name.replace(/[^a-z0-9.]/gi, '-')}`;
+            const res = await api.uploadImage(file, cfId);
+            if (res.success) {
+              setData(d => ({
+                ...d,
+                photos: d.photos.map(p =>
+                  p._tempId === tempId
+                    ? { url: res.imageUrl, alt: '', cfImageId: res.imageId }
+                    : p
+                ),
+              }));
+              addToast(`Uploaded ${file.name}`, 'success');
+            } else {
+              addToast(`Failed: ${res.error}`, 'error');
+              // Remove placeholder
+              setData(d => ({
+                ...d,
+                photos: d.photos.filter(p => p._tempId !== tempId),
+                photoCount: d.photoCount - 1,
+              }));
+            }
+          } catch (err) {
+            addToast(`Upload error: ${err.message}`, 'error');
+          }
+          setUploading(u => { const n = { ...u }; delete n[tempId]; return n; });
+        }
+      };
+
+      const removePhoto = (index) => {
+        setData(d => ({
+          ...d,
+          photos: d.photos.filter((_, i) => i !== index),
+          photoCount: d.photoCount - 1,
+        }));
+      };
+
+      const setHero = (index) => {
+        setData(d => ({ ...d, heroImage: d.photos[index]?.url || '' }));
+      };
+
+      const handleSave = async () => {
+        if (!data.name || !data.slug) {
+          addToast('Name is required', 'error');
+          return;
+        }
+        setSaving(true);
+        try {
+          // Clean up temp fields before saving
+          const saveData = {
+            ...data,
+            age: data.age ? Number(data.age) : null,
+            year: data.year ? Number(data.year) : null,
+            photos: data.photos.map(({ _tempId, ...p }) => p),
+            photoCount: data.photos.length,
+          };
+          const path = `src/content/kids/${data.slug}.json`;
+          const content = JSON.stringify(saveData, null, 2);
+          const message = slug
+            ? `Update kid: ${data.name}`
+            : `Add kid: ${data.name}`;
+          const res = await api.saveContent(path, content, message, sha || undefined);
+          if (res.success) {
+            setSha(res.sha);
+            addToast(`${data.name} saved! Site rebuilding...`, 'success');
+          } else {
+            addToast(`Save failed: ${res.error}`, 'error');
+          }
+        } catch (err) {
+          addToast(`Save error: ${err.message}`, 'error');
+        }
+        setSaving(false);
+      };
+
+      if (loading) return html`<div class="card" style="text-align: center; padding: 3rem;">
+        <div class="spinner" style="width: 32px; height: 32px; border-width: 3px;" /></div>`;
+
+      return html`
+        <button class="back-link" onClick=${onBack}>← Back to Kids</button>
+        <div class="page-header">
+          <h2>${slug ? `Edit: ${data.name}` : 'Add New Kid'}</h2>
+          <button class="btn btn-primary" onClick=${handleSave} disabled=${saving}>
+            ${saving ? html`<span class="spinner" />` : null}
+            ${saving ? 'Saving...' : 'Save & Publish'}
+          </button>
+        </div>
+
+        <div class="card">
+          <h3 style="margin-bottom: 1rem;">Basic Info</h3>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Name *</label>
+              <input class="form-input" value=${data.name}
+                onInput=${e => updateField('name', e.target.value)} placeholder="e.g., Amari" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Slug</label>
+              <input class="form-input" value=${data.slug}
+                onInput=${e => updateField('slug', e.target.value)}
+                placeholder="auto-generated" ${slug ? 'disabled' : ''} />
+              <div class="form-hint">URL path: /kids/${data.slug || '...'}</div>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Age</label>
+              <input class="form-input" type="number" value=${data.age || ''}
+                onInput=${e => updateField('age', e.target.value)} placeholder="e.g., 10" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Year</label>
+              <input class="form-input" type="number" value=${data.year || ''}
+                onInput=${e => updateField('year', e.target.value)} />
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Diagnosis</label>
+            <input class="form-input" value=${data.diagnosis || ''}
+              onInput=${e => updateField('diagnosis', e.target.value)}
+              placeholder="e.g., Cerebral Palsy" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Room Types</label>
+            <${RoomTypePicker} value=${data.roomTypes || []} onChange=${v => updateField('roomTypes', v)} />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Status</label>
+            <select class="form-select" value=${data.status}
+              onChange=${e => updateField('status', e.target.value)}>
+              <option value="completed">Completed</option>
+              <option value="in-progress">In Progress</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3 style="margin-bottom: 1rem;">Story</h3>
+          <div class="form-group">
+            <label class="form-label">Bio</label>
+            <textarea class="form-textarea" style="min-height: 200px;" value=${data.bio || ''}
+              onInput=${e => updateField('bio', e.target.value)}
+              placeholder="Tell this child's story..." />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Quote (optional)</label>
+            <input class="form-input" value=${data.quote || ''}
+              onInput=${e => updateField('quote', e.target.value)} />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Video URL (optional)</label>
+            <input class="form-input" value=${data.videoUrl || ''}
+              onInput=${e => updateField('videoUrl', e.target.value)}
+              placeholder="https://youtu.be/..." />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Photographer (optional)</label>
+            <input class="form-input" value=${data.photographer || ''}
+              onInput=${e => updateField('photographer', e.target.value)} />
+          </div>
+        </div>
+
+        <div class="card">
+          <h3 style="margin-bottom: 0.5rem;">Photos</h3>
+          <p class="text-sm text-muted mb-1">Upload photos, then click ⭐ to set the hero image.</p>
+          <${DropZone} onFiles=${handlePhotoUpload} label="JPG, PNG, WebP — upload as many as you need" />
+          ${data.photos.length > 0 ? html`
+            <div class="photo-grid">
+              ${data.photos.map((photo, i) => html`
+                <div key=${i} class="photo-item ${photo.url === data.heroImage ? 'is-hero' : ''}">
+                  <img src=${photo.url} alt=${photo.alt || ''} loading="lazy" />
+                  ${uploading[photo._tempId] ? html`<div class="photo-uploading"><span class="spinner" /></div>` : null}
+                  <div class="photo-actions">
+                    <button class="photo-btn ${photo.url === data.heroImage ? 'hero-btn' : ''}"
+                      onClick=${() => setHero(i)} title="Set as hero image">⭐</button>
+                    <button class="photo-btn" onClick=${() => removePhoto(i)} title="Remove">✕</button>
+                  </div>
+                </div>
+              `)}
+            </div>
+          ` : null}
+        </div>
+
+        <div style="display: flex; gap: 1rem; justify-content: flex-end; margin-top: 1rem;">
+          <button class="btn btn-ghost" onClick=${onBack}>Cancel</button>
+          <button class="btn btn-primary" onClick=${handleSave} disabled=${saving}>
+            ${saving ? html`<span class="spinner" />` : null}
+            ${saving ? 'Saving...' : 'Save & Publish'}
+          </button>
+        </div>
+      `;
+    }
+
+    // ═══════════════════════════════════════════
+    // PARTNERS LIST
+    // ═══════════════════════════════════════════
+    function PartnersList({ partners, onEdit, onAdd }) {
+      return html`
+        <div class="page-header">
+          <h2>Partners (${partners.length})</h2>
+          <button class="btn btn-primary" onClick=${onAdd}>+ Add Partner</button>
+        </div>
+        <div class="card">
+          <div class="table-wrap"><table>
+            <thead><tr><th></th><th>Name</th><th>Tier</th><th>Featured</th><th></th></tr></thead>
+            <tbody>
+              ${partners.map(p => html`<tr key=${p.slug}>
+                <td>${p.logo ? html`<img class="td-thumb" src="${p.logo}" alt="" style="object-fit: contain; background: #fff;" />` : '—'}</td>
+                <td><strong>${p.name}</strong></td>
+                <td><span class="badge badge-purple">${p.tier}</span></td>
+                <td>${p.featured ? '✅' : '—'}</td>
+                <td><button class="btn btn-ghost btn-sm" onClick=${() => onEdit(p.slug)}>Edit</button></td>
+              </tr>`)}
+            </tbody>
+          </table></div>
+        </div>
+      `;
+    }
+
+    // ═══════════════════════════════════════════
+    // PARTNER EDITOR
+    // ═══════════════════════════════════════════
+    function PartnerEditor({ slug, onBack, addToast }) {
+      const [loading, setLoading] = useState(!!slug);
+      const [saving, setSaving] = useState(false);
+      const [sha, setSha] = useState(null);
+      const [logoPreview, setLogoPreview] = useState('');
+      const [uploading, setUploading] = useState(false);
+      const [data, setData] = useState({
+        name: '', slug: '', logo: '', website: '',
+        tier: 'construction', featured: false,
+      });
+
+      useEffect(() => {
+        if (!slug) return;
+        (async () => {
+          const res = await api.readContent(`src/content/partners/${slug}.json`);
+          if (res.success) {
+            setData(JSON.parse(res.content));
+            setSha(res.sha);
+            setLogoPreview(JSON.parse(res.content).logo);
+          }
+          setLoading(false);
+        })();
+      }, [slug]);
+
+      const updateField = (field, value) => {
+        setData(d => {
+          const updated = { ...d, [field]: value };
+          if (field === 'name' && !slug) updated.slug = slugify(value);
+          return updated;
+        });
+      };
+
+      const handleLogoUpload = async (files) => {
+        const file = files[0];
+        setLogoPreview(URL.createObjectURL(file));
+        setUploading(true);
+        try {
+          const cfId = `partners/${data.slug || slugify(data.name) || 'new'}`;
+          const res = await api.uploadImage(file, cfId);
+          if (res.success) {
+            setData(d => ({ ...d, logo: res.imageUrl }));
+            setLogoPreview(res.imageUrl);
+            addToast('Logo uploaded', 'success');
+          } else {
+            addToast(`Upload failed: ${res.error}`, 'error');
+          }
+        } catch (err) {
+          addToast(`Upload error: ${err.message}`, 'error');
+        }
+        setUploading(false);
+      };
+
+      const handleSave = async () => {
+        if (!data.name) { addToast('Name is required', 'error'); return; }
+        setSaving(true);
+        try {
+          const path = `src/content/partners/${data.slug}.json`;
+          const content = JSON.stringify(data, null, 2);
+          const message = slug ? `Update partner: ${data.name}` : `Add partner: ${data.name}`;
+          const res = await api.saveContent(path, content, message, sha || undefined);
+          if (res.success) {
+            setSha(res.sha);
+            addToast(`${data.name} saved!`, 'success');
+          } else {
+            addToast(`Save failed: ${res.error}`, 'error');
+          }
+        } catch (err) {
+          addToast(`Save error: ${err.message}`, 'error');
+        }
+        setSaving(false);
+      };
+
+      if (loading) return html`<div class="card" style="text-align: center; padding: 3rem;"><div class="spinner" style="width: 32px; height: 32px;" /></div>`;
+
+      return html`
+        <button class="back-link" onClick=${onBack}>← Back to Partners</button>
+        <div class="page-header">
+          <h2>${slug ? `Edit: ${data.name}` : 'Add New Partner'}</h2>
+          <button class="btn btn-primary" onClick=${handleSave} disabled=${saving}>
+            ${saving ? html`<span class="spinner" />` : null} ${saving ? 'Saving...' : 'Save & Publish'}
+          </button>
+        </div>
+        <div class="card">
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Company Name *</label>
+              <input class="form-input" value=${data.name}
+                onInput=${e => updateField('name', e.target.value)} />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Slug</label>
+              <input class="form-input" value=${data.slug}
+                onInput=${e => updateField('slug', e.target.value)} ${slug ? 'disabled' : ''} />
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Website URL</label>
+            <input class="form-input" value=${data.website || ''}
+              onInput=${e => updateField('website', e.target.value)} placeholder="https://..." />
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Tier</label>
+              <select class="form-select" value=${data.tier}
+                onChange=${e => updateField('tier', e.target.value)}>
+                <option value="top">Top</option>
+                <option value="construction">Construction</option>
+                <option value="design">Design</option>
+                <option value="community">Community</option>
+              </select>
+            </div>
+            <div class="form-group" style="display: flex; align-items: flex-end;">
+              <label class="checkbox-label">
+                <input type="checkbox" checked=${data.featured}
+                  onChange=${e => updateField('featured', e.target.checked)} />
+                Featured partner
+              </label>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <h3 style="margin-bottom: 1rem;">Logo</h3>
+          ${logoPreview ? html`
+            <div style="margin-bottom: 1rem; text-align: center;">
+              <img src=${logoPreview} alt="Logo preview"
+                style="max-width: 200px; max-height: 120px; object-fit: contain;" />
+              ${uploading ? html`<div class="text-sm text-muted mt-1"><span class="spinner" /> Uploading...</div>` : null}
+            </div>
+          ` : null}
+          <${DropZone} onFiles=${handleLogoUpload} multiple=${false}
+            accept="image/*" label="PNG or SVG recommended (transparent background)" />
+        </div>
+        <div style="display: flex; gap: 1rem; justify-content: flex-end; margin-top: 1rem;">
+          <button class="btn btn-ghost" onClick=${onBack}>Cancel</button>
+          <button class="btn btn-primary" onClick=${handleSave} disabled=${saving}>
+            ${saving ? 'Saving...' : 'Save & Publish'}
+          </button>
+        </div>
+      `;
+    }
+
+    // ═══════════════════════════════════════════
+    // FINANCIALS
+    // ═══════════════════════════════════════════
+    function Financials({ addToast }) {
+      const [files, setFiles] = useState([]);
+      const [loading, setLoading] = useState(true);
+      const [uploading, setUploading] = useState(false);
+
+      const loadFiles = async () => {
+        setLoading(true);
+        try {
+          const res = await api.listContent('public/financials');
+          if (res.success) setFiles(res.files);
+          else setFiles([]);
+        } catch {
+          setFiles([]);
+        }
+        setLoading(false);
+      };
+
+      useEffect(() => { loadFiles(); }, []);
+
+      const handleUpload = async (fileList) => {
+        setUploading(true);
+        for (const file of fileList) {
+          const safeName = file.name.replace(/[^a-z0-9._-]/gi, '-');
+          const path = `public/financials/${safeName}`;
+          try {
+            const res = await api.uploadFile(file, path, `Upload financial doc: ${file.name}`);
+            if (res.success) {
+              addToast(`Uploaded ${file.name}`, 'success');
+            } else {
+              addToast(`Failed: ${res.error}`, 'error');
+            }
+          } catch (err) {
+            addToast(`Error: ${err.message}`, 'error');
+          }
+        }
+        setUploading(false);
+        loadFiles();
+      };
+
+      return html`
+        <div class="page-header"><h2>Financial Documents</h2></div>
+        <div class="card">
+          <p class="text-sm text-muted mb-1">Upload 990s, annual reports, and audits. Files go to <code>/financials/</code> on the site.</p>
+          <${DropZone} onFiles=${handleUpload} accept=".pdf,.doc,.docx"
+            label="PDF files — 990s, annual reports, audits" />
+          ${uploading ? html`<div class="mt-2 text-sm"><span class="spinner" /> Uploading...</div>` : null}
+        </div>
+        <div class="card mt-2">
+          <h3 style="margin-bottom: 1rem;">Uploaded Documents</h3>
+          ${loading ? html`<div style="text-align:center; padding: 2rem;"><span class="spinner" /></div>` : null}
+          ${!loading && files.length === 0 ? html`
+            <div class="empty-state">
+              <div class="empty-state-icon">📂</div>
+              <p>No financial documents yet.</p>
+              <p class="text-sm">Upload your first 990 or annual report above.</p>
+            </div>
+          ` : null}
+          ${!loading && files.length > 0 ? html`
+            <div class="table-wrap"><table>
+              <thead><tr><th>File</th><th>Size</th><th>Link</th></tr></thead>
+              <tbody>
+                ${files.map(f => html`<tr key=${f.name}>
+                  <td>📄 <strong>${f.name}</strong></td>
+                  <td class="text-sm text-muted">${(f.size / 1024).toFixed(0)} KB</td>
+                  <td><a href="/financials/${f.name}" target="_blank" class="btn btn-ghost btn-sm">View ↗</a></td>
+                </tr>`)}
+              </tbody>
+            </table></div>
+          ` : null}
+        </div>
+      `;
+    }
+
+    // ═══════════════════════════════════════════
+    // SITE SETTINGS
+    // ═══════════════════════════════════════════
+    function SiteSettings({ addToast }) {
+      const [loading, setLoading] = useState(true);
+      const [saving, setSaving] = useState(false);
+      const [sha, setSha] = useState(null);
+      const [data, setData] = useState({});
+
+      useEffect(() => {
+        (async () => {
+          const res = await api.readContent('src/content/site/settings.json');
+          if (res.success) {
+            setData(JSON.parse(res.content));
+            setSha(res.sha);
+          }
+          setLoading(false);
+        })();
+      }, []);
+
+      const updateStat = (key, value) => {
+        setData(d => ({
+          ...d,
+          stats: { ...d.stats, [key]: Number(value) || 0 },
+        }));
+      };
+
+      const updateField = (path, value) => {
+        setData(d => {
+          const copy = JSON.parse(JSON.stringify(d));
+          const keys = path.split('.');
+          let obj = copy;
+          for (let i = 0; i < keys.length - 1; i++) {
+            obj = obj[keys[i]];
+          }
+          obj[keys[keys.length - 1]] = value;
+          return copy;
+        });
+      };
+
+      const handleSave = async () => {
+        setSaving(true);
+        try {
+          const content = JSON.stringify(data, null, 2);
+          const res = await api.saveContent(
+            'src/content/site/settings.json', content,
+            'Update site settings', sha
+          );
+          if (res.success) {
+            setSha(res.sha);
+            addToast('Settings saved!', 'success');
+          } else {
+            addToast(`Failed: ${res.error}`, 'error');
+          }
+        } catch (err) {
+          addToast(`Error: ${err.message}`, 'error');
+        }
+        setSaving(false);
+      };
+
+      if (loading) return html`<div class="card" style="text-align: center; padding: 3rem;"><div class="spinner" style="width: 32px; height: 32px;" /></div>`;
+
+      return html`
+        <div class="page-header">
+          <h2>Site Settings</h2>
+          <button class="btn btn-primary" onClick=${handleSave} disabled=${saving}>
+            ${saving ? html`<span class="spinner" />` : null} ${saving ? 'Saving...' : 'Save & Publish'}
+          </button>
+        </div>
+        <div class="card">
+          <h3 style="margin-bottom: 1rem;">Impact Numbers</h3>
+          <p class="text-sm text-muted mb-1">These appear on the homepage and throughout the site.</p>
+          <div class="form-row" style="grid-template-columns: 1fr 1fr 1fr;">
+            <div class="form-group">
+              <label class="form-label">Rooms Completed</label>
+              <input class="form-input" type="number" value=${data.stats?.roomsCompleted || 0}
+                onInput=${e => updateStat('roomsCompleted', e.target.value)} />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Kids Served</label>
+              <input class="form-input" type="number" value=${data.stats?.kidsServed || 0}
+                onInput=${e => updateStat('kidsServed', e.target.value)} />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Partners</label>
+              <input class="form-input" type="number" value=${data.stats?.partners || 0}
+                onInput=${e => updateStat('partners', e.target.value)} />
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <h3 style="margin-bottom: 1rem;">Contact Info</h3>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Phone</label>
+              <input class="form-input" value=${data.phone || ''}
+                onInput=${e => updateField('phone', e.target.value)} />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Email</label>
+              <input class="form-input" value=${data.email || ''}
+                onInput=${e => updateField('email', e.target.value)} />
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Street Address</label>
+            <input class="form-input" value=${data.address?.street || ''}
+              onInput=${e => updateField('address.street', e.target.value)} />
+          </div>
+          <div class="form-row" style="grid-template-columns: 2fr 1fr 1fr;">
+            <div class="form-group">
+              <label class="form-label">City</label>
+              <input class="form-input" value=${data.address?.city || ''}
+                onInput=${e => updateField('address.city', e.target.value)} />
+            </div>
+            <div class="form-group">
+              <label class="form-label">State</label>
+              <input class="form-input" value=${data.address?.state || ''}
+                onInput=${e => updateField('address.state', e.target.value)} />
+            </div>
+            <div class="form-group">
+              <label class="form-label">ZIP</label>
+              <input class="form-input" value=${data.address?.zip || ''}
+                onInput=${e => updateField('address.zip', e.target.value)} />
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <h3 style="margin-bottom: 1rem;">Social Links</h3>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Facebook</label>
+              <input class="form-input" value=${data.social?.facebook || ''}
+                onInput=${e => updateField('social.facebook', e.target.value)} />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Instagram</label>
+              <input class="form-input" value=${data.social?.instagram || ''}
+                onInput=${e => updateField('social.instagram', e.target.value)} />
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    // ═══════════════════════════════════════════
+    // MAIN APP
+    // ═══════════════════════════════════════════
+    function App() {
+      const [view, setView] = useState('dashboard');
+      const [editSlug, setEditSlug] = useState(null);
+      const [toasts, setToasts] = useState([]);
+      const [kids, setKids] = useState([]);
+      const [partners, setPartners] = useState([]);
+      const [loading, setLoading] = useState(true);
+      const [sidebarOpen, setSidebarOpen] = useState(false);
+
+      const addToast = (msg, type = 'info') => {
+        const id = ++toastId;
+        setToasts(t => [...t, { id, msg, type }]);
+        setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 4000);
+      };
+
+      // Load all content
+      const loadData = async () => {
+        setLoading(true);
+        try {
+          // Load kids
+          const kidsRes = await api.listContent('src/content/kids');
+          if (kidsRes.success) {
+            const kidData = await Promise.all(
+              kidsRes.files.map(async f => {
+                try {
+                  const r = await api.readContent(f.path);
+                  if (r.success) return JSON.parse(r.content);
+                } catch {}
+                return null;
+              })
+            );
+            setKids(kidData.filter(Boolean).sort((a, b) => (b.year || 0) - (a.year || 0)));
+          }
+
+          // Load partners
+          const partRes = await api.listContent('src/content/partners');
+          if (partRes.success) {
+            const partData = await Promise.all(
+              partRes.files.map(async f => {
+                try {
+                  const r = await api.readContent(f.path);
+                  if (r.success) return JSON.parse(r.content);
+                } catch {}
+                return null;
+              })
+            );
+            setPartners(partData.filter(Boolean).sort((a, b) => a.name.localeCompare(b.name)));
+          }
+        } catch (err) {
+          addToast('Failed to load content. Check API settings.', 'error');
+        }
+        setLoading(false);
+      };
+
+      useEffect(() => { loadData(); }, []);
+
+      const navigate = (v, slug = null) => {
+        setView(v);
+        setEditSlug(slug);
+        setSidebarOpen(false);
+      };
+
+      const navItems = [
+        { id: 'dashboard', icon: '📊', label: 'Dashboard' },
+        { id: 'kids', icon: '👶', label: 'Kids' },
+        { id: 'partners', icon: '🤝', label: 'Partners' },
+        { id: 'financials', icon: '📄', label: 'Financials' },
+        { id: 'settings', icon: '⚙️', label: 'Site Settings' },
+      ];
+
+      const renderView = () => {
+        if (loading && view === 'dashboard') {
+          return html`<div style="text-align: center; padding: 4rem;">
+            <div class="spinner" style="width: 40px; height: 40px; border-width: 3px;" />
+            <p class="mt-2 text-muted">Loading content from GitHub...</p>
+          </div>`;
+        }
+
+        switch (view) {
+          case 'dashboard':
+            return html`<${Dashboard} kids=${kids} partners=${partners} />`;
+          case 'kids':
+            return editSlug !== null
+              ? html`<${KidEditor} slug=${editSlug || undefined} onBack=${() => { navigate('kids'); loadData(); }} addToast=${addToast} />`
+              : html`<${KidsList} kids=${kids} onEdit=${s => navigate('kids', s)} onAdd=${() => navigate('kids', '')} />`;
+          case 'partners':
+            return editSlug !== null
+              ? html`<${PartnerEditor} slug=${editSlug || undefined} onBack=${() => { navigate('partners'); loadData(); }} addToast=${addToast} />`
+              : html`<${PartnersList} partners=${partners} onEdit=${s => navigate('partners', s)} onAdd=${() => navigate('partners', '')} />`;
+          case 'financials':
+            return html`<${Financials} addToast=${addToast} />`;
+          case 'settings':
+            return html`<${SiteSettings} addToast=${addToast} />`;
+        }
+      };
+
+      return html`
+        <div class="app">
+          <button class="hamburger" onClick=${() => setSidebarOpen(!sidebarOpen)}>
+            ${sidebarOpen ? '✕' : '☰'}
+          </button>
+          <div class="overlay ${sidebarOpen ? 'open' : ''}" onClick=${() => setSidebarOpen(false)} />
+
+          <nav class="sidebar ${sidebarOpen ? 'open' : ''}">
+            <div class="sidebar-logo">
+              <h1>☀️ SOARD</h1>
+              <small>Content Admin</small>
+            </div>
+            <div class="nav-section">Manage</div>
+            ${navItems.map(item => html`
+              <button key=${item.id}
+                class="nav-item ${view === item.id ? 'active' : ''}"
+                onClick=${() => navigate(item.id)}>
+                <span class="nav-icon">${item.icon}</span>
+                ${item.label}
+              </button>
+            `)}
+            <div class="nav-section" style="margin-top: auto;">Links</div>
+            <a href="/" class="nav-item" target="_blank">
+              <span class="nav-icon">🌐</span> View Site ↗
+            </a>
+            <a href="https://github.com/pranney82/soard" class="nav-item" target="_blank">
+              <span class="nav-icon">📦</span> GitHub ↗
+            </a>
+          </nav>
+
+          <main class="main">
+            ${renderView()}
+          </main>
+
+          <${ToastContainer} toasts=${toasts} />
+        </div>
+      `;
+    }
+
+    // ─── Mount ──────────────────────────────
+    render(html`<${App} />`, document.getElementById('app'));
+  </script>
+</body>
+</html>
