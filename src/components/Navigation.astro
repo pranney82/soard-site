@@ -5,12 +5,15 @@
 <nav class="nav" id="main-nav">
   <div class="nav-inner">
     <!-- Logo -->
-    <a href="/" class="logo" aria-label="Home">
-      <img src="/logo-icon.png" alt="" width="94" height="40" class="logo-icon" />
-      <div class="logo-text">
-        <span class="logo-top">Sunshine on</span>
-        <span class="logo-bottom">a Ranney Day</span>
-      </div>
+    <a href="/" class="logo" aria-label="Sunshine on a Ranney Day — Home">
+      <img
+        src="/logo-light.png"
+        srcset="/logo-light.png 1x, /logo-light@2x.png 2x"
+        alt="Sunshine on a Ranney Day — Dreams Built Here"
+        width="107"
+        height="100"
+        class="logo-img"
+      />
     </a>
 
     <!-- Desktop Nav -->
@@ -35,32 +38,13 @@
   .logo {
     display: flex;
     align-items: center;
-    gap: 14px;
     text-decoration: none;
+    z-index: 101;
   }
-  .logo-text {
-    display: flex;
-    flex-direction: column;
-  }
-  .logo-icon {
+  .logo-img {
+    height: 52px;
     width: auto;
-    height: 38px;
     object-fit: contain;
-  }
-  .logo-top {
-    font-family: var(--f-display);
-    font-size: 17px;
-    font-weight: 700;
-    color: var(--c-dark);
-    line-height: 1.1;
-  }
-  .logo-bottom {
-    font-family: var(--f-display);
-    font-size: 14px;
-    font-weight: 400;
-    font-style: italic;
-    color: var(--c-purple);
-    line-height: 1.1;
   }
   .mobile-toggle {
     display: none;
