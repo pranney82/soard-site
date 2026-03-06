@@ -1,0 +1,9 @@
+# Copy this file to .dev.vars for local development with wrangler
+# These are used when running: npx wrangler pages dev dist
+
+ADMIN_PASSPHRASE=your-admin-passphrase
+CF_ACCOUNT_ID=your-cloudflare-account-id
+CF_IMAGES_TOKEN=your-cloudflare-images-api-token
+GITHUB_TOKEN=your-github-pat
+GITHUB_REPO=pranney82/soard
+GITHUB_BRANCH=main
