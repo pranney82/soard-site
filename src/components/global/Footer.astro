@@ -1,19 +1,30 @@
 ---
 /**
- * Footer.astro
- * 4-column footer with newsletter signup, social links, GuideStar seal,
- * address/EIN, and legal links.
+ * Footer.astro — Best-in-class nonprofit footer
+ *
+ * Structure:
+ *   1. Newsletter CTA band (warm gray)
+ *   2. Main footer: logo + mission, nav columns, social, donate CTA (dark)
+ *   3. Trust signals bar: GuideStar, 501(c)(3), EIN (dark-deep)
+ *   4. Legal bar: copyright, privacy, terms (dark-deep, bottom)
+ *
+ * Accessibility: All links have descriptive text, external links marked,
+ *   social icons have aria-labels, skip-to-footer landmark
+ * SEO: address in <address> tag, tel: and mailto: links, external rels
+ * Performance: SVG social icons inline (no external requests)
  */
+const year = new Date().getFullYear();
 ---
 
-<footer class="site-footer">
-  <!-- Newsletter Section -->
-  <div class="footer-newsletter section--sm">
-    <div class="container container--narrow" style="text-align: center;">
-      <h2><span class="highlight">Brighten your inbox</span> with a little Sunshine.</h2>
-      <p style="margin-top: var(--space-sm); color: var(--c-text-muted);">
-        Stay inspired with makeover stories, news, and upcoming events.
-      </p>
+<footer class="site-footer" role="contentinfo">
+
+  <!-- ─── 1. NEWSLETTER BAND ─────────────────── -->
+  <div class="footer-newsletter">
+    <div class="footer-container footer-newsletter-inner">
+      <div class="footer-newsletter-text">
+        <h2><span class="highlight">Brighten your inbox</span> with a little Sunshine.</h2>
+        <p>Room reveals, impact stories, and upcoming events — delivered monthly.</p>
+      </div>
       <form class="newsletter-form" action="#" method="POST">
         <div class="newsletter-fields">
           <input
@@ -21,256 +32,501 @@
             name="email"
             placeholder="Your email address"
             required
-            aria-label="Email address"
+            autocomplete="email"
+            aria-label="Email address for newsletter"
             class="newsletter-input"
           />
           <button type="submit" class="newsletter-btn">Subscribe</button>
         </div>
+        <p class="newsletter-note">No spam, ever. Unsubscribe anytime.</p>
       </form>
     </div>
   </div>
 
-  <!-- Main Footer -->
+  <!-- ─── 2. MAIN FOOTER ─────────────────────── -->
   <div class="footer-main">
-    <div class="container">
-      <div class="footer-grid">
+    <div class="footer-container footer-main-grid">
+
+      <!-- Brand Block -->
+      <div class="footer-brand">
+        <a href="/" class="footer-logo" aria-label="Sunshine on a Ranney Day — Home">
+          <img
+            src="/images/logos/logo-dark-bg.webp"
+            alt="Sunshine on a Ranney Day logo"
+            width="140"
+            height="56"
+            loading="lazy"
+          />
+        </a>
+        <p class="footer-mission">
+          A 501(c)(3) nonprofit creating life-changing home makeovers for children with special needs in the greater Atlanta area.
+        </p>
+
+        <!-- Social Icons -->
+        <div class="footer-social">
+          <a href="https://www.facebook.com/sunshineonaranneyday" target="_blank" rel="noopener noreferrer" aria-label="Facebook" class="footer-social-link">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+          </a>
+          <a href="https://www.instagram.com/sunshineonaranneyday" target="_blank" rel="noopener noreferrer" aria-label="Instagram" class="footer-social-link">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/></svg>
+          </a>
+          <a href="https://www.youtube.com/@sunshineonaranneyday" target="_blank" rel="noopener noreferrer" aria-label="YouTube" class="footer-social-link">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M23.498 6.186a3.016 3.016 0 00-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 00.502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 002.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 002.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
+          </a>
+          <a href="https://www.tiktok.com/@sunshineonaranneyday" target="_blank" rel="noopener noreferrer" aria-label="TikTok" class="footer-social-link">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12.525.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.01 5.84-.02 8.75-.08 1.4-.54 2.79-1.35 3.94-1.31 1.92-3.58 3.17-5.91 3.21-1.43.08-2.86-.31-4.08-1.03-2.02-1.19-3.44-3.37-3.65-5.71-.02-.5-.03-1-.01-1.49.18-1.9 1.12-3.72 2.58-4.96 1.66-1.44 3.98-2.13 6.15-1.72.02 1.48-.04 2.96-.04 4.44-.99-.32-2.15-.23-3.02.37-.63.41-1.11 1.04-1.36 1.75-.21.51-.15 1.07-.14 1.61.24 1.64 1.82 3.02 3.5 2.87 1.12-.01 2.19-.66 2.77-1.61.19-.33.4-.67.41-1.06.1-1.79.06-3.57.07-5.36.01-4.03-.01-8.05.02-12.07z"/></svg>
+          </a>
+        </div>
+
+        <!-- Donate CTA -->
+        <a href="/donate" class="footer-donate-btn">
+          Make a Donation
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 2.5C6.5 1 4 1 2.75 2.75S2.5 6.5 8 11.5C13.5 6.5 13.75 4.5 13.25 2.75S9.5 1 8 2.5Z" fill="currentColor"/></svg>
+        </a>
+      </div>
+
+      <!-- Nav Columns -->
+      <nav class="footer-nav" aria-label="Footer navigation">
         <div class="footer-col">
           <h4 class="footer-heading">About</h4>
           <ul>
             <li><a href="/about/">Our Story</a></li>
+            <li><a href="/about/leadership/">Leadership</a></li>
             <li><a href="/about/financials/">Financials</a></li>
-            <li><a href="/branding/">Branding</a></li>
-            <li><a href="/publicity/">Publicity</a></li>
+            <li><a href="/publicity/">Press & Media</a></li>
           </ul>
         </div>
         <div class="footer-col">
-          <h4 class="footer-heading">Kids & Projects</h4>
+          <h4 class="footer-heading">Our Work</h4>
           <ul>
-            <li><a href="/rooms/">Featured Rooms</a></li>
             <li><a href="/kids/">Meet the Kids</a></li>
+            <li><a href="/rooms/">Featured Rooms</a></li>
+            <li><a href="/rooms/before-after/">Before & After</a></li>
             <li><a href="/rooms/community/">Community Projects</a></li>
           </ul>
         </div>
         <div class="footer-col">
           <h4 class="footer-heading">Get Involved</h4>
           <ul>
-            <li><a href="https://sunnyandranney.com/events" target="_blank" rel="noopener noreferrer">Events</a></li>
-            <li><a href="/apply/">Application</a></li>
+            <li><a href="/donate/">Donate</a></li>
+            <li><a href="/get-involved/apply/">Apply for a Room</a></li>
             <li><a href="/partners/">Become a Partner</a></li>
+            <li><a href="https://sunnyandranney.com/events" target="_blank" rel="noopener noreferrer">Events <span class="external-icon" aria-hidden="true">↗</span></a></li>
           </ul>
         </div>
         <div class="footer-col">
-          <h4 class="footer-heading">Shop Our Stores</h4>
+          <h4 class="footer-heading">Shop & Support</h4>
           <ul>
-            <li><a href="https://sunnyandranney.com" target="_blank" rel="noopener noreferrer">Sunny & Ranney</a></li>
-            <li><a href="https://partlysunnystore.com" target="_blank" rel="noopener noreferrer">Partly Sunny</a></li>
-            <li><a href="/faq/">FAQs</a></li>
+            <li><a href="https://sunnyandranney.com" target="_blank" rel="noopener noreferrer">Sunny & Ranney <span class="external-icon" aria-hidden="true">↗</span></a></li>
+            <li><a href="https://partlysunnystore.com" target="_blank" rel="noopener noreferrer">Partly Sunny <span class="external-icon" aria-hidden="true">↗</span></a></li>
             <li><a href="/resources/">Resources</a></li>
+            <li><a href="/faq/">FAQs</a></li>
           </ul>
         </div>
-      </div>
-
-      <!-- Social + GuideStar -->
-      <div class="footer-social">
-        <a href="https://www.guidestar.org/profile/shared/2954b510-8c76-42e4-b589-7e826ca2cc47"
-           target="_blank" rel="noopener noreferrer" aria-label="GuideStar Transparency Seal">
-          <img
-            src="https://widgets.guidestar.org/TransparencySeal/9198660"
-            alt="GuideStar Transparency Seal"
-            width="80"
-            height="80"
-            loading="lazy"
-          />
-        </a>
-      </div>
+      </nav>
     </div>
   </div>
 
-  <!-- Bottom Bar -->
-  <div class="footer-bottom">
-    <div class="container">
-      <div class="footer-bottom-inner">
-        <p class="footer-contact">
-          250 Hembree Park Drive, Suite 106, Roswell GA 30076 &middot; 770.990.2434 &middot;
-          <a href="mailto:info@soardcharity.com">info@soardcharity.com</a>
-        </p>
-        <p class="footer-legal">
-          &copy; {new Date().getFullYear()} Sunshine on a Ranney Day is a 501(c)(3) &middot; EIN: 45-4773997
-        </p>
-        <p class="footer-legal-links">
-          <a href="/privacy-policy/">Privacy Policy</a>
-          <span>&middot;</span>
-          <a href="/terms/">Terms</a>
-        </p>
+  <!-- ─── 3. TRUST SIGNALS BAR ────────────────── -->
+  <div class="footer-trust">
+    <div class="footer-container footer-trust-inner">
+      <div class="footer-trust-badges">
+        <a href="https://www.guidestar.org/profile/shared/2954b510-8c76-42e4-b589-7e826ca2cc47"
+           target="_blank" rel="noopener noreferrer" class="trust-badge" aria-label="View our GuideStar Transparency profile">
+          <img
+            src="https://widgets.guidestar.org/TransparencySeal/9198660"
+            alt="GuideStar Transparency Seal"
+            width="64"
+            height="64"
+            loading="lazy"
+          />
+        </a>
+        <div class="trust-badge trust-badge--text">
+          <span class="trust-badge-label">Registered 501(c)(3)</span>
+          <span class="trust-badge-value">EIN: 45-4773997</span>
+        </div>
+        <div class="trust-badge trust-badge--text">
+          <span class="trust-badge-label">Tax-Deductible</span>
+          <span class="trust-badge-value">100% of donations</span>
+        </div>
+      </div>
+
+      <address class="footer-contact">
+        <a href="https://maps.google.com/?q=250+Hembree+Park+Drive+Suite+106+Roswell+GA+30076" target="_blank" rel="noopener noreferrer" class="footer-contact-item">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
+          250 Hembree Park Dr, Ste 106, Roswell GA 30076
+        </a>
+        <a href="tel:+17709902434" class="footer-contact-item">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 16.92z"/></svg>
+          770.990.2434
+        </a>
+        <a href="mailto:info@soardcharity.com" class="footer-contact-item">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+          info@soardcharity.com
+        </a>
+      </address>
+    </div>
+  </div>
+
+  <!-- ─── 4. LEGAL BAR ────────────────────────── -->
+  <div class="footer-legal">
+    <div class="footer-container footer-legal-inner">
+      <p class="footer-copyright">
+        &copy; {year} Sunshine on a Ranney Day. All rights reserved.
+      </p>
+      <div class="footer-legal-links">
+        <a href="/privacy-policy/">Privacy Policy</a>
+        <span aria-hidden="true">&middot;</span>
+        <a href="/terms/">Terms of Use</a>
+        <span aria-hidden="true">&middot;</span>
+        <a href="/branding/">Brand Guidelines</a>
       </div>
     </div>
   </div>
 </footer>
 
 <style>
-  .site-footer {
-    margin-top: auto;
+  /* ═══════════════════════════════════════════
+     FOOTER — Best-in-class nonprofit
+     ═══════════════════════════════════════════ */
+
+  .site-footer { margin-top: auto; }
+
+  .footer-container {
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding-inline: var(--page-padding);
   }
 
-  /* ─── Newsletter ───────────────────────── */
+  /* ─── Newsletter Band ──────────────────── */
   .footer-newsletter {
     background: var(--c-warm-gray);
-    padding-block: var(--space-3xl);
+    padding: 72px 0;
   }
-
-  .footer-newsletter h2 {
-    font-size: clamp(1.5rem, 3vw, 2rem);
+  .footer-newsletter-inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 48px;
   }
-
+  .footer-newsletter-text {
+    max-width: 420px;
+    flex-shrink: 0;
+  }
+  .footer-newsletter-text h2 {
+    font-size: clamp(1.4rem, 2.5vw, 1.75rem);
+    line-height: 1.3;
+    margin-bottom: 8px;
+  }
+  .footer-newsletter-text p {
+    font-size: 15px;
+    color: var(--c-text-muted);
+  }
   .newsletter-form {
-    margin-top: var(--space-lg);
+    flex: 1;
+    max-width: 480px;
   }
-
   .newsletter-fields {
     display: flex;
-    gap: var(--space-sm);
-    max-width: 460px;
-    margin-inline: auto;
+    gap: 8px;
   }
-
   .newsletter-input {
     flex: 1;
-    padding: 0.75rem 1rem;
+    padding: 14px 20px;
     border: 2px solid var(--c-border);
-    border-radius: 100px;
+    border-radius: 60px;
     background: var(--c-white);
-    font-size: 0.95rem;
-    transition: border-color var(--transition-fast);
+    font-family: var(--font-body);
+    font-size: 15px;
+    transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
   }
-
   .newsletter-input:focus {
     outline: none;
     border-color: var(--c-yellow);
+    box-shadow: 0 0 0 3px rgba(255, 213, 0, 0.2);
   }
-
   .newsletter-btn {
-    padding: 0.75rem 1.5rem;
+    padding: 14px 28px;
     background: var(--c-yellow);
     color: var(--c-dark);
+    font-family: var(--font-body);
     font-weight: 600;
-    font-size: 0.95rem;
+    font-size: 15px;
     border: none;
-    border-radius: 100px;
+    border-radius: 60px;
     cursor: pointer;
     white-space: nowrap;
-    transition: background var(--transition-fast), transform var(--transition-fast);
+    transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
   }
-
   .newsletter-btn:hover {
     background: var(--c-yellow-hover);
-    transform: translateY(-1px);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 16px rgba(255, 213, 0, 0.35);
+  }
+  .newsletter-note {
+    font-size: 12px;
+    color: var(--c-text-light);
+    margin-top: 10px;
+    padding-left: 20px;
   }
 
-  @media (max-width: 480px) {
-    .newsletter-fields {
-      flex-direction: column;
-    }
+  @media (max-width: 768px) {
+    .footer-newsletter { padding: 56px 0; }
+    .footer-newsletter-inner { flex-direction: column; gap: 28px; text-align: center; }
+    .footer-newsletter-text { max-width: 100%; }
+    .newsletter-form { max-width: 100%; width: 100%; }
+    .newsletter-fields { flex-direction: column; }
+    .newsletter-note { text-align: center; padding-left: 0; }
   }
 
   /* ─── Main Footer ──────────────────────── */
   .footer-main {
     background: var(--c-dark);
     color: rgba(255, 255, 255, 0.75);
-    padding-block: var(--space-3xl) var(--space-xl);
+    padding: 72px 0 56px;
   }
-
-  .footer-grid {
+  .footer-main-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-    gap: var(--space-xl);
+    grid-template-columns: 300px 1fr;
+    gap: 64px;
   }
 
+  /* Brand Block */
+  .footer-brand { display: flex; flex-direction: column; gap: 20px; }
+  .footer-logo { display: inline-block; transition: opacity var(--transition-fast); }
+  .footer-logo:hover { opacity: 0.85; }
+  .footer-logo img { width: 140px; height: auto; }
+  .footer-mission {
+    font-size: 14px;
+    line-height: 1.7;
+    color: rgba(255, 255, 255, 0.5);
+    max-width: 280px;
+  }
+
+  /* Social Links */
+  .footer-social {
+    display: flex;
+    gap: 12px;
+  }
+  .footer-social-link {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.06);
+    color: rgba(255, 255, 255, 0.6);
+    transition: all 0.3s ease;
+  }
+  .footer-social-link:hover {
+    background: var(--c-yellow);
+    color: var(--c-dark);
+    transform: translateY(-3px);
+  }
+
+  /* Donate Button */
+  .footer-donate-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 14px 28px;
+    background: var(--c-yellow);
+    color: var(--c-dark);
+    font-family: var(--font-body);
+    font-weight: 600;
+    font-size: 15px;
+    border-radius: 60px;
+    text-decoration: none;
+    transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+    align-self: flex-start;
+  }
+  .footer-donate-btn:hover {
+    background: var(--c-yellow-hover);
+    transform: translateY(-3px);
+    box-shadow: 0 8px 24px rgba(255, 213, 0, 0.35);
+  }
+
+  /* Nav Columns */
+  .footer-nav {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 32px;
+  }
   .footer-heading {
     font-family: var(--font-body);
     font-weight: 600;
-    font-size: 0.95rem;
+    font-size: 14px;
     color: var(--c-white);
-    margin-bottom: var(--space-md);
+    margin-bottom: 16px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
   }
-
   .footer-col ul {
     display: flex;
     flex-direction: column;
-    gap: var(--space-sm);
+    gap: 10px;
   }
-
   .footer-col a {
-    font-size: 0.9rem;
-    color: rgba(255, 255, 255, 0.65);
-    transition: color var(--transition-fast);
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.55);
+    text-decoration: none;
+    transition: color var(--transition-fast), padding-left var(--transition-fast);
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
   }
-
   .footer-col a:hover {
     color: var(--c-yellow);
+    padding-left: 4px;
+  }
+  .external-icon {
+    font-size: 11px;
+    opacity: 0.5;
   }
 
-  /* ─── Social / GuideStar ───────────────── */
-  .footer-social {
-    margin-top: var(--space-2xl);
-    padding-top: var(--space-xl);
-    border-top: 1px solid rgba(255, 255, 255, 0.1);
+  @media (max-width: 1024px) {
+    .footer-main-grid {
+      grid-template-columns: 1fr;
+      gap: 48px;
+    }
+    .footer-nav {
+      grid-template-columns: repeat(4, 1fr);
+    }
+  }
+  @media (max-width: 640px) {
+    .footer-main { padding: 56px 0 40px; }
+    .footer-brand { align-items: center; text-align: center; }
+    .footer-mission { max-width: 100%; }
+    .footer-social { justify-content: center; }
+    .footer-donate-btn { align-self: center; }
+    .footer-nav {
+      grid-template-columns: 1fr 1fr;
+      gap: 32px 24px;
+    }
+  }
+
+  /* ─── Trust Signals Bar ────────────────── */
+  .footer-trust {
+    background: var(--c-dark-deep);
+    padding: 40px 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+  }
+  .footer-trust-inner {
     display: flex;
-    justify-content: center;
+    align-items: center;
+    justify-content: space-between;
+    gap: 40px;
+    flex-wrap: wrap;
   }
-
-  .footer-social img {
-    opacity: 0.8;
+  .footer-trust-badges {
+    display: flex;
+    align-items: center;
+    gap: 28px;
+    flex-wrap: wrap;
+  }
+  .trust-badge {
+    display: flex;
+    align-items: center;
     transition: opacity var(--transition-fast);
   }
-
-  .footer-social img:hover {
-    opacity: 1;
+  .trust-badge:hover { opacity: 0.8; }
+  .trust-badge img {
+    border-radius: 8px;
+    opacity: 0.85;
   }
-
-  /* ─── Bottom Bar ───────────────────────── */
-  .footer-bottom {
-    background: var(--c-dark-deep);
-    padding-block: var(--space-lg);
-  }
-
-  .footer-bottom-inner {
-    text-align: center;
+  .trust-badge--text {
     display: flex;
     flex-direction: column;
-    gap: var(--space-xs);
+    gap: 2px;
+    padding-left: 24px;
+    border-left: 1px solid rgba(255, 255, 255, 0.08);
   }
-
-  .footer-contact {
-    font-size: 0.8rem;
-    color: rgba(255, 255, 255, 0.5);
+  .trust-badge-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.4);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
   }
-
-  .footer-contact a {
+  .trust-badge-value {
+    font-size: 14px;
+    font-weight: 600;
     color: var(--c-yellow);
-    text-decoration: underline;
-    text-underline-offset: 2px;
   }
 
-  .footer-legal {
-    font-size: 0.75rem;
-    color: rgba(255, 255, 255, 0.35);
-  }
-
-  .footer-legal-links {
-    font-size: 0.75rem;
-    color: rgba(255, 255, 255, 0.35);
+  /* Contact */
+  .footer-contact {
+    font-style: normal;
     display: flex;
-    justify-content: center;
-    gap: var(--space-sm);
+    gap: 24px;
+    flex-wrap: wrap;
   }
-
-  .footer-legal-links a {
+  .footer-contact-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
     color: rgba(255, 255, 255, 0.45);
-    text-decoration: underline;
-    text-underline-offset: 2px;
+    text-decoration: none;
+    transition: color var(--transition-fast);
+    white-space: nowrap;
+  }
+  .footer-contact-item:hover { color: var(--c-yellow); }
+  .footer-contact-item svg { flex-shrink: 0; opacity: 0.5; }
+
+  @media (max-width: 768px) {
+    .footer-trust-inner {
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+    }
+    .footer-trust-badges { justify-content: center; }
+    .footer-contact {
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+    }
+    .footer-contact-item { white-space: normal; text-align: center; }
   }
 
-  .footer-legal-links a:hover {
-    color: var(--c-white);
+  /* ─── Legal Bar ────────────────────────── */
+  .footer-legal {
+    background: var(--c-dark-deep);
+    padding: 20px 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.04);
+  }
+  .footer-legal-inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .footer-copyright {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.3);
+  }
+  .footer-legal-links {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.25);
+  }
+  .footer-legal-links a {
+    color: rgba(255, 255, 255, 0.35);
+    text-decoration: none;
+    transition: color var(--transition-fast);
+  }
+  .footer-legal-links a:hover { color: var(--c-white); }
+
+  @media (max-width: 640px) {
+    .footer-legal-inner {
+      flex-direction: column;
+      text-align: center;
+      gap: 8px;
+    }
   }
 </style>
