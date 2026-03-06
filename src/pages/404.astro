@@ -1,25 +1,36 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
+import Button from '../components/ui/Button.astro';
 ---
-<BaseLayout title="Page Not Found" description="The page you're looking for doesn't exist.">
-  <section class="lost">
-    <div class="lost-inner">
-      <span class="lost-num">404</span>
-      <h1>This page doesn't exist</h1>
-      <p>But these kids do — and they need your help. Let's get you somewhere useful.</p>
-      <div class="lost-btns">
-        <a href="/" class="btn btn-primary">Go Home</a>
-        <a href="/donate" zeffy-form-link="https://www.zeffy.com/embed/donation-form/help-build-a-brighter-home?modal=true" class="btn btn-dark">Donate ♥</a>
-        <a href="/kids" class="btn btn-ghost">Meet Our Kids</a>
+
+<BaseLayout title="Page Not Found">
+  <section class="not-found">
+    <div class="container" style="text-align: center;">
+      <span class="not-found__emoji" aria-hidden="true">🐷</span>
+      <h1>Oops! Page Not Found</h1>
+      <p style="margin-top: var(--space-md); color: var(--c-text-muted); font-size: 1.1rem; max-width: 500px; margin-inline: auto;">
+        Gracie couldn't find the page you're looking for.
+        It may have been moved during our site rebuild.
+      </p>
+      <div style="margin-top: var(--space-xl); display: flex; gap: var(--space-md); justify-content: center; flex-wrap: wrap;">
+        <Button href="/">Go Home</Button>
+        <Button href="/kids/" variant="outline">Meet the Kids</Button>
       </div>
     </div>
   </section>
 </BaseLayout>
+
 <style>
-  .lost{min-height:calc(100vh - 76px);display:flex;align-items:center;justify-content:center;padding:80px var(--page-padding);text-align:center;}
-  .lost-inner{max-width:520px;}
-  .lost-num{font-family:var(--f-display);font-size:clamp(100px,20vw,180px);font-weight:700;color:var(--c-yellow);line-height:0.9;display:block;margin-bottom:12px;}
-  .lost h1{margin-bottom:12px;font-size:clamp(24px,3vw,32px);}
-  .lost p{font-size:18px;margin-bottom:36px;}
-  .lost-btns{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;}
+  .not-found {
+    padding-block: var(--space-5xl);
+    min-height: 60vh;
+    display: flex;
+    align-items: center;
+  }
+
+  .not-found__emoji {
+    font-size: 4rem;
+    display: block;
+    margin-bottom: var(--space-lg);
+  }
 </style>

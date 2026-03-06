@@ -1,0 +1,59 @@
+{
+  "name": "Jackson",
+  "slug": "jackson",
+  "wpSlug": "jackson",
+  "wpUrl": "https://sunshineonaranneyday.com/blog/2026/03/05/jackson/",
+  "age": 10,
+  "diagnosis": "SYNGAP1",
+  "roomTypes": [
+    "Therapy Room"
+  ],
+  "year": 2026,
+  "status": "in-progress",
+  "bio": "Jackson has a SYNGAP1-related neurological disorder, Level 3 autism, and Lennox-Gastaut syndrome, complex conditions that cause severe developmental delays, limited verbal communication, and frequent, difficult-to-control seizures. These diagnoses impact nearly every aspect of his daily life.\n\nJackson is incredibly bright and curious. He is also highly active and has little awareness of danger, which means his parents must provide constant supervision to keep him safe. He can quickly figure out how to open doors, requiring his family to take extra precautions throughout their home.\n\nJackson loves to climb and seeks out sensory input through movement, jumping, and active play. Because of his sensory needs and safety challenges, a dedicated therapy bedroom designed specifically for him is essential.",
+  "quote": null,
+  "heroImage": "https://sunshineonaranneyday.com/wp-content/uploads/2026/03/b9957ae497784753b5cb274a4425dc1b.jpg",
+  "photos": [
+    {
+      "wpPath": "wp-content/uploads/2025/10/ChatGPT-Image-Apr-23-2025-at-10_29_09-AM-7ab43c21.webp",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2025/10/ChatGPT-Image-Apr-23-2025-at-10_29_09-AM-7ab43c21.webp",
+      "alt": ""
+    }
+  ],
+  "photoCount": 1,
+  "videoUrl": null,
+  "photographer": null,
+  "partnerLogos": [
+    {
+      "wpPath": "wp-content/uploads/2024/03/logo_kids_r_kids.png",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2024/03/logo_kids_r_kids.png"
+    },
+    {
+      "wpPath": "wp-content/uploads/2024/07/logo_construction_partner_real_floors_commercial.png",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2024/07/logo_construction_partner_real_floors_commercial.png"
+    },
+    {
+      "wpPath": "wp-content/uploads/2025/03/WYP-Logo-e1742501745449.jpg",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2025/03/WYP-Logo-e1742501745449.jpg"
+    }
+  ],
+  "shortDescription": null,
+  "metaDescription": null,
+  "altTexts": null,
+  "jsonLd": null,
+  "_migration": {
+    "scrapedAt": "2026-03-06T13:32:09.511Z",
+    "source": "wordpress-xml-export",
+    "wpPostDate": "2026-03-05 17:50:22",
+    "wpCategories": [
+      "Meet the Kids"
+    ],
+    "wpTags": [
+      "2026",
+      "In Progress",
+      "Therapy Room"
+    ],
+    "thumbnailId": 10619,
+    "needsReview": []
+  }
+}

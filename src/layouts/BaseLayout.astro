@@ -1,19 +1,33 @@
 ---
+/**
+ * BaseLayout.astro
+ * Root layout wrapping every page. Handles <html>, <head>, fonts,
+ * meta tags, JSON-LD slot, and the global Header/Footer.
+ */
+import Header from '../components/global/Header.astro';
+import Footer from '../components/global/Footer.astro';
 import '../styles/global.css';
-import Header from '../components/Header.astro';
-import Footer from '../components/Footer.astro';
 
 interface Props {
   title: string;
-  description: string;
-  image?: string;
+  description?: string;
+  ogImage?: string;
   jsonLd?: object;
+  bodyClass?: string;
 }
 
-const { title, description, image, jsonLd } = Astro.props;
+const {
+  title,
+  description = 'Sunshine on a Ranney Day creates life-changing home makeovers for children with special needs — dream bedrooms, accessible bathrooms, and therapy rooms — all at no cost to families.',
+  ogImage = '/og-default.jpg',
+  jsonLd,
+  bodyClass = '',
+} = Astro.props;
+
 const canonicalURL = new URL(Astro.url.pathname, Astro.site);
-const fullTitle = `${title} | Sunshine on a Ranney Day`;
-const ogImage = image || 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/logo-circle/og';
+const fullTitle = title === 'Home'
+  ? 'Sunshine on a Ranney Day — Dreams Built Here'
+  : `${title} | Sunshine on a Ranney Day`;
 ---
 
 <!DOCTYPE html>
@@ -21,26 +35,17 @@ const ogImage = image || 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/logo-
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="theme-color" content="#FFD500" />
+
+  <!-- SEO -->
   <title>{fullTitle}</title>
   <meta name="description" content={description} />
   <link rel="canonical" href={canonicalURL} />
 
-  <!-- Preconnect for image CDN (Cloudflare Images) -->
-  <link rel="preconnect" href="https://imagedelivery.net" />
-
-  <!-- Preload critical fonts (eliminates FOIT/FOUT) -->
-  <link rel="preload" href="/fonts/outfit-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin />
-  <link rel="preload" href="/fonts/libre-baskerville-latin-700-normal.woff2" as="font" type="font/woff2" crossorigin />
-
-  <!-- Zeffy donation popup -->
-  <script src="https://zeffy-scripts.s3.ca-central-1.amazonaws.com/embed-form-script.min.js" defer></script>
-
   <!-- Open Graph -->
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content={canonicalURL} />
   <meta property="og:title" content={fullTitle} />
   <meta property="og:description" content={description} />
-  <meta property="og:url" content={canonicalURL} />
-  <meta property="og:type" content="website" />
   <meta property="og:image" content={ogImage} />
   <meta property="og:site_name" content="Sunshine on a Ranney Day" />
 
@@ -50,47 +55,43 @@ const ogImage = image || 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/logo-
   <meta name="twitter:description" content={description} />
   <meta name="twitter:image" content={ogImage} />
 
-  <!-- JSON-LD page-specific -->
+  <!-- Favicon -->
+  <link rel="icon" href="/favicon.ico" sizes="any" />
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+
+  <!-- Fonts: Google Fonts for now, self-hosted woff2 for production -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&family=Outfit:wght@300;400;500;600;700&display=swap"
+    rel="stylesheet"
+  />
+
+  <!-- JSON-LD Structured Data -->
   {jsonLd && (
     <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
   )}
 
-  <!-- JSON-LD Organization (every page) -->
-  <script type="application/ld+json" set:html={JSON.stringify({
-    "@context": "https://schema.org",
-    "@type": "NonprofitOrganization",
-    "name": "Sunshine on a Ranney Day",
-    "url": "https://sunshineonaranneyday.com",
-    "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/logo-light-bg/full",
-    "description": "501(c)(3) nonprofit creating life-changing home makeovers for children with special needs and life-altering illnesses.",
-    "address": {
-      "@type": "PostalAddress",
-      "streetAddress": "250 Hembree Park Drive, Suite 106",
-      "addressLocality": "Roswell",
-      "addressRegion": "GA",
-      "postalCode": "30076",
-      "addressCountry": "US"
-    },
-    "telephone": "+17709902434",
-    "email": "info@soardcharity.com",
-    "foundingDate": "2012",
-    "sameAs": [
-      "https://www.facebook.com/sunshineonaranneyday",
-      "https://www.instagram.com/sunshineonaranneyday"
-    ]
-  })} />
-
-  <!-- Favicon -->
-  <link rel="icon" type="image/png" href="/favicon.png" />
-  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <!-- Facebook Pixel (async) -->
+  <script is:inline>
+    !function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+    n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;
+    n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;
+    t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,
+    document,'script','https://connect.facebook.net/en_US/fbevents.js');
+    fbq('init','1325956761183424');fbq('track','PageView');
+  </script>
+  <noscript>
+    <img height="1" width="1" style="display:none"
+      src="https://www.facebook.com/tr?id=1325956761183424&ev=PageView&noscript=1" />
+  </noscript>
 </head>
-<body>
+<body class={bodyClass}>
+  <a href="#main-content" class="skip-link">Skip to main content</a>
   <Header />
-
-  <main id="tm-main">
+  <main id="main-content">
     <slot />
   </main>
-
   <Footer />
 </body>
 </html>

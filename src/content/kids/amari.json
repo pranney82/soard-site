@@ -1,16 +1,263 @@
 {
-  "slug": "amari",
   "name": "Amari",
-  "age": 7,
-  "diagnosis": "Cerebral Palsy",
-  "location": "Marietta, GA",
-  "roomType": "Dream Bedroom",
-  "bio": "TODO: AI-generated bio",
-  "shortDescription": "A dinosaur-loving 7-year-old gets the room of his dreams",
-  "metaDescription": "Meet Amari — a 7-year-old with cerebral palsy whose bedroom was transformed into a dinosaur paradise by Sunshine on a Ranney Day.",
-  "photos": [],
-  "completionDate": "2025-10-21",
-  "designPartner": "Crosby Design Group",
-  "constructionPartner": "CR Construction",
-  "publishedAt": "2025-10-22T14:30:00Z"
+  "slug": "amari",
+  "wpSlug": "amari",
+  "wpUrl": "https://sunshineonaranneyday.com/blog/2025/10/21/amari/",
+  "age": 10,
+  "diagnosis": "Paralysis from waist down and amputation of leg",
+  "roomTypes": [
+    "Accessible Bathroom",
+    "Dream Bedroom"
+  ],
+  "year": 2025,
+  "status": "completed",
+  "bio": "Amari is a bright and energetic 10-year-old with a huge love for sports. He enjoys playing flag football, shooting hoops, watching WWE, and hanging out with friends in his neighborhood. His energy is contagious, and his competitive spirit lights up every field and court he's on.\n\nOne morning on the way to school, what started as an ordinary drive turned into a moment that changed everything. A car traveling the wrong way struck Amari and his father head-on. The accident left Amari with serious injuries, including paralysis and the loss of his right leg. Since that day, Amari and his family have been adjusting to a new way of life as he learns to navigate the world in a wheelchair.\n\nSunshine on a Ranney Day is honored to be part of Amari's journey. SOARD will transforming Amari's home into a space that supports his growth and independence, complete with a wheelchair-accessible bathroom, widened doorways, and a dream bedroom. This renovation is more than construction, it's the foundation for Amari's continued growth, independence, and endless possibilities ahead.",
+  "quote": null,
+  "heroImage": "https://sunshineonaranneyday.com/wp-content/uploads/2025/10/IMG_2084-scaled.jpg",
+  "photos": [
+    {
+      "wpPath": "wp-content/uploads/2026/02/Riley-Lin.png",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2026/02/Riley-Lin.png",
+      "alt": ""
+    },
+    {
+      "wpPath": "wp-content/uploads/2025/10/IMG_2084-scaled.jpg",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2025/10/IMG_2084-scaled.jpg",
+      "alt": ""
+    },
+    {
+      "wpPath": "wp-content/uploads/2025/10/IMG_2149-scaled.jpg",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2025/10/IMG_2149-scaled.jpg",
+      "alt": ""
+    },
+    {
+      "wpPath": "wp-content/uploads/2025/10/IMG_2164-scaled.jpg",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2025/10/IMG_2164-scaled.jpg",
+      "alt": ""
+    },
+    {
+      "wpPath": "wp-content/uploads/2025/10/IMG_2059-scaled.jpg",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2025/10/IMG_2059-scaled.jpg",
+      "alt": ""
+    },
+    {
+      "wpPath": "wp-content/uploads/2025/10/Screenshot-2025-11-06-at-10.59.05.png",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2025/10/Screenshot-2025-11-06-at-10.59.05.png",
+      "alt": ""
+    },
+    {
+      "wpPath": "wp-content/uploads/2026/01/IMG_6721-2.jpg",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2026/01/IMG_6721-2.jpg",
+      "alt": ""
+    },
+    {
+      "wpPath": "wp-content/uploads/2026/01/IMG_6720-2.jpg",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2026/01/IMG_6720-2.jpg",
+      "alt": ""
+    },
+    {
+      "wpPath": "wp-content/uploads/2026/01/IMG_6684-2.jpg",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2026/01/IMG_6684-2.jpg",
+      "alt": ""
+    },
+    {
+      "wpPath": "wp-content/uploads/2026/01/IMG_6672-2.jpg",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2026/01/IMG_6672-2.jpg",
+      "alt": ""
+    },
+    {
+      "wpPath": "wp-content/uploads/2026/01/IMG_6648-2.jpg",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2026/01/IMG_6648-2.jpg",
+      "alt": ""
+    },
+    {
+      "wpPath": "wp-content/uploads/2026/01/IMG_6644-2.jpg",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2026/01/IMG_6644-2.jpg",
+      "alt": ""
+    },
+    {
+      "wpPath": "wp-content/uploads/2026/01/IMG_6630-2.jpg",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2026/01/IMG_6630-2.jpg",
+      "alt": ""
+    },
+    {
+      "wpPath": "wp-content/uploads/2026/01/IMG_6628-2.jpg",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2026/01/IMG_6628-2.jpg",
+      "alt": ""
+    },
+    {
+      "wpPath": "wp-content/uploads/2026/01/IMG_6620-2.jpg",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2026/01/IMG_6620-2.jpg",
+      "alt": ""
+    },
+    {
+      "wpPath": "wp-content/uploads/2026/01/IMG_6612-2.jpg",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2026/01/IMG_6612-2.jpg",
+      "alt": ""
+    },
+    {
+      "wpPath": "wp-content/uploads/2026/01/IMG_6570-2.jpg",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2026/01/IMG_6570-2.jpg",
+      "alt": ""
+    },
+    {
+      "wpPath": "wp-content/uploads/2026/01/IMG_6528-2.jpg",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2026/01/IMG_6528-2.jpg",
+      "alt": ""
+    },
+    {
+      "wpPath": "wp-content/uploads/2026/01/IMG_6478-2-Pano.jpg",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2026/01/IMG_6478-2-Pano.jpg",
+      "alt": ""
+    },
+    {
+      "wpPath": "wp-content/uploads/2026/01/IMG_6466-2.jpg",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2026/01/IMG_6466-2.jpg",
+      "alt": ""
+    },
+    {
+      "wpPath": "wp-content/uploads/2026/01/IMG_6456-2.jpg",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2026/01/IMG_6456-2.jpg",
+      "alt": ""
+    },
+    {
+      "wpPath": "wp-content/uploads/2026/01/IMG_6433-2.jpg",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2026/01/IMG_6433-2.jpg",
+      "alt": ""
+    },
+    {
+      "wpPath": "wp-content/uploads/2026/01/IMG_6412-2-Pano.jpg",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2026/01/IMG_6412-2-Pano.jpg",
+      "alt": ""
+    },
+    {
+      "wpPath": "wp-content/uploads/2026/01/IMG_6405-2.jpg",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2026/01/IMG_6405-2.jpg",
+      "alt": ""
+    },
+    {
+      "wpPath": "wp-content/uploads/2025/12/tyff_400-2.png",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2025/12/tyff_400-2.png",
+      "alt": ""
+    },
+    {
+      "wpPath": "wp-content/uploads/2022/01/F1.jpeg",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2022/01/F1.jpeg",
+      "alt": ""
+    },
+    {
+      "wpPath": "wp-content/uploads/2025/11/LOGO-Edited.png",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2025/11/LOGO-Edited.png",
+      "alt": ""
+    }
+  ],
+  "photoCount": 27,
+  "videoUrl": "https://youtu.be/Vvjc7xA8z_U?si=pttHZJh6tEStKQlX",
+  "photographer": null,
+  "partnerLogos": [
+    {
+      "wpPath": "wp-content/uploads/2024/07/logo_construction_partner_real_floors_commercial.png",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2024/07/logo_construction_partner_real_floors_commercial.png"
+    },
+    {
+      "wpPath": "wp-content/uploads/2025/03/WYP-Logo-e1742501745449.jpg",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2025/03/WYP-Logo-e1742501745449.jpg"
+    },
+    {
+      "wpPath": "wp-content/uploads/2024/08/logo_construction_partner_mohawk.png",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2024/08/logo_construction_partner_mohawk.png"
+    },
+    {
+      "wpPath": "wp-content/uploads/2021/06/logo_cr_construction.png",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2021/06/logo_cr_construction.png"
+    },
+    {
+      "wpPath": "wp-content/uploads/2024/05/logo_msi-e1742503403797.png",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2024/05/logo_msi-e1742503403797.png"
+    },
+    {
+      "wpPath": "wp-content/uploads/2024/09/logo_construction_partner_cambria.png",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2024/09/logo_construction_partner_cambria.png"
+    },
+    {
+      "wpPath": "wp-content/uploads/2024/09/logo_construction_partner_randall_brothers-e1742501096843.png",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2024/09/logo_construction_partner_randall_brothers-e1742501096843.png"
+    },
+    {
+      "wpPath": "wp-content/uploads/2024/05/logo_sherwin_williams-2.png",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2024/05/logo_sherwin_williams-2.png"
+    },
+    {
+      "wpPath": "wp-content/uploads/2021/06/logo_comfort_research.png",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2021/06/logo_comfort_research.png"
+    },
+    {
+      "wpPath": "wp-content/uploads/2024/09/logo_construction_partner_pulley_and_associates.png",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2024/09/logo_construction_partner_pulley_and_associates.png"
+    },
+    {
+      "wpPath": "wp-content/uploads/2021/06/logo_top_knobs.png",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2021/06/logo_top_knobs.png"
+    },
+    {
+      "wpPath": "wp-content/uploads/2021/06/logo_echols.png",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2021/06/logo_echols.png"
+    },
+    {
+      "wpPath": "wp-content/uploads/2025/11/LOGO-Edited.png",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2025/11/LOGO-Edited.png"
+    },
+    {
+      "wpPath": "wp-content/uploads/2024/08/logo_construction_partner_servicewise_electric.png",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2024/08/logo_construction_partner_servicewise_electric.png"
+    },
+    {
+      "wpPath": "wp-content/uploads/2024/08/logo_construction_partner_tko_plumbing.png",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2024/08/logo_construction_partner_tko_plumbing.png"
+    },
+    {
+      "wpPath": "wp-content/uploads/2025/01/logo_Georgia_Interior_Painting.png",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2025/01/logo_Georgia_Interior_Painting.png"
+    },
+    {
+      "wpPath": "wp-content/uploads/2021/06/logo_101_mobility.png",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2021/06/logo_101_mobility.png"
+    },
+    {
+      "wpPath": "wp-content/uploads/2024/09/logo_construction_partner_bin_there_dump_that.png",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2024/09/logo_construction_partner_bin_there_dump_that.png"
+    },
+    {
+      "wpPath": "wp-content/uploads/2023/12/logo_rosalind_williams_photography.png",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2023/12/logo_rosalind_williams_photography.png"
+    },
+    {
+      "wpPath": "wp-content/uploads/2021/06/logo_iframe_media.png",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2021/06/logo_iframe_media.png"
+    },
+    {
+      "wpPath": "wp-content/uploads/2021/06/logo_nothing_bundt_cakes.png",
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2021/06/logo_nothing_bundt_cakes.png"
+    }
+  ],
+  "shortDescription": null,
+  "metaDescription": null,
+  "altTexts": null,
+  "jsonLd": null,
+  "_migration": {
+    "scrapedAt": "2026-03-06T13:32:09.506Z",
+    "source": "wordpress-xml-export",
+    "wpPostDate": "2025-10-21 18:12:26",
+    "wpCategories": [
+      "Meet the Kids"
+    ],
+    "wpTags": [
+      "2025",
+      "Accessible Bathroom",
+      "background-top-center",
+      "Dream Bedroom"
+    ],
+    "thumbnailId": 10223,
+    "needsReview": []
+  }
 }

@@ -1,25 +1,30 @@
 {
-  "stats": {
-    "totalKids": 132,
-    "totalRooms": 106,
-    "totalTherapyRooms": 45
+  "name": "Sunshine on a Ranney Day",
+  "shortName": "SOARD",
+  "tagline": "Dreams Built Here",
+  "description": "Sunshine on a Ranney Day creates life-changing home makeovers for children with special needs — dream bedrooms, accessible bathrooms, and therapy rooms — all at no cost to families.",
+  "founded": 2012,
+  "ein": "45-4773997",
+  "address": {
+    "street": "250 Hembree Park Drive, Suite 106",
+    "city": "Roswell",
+    "state": "GA",
+    "zip": "30076"
   },
-  "mission": "Building Dreams, One Room at a Time",
-  "tagline": "Creating life-changing home makeovers for children with special needs",
-  "address": "250 Hembree Park Drive, Suite 106, Roswell GA 30076",
   "phone": "770.990.2434",
   "email": "info@soardcharity.com",
-  "ein": "45-4773997",
   "social": {
     "facebook": "https://www.facebook.com/sunshineonaranneyday",
     "instagram": "https://www.instagram.com/sunshineonaranneyday"
   },
-  "hero": {
-    "headline": "Building *dreams*, one room at a time",
-    "subheadline": "We create life-changing spaces for children with special needs — dream bedrooms, accessible bathrooms, and therapy rooms — all at no cost to families.",
-    "image": null,
-    "videoUrl": null
+  "stores": {
+    "sunnyAndRanney": "https://sunnyandranney.com",
+    "partlySunny": "https://partlysunnystore.com"
   },
-  "featuredKid": "amari",
-  "cfImagesHash": "ROYFuPmfN2vPS6mt5sCkZQ"
+  "stats": {
+    "roomsCompleted": 106,
+    "kidsServed": 132,
+    "partners": 45
+  },
+  "guidestarUrl": "https://www.guidestar.org/profile/shared/2954b510-8c76-42e4-b589-7e826ca2cc47"
 }

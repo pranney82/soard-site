@@ -1,0 +1,54 @@
+---
+/**
+ * CFImage.astro
+ * Responsive image component. Currently works with direct URLs
+ * (WordPress wp-content or Cloudflare Images). When images are on
+ * Cloudflare Images, it will generate srcset with width variants.
+ */
+interface Props {
+  src: string;
+  alt: string;
+  width?: number;
+  height?: number;
+  sizes?: string;
+  loading?: 'lazy' | 'eager';
+  class?: string;
+  style?: string;
+}
+
+const {
+  src,
+  alt,
+  width,
+  height,
+  sizes = '(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw',
+  loading = 'lazy',
+  class: className = '',
+  style = '',
+} = Astro.props;
+
+// TODO: When images are on Cloudflare Images, generate srcset
+// with /cdn-cgi/image/width=X,format=auto/ transform URLs
+const isCFImage = src.includes('imagedelivery.net');
+---
+
+<img
+  src={src}
+  alt={alt}
+  width={width}
+  height={height}
+  sizes={sizes}
+  loading={loading}
+  decoding="async"
+  class:list={['cf-image', className]}
+  style={style}
+/>
+
+<style>
+  .cf-image {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    object-fit: cover;
+  }
+</style>

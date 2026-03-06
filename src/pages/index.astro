@@ -1,1005 +1,198 @@
 ---
+/**
+ * Home Page
+ * Hero, room types, stats, partner logos, newsletter
+ */
 import BaseLayout from '../layouts/BaseLayout.astro';
-
-const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
-const stats = { totalKids: 132, totalRooms: 106, totalTherapyRooms: 45 };
-const partners = ['Gas South', 'Randall Paulson', 'Kids R Kids', 'Cambria', 'Mohawk', 'Jackson Healthcare', 'Crosby Design', 'MSI', 'CR Construction', 'Stag Partners', 'WYP'];
+import Button from '../components/ui/Button.astro';
+import SectionHeading from '../components/ui/SectionHeading.astro';
 ---
 
-<BaseLayout
-  title="Building Dreams, One Room at a Time"
-  description="Sunshine on a Ranney Day is a 501(c)(3) nonprofit creating life-changing home makeovers for children with special needs — dream bedrooms, accessible bathrooms, and therapy spaces at no cost to families."
->
-
-  <!-- ══════ HERO — CINEMATIC FULL-BLEED ══════ -->
+<BaseLayout title="Home">
+  <!-- Hero -->
   <section class="hero">
-    <div class="hero-media">
-      <!-- Replace with actual room reveal hero photo -->
-      <div class="hero-photo-placeholder"></div>
-      <div class="hero-overlay"></div>
-    </div>
-
-    <div class="hero-inner">
-      <div class="hero-content">
-        <div class="hero-eyebrow" data-reveal>
-          <span class="hero-eyebrow-line"></span>
-          501(c)(3) Nonprofit · Atlanta, GA · Since 2012
-        </div>
-        <h1 data-reveal data-delay="1">
-          Building <em>dreams</em>,<br/>one room at a time
-        </h1>
-        <p class="hero-lead" data-reveal data-delay="2">
-          We create life-changing spaces for children with special needs — dream bedrooms, accessible bathrooms, and therapy rooms — all at <strong>no cost to families</strong>.
-        </p>
-        <div class="hero-ctas" data-reveal data-delay="3">
-          <a href="/donate" zeffy-form-link="https://www.zeffy.com/embed/donation-form/help-build-a-brighter-home?modal=true" class="btn btn-primary btn-glow">
-            Give Today
-            <svg width="18" height="18" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 2.5C6.5 1 4 1 2.75 2.75S2.5 6.5 8 11.5C13.5 6.5 13.75 4.5 13.25 2.75S9.5 1 8 2.5Z" fill="currentColor"/></svg>
-          </a>
-          <a href="#stories" class="btn btn-ghost-light">See Our Work ↓</a>
-        </div>
-      </div>
-
-      <!-- Floating impact counter -->
-      <div class="hero-impact" data-reveal data-delay="4">
-        <div class="hero-impact-num">{stats.totalKids}<span>+</span></div>
-        <div class="hero-impact-label">children's lives<br/>transformed</div>
-      </div>
-    </div>
-
-    <!-- Scroll indicator -->
-    <div class="hero-scroll" aria-hidden="true">
-      <div class="hero-scroll-line"></div>
-    </div>
-  </section>
-
-  <!-- ══════ IMPACT RIBBON ══════ -->
-  <section class="ribbon" aria-label="Impact numbers">
-    <div class="ribbon-inner">
-      <div class="ribbon-stat" data-reveal>
-        <span class="ribbon-num">{stats.totalRooms}+</span>
-        <span class="ribbon-label">Room Makeovers</span>
-      </div>
-      <div class="ribbon-divider"></div>
-      <div class="ribbon-stat" data-reveal data-delay="1">
-        <span class="ribbon-num">{stats.totalKids}+</span>
-        <span class="ribbon-label">Children Served</span>
-      </div>
-      <div class="ribbon-divider"></div>
-      <div class="ribbon-stat" data-reveal data-delay="2">
-        <span class="ribbon-num">13</span>
-        <span class="ribbon-label">Years of Impact</span>
-      </div>
-      <div class="ribbon-divider"></div>
-      <div class="ribbon-stat" data-reveal data-delay="3">
-        <span class="ribbon-num">100<span class="ribbon-pct">%</span></span>
-        <span class="ribbon-label">Goes to Kids</span>
+    <div class="container">
+      <h1 class="hero__title">Building Dreams,<br/>One Room at a Time</h1>
+      <p class="hero__subtitle">
+        Sunshine on a Ranney Day is a 501(c)(3) nonprofit creating
+        life-changing home makeovers for children with special needs — dream
+        bedrooms, accessible bathrooms, and therapy spaces — <strong>all at no cost
+        to families.</strong>
+      </p>
+      <div class="hero__actions">
+        <Button href="/donate/" size="lg">Donate Today</Button>
+        <Button href="/kids/" variant="outline" size="lg" class="hero__btn-outline">Meet the Kids</Button>
       </div>
     </div>
   </section>
 
-  <!-- ══════ MISSION — EDITORIAL SPREAD ══════ -->
-  <section class="mission">
-    <div class="mission-inner">
-      <div class="mission-text" data-reveal>
-        <div class="section-label">Our Mission</div>
-        <h2>A bedroom isn't just a room. It's where a child feels <em class="highlight">safe</em>, <em class="highlight">seen</em>, and <em class="highlight">loved</em>.</h2>
-        <p class="mission-body">For children with special needs, a thoughtfully designed room changes everything. Sensory-friendly lighting that calms instead of overwhelms. Adaptive furniture that grants independence. Colors and themes chosen by the child — because this space is <em>theirs</em>.</p>
-        <p class="mission-body">Since 2012, we've partnered with designers, contractors, and families across Greater Atlanta to create over {stats.totalRooms} life-changing spaces. Every project is different because every child is different.</p>
-      </div>
-      <div class="mission-visual">
-        <!-- Replace with actual photo collage -->
-        <div class="mission-photo mission-photo--main" data-reveal>
-          <div class="mission-placeholder"><span>Room reveal photo</span></div>
-        </div>
-        <div class="mission-photo mission-photo--accent" data-reveal data-delay="1">
-          <div class="mission-placeholder mission-placeholder--warm"><span>Happy child</span></div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ══════ ROOM TYPES — MAGAZINE CARDS ══════ -->
-  <section class="rooms">
-    <div class="rooms-inner">
-      <div class="rooms-header" data-reveal>
-        <div class="section-label">What We Build</div>
-        <h2>Three types of spaces, one purpose: <em class="highlight">empowering kids</em></h2>
-      </div>
-
-      <div class="rooms-grid">
-        <a href="/kids" class="room-tile" data-accent="bedroom" data-reveal>
-          <div class="room-tile-photo"><div class="room-tile-placeholder">🛏️</div></div>
-          <div class="room-tile-content">
-            <span class="room-tile-tag">Most Popular</span>
-            <h3>Dream Bedrooms</h3>
-            <p>Personalized sanctuaries where children can escape, imagine, and simply be kids — designed around their unique interests and needs.</p>
-            <span class="room-tile-link">See bedrooms →</span>
-          </div>
+  <!-- Room Types -->
+  <section class="section">
+    <div class="container">
+      <div class="room-grid">
+        <a href="/rooms/?type=accessible-bathroom" class="room-card">
+          <div class="room-card__icon">🚿</div>
+          <h3>Accessible Bathrooms</h3>
+          <p>Giving a child with special needs independence in the bathroom reduces the stress placed on a caregiver.</p>
         </a>
-
-        <a href="/kids" class="room-tile" data-accent="bath" data-reveal data-delay="1">
-          <div class="room-tile-photo"><div class="room-tile-placeholder">🚿</div></div>
-          <div class="room-tile-content">
-            <span class="room-tile-tag">Life-Changing</span>
-            <h3>Accessible Bathrooms</h3>
-            <p>Roll-in showers, grab bars, and lowered vanities — giving children independence and giving families relief from daily struggles.</p>
-            <span class="room-tile-link">See bathrooms →</span>
-          </div>
+        <a href="/rooms/?type=dream-bedroom" class="room-card">
+          <div class="room-card__icon">🛏️</div>
+          <h3>Dream Bedrooms</h3>
+          <p>Every child deserves their own space to let their imagination soar and escape from their struggles.</p>
         </a>
-
-        <a href="/kids" class="room-tile" data-accent="therapy" data-reveal data-delay="2">
-          <div class="room-tile-photo"><div class="room-tile-placeholder">🧩</div></div>
-          <div class="room-tile-content">
-            <span class="room-tile-tag">Therapeutic</span>
-            <h3>Sensory & Therapy Rooms</h3>
-            <p>Calming retreats with dimmable lights, swings, crash pads, and textured walls — spaces where children can decompress and develop.</p>
-            <span class="room-tile-link">See therapy rooms →</span>
-          </div>
+        <a href="/rooms/?type=therapy-room" class="room-card">
+          <div class="room-card__icon">🧩</div>
+          <h3>Therapy Rooms</h3>
+          <p>The freedom of being able to exercise the mind and body from within a child's home can be life changing.</p>
         </a>
       </div>
     </div>
   </section>
 
-  <!-- ══════ FEATURED STORY — CINEMATIC ══════ -->
-  <section class="story" id="stories">
-    <div class="story-split">
-      <div class="story-photo">
-        <!-- Replace with actual reveal photo -->
-        <div class="story-photo-placeholder"></div>
-        <div class="story-photo-tag">Latest Reveal</div>
-      </div>
-      <div class="story-content" data-reveal>
-        <div class="section-label">Featured Story</div>
-        <span class="story-type">Dream Bedroom</span>
-        <h2>Amari's room was a revelation — for him and everyone who built it.</h2>
-        <p>At 7, Amari loves dinosaurs more than anything. His cerebral palsy means his old bedroom wasn't designed for his needs. Our team of designers and builders transformed it into a prehistoric paradise — with custom murals, an accessible loft, adaptive furniture, and a sensory lighting system that helps him sleep.</p>
-        <div class="story-partners">
-          <div><span class="story-partner-label">Design</span><span class="story-partner-name">Crosby Design Group</span></div>
-          <div><span class="story-partner-label">Build</span><span class="story-partner-name">CR Construction</span></div>
+  <!-- Stats -->
+  <section class="section section--gray">
+    <div class="container" style="text-align: center;">
+      <h2 style="margin-bottom: var(--space-2xl);">Room Makeovers Since 2012</h2>
+      <div class="stats-grid">
+        <div class="stat">
+          <span class="stat__number">106</span>
+          <span class="stat__label">Rooms Completed</span>
         </div>
-        <a href="/kids" class="btn btn-dark">Read Amari's Full Story →</a>
-      </div>
-    </div>
-  </section>
-
-  <!-- ══════ MORE KIDS — HORIZONTAL SCROLL ══════ -->
-  <section class="kids-strip">
-    <div class="kids-strip-header" data-reveal>
-      <div class="section-label">More Stories</div>
-      <h2>Every room changes a <em class="highlight">life</em></h2>
-      <a href="/kids" class="kids-strip-all">See all 132+ kids →</a>
-    </div>
-    <div class="kids-scroll">
-      <div class="kid-thumb">
-        <div class="kid-thumb-photo"><span>👦🏻</span></div>
-        <h4>Liam</h4>
-        <p>Sensory Room · Age 5</p>
-      </div>
-      <div class="kid-thumb">
-        <div class="kid-thumb-photo"><span>👧🏾</span></div>
-        <h4>Sofia</h4>
-        <p>Accessible Bath · Age 11</p>
-      </div>
-      <div class="kid-thumb">
-        <div class="kid-thumb-photo"><span>👦🏽</span></div>
-        <h4>Marcus</h4>
-        <p>Dream Bedroom · Age 9</p>
-      </div>
-      <div class="kid-thumb">
-        <div class="kid-thumb-photo"><span>👧🏻</span></div>
-        <h4>Emma</h4>
-        <p>Therapy Room · Age 7</p>
-      </div>
-      <div class="kid-thumb">
-        <div class="kid-thumb-photo"><span>👦🏿</span></div>
-        <h4>Jayden</h4>
-        <p>Dream Bedroom · Age 10</p>
-      </div>
-    </div>
-  </section>
-
-  <!-- ══════ HOW IT WORKS — TIMELINE ══════ -->
-  <section class="process">
-    <div class="process-inner">
-      <div class="process-header" data-reveal>
-        <div class="section-label">The Process</div>
-        <h2>From first call to <em class="highlight">big reveal</em></h2>
-      </div>
-      <div class="timeline">
-        <div class="timeline-step" data-reveal>
-          <div class="timeline-marker"><span>1</span></div>
-          <div class="timeline-body">
-            <h3>Family Applies</h3>
-            <p>A simple application — families tell us about their child, their needs, and their dreams for a new space.</p>
-          </div>
+        <div class="stat">
+          <span class="stat__number">132</span>
+          <span class="stat__label">Kids Served</span>
         </div>
-        <div class="timeline-step" data-reveal data-delay="1">
-          <div class="timeline-marker"><span>2</span></div>
-          <div class="timeline-body">
-            <h3>Design & Plan</h3>
-            <p>Our designer partners meet the family, learn the child's personality, and create a custom room concept.</p>
-          </div>
-        </div>
-        <div class="timeline-step" data-reveal data-delay="2">
-          <div class="timeline-marker"><span>3</span></div>
-          <div class="timeline-body">
-            <h3>Build & Transform</h3>
-            <p>Construction partners bring it to life — usually in just a few intense, loving days of work.</p>
-          </div>
-        </div>
-        <div class="timeline-step" data-reveal data-delay="3">
-          <div class="timeline-marker"><span>4</span></div>
-          <div class="timeline-body">
-            <h3>The Big Reveal ✨</h3>
-            <p>The moment. The child walks in, sees their new room, and everything changes. This is why we do it.</p>
-          </div>
+        <div class="stat">
+          <span class="stat__number">45</span>
+          <span class="stat__label">Partners</span>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- ══════ TRUST — DARK EDITORIAL ══════ -->
-  <section class="trust">
-    <div class="trust-inner">
-      <div class="trust-header" data-reveal>
-        <div class="section-label" style="color:var(--c-yellow)">Trust & Transparency</div>
-        <h2>We're an open book. <em>Always.</em></h2>
-        <p class="trust-subtitle">We believe you should know exactly where every dollar goes. Our financials are public, our mission is clear, and our track record speaks for itself.</p>
-      </div>
-
-      <div class="trust-grid">
-        <div class="trust-card" data-reveal>
-          <div class="trust-card-top">
-            <span class="trust-big">87%</span>
-            <span class="trust-card-label">Program Services</span>
-          </div>
-          <p>The vast majority of every dollar funds room materials, labor, and design for children's spaces.</p>
-        </div>
-        <div class="trust-card" data-reveal data-delay="1">
-          <div class="trust-card-top">
-            <span class="trust-big">📋</span>
-            <span class="trust-card-label">990 Public</span>
-          </div>
-          <p>Our IRS Form 990 tax returns are available for anyone to review, anytime.</p>
-        </div>
-        <div class="trust-card" data-reveal data-delay="2">
-          <div class="trust-card-top">
-            <span class="trust-big">✅</span>
-            <span class="trust-card-label">501(c)(3)</span>
-          </div>
-          <p>Registered nonprofit. EIN 45-4773997. All donations are fully tax-deductible.</p>
-        </div>
-      </div>
-
-      <div class="trust-cta" data-reveal>
-        <a href="/about#financials" class="btn btn-ghost-light">View Our Financials →</a>
-      </div>
+  <!-- CTA -->
+  <section class="section" style="text-align: center;">
+    <div class="container container--narrow">
+      <SectionHeading subtitle="Each donation goes to building accessible bathrooms, dream bedrooms, and therapy rooms for children with special needs.">
+        Help Us <span class="highlight">Build Dreams</span>
+      </SectionHeading>
+      <Button href="/donate/" size="lg">Donate Today</Button>
     </div>
   </section>
-
-  <!-- ══════ PARTNERS MARQUEE ══════ -->
-  <section class="marquee">
-    <div class="marquee-label">Trusted Partners Who Make It Possible</div>
-    <div class="marquee-track">
-      {[...partners, ...partners, ...partners].map(name => (
-        <div class="marquee-logo">{name}</div>
-      ))}
-    </div>
-  </section>
-
-  <!-- ══════ FINAL CTA — FULL BLEED YELLOW ══════ -->
-  <section class="finale">
-    <div class="finale-inner">
-      <img src={`${CF}/sunny-pig/nav`} alt="" class="finale-pig" aria-hidden="true" />
-      <h2 data-reveal>A room can change a child's life.<br/><em>You</em> can make it happen.</h2>
-      <p data-reveal data-delay="1">Every donation — every dollar — goes directly to building dream spaces for children with special needs in the Atlanta area. No middlemen. No overhead bloat. Just kids, rooms, and community.</p>
-      <div class="finale-ctas" data-reveal data-delay="2">
-        <a href="/donate" zeffy-form-link="https://www.zeffy.com/embed/donation-form/help-build-a-brighter-home?modal=true" class="btn btn-dark btn-lg">Donate Today</a>
-        <a href="/get-involved#apply" class="btn btn-outline-dark">Apply for a Room</a>
-      </div>
-      <p class="finale-note" data-reveal data-delay="3">All donations tax-deductible · 501(c)(3) · EIN 45-4773997</p>
-    </div>
-  </section>
-
 </BaseLayout>
 
 <style>
-  /* ══════════════════════════════════════════
-     HERO — Cinematic Full-Bleed
-     ══════════════════════════════════════════ */
+  /* ─── Hero ─────────────────────────────── */
   .hero {
-    position: relative;
-    min-height: 100vh;
-    min-height: 100dvh;
-    display: flex;
-    align-items: flex-end;
-    padding-bottom: 80px;
-    overflow: hidden;
-  }
-  .hero-media {
-    position: absolute;
-    inset: 0;
-    z-index: 0;
-  }
-  .hero-photo-placeholder {
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(135deg, #373A36 0%, #2D2E33 40%, #1A1B1F 100%);
-    /* Replace with real hero photo: background-image: url(...); background-size: cover; */
-  }
-  .hero-overlay {
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(
-      to top,
-      rgba(26, 27, 31, 0.95) 0%,
-      rgba(26, 27, 31, 0.6) 40%,
-      rgba(26, 27, 31, 0.3) 70%,
-      rgba(26, 27, 31, 0.1) 100%
-    );
-  }
-  .hero-inner {
-    position: relative;
-    z-index: 2;
-    max-width: var(--max-width);
-    margin: 0 auto;
-    padding: 0 var(--page-padding);
-    width: 100%;
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-end;
-  }
-  .hero-content {
-    max-width: 680px;
-  }
-  .hero-eyebrow {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    font-size: 12px;
-    font-weight: 600;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: rgba(255,255,255,0.5);
-    margin-bottom: 28px;
-  }
-  .hero-eyebrow-line {
-    width: 32px;
-    height: 1px;
-    background: var(--c-yellow);
-  }
-  .hero h1 {
-    font-size: clamp(40px, 6vw, 72px);
-    color: #fff;
-    line-height: 1.08;
-    margin-bottom: 24px;
-    letter-spacing: -0.03em;
-  }
-  .hero h1 em {
-    font-style: italic;
-    color: var(--c-yellow);
-  }
-  .hero-lead {
-    font-size: 19px;
-    color: rgba(255,255,255,0.6);
-    line-height: 1.7;
-    max-width: 540px;
-    margin-bottom: 40px;
-  }
-  .hero-lead strong { color: #fff; }
-  .hero-ctas {
-    display: flex;
-    gap: 16px;
-    flex-wrap: wrap;
-  }
-  .btn-glow {
-    animation: pulseGlow 3s ease-in-out infinite;
-  }
-  @keyframes pulseGlow {
-    0%, 100% { box-shadow: 0 8px 24px rgba(255, 213, 0, 0.3); }
-    50% { box-shadow: 0 8px 40px rgba(255, 213, 0, 0.55); }
-  }
-  .btn-ghost-light {
-    background: transparent;
-    color: #fff;
-    border: 1.5px solid rgba(255,255,255,0.25);
-    backdrop-filter: blur(4px);
-  }
-  .btn-ghost-light:hover {
-    background: rgba(255,255,255,0.1);
-    border-color: rgba(255,255,255,0.4);
-    transform: translateY(-3px);
-  }
-  .btn-outline-dark {
-    background: transparent;
-    color: var(--c-dark);
-    border: 2px solid var(--c-dark);
-  }
-  .btn-outline-dark:hover {
     background: var(--c-dark);
-    color: var(--c-yellow);
-  }
-  .btn-lg {
-    font-size: 17px;
-    padding: 18px 44px;
-  }
-
-  .hero-impact {
-    background: rgba(255,255,255,0.06);
-    backdrop-filter: blur(16px);
-    border: 1px solid rgba(255,255,255,0.1);
-    border-radius: 20px;
-    padding: 28px 32px;
+    color: var(--c-white);
+    padding-block: var(--space-5xl) var(--space-4xl);
     text-align: center;
-    flex-shrink: 0;
-  }
-  .hero-impact-num {
-    font-family: var(--f-display);
-    font-size: 56px;
-    font-weight: 700;
-    color: var(--c-yellow);
-    line-height: 1;
-  }
-  .hero-impact-num span { font-size: 32px; }
-  .hero-impact-label {
-    font-size: 13px;
-    font-weight: 500;
-    color: rgba(255,255,255,0.5);
-    margin-top: 6px;
-    line-height: 1.4;
   }
 
-  .hero-scroll {
-    position: absolute;
-    bottom: 24px;
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 3;
-  }
-  .hero-scroll-line {
-    width: 1px;
-    height: 48px;
-    background: linear-gradient(to bottom, var(--c-yellow), transparent);
-    animation: scrollPulse 2s ease infinite;
-  }
-  @keyframes scrollPulse {
-    0% { opacity: 1; transform: scaleY(1); }
-    50% { opacity: 0.3; transform: scaleY(0.6); }
-    100% { opacity: 1; transform: scaleY(1); }
+  .hero__title {
+    color: var(--c-white);
+    font-size: clamp(2.25rem, 5vw + 0.5rem, 4rem);
+    max-width: 800px;
+    margin-inline: auto;
   }
 
-  @media (max-width: 768px) {
-    .hero { align-items: center; padding: 100px 0 60px; }
-    .hero-inner { flex-direction: column; align-items: flex-start; }
-    .hero-impact { display: none; }
+  .hero__subtitle {
+    margin-top: var(--space-lg);
+    font-size: clamp(1rem, 1.5vw + 0.25rem, 1.2rem);
+    color: rgba(255, 255, 255, 0.8);
+    max-width: 680px;
+    margin-inline: auto;
+    line-height: 1.7;
   }
 
-  /* ══════════════════════════════════════════
-     RIBBON
-     ══════════════════════════════════════════ */
-  .ribbon {
-    background: var(--c-dark-deep);
-    padding: 56px 0;
-  }
-  .ribbon-inner {
-    max-width: var(--max-width);
-    margin: 0 auto;
-    padding: 0 var(--page-padding);
+  .hero__actions {
+    margin-top: var(--space-xl);
     display: flex;
+    gap: var(--space-md);
     justify-content: center;
-    align-items: center;
-    gap: 48px;
     flex-wrap: wrap;
   }
-  .ribbon-stat { text-align: center; min-width: 130px; }
-  .ribbon-num {
-    font-family: var(--f-display);
-    font-size: clamp(36px, 5vw, 52px);
-    font-weight: 700;
-    color: var(--c-yellow);
-    line-height: 1;
-  }
-  .ribbon-pct { font-size: 0.6em; }
-  .ribbon-label {
-    display: block;
-    font-size: 12px;
-    font-weight: 600;
-    color: rgba(255,255,255,0.35);
-    text-transform: uppercase;
-    letter-spacing: 0.12em;
-    margin-top: 8px;
-  }
-  .ribbon-divider {
-    width: 1px;
-    height: 40px;
-    background: rgba(255,255,255,0.08);
-  }
-  @media (max-width: 600px) {
-    .ribbon-inner { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; }
-    .ribbon-divider { display: none; }
+
+  .hero__btn-outline {
+    color: var(--c-white) !important;
+    box-shadow: inset 0 0 0 2px rgba(255,255,255,0.5) !important;
   }
 
-  /* ══════════════════════════════════════════
-     MISSION — Editorial Split
-     ══════════════════════════════════════════ */
-  .mission {
-    padding: 120px 0;
+  .hero__btn-outline:hover {
+    background: var(--c-white) !important;
+    color: var(--c-dark) !important;
   }
-  .mission-inner {
-    max-width: var(--max-width);
-    margin: 0 auto;
-    padding: 0 var(--page-padding);
+
+  /* ─── Room Cards ───────────────────────── */
+  .room-grid {
     display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 80px;
-    align-items: center;
-  }
-  .mission h2 {
-    font-size: clamp(28px, 3.5vw, 40px);
-    margin-bottom: 28px;
-    line-height: 1.25;
-  }
-  .mission h2 em { font-style: italic; }
-  .mission-body {
-    font-size: 17px;
-    line-height: 1.8;
-    margin-bottom: 16px;
-  }
-  .mission-body em { font-style: italic; color: var(--c-dark); }
-  .mission-visual { position: relative; min-height: 480px; }
-  .mission-photo {
-    border-radius: 20px;
-    overflow: hidden;
-    box-shadow: 0 24px 64px rgba(0,0,0,0.1);
-  }
-  .mission-photo--main {
-    position: absolute;
-    top: 0; left: 0;
-    width: 72%;
-    height: 70%;
-    z-index: 1;
-  }
-  .mission-photo--accent {
-    position: absolute;
-    bottom: 0; right: 0;
-    width: 58%;
-    height: 55%;
-    z-index: 2;
-    border: 5px solid var(--c-cream);
-  }
-  .mission-placeholder {
-    width: 100%; height: 100%;
-    background: linear-gradient(160deg, #e8e7e3, #d8d7d3);
-    display: flex; align-items: center; justify-content: center;
-    font-size: 14px; color: #999; font-weight: 500;
-  }
-  .mission-placeholder--warm {
-    background: linear-gradient(160deg, #f5e6d0, #e8d5be);
-  }
-  @media (max-width: 768px) {
-    .mission-inner { grid-template-columns: 1fr; gap: 40px; }
-    .mission-visual { min-height: 340px; }
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: var(--space-xl);
   }
 
-  /* ══════════════════════════════════════════
-     ROOM TYPES — Magazine Tiles
-     ══════════════════════════════════════════ */
-  .rooms {
-    padding: 120px 0;
-    background: var(--c-warm-gray);
+  .room-card {
+    padding: var(--space-xl);
+    background: var(--c-white);
+    border-radius: var(--border-radius-lg);
+    box-shadow: var(--shadow-sm);
+    transition: transform var(--transition-base), box-shadow var(--transition-base);
+    text-decoration: none;
   }
-  .rooms-inner {
-    max-width: var(--max-width);
-    margin: 0 auto;
-    padding: 0 var(--page-padding);
+
+  .room-card:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-lg);
   }
-  .rooms-header {
-    max-width: 560px;
-    margin-bottom: 56px;
+
+  .room-card__icon {
+    font-size: 2.5rem;
+    margin-bottom: var(--space-md);
   }
-  .rooms-header h2 { line-height: 1.25; }
-  .rooms-header h2 em { font-style: italic; }
-  .rooms-grid {
+
+  .room-card h3 {
+    font-family: var(--font-body);
+    font-weight: 700;
+    font-size: 1.15rem;
+    margin-bottom: var(--space-sm);
+  }
+
+  .room-card p {
+    color: var(--c-text-muted);
+    font-size: 0.95rem;
+  }
+
+  /* ─── Stats ────────────────────────────── */
+  .stats-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 24px;
+    gap: var(--space-xl);
+    max-width: 700px;
+    margin-inline: auto;
   }
-  .room-tile {
-    background: #fff;
-    border-radius: 20px;
-    overflow: hidden;
-    text-decoration: none;
-    transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
-    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
-  }
-  .room-tile:hover {
-    transform: translateY(-8px);
-    box-shadow: 0 24px 56px rgba(0,0,0,0.1);
-  }
-  .room-tile-photo {
-    aspect-ratio: 16 / 10;
-    overflow: hidden;
-  }
-  .room-tile-placeholder {
-    width: 100%; height: 100%;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 48px;
-    transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
-  }
-  .room-tile:hover .room-tile-placeholder { transform: scale(1.08); }
-  [data-accent="bedroom"] .room-tile-placeholder { background: linear-gradient(160deg, #EDE0FF, #D8C4F5); }
-  [data-accent="bath"] .room-tile-placeholder { background: linear-gradient(160deg, #D0EFFF, #B0D8F0); }
-  [data-accent="therapy"] .room-tile-placeholder { background: linear-gradient(160deg, #D4F5E0, #B8E8CC); }
-  .room-tile-content { padding: 28px; }
-  .room-tile-tag {
-    display: inline-block;
-    font-size: 11px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    color: var(--c-purple);
-    background: rgba(122, 0, 223, 0.06);
-    padding: 4px 12px;
-    border-radius: 50px;
-    margin-bottom: 12px;
-  }
-  .room-tile-content h3 { font-size: 22px; margin-bottom: 8px; }
-  .room-tile-content p { font-size: 15px; line-height: 1.65; margin-bottom: 20px; }
-  .room-tile-link {
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--c-purple);
-    transition: letter-spacing 0.3s ease;
-  }
-  .room-tile:hover .room-tile-link { letter-spacing: 0.02em; }
-  @media (max-width: 768px) { .rooms-grid { grid-template-columns: 1fr; } }
 
-  /* ══════════════════════════════════════════
-     FEATURED STORY — Full-Width Split
-     ══════════════════════════════════════════ */
-  .story { background: var(--c-cream); }
-  .story-split {
-    display: grid;
-    grid-template-columns: 1.1fr 1fr;
-    min-height: 600px;
-  }
-  .story-photo {
-    position: relative;
-    overflow: hidden;
-  }
-  .story-photo-placeholder {
-    width: 100%; height: 100%; min-height: 400px;
-    background: linear-gradient(160deg, #e0ddd8, #c8c5c0);
-  }
-  .story-photo-tag {
-    position: absolute;
-    top: 24px; left: 24px;
-    background: var(--c-yellow);
-    color: var(--c-dark);
-    font-size: 12px;
-    font-weight: 700;
-    padding: 6px 16px;
-    border-radius: 50px;
-    letter-spacing: 0.04em;
-  }
-  .story-content {
-    padding: 72px 64px;
+  .stat {
     display: flex;
     flex-direction: column;
-    justify-content: center;
-  }
-  .story-type {
-    display: inline-block;
-    font-size: 12px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    color: var(--c-purple);
-    margin-bottom: 20px;
-  }
-  .story-content h2 {
-    font-size: clamp(24px, 3vw, 32px);
-    line-height: 1.3;
-    margin-bottom: 20px;
-  }
-  .story-content p { font-size: 16px; line-height: 1.75; margin-bottom: 24px; }
-  .story-partners {
-    display: flex; gap: 32px;
-    padding: 20px 0; margin-bottom: 28px;
-    border-top: 1px solid rgba(45,46,51,0.06);
-  }
-  .story-partner-label { display: block; font-size: 11px; font-weight: 700; color: var(--c-text-light); text-transform: uppercase; letter-spacing: 0.1em; }
-  .story-partner-name { display: block; font-size: 14px; font-weight: 600; color: var(--c-dark); margin-top: 4px; }
-  @media (max-width: 768px) {
-    .story-split { grid-template-columns: 1fr; }
-    .story-content { padding: 48px var(--page-padding); }
+    align-items: center;
+    gap: var(--space-sm);
   }
 
-  /* ══════════════════════════════════════════
-     KIDS STRIP — Horizontal Scroll
-     ══════════════════════════════════════════ */
-  .kids-strip {
-    padding: 100px 0 80px;
-    overflow: hidden;
-  }
-  .kids-strip-header {
-    max-width: var(--max-width);
-    margin: 0 auto 48px;
-    padding: 0 var(--page-padding);
-    display: flex;
-    align-items: flex-end;
-    flex-wrap: wrap;
-    gap: 16px;
-  }
-  .kids-strip-header h2 { flex: 1; margin: 0; min-width: 200px; }
-  .kids-strip-header h2 em { font-style: italic; }
-  .kids-strip-all {
-    font-size: 15px;
-    font-weight: 600;
-    color: var(--c-purple);
-    transition: letter-spacing 0.3s ease;
-  }
-  .kids-strip-all:hover { letter-spacing: 0.02em; }
-  .kids-scroll {
-    display: flex;
-    gap: 24px;
-    padding: 0 var(--page-padding);
-    overflow-x: auto;
-    scroll-snap-type: x mandatory;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
-  }
-  .kids-scroll::-webkit-scrollbar { display: none; }
-  .kid-thumb {
-    flex-shrink: 0;
-    width: 220px;
-    scroll-snap-align: start;
-    text-align: center;
-  }
-  .kid-thumb-photo {
-    width: 220px; height: 220px;
-    border-radius: 20px;
-    background: linear-gradient(160deg, var(--c-warm-gray), #e8e7e3);
-    display: flex; align-items: center; justify-content: center;
-    font-size: 56px;
-    margin-bottom: 16px;
-    transition: transform 0.4s cubic-bezier(0.16,1,0.3,1);
-  }
-  .kid-thumb:hover .kid-thumb-photo { transform: scale(1.04); }
-  .kid-thumb h4 { font-size: 17px; margin-bottom: 2px; }
-  .kid-thumb p { font-size: 13px; color: var(--c-text-muted); }
-
-  /* ══════════════════════════════════════════
-     PROCESS — Timeline
-     ══════════════════════════════════════════ */
-  .process {
-    padding: 120px 0;
-    background: var(--c-warm-gray);
-  }
-  .process-inner {
-    max-width: 720px;
-    margin: 0 auto;
-    padding: 0 var(--page-padding);
-  }
-  .process-header {
-    text-align: center;
-    margin-bottom: 64px;
-  }
-  .process-header h2 em { font-style: italic; }
-  .timeline {
-    position: relative;
-    padding-left: 48px;
-  }
-  .timeline::before {
-    content: '';
-    position: absolute;
-    top: 0; bottom: 0; left: 19px;
-    width: 2px;
-    background: linear-gradient(to bottom, var(--c-yellow), rgba(45,46,51,0.08));
-  }
-  .timeline-step {
-    position: relative;
-    padding-bottom: 48px;
-  }
-  .timeline-step:last-child { padding-bottom: 0; }
-  .timeline-marker {
-    position: absolute;
-    left: -48px; top: 0;
-    width: 40px; height: 40px;
-    border-radius: 50%;
-    background: var(--c-yellow);
-    display: flex; align-items: center; justify-content: center;
-    font-family: var(--f-display);
-    font-size: 16px;
-    font-weight: 700;
-    color: var(--c-dark);
-    box-shadow: 0 4px 12px rgba(255,213,0,0.3);
-  }
-  .timeline-body h3 { font-size: 20px; margin-bottom: 6px; }
-  .timeline-body p { font-size: 16px; line-height: 1.7; }
-
-  /* ══════════════════════════════════════════
-     TRUST — Dark Section
-     ══════════════════════════════════════════ */
-  .trust {
-    padding: 120px 0;
-    background: var(--c-dark-deep);
-    color: #fff;
-  }
-  .trust-inner {
-    max-width: var(--max-width);
-    margin: 0 auto;
-    padding: 0 var(--page-padding);
-  }
-  .trust-header {
-    text-align: center;
-    margin-bottom: 64px;
-  }
-  .trust-header h2 {
-    color: #fff;
-    font-size: clamp(28px, 4vw, 44px);
-    margin-bottom: 16px;
-  }
-  .trust-header h2 em { font-style: italic; color: var(--c-yellow); }
-  .trust-subtitle {
-    font-size: 17px;
-    color: rgba(255,255,255,0.5);
-    max-width: 560px;
-    margin: 0 auto;
-    line-height: 1.7;
-  }
-  .trust-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 24px;
-    margin-bottom: 48px;
-  }
-  .trust-card {
-    background: rgba(255,255,255,0.04);
-    border: 1px solid rgba(255,255,255,0.06);
-    border-radius: 20px;
-    padding: 36px;
-    transition: all 0.4s ease;
-  }
-  .trust-card:hover {
-    background: rgba(255,255,255,0.07);
-    transform: translateY(-4px);
-  }
-  .trust-card-top { margin-bottom: 16px; }
-  .trust-big {
-    display: block;
-    font-family: var(--f-display);
-    font-size: 40px;
+  .stat__number {
+    font-family: var(--font-display);
+    font-size: clamp(2.5rem, 5vw, 3.5rem);
     font-weight: 700;
     color: var(--c-yellow);
     line-height: 1;
-    margin-bottom: 8px;
-  }
-  .trust-card-label {
-    font-size: 13px;
-    font-weight: 600;
-    color: rgba(255,255,255,0.5);
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-  }
-  .trust-card p {
-    font-size: 15px;
-    color: rgba(255,255,255,0.45);
-    line-height: 1.65;
-  }
-  .trust-cta { text-align: center; }
-  @media (max-width: 768px) { .trust-grid { grid-template-columns: 1fr; } }
-
-  /* ══════════════════════════════════════════
-     MARQUEE
-     ══════════════════════════════════════════ */
-  .marquee {
-    padding: 48px 0;
-    background: #fff;
-    border-top: 1px solid rgba(45,46,51,0.04);
-    overflow: hidden;
-  }
-  .marquee-label {
-    text-align: center;
-    margin-bottom: 28px;
-    font-size: 12px;
-    font-weight: 700;
-    color: var(--c-text-light);
-    text-transform: uppercase;
-    letter-spacing: 0.14em;
-  }
-  .marquee-track {
-    display: flex;
-    gap: 24px;
-    animation: marquee 40s linear infinite;
-    width: max-content;
-  }
-  .marquee-logo {
-    min-width: 160px;
-    height: 56px;
-    border-radius: 12px;
-    background: var(--c-warm-gray);
-    display: flex; align-items: center; justify-content: center;
-    font-size: 13px; font-weight: 600; color: var(--c-text-muted);
-    flex-shrink: 0;
   }
 
-  /* ══════════════════════════════════════════
-     FINALE — Yellow CTA
-     ══════════════════════════════════════════ */
-  .finale {
-    padding: 120px 0;
-    background: var(--c-yellow);
-    text-align: center;
-    position: relative;
-    overflow: hidden;
-  }
-  .finale-inner {
-    max-width: 640px;
-    margin: 0 auto;
-    padding: 0 var(--page-padding);
-    position: relative;
-    z-index: 2;
-  }
-  .finale-pig {
-    width: 80px;
-    height: auto;
-    margin: 0 auto 24px;
-    opacity: 0.2;
-  }
-  .finale h2 {
-    font-size: clamp(28px, 4vw, 40px);
-    line-height: 1.25;
-    margin-bottom: 20px;
-  }
-  .finale h2 em { font-style: italic; }
-  .finale p {
-    font-size: 17px;
-    color: rgba(45,46,51,0.65);
-    line-height: 1.7;
-    margin-bottom: 36px;
-  }
-  .finale-ctas {
-    display: flex;
-    gap: 14px;
-    justify-content: center;
-    flex-wrap: wrap;
-    margin-bottom: 24px;
-  }
-  .finale-note {
-    font-size: 13px;
-    color: rgba(45,46,51,0.4);
-    margin-bottom: 0;
+  .stat__label {
+    font-size: 0.9rem;
+    color: var(--c-text-muted);
+    font-weight: 500;
   }
 
-  /* ══════════════════════════════════════════
-     SCROLL REVEALS
-     ══════════════════════════════════════════ */
-  [data-reveal] {
-    opacity: 0;
-    transform: translateY(32px);
-    transition: opacity 0.7s cubic-bezier(0.16,1,0.3,1), transform 0.7s cubic-bezier(0.16,1,0.3,1);
+  @media (max-width: 480px) {
+    .stats-grid { grid-template-columns: 1fr; }
   }
-  [data-reveal].is-visible {
-    opacity: 1;
-    transform: translateY(0);
-  }
-  [data-delay="1"] { transition-delay: 0.1s; }
-  [data-delay="2"] { transition-delay: 0.2s; }
-  [data-delay="3"] { transition-delay: 0.3s; }
-  [data-delay="4"] { transition-delay: 0.4s; }
 </style>
-
-<script>
-  // Intersection Observer for scroll reveals
-  const observer = new IntersectionObserver((entries) => {
-    entries.forEach(entry => {
-      if (entry.isIntersecting) {
-        entry.target.classList.add('is-visible');
-      }
-    });
-  }, { threshold: 0.15, rootMargin: '0px 0px -40px 0px' });
-
-  document.querySelectorAll('[data-reveal]').forEach(el => observer.observe(el));
-</script>

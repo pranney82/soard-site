@@ -1,0 +1,446 @@
+---
+/**
+ * Header.astro
+ * Sticky header with logo, desktop dropdowns, and mobile slide-out menu.
+ * CSS-only mobile toggle (no JS required).
+ */
+const currentPath = Astro.url.pathname;
+
+const nav = [
+  {
+    label: 'About',
+    children: [
+      { label: 'Our Story', href: '/about/' },
+      { label: 'Leadership', href: '/about/leadership/' },
+      { label: 'Financials', href: '/about/financials/' },
+    ],
+  },
+  {
+    label: 'Kids & Projects',
+    children: [
+      { label: 'Featured Rooms', href: '/rooms/' },
+      { label: 'Meet the Kids', href: '/kids/' },
+      { label: 'Community Projects', href: '/rooms/community/' },
+    ],
+  },
+  {
+    label: 'Our Partners',
+    children: [
+      { label: 'Our Partners', href: '/partners/' },
+      { label: 'Construction Partners', href: '/partners/construction/' },
+      { label: 'Design Partners', href: '/partners/design/' },
+    ],
+  },
+  {
+    label: 'Get Involved',
+    children: [
+      { label: 'Events', href: 'https://www.sunnyandranney.com/events', external: true },
+      { label: 'Donate', href: '/donate/' },
+      { label: '2026 Application', href: '/apply/' },
+    ],
+  },
+  {
+    label: 'Shop Our Stores',
+    children: [
+      { label: 'Sunny & Ranney', href: 'https://www.sunnyandranney.com', external: true },
+      { label: 'Partly Sunny', href: 'https://partlysunnystore.com', external: true },
+    ],
+  },
+];
+
+function isActive(href: string) {
+  if (href.startsWith('http')) return false;
+  return currentPath.startsWith(href);
+}
+---
+
+<header class="site-header">
+  <div class="header-inner container--wide">
+    <!-- Logo -->
+    <a href="/" class="logo" aria-label="Sunshine on a Ranney Day — Home">
+      <span class="logo-icon" aria-hidden="true">☀️</span>
+      <span class="logo-text">
+        <span class="logo-name">Sunshine on a Ranney Day</span>
+      </span>
+    </a>
+
+    <!-- Desktop Navigation -->
+    <nav class="desktop-nav" aria-label="Main navigation">
+      <ul class="nav-list" role="menubar">
+        {nav.map((item) => (
+          <li class="nav-item has-dropdown" role="none">
+            <button
+              class="nav-link"
+              role="menuitem"
+              aria-haspopup="true"
+              aria-expanded="false"
+            >
+              {item.label}
+              <svg class="chevron" width="10" height="6" viewBox="0 0 10 6" fill="none" aria-hidden="true">
+                <path d="M1 1L5 5L9 1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
+            <ul class="dropdown" role="menu">
+              {item.children.map((child) => (
+                <li role="none">
+                  <a
+                    href={child.href}
+                    role="menuitem"
+                    class:list={['dropdown-link', { active: isActive(child.href) }]}
+                    {...(child.external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
+                  >
+                    {child.label}
+                    {child.external && (
+                      <svg class="external-icon" width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                        <path d="M4.5 1.5H1.5V10.5H10.5V7.5M7 1.5H10.5M10.5 1.5V5M10.5 1.5L5.5 6.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+                      </svg>
+                    )}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </li>
+        ))}
+      </ul>
+    </nav>
+
+    <!-- Donate CTA (desktop) -->
+    <a href="/donate/" class="header-cta">Donate</a>
+
+    <!-- Mobile Toggle -->
+    <input type="checkbox" id="mobile-toggle" class="mobile-toggle-input" aria-hidden="true" />
+    <label for="mobile-toggle" class="mobile-toggle" aria-label="Toggle menu">
+      <span class="hamburger-line"></span>
+      <span class="hamburger-line"></span>
+      <span class="hamburger-line"></span>
+    </label>
+
+    <!-- Mobile Menu -->
+    <div class="mobile-overlay" aria-hidden="true"></div>
+    <nav class="mobile-nav" aria-label="Mobile navigation">
+      <ul class="mobile-nav-list">
+        {nav.map((item) => (
+          <li class="mobile-nav-group">
+            <span class="mobile-nav-heading">{item.label}</span>
+            <ul>
+              {item.children.map((child) => (
+                <li>
+                  <a
+                    href={child.href}
+                    class:list={['mobile-nav-link', { active: isActive(child.href) }]}
+                    {...(child.external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
+                  >
+                    {child.label}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </li>
+        ))}
+      </ul>
+      <a href="/donate/" class="mobile-donate-btn">Donate</a>
+    </nav>
+  </div>
+</header>
+
+<style>
+  /* ─── Header Shell ─────────────────────── */
+  .site-header {
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+    background: var(--c-dark);
+    height: var(--header-height);
+    border-bottom: 3px solid var(--c-yellow);
+  }
+
+  .header-inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 100%;
+    padding-inline: var(--space-lg);
+    max-width: var(--max-width-wide);
+    margin-inline: auto;
+  }
+
+  /* ─── Logo ─────────────────────────────── */
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    flex-shrink: 0;
+    transition: opacity var(--transition-fast);
+  }
+
+  .logo:hover { opacity: 0.9; }
+
+  .logo-icon {
+    font-size: 1.75rem;
+    line-height: 1;
+  }
+
+  .logo-text {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.15;
+  }
+
+  .logo-name {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 1rem;
+    color: var(--c-white);
+    letter-spacing: 0.01em;
+  }
+
+  /* ─── Desktop Nav ──────────────────────── */
+  .desktop-nav {
+    display: none;
+  }
+
+  @media (min-width: 1024px) {
+    .desktop-nav {
+      display: flex;
+    }
+  }
+
+  .nav-list {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+  }
+
+  .nav-item {
+    position: relative;
+  }
+
+  .nav-link {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: var(--space-sm) var(--space-md);
+    font-family: var(--font-body);
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--c-white);
+    background: none;
+    border: none;
+    cursor: pointer;
+    border-radius: var(--border-radius);
+    transition: background var(--transition-fast), color var(--transition-fast);
+    white-space: nowrap;
+  }
+
+  .nav-link:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--c-yellow);
+  }
+
+  .chevron {
+    transition: transform var(--transition-fast);
+  }
+
+  /* ─── Dropdown ─────────────────────────── */
+  .dropdown {
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%) translateY(4px);
+    min-width: 220px;
+    background: var(--c-white);
+    border-radius: var(--border-radius);
+    box-shadow: var(--shadow-lg);
+    padding: var(--space-sm) 0;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity var(--transition-fast), transform var(--transition-fast), visibility var(--transition-fast);
+    pointer-events: none;
+  }
+
+  .nav-item:hover .dropdown,
+  .nav-item:focus-within .dropdown {
+    opacity: 1;
+    visibility: visible;
+    transform: translateX(-50%) translateY(0);
+    pointer-events: auto;
+  }
+
+  .nav-item:hover .chevron {
+    transform: rotate(180deg);
+  }
+
+  .dropdown-link {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    padding: var(--space-sm) var(--space-lg);
+    font-size: 0.9rem;
+    font-weight: 400;
+    color: var(--c-text);
+    transition: background var(--transition-fast), color var(--transition-fast);
+  }
+
+  .dropdown-link:hover {
+    background: var(--c-warm-gray);
+    color: var(--c-purple);
+  }
+
+  .dropdown-link.active {
+    color: var(--c-purple);
+    font-weight: 600;
+  }
+
+  .external-icon {
+    opacity: 0.4;
+    flex-shrink: 0;
+  }
+
+  /* ─── Header CTA ───────────────────────── */
+  .header-cta {
+    display: none;
+    padding: 0.5rem 1.25rem;
+    background: var(--c-yellow);
+    color: var(--c-dark);
+    font-weight: 600;
+    font-size: 0.875rem;
+    border-radius: 100px;
+    transition: background var(--transition-fast), transform var(--transition-fast);
+  }
+
+  .header-cta:hover {
+    background: var(--c-yellow-hover);
+    transform: translateY(-1px);
+  }
+
+  @media (min-width: 1024px) {
+    .header-cta { display: inline-flex; }
+  }
+
+  /* ─── Mobile Toggle ────────────────────── */
+  .mobile-toggle-input {
+    display: none;
+  }
+
+  .mobile-toggle {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 5px;
+    width: 40px;
+    height: 40px;
+    padding: 8px;
+    cursor: pointer;
+    z-index: 1001;
+  }
+
+  @media (min-width: 1024px) {
+    .mobile-toggle { display: none; }
+  }
+
+  .hamburger-line {
+    display: block;
+    width: 100%;
+    height: 2px;
+    background: var(--c-white);
+    border-radius: 2px;
+    transition: transform var(--transition-base), opacity var(--transition-base);
+  }
+
+  .mobile-toggle-input:checked ~ .mobile-toggle .hamburger-line:nth-child(1) {
+    transform: translateY(7px) rotate(45deg);
+  }
+
+  .mobile-toggle-input:checked ~ .mobile-toggle .hamburger-line:nth-child(2) {
+    opacity: 0;
+  }
+
+  .mobile-toggle-input:checked ~ .mobile-toggle .hamburger-line:nth-child(3) {
+    transform: translateY(-7px) rotate(-45deg);
+  }
+
+  /* ─── Mobile Overlay ───────────────────── */
+  .mobile-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity var(--transition-base), visibility var(--transition-base);
+    z-index: 999;
+  }
+
+  .mobile-toggle-input:checked ~ .mobile-overlay {
+    opacity: 1;
+    visibility: visible;
+  }
+
+  /* ─── Mobile Nav ───────────────────────── */
+  .mobile-nav {
+    position: fixed;
+    top: 0;
+    right: 0;
+    width: min(320px, 85vw);
+    height: 100dvh;
+    background: var(--c-white);
+    padding: calc(var(--header-height) + var(--space-lg)) var(--space-lg) var(--space-lg);
+    overflow-y: auto;
+    transform: translateX(100%);
+    transition: transform var(--transition-base);
+    z-index: 1000;
+  }
+
+  .mobile-toggle-input:checked ~ .mobile-nav {
+    transform: translateX(0);
+  }
+
+  @media (min-width: 1024px) {
+    .mobile-nav, .mobile-overlay { display: none; }
+  }
+
+  .mobile-nav-group + .mobile-nav-group {
+    margin-top: var(--space-lg);
+    padding-top: var(--space-lg);
+    border-top: 1px solid var(--c-border);
+  }
+
+  .mobile-nav-heading {
+    display: block;
+    font-weight: 600;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--c-text-muted);
+    margin-bottom: var(--space-sm);
+  }
+
+  .mobile-nav-link {
+    display: block;
+    padding: var(--space-sm) 0;
+    font-size: 1rem;
+    color: var(--c-text);
+    transition: color var(--transition-fast);
+  }
+
+  .mobile-nav-link:hover,
+  .mobile-nav-link.active {
+    color: var(--c-purple);
+  }
+
+  .mobile-donate-btn {
+    display: block;
+    text-align: center;
+    margin-top: var(--space-xl);
+    padding: var(--space-md) var(--space-xl);
+    background: var(--c-yellow);
+    color: var(--c-dark);
+    font-weight: 700;
+    font-size: 1rem;
+    border-radius: 100px;
+    transition: background var(--transition-fast);
+  }
+
+  .mobile-donate-btn:hover {
+    background: var(--c-yellow-hover);
+  }
+</style>

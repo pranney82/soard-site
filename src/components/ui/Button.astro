@@ -1,0 +1,102 @@
+---
+/**
+ * Button.astro
+ * Reusable button/link with primary (yellow), secondary (purple),
+ * outline, and link variants.
+ */
+interface Props {
+  href?: string;
+  variant?: 'primary' | 'secondary' | 'outline' | 'link';
+  size?: 'sm' | 'md' | 'lg';
+  external?: boolean;
+  class?: string;
+  [key: string]: any;
+}
+
+const {
+  href,
+  variant = 'primary',
+  size = 'md',
+  external = false,
+  class: className = '',
+  ...rest
+} = Astro.props;
+
+const Tag = href ? 'a' : 'button';
+const externalAttrs = external ? { target: '_blank', rel: 'noopener noreferrer' } : {};
+---
+
+<Tag
+  href={href}
+  class:list={['btn', `btn--${variant}`, `btn--${size}`, className]}
+  {...externalAttrs}
+  {...rest}
+>
+  <slot />
+</Tag>
+
+<style>
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    font-family: var(--font-body);
+    font-weight: 600;
+    border: none;
+    border-radius: 100px;
+    cursor: pointer;
+    text-decoration: none;
+    transition: background var(--transition-fast), color var(--transition-fast), transform var(--transition-fast), box-shadow var(--transition-fast);
+  }
+
+  .btn:hover { transform: translateY(-1px); }
+  .btn:active { transform: translateY(0); }
+
+  /* Sizes */
+  .btn--sm { font-size: 0.8rem; padding: 0.4rem 1rem; }
+  .btn--md { font-size: 0.95rem; padding: 0.65rem 1.5rem; }
+  .btn--lg { font-size: 1.05rem; padding: 0.85rem 2rem; }
+
+  /* Variants */
+  .btn--primary {
+    background: var(--c-yellow);
+    color: var(--c-dark);
+  }
+  .btn--primary:hover {
+    background: var(--c-yellow-hover);
+    box-shadow: 0 4px 12px rgba(255, 213, 0, 0.35);
+  }
+
+  .btn--secondary {
+    background: var(--c-purple);
+    color: var(--c-white);
+  }
+  .btn--secondary:hover {
+    background: #6600bf;
+    box-shadow: 0 4px 12px rgba(122, 0, 223, 0.3);
+  }
+
+  .btn--outline {
+    background: transparent;
+    color: var(--c-dark);
+    box-shadow: inset 0 0 0 2px var(--c-dark);
+  }
+  .btn--outline:hover {
+    background: var(--c-dark);
+    color: var(--c-white);
+  }
+
+  .btn--link {
+    background: none;
+    color: var(--c-purple);
+    padding-inline: 0;
+    border-radius: 0;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  .btn--link:hover {
+    color: var(--c-dark);
+    transform: none;
+  }
+</style>

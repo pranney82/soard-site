@@ -1,0 +1,267 @@
+---
+/**
+ * [slug].astro — Individual kid profile page
+ * Renders each kid's story from their JSON content file.
+ */
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import Button from '../../components/ui/Button.astro';
+import { getCollection } from 'astro:content';
+
+export async function getStaticPaths() {
+  const kids = await getCollection('kids');
+  return kids.map(kid => ({
+    params: { slug: kid.data.slug },
+    props: { kid: kid.data },
+  }));
+}
+
+const { kid } = Astro.props;
+
+// Separate family/personal photos from reveal/room photos
+// First batch before the photographer credit is typically family photos
+const photos = kid.photos || [];
+---
+
+<BaseLayout
+  title={kid.name}
+  description={kid.metaDescription || `Meet ${kid.name} — learn how Sunshine on a Ranney Day is transforming their space.`}
+>
+  <article class="kid-profile">
+    <!-- Hero Section -->
+    <section class="profile-hero">
+      <div class="container container--narrow">
+        <!-- Stats -->
+        <div class="profile-meta">
+          {kid.age && <span class="meta-item">🙂 {kid.age} years old</span>}
+          {kid.diagnosis && <span class="meta-item">💛 {kid.diagnosis}</span>}
+        </div>
+
+        <!-- Hero Image -->
+        {kid.heroImage && (
+          <div class="profile-hero-image">
+            <img
+              src={kid.heroImage}
+              alt={`Photo of ${kid.name}`}
+              loading="eager"
+              decoding="async"
+            />
+          </div>
+        )}
+
+        <!-- Bio -->
+        {kid.bio && (
+          <div class="profile-bio prose">
+            {kid.bio.split('\n\n').map(paragraph => (
+              <p>{paragraph}</p>
+            ))}
+          </div>
+        )}
+
+        <!-- Quote -->
+        {kid.quote && (
+          <blockquote class="profile-quote">
+            <p>{kid.quote}</p>
+          </blockquote>
+        )}
+      </div>
+    </section>
+
+    <!-- Photo Gallery -->
+    {photos.length > 1 && (
+      <section class="section section--gray">
+        <div class="container">
+          {kid.photographer && (
+            <p class="photographer-credit">Photos by {kid.photographer}</p>
+          )}
+          <div class="photo-grid">
+            {photos.slice(0, 20).map((photo, i) => (
+              <div class="photo-grid__item">
+                <img
+                  src={photo.url}
+                  alt={photo.alt || `${kid.name}'s room transformation photo ${i + 1}`}
+                  loading="lazy"
+                  decoding="async"
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+    )}
+
+    <!-- Video -->
+    {kid.videoUrl && (
+      <section class="section">
+        <div class="container container--narrow" style="text-align: center;">
+          <h2 style="margin-bottom: var(--space-xl);">Watch {kid.name}'s Story</h2>
+          <div class="video-wrapper">
+            <!-- Lite embed facade — will be replaced with VideoEmbed component -->
+            <a href={kid.videoUrl} target="_blank" rel="noopener noreferrer" class="video-link">
+              ▶ Watch Video
+            </a>
+          </div>
+        </div>
+      </section>
+    )}
+
+    <!-- Partner Logos for this project -->
+    {kid.partnerLogos && kid.partnerLogos.length > 0 && (
+      <section class="section section--gray">
+        <div class="container" style="text-align: center;">
+          <h3 style="margin-bottom: var(--space-xl);">Project Partners</h3>
+          <div class="partner-logo-grid">
+            {kid.partnerLogos.map(logo => (
+              <div class="partner-logo">
+                <img src={logo.url} alt="Project partner logo" loading="lazy" decoding="async" />
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+    )}
+
+    <!-- Back + CTA -->
+    <section class="section" style="text-align: center;">
+      <div class="container container--narrow">
+        <Button href="/kids/" variant="outline">← Back to all kids</Button>
+        <span style="display: inline-block; width: var(--space-md);"></span>
+        <Button href="/donate/">Donate to support kids like {kid.name}</Button>
+      </div>
+    </section>
+  </article>
+</BaseLayout>
+
+<style>
+  /* ─── Profile Hero ─────────────────────── */
+  .profile-hero {
+    padding-block: var(--space-3xl) var(--space-2xl);
+  }
+
+  .profile-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-md);
+    margin-bottom: var(--space-xl);
+  }
+
+  .meta-item {
+    font-size: 1.05rem;
+    font-weight: 500;
+    color: var(--c-text);
+    padding: var(--space-sm) var(--space-lg);
+    background: var(--c-warm-gray);
+    border-radius: 100px;
+  }
+
+  .profile-hero-image {
+    margin-bottom: var(--space-xl);
+    border-radius: var(--border-radius-lg);
+    overflow: hidden;
+    max-height: 500px;
+  }
+
+  .profile-hero-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .profile-bio {
+    font-size: 1.05rem;
+    line-height: 1.8;
+    max-width: 720px;
+  }
+
+  .profile-quote {
+    margin-top: var(--space-xl);
+    padding: var(--space-xl);
+    background: var(--c-warm-gray);
+    border-left: 4px solid var(--c-yellow);
+    border-radius: var(--border-radius);
+    font-family: var(--font-display);
+    font-style: italic;
+    font-size: 1.15rem;
+    line-height: 1.6;
+    color: var(--c-text);
+  }
+
+  /* ─── Photo Grid ───────────────────────── */
+  .photographer-credit {
+    text-align: center;
+    color: var(--c-text-muted);
+    font-size: 0.9rem;
+    margin-bottom: var(--space-lg);
+  }
+
+  .photo-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: var(--space-md);
+  }
+
+  .photo-grid__item {
+    border-radius: var(--border-radius);
+    overflow: hidden;
+    aspect-ratio: 4 / 3;
+    background: var(--c-border);
+  }
+
+  .photo-grid__item img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform var(--transition-slow);
+  }
+
+  .photo-grid__item:hover img {
+    transform: scale(1.05);
+  }
+
+  /* ─── Video ────────────────────────────── */
+  .video-wrapper {
+    aspect-ratio: 16 / 9;
+    background: var(--c-dark);
+    border-radius: var(--border-radius-lg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .video-link {
+    color: var(--c-white);
+    font-size: 1.25rem;
+    font-weight: 600;
+    padding: var(--space-md) var(--space-xl);
+    background: var(--c-yellow);
+    color: var(--c-dark);
+    border-radius: 100px;
+    transition: transform var(--transition-fast);
+  }
+
+  .video-link:hover {
+    transform: scale(1.05);
+  }
+
+  /* ─── Partner Logos ────────────────────── */
+  .partner-logo-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-xl);
+    justify-content: center;
+    align-items: center;
+  }
+
+  .partner-logo {
+    width: 120px;
+    opacity: 0.7;
+    transition: opacity var(--transition-fast);
+  }
+
+  .partner-logo:hover { opacity: 1; }
+
+  .partner-logo img {
+    width: 100%;
+    height: auto;
+    object-fit: contain;
+  }
+</style>

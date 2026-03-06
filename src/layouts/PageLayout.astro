@@ -1,0 +1,62 @@
+---
+/**
+ * PageLayout.astro
+ * Standard page layout with optional hero section, main content area,
+ * and optional bottom CTA. Wraps BaseLayout.
+ */
+import BaseLayout from './BaseLayout.astro';
+
+interface Props {
+  title: string;
+  description?: string;
+  heroTitle?: string;
+  heroSubtitle?: string;
+  ogImage?: string;
+  jsonLd?: object;
+}
+
+const { title, description, heroTitle, heroSubtitle, ogImage, jsonLd } = Astro.props;
+---
+
+<BaseLayout title={title} description={description} ogImage={ogImage} jsonLd={jsonLd}>
+  {(heroTitle || heroSubtitle) && (
+    <section class="page-hero">
+      <div class="container">
+        {heroTitle && <h1 class="page-hero__title">{heroTitle}</h1>}
+        {heroSubtitle && <p class="page-hero__subtitle">{heroSubtitle}</p>}
+      </div>
+    </section>
+  )}
+
+  <article class="page-content">
+    <slot />
+  </article>
+
+  <slot name="cta" />
+</BaseLayout>
+
+<style>
+  .page-hero {
+    background: var(--c-dark);
+    color: var(--c-white);
+    padding-block: var(--space-3xl) var(--space-2xl);
+    text-align: center;
+  }
+
+  .page-hero__title {
+    color: var(--c-white);
+    font-size: clamp(2rem, 5vw, 3.25rem);
+  }
+
+  .page-hero__subtitle {
+    margin-top: var(--space-md);
+    font-size: clamp(1rem, 2vw, 1.2rem);
+    color: rgba(255, 255, 255, 0.75);
+    max-width: 640px;
+    margin-inline: auto;
+  }
+
+  .page-content {
+    min-height: 40vh;
+  }
+</style>

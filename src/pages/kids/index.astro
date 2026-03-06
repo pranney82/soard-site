@@ -1,0 +1,211 @@
+---
+/**
+ * Meet the Kids — Grid page with filtering
+ */
+import PageLayout from '../../layouts/PageLayout.astro';
+import { getCollection } from 'astro:content';
+
+const allKids = await getCollection('kids');
+const kids = allKids
+  .sort((a, b) => (b.data.year || 0) - (a.data.year || 0));
+
+// Get unique years and room types for filters
+const years = [...new Set(kids.map(k => k.data.year).filter(Boolean))].sort((a, b) => b - a);
+const roomTypes = [...new Set(kids.flatMap(k => k.data.roomTypes || []))].sort();
+---
+
+<PageLayout
+  title="Meet the Kids"
+  heroTitle="Meet our Sunshine Kids"
+  heroSubtitle="Meet the incredible children behind our projects and learn how Sunshine on a Ranney Day transformed their lives."
+>
+  <section class="section">
+    <div class="container container--wide">
+      <!-- Filters -->
+      <div class="filters" role="group" aria-label="Filter kids by year or room type">
+        <button class="filter-btn active" data-filter="all">All</button>
+        {years.map(year => (
+          <button class="filter-btn" data-filter={`year-${year}`}>{year}</button>
+        ))}
+        <span class="filter-divider" aria-hidden="true"></span>
+        {roomTypes.map(type => (
+          <button class="filter-btn" data-filter={`type-${type.toLowerCase().replace(/\s+/g, '-')}`}>{type}</button>
+        ))}
+      </div>
+
+      <!-- Kid Grid -->
+      <div class="kids-grid">
+        {kids.map(kid => (
+          <a
+            href={`/kids/${kid.data.slug}/`}
+            class="kid-card"
+            data-year={`year-${kid.data.year}`}
+            data-types={(kid.data.roomTypes || []).map(t => `type-${t.toLowerCase().replace(/\s+/g, '-')}`).join(' ')}
+          >
+            {kid.data.heroImage && (
+              <img
+                src={kid.data.heroImage}
+                alt={`${kid.data.name}'s photo`}
+                class="kid-card__img"
+                loading="lazy"
+                decoding="async"
+              />
+            )}
+            <div class="kid-card__overlay">
+              <h3 class="kid-card__name">{kid.data.name}</h3>
+              {kid.data.status === 'in-progress' && (
+                <span class="kid-card__badge">In Progress</span>
+              )}
+            </div>
+          </a>
+        ))}
+      </div>
+
+      {kids.length === 0 && (
+        <p style="text-align: center; color: var(--c-text-muted); padding: var(--space-4xl) 0;">
+          Kid profiles are being migrated. Check back soon!
+        </p>
+      )}
+    </div>
+  </section>
+</PageLayout>
+
+<!-- Minimal JS for filtering (Astro island) -->
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    const buttons = document.querySelectorAll('.filter-btn');
+    const cards = document.querySelectorAll('.kid-card');
+
+    buttons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        buttons.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+
+        const filter = btn.getAttribute('data-filter');
+
+        cards.forEach(card => {
+          if (filter === 'all') {
+            (card as HTMLElement).style.display = '';
+            return;
+          }
+          const year = card.getAttribute('data-year') || '';
+          const types = card.getAttribute('data-types') || '';
+
+          const match = year === filter || types.includes(filter);
+          (card as HTMLElement).style.display = match ? '' : 'none';
+        });
+      });
+    });
+  });
+</script>
+
+<style>
+  /* ─── Filters ──────────────────────────── */
+  .filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-sm);
+    margin-bottom: var(--space-2xl);
+    justify-content: center;
+  }
+
+  .filter-btn {
+    padding: 0.4rem 1rem;
+    background: var(--c-white);
+    border: 1px solid var(--c-border);
+    border-radius: 100px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    color: var(--c-text-muted);
+  }
+
+  .filter-btn:hover {
+    border-color: var(--c-purple);
+    color: var(--c-purple);
+  }
+
+  .filter-btn.active {
+    background: var(--c-purple);
+    color: var(--c-white);
+    border-color: var(--c-purple);
+  }
+
+  .filter-divider {
+    width: 1px;
+    background: var(--c-border);
+    align-self: stretch;
+    margin-inline: var(--space-sm);
+  }
+
+  /* ─── Kid Grid ─────────────────────────── */
+  .kids-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: var(--space-lg);
+  }
+
+  .kid-card {
+    position: relative;
+    aspect-ratio: 3 / 4;
+    border-radius: var(--border-radius-lg);
+    overflow: hidden;
+    background: var(--c-warm-gray);
+    text-decoration: none;
+    transition: transform var(--transition-base), box-shadow var(--transition-base);
+  }
+
+  .kid-card:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-lg);
+  }
+
+  .kid-card__img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform var(--transition-slow);
+  }
+
+  .kid-card:hover .kid-card__img {
+    transform: scale(1.05);
+  }
+
+  .kid-card__overlay {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(to top, rgba(0,0,0,0.7) 0%, transparent 50%);
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    padding: var(--space-lg);
+  }
+
+  .kid-card__name {
+    color: var(--c-white);
+    font-family: var(--font-display);
+    font-size: 1.25rem;
+  }
+
+  .kid-card__badge {
+    display: inline-block;
+    margin-top: var(--space-xs);
+    padding: 2px 10px;
+    background: var(--c-yellow);
+    color: var(--c-dark);
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border-radius: 100px;
+    width: fit-content;
+  }
+
+  @media (max-width: 600px) {
+    .kids-grid {
+      grid-template-columns: repeat(2, 1fr);
+      gap: var(--space-md);
+    }
+  }
+</style>
