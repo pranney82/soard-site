@@ -5,6 +5,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 
   <section class="page-hero">
     <div class="container">
+      <p class="hero-label">Brand Resources</p>
       <h1>Brand Guidelines</h1>
       <p class="page-hero-sub">Official brand resources, logos, and usage guidelines for representing Sunshine on a Ranney Day.</p>
     </div>
@@ -16,11 +17,11 @@ import BaseLayout from '../layouts/BaseLayout.astro';
       <p class="toc-label">Contents</p>
       <div class="toc-links">
         <a href="#logos">Logos</a>
-        <a href="#logo-usage">Logo Usage &amp; Mascot</a>
+        <a href="#icons">Icons</a>
+        <a href="#logo-usage">Logo Usage</a>
         <a href="#colors">Colors</a>
         <a href="#typography">Typography</a>
         <a href="#voice">Voice &amp; Tone</a>
-        <a href="/SOARD-Brand-Guidelines.pdf" class="toc-download" download>↓ Download PDF</a>
       </div>
     </div>
   </nav>
@@ -33,28 +34,16 @@ import BaseLayout from '../layouts/BaseLayout.astro';
         <p>Download our official logos in various formats and variations.</p>
       </div>
 
-      <div class="logo-grid">
-        <div class="logo-card">
-          <div class="logo-card-preview bg-dark">
-            <img src="/images/logos/logo-dark-bg.png" alt="Sunshine on a Ranney Day logo for dark backgrounds" class="logo-img" loading="lazy" />
-          </div>
-          <div class="logo-card-body">
-            <h3>Primary Logo — Dark BG</h3>
-            <p>Full logo with tagline for dark backgrounds</p>
-            <div class="logo-formats">
-              <a href="/images/logos/logo-dark-bg.png" download class="fmt-btn">PNG</a>
-              <a href="/images/logos/logo-dark-bg.webp" download class="fmt-btn">WebP</a>
-            </div>
-          </div>
-        </div>
+      <a href="/SOARD-Brand-Guidelines.pdf" download class="download-all-btn">Download All Assets</a>
 
+      <div class="logo-grid">
         <div class="logo-card">
           <div class="logo-card-preview bg-light">
             <img src="/images/logos/logo-light-bg.png" alt="Sunshine on a Ranney Day logo for light backgrounds" class="logo-img" loading="lazy" />
           </div>
           <div class="logo-card-body">
-            <h3>Primary Logo — Light BG</h3>
-            <p>Full logo with tagline for light backgrounds</p>
+            <h3>Primary Logo</h3>
+            <p>Main logo for light backgrounds</p>
             <div class="logo-formats">
               <a href="/images/logos/logo-light-bg.png" download class="fmt-btn">PNG</a>
               <a href="/images/logos/logo-light-bg.webp" download class="fmt-btn">WebP</a>
@@ -64,44 +53,67 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 
         <div class="logo-card">
           <div class="logo-card-preview bg-dark">
-            <img src="/images/logos/logo-circle.png" alt="Sunshine on a Ranney Day circle badge logo" class="logo-img" loading="lazy" />
+            <img src="/images/logos/logo-dark-bg.png" alt="Sunshine on a Ranney Day logo for dark backgrounds" class="logo-img" loading="lazy" />
           </div>
           <div class="logo-card-body">
+            <h3>White Logo</h3>
+            <p>Logo for dark backgrounds</p>
+            <div class="logo-formats">
+              <a href="/images/logos/logo-dark-bg.png" download class="fmt-btn">PNG</a>
+              <a href="/images/logos/logo-dark-bg.webp" download class="fmt-btn">WebP</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════ ICONS ══════ -->
+  <section id="icons" class="brand-section">
+    <div class="container">
+      <div class="bsec-header">
+        <h2>Icons</h2>
+        <p>Square icons, badges, and mascot marks for web, mobile, social, and print use.</p>
+      </div>
+
+      <div class="icon-grid">
+        <div class="icon-card">
+          <div class="icon-preview bg-dark">
+            <img src="/images/logos/logo-circle.png" alt="Sunshine on a Ranney Day circle badge" class="icon-img" loading="lazy" />
+          </div>
+          <div class="icon-body">
             <h3>Circle Badge</h3>
-            <p>Compact logo for social profiles, stickers, avatars</p>
+            <p>Social profiles, stickers</p>
             <div class="logo-formats">
               <a href="/images/logos/logo-circle.png" download class="fmt-btn">PNG</a>
-              <a href="/images/logos/logo-circle.webp" download class="fmt-btn">WebP</a>
             </div>
           </div>
         </div>
 
-        <div class="logo-card">
-          <div class="logo-card-preview bg-dark">
-            <img src="/images/logos/sunny.png" alt="Sunny the Dream Pig mascot mark" class="logo-img" loading="lazy" />
+        <div class="icon-card">
+          <div class="icon-preview bg-dark">
+            <img src="/images/logos/sunny.png" alt="Sunny the Dream Pig mascot" class="icon-img" loading="lazy" />
           </div>
-          <div class="logo-card-body">
-            <h3>Sunny — Mascot Mark</h3>
-            <p>Standalone mascot for favicons, icons, compact spaces</p>
+          <div class="icon-body">
+            <h3>Sunny the Dream Pig</h3>
+            <p>Mascot mark</p>
             <div class="logo-formats">
               <a href="/images/logos/sunny.png" download class="fmt-btn">PNG</a>
             </div>
           </div>
         </div>
-      </div>
 
-      <div class="sizing-row">
-        <div class="sizing-card">
-          <div class="sizing-val">1.25"</div>
-          <div class="sizing-lbl">Min. print width</div>
-        </div>
-        <div class="sizing-card">
-          <div class="sizing-val">75px</div>
-          <div class="sizing-lbl">Min. screen width</div>
-        </div>
-        <div class="sizing-card">
-          <div class="sizing-val">1"</div>
-          <div class="sizing-lbl">Min. clear space</div>
+        <div class="icon-card">
+          <div class="icon-preview bg-dark">
+            <img src="/images/logos/sunny-circle.png" alt="Sunny the Dream Pig circle badge" class="icon-img" loading="lazy" />
+          </div>
+          <div class="icon-body">
+            <h3>Sunny Circle Badge</h3>
+            <p>Compact mascot badge</p>
+            <div class="logo-formats">
+              <a href="/images/logos/sunny-circle.png" download class="fmt-btn">PNG</a>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -117,21 +129,21 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 
       <div class="usage-grid">
         <div class="usage-card">
+          <div class="usage-label">Light Background</div>
           <div class="usage-preview bg-light">
             <img src="/images/logos/logo-light-bg.png" alt="Logo on light background" class="logo-img" loading="lazy" />
           </div>
           <div class="usage-body">
-            <h4>Light Background</h4>
-            <p>Use the dark logo on light backgrounds. Ensure adequate contrast and clear space.</p>
+            <p>Use the primary logo on light backgrounds. Ensure adequate contrast and clear space.</p>
           </div>
         </div>
         <div class="usage-card">
+          <div class="usage-label">Dark Background</div>
           <div class="usage-preview bg-dark">
             <img src="/images/logos/logo-dark-bg.png" alt="Logo on dark background" class="logo-img" loading="lazy" />
           </div>
           <div class="usage-body">
-            <h4>Dark Background</h4>
-            <p>Use white or primary version on dark backgrounds. Maintain strong contrast.</p>
+            <p>Use white or inverted version on dark backgrounds. Maintain strong contrast.</p>
           </div>
         </div>
       </div>
@@ -161,44 +173,24 @@ import BaseLayout from '../layouts/BaseLayout.astro';
       <h3 class="sub-heading">Visual Examples</h3>
       <div class="vis-examples">
         <div class="vis-ex">
+          <div class="vis-label ve-ok">Correct</div>
           <div class="vis-preview bg-light"><img src="/images/logos/logo-light-bg.png" alt="Correct logo usage" class="vis-logo" loading="lazy" /></div>
-          <div class="vis-body"><p class="ve-ok">Correct</p><p>Proper proportions and clear space</p></div>
+          <div class="vis-body"><p>Proper proportions and clear space</p></div>
         </div>
         <div class="vis-ex">
+          <div class="vis-label ve-bad">Incorrect</div>
           <div class="vis-preview bg-light"><img src="/images/logos/logo-light-bg.png" alt="Incorrect — stretched logo" class="vis-logo" style="transform:scaleX(1.4);" loading="lazy" /></div>
-          <div class="vis-body"><p class="ve-bad">Incorrect</p><p>Don't stretch or distort</p></div>
+          <div class="vis-body"><p>Don't stretch or distort</p></div>
         </div>
         <div class="vis-ex">
+          <div class="vis-label ve-ok">Correct</div>
           <div class="vis-preview bg-dark"><img src="/images/logos/logo-dark-bg.png" alt="Correct contrast" class="vis-logo" loading="lazy" /></div>
-          <div class="vis-body"><p class="ve-ok">Correct</p><p>Good contrast with background</p></div>
+          <div class="vis-body"><p>Good contrast with background</p></div>
         </div>
         <div class="vis-ex">
+          <div class="vis-label ve-bad">Incorrect</div>
           <div class="vis-preview" style="background:#e8e0c0;"><img src="/images/logos/logo-light-bg.png" alt="Incorrect — low contrast" class="vis-logo" style="opacity:0.3;" loading="lazy" /></div>
-          <div class="vis-body"><p class="ve-bad">Incorrect</p><p>Don't use on low-contrast backgrounds</p></div>
-        </div>
-      </div>
-
-      <!-- ── Sunny the Dream Pig ── -->
-      <h3 class="sub-heading" style="margin-top:48px;">Sunny the Dream Pig</h3>
-      <p class="sub-desc">Our official mascot — a caped pig with a saw, ready to build dreams. Use the correct background version.</p>
-      <div class="mascot-grid">
-        <div class="mascot-card">
-          <div class="mascot-preview bg-dark">
-            <img src="/images/logos/sunny-dark-bg.png" alt="Sunny the Dream Pig with tagline on dark background" class="logo-img" loading="lazy" />
-          </div>
-          <p class="mascot-label">Sunny + Tagline — Dark BG</p>
-        </div>
-        <div class="mascot-card">
-          <div class="mascot-preview bg-light">
-            <img src="/images/logos/sunny-light-bg.png" alt="Sunny the Dream Pig with tagline on light background" class="logo-img" loading="lazy" />
-          </div>
-          <p class="mascot-label">Sunny + Tagline — Light BG</p>
-        </div>
-        <div class="mascot-card">
-          <div class="mascot-preview bg-dark">
-            <img src="/images/logos/sunny-circle.png" alt="Sunny the Dream Pig circle badge" class="logo-img" loading="lazy" />
-          </div>
-          <p class="mascot-label">Sunny Circle Badge</p>
+          <div class="vis-body"><p>Don't use on low-contrast backgrounds</p></div>
         </div>
       </div>
     </div>
@@ -447,6 +439,14 @@ import BaseLayout from '../layouts/BaseLayout.astro';
     padding-block: var(--space-3xl) var(--space-2xl);
     text-align: center;
   }
+  .hero-label {
+    font-size: 14px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--c-yellow);
+    margin-bottom: var(--space-sm);
+  }
   .page-hero h1 {
     color: var(--c-white);
     font-size: clamp(2rem, 5vw, 3.25rem);
@@ -537,15 +537,6 @@ import BaseLayout from '../layouts/BaseLayout.astro';
   .bg-dark { background: var(--c-dark-deep); }
   .bg-light { background: var(--c-warm-gray); }
   .bg-yellow { background: var(--c-yellow); }
-  .logo-text {
-    font-family: var(--font-display);
-    font-size: 14px;
-    font-weight: 700;
-    letter-spacing: 0.03em;
-    text-align: center;
-  }
-  .logo-text.white { color: #fff; }
-  .logo-text.dark { color: var(--c-dark-deep); }
   .logo-card-body {
     padding: 20px 24px;
     border-top: 1px solid rgba(45,46,51,0.08);
@@ -587,36 +578,82 @@ import BaseLayout from '../layouts/BaseLayout.astro';
     object-fit: contain;
   }
 
-  /* ── Mascot Grid ── */
-  .mascot-grid {
+  /* ── Download All ── */
+  .download-all-btn {
+    display: inline-block;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--c-dark);
+    background: var(--c-warm-gray);
+    border: 1px solid rgba(45,46,51,0.1);
+    padding: 10px 20px;
+    border-radius: 8px;
+    text-decoration: none;
+    transition: all 0.15s;
+    margin-bottom: 28px;
+  }
+  .download-all-btn:hover {
+    background: var(--c-yellow);
+    border-color: var(--c-yellow);
+  }
+
+  /* ── Icon Grid ── */
+  .icon-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
     gap: 24px;
   }
-  .mascot-card {
+  .icon-card {
     border: 1px solid rgba(45,46,51,0.08);
     border-radius: 16px;
     overflow: hidden;
     background: var(--c-white);
     transition: transform 0.2s, box-shadow 0.2s;
   }
-  .mascot-card:hover {
+  .icon-card:hover {
     transform: translateY(-2px);
     box-shadow: 0 8px 24px rgba(0,0,0,0.06);
   }
-  .mascot-preview {
-    height: 200px;
+  .icon-preview {
+    height: 160px;
     display: flex;
     align-items: center;
     justify-content: center;
     padding: 24px;
   }
-  .mascot-label {
-    font-size: 13px;
+  .icon-img {
+    max-width: 100%;
+    max-height: 120px;
+    object-fit: contain;
+  }
+  .icon-body {
+    padding: 16px 20px;
+    border-top: 1px solid rgba(45,46,51,0.08);
+  }
+  .icon-body h3 {
+    font-family: var(--font-body);
+    font-size: 15px;
+    font-weight: 600;
+    margin-bottom: 2px;
+  }
+  .icon-body p { font-size: 13px; margin-bottom: 12px; }
+
+  /* ── Usage Labels (above previews, like DATAx) ── */
+  .usage-label {
+    font-family: var(--font-body);
+    font-size: 14px;
     font-weight: 600;
     color: var(--c-dark);
-    padding: 14px 20px;
-    border-top: 1px solid rgba(45,46,51,0.08);
+    padding: 14px 20px 0;
+  }
+
+  /* ── Visual Example Labels ── */
+  .vis-label {
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 10px 14px 0;
   }
 
   /* ── CSS Var labels ── */
@@ -629,40 +666,6 @@ import BaseLayout from '../layouts/BaseLayout.astro';
     padding: 2px 8px;
     border-radius: 4px;
     width: fit-content;
-  }
-
-  /* ── TOC download ── */
-  .toc-download {
-    background: var(--c-yellow) !important;
-    border-color: var(--c-yellow) !important;
-    font-weight: 600 !important;
-  }
-
-  /* ── Sizing ── */
-  .sizing-row {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 16px;
-    margin-top: 28px;
-  }
-  .sizing-card {
-    border: 1px solid rgba(45,46,51,0.08);
-    border-radius: 12px;
-    padding: 20px;
-    background: var(--c-white);
-    text-align: center;
-  }
-  .sizing-val {
-    font-family: var(--font-display);
-    font-size: 28px;
-    font-weight: 700;
-    color: var(--c-dark);
-    margin-bottom: 4px;
-  }
-  .sizing-lbl {
-    font-size: 13px;
-    font-weight: 500;
-    color: var(--c-text-muted);
   }
 
   /* ── Usage ── */
@@ -756,22 +759,12 @@ import BaseLayout from '../layouts/BaseLayout.astro';
     border-top: 1px solid rgba(45,46,51,0.08);
   }
   .ve-ok {
-    font-size: 12px !important;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: #16a34a !important;
-    margin-bottom: 2px;
+    color: #16a34a;
   }
   .ve-bad {
-    font-size: 12px !important;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: #dc2626 !important;
-    margin-bottom: 2px;
+    color: #dc2626;
   }
-  .vis-body p:last-child { font-size: 12px; }
+  .vis-body p { font-size: 12px; }
 
   /* ── Colors ── */
   .color-grid {
@@ -982,15 +975,14 @@ import BaseLayout from '../layouts/BaseLayout.astro';
   /* ── Responsive ── */
   @media (max-width: 768px) {
     .logo-grid { grid-template-columns: 1fr; }
+    .icon-grid { grid-template-columns: 1fr; }
     .usage-grid { grid-template-columns: 1fr; }
     .dodont-grid { grid-template-columns: 1fr; }
     .color-grid { grid-template-columns: 1fr 1fr; }
     .type-usage-grid { grid-template-columns: 1fr; }
     .voice-grid { grid-template-columns: 1fr; }
     .vis-examples { grid-template-columns: 1fr 1fr; }
-    .sizing-row { grid-template-columns: 1fr; }
     .legacy-grid { grid-template-columns: 1fr 1fr; }
-    .mascot-grid { grid-template-columns: 1fr; }
   }
   @media (max-width: 480px) {
     .color-grid { grid-template-columns: 1fr; }
