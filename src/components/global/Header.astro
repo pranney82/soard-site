@@ -116,7 +116,7 @@ function isActive(href: string) {
     </label>
 
     <!-- Mobile Menu -->
-    <div class="mobile-overlay" aria-hidden="true"></div>
+    <label for="mobile-toggle" class="mobile-overlay" aria-hidden="true"></label>
     <nav class="mobile-nav" aria-label="Mobile navigation">
       <ul class="mobile-nav-list">
         {nav.map((item) => (
@@ -319,7 +319,11 @@ function isActive(href: string) {
 
   /* ─── Mobile Toggle ────────────────────── */
   .mobile-toggle-input {
-    display: none;
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+    pointer-events: none;
   }
 
   .mobile-toggle {
@@ -361,6 +365,7 @@ function isActive(href: string) {
 
   /* ─── Mobile Overlay ───────────────────── */
   .mobile-overlay {
+    display: block;
     position: fixed;
     inset: 0;
     background: rgba(0, 0, 0, 0.5);
@@ -368,6 +373,7 @@ function isActive(href: string) {
     visibility: hidden;
     transition: opacity var(--transition-base), visibility var(--transition-base);
     z-index: 999;
+    cursor: default;
   }
 
   .mobile-toggle-input:checked ~ .mobile-overlay {
