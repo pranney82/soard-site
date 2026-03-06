@@ -18,7 +18,15 @@
   --c-white: #FFFFFF;
   --c-text: #2D2E33;
   --c-text-muted: #6B6C72;
+  --c-text-light: #9B9CA0;
   --c-border: #E5E4E0;
+
+  /* Font aliases for shorthand */
+  --f-display: 'Libre Baskerville', Georgia, 'Times New Roman', serif;
+  --f-body: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+
+  /* Page padding */
+  --page-padding: clamp(1rem, 4vw, 2rem);
 
   /* Typography */
   --font-display: 'Libre Baskerville', Georgia, 'Times New Roman', serif;
@@ -275,8 +283,78 @@ h4, .h4 {
   to { opacity: 1; }
 }
 
+@keyframes marquee {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-33.333%); }
+}
+
 .animate-in {
   animation: fadeInUp 0.6s ease both;
+}
+
+/* ─── Section Labels ───────────────────── */
+.section-label {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--c-purple);
+  margin-bottom: 20px;
+}
+.section-label::before {
+  content: '';
+  width: 28px;
+  height: 2px;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+/* ─── Global Button Styles ─────────────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 32px;
+  font-family: var(--font-body);
+  font-size: 15px;
+  font-weight: 600;
+  border-radius: 60px;
+  border: none;
+  cursor: pointer;
+  text-decoration: none;
+  transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  white-space: nowrap;
+}
+.btn-primary {
+  background: var(--c-yellow);
+  color: var(--c-dark);
+}
+.btn-primary:hover {
+  background: var(--c-yellow-hover);
+  transform: translateY(-3px);
+  box-shadow: 0 8px 24px rgba(255, 213, 0, 0.35);
+}
+.btn-dark {
+  background: var(--c-dark);
+  color: var(--c-white);
+}
+.btn-dark:hover {
+  background: #3a3b40;
+  transform: translateY(-3px);
+  box-shadow: 0 8px 24px rgba(45, 46, 51, 0.3);
+}
+
+/* ─── Prefers Reduced Motion ───────────── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  html { scroll-behavior: auto; }
 }
 
 /* ─── Responsive Helpers ────────────────── */

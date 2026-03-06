@@ -61,13 +61,69 @@ const fullTitle = title === 'Home'
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="manifest" href="/site.webmanifest" />
 
-  <!-- Fonts: Google Fonts for now, self-hosted woff2 for production -->
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link
-    href="https://fonts.googleapis.com/css2?family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&family=Outfit:wght@300;400;500;600;700&display=swap"
-    rel="stylesheet"
-  />
+  <!-- Preload critical fonts -->
+  <link rel="preload" href="/fonts/outfit-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="/fonts/libre-baskerville-latin-700-normal.woff2" as="font" type="font/woff2" crossorigin />
+
+  <!-- Self-hosted fonts for Lighthouse performance -->
+  <style is:inline>
+    @font-face {
+      font-family: 'Libre Baskerville';
+      font-style: normal;
+      font-weight: 400;
+      font-display: swap;
+      src: url('/fonts/libre-baskerville-latin-400-normal.woff2') format('woff2');
+    }
+    @font-face {
+      font-family: 'Libre Baskerville';
+      font-style: italic;
+      font-weight: 400;
+      font-display: swap;
+      src: url('/fonts/libre-baskerville-latin-400-italic.woff2') format('woff2');
+    }
+    @font-face {
+      font-family: 'Libre Baskerville';
+      font-style: normal;
+      font-weight: 700;
+      font-display: swap;
+      src: url('/fonts/libre-baskerville-latin-700-normal.woff2') format('woff2');
+    }
+    @font-face {
+      font-family: 'Outfit';
+      font-style: normal;
+      font-weight: 300;
+      font-display: swap;
+      src: url('/fonts/outfit-latin-300-normal.woff2') format('woff2');
+    }
+    @font-face {
+      font-family: 'Outfit';
+      font-style: normal;
+      font-weight: 400;
+      font-display: swap;
+      src: url('/fonts/outfit-latin-400-normal.woff2') format('woff2');
+    }
+    @font-face {
+      font-family: 'Outfit';
+      font-style: normal;
+      font-weight: 500;
+      font-display: swap;
+      src: url('/fonts/outfit-latin-500-normal.woff2') format('woff2');
+    }
+    @font-face {
+      font-family: 'Outfit';
+      font-style: normal;
+      font-weight: 600;
+      font-display: swap;
+      src: url('/fonts/outfit-latin-600-normal.woff2') format('woff2');
+    }
+    @font-face {
+      font-family: 'Outfit';
+      font-style: normal;
+      font-weight: 700;
+      font-display: swap;
+      src: url('/fonts/outfit-latin-700-normal.woff2') format('woff2');
+    }
+  </style>
 
   <!-- JSON-LD Structured Data -->
   {jsonLd && (
