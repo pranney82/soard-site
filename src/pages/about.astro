@@ -1,0 +1,72 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+---
+<BaseLayout title="About" description="Learn about Sunshine on a Ranney Day — our story, leadership team, and financial transparency. Creating dream rooms for kids with special needs since 2012.">
+
+  <section class="page-hero"><div class="container"><div class="section-label">About Us</div><h1>Our <span class="highlight">Story</span></h1><p class="page-hero-sub">What started as a single family's mission has grown into a movement that has transformed over 106 rooms for children with special needs across Greater Atlanta.</p></div></section>
+
+  <section class="about-story"><div class="container"><div class="about-story-grid">
+    <div class="about-story-text">
+      <h2>It started with one child, <span class="highlight">one room</span></h2>
+      <p>In 2012, the Ranney family saw a need that wasn't being met. Children with special needs were living in spaces that didn't support their unique challenges — rooms that weren't accessible, weren't sensory-friendly, and weren't designed with their joy in mind.</p>
+      <p>So they decided to do something about it. Sunshine on a Ranney Day was born from the belief that every child deserves a room that says "you matter" — a space where they can feel safe, express themselves, and simply be a kid.</p>
+      <p>Thirteen years and 132+ children later, we're still at it. Working with an incredible network of designers, contractors, and community partners who donate their time, skills, and materials, we've completed more than 106 room makeovers — from dream bedrooms to accessible bathrooms to sensory therapy rooms.</p>
+      <p>We're a 501(c)(3) nonprofit, and we're proud that the overwhelming majority of every dollar goes directly to our room projects. No bureaucracy. No overhead bloat. Just kids, rooms, and community.</p>
+    </div>
+    <div class="about-story-visual"><div class="about-story-photo"><span>🌟</span><p>The Ranney Family</p></div></div>
+  </div></div></section>
+
+  <section class="about-leadership" id="leadership"><div class="container">
+    <div class="section-header-center"><div class="section-label">Leadership</div><h2>Meet the <span class="highlight">team</span></h2></div>
+    <div class="leaders">
+      <div class="leader"><div class="leader-avatar">PR</div><h3>Peter Ranney</h3><span class="leader-title">Co-Founder & Program Director</span><p>Peter leads the day-to-day operations and oversees every room project from start to reveal. His passion for creating spaces that transform children's lives drives everything we do.</p></div>
+      <div class="leader"><div class="leader-avatar">JR</div><h3>Jamie Ranney</h3><span class="leader-title">Co-Founder</span><p>Jamie brings the heart and vision to every project, ensuring each room reflects the unique personality and needs of the child it's designed for.</p></div>
+    </div>
+  </div></section>
+
+  <section class="about-financials" id="financials"><div class="container">
+    <div class="section-header-center"><div class="section-label">Financials</div><h2>Complete <span class="highlight">transparency</span></h2><p class="section-sub">We believe you deserve to know exactly how your donations are used.</p></div>
+    <div class="fin-grid">
+      <div class="fin-card"><span class="fin-icon">📋</span><h3>Form 990 Tax Returns</h3><p>Our IRS Form 990s are available for public review, covering our revenue, expenses, and organizational details.</p><span class="fin-status">Available upon request</span></div>
+      <div class="fin-card"><span class="fin-icon">📊</span><h3>Annual Reports</h3><p>Detailed breakdowns of our projects, partnerships, and financial performance for each year of operation.</p><span class="fin-status">Published annually</span></div>
+      <div class="fin-card"><span class="fin-icon">✅</span><h3>501(c)(3) Status</h3><p>Sunshine on a Ranney Day is a registered 501(c)(3) nonprofit. All donations are tax-deductible to the full extent of the law.</p><span class="fin-status">Active & verified</span></div>
+    </div>
+  </div></section>
+
+</BaseLayout>
+
+<style>
+  .page-hero{padding:120px var(--page-padding) 60px;background:var(--c-cream);}
+  .page-hero h1{margin-bottom:16px;}
+  .page-hero-sub{font-size:19px;color:var(--c-text-muted);max-width:580px;line-height:1.7;}
+
+  .about-story{padding:var(--section-padding);}
+  .about-story-grid{display:grid;grid-template-columns:1.3fr 1fr;gap:72px;align-items:center;}
+  .about-story-text h2{margin-bottom:24px;}
+  .about-story-text p{font-size:17px;line-height:1.8;margin-bottom:20px;}
+  .about-story-photo{border-radius:24px;aspect-ratio:4/3;background:linear-gradient(135deg,var(--c-warm-gray),#e8e7e3);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;font-size:14px;color:var(--c-text-muted);}
+  .about-story-photo span{font-size:48px;}
+
+  .about-leadership{padding:var(--section-padding);background:var(--c-warm-gray);}
+  .section-header-center{text-align:center;margin-bottom:56px;}
+  .section-sub{font-size:17px;color:var(--c-text-muted);max-width:520px;margin:12px auto 0;line-height:1.7;}
+  .leaders{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:48px;max-width:800px;margin:0 auto;}
+  .leader{text-align:center;}
+  .leader-avatar{width:100px;height:100px;border-radius:50%;background:var(--c-dark);color:var(--c-yellow);display:flex;align-items:center;justify-content:center;font-family:var(--f-display);font-size:28px;font-weight:700;margin:0 auto 20px;}
+  .leader h3{font-size:22px;margin-bottom:4px;}
+  .leader-title{display:block;font-size:14px;font-weight:600;color:var(--c-purple);margin-bottom:16px;}
+  .leader p{font-size:15px;line-height:1.7;color:var(--c-text-muted);}
+
+  .about-financials{padding:var(--section-padding);}
+  .fin-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:24px;}
+  .fin-card{background:var(--c-white);padding:36px;border-radius:20px;box-shadow:0 1px 3px rgba(0,0,0,0.04),inset 0 0 0 1px rgba(0,0,0,0.06);transition:all 0.4s cubic-bezier(0.16,1,0.3,1);}
+  .fin-card:hover{transform:translateY(-4px);box-shadow:0 16px 40px rgba(0,0,0,0.06);}
+  .fin-icon{font-size:32px;display:block;margin-bottom:16px;}
+  .fin-card h3{font-family:var(--f-body);font-size:17px;margin-bottom:8px;}
+  .fin-card p{font-size:15px;line-height:1.65;margin-bottom:16px;}
+  .fin-status{font-size:13px;font-weight:600;color:#22C55E;}
+
+  @media(max-width:768px){
+    .about-story-grid{grid-template-columns:1fr;gap:40px;}
+  }
+</style>

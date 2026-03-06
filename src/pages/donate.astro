@@ -1,0 +1,127 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+---
+<BaseLayout title="Donate" description="Your tax-deductible donation creates dream rooms for children with special needs in Atlanta. 100% goes to kids.">
+
+  <section class="donate-hero">
+    <div class="donate-hero-inner">
+      <div class="donate-hero-text">
+        <div class="section-label" style="color:var(--c-yellow);">Make a Difference</div>
+        <h1>Give a child the room they've always <span class="highlight">dreamed of</span></h1>
+        <p>Your donation directly funds dream bedrooms, accessible bathrooms, and therapy rooms for children with special needs in the Greater Atlanta area.</p>
+        <div class="impact-grid">
+          <div class="impact-item"><strong>$50</strong><span>Paint and supplies for one room</span></div>
+          <div class="impact-item"><strong>$250</strong><span>Adaptive furniture for a bedroom</span></div>
+          <div class="impact-item"><strong>$1,000</strong><span>Complete sensory therapy room</span></div>
+          <div class="impact-item"><strong>$5,000</strong><span>Full dream bedroom makeover</span></div>
+        </div>
+      </div>
+      <div class="donate-form-wrap">
+        <div class="donate-form">
+          <h2>Choose Your Gift</h2>
+          <p class="donate-form-sub">Every dollar goes directly to room projects for kids.</p>
+          <div class="amount-grid">
+            <button class="amount-btn" data-amount="25">$25</button>
+            <button class="amount-btn" data-amount="50">$50</button>
+            <button class="amount-btn is-active" data-amount="100">$100</button>
+            <button class="amount-btn" data-amount="250">$250</button>
+            <button class="amount-btn" data-amount="500">$500</button>
+            <button class="amount-btn" data-amount="1000">$1,000</button>
+          </div>
+          <div class="custom-amount"><label for="custom-amt">Or enter a custom amount</label><div class="custom-wrap"><span class="dollar-sign">$</span><input type="number" id="custom-amt" placeholder="Other amount" min="1" /></div></div>
+          <div class="freq-row">
+            <label class="freq-opt"><input type="radio" name="freq" value="once" checked /><span>One-Time</span></label>
+            <label class="freq-opt"><input type="radio" name="freq" value="monthly" /><span>Monthly</span></label>
+          </div>
+          <a href="#" class="btn btn-primary donate-submit-btn">Donate Now ♥</a>
+          <div class="donate-trust-row">
+            <span>🔒 256-bit SSL Secure</span>
+            <span>✅ 501(c)(3) Tax-Deductible</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="donate-why"><div class="container">
+    <div class="section-header-center"><div class="section-label">Why Donate</div><h2>Where your money <span class="highlight">goes</span></h2></div>
+    <div class="why-grid">
+      <div class="why-card"><div class="why-num">87%</div><h3>Program Services</h3><p>The vast majority of your donation goes directly to building rooms for children with special needs.</p></div>
+      <div class="why-card"><div class="why-num">106+</div><h3>Rooms Completed</h3><p>Each room is fully customized — from paint colors to adaptive technology — tailored to each child.</p></div>
+      <div class="why-card"><div class="why-num">13</div><h3>Years of Impact</h3><p>Since 2012, we've been serving Greater Atlanta with a proven track record of transforming lives.</p></div>
+    </div>
+  </div></section>
+
+  <section class="donate-other"><div class="container">
+    <div class="section-header-center"><div class="section-label">Other Ways to Give</div><h2>More ways to <span class="highlight">support</span></h2></div>
+    <div class="other-grid">
+      <div class="other-card"><h3>Shop Sunny & Ranney</h3><p>Proceeds from our retail store fund room projects. Every purchase makes a difference.</p><a href="https://sunnyandranney.com" target="_blank" rel="noopener" class="btn btn-ghost btn-sm">Visit Store →</a></div>
+      <div class="other-card"><h3>Corporate Partnerships</h3><p>Partner with us for team builds, sponsorships, or in-kind donations.</p><a href="/partners" class="btn btn-ghost btn-sm">Learn More →</a></div>
+      <div class="other-card"><h3>In-Kind Donations</h3><p>Donate furniture, materials, paint, or professional services directly.</p><a href="/get-involved" class="btn btn-ghost btn-sm">Get Involved →</a></div>
+    </div>
+  </div></section>
+
+</BaseLayout>
+
+<style>
+  .donate-hero{padding:120px var(--page-padding) 80px;background:var(--c-dark-deep);color:#fff;}
+  .donate-hero-inner{max-width:var(--max-width);margin:0 auto;display:grid;grid-template-columns:1.1fr 1fr;gap:72px;align-items:start;}
+  .donate-hero-text h1{color:#fff;margin-bottom:20px;}
+  .donate-hero-text > p{color:rgba(255,255,255,0.6);font-size:17px;line-height:1.7;margin-bottom:36px;max-width:480px;}
+  .impact-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+  .impact-item{padding:20px;background:rgba(255,255,255,0.05);border-radius:16px;border:1px solid rgba(255,255,255,0.08);}
+  .impact-item strong{display:block;font-family:var(--f-display);font-size:24px;color:var(--c-yellow);margin-bottom:4px;}
+  .impact-item span{font-size:14px;color:rgba(255,255,255,0.5);line-height:1.5;}
+
+  .donate-form-wrap{position:relative;}
+  .donate-form{background:var(--c-white);color:var(--c-text);padding:40px;border-radius:24px;box-shadow:0 32px 64px rgba(0,0,0,0.3);}
+  .donate-form h2{font-size:24px;margin-bottom:4px;}
+  .donate-form-sub{font-size:15px;color:var(--c-text-muted);margin-bottom:28px;}
+  .amount-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:20px;}
+  .amount-btn{padding:14px;border:2px solid rgba(45,46,51,0.08);border-radius:12px;font-family:var(--f-body);font-size:16px;font-weight:600;color:var(--c-dark);background:var(--c-white);transition:all 0.2s ease;cursor:pointer;}
+  .amount-btn:hover{border-color:var(--c-yellow);background:var(--c-yellow-glow);}
+  .amount-btn.is-active{border-color:var(--c-yellow);background:var(--c-yellow);color:var(--c-dark);}
+  .custom-amount{margin-bottom:20px;}
+  .custom-amount label{display:block;font-size:13px;font-weight:500;color:var(--c-text-muted);margin-bottom:6px;}
+  .custom-wrap{position:relative;}
+  .dollar-sign{position:absolute;left:14px;top:50%;transform:translateY(-50%);font-weight:600;color:var(--c-text-muted);}
+  .custom-wrap input{width:100%;padding:14px 14px 14px 30px;border:2px solid rgba(45,46,51,0.08);border-radius:12px;font-family:var(--f-body);font-size:16px;}
+  .custom-wrap input:focus{outline:none;border-color:var(--c-yellow);}
+  .freq-row{display:flex;gap:8px;margin-bottom:24px;}
+  .freq-opt{flex:1;display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;border:2px solid rgba(45,46,51,0.08);border-radius:12px;cursor:pointer;font-size:15px;font-weight:500;transition:all 0.2s ease;}
+  .freq-opt:has(input:checked){border-color:var(--c-yellow);background:var(--c-yellow-glow);}
+  .freq-opt input{accent-color:var(--c-yellow);}
+  .donate-submit-btn{width:100%;justify-content:center;margin-bottom:20px;}
+  .donate-trust-row{display:flex;justify-content:center;gap:24px;font-size:12px;color:var(--c-text-muted);}
+
+  .donate-why{padding:var(--section-padding);}
+  .section-header-center{text-align:center;margin-bottom:56px;}
+  .why-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:24px;}
+  .why-card{text-align:center;padding:40px;background:var(--c-warm-gray);border-radius:20px;}
+  .why-num{font-family:var(--f-display);font-size:48px;font-weight:700;color:var(--c-yellow);margin-bottom:4px;}
+  .why-card h3{font-family:var(--f-body);font-size:17px;margin-bottom:8px;}
+  .why-card p{font-size:15px;line-height:1.65;margin:0 auto;}
+
+  .donate-other{padding:var(--section-padding);background:var(--c-warm-gray);}
+  .other-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:24px;}
+  .other-card{padding:36px;background:var(--c-white);border-radius:20px;box-shadow:0 1px 3px rgba(0,0,0,0.04),inset 0 0 0 1px rgba(0,0,0,0.06);}
+  .other-card h3{font-family:var(--f-body);font-size:17px;margin-bottom:8px;}
+  .other-card p{font-size:15px;line-height:1.65;margin-bottom:20px;}
+
+  @media(max-width:768px){
+    .donate-hero-inner{grid-template-columns:1fr;gap:40px;}
+    .impact-grid{grid-template-columns:1fr;}
+    .why-grid{grid-template-columns:1fr;}
+  }
+</style>
+
+<script>
+  const amounts = document.querySelectorAll('.amount-btn');
+  const customInput = document.querySelector('#custom-amt') as HTMLInputElement;
+  amounts.forEach(btn => btn.addEventListener('click', () => {
+    amounts.forEach(b => b.classList.remove('is-active'));
+    btn.classList.add('is-active');
+    if (customInput) customInput.value = '';
+  }));
+  if (customInput) customInput.addEventListener('focus', () => amounts.forEach(b => b.classList.remove('is-active')));
+</script>

@@ -1,0 +1,72 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+---
+<BaseLayout title="Partners" description="Meet the incredible construction, design, and community partners who donate their time and skills to build dream rooms for children with special needs.">
+
+  <section class="page-hero"><div class="container"><div class="section-label">Our Partners</div><h1>Built by <span class="highlight">community</span></h1><p class="page-hero-sub">Every room is a community effort. Our incredible partners donate their time, expertise, and materials to create spaces that transform children's lives.</p></div></section>
+
+  <section class="partners-page"><div class="container">
+    <div class="partner-group">
+      <div class="section-label">Construction Partners</div>
+      <h2>The builders who make it <span class="highlight">happen</span></h2>
+      <p class="partner-group-desc">Licensed contractors and skilled tradespeople who donate labor and materials for every room project.</p>
+      <div class="partner-grid">
+        <div class="partner-card"><div class="partner-card-logo">CR</div><h3>CR Construction</h3><p>General contracting, framing, drywall, and finish carpentry for room builds.</p></div>
+        <div class="partner-card"><div class="partner-card-logo">RP</div><h3>Randall Paulson</h3><p>Electrical, plumbing, and specialty construction work for accessible rooms.</p></div>
+        <div class="partner-card"><div class="partner-card-logo">SP</div><h3>Stag Partners</h3><p>Project management and on-site coordination for complex builds.</p></div>
+      </div>
+    </div>
+
+    <div class="partner-group">
+      <div class="section-label">Design Partners</div>
+      <h2>Creating spaces that <span class="highlight">inspire</span></h2>
+      <p class="partner-group-desc">Interior designers and architects who volunteer their creative talents to craft rooms tailored to each child.</p>
+      <div class="partner-grid">
+        <div class="partner-card"><div class="partner-card-logo">CD</div><h3>Crosby Design Group</h3><p>Room concepts, color palettes, furniture selection, and styling for each child's dream room.</p></div>
+        <div class="partner-card"><div class="partner-card-logo">WYP</div><h3>WYP</h3><p>Accessibility consulting and adaptive design solutions for children with mobility needs.</p></div>
+      </div>
+    </div>
+
+    <div class="partner-group">
+      <div class="section-label">Community Partners</div>
+      <h2>The supporters behind <span class="highlight">every room</span></h2>
+      <p class="partner-group-desc">Businesses and organizations that provide funding, materials, and community support.</p>
+      <div class="partner-grid">
+        <div class="partner-card"><div class="partner-card-logo">GS</div><h3>Gas South</h3><p>Major corporate sponsor providing funding for multiple room projects.</p></div>
+        <div class="partner-card"><div class="partner-card-logo">KRK</div><h3>Kids R Kids</h3><p>Community fundraising partner supporting children's spaces.</p></div>
+        <div class="partner-card"><div class="partner-card-logo">JH</div><h3>Jackson Healthcare</h3><p>Healthcare industry partner supporting accessible room builds.</p></div>
+        <div class="partner-card"><div class="partner-card-logo">MSI</div><h3>MSI</h3><p>Materials and surface solutions for beautiful, durable room finishes.</p></div>
+        <div class="partner-card"><div class="partner-card-logo">C</div><h3>Cambria</h3><p>Premium surface materials donated for bathroom and room projects.</p></div>
+        <div class="partner-card"><div class="partner-card-logo">M</div><h3>Mohawk</h3><p>Flooring materials for accessible and sensory-friendly room builds.</p></div>
+      </div>
+    </div>
+
+    <div class="partner-cta">
+      <h2>Want to become a partner?</h2>
+      <p>We're always looking for skilled professionals and businesses who want to make a difference.</p>
+      <a href="/get-involved" class="btn btn-primary">Partner With Us →</a>
+    </div>
+  </div></section>
+
+</BaseLayout>
+
+<style>
+  .page-hero{padding:120px var(--page-padding) 60px;background:var(--c-cream);}
+  .page-hero h1{margin-bottom:16px;}
+  .page-hero-sub{font-size:19px;color:var(--c-text-muted);max-width:580px;line-height:1.7;}
+
+  .partners-page{padding:var(--section-padding);}
+  .partner-group{margin-bottom:80px;}
+  .partner-group h2{margin-bottom:12px;}
+  .partner-group-desc{font-size:17px;color:var(--c-text-muted);max-width:520px;line-height:1.7;margin-bottom:36px;}
+  .partner-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:24px;}
+  .partner-card{background:var(--c-white);padding:36px;border-radius:20px;box-shadow:0 1px 3px rgba(0,0,0,0.04),inset 0 0 0 1px rgba(0,0,0,0.06);transition:all 0.4s cubic-bezier(0.16,1,0.3,1);}
+  .partner-card:hover{transform:translateY(-4px);box-shadow:0 16px 40px rgba(0,0,0,0.06);}
+  .partner-card-logo{width:56px;height:56px;background:var(--c-warm-gray);border-radius:14px;display:flex;align-items:center;justify-content:center;font-family:var(--f-display);font-weight:700;font-size:18px;color:var(--c-text-muted);margin-bottom:20px;}
+  .partner-card h3{font-family:var(--f-body);font-size:17px;margin-bottom:8px;}
+  .partner-card p{font-size:15px;color:var(--c-text-muted);line-height:1.65;}
+
+  .partner-cta{text-align:center;padding:72px 40px;background:var(--c-yellow-glow);border-radius:24px;}
+  .partner-cta h2{margin-bottom:12px;}
+  .partner-cta p{font-size:17px;color:var(--c-text-muted);max-width:520px;margin:0 auto 28px;line-height:1.7;}
+</style>
