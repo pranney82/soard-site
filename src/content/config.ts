@@ -51,6 +51,7 @@ const team = defineCollection({
   type: 'data',
   schema: z.object({
     name: z.string(),
+    slug: z.string().optional(),
     title: z.string(),
     organization: z.string().optional(),
     photo: z.string().optional(),

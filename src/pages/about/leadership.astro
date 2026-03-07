@@ -1,15 +1,353 @@
 ---
+/**
+ * Leadership — Team & Board of Directors
+ * Pulls from src/content/team/ JSON files.
+ */
 import PageLayout from '../../layouts/PageLayout.astro';
+import { getCollection } from 'astro:content';
+
+const allTeam = await getCollection('team');
+const teamMembers = allTeam
+  .filter(t => t.data.group === 'team')
+  .sort((a, b) => (a.data.order || 0) - (b.data.order || 0));
+const boardMembers = allTeam
+  .filter(t => t.data.group === 'board')
+  .sort((a, b) => (a.data.order || 0) - (b.data.order || 0));
 ---
 
 <PageLayout
   title="Leadership"
+  description="Meet the team and board of directors behind Sunshine on a Ranney Day — the people who make dream rooms possible for children with special needs."
   heroTitle="Leadership"
   heroSubtitle="The people behind the mission"
 >
-  <section class="section">
-    <div class="container container--narrow" style="text-align: center; padding-block: var(--space-4xl);">
-      <p style="color: var(--c-text-muted);">This page is being built. Check back soon!</p>
+  <!-- Team Section -->
+  <section class="section" id="our-team">
+    <div class="container">
+      <div class="section-intro">
+        <h2 class="section-label">Our Team</h2>
+        <p class="section-desc">
+          The dedicated crew that turns <span class="highlight">dreams into reality</span> — 
+          from design and construction to operations and community outreach.
+        </p>
+      </div>
+
+      <div class="team-grid">
+        {teamMembers.map(member => (
+          <div class="member-card">
+            <div class="member-photo">
+              {member.data.photo ? (
+                <img
+                  src={member.data.photo}
+                  alt={`${member.data.name}, ${member.data.title}`}
+                  loading="lazy"
+                  decoding="async"
+                />
+              ) : (
+                <div class="member-photo__placeholder">
+                  <span>☀️</span>
+                </div>
+              )}
+            </div>
+            <h3 class="member-name">{member.data.name}</h3>
+            <p class="member-title">{member.data.title}</p>
+            {member.data.organization && (
+              <p class="member-org">{member.data.organization}</p>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <!-- Board Section -->
+  <section class="section section--gray" id="board">
+    <div class="container">
+      <div class="section-intro">
+        <h2 class="section-label">Board of Directors</h2>
+        <p class="section-desc">
+          Community leaders and industry experts who guide our <span class="highlight">mission and growth</span>.
+        </p>
+      </div>
+
+      <div class="board-grid">
+        {boardMembers.map(member => (
+          <div class="board-card">
+            <div class="board-photo">
+              {member.data.photo ? (
+                <img
+                  src={member.data.photo}
+                  alt={`${member.data.name}, ${member.data.title}`}
+                  loading="lazy"
+                  decoding="async"
+                />
+              ) : (
+                <div class="board-photo__placeholder">
+                  <span>☀️</span>
+                </div>
+              )}
+            </div>
+            <div class="board-info">
+              <h3 class="board-name">{member.data.name}</h3>
+              <p class="board-title">{member.data.title}</p>
+              {member.data.organization && (
+                <p class="board-org">{member.data.organization}</p>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <section class="section section--dark" slot="cta">
+    <div class="container" style="text-align: center;">
+      <h2 class="cta-heading">
+        Want to <span class="highlight">join the mission</span>?
+      </h2>
+      <p class="cta-text">
+        We're always looking for passionate people — whether you want to volunteer, 
+        partner, or support our work in other ways.
+      </p>
+      <div class="cta-buttons">
+        <a href="/donate" class="btn btn--primary">Donate</a>
+        <a href="/apply" class="btn btn--outline">Apply for a Room</a>
+      </div>
     </div>
   </section>
 </PageLayout>
+
+<style>
+  /* ─── Section Intro ───────────────────── */
+  .section-intro {
+    text-align: center;
+    max-width: 640px;
+    margin-inline: auto;
+    margin-bottom: var(--space-3xl);
+  }
+
+  .section-label {
+    font-family: var(--f-display);
+    font-size: clamp(1.75rem, 4vw, 2.5rem);
+    color: var(--c-dark);
+    margin-bottom: var(--space-md);
+  }
+
+  .section-desc {
+    font-size: 1.1rem;
+    color: var(--c-text-muted);
+    line-height: 1.7;
+  }
+
+  /* ─── Team Grid ───────────────────────── */
+  .team-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: var(--space-2xl);
+    max-width: 1000px;
+    margin-inline: auto;
+  }
+
+  .member-card {
+    text-align: center;
+  }
+
+  .member-photo {
+    width: 180px;
+    height: 180px;
+    border-radius: 50%;
+    overflow: hidden;
+    margin: 0 auto var(--space-lg);
+    background: var(--c-warm-gray);
+    box-shadow: var(--shadow-md);
+    transition: transform var(--transition-slow), box-shadow var(--transition-slow);
+  }
+
+  .member-card:hover .member-photo {
+    transform: scale(1.05);
+    box-shadow: 0 8px 30px rgba(255, 213, 0, 0.25);
+  }
+
+  .member-photo img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .member-photo__placeholder {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 3rem;
+    background: var(--c-cream);
+  }
+
+  .member-name {
+    font-family: var(--f-display);
+    font-size: 1.15rem;
+    font-weight: 700;
+    margin-bottom: 0.2rem;
+  }
+
+  .member-title {
+    font-size: 0.95rem;
+    color: var(--c-purple);
+    font-weight: 500;
+  }
+
+  .member-org {
+    font-size: 0.85rem;
+    color: var(--c-text-muted);
+    margin-top: 0.15rem;
+  }
+
+  /* ─── Board Grid ──────────────────────── */
+  .board-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: var(--space-lg);
+    max-width: 1100px;
+    margin-inline: auto;
+  }
+
+  .board-card {
+    display: flex;
+    align-items: center;
+    gap: var(--space-lg);
+    background: var(--c-white);
+    padding: var(--space-lg);
+    border-radius: var(--border-radius-lg);
+    box-shadow: var(--shadow-sm);
+    transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+  }
+
+  .board-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+  }
+
+  .board-photo {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    overflow: hidden;
+    flex-shrink: 0;
+    background: var(--c-warm-gray);
+  }
+
+  .board-photo img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .board-photo__placeholder {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    background: var(--c-cream);
+  }
+
+  .board-info {
+    min-width: 0;
+  }
+
+  .board-name {
+    font-family: var(--f-display);
+    font-size: 1.05rem;
+    font-weight: 700;
+    margin-bottom: 0.15rem;
+  }
+
+  .board-title {
+    font-size: 0.85rem;
+    color: var(--c-purple);
+    font-weight: 500;
+  }
+
+  .board-org {
+    font-size: 0.82rem;
+    color: var(--c-text-muted);
+    margin-top: 0.15rem;
+    line-height: 1.4;
+  }
+
+  /* ─── CTA ─────────────────────────────── */
+  .cta-heading {
+    font-family: var(--f-display);
+    font-size: clamp(1.5rem, 4vw, 2.25rem);
+    color: var(--c-white);
+    margin-bottom: var(--space-md);
+  }
+
+  .cta-text {
+    font-size: 1.1rem;
+    color: rgba(255, 255, 255, 0.75);
+    max-width: 560px;
+    margin-inline: auto;
+    margin-bottom: var(--space-xl);
+    line-height: 1.7;
+  }
+
+  .cta-buttons {
+    display: flex;
+    gap: var(--space-md);
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.85rem 2rem;
+    border-radius: 100px;
+    font-size: 1rem;
+    font-weight: 600;
+    text-decoration: none;
+    transition: all var(--transition-fast);
+  }
+
+  .btn--primary {
+    background: var(--c-yellow);
+    color: var(--c-dark);
+  }
+
+  .btn--primary:hover {
+    background: var(--c-yellow-hover);
+    transform: translateY(-1px);
+  }
+
+  .btn--outline {
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    color: var(--c-white);
+  }
+
+  .btn--outline:hover {
+    border-color: var(--c-white);
+    background: rgba(255, 255, 255, 0.08);
+  }
+
+  /* ─── Responsive ──────────────────────── */
+  @media (max-width: 600px) {
+    .team-grid {
+      grid-template-columns: repeat(2, 1fr);
+      gap: var(--space-xl);
+    }
+
+    .member-photo {
+      width: 130px;
+      height: 130px;
+    }
+
+    .board-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>
