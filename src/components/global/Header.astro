@@ -540,6 +540,7 @@ function isActive(href: string) {
   .mobile-toggle.is-open .hamburger-line:nth-child(1) { transform: translateY(7px) rotate(45deg); }
   .mobile-toggle.is-open .hamburger-line:nth-child(2) { opacity: 0; }
   .mobile-toggle.is-open .hamburger-line:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
+  .mobile-toggle.is-open { opacity: 0; pointer-events: none; }
 
   /* ─── Mobile Overlay ───────────────────── */
   .mobile-overlay {
