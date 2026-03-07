@@ -88,7 +88,7 @@ const nav: NavGroup[] = [
 
 function isActive(href: string) {
   if (href.startsWith('http')) return false;
-  return currentPath.startsWith(href);
+  return currentPath === href;
 }
 
 /** Check if any child in a nav group is active */
