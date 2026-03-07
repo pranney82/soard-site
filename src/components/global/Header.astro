@@ -618,19 +618,18 @@ function isActive(href: string) {
     width: 44px;
     height: 44px;
     border: none;
-    background: var(--c-warm-gray);
+    background: none;
     border-radius: 50%;
     cursor: pointer;
-    color: var(--c-dark);
-    transition: background var(--transition-fast), color var(--transition-fast);
+    color: var(--c-text-muted);
+    transition: color var(--transition-fast);
     -webkit-tap-highlight-color: transparent;
     touch-action: manipulation;
     flex-shrink: 0;
   }
 
   .mobile-close-btn:hover {
-    background: var(--c-dark);
-    color: var(--c-white);
+    color: var(--c-dark);
   }
 
   .mobile-nav-group + .mobile-nav-group {
