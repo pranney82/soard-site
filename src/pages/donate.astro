@@ -173,8 +173,8 @@ const breadcrumbs = [
         <div class="zeffy-reveal-header">
           <div class="zeffy-reveal-check" aria-hidden="true">✓</div>
           <div>
-            <p class="zeffy-reveal-title">Great choice! Complete your <strong id="zeffy-amount-echo">$500</strong> donation below.</p>
-            <button type="button" class="zeffy-change-btn" id="zeffy-change-btn">Change amount ←</button>
+            <p class="zeffy-reveal-title"><strong id="zeffy-amount-echo">$500 one-time</strong> — enter this amount below and complete your secure payment.</p>
+            <button type="button" class="zeffy-change-btn" id="zeffy-change-btn">← Change amount</button>
           </div>
         </div>
         <div class="zeffy-wrapper">
@@ -1226,8 +1226,8 @@ const breadcrumbs = [
     if (amount < 1) return;
 
     // Update echo text
-    const suffix = freq === 'monthly' ? '/month' : ' one-time';
-    amountEcho.textContent = `$${amount.toLocaleString()}${suffix}`;
+    const freqLabel = freq === 'monthly' ? 'monthly' : 'one-time';
+    amountEcho.textContent = `$${amount.toLocaleString()} ${freqLabel}`;
 
     // Lazy-load the iframe only when needed
     if (!iframe.src) {
