@@ -7,7 +7,7 @@
  * - Hero image: fetchpriority="high", explicit dimensions, eager loading
  * - Zeffy iframe: loading="lazy" (defers ~800KB iframe until scroll)
  * - All below-fold images: loading="lazy"
- * - FAQ uses native <details> (zero JS)
+ * - FAQ uses native <details name="..."> for exclusive accordion (zero JS in modern browsers)
  * - Scroll observer is tiny (~300 bytes)
  * - preconnect hint for WP image domain in BaseLayout
  * - All sections use reduced padding on mobile
@@ -15,6 +15,14 @@
  * TODO: Migrate images to Cloudflare Images for AVIF/WebP + srcset
  */
 import BaseLayout from '../layouts/BaseLayout.astro';
+import faqData from '../content/site/faq.json';
+
+const donateFaqs = faqData.items
+  .filter(item => {
+    const cat = faqData.categories.find(c => c.id === item.category);
+    return cat?.showOnDonatePage;
+  })
+  .sort((a, b) => (a.order || 0) - (b.order || 0));
 ---
 
 <BaseLayout
@@ -240,56 +248,18 @@ import BaseLayout from '../layouts/BaseLayout.astro';
         <a href="mailto:peter@sunshineonaranneyday.com" class="btn btn-dark">Contact Us →</a>
       </div>
       <div class="faq-right" data-reveal data-delay="1">
-        <details class="faq-card">
-          <summary>
-            <span class="faq-num">01</span>
-            <span class="faq-q">Is my donation tax-deductible?</span>
-            <span class="faq-toggle" aria-hidden="true"></span>
-          </summary>
-          <div class="faq-answer">
-            <p>Yes. Sunshine on a Ranney Day is a registered 501(c)(3) nonprofit (EIN 45-4773997). You'll receive a tax receipt from Zeffy immediately after donating.</p>
-          </div>
-        </details>
-        <details class="faq-card">
-          <summary>
-            <span class="faq-num">02</span>
-            <span class="faq-q">Does 100% of my donation really go to kids?</span>
-            <span class="faq-toggle" aria-hidden="true"></span>
-          </summary>
-          <div class="faq-answer">
-            <p>Yes. Zeffy is a 100% free platform for nonprofits — they charge zero processing fees. Your entire donation goes directly to funding room materials, labor, and design for children's spaces.</p>
-          </div>
-        </details>
-        <details class="faq-card">
-          <summary>
-            <span class="faq-num">03</span>
-            <span class="faq-q">Can I set up a monthly recurring donation?</span>
-            <span class="faq-toggle" aria-hidden="true"></span>
-          </summary>
-          <div class="faq-answer">
-            <p>Absolutely. In the donation form above, simply toggle to "Monthly" before selecting your amount. Monthly gifts help us plan future room makeovers with greater confidence.</p>
-          </div>
-        </details>
-        <details class="faq-card">
-          <summary>
-            <span class="faq-num">04</span>
-            <span class="faq-q">Can I donate materials or services instead?</span>
-            <span class="faq-toggle" aria-hidden="true"></span>
-          </summary>
-          <div class="faq-answer">
-            <p>Yes! We partner with contractors, designers, and suppliers across Atlanta. Visit our <a href="/get-involved">Get Involved</a> page to learn about partnership opportunities.</p>
-          </div>
-        </details>
-        <details class="faq-card">
-          <summary>
-            <span class="faq-num">05</span>
-            <span class="faq-q">How much does a typical room makeover cost?</span>
-            <span class="faq-toggle" aria-hidden="true"></span>
-          </summary>
-          <div class="faq-answer">
-            <p>Room costs vary based on scope — a dream bedroom averages $8,000–$12,000, while an accessible bathroom can run $10,000–$15,000. Every dollar donated goes toward these transformations.</p>
-          </div>
-        </details>
+        {donateFaqs.map((item, idx) => (
+          <details class="faq-card" name="donate-faq">
+            <summary>
+              <span class="faq-num">{String(idx + 1).padStart(2, '0')}</span>
+              <span class="faq-q">{item.question}</span>
+              <span class="faq-toggle" aria-hidden="true"></span>
+            </summary>
+            <div class="faq-answer">
+              <p set:html={item.answer} />
+            </div>
+          </details>
+        ))}
       </div>
     </div>
   </section>

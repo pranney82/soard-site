@@ -1756,6 +1756,273 @@
     }
 
     // ═══════════════════════════════════════════
+    // FAQ MANAGEMENT
+    // ═══════════════════════════════════════════
+    function FAQManager({ addToast }) {
+      const [loading, setLoading] = useState(true);
+      const [saving, setSaving] = useState(false);
+      const [sha, setSha] = useState(null);
+      const [data, setData] = useState({ categories: [], items: [] });
+      const [editItem, setEditItem] = useState(null); // null=list, 'new'=new, {id}=editing
+      const [editCat, setEditCat] = useState(null);
+      const [dragIdx, setDragIdx] = useState(null);
+
+      useEffect(() => {
+        (async () => {
+          try {
+            const res = await api.readContent('src/content/site/faq.json');
+            if (res.success) {
+              setData(JSON.parse(res.content));
+              setSha(res.sha);
+            }
+          } catch {}
+          setLoading(false);
+        })();
+      }, []);
+
+      const handleSave = async () => {
+        setSaving(true);
+        try {
+          const content = JSON.stringify(data, null, 2);
+          const res = await api.saveContent(
+            'src/content/site/faq.json', content,
+            'Update FAQ content', sha
+          );
+          if (res.success) {
+            setSha(res.sha);
+            addToast('FAQs saved & published!', 'success');
+          } else {
+            addToast(`Failed: ${res.error}`, 'error');
+          }
+        } catch (err) {
+          addToast(`Error: ${err.message}`, 'error');
+        }
+        setSaving(false);
+      };
+
+      // ── Category helpers ──
+      const addCategory = () => {
+        const id = `cat-${Date.now()}`;
+        setData(d => ({
+          ...d,
+          categories: [...d.categories, { id, label: 'New Category', showOnDonatePage: false }],
+        }));
+        setEditCat(id);
+      };
+
+      const updateCategory = (id, field, value) => {
+        setData(d => ({
+          ...d,
+          categories: d.categories.map(c => c.id === id ? { ...c, [field]: value } : c),
+        }));
+      };
+
+      const deleteCategory = (id) => {
+        const hasItems = data.items.some(i => i.category === id);
+        if (hasItems) {
+          addToast('Move or delete all FAQs in this category first.', 'error');
+          return;
+        }
+        setData(d => ({
+          ...d,
+          categories: d.categories.filter(c => c.id !== id),
+        }));
+        setEditCat(null);
+      };
+
+      // ── Item helpers ──
+      const addItem = (categoryId) => {
+        const id = `faq-${Date.now()}`;
+        const catItems = data.items.filter(i => i.category === categoryId);
+        const maxOrder = catItems.reduce((m, i) => Math.max(m, i.order || 0), 0);
+        const newItem = {
+          id,
+          question: '',
+          answer: '',
+          category: categoryId,
+          order: maxOrder + 1,
+        };
+        setData(d => ({ ...d, items: [...d.items, newItem] }));
+        setEditItem(id);
+      };
+
+      const updateItem = (id, field, value) => {
+        setData(d => ({
+          ...d,
+          items: d.items.map(i => i.id === id ? { ...i, [field]: value } : i),
+        }));
+      };
+
+      const deleteItem = (id) => {
+        setData(d => ({ ...d, items: d.items.filter(i => i.id !== id) }));
+        if (editItem === id) setEditItem(null);
+      };
+
+      const moveItem = (id, direction) => {
+        setData(d => {
+          const item = d.items.find(i => i.id === id);
+          if (!item) return d;
+          const catItems = d.items
+            .filter(i => i.category === item.category)
+            .sort((a, b) => (a.order || 0) - (b.order || 0));
+          const idx = catItems.findIndex(i => i.id === id);
+          const swapIdx = idx + direction;
+          if (swapIdx < 0 || swapIdx >= catItems.length) return d;
+          const swapItem = catItems[swapIdx];
+          return {
+            ...d,
+            items: d.items.map(i => {
+              if (i.id === id) return { ...i, order: swapItem.order };
+              if (i.id === swapItem.id) return { ...i, order: item.order };
+              return i;
+            }),
+          };
+        });
+      };
+
+      if (loading) return html`<div class="card" style="text-align: center; padding: 3rem;"><div class="spinner" style="width: 32px; height: 32px;" /></div>`;
+
+      // ── Edit single FAQ item ──
+      if (editItem) {
+        const item = data.items.find(i => i.id === editItem);
+        if (!item) { setEditItem(null); return null; }
+        return html`
+          <div class="page-header">
+            <div style="display: flex; align-items: center; gap: 0.75rem;">
+              <button class="btn btn-ghost btn-sm" onClick=${() => setEditItem(null)}>← Back</button>
+              <h2>${item.question ? 'Edit FAQ' : 'New FAQ'}</h2>
+            </div>
+            <button class="btn btn-primary" onClick=${handleSave} disabled=${saving}>
+              ${saving ? html`<span class="spinner" />` : null} ${saving ? 'Saving...' : 'Save All'}
+            </button>
+          </div>
+          <div class="card">
+            <div class="form-group">
+              <label class="form-label">Question *</label>
+              <input class="form-input" value=${item.question}
+                placeholder="e.g. Is my donation tax-deductible?"
+                onInput=${e => updateItem(item.id, 'question', e.target.value)} />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Answer *</label>
+              <textarea class="form-input" rows="5" value=${item.answer}
+                placeholder="Write the answer here. HTML links are supported: <a href='/page'>Link text</a>"
+                onInput=${e => updateItem(item.id, 'answer', e.target.value)} />
+              <p class="text-sm text-muted" style="margin-top: 0.35rem;">Supports basic HTML for links. Example: &lt;a href="/donate"&gt;Donate page&lt;/a&gt;</p>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Category</label>
+              <select class="form-input" value=${item.category}
+                onChange=${e => updateItem(item.id, 'category', e.target.value)}>
+                ${data.categories.map(c => html`<option value=${c.id}>${c.label}</option>`)}
+              </select>
+            </div>
+          </div>
+          <div style="margin-top: 1rem;">
+            <button class="btn btn-ghost" style="color: #e53e3e;" onClick=${() => { deleteItem(item.id); }}>
+              🗑 Delete this FAQ
+            </button>
+          </div>
+        `;
+      }
+
+      // ── Main FAQ list view ──
+      return html`
+        <div class="page-header">
+          <h2>FAQs</h2>
+          <div style="display: flex; gap: 0.5rem;">
+            <button class="btn btn-ghost btn-sm" onClick=${addCategory}>+ Category</button>
+            <button class="btn btn-primary" onClick=${handleSave} disabled=${saving}>
+              ${saving ? html`<span class="spinner" />` : null} ${saving ? 'Saving...' : 'Save & Publish'}
+            </button>
+          </div>
+        </div>
+        <p class="text-sm text-muted" style="margin-bottom: 1rem;">Manage FAQ questions shown on the Donate page and the FAQ page. Categories marked with ⭐ appear on the Donate page.</p>
+
+        ${data.categories.map(cat => {
+          const catItems = data.items
+            .filter(i => i.category === cat.id)
+            .sort((a, b) => (a.order || 0) - (b.order || 0));
+
+          return html`
+            <div class="card" key=${cat.id} style="margin-bottom: 1rem;">
+              <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
+                ${editCat === cat.id ? html`
+                  <div style="display: flex; align-items: center; gap: 0.5rem; flex: 1;">
+                    <input class="form-input" value=${cat.label} style="max-width: 240px;"
+                      onInput=${e => updateCategory(cat.id, 'label', e.target.value)} 
+                      onKeyDown=${e => { if (e.key === 'Enter') setEditCat(null); }} />
+                    <label style="display: flex; align-items: center; gap: 0.35rem; font-size: 0.85rem; color: rgba(45,46,51,0.6); white-space: nowrap; cursor: pointer;">
+                      <input type="checkbox" checked=${cat.showOnDonatePage}
+                        onChange=${e => updateCategory(cat.id, 'showOnDonatePage', e.target.checked)} />
+                      Show on Donate page
+                    </label>
+                    <button class="btn btn-ghost btn-sm" onClick=${() => setEditCat(null)}>Done</button>
+                    <button class="btn btn-ghost btn-sm" style="color: #e53e3e;" onClick=${() => deleteCategory(cat.id)}>Delete</button>
+                  </div>
+                ` : html`
+                  <div style="display: flex; align-items: center; gap: 0.5rem;">
+                    <h3 style="margin: 0;">${cat.showOnDonatePage ? '⭐ ' : ''}${cat.label}</h3>
+                    <span class="text-sm text-muted">(${catItems.length})</span>
+                    <button class="btn btn-ghost btn-sm" onClick=${() => setEditCat(cat.id)} title="Edit category">✏️</button>
+                  </div>
+                `}
+                <button class="btn btn-ghost btn-sm" onClick=${() => addItem(cat.id)}>+ Add FAQ</button>
+              </div>
+
+              ${catItems.length === 0 ? html`
+                <div class="empty-state" style="padding: 2rem;">
+                  <p class="text-sm text-muted">No questions in this category yet.</p>
+                </div>
+              ` : html`
+                <div class="table-wrap"><table>
+                  <thead><tr><th style="width: 50px;">#</th><th>Question</th><th style="width: 120px;">Actions</th></tr></thead>
+                  <tbody>
+                    ${catItems.map((item, idx) => html`
+                      <tr key=${item.id}>
+                        <td class="text-muted">
+                          <div style="display: flex; flex-direction: column; align-items: center; gap: 2px;">
+                            <button class="btn btn-ghost btn-sm" style="padding: 0; min-height: auto; font-size: 0.7rem; opacity: ${idx === 0 ? 0.2 : 0.6};"
+                              onClick=${() => moveItem(item.id, -1)} disabled=${idx === 0} title="Move up">▲</button>
+                            <span style="font-size: 0.85rem;">${String(idx + 1).padStart(2, '0')}</span>
+                            <button class="btn btn-ghost btn-sm" style="padding: 0; min-height: auto; font-size: 0.7rem; opacity: ${idx === catItems.length - 1 ? 0.2 : 0.6};"
+                              onClick=${() => moveItem(item.id, 1)} disabled=${idx === catItems.length - 1} title="Move down">▼</button>
+                          </div>
+                        </td>
+                        <td>
+                          <strong style="cursor: pointer;" onClick=${() => setEditItem(item.id)}>${item.question || '(untitled)'}</strong>
+                          <div class="text-sm text-muted" style="margin-top: 0.2rem; max-width: 500px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                            ${item.answer.replace(/<[^>]+>/g, '').slice(0, 80)}${item.answer.length > 80 ? '…' : ''}
+                          </div>
+                        </td>
+                        <td>
+                          <div style="display: flex; gap: 0.25rem;">
+                            <button class="btn btn-ghost btn-sm" onClick=${() => setEditItem(item.id)}>Edit</button>
+                            <button class="btn btn-ghost btn-sm" style="color: #e53e3e;" onClick=${() => deleteItem(item.id)}>🗑</button>
+                          </div>
+                        </td>
+                      </tr>
+                    `)}
+                  </tbody>
+                </table></div>
+              `}
+            </div>
+          `;
+        })}
+
+        ${data.categories.length === 0 ? html`
+          <div class="card">
+            <div class="empty-state">
+              <div class="empty-state-icon">❓</div>
+              <p>No FAQ categories yet.</p>
+              <p class="text-sm text-muted">Click "+ Category" to create your first one.</p>
+            </div>
+          </div>
+        ` : null}
+      `;
+    }
+
+    // ═══════════════════════════════════════════
     // SITE SETTINGS
     // ═══════════════════════════════════════════
     function SiteSettings({ addToast }) {
@@ -1998,6 +2265,7 @@
         { id: 'kids', icon: '👶', label: 'Kids' },
         { id: 'partners', icon: '🤝', label: 'Partners' },
         { id: 'team', icon: '👥', label: 'Team' },
+        { id: 'faq', icon: '❓', label: 'FAQs' },
         { id: 'financials', icon: '📄', label: 'Financials' },
         { id: 'settings', icon: '⚙️', label: 'Site Settings' },
       ];
@@ -2030,6 +2298,8 @@
                   onDelete=${t => setDeleteModal({ type: 'team member', item: t })} />`;
           case 'financials':
             return html`<${Financials} addToast=${addToast} />`;
+          case 'faq':
+            return html`<${FAQManager} addToast=${addToast} />`;
           case 'settings':
             return html`<${SiteSettings} addToast=${addToast} />`;
         }

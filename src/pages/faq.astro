@@ -1,15 +1,380 @@
 ---
-import PageLayout from '../layouts/PageLayout.astro';
+/**
+ * FAQ Page — All frequently asked questions, organized by category
+ * Uses native <details name="..."> for exclusive accordion (zero JS in modern browsers)
+ * JSON-LD FAQPage schema for SEO
+ */
+import BaseLayout from '../layouts/BaseLayout.astro';
+import faqData from '../content/site/faq.json';
+
+const categories = faqData.categories;
+const allItems = faqData.items.sort((a, b) => (a.order || 0) - (b.order || 0));
+
+// Build JSON-LD FAQPage schema
+const faqJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": allItems.map(item => ({
+    "@type": "Question",
+    "name": item.question,
+    "acceptedAnswer": {
+      "@type": "Answer",
+      "text": item.answer.replace(/<[^>]+>/g, ''),
+    }
+  }))
+};
 ---
 
-<PageLayout
-  title="FAQs"
-  heroTitle="Frequently Asked Questions"
-  heroSubtitle="Everything you need to know about Sunshine on a Ranney Day"
+<BaseLayout
+  title="FAQs — Sunshine on a Ranney Day"
+  description="Answers to common questions about donating, volunteering, room makeovers, and how families can apply for help from SOARD."
+  jsonLd={faqJsonLd}
 >
-  <section class="section">
-    <div class="container container--narrow" style="text-align: center; padding-block: var(--space-4xl);">
-      <p style="color: var(--c-text-muted);">This page is being built. Check back soon!</p>
+  <!-- Hero -->
+  <section class="faq-hero">
+    <div class="faq-hero-inner">
+      <div class="section-label section-label--yellow">FAQs</div>
+      <h1>Everything you need to <em class="highlight">know</em>.</h1>
+      <p class="faq-hero-lead">From donating to volunteering to applying for a room — we've got answers. If your question isn't here, <a href="mailto:info@soardcharity.com">reach out</a>.</p>
     </div>
   </section>
-</PageLayout>
+
+  <!-- Category Nav -->
+  <nav class="faq-nav" aria-label="FAQ categories">
+    <div class="faq-nav-inner">
+      {categories.map(cat => {
+        const count = allItems.filter(i => i.category === cat.id).length;
+        return count > 0 ? (
+          <a href={`#${cat.id}`} class="faq-nav-link">{cat.label}</a>
+        ) : null;
+      })}
+    </div>
+  </nav>
+
+  <!-- FAQ Sections -->
+  {categories.map((cat, catIdx) => {
+    const items = allItems.filter(i => i.category === cat.id);
+    if (items.length === 0) return null;
+    const isOdd = catIdx % 2 === 1;
+    return (
+      <section class={`faq-section ${isOdd ? 'faq-section--alt' : ''}`} id={cat.id}>
+        <div class="faq-section-inner">
+          <div class="faq-section-header">
+            <h2>{cat.label}</h2>
+            <span class="faq-section-count">{items.length} question{items.length !== 1 ? 's' : ''}</span>
+          </div>
+          <div class="faq-list">
+            {items.map((item, idx) => (
+              <details class="faq-card" name={`faq-${cat.id}`}>
+                <summary>
+                  <span class="faq-num">{String(idx + 1).padStart(2, '0')}</span>
+                  <span class="faq-q">{item.question}</span>
+                  <span class="faq-toggle" aria-hidden="true"></span>
+                </summary>
+                <div class="faq-answer">
+                  <p set:html={item.answer} />
+                </div>
+              </details>
+            ))}
+          </div>
+        </div>
+      </section>
+    );
+  })}
+
+  <!-- CTA -->
+  <section class="faq-cta">
+    <div class="faq-cta-inner">
+      <h2>Still have questions?</h2>
+      <p>We'd love to hear from you. Our team is happy to help.</p>
+      <div class="faq-cta-actions">
+        <a href="mailto:info@soardcharity.com" class="btn btn-primary btn-lg">Email Us →</a>
+        <a href="/donate/" class="btn btn-ghost-light">Make a Donation</a>
+      </div>
+    </div>
+  </section>
+</BaseLayout>
+
+<style>
+  /* ─── Shared ─────────────────────── */
+  .section-label--yellow {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--c-yellow);
+    margin-bottom: 16px;
+  }
+  .highlight {
+    font-style: italic;
+    background-image: linear-gradient(transparent 55%, rgba(255, 213, 0, 0.45) 55%);
+  }
+
+  /* ─── Hero ─────────────────────── */
+  .faq-hero {
+    background: var(--c-dark);
+    color: #fff;
+    padding: clamp(64px, 10vw, 120px) 0 clamp(48px, 8vw, 80px);
+  }
+  .faq-hero-inner {
+    max-width: 680px;
+    margin: 0 auto;
+    padding: 0 var(--space-xl);
+  }
+  .faq-hero h1 {
+    font-family: var(--font-display);
+    font-size: clamp(32px, 5vw, 52px);
+    line-height: 1.15;
+    margin-bottom: 20px;
+  }
+  .faq-hero h1 em { font-style: italic; }
+  .faq-hero-lead {
+    font-size: clamp(16px, 2vw, 18px);
+    color: rgba(255,255,255,0.55);
+    line-height: 1.65;
+    max-width: 540px;
+  }
+  .faq-hero-lead a {
+    color: var(--c-yellow);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+
+  /* ─── Category Nav ─────────────────────── */
+  .faq-nav {
+    position: sticky;
+    top: var(--header-height, 64px);
+    z-index: 50;
+    background: var(--c-dark-deep);
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+  }
+  .faq-nav-inner {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 0 var(--space-xl);
+    display: flex;
+    gap: clamp(16px, 3vw, 32px);
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .faq-nav-inner::-webkit-scrollbar { display: none; }
+  .faq-nav-link {
+    padding: 16px 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: rgba(255,255,255,0.45);
+    white-space: nowrap;
+    border-bottom: 2px solid transparent;
+    transition: color 0.2s, border-color 0.2s;
+  }
+  .faq-nav-link:hover {
+    color: #fff;
+    border-bottom-color: var(--c-yellow);
+  }
+
+  /* ─── FAQ Sections ─────────────────────── */
+  .faq-section {
+    background: var(--c-dark);
+    padding: clamp(48px, 6vw, 80px) 0;
+  }
+  .faq-section--alt {
+    background: var(--c-dark-deep);
+  }
+  .faq-section-inner {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 0 var(--space-xl);
+  }
+  .faq-section-header {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    margin-bottom: clamp(24px, 4vw, 40px);
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    padding-bottom: 16px;
+  }
+  .faq-section-header h2 {
+    font-family: var(--font-display);
+    font-size: clamp(24px, 3.5vw, 32px);
+    color: #fff;
+    margin: 0;
+  }
+  .faq-section-count {
+    font-size: 13px;
+    color: rgba(255,255,255,0.3);
+    font-weight: 500;
+  }
+
+  /* ─── FAQ Cards ─────── */
+  .faq-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .faq-card {
+    background: rgba(255,255,255,0.04);
+    border-radius: 12px;
+    overflow: hidden;
+    transition: background 0.2s;
+  }
+  .faq-card[open] {
+    background: rgba(255,255,255,0.06);
+  }
+  .faq-card summary {
+    display: flex;
+    align-items: center;
+    padding: 20px 24px;
+    gap: 16px;
+    cursor: pointer;
+    list-style: none;
+    user-select: none;
+  }
+  .faq-card summary::-webkit-details-marker { display: none; }
+  .faq-card summary::marker { content: ''; }
+  .faq-num {
+    font-family: var(--font-display);
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--c-yellow);
+    min-width: 28px;
+    flex-shrink: 0;
+  }
+  .faq-q {
+    flex: 1;
+    font-size: 16px;
+    font-weight: 600;
+    color: #fff;
+    line-height: 1.4;
+  }
+  .faq-toggle {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.06);
+    flex-shrink: 0;
+    position: relative;
+  }
+  .faq-toggle::before,
+  .faq-toggle::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    background: rgba(255,255,255,0.5);
+    border-radius: 1px;
+    transition: transform 0.3s ease, opacity 0.3s ease;
+  }
+  .faq-toggle::before {
+    width: 12px;
+    height: 1.5px;
+    transform: translate(-50%, -50%);
+  }
+  .faq-toggle::after {
+    width: 1.5px;
+    height: 12px;
+    transform: translate(-50%, -50%);
+  }
+  .faq-card[open] .faq-toggle {
+    background: rgba(255, 213, 0, 0.15);
+  }
+  .faq-card[open] .faq-toggle::before { background: var(--c-yellow); }
+  .faq-card[open] .faq-toggle::after {
+    background: var(--c-yellow);
+    transform: translate(-50%, -50%) rotate(90deg);
+    opacity: 0;
+  }
+  .faq-answer {
+    padding: 0 24px 20px;
+    padding-left: 68px;
+  }
+  .faq-answer p {
+    font-size: 15px;
+    line-height: 1.7;
+    color: rgba(255,255,255,0.45);
+  }
+  .faq-answer a {
+    color: var(--c-yellow);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+
+  /* ─── CTA ─────────────────────── */
+  .faq-cta {
+    background: var(--c-yellow);
+    padding: clamp(64px, 8vw, 100px) 0;
+    text-align: center;
+  }
+  .faq-cta-inner {
+    max-width: 540px;
+    margin: 0 auto;
+    padding: 0 var(--space-xl);
+  }
+  .faq-cta h2 {
+    font-family: var(--font-display);
+    font-size: clamp(26px, 4vw, 40px);
+    line-height: 1.25;
+    margin-bottom: 12px;
+    color: var(--c-dark);
+  }
+  .faq-cta p {
+    font-size: 18px;
+    color: rgba(45,46,51,0.65);
+    margin-bottom: 32px;
+  }
+  .faq-cta-actions {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  /* Buttons */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    font-family: var(--font-body);
+    font-weight: 600;
+    font-size: 15px;
+    padding: 14px 32px;
+    border: none;
+    border-radius: 100px;
+    cursor: pointer;
+    text-decoration: none;
+    transition: transform 0.25s ease, box-shadow 0.25s ease, background 0.25s ease;
+    min-height: 48px;
+  }
+  .btn:hover { transform: translateY(-2px); }
+  .btn:active { transform: translateY(0); }
+  .btn-primary {
+    background: var(--c-dark);
+    color: #fff;
+  }
+  .btn-primary:hover { box-shadow: 0 8px 24px rgba(0,0,0,0.3); }
+  .btn-lg { padding: 18px 40px; font-size: 16px; }
+  .btn-ghost-light {
+    background: transparent;
+    color: var(--c-dark);
+    border: 1.5px solid rgba(45,46,51,0.2);
+  }
+  .btn-ghost-light:hover {
+    background: rgba(45,46,51,0.06);
+    border-color: rgba(45,46,51,0.35);
+  }
+
+  /* ─── Mobile ─────────────────────── */
+  @media (max-width: 768px) {
+    .faq-hero { padding-bottom: 40px; }
+    .faq-section { padding: 48px 0; }
+    .faq-answer { padding-left: 60px; }
+    .faq-cta { padding: 48px 0; }
+    .faq-nav-inner { padding: 0 var(--space-md); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .faq-toggle::before, .faq-toggle::after { transition: none; }
+    .btn:hover { transform: none; }
+  }
+</style>
