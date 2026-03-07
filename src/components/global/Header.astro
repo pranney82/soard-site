@@ -105,16 +105,13 @@ function isGroupActive(group: NavGroup) {
     <!-- Logo -->
     <a href="/" class="logo" aria-label="Sunshine on a Ranney Day — Home">
       <img
-        src="/images/logos/sunny-pig-transparent.png"
+        src="/images/logos/logo-tagline-dark-bg-transparent.png"
         alt=""
         class="logo-icon"
-        width="100"
-        height="35"
+        width="160"
+        height="60"
         loading="eager"
       />
-      <span class="logo-text">
-        <span class="logo-name">Sunshine on a Ranney Day</span>
-      </span>
     </a>
 
     <!-- Desktop Navigation -->
@@ -203,13 +200,12 @@ function isGroupActive(group: NavGroup) {
     <div class="mobile-nav-header">
       <a href="/" class="mobile-nav-logo" aria-label="Sunshine on a Ranney Day — Home">
         <img
-          src="/images/logos/sunny-pig-transparent.png"
+          src="/images/logos/logo-tagline-light-bg-transparent.png"
           alt=""
-          width="80"
-          height="28"
+          width="120"
+          height="45"
           loading="eager"
         />
-        <span class="mobile-nav-logo-text">SOARD</span>
       </a>
       <button
         type="button"
@@ -656,21 +652,7 @@ function isGroupActive(group: NavGroup) {
 
   .logo:hover { opacity: 0.9; }
 
-  .logo-icon { height: 35px; width: auto; flex-shrink: 0; }
-
-  .logo-text {
-    display: flex;
-    flex-direction: column;
-    line-height: 1.15;
-  }
-
-  .logo-name {
-    font-family: var(--font-display);
-    font-weight: 700;
-    font-size: 1rem;
-    color: var(--c-white);
-    letter-spacing: 0.01em;
-  }
+  .logo-icon { height: 50px; width: auto; flex-shrink: 0; }
 
   /* ─── Desktop Nav ──────────────────────── */
   .desktop-nav { display: none; }
@@ -902,17 +884,9 @@ function isGroupActive(group: NavGroup) {
   }
 
   .mobile-nav-logo img {
-    height: 28px;
+    height: 40px;
     width: auto;
     flex-shrink: 0;
-  }
-
-  .mobile-nav-logo-text {
-    font-family: var(--font-display);
-    font-weight: 700;
-    font-size: 0.95rem;
-    color: var(--c-dark);
-    letter-spacing: 0.02em;
   }
 
   .mobile-close-btn {
