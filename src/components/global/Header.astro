@@ -197,34 +197,41 @@ function isActive(href: string) {
       </button>
     </div>
 
-    <ul class="mobile-nav-list">
-      {nav.map((item) => (
-        <li class="mobile-nav-group">
-          <span class="mobile-nav-heading">{item.label}</span>
-          <ul>
-            {item.children.map((child) => (
-              <li>
-                <a
-                  href={child.href}
-                  class:list={['mobile-nav-link', { active: isActive(child.href) }]}
-                  {...(child.external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
-                >
-                  {child.label}
-                  {child.external && (
-                    <span class="mobile-external-badge" aria-label="Opens in new tab">
-                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-                        <path d="M4.5 1.5H1.5V10.5H10.5V7.5M7 1.5H10.5M10.5 1.5V5M10.5 1.5L5.5 6.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
-                      </svg>
-                    </span>
-                  )}
-                </a>
-              </li>
-            ))}
-          </ul>
-        </li>
-      ))}
-    </ul>
-    <a href="/donate/" class="mobile-donate-btn">Donate</a>
+    <!-- Scrollable nav body -->
+    <div class="mobile-nav-body">
+      <ul class="mobile-nav-list">
+        {nav.map((item, i) => (
+          <li class="mobile-nav-group" style={`--stagger: ${i}`}>
+            <span class="mobile-nav-heading">{item.label}</span>
+            <ul>
+              {item.children.map((child) => (
+                <li>
+                  <a
+                    href={child.href}
+                    class:list={['mobile-nav-link', { active: isActive(child.href) }]}
+                    {...(child.external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
+                  >
+                    {child.label}
+                    {child.external && (
+                      <span class="mobile-external-badge" aria-label="Opens in new tab">
+                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                          <path d="M4.5 1.5H1.5V10.5H10.5V7.5M7 1.5H10.5M10.5 1.5V5M10.5 1.5L5.5 6.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                      </span>
+                    )}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </li>
+        ))}
+      </ul>
+    </div>
+
+    <!-- Sticky bottom CTA -->
+    <div class="mobile-nav-footer">
+      <a href="/donate/" class="mobile-donate-btn">Donate</a>
+    </div>
   </nav>
 </header>
 
@@ -560,10 +567,10 @@ function isActive(href: string) {
     height: 100vh;
     height: 100dvh;
     background: var(--c-white);
-    padding: 0 var(--space-lg) var(--space-2xl);
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
-    overscroll-behavior: contain;
+    display: flex;
+    flex-direction: column;
+    padding: 0 var(--space-lg);
+    overflow: hidden;
     transform: translateX(100%);
     will-change: transform;
     transition: transform 0.35s cubic-bezier(0.32, 0.72, 0, 1);
@@ -583,12 +590,8 @@ function isActive(href: string) {
     align-items: center;
     justify-content: space-between;
     padding: var(--space-md) 0;
-    margin-bottom: var(--space-md);
     border-bottom: 1px solid var(--c-border);
-    position: sticky;
-    top: 0;
-    background: var(--c-white);
-    z-index: 1;
+    flex-shrink: 0;
   }
 
   .mobile-nav-logo {
@@ -630,6 +633,45 @@ function isActive(href: string) {
 
   .mobile-close-btn:hover {
     color: var(--c-dark);
+  }
+
+  /* ─── Scrollable Nav Body ──────────────── */
+  .mobile-nav-body {
+    flex: 1;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    padding: var(--space-md) 0;
+  }
+
+  /* ─── Sticky Footer CTA ────────────────── */
+  .mobile-nav-footer {
+    flex-shrink: 0;
+    padding: var(--space-md) 0 var(--space-lg);
+    border-top: 1px solid var(--c-border);
+    background: var(--c-white);
+  }
+
+  /* ─── Stagger + Fade-Up Animation ──────── */
+  @keyframes mobileNavFadeUp {
+    from {
+      opacity: 0;
+      transform: translateY(12px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .mobile-nav-group {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+
+  .mobile-nav.is-open .mobile-nav-group {
+    animation: mobileNavFadeUp 0.35s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+    animation-delay: calc(0.08s + var(--stagger) * 0.06s);
   }
 
   .mobile-nav-group + .mobile-nav-group {
@@ -700,7 +742,7 @@ function isActive(href: string) {
     display: flex;
     align-items: center;
     justify-content: center;
-    margin-top: var(--space-xl);
+    width: 100%;
     padding: var(--space-md) var(--space-xl);
     background: var(--c-yellow);
     color: var(--c-dark);
@@ -733,6 +775,12 @@ function isActive(href: string) {
     .mobile-external-badge,
     .mobile-close-btn {
       transition-duration: 0.01ms !important;
+    }
+
+    .mobile-nav-group {
+      opacity: 1;
+      transform: none;
+      animation: none !important;
     }
   }
 </style>
