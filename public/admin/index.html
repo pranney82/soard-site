@@ -44,18 +44,32 @@
       padding: 0.75rem 1.25rem 1rem;
       border-bottom: 1px solid rgba(255,255,255,0.08);
       margin-bottom: 0.75rem;
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
     }
     .sidebar-logo img {
-      width: 100%;
-      max-width: 180px;
-      height: auto;
+      height: 32px;
+      width: auto;
       display: block;
+      flex-shrink: 0;
+    }
+    .sidebar-logo .logo-label {
+      display: flex;
+      flex-direction: column;
+      line-height: 1.15;
+    }
+    .sidebar-logo .logo-name {
+      font-family: 'Libre Baskerville', Georgia, serif;
+      font-size: 0.8rem;
+      font-weight: 700;
+      color: #FFD500;
     }
     .sidebar-logo small {
-      font-size: 0.7rem;
+      font-size: 0.65rem;
       color: rgba(255,255,255,0.4);
       display: block;
-      margin-top: 0.35rem;
+      margin-top: 0.15rem;
       letter-spacing: 0.04em;
       text-transform: uppercase;
     }
@@ -2593,8 +2607,11 @@
 
           <nav class="sidebar ${sidebarOpen ? 'open' : ''}">
             <div class="sidebar-logo">
-              <img src="/images/logos/logo-admin.png" alt="Sunshine on a Ranney Day" />
-              <small>Content Admin</small>
+              <img src="/images/logos/sunny-pig-transparent.png" alt="" />
+              <div class="logo-label">
+                <span class="logo-name">Sunshine on a Ranney Day</span>
+                <small>Content Admin</small>
+              </div>
             </div>
             <div class="nav-section">Manage</div>
             ${navItems.map(item => html`
