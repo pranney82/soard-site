@@ -112,6 +112,9 @@ function isGroupActive(group: NavGroup) {
         height="35"
         loading="eager"
       />
+      <span class="logo-text">
+        <span class="logo-name">Sunshine on a Ranney Day</span>
+      </span>
     </a>
 
     <!-- Desktop Navigation -->
@@ -654,6 +657,20 @@ function isGroupActive(group: NavGroup) {
   .logo:hover { opacity: 0.9; }
 
   .logo-icon { height: 35px; width: auto; flex-shrink: 0; }
+
+  .logo-text {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.15;
+  }
+
+  .logo-name {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 1rem;
+    color: var(--c-white);
+    letter-spacing: 0.01em;
+  }
 
   /* ─── Desktop Nav ──────────────────────── */
   .desktop-nav { display: none; }
