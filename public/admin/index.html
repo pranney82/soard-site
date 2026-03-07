@@ -692,7 +692,7 @@
     // ═══════════════════════════════════════════
     // KID EDITOR
     // ═══════════════════════════════════════════
-    function KidEditor({ slug, onBack, addToast }) {
+    function KidEditor({ slug, onBack, addToast, partners = [] }) {
       const [loading, setLoading] = useState(!!slug);
       const [saving, setSaving] = useState(false);
       const [deleting, setDeleting] = useState(false);
@@ -765,6 +765,34 @@
         setData(d => ({
           ...d,
           photos: d.photos.map((p, i) => i === index ? { ...p, alt } : p),
+        }));
+      };
+
+      // ─── Partner Linking ──────────────────
+      const [partnerSearch, setPartnerSearch] = useState('');
+
+      const isPartnerLinked = (partner) => {
+        return (data.partnerLogos || []).some(pl => pl.url === partner.logo);
+      };
+
+      const togglePartner = (partner) => {
+        setDirty(true);
+        setData(d => {
+          const existing = d.partnerLogos || [];
+          const linked = existing.some(pl => pl.url === partner.logo);
+          if (linked) {
+            return { ...d, partnerLogos: existing.filter(pl => pl.url !== partner.logo) };
+          } else {
+            return { ...d, partnerLogos: [...existing, { url: partner.logo, name: partner.name }] };
+          }
+        });
+      };
+
+      const removePartnerLogo = (index) => {
+        setDirty(true);
+        setData(d => ({
+          ...d,
+          partnerLogos: d.partnerLogos.filter((_, i) => i !== index),
         }));
       };
 
@@ -1129,6 +1157,49 @@
               `)}
             </div>
           ` : null}
+        </div>
+
+        <div class="card">
+          <div class="flex items-center justify-between mb-1">
+            <h3>Room Partners (${(data.partnerLogos || []).length})</h3>
+          </div>
+          <p class="text-sm text-muted mb-1">Select the partners who worked on this room. Their logos appear on the kid's page.</p>
+
+          ${(data.partnerLogos || []).length > 0 ? html`
+            <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem; padding: 0.75rem; background: #FEFCF5; border-radius: 8px;">
+              ${(data.partnerLogos || []).map((pl, i) => html`
+                <div key=${i} style="display: flex; align-items: center; gap: 0.35rem; background: #fff; border: 1px solid #E5E4E0; border-radius: 6px; padding: 0.3rem 0.5rem;">
+                  ${pl.url ? html`<img src=${pl.url} alt="" style="width: 24px; height: 24px; object-fit: contain;" />` : null}
+                  <span class="text-sm">${pl.name || 'Unknown'}</span>
+                  <button style="background: none; border: none; color: #E53E3E; cursor: pointer; font-size: 1rem; padding: 0 0.2rem; line-height: 1;"
+                    onClick=${() => removePartnerLogo(i)} title="Remove">×</button>
+                </div>
+              `)}
+            </div>
+          ` : null}
+
+          <div style="margin-bottom: 0.5rem;">
+            <input class="form-input" style="font-size: 0.85rem;"
+              placeholder="Search partners..."
+              value=${partnerSearch}
+              onInput=${e => setPartnerSearch(e.target.value)} />
+          </div>
+          <div style="max-height: 240px; overflow-y: auto; border: 1px solid #E5E4E0; border-radius: 8px;">
+            ${partners
+              .filter(p => !partnerSearch || p.name.toLowerCase().includes(partnerSearch.toLowerCase()))
+              .map(p => html`
+                <label key=${p.slug} style="display: flex; align-items: center; gap: 0.6rem; padding: 0.5rem 0.75rem; cursor: pointer; border-bottom: 1px solid #F5F4F0; transition: background 0.1s; ${isPartnerLinked(p) ? 'background: rgba(255,213,0,0.08);' : ''}"
+                  onMouseEnter=${e => e.currentTarget.style.background = isPartnerLinked(p) ? 'rgba(255,213,0,0.12)' : '#FEFCF5'}
+                  onMouseLeave=${e => e.currentTarget.style.background = isPartnerLinked(p) ? 'rgba(255,213,0,0.08)' : ''}>
+                  <input type="checkbox" checked=${isPartnerLinked(p)}
+                    onChange=${() => togglePartner(p)}
+                    style="width: 18px; height: 18px; accent-color: #FFD500; flex-shrink: 0;" />
+                  ${p.logo ? html`<img src=${p.logo} alt="" style="width: 32px; height: 32px; object-fit: contain; flex-shrink: 0;" />` : null}
+                  <span style="font-size: 0.9rem;">${p.name}</span>
+                  <span class="badge badge-purple" style="margin-left: auto; font-size: 0.7rem;">${p.tier}</span>
+                </label>
+              `)}
+          </div>
         </div>
 
         <div style="display: flex; gap: 1rem; justify-content: flex-end; margin-top: 1rem;">
@@ -1944,7 +2015,7 @@
             return html`<${Dashboard} kids=${kids} partners=${partners} team=${team} />`;
           case 'kids':
             return editSlug !== null
-              ? html`<${KidEditor} slug=${editSlug || undefined} onBack=${() => { navigate('kids'); loadData(); }} addToast=${addToast} />`
+              ? html`<${KidEditor} slug=${editSlug || undefined} onBack=${() => { navigate('kids'); loadData(); }} addToast=${addToast} partners=${partners} />`
               : html`<${KidsList} kids=${kids} onEdit=${s => navigate('kids', s)} onAdd=${() => navigate('kids', '')}
                   onDelete=${k => setDeleteModal({ type: 'kid', item: k })} />`;
           case 'partners':
