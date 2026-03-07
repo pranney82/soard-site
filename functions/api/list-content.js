@@ -1,12 +1,15 @@
 /**
  * GET /api/list-content?dir=src/content/kids
- * Lists all JSON files in a directory AND returns their parsed contents.
+ * 
+ * Returns file tree (paths + SHAs) plus content in pages.
+ * Stays under Cloudflare's 50 subrequest limit per invocation.
  *
- * Uses two fast approaches:
- *   1. Git Trees API — one call to get all file paths + SHAs
- *   2. raw.githubusercontent.com — fetch file contents without API rate limits
+ * Params:
+ *   dir    — directory path (required)
+ *   page   — page number, 0-indexed (default: 0)
+ *   limit  — files per page (default: 45, max: 45)
  *
- * This handles 133+ files in a few seconds vs the old approach timing out.
+ * Response includes `total`, `page`, `pages` so frontend knows when to stop.
  *
  * Environment variables needed:
  *   GITHUB_TOKEN
@@ -14,6 +17,7 @@
 
 const REPO = 'pranney82/soard';
 const BRANCH = 'main';
+const MAX_PER_PAGE = 45; // Leave room for 1 tree call + 45 file fetches = 46 < 50
 
 export async function onRequestGet(context) {
   const cors = {
@@ -27,6 +31,8 @@ export async function onRequestGet(context) {
     const { GITHUB_TOKEN } = context.env;
     const url = new URL(context.request.url);
     const dir = url.searchParams.get('dir');
+    const page = parseInt(url.searchParams.get('page') || '0', 10);
+    const limit = Math.min(parseInt(url.searchParams.get('limit') || String(MAX_PER_PAGE), 10), MAX_PER_PAGE);
 
     if (!dir) {
       return Response.json(
@@ -40,7 +46,7 @@ export async function onRequestGet(context) {
       'User-Agent': 'SOARD-Admin',
     };
 
-    // Step 1: Get entire repo tree in one API call
+    // Step 1: Get repo tree (1 subrequest)
     const treeRes = await fetch(
       `https://api.github.com/repos/${REPO}/git/trees/${BRANCH}?recursive=1`,
       { headers: { ...headers, 'Accept': 'application/vnd.github.v3+json' } }
@@ -55,45 +61,44 @@ export async function onRequestGet(context) {
 
     const tree = await treeRes.json();
 
-    // Filter to JSON files in the requested directory
+    // Filter to JSON files in directory
     const dirPrefix = dir.endsWith('/') ? dir : dir + '/';
     const jsonFiles = tree.tree.filter(
       f => f.type === 'blob'
         && f.path.startsWith(dirPrefix)
         && f.path.endsWith('.json')
-        && !f.path.slice(dirPrefix.length).includes('/')  // no subdirectories
+        && !f.path.slice(dirPrefix.length).includes('/')
     );
 
-    // Step 2: Fetch all file contents from raw.githubusercontent.com in parallel
-    // This bypasses API rate limits — much faster for 100+ files
-    const BATCH_SIZE = 25;
-    const items = [];
+    const total = jsonFiles.length;
+    const pages = Math.ceil(total / limit);
+    const start = page * limit;
+    const pageFiles = jsonFiles.slice(start, start + limit);
 
-    for (let i = 0; i < jsonFiles.length; i += BATCH_SIZE) {
-      const batch = jsonFiles.slice(i, i + BATCH_SIZE);
-      const results = await Promise.all(
-        batch.map(async (file) => {
-          try {
-            const rawUrl = `https://raw.githubusercontent.com/${REPO}/${BRANCH}/${file.path}`;
-            const res = await fetch(rawUrl, { headers });
-            if (!res.ok) return null;
-            const text = await res.text();
-            return {
-              name: file.path.split('/').pop(),
-              path: file.path,
-              sha: file.sha,
-              content: JSON.parse(text),
-            };
-          } catch {
-            return null;
-          }
-        })
-      );
-      items.push(...results.filter(Boolean));
-    }
+    // Step 2: Fetch this page of files in parallel (up to 45 subrequests)
+    const results = await Promise.all(
+      pageFiles.map(async (file) => {
+        try {
+          const rawUrl = `https://raw.githubusercontent.com/${REPO}/${BRANCH}/${file.path}`;
+          const res = await fetch(rawUrl, { headers });
+          if (!res.ok) return null;
+          const text = await res.text();
+          return {
+            name: file.path.split('/').pop(),
+            path: file.path,
+            sha: file.sha,
+            content: JSON.parse(text),
+          };
+        } catch {
+          return null;
+        }
+      })
+    );
+
+    const items = results.filter(Boolean);
 
     return Response.json(
-      { success: true, count: items.length, items },
+      { success: true, count: items.length, total, page, pages, items },
       { headers: cors }
     );
   } catch (err) {

@@ -461,8 +461,19 @@
         return r.json();
       },
       async bulkListContent(dir) {
-        const r = await fetch(`/api/list-content?dir=${encodeURIComponent(dir)}`);
-        return r.json();
+        // Fetch all pages — API returns max 45 items per page to stay under subrequest limits
+        let allItems = [];
+        let page = 0;
+        let totalPages = 1;
+        while (page < totalPages) {
+          const r = await fetch(`/api/list-content?dir=${encodeURIComponent(dir)}&page=${page}`);
+          const data = await r.json();
+          if (!data.success) return data;
+          allItems = allItems.concat(data.items || []);
+          totalPages = data.pages || 1;
+          page++;
+        }
+        return { success: true, count: allItems.length, items: allItems };
       },
       async readContent(path) {
         const r = await fetch(`/api/read-content?path=${encodeURIComponent(path)}`);
