@@ -121,43 +121,23 @@ import BaseLayout from '../layouts/BaseLayout.astro';
   <!-- ══════ DONATION FORM ══════ -->
   <section class="give-section" id="give">
     <div class="give-inner">
-      <div class="give-context" data-reveal>
-        <div class="section-label section-label--yellow">Donate Securely</div>
-        <h2>Ready to build a <em>dream</em>?</h2>
-        <p>Choose a one-time gift or become a monthly supporter. Every recurring gift helps us plan future room makeovers with confidence.</p>
-        <div class="give-perks">
-          <div class="give-perk">
-            <span class="give-perk-icon" aria-hidden="true">🔒</span>
-            <div>
-              <strong>Secure & Private</strong>
-              <span>Encrypted payment processing</span>
-            </div>
-          </div>
-          <div class="give-perk">
-            <span class="give-perk-icon" aria-hidden="true">🧾</span>
-            <div>
-              <strong>Tax-Deductible</strong>
-              <span>Instant receipt for your records</span>
-            </div>
-          </div>
-          <div class="give-perk">
-            <span class="give-perk-icon" aria-hidden="true">💛</span>
-            <div>
-              <strong>Zero Platform Fees</strong>
-              <span>Zeffy charges nothing — 100% to us</span>
-            </div>
-          </div>
-        </div>
+      <div class="give-header" data-reveal>
+        <div class="section-label">Donate Securely</div>
+        <h2>Ready to build a <em class="highlight">dream</em>?</h2>
+        <p class="give-subtitle">Choose a one-time gift or become a monthly supporter. Zeffy charges zero fees — 100% of your donation goes to our mission.</p>
       </div>
-      <div class="give-form" data-reveal data-delay="1">
-        <div class="zeffy-wrapper">
-          <iframe
-            title="Donation form powered by Zeffy"
-            src="https://www.zeffy.com/embed/donation-form/help-build-a-brighter-home"
-            allowpaymentrequest
-            loading="lazy"
-          ></iframe>
-        </div>
+      <div class="zeffy-wrapper" data-reveal>
+        <iframe
+          title="Donation form powered by Zeffy"
+          src="https://www.zeffy.com/embed/donation-form/help-build-a-brighter-home"
+          allowpaymentrequest
+          loading="lazy"
+        ></iframe>
+      </div>
+      <div class="give-badges" data-reveal>
+        <span class="give-badge">🔒 Secure & Encrypted</span>
+        <span class="give-badge">🧾 Tax-Deductible</span>
+        <span class="give-badge">💛 Zero Platform Fees</span>
       </div>
     </div>
   </section>
@@ -550,67 +530,56 @@ import BaseLayout from '../layouts/BaseLayout.astro';
   }
 
   /* ══════════════════════════════════════════
-     DONATION FORM
+     DONATION FORM — Clean, centered, no scroll
      ══════════════════════════════════════════ */
   .give-section {
     padding: 100px 0;
-    background: var(--c-dark-deep);
-    color: #fff;
+    background: var(--c-cream);
   }
   .give-inner {
-    max-width: var(--max-width);
+    max-width: 640px;
     margin: 0 auto;
     padding: 0 var(--space-xl);
-    display: grid;
-    grid-template-columns: 1fr 1.2fr;
-    gap: 64px;
-    align-items: start;
   }
-  .give-context h2 {
-    color: #fff;
-    font-size: clamp(26px, 3.5vw, 40px);
-    margin-bottom: 16px;
-    line-height: 1.25;
-  }
-  .give-context > p {
-    font-size: 17px;
-    color: rgba(255,255,255,0.55);
-    line-height: 1.7;
+  .give-header {
+    text-align: center;
     margin-bottom: 40px;
   }
-  .give-perks { display: flex; flex-direction: column; gap: 16px; }
-  .give-perk {
-    display: flex;
-    align-items: flex-start;
-    gap: 16px;
-    padding: 20px;
-    background: rgba(255,255,255,0.04);
-    border: 1px solid rgba(255,255,255,0.06);
-    border-radius: 16px;
+  .give-subtitle {
+    font-size: 17px;
+    color: var(--c-text-muted);
+    line-height: 1.7;
+    max-width: 520px;
+    margin: 12px auto 0;
   }
-  .give-perk-icon { font-size: 24px; flex-shrink: 0; margin-top: 2px; }
-  .give-perk strong {
-    display: block;
-    font-size: 15px;
-    color: #fff;
-    margin-bottom: 2px;
-  }
-  .give-perk span { font-size: 14px; color: rgba(255,255,255,0.4); }
   .zeffy-wrapper {
-    position: relative;
-    overflow: hidden;
     width: 100%;
-    height: 780px;
     border-radius: 20px;
-    box-shadow: 0 24px 64px rgba(0,0,0,0.3);
+    overflow: hidden;
+    box-shadow: var(--shadow-lg);
     background: #fff;
+    border: 1px solid var(--c-border);
   }
   .zeffy-wrapper iframe {
-    position: absolute;
-    inset: 0;
+    display: block;
     width: 100%;
-    height: 100%;
+    height: 1100px;
     border: 0;
+  }
+  .give-badges {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 28px;
+  }
+  .give-badge {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--c-text-muted);
+    padding: 8px 16px;
+    background: var(--c-warm-gray);
+    border-radius: 100px;
   }
 
   /* ══════════════════════════════════════════
@@ -828,8 +797,6 @@ import BaseLayout from '../layouts/BaseLayout.astro';
      ══════════════════════════════════════════ */
   @media (max-width: 900px) {
     .tiers-grid { grid-template-columns: repeat(2, 1fr); }
-    .give-inner { grid-template-columns: 1fr; }
-    .zeffy-wrapper { height: 650px; }
   }
 
   @media (max-width: 768px) {
@@ -853,7 +820,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
     .tier-card { padding: 28px 20px; }
 
     .give-section { padding: 64px 0; }
-    .zeffy-wrapper { height: 600px; border-radius: 16px; }
+    .zeffy-wrapper iframe { height: 1100px; }
 
     .other-ways { padding: 64px 0; }
     .ways-grid { grid-template-columns: 1fr; }
@@ -868,7 +835,8 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 
   @media (max-width: 480px) {
     .tiers-grid { grid-template-columns: 1fr; }
-    .zeffy-wrapper { height: 550px; border-radius: 12px; }
+    .zeffy-wrapper { border-radius: 12px; }
+    .zeffy-wrapper iframe { height: 1100px; }
     .donate-hero-lead { margin-bottom: 24px; }
     .btn-lg { font-size: 15px; padding: 16px 32px; }
   }
