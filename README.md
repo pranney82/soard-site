@@ -42,7 +42,6 @@ Content lives in `src/content/` as JSON files:
 | Color | Hex | Usage |
 |-------|-----|-------|
 | Sunshine Yellow | `#FFD500` | Primary brand, CTAs, accents |
-| Purple | `#7A00DF` | Secondary accent, labels |
 | Dark | `#2D2E33` | Text, dark sections |
 | Cream | `#FEFCF5` | Backgrounds |
 

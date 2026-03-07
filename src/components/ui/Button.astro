@@ -1,7 +1,7 @@
 ---
 /**
  * Button.astro
- * Reusable button/link with primary (yellow), secondary (purple),
+ * Reusable button/link with primary (yellow), secondary (dark),
  * outline, and link variants.
  */
 interface Props {
@@ -69,12 +69,12 @@ const externalAttrs = external ? { target: '_blank', rel: 'noopener noreferrer' 
   }
 
   .btn--secondary {
-    background: var(--c-purple);
+    background: var(--c-dark);
     color: var(--c-white);
   }
   .btn--secondary:hover {
-    background: #6600bf;
-    box-shadow: 0 4px 12px rgba(122, 0, 223, 0.3);
+    background: var(--c-dark-deep);
+    box-shadow: 0 4px 12px rgba(45, 46, 51, 0.3);
   }
 
   .btn--outline {
@@ -89,14 +89,14 @@ const externalAttrs = external ? { target: '_blank', rel: 'noopener noreferrer' 
 
   .btn--link {
     background: none;
-    color: var(--c-purple);
+    color: var(--c-dark);
     padding-inline: 0;
     border-radius: 0;
     text-decoration: underline;
     text-underline-offset: 3px;
   }
   .btn--link:hover {
-    color: var(--c-dark);
+    color: var(--c-text-muted);
     transform: none;
   }
 </style>

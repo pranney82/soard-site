@@ -9,8 +9,7 @@
   --c-yellow: #FFD500;
   --c-yellow-soft: rgba(255, 213, 0, 0.45);
   --c-yellow-hover: #E6C000;
-  --c-purple: #7A00DF;
-  --c-purple-soft: rgba(122, 0, 223, 0.1);
+
   --c-dark: #2D2E33;
   --c-dark-deep: #1A1B1F;
   --c-cream: #FEFCF5;
@@ -215,7 +214,7 @@ h4, .h4 {
 
 /* ─── Link Styles ───────────────────────── */
 .link {
-  color: var(--c-purple);
+  color: var(--c-dark);
   text-decoration: underline;
   text-underline-offset: 3px;
   text-decoration-thickness: 1px;
@@ -234,7 +233,7 @@ h4, .h4 {
 }
 
 .prose a {
-  color: var(--c-purple);
+  color: var(--c-dark);
   text-decoration: underline;
   text-underline-offset: 3px;
 }
@@ -301,7 +300,7 @@ h4, .h4 {
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--c-purple);
+  color: var(--c-dark);
   margin-bottom: 20px;
 }
 .section-label::before {
