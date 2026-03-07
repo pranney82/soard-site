@@ -135,57 +135,22 @@ const breadcrumbs = [
     </div>
   </section>
 
-  <!-- ══════ DONATION FORM — Branded Picker + Zeffy Reveal ══════ -->
+  <!-- ══════ DONATION FORM ══════ -->
   <section class="give-section" id="give">
     <div class="give-inner">
       <div class="give-header" data-reveal>
         <div class="section-label">Donate Securely</div>
         <h2>Ready to build a <em class="highlight">dream</em>?</h2>
-        <p class="give-subtitle">Pick your amount, then complete your donation securely below. Zeffy charges zero fees — 100% goes to our mission.</p>
+        <p class="give-subtitle">Zeffy charges zero fees — 100% of your donation goes to our mission.</p>
       </div>
-
-      <!-- STEP 1: Branded Amount Picker -->
-      <div class="donate-picker" id="donate-picker" data-reveal>
-        <div class="freq-toggle">
-          <button class="freq-btn freq-btn--active" data-freq="one-time" type="button">One-time</button>
-          <button class="freq-btn" data-freq="monthly" type="button">❤️ Monthly</button>
-        </div>
-
-        <div class="amount-grid">
-          <button class="amount-btn" data-amount="60" type="button">$60</button>
-          <button class="amount-btn" data-amount="125" type="button">$125</button>
-          <button class="amount-btn amount-btn--active" data-amount="500" type="button">$500</button>
-          <button class="amount-btn" data-amount="1000" type="button">$1,000</button>
-        </div>
-
-        <div class="custom-amount">
-          <span class="custom-amount-symbol">$</span>
-          <input type="number" class="custom-amount-input" id="custom-input" placeholder="Other amount" min="1" aria-label="Custom donation amount" />
-        </div>
-
-        <button type="button" class="donate-cta-btn" id="donate-cta">
-          Donate $500 →
-        </button>
+      <div class="zeffy-wrapper" data-reveal>
+        <iframe
+          title="Donation form powered by Zeffy"
+          src="https://www.zeffy.com/embed/donation-form/help-build-a-brighter-home"
+          allowpaymentrequest
+          loading="lazy"
+        ></iframe>
       </div>
-
-      <!-- STEP 2: Zeffy Payment (hidden, revealed on CTA click) -->
-      <div class="zeffy-reveal" id="zeffy-reveal">
-        <div class="zeffy-reveal-header">
-          <div class="zeffy-reveal-check" aria-hidden="true">✓</div>
-          <div>
-            <p class="zeffy-reveal-title"><strong id="zeffy-amount-echo">$500 one-time</strong> — enter this amount below and complete your secure payment.</p>
-            <button type="button" class="zeffy-change-btn" id="zeffy-change-btn">← Change amount</button>
-          </div>
-        </div>
-        <div class="zeffy-wrapper">
-          <iframe
-            id="zeffy-iframe"
-            title="Donation form powered by Zeffy"
-            allowpaymentrequest
-          ></iframe>
-        </div>
-      </div>
-
       <div class="give-badges" data-reveal>
         <span class="give-badge">🔒 Secure & Encrypted</span>
         <span class="give-badge">🧾 Tax-Deductible</span>
@@ -576,7 +541,7 @@ const breadcrumbs = [
   }
 
   /* ══════════════════════════════════════════
-     DONATION — Branded Picker + Zeffy Reveal
+     DONATION FORM
      ══════════════════════════════════════════ */
   .give-section {
     padding: 100px 0;
@@ -589,7 +554,7 @@ const breadcrumbs = [
   }
   .give-header {
     text-align: center;
-    margin-bottom: 40px;
+    margin-bottom: 32px;
   }
   .give-subtitle {
     font-size: 16px;
@@ -598,206 +563,17 @@ const breadcrumbs = [
     max-width: 460px;
     margin: 12px auto 0;
   }
-
-  /* Picker Card */
-  .donate-picker {
-    background: #fff;
-    border-radius: 20px;
-    padding: 32px;
-    box-shadow: 0 4px 24px rgba(0,0,0,0.06);
-    border: 1px solid var(--c-border);
-  }
-
-  /* Frequency Toggle */
-  .freq-toggle {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    background: var(--c-warm-gray);
-    border-radius: 12px;
-    padding: 4px;
-    margin-bottom: 20px;
-  }
-  .freq-btn {
-    font-family: var(--font-body);
-    font-size: 15px;
-    font-weight: 600;
-    padding: 14px 16px;
-    border: none;
-    border-radius: 10px;
-    cursor: pointer;
-    background: transparent;
-    color: var(--c-text-muted);
-    transition: all 0.25s ease;
-  }
-  .freq-btn--active {
-    background: #fff;
-    color: var(--c-dark);
-    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-  }
-
-  /* Amount Buttons */
-  .amount-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 10px;
-    margin-bottom: 12px;
-  }
-  .amount-btn {
-    font-family: var(--font-body);
-    font-size: 18px;
-    font-weight: 700;
-    padding: 18px 16px;
-    border: 2px solid var(--c-border);
-    border-radius: 12px;
-    cursor: pointer;
-    background: #fff;
-    color: var(--c-dark);
-    transition: all 0.2s ease;
-    min-height: 48px;
-  }
-  .amount-btn:hover {
-    border-color: var(--c-yellow);
-    background: rgba(255, 213, 0, 0.06);
-  }
-  .amount-btn--active {
-    background: var(--c-yellow);
-    border-color: var(--c-yellow);
-    color: var(--c-dark);
-    box-shadow: 0 4px 16px rgba(255, 213, 0, 0.3);
-  }
-
-  /* Custom Amount */
-  .custom-amount {
-    display: flex;
-    align-items: center;
-    border: 2px solid var(--c-border);
-    border-radius: 12px;
-    padding: 4px 16px;
-    margin-bottom: 24px;
-    transition: border-color 0.2s ease;
-  }
-  .custom-amount:focus-within { border-color: var(--c-yellow); }
-  .custom-amount-symbol {
-    font-size: 20px;
-    font-weight: 700;
-    color: var(--c-text-muted);
-    margin-right: 4px;
-  }
-  .custom-amount-input {
-    flex: 1;
-    border: none;
-    outline: none;
-    font-family: var(--font-body);
-    font-size: 18px;
-    font-weight: 600;
-    padding: 14px 0;
-    background: transparent;
-    color: var(--c-dark);
-    -moz-appearance: textfield;
-  }
-  .custom-amount-input::-webkit-outer-spin-button,
-  .custom-amount-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-  .custom-amount-input::placeholder { color: var(--c-text-muted); font-weight: 400; }
-
-  /* CTA */
-  .donate-cta-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 100%;
-    padding: 20px;
-    background: var(--c-yellow);
-    color: var(--c-dark);
-    font-family: var(--font-body);
-    font-size: 18px;
-    font-weight: 700;
-    border: none;
-    border-radius: 14px;
-    cursor: pointer;
-    transition: all 0.25s ease;
-    box-shadow: 0 4px 16px rgba(255, 213, 0, 0.3);
-    min-height: 48px;
-  }
-  .donate-cta-btn:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 32px rgba(255, 213, 0, 0.45);
-  }
-  .donate-cta-btn:active { transform: translateY(0); }
-
-  /* Zeffy Reveal (hidden by default) */
-  .zeffy-reveal {
-    display: none;
-    margin-top: 24px;
-    animation: fadeSlideIn 0.5s cubic-bezier(0.16,1,0.3,1) both;
-  }
-  .zeffy-reveal.is-visible { display: block; }
-
-  @keyframes fadeSlideIn {
-    from { opacity: 0; transform: translateY(16px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
-
-  .zeffy-reveal-header {
-    display: flex;
-    align-items: flex-start;
-    gap: 14px;
-    padding: 20px 24px;
-    background: #fff;
-    border: 1px solid var(--c-border);
-    border-radius: 16px 16px 0 0;
-    border-bottom: none;
-  }
-  .zeffy-reveal-check {
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
-    background: var(--c-yellow);
-    color: var(--c-dark);
-    font-weight: 700;
-    font-size: 16px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-    margin-top: 2px;
-  }
-  .zeffy-reveal-title {
-    font-size: 15px;
-    color: var(--c-dark);
-    line-height: 1.5;
-  }
-  .zeffy-reveal-title strong { color: var(--c-dark); }
-  .zeffy-change-btn {
-    font-family: var(--font-body);
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--c-purple);
-    background: none;
-    border: none;
-    cursor: pointer;
-    padding: 0;
-    margin-top: 4px;
-    transition: color 0.2s ease;
-  }
-  .zeffy-change-btn:hover { color: var(--c-dark); }
-
   .zeffy-wrapper {
     width: 100%;
     overflow: hidden;
     background: #fff;
-    border: 1px solid var(--c-border);
-    border-radius: 0 0 16px 16px;
+    border-radius: 16px;
   }
   .zeffy-wrapper iframe {
     display: block;
     width: 100%;
-    height: 420px;
+    height: 600px;
     border: 0;
-  }
-
-  /* Picker collapsed state (when Zeffy is showing) */
-  .donate-picker.is-collapsed {
-    display: none;
   }
   .give-badges {
     display: flex;
@@ -1159,93 +935,9 @@ const breadcrumbs = [
 </style>
 
 <script>
-  // Scroll reveals
-  const obs = new IntersectionObserver(
-    (entries) => entries.forEach((e) => { if (e.isIntersecting) e.target.classList.add('is-visible'); }),
+  const o = new IntersectionObserver(
+    (e) => e.forEach((i) => { if (i.isIntersecting) i.target.classList.add('is-visible'); }),
     { threshold: 0.1, rootMargin: '0px 0px -40px 0px' }
   );
-  document.querySelectorAll('[data-reveal]').forEach((el) => obs.observe(el));
-
-  // Donation picker + Zeffy reveal
-  const ZEFFY_SRC = 'https://www.zeffy.com/embed/donation-form/help-build-a-brighter-home';
-  const picker = document.getElementById('donate-picker');
-  const reveal = document.getElementById('zeffy-reveal');
-  const iframe = document.getElementById('zeffy-iframe');
-  const ctaBtn = document.getElementById('donate-cta');
-  const amountEcho = document.getElementById('zeffy-amount-echo');
-  const changeBtn = document.getElementById('zeffy-change-btn');
-  const freqBtns = document.querySelectorAll('.freq-btn');
-  const amountBtns = document.querySelectorAll('.amount-btn');
-  const customInput = document.getElementById('custom-input');
-
-  let amount = 500;
-  let freq = 'one-time';
-
-  function updateCTA() {
-    const display = amount >= 1 ? `$${amount.toLocaleString()}` : '';
-    const suffix = freq === 'monthly' ? '/month' : '';
-    ctaBtn.textContent = display ? `Donate ${display}${suffix} →` : 'Donate Now →';
-  }
-
-  freqBtns.forEach(btn => {
-    btn.addEventListener('click', () => {
-      freqBtns.forEach(b => b.classList.remove('freq-btn--active'));
-      btn.classList.add('freq-btn--active');
-      freq = btn.dataset.freq;
-      updateCTA();
-    });
-  });
-
-  amountBtns.forEach(btn => {
-    btn.addEventListener('click', () => {
-      amountBtns.forEach(b => b.classList.remove('amount-btn--active'));
-      btn.classList.add('amount-btn--active');
-      amount = parseInt(btn.dataset.amount);
-      customInput.value = '';
-      updateCTA();
-    });
-  });
-
-  customInput.addEventListener('input', () => {
-    const val = parseInt(customInput.value);
-    if (val > 0) {
-      amountBtns.forEach(b => b.classList.remove('amount-btn--active'));
-      amount = val;
-    } else {
-      amount = 0;
-    }
-    updateCTA();
-  });
-
-  customInput.addEventListener('focus', () => {
-    amountBtns.forEach(b => b.classList.remove('amount-btn--active'));
-  });
-
-  // CTA: reveal Zeffy iframe
-  ctaBtn.addEventListener('click', () => {
-    if (amount < 1) return;
-
-    // Update echo text
-    const freqLabel = freq === 'monthly' ? 'monthly' : 'one-time';
-    amountEcho.textContent = `$${amount.toLocaleString()} ${freqLabel}`;
-
-    // Lazy-load the iframe only when needed
-    if (!iframe.src) {
-      iframe.src = ZEFFY_SRC;
-    }
-
-    // Collapse picker, show Zeffy
-    picker.classList.add('is-collapsed');
-    reveal.classList.add('is-visible');
-
-    // Smooth scroll to the form
-    reveal.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  });
-
-  // "Change amount" — go back to picker
-  changeBtn.addEventListener('click', () => {
-    reveal.classList.remove('is-visible');
-    picker.classList.remove('is-collapsed');
-    picker.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  });
+  document.querySelectorAll('[data-reveal]').forEach((el) => o.observe(el));
 </script>
