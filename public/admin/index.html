@@ -595,10 +595,10 @@
     // ═══════════════════════════════════════════
     // DASHBOARD
     // ═══════════════════════════════════════════
-    function Dashboard({ kids, partners }) {
+    function Dashboard({ kids, partners, team }) {
       return html`
         <div class="page-header"><h2>Dashboard</h2></div>
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
           <div class="stat-card">
             <div class="stat-number">${kids.length}</div>
             <div class="stat-label">Kids</div>
@@ -606,6 +606,10 @@
           <div class="stat-card">
             <div class="stat-number">${partners.length}</div>
             <div class="stat-label">Partners</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-number">${team.length}</div>
+            <div class="stat-label">Team & Board</div>
           </div>
           <div class="stat-card">
             <div class="stat-number">${kids.filter(k => k.status === 'completed').length}</div>
@@ -1438,6 +1442,249 @@
     }
 
     // ═══════════════════════════════════════════
+    // TEAM LIST
+    // ═══════════════════════════════════════════
+    function TeamList({ team, onEdit, onAdd, onDelete }) {
+      const teamMembers = team.filter(t => t.group === 'team');
+      const boardMembers = team.filter(t => t.group === 'board');
+
+      const renderTable = (members, label) => html`
+        <div class="card" style="margin-bottom: 1rem;">
+          <h3 style="margin-bottom: 1rem;">${label} (${members.length})</h3>
+          ${members.length === 0 ? html`
+            <p class="text-sm text-muted">No ${label.toLowerCase()} added yet.</p>
+          ` : html`
+            <div class="table-wrap"><table>
+              <thead><tr><th></th><th>Name</th><th>Title</th><th>Organization</th><th>Order</th><th></th></tr></thead>
+              <tbody>
+                ${members.map(t => html`<tr key=${t.slug}>
+                  <td>${t.photo ? html`<img class="td-thumb" src="${t.photo}" alt="" style="border-radius: 50%;" />` : html`<div class="td-thumb" style="border-radius: 50%; background: #E5E4E0; display: flex; align-items: center; justify-content: center; font-size: 1.2rem;">👤</div>`}</td>
+                  <td><strong>${t.name}</strong></td>
+                  <td class="text-sm">${t.title || '—'}</td>
+                  <td class="text-sm">${t.organization || '—'}</td>
+                  <td>${t.order || 0}</td>
+                  <td style="white-space: nowrap;">
+                    <button class="btn btn-ghost btn-sm" onClick=${() => onEdit(t.slug)}>Edit</button>
+                    <button class="btn btn-ghost btn-sm" style="color: #E53E3E;" onClick=${(e) => { e.stopPropagation(); onDelete(t); }}>Delete</button>
+                  </td>
+                </tr>`)}
+              </tbody>
+            </table></div>
+          `}
+        </div>
+      `;
+
+      return html`
+        <div class="page-header">
+          <h2>Team & Board (${team.length})</h2>
+          <button class="btn btn-primary" onClick=${onAdd}>+ Add Member</button>
+        </div>
+        ${renderTable(teamMembers, 'Team')}
+        ${renderTable(boardMembers, 'Board')}
+      `;
+    }
+
+    // ═══════════════════════════════════════════
+    // TEAM EDITOR
+    // ═══════════════════════════════════════════
+    function TeamEditor({ slug, onBack, addToast }) {
+      const [loading, setLoading] = useState(!!slug);
+      const [saving, setSaving] = useState(false);
+      const [deleting, setDeleting] = useState(false);
+      const [showDeleteModal, setShowDeleteModal] = useState(false);
+      const [dirty, setDirty] = useState(false);
+      const [sha, setSha] = useState(null);
+      const [photoPreview, setPhotoPreview] = useState('');
+      const [uploading, setUploading] = useState(false);
+      const [data, setData] = useState({
+        name: '', slug: '', title: '', organization: '',
+        photo: '', group: 'team', order: 0,
+      });
+
+      useEffect(() => {
+        const handler = (e) => { if (dirty) { e.preventDefault(); e.returnValue = ''; } };
+        window.addEventListener('beforeunload', handler);
+        return () => window.removeEventListener('beforeunload', handler);
+      }, [dirty]);
+
+      const safeBack = () => {
+        if (dirty && !confirm('You have unsaved changes. Leave without saving?')) return;
+        onBack();
+      };
+
+      const handleDelete = async () => {
+        if (!slug || !sha) return;
+        setDeleting(true);
+        try {
+          const res = await api.deleteContent(
+            `src/content/team/${slug}.json`, sha, `Delete team member: ${data.name}`
+          );
+          if (res.success) {
+            addToast(`${data.name} deleted`, 'success');
+            setDirty(false);
+            onBack();
+          } else {
+            addToast(`Delete failed: ${res.error}`, 'error');
+          }
+        } catch (err) {
+          addToast(`Delete error: ${err.message}`, 'error');
+        }
+        setDeleting(false);
+        setShowDeleteModal(false);
+      };
+
+      useEffect(() => {
+        if (!slug) return;
+        (async () => {
+          const res = await api.readContent(`src/content/team/${slug}.json`);
+          if (res.success) {
+            const parsed = JSON.parse(res.content);
+            setData(parsed);
+            setSha(res.sha);
+            setPhotoPreview(parsed.photo || '');
+          }
+          setLoading(false);
+        })();
+      }, [slug]);
+
+      const updateField = (field, value) => {
+        setDirty(true);
+        setData(d => {
+          const updated = { ...d, [field]: value };
+          if (field === 'name' && !slug) updated.slug = slugify(value);
+          return updated;
+        });
+      };
+
+      const handlePhotoUpload = async (files) => {
+        setDirty(true);
+        const file = files[0];
+        setPhotoPreview(URL.createObjectURL(file));
+        setUploading(true);
+        try {
+          const cfId = `team/${data.slug || slugify(data.name) || 'new'}`;
+          const res = await api.uploadImage(file, cfId);
+          if (res.success) {
+            setData(d => ({ ...d, photo: res.imageUrl }));
+            setPhotoPreview(res.imageUrl);
+            addToast('Photo uploaded', 'success');
+          } else {
+            addToast(`Upload failed: ${res.error}`, 'error');
+          }
+        } catch (err) {
+          addToast(`Upload error: ${err.message}`, 'error');
+        }
+        setUploading(false);
+      };
+
+      const handleSave = async () => {
+        if (!data.name) { addToast('Name is required', 'error'); return; }
+        setSaving(true);
+        try {
+          const saveData = { ...data, order: Number(data.order) || 0 };
+          const path = `src/content/team/${data.slug}.json`;
+          const content = JSON.stringify(saveData, null, 2);
+          const message = slug ? `Update team member: ${data.name}` : `Add team member: ${data.name}`;
+          const res = await api.saveContent(path, content, message, sha || undefined);
+          if (res.success) {
+            setSha(res.sha);
+            setDirty(false);
+            addToast(`${data.name} saved!`, 'success');
+          } else {
+            addToast(`Save failed: ${res.error}`, 'error');
+          }
+        } catch (err) {
+          addToast(`Save error: ${err.message}`, 'error');
+        }
+        setSaving(false);
+      };
+
+      if (loading) return html`<div class="card" style="text-align: center; padding: 3rem;"><div class="spinner" style="width: 32px; height: 32px;" /></div>`;
+
+      return html`
+        ${showDeleteModal ? html`<${ConfirmModal}
+          title="Delete ${data.name}?"
+          message="This will permanently remove this team member from the site."
+          danger=${true}
+          onConfirm=${handleDelete}
+          onCancel=${() => setShowDeleteModal(false)}
+        />` : null}
+        <button class="back-link" onClick=${safeBack}>← Back to Team</button>
+        <div class="page-header">
+          <h2>${slug ? `Edit: ${data.name}` : 'Add Team Member'}</h2>
+          <div class="flex gap-1 items-center">
+            ${slug ? html`<button class="btn btn-danger btn-sm" onClick=${() => setShowDeleteModal(true)} disabled=${deleting}>Delete</button>` : null}
+            <button class="btn btn-primary" onClick=${handleSave} disabled=${saving}>
+              ${saving ? html`<span class="spinner" />` : null} ${saving ? 'Saving...' : 'Save & Publish'}
+            </button>
+          </div>
+        </div>
+        <div class="card">
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Full Name *</label>
+              <input class="form-input" value=${data.name}
+                onInput=${e => updateField('name', e.target.value)} placeholder="e.g., Peter Ranney" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Slug</label>
+              <input class="form-input" value=${data.slug}
+                onInput=${e => updateField('slug', e.target.value)} ${slug ? 'disabled' : ''} />
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Title / Role *</label>
+              <input class="form-input" value=${data.title}
+                onInput=${e => updateField('title', e.target.value)}
+                placeholder="e.g., Co-Founder & Program Director" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Organization (optional)</label>
+              <input class="form-input" value=${data.organization || ''}
+                onInput=${e => updateField('organization', e.target.value)}
+                placeholder="e.g., Ranney Blair Weidmann" />
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Group *</label>
+              <select class="form-select" value=${data.group}
+                onChange=${e => updateField('group', e.target.value)}>
+                <option value="team">Team</option>
+                <option value="board">Board</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Display Order</label>
+              <input class="form-input" type="number" value=${data.order || 0}
+                onInput=${e => updateField('order', e.target.value)} />
+              <div class="form-hint">Lower numbers appear first</div>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <h3 style="margin-bottom: 1rem;">Headshot</h3>
+          ${photoPreview ? html`
+            <div style="margin-bottom: 1rem; text-align: center;">
+              <img src=${photoPreview} alt="Photo preview"
+                style="width: 120px; height: 120px; object-fit: cover; border-radius: 50%;" />
+              ${uploading ? html`<div class="text-sm text-muted mt-1"><span class="spinner" /> Uploading...</div>` : null}
+            </div>
+          ` : null}
+          <${DropZone} onFiles=${handlePhotoUpload} multiple=${false}
+            accept="image/*" label="Square photo works best (will display as circle)" />
+        </div>
+        <div style="display: flex; gap: 1rem; justify-content: flex-end; margin-top: 1rem;">
+          <button class="btn btn-ghost" onClick=${safeBack}>Cancel</button>
+          <button class="btn btn-primary" onClick=${handleSave} disabled=${saving}>
+            ${saving ? 'Saving...' : 'Save & Publish'}
+          </button>
+        </div>
+      `;
+    }
+
+    // ═══════════════════════════════════════════
     // SITE SETTINGS
     // ═══════════════════════════════════════════
     function SiteSettings({ addToast }) {
@@ -1591,6 +1838,7 @@
       const [toasts, setToasts] = useState([]);
       const [kids, setKids] = useState([]);
       const [partners, setPartners] = useState([]);
+      const [team, setTeam] = useState([]);
       const [loading, setLoading] = useState(true);
       const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -1617,6 +1865,13 @@
             setPartners(partRes.items.map(i => i.content).filter(Boolean)
               .sort((a, b) => a.name.localeCompare(b.name)));
           }
+
+          // Load team (bulk — one API call)
+          const teamRes = await api.bulkListContent('src/content/team');
+          if (teamRes.success) {
+            setTeam(teamRes.items.map(i => i.content).filter(Boolean)
+              .sort((a, b) => (a.order || 0) - (b.order || 0)));
+          }
         } catch (err) {
           addToast('Failed to load content. Check API settings.', 'error');
         }
@@ -1639,7 +1894,7 @@
         if (!deleteModal) return;
         setDeleteLoading(true);
         const { type, item } = deleteModal;
-        const dir = type === 'kid' ? 'kids' : 'partners';
+        const dir = type === 'kid' ? 'kids' : type === 'partner' ? 'partners' : type === 'team member' ? 'team' : 'partners';
         try {
           // Get SHA first
           const fileRes = await api.readContent(`src/content/${dir}/${item.slug}.json`);
@@ -1671,6 +1926,7 @@
         { id: 'dashboard', icon: '📊', label: 'Dashboard' },
         { id: 'kids', icon: '👶', label: 'Kids' },
         { id: 'partners', icon: '🤝', label: 'Partners' },
+        { id: 'team', icon: '👥', label: 'Team' },
         { id: 'financials', icon: '📄', label: 'Financials' },
         { id: 'settings', icon: '⚙️', label: 'Site Settings' },
       ];
@@ -1685,7 +1941,7 @@
 
         switch (view) {
           case 'dashboard':
-            return html`<${Dashboard} kids=${kids} partners=${partners} />`;
+            return html`<${Dashboard} kids=${kids} partners=${partners} team=${team} />`;
           case 'kids':
             return editSlug !== null
               ? html`<${KidEditor} slug=${editSlug || undefined} onBack=${() => { navigate('kids'); loadData(); }} addToast=${addToast} />`
@@ -1696,6 +1952,11 @@
               ? html`<${PartnerEditor} slug=${editSlug || undefined} onBack=${() => { navigate('partners'); loadData(); }} addToast=${addToast} />`
               : html`<${PartnersList} partners=${partners} onEdit=${s => navigate('partners', s)} onAdd=${() => navigate('partners', '')}
                   onDelete=${p => setDeleteModal({ type: 'partner', item: p })} />`;
+          case 'team':
+            return editSlug !== null
+              ? html`<${TeamEditor} slug=${editSlug || undefined} onBack=${() => { navigate('team'); loadData(); }} addToast=${addToast} />`
+              : html`<${TeamList} team=${team} onEdit=${s => navigate('team', s)} onAdd=${() => navigate('team', '')}
+                  onDelete=${t => setDeleteModal({ type: 'team member', item: t })} />`;
           case 'financials':
             return html`<${Financials} addToast=${addToast} />`;
           case 'settings':
