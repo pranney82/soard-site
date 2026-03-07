@@ -16,6 +16,7 @@
  */
 import BaseLayout from '../layouts/BaseLayout.astro';
 import faqData from '../content/site/faq.json';
+import { getDonateSchema } from '../utils/schema';
 
 const donateFaqs = faqData.items
   .filter(item => {
@@ -23,11 +24,19 @@ const donateFaqs = faqData.items
     return cat?.showOnDonatePage;
   })
   .sort((a, b) => (a.order || 0) - (b.order || 0));
+
+const donateJsonLd = getDonateSchema();
+const breadcrumbs = [
+  { name: 'Home', url: 'https://sunshineonaranneyday.com/' },
+  { name: 'Donate', url: 'https://sunshineonaranneyday.com/donate/' },
+];
 ---
 
 <BaseLayout
   title="Donate — Help Build a Brighter Home"
   description="Every dollar builds accessible bathrooms, dream bedrooms, and therapy rooms for children with special needs in Atlanta — all at no cost to families."
+  jsonLd={donateJsonLd}
+  breadcrumbs={breadcrumbs}
 >
   <!-- 
     TODO: Add preconnect hints to BaseLayout when images move to CF Images:

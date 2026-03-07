@@ -21,36 +21,11 @@ const heroImage  = 'hero/reveal-moment';          // CF Images ID — replace wi
 const heroVideo  = '';                              // e.g. 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/hero/loop.mp4' or ''
 const revealVideoId = '';                           // e.g. 'dQw4w9WgXcQ' (YouTube ID) or ''
 
-const jsonLd = {
-  "@context": "https://schema.org",
-  "@type": "NonprofitOrganization",
-  "name": "Sunshine on a Ranney Day",
-  "alternateName": "SOARD",
-  "url": "https://sunshineonaranneyday.com",
-  "logo": "https://sunshineonaranneyday.com/logo.png",
-  "description": "A 501(c)(3) nonprofit creating life-changing home makeovers — dream bedrooms, accessible bathrooms, and therapy rooms — for children with special needs in the greater Atlanta area, all at no cost to families.",
-  "foundingDate": "2012",
-  "taxID": "45-4773997",
-  "nonprofitStatus": "501(c)(3)",
-  "areaServed": {
-    "@type": "GeoCircle",
-    "geoMidpoint": { "@type": "GeoCoordinates", "latitude": 33.749, "longitude": -84.388 },
-    "geoRadius": "80467"
-  },
-  "address": {
-    "@type": "PostalAddress",
-    "streetAddress": "250 Hembree Park Drive, Suite 106",
-    "addressLocality": "Roswell",
-    "addressRegion": "GA",
-    "postalCode": "30076",
-    "addressCountry": "US"
-  },
-  "telephone": "+17709902434",
-  "sameAs": [
-    "https://www.facebook.com/sunshineonaranneyday",
-    "https://www.instagram.com/sunshineonaranneyday"
-  ]
-};
+import { getWebSiteSchema } from '../utils/schema';
+
+// Homepage gets WebSite schema (enables sitelinks search box)
+// Organization schema is now automatically included on every page via BaseLayout
+const jsonLd = getWebSiteSchema();
 ---
 
 <BaseLayout

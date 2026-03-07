@@ -6,6 +6,7 @@
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import Button from '../../components/ui/Button.astro';
 import { getCollection } from 'astro:content';
+import { getKidProfileSchema } from '../../utils/schema';
 
 export async function getStaticPaths() {
   const kids = await getCollection('kids');
@@ -20,11 +21,26 @@ const { kid } = Astro.props;
 // Separate family/personal photos from reveal/room photos
 // First batch before the photographer credit is typically family photos
 const photos = kid.photos || [];
+
+// JSON-LD: Article schema for kid profile
+const kidSchemas = getKidProfileSchema(kid);
+
+// Breadcrumbs
+const breadcrumbs = [
+  { name: 'Home', url: 'https://sunshineonaranneyday.com/' },
+  { name: 'Kids', url: 'https://sunshineonaranneyday.com/kids/' },
+  { name: kid.name, url: `https://sunshineonaranneyday.com/kids/${kid.slug}/` },
+];
 ---
 
 <BaseLayout
   title={kid.name}
   description={kid.metaDescription || `Meet ${kid.name} — learn how Sunshine on a Ranney Day is transforming their space.`}
+  ogType="article"
+  ogImage={kid.heroImage || undefined}
+  jsonLd={kidSchemas}
+  breadcrumbs={breadcrumbs}
+  datePublished={kid.year ? `${kid.year}-01-01` : undefined}
 >
   <article class="kid-profile">
     <!-- Hero Section -->

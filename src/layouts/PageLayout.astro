@@ -12,13 +12,18 @@ interface Props {
   heroTitle?: string;
   heroSubtitle?: string;
   ogImage?: string;
-  jsonLd?: object;
+  ogType?: string;
+  jsonLd?: object | object[];
+  breadcrumbs?: { name: string; url: string }[];
+  datePublished?: string;
+  dateModified?: string;
+  noindex?: boolean;
 }
 
-const { title, description, heroTitle, heroSubtitle, ogImage, jsonLd } = Astro.props;
+const { title, description, heroTitle, heroSubtitle, ogImage, ogType, jsonLd, breadcrumbs, datePublished, dateModified, noindex } = Astro.props;
 ---
 
-<BaseLayout title={title} description={description} ogImage={ogImage} jsonLd={jsonLd}>
+<BaseLayout title={title} description={description} ogImage={ogImage} ogType={ogType} jsonLd={jsonLd} breadcrumbs={breadcrumbs} datePublished={datePublished} dateModified={dateModified} noindex={noindex}>
   {(heroTitle || heroSubtitle) && (
     <section class="page-hero">
       <div class="container">

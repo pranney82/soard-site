@@ -1,36 +1,51 @@
 # Sunshine on a Ranney Day
 
-> 501(c)(3) nonprofit creating life-changing home makeovers for
-> children with special needs and life-altering illnesses.
+> 501(c)(3) nonprofit creating life-changing home makeovers for children with special needs and life-altering illnesses in the greater Atlanta area. We design and build custom dream bedrooms, wheelchair-accessible bathrooms, and in-home therapy rooms — all at no cost to families. EIN: 45-4773997. Operating since 2012. Based in Roswell, Georgia.
 
-## About
-We design and build custom dream bedrooms, wheelchair-accessible
-bathrooms, and in-home therapy spaces at no cost to families.
-Based in Roswell, Georgia (greater Atlanta area). Operating since 2012.
+We are a volunteer-driven nonprofit that partners with professional designers, contractors, and suppliers to transform the homes of children facing serious medical challenges. Our work gives families functional, beautiful spaces that support their child's independence, therapy, and joy.
 
-## What We Do
-- Dream Bedrooms: Custom-designed bedrooms tailored to each child's interests and needs
-- Accessible Bathrooms: Wheelchair-accessible bathroom renovations for independence
-- Therapy Rooms: In-home therapy spaces for physical and occupational therapy
-
-## Key Stats
-- 132+ children served
-- 106+ rooms completed
+## Key Facts
+- 132+ children served since 2012
+- 106+ rooms completed (bedrooms, bathrooms, therapy rooms)
 - 45+ therapy rooms built
 - 17,000+ children impacted through community projects
+- Entirely volunteer-driven with donated materials and labor
+- 100% of donations go directly to room builds (no paid staff overhead)
 
-## How to Help
-- Donate: https://sunshineonaranneyday.com/donate/
-- Apply for a makeover: https://sunshineonaranneyday.com/application/
-- Partner with us: info@soardcharity.com
-- Shop our stores: https://www.sunnyandranney.com
+## Programs
+- Dream Bedrooms: Custom-designed bedrooms tailored to each child's interests, medical equipment needs, and sensory preferences
+- Accessible Bathrooms: Wheelchair-accessible bathroom renovations including roll-in showers, grab bars, widened doorways, and adjustable fixtures
+- Therapy Rooms: In-home therapy spaces for physical, occupational, and speech therapy
+- Community Projects: Large-scale playground builds and facility renovations at schools and nonprofits serving children with special needs
 
-## Retail Stores
-- Sunny & Ranney: https://www.sunnyandranney.com (funds the charity)
-- Partly Sunny: https://partlysunnystore.com/
+## Pages
+- [Home](https://sunshineonaranneyday.com/): Mission overview, featured kids, impact stats, partner logos
+- [About — Our Story](https://sunshineonaranneyday.com/about/): How SOARD was founded by the Ranney family in 2012
+- [About — Leadership](https://sunshineonaranneyday.com/about/leadership/): Board of directors and advisory board bios
+- [About — Financials](https://sunshineonaranneyday.com/about/financials/): 990 filings, annual reports, GuideStar profile
+- [Meet the Kids](https://sunshineonaranneyday.com/kids/): Profiles of every child we've served with photos and stories
+- [Featured Rooms](https://sunshineonaranneyday.com/rooms/): Gallery of completed room makeovers
+- [Before & After](https://sunshineonaranneyday.com/rooms/before-after/): Dramatic before/after photo comparisons
+- [Community Projects](https://sunshineonaranneyday.com/rooms/community/): School and facility renovation projects
+- [Partners](https://sunshineonaranneyday.com/partners/): Companies and organizations that make our work possible
+- [Donate](https://sunshineonaranneyday.com/donate/): Tax-deductible donations via Zeffy (0% platform fees)
+- [Apply](https://sunshineonaranneyday.com/apply/): Families can apply for a home makeover
+- [FAQs](https://sunshineonaranneyday.com/faq/): Common questions about donations, volunteering, and applications
+- [Publicity](https://sunshineonaranneyday.com/publicity/): Media coverage and press mentions
+- [Resources](https://sunshineonaranneyday.com/resources/): Helpful links for families of children with special needs
 
 ## Contact
-- Address: 42-C Oak Street, Roswell GA 30075
+- Address: 250 Hembree Park Drive, Suite 106, Roswell GA 30076
 - Phone: 770.990.2434
 - Email: info@soardcharity.com
 - Website: https://sunshineonaranneyday.com
+- Facebook: https://www.facebook.com/sunshineonaranneyday
+- Instagram: https://www.instagram.com/sunshineonaranneyday
+
+## Related
+- Sunny & Ranney retail store: https://www.sunnyandranney.com (profits fund the charity)
+- Partly Sunny store: https://partlysunnystore.com/
+- GuideStar profile: https://www.guidestar.org/profile/shared/2954b510-8c76-42e4-b589-7e826ca2cc47
+
+## Optional
+- [Full LLM context](https://sunshineonaranneyday.com/llms-full.txt): Comprehensive version with program details, kid profiles, and partner information

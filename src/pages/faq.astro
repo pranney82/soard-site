@@ -6,29 +6,28 @@
  */
 import BaseLayout from '../layouts/BaseLayout.astro';
 import faqData from '../content/site/faq.json';
+import { getFAQSchema } from '../utils/schema';
 
 const categories = faqData.categories;
 const allItems = faqData.items.sort((a, b) => (a.order || 0) - (b.order || 0));
 
-// Build JSON-LD FAQPage schema
-const faqJsonLd = {
-  "@context": "https://schema.org",
-  "@type": "FAQPage",
-  "mainEntity": allItems.map(item => ({
-    "@type": "Question",
-    "name": item.question,
-    "acceptedAnswer": {
-      "@type": "Answer",
-      "text": item.answer.replace(/<[^>]+>/g, ''),
-    }
-  }))
-};
+// Build JSON-LD FAQPage schema (merged into @graph by BaseLayout)
+const faqJsonLd = getFAQSchema(allItems.map(item => ({
+  question: item.question,
+  answer: item.answer,
+})));
+
+const breadcrumbs = [
+  { name: 'Home', url: 'https://sunshineonaranneyday.com/' },
+  { name: 'FAQs', url: 'https://sunshineonaranneyday.com/faq/' },
+];
 ---
 
 <BaseLayout
   title="FAQs — Sunshine on a Ranney Day"
   description="Answers to common questions about donating, volunteering, room makeovers, and how families can apply for help from SOARD."
   jsonLd={faqJsonLd}
+  breadcrumbs={breadcrumbs}
 >
   <!-- Hero -->
   <section class="faq-hero">

@@ -1,0 +1,23 @@
+/* TEAM */
+Organization: Sunshine on a Ranney Day
+Founded: 2012
+Mission: Creating life-changing home makeovers for children with special needs
+
+Co-Founder & President: Holly Ranney
+Co-Founder & VP Construction: Peter Ranney
+Director of Operations: Linzi Berkowitz
+
+/* SITE */
+Built with: Astro (astro.build)
+Hosted on: Cloudflare Pages
+Images: Cloudflare Images
+CMS: Custom AI-powered admin panel
+Standards: HTML5, CSS3, ES2022
+Components: Astro, vanilla JS
+Fonts: Libre Baskerville (serif), Outfit (sans-serif)
+Software: VS Code, GitHub, Cloudflare
+
+/* THANKS */
+Our incredible volunteer designers, contractors, and partners who make every room possible.
+Every family who trusts us with their child's space.
+Every donor who makes dreams come true.

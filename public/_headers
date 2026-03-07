@@ -1,0 +1,50 @@
+## Sunshine on a Ranney Day — HTTP Security Headers
+## These headers improve security, Lighthouse scores, and SEO trust signals.
+
+/*
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: SAMEORIGIN
+  X-XSS-Protection: 1; mode=block
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()
+  Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
+  Content-Security-Policy: frame-ancestors 'self'
+
+## Cache static assets aggressively
+/fonts/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/images/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/*.png
+  Cache-Control: public, max-age=31536000, immutable
+
+/*.ico
+  Cache-Control: public, max-age=31536000, immutable
+
+/*.webmanifest
+  Cache-Control: public, max-age=86400
+
+## Cache HTML pages for a short time (Cloudflare will serve stale while revalidating)
+/*.html
+  Cache-Control: public, max-age=300, s-maxage=3600
+
+## LLM-friendly files
+/llms.txt
+  Content-Type: text/plain; charset=utf-8
+  Cache-Control: public, max-age=86400
+  X-Robots-Tag: noindex
+
+/llms-full.txt
+  Content-Type: text/plain; charset=utf-8
+  Cache-Control: public, max-age=86400
+  X-Robots-Tag: noindex
+
+/robots.txt
+  Content-Type: text/plain; charset=utf-8
+  Cache-Control: public, max-age=86400
+
+/humans.txt
+  Content-Type: text/plain; charset=utf-8
+  Cache-Control: public, max-age=86400

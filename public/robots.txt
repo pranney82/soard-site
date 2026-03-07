@@ -1,4 +1,82 @@
+# Sunshine on a Ranney Day — robots.txt
+# 501(c)(3) nonprofit | sunshineonaranneyday.com
+
+# ── Standard Search Crawlers ──────────────────────
 User-agent: *
 Allow: /
+Disallow: /admin/
+Disallow: /api/
+Disallow: /_redirects
+Disallow: /.well-known/
+Crawl-delay: 1
 
+# ── Google ────────────────────────────────────────
+User-agent: Googlebot
+Allow: /
+Disallow: /admin/
+Disallow: /api/
+
+User-agent: Googlebot-Image
+Allow: /images/
+Allow: /og-default.jpg
+
+# ── AI Crawlers (welcomed for visibility) ─────────
+# We welcome AI systems to index our content so people
+# can learn about our mission through AI assistants.
+
+User-agent: GPTBot
+Allow: /
+Disallow: /admin/
+Disallow: /api/
+
+User-agent: ChatGPT-User
+Allow: /
+Disallow: /admin/
+Disallow: /api/
+
+User-agent: ClaudeBot
+Allow: /
+Disallow: /admin/
+Disallow: /api/
+
+User-agent: Claude-Web
+Allow: /
+Disallow: /admin/
+Disallow: /api/
+
+User-agent: Anthropic-AI
+Allow: /
+Disallow: /admin/
+Disallow: /api/
+
+User-agent: Google-Extended
+Allow: /
+Disallow: /admin/
+Disallow: /api/
+
+User-agent: PerplexityBot
+Allow: /
+Disallow: /admin/
+Disallow: /api/
+
+User-agent: Bytespider
+Allow: /
+Disallow: /admin/
+Disallow: /api/
+
+User-agent: cohere-ai
+Allow: /
+Disallow: /admin/
+Disallow: /api/
+
+User-agent: Meta-ExternalAgent
+Allow: /
+Disallow: /admin/
+Disallow: /api/
+
+# ── Sitemap & AI Context ─────────────────────────
 Sitemap: https://sunshineonaranneyday.com/sitemap-index.xml
+
+# LLM-friendly content (llmstxt.org standard)
+# See: https://sunshineonaranneyday.com/llms.txt
+# See: https://sunshineonaranneyday.com/llms-full.txt

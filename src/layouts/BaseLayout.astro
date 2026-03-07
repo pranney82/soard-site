@@ -3,31 +3,91 @@
  * BaseLayout.astro
  * Root layout wrapping every page. Handles <html>, <head>, fonts,
  * meta tags, JSON-LD slot, and the global Header/Footer.
+ * 
+ * SEO FEATURES (top 1%):
+ * - Global NonprofitOrganization schema on every page (@graph)
+ * - WebPage schema with breadcrumbs on every page
+ * - Per-page JSON-LD merged into unified @graph
+ * - Open Graph with og:locale, og:type override, image dimensions
+ * - Twitter Card with image alt
+ * - GeoRegion + ICBM meta for local SEO
+ * - theme-color for mobile browsers
+ * - Absolute OG image URLs
  */
 import Header from '../components/global/Header.astro';
 import Footer from '../components/global/Footer.astro';
+import { getOrgSchema, getWebPageSchema, getBreadcrumbSchema, buildSchemaGraph } from '../utils/schema';
 import '../styles/global.css';
 
 interface Props {
   title: string;
   description?: string;
   ogImage?: string;
-  jsonLd?: object;
+  ogType?: string;
+  jsonLd?: object | object[];
   bodyClass?: string;
+  breadcrumbs?: { name: string; url: string }[];
+  datePublished?: string;
+  dateModified?: string;
+  noindex?: boolean;
 }
 
 const {
   title,
   description = 'Sunshine on a Ranney Day creates life-changing home makeovers for children with special needs — dream bedrooms, accessible bathrooms, and therapy rooms — all at no cost to families.',
   ogImage = '/og-default.jpg',
+  ogType = 'website',
   jsonLd,
   bodyClass = '',
+  breadcrumbs,
+  datePublished,
+  dateModified,
+  noindex = false,
 } = Astro.props;
 
 const canonicalURL = new URL(Astro.url.pathname, Astro.site);
 const fullTitle = title === 'Home'
   ? 'Sunshine on a Ranney Day — Dreams Built Here'
   : `${title} | Sunshine on a Ranney Day`;
+
+// Resolve OG image to absolute URL
+const ogImageAbsolute = ogImage.startsWith('http')
+  ? ogImage
+  : new URL(ogImage, Astro.site).toString();
+
+// ── Build the JSON-LD @graph for this page ──────────────
+const graphSchemas: (Record<string, any> | Record<string, any>[])[] = [
+  getOrgSchema(),
+  getWebPageSchema({
+    url: canonicalURL.toString(),
+    title: fullTitle,
+    description,
+    datePublished,
+    dateModified,
+    breadcrumbs,
+  }),
+];
+
+if (breadcrumbs && breadcrumbs.length > 0) {
+  graphSchemas.push(getBreadcrumbSchema(breadcrumbs, canonicalURL.toString()));
+}
+
+// Merge page-specific JSON-LD into the graph
+if (jsonLd) {
+  if (Array.isArray(jsonLd)) {
+    graphSchemas.push(...jsonLd);
+  } else if ((jsonLd as any)['@graph']) {
+    graphSchemas.push(...(jsonLd as any)['@graph']);
+  } else if ((jsonLd as any)['@context']) {
+    // Strip @context from standalone schemas before merging
+    const { '@context': _, ...rest } = jsonLd as any;
+    graphSchemas.push(rest);
+  } else {
+    graphSchemas.push(jsonLd as Record<string, any>);
+  }
+}
+
+const structuredData = buildSchemaGraph(...graphSchemas);
 ---
 
 <!DOCTYPE html>
@@ -40,20 +100,34 @@ const fullTitle = title === 'Home'
   <title>{fullTitle}</title>
   <meta name="description" content={description} />
   <link rel="canonical" href={canonicalURL} />
+  {noindex && <meta name="robots" content="noindex, nofollow" />}
+
+  <!-- Local SEO geo signals -->
+  <meta name="geo.region" content="US-GA" />
+  <meta name="geo.placename" content="Roswell, Georgia" />
+  <meta name="geo.position" content="34.0232;-84.3616" />
+  <meta name="ICBM" content="34.0232, -84.3616" />
 
   <!-- Open Graph -->
-  <meta property="og:type" content="website" />
+  <meta property="og:locale" content="en_US" />
+  <meta property="og:type" content={ogType} />
   <meta property="og:url" content={canonicalURL} />
   <meta property="og:title" content={fullTitle} />
   <meta property="og:description" content={description} />
-  <meta property="og:image" content={ogImage} />
+  <meta property="og:image" content={ogImageAbsolute} />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content={`${title} — Sunshine on a Ranney Day`} />
   <meta property="og:site_name" content="Sunshine on a Ranney Day" />
 
   <!-- Twitter -->
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content={fullTitle} />
   <meta name="twitter:description" content={description} />
-  <meta name="twitter:image" content={ogImage} />
+  <meta name="twitter:image" content={ogImageAbsolute} />
+
+  <!-- Theme color -->
+  <meta name="theme-color" content="#FFD500" />
 
   <!-- Favicon -->
   <link rel="icon" href="/favicon.ico" sizes="any" />
@@ -125,10 +199,8 @@ const fullTitle = title === 'Home'
     }
   </style>
 
-  <!-- JSON-LD Structured Data -->
-  {jsonLd && (
-    <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
-  )}
+  <!-- JSON-LD: Unified @graph with Organization + WebPage + page-specific schemas -->
+  <script type="application/ld+json" set:html={JSON.stringify(structuredData)} />
 
   <!-- Facebook Pixel (async) -->
   <script is:inline>
