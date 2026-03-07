@@ -45,7 +45,7 @@ const boardMembers = allTeam
                 />
               ) : (
                 <div class="member-photo__placeholder">
-                  <span>☀️</span>
+                  <img src="/images/logos/logo-circle.png" alt="" class="placeholder-icon" />
                 </div>
               )}
             </div>
@@ -83,7 +83,7 @@ const boardMembers = allTeam
                 />
               ) : (
                 <div class="board-photo__placeholder">
-                  <span>☀️</span>
+                  <img src="/images/logos/logo-circle.png" alt="" class="placeholder-icon" />
                 </div>
               )}
             </div>
@@ -181,8 +181,14 @@ const boardMembers = allTeam
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 3rem;
-    background: var(--c-cream);
+    background: var(--c-warm-gray);
+  }
+
+  .member-photo__placeholder .placeholder-icon {
+    width: 60%;
+    height: 60%;
+    object-fit: contain;
+    opacity: 0.5;
   }
 
   .member-name {
@@ -250,8 +256,14 @@ const boardMembers = allTeam
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 1.5rem;
-    background: var(--c-cream);
+    background: var(--c-warm-gray);
+  }
+
+  .board-photo__placeholder .placeholder-icon {
+    width: 55%;
+    height: 55%;
+    object-fit: contain;
+    opacity: 0.5;
   }
 
   .board-info {
