@@ -39,21 +39,23 @@
       min-height: 100vh;
     }
     .sidebar-logo {
-      padding: 0 1.25rem 1.5rem;
+      padding: 0.75rem 1.25rem 1rem;
       border-bottom: 1px solid rgba(255,255,255,0.08);
       margin-bottom: 0.75rem;
     }
-    .sidebar-logo h1 {
-      font-family: 'Libre Baskerville', Georgia, serif;
-      font-size: 1.15rem;
-      font-weight: 700;
-      color: #FFD500;
+    .sidebar-logo img {
+      width: 100%;
+      max-width: 180px;
+      height: auto;
+      display: block;
     }
     .sidebar-logo small {
-      font-size: 0.75rem;
-      color: rgba(255,255,255,0.45);
+      font-size: 0.7rem;
+      color: rgba(255,255,255,0.4);
       display: block;
-      margin-top: 0.15rem;
+      margin-top: 0.35rem;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
     }
     .nav-item {
       display: flex; align-items: center; gap: 0.75rem;
@@ -2321,7 +2323,7 @@
 
           <nav class="sidebar ${sidebarOpen ? 'open' : ''}">
             <div class="sidebar-logo">
-              <h1>☀️ SOARD</h1>
+              <img src="/images/logos/logo-admin.png" alt="Sunshine on a Ranney Day" />
               <small>Content Admin</small>
             </div>
             <div class="nav-section">Manage</div>
