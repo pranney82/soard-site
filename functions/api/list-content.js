@@ -1,7 +1,12 @@
 /**
  * GET /api/list-content?dir=src/content/kids
  * Lists all JSON files in a directory AND returns their parsed contents.
- * Single API call replaces N individual reads.
+ *
+ * Uses two fast approaches:
+ *   1. Git Trees API — one call to get all file paths + SHAs
+ *   2. raw.githubusercontent.com — fetch file contents without API rate limits
+ *
+ * This handles 133+ files in a few seconds vs the old approach timing out.
  *
  * Environment variables needed:
  *   GITHUB_TOKEN
@@ -32,28 +37,36 @@ export async function onRequestGet(context) {
 
     const headers = {
       'Authorization': `Bearer ${GITHUB_TOKEN}`,
-      'Accept': 'application/vnd.github.v3+json',
       'User-Agent': 'SOARD-Admin',
     };
 
-    // List directory contents
-    const listRes = await fetch(
-      `https://api.github.com/repos/${REPO}/contents/${dir}?ref=${BRANCH}`,
-      { headers }
+    // Step 1: Get entire repo tree in one API call
+    const treeRes = await fetch(
+      `https://api.github.com/repos/${REPO}/git/trees/${BRANCH}?recursive=1`,
+      { headers: { ...headers, 'Accept': 'application/vnd.github.v3+json' } }
     );
 
-    if (!listRes.ok) {
+    if (!treeRes.ok) {
       return Response.json(
-        { success: false, error: `GitHub error: ${listRes.status}` },
-        { status: listRes.status, headers: cors }
+        { success: false, error: `GitHub Trees API error: ${treeRes.status}` },
+        { status: treeRes.status, headers: cors }
       );
     }
 
-    const listing = await listRes.json();
-    const jsonFiles = listing.filter(f => f.type === 'file' && f.name.endsWith('.json'));
+    const tree = await treeRes.json();
 
-    // Fetch in batches of 10 to avoid rate limits
-    const BATCH_SIZE = 10;
+    // Filter to JSON files in the requested directory
+    const dirPrefix = dir.endsWith('/') ? dir : dir + '/';
+    const jsonFiles = tree.tree.filter(
+      f => f.type === 'blob'
+        && f.path.startsWith(dirPrefix)
+        && f.path.endsWith('.json')
+        && !f.path.slice(dirPrefix.length).includes('/')  // no subdirectories
+    );
+
+    // Step 2: Fetch all file contents from raw.githubusercontent.com in parallel
+    // This bypasses API rate limits — much faster for 100+ files
+    const BATCH_SIZE = 25;
     const items = [];
 
     for (let i = 0; i < jsonFiles.length; i += BATCH_SIZE) {
@@ -61,21 +74,15 @@ export async function onRequestGet(context) {
       const results = await Promise.all(
         batch.map(async (file) => {
           try {
-            const res = await fetch(
-              `https://api.github.com/repos/${REPO}/contents/${file.path}?ref=${BRANCH}`,
-              { headers }
-            );
+            const rawUrl = `https://raw.githubusercontent.com/${REPO}/${BRANCH}/${file.path}`;
+            const res = await fetch(rawUrl, { headers });
             if (!res.ok) return null;
-            const data = await res.json();
-            const raw = atob(data.content.replace(/\n/g, ''));
-            const decoded = new TextDecoder().decode(
-              Uint8Array.from(raw, c => c.charCodeAt(0))
-            );
+            const text = await res.text();
             return {
-              name: file.name,
+              name: file.path.split('/').pop(),
               path: file.path,
-              sha: data.sha,
-              content: JSON.parse(decoded),
+              sha: file.sha,
+              content: JSON.parse(text),
             };
           } catch {
             return null;
