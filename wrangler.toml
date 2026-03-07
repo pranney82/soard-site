@@ -4,3 +4,6 @@ compatibility_flags = ["nodejs_compat"]
 
 [assets]
 directory = "./dist"
+
+[ai]
+binding = "AI"

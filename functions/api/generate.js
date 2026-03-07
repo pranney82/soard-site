@@ -1,6 +1,7 @@
 /**
  * POST /api/generate
- * Uses Claude to generate content for kid profiles.
+ * Uses Cloudflare Workers AI to generate content for kid profiles.
+ * No external API key needed — uses the AI binding.
  *
  * Expects JSON body:
  *   {
@@ -8,13 +9,9 @@
  *     kid: { name, age, diagnosis, roomTypes, bio, photos: [{ url }], ... }
  *   }
  *
- * Returns generated fields based on type:
- *   alt-text → { altTexts: ["...", "..."] }
- *   seo → { shortDescription, metaDescription }
- *   all → { altTexts, shortDescription, metaDescription }
- *
- * Environment variables needed:
- *   ANTHROPIC_API_KEY
+ * Models used:
+ *   - Vision (alt text): @cf/meta/llama-3.2-11b-vision-instruct
+ *   - Text (SEO): @cf/meta/llama-3.3-70b-instruct-fp8-fast
  */
 
 export async function onRequestPost(context) {
@@ -25,11 +22,11 @@ export async function onRequestPost(context) {
   };
 
   try {
-    const { ANTHROPIC_API_KEY } = context.env;
+    const ai = context.env.AI;
 
-    if (!ANTHROPIC_API_KEY) {
+    if (!ai) {
       return Response.json(
-        { success: false, error: 'Missing ANTHROPIC_API_KEY. Add it in Cloudflare Pages environment variables.' },
+        { success: false, error: 'AI binding not configured. Add [ai] binding = "AI" to wrangler.toml.' },
         { status: 500, headers: cors }
       );
     }
@@ -45,128 +42,99 @@ export async function onRequestPost(context) {
 
     const results = {};
 
-    // ─── Generate Alt Text ─────────────────
+    // ─── Generate Alt Text with Vision Model ───
     if (type === 'alt-text' || type === 'all') {
-      const photoCount = kid.photos?.length || 0;
-      if (photoCount === 0) {
+      const photos = kid.photos || [];
+      if (photos.length === 0) {
         results.altTexts = [];
       } else {
-        // Build content blocks with images for Claude to describe
-        const content = [];
-        content.push({
-          type: 'text',
-          text: `You are writing alt text for photos on a nonprofit website (Sunshine on a Ranney Day) that creates dream bedrooms and accessible spaces for children with special needs.
+        const altTexts = [];
+        // Process up to 20 photos
+        const toProcess = photos.slice(0, 20);
 
-Child's name: ${kid.name}
-Age: ${kid.age || 'unknown'}
-Diagnosis: ${kid.diagnosis || 'not specified'}
-Room types: ${(kid.roomTypes || []).join(', ') || 'not specified'}
+        for (const photo of toProcess) {
+          try {
+            // Fetch the image and convert to base64
+            const imgResponse = await fetch(photo.url);
+            if (!imgResponse.ok) {
+              altTexts.push('');
+              continue;
+            }
 
-Below are ${photoCount} photos from this child's room reveal or project. Write a concise, descriptive alt text for EACH photo — one per line, numbered 1 through ${photoCount}. Each alt text should be 10-25 words, describe what's visible in the photo, and be useful for screen readers. Do not start with "Image of" or "Photo of". Focus on the scene, people's expressions, room features, or key details.
+            const imgBuffer = await imgResponse.arrayBuffer();
+            const imgArray = [...new Uint8Array(imgBuffer)];
+            const base64 = btoa(String.fromCharCode(...imgArray));
 
-Return ONLY the numbered list, nothing else. Example format:
-1. A smiling boy sitting on his new race car bed surrounded by family members
-2. Freshly painted blue bedroom walls with custom shelving and superhero decals`
-        });
+            const visionResult = await ai.run(
+              '@cf/meta/llama-3.2-11b-vision-instruct',
+              {
+                messages: [
+                  {
+                    role: 'user',
+                    content: [
+                      {
+                        type: 'text',
+                        text: `Write a concise alt text description (10-25 words) for this photo from a nonprofit that builds dream bedrooms for children with special needs. The child's name is ${kid.name}${kid.diagnosis ? ', who has ' + kid.diagnosis : ''}. Do not start with "Image of" or "Photo of". Focus on what you see: people, expressions, room features, colors, furniture. Return ONLY the alt text, nothing else.`,
+                      },
+                      {
+                        type: 'image',
+                        image: base64,
+                      },
+                    ],
+                  },
+                ],
+                max_tokens: 80,
+              }
+            );
 
-        // Add each photo as an image block
-        for (let i = 0; i < Math.min(photoCount, 20); i++) {
-          const photo = kid.photos[i];
-          if (photo.url) {
-            content.push({
-              type: 'image',
-              source: {
-                type: 'url',
-                url: photo.url,
-              },
-            });
+            const text = (visionResult?.response || '').trim().replace(/^["']|["']$/g, '');
+            altTexts.push(text);
+          } catch (err) {
+            console.error('Vision error for photo:', err.message);
+            altTexts.push('');
           }
         }
 
-        const altRes = await fetch('https://api.anthropic.com/v1/messages', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': ANTHROPIC_API_KEY,
-            'anthropic-version': '2023-06-01',
-          },
-          body: JSON.stringify({
-            model: 'claude-sonnet-4-20250514',
-            max_tokens: 2000,
-            messages: [{ role: 'user', content }],
-          }),
-        });
-
-        if (!altRes.ok) {
-          const err = await altRes.text();
-          return Response.json(
-            { success: false, error: `Anthropic API error: ${altRes.status} - ${err}` },
-            { status: 500, headers: cors }
-          );
-        }
-
-        const altData = await altRes.json();
-        const altText = altData.content?.[0]?.text || '';
-
-        // Parse numbered list into array
-        const altTexts = altText
-          .split('\n')
-          .filter(line => /^\d+[\.\)]\s/.test(line.trim()))
-          .map(line => line.replace(/^\d+[\.\)]\s*/, '').trim());
-
-        // Pad with empty strings if we got fewer than expected
-        while (altTexts.length < photoCount) {
+        // Pad remaining photos with empty strings
+        while (altTexts.length < photos.length) {
           altTexts.push('');
         }
 
-        results.altTexts = altTexts.slice(0, photoCount);
+        results.altTexts = altTexts;
       }
     }
 
-    // ─── Generate SEO Fields ───────────────
+    // ─── Generate SEO Fields with Text Model ───
     if (type === 'seo' || type === 'all') {
-      const seoPrompt = `You are writing SEO content for a nonprofit website (Sunshine on a Ranney Day) that creates dream bedrooms and accessible spaces for children with special needs in the greater Atlanta area.
+      const seoPrompt = `You are writing SEO content for Sunshine on a Ranney Day (SOARD), a nonprofit that creates dream bedrooms and accessible spaces for children with special needs in Atlanta, GA.
 
-Child's name: ${kid.name}
+Child: ${kid.name}
 Age: ${kid.age || 'unknown'}
 Diagnosis: ${kid.diagnosis || 'not specified'}
 Room types: ${(kid.roomTypes || []).join(', ') || 'not specified'}
-Bio: ${(kid.bio || '').slice(0, 500)}
+Bio: ${(kid.bio || '').slice(0, 800)}
 
-Generate exactly two things:
+Write exactly two things:
 
-1. SHORT_DESCRIPTION: A warm, engaging 1-2 sentence summary (50-80 words) of this child's story suitable for a card preview on the website. Focus on who the child is and what SOARD is doing for them.
+1. SHORT_DESCRIPTION: A warm 1-2 sentence summary (50-80 words) of this child's story for a card preview. Focus on who the child is and what SOARD is doing for them.
 
-2. META_DESCRIPTION: An SEO-optimized meta description (120-155 characters) for this child's page. Include the child's name, their diagnosis or situation, and "Sunshine on a Ranney Day" or "SOARD".
+2. META_DESCRIPTION: An SEO meta description (120-155 characters) including the child's name and "Sunshine on a Ranney Day" or "SOARD".
 
-Return in this exact format:
-SHORT_DESCRIPTION: [your text here]
-META_DESCRIPTION: [your text here]`;
+Return in this exact format, nothing else:
+SHORT_DESCRIPTION: [text]
+META_DESCRIPTION: [text]`;
 
-      const seoRes = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': ANTHROPIC_API_KEY,
-          'anthropic-version': '2023-06-01',
-        },
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
+      const seoResult = await ai.run(
+        '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+        {
+          messages: [
+            { role: 'user', content: seoPrompt },
+          ],
           max_tokens: 500,
-          messages: [{ role: 'user', content: seoPrompt }],
-        }),
-      });
+        }
+      );
 
-      if (!seoRes.ok) {
-        const err = await seoRes.text();
-        return Response.json(
-          { success: false, error: `Anthropic API error: ${seoRes.status} - ${err}` },
-          { status: 500, headers: cors }
-        );
-      }
-
-      const seoData = await seoRes.json();
-      const seoText = seoData.content?.[0]?.text || '';
+      const seoText = seoResult?.response || '';
 
       const shortMatch = seoText.match(/SHORT_DESCRIPTION:\s*(.+?)(?=META_DESCRIPTION:|$)/s);
       const metaMatch = seoText.match(/META_DESCRIPTION:\s*(.+?)$/s);
