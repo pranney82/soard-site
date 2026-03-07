@@ -173,6 +173,30 @@ function isActive(href: string) {
     aria-modal="true"
     aria-hidden="true"
   >
+    <!-- Mobile nav header: logo + close -->
+    <div class="mobile-nav-header">
+      <a href="/" class="mobile-nav-logo" aria-label="Sunshine on a Ranney Day — Home">
+        <img
+          src="/images/logos/sunny.png"
+          alt=""
+          width="32"
+          height="32"
+          loading="eager"
+        />
+        <span class="mobile-nav-logo-text">SOARD</span>
+      </a>
+      <button
+        type="button"
+        class="mobile-close-btn"
+        id="mobile-close-btn"
+        aria-label="Close menu"
+      >
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+          <path d="M15 5L5 15M5 5L15 15" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+      </button>
+    </div>
+
     <ul class="mobile-nav-list">
       {nav.map((item) => (
         <li class="mobile-nav-group">
@@ -210,6 +234,7 @@ function isActive(href: string) {
     const panel = document.getElementById('mobile-nav-panel');
     const overlay = document.getElementById('mobile-overlay');
     const header = document.getElementById('site-header');
+    const closeBtn = document.getElementById('mobile-close-btn');
     const main = document.querySelector('main');
     const footer = document.querySelector('footer');
     if (!btn || !panel || !overlay) return;
@@ -219,7 +244,7 @@ function isActive(href: string) {
 
     // All focusable elements inside the panel + the toggle button
     function getFocusable() {
-      return [btn, ...panel.querySelectorAll('a, button, [tabindex]:not([tabindex="-1"])')];
+      return [closeBtn, ...panel.querySelectorAll('a, button:not(#mobile-close-btn), [tabindex]:not([tabindex="-1"])')];
     }
 
     function open() {
@@ -244,9 +269,8 @@ function isActive(href: string) {
       if (main) main.setAttribute('inert', '');
       if (footer) footer.setAttribute('inert', '');
 
-      // Focus first link
-      const first = panel.querySelector('a');
-      if (first) first.focus();
+      // Focus close button
+      if (closeBtn) closeBtn.focus();
     }
 
     function close() {
@@ -275,6 +299,9 @@ function isActive(href: string) {
 
     // Toggle
     btn.addEventListener('click', function () { isOpen ? close() : open(); });
+
+    // Close button inside panel
+    if (closeBtn) closeBtn.addEventListener('click', close);
 
     // Close on overlay tap
     overlay.addEventListener('click', close);
@@ -533,7 +560,7 @@ function isActive(href: string) {
     height: 100vh;
     height: 100dvh;
     background: var(--c-white);
-    padding: calc(var(--header-height) + var(--space-xl)) var(--space-lg) var(--space-2xl);
+    padding: 0 var(--space-lg) var(--space-2xl);
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
     overscroll-behavior: contain;
@@ -551,6 +578,61 @@ function isActive(href: string) {
   }
 
   /* ─── Mobile Nav Content ───────────────── */
+  .mobile-nav-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--space-md) 0;
+    margin-bottom: var(--space-md);
+    border-bottom: 1px solid var(--c-border);
+    position: sticky;
+    top: 0;
+    background: var(--c-white);
+    z-index: 1;
+  }
+
+  .mobile-nav-logo {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+  }
+
+  .mobile-nav-logo img {
+    width: 32px;
+    height: 32px;
+    flex-shrink: 0;
+  }
+
+  .mobile-nav-logo-text {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 0.95rem;
+    color: var(--c-dark);
+    letter-spacing: 0.02em;
+  }
+
+  .mobile-close-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    border: none;
+    background: var(--c-warm-gray);
+    border-radius: 50%;
+    cursor: pointer;
+    color: var(--c-dark);
+    transition: background var(--transition-fast), color var(--transition-fast);
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    flex-shrink: 0;
+  }
+
+  .mobile-close-btn:hover {
+    background: var(--c-dark);
+    color: var(--c-white);
+  }
+
   .mobile-nav-group + .mobile-nav-group {
     margin-top: var(--space-lg);
     padding-top: var(--space-lg);
@@ -649,7 +731,8 @@ function isActive(href: string) {
     .logo,
     .mobile-nav-link,
     .mobile-donate-btn,
-    .mobile-external-badge {
+    .mobile-external-badge,
+    .mobile-close-btn {
       transition-duration: 0.01ms !important;
     }
   }
