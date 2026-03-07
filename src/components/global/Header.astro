@@ -1,29 +1,35 @@
 ---
 /**
- * Header.astro — Best-in-class mobile navigation
+ * Header.astro — Best-in-class navigation
  *
  * Accessibility:
- *   - Focus trap: Tab cycles within open menu only
+ *   - Skip-to-content link (first focusable element)
+ *   - Focus trap: Tab cycles within open mobile menu only
+ *   - Full arrow-key keyboard nav on desktop dropdowns (WAI-ARIA menubar pattern)
  *   - inert: page content behind menu is inert when open
  *   - aria-expanded, aria-controls, aria-label, aria-hidden
- *   - Escape key closes menu
+ *   - Escape key closes menu / dropdown
  *   - prefers-reduced-motion: instant transitions
  *   - 44px+ touch targets on every interactive element
  *   - External links visually indicated + target="_blank"
+ *   - Parent nav items show active state for child pages
  *
  * UX:
- *   - Swipe right-to-left to close (touch gesture)
+ *   - Hide-on-scroll-down / show-on-scroll-up (reclaims viewport)
+ *   - Hover intent with grace delay on desktop dropdowns (safe triangle)
+ *   - Swipe right-to-left to close mobile panel (touch gesture)
  *   - Tap overlay to close
  *   - iOS-safe scroll lock (position: fixed + scroll offset preservation)
  *   - overscroll-behavior: contain (no scroll chaining)
  *   - Auto-close on resize past mobile breakpoint
  *   - Nav link click closes menu before navigation
+ *   - Enhanced Donate CTA with subtle glow pulse
  *
  * Performance:
- *   - ~60 lines of vanilla JS, no framework
+ *   - ~120 lines of vanilla JS, no framework
  *   - All transitions on transform/opacity only (GPU composited)
- *   - will-change: transform on panel
- *   - Passive touch listeners
+ *   - will-change: transform on panel + header
+ *   - Passive touch/scroll listeners
  */
 const currentPath = Astro.url.pathname;
 
@@ -84,7 +90,15 @@ function isActive(href: string) {
   if (href.startsWith('http')) return false;
   return currentPath.startsWith(href);
 }
+
+/** Check if any child in a nav group is active */
+function isGroupActive(group: NavGroup) {
+  return group.children.some((child) => isActive(child.href));
+}
 ---
+
+<!-- Skip Navigation Link (first focusable element on page) -->
+<a href="#main-content" class="skip-nav">Skip to main content</a>
 
 <header class="site-header" id="site-header">
   <div class="header-inner container--wide">
@@ -106,26 +120,33 @@ function isActive(href: string) {
     <!-- Desktop Navigation -->
     <nav class="desktop-nav" aria-label="Main navigation">
       <ul class="nav-list" role="menubar">
-        {nav.map((item) => (
-          <li class="nav-item has-dropdown" role="none">
+        {nav.map((item, groupIndex) => (
+          <li
+            class:list={['nav-item', 'has-dropdown', { 'group-active': isGroupActive(item) }]}
+            role="none"
+            data-nav-group={groupIndex}
+          >
             <button
-              class="nav-link"
+              class:list={['nav-link', { 'parent-active': isGroupActive(item) }]}
               role="menuitem"
               aria-haspopup="true"
               aria-expanded="false"
+              tabindex={groupIndex === 0 ? '0' : '-1'}
             >
               {item.label}
               <svg class="chevron" width="10" height="6" viewBox="0 0 10 6" fill="none" aria-hidden="true">
                 <path d="M1 1L5 5L9 1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
               </svg>
             </button>
-            <ul class="dropdown" role="menu">
-              {item.children.map((child) => (
+            <ul class="dropdown" role="menu" id={`dropdown-${groupIndex}`}>
+              {item.children.map((child, childIndex) => (
                 <li role="none">
                   <a
                     href={child.href}
                     role="menuitem"
                     class:list={['dropdown-link', { active: isActive(child.href) }]}
+                    tabindex="-1"
+                    data-child-index={childIndex}
                     {...(child.external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
                   >
                     {child.label}
@@ -144,7 +165,12 @@ function isActive(href: string) {
     </nav>
 
     <!-- Donate CTA (desktop) -->
-    <a href="/donate/" class="header-cta">Donate</a>
+    <a href="/donate/" class="header-cta">
+      <svg class="header-cta-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      Donate
+    </a>
 
     <!-- Mobile hamburger — semantic <button> -->
     <button
@@ -230,13 +256,21 @@ function isActive(href: string) {
 
     <!-- Sticky bottom CTA -->
     <div class="mobile-nav-footer">
-      <a href="/donate/" class="mobile-donate-btn">Donate</a>
+      <a href="/donate/" class="mobile-donate-btn">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex-shrink:0;">
+          <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        Donate
+      </a>
     </div>
   </nav>
 </header>
 
 <script>
   (function () {
+    /* ═══════════════════════════════════════════
+       MOBILE NAVIGATION
+       ═══════════════════════════════════════════ */
     const btn = document.getElementById('mobile-toggle-btn');
     const panel = document.getElementById('mobile-nav-panel');
     const overlay = document.getElementById('mobile-overlay');
@@ -244,23 +278,20 @@ function isActive(href: string) {
     const closeBtn = document.getElementById('mobile-close-btn');
     const main = document.querySelector('main');
     const footer = document.querySelector('footer');
-    if (!btn || !panel || !overlay) return;
+    if (!btn || !panel || !overlay || !header) return;
 
     let isOpen = false;
     let savedScrollY = 0;
 
-    // All focusable elements inside the panel + the toggle button
     function getFocusable() {
       return [closeBtn, ...panel.querySelectorAll('a, button:not(#mobile-close-btn), [tabindex]:not([tabindex="-1"])')];
     }
 
     function open() {
       isOpen = true;
-
-      // iOS-safe scroll lock: save position, fix body, offset to prevent jump
       savedScrollY = window.scrollY;
       document.body.style.position = 'fixed';
-      document.body.style.top = `-${savedScrollY}px`;
+      document.body.style.top = '-' + savedScrollY + 'px';
       document.body.style.left = '0';
       document.body.style.right = '0';
       document.body.style.overflow = 'hidden';
@@ -272,18 +303,13 @@ function isActive(href: string) {
       panel.setAttribute('aria-hidden', 'false');
       overlay.classList.add('is-open');
 
-      // Mark page content as inert (screen readers + tab can't escape)
       if (main) main.setAttribute('inert', '');
       if (footer) footer.setAttribute('inert', '');
-
-      // Focus close button
       if (closeBtn) closeBtn.focus();
     }
 
     function close() {
       isOpen = false;
-
-      // Restore scroll position
       document.body.style.position = '';
       document.body.style.top = '';
       document.body.style.left = '';
@@ -300,29 +326,20 @@ function isActive(href: string) {
 
       if (main) main.removeAttribute('inert');
       if (footer) footer.removeAttribute('inert');
-
       btn.focus();
     }
 
-    // Toggle
     btn.addEventListener('click', function () { isOpen ? close() : open(); });
-
-    // Close button inside panel
     if (closeBtn) closeBtn.addEventListener('click', close);
-
-    // Close on overlay tap
     overlay.addEventListener('click', close);
 
-    // Close on Escape
     document.addEventListener('keydown', function (e) {
       if (!isOpen) return;
       if (e.key === 'Escape') { close(); return; }
-
-      // Focus trap: cycle Tab within menu
       if (e.key === 'Tab') {
-        const focusable = getFocusable();
-        const first = focusable[0];
-        const last = focusable[focusable.length - 1];
+        var focusable = getFocusable();
+        var first = focusable[0];
+        var last = focusable[focusable.length - 1];
         if (e.shiftKey) {
           if (document.activeElement === first) { e.preventDefault(); last.focus(); }
         } else {
@@ -331,20 +348,18 @@ function isActive(href: string) {
       }
     });
 
-    // Auto-close on desktop resize
     window.matchMedia('(min-width: 1024px)').addEventListener('change', function (e) {
       if (e.matches && isOpen) close();
     });
 
-    // Close when nav links clicked
     panel.querySelectorAll('a').forEach(function (a) {
       a.addEventListener('click', close);
     });
 
-    // Swipe-to-close: swipe right on the panel dismisses it
-    let touchStartX = 0;
-    let touchStartY = 0;
-    let swiping = false;
+    // Swipe-to-close
+    var touchStartX = 0;
+    var touchStartY = 0;
+    var swiping = false;
 
     panel.addEventListener('touchstart', function (e) {
       touchStartX = e.touches[0].clientX;
@@ -354,22 +369,256 @@ function isActive(href: string) {
 
     panel.addEventListener('touchmove', function (e) {
       if (!swiping) return;
-      const dx = e.touches[0].clientX - touchStartX;
-      const dy = Math.abs(e.touches[0].clientY - touchStartY);
-      // Only trigger if horizontal swipe dominates and moving right
-      if (dx > 60 && dy < 40) {
-        swiping = false;
-        close();
+      var dx = e.touches[0].clientX - touchStartX;
+      var dy = Math.abs(e.touches[0].clientY - touchStartY);
+      if (dx > 60 && dy < 40) { swiping = false; close(); }
+    }, { passive: true });
+
+    panel.addEventListener('touchend', function () { swiping = false; }, { passive: true });
+
+    /* ═══════════════════════════════════════════
+       HIDE-ON-SCROLL-DOWN / SHOW-ON-SCROLL-UP
+       ═══════════════════════════════════════════ */
+    var lastScrollY = 0;
+    var scrollTicking = false;
+    var scrollThreshold = 8;
+
+    function onScroll() {
+      scrollTicking = false;
+      var currentY = window.scrollY;
+      var delta = currentY - lastScrollY;
+
+      // Always show header at top of page
+      if (currentY <= 10) {
+        header.classList.remove('header--hidden');
+        lastScrollY = currentY;
+        return;
+      }
+
+      // Don't hide when mobile nav is open
+      if (isOpen) { lastScrollY = currentY; return; }
+
+      if (delta > scrollThreshold) {
+        header.classList.add('header--hidden');
+      } else if (delta < -scrollThreshold) {
+        header.classList.remove('header--hidden');
+      }
+
+      lastScrollY = currentY;
+    }
+
+    window.addEventListener('scroll', function () {
+      if (!scrollTicking) {
+        requestAnimationFrame(onScroll);
+        scrollTicking = true;
       }
     }, { passive: true });
 
-    panel.addEventListener('touchend', function () {
-      swiping = false;
-    }, { passive: true });
+    /* ═══════════════════════════════════════════
+       DESKTOP DROPDOWN — KEYBOARD NAVIGATION
+       (WAI-ARIA Menubar pattern: Arrow keys)
+       ═══════════════════════════════════════════ */
+    var navItems = document.querySelectorAll('.nav-item[data-nav-group]');
+    var navButtons = document.querySelectorAll('.nav-item .nav-link');
+
+    function openDropdown(groupEl) {
+      var button = groupEl.querySelector('.nav-link');
+      var dropdown = groupEl.querySelector('.dropdown');
+      if (!button || !dropdown) return;
+      button.setAttribute('aria-expanded', 'true');
+      groupEl.classList.add('dropdown-open');
+    }
+
+    function closeDropdown(groupEl) {
+      var button = groupEl.querySelector('.nav-link');
+      if (!button) return;
+      button.setAttribute('aria-expanded', 'false');
+      groupEl.classList.remove('dropdown-open');
+    }
+
+    function closeAllDropdowns() {
+      navItems.forEach(function (item) { closeDropdown(item); });
+    }
+
+    function getDropdownLinks(groupEl) {
+      return Array.from(groupEl.querySelectorAll('.dropdown-link'));
+    }
+
+    // Keyboard handling on the menubar
+    var navList = document.querySelector('.nav-list');
+    if (navList) {
+      navList.addEventListener('keydown', function (e) {
+        var target = e.target;
+        var isButton = target.classList.contains('nav-link');
+        var isDropdownLink = target.classList.contains('dropdown-link');
+        var parentGroup = target.closest('.nav-item[data-nav-group]');
+        if (!parentGroup) return;
+
+        var groupIndex = parseInt(parentGroup.dataset.navGroup);
+
+        if (isButton) {
+          switch (e.key) {
+            case 'ArrowRight': {
+              e.preventDefault();
+              closeAllDropdowns();
+              var next = navItems[(groupIndex + 1) % navItems.length];
+              var nextBtn = next.querySelector('.nav-link');
+              navButtons.forEach(function (b) { b.setAttribute('tabindex', '-1'); });
+              nextBtn.setAttribute('tabindex', '0');
+              nextBtn.focus();
+              break;
+            }
+            case 'ArrowLeft': {
+              e.preventDefault();
+              closeAllDropdowns();
+              var prev = navItems[(groupIndex - 1 + navItems.length) % navItems.length];
+              var prevBtn = prev.querySelector('.nav-link');
+              navButtons.forEach(function (b) { b.setAttribute('tabindex', '-1'); });
+              prevBtn.setAttribute('tabindex', '0');
+              prevBtn.focus();
+              break;
+            }
+            case 'ArrowDown':
+            case 'Enter':
+            case ' ': {
+              e.preventDefault();
+              openDropdown(parentGroup);
+              var links = getDropdownLinks(parentGroup);
+              if (links.length) links[0].focus();
+              break;
+            }
+            case 'Escape': {
+              e.preventDefault();
+              closeAllDropdowns();
+              target.focus();
+              break;
+            }
+          }
+        } else if (isDropdownLink) {
+          var links = getDropdownLinks(parentGroup);
+          var idx = links.indexOf(target);
+
+          switch (e.key) {
+            case 'ArrowDown': {
+              e.preventDefault();
+              var nextLink = links[(idx + 1) % links.length];
+              nextLink.focus();
+              break;
+            }
+            case 'ArrowUp': {
+              e.preventDefault();
+              if (idx === 0) {
+                closeDropdown(parentGroup);
+                parentGroup.querySelector('.nav-link').focus();
+              } else {
+                links[idx - 1].focus();
+              }
+              break;
+            }
+            case 'ArrowRight': {
+              e.preventDefault();
+              closeDropdown(parentGroup);
+              var nextGroup = navItems[(groupIndex + 1) % navItems.length];
+              openDropdown(nextGroup);
+              var nextLinks = getDropdownLinks(nextGroup);
+              navButtons.forEach(function (b) { b.setAttribute('tabindex', '-1'); });
+              nextGroup.querySelector('.nav-link').setAttribute('tabindex', '0');
+              if (nextLinks.length) nextLinks[0].focus();
+              break;
+            }
+            case 'ArrowLeft': {
+              e.preventDefault();
+              closeDropdown(parentGroup);
+              var prevGroup = navItems[(groupIndex - 1 + navItems.length) % navItems.length];
+              openDropdown(prevGroup);
+              var prevLinks = getDropdownLinks(prevGroup);
+              navButtons.forEach(function (b) { b.setAttribute('tabindex', '-1'); });
+              prevGroup.querySelector('.nav-link').setAttribute('tabindex', '0');
+              if (prevLinks.length) prevLinks[0].focus();
+              break;
+            }
+            case 'Escape': {
+              e.preventDefault();
+              closeDropdown(parentGroup);
+              parentGroup.querySelector('.nav-link').focus();
+              break;
+            }
+            case 'Home': {
+              e.preventDefault();
+              if (links.length) links[0].focus();
+              break;
+            }
+            case 'End': {
+              e.preventDefault();
+              if (links.length) links[links.length - 1].focus();
+              break;
+            }
+            case 'Tab': {
+              closeAllDropdowns();
+              break;
+            }
+          }
+        }
+      });
+    }
+
+    // Close dropdowns on click outside
+    document.addEventListener('click', function (e) {
+      if (!e.target.closest('.nav-item')) closeAllDropdowns();
+    });
+
+    /* ═══════════════════════════════════════════
+       HOVER INTENT — Grace delay on desktop
+       Prevents dropdown from closing when cursor
+       moves diagonally from trigger to dropdown
+       ═══════════════════════════════════════════ */
+    navItems.forEach(function (item) {
+      var closeTimer = null;
+      var GRACE_DELAY = 180;
+
+      item.addEventListener('mouseenter', function () {
+        if (closeTimer) { clearTimeout(closeTimer); closeTimer = null; }
+        navItems.forEach(function (other) {
+          if (other !== item) closeDropdown(other);
+        });
+        openDropdown(item);
+      });
+
+      item.addEventListener('mouseleave', function () {
+        closeTimer = setTimeout(function () {
+          closeDropdown(item);
+          closeTimer = null;
+        }, GRACE_DELAY);
+      });
+    });
+
   })();
 </script>
 
 <style>
+  /* ─── Skip Navigation ──────────────────── */
+  .skip-nav {
+    position: fixed;
+    top: -100%;
+    left: var(--space-md);
+    z-index: 10000;
+    padding: var(--space-sm) var(--space-lg);
+    background: var(--c-yellow);
+    color: var(--c-dark);
+    font-weight: 700;
+    font-size: 0.875rem;
+    border-radius: 0 0 var(--border-radius) var(--border-radius);
+    text-decoration: none;
+    box-shadow: var(--shadow-lg);
+    transition: top 0.15s ease;
+  }
+
+  .skip-nav:focus {
+    top: 0;
+    outline: 3px solid var(--c-purple);
+    outline-offset: 2px;
+  }
+
   /* ─── Header Shell ─────────────────────── */
   .site-header {
     position: sticky;
@@ -378,6 +627,12 @@ function isActive(href: string) {
     background: var(--c-dark);
     height: var(--header-height);
     border-bottom: 3px solid var(--c-yellow);
+    will-change: transform;
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .site-header.header--hidden {
+    transform: translateY(-100%);
   }
 
   .header-inner {
@@ -439,11 +694,29 @@ function isActive(href: string) {
     border-radius: var(--border-radius);
     transition: background var(--transition-fast), color var(--transition-fast);
     white-space: nowrap;
+    position: relative;
   }
 
   .nav-link:hover {
     background: rgba(255, 255, 255, 0.1);
     color: var(--c-yellow);
+  }
+
+  /* ─── Parent Active State ──────────────── */
+  .nav-link.parent-active {
+    color: var(--c-yellow);
+  }
+
+  .nav-link.parent-active::after {
+    content: '';
+    position: absolute;
+    bottom: 2px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 20px;
+    height: 3px;
+    background: var(--c-yellow);
+    border-radius: 2px;
   }
 
   .chevron { transition: transform var(--transition-fast); }
@@ -465,15 +738,15 @@ function isActive(href: string) {
     pointer-events: none;
   }
 
-  .nav-item:hover .dropdown,
-  .nav-item:focus-within .dropdown {
+  /* Open via JS class (hover intent + keyboard) */
+  .nav-item.dropdown-open > .dropdown {
     opacity: 1;
     visibility: visible;
     transform: translateX(-50%) translateY(0);
     pointer-events: auto;
   }
 
-  .nav-item:hover .chevron { transform: rotate(180deg); }
+  .nav-item.dropdown-open > .nav-link .chevron { transform: rotate(180deg); }
 
   .dropdown-link {
     display: flex;
@@ -487,22 +760,49 @@ function isActive(href: string) {
   }
 
   .dropdown-link:hover { background: var(--c-warm-gray); color: var(--c-purple); }
+  .dropdown-link:focus { background: var(--c-warm-gray); color: var(--c-purple); outline: none; }
   .dropdown-link.active { color: var(--c-purple); font-weight: 600; }
   .external-icon { opacity: 0.4; flex-shrink: 0; }
 
-  /* ─── Header CTA ───────────────────────── */
+  /* ─── Header CTA — Enhanced Donate ─────── */
   .header-cta {
     display: none;
+    align-items: center;
+    gap: 6px;
     padding: 0.5rem 1.25rem;
     background: var(--c-yellow);
     color: var(--c-dark);
     font-weight: 600;
     font-size: 0.875rem;
     border-radius: 100px;
-    transition: background var(--transition-fast), transform var(--transition-fast);
+    transition: background var(--transition-fast), transform var(--transition-fast), box-shadow var(--transition-fast);
+    animation: donateGlow 3s ease-in-out infinite;
+    position: relative;
   }
 
-  .header-cta:hover { background: var(--c-yellow-hover); transform: translateY(-1px); }
+  .header-cta:hover {
+    background: var(--c-yellow-hover);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 20px rgba(255, 213, 0, 0.4);
+    animation: none;
+  }
+
+  .header-cta-icon {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    transition: transform 0.2s ease;
+  }
+
+  .header-cta:hover .header-cta-icon {
+    transform: scale(1.15);
+  }
+
+  @keyframes donateGlow {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(255, 213, 0, 0); }
+    50% { box-shadow: 0 0 16px 2px rgba(255, 213, 0, 0.25); }
+  }
+
   @media (min-width: 1024px) { .header-cta { display: inline-flex; } }
 
   /* ─── Mobile Hamburger ─────────────────── */
@@ -743,6 +1043,7 @@ function isActive(href: string) {
     display: flex;
     align-items: center;
     justify-content: center;
+    gap: 8px;
     width: 100%;
     padding: var(--space-md) var(--space-xl);
     background: var(--c-yellow);
@@ -761,6 +1062,10 @@ function isActive(href: string) {
 
   /* ─── Reduced Motion ───────────────────── */
   @media (prefers-reduced-motion: reduce) {
+    .site-header {
+      transition-duration: 0.01ms !important;
+    }
+
     .mobile-nav,
     .mobile-overlay,
     .hamburger-line,
@@ -774,13 +1079,18 @@ function isActive(href: string) {
     .mobile-nav-link,
     .mobile-donate-btn,
     .mobile-external-badge,
-    .mobile-close-btn {
+    .mobile-close-btn,
+    .skip-nav {
       transition-duration: 0.01ms !important;
     }
 
     .mobile-nav-group {
       opacity: 1;
       transform: none;
+      animation: none !important;
+    }
+
+    .header-cta {
       animation: none !important;
     }
   }
