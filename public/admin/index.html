@@ -439,6 +439,10 @@
         const r = await fetch(`/api/read-content?dir=${encodeURIComponent(dir)}`);
         return r.json();
       },
+      async bulkListContent(dir) {
+        const r = await fetch(`/api/list-content?dir=${encodeURIComponent(dir)}`);
+        return r.json();
+      },
       async readContent(path) {
         const r = await fetch(`/api/read-content?path=${encodeURIComponent(path)}`);
         return r.json();
@@ -625,7 +629,7 @@
     // ═══════════════════════════════════════════
     // KIDS LIST
     // ═══════════════════════════════════════════
-    function KidsList({ kids, onEdit, onAdd }) {
+    function KidsList({ kids, onEdit, onAdd, onDelete }) {
       const [search, setSearch] = useState('');
       const filtered = useMemo(() => {
         if (!search) return kids;
@@ -662,7 +666,10 @@
                 <td>${k.year || '—'}</td>
                 <td><span class="badge ${k.status === 'completed' ? 'badge-green' : 'badge-yellow'}">${k.status}</span></td>
                 <td>${k.photoCount || 0}</td>
-                <td><button class="btn btn-ghost btn-sm" onClick=${() => onEdit(k.slug)}>Edit</button></td>
+                <td style="white-space: nowrap;">
+                  <button class="btn btn-ghost btn-sm" onClick=${() => onEdit(k.slug)}>Edit</button>
+                  <button class="btn btn-ghost btn-sm" style="color: #E53E3E;" onClick=${(e) => { e.stopPropagation(); onDelete(k); }}>Delete</button>
+                </td>
               </tr>`)}
             </tbody>
           </table></div>
@@ -676,6 +683,9 @@
     function KidEditor({ slug, onBack, addToast }) {
       const [loading, setLoading] = useState(!!slug);
       const [saving, setSaving] = useState(false);
+      const [deleting, setDeleting] = useState(false);
+      const [showDeleteModal, setShowDeleteModal] = useState(false);
+      const [dirty, setDirty] = useState(false);
       const [sha, setSha] = useState(null);
       const [data, setData] = useState({
         name: '', slug: '', age: '', diagnosis: '', roomTypes: [],
@@ -686,6 +696,39 @@
       });
       const [uploading, setUploading] = useState({});
       const [videoUploading, setVideoUploading] = useState(false);
+
+      // Warn on browser close/refresh with unsaved changes
+      useEffect(() => {
+        const handler = (e) => { if (dirty) { e.preventDefault(); e.returnValue = ''; } };
+        window.addEventListener('beforeunload', handler);
+        return () => window.removeEventListener('beforeunload', handler);
+      }, [dirty]);
+
+      const safeBack = () => {
+        if (dirty && !confirm('You have unsaved changes. Leave without saving?')) return;
+        onBack();
+      };
+
+      const handleDelete = async () => {
+        if (!slug || !sha) return;
+        setDeleting(true);
+        try {
+          const res = await api.deleteContent(
+            `src/content/kids/${slug}.json`, sha, `Delete kid: ${data.name}`
+          );
+          if (res.success) {
+            addToast(`${data.name} deleted`, 'success');
+            setDirty(false);
+            onBack();
+          } else {
+            addToast(`Delete failed: ${res.error}`, 'error');
+          }
+        } catch (err) {
+          addToast(`Delete error: ${err.message}`, 'error');
+        }
+        setDeleting(false);
+        setShowDeleteModal(false);
+      };
 
       // Load existing kid
       useEffect(() => {
@@ -704,6 +747,7 @@
       }, [slug]);
 
       const updateField = (field, value) => {
+        setDirty(true);
         setData(d => {
           const updated = { ...d, [field]: value };
           // Auto-generate slug from name for new kids
@@ -715,6 +759,7 @@
       };
 
       const handlePhotoUpload = async (files) => {
+        setDirty(true);
         for (const file of files) {
           const tempId = Date.now() + '-' + file.name;
           // Add placeholder with local preview
@@ -756,6 +801,7 @@
       };
 
       const removePhoto = (index) => {
+        setDirty(true);
         setData(d => ({
           ...d,
           photos: d.photos.filter((_, i) => i !== index),
@@ -764,6 +810,7 @@
       };
 
       const setHero = (index) => {
+        setDirty(true);
         setData(d => ({ ...d, heroImage: d.photos[index]?.url || '' }));
       };
 
@@ -816,6 +863,7 @@
           const res = await api.saveContent(path, content, message, sha || undefined);
           if (res.success) {
             setSha(res.sha);
+            setDirty(false);
             addToast(`${data.name} saved! Site rebuilding...`, 'success');
           } else {
             addToast(`Save failed: ${res.error}`, 'error');
@@ -830,13 +878,25 @@
         <div class="spinner" style="width: 32px; height: 32px; border-width: 3px;" /></div>`;
 
       return html`
-        <button class="back-link" onClick=${onBack}>← Back to Kids</button>
+        ${showDeleteModal ? html`<${ConfirmModal}
+          title="Delete ${data.name}?"
+          message="This will permanently remove this kid's profile and all associated data from the site. This cannot be undone."
+          danger=${true}
+          onConfirm=${handleDelete}
+          onCancel=${() => setShowDeleteModal(false)}
+        />` : null}
+        <button class="back-link" onClick=${safeBack}>← Back to Kids</button>
         <div class="page-header">
           <h2>${slug ? `Edit: ${data.name}` : 'Add New Kid'}</h2>
-          <button class="btn btn-primary" onClick=${handleSave} disabled=${saving}>
-            ${saving ? html`<span class="spinner" />` : null}
-            ${saving ? 'Saving...' : 'Save & Publish'}
-          </button>
+          <div class="flex gap-1 items-center">
+            ${slug ? html`<button class="btn btn-danger btn-sm" onClick=${() => setShowDeleteModal(true)} disabled=${deleting}>
+              ${deleting ? html`<span class="spinner" />` : null} Delete
+            </button>` : null}
+            <button class="btn btn-primary" onClick=${handleSave} disabled=${saving}>
+              ${saving ? html`<span class="spinner" />` : null}
+              ${saving ? 'Saving...' : 'Save & Publish'}
+            </button>
+          </div>
         </div>
 
         <div class="card">
@@ -958,7 +1018,7 @@
         </div>
 
         <div style="display: flex; gap: 1rem; justify-content: flex-end; margin-top: 1rem;">
-          <button class="btn btn-ghost" onClick=${onBack}>Cancel</button>
+          <button class="btn btn-ghost" onClick=${safeBack}>Cancel</button>
           <button class="btn btn-primary" onClick=${handleSave} disabled=${saving}>
             ${saving ? html`<span class="spinner" />` : null}
             ${saving ? 'Saving...' : 'Save & Publish'}
@@ -970,7 +1030,7 @@
     // ═══════════════════════════════════════════
     // PARTNERS LIST
     // ═══════════════════════════════════════════
-    function PartnersList({ partners, onEdit, onAdd }) {
+    function PartnersList({ partners, onEdit, onAdd, onDelete }) {
       return html`
         <div class="page-header">
           <h2>Partners (${partners.length})</h2>
@@ -985,7 +1045,10 @@
                 <td><strong>${p.name}</strong></td>
                 <td><span class="badge badge-purple">${p.tier}</span></td>
                 <td>${p.featured ? '✅' : '—'}</td>
-                <td><button class="btn btn-ghost btn-sm" onClick=${() => onEdit(p.slug)}>Edit</button></td>
+                <td style="white-space: nowrap;">
+                  <button class="btn btn-ghost btn-sm" onClick=${() => onEdit(p.slug)}>Edit</button>
+                  <button class="btn btn-ghost btn-sm" style="color: #E53E3E;" onClick=${(e) => { e.stopPropagation(); onDelete(p); }}>Delete</button>
+                </td>
               </tr>`)}
             </tbody>
           </table></div>
@@ -999,6 +1062,9 @@
     function PartnerEditor({ slug, onBack, addToast }) {
       const [loading, setLoading] = useState(!!slug);
       const [saving, setSaving] = useState(false);
+      const [deleting, setDeleting] = useState(false);
+      const [showDeleteModal, setShowDeleteModal] = useState(false);
+      const [dirty, setDirty] = useState(false);
       const [sha, setSha] = useState(null);
       const [logoPreview, setLogoPreview] = useState('');
       const [uploading, setUploading] = useState(false);
@@ -1006,6 +1072,39 @@
         name: '', slug: '', logo: '', website: '',
         tier: 'construction', featured: false,
       });
+
+      // Warn on browser close/refresh with unsaved changes
+      useEffect(() => {
+        const handler = (e) => { if (dirty) { e.preventDefault(); e.returnValue = ''; } };
+        window.addEventListener('beforeunload', handler);
+        return () => window.removeEventListener('beforeunload', handler);
+      }, [dirty]);
+
+      const safeBack = () => {
+        if (dirty && !confirm('You have unsaved changes. Leave without saving?')) return;
+        onBack();
+      };
+
+      const handleDelete = async () => {
+        if (!slug || !sha) return;
+        setDeleting(true);
+        try {
+          const res = await api.deleteContent(
+            `src/content/partners/${slug}.json`, sha, `Delete partner: ${data.name}`
+          );
+          if (res.success) {
+            addToast(`${data.name} deleted`, 'success');
+            setDirty(false);
+            onBack();
+          } else {
+            addToast(`Delete failed: ${res.error}`, 'error');
+          }
+        } catch (err) {
+          addToast(`Delete error: ${err.message}`, 'error');
+        }
+        setDeleting(false);
+        setShowDeleteModal(false);
+      };
 
       useEffect(() => {
         if (!slug) return;
@@ -1021,6 +1120,7 @@
       }, [slug]);
 
       const updateField = (field, value) => {
+        setDirty(true);
         setData(d => {
           const updated = { ...d, [field]: value };
           if (field === 'name' && !slug) updated.slug = slugify(value);
@@ -1029,6 +1129,7 @@
       };
 
       const handleLogoUpload = async (files) => {
+        setDirty(true);
         const file = files[0];
         setLogoPreview(URL.createObjectURL(file));
         setUploading(true);
@@ -1058,6 +1159,7 @@
           const res = await api.saveContent(path, content, message, sha || undefined);
           if (res.success) {
             setSha(res.sha);
+            setDirty(false);
             addToast(`${data.name} saved!`, 'success');
           } else {
             addToast(`Save failed: ${res.error}`, 'error');
@@ -1071,12 +1173,24 @@
       if (loading) return html`<div class="card" style="text-align: center; padding: 3rem;"><div class="spinner" style="width: 32px; height: 32px;" /></div>`;
 
       return html`
-        <button class="back-link" onClick=${onBack}>← Back to Partners</button>
+        ${showDeleteModal ? html`<${ConfirmModal}
+          title="Delete ${data.name}?"
+          message="This will permanently remove this partner from the site. This cannot be undone."
+          danger=${true}
+          onConfirm=${handleDelete}
+          onCancel=${() => setShowDeleteModal(false)}
+        />` : null}
+        <button class="back-link" onClick=${safeBack}>← Back to Partners</button>
         <div class="page-header">
           <h2>${slug ? `Edit: ${data.name}` : 'Add New Partner'}</h2>
-          <button class="btn btn-primary" onClick=${handleSave} disabled=${saving}>
-            ${saving ? html`<span class="spinner" />` : null} ${saving ? 'Saving...' : 'Save & Publish'}
-          </button>
+          <div class="flex gap-1 items-center">
+            ${slug ? html`<button class="btn btn-danger btn-sm" onClick=${() => setShowDeleteModal(true)} disabled=${deleting}>
+              ${deleting ? html`<span class="spinner" />` : null} Delete
+            </button>` : null}
+            <button class="btn btn-primary" onClick=${handleSave} disabled=${saving}>
+              ${saving ? html`<span class="spinner" />` : null} ${saving ? 'Saving...' : 'Save & Publish'}
+            </button>
+          </div>
         </div>
         <div class="card">
           <div class="form-row">
@@ -1129,7 +1243,7 @@
             accept="image/*" label="PNG or SVG recommended (transparent background)" />
         </div>
         <div style="display: flex; gap: 1rem; justify-content: flex-end; margin-top: 1rem;">
-          <button class="btn btn-ghost" onClick=${onBack}>Cancel</button>
+          <button class="btn btn-ghost" onClick=${safeBack}>Cancel</button>
           <button class="btn btn-primary" onClick=${handleSave} disabled=${saving}>
             ${saving ? 'Saving...' : 'Save & Publish'}
           </button>
@@ -1380,34 +1494,18 @@
       const loadData = async () => {
         setLoading(true);
         try {
-          // Load kids
-          const kidsRes = await api.listContent('src/content/kids');
+          // Load kids (bulk — one API call)
+          const kidsRes = await api.bulkListContent('src/content/kids');
           if (kidsRes.success) {
-            const kidData = await Promise.all(
-              kidsRes.files.map(async f => {
-                try {
-                  const r = await api.readContent(f.path);
-                  if (r.success) return JSON.parse(r.content);
-                } catch {}
-                return null;
-              })
-            );
-            setKids(kidData.filter(Boolean).sort((a, b) => (b.year || 0) - (a.year || 0)));
+            setKids(kidsRes.items.map(i => i.content).filter(Boolean)
+              .sort((a, b) => (b.year || 0) - (a.year || 0)));
           }
 
-          // Load partners
-          const partRes = await api.listContent('src/content/partners');
+          // Load partners (bulk — one API call)
+          const partRes = await api.bulkListContent('src/content/partners');
           if (partRes.success) {
-            const partData = await Promise.all(
-              partRes.files.map(async f => {
-                try {
-                  const r = await api.readContent(f.path);
-                  if (r.success) return JSON.parse(r.content);
-                } catch {}
-                return null;
-              })
-            );
-            setPartners(partData.filter(Boolean).sort((a, b) => a.name.localeCompare(b.name)));
+            setPartners(partRes.items.map(i => i.content).filter(Boolean)
+              .sort((a, b) => a.name.localeCompare(b.name)));
           }
         } catch (err) {
           addToast('Failed to load content. Check API settings.', 'error');
@@ -1421,6 +1519,42 @@
         setView(v);
         setEditSlug(slug);
         setSidebarOpen(false);
+      };
+
+      // Delete from list view
+      const [deleteModal, setDeleteModal] = useState(null);
+      const [deleteLoading, setDeleteLoading] = useState(false);
+
+      const handleListDelete = async () => {
+        if (!deleteModal) return;
+        setDeleteLoading(true);
+        const { type, item } = deleteModal;
+        const dir = type === 'kid' ? 'kids' : 'partners';
+        try {
+          // Get SHA first
+          const fileRes = await api.readContent(`src/content/${dir}/${item.slug}.json`);
+          if (!fileRes.success) {
+            addToast(`Could not find file for ${item.name}`, 'error');
+            setDeleteLoading(false);
+            setDeleteModal(null);
+            return;
+          }
+          const res = await api.deleteContent(
+            `src/content/${dir}/${item.slug}.json`,
+            fileRes.sha,
+            `Delete ${type}: ${item.name}`
+          );
+          if (res.success) {
+            addToast(`${item.name} deleted`, 'success');
+            loadData();
+          } else {
+            addToast(`Delete failed: ${res.error}`, 'error');
+          }
+        } catch (err) {
+          addToast(`Delete error: ${err.message}`, 'error');
+        }
+        setDeleteLoading(false);
+        setDeleteModal(null);
       };
 
       const navItems = [
@@ -1445,11 +1579,13 @@
           case 'kids':
             return editSlug !== null
               ? html`<${KidEditor} slug=${editSlug || undefined} onBack=${() => { navigate('kids'); loadData(); }} addToast=${addToast} />`
-              : html`<${KidsList} kids=${kids} onEdit=${s => navigate('kids', s)} onAdd=${() => navigate('kids', '')} />`;
+              : html`<${KidsList} kids=${kids} onEdit=${s => navigate('kids', s)} onAdd=${() => navigate('kids', '')}
+                  onDelete=${k => setDeleteModal({ type: 'kid', item: k })} />`;
           case 'partners':
             return editSlug !== null
               ? html`<${PartnerEditor} slug=${editSlug || undefined} onBack=${() => { navigate('partners'); loadData(); }} addToast=${addToast} />`
-              : html`<${PartnersList} partners=${partners} onEdit=${s => navigate('partners', s)} onAdd=${() => navigate('partners', '')} />`;
+              : html`<${PartnersList} partners=${partners} onEdit=${s => navigate('partners', s)} onAdd=${() => navigate('partners', '')}
+                  onDelete=${p => setDeleteModal({ type: 'partner', item: p })} />`;
           case 'financials':
             return html`<${Financials} addToast=${addToast} />`;
           case 'settings':
@@ -1459,6 +1595,13 @@
 
       return html`
         <div class="app">
+          ${deleteModal ? html`<${ConfirmModal}
+            title="Delete ${deleteModal.item.name}?"
+            message="This will permanently remove this ${deleteModal.type} from the site. This cannot be undone."
+            danger=${true}
+            onConfirm=${handleListDelete}
+            onCancel=${() => setDeleteModal(null)}
+          />` : null}
           <button class="hamburger" onClick=${() => setSidebarOpen(!sidebarOpen)}>
             ${sidebarOpen ? '✕' : '☰'}
           </button>
