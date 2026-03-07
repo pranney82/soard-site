@@ -104,14 +104,18 @@ function isGroupActive(group: NavGroup) {
   <div class="header-inner container--wide">
     <!-- Logo -->
     <a href="/" class="logo" aria-label="Sunshine on a Ranney Day — Home">
-      <img
-        src="/images/logos/logo-tagline-dark-bg-transparent.png"
-        alt=""
-        class="logo-icon"
-        width="160"
-        height="60"
-        loading="eager"
-      />
+      <picture>
+        <source srcset="/images/logos/logo-dark-bg.webp" type="image/webp" />
+        <img
+          src="/images/logos/logo-dark-bg.png"
+          alt=""
+          class="logo-icon"
+          width="160"
+          height="60"
+          loading="eager"
+          fetchpriority="high"
+        />
+      </picture>
     </a>
 
     <!-- Desktop Navigation -->
@@ -200,13 +204,12 @@ function isGroupActive(group: NavGroup) {
     <div class="mobile-nav-header">
       <a href="/" class="mobile-nav-logo" aria-label="Sunshine on a Ranney Day — Home">
         <img
-          src="/images/logos/logo-tagline-light-bg-transparent.png"
-          alt=""
-          width="120"
-          height="45"
+          src="/images/logos/logo-light-bg.webp"
+          alt="Sunshine on a Ranney Day"
+          width="140"
+          height="52"
           loading="eager"
         />
-        <span class="mobile-nav-logo-text">Sunshine on a Ranney Day</span>
       </a>
       <button
         type="button"
@@ -847,13 +850,14 @@ function isGroupActive(group: NavGroup) {
     position: fixed;
     top: 0;
     right: 0;
-    width: min(340px, 88vw);
+    width: min(360px, 90vw);
     height: 100vh;
     height: 100dvh;
     background: var(--c-white);
     display: flex;
     flex-direction: column;
     padding: 0 var(--space-lg);
+    padding-right: max(var(--space-lg), env(safe-area-inset-right));
     overflow: hidden;
     transform: translateX(100%);
     will-change: transform;
@@ -873,7 +877,7 @@ function isGroupActive(group: NavGroup) {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: var(--space-md) 0;
+    padding: var(--space-lg) 0 var(--space-md);
     border-bottom: 1px solid var(--c-border);
     flex-shrink: 0;
   }
@@ -881,22 +885,12 @@ function isGroupActive(group: NavGroup) {
   .mobile-nav-logo {
     display: flex;
     align-items: center;
-    gap: var(--space-xs);
   }
 
   .mobile-nav-logo img {
-    height: 40px;
+    height: 44px;
     width: auto;
     flex-shrink: 0;
-  }
-
-  .mobile-nav-logo-text {
-    font-family: var(--font-display);
-    font-weight: 700;
-    font-size: 0.85rem;
-    color: var(--c-dark);
-    letter-spacing: 0.01em;
-    line-height: 1.2;
   }
 
   .mobile-close-btn {
@@ -905,19 +899,22 @@ function isGroupActive(group: NavGroup) {
     justify-content: center;
     width: 44px;
     height: 44px;
-    border: none;
-    background: none;
-    border-radius: 50%;
+    border: 1px solid var(--c-border);
+    background: var(--c-warm-gray);
+    border-radius: 10px;
     cursor: pointer;
     color: var(--c-text-muted);
-    transition: color var(--transition-fast);
+    transition: color var(--transition-fast), background var(--transition-fast), border-color var(--transition-fast);
     -webkit-tap-highlight-color: transparent;
     touch-action: manipulation;
     flex-shrink: 0;
   }
 
-  .mobile-close-btn:hover {
+  .mobile-close-btn:hover,
+  .mobile-close-btn:focus-visible {
     color: var(--c-dark);
+    background: var(--c-white);
+    border-color: var(--c-dark);
   }
 
   /* ─── Scrollable Nav Body ──────────────── */
@@ -932,7 +929,7 @@ function isGroupActive(group: NavGroup) {
   /* ─── Sticky Footer CTA ────────────────── */
   .mobile-nav-footer {
     flex-shrink: 0;
-    padding: var(--space-md) 0 var(--space-lg);
+    padding: var(--space-md) 0 max(var(--space-lg), env(safe-area-inset-bottom));
     border-top: 1px solid var(--c-border);
     background: var(--c-white);
   }
@@ -960,8 +957,8 @@ function isGroupActive(group: NavGroup) {
   }
 
   .mobile-nav-group + .mobile-nav-group {
-    margin-top: var(--space-lg);
-    padding-top: var(--space-lg);
+    margin-top: var(--space-md);
+    padding-top: var(--space-md);
     border-top: 1px solid var(--c-border);
   }
 
@@ -970,39 +967,48 @@ function isGroupActive(group: NavGroup) {
     font-weight: 700;
     font-size: 0.7rem;
     text-transform: uppercase;
-    letter-spacing: 0.1em;
+    letter-spacing: 0.12em;
     color: var(--c-text-muted);
-    margin-bottom: var(--space-xs);
+    margin-bottom: 2px;
+    padding-inline: var(--space-sm);
   }
 
   .mobile-nav-link {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0.625rem 0;
+    padding: 0.625rem var(--space-sm);
     font-size: 1rem;
     font-weight: 450;
     color: var(--c-text);
-    transition: color var(--transition-fast);
+    transition: color var(--transition-fast), background var(--transition-fast);
     min-height: 44px;
+    border-radius: 8px;
+    margin-inline: calc(-1 * var(--space-sm));
   }
 
-  .mobile-nav-link:hover { color: var(--c-purple); }
+  .mobile-nav-link:hover {
+    color: var(--c-purple);
+    background: rgba(122, 0, 223, 0.04);
+  }
 
   .mobile-nav-link.active {
     color: var(--c-purple);
     font-weight: 600;
+    background: rgba(122, 0, 223, 0.06);
+    position: relative;
   }
 
   .mobile-nav-link.active::before {
     content: '';
-    display: inline-block;
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 3px;
+    height: 20px;
+    border-radius: 0 3px 3px 0;
     background: var(--c-purple);
-    margin-right: var(--space-sm);
-    flex-shrink: 0;
   }
 
   .mobile-external-badge {
@@ -1015,11 +1021,11 @@ function isGroupActive(group: NavGroup) {
     background: var(--c-warm-gray);
     color: var(--c-text-muted);
     flex-shrink: 0;
-    transition: background var(--transition-fast);
+    transition: background var(--transition-fast), color var(--transition-fast);
   }
 
   .mobile-nav-link:hover .mobile-external-badge {
-    background: var(--c-purple-soft);
+    background: rgba(122, 0, 223, 0.08);
     color: var(--c-purple);
   }
 
@@ -1033,15 +1039,18 @@ function isGroupActive(group: NavGroup) {
     background: var(--c-yellow);
     color: var(--c-dark);
     font-weight: 700;
-    font-size: 1rem;
+    font-size: 1.05rem;
     border-radius: 100px;
-    transition: background var(--transition-fast), transform var(--transition-fast);
-    min-height: 48px;
+    transition: background var(--transition-fast), transform var(--transition-fast), box-shadow var(--transition-fast);
+    min-height: 52px;
+    box-shadow: 0 2px 12px rgba(255, 213, 0, 0.3);
+    letter-spacing: 0.01em;
   }
 
   .mobile-donate-btn:hover {
     background: var(--c-yellow-hover);
     transform: translateY(-1px);
+    box-shadow: 0 4px 20px rgba(255, 213, 0, 0.45);
   }
 
   /* ─── Reduced Motion ───────────────────── */
