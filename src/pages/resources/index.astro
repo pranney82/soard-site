@@ -1,31 +1,21 @@
 ---
 import BaseLayout from '../../layouts/BaseLayout.astro';
+import { getCollection } from 'astro:content';
 
 const breadcrumbs = [
   { name: 'Home', url: 'https://sunshineonaranneyday.com/' },
   { name: 'Resources', url: 'https://sunshineonaranneyday.com/resources/' },
 ];
 
-const guides = [
-  {
-    title: 'Accessible Home Design for Children with Disabilities',
-    description: 'A practical guide to wheelchair-accessible bathrooms, bedrooms, doorways, ramps, and funding resources — based on 106+ room builds.',
-    url: '/resources/accessible-home-design/',
-    tag: 'Accessibility',
-  },
-  {
-    title: 'How to Create a Sensory-Friendly Bedroom',
-    description: 'Designing a bedroom that supports children with autism, sensory processing disorder, and other sensory sensitivities — covering lighting, color, sound, and texture.',
-    url: '/resources/sensory-friendly-bedroom/',
-    tag: 'Sensory',
-  },
-  {
-    title: 'In-Home Therapy Room Design Guide',
-    description: 'Everything you need to know about building a dedicated therapy space at home — equipment, layout, safety, and funding options.',
-    url: '/resources/therapy-room-design/',
-    tag: 'Therapy',
-  },
-];
+const allArticles = await getCollection('articles');
+const guides = allArticles
+  .sort((a, b) => (a.data.order || 0) - (b.data.order || 0))
+  .map(a => ({
+    title: a.data.title,
+    description: a.data.description,
+    url: `/resources/${a.data.slug}/`,
+    tag: a.data.tag,
+  }));
 ---
 
 <BaseLayout

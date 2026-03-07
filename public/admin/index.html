@@ -2055,6 +2055,242 @@
     }
 
     // ═══════════════════════════════════════════
+    // ═══════════════════════════════════════════
+    // ARTICLES LIST
+    // ═══════════════════════════════════════════
+    function ArticlesList({ articles, onEdit, onAdd, onDelete }) {
+      return html`
+        <div class="page-header">
+          <h2>Resource Articles (${articles.length})</h2>
+          <button class="btn btn-primary" onClick=${onAdd}>+ Add Article</button>
+        </div>
+        <p class="text-sm text-muted" style="margin-bottom: 1rem;">Long-form educational guides that build SEO authority and get cited by AI assistants. These appear at /resources/[slug]/.</p>
+        <div class="card">
+          ${articles.length === 0 ? html`
+            <p class="text-sm text-muted">No articles yet. Click "+ Add Article" to create your first resource guide.</p>
+          ` : html`
+            <div class="table-wrap"><table>
+              <thead><tr><th>Title</th><th>Tag</th><th>Published</th><th>FAQs</th><th>Order</th><th></th></tr></thead>
+              <tbody>
+                ${articles.map(a => html`<tr key=${a.slug}>
+                  <td><strong>${a.title}</strong><br/><span class="text-sm text-muted">/resources/${a.slug}/</span></td>
+                  <td><span style="background: #FFD500; color: #2D2E33; padding: 0.15rem 0.5rem; border-radius: 100px; font-size: 0.75rem; font-weight: 600;">${a.tag || 'Guide'}</span></td>
+                  <td class="text-sm">${a.datePublished || '—'}</td>
+                  <td>${(a.faqs || []).length}</td>
+                  <td>${a.order || 0}</td>
+                  <td style="white-space: nowrap;">
+                    <button class="btn btn-ghost btn-sm" onClick=${() => onEdit(a.slug)}>Edit</button>
+                    <button class="btn btn-ghost btn-sm" style="color: #E53E3E;" onClick=${(e) => { e.stopPropagation(); onDelete(a); }}>Delete</button>
+                  </td>
+                </tr>`)}
+              </tbody>
+            </table></div>
+          `}
+        </div>
+      `;
+    }
+
+    // ═══════════════════════════════════════════
+    // ARTICLE EDITOR
+    // ═══════════════════════════════════════════
+    function ArticleEditor({ slug, onBack, addToast }) {
+      const [loading, setLoading] = useState(!!slug);
+      const [saving, setSaving] = useState(false);
+      const [sha, setSha] = useState(null);
+      const [dirty, setDirty] = useState(false);
+      const [data, setData] = useState({
+        title: '', slug: '', description: '', tag: 'Guide',
+        datePublished: new Date().toISOString().split('T')[0],
+        dateModified: new Date().toISOString().split('T')[0],
+        heroImage: null, heroLead: '', aboutTopics: [],
+        body: '', faqs: [],
+        ctaHeading: 'Need help with your home?',
+        ctaText: 'Sunshine on a Ranney Day builds accessible bathrooms, dream bedrooms, and therapy rooms for children with special needs — at no cost to families in the greater Atlanta area.',
+        ctaPrimaryLink: '/apply/', ctaPrimaryLabel: 'Apply for a Makeover',
+        ctaSecondaryLink: '/donate/', ctaSecondaryLabel: 'Support Our Mission',
+        featured: false, order: 0,
+      });
+
+      useEffect(() => {
+        if (!slug) return;
+        (async () => {
+          try {
+            const res = await api.readContent(`src/content/articles/${slug}.json`);
+            if (res.success && res.content) {
+              setData(res.content);
+              setSha(res.sha);
+            } else {
+              addToast('Article not found', 'error');
+              onBack();
+            }
+          } catch (err) {
+            addToast(`Load error: ${err.message}`, 'error');
+          }
+          setLoading(false);
+        })();
+      }, [slug]);
+
+      const update = (key, val) => {
+        setData(d => ({ ...d, [key]: val }));
+        setDirty(true);
+      };
+
+      const autoSlug = (title) => title.toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').substring(0, 60);
+
+      const handleSave = async () => {
+        if (!data.title) { addToast('Title is required', 'error'); return; }
+        if (!data.slug) data.slug = autoSlug(data.title);
+        data.dateModified = new Date().toISOString().split('T')[0];
+        setSaving(true);
+        try {
+          const path = `src/content/articles/${data.slug}.json`;
+          const content = JSON.stringify(data, null, 2);
+          const message = slug ? `Update article: ${data.title}` : `Add article: ${data.title}`;
+          const res = await api.saveContent(path, content, message, sha || undefined);
+          if (res.success) {
+            setSha(res.sha);
+            setDirty(false);
+            addToast(`Article saved & published!`, 'success');
+          } else {
+            addToast(`Save failed: ${res.error}`, 'error');
+          }
+        } catch (err) {
+          addToast(`Save error: ${err.message}`, 'error');
+        }
+        setSaving(false);
+      };
+
+      const addFaq = () => {
+        update('faqs', [...(data.faqs || []), { question: '', answer: '' }]);
+      };
+      const updateFaq = (idx, key, val) => {
+        const faqs = [...(data.faqs || [])];
+        faqs[idx] = { ...faqs[idx], [key]: val };
+        update('faqs', faqs);
+      };
+      const removeFaq = (idx) => {
+        update('faqs', (data.faqs || []).filter((_, i) => i !== idx));
+      };
+
+      if (loading) return html`<div class="card" style="text-align: center; padding: 3rem;"><div class="spinner" style="width: 32px; height: 32px;" /></div>`;
+
+      return html`
+        <div class="page-header">
+          <div style="display: flex; align-items: center; gap: 0.75rem;">
+            <button class="btn btn-ghost" onClick=${onBack}>← Back</button>
+            <h2>${slug ? 'Edit Article' : 'New Article'}</h2>
+          </div>
+          <button class="btn btn-primary" onClick=${handleSave} disabled=${saving}>
+            ${saving ? 'Saving...' : dirty ? '💾 Save & Publish' : 'Save & Publish'}
+          </button>
+        </div>
+
+        <div class="card" style="margin-bottom: 1rem;">
+          <h3 style="margin-bottom: 1rem;">Article Details</h3>
+          <div class="form-grid">
+            <label class="form-group span-2">
+              <span class="form-label">Title *</span>
+              <input type="text" value=${data.title} onInput=${e => { update('title', e.target.value); if (!slug) update('slug', autoSlug(e.target.value)); }} placeholder="Guide to Accessible Home Design for Children with Disabilities" />
+            </label>
+            <label class="form-group">
+              <span class="form-label">Slug</span>
+              <input type="text" value=${data.slug} onInput=${e => update('slug', e.target.value)} placeholder="accessible-home-design" />
+              <span class="text-sm text-muted">/resources/${data.slug || '...'}/</span>
+            </label>
+            <label class="form-group">
+              <span class="form-label">Tag / Category</span>
+              <input type="text" value=${data.tag} onInput=${e => update('tag', e.target.value)} placeholder="Accessibility" />
+            </label>
+            <label class="form-group span-2">
+              <span class="form-label">Meta Description</span>
+              <textarea rows="2" value=${data.description} onInput=${e => update('description', e.target.value)} placeholder="SEO meta description (150-160 characters ideal)" />
+              <span class="text-sm text-muted">${(data.description || '').length}/160 characters</span>
+            </label>
+            <label class="form-group span-2">
+              <span class="form-label">Hero Lead Text</span>
+              <textarea rows="2" value=${data.heroLead} onInput=${e => update('heroLead', e.target.value)} placeholder="The subtitle shown below the title on the page" />
+            </label>
+            <label class="form-group">
+              <span class="form-label">Date Published</span>
+              <input type="date" value=${data.datePublished} onInput=${e => update('datePublished', e.target.value)} />
+            </label>
+            <label class="form-group">
+              <span class="form-label">Display Order</span>
+              <input type="number" value=${data.order} onInput=${e => update('order', Number(e.target.value))} />
+            </label>
+          </div>
+        </div>
+
+        <div class="card" style="margin-bottom: 1rem;">
+          <h3 style="margin-bottom: 0.5rem;">Article Body (HTML)</h3>
+          <p class="text-sm text-muted" style="margin-bottom: 1rem;">Write the article content as HTML. Use &lt;h2&gt; for main sections, &lt;h3&gt; for subsections, &lt;p&gt; for paragraphs, &lt;strong&gt; for bold, and &lt;a href="..."&gt; for links.</p>
+          <textarea
+            style="width: 100%; min-height: 400px; font-family: monospace; font-size: 0.85rem; line-height: 1.6; padding: 1rem; border: 1px solid #E5E4E0; border-radius: 8px; resize: vertical;"
+            value=${data.body}
+            onInput=${e => update('body', e.target.value)}
+            placeholder="<h2>Section Title</h2>\n<p>Your content here...</p>"
+          />
+          <span class="text-sm text-muted">${(data.body || '').length.toLocaleString()} characters</span>
+        </div>
+
+        <div class="card" style="margin-bottom: 1rem;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <h3>FAQs (${(data.faqs || []).length})</h3>
+            <button class="btn btn-ghost btn-sm" onClick=${addFaq}>+ Add FAQ</button>
+          </div>
+          <p class="text-sm text-muted" style="margin-bottom: 1rem;">FAQs generate FAQPage schema for Google rich results. Each FAQ appears as an expandable accordion at the bottom of the article.</p>
+          ${(data.faqs || []).map((faq, idx) => html`
+            <div key=${idx} style="border: 1px solid #E5E4E0; border-radius: 8px; padding: 1rem; margin-bottom: 0.75rem;">
+              <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.5rem;">
+                <strong class="text-sm">FAQ #${idx + 1}</strong>
+                <button class="btn btn-ghost btn-sm" style="color: #E53E3E; font-size: 0.8rem;" onClick=${() => removeFaq(idx)}>Remove</button>
+              </div>
+              <label class="form-group" style="margin-bottom: 0.5rem;">
+                <span class="form-label">Question</span>
+                <input type="text" value=${faq.question} onInput=${e => updateFaq(idx, 'question', e.target.value)} placeholder="How much does it cost to..." />
+              </label>
+              <label class="form-group">
+                <span class="form-label">Answer</span>
+                <textarea rows="3" value=${faq.answer} onInput=${e => updateFaq(idx, 'answer', e.target.value)} placeholder="Plain text answer..." />
+              </label>
+            </div>
+          `)}
+          ${(data.faqs || []).length === 0 && html`<p class="text-sm text-muted">No FAQs yet. Click "+ Add FAQ" above.</p>`}
+        </div>
+
+        <div class="card" style="margin-bottom: 1rem;">
+          <h3 style="margin-bottom: 1rem;">Call-to-Action Section</h3>
+          <div class="form-grid">
+            <label class="form-group span-2">
+              <span class="form-label">CTA Heading</span>
+              <input type="text" value=${data.ctaHeading} onInput=${e => update('ctaHeading', e.target.value)} />
+            </label>
+            <label class="form-group span-2">
+              <span class="form-label">CTA Text</span>
+              <textarea rows="2" value=${data.ctaText} onInput=${e => update('ctaText', e.target.value)} />
+            </label>
+            <label class="form-group">
+              <span class="form-label">Primary Button Label</span>
+              <input type="text" value=${data.ctaPrimaryLabel} onInput=${e => update('ctaPrimaryLabel', e.target.value)} />
+            </label>
+            <label class="form-group">
+              <span class="form-label">Primary Button Link</span>
+              <input type="text" value=${data.ctaPrimaryLink} onInput=${e => update('ctaPrimaryLink', e.target.value)} />
+            </label>
+            <label class="form-group">
+              <span class="form-label">Secondary Button Label</span>
+              <input type="text" value=${data.ctaSecondaryLabel} onInput=${e => update('ctaSecondaryLabel', e.target.value)} />
+            </label>
+            <label class="form-group">
+              <span class="form-label">Secondary Button Link</span>
+              <input type="text" value=${data.ctaSecondaryLink} onInput=${e => update('ctaSecondaryLink', e.target.value)} />
+            </label>
+          </div>
+        </div>
+      `;
+    }
+
     // FAQ MANAGEMENT
     // ═══════════════════════════════════════════
     function FAQManager({ addToast }) {
@@ -2476,6 +2712,7 @@
       const [kids, setKids] = useState([]);
       const [partners, setPartners] = useState([]);
       const [team, setTeam] = useState([]);
+      const [articles, setArticles] = useState([]);
       const [loading, setLoading] = useState(true);
       const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -2509,6 +2746,13 @@
             setTeam(teamRes.items.map(i => i.content).filter(Boolean)
               .sort((a, b) => (a.order || 0) - (b.order || 0)));
           }
+
+          // Load articles (bulk — one API call)
+          const artRes = await api.bulkListContent('src/content/articles');
+          if (artRes.success) {
+            setArticles(artRes.items.map(i => i.content).filter(Boolean)
+              .sort((a, b) => (a.order || 0) - (b.order || 0)));
+          }
         } catch (err) {
           addToast('Failed to load content. Check API settings.', 'error');
         }
@@ -2531,7 +2775,7 @@
         if (!deleteModal) return;
         setDeleteLoading(true);
         const { type, item } = deleteModal;
-        const dir = type === 'kid' ? 'kids' : type === 'partner' ? 'partners' : type === 'team member' ? 'team' : 'partners';
+        const dir = type === 'kid' ? 'kids' : type === 'partner' ? 'partners' : type === 'team member' ? 'team' : type === 'article' ? 'articles' : 'partners';
         try {
           // Get SHA first
           const fileRes = await api.readContent(`src/content/${dir}/${item.slug}.json`);
@@ -2564,6 +2808,7 @@
         { id: 'kids', icon: '👶', label: 'Kids' },
         { id: 'partners', icon: '🤝', label: 'Partners' },
         { id: 'team', icon: '👥', label: 'Team' },
+        { id: 'articles', icon: '📝', label: 'Articles' },
         { id: 'faq', icon: '❓', label: 'FAQs' },
         { id: 'financials', icon: '📄', label: 'Financials' },
         { id: 'settings', icon: '⚙️', label: 'Site Settings' },
@@ -2595,6 +2840,11 @@
               ? html`<${TeamEditor} slug=${editSlug || undefined} onBack=${() => { navigate('team'); loadData(); }} addToast=${addToast} />`
               : html`<${TeamList} team=${team} onEdit=${s => navigate('team', s)} onAdd=${() => navigate('team', '')}
                   onDelete=${t => setDeleteModal({ type: 'team member', item: t })} />`;
+          case 'articles':
+            return editSlug !== null
+              ? html`<${ArticleEditor} slug=${editSlug || undefined} onBack=${() => { navigate('articles'); loadData(); }} addToast=${addToast} />`
+              : html`<${ArticlesList} articles=${articles} onEdit=${s => navigate('articles', s)} onAdd=${() => navigate('articles', '')}
+                  onDelete=${a => setDeleteModal({ type: 'article', item: a })} />`;
           case 'financials':
             return html`<${Financials} addToast=${addToast} />`;
           case 'faq':

@@ -1,0 +1,162 @@
+---
+/**
+ * [slug].astro — Dynamic article/guide page
+ * Renders articles from src/content/articles/*.json
+ * Admin panel can create, edit, and delete articles.
+ */
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { getCollection } from 'astro:content';
+import { getFAQSchema } from '../../utils/schema';
+
+export async function getStaticPaths() {
+  const articles = await getCollection('articles');
+  return articles.map(article => ({
+    params: { slug: article.data.slug },
+    props: { article: article.data },
+  }));
+}
+
+const { article } = Astro.props;
+
+const breadcrumbs = [
+  { name: 'Home', url: 'https://sunshineonaranneyday.com/' },
+  { name: 'Resources', url: 'https://sunshineonaranneyday.com/resources/' },
+  { name: article.title, url: `https://sunshineonaranneyday.com/resources/${article.slug}/` },
+];
+
+// Build page-specific JSON-LD
+const pageSchemas: Record<string, any>[] = [];
+
+// Article schema
+pageSchemas.push({
+  "@type": "Article",
+  "headline": article.title,
+  "description": article.description,
+  "author": { "@id": "https://sunshineonaranneyday.com/#organization" },
+  "publisher": { "@id": "https://sunshineonaranneyday.com/#organization" },
+  "datePublished": article.datePublished,
+  ...(article.dateModified ? { "dateModified": article.dateModified } : {}),
+  "mainEntityOfPage": `https://sunshineonaranneyday.com/resources/${article.slug}/`,
+  ...(article.heroImage ? { "image": article.heroImage } : {}),
+  "about": (article.aboutTopics || []).map(t => ({ "@type": "Thing", "name": t })),
+});
+
+// FAQPage schema if there are FAQs
+if (article.faqs && article.faqs.length > 0) {
+  pageSchemas.push(getFAQSchema(article.faqs));
+}
+---
+
+<BaseLayout
+  title={article.title}
+  description={article.description}
+  ogType="article"
+  ogImage={article.heroImage || undefined}
+  jsonLd={pageSchemas}
+  breadcrumbs={breadcrumbs}
+  datePublished={article.datePublished}
+  dateModified={article.dateModified}
+>
+  <article class="pillar-article">
+    <!-- Hero -->
+    <section class="pillar-hero">
+      <div class="container container--narrow">
+        <div class="section-label section-label--yellow">{article.tag || 'Resource Guide'}</div>
+        <h1 set:html={article.title} />
+        <p class="pillar-hero-lead">{article.heroLead}</p>
+      </div>
+    </section>
+
+    <!-- Body Content -->
+    <section class="pillar-content section">
+      <div class="container container--narrow prose">
+        <Fragment set:html={article.body} />
+
+        <!-- FAQs -->
+        {article.faqs && article.faqs.length > 0 && (
+          <>
+            <h2>Frequently Asked Questions</h2>
+            {article.faqs.map(faq => (
+              <details class="pillar-faq">
+                <summary><strong>{faq.question}</strong></summary>
+                <p>{faq.answer}</p>
+              </details>
+            ))}
+          </>
+        )}
+      </div>
+    </section>
+
+    <!-- CTA -->
+    <section class="pillar-cta section" style="background: var(--c-warm-gray);">
+      <div class="container container--narrow" style="text-align: center;">
+        <div class="section-label">Get Help</div>
+        <h2>{article.ctaHeading}</h2>
+        <p style="max-width: 600px; margin: var(--space-md) auto var(--space-xl); color: var(--c-text-muted);">{article.ctaText}</p>
+        <div style="display: flex; gap: var(--space-md); justify-content: center; flex-wrap: wrap;">
+          <a href={article.ctaPrimaryLink} class="btn btn--primary">{article.ctaPrimaryLabel}</a>
+          <a href={article.ctaSecondaryLink} class="btn btn--outline">{article.ctaSecondaryLabel}</a>
+        </div>
+      </div>
+    </section>
+  </article>
+</BaseLayout>
+
+<style>
+  .pillar-hero {
+    background: var(--c-dark);
+    color: var(--c-white);
+    padding-block: var(--space-3xl) var(--space-2xl);
+    text-align: center;
+  }
+  .pillar-hero h1 {
+    color: var(--c-white);
+    font-size: clamp(1.75rem, 4vw, 2.75rem);
+    line-height: 1.25;
+  }
+  .pillar-hero-lead {
+    margin-top: var(--space-lg);
+    font-size: clamp(1rem, 2vw, 1.15rem);
+    color: rgba(255,255,255,0.75);
+    max-width: 640px;
+    margin-inline: auto;
+  }
+  .pillar-content h2 {
+    font-family: var(--font-display);
+    font-size: clamp(1.25rem, 3vw, 1.75rem);
+    margin-top: var(--space-2xl);
+    margin-bottom: var(--space-md);
+    color: var(--c-dark);
+  }
+  .pillar-content h3 {
+    font-family: var(--font-display);
+    font-size: clamp(1.1rem, 2.5vw, 1.35rem);
+    margin-top: var(--space-xl);
+    margin-bottom: var(--space-sm);
+    color: var(--c-dark);
+  }
+  .pillar-content h2:first-of-type {
+    margin-top: 0;
+  }
+  .pillar-faq {
+    border: 1px solid var(--c-border);
+    border-radius: var(--border-radius);
+    padding: var(--space-md) var(--space-lg);
+    margin-top: var(--space-md);
+  }
+  .pillar-faq summary {
+    cursor: pointer;
+    list-style: none;
+  }
+  .pillar-faq summary::marker,
+  .pillar-faq summary::-webkit-details-marker {
+    display: none;
+  }
+  .pillar-faq p {
+    margin-top: var(--space-md);
+    color: var(--c-text-muted);
+  }
+  .pillar-cta h2 {
+    font-family: var(--font-display);
+  }
+</style>

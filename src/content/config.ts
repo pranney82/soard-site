@@ -60,4 +60,32 @@ const team = defineCollection({
   }),
 });
 
-export const collections = { kids, partners, team };
+const articles = defineCollection({
+  type: 'data',
+  schema: z.object({
+    title: z.string(),
+    slug: z.string(),
+    description: z.string(),
+    tag: z.string().default('Guide'),
+    datePublished: z.string(),
+    dateModified: z.string().optional(),
+    heroImage: z.string().nullable().optional(),
+    heroLead: z.string(),
+    aboutTopics: z.array(z.string()).default([]),
+    body: z.string(),
+    faqs: z.array(z.object({
+      question: z.string(),
+      answer: z.string(),
+    })).default([]),
+    ctaHeading: z.string().default('Need help with your home?'),
+    ctaText: z.string().default('Sunshine on a Ranney Day builds accessible bathrooms, dream bedrooms, and therapy rooms for children with special needs — at no cost to families in the greater Atlanta area.'),
+    ctaPrimaryLink: z.string().default('/apply/'),
+    ctaPrimaryLabel: z.string().default('Apply for a Makeover'),
+    ctaSecondaryLink: z.string().default('/donate/'),
+    ctaSecondaryLabel: z.string().default('Support Our Mission'),
+    featured: z.boolean().default(false),
+    order: z.number().default(0),
+  }),
+});
+
+export const collections = { kids, partners, team, articles };
