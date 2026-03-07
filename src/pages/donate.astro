@@ -203,33 +203,65 @@ import BaseLayout from '../layouts/BaseLayout.astro';
     </div>
   </section>
 
-  <!-- ══════ FAQ (native <details>, zero JS) ══════ -->
+  <!-- ══════ FAQ — Editorial Split ══════ -->
   <section class="faq">
-    <div class="faq-inner">
-      <div class="faq-header" data-reveal>
+    <div class="faq-split">
+      <div class="faq-left" data-reveal>
         <div class="section-label">Common Questions</div>
-        <h2>Donation <em class="highlight">FAQ</em></h2>
+        <h2>Everything you need to know before you <em class="highlight">give</em>.</h2>
+        <p class="faq-left-body">We believe in radical transparency. If your question isn't answered here, reach out — we'd love to hear from you.</p>
+        <a href="mailto:peter@sunshineonaranneyday.com" class="btn btn-dark">Contact Us →</a>
       </div>
-      <div class="faq-list" data-reveal>
-        <details class="faq-item">
-          <summary>Is my donation tax-deductible?</summary>
-          <p>Yes. Sunshine on a Ranney Day is a registered 501(c)(3) nonprofit (EIN 45-4773997). You'll receive a tax receipt from Zeffy immediately after donating.</p>
+      <div class="faq-right" data-reveal data-delay="1">
+        <details class="faq-card">
+          <summary>
+            <span class="faq-num">01</span>
+            <span class="faq-q">Is my donation tax-deductible?</span>
+            <span class="faq-toggle" aria-hidden="true"></span>
+          </summary>
+          <div class="faq-answer">
+            <p>Yes. Sunshine on a Ranney Day is a registered 501(c)(3) nonprofit (EIN 45-4773997). You'll receive a tax receipt from Zeffy immediately after donating.</p>
+          </div>
         </details>
-        <details class="faq-item">
-          <summary>Does 100% of my donation really go to kids?</summary>
-          <p>Yes. Zeffy is a 100% free platform for nonprofits — they charge zero processing fees. Your entire donation goes directly to funding room materials, labor, and design for children's spaces.</p>
+        <details class="faq-card">
+          <summary>
+            <span class="faq-num">02</span>
+            <span class="faq-q">Does 100% of my donation really go to kids?</span>
+            <span class="faq-toggle" aria-hidden="true"></span>
+          </summary>
+          <div class="faq-answer">
+            <p>Yes. Zeffy is a 100% free platform for nonprofits — they charge zero processing fees. Your entire donation goes directly to funding room materials, labor, and design for children's spaces.</p>
+          </div>
         </details>
-        <details class="faq-item">
-          <summary>Can I set up a monthly recurring donation?</summary>
-          <p>Absolutely. In the donation form above, simply toggle to "Monthly" before selecting your amount. Monthly gifts help us plan future room makeovers with greater confidence.</p>
+        <details class="faq-card">
+          <summary>
+            <span class="faq-num">03</span>
+            <span class="faq-q">Can I set up a monthly recurring donation?</span>
+            <span class="faq-toggle" aria-hidden="true"></span>
+          </summary>
+          <div class="faq-answer">
+            <p>Absolutely. In the donation form above, simply toggle to "Monthly" before selecting your amount. Monthly gifts help us plan future room makeovers with greater confidence.</p>
+          </div>
         </details>
-        <details class="faq-item">
-          <summary>Can I donate materials or services instead of money?</summary>
-          <p>Yes! We partner with contractors, designers, and suppliers across Atlanta. Visit our <a href="/get-involved">Get Involved</a> page to learn about partnership opportunities.</p>
+        <details class="faq-card">
+          <summary>
+            <span class="faq-num">04</span>
+            <span class="faq-q">Can I donate materials or services instead?</span>
+            <span class="faq-toggle" aria-hidden="true"></span>
+          </summary>
+          <div class="faq-answer">
+            <p>Yes! We partner with contractors, designers, and suppliers across Atlanta. Visit our <a href="/get-involved">Get Involved</a> page to learn about partnership opportunities.</p>
+          </div>
         </details>
-        <details class="faq-item">
-          <summary>How much does a typical room makeover cost?</summary>
-          <p>Room costs vary based on scope — a dream bedroom averages $8,000–$12,000, while an accessible bathroom can run $10,000–$15,000. Every dollar donated goes toward these transformations.</p>
+        <details class="faq-card">
+          <summary>
+            <span class="faq-num">05</span>
+            <span class="faq-q">How much does a typical room makeover cost?</span>
+            <span class="faq-toggle" aria-hidden="true"></span>
+          </summary>
+          <div class="faq-answer">
+            <p>Room costs vary based on scope — a dream bedroom averages $8,000–$12,000, while an accessible bathroom can run $10,000–$15,000. Every dollar donated goes toward these transformations.</p>
+          </div>
         </details>
       </div>
     </div>
@@ -689,53 +721,127 @@ import BaseLayout from '../layouts/BaseLayout.astro';
   .donate-trust-cta { text-align: center; }
 
   /* ══════════════════════════════════════════
-     FAQ
+     FAQ — Editorial Split
      ══════════════════════════════════════════ */
-  .faq { padding: 100px 0; }
-  .faq-inner {
-    max-width: 720px;
+  .faq {
+    padding: 100px 0;
+    background: var(--c-dark-deep);
+    color: #fff;
+  }
+  .faq-split {
+    max-width: var(--max-width);
     margin: 0 auto;
     padding: 0 var(--space-xl);
+    display: grid;
+    grid-template-columns: 0.85fr 1fr;
+    gap: 80px;
+    align-items: start;
   }
-  .faq-header { text-align: center; margin-bottom: 48px; }
-  .faq-item { border-top: 1px solid var(--c-border); }
-  .faq-item:last-child { border-bottom: 1px solid var(--c-border); }
-  .faq-item summary {
-    padding: 24px 0;
-    font-family: var(--font-display);
-    font-size: clamp(16px, 2vw, 18px);
-    font-weight: 700;
+  .faq-left h2 {
+    color: #fff;
+    font-size: clamp(26px, 3vw, 36px);
+    line-height: 1.25;
+    margin-bottom: 20px;
+  }
+  .faq-left h2 .highlight {
+    background-image: linear-gradient(transparent 55%, rgba(255, 213, 0, 0.3) 55%);
+  }
+  .faq-left-body {
+    font-size: 16px;
+    color: rgba(255,255,255,0.5);
+    line-height: 1.7;
+    margin-bottom: 32px;
+  }
+
+  /* Cards */
+  .faq-card {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 16px;
+    margin-bottom: 12px;
+    transition: background 0.3s ease, border-color 0.3s ease;
+  }
+  .faq-card:last-child { margin-bottom: 0; }
+  .faq-card[open] {
+    background: rgba(255,255,255,0.07);
+    border-color: rgba(255, 213, 0, 0.2);
+  }
+  .faq-card summary {
+    padding: 20px 24px;
     cursor: pointer;
     list-style: none;
     display: flex;
-    justify-content: space-between;
     align-items: center;
+    gap: 16px;
+    min-height: 48px;
     transition: color 0.2s ease;
-    min-height: 48px; /* tap target */
   }
-  .faq-item summary::-webkit-details-marker { display: none; }
-  .faq-item summary::after {
-    content: '+';
-    font-family: var(--font-body);
-    font-size: 24px;
-    font-weight: 300;
-    color: var(--c-text-muted);
-    transition: transform 0.3s ease;
+  .faq-card summary::-webkit-details-marker { display: none; }
+  .faq-card summary:hover { color: var(--c-yellow); }
+  .faq-num {
+    font-family: var(--font-display);
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--c-yellow);
     flex-shrink: 0;
-    margin-left: 16px;
-    width: 32px;
-    text-align: center;
+    width: 28px;
   }
-  .faq-item[open] summary::after { transform: rotate(45deg); }
-  .faq-item summary:hover { color: var(--c-purple); }
-  .faq-item p {
-    padding: 0 0 24px;
-    font-size: 16px;
+  .faq-q {
+    flex: 1;
+    font-family: var(--font-body);
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 1.4;
+  }
+  .faq-toggle {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.06);
+    flex-shrink: 0;
+    position: relative;
+    transition: background 0.3s ease, transform 0.3s ease;
+  }
+  .faq-toggle::before,
+  .faq-toggle::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    background: rgba(255,255,255,0.5);
+    border-radius: 1px;
+    transition: transform 0.3s ease, opacity 0.3s ease;
+  }
+  .faq-toggle::before {
+    width: 12px;
+    height: 1.5px;
+    transform: translate(-50%, -50%);
+  }
+  .faq-toggle::after {
+    width: 1.5px;
+    height: 12px;
+    transform: translate(-50%, -50%);
+  }
+  .faq-card[open] .faq-toggle {
+    background: rgba(255, 213, 0, 0.15);
+  }
+  .faq-card[open] .faq-toggle::before { background: var(--c-yellow); }
+  .faq-card[open] .faq-toggle::after {
+    background: var(--c-yellow);
+    transform: translate(-50%, -50%) rotate(90deg);
+    opacity: 0;
+  }
+  .faq-answer {
+    padding: 0 24px 20px;
+    padding-left: 68px; /* align with question text */
+  }
+  .faq-answer p {
+    font-size: 15px;
     line-height: 1.7;
-    color: var(--c-text-muted);
+    color: rgba(255,255,255,0.45);
   }
-  .faq-item a {
-    color: var(--c-purple);
+  .faq-answer a {
+    color: var(--c-yellow);
     text-decoration: underline;
     text-underline-offset: 3px;
   }
@@ -827,6 +933,9 @@ import BaseLayout from '../layouts/BaseLayout.astro';
     .dt-card { padding: 28px; }
 
     .faq { padding: 64px 0; }
+    .faq-split { grid-template-columns: 1fr; gap: 40px; }
+    .faq-answer { padding-left: 60px; }
+
     .donate-finale { padding: 64px 0; }
   }
 
