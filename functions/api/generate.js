@@ -10,8 +10,8 @@
  *   }
  *
  * Models used:
- *   - Vision (alt text): @cf/meta/llama-3.2-11b-vision-instruct
- *   - Text (SEO): @cf/meta/llama-3.3-70b-instruct-fp8-fast
+ *   - Vision (alt text): @cf/meta/llama-4-scout-17b-16e-instruct
+ *   - Text (SEO): @cf/meta/llama-4-scout-17b-16e-instruct
  */
 
 export async function onRequestPost(context) {
@@ -66,7 +66,7 @@ export async function onRequestPost(context) {
             const base64 = btoa(String.fromCharCode(...imgArray));
 
             const visionResult = await ai.run(
-              '@cf/meta/llama-3.2-11b-vision-instruct',
+              '@cf/meta/llama-4-scout-17b-16e-instruct',
               {
                 messages: [
                   {
@@ -125,7 +125,7 @@ SHORT_DESCRIPTION: [text]
 META_DESCRIPTION: [text]`;
 
       const seoResult = await ai.run(
-        '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+        '@cf/meta/llama-4-scout-17b-16e-instruct',
         {
           messages: [
             { role: 'user', content: seoPrompt },
