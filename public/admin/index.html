@@ -482,6 +482,13 @@
         const r = await fetch('/api/upload-file', { method: 'POST', body: form });
         return r.json();
       },
+      async uploadVideo(file, name) {
+        const form = new FormData();
+        form.append('file', file);
+        if (name) form.append('name', name);
+        const r = await fetch('/api/upload-video', { method: 'POST', body: form });
+        return r.json();
+      },
     };
 
     // ─── Slug Helper ────────────────────────
@@ -674,10 +681,11 @@
         name: '', slug: '', age: '', diagnosis: '', roomTypes: [],
         year: new Date().getFullYear(), status: 'completed', bio: '',
         quote: '', heroImage: '', photos: [], photoCount: 0,
-        videoUrl: '', photographer: '', partnerLogos: [],
+        videoUrl: '', streamVideoId: '', photographer: '', partnerLogos: [],
         shortDescription: '', metaDescription: '',
       });
       const [uploading, setUploading] = useState({});
+      const [videoUploading, setVideoUploading] = useState(false);
 
       // Load existing kid
       useEffect(() => {
@@ -759,6 +767,30 @@
         setData(d => ({ ...d, heroImage: d.photos[index]?.url || '' }));
       };
 
+      const handleVideoUpload = async (files) => {
+        const file = files[0];
+        if (!file) return;
+        setVideoUploading(true);
+        try {
+          const videoName = data.name ? `${data.name} - Room Reveal` : file.name;
+          const res = await api.uploadVideo(file, videoName);
+          if (res.success) {
+            updateField('streamVideoId', res.videoId);
+            addToast('Video uploaded to Stream! It may take a few minutes to process.', 'success');
+          } else {
+            addToast(`Video upload failed: ${res.error}`, 'error');
+          }
+        } catch (err) {
+          addToast(`Video upload error: ${err.message}`, 'error');
+        }
+        setVideoUploading(false);
+      };
+
+      const removeVideo = () => {
+        setData(d => ({ ...d, streamVideoId: '' }));
+        addToast('Stream video removed (video still exists in Cloudflare dashboard)', 'info');
+      };
+
       const handleSave = async () => {
         if (!data.name || !data.slug) {
           addToast('Name is required', 'error');
@@ -771,6 +803,8 @@
             ...data,
             age: data.age ? Number(data.age) : null,
             year: data.year ? Number(data.year) : null,
+            streamVideoId: data.streamVideoId || null,
+            videoUrl: data.videoUrl || null,
             photos: data.photos.map(({ _tempId, ...p }) => p),
             photoCount: data.photos.length,
           };
@@ -867,10 +901,33 @@
               onInput=${e => updateField('quote', e.target.value)} />
           </div>
           <div class="form-group">
-            <label class="form-label">Video URL (optional)</label>
+            <label class="form-label">YouTube URL (optional)</label>
             <input class="form-input" value=${data.videoUrl || ''}
               onInput=${e => updateField('videoUrl', e.target.value)}
               placeholder="https://youtu.be/..." />
+            <small style="color: rgba(0,0,0,0.45); margin-top: 0.25rem; display: block;">Used for sharing & SEO. Also used as site embed if no Stream video is uploaded.</small>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Cloudflare Stream Video (optional)</label>
+            ${data.streamVideoId ? html`
+              <div style="display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem; background: rgba(122, 0, 223, 0.06); border-radius: 8px; border: 1px solid rgba(122, 0, 223, 0.15);">
+                <span style="font-size: 1.5rem;">🎬</span>
+                <div style="flex: 1; min-width: 0;">
+                  <div style="font-weight: 600; font-size: 0.9rem;">Stream video linked</div>
+                  <div style="font-size: 0.8rem; color: rgba(0,0,0,0.45); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${data.streamVideoId}</div>
+                </div>
+                <button class="btn btn-ghost" style="font-size: 0.85rem; padding: 0.3rem 0.6rem;" onClick=${removeVideo}>Remove</button>
+              </div>
+            ` : html`
+              <${DropZone} onFiles=${handleVideoUpload} multiple=${false} accept="video/*" label="MP4, MOV, WebM — upload reveal video" />
+            `}
+            ${videoUploading ? html`
+              <div style="display: flex; align-items: center; gap: 0.5rem; margin-top: 0.5rem; padding: 0.5rem 0.75rem; background: rgba(255,213,0,0.1); border-radius: 6px;">
+                <span class="spinner" />
+                <span style="font-size: 0.85rem;">Uploading video to Cloudflare Stream...</span>
+              </div>
+            ` : null}
+            <small style="color: rgba(0,0,0,0.45); margin-top: 0.25rem; display: block;">Uploaded videos play on your site with no ads. Best performance for donors.</small>
           </div>
           <div class="form-group">
             <label class="form-label">Photographer (optional)</label>
