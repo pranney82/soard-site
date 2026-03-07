@@ -1,0 +1,146 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+
+const breadcrumbs = [
+  { name: 'Home', url: 'https://sunshineonaranneyday.com/' },
+  { name: 'Resources', url: 'https://sunshineonaranneyday.com/resources/' },
+];
+
+const guides = [
+  {
+    title: 'Accessible Home Design for Children with Disabilities',
+    description: 'A practical guide to wheelchair-accessible bathrooms, bedrooms, doorways, ramps, and funding resources — based on 106+ room builds.',
+    url: '/resources/accessible-home-design/',
+    tag: 'Accessibility',
+  },
+  {
+    title: 'How to Create a Sensory-Friendly Bedroom',
+    description: 'Designing a bedroom that supports children with autism, sensory processing disorder, and other sensory sensitivities — covering lighting, color, sound, and texture.',
+    url: '/resources/sensory-friendly-bedroom/',
+    tag: 'Sensory',
+  },
+  {
+    title: 'In-Home Therapy Room Design Guide',
+    description: 'Everything you need to know about building a dedicated therapy space at home — equipment, layout, safety, and funding options.',
+    url: '/resources/therapy-room-design/',
+    tag: 'Therapy',
+  },
+];
+---
+
+<BaseLayout
+  title="Resources"
+  description="Guides, tools, and information for families of children with special needs — from accessible home design to sensory-friendly bedrooms and therapy room setup."
+  breadcrumbs={breadcrumbs}
+>
+  <section class="resources-hero">
+    <div class="container container--narrow">
+      <div class="section-label section-label--yellow">Resources</div>
+      <h1>Tools and guides for <em class="highlight">families</em></h1>
+      <p class="resources-hero-lead">Practical information for families navigating home modifications, therapy spaces, and accessible design — drawn from over a decade of building rooms for children with special needs.</p>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="container">
+      <div class="guides-grid">
+        {guides.map(guide => (
+          <a href={guide.url} class="guide-card">
+            <span class="guide-tag">{guide.tag}</span>
+            <h2>{guide.title}</h2>
+            <p>{guide.description}</p>
+            <span class="guide-link">Read the guide →</span>
+          </a>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <section class="section" style="background: var(--c-warm-gray);">
+    <div class="container container--narrow" style="text-align: center;">
+      <div class="section-label">Need More Help?</div>
+      <h2 style="font-family: var(--font-display);">We're here for your family</h2>
+      <p style="max-width: 600px; margin: var(--space-md) auto var(--space-xl); color: var(--c-text-muted);">If your child has special needs and could benefit from a home makeover, we'd love to hear from you. Sunshine on a Ranney Day provides accessible bathrooms, dream bedrooms, and therapy rooms at no cost to families.</p>
+      <div style="display: flex; gap: var(--space-md); justify-content: center; flex-wrap: wrap;">
+        <a href="/apply/" class="btn btn--primary">Apply for a Makeover</a>
+        <a href="/faq/" class="btn btn--outline">Read Our FAQs</a>
+      </div>
+    </div>
+  </section>
+</BaseLayout>
+
+<style>
+  .resources-hero {
+    background: var(--c-dark);
+    color: var(--c-white);
+    padding-block: var(--space-3xl) var(--space-2xl);
+    text-align: center;
+  }
+  .resources-hero h1 {
+    color: var(--c-white);
+    font-size: clamp(2rem, 5vw, 3.25rem);
+  }
+  .resources-hero-lead {
+    margin-top: var(--space-lg);
+    font-size: clamp(1rem, 2vw, 1.2rem);
+    color: rgba(255,255,255,0.75);
+    max-width: 640px;
+    margin-inline: auto;
+  }
+  .guides-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: var(--space-xl);
+  }
+  .guide-card {
+    display: flex;
+    flex-direction: column;
+    background: var(--c-white);
+    border: 1px solid var(--c-border);
+    border-radius: var(--border-radius-lg);
+    padding: var(--space-xl);
+    text-decoration: none;
+    color: inherit;
+    transition: box-shadow var(--transition-base), transform var(--transition-base);
+  }
+  .guide-card:hover {
+    box-shadow: var(--shadow-lg);
+    transform: translateY(-2px);
+  }
+  .guide-tag {
+    display: inline-block;
+    background: var(--c-yellow);
+    color: var(--c-dark);
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 0.25rem 0.75rem;
+    border-radius: 100px;
+    width: fit-content;
+    margin-bottom: var(--space-md);
+  }
+  .guide-card h2 {
+    font-family: var(--font-display);
+    font-size: 1.25rem;
+    line-height: 1.35;
+    margin-bottom: var(--space-sm);
+  }
+  .guide-card p {
+    color: var(--c-text-muted);
+    font-size: 0.95rem;
+    line-height: 1.6;
+    flex: 1;
+  }
+  .guide-link {
+    margin-top: var(--space-lg);
+    color: var(--c-dark);
+    font-weight: 600;
+    font-size: 0.9rem;
+  }
+  .guide-card:hover .guide-link {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    text-decoration-color: var(--c-yellow);
+  }
+</style>

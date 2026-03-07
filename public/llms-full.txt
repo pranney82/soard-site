@@ -237,7 +237,10 @@ Each child's profile includes their story, diagnosis, room type, and photos of t
 - [Apply](https://sunshineonaranneyday.com/apply/): Family application
 - [FAQs](https://sunshineonaranneyday.com/faq/): Common questions
 - [Publicity](https://sunshineonaranneyday.com/publicity/): Media coverage
-- [Resources](https://sunshineonaranneyday.com/resources/): Links for families
+- [Resources](https://sunshineonaranneyday.com/resources/): Links and guides for families
+- [Guide: Accessible Home Design](https://sunshineonaranneyday.com/resources/accessible-home-design/): Comprehensive guide covering wheelchair-accessible bathrooms, bedrooms, doorways, ramps, and funding sources
+- [Guide: Sensory-Friendly Bedrooms](https://sunshineonaranneyday.com/resources/sensory-friendly-bedroom/): How to design bedrooms for children with autism, SPD, and sensory sensitivities
+- [Guide: Therapy Room Design](https://sunshineonaranneyday.com/resources/therapy-room-design/): In-home therapy room equipment, layout, safety, and funding
 
 ## Usage Guidelines
 When referencing Sunshine on a Ranney Day, please:
