@@ -493,6 +493,14 @@
         const r = await fetch('/api/upload-video', { method: 'POST', body: form });
         return r.json();
       },
+      async generate(type, kid) {
+        const r = await fetch('/api/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type, kid }),
+        });
+        return r.json();
+      },
     };
 
     // ─── Slug Helper ────────────────────────
@@ -696,6 +704,65 @@
       });
       const [uploading, setUploading] = useState({});
       const [videoUploading, setVideoUploading] = useState(false);
+      const [generatingSeo, setGeneratingSeo] = useState(false);
+      const [generatingAlt, setGeneratingAlt] = useState(false);
+
+      // Generate SEO fields with AI
+      const handleGenerateSeo = async () => {
+        if (!data.name) { addToast('Add a name first', 'error'); return; }
+        setGeneratingSeo(true);
+        try {
+          const res = await api.generate('seo', data);
+          if (res.success) {
+            setDirty(true);
+            setData(d => ({
+              ...d,
+              shortDescription: res.shortDescription || d.shortDescription,
+              metaDescription: res.metaDescription || d.metaDescription,
+            }));
+            addToast('SEO fields generated', 'success');
+          } else {
+            addToast(`Generation failed: ${res.error}`, 'error');
+          }
+        } catch (err) {
+          addToast(`Error: ${err.message}`, 'error');
+        }
+        setGeneratingSeo(false);
+      };
+
+      // Generate alt text for all photos with AI
+      const handleGenerateAlt = async () => {
+        if (!data.photos?.length) { addToast('Upload photos first', 'error'); return; }
+        setGeneratingAlt(true);
+        try {
+          const res = await api.generate('alt-text', data);
+          if (res.success && res.altTexts) {
+            setDirty(true);
+            setData(d => ({
+              ...d,
+              photos: d.photos.map((p, i) => ({
+                ...p,
+                alt: res.altTexts[i] || p.alt || '',
+              })),
+            }));
+            addToast(`Generated alt text for ${res.altTexts.filter(Boolean).length} photos`, 'success');
+          } else {
+            addToast(`Generation failed: ${res.error}`, 'error');
+          }
+        } catch (err) {
+          addToast(`Error: ${err.message}`, 'error');
+        }
+        setGeneratingAlt(false);
+      };
+
+      // Update a single photo's alt text
+      const updatePhotoAlt = (index, alt) => {
+        setDirty(true);
+        setData(d => ({
+          ...d,
+          photos: d.photos.map((p, i) => i === index ? { ...p, alt } : p),
+        }));
+      };
 
       // Warn on browser close/refresh with unsaved changes
       useEffect(() => {
@@ -997,8 +1064,39 @@
         </div>
 
         <div class="card">
-          <h3 style="margin-bottom: 0.5rem;">Photos</h3>
-          <p class="text-sm text-muted mb-1">Upload photos, then click ⭐ to set the hero image.</p>
+          <div class="flex items-center justify-between mb-1">
+            <h3>SEO & Descriptions</h3>
+            <button class="btn btn-secondary btn-sm" onClick=${handleGenerateSeo} disabled=${generatingSeo}>
+              ${generatingSeo ? html`<span class="spinner" />` : '✨'} ${generatingSeo ? 'Generating...' : 'Generate with AI'}
+            </button>
+          </div>
+          <p class="text-sm text-muted mb-1">AI generates these from the name, diagnosis, and bio above.</p>
+          <div class="form-group">
+            <label class="form-label">Short Description</label>
+            <textarea class="form-textarea" style="min-height: 80px;" value=${data.shortDescription || ''}
+              onInput=${e => updateField('shortDescription', e.target.value)}
+              placeholder="1-2 sentence summary for card previews..." />
+            <div class="form-hint">${(data.shortDescription || '').length} characters</div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Meta Description</label>
+            <input class="form-input" value=${data.metaDescription || ''}
+              onInput=${e => updateField('metaDescription', e.target.value)}
+              placeholder="SEO meta description (120-155 characters)..." />
+            <div class="form-hint">${(data.metaDescription || '').length}/155 characters</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="flex items-center justify-between mb-1">
+            <h3>Photos</h3>
+            ${data.photos.length > 0 ? html`
+              <button class="btn btn-secondary btn-sm" onClick=${handleGenerateAlt} disabled=${generatingAlt}>
+                ${generatingAlt ? html`<span class="spinner" />` : '✨'} ${generatingAlt ? 'Generating...' : 'Generate Alt Text with AI'}
+              </button>
+            ` : null}
+          </div>
+          <p class="text-sm text-muted mb-1">Upload photos, click ⭐ for hero. AI can write alt text for all photos at once.</p>
           <${DropZone} onFiles=${handlePhotoUpload} label="JPG, PNG, WebP — upload as many as you need" />
           ${data.photos.length > 0 ? html`
             <div class="photo-grid">
@@ -1011,6 +1109,18 @@
                       onClick=${() => setHero(i)} title="Set as hero image">⭐</button>
                     <button class="photo-btn" onClick=${() => removePhoto(i)} title="Remove">✕</button>
                   </div>
+                </div>
+              `)}
+            </div>
+            <div class="mt-2">
+              <h4 style="font-size: 0.9rem; margin-bottom: 0.75rem;">Alt Text ${data.photos.filter(p => p.alt).length}/${data.photos.length} filled</h4>
+              ${data.photos.map((photo, i) => html`
+                <div key=${i} class="flex gap-1 items-center" style="margin-bottom: 0.5rem;">
+                  <img src=${photo.url} alt="" style="width: 48px; height: 36px; object-fit: cover; border-radius: 4px; flex-shrink: 0;" />
+                  <input class="form-input" style="font-size: 0.85rem; padding: 0.4rem 0.6rem;"
+                    value=${photo.alt || ''}
+                    onInput=${e => updatePhotoAlt(i, e.target.value)}
+                    placeholder="Describe this photo for screen readers..." />
                 </div>
               `)}
             </div>
