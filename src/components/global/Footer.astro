@@ -51,12 +51,14 @@ const year = new Date().getFullYear();
       <div class="footer-brand">
         <a href="/" class="footer-logo" aria-label="Sunshine on a Ranney Day — Home">
           <img
-            src="/images/logos/logo-tagline-light-bg.png"
-            alt="Sunshine on a Ranney Day logo"
-            width="140"
-            height="56"
+            src="/images/logos/sunny.png"
+            alt=""
+            class="footer-logo-icon"
+            width="48"
+            height="48"
             loading="lazy"
           />
+          <span class="footer-logo-text">Sunshine on a<br/>Ranney Day</span>
         </a>
         <p class="footer-mission">
           A 501(c)(3) nonprofit creating life-changing home makeovers for children with special needs in the greater Atlanta area.
@@ -292,9 +294,22 @@ const year = new Date().getFullYear();
 
   /* Brand Block */
   .footer-brand { display: flex; flex-direction: column; gap: 20px; }
-  .footer-logo { display: inline-block; transition: opacity var(--transition-fast); }
+  .footer-logo {
+    display: inline-flex;
+    align-items: center;
+    gap: 14px;
+    transition: opacity var(--transition-fast);
+    text-decoration: none;
+  }
   .footer-logo:hover { opacity: 0.85; }
-  .footer-logo img { width: 140px; height: auto; }
+  .footer-logo-icon { width: 48px; height: 48px; flex-shrink: 0; }
+  .footer-logo-text {
+    font-family: var(--font-display);
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--c-yellow);
+    line-height: 1.25;
+  }
   .footer-mission {
     font-size: 14px;
     line-height: 1.7;
