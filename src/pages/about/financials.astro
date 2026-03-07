@@ -1,15 +1,514 @@
 ---
+/**
+ * Financials — /about/financials/
+ * Transparency page with 990 tax returns, audited financials, 
+ * annual reports, and GuideStar seal.
+ */
 import PageLayout from '../../layouts/PageLayout.astro';
+import financialsData from '../../content/site/financials.json';
+
+// Sort documents by year descending
+const docs990 = financialsData.documents
+  .filter(d => d.type === '990')
+  .sort((a, b) => b.year - a.year);
+
+const docsAudit = financialsData.documents
+  .filter(d => d.type === 'audit')
+  .sort((a, b) => b.year - a.year);
+
+const docsOther = financialsData.documents
+  .filter(d => d.type === 'other')
+  .sort((a, b) => b.year - a.year);
+
+const annualReports = (financialsData.annualReports || [])
+  .sort((a, b) => b.year - a.year);
+
+// JSON-LD
+const jsonLd = {
+  "@context": "https://schema.org",
+  "@type": "WebPage",
+  "name": "Financials — Sunshine on a Ranney Day",
+  "description": "Financial transparency: 990 tax returns, audited financials, and annual reports for Sunshine on a Ranney Day.",
+  "url": "https://sunshineonaranneyday.com/about/financials/",
+  "isPartOf": {
+    "@type": "WebSite",
+    "name": "Sunshine on a Ranney Day",
+    "url": "https://sunshineonaranneyday.com"
+  },
+  "about": {
+    "@type": "NGO",
+    "name": "Sunshine on a Ranney Day",
+    "taxID": "45-4773997"
+  }
+};
 ---
 
 <PageLayout
   title="Financials"
+  description="Financial transparency: 990 tax returns, audited financials, and annual reports for Sunshine on a Ranney Day, a 501(c)(3) nonprofit."
   heroTitle="Financials"
   heroSubtitle="Transparency you can trust"
+  jsonLd={jsonLd}
 >
-  <section class="section">
-    <div class="container container--narrow" style="text-align: center; padding-block: var(--space-4xl);">
-      <p style="color: var(--c-text-muted);">This page is being built. Check back soon!</p>
+  <!-- Intro -->
+  <section class="section section--sm">
+    <div class="container container--narrow" style="text-align: center;">
+      <p class="fin-intro">
+        It's important that your donation is being used properly. That's why we complete a 
+        <span class="highlight">voluntary audit</span> each year and post it here — along with our 
+        990 tax returns, annual reports, and our GuideStar transparency seal.
+      </p>
+      <div class="trust-badges">
+        <a href="https://www.guidestar.org/profile/shared/2954b510-8c76-42e4-b589-7e826ca2cc47" 
+           target="_blank" rel="noopener noreferrer" class="trust-badge" aria-label="View our GuideStar profile">
+          <img 
+            src="https://widgets.guidestar.org/TransparencySeal/9198660" 
+            alt="GuideStar Transparency Seal" 
+            width="100" 
+            height="100" 
+            loading="lazy"
+          />
+        </a>
+        <div class="trust-info">
+          <span class="trust-label">EIN: 45-4773997</span>
+          <span class="trust-label">501(c)(3) since 2012</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 990 Tax Returns -->
+  <section class="section section--gray" id="990s">
+    <div class="container">
+      <div class="doc-section-header">
+        <div class="doc-icon" aria-hidden="true">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/>
+          </svg>
+        </div>
+        <div>
+          <h2>990 Tax Returns</h2>
+          <p class="doc-section-desc">Our tax returns, prepared by our CPA and filed annually with the IRS.</p>
+        </div>
+      </div>
+      <div class="doc-grid">
+        {docs990.map(doc => (
+          <a href={doc.url} target="_blank" rel="noopener noreferrer" class="doc-card">
+            <div class="doc-card__icon" aria-hidden="true">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+              </svg>
+            </div>
+            <span class="doc-card__year">{doc.year}</span>
+            <span class="doc-card__label">View PDF</span>
+          </a>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <!-- Audited Financials -->
+  <section class="section" id="audits">
+    <div class="container">
+      <div class="doc-section-header">
+        <div class="doc-icon" aria-hidden="true">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 12l2 2 4-4"/><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+          </svg>
+        </div>
+        <div>
+          <h2>Audited Financials</h2>
+          <p class="doc-section-desc">Voluntary audit, completed by an independent CPA each year.</p>
+        </div>
+      </div>
+      <div class="doc-grid">
+        {docsAudit.map(doc => (
+          <a href={doc.url} target="_blank" rel="noopener noreferrer" class="doc-card">
+            <div class="doc-card__icon" aria-hidden="true">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M9 12l2 2 4-4"/><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+              </svg>
+            </div>
+            <span class="doc-card__year">{doc.year}</span>
+            <span class="doc-card__label">View PDF</span>
+          </a>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <!-- Annual Reports -->
+  <section class="section section--gray" id="annual-reports">
+    <div class="container">
+      <div class="doc-section-header">
+        <div class="doc-icon doc-icon--yellow" aria-hidden="true">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
+          </svg>
+        </div>
+        <div>
+          <h2>Annual Reports</h2>
+          <p class="doc-section-desc">Year-in-review reports highlighting our impact, projects, and the families we've served.</p>
+        </div>
+      </div>
+      {annualReports.length > 0 ? (
+        <div class="report-grid">
+          {annualReports.map(report => (
+            <a href={report.url} target="_blank" rel="noopener noreferrer" class="report-card">
+              {report.coverImage ? (
+                <div class="report-card__cover">
+                  <img src={report.coverImage} alt={`${report.year} Annual Report cover`} loading="lazy" decoding="async" />
+                </div>
+              ) : (
+                <div class="report-card__cover report-card__cover--placeholder">
+                  <span class="report-card__cover-year">{report.year}</span>
+                  <span class="report-card__cover-label">Annual Report</span>
+                </div>
+              )}
+              <div class="report-card__info">
+                <span class="report-card__title">{report.title || `${report.year} Annual Report`}</span>
+                {report.description && <span class="report-card__desc">{report.description}</span>}
+              </div>
+            </a>
+          ))}
+        </div>
+      ) : (
+        <div class="empty-annual">
+          <p>Annual reports are coming soon! Check back for our year-in-review publications.</p>
+        </div>
+      )}
+    </div>
+  </section>
+
+  <!-- Other Documents -->
+  {docsOther.length > 0 && (
+    <section class="section" id="other">
+      <div class="container">
+        <div class="doc-section-header">
+          <div class="doc-icon" aria-hidden="true">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+            </svg>
+          </div>
+          <div>
+            <h2>Other Documents</h2>
+            <p class="doc-section-desc">Additional important documents for our organization.</p>
+          </div>
+        </div>
+        <div class="other-docs">
+          {docsOther.map(doc => (
+            <a href={doc.url} target="_blank" rel="noopener noreferrer" class="other-doc">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+              </svg>
+              <span>{doc.title}</span>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="other-doc__arrow" aria-hidden="true">
+                <line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/>
+              </svg>
+            </a>
+          ))}
+        </div>
+      </div>
+    </section>
+  )}
+
+  <!-- Bottom CTA -->
+  <section class="section section--dark" slot="cta">
+    <div class="container container--narrow" style="text-align: center;">
+      <h2 style="color: var(--c-white);">Questions about our finances?</h2>
+      <p style="margin-top: var(--space-md); color: rgba(255,255,255,0.7); max-width: 520px; margin-inline: auto;">
+        We believe in complete transparency. If you have any questions about how your donations are used, please don't hesitate to reach out.
+      </p>
+      <div style="margin-top: var(--space-xl); display: flex; gap: var(--space-md); justify-content: center; flex-wrap: wrap;">
+        <a href="mailto:info@soardcharity.com" class="btn btn-primary">Contact Us</a>
+        <a href="/donate/" class="btn" style="background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2);">Donate Today</a>
+      </div>
     </div>
   </section>
 </PageLayout>
+
+<style>
+  /* ─── Intro ────────────────────────────── */
+  .fin-intro {
+    font-size: clamp(1.05rem, 2vw, 1.2rem);
+    line-height: 1.7;
+    color: var(--c-text-muted);
+    max-width: 640px;
+    margin-inline: auto;
+  }
+
+  .trust-badges {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-xl);
+    margin-top: var(--space-xl);
+    flex-wrap: wrap;
+  }
+
+  .trust-badge {
+    display: block;
+    transition: transform var(--transition-base);
+  }
+
+  .trust-badge:hover {
+    transform: scale(1.05);
+  }
+
+  .trust-info {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+  }
+
+  .trust-label {
+    display: inline-block;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--c-text-muted);
+    background: var(--c-warm-gray);
+    padding: 0.35rem 0.85rem;
+    border-radius: 100px;
+  }
+
+  /* ─── Section Headers ──────────────────── */
+  .doc-section-header {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-lg);
+    margin-bottom: var(--space-2xl);
+  }
+
+  .doc-icon {
+    flex-shrink: 0;
+    width: 56px;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--c-dark);
+    color: var(--c-white);
+    border-radius: var(--border-radius-lg);
+  }
+
+  .doc-icon--yellow {
+    background: var(--c-yellow);
+    color: var(--c-dark);
+  }
+
+  .doc-section-desc {
+    margin-top: var(--space-xs);
+    color: var(--c-text-muted);
+    font-size: 1.05rem;
+  }
+
+  /* ─── Document Grid (990s, Audits) ─────── */
+  .doc-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: var(--space-md);
+  }
+
+  .doc-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-sm);
+    padding: var(--space-lg) var(--space-md);
+    background: var(--c-white);
+    border: 1px solid var(--c-border);
+    border-radius: var(--border-radius-lg);
+    text-align: center;
+    transition: all var(--transition-base);
+    text-decoration: none;
+  }
+
+  .doc-card:hover {
+    border-color: var(--c-yellow);
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-md);
+  }
+
+  .doc-card__icon {
+    color: #C0392B;
+    opacity: 0.7;
+  }
+
+  .doc-card:hover .doc-card__icon {
+    opacity: 1;
+  }
+
+  .doc-card__year {
+    font-family: var(--font-display);
+    font-size: 1.35rem;
+    font-weight: 700;
+    color: var(--c-dark);
+  }
+
+  .doc-card__label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--c-text-light);
+    transition: color var(--transition-fast);
+  }
+
+  .doc-card:hover .doc-card__label {
+    color: var(--c-dark);
+  }
+
+  /* ─── Annual Reports Grid ──────────────── */
+  .report-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: var(--space-xl);
+  }
+
+  .report-card {
+    display: block;
+    background: var(--c-white);
+    border: 1px solid var(--c-border);
+    border-radius: var(--border-radius-lg);
+    overflow: hidden;
+    transition: all var(--transition-base);
+    text-decoration: none;
+  }
+
+  .report-card:hover {
+    transform: translateY(-6px);
+    box-shadow: var(--shadow-lg);
+    border-color: var(--c-yellow);
+  }
+
+  .report-card__cover {
+    aspect-ratio: 3 / 4;
+    overflow: hidden;
+  }
+
+  .report-card__cover img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform var(--transition-slow);
+  }
+
+  .report-card:hover .report-card__cover img {
+    transform: scale(1.04);
+  }
+
+  .report-card__cover--placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: var(--c-dark);
+    color: var(--c-white);
+  }
+
+  .report-card__cover-year {
+    font-family: var(--font-display);
+    font-size: 2.5rem;
+    font-weight: 700;
+    color: var(--c-yellow);
+  }
+
+  .report-card__cover-label {
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.6);
+    margin-top: var(--space-xs);
+  }
+
+  .report-card__info {
+    padding: var(--space-lg);
+  }
+
+  .report-card__title {
+    display: block;
+    font-weight: 600;
+    color: var(--c-dark);
+  }
+
+  .report-card__desc {
+    display: block;
+    font-size: 0.875rem;
+    color: var(--c-text-muted);
+    margin-top: var(--space-xs);
+  }
+
+  .empty-annual {
+    text-align: center;
+    padding: var(--space-2xl);
+    background: var(--c-white);
+    border: 2px dashed var(--c-border);
+    border-radius: var(--border-radius-lg);
+    color: var(--c-text-muted);
+    font-size: 1.05rem;
+  }
+
+  /* ─── Other Documents ──────────────────── */
+  .other-docs {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+    max-width: 600px;
+  }
+
+  .other-doc {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    padding: var(--space-md) var(--space-lg);
+    background: var(--c-warm-gray);
+    border-radius: var(--border-radius);
+    transition: all var(--transition-fast);
+    text-decoration: none;
+    color: var(--c-text);
+    font-weight: 500;
+  }
+
+  .other-doc:hover {
+    background: var(--c-yellow);
+    color: var(--c-dark);
+  }
+
+  .other-doc span {
+    flex: 1;
+  }
+
+  .other-doc__arrow {
+    opacity: 0.4;
+    transition: opacity var(--transition-fast);
+  }
+
+  .other-doc:hover .other-doc__arrow {
+    opacity: 1;
+  }
+
+  /* ─── Responsive ───────────────────────── */
+  @media (max-width: 600px) {
+    .doc-grid {
+      grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+      gap: var(--space-sm);
+    }
+
+    .doc-card {
+      padding: var(--space-md) var(--space-sm);
+    }
+
+    .doc-card__year {
+      font-size: 1.1rem;
+    }
+
+    .doc-section-header {
+      flex-direction: column;
+      gap: var(--space-md);
+    }
+
+    .report-grid {
+      grid-template-columns: 1fr 1fr;
+      gap: var(--space-md);
+    }
+  }
+</style>

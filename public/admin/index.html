@@ -396,6 +396,7 @@
     .badge-green { background: #C6F6D5; color: #22543D; }
     .badge-yellow { background: #FEFCBF; color: #744210; }
     .badge-purple { background: rgba(122,0,223,0.1); color: #7A00DF; }
+    .badge-gray { background: #E2E8F0; color: #4A5568; }
 
     /* ─── Spinner ─────────────────────────── */
     .spinner {
@@ -1443,74 +1444,341 @@
     // ═══════════════════════════════════════════
     function Financials({ addToast }) {
       const [files, setFiles] = useState([]);
+      const [data, setData] = useState({ documents: [], annualReports: [] });
+      const [dataSha, setDataSha] = useState(null);
       const [loading, setLoading] = useState(true);
       const [uploading, setUploading] = useState(false);
+      const [saving, setSaving] = useState(false);
+      const [tab, setTab] = useState('documents'); // documents | annual-reports | upload
+      const [showAddDoc, setShowAddDoc] = useState(false);
+      const [showAddReport, setShowAddReport] = useState(false);
+      const [newDoc, setNewDoc] = useState({ title: '', year: new Date().getFullYear(), type: '990', url: '', source: 'local' });
+      const [newReport, setNewReport] = useState({ title: '', year: new Date().getFullYear(), url: '', coverImage: '', description: '' });
 
-      const loadFiles = async () => {
+      const loadAll = async () => {
         setLoading(true);
         try {
-          const res = await api.listContent('public/financials');
-          if (res.success) setFiles(res.files);
+          // Load uploaded files
+          const filesRes = await api.listContent('public/financials');
+          if (filesRes.success) setFiles(filesRes.files);
           else setFiles([]);
-        } catch {
-          setFiles([]);
-        }
+          // Load JSON metadata
+          const jsonRes = await api.readContent('src/content/site/financials.json');
+          if (jsonRes.success) {
+            const parsed = JSON.parse(jsonRes.content);
+            setData(parsed);
+            setDataSha(jsonRes.sha);
+          }
+        } catch { /* ignore */ }
         setLoading(false);
       };
 
-      useEffect(() => { loadFiles(); }, []);
+      useEffect(() => { loadAll(); }, []);
+
+      const saveData = async (newData) => {
+        setSaving(true);
+        try {
+          const res = await api.saveContent(
+            'src/content/site/financials.json',
+            JSON.stringify(newData, null, 2),
+            'Update financial documents metadata',
+            dataSha || undefined
+          );
+          if (res.success) {
+            setData(newData);
+            setDataSha(res.sha || dataSha);
+            addToast('Financials saved!', 'success');
+          } else {
+            addToast('Save failed: ' + (res.error || 'Unknown'), 'error');
+          }
+        } catch (err) {
+          addToast('Error: ' + err.message, 'error');
+        }
+        setSaving(false);
+      };
 
       const handleUpload = async (fileList) => {
         setUploading(true);
         for (const file of fileList) {
           const safeName = file.name.replace(/[^a-z0-9._-]/gi, '-');
-          const path = `public/financials/${safeName}`;
+          const path = 'public/financials/' + safeName;
           try {
-            const res = await api.uploadFile(file, path, `Upload financial doc: ${file.name}`);
-            if (res.success) {
-              addToast(`Uploaded ${file.name}`, 'success');
-            } else {
-              addToast(`Failed: ${res.error}`, 'error');
-            }
-          } catch (err) {
-            addToast(`Error: ${err.message}`, 'error');
-          }
+            const res = await api.uploadFile(file, path, 'Upload financial doc: ' + file.name);
+            if (res.success) addToast('Uploaded ' + file.name, 'success');
+            else addToast('Failed: ' + res.error, 'error');
+          } catch (err) { addToast('Error: ' + err.message, 'error'); }
         }
         setUploading(false);
-        loadFiles();
+        loadAll();
       };
 
+      const addDocument = () => {
+        if (!newDoc.title || !newDoc.url) { addToast('Title and URL required', 'error'); return; }
+        const updated = { ...data, documents: [...data.documents, { ...newDoc }] };
+        saveData(updated);
+        setNewDoc({ title: '', year: new Date().getFullYear(), type: '990', url: '', source: 'local' });
+        setShowAddDoc(false);
+      };
+
+      const removeDocument = (idx) => {
+        if (!confirm('Remove this document entry?')) return;
+        const updated = { ...data, documents: data.documents.filter((_, i) => i !== idx) };
+        saveData(updated);
+      };
+
+      const addReport = () => {
+        if (!newReport.title || !newReport.url) { addToast('Title and URL required', 'error'); return; }
+        const updated = { ...data, annualReports: [...(data.annualReports || []), { ...newReport }] };
+        saveData(updated);
+        setNewReport({ title: '', year: new Date().getFullYear(), url: '', coverImage: '', description: '' });
+        setShowAddReport(false);
+      };
+
+      const removeReport = (idx) => {
+        if (!confirm('Remove this annual report?')) return;
+        const updated = { ...data, annualReports: (data.annualReports || []).filter((_, i) => i !== idx) };
+        saveData(updated);
+      };
+
+      const docs990 = data.documents.filter(d => d.type === '990').sort((a, b) => b.year - a.year);
+      const docsAudit = data.documents.filter(d => d.type === 'audit').sort((a, b) => b.year - a.year);
+      const docsOther = data.documents.filter(d => d.type === 'other').sort((a, b) => b.year - a.year);
+      const reports = (data.annualReports || []).sort((a, b) => b.year - a.year);
+
+      if (loading) return html`<div style="text-align:center;padding:4rem;"><span class="spinner" /></div>`;
+
       return html`
-        <div class="page-header"><h2>Financial Documents</h2></div>
-        <div class="card">
-          <p class="text-sm text-muted mb-1">Upload 990s, annual reports, and audits. Files go to <code>/financials/</code> on the site.</p>
-          <${DropZone} onFiles=${handleUpload} accept=".pdf,.doc,.docx"
-            label="PDF files — 990s, annual reports, audits" />
-          ${uploading ? html`<div class="mt-2 text-sm"><span class="spinner" /> Uploading...</div>` : null}
+        <div class="page-header">
+          <h2>Financial Documents</h2>
+          <p class="text-sm text-muted">Manages the <a href="/about/financials/" target="_blank">/about/financials/</a> page</p>
         </div>
-        <div class="card mt-2">
-          <h3 style="margin-bottom: 1rem;">Uploaded Documents</h3>
-          ${loading ? html`<div style="text-align:center; padding: 2rem;"><span class="spinner" /></div>` : null}
-          ${!loading && files.length === 0 ? html`
-            <div class="empty-state">
-              <div class="empty-state-icon">📂</div>
-              <p>No financial documents yet.</p>
-              <p class="text-sm">Upload your first 990 or annual report above.</p>
+
+        <!-- Tab Nav -->
+        <div style="display:flex;gap:0.5rem;margin-bottom:1.5rem;flex-wrap:wrap;">
+          ${['documents', 'annual-reports', 'upload'].map(t => html`
+            <button key=${t} class="btn ${tab === t ? 'btn-primary' : 'btn-ghost'} btn-sm"
+              onClick=${() => setTab(t)}>
+              ${t === 'documents' ? '📄 990s & Audits' : t === 'annual-reports' ? '📊 Annual Reports' : '📁 Upload Files'}
+            </button>
+          `)}
+        </div>
+
+        <!-- Documents Tab -->
+        ${tab === 'documents' ? html`
+          <div class="card">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+              <h3>990 Tax Returns (${docs990.length})</h3>
+              <button class="btn btn-primary btn-sm" onClick=${() => { setNewDoc({...newDoc, type: '990'}); setShowAddDoc(true); }}>+ Add 990</button>
+            </div>
+            ${docs990.length === 0 ? html`<p class="text-sm text-muted">No 990s yet.</p>` : html`
+              <div class="table-wrap"><table>
+                <thead><tr><th>Year</th><th>Title</th><th>Source</th><th></th></tr></thead>
+                <tbody>${docs990.map((d, i) => {
+                  const realIdx = data.documents.indexOf(d);
+                  return html`<tr key=${i}>
+                    <td><strong>${d.year}</strong></td>
+                    <td class="text-sm">${d.title}</td>
+                    <td><span class="badge ${d.source === 'local' ? 'badge-green' : 'badge-gray'}">${d.source}</span></td>
+                    <td style="text-align:right;">
+                      <a href=${d.url} target="_blank" class="btn btn-ghost btn-sm">View ↗</a>
+                      <button class="btn btn-ghost btn-sm" style="color:#c00;" onClick=${() => removeDocument(realIdx)}>✕</button>
+                    </td>
+                  </tr>`;
+                })}</tbody>
+              </table></div>
+            `}
+          </div>
+
+          <div class="card mt-2">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+              <h3>Audited Financials (${docsAudit.length})</h3>
+              <button class="btn btn-primary btn-sm" onClick=${() => { setNewDoc({...newDoc, type: 'audit'}); setShowAddDoc(true); }}>+ Add Audit</button>
+            </div>
+            ${docsAudit.length === 0 ? html`<p class="text-sm text-muted">No audits yet.</p>` : html`
+              <div class="table-wrap"><table>
+                <thead><tr><th>Year</th><th>Title</th><th>Source</th><th></th></tr></thead>
+                <tbody>${docsAudit.map((d, i) => {
+                  const realIdx = data.documents.indexOf(d);
+                  return html`<tr key=${i}>
+                    <td><strong>${d.year}</strong></td>
+                    <td class="text-sm">${d.title}</td>
+                    <td><span class="badge ${d.source === 'local' ? 'badge-green' : 'badge-gray'}">${d.source}</span></td>
+                    <td style="text-align:right;">
+                      <a href=${d.url} target="_blank" class="btn btn-ghost btn-sm">View ↗</a>
+                      <button class="btn btn-ghost btn-sm" style="color:#c00;" onClick=${() => removeDocument(realIdx)}>✕</button>
+                    </td>
+                  </tr>`;
+                })}</tbody>
+              </table></div>
+            `}
+          </div>
+
+          ${docsOther.length > 0 ? html`
+            <div class="card mt-2">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+                <h3>Other Documents (${docsOther.length})</h3>
+                <button class="btn btn-primary btn-sm" onClick=${() => { setNewDoc({...newDoc, type: 'other'}); setShowAddDoc(true); }}>+ Add</button>
+              </div>
+              <div class="table-wrap"><table>
+                <thead><tr><th>Title</th><th>Source</th><th></th></tr></thead>
+                <tbody>${docsOther.map((d, i) => {
+                  const realIdx = data.documents.indexOf(d);
+                  return html`<tr key=${i}>
+                    <td><strong>${d.title}</strong></td>
+                    <td><span class="badge ${d.source === 'local' ? 'badge-green' : 'badge-gray'}">${d.source}</span></td>
+                    <td style="text-align:right;">
+                      <a href=${d.url} target="_blank" class="btn btn-ghost btn-sm">View ↗</a>
+                      <button class="btn btn-ghost btn-sm" style="color:#c00;" onClick=${() => removeDocument(realIdx)}>✕</button>
+                    </td>
+                  </tr>`;
+                })}</tbody>
+              </table></div>
             </div>
           ` : null}
-          ${!loading && files.length > 0 ? html`
-            <div class="table-wrap"><table>
-              <thead><tr><th>File</th><th>Size</th><th>Link</th></tr></thead>
-              <tbody>
-                ${files.map(f => html`<tr key=${f.name}>
-                  <td>📄 <strong>${f.name}</strong></td>
-                  <td class="text-sm text-muted">${(f.size / 1024).toFixed(0)} KB</td>
-                  <td><a href="/financials/${f.name}" target="_blank" class="btn btn-ghost btn-sm">View ↗</a></td>
-                </tr>`)}
-              </tbody>
-            </table></div>
+
+          <!-- Add Document Modal -->
+          ${showAddDoc ? html`
+            <div class="modal-overlay" onClick=${() => setShowAddDoc(false)}>
+              <div class="modal-content" onClick=${e => e.stopPropagation()}>
+                <h3 style="margin-bottom:1rem;">Add Financial Document</h3>
+                <div class="form-group">
+                  <label>Type</label>
+                  <select value=${newDoc.type} onChange=${e => setNewDoc({...newDoc, type: e.target.value})}>
+                    <option value="990">990 Tax Return</option>
+                    <option value="audit">Audited Financials</option>
+                    <option value="other">Other Document</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label>Year</label>
+                  <input type="number" min="2012" max="2030" value=${newDoc.year}
+                    onChange=${e => setNewDoc({...newDoc, year: parseInt(e.target.value)})} />
+                </div>
+                <div class="form-group">
+                  <label>Title</label>
+                  <input type="text" placeholder="e.g. 2024 990 Tax Return" value=${newDoc.title}
+                    onChange=${e => setNewDoc({...newDoc, title: e.target.value})} />
+                </div>
+                <div class="form-group">
+                  <label>URL / Path</label>
+                  <input type="text" placeholder="/financials/filename.pdf or full URL" value=${newDoc.url}
+                    onChange=${e => setNewDoc({...newDoc, url: e.target.value, source: e.target.value.startsWith('http') ? 'external' : 'local'})} />
+                  <small class="text-sm text-muted">Use /financials/filename.pdf for uploaded files, or a full URL for external links.</small>
+                </div>
+                <div style="display:flex;gap:0.75rem;margin-top:1.25rem;">
+                  <button class="btn btn-primary btn-sm" onClick=${addDocument} disabled=${saving}>
+                    ${saving ? html`<span class="spinner" />` : 'Add Document'}
+                  </button>
+                  <button class="btn btn-ghost btn-sm" onClick=${() => setShowAddDoc(false)}>Cancel</button>
+                </div>
+              </div>
+            </div>
           ` : null}
-        </div>
+        ` : null}
+
+        <!-- Annual Reports Tab -->
+        ${tab === 'annual-reports' ? html`
+          <div class="card">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+              <h3>Annual Reports (${reports.length})</h3>
+              <button class="btn btn-primary btn-sm" onClick=${() => setShowAddReport(true)}>+ Add Report</button>
+            </div>
+            ${reports.length === 0 ? html`
+              <div class="empty-state">
+                <div class="empty-state-icon">📊</div>
+                <p>No annual reports yet.</p>
+                <p class="text-sm">Add your first annual report with a cover image and PDF link.</p>
+              </div>
+            ` : html`
+              <div class="table-wrap"><table>
+                <thead><tr><th>Year</th><th>Title</th><th>Cover</th><th></th></tr></thead>
+                <tbody>${reports.map((r, i) => html`<tr key=${i}>
+                  <td><strong>${r.year}</strong></td>
+                  <td>
+                    <div>${r.title}</div>
+                    ${r.description ? html`<div class="text-sm text-muted">${r.description}</div>` : null}
+                  </td>
+                  <td>${r.coverImage ? html`<img src=${r.coverImage} alt="" style="width:40px;height:52px;object-fit:cover;border-radius:4px;" />` : html`<span class="text-sm text-muted">—</span>`}</td>
+                  <td style="text-align:right;">
+                    <a href=${r.url} target="_blank" class="btn btn-ghost btn-sm">View ↗</a>
+                    <button class="btn btn-ghost btn-sm" style="color:#c00;" onClick=${() => removeReport(i)}>✕</button>
+                  </td>
+                </tr>`)}</tbody>
+              </table></div>
+            `}
+          </div>
+
+          <!-- Add Report Modal -->
+          ${showAddReport ? html`
+            <div class="modal-overlay" onClick=${() => setShowAddReport(false)}>
+              <div class="modal-content" onClick=${e => e.stopPropagation()}>
+                <h3 style="margin-bottom:1rem;">Add Annual Report</h3>
+                <div class="form-group">
+                  <label>Year</label>
+                  <input type="number" min="2012" max="2030" value=${newReport.year}
+                    onChange=${e => setNewReport({...newReport, year: parseInt(e.target.value)})} />
+                </div>
+                <div class="form-group">
+                  <label>Title</label>
+                  <input type="text" placeholder="e.g. 2024 Annual Report" value=${newReport.title}
+                    onChange=${e => setNewReport({...newReport, title: e.target.value})} />
+                </div>
+                <div class="form-group">
+                  <label>PDF URL</label>
+                  <input type="text" placeholder="/financials/annual-report-2024.pdf" value=${newReport.url}
+                    onChange=${e => setNewReport({...newReport, url: e.target.value})} />
+                </div>
+                <div class="form-group">
+                  <label>Cover Image URL <span class="text-sm text-muted">(optional)</span></label>
+                  <input type="text" placeholder="Cloudflare Images URL for cover" value=${newReport.coverImage}
+                    onChange=${e => setNewReport({...newReport, coverImage: e.target.value})} />
+                </div>
+                <div class="form-group">
+                  <label>Description <span class="text-sm text-muted">(optional)</span></label>
+                  <input type="text" placeholder="Short description" value=${newReport.description}
+                    onChange=${e => setNewReport({...newReport, description: e.target.value})} />
+                </div>
+                <div style="display:flex;gap:0.75rem;margin-top:1.25rem;">
+                  <button class="btn btn-primary btn-sm" onClick=${addReport} disabled=${saving}>
+                    ${saving ? html`<span class="spinner" />` : 'Add Report'}
+                  </button>
+                  <button class="btn btn-ghost btn-sm" onClick=${() => setShowAddReport(false)}>Cancel</button>
+                </div>
+              </div>
+            </div>
+          ` : null}
+        ` : null}
+
+        <!-- Upload Tab -->
+        ${tab === 'upload' ? html`
+          <div class="card">
+            <p class="text-sm text-muted mb-1">Upload PDFs to <code>/financials/</code>. After uploading, add a document entry in the 990s & Audits tab to make it appear on the page.</p>
+            <${DropZone} onFiles=${handleUpload} accept=".pdf,.doc,.docx"
+              label="PDF files — 990s, annual reports, audits" />
+            ${uploading ? html`<div class="mt-2 text-sm"><span class="spinner" /> Uploading...</div>` : null}
+          </div>
+          <div class="card mt-2">
+            <h3 style="margin-bottom: 1rem;">Uploaded Files (${files.length})</h3>
+            ${files.length === 0 ? html`
+              <div class="empty-state">
+                <div class="empty-state-icon">📂</div>
+                <p>No files uploaded yet.</p>
+              </div>
+            ` : html`
+              <div class="table-wrap"><table>
+                <thead><tr><th>File</th><th>Size</th><th>Path</th><th>Link</th></tr></thead>
+                <tbody>
+                  ${files.map(f => html`<tr key=${f.name}>
+                    <td>📄 <strong>${f.name}</strong></td>
+                    <td class="text-sm text-muted">${(f.size / 1024).toFixed(0)} KB</td>
+                    <td class="text-sm"><code>/financials/${f.name}</code></td>
+                    <td><a href="/financials/${f.name}" target="_blank" class="btn btn-ghost btn-sm">View ↗</a></td>
+                  </tr>`)}
+                </tbody>
+              </table></div>
+            `}
+          </div>
+        ` : null}
       `;
     }
 

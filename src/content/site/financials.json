@@ -1,0 +1,187 @@
+{
+  "documents": [
+    {
+      "title": "2024 990 Tax Return",
+      "year": 2024,
+      "type": "990",
+      "url": "/financials/2024-SOARD-990-Final-1-1.pdf",
+      "source": "local"
+    },
+    {
+      "title": "2023 990 Tax Return",
+      "year": 2023,
+      "type": "990",
+      "url": "/financials/2023_990.pdf",
+      "source": "local"
+    },
+    {
+      "title": "2022 990 Tax Return",
+      "year": 2022,
+      "type": "990",
+      "url": "/financials/2022-990.pdf",
+      "source": "local"
+    },
+    {
+      "title": "2021 990 Tax Return",
+      "year": 2021,
+      "type": "990",
+      "url": "/financials/2021-990-Returns-2.pdf",
+      "source": "local"
+    },
+    {
+      "title": "2020 990 Tax Return",
+      "year": 2020,
+      "type": "990",
+      "url": "/financials/2020-990-Sunshine-on-a-Ranney-DayTax-Return-3.pdf",
+      "source": "local"
+    },
+    {
+      "title": "2019 990 Tax Return",
+      "year": 2019,
+      "type": "990",
+      "url": "https://0d31564e-4b7e-49f5-87bd-6f4c09651fa0.filesusr.com/ugd/2b5272_496aa4666a6d4cecb43451f4b21edc4e.pdf",
+      "source": "external"
+    },
+    {
+      "title": "2018 990 Tax Return",
+      "year": 2018,
+      "type": "990",
+      "url": "https://0d31564e-4b7e-49f5-87bd-6f4c09651fa0.filesusr.com/ugd/2b5272_0c032f7800a149a1af2aa5bd27778aff.pdf",
+      "source": "external"
+    },
+    {
+      "title": "2017 990 Tax Return",
+      "year": 2017,
+      "type": "990",
+      "url": "https://0d31564e-4b7e-49f5-87bd-6f4c09651fa0.filesusr.com/ugd/e4f885_393114189b4e461f8a5da20c517b5ecf.pdf?index=true",
+      "source": "external"
+    },
+    {
+      "title": "2016 990 Tax Return",
+      "year": 2016,
+      "type": "990",
+      "url": "https://0d31564e-4b7e-49f5-87bd-6f4c09651fa0.filesusr.com/ugd/e4f885_001e0d287bc149ee8bfa595d8260175d.pdf?index=true",
+      "source": "external"
+    },
+    {
+      "title": "2015 990 Tax Return",
+      "year": 2015,
+      "type": "990",
+      "url": "https://0d31564e-4b7e-49f5-87bd-6f4c09651fa0.filesusr.com/ugd/e4f885_546c913c9679423f989e6966f58c544e.pdf?index=true",
+      "source": "external"
+    },
+    {
+      "title": "2014 990 Tax Return",
+      "year": 2014,
+      "type": "990",
+      "url": "https://0d31564e-4b7e-49f5-87bd-6f4c09651fa0.filesusr.com/ugd/e4f885_5df75d4de1464d0db7cfd036220cc172.pdf?index=true",
+      "source": "external"
+    },
+    {
+      "title": "2013 990 Tax Return",
+      "year": 2013,
+      "type": "990",
+      "url": "https://0d31564e-4b7e-49f5-87bd-6f4c09651fa0.filesusr.com/ugd/e4f885_d89e6c33d3344756aab20fd81f662a32.pdf?index=true",
+      "source": "external"
+    },
+    {
+      "title": "2012 990 Tax Return",
+      "year": 2012,
+      "type": "990",
+      "url": "https://0d31564e-4b7e-49f5-87bd-6f4c09651fa0.filesusr.com/ugd/e4f885_c91d2f25002c48158240b17b925cafc3.pdf?index=true",
+      "source": "external"
+    },
+    {
+      "title": "2024 Audited Financials",
+      "year": 2024,
+      "type": "audit",
+      "url": "/financials/2024-Audit-Final.pdf",
+      "source": "local"
+    },
+    {
+      "title": "2023 Audited Financials",
+      "year": 2023,
+      "type": "audit",
+      "url": "/financials/2023-SOARD-Audit-Final.pdf",
+      "source": "local"
+    },
+    {
+      "title": "2022 Audited Financials",
+      "year": 2022,
+      "type": "audit",
+      "url": "/financials/2022_Audit.pdf",
+      "source": "local"
+    },
+    {
+      "title": "2021 Audited Financials",
+      "year": 2021,
+      "type": "audit",
+      "url": "/financials/2021-Audit-1.pdf",
+      "source": "local"
+    },
+    {
+      "title": "2020 Audited Financials",
+      "year": 2020,
+      "type": "audit",
+      "url": "/financials/2020-Sunshine-Audit-1.pdf",
+      "source": "local"
+    },
+    {
+      "title": "2019 Audited Financials",
+      "year": 2019,
+      "type": "audit",
+      "url": "https://0d31564e-4b7e-49f5-87bd-6f4c09651fa0.filesusr.com/ugd/2b5272_14496ea01fbd4f8780395f82824959ba.pdf",
+      "source": "external"
+    },
+    {
+      "title": "2018 Audited Financials",
+      "year": 2018,
+      "type": "audit",
+      "url": "https://0d31564e-4b7e-49f5-87bd-6f4c09651fa0.filesusr.com/ugd/2b5272_60d90e3537f44fb5a7a93a5884d08006.pdf",
+      "source": "external"
+    },
+    {
+      "title": "2017 Audited Financials",
+      "year": 2017,
+      "type": "audit",
+      "url": "https://0d31564e-4b7e-49f5-87bd-6f4c09651fa0.filesusr.com/ugd/e4f885_971a4e4a3bf843cb80429ababf577ab8.pdf?index=true",
+      "source": "external"
+    },
+    {
+      "title": "2016 Audited Financials",
+      "year": 2016,
+      "type": "audit",
+      "url": "https://0d31564e-4b7e-49f5-87bd-6f4c09651fa0.filesusr.com/ugd/e4f885_6b8919130d19453e8da3ad33a1cd2168.pdf?index=true",
+      "source": "external"
+    },
+    {
+      "title": "2015 Audited Financials",
+      "year": 2015,
+      "type": "audit",
+      "url": "https://0d31564e-4b7e-49f5-87bd-6f4c09651fa0.filesusr.com/ugd/e4f885_19de432c664842d4bc42288cb2d2abdc.pdf?index=true",
+      "source": "external"
+    },
+    {
+      "title": "2014 Audited Financials",
+      "year": 2014,
+      "type": "audit",
+      "url": "https://0d31564e-4b7e-49f5-87bd-6f4c09651fa0.filesusr.com/ugd/e4f885_7a17ef1a2e06492e8e9c765ae03524ca.pdf",
+      "source": "external"
+    },
+    {
+      "title": "2013 Audited Financials",
+      "year": 2013,
+      "type": "audit",
+      "url": "https://0d31564e-4b7e-49f5-87bd-6f4c09651fa0.filesusr.com/ugd/e4f885_252f22dfa4bd4f5a9b8d137f2104ede9.pdf?index=true",
+      "source": "external"
+    },
+    {
+      "title": "501(c)(3) Ruling Letter",
+      "year": 2012,
+      "type": "other",
+      "url": "https://0d31564e-4b7e-49f5-87bd-6f4c09651fa0.filesusr.com/ugd/e4f885_79646ca731834d40ac271006b3d4bb2f.pdf?index=true",
+      "source": "external"
+    }
+  ],
+  "annualReports": []
+}
