@@ -148,16 +148,15 @@ import BaseLayout from '../layouts/BaseLayout.astro';
           <input type="number" class="custom-amount-input" placeholder="Other amount" min="1" aria-label="Custom donation amount" />
         </div>
 
-        <!-- CTA -->
-        <a
-          href="https://www.zeffy.com/en-US/donation-form/help-build-a-brighter-home"
-          target="_blank"
-          rel="noopener noreferrer"
+        <!-- CTA — opens Zeffy modal popup on the page -->
+        <button
+          type="button"
           class="donate-cta-btn"
           id="donate-cta"
+          zeffy-form-link="https://www.zeffy.com/en-US/embed/donation-form/help-build-a-brighter-home?modal=true"
         >
           Donate $500 →
-        </a>
+        </button>
 
         <p class="donate-powered">Secure payment via <strong>Zeffy</strong> · Tax receipt sent instantly</p>
       </div>
@@ -1112,7 +1111,15 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 </style>
 
 <script>
-  // Minimal scroll reveal observer (~300 bytes minified)
+  // Zeffy popup embed script
+  (function() {
+    var s = document.createElement('script');
+    s.src = 'https://zeffy-scripts.s3.ca-central-1.amazonaws.com/embed-form-script.min.js';
+    s.async = true;
+    document.head.appendChild(s);
+  })();
+
+  // Minimal scroll reveal observer
   const o = new IntersectionObserver(
     (e) => e.forEach((i) => { if (i.isIntersecting) i.target.classList.add('is-visible'); }),
     { threshold: 0.1, rootMargin: '0px 0px -40px 0px' }
@@ -1120,7 +1127,6 @@ import BaseLayout from '../layouts/BaseLayout.astro';
   document.querySelectorAll('[data-reveal]').forEach((el) => o.observe(el));
 
   // Donation UI interactivity
-  const ZEFFY_URL = 'https://www.zeffy.com/en-US/donation-form/help-build-a-brighter-home';
   const freqBtns = document.querySelectorAll('.freq-btn');
   const amountBtns = document.querySelectorAll('.amount-btn');
   const customInput = document.querySelector('.custom-amount-input');
@@ -1132,7 +1138,6 @@ import BaseLayout from '../layouts/BaseLayout.astro';
     const display = selectedAmount >= 1 ? `$${selectedAmount.toLocaleString()}` : '';
     const freqLabel = selectedFreq === 'monthly' ? '/month' : '';
     ctaBtn.textContent = display ? `Donate ${display}${freqLabel} →` : 'Donate Now →';
-    ctaBtn.href = ZEFFY_URL;
   }
 
   freqBtns.forEach(btn => {
