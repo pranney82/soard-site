@@ -885,6 +885,17 @@
         }));
       };
 
+      // Auto-generate SEO fields when enough context is filled in (new kids only)
+      const seoAutoRan = useRef(false);
+      useEffect(() => {
+        if (slug) return; // editing existing kid — don't auto-run
+        if (seoAutoRan.current || generatingSeo) return;
+        if (!data.name || (!data.diagnosis && !data.bio)) return;
+        if (data.shortDescription || data.metaDescription) return;
+        seoAutoRan.current = true;
+        handleGenerateSeo();
+      }, [data.name, data.diagnosis, data.bio]);
+
       // Auto-generate alt text when all uploads finish
       const prevUploadCount = useRef(0);
       useEffect(() => {
@@ -1201,10 +1212,10 @@
           <div class="flex items-center justify-between mb-1">
             <h3>SEO & Descriptions</h3>
             <button class="btn btn-secondary btn-sm" onClick=${handleGenerateSeo} disabled=${generatingSeo}>
-              ${generatingSeo ? html`<span class="spinner" />` : '✨'} ${generatingSeo ? 'Generating...' : 'Generate with AI'}
+              ${generatingSeo ? html`<span class="spinner" />` : '✨'} ${generatingSeo ? 'Generating...' : 'Regenerate with AI'}
             </button>
           </div>
-          <p class="text-sm text-muted mb-1">AI generates these from the name, diagnosis, and bio above.</p>
+          <p class="text-sm text-muted mb-1">Auto-generates when you fill in name + diagnosis or bio. Click to regenerate anytime.</p>
           <div class="form-group">
             <label class="form-label">Short Description</label>
             <textarea class="form-textarea" style="min-height: 80px;" value=${data.shortDescription || ''}
