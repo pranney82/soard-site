@@ -200,13 +200,16 @@ function isGroupActive(group: NavGroup) {
     <!-- Mobile nav header: logo + close -->
     <div class="mobile-nav-header">
       <a href="/" class="mobile-nav-logo" aria-label="Sunshine on a Ranney Day — Home">
-        <img
-          src="/images/logos/logo-light-bg.webp"
-          alt="Sunshine on a Ranney Day"
-          width="140"
-          height="52"
-          loading="eager"
-        />
+        <picture>
+          <source srcset="/images/logos/logo-dark-bg.webp" type="image/webp" />
+          <img
+            src="/images/logos/logo-dark-bg.png"
+            alt="Sunshine on a Ranney Day"
+            width="140"
+            height="52"
+            loading="eager"
+          />
+        </picture>
       </a>
       <button
         type="button"
@@ -234,13 +237,11 @@ function isGroupActive(group: NavGroup) {
                     class:list={['mobile-nav-link', { active: isActive(child.href) }]}
                     {...(child.external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
                   >
-                    {child.label}
+                    <span class="mobile-nav-link-text">{child.label}</span>
                     {child.external && (
-                      <span class="mobile-external-badge" aria-label="Opens in new tab">
-                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-                          <path d="M4.5 1.5H1.5V10.5H10.5V7.5M7 1.5H10.5M10.5 1.5V5M10.5 1.5L5.5 6.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
-                        </svg>
-                      </span>
+                      <svg class="mobile-external-icon" width="14" height="14" viewBox="0 0 14 14" fill="none" aria-label="Opens in new tab">
+                        <path d="M5.25 2H2V12H12V8.75M8.5 2H12M12 2V5.5M12 2L6.5 7.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+                      </svg>
                     )}
                   </a>
                 </li>
@@ -860,20 +861,20 @@ function isGroupActive(group: NavGroup) {
     position: fixed;
     top: 0;
     right: 0;
-    width: min(360px, 90vw);
+    width: min(380px, 92vw);
     height: 100vh;
     height: 100dvh;
-    background: var(--c-white);
+    background: var(--c-dark);
     display: flex;
     flex-direction: column;
-    padding: 0 var(--space-lg);
-    padding-right: max(var(--space-lg), env(safe-area-inset-right));
+    padding: 0 var(--space-xl);
+    padding-right: max(var(--space-xl), env(safe-area-inset-right));
     overflow: hidden;
     transform: translateX(100%);
     will-change: transform;
-    transition: transform 0.35s cubic-bezier(0.32, 0.72, 0, 1);
+    transition: transform 0.4s cubic-bezier(0.32, 0.72, 0, 1);
     z-index: 1000;
-    box-shadow: -8px 0 30px rgba(0, 0, 0, 0.15);
+    box-shadow: -12px 0 40px rgba(0, 0, 0, 0.35);
   }
 
   .mobile-nav.is-open { transform: translateX(0); }
@@ -882,13 +883,13 @@ function isGroupActive(group: NavGroup) {
     .mobile-nav, .mobile-overlay { display: none !important; }
   }
 
-  /* ─── Mobile Nav Content ───────────────── */
+  /* ─── Mobile Nav Header ────────────────── */
   .mobile-nav-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: var(--space-lg) 0 var(--space-md);
-    border-bottom: 1px solid var(--c-border);
+    padding: var(--space-lg) 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
     flex-shrink: 0;
   }
 
@@ -898,7 +899,7 @@ function isGroupActive(group: NavGroup) {
   }
 
   .mobile-nav-logo img {
-    height: 44px;
+    height: 42px;
     width: auto;
     flex-shrink: 0;
   }
@@ -909,11 +910,11 @@ function isGroupActive(group: NavGroup) {
     justify-content: center;
     width: 44px;
     height: 44px;
-    border: 1px solid var(--c-border);
-    background: var(--c-warm-gray);
-    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 12px;
     cursor: pointer;
-    color: var(--c-text-muted);
+    color: rgba(255, 255, 255, 0.6);
     transition: color var(--transition-fast), background var(--transition-fast), border-color var(--transition-fast);
     -webkit-tap-highlight-color: transparent;
     touch-action: manipulation;
@@ -922,9 +923,9 @@ function isGroupActive(group: NavGroup) {
 
   .mobile-close-btn:hover,
   .mobile-close-btn:focus-visible {
-    color: var(--c-dark);
-    background: var(--c-white);
-    border-color: var(--c-dark);
+    color: var(--c-white);
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.25);
   }
 
   /* ─── Scrollable Nav Body ──────────────── */
@@ -933,22 +934,21 @@ function isGroupActive(group: NavGroup) {
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
     overscroll-behavior: contain;
-    padding: var(--space-md) 0;
+    padding: var(--space-lg) 0;
   }
 
   /* ─── Sticky Footer CTA ────────────────── */
   .mobile-nav-footer {
     flex-shrink: 0;
-    padding: var(--space-md) 0 max(var(--space-lg), env(safe-area-inset-bottom));
-    border-top: 1px solid var(--c-border);
-    background: var(--c-white);
+    padding: var(--space-lg) 0 max(var(--space-xl), env(safe-area-inset-bottom));
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
   }
 
   /* ─── Stagger + Fade-Up Animation ──────── */
   @keyframes mobileNavFadeUp {
     from {
       opacity: 0;
-      transform: translateY(12px);
+      transform: translateY(16px);
     }
     to {
       opacity: 1;
@@ -958,87 +958,78 @@ function isGroupActive(group: NavGroup) {
 
   .mobile-nav-group {
     opacity: 0;
-    transform: translateY(12px);
+    transform: translateY(16px);
   }
 
   .mobile-nav.is-open .mobile-nav-group {
-    animation: mobileNavFadeUp 0.35s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
-    animation-delay: calc(0.08s + var(--stagger) * 0.06s);
+    animation: mobileNavFadeUp 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+    animation-delay: calc(0.1s + var(--stagger) * 0.06s);
   }
 
   .mobile-nav-group + .mobile-nav-group {
-    margin-top: var(--space-md);
-    padding-top: var(--space-md);
-    border-top: 1px solid var(--c-border);
+    margin-top: var(--space-lg);
+    padding-top: var(--space-lg);
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
   }
 
+  /* ─── Section Headings — editorial serif ── */
   .mobile-nav-heading {
     display: block;
-    font-weight: 700;
-    font-size: 0.7rem;
-    text-transform: uppercase;
-    letter-spacing: 0.12em;
-    color: var(--c-text-muted);
-    margin-bottom: 2px;
-    padding-inline: var(--space-sm);
+    font-family: var(--font-display);
+    font-weight: 400;
+    font-style: italic;
+    font-size: 0.75rem;
+    letter-spacing: 0.04em;
+    color: var(--c-yellow);
+    margin-bottom: var(--space-xs);
+    padding-left: 2px;
   }
 
+  /* ─── Nav Links ────────────────────────── */
   .mobile-nav-link {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0.625rem var(--space-sm);
-    font-size: 1rem;
-    font-weight: 450;
-    color: var(--c-text);
-    transition: color var(--transition-fast), background var(--transition-fast);
-    min-height: 44px;
-    border-radius: 8px;
-    margin-inline: calc(-1 * var(--space-sm));
+    padding: 0.75rem 0;
+    font-size: 1.0625rem;
+    font-weight: 400;
+    color: rgba(255, 255, 255, 0.85);
+    transition: color 0.15s ease;
+    min-height: 48px;
+    border-bottom: 1px solid transparent;
   }
 
   .mobile-nav-link:hover {
-    color: var(--c-purple);
-    background: rgba(122, 0, 223, 0.04);
+    color: var(--c-white);
   }
 
-  .mobile-nav-link.active {
-    color: var(--c-purple);
-    font-weight: 600;
-    background: rgba(122, 0, 223, 0.06);
+  .mobile-nav-link-text {
     position: relative;
   }
 
-  .mobile-nav-link.active::before {
-    content: '';
-    position: absolute;
-    left: 0;
-    top: 50%;
-    transform: translateY(-50%);
-    width: 3px;
-    height: 20px;
-    border-radius: 0 3px 3px 0;
-    background: var(--c-purple);
+  /* ─── Active State — brand yellow highlight ── */
+  .mobile-nav-link.active {
+    color: var(--c-white);
+    font-weight: 600;
   }
 
-  .mobile-external-badge {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 24px;
-    height: 24px;
-    border-radius: 6px;
-    background: var(--c-warm-gray);
-    color: var(--c-text-muted);
+  .mobile-nav-link.active .mobile-nav-link-text {
+    background-image: linear-gradient(transparent 55%, var(--c-yellow-soft) 55%);
+    padding-bottom: 1px;
+  }
+
+  /* ─── External Link Icon ───────────────── */
+  .mobile-external-icon {
+    color: rgba(255, 255, 255, 0.3);
     flex-shrink: 0;
-    transition: background var(--transition-fast), color var(--transition-fast);
+    transition: color 0.15s ease;
   }
 
-  .mobile-nav-link:hover .mobile-external-badge {
-    background: rgba(122, 0, 223, 0.08);
-    color: var(--c-purple);
+  .mobile-nav-link:hover .mobile-external-icon {
+    color: rgba(255, 255, 255, 0.6);
   }
 
+  /* ─── Donate CTA ───────────────────────── */
   .mobile-donate-btn {
     display: flex;
     align-items: center;
@@ -1049,18 +1040,17 @@ function isGroupActive(group: NavGroup) {
     background: var(--c-yellow);
     color: var(--c-dark);
     font-weight: 700;
-    font-size: 1.05rem;
+    font-size: 1.0625rem;
     border-radius: 100px;
-    transition: background var(--transition-fast), transform var(--transition-fast), box-shadow var(--transition-fast);
+    transition: background 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
     min-height: 52px;
-    box-shadow: 0 2px 12px rgba(255, 213, 0, 0.3);
     letter-spacing: 0.01em;
   }
 
   .mobile-donate-btn:hover {
     background: var(--c-yellow-hover);
     transform: translateY(-1px);
-    box-shadow: 0 4px 20px rgba(255, 213, 0, 0.45);
+    box-shadow: 0 4px 24px rgba(255, 213, 0, 0.35);
   }
 
   /* ─── Reduced Motion ───────────────────── */
@@ -1081,7 +1071,7 @@ function isGroupActive(group: NavGroup) {
     .logo,
     .mobile-nav-link,
     .mobile-donate-btn,
-    .mobile-external-badge,
+    .mobile-external-icon,
     .mobile-close-btn,
     .skip-nav {
       transition-duration: 0.01ms !important;
