@@ -477,6 +477,18 @@
     .gap-2 { gap: 1rem; }
     .items-center { align-items: center; }
     .justify-between { justify-content: space-between; }
+    /* ─── Image Picker ──────────────────── */
+    .img-picker-modal { max-width: 900px; width: 95vw; max-height: 85vh; display: flex; flex-direction: column; }
+    .img-picker-toolbar { display: flex; gap: 0.75rem; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; }
+    .img-picker-toolbar input { flex: 1; min-width: 200px; }
+    .img-picker-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 0.75rem; overflow-y: auto; flex: 1; padding: 0.25rem; }
+    .img-picker-thumb { position: relative; aspect-ratio: 1; border-radius: 10px; overflow: hidden; cursor: pointer; border: 3px solid transparent; transition: all 0.15s ease; background: #F5F4F0; }
+    .img-picker-thumb:hover { border-color: #FFD500; transform: translateY(-2px); box-shadow: 0 4px 16px rgba(0,0,0,0.12); }
+    .img-picker-thumb.selected { border-color: #FFD500; box-shadow: 0 0 0 2px #FFD500; }
+    .img-picker-thumb img { width: 100%; height: 100%; object-fit: cover; }
+    .img-picker-id { position: absolute; bottom: 0; left: 0; right: 0; background: rgba(0,0,0,0.7); color: #fff; font-size: 0.6rem; padding: 4px 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .img-picker-pager { display: flex; justify-content: center; align-items: center; gap: 0.75rem; padding-top: 1rem; border-top: 1px solid rgba(45,46,51,0.08); margin-top: 0.75rem; }
+    .img-picker-empty { text-align: center; padding: 3rem; color: #6B6C72; grid-column: 1 / -1; }
   </style>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -568,6 +580,10 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ type, kid }),
         });
+        return r.json();
+      },
+      async listImages(page = 1, perPage = 50) {
+        const r = await fetch(`/api/list-images?page=${page}&per_page=${perPage}`);
         return r.json();
       },
     };
@@ -2846,6 +2862,72 @@
     }
 
     // ═══════════════════════════════════════════
+    // IMAGE PICKER MODAL
+    // ═══════════════════════════════════════════
+    function ImagePicker({ onSelect, onClose }) {
+      const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
+      const [images, setImages] = useState([]);
+      const [loading, setLoading] = useState(true);
+      const [page, setPage] = useState(1);
+      const [totalCount, setTotalCount] = useState(0);
+      const [filter, setFilter] = useState('');
+      const perPage = 50;
+
+      const loadPage = async (p) => {
+        setLoading(true);
+        try {
+          const res = await api.listImages(p, perPage);
+          if (res.success) {
+            setImages(res.images || []);
+            setTotalCount(res.totalCount || 0);
+            setPage(p);
+          }
+        } catch (err) {
+          console.error('Failed to load images', err);
+        }
+        setLoading(false);
+      };
+
+      useEffect(() => { loadPage(1); }, []);
+
+      const totalPages = Math.ceil(totalCount / perPage);
+
+      const filtered = filter
+        ? images.filter(img => img.id.toLowerCase().includes(filter.toLowerCase()))
+        : images;
+
+      return html`<div class="modal-overlay" onClick=${onClose}>
+        <div class="modal img-picker-modal" onClick=${e => e.stopPropagation()}>
+          <h3 style="margin-bottom: 0.75rem;">Choose an Image</h3>
+          <div class="img-picker-toolbar">
+            <input class="form-input" type="text" placeholder="Filter by image ID..."
+              value=${filter} onInput=${e => setFilter(e.target.value)} />
+            <span class="text-sm text-muted" style="white-space: nowrap;">${totalCount.toLocaleString()} images total</span>
+          </div>
+          <div class="img-picker-grid">
+            ${loading ? html`<div class="img-picker-empty"><div class="spinner" style="width:32px;height:32px;" /></div>` :
+              filtered.length === 0 ? html`<div class="img-picker-empty">No images on this page match your filter. Try another page or adjust your search.</div>` :
+              filtered.map(img => html`
+                <div key=${img.id} class="img-picker-thumb" title=${img.id}
+                  onClick=${() => { onSelect(img.id); onClose(); }}>
+                  <img src="${CF}/${img.id}/w=280,h=280,fit=cover,f=auto" alt="" loading="lazy" />
+                  <div class="img-picker-id">${img.id}</div>
+                </div>
+              `)
+            }
+          </div>
+          ${totalPages > 1 ? html`
+            <div class="img-picker-pager">
+              <button class="btn btn-ghost btn-sm" disabled=${page <= 1} onClick=${() => loadPage(page - 1)}>← Prev</button>
+              <span class="text-sm">Page ${page} of ${totalPages}</span>
+              <button class="btn btn-ghost btn-sm" disabled=${page >= totalPages} onClick=${() => loadPage(page + 1)}>Next →</button>
+            </div>
+          ` : null}
+        </div>
+      </div>`;
+    }
+
+    // ═══════════════════════════════════════════
     // SITE SETTINGS
     // ═══════════════════════════════════════════
     function SiteSettings({ addToast }) {
@@ -2853,6 +2935,7 @@
       const [saving, setSaving] = useState(false);
       const [sha, setSha] = useState(null);
       const [data, setData] = useState({});
+      const [showImagePicker, setShowImagePicker] = useState(false);
 
       useEffect(() => {
         (async () => {
@@ -2909,6 +2992,10 @@
       if (loading) return html`<div class="card" style="text-align: center; padding: 3rem;"><div class="spinner" style="width: 32px; height: 32px;" /></div>`;
 
       return html`
+        ${showImagePicker ? html`<${ImagePicker}
+          onSelect=${(id) => updateField('homeHero.imageId', id)}
+          onClose=${() => setShowImagePicker(false)}
+        />` : null}
         <div class="page-header">
           <h2>Site Settings</h2>
           <button class="btn btn-primary" onClick=${handleSave} disabled=${saving}>
@@ -2938,7 +3025,7 @@
         </div>
         <div class="card">
           <h3 style="margin-bottom: 1rem;">Home Hero Image</h3>
-          <p class="text-sm text-muted mb-1">The full-bleed background image on the homepage hero. Use a Cloudflare Images ID (e.g. <code>kids/harper/hero-c6a714</code>).</p>
+          <p class="text-sm text-muted mb-1">The full-bleed background image on the homepage hero.</p>
           ${data.homeHero?.imageId ? html`
             <div style="margin: 1rem 0; border-radius: 12px; overflow: hidden; max-height: 200px;">
               <img src=${'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/' + data.homeHero.imageId + '/w=800,f=auto'}
@@ -2947,9 +3034,12 @@
           ` : null}
           <div class="form-group">
             <label class="form-label">Cloudflare Image ID</label>
-            <input class="form-input" value=${data.homeHero?.imageId || ''}
-              placeholder="kids/harper/hero-c6a714"
-              onInput=${e => updateField('homeHero.imageId', e.target.value)} />
+            <div style="display: flex; gap: 0.5rem;">
+              <input class="form-input" style="flex:1" value=${data.homeHero?.imageId || ''}
+                placeholder="kids/harper/hero-c6a714"
+                onInput=${e => updateField('homeHero.imageId', e.target.value)} />
+              <button class="btn btn-ghost" type="button" onClick=${() => setShowImagePicker(true)}>Browse</button>
+            </div>
           </div>
           <div class="form-group">
             <label class="form-label">Alt Text</label>
