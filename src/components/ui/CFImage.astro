@@ -1,9 +1,9 @@
 ---
 /**
  * CFImage.astro
- * Responsive image component. Currently works with direct URLs
- * (WordPress wp-content or Cloudflare Images). When images are on
- * Cloudflare Images, it will generate srcset with width variants.
+ * Responsive image component with automatic srcset generation.
+ * - Cloudflare Images: generates <picture> with AVIF/WebP srcset
+ * - Other URLs (WordPress etc): renders a plain optimized <img>
  */
 interface Props {
   src: string;
@@ -12,8 +12,13 @@ interface Props {
   height?: number;
   sizes?: string;
   loading?: 'lazy' | 'eager';
+  fetchpriority?: 'high' | 'low' | 'auto';
   class?: string;
   style?: string;
+  /** Override default responsive widths (px) */
+  widths?: number[];
+  /** Quality 1-100 for CF transforms */
+  quality?: number;
 }
 
 const {
@@ -23,26 +28,68 @@ const {
   height,
   sizes = '(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw',
   loading = 'lazy',
+  fetchpriority,
   class: className = '',
   style = '',
+  widths = [400, 640, 800, 1024, 1600],
+  quality = 80,
 } = Astro.props;
 
-// TODO: When images are on Cloudflare Images, generate srcset
-// with /cdn-cgi/image/width=X,format=auto/ transform URLs
 const isCFImage = src.includes('imagedelivery.net');
+
+/**
+ * For CF Images URLs like:
+ *   https://imagedelivery.net/HASH/IMAGE_ID/w=800,q=80
+ * We extract the base (everything before the last slash) and generate
+ * srcset entries with width + format transforms.
+ */
+function cfSrcset(format: 'avif' | 'webp'): string {
+  // Strip any existing transform suffix to get the base path
+  // CF Images URL: https://imagedelivery.net/HASH/IMAGE_ID/transforms
+  const lastSlash = src.lastIndexOf('/');
+  const base = src.substring(0, lastSlash);
+  return widths.map(w => `${base}/w=${w},f=${format},q=${quality} ${w}w`).join(', ');
+}
+
+function cfFallbackSrc(): string {
+  const lastSlash = src.lastIndexOf('/');
+  const base = src.substring(0, lastSlash);
+  // Use the second-largest width as default fallback
+  const fallbackW = widths[widths.length - 2] || widths[widths.length - 1];
+  return `${base}/w=${fallbackW},q=${quality}`;
+}
 ---
 
-<img
-  src={src}
-  alt={alt}
-  width={width}
-  height={height}
-  sizes={sizes}
-  loading={loading}
-  decoding="async"
-  class:list={['cf-image', className]}
-  style={style}
-/>
+{isCFImage ? (
+  <picture>
+    <source type="image/avif" srcset={cfSrcset('avif')} sizes={sizes} />
+    <source type="image/webp" srcset={cfSrcset('webp')} sizes={sizes} />
+    <img
+      src={cfFallbackSrc()}
+      alt={alt}
+      width={width}
+      height={height}
+      loading={loading}
+      decoding="async"
+      fetchpriority={fetchpriority}
+      class:list={['cf-image', className]}
+      style={style}
+    />
+  </picture>
+) : (
+  <img
+    src={src}
+    alt={alt}
+    width={width}
+    height={height}
+    sizes={sizes}
+    loading={loading}
+    decoding="async"
+    fetchpriority={fetchpriority}
+    class:list={['cf-image', className]}
+    style={style}
+  />
+)}
 
 <style>
   .cf-image {

@@ -1,18 +1,20 @@
 ---
 /**
- * Header.astro — v4 — Rock-solid premium navigation
+ * Header.astro — v5 — Stripe-style morphing dropdown navigation
  *
  * Architecture:
- *   Individual dropdowns per nav item (no measurement/morph bugs).
- *   Smooth entrance via opacity + translateY on each dropdown.
- *   Shared visual language: rounded cards, icons, descriptions.
+ *   Shared morphing card that smoothly resizes/repositions between nav items.
+ *   Content crossfades while the card bridges the visual gap.
+ *   Staggered link entrances for premium feel.
  *
  * Desktop features:
  *   - Glass header (backdrop-filter blur + scroll state)
  *   - Sliding yellow indicator bar follows hover
+ *   - Morphing dropdown card (Stripe pattern) — no close/reopen flash
+ *   - Sliding arrow tracks active button
  *   - Rich dropdown panels with icons + descriptions
- *   - 3D perspective tilt on dropdown entrance
- *   - Hover intent with 220ms grace delay
+ *   - Staggered link entrance animation
+ *   - Nav-level hover tracking — dropdown stays open across items
  *   - Shimmer + heartbeat Donate CTA
  *
  * Mobile features:
@@ -28,10 +30,10 @@
  *   - 44px+ touch targets, external link indication
  *
  * Performance:
- *   - ~130 lines vanilla JS
+ *   - ~150 lines vanilla JS (zero dependencies)
  *   - GPU-composited transitions (transform + opacity only)
- *   - Passive scroll/touch listeners
- *   - Scroll hide threshold: 48px (not twitchy)
+ *   - Passive scroll/touch listeners, RAF-debounced scroll
+ *   - Morph uses CSS transitions on position/size properties
  */
 const currentPath = Astro.url.pathname;
 
@@ -44,7 +46,9 @@ interface NavChild {
 }
 interface NavGroup {
   label: string;
-  children: NavChild[];
+  href?: string;
+  external?: boolean;
+  children?: NavChild[];
 }
 
 const icons: Record<string, string> = {
@@ -91,17 +95,15 @@ const nav: NavGroup[] = [
   {
     label: 'Get Involved',
     children: [
-      { label: 'Events', href: 'https://www.sunnyandranney.com/events', external: true, desc: 'Upcoming gatherings', icon: 'calendar' },
+      { label: 'Events', href: '/events/', desc: 'Upcoming gatherings', icon: 'calendar' },
       { label: 'Donate', href: '/donate/', desc: 'Change a life today', icon: 'heart' },
       { label: '2026 Application', href: '/apply/', desc: 'Apply for a room', icon: 'clipboard' },
     ],
   },
   {
-    label: 'Shop Our Stores',
-    children: [
-      { label: 'Sunny & Ranney', href: 'https://www.sunnyandranney.com', external: true, desc: 'Home & décor store', icon: 'store' },
-      { label: 'Partly Sunny', href: 'https://partlysunnystore.com', external: true, desc: 'Clothing & gifts', icon: 'shirt' },
-    ],
+    label: 'Shop',
+    href: 'https://www.sunnyandranney.com',
+    external: true,
   },
 ];
 
@@ -110,22 +112,31 @@ function isActive(href: string) {
   return currentPath === href;
 }
 function isGroupActive(group: NavGroup) {
-  return group.children.some((child) => isActive(child.href));
+  if (group.href) return isActive(group.href);
+  return group.children?.some((child) => isActive(child.href)) ?? false;
 }
 ---
 
 <header class="site-header" id="site-header">
   <div class="header-inner">
-    <!-- Logo -->
+    <!-- Logo — responsive srcset: browser picks optimal size for DPR -->
     <a href="/" class="logo" aria-label="Sunshine on a Ranney Day — Home">
       <picture>
-        <source srcset="/images/logos/sunny-pig-transparent.webp" type="image/webp" />
-        <img src="/images/logos/sunny-pig-transparent.png" alt="" class="logo-icon" width="96" height="34" loading="eager" fetchpriority="high" />
+        <source
+          type="image/webp"
+          srcset="/images/logos/logo-nav-128.webp 128w, /images/logos/logo-nav-192.webp 192w, /images/logos/logo-nav-256.webp 256w, /images/logos/logo-nav-384.webp 384w"
+          sizes="(min-width: 1024px) 100px, (min-width: 481px) 88px, 84px"
+        />
+        <img
+          src="/images/logos/logo-nav-256.png"
+          srcset="/images/logos/logo-nav-128.png 128w, /images/logos/logo-nav-192.png 192w, /images/logos/logo-nav-256.png 256w, /images/logos/logo-nav-384.png 384w"
+          sizes="(min-width: 1024px) 100px, (min-width: 481px) 88px, 84px"
+          alt="Sunshine on a Ranney Day"
+          class="logo-img"
+          width="256" height="256"
+          loading="eager" fetchpriority="high"
+        />
       </picture>
-      <span class="logo-text">
-        <span class="logo-line1">Sunshine on a</span>
-        <span class="logo-line2">Ranney Day</span>
-      </span>
     </a>
 
     <!-- Desktop Nav -->
@@ -133,45 +144,66 @@ function isGroupActive(group: NavGroup) {
       <ul class="nav-list" role="menubar">
         {nav.map((item, gi) => (
           <li class:list={['nav-item', { 'group-active': isGroupActive(item) }]} role="none" data-nav-group={gi}>
-            <button
-              class:list={['nav-link', { 'parent-active': isGroupActive(item) }]}
-              role="menuitem" aria-haspopup="true" aria-expanded="false"
-              tabindex={gi === 0 ? '0' : '-1'}
-            >
-              {item.label}
-              <svg class="chevron" width="10" height="6" viewBox="0 0 10 6" fill="none" aria-hidden="true">
-                <path d="M1 1L5 5L9 1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-              </svg>
-            </button>
-            <div class="dropdown" role="menu" id={`dd-${gi}`}>
-              <div class="dropdown-arrow"></div>
-              <div class="dropdown-panel">
-                {item.children.map((child, ci) => (
-                  <a
-                    href={child.href} role="menuitem"
-                    class:list={['dd-link', { active: isActive(child.href) }]}
-                    tabindex="-1" data-child-index={ci}
-                    {...(child.external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
-                  >
-                    <span class="dd-icon" aria-hidden="true" set:html={icons[child.icon || '']} />
-                    <span class="dd-body">
-                      <span class="dd-label">
-                        {child.label}
-                        {child.external && (
-                          <svg class="dd-ext" width="11" height="11" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-                            <path d="M4.5 1.5H1.5V10.5H10.5V7.5M7 1.5H10.5M10.5 1.5V5M10.5 1.5L5.5 6.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
-                          </svg>
-                        )}
-                      </span>
-                      {child.desc && <span class="dd-desc">{child.desc}</span>}
-                    </span>
-                  </a>
-                ))}
-              </div>
-            </div>
+            {item.children ? (
+              <>
+                <button
+                  class:list={['nav-link', { 'parent-active': isGroupActive(item) }]}
+                  role="menuitem" aria-haspopup="true" aria-expanded="false"
+                  tabindex={gi === 0 ? '0' : '-1'}
+                >
+                  {item.label}
+                  <svg class="chevron" width="10" height="6" viewBox="0 0 10 6" fill="none" aria-hidden="true">
+                    <path d="M1 1L5 5L9 1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                </button>
+                <div class="dropdown" role="menu" id={`dd-${gi}`}>
+                  <div class="dropdown-panel">
+                    {item.children.map((child, ci) => (
+                      <a
+                        href={child.href} role="menuitem"
+                        class:list={['dd-link', { active: isActive(child.href) }]}
+                        tabindex="-1" data-child-index={ci} style={`--di:${ci}`}
+                        {...(child.external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
+                      >
+                        <span class="dd-icon" aria-hidden="true" set:html={icons[child.icon || '']} />
+                        <span class="dd-body">
+                          <span class="dd-label">
+                            {child.label}
+                            {child.external && (
+                              <svg class="dd-ext" width="11" height="11" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                                <path d="M4.5 1.5H1.5V10.5H10.5V7.5M7 1.5H10.5M10.5 1.5V5M10.5 1.5L5.5 6.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+                              </svg>
+                            )}
+                          </span>
+                          {child.desc && <span class="dd-desc">{child.desc}</span>}
+                        </span>
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              </>
+            ) : (
+              <a
+                href={item.href}
+                class:list={['nav-link', { 'parent-active': isGroupActive(item) }]}
+                role="menuitem"
+                tabindex={gi === 0 ? '0' : '-1'}
+                {...(item.external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
+              >
+                {item.label}
+                {item.external && (
+                  <svg class="dd-ext" width="11" height="11" viewBox="0 0 12 12" fill="none" aria-hidden="true" style="opacity:0.4;margin-left:2px;">
+                    <path d="M4.5 1.5H1.5V10.5H10.5V7.5M7 1.5H10.5M10.5 1.5V5M10.5 1.5L5.5 6.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                )}
+              </a>
+            )}
           </li>
         ))}
       </ul>
+      <div class="dd-morph" id="dd-morph" aria-hidden="true">
+        <div class="dd-morph-arrow"></div>
+      </div>
       <div class="nav-indicator" id="nav-indicator" aria-hidden="true"></div>
     </nav>
 
@@ -185,24 +217,42 @@ function isGroupActive(group: NavGroup) {
       Donate
     </a>
 
-    <!-- Mobile toggle -->
-    <button type="button" class="mobile-toggle" id="mobile-toggle" aria-label="Open menu" aria-expanded="false" aria-controls="mobile-panel">
-      <span class="hamburger" aria-hidden="true">
-        <span class="hamburger-line"></span>
-        <span class="hamburger-line"></span>
-        <span class="hamburger-line"></span>
-      </span>
-    </button>
+    <!-- Mobile: right-side group (donate + hamburger) -->
+    <div class="mobile-actions">
+      <a href="/donate/" class="mobile-cta">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+        </svg>
+        Donate
+      </a>
+      <button type="button" class="mobile-toggle" id="mobile-toggle" aria-label="Open menu" aria-expanded="false" aria-controls="mobile-panel">
+        <span class="hamburger" aria-hidden="true">
+          <span class="hamburger-line"></span>
+          <span class="hamburger-line"></span>
+          <span class="hamburger-line"></span>
+        </span>
+      </button>
+    </div>
   </div>
 </header>
 
 <!-- Mobile full-screen nav -->
 <div class="mobile-nav" id="mobile-panel" role="dialog" aria-label="Mobile navigation" aria-modal="true" aria-hidden="true">
   <div class="mnav-header">
-    <a href="/" class="mnav-logo" aria-label="Home">
+    <a href="/" class="mnav-logo" aria-label="Sunshine on a Ranney Day — Home">
       <picture>
-        <source srcset="/images/logos/logo-dark-bg.webp" type="image/webp" />
-        <img src="/images/logos/logo-dark-bg.png" alt="Sunshine on a Ranney Day" width="80" height="80" loading="eager" />
+        <source
+          type="image/webp"
+          srcset="/images/logos/logo-nav-128.webp 128w, /images/logos/logo-nav-192.webp 192w, /images/logos/logo-nav-256.webp 256w, /images/logos/logo-nav-384.webp 384w"
+          sizes="56px"
+        />
+        <img
+          src="/images/logos/logo-nav-256.png"
+          srcset="/images/logos/logo-nav-128.png 128w, /images/logos/logo-nav-192.png 192w, /images/logos/logo-nav-256.png 256w, /images/logos/logo-nav-384.png 384w"
+          sizes="56px"
+          alt="Sunshine on a Ranney Day"
+          width="256" height="256"
+        />
       </picture>
     </a>
     <button type="button" class="mnav-close" id="mnav-close" aria-label="Close menu">
@@ -214,24 +264,43 @@ function isGroupActive(group: NavGroup) {
   <div class="mnav-body">
     {nav.map((item, i) => (
       <div class="mnav-group" style={`--i:${i}`}>
-        <h3 class="mnav-heading">{item.label}</h3>
-        <div class="mnav-links">
-          {item.children.map((child) => (
-            <a href={child.href} class:list={['mnav-link', { active: isActive(child.href) }]}
-              {...(child.external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}>
-              <span class="mnav-link-icon" aria-hidden="true" set:html={icons[child.icon || '']} />
+        {item.children ? (
+          <>
+            <h3 class="mnav-heading">{item.label}</h3>
+            <div class="mnav-links">
+              {item.children.map((child) => (
+                <a href={child.href} class:list={['mnav-link', { active: isActive(child.href) }]}
+                  {...(child.external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}>
+                  <span class="mnav-link-icon" aria-hidden="true" set:html={icons[child.icon || '']} />
+                  <span class="mnav-link-inner">
+                    <span class="mnav-link-label">{child.label}</span>
+                    {child.desc && <span class="mnav-link-desc">{child.desc}</span>}
+                  </span>
+                  {child.external && (
+                    <svg class="mnav-ext" width="14" height="14" viewBox="0 0 14 14" fill="none" role="img" aria-label="Opens in new tab">
+                      <path d="M5.25 2H2V12H12V8.75M8.5 2H12M12 2V5.5M12 2L6.5 7.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                  )}
+                </a>
+              ))}
+            </div>
+          </>
+        ) : (
+          <div class="mnav-links" style="padding-top:4px;">
+            <a href={item.href} class="mnav-link"
+              {...(item.external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}>
+              <span class="mnav-link-icon" aria-hidden="true" set:html={icons['store']} />
               <span class="mnav-link-inner">
-                <span class="mnav-link-label">{child.label}</span>
-                {child.desc && <span class="mnav-link-desc">{child.desc}</span>}
+                <span class="mnav-link-label">{item.label}</span>
               </span>
-              {child.external && (
-                <svg class="mnav-ext" width="14" height="14" viewBox="0 0 14 14" fill="none" aria-label="Opens in new tab">
+              {item.external && (
+                <svg class="mnav-ext" width="14" height="14" viewBox="0 0 14 14" fill="none" role="img" aria-label="Opens in new tab">
                   <path d="M5.25 2H2V12H12V8.75M8.5 2H12M12 2V5.5M12 2L6.5 7.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>
               )}
             </a>
-          ))}
-        </div>
+          </div>
+        )}
       </div>
     ))}
   </div>
@@ -250,46 +319,132 @@ function isGroupActive(group: NavGroup) {
   var header = document.getElementById('site-header');
   var desktopNav = document.getElementById('desktop-nav');
   var indicator = document.getElementById('nav-indicator');
+  var morphEl = document.getElementById('dd-morph');
+  var morphArrow = morphEl ? morphEl.querySelector('.dd-morph-arrow') : null;
   var navItems = document.querySelectorAll('.nav-item[data-nav-group]');
   var navButtons = document.querySelectorAll('.nav-item > button');
   if (!header) return;
 
-  /* ═══════ DESKTOP DROPDOWNS ═══════ */
-  function openDD(item) {
-    var btn = item.querySelector('button');
-    if (btn) btn.setAttribute('aria-expanded', 'true');
-    item.classList.add('dd-open');
-  }
-  function closeDD(item) {
-    var btn = item.querySelector('button');
-    if (btn) btn.setAttribute('aria-expanded', 'false');
-    item.classList.remove('dd-open');
-  }
-  function closeAllDD() {
-    navItems.forEach(closeDD);
-  }
+  /* ═══════ DESKTOP DROPDOWNS — Morphing Container ═══════ */
+  var activeGroup = -1;
+  var morphSeq = 0;
+  var closeTimer = null;
+
   function getDDLinks(item) {
     var dd = item.querySelector('.dropdown');
     return dd ? Array.from(dd.querySelectorAll('.dd-link')) : [];
   }
 
-  // Hover intent
+  function activateItem(item) {
+    var btn = item.querySelector('button');
+    if (btn) btn.setAttribute('aria-expanded', 'true');
+    item.classList.add('dd-open');
+  }
+
+  function positionMorph(item, isEntrance) {
+    if (!morphEl || !morphArrow || !desktopNav) return;
+    var panel = item.querySelector('.dropdown-panel');
+    if (!panel) return;
+    var navRect = desktopNav.getBoundingClientRect();
+    var panelRect = panel.getBoundingClientRect();
+    var btn = item.querySelector('button');
+    var btnRect = btn.getBoundingClientRect();
+
+    var left = panelRect.left - navRect.left;
+    var top = panelRect.top - navRect.top;
+    var width = panelRect.width;
+    var height = panelRect.height;
+    var arrowX = (btnRect.left + btnRect.width / 2) - panelRect.left;
+
+    if (isEntrance) {
+      morphEl.style.transition = 'none';
+      morphEl.style.left = left + 'px';
+      morphEl.style.top = top + 'px';
+      morphEl.style.width = width + 'px';
+      morphEl.style.height = height + 'px';
+      morphArrow.style.transition = 'none';
+      morphArrow.style.left = arrowX + 'px';
+      morphEl.offsetHeight;
+      morphEl.style.transition = '';
+      morphArrow.style.transition = '';
+      morphEl.classList.add('morph-open');
+    } else {
+      morphEl.style.left = left + 'px';
+      morphEl.style.top = top + 'px';
+      morphEl.style.width = width + 'px';
+      morphEl.style.height = height + 'px';
+      morphArrow.style.left = arrowX + 'px';
+    }
+  }
+
+  function openDD(item) {
+    var gi = parseInt(item.dataset.navGroup);
+    if (gi === activeGroup) return;
+    var prev = activeGroup;
+    activeGroup = gi;
+    morphSeq++;
+    var seq = morphSeq;
+
+    if (prev >= 0) {
+      var prevItem = navItems[prev];
+      var prevBtn = prevItem.querySelector('button');
+      if (prevBtn) prevBtn.setAttribute('aria-expanded', 'false');
+      prevItem.classList.remove('dd-open');
+    }
+
+    var isEntrance = prev < 0;
+    positionMorph(item, isEntrance);
+
+    var delay = isEntrance ? 0 : 50;
+    if (delay === 0) {
+      activateItem(item);
+    } else {
+      setTimeout(function () {
+        if (morphSeq !== seq) return;
+        activateItem(item);
+      }, delay);
+    }
+  }
+
+  function closeDD(item) {
+    var gi = parseInt(item.dataset.navGroup);
+    var btn = item.querySelector('button');
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+    item.classList.remove('dd-open');
+    if (gi === activeGroup) {
+      activeGroup = -1;
+      morphSeq++;
+      if (morphEl) morphEl.classList.remove('morph-open');
+    }
+  }
+
+  function closeAllDD() {
+    navItems.forEach(function (item) {
+      var btn = item.querySelector('button');
+      if (btn) btn.setAttribute('aria-expanded', 'false');
+      item.classList.remove('dd-open');
+    });
+    activeGroup = -1;
+    morphSeq++;
+    if (morphEl) morphEl.classList.remove('morph-open');
+  }
+
+  function cancelClose() { if (closeTimer) { clearTimeout(closeTimer); closeTimer = null; } }
+  function scheduleClose() { cancelClose(); closeTimer = setTimeout(closeAllDD, 180); }
+
   navItems.forEach(function (item) {
-    var timer = null;
     item.addEventListener('mouseenter', function () {
-      if (timer) { clearTimeout(timer); timer = null; }
-      navItems.forEach(function (o) { if (o !== item) closeDD(o); });
+      cancelClose();
       openDD(item);
     });
-    item.addEventListener('mouseleave', function () {
-      timer = setTimeout(function () { closeDD(item); timer = null; }, 220);
-    });
+  });
+  if (desktopNav) desktopNav.addEventListener('mouseleave', scheduleClose);
+
+  document.addEventListener('click', function (e) {
+    if (!e.target.closest('.nav-item') && !e.target.closest('.dd-morph')) closeAllDD();
   });
 
-  // Click outside closes
-  document.addEventListener('click', function (e) {
-    if (!e.target.closest('.nav-item')) closeAllDD();
-  });
+  window.addEventListener('resize', function () { if (activeGroup >= 0) closeAllDD(); });
 
   /* ═══════ SLIDING INDICATOR ═══════ */
   function posInd(el) {
@@ -346,7 +501,7 @@ function isGroupActive(group: NavGroup) {
     });
   }
 
-  /* ═══════ SCROLL — glass effect only, NO hide ═══════ */
+  /* ═══════ SCROLL ═══════ */
   var ticking = false, mobileOpen = false;
   function onScroll() {
     ticking = false;
@@ -370,29 +525,44 @@ function isGroupActive(group: NavGroup) {
 
   function mOpen() {
     mobileOpen = true; savedY = window.scrollY;
-    document.body.style.cssText = 'position:fixed;top:-' + savedY + 'px;left:0;right:0;overflow:hidden;';
+    document.documentElement.classList.add('menu-open');
+    document.body.style.top = '-' + savedY + 'px';
     mBtn.setAttribute('aria-expanded', 'true');
     mBtn.classList.add('is-open');
     mPanel.classList.add('is-open'); mPanel.setAttribute('aria-hidden', 'false');
     if (mainEl) mainEl.setAttribute('inert', '');
     if (footerEl) footerEl.setAttribute('inert', '');
+    header.setAttribute('inert', '');
     if (mClose) mClose.focus();
+    history.pushState({ mobileMenu: true }, '');
   }
 
-  function mCloseMenu() {
+  function mCloseMenu(fromPopstate) {
+    if (!mobileOpen) return;
     mobileOpen = false;
-    document.body.style.cssText = '';
+    document.documentElement.classList.remove('menu-open');
+    document.body.style.top = '';
     window.scrollTo(0, savedY);
     mBtn.setAttribute('aria-expanded', 'false');
     mBtn.classList.remove('is-open');
     mPanel.classList.remove('is-open'); mPanel.setAttribute('aria-hidden', 'true');
+    mPanel.style.transform = '';
+    mPanel.style.opacity = '';
     if (mainEl) mainEl.removeAttribute('inert');
     if (footerEl) footerEl.removeAttribute('inert');
+    header.removeAttribute('inert');
     mBtn.focus();
+    if (!fromPopstate && history.state && history.state.mobileMenu) {
+      history.back();
+    }
   }
 
   if (mBtn) mBtn.addEventListener('click', function () { mobileOpen ? mCloseMenu() : mOpen(); });
-  if (mClose) mClose.addEventListener('click', mCloseMenu);
+  if (mClose) mClose.addEventListener('click', function () { mCloseMenu(); });
+
+  window.addEventListener('popstate', function (e) {
+    if (mobileOpen) mCloseMenu(true);
+  });
 
   document.addEventListener('keydown', function (e) {
     if (!mobileOpen) return;
@@ -405,18 +575,55 @@ function isGroupActive(group: NavGroup) {
   });
 
   window.matchMedia('(min-width: 1024px)').addEventListener('change', function (e) { if (e.matches && mobileOpen) mCloseMenu(); });
+
   if (mPanel) {
-    mPanel.querySelectorAll('a').forEach(function (a) { a.addEventListener('click', mCloseMenu); });
-    var ty = 0, sw = false;
-    mPanel.addEventListener('touchstart', function (e) { ty = e.touches[0].clientY; sw = true; }, { passive: true });
-    mPanel.addEventListener('touchmove', function (e) { if (sw && e.touches[0].clientY - ty > 80) { sw = false; mCloseMenu(); } }, { passive: true });
-    mPanel.addEventListener('touchend', function () { sw = false; }, { passive: true });
+    mPanel.querySelectorAll('a').forEach(function (a) { a.addEventListener('click', function () { mCloseMenu(); }); });
+
+    var touchStartY = 0, touchStartTime = 0, isSwiping = false, swipeActive = false;
+    var mnBody = mPanel.querySelector('.mnav-body');
+
+    mPanel.addEventListener('touchstart', function (e) {
+      if (mnBody && mnBody.scrollTop > 0) return;
+      touchStartY = e.touches[0].clientY;
+      touchStartTime = Date.now();
+      isSwiping = true;
+      swipeActive = false;
+      mPanel.style.transition = 'none';
+    }, { passive: true });
+
+    mPanel.addEventListener('touchmove', function (e) {
+      if (!isSwiping) return;
+      var dy = e.touches[0].clientY - touchStartY;
+      if (dy < 0) { dy = 0; swipeActive = false; }
+      if (dy > 10) swipeActive = true;
+      if (swipeActive) {
+        var dampened = dy * 0.6;
+        var progress = Math.min(dampened / (window.innerHeight * 0.4), 1);
+        mPanel.style.transform = 'translateY(' + dampened + 'px)';
+        mPanel.style.opacity = String(1 - progress * 0.4);
+      }
+    }, { passive: true });
+
+    mPanel.addEventListener('touchend', function (e) {
+      if (!isSwiping) return;
+      isSwiping = false;
+      mPanel.style.transition = '';
+      if (!swipeActive) return;
+      var dy = e.changedTouches[0].clientY - touchStartY;
+      var velocity = dy / (Date.now() - touchStartTime);
+      if (dy > 100 || velocity > 0.5) {
+        mCloseMenu();
+      } else {
+        mPanel.style.transform = '';
+        mPanel.style.opacity = '';
+      }
+      swipeActive = false;
+    }, { passive: true });
   }
 })();
 </script>
 
 <style>
-  /* ── Header ────────────────────────────── */
   .site-header {
     position: sticky; top: 0; z-index: 1000;
     background: rgba(45, 46, 51, 0.92);
@@ -425,48 +632,44 @@ function isGroupActive(group: NavGroup) {
     height: var(--header-height);
     border-bottom: 3px solid var(--c-yellow);
     transition: background 0.3s ease, box-shadow 0.3s ease;
-    isolation: isolate; /* Prevents backdrop-filter from breaking sticky in Chrome/Safari */
-    transform: translateZ(0); /* GPU layer promotion — prevents scroll-vanish compositor bug */
+    isolation: isolate;
+    transform: translateZ(0);
   }
   .site-header.header--scrolled {
     background: rgba(45, 46, 51, 0.97);
     box-shadow: 0 4px 30px rgba(0, 0, 0, 0.25);
   }
-
   .header-inner {
     display: flex; align-items: center; justify-content: space-between;
     height: 100%; padding-inline: var(--space-lg);
     max-width: var(--max-width-wide); margin-inline: auto;
   }
 
-  /* ── Logo ──────────────────────────────── */
   .logo {
-    display: flex; align-items: center; gap: 10px;
-    flex-shrink: 0; text-decoration: none; transition: opacity 0.2s ease;
+    display: flex; align-items: center;
+    flex-shrink: 0; text-decoration: none;
+    transition: opacity 0.2s ease;
+    height: 100%; padding-block: 2px;
   }
   .logo:hover { opacity: 0.88; }
-  .logo-icon { height: 38px; width: auto; }
-  .logo-text {
-    font-family: var(--font-display); font-weight: 700;
-    color: var(--c-yellow); line-height: 1.1;
-    display: flex; flex-direction: column;
+  .logo-img {
+    height: 100%; width: auto;
+    max-height: 84px;
+    object-fit: contain;
   }
-  .logo-line1 { font-size: 0.6875rem; letter-spacing: 0.02em; }
-  .logo-line2 { font-size: 0.875rem; }
-  @media (min-width: 481px) { .logo-icon { height: 42px; } .logo-line1 { font-size: 0.75rem; } .logo-line2 { font-size: 0.9375rem; } }
-  @media (min-width: 1024px) { .logo-icon { height: 46px; } .logo-line1 { font-size: 0.8125rem; } .logo-line2 { font-size: 1rem; } }
+  @media (min-width: 481px) { .logo-img { max-height: 88px; } }
+  @media (min-width: 1024px) { .logo-img { max-height: 100px; } }
 
-  /* ── Desktop Nav ───────────────────────── */
   .desktop-nav { display: none; position: relative; }
   @media (min-width: 1024px) { .desktop-nav { display: flex; align-items: center; } }
 
-  .nav-list { display: flex; align-items: center; gap: 2px; }
+  .nav-list { display: flex; align-items: center; gap: 2px; position: relative; z-index: 20; }
   .nav-item { position: relative; }
 
   .nav-link {
     display: flex; align-items: center; gap: 4px;
     padding: 0.5rem 0.875rem;
-    font-family: var(--font-body); font-size: 0.875rem; font-weight: 500;
+    font-family: var(--font-body); font-size: 1rem; font-weight: 500;
     color: rgba(255, 255, 255, 0.72);
     background: none; border: none; cursor: pointer;
     border-radius: 8px; white-space: nowrap;
@@ -480,89 +683,84 @@ function isGroupActive(group: NavGroup) {
   .nav-item.dd-open > .nav-link .chevron { transform: rotate(180deg); opacity: 0.9; }
   .nav-item.dd-open > .nav-link { color: var(--c-white); background: rgba(255, 255, 255, 0.08); }
 
-  /* ── Indicator ─────────────────────────── */
   .nav-indicator {
     position: absolute; bottom: -2px; left: 0; height: 3px;
     background: var(--c-yellow); border-radius: 3px 3px 0 0;
-    opacity: 0; pointer-events: none;
+    opacity: 0; pointer-events: none; z-index: 30;
     transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1),
                 width 0.3s cubic-bezier(0.32, 0.72, 0, 1),
                 opacity 0.2s ease;
     will-change: transform, width;
   }
 
-  /* ── Dropdown ──────────────────────────── */
+  /* ── Dropdown (content layer — transparent bg, morph provides card) ── */
   .dropdown {
     position: absolute;
     top: calc(100% + 10px);
     left: 50%;
     transform: translateX(-50%);
     min-width: 280px;
-    padding-top: 4px;
-    /* Hidden state */
+    z-index: 20;
     opacity: 0;
-    visibility: hidden;
     pointer-events: none;
+    transition: opacity 0.15s ease;
   }
-
-  /* Right-align dropdowns on last 2 nav items to prevent viewport overflow */
   .nav-item:nth-last-child(-n+2) .dropdown {
-    left: auto;
-    right: 0;
-    transform: none;
+    left: auto; right: 0; transform: none;
   }
-  .nav-item:nth-last-child(-n+2) .dropdown-arrow {
-    left: auto;
-    right: 24px;
-  }
-
-  /* Arrow */
-  .dropdown-arrow {
-    position: absolute; top: 0; left: 50%;
-    width: 12px; height: 12px;
-    background: var(--c-white);
-    border-radius: 2px 0 0 0;
-    transform: translateX(-50%) rotate(45deg);
-    box-shadow: -1px -1px 3px rgba(0, 0, 0, 0.04);
-    z-index: 1;
-  }
-
-  .dropdown-panel {
-    position: relative;
-    background: var(--c-white);
-    border-radius: 14px;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.12), 0 4px 12px rgba(0, 0, 0, 0.06), 0 0 0 1px rgba(0, 0, 0, 0.04);
-    padding: 6px;
-    margin-top: 2px;
-    /* Initial transform for entrance animation */
-    transform: translateY(8px);
-    opacity: 0;
-    transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1),
-                opacity 0.2s ease;
-  }
-
-  /* Open state */
+  .dropdown-panel { position: relative; padding: 6px; }
   .nav-item.dd-open > .dropdown {
-    opacity: 1; visibility: visible; pointer-events: auto;
+    opacity: 1; pointer-events: auto; transition: none;
   }
-  .nav-item.dd-open > .dropdown .dropdown-panel {
-    transform: translateY(0); opacity: 1;
-  }
-
-  /* Bridge gap so hover doesn't break */
   .dropdown::before {
     content: ''; position: absolute; top: -14px; left: -20px; right: -20px; height: 24px;
   }
 
-  /* ── Dropdown Links ────────────────────── */
+  /* ── Morph Container (shared visual card behind dropdown content) ── */
+  .dd-morph {
+    position: absolute; z-index: 10;
+    background: var(--c-white); border-radius: 14px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.12), 0 4px 12px rgba(0,0,0,0.06), 0 0 0 1px rgba(0,0,0,0.04);
+    opacity: 0; pointer-events: none;
+    transform: scale(0.96); transform-origin: top center;
+    transition:
+      left 0.32s cubic-bezier(0.32, 0.72, 0, 1),
+      top 0.32s cubic-bezier(0.32, 0.72, 0, 1),
+      width 0.32s cubic-bezier(0.32, 0.72, 0, 1),
+      height 0.32s cubic-bezier(0.32, 0.72, 0, 1),
+      opacity 0.2s ease,
+      transform 0.25s cubic-bezier(0.32, 0.72, 0, 1);
+    will-change: left, top, width, height;
+  }
+  .dd-morph.morph-open { opacity: 1; pointer-events: none; transform: scale(1); }
+  .dd-morph-arrow {
+    position: absolute; top: -6px;
+    width: 12px; height: 12px;
+    background: var(--c-white); border-radius: 2px 0 0 0;
+    transform: translateX(-50%) rotate(45deg);
+    box-shadow: -1px -1px 3px rgba(0,0,0,0.04);
+    transition: left 0.32s cubic-bezier(0.32, 0.72, 0, 1);
+    z-index: 1;
+  }
+
+  /* ── Dropdown Links ── */
   .dd-link {
     display: flex; align-items: center; gap: 0.75rem;
     padding: 0.625rem 0.75rem; border-radius: 10px;
     text-decoration: none; transition: background 0.15s ease;
   }
   .dd-link:hover, .dd-link:focus-visible { background: var(--c-warm-gray); outline: none; }
-  .dd-link.active { background: rgba(255, 213, 0, 0.08); }
+  .dd-link.active { background: rgba(255, 218, 36, 0.06); }
   .dd-link.active .dd-label { color: var(--c-accent, #7A00DF); font-weight: 600; }
+
+  .nav-item.dd-open .dd-link {
+    animation: ddLinkIn 0.22s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
+    animation-delay: calc(var(--di, 0) * 0.03s);
+  }
+  @keyframes ddLinkIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
 
   .dd-icon {
     width: 36px; height: 36px;
@@ -571,16 +769,15 @@ function isGroupActive(group: NavGroup) {
     flex-shrink: 0; color: var(--c-dark);
     transition: background 0.15s ease, transform 0.2s cubic-bezier(0.32, 0.72, 0, 1), color 0.15s ease;
   }
-  .dropdown-link:hover .dd-icon, .dd-link:hover .dd-icon {
-    background: rgba(255, 213, 0, 0.15); color: #b8860b; transform: scale(1.06);
+  .dd-link:hover .dd-icon {
+    background: rgba(255, 218, 36, 0.12); color: var(--c-yellow-hover); transform: scale(1.06);
   }
-
   .dd-body { display: flex; flex-direction: column; gap: 1px; }
   .dd-label { font-size: 0.875rem; font-weight: 500; color: var(--c-dark); display: flex; align-items: center; gap: 4px; }
   .dd-desc { font-size: 0.75rem; color: rgba(0, 0, 0, 0.4); }
   .dd-ext { opacity: 0.3; }
 
-  /* ── Donate CTA ────────────────────────── */
+  /* ── Donate CTA ── */
   .header-cta {
     display: none; align-items: center; gap: 6px;
     padding: 0.5rem 1.375rem;
@@ -596,18 +793,37 @@ function isGroupActive(group: NavGroup) {
     animation: shimmer 4s ease-in-out infinite; pointer-events: none;
   }
   @keyframes shimmer { 0%,100% { transform: translateX(-30%); } 50% { transform: translateX(30%); } }
-  .header-cta:hover { transform: translateY(-1px) scale(1.03); box-shadow: 0 6px 24px rgba(255, 213, 0, 0.35); }
+  .header-cta:hover { transform: translateY(-1px) scale(1.03); box-shadow: 0 6px 24px var(--c-yellow-glow); }
   .header-cta:active { transform: translateY(0) scale(0.98); }
   .cta-heart { display: flex; align-items: center; animation: heartbeat 2.5s ease-in-out infinite; }
   @keyframes heartbeat { 0%,100% { transform: scale(1); } 14% { transform: scale(1.2); } 28% { transform: scale(1); } 42% { transform: scale(1.15); } 56% { transform: scale(1); } }
   @media (min-width: 1024px) { .header-cta { display: inline-flex; } }
 
-  /* ── Hamburger ─────────────────────────── */
+  .mobile-actions {
+    display: flex; align-items: center; gap: 4px;
+    margin-left: auto; flex-shrink: 0;
+  }
+  @media (min-width: 1024px) { .mobile-actions { display: none; } }
+
+  .mobile-cta {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 0.5rem 1rem;
+    min-height: 44px;
+    background: var(--c-yellow); color: var(--c-dark);
+    font-weight: 700; font-size: 0.8125rem;
+    border-radius: 100px; text-decoration: none;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+    white-space: nowrap; flex-shrink: 0;
+    -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+  }
+  .mobile-cta:hover { transform: scale(1.03); box-shadow: 0 4px 16px var(--c-yellow-glow); }
+  .mobile-cta:active { transform: scale(0.97); }
+
   .mobile-toggle {
     display: flex; align-items: center; justify-content: center;
     width: 48px; height: 48px; padding: 0;
     cursor: pointer; border: none; background: none;
-    z-index: 1001; -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent; touch-action: manipulation;
   }
   @media (min-width: 1024px) { .mobile-toggle { display: none; } }
   .hamburger { display: block; width: 22px; height: 18px; position: relative; }
@@ -620,105 +836,101 @@ function isGroupActive(group: NavGroup) {
   .hamburger-line:nth-child(1) { top: 0; }
   .hamburger-line:nth-child(2) { top: 8px; }
   .hamburger-line:nth-child(3) { top: 16px; }
-
-  /* Hamburger → X morph */
   .mobile-toggle.is-open .hamburger-line:nth-child(1) { top: 8px; transform: rotate(45deg); }
   .mobile-toggle.is-open .hamburger-line:nth-child(2) { opacity: 0; }
   .mobile-toggle.is-open .hamburger-line:nth-child(3) { top: 8px; transform: rotate(-45deg); }
 
-  /* ═══════════════════════════════════════════
-     MOBILE NAV
-     ═══════════════════════════════════════════ */
+  :global(html.menu-open),
+  :global(html.menu-open body) {
+    overflow: hidden; position: fixed; width: 100%; overscroll-behavior: none;
+  }
+
+  /* ═══════ MOBILE NAV ═══════ */
   .mobile-nav {
-    position: fixed; inset: 0; z-index: 999;
+    position: fixed; inset: 0; z-index: 1100;
     background: var(--c-dark-deep, #1A1B1F);
     display: flex; flex-direction: column;
-    opacity: 0; visibility: hidden;
-    transition: opacity 0.35s cubic-bezier(0.32, 0.72, 0, 1), visibility 0.35s;
+    opacity: 0; visibility: hidden; transform: translateY(8px);
+    transition: opacity 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+                transform 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94), visibility 0.3s;
+    will-change: transform, opacity;
   }
-  .mobile-nav.is-open { opacity: 1; visibility: visible; }
+  .mobile-nav.is-open { opacity: 1; visibility: visible; transform: translateY(0); }
   @media (min-width: 1024px) { .mobile-nav { display: none !important; } }
 
   .mnav-header {
     display: flex; align-items: center; justify-content: space-between;
     padding: var(--space-md) var(--space-lg);
-    flex-shrink: 0; border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    flex-shrink: 0; border-bottom: 1px solid rgba(255,255,255,0.06);
     min-height: var(--header-height);
   }
-  .mnav-logo { display: flex; align-items: center; }
-  .mnav-logo img { height: 52px; width: auto; }
+  .mnav-logo {
+    display: flex; align-items: center;
+    text-decoration: none; transition: opacity 0.2s ease;
+  }
+  .mnav-logo:hover { opacity: 0.88; }
+  .mnav-logo img { height: 56px; width: auto; object-fit: contain; }
   .mnav-close {
     display: flex; align-items: center; justify-content: center;
     width: 44px; height: 44px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    background: rgba(255, 255, 255, 0.05);
-    border-radius: 12px; cursor: pointer;
-    color: rgba(255, 255, 255, 0.5);
+    border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.05);
+    border-radius: 12px; cursor: pointer; color: rgba(255,255,255,0.5);
     transition: color 0.15s ease, background 0.15s ease;
     -webkit-tap-highlight-color: transparent; touch-action: manipulation;
   }
-  .mnav-close:hover, .mnav-close:focus-visible { color: var(--c-white); background: rgba(255, 255, 255, 0.1); }
+  .mnav-close:hover, .mnav-close:focus-visible { color: var(--c-white); background: rgba(255,255,255,0.1); }
 
   .mnav-body {
-    flex: 1; overflow-y: auto;
-    -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
+    flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
     padding: var(--space-md) var(--space-lg) var(--space-xl);
     display: flex; flex-direction: column; gap: var(--space-lg);
   }
-
   @keyframes mobFadeUp {
     from { opacity: 0; transform: translateY(24px); }
     to { opacity: 1; transform: translateY(0); }
   }
   .mnav-group { opacity: 0; transform: translateY(24px); padding-top: var(--space-md); }
   .mnav-group:first-child { padding-top: 0; }
-  .mnav-group + .mnav-group { border-top: 1px solid rgba(255, 255, 255, 0.05); }
+  .mnav-group + .mnav-group { border-top: 1px solid rgba(255,255,255,0.05); }
   .mobile-nav.is-open .mnav-group {
     animation: mobFadeUp 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
     animation-delay: calc(0.05s + var(--i) * 0.04s);
   }
-
   .mnav-heading {
     font-family: var(--font-display); font-weight: 700;
     font-size: 1.25rem; color: var(--c-white);
     margin-bottom: var(--space-sm); letter-spacing: -0.01em;
   }
-
   .mnav-links { display: flex; flex-direction: column; }
   .mnav-link {
     display: flex; align-items: center; gap: 0.75rem;
     padding: 0.6rem 0; font-size: 0.9375rem;
-    color: rgba(255, 255, 255, 0.7); text-decoration: none;
+    color: rgba(255,255,255,0.7); text-decoration: none;
     transition: color 0.15s ease; min-height: 48px;
   }
   .mnav-link:hover { color: var(--c-white); }
-
   .mnav-link-icon {
     width: 32px; height: 32px;
     display: flex; align-items: center; justify-content: center;
-    background: rgba(255, 255, 255, 0.05);
-    border-radius: 8px; flex-shrink: 0;
-    color: var(--c-yellow);
+    background: rgba(255,255,255,0.05); border-radius: 8px;
+    flex-shrink: 0; color: var(--c-yellow);
   }
   .mnav-link-inner { display: flex; flex-direction: column; gap: 1px; flex: 1; min-width: 0; }
   .mnav-link-label { font-weight: 500; }
-  .mnav-link-desc { font-size: 0.75rem; color: rgba(255, 255, 255, 0.35); }
-
+  .mnav-link-desc { font-size: 0.75rem; color: rgba(255,255,255,0.35); }
   .mnav-link.active { color: var(--c-white); }
   .mnav-link.active .mnav-link-label {
     font-weight: 600;
     background-image: linear-gradient(transparent 55%, var(--c-yellow-soft) 55%);
     padding-bottom: 1px; display: inline;
   }
-
-  .mnav-ext { color: rgba(255, 255, 255, 0.2); flex-shrink: 0; margin-left: auto; }
-  .mnav-link:hover .mnav-ext { color: rgba(255, 255, 255, 0.4); }
-
+  .mnav-ext { color: rgba(255,255,255,0.2); flex-shrink: 0; margin-left: auto; }
+  .mnav-link:hover .mnav-ext { color: rgba(255,255,255,0.4); }
   .mnav-footer {
     flex-shrink: 0;
     padding: var(--space-md) var(--space-lg) max(var(--space-xl), env(safe-area-inset-bottom));
-    border-top: 1px solid rgba(255, 255, 255, 0.06);
-    background: linear-gradient(to top, rgba(26, 27, 31, 1) 60%, rgba(26, 27, 31, 0));
+    border-top: 1px solid rgba(255,255,255,0.06);
+    background: linear-gradient(to top, rgba(26,27,31,1) 60%, rgba(26,27,31,0));
   }
   .mnav-donate {
     display: flex; align-items: center; justify-content: center;
@@ -729,13 +941,15 @@ function isGroupActive(group: NavGroup) {
     transition: transform 0.15s ease, box-shadow 0.15s ease;
     min-height: 52px;
   }
-  .mnav-donate:hover { transform: translateY(-1px); box-shadow: 0 4px 24px rgba(255, 213, 0, 0.35); }
+  .mnav-donate:hover { transform: translateY(-1px); box-shadow: 0 4px 24px var(--c-yellow-glow); }
 
-  /* ── Reduced Motion ────────────────────── */
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after {
       animation-duration: 0.01ms !important; transition-duration: 0.01ms !important;
     }
     .mnav-group { opacity: 1; transform: none; animation: none !important; }
+    .dd-morph { transition: none !important; }
+    .dd-morph-arrow { transition: none !important; }
+    .nav-item.dd-open .dd-link { animation: none !important; opacity: 1; transform: none; }
   }
 </style>

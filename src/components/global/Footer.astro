@@ -16,7 +16,7 @@
 const year = new Date().getFullYear();
 ---
 
-<footer class="site-footer" role="contentinfo">
+<footer class="site-footer">
 
   <!-- ─── 1. NEWSLETTER BAND ─────────────────── -->
   <div class="footer-newsletter">
@@ -119,7 +119,6 @@ const year = new Date().getFullYear();
           <h4 class="footer-heading">Shop & Support</h4>
           <ul>
             <li><a href="https://sunnyandranney.com" target="_blank" rel="noopener noreferrer">Sunny & Ranney <span class="external-icon" aria-hidden="true">↗</span></a></li>
-            <li><a href="https://partlysunnystore.com" target="_blank" rel="noopener noreferrer">Partly Sunny <span class="external-icon" aria-hidden="true">↗</span></a></li>
             <li><a href="/resources/">Resources</a></li>
             <li><a href="/faq/">FAQs</a></li>
           </ul>
@@ -179,6 +178,8 @@ const year = new Date().getFullYear();
         <a href="/privacy-policy/">Privacy Policy</a>
         <span aria-hidden="true">&middot;</span>
         <a href="/terms/">Terms of Use</a>
+        <span aria-hidden="true">&middot;</span>
+        <a href="/admin/" class="footer-admin-link">Admin</a>
       </div>
     </div>
   </div>
@@ -260,7 +261,7 @@ const year = new Date().getFullYear();
   .newsletter-btn:hover {
     background: var(--c-yellow-hover);
     transform: translateY(-2px);
-    box-shadow: 0 4px 16px rgba(255, 218, 36, 0.35);
+    box-shadow: 0 4px 16px var(--c-yellow-glow);
   }
   .newsletter-note {
     font-size: 12px;
@@ -354,7 +355,7 @@ const year = new Date().getFullYear();
   .footer-donate-btn:hover {
     background: var(--c-yellow-hover);
     transform: translateY(-3px);
-    box-shadow: 0 8px 24px rgba(255, 218, 36, 0.35);
+    box-shadow: 0 8px 24px var(--c-yellow-glow);
   }
 
   /* Nav Columns */
@@ -530,6 +531,8 @@ const year = new Date().getFullYear();
     transition: color var(--transition-fast);
   }
   .footer-legal-links a:hover { color: var(--c-white); }
+  .footer-admin-link { opacity: 0.5; }
+  .footer-admin-link:hover { opacity: 1; }
 
   @media (max-width: 640px) {
     .footer-legal-inner {

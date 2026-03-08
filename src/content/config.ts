@@ -88,6 +88,28 @@ const articles = defineCollection({
   }),
 });
 
+const events = defineCollection({
+  type: 'data',
+  schema: z.object({
+    title: z.string(),
+    slug: z.string(),
+    date: z.string(),
+    endDate: z.string().optional(),
+    time: z.string().optional(),
+    location: z.string(),
+    address: z.string().optional(),
+    description: z.string(),
+    body: z.string().optional(),
+    image: z.string().nullable().optional(),
+    ticketUrl: z.string().optional(),
+    ticketPrice: z.string().optional(),
+    category: z.enum(['fundraiser', 'volunteer', 'reveal', 'community', 'other']).default('other'),
+    featured: z.boolean().default(false),
+    status: z.enum(['upcoming', 'past', 'cancelled']).default('upcoming'),
+    order: z.number().default(0),
+  }),
+});
+
 const press = defineCollection({
   type: 'data',
   schema: z.object({
@@ -103,4 +125,4 @@ const press = defineCollection({
   }),
 });
 
-export const collections = { kids, partners, team, articles, press };
+export const collections = { kids, partners, team, articles, press, events };

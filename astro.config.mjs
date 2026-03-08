@@ -5,6 +5,10 @@ export default defineConfig({
   site: 'https://sunshineonaranneyday.com',
   output: 'static',
   integrations: [sitemap()],
+  prefetch: {
+    prefetchAll: true,
+    defaultStrategy: 'viewport',
+  },
   build: {
     inlineStylesheets: 'auto',
   },

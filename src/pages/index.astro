@@ -79,31 +79,41 @@ const jsonLd = getWebSiteSchema();
 
   <!-- ══════ HERO ══════ -->
   <section class="hero" aria-label="Introduction">
-    <div class="hero-media">
+    <!-- Cinematic background with Ken Burns zoom -->
+    <div class="hero-media" data-parallax="bg">
       <picture>
         <source type="image/avif" srcset={`${CF}/${heroImageId}/w=640,f=avif 640w, ${CF}/${heroImageId}/w=1024,f=avif 1024w, ${CF}/${heroImageId}/w=1600,f=avif 1600w, ${CF}/${heroImageId}/w=2400,f=avif 2400w`} sizes="100vw" />
         <source type="image/webp" srcset={`${CF}/${heroImageId}/w=640,f=webp 640w, ${CF}/${heroImageId}/w=1024,f=webp 1024w, ${CF}/${heroImageId}/w=1600,f=webp 1600w, ${CF}/${heroImageId}/w=2400,f=webp 2400w`} sizes="100vw" />
         <img class="hero-img" src={`${CF}/${heroImageId}/w=1600,q=80`} alt={heroAltText} width="1600" height="900" loading="eager" decoding="async" fetchpriority="high" />
       </picture>
       <div class="hero-overlay"></div>
+      <!-- Floating golden particles (CSS-only) -->
+      <div class="hero-particles" aria-hidden="true">
+        <span class="particle"></span><span class="particle"></span><span class="particle"></span>
+        <span class="particle"></span><span class="particle"></span><span class="particle"></span>
+        <span class="particle"></span><span class="particle"></span>
+      </div>
     </div>
 
-    <div class="hero-inner">
+    <div class="hero-inner" data-parallax="content">
       <div class="hero-content">
-        <div class="hero-eyebrow" data-reveal>
+        <div class="hero-eyebrow" data-hero-reveal="eyebrow">
           <span class="hero-eyebrow-line"></span>
           501(c)(3) Nonprofit · Atlanta, GA · Since 2012
         </div>
-        <h1 data-reveal data-delay="1">Building <em>dreams</em>,<br/>one room at a time</h1>
-        <p class="hero-lead" data-reveal data-delay="2">We create life-changing spaces for children with special needs — dream bedrooms, accessible bathrooms, and therapy rooms — all at <strong>no cost to families</strong>.</p>
-        <div class="hero-ctas" data-reveal data-delay="3">
+        <h1 data-hero-reveal="headline">
+          <span class="hero-line"><span class="hero-line-inner">Building <em>dreams</em>,</span></span>
+          <span class="hero-line"><span class="hero-line-inner">one room at a time</span></span>
+        </h1>
+        <p class="hero-lead" data-hero-reveal="lead">We create life-changing spaces for children with special needs — dream bedrooms, accessible bathrooms, and therapy rooms — all at <strong>no cost to families</strong>.</p>
+        <div class="hero-ctas" data-hero-reveal="ctas">
           <a href="/donate" class="btn btn-primary btn-glow">
             Give Today
             <svg width="18" height="18" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 2.5C6.5 1 4 1 2.75 2.75S2.5 6.5 8 11.5C13.5 6.5 13.75 4.5 13.25 2.75S9.5 1 8 2.5Z" fill="currentColor"/></svg>
           </a>
           <a href="#stories" class="btn btn-ghost-light">See Our Work ↓</a>
         </div>
-        <div class="hero-proof" data-reveal data-delay="4">
+        <div class="hero-proof" data-hero-reveal="proof">
           <span class="hero-proof-avatars" aria-hidden="true">
             <img class="hero-proof-avatar" src={`${CF}/kids/liam/hero-7ab7f9/w=56,h=56,fit=cover,f=auto`} alt="" width="28" height="28" loading="eager" />
             <img class="hero-proof-avatar" src={`${CF}/kids/sophia/hero-63933e/w=56,h=56,fit=cover,f=auto`} alt="" width="28" height="28" loading="eager" />
@@ -112,13 +122,17 @@ const jsonLd = getWebSiteSchema();
           <span class="hero-proof-text">{stats.totalKids}+ families served across Greater Atlanta since 2012</span>
         </div>
       </div>
-      <div class="hero-impact" data-reveal data-delay="4">
-        <div class="hero-impact-num">{stats.totalKids}<span>+</span></div>
+      <div class="hero-impact" data-hero-reveal="impact">
+        <div class="hero-impact-num" data-count-to={stats.totalKids}>0<span>+</span></div>
         <div class="hero-impact-label">children's lives<br/>transformed</div>
       </div>
     </div>
 
-    <div class="hero-scroll" aria-hidden="true"><div class="hero-scroll-line"></div></div>
+    <!-- Scroll indicator -->
+    <div class="hero-scroll" aria-hidden="true">
+      <span class="hero-scroll-text">Scroll</span>
+      <div class="hero-scroll-track"><div class="hero-scroll-dot"></div></div>
+    </div>
   </section>
 
   <!-- ══════ IMPACT RIBBON ══════ -->
@@ -206,17 +220,19 @@ const jsonLd = getWebSiteSchema();
       </div>
       <a href="/kids" class="kids-strip-all">See all {stats.totalKids}+ kids →</a>
     </div>
-    <div class="kids-scroll" role="list">
+    <ul class="kids-scroll">
       {kidShowcase.map(kid => (
-        <a href={`/kids/${kid.slug}`} class="kid-thumb" role="listitem">
-          <div class="kid-thumb-photo">
-            <img src={`${CF}/${kid.cfId}/w=440,h=440,fit=cover,f=auto`} alt={`${kid.name}'s room reveal`} width="220" height="220" loading="lazy" decoding="async" />
-          </div>
-          <h4>{kid.name}</h4>
-          <p>{kid.roomLabel}{kid.age ? ` · Age ${kid.age}` : ''}</p>
-        </a>
+        <li class="kid-thumb-item">
+          <a href={`/kids/${kid.slug}`} class="kid-thumb">
+            <div class="kid-thumb-photo">
+              <img src={`${CF}/${kid.cfId}/w=440,h=440,fit=cover,f=auto`} alt={`${kid.name}'s room reveal`} width="220" height="220" loading="lazy" decoding="async" />
+            </div>
+            <h3 class="kid-thumb-name">{kid.name}</h3>
+            <p>{kid.roomLabel}{kid.age ? ` · Age ${kid.age}` : ''}</p>
+          </a>
+        </li>
       ))}
-    </div>
+    </ul>
   </section>
 
   <!-- ══════ PROCESS ══════ -->
@@ -300,11 +316,11 @@ const jsonLd = getWebSiteSchema();
           <p>The vast majority of every dollar funds room materials, labor, and design for children's spaces.</p>
         </div>
         <div class="trust-card" data-reveal data-delay="1">
-          <div class="trust-card-top"><span class="trust-big trust-big--icon">📋</span><span class="trust-card-label">990 Public</span></div>
+          <div class="trust-card-top"><span class="trust-big trust-big--icon"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg></span><span class="trust-card-label">990 Public</span></div>
           <p>Our IRS Form 990 tax returns are available for anyone to review, anytime.</p>
         </div>
         <div class="trust-card" data-reveal data-delay="2">
-          <div class="trust-card-top"><span class="trust-big trust-big--icon">✅</span><span class="trust-card-label">501(c)(3)</span></div>
+          <div class="trust-card-top"><span class="trust-big trust-big--icon"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/></svg></span><span class="trust-card-label">501(c)(3)</span></div>
           <p>Registered nonprofit. EIN 45-4773997. All donations are fully tax-deductible.</p>
         </div>
       </div>
@@ -343,34 +359,96 @@ const jsonLd = getWebSiteSchema();
 <style>
   /* ── HERO ── */
   .hero { position: relative; min-height: 100vh; min-height: 100dvh; display: flex; align-items: flex-end; padding-bottom: 80px; overflow: hidden; contain: layout style; }
+
+  /* Ken Burns cinematic zoom — runs on the img, not the media container (parallax uses the container) */
   .hero-media { position: absolute; inset: 0; z-index: 0; }
-  .hero-img { width: 100%; height: 100%; object-fit: cover; object-position: center 30%; }
-  .hero-overlay { position: absolute; inset: 0; background: linear-gradient(to top, rgba(26,27,31,0.92) 0%, rgba(26,27,31,0.55) 35%, rgba(26,27,31,0.25) 60%, rgba(26,27,31,0.15) 100%); box-shadow: inset 0 0 160px rgba(0,0,0,0.25); }
+  .hero-img { width: 100%; height: 100%; object-fit: cover; object-position: center 30%; animation: kenBurns 20s ease-in-out infinite alternate; will-change: transform; }
+  @keyframes kenBurns { 0% { transform: scale(1) translate(0, 0); } 100% { transform: scale(1.08) translate(-0.5%, -1%); } }
+
+  /* Rich cinematic overlay with vignette */
+  .hero-overlay { position: absolute; inset: 0; background:
+    radial-gradient(ellipse at 50% 0%, transparent 50%, rgba(0,0,0,0.35) 100%),
+    linear-gradient(to top, rgba(26,27,31,0.95) 0%, rgba(26,27,31,0.6) 30%, rgba(26,27,31,0.2) 55%, rgba(26,27,31,0.1) 100%);
+  }
+
+  /* Floating golden particles */
+  .hero-particles { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+  .particle { position: absolute; width: 3px; height: 3px; border-radius: 50%; background: var(--c-yellow); opacity: 0; animation: particleFloat linear infinite; }
+  .particle:nth-child(1) { left: 10%; animation-duration: 8s; animation-delay: 0s; }
+  .particle:nth-child(2) { left: 25%; animation-duration: 11s; animation-delay: 2s; width: 2px; height: 2px; }
+  .particle:nth-child(3) { left: 40%; animation-duration: 9s; animation-delay: 4s; }
+  .particle:nth-child(4) { left: 55%; animation-duration: 13s; animation-delay: 1s; width: 4px; height: 4px; }
+  .particle:nth-child(5) { left: 70%; animation-duration: 10s; animation-delay: 3s; width: 2px; height: 2px; }
+  .particle:nth-child(6) { left: 82%; animation-duration: 12s; animation-delay: 5s; }
+  .particle:nth-child(7) { left: 35%; animation-duration: 14s; animation-delay: 7s; width: 2px; height: 2px; }
+  .particle:nth-child(8) { left: 65%; animation-duration: 9s; animation-delay: 6s; width: 3px; height: 3px; }
+  @keyframes particleFloat {
+    0% { transform: translateY(100vh) scale(0); opacity: 0; }
+    10% { opacity: 0.6; }
+    50% { opacity: 0.3; }
+    90% { opacity: 0; }
+    100% { transform: translateY(-20vh) scale(1); opacity: 0; }
+  }
+
   .hero-inner { position: relative; z-index: 2; max-width: var(--max-width); margin: 0 auto; padding: 0 var(--page-padding); width: 100%; display: flex; justify-content: space-between; align-items: flex-end; }
   .hero-content { max-width: 680px; }
-  .hero-eyebrow { display: flex; align-items: center; gap: 12px; font-size: 12px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: rgba(255,255,255,0.5); margin-bottom: 28px; }
-  .hero-eyebrow-line { width: 32px; height: 1px; background: var(--c-yellow); flex-shrink: 0; }
-  .hero h1 { font-size: clamp(40px, 6vw, 72px); color: #fff; line-height: 1.08; margin-bottom: 24px; letter-spacing: -0.03em; text-shadow: 0 2px 40px rgba(0,0,0,0.3); }
-  .hero h1 em { font-style: italic; color: var(--c-yellow); }
-  .hero-lead { font-size: clamp(16px, 2vw, 19px); color: rgba(255,255,255,0.6); line-height: 1.7; max-width: 540px; margin-bottom: 36px; }
+
+  /* Eyebrow */
+  .hero-eyebrow { display: flex; align-items: center; gap: 12px; font-size: 12px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: rgba(255,255,255,0.5); margin-bottom: 28px; opacity: 0; transform: translateY(16px); }
+  .hero-eyebrow-line { width: 0; height: 1px; background: var(--c-yellow); flex-shrink: 0; transition: width 0.8s cubic-bezier(0.16,1,0.3,1) 0.2s; }
+  .hero.is-loaded .hero-eyebrow { animation: heroFadeUp 0.8s cubic-bezier(0.16,1,0.3,1) 0.3s both; }
+  .hero.is-loaded .hero-eyebrow-line { width: 32px; }
+
+  /* Split-line headline reveal */
+  .hero h1 { font-size: clamp(40px, 6vw, 72px); color: #fff; line-height: 1.08; margin-bottom: 24px; letter-spacing: -0.03em; }
+  .hero h1 em { font-style: italic; color: var(--c-yellow); text-shadow: 0 0 40px rgba(255,218,36,0.3); }
+  .hero-line { display: block; overflow: hidden; }
+  .hero-line-inner { display: block; transform: translateY(110%); }
+  .hero.is-loaded .hero-line:nth-child(1) .hero-line-inner { animation: lineReveal 1s cubic-bezier(0.16,1,0.3,1) 0.5s both; }
+  .hero.is-loaded .hero-line:nth-child(2) .hero-line-inner { animation: lineReveal 1s cubic-bezier(0.16,1,0.3,1) 0.65s both; }
+  @keyframes lineReveal { to { transform: translateY(0); } }
+
+  /* Lead paragraph */
+  .hero-lead { font-size: clamp(16px, 2vw, 19px); color: rgba(255,255,255,0.6); line-height: 1.7; max-width: 540px; margin-bottom: 36px; opacity: 0; }
   .hero-lead strong { color: #fff; }
-  .hero-ctas { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 28px; }
-  .btn-glow { animation: pulseGlow 3s ease-in-out infinite; }
+  .hero.is-loaded .hero-lead { animation: heroFadeUp 0.9s cubic-bezier(0.16,1,0.3,1) 0.9s both; }
+
+  /* CTAs */
+  .hero-ctas { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 28px; opacity: 0; }
+  .hero.is-loaded .hero-ctas { animation: heroFadeUp 0.9s cubic-bezier(0.16,1,0.3,1) 1.1s both; }
+  .btn-glow { animation: pulseGlow 3s ease-in-out 2s infinite; }
   @keyframes pulseGlow { 0%, 100% { box-shadow: 0 8px 24px rgba(255,218,36,0.3); } 50% { box-shadow: 0 8px 40px rgba(255,218,36,0.55); } }
   .btn-ghost-light { background: transparent; color: #fff; border: 1.5px solid rgba(255,255,255,0.25); backdrop-filter: blur(4px); }
   .btn-ghost-light:hover { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.4); transform: translateY(-3px); }
-  .hero-proof { display: flex; align-items: center; gap: 12px; }
+
+  /* Social proof */
+  .hero-proof { display: flex; align-items: center; gap: 12px; opacity: 0; }
+  .hero.is-loaded .hero-proof { animation: heroFadeUp 0.8s cubic-bezier(0.16,1,0.3,1) 1.3s both; }
   .hero-proof-avatars { display: flex; }
   .hero-proof-avatar { width: 28px; height: 28px; border-radius: 50%; border: 2px solid rgba(26,27,31,0.8); margin-left: -6px; object-fit: cover; }
   .hero-proof-avatar:first-child { margin-left: 0; }
   .hero-proof-text { font-size: 13px; color: rgba(255,255,255,0.35); font-weight: 500; letter-spacing: 0.01em; }
-  .hero-impact { background: rgba(255,255,255,0.06); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border: 1px solid rgba(255,255,255,0.1); border-radius: 20px; padding: 28px 32px; text-align: center; flex-shrink: 0; }
-  .hero-impact-num { font-family: var(--font-display); font-size: 56px; font-weight: 700; color: var(--c-yellow); line-height: 1; }
+
+  /* Impact card with glassmorphism + solid fallback for perf */
+  .hero-impact { background: rgba(30,31,35,0.75); border: 1px solid rgba(255,255,255,0.1); border-radius: 20px; padding: 28px 32px; text-align: center; flex-shrink: 0; opacity: 0; }
+  @supports (backdrop-filter: blur(1px)) { .hero-impact { background: rgba(255,255,255,0.06); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); } }
+  .hero.is-loaded .hero-impact { animation: heroScaleIn 0.8s cubic-bezier(0.16,1,0.3,1) 1.2s both; }
+  .hero-impact-num { font-family: var(--font-display); font-size: 56px; font-weight: 700; color: var(--c-yellow); line-height: 1; font-variant-numeric: tabular-nums; }
   .hero-impact-num span { font-size: 32px; }
   .hero-impact-label { font-size: 13px; font-weight: 500; color: rgba(255,255,255,0.5); margin-top: 6px; line-height: 1.4; }
-  .hero-scroll { position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%); z-index: 3; }
-  .hero-scroll-line { width: 1px; height: 48px; background: linear-gradient(to bottom, var(--c-yellow), transparent); animation: scrollPulse 2s ease infinite; }
-  @keyframes scrollPulse { 0% { opacity: 1; transform: scaleY(1); } 50% { opacity: 0.3; transform: scaleY(0.6); } 100% { opacity: 1; transform: scaleY(1); } }
+
+  /* Scroll indicator */
+  .hero-scroll { position: absolute; bottom: 28px; left: 50%; transform: translateX(-50%); z-index: 3; display: flex; flex-direction: column; align-items: center; gap: 8px; opacity: 0; }
+  .hero.is-loaded .hero-scroll { animation: heroFadeUp 0.6s cubic-bezier(0.16,1,0.3,1) 1.8s both; }
+  .hero-scroll-text { font-size: 10px; font-weight: 600; letter-spacing: 0.2em; text-transform: uppercase; color: rgba(255,255,255,0.3); }
+  .hero-scroll-track { width: 1px; height: 40px; background: rgba(255,255,255,0.1); border-radius: 1px; position: relative; overflow: hidden; }
+  .hero-scroll-dot { position: absolute; top: -8px; left: 0; width: 1px; height: 8px; background: var(--c-yellow); border-radius: 1px; animation: scrollDot 2s cubic-bezier(0.4,0,0.2,1) infinite; }
+  @keyframes scrollDot { 0% { top: -8px; opacity: 0; } 20% { opacity: 1; } 80% { opacity: 1; } 100% { top: 40px; opacity: 0; } }
+
+  /* Hero shared keyframes */
+  @keyframes heroFadeUp { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes heroScaleIn { from { opacity: 0; transform: scale(0.9) translateY(16px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+
   @media (max-width: 768px) {
     .hero { align-items: flex-end; padding: 0 0 48px; min-height: 92vh; min-height: 92dvh; }
     .hero-inner { flex-direction: column; align-items: flex-start; gap: 28px; }
@@ -382,7 +460,7 @@ const jsonLd = getWebSiteSchema();
     .hero-impact-num { font-size: 36px; }
     .hero-impact-label { text-align: left; font-size: 12px; }
     .hero-proof { margin-top: 4px; }
-    .hero-scroll { display: none; }
+    .hero-scroll { bottom: 16px; }
   }
 
   /* ── RIBBON ── */
@@ -428,13 +506,14 @@ const jsonLd = getWebSiteSchema();
   .kids-strip-header h2 em { font-style: italic; }
   .kids-strip-all { font-size: 15px; font-weight: 600; color: var(--c-accent); transition: letter-spacing 0.3s ease; white-space: nowrap; }
   .kids-strip-all:hover { letter-spacing: 0.02em; }
-  .kids-scroll { display: flex; gap: 24px; padding: 0 var(--page-padding); overflow-x: auto; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+  .kids-scroll { display: flex; gap: 24px; padding: 0 var(--page-padding); overflow-x: auto; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; scrollbar-width: none; list-style: none; margin: 0; }
   .kids-scroll::-webkit-scrollbar { display: none; }
-  .kid-thumb { flex-shrink: 0; width: 220px; scroll-snap-align: start; text-align: center; text-decoration: none; color: inherit; }
+  .kid-thumb-item { flex-shrink: 0; width: 220px; scroll-snap-align: start; }
+  .kid-thumb { display: block; text-align: center; text-decoration: none; color: inherit; }
   .kid-thumb-photo { width: 220px; height: 220px; border-radius: 20px; overflow: hidden; margin-bottom: 16px; background: var(--c-warm-gray); }
   .kid-thumb-photo img { width: 100%; height: 100%; object-fit: cover; transition: transform 0.4s cubic-bezier(0.16,1,0.3,1); }
   .kid-thumb:hover .kid-thumb-photo img { transform: scale(1.06); }
-  .kid-thumb h4 { font-size: 17px; margin-bottom: 2px; }
+  .kid-thumb-name { font-size: 17px; margin-bottom: 2px; }
   .kid-thumb p { font-size: 13px; color: var(--c-text-muted); }
   @media (max-width: 768px) { .kids-strip { padding: 64px 0 48px; } }
 
@@ -448,7 +527,7 @@ const jsonLd = getWebSiteSchema();
   .timeline::before { content: ''; position: absolute; top: 0; bottom: 0; left: 19px; width: 2px; background: linear-gradient(to bottom, var(--c-yellow), rgba(45,46,51,0.08)); }
   .timeline-step { position: relative; padding-bottom: 48px; }
   .timeline-step:last-child { padding-bottom: 0; }
-  .timeline-marker { position: absolute; left: -48px; top: 0; width: 40px; height: 40px; border-radius: 50%; background: var(--c-yellow); display: flex; align-items: center; justify-content: center; font-family: var(--font-display); font-size: 16px; font-weight: 700; color: var(--c-dark); box-shadow: 0 4px 12px rgba(255,213,0,0.3); }
+  .timeline-marker { position: absolute; left: -48px; top: 0; width: 40px; height: 40px; border-radius: 50%; background: var(--c-yellow); display: flex; align-items: center; justify-content: center; font-family: var(--font-display); font-size: 16px; font-weight: 700; color: var(--c-dark); box-shadow: 0 4px 12px var(--c-yellow-glow); }
   .timeline-body h3 { font-size: 20px; margin-bottom: 6px; }
   .timeline-body p { font-size: 16px; line-height: 1.7; color: var(--c-text-muted); }
   @media (max-width: 768px) { .process { padding: 80px 0; } }
@@ -486,7 +565,7 @@ const jsonLd = getWebSiteSchema();
   .trust-card:hover { background: rgba(255,255,255,0.07); transform: translateY(-4px); }
   .trust-card-top { margin-bottom: 16px; }
   .trust-big { display: block; font-family: var(--font-display); font-size: 40px; font-weight: 700; color: var(--c-yellow); line-height: 1; margin-bottom: 8px; }
-  .trust-big--icon { font-family: inherit; }
+  .trust-big--icon { font-family: inherit; font-size: 0; line-height: 0; }
   .trust-card-label { font-size: 13px; font-weight: 600; color: rgba(255,255,255,0.5); text-transform: uppercase; letter-spacing: 0.08em; }
   .trust-card p { font-size: 15px; color: rgba(255,255,255,0.45); line-height: 1.65; }
   .trust-cta { text-align: center; }
@@ -525,12 +604,18 @@ const jsonLd = getWebSiteSchema();
   @media (prefers-reduced-motion: reduce) {
     [data-reveal] { opacity: 1; transform: none; transition: none; }
     .btn-glow { animation: none; }
-    .hero-scroll-line { animation: none; }
     .marquee-track { animation: none; }
+    .hero-img { animation: none; }
+    .particle { animation: none; display: none; }
+    .hero-scroll-dot { animation: none; }
+    .hero-eyebrow, .hero-lead, .hero-ctas, .hero-proof, .hero-impact, .hero-scroll { opacity: 1; transform: none; }
+    .hero-line-inner { transform: none; }
+    .hero-eyebrow-line { width: 32px; }
   }
 </style>
 
 <script>
+  // ── Scroll reveal observer (sections below hero) ──
   const observer = new IntersectionObserver((entries) => {
     entries.forEach(entry => {
       if (entry.isIntersecting) {
@@ -540,4 +625,68 @@ const jsonLd = getWebSiteSchema();
     });
   }, { threshold: 0.15, rootMargin: '0px 0px -40px 0px' });
   document.querySelectorAll('[data-reveal]').forEach(el => observer.observe(el));
+
+  // ── Hero entrance orchestration ──
+  const hero = document.querySelector('.hero') as HTMLElement;
+  if (hero) {
+    // Trigger cinematic entrance once image is ready
+    const heroImg = hero.querySelector('.hero-img') as HTMLImageElement;
+    const startHero = () => hero.classList.add('is-loaded');
+    if (heroImg?.complete) {
+      requestAnimationFrame(startHero);
+    } else if (heroImg) {
+      heroImg.addEventListener('load', startHero, { once: true });
+      // Fallback if image takes too long
+      setTimeout(startHero, 2000);
+    } else {
+      startHero();
+    }
+  }
+
+  // ── Animated counter ──
+  const counterEl = document.querySelector('[data-count-to]') as HTMLElement;
+  if (counterEl) {
+    const target = parseInt(counterEl.dataset.countTo || '0', 10);
+    const duration = 2000;
+    const delay = 1400;
+
+    function easeOutExpo(t: number): number {
+      return t === 1 ? 1 : 1 - Math.pow(2, -10 * t);
+    }
+
+    setTimeout(() => {
+      const start = performance.now();
+      function tick(now: number) {
+        const progress = Math.min((now - start) / duration, 1);
+        counterEl.firstChild!.textContent = String(Math.round(easeOutExpo(progress) * target));
+        if (progress < 1) requestAnimationFrame(tick);
+      }
+      requestAnimationFrame(tick);
+    }, delay);
+  }
+
+  // ── Scroll parallax (all viewports — GPU-only, no layout thrashing) ──
+  if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    const heroBg = document.querySelector('[data-parallax="bg"]') as HTMLElement;
+    const heroContent = document.querySelector('[data-parallax="content"]') as HTMLElement;
+    if (heroBg && heroContent) {
+      const heroH = hero?.offsetHeight || window.innerHeight;
+      let ticking = false;
+      function onScroll() {
+        if (ticking) return;
+        ticking = true;
+        requestAnimationFrame(() => {
+          const scrollY = window.scrollY;
+          if (scrollY < heroH) {
+            const ratio = scrollY / heroH;
+            heroBg.style.transform = `translate3d(0, ${scrollY * 0.3}px, 0)`;
+            heroContent.style.transform = `translate3d(0, ${scrollY * 0.12}px, 0)`;
+            heroContent.style.opacity = String(1 - ratio * 0.8);
+          }
+          ticking = false;
+        });
+      }
+      window.addEventListener('scroll', onScroll, { passive: true });
+    }
+  }
 </script>

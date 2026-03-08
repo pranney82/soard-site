@@ -14,7 +14,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 // ── Brand tokens ──────────────────────────────────
-const YELLOW = '#FFD500';
+const YELLOW = '#FFDA24';
 const DARK = '#2D2E33';
 const DARK_DEEP = '#1A1B1F';
 const WHITE = '#FFFFFF';
@@ -25,14 +25,14 @@ let fontCache: { outfit400: ArrayBuffer; outfit700: ArrayBuffer; libre700: Array
 
 function loadFonts() {
   if (fontCache) return fontCache;
-  function read(pkg: string): ArrayBuffer {
-    const buf = fs.readFileSync(path.resolve(`./node_modules/${pkg}`));
+  function read(file: string): ArrayBuffer {
+    const buf = fs.readFileSync(path.resolve(`./src/fonts/${file}`));
     return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
   }
   fontCache = {
-    outfit400: read('@fontsource/outfit/files/outfit-latin-400-normal.woff'),
-    outfit700: read('@fontsource/outfit/files/outfit-latin-700-normal.woff'),
-    libre700: read('@fontsource/libre-baskerville/files/libre-baskerville-latin-700-normal.woff'),
+    outfit400: read('outfit-latin-400-normal.woff'),
+    outfit700: read('outfit-latin-700-normal.woff'),
+    libre700: read('libre-baskerville-latin-700-normal.woff'),
   };
   return fontCache;
 }
@@ -330,7 +330,7 @@ function defaultTemplate(title: string, subtitle?: string) {
             style: {
               position: 'absolute' as const, top: '-120px', right: '-80px',
               width: '360px', height: '360px', borderRadius: '50%',
-              background: 'rgba(255,213,0,0.07)', display: 'flex',
+              background: 'rgba(255,218,36,0.07)', display: 'flex',
             },
           },
         },

@@ -91,7 +91,8 @@
       background: rgba(255, 213, 0, 0.08);
       border-left-color: #FFD500;
     }
-    .nav-icon { font-size: 1.2rem; width: 1.5rem; text-align: center; }
+    .nav-icon { width: 1.25rem; height: 1.25rem; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+    .nav-icon svg { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
     .nav-section {
       font-size: 0.7rem;
       text-transform: uppercase;
@@ -663,7 +664,7 @@
     // ═══════════════════════════════════════════
     // DASHBOARD
     // ═══════════════════════════════════════════
-    function Dashboard({ kids, partners, team }) {
+    function Dashboard({ kids, partners, team, events }) {
       return html`
         <div class="page-header"><h2>Dashboard</h2></div>
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
@@ -686,6 +687,10 @@
           <div class="stat-card">
             <div class="stat-number">${kids.filter(k => k.status === 'in-progress').length}</div>
             <div class="stat-label">In Progress</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-number">${(events || []).filter(e => e.status === 'upcoming').length}</div>
+            <div class="stat-label">Upcoming Events</div>
           </div>
         </div>
         <div class="card">
@@ -2327,6 +2332,253 @@
       `;
     }
 
+    // ═══════════════════════════════════════════
+    // EVENTS LIST
+    // ═══════════════════════════════════════════
+    const EVENT_CATEGORIES = ['fundraiser', 'volunteer', 'reveal', 'community', 'other'];
+    const EVENT_STATUSES = ['upcoming', 'past', 'cancelled'];
+    const EVENT_CAT_LABELS = { fundraiser: 'Fundraiser', volunteer: 'Volunteer', reveal: 'Room Reveal', community: 'Community', other: 'Other' };
+
+    function EventsList({ events, onEdit, onAdd, onDelete }) {
+      const [search, setSearch] = useState('');
+      const filtered = useMemo(() => {
+        if (!search) return events;
+        const q = search.toLowerCase();
+        return events.filter(e =>
+          e.title.toLowerCase().includes(q) ||
+          (e.location || '').toLowerCase().includes(q) ||
+          (e.category || '').toLowerCase().includes(q)
+        );
+      }, [events, search]);
+
+      return html`
+        <div class="page-header">
+          <h2>Events (${events.length})</h2>
+          <button class="btn btn-primary" onClick=${onAdd}>+ Add Event</button>
+        </div>
+        <div class="card" style="margin-bottom: 1rem; padding: 0.75rem 1rem;">
+          <div class="search-bar" style="max-width: 100%;">
+            <span class="search-icon">🔍</span>
+            <input placeholder="Search by title, location, or category..."
+              value=${search} onInput=${e => setSearch(e.target.value)} />
+          </div>
+        </div>
+        <div class="card">
+          <div class="table-wrap"><table>
+            <thead><tr><th>Title</th><th>Date</th><th>Location</th><th>Category</th><th>Status</th><th>Featured</th><th></th></tr></thead>
+            <tbody>
+              ${filtered.length === 0 ? html`<tr><td colspan="7" style="text-align:center; color: #6B6C72;">No events found</td></tr>` : null}
+              ${filtered.map(e => html`<tr key=${e.slug}>
+                <td><strong>${e.title}</strong></td>
+                <td class="text-sm">${e.date || '—'}</td>
+                <td class="text-sm">${(e.location || '—').slice(0, 30)}${(e.location || '').length > 30 ? '…' : ''}</td>
+                <td><span class="badge badge-accent">${EVENT_CAT_LABELS[e.category] || e.category}</span></td>
+                <td><span class="badge ${e.status === 'upcoming' ? 'badge-green' : e.status === 'cancelled' ? 'badge-red' : 'badge-gray'}">${e.status}</span></td>
+                <td>${e.featured ? '⭐' : '—'}</td>
+                <td style="white-space: nowrap;">
+                  <button class="btn btn-ghost btn-sm" onClick=${() => onEdit(e.slug)}>Edit</button>
+                  <button class="btn btn-ghost btn-sm" style="color: #E53E3E;" onClick=${(ev) => { ev.stopPropagation(); onDelete(e); }}>Delete</button>
+                </td>
+              </tr>`)}
+            </tbody>
+          </table></div>
+        </div>
+      `;
+    }
+
+    // ═══════════════════════════════════════════
+    // EVENT EDITOR
+    // ═══════════════════════════════════════════
+    function EventEditor({ slug, onBack, addToast }) {
+      const [loading, setLoading] = useState(!!slug);
+      const [saving, setSaving] = useState(false);
+      const [sha, setSha] = useState(null);
+      const [dirty, setDirty] = useState(false);
+      const [data, setData] = useState({
+        title: '', slug: '', date: new Date().toISOString().split('T')[0],
+        endDate: '', time: '', location: '', address: '',
+        description: '', body: '', image: null,
+        ticketUrl: '', ticketPrice: '',
+        category: 'other', featured: false, status: 'upcoming', order: 0,
+      });
+
+      useEffect(() => {
+        if (!slug) return;
+        (async () => {
+          try {
+            const res = await api.readContent(`src/content/events/${slug}.json`);
+            if (res.success && res.content) {
+              const parsed = typeof res.content === 'string' ? JSON.parse(res.content) : res.content;
+              setData(parsed);
+              setSha(res.sha);
+            } else {
+              addToast('Event not found', 'error');
+              onBack();
+            }
+          } catch (err) {
+            addToast(`Load error: ${err.message}`, 'error');
+          }
+          setLoading(false);
+        })();
+      }, [slug]);
+
+      const update = (key, val) => {
+        setData(d => {
+          const updated = { ...d, [key]: val };
+          if (key === 'title' && !slug) {
+            updated.slug = slugify(val);
+          }
+          return updated;
+        });
+        setDirty(true);
+      };
+
+      const handleSave = async () => {
+        if (!data.title) { addToast('Title is required', 'error'); return; }
+        if (!data.slug) data.slug = slugify(data.title);
+        setSaving(true);
+        try {
+          const path = `src/content/events/${data.slug}.json`;
+          const content = JSON.stringify(data, null, 2);
+          const message = slug ? `Update event: ${data.title}` : `Add event: ${data.title}`;
+          const res = await api.saveContent(path, content, message, sha || undefined);
+          if (res.success) {
+            setSha(res.sha);
+            setDirty(false);
+            addToast('Event saved & published!', 'success');
+          } else {
+            addToast(`Save failed: ${res.error}`, 'error');
+          }
+        } catch (err) {
+          addToast(`Save error: ${err.message}`, 'error');
+        }
+        setSaving(false);
+      };
+
+      useEffect(() => {
+        const handler = (e) => { if (dirty) { e.preventDefault(); e.returnValue = ''; } };
+        window.addEventListener('beforeunload', handler);
+        return () => window.removeEventListener('beforeunload', handler);
+      }, [dirty]);
+
+      if (loading) return html`<div class="card" style="text-align: center; padding: 3rem;"><div class="spinner" style="width: 32px; height: 32px;" /></div>`;
+
+      return html`
+        <div class="page-header">
+          <div style="display: flex; align-items: center; gap: 0.75rem;">
+            <button class="btn btn-ghost" onClick=${() => { if (dirty && !confirm('You have unsaved changes. Leave?')) return; onBack(); }}>← Back</button>
+            <h2>${slug ? 'Edit Event' : 'New Event'}</h2>
+          </div>
+          <button class="btn btn-primary" onClick=${handleSave} disabled=${saving}>
+            ${saving ? 'Saving...' : dirty ? '💾 Save & Publish' : 'Save & Publish'}
+          </button>
+        </div>
+
+        <div class="card" style="margin-bottom: 1rem;">
+          <h3 style="margin-bottom: 1rem;">Event Details</h3>
+          <div class="form-row" style="margin-bottom: 1.25rem;">
+            <div class="form-group">
+              <span class="form-label">Title *</span>
+              <input class="form-input" type="text" value=${data.title}
+                onInput=${e => update('title', e.target.value)} placeholder="Spring Gala 2026" />
+            </div>
+            <div class="form-group">
+              <span class="form-label">Slug</span>
+              <input class="form-input" type="text" value=${data.slug}
+                onInput=${e => update('slug', e.target.value)} placeholder="spring-gala-2026" />
+              <span class="form-hint">/events/ page item</span>
+            </div>
+          </div>
+          <div class="form-row" style="margin-bottom: 1.25rem;">
+            <div class="form-group">
+              <span class="form-label">Date *</span>
+              <input class="form-input" type="date" value=${data.date}
+                onInput=${e => update('date', e.target.value)} />
+            </div>
+            <div class="form-group">
+              <span class="form-label">End Date</span>
+              <input class="form-input" type="date" value=${data.endDate || ''}
+                onInput=${e => update('endDate', e.target.value)} />
+              <span class="form-hint">Optional, for multi-day events</span>
+            </div>
+          </div>
+          <div class="form-row" style="margin-bottom: 1.25rem;">
+            <div class="form-group">
+              <span class="form-label">Time</span>
+              <input class="form-input" type="text" value=${data.time || ''}
+                onInput=${e => update('time', e.target.value)} placeholder="6:00 PM – 10:00 PM" />
+            </div>
+            <div class="form-group">
+              <span class="form-label">Ticket Price</span>
+              <input class="form-input" type="text" value=${data.ticketPrice || ''}
+                onInput=${e => update('ticketPrice', e.target.value)} placeholder="$150 per person" />
+            </div>
+          </div>
+          <div class="form-row" style="margin-bottom: 1.25rem;">
+            <div class="form-group">
+              <span class="form-label">Location *</span>
+              <input class="form-input" type="text" value=${data.location}
+                onInput=${e => update('location', e.target.value)} placeholder="The Estate at River Run" />
+            </div>
+            <div class="form-group">
+              <span class="form-label">Address</span>
+              <input class="form-input" type="text" value=${data.address || ''}
+                onInput=${e => update('address', e.target.value)} placeholder="1050 River Run Blvd, Roswell, GA 30076" />
+            </div>
+          </div>
+          <div class="form-group" style="margin-bottom: 1.25rem;">
+            <span class="form-label">Ticket / Registration URL</span>
+            <input class="form-input" type="url" value=${data.ticketUrl || ''}
+              onInput=${e => update('ticketUrl', e.target.value)} placeholder="https://..." />
+          </div>
+          <div class="form-group" style="margin-bottom: 1.25rem;">
+            <span class="form-label">Short Description *</span>
+            <textarea class="form-textarea" rows="3" value=${data.description}
+              onInput=${e => update('description', e.target.value)}
+              placeholder="Brief description shown in event cards..." />
+            <span class="form-hint">${(data.description || '').length}/300 characters</span>
+          </div>
+          <div class="form-group" style="margin-bottom: 1.25rem;">
+            <span class="form-label">Extended Details (HTML, optional)</span>
+            <textarea class="form-textarea" rows="5" style="font-family: monospace; font-size: 0.85rem;"
+              value=${data.body || ''}
+              onInput=${e => update('body', e.target.value)}
+              placeholder="<p>Additional event details...</p>" />
+          </div>
+          <div class="form-row" style="margin-bottom: 1.25rem;">
+            <div class="form-group">
+              <span class="form-label">Category</span>
+              <select class="form-select" value=${data.category}
+                onChange=${e => update('category', e.target.value)}>
+                ${EVENT_CATEGORIES.map(c => html`<option key=${c} value=${c}>${EVENT_CAT_LABELS[c] || c}</option>`)}
+              </select>
+            </div>
+            <div class="form-group">
+              <span class="form-label">Status</span>
+              <select class="form-select" value=${data.status}
+                onChange=${e => update('status', e.target.value)}>
+                ${EVENT_STATUSES.map(s => html`<option key=${s} value=${s}>${s.charAt(0).toUpperCase() + s.slice(1)}</option>`)}
+              </select>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <span class="form-label">Display Order</span>
+              <input class="form-input" type="number" value=${data.order || 0}
+                onInput=${e => update('order', Number(e.target.value))} />
+            </div>
+            <div class="form-group" style="display: flex; align-items: end; padding-bottom: 0.3rem;">
+              <label class="checkbox-label">
+                <input type="checkbox" checked=${data.featured}
+                  onChange=${e => update('featured', e.target.checked)} />
+                Featured event (highlighted on events page)
+              </label>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
     // FAQ MANAGEMENT
     // ═══════════════════════════════════════════
     function FAQManager({ addToast }) {
@@ -2762,6 +3014,77 @@
     }
 
     // ═══════════════════════════════════════════
+    // APPLICATIONS (Makeover Intake via JotForm)
+    // ═══════════════════════════════════════════
+    function Applications({ addToast }) {
+      const [tab, setTab] = useState('form');
+      const JOTFORM_ID = ''; // TODO: Add your JotForm form ID here
+
+      const formConfigured = JOTFORM_ID.length > 0;
+
+      return html`
+        <div class="page-header">
+          <h2>Makeover Applications</h2>
+          <div style="display: flex; gap: 0.5rem;">
+            <button class="btn ${tab === 'form' ? 'btn-primary' : 'btn-ghost'}" onClick=${() => setTab('form')}>
+              Application Form
+            </button>
+            <button class="btn ${tab === 'submissions' ? 'btn-primary' : 'btn-ghost'}" onClick=${() => setTab('submissions')}>
+              Submissions
+            </button>
+          </div>
+        </div>
+
+        ${tab === 'form' ? html`
+          ${formConfigured ? html`
+            <div class="card" style="padding: 0; overflow: hidden; border-radius: 12px;">
+              <iframe
+                src="https://form.jotform.com/${JOTFORM_ID}"
+                style="width: 100%; min-height: 800px; border: none;"
+                title="Makeover Application Form"
+                allow="geolocation; camera"
+              />
+            </div>
+          ` : html`
+            <div class="card" style="text-align: center; padding: 3rem;">
+              <div style="font-size: 2.5rem; margin-bottom: 1rem; opacity: 0.3;">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" style="width: 64px; height: 64px; stroke: currentColor; fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; margin: 0 auto;">
+                  <path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+                </svg>
+              </div>
+              <h3 style="font-family: 'Libre Baskerville', Georgia, serif; margin-bottom: 0.75rem;">Connect Your JotForm</h3>
+              <p style="color: #6B6C72; max-width: 480px; margin: 0 auto 1.5rem; line-height: 1.6;">
+                To start receiving makeover applications, add your JotForm form ID to the <code style="background: #F5F4F0; padding: 0.15rem 0.4rem; border-radius: 4px; font-size: 0.85rem;">JOTFORM_ID</code> constant in <code style="background: #F5F4F0; padding: 0.15rem 0.4rem; border-radius: 4px; font-size: 0.85rem;">admin/index.html</code>.
+              </p>
+              <div class="card" style="background: #F5F4F0; max-width: 520px; margin: 0 auto; text-align: left; padding: 1.25rem;">
+                <p style="font-size: 0.85rem; font-weight: 600; margin-bottom: 0.75rem;">Setup Steps</p>
+                <ol style="padding-left: 1.25rem; color: #6B6C72; font-size: 0.88rem; line-height: 1.8;">
+                  <li>Create a form on <a href="https://www.jotform.com" target="_blank" style="color: #FFD500; font-weight: 600;">jotform.com</a> for makeover applications</li>
+                  <li>Copy the form ID from the URL (e.g. <code style="background: #fff; padding: 0.1rem 0.3rem; border-radius: 3px; font-size: 0.82rem;">jotform.com/<strong>241234567890</strong></code>)</li>
+                  <li>Set the <code style="background: #fff; padding: 0.1rem 0.3rem; border-radius: 3px; font-size: 0.82rem;">JOTFORM_ID</code> constant in the Applications component</li>
+                  <li>Optionally add your JotForm API key for the Submissions tab</li>
+                </ol>
+              </div>
+            </div>
+          `}
+        ` : html`
+          <div class="card" style="text-align: center; padding: 3rem;">
+            <div style="font-size: 2.5rem; margin-bottom: 1rem; opacity: 0.3;">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" style="width: 64px; height: 64px; stroke: currentColor; fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; margin: 0 auto;">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" /><polyline points="10 9 9 9 8 9" />
+              </svg>
+            </div>
+            <h3 style="font-family: 'Libre Baskerville', Georgia, serif; margin-bottom: 0.75rem;">Submissions Viewer</h3>
+            <p style="color: #6B6C72; max-width: 480px; margin: 0 auto 1rem; line-height: 1.6;">
+              View and manage submitted makeover applications here. This feature requires a JotForm API key to fetch submissions.
+            </p>
+            <p style="color: #9B9CA0; font-size: 0.85rem;">Coming soon — check back after JotForm is configured.</p>
+          </div>
+        `}
+      `;
+    }
+
+    // ═══════════════════════════════════════════
     // DEPLOYS
     // ═══════════════════════════════════════════
     function Deploys({ addToast }) {
@@ -2898,6 +3221,7 @@
       const [partners, setPartners] = useState([]);
       const [team, setTeam] = useState([]);
       const [articles, setArticles] = useState([]);
+      const [events, setEvents] = useState([]);
       const [loading, setLoading] = useState(true);
       const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -2938,6 +3262,13 @@
             setArticles(artRes.items.map(i => i.content).filter(Boolean)
               .sort((a, b) => (a.order || 0) - (b.order || 0)));
           }
+
+          // Load events (bulk — one API call)
+          const evRes = await api.bulkListContent('src/content/events');
+          if (evRes.success) {
+            setEvents(evRes.items.map(i => i.content).filter(Boolean)
+              .sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0)));
+          }
         } catch (err) {
           addToast('Failed to load content. Check API settings.', 'error');
         }
@@ -2960,7 +3291,7 @@
         if (!deleteModal) return;
         setDeleteLoading(true);
         const { type, item } = deleteModal;
-        const dir = type === 'kid' ? 'kids' : type === 'partner' ? 'partners' : type === 'team member' ? 'team' : type === 'article' ? 'articles' : 'partners';
+        const dir = type === 'kid' ? 'kids' : type === 'partner' ? 'partners' : type === 'team member' ? 'team' : type === 'article' ? 'articles' : type === 'event' ? 'events' : 'partners';
         try {
           // Get SHA first
           const fileRes = await api.readContent(`src/content/${dir}/${item.slug}.json`);
@@ -2988,16 +3319,36 @@
         setDeleteModal(null);
       };
 
+      // Lucide-style SVG icons for sidebar nav
+      const Icon = ({ d, ...rest }) => html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" ...${rest}><path d=${d} /></svg>`;
+      const icons = {
+        dashboard: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></svg>`,
+        kids: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4" /><path d="M6 21v-2a6 6 0 0 1 12 0v2" /></svg>`,
+        partners: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M11 16.5l-3-2.5L2 19h20l-6-5-3 2.5z" /><path d="M2 9l5 4 5-4 5 4 5-4" /></svg>`,
+        team: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="9" cy="7" r="3" /><path d="M3 21v-1a5 5 0 0 1 10 0v1" /><circle cx="18" cy="9" r="2.5" /><path d="M15 21v-1a3.5 3.5 0 0 1 7 0v1" /></svg>`,
+        articles: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 4h16v16H4z" /><path d="M8 8h8M8 12h8M8 16h5" /></svg>`,
+        events: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" /></svg>`,
+        faq: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" /><circle cx="12" cy="17" r="0.5" /></svg>`,
+        financials: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" /></svg>`,
+        deploys: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z" /><path d="M12 15l-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z" /><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0" /><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5" /></svg>`,
+        settings: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>`,
+        globe: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" /></svg>`,
+        github: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22" /></svg>`,
+        applications: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" /></svg>`,
+      };
+
       const navItems = [
-        { id: 'dashboard', icon: '📊', label: 'Dashboard' },
-        { id: 'kids', icon: '👶', label: 'Kids' },
-        { id: 'partners', icon: '🤝', label: 'Partners' },
-        { id: 'team', icon: '👥', label: 'Team' },
-        { id: 'articles', icon: '📝', label: 'Articles' },
-        { id: 'faq', icon: '❓', label: 'FAQs' },
-        { id: 'financials', icon: '📄', label: 'Financials' },
-        { id: 'deploys', icon: '🚀', label: 'Deploys' },
-        { id: 'settings', icon: '⚙️', label: 'Site Settings' },
+        { id: 'dashboard', icon: icons.dashboard, label: 'Dashboard' },
+        { id: 'kids', icon: icons.kids, label: 'Kids' },
+        { id: 'partners', icon: icons.partners, label: 'Partners' },
+        { id: 'team', icon: icons.team, label: 'Team' },
+        { id: 'articles', icon: icons.articles, label: 'Articles' },
+        { id: 'events', icon: icons.events, label: 'Events' },
+        { id: 'applications', icon: icons.applications, label: 'Applications' },
+        { id: 'faq', icon: icons.faq, label: 'FAQs' },
+        { id: 'financials', icon: icons.financials, label: 'Financials' },
+        { id: 'deploys', icon: icons.deploys, label: 'Deploys' },
+        { id: 'settings', icon: icons.settings, label: 'Site Settings' },
       ];
 
       const renderView = () => {
@@ -3010,7 +3361,7 @@
 
         switch (view) {
           case 'dashboard':
-            return html`<${Dashboard} kids=${kids} partners=${partners} team=${team} />`;
+            return html`<${Dashboard} kids=${kids} partners=${partners} team=${team} events=${events} />`;
           case 'kids':
             return editSlug !== null
               ? html`<${KidEditor} slug=${editSlug || undefined} onBack=${() => { navigate('kids'); loadData(); }} addToast=${addToast} partners=${partners} />`
@@ -3031,6 +3382,13 @@
               ? html`<${ArticleEditor} slug=${editSlug || undefined} onBack=${() => { navigate('articles'); loadData(); }} addToast=${addToast} />`
               : html`<${ArticlesList} articles=${articles} onEdit=${s => navigate('articles', s)} onAdd=${() => navigate('articles', '')}
                   onDelete=${a => setDeleteModal({ type: 'article', item: a })} />`;
+          case 'events':
+            return editSlug !== null
+              ? html`<${EventEditor} slug=${editSlug || undefined} onBack=${() => { navigate('events'); loadData(); }} addToast=${addToast} />`
+              : html`<${EventsList} events=${events} onEdit=${s => navigate('events', s)} onAdd=${() => navigate('events', '')}
+                  onDelete=${e => setDeleteModal({ type: 'event', item: { ...e, name: e.title } })} />`;
+          case 'applications':
+            return html`<${Applications} addToast=${addToast} />`;
           case 'financials':
             return html`<${Financials} addToast=${addToast} />`;
           case 'faq':
@@ -3075,10 +3433,10 @@
             `)}
             <div class="nav-section" style="margin-top: auto;">Links</div>
             <a href="/" class="nav-item" target="_blank">
-              <span class="nav-icon">🌐</span> View Site ↗
+              <span class="nav-icon">${icons.globe}</span> View Site ↗
             </a>
             <a href="https://github.com/pranney82/soard" class="nav-item" target="_blank">
-              <span class="nav-icon">📦</span> GitHub ↗
+              <span class="nav-icon">${icons.github}</span> GitHub ↗
             </a>
           </nav>
 

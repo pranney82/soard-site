@@ -23,13 +23,13 @@ const roomTypes = [...new Set(kids.flatMap(k => k.data.roomTypes || []))].sort()
     <div class="container container--wide">
       <!-- Filters -->
       <div class="filters" role="group" aria-label="Filter kids by year or room type">
-        <button class="filter-btn active" data-filter="all">All</button>
+        <button class="filter-btn active" data-filter="all" aria-pressed="true">All</button>
         {years.map(year => (
-          <button class="filter-btn" data-filter={`year-${year}`}>{year}</button>
+          <button class="filter-btn" data-filter={`year-${year}`} aria-pressed="false">{year}</button>
         ))}
         <span class="filter-divider" aria-hidden="true"></span>
         {roomTypes.map(type => (
-          <button class="filter-btn" data-filter={`type-${type.toLowerCase().replace(/\s+/g, '-')}`}>{type}</button>
+          <button class="filter-btn" data-filter={`type-${type.toLowerCase().replace(/\s+/g, '-')}`} aria-pressed="false">{type}</button>
         ))}
       </div>
 
@@ -78,8 +78,9 @@ const roomTypes = [...new Set(kids.flatMap(k => k.data.roomTypes || []))].sort()
 
     buttons.forEach(btn => {
       btn.addEventListener('click', () => {
-        buttons.forEach(b => b.classList.remove('active'));
+        buttons.forEach(b => { b.classList.remove('active'); b.setAttribute('aria-pressed', 'false'); });
         btn.classList.add('active');
+        btn.setAttribute('aria-pressed', 'true');
 
         const filter = btn.getAttribute('data-filter');
 
