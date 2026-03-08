@@ -5,18 +5,18 @@
 
 /* ─── CSS Custom Properties ─────────────── */
 :root {
-  /* Brand Colors */
-  --c-yellow: #FFD500;
-  --c-yellow-soft: rgba(255, 213, 0, 0.45);
-  --c-yellow-hover: #E6C000;
-  --c-accent: #2D2E33;
-  --c-accent-soft: rgba(45, 46, 51, 0.1);
-  --c-dark: #2D2E33;
+  /* Brand Colors — per official brand guidelines */
+  --c-yellow: #FFDA24;
+  --c-yellow-soft: rgba(255, 218, 36, 0.45);
+  --c-yellow-hover: #E6C400;
+  --c-accent: #373A36;
+  --c-accent-soft: rgba(55, 58, 54, 0.1);
+  --c-dark: #373A36;
   --c-dark-deep: #1A1B1F;
   --c-cream: #FEFCF5;
   --c-warm-gray: #F5F4F0;
   --c-white: #FFFFFF;
-  --c-text: #2D2E33;
+  --c-text: #373A36;
   --c-text-muted: #6B6C72;
   --c-text-light: #9B9CA0;
   --c-border: #E5E4E0;
@@ -335,7 +335,7 @@ h4, .h4 {
 .btn-primary:hover {
   background: var(--c-yellow-hover);
   transform: translateY(-3px);
-  box-shadow: 0 8px 24px rgba(255, 213, 0, 0.35);
+  box-shadow: 0 8px 24px rgba(255, 218, 36, 0.35);
 }
 .btn-dark {
   background: var(--c-dark);
