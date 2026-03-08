@@ -84,7 +84,6 @@ body {
   background-color: var(--c-cream);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  padding-top: var(--header-height);
 }
 
 img, picture, video, canvas, svg {
