@@ -885,6 +885,19 @@
         }));
       };
 
+      // Auto-generate alt text when all uploads finish
+      const prevUploadCount = useRef(0);
+      useEffect(() => {
+        const count = Object.keys(uploading).length;
+        if (prevUploadCount.current > 0 && count === 0) {
+          const hasBlankAlt = data.photos.some(p => p.url && !p._tempId && !p.alt);
+          if (hasBlankAlt && !generatingAlt) {
+            handleGenerateAlt();
+          }
+        }
+        prevUploadCount.current = count;
+      }, [uploading]);
+
       // Warn on browser close/refresh with unsaved changes
       useEffect(() => {
         const handler = (e) => { if (dirty) { e.preventDefault(); e.returnValue = ''; } };
@@ -1213,11 +1226,11 @@
             <h3>Photos</h3>
             ${data.photos.length > 0 ? html`
               <button class="btn btn-secondary btn-sm" onClick=${handleGenerateAlt} disabled=${generatingAlt}>
-                ${generatingAlt ? html`<span class="spinner" />` : '✨'} ${generatingAlt ? 'Generating...' : 'Generate Alt Text with AI'}
+                ${generatingAlt ? html`<span class="spinner" />` : '✨'} ${generatingAlt ? 'Generating...' : 'Regenerate Alt Text'}
               </button>
             ` : null}
           </div>
-          <p class="text-sm text-muted mb-1">Upload photos, click ⭐ for hero. AI can write alt text for all photos at once.</p>
+          <p class="text-sm text-muted mb-1">Upload photos, click ⭐ for hero. Alt text generates automatically after upload.</p>
           <${DropZone} onFiles=${handlePhotoUpload} label="JPG, PNG, WebP — upload as many as you need" />
           ${data.photos.length > 0 ? html`
             <div class="photo-grid">
