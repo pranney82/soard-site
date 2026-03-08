@@ -208,12 +208,12 @@ function isGroupActive(group: NavGroup) {
     <div class="mobile-nav-header">
       <a href="/" class="mobile-nav-logo" aria-label="Sunshine on a Ranney Day — Home">
         <picture>
-          <source srcset="/images/logos/logo-dark-bg.webp" type="image/webp" />
+          <source srcset="/images/logos/logo-tagline-dark-bg-transparent.webp" type="image/webp" />
           <img
-            src="/images/logos/logo-dark-bg.png"
+            src="/images/logos/logo-tagline-dark-bg-transparent.png"
             alt="Sunshine on a Ranney Day"
-            width="80"
-            height="80"
+            width="160"
+            height="150"
             loading="eager"
           />
         </picture>
@@ -915,10 +915,10 @@ function isGroupActive(group: NavGroup) {
   /* ─── Mobile Nav Header ────────────────── */
   .mobile-nav-header {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: space-between;
-    padding: var(--space-lg) 0 var(--space-md);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    padding: var(--space-xl) 0 var(--space-md);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
     flex-shrink: 0;
   }
 
@@ -928,7 +928,7 @@ function isGroupActive(group: NavGroup) {
   }
 
   .mobile-nav-logo img {
-    height: 72px;
+    height: 80px;
     width: auto;
     flex-shrink: 0;
   }
@@ -948,6 +948,7 @@ function isGroupActive(group: NavGroup) {
     -webkit-tap-highlight-color: transparent;
     touch-action: manipulation;
     flex-shrink: 0;
+    margin-top: 4px;
   }
 
   .mobile-close-btn:hover,
@@ -996,8 +997,8 @@ function isGroupActive(group: NavGroup) {
   }
 
   .mobile-nav-group + .mobile-nav-group {
-    margin-top: var(--space-lg);
-    padding-top: var(--space-lg);
+    margin-top: var(--space-md);
+    padding-top: var(--space-md);
     border-top: 1px solid rgba(255, 255, 255, 0.08);
   }
 
@@ -1019,12 +1020,12 @@ function isGroupActive(group: NavGroup) {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0.75rem 0;
+    padding: 0.625rem 0;
     font-size: 1.0625rem;
     font-weight: 400;
     color: rgba(255, 255, 255, 0.85);
     transition: color 0.15s ease;
-    min-height: 48px;
+    min-height: 44px;
     border-bottom: 1px solid transparent;
   }
 
