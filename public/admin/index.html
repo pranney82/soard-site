@@ -2866,61 +2866,137 @@
     // ═══════════════════════════════════════════
     function ImagePicker({ onSelect, onClose }) {
       const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
-      const [images, setImages] = useState([]);
+      const [allImages, setAllImages] = useState([]);
       const [loading, setLoading] = useState(true);
-      const [page, setPage] = useState(1);
-      const [totalCount, setTotalCount] = useState(0);
-      const [filter, setFilter] = useState('');
-      const perPage = 50;
+      const [progress, setProgress] = useState({ loaded: 0, total: 0 });
+      const [search, setSearch] = useState('');
+      const [category, setCategory] = useState('kids');
+      const [displayPage, setDisplayPage] = useState(1);
+      const THUMBS_PER_PAGE = 60;
 
-      const loadPage = async (p) => {
-        setLoading(true);
-        try {
-          const res = await api.listImages(p, perPage);
-          if (res.success) {
-            setImages(res.images || []);
-            setTotalCount(res.totalCount || 0);
-            setPage(p);
+      // Load ALL images on mount by paginating through CF API
+      useEffect(() => {
+        let cancelled = false;
+        (async () => {
+          try {
+            // First call: get total count
+            const first = await api.listImages(1, 100);
+            if (!first.success || cancelled) return;
+            const total = first.totalCount || 0;
+            const totalPages = Math.ceil(total / 100);
+            let collected = [...(first.images || [])];
+            setProgress({ loaded: collected.length, total });
+
+            // Fetch remaining pages in batches of 6
+            for (let batch = 1; batch < totalPages; batch += 6) {
+              const promises = [];
+              for (let p = batch + 1; p <= Math.min(batch + 6, totalPages); p++) {
+                promises.push(api.listImages(p, 100));
+              }
+              const results = await Promise.all(promises);
+              if (cancelled) return;
+              for (const res of results) {
+                if (res.success) collected = collected.concat(res.images || []);
+              }
+              setProgress({ loaded: collected.length, total });
+              setAllImages([...collected]);
+            }
+
+            setAllImages(collected);
+          } catch (err) {
+            console.error('Image load error', err);
           }
-        } catch (err) {
-          console.error('Failed to load images', err);
+          if (!cancelled) setLoading(false);
+        })();
+        return () => { cancelled = true; };
+      }, []);
+
+      // Filter images by category and search
+      const filtered = useMemo(() => {
+        let list = allImages;
+        if (category === 'kids') list = list.filter(img => img.id.startsWith('kids/'));
+        else if (category === 'logos') list = list.filter(img => img.id.startsWith('logos/'));
+        else if (category === 'other') list = list.filter(img => !img.id.startsWith('kids/') && !img.id.startsWith('logos/'));
+        if (search.trim()) {
+          const q = search.toLowerCase().trim();
+          list = list.filter(img => img.id.toLowerCase().includes(q));
         }
-        setLoading(false);
-      };
+        return list;
+      }, [allImages, category, search]);
 
-      useEffect(() => { loadPage(1); }, []);
+      // Extract kid names for quick-pick buttons
+      const kidNames = useMemo(() => {
+        const names = new Set();
+        allImages.forEach(img => {
+          if (img.id.startsWith('kids/')) {
+            const name = img.id.split('/')[1];
+            if (name) names.add(name);
+          }
+        });
+        return [...names].sort();
+      }, [allImages]);
 
-      const totalPages = Math.ceil(totalCount / perPage);
+      const pageCount = Math.ceil(filtered.length / THUMBS_PER_PAGE);
+      const pageImages = filtered.slice((displayPage - 1) * THUMBS_PER_PAGE, displayPage * THUMBS_PER_PAGE);
 
-      const filtered = filter
-        ? images.filter(img => img.id.toLowerCase().includes(filter.toLowerCase()))
-        : images;
+      // Reset to page 1 when filters change
+      useEffect(() => { setDisplayPage(1); }, [search, category]);
 
       return html`<div class="modal-overlay" onClick=${onClose}>
         <div class="modal img-picker-modal" onClick=${e => e.stopPropagation()}>
           <h3 style="margin-bottom: 0.75rem;">Choose an Image</h3>
+
           <div class="img-picker-toolbar">
-            <input class="form-input" type="text" placeholder="Filter by image ID..."
-              value=${filter} onInput=${e => setFilter(e.target.value)} />
-            <span class="text-sm text-muted" style="white-space: nowrap;">${totalCount.toLocaleString()} images total</span>
+            <div style="display: flex; gap: 0.35rem;">
+              ${[['kids', '👶 Kids'], ['logos', '🏢 Logos'], ['all', '📁 All'], ['other', '📎 Other']].map(([id, label]) => html`
+                <button key=${id} class="chip" style="${category === id
+                  ? 'background: #2D2E33; color: #fff;'
+                  : 'background: rgba(45,46,51,0.08); color: #2D2E33; cursor: pointer;'}"
+                  onClick=${() => setCategory(id)}>${label}</button>
+              `)}
+            </div>
           </div>
+
+          <div style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.75rem;">
+            <input class="form-input" type="text" style="flex:1"
+              placeholder="${category === 'kids' ? 'Search by kid name (e.g. harper, zyah, liam)...' : 'Search by image ID...'}"
+              value=${search} onInput=${e => setSearch(e.target.value)} />
+            <span class="text-sm text-muted" style="white-space: nowrap;">
+              ${loading ? html`${progress.loaded.toLocaleString()} / ${progress.total.toLocaleString()}` : html`${filtered.length.toLocaleString()} images`}
+            </span>
+          </div>
+
+          ${category === 'kids' && kidNames.length > 0 && !search ? html`
+            <div style="display: flex; flex-wrap: wrap; gap: 0.3rem; margin-bottom: 0.75rem; max-height: 72px; overflow-y: auto;">
+              ${kidNames.map(name => html`
+                <button key=${name} class="chip" style="background: rgba(45,46,51,0.06); color: #2D2E33; cursor: pointer; font-size: 0.75rem; padding: 3px 10px;"
+                  onClick=${() => setSearch(name)}>${name}</button>
+              `)}
+            </div>
+          ` : null}
+
           <div class="img-picker-grid">
-            ${loading ? html`<div class="img-picker-empty"><div class="spinner" style="width:32px;height:32px;" /></div>` :
-              filtered.length === 0 ? html`<div class="img-picker-empty">No images on this page match your filter. Try another page or adjust your search.</div>` :
-              filtered.map(img => html`
+            ${loading && allImages.length === 0
+              ? html`<div class="img-picker-empty">
+                  <div class="spinner" style="width:32px;height:32px;margin:0 auto 0.75rem;" />
+                  <div>Loading images... ${progress.loaded} of ${progress.total}</div>
+                </div>`
+              : pageImages.length === 0
+              ? html`<div class="img-picker-empty">No images match "${search || category}". ${loading ? 'Still loading more...' : ''}</div>`
+              : pageImages.map(img => html`
                 <div key=${img.id} class="img-picker-thumb" title=${img.id}
                   onClick=${() => { onSelect(img.id); onClose(); }}>
                   <img src="${CF}/${img.id}/w=280,h=280,fit=cover,f=auto" alt="" loading="lazy" />
-                  <div class="img-picker-id">${img.id}</div>
+                  <div class="img-picker-id">${img.id.startsWith('kids/') ? img.id.replace('kids/', '') : img.id}</div>
                 </div>
               `)
             }
           </div>
-          ${totalPages > 1 ? html`
+          ${pageCount > 1 ? html`
             <div class="img-picker-pager">
-              <button class="btn btn-ghost btn-sm" disabled=${page <= 1} onClick=${() => loadPage(page - 1)}>← Prev</button>
-              <span class="text-sm">Page ${page} of ${totalPages}</span>
-              <button class="btn btn-ghost btn-sm" disabled=${page >= totalPages} onClick=${() => loadPage(page + 1)}>Next →</button>
+              <button class="btn btn-ghost btn-sm" disabled=${displayPage <= 1} onClick=${() => setDisplayPage(p => p - 1)}>← Prev</button>
+              <span class="text-sm">Page ${displayPage} of ${pageCount}</span>
+              <button class="btn btn-ghost btn-sm" disabled=${displayPage >= pageCount} onClick=${() => setDisplayPage(p => p + 1)}>Next →</button>
             </div>
           ` : null}
         </div>
