@@ -415,6 +415,42 @@
     .badge-yellow { background: #FEFCBF; color: #744210; }
     .badge-accent { background: rgba(45,46,51,0.1); color: #2D2E33; }
     .badge-gray { background: #E2E8F0; color: #4A5568; }
+    .badge-red { background: #FED7D7; color: #9B2C2C; }
+    .badge-blue { background: #BEE3F8; color: #2A4365; }
+
+    /* ─── Deploy List ────────────────────── */
+    .deploy-item {
+      display: flex; align-items: flex-start; gap: 0.75rem;
+      padding: 0.85rem 1rem;
+      border-bottom: 1px solid rgba(0,0,0,0.06);
+      transition: background 0.15s;
+    }
+    .deploy-item:last-child { border-bottom: none; }
+    .deploy-item:hover { background: rgba(0,0,0,0.02); }
+    .deploy-avatar {
+      width: 32px; height: 32px; border-radius: 50%;
+      flex-shrink: 0; background: #E2E8F0;
+    }
+    .deploy-body { flex: 1; min-width: 0; }
+    .deploy-msg {
+      font-weight: 500; font-size: 0.9rem;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .deploy-meta {
+      font-size: 0.78rem; color: #6B6C72; margin-top: 0.2rem;
+      display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center;
+    }
+    .deploy-sha {
+      font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.75rem;
+      background: rgba(0,0,0,0.06); padding: 0.1rem 0.4rem; border-radius: 4px;
+      color: #4A5568; text-decoration: none;
+    }
+    .deploy-sha:hover { background: rgba(0,0,0,0.1); }
+    .deploy-status { flex-shrink: 0; margin-top: 0.1rem; }
+    .deploy-link {
+      font-size: 0.78rem; color: #7A00DF; text-decoration: none;
+    }
+    .deploy-link:hover { text-decoration: underline; }
 
     /* ─── Spinner ─────────────────────────── */
     .spinner {
@@ -2703,6 +2739,132 @@
     }
 
     // ═══════════════════════════════════════════
+    // DEPLOYS
+    // ═══════════════════════════════════════════
+    function Deploys({ addToast }) {
+      const [deploys, setDeploys] = useState([]);
+      const [source, setSource] = useState(null);
+      const [loading, setLoading] = useState(true);
+      const [error, setError] = useState(null);
+
+      const loadDeploys = async () => {
+        setLoading(true);
+        setError(null);
+        try {
+          const r = await fetch('/api/deployments');
+          const data = await r.json();
+          if (data.success) {
+            setDeploys(data.deploys || []);
+            setSource(data.source);
+          } else {
+            setError(data.error || 'Failed to load deployments');
+          }
+        } catch (err) {
+          setError(err.message);
+        }
+        setLoading(false);
+      };
+
+      useEffect(() => { loadDeploys(); }, []);
+
+      const timeAgo = (dateStr) => {
+        if (!dateStr) return '';
+        const now = Date.now();
+        const then = new Date(dateStr).getTime();
+        const diff = Math.floor((now - then) / 1000);
+        if (diff < 60) return 'just now';
+        if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+        if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+        if (diff < 604800) return `${Math.floor(diff / 86400)}d ago`;
+        return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      };
+
+      const statusBadge = (status) => {
+        const map = {
+          success: { cls: 'badge-green', label: '● Success' },
+          active: { cls: 'badge-blue', label: '◉ Building' },
+          failure: { cls: 'badge-red', label: '✕ Failed' },
+          canceled: { cls: 'badge-gray', label: '— Canceled' },
+          unknown: { cls: 'badge-gray', label: '? Unknown' },
+        };
+        const s = map[status] || map.unknown;
+        return html`<span class="badge ${s.cls}" style="font-size: 0.72rem;">${s.label}</span>`;
+      };
+
+      const formatDuration = (start, end) => {
+        if (!start || !end) return null;
+        const ms = new Date(end) - new Date(start);
+        const secs = Math.floor(ms / 1000);
+        if (secs < 60) return `${secs}s`;
+        return `${Math.floor(secs / 60)}m ${secs % 60}s`;
+      };
+
+      if (loading) {
+        return html`
+          <div class="page-header"><h2>Deploys</h2></div>
+          <div style="text-align: center; padding: 4rem;">
+            <div class="spinner" style="width: 40px; height: 40px; border-width: 3px;" />
+            <p class="mt-2 text-muted">Loading deployment history...</p>
+          </div>`;
+      }
+
+      if (error) {
+        return html`
+          <div class="page-header"><h2>Deploys</h2></div>
+          <div class="card" style="text-align: center; padding: 2rem;">
+            <p style="color: #E53E3E; margin-bottom: 1rem;">⚠ ${error}</p>
+            <button class="btn btn-primary" onClick=${loadDeploys}>Retry</button>
+          </div>`;
+      }
+
+      return html`
+        <div class="page-header">
+          <h2>Deploys (${deploys.length})</h2>
+          <div style="display: flex; gap: 0.5rem; align-items: center;">
+            ${source === 'github' ? html`<span class="badge badge-gray" style="font-size: 0.72rem;">via GitHub commits</span>` : null}
+            ${source === 'cloudflare' ? html`<span class="badge badge-blue" style="font-size: 0.72rem;">via Cloudflare Pages</span>` : null}
+            <button class="btn btn-ghost btn-sm" onClick=${loadDeploys}>↻ Refresh</button>
+          </div>
+        </div>
+
+        ${source === 'github' ? html`
+          <div class="card" style="padding: 0.75rem 1rem; margin-bottom: 1rem; background: #FEFCF5; border-left: 3px solid #FFD500;">
+            <p class="text-sm" style="margin: 0;">
+              <strong>Tip:</strong> To see build status and preview URLs, add a <code>CF_PAGES_TOKEN</code> environment variable
+              in your Cloudflare Pages settings with Pages:Read permission.
+            </p>
+          </div>
+        ` : null}
+
+        <div class="card" style="padding: 0;">
+          ${deploys.length === 0
+            ? html`<div style="padding: 2rem; text-align: center; color: #6B6C72;">No deployments found</div>`
+            : deploys.map(d => html`
+              <div class="deploy-item" key=${d.id}>
+                ${d.avatar
+                  ? html`<img class="deploy-avatar" src="${d.avatar}" alt="" />`
+                  : html`<div class="deploy-avatar" style="display:flex;align-items:center;justify-content:center;font-size:0.8rem;color:#6B6C72;">👤</div>`
+                }
+                <div class="deploy-body">
+                  <div class="deploy-msg" title=${d.commitMessage || ''}>${d.commitMessage || 'No commit message'}</div>
+                  <div class="deploy-meta">
+                    ${d.author ? html`<span>${d.author}</span>` : null}
+                    ${d.commitHash ? html`<a class="deploy-sha" href=${d.commitUrl || `https://github.com/pranney82/soard/commit/${d.commitHash}`} target="_blank" rel="noopener">${d.commitHash.slice(0, 7)}</a>` : null}
+                    ${d.branch && d.branch !== 'main' ? html`<span class="badge badge-accent" style="font-size:0.7rem;">${d.branch}</span>` : null}
+                    ${d.createdOn ? html`<span title=${new Date(d.createdOn).toLocaleString()}>${timeAgo(d.createdOn)}</span>` : null}
+                    ${formatDuration(d.startedOn, d.endedOn) ? html`<span>⏱ ${formatDuration(d.startedOn, d.endedOn)}</span>` : null}
+                    ${d.url ? html`<a class="deploy-link" href=${d.url} target="_blank" rel="noopener">Preview ↗</a>` : null}
+                  </div>
+                </div>
+                <div class="deploy-status">${statusBadge(d.status)}</div>
+              </div>
+            `)
+          }
+        </div>
+      `;
+    }
+
+    // ═══════════════════════════════════════════
     // MAIN APP
     // ═══════════════════════════════════════════
     function App() {
@@ -2811,6 +2973,7 @@
         { id: 'articles', icon: '📝', label: 'Articles' },
         { id: 'faq', icon: '❓', label: 'FAQs' },
         { id: 'financials', icon: '📄', label: 'Financials' },
+        { id: 'deploys', icon: '🚀', label: 'Deploys' },
         { id: 'settings', icon: '⚙️', label: 'Site Settings' },
       ];
 
@@ -2849,6 +3012,8 @@
             return html`<${Financials} addToast=${addToast} />`;
           case 'faq':
             return html`<${FAQManager} addToast=${addToast} />`;
+          case 'deploys':
+            return html`<${Deploys} addToast=${addToast} />`;
           case 'settings':
             return html`<${SiteSettings} addToast=${addToast} />`;
         }
