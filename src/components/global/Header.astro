@@ -98,8 +98,6 @@ function isGroupActive(group: NavGroup) {
 }
 ---
 
-<a href="#main-content" class="skip-nav">Skip to main content</a>
-
 <header class="site-header" id="site-header">
   <div class="header-inner">
     <!-- Logo -->
@@ -332,17 +330,11 @@ function isGroupActive(group: NavGroup) {
     });
   }
 
-  /* ═══════ SCROLL BEHAVIOR ═══════ */
-  var lastY = 0, ticking = false, mobileOpen = false;
+  /* ═══════ SCROLL — glass effect only, NO hide ═══════ */
+  var ticking = false, mobileOpen = false;
   function onScroll() {
     ticking = false;
-    var y = window.scrollY;
-    header.classList.toggle('header--scrolled', y > 20);
-    if (y <= 10) { header.classList.remove('header--hidden'); lastY = y; return; }
-    if (mobileOpen) { lastY = y; return; }
-    // Higher threshold = less twitchy
-    if (y - lastY > 48) { header.classList.add('header--hidden'); closeAllDD(); lastY = y; }
-    else if (lastY - y > 12) { header.classList.remove('header--hidden'); lastY = y; }
+    header.classList.toggle('header--scrolled', window.scrollY > 20);
   }
   window.addEventListener('scroll', function () {
     if (!ticking) { requestAnimationFrame(onScroll); ticking = true; }
@@ -364,6 +356,7 @@ function isGroupActive(group: NavGroup) {
     mobileOpen = true; savedY = window.scrollY;
     document.body.style.cssText = 'position:fixed;top:-' + savedY + 'px;left:0;right:0;overflow:hidden;';
     mBtn.setAttribute('aria-expanded', 'true');
+    mBtn.classList.add('is-open');
     mPanel.classList.add('is-open'); mPanel.setAttribute('aria-hidden', 'false');
     if (mainEl) mainEl.setAttribute('inert', '');
     if (footerEl) footerEl.setAttribute('inert', '');
@@ -375,6 +368,7 @@ function isGroupActive(group: NavGroup) {
     document.body.style.cssText = '';
     window.scrollTo(0, savedY);
     mBtn.setAttribute('aria-expanded', 'false');
+    mBtn.classList.remove('is-open');
     mPanel.classList.remove('is-open'); mPanel.setAttribute('aria-hidden', 'true');
     if (mainEl) mainEl.removeAttribute('inert');
     if (footerEl) footerEl.removeAttribute('inert');
@@ -406,17 +400,6 @@ function isGroupActive(group: NavGroup) {
 </script>
 
 <style>
-  /* ── Skip ──────────────────────────────── */
-  .skip-nav {
-    position: fixed; top: -100%; left: var(--space-md); z-index: 10000;
-    padding: var(--space-sm) var(--space-lg);
-    background: var(--c-yellow); color: var(--c-dark);
-    font-weight: 700; font-size: 0.875rem;
-    border-radius: 0 0 var(--border-radius) var(--border-radius);
-    text-decoration: none; box-shadow: var(--shadow-lg); transition: top 0.15s ease;
-  }
-  .skip-nav:focus { top: 0; outline: 3px solid var(--c-accent); outline-offset: 2px; }
-
   /* ── Header ────────────────────────────── */
   .site-header {
     position: sticky; top: 0; z-index: 1000;
@@ -425,15 +408,12 @@ function isGroupActive(group: NavGroup) {
     -webkit-backdrop-filter: blur(20px) saturate(1.2);
     height: var(--header-height);
     border-bottom: 3px solid var(--c-yellow);
-    will-change: transform;
-    transition: transform 0.4s cubic-bezier(0.32, 0.72, 0, 1),
-                background 0.3s ease, box-shadow 0.3s ease;
+    transition: background 0.3s ease, box-shadow 0.3s ease;
   }
   .site-header.header--scrolled {
     background: rgba(45, 46, 51, 0.97);
     box-shadow: 0 4px 30px rgba(0, 0, 0, 0.25);
   }
-  .site-header.header--hidden { transform: translateY(-100%); }
 
   .header-inner {
     display: flex; align-items: center; justify-content: space-between;
@@ -505,6 +485,17 @@ function isGroupActive(group: NavGroup) {
     opacity: 0;
     visibility: hidden;
     pointer-events: none;
+  }
+
+  /* Right-align dropdowns on last 2 nav items to prevent viewport overflow */
+  .nav-item:nth-last-child(-n+2) .dropdown {
+    left: auto;
+    right: 0;
+    transform: none;
+  }
+  .nav-item:nth-last-child(-n+2) .dropdown-arrow {
+    left: auto;
+    right: 24px;
   }
 
   /* Arrow */
@@ -609,6 +600,11 @@ function isGroupActive(group: NavGroup) {
   .hamburger-line:nth-child(1) { top: 0; }
   .hamburger-line:nth-child(2) { top: 8px; }
   .hamburger-line:nth-child(3) { top: 16px; }
+
+  /* Hamburger → X morph */
+  .mobile-toggle.is-open .hamburger-line:nth-child(1) { top: 8px; transform: rotate(45deg); }
+  .mobile-toggle.is-open .hamburger-line:nth-child(2) { opacity: 0; }
+  .mobile-toggle.is-open .hamburger-line:nth-child(3) { top: 8px; transform: rotate(-45deg); }
 
   /* ═══════════════════════════════════════════
      MOBILE NAV
