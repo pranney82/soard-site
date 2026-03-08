@@ -3337,18 +3337,23 @@
         applications: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" /></svg>`,
       };
 
-      const navItems = [
-        { id: 'dashboard', icon: icons.dashboard, label: 'Dashboard' },
-        { id: 'kids', icon: icons.kids, label: 'Kids' },
-        { id: 'partners', icon: icons.partners, label: 'Partners' },
-        { id: 'team', icon: icons.team, label: 'Team' },
-        { id: 'articles', icon: icons.articles, label: 'Articles' },
-        { id: 'events', icon: icons.events, label: 'Events' },
-        { id: 'applications', icon: icons.applications, label: 'Applications' },
-        { id: 'faq', icon: icons.faq, label: 'FAQs' },
-        { id: 'financials', icon: icons.financials, label: 'Financials' },
-        { id: 'deploys', icon: icons.deploys, label: 'Deploys' },
-        { id: 'settings', icon: icons.settings, label: 'Site Settings' },
+      const navSections = [
+        { label: null, items: [
+          { id: 'dashboard', icon: icons.dashboard, label: 'Dashboard' },
+        ]},
+        { label: 'Website', items: [
+          { id: 'kids', icon: icons.kids, label: 'Kids' },
+          { id: 'partners', icon: icons.partners, label: 'Partners' },
+          { id: 'team', icon: icons.team, label: 'Team' },
+          { id: 'articles', icon: icons.articles, label: 'Articles' },
+          { id: 'events', icon: icons.events, label: 'Events' },
+          { id: 'faq', icon: icons.faq, label: 'FAQs' },
+          { id: 'financials', icon: icons.financials, label: 'Financials' },
+          { id: 'settings', icon: icons.settings, label: 'Site Settings' },
+        ]},
+        { label: 'Intake', items: [
+          { id: 'applications', icon: icons.applications, label: 'Applications' },
+        ]},
       ];
 
       const renderView = () => {
@@ -3422,16 +3427,21 @@
                 <small>Content Admin</small>
               </div>
             </div>
-            <div class="nav-section">Manage</div>
-            ${navItems.map(item => html`
-              <button key=${item.id}
-                class="nav-item ${view === item.id ? 'active' : ''}"
-                onClick=${() => navigate(item.id)}>
-                <span class="nav-icon">${item.icon}</span>
-                ${item.label}
-              </button>
+            ${navSections.map(section => html`
+              ${section.label ? html`<div class="nav-section">${section.label}</div>` : null}
+              ${section.items.map(item => html`
+                <button key=${item.id}
+                  class="nav-item ${view === item.id ? 'active' : ''}"
+                  onClick=${() => navigate(item.id)}>
+                  <span class="nav-icon">${item.icon}</span>
+                  ${item.label}
+                </button>
+              `)}
             `)}
-            <div class="nav-section" style="margin-top: auto;">Links</div>
+            <div class="nav-section" style="margin-top: auto;">Links & Deploys</div>
+            <button class="nav-item ${view === 'deploys' ? 'active' : ''}" onClick=${() => navigate('deploys')}>
+              <span class="nav-icon">${icons.deploys}</span> Deploys
+            </button>
             <a href="/" class="nav-item" target="_blank">
               <span class="nav-icon">${icons.globe}</span> View Site ↗
             </a>
