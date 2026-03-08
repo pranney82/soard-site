@@ -1,15 +1,984 @@
 ---
-import PageLayout from '../../layouts/PageLayout.astro';
+/**
+ * Our Story — Sunshine on a Ranney Day
+ * Editorial long-form page: founding story, milestones, mascot, mission
+ * 
+ * PERF NOTES:
+ * - Hero image: fetchpriority="high", eager loading, explicit dimensions
+ * - All below-fold images: loading="lazy"
+ * - data-reveal only on below-fold elements
+ * - Team photos from CF Images
+ */
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { getWebPageSchema, getBreadcrumbSchema, buildSchemaGraph } from '../../utils/schema';
+
+const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
+
+const stats = { totalKids: 132, totalRooms: 106, years: 13, communityKids: 17000 };
+
+/* ── Hero image ── */
+const heroImageId = 'kids/harper/hero-c6a714';
+
+/* ── Section photos ── */
+const founderPhotoId = 'kids/eli/photo-001-70ddd7';
+const revealPhotoId = 'kids/griffin/hero-dbeb0f';
+const communityPhotoId = 'kids/jackson/hero-4b1747';
+const storePhotoId = 'kids/madison/hero-2d8210';
+
+/* ── Timeline milestones ── */
+const milestones = [
+  { year: '2012', title: 'The First Room', desc: 'Inspired by a church sermon, Peter and Holly Ranney build their first room — a military-themed bedroom for 11-year-old Mathew.' },
+  { year: '2013', title: 'Tripp Halstead', desc: 'A whole-home makeover for Tripp captures 1.6 million viewers on a WSB-TV livestream, launching SOARD into the national spotlight.' },
+  { year: '2016', title: 'The Today Show', desc: 'Peter and Holly appear on NBC\'s Today Show for their renovation of parent sleep rooms at Children\'s Healthcare of Atlanta.' },
+  { year: '2018', title: 'Braves Community Heroes', desc: 'Holly and Peter are honored as Atlanta Braves Community Heroes at SunTrust Park alongside Dansby Swanson and Freddie Freeman.' },
+  { year: '2020', title: 'Sunny & Ranney Opens', desc: 'SOARD opens a nonprofit home furnishings store in Roswell, with 100% of profits funding room makeovers for kids.' },
+  { year: '2021', title: 'Women Making a Mark', desc: 'Atlanta Magazine honors Holly as one of their "Women Making a Mark" for her impact on the community.' },
+  { year: '2024', title: '100+ Rooms', desc: 'SOARD crosses the 100-room milestone, having served over 130 children and impacted 17,000+ through community projects.' },
+];
+
+/* ── Schema ── */
+const pageUrl = 'https://sunshineonaranneyday.com/about/';
+const breadcrumbs = [
+  { name: 'Home', url: 'https://sunshineonaranneyday.com/' },
+  { name: 'Our Story', url: pageUrl },
+];
+const jsonLd = buildSchemaGraph(
+  getWebPageSchema({ url: pageUrl, title: 'Our Story', description: 'How Peter and Holly Ranney founded Sunshine on a Ranney Day in 2012 — and built a movement that has transformed 106+ rooms for children with special needs across greater Atlanta.' }),
+  getBreadcrumbSchema(breadcrumbs, pageUrl),
+);
 ---
 
-<PageLayout
-  title="Our Story"
-  heroTitle="Our Story"
-  heroSubtitle="Transforming lives since 2012"
+<BaseLayout
+  title="Our Story — How It All Started"
+  description="How Peter and Holly Ranney founded Sunshine on a Ranney Day in 2012 — and built a movement that has transformed 106+ rooms for children with special needs across greater Atlanta."
+  jsonLd={jsonLd}
+  breadcrumbs={breadcrumbs}
 >
-  <section class="section">
-    <div class="container container--narrow" style="text-align: center; padding-block: var(--space-4xl);">
-      <p style="color: var(--c-text-muted);">This page is being built. Check back soon!</p>
+
+  <!-- ══════ HERO ══════ -->
+  <section class="story-hero" aria-label="Our Story">
+    <div class="story-hero-media">
+      <picture>
+        <source type="image/avif" srcset={`${CF}/${heroImageId}/w=640,f=avif 640w, ${CF}/${heroImageId}/w=1024,f=avif 1024w, ${CF}/${heroImageId}/w=1600,f=avif 1600w, ${CF}/${heroImageId}/w=2400,f=avif 2400w`} sizes="100vw" />
+        <source type="image/webp" srcset={`${CF}/${heroImageId}/w=640,f=webp 640w, ${CF}/${heroImageId}/w=1024,f=webp 1024w, ${CF}/${heroImageId}/w=1600,f=webp 1600w, ${CF}/${heroImageId}/w=2400,f=webp 2400w`} sizes="100vw" />
+        <img class="story-hero-img" src={`${CF}/${heroImageId}/w=1600,q=80`} alt="A child seeing their dream room for the first time" width="1600" height="900" loading="eager" decoding="async" fetchpriority="high" />
+      </picture>
+      <div class="story-hero-overlay"></div>
+    </div>
+    <div class="story-hero-inner">
+      <div class="story-hero-content">
+        <div class="section-label section-label--yellow">Our Story</div>
+        <h1>Changing lives,<br/>room by room, <em>since&nbsp;2012</em>.</h1>
+        <p class="story-hero-lead">Sunshine on a Ranney Day transforms the lives of children with special needs by creating dream spaces that bring comfort, joy, and independence — all at <strong>no cost to families</strong>.</p>
+      </div>
+      <div class="story-hero-stat">
+        <span class="story-hero-stat-num">{stats.years}<span>yrs</span></span>
+        <span class="story-hero-stat-label">of building dreams<br/>for families</span>
+      </div>
     </div>
   </section>
-</PageLayout>
+
+  <!-- ══════ FOUNDERS — The Beginning ══════ -->
+  <section class="founders" id="our-story" aria-labelledby="founders-heading">
+    <div class="founders-inner">
+      <div class="founders-photos" data-reveal>
+        <div class="founders-photo founders-photo--main">
+          <picture>
+            <source type="image/avif" srcset={`${CF}/${founderPhotoId}/w=500,f=avif 500w, ${CF}/${founderPhotoId}/w=800,f=avif 800w`} sizes="(max-width:768px) 90vw, 40vw" />
+            <source type="image/webp" srcset={`${CF}/${founderPhotoId}/w=500,f=webp 500w, ${CF}/${founderPhotoId}/w=800,f=webp 800w`} sizes="(max-width:768px) 90vw, 40vw" />
+            <img src={`${CF}/${founderPhotoId}/w=800,q=80`} alt="Peter and Holly Ranney, founders of Sunshine on a Ranney Day" width="800" height="600" loading="lazy" decoding="async" />
+          </picture>
+        </div>
+        <div class="founders-photo founders-photo--accent" data-reveal data-delay="1">
+          <picture>
+            <source type="image/avif" srcset={`${CF}/${revealPhotoId}/w=400,f=avif 400w, ${CF}/${revealPhotoId}/w=600,f=avif 600w`} sizes="(max-width:768px) 60vw, 25vw" />
+            <source type="image/webp" srcset={`${CF}/${revealPhotoId}/w=400,f=webp 400w, ${CF}/${revealPhotoId}/w=600,f=webp 600w`} sizes="(max-width:768px) 60vw, 25vw" />
+            <img src={`${CF}/${revealPhotoId}/w=600,q=80`} alt="A completed dream room reveal" width="600" height="450" loading="lazy" decoding="async" />
+          </picture>
+        </div>
+      </div>
+      <div class="founders-text" data-reveal>
+        <div class="section-label">How It Began</div>
+        <h2 id="founders-heading">A sermon, a calling, and a room that changed <em class="highlight">everything</em>.</h2>
+        <p>In 2012, inspired by a church sermon, Peter and Holly Ranney felt a deep calling to use their God-given talents to serve others. With a vision rooted in love, purpose, and creativity, <strong>Sunshine on a Ranney Day</strong> was born — founded on the belief that every child deserves a space that reflects their personality, brings them joy, and supports their unique needs.</p>
+        <p>The very first makeover was for 11-year-old Mathew, who dreamed of spending his final days in a military-themed bunker bedroom. That room became more than just a space — it became a sanctuary. His story profoundly moved the Ranneys and solidified the impact that a thoughtfully designed room could have on a child's life and family.</p>
+        <p>It was the beginning of something much bigger.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════ TRIPP — The Turning Point ══════ -->
+  <section class="turning-point" aria-labelledby="tripp-heading">
+    <div class="turning-point-inner">
+      <div class="turning-point-text" data-reveal>
+        <div class="section-label">A National Moment</div>
+        <h2 id="tripp-heading">Then the world met <em class="highlight">Tripp</em>.</h2>
+        <p>Soon after, the world was introduced to Tripp Halstead, a young boy whose story captured hearts across the country after a traumatic brain injury. When Sunshine on a Ranney Day completed a whole-home makeover for Tripp, 1.6 million people tuned in to watch the reveal live on WSB-TV.</p>
+        <p>The national attention helped shine a light on the mission and expand the reach of the organization. Tripp's joyful spirit and incredible resilience left a lasting legacy — and further inspired the work still being done today.</p>
+      </div>
+      <div class="turning-point-photo" data-reveal data-delay="1">
+        <picture>
+          <source type="image/avif" srcset={`${CF}/${communityPhotoId}/w=500,f=avif 500w, ${CF}/${communityPhotoId}/w=800,f=avif 800w`} sizes="(max-width:768px) 90vw, 45vw" />
+          <source type="image/webp" srcset={`${CF}/${communityPhotoId}/w=500,f=webp 500w, ${CF}/${communityPhotoId}/w=800,f=webp 800w`} sizes="(max-width:768px) 90vw, 45vw" />
+          <img src={`${CF}/${communityPhotoId}/w=800,q=80`} alt="A child's transformed room reveal — the moment that changes everything" width="800" height="600" loading="lazy" decoding="async" />
+        </picture>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════ TIMELINE ══════ -->
+  <section class="timeline-section" aria-labelledby="timeline-heading">
+    <div class="timeline-header" data-reveal>
+      <div class="section-label section-label--yellow">Milestones</div>
+      <h2 id="timeline-heading">13 years of building <em>dreams</em>.</h2>
+    </div>
+    <div class="timeline">
+      {milestones.map((m, i) => (
+        <div class="tl-item" data-reveal data-delay={String(Math.min(i, 3))}>
+          <div class="tl-year">{m.year}</div>
+          <div class="tl-dot" aria-hidden="true"></div>
+          <div class="tl-card">
+            <h3 class="tl-title">{m.title}</h3>
+            <p class="tl-desc">{m.desc}</p>
+          </div>
+        </div>
+      ))}
+    </div>
+  </section>
+
+  <!-- ══════ IMPACT RIBBON ══════ -->
+  <section class="ribbon" aria-label="Impact numbers">
+    <div class="ribbon-inner">
+      <div class="ribbon-stat" data-reveal>
+        <span class="ribbon-num">{stats.totalRooms}+</span>
+        <span class="ribbon-label">Room Makeovers</span>
+      </div>
+      <div class="ribbon-divider" role="presentation"></div>
+      <div class="ribbon-stat" data-reveal data-delay="1">
+        <span class="ribbon-num">{stats.totalKids}+</span>
+        <span class="ribbon-label">Children Served</span>
+      </div>
+      <div class="ribbon-divider" role="presentation"></div>
+      <div class="ribbon-stat" data-reveal data-delay="2">
+        <span class="ribbon-num">17K+</span>
+        <span class="ribbon-label">Kids Impacted</span>
+      </div>
+      <div class="ribbon-divider" role="presentation"></div>
+      <div class="ribbon-stat" data-reveal data-delay="3">
+        <span class="ribbon-num">100<span class="ribbon-pct">%</span></span>
+        <span class="ribbon-label">Goes to Kids</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════ GRACIE — The Mascot ══════ -->
+  <section class="mascot" aria-labelledby="mascot-heading">
+    <div class="mascot-inner">
+      <div class="mascot-text" data-reveal>
+        <div class="section-label">Our Mascot</div>
+        <h2 id="mascot-heading">Meet <em class="highlight">Gracie the Pig</em>, the heart and spirit of SOARD.</h2>
+        <p>Gracie was inspired by an unforgettable wedding gift — when Peter surprised Holly with a baby pot-bellied pig named Gracie. What started as a unique and heartfelt gesture has since grown into something magical.</p>
+        <p>Over the years, Gracie has transformed into our golden, high-flying mascot, soaring above the clouds in her signature cape, always on the lookout for children and families in need of a little extra sunshine.</p>
+        <p>With her trusty handsaw and a heart full of hope, Gracie leads her team of Sunshiners to build wheelchair-accessible bathrooms, dream bedrooms, and in-home therapy spaces — spaces that bring comfort, independence, and joy to children facing daily challenges.</p>
+        <p class="mascot-tagline">She's a reminder that with creativity, compassion, and a whole lot of heart, <strong>anything is possible with a little bit of Sunshine.</strong></p>
+      </div>
+      <div class="mascot-visual" data-reveal data-delay="1">
+        <div class="mascot-frame">
+          <img src="/favicon.png" alt="Gracie the Pig — SOARD's flying pig mascot with a cape and handsaw" width="300" height="300" loading="lazy" decoding="async" class="mascot-img" />
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════ SUNNY & RANNEY — The Store ══════ -->
+  <section class="store-section" aria-labelledby="store-heading">
+    <div class="store-inner">
+      <div class="store-photo" data-reveal>
+        <picture>
+          <source type="image/avif" srcset={`${CF}/${storePhotoId}/w=500,f=avif 500w, ${CF}/${storePhotoId}/w=800,f=avif 800w`} sizes="(max-width:768px) 90vw, 45vw" />
+          <source type="image/webp" srcset={`${CF}/${storePhotoId}/w=500,f=webp 500w, ${CF}/${storePhotoId}/w=800,f=webp 800w`} sizes="(max-width:768px) 90vw, 45vw" />
+          <img src={`${CF}/${storePhotoId}/w=800,q=80`} alt="Sunny & Ranney, a nonprofit home furnishings store in Roswell, Georgia" width="800" height="600" loading="lazy" decoding="async" />
+        </picture>
+      </div>
+      <div class="store-text" data-reveal data-delay="1">
+        <div class="section-label">Sustaining the Mission</div>
+        <h2 id="store-heading">Shopping that builds <em class="highlight">dream rooms</em>.</h2>
+        <p>In 2020, Sunshine on a Ranney Day took a bold step to sustain its mission by opening <strong><a href="https://sunnyandranney.com" target="_blank" rel="noopener noreferrer">Sunny & Ranney</a></strong>, a nonprofit home furnishings and décor store in Roswell, GA.</p>
+        <p>The shop features all brand-new, designer home goods and furniture, with 100% of the profits going directly to fund custom renovations for children with special needs.</p>
+        <a href="https://sunnyandranney.com" target="_blank" rel="noopener noreferrer" class="btn btn-dark">Shop Sunny & Ranney →</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════ WHERE WE ARE TODAY ══════ -->
+  <section class="today-section" aria-labelledby="today-heading">
+    <div class="today-inner" data-reveal>
+      <div class="section-label">Where We Are Today</div>
+      <h2 id="today-heading">What began as a simple idea has become a <em class="highlight">movement</em>.</h2>
+      <p class="today-body">Thanks to the unwavering support of donors, partners, and customers, Sunshine on a Ranney Day has grown into a community-driven force for good — touching the lives of more than 17,000 children and families across the greater Atlanta area. What started as a single room has become a beacon of hope, bringing comfort, dignity, independence, and joy to children who deserve nothing less than a space to thrive.</p>
+      <div class="today-links">
+        <a href="/about/leadership" class="btn btn-dark">Meet Our Team →</a>
+        <a href="/about/financials" class="btn btn-outline">View Financials →</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════ FINAL CTA ══════ -->
+  <section class="story-finale">
+    <div class="story-finale-inner">
+      <h2 data-reveal>Be part of the <em>next</em> chapter.</h2>
+      <p data-reveal data-delay="1">Every donation, every volunteer hour, every shared story builds another dream room for a child who needs it most.</p>
+      <div class="story-finale-ctas" data-reveal data-delay="2">
+        <a href="/donate" class="btn btn-dark btn-lg">Donate Today</a>
+        <a href="/kids" class="btn btn-outline-dark">Meet the Kids</a>
+      </div>
+      <p class="story-finale-note" data-reveal data-delay="3">501(c)(3) · EIN 45-4773997 · All donations tax-deductible</p>
+    </div>
+  </section>
+
+</BaseLayout>
+
+<style>
+  /* ══════════════════════════════════════════
+     HERO
+     ══════════════════════════════════════════ */
+  .story-hero {
+    position: relative;
+    min-height: 70vh;
+    display: flex;
+    align-items: flex-end;
+    overflow: hidden;
+  }
+
+  .story-hero-media {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+  }
+
+  .story-hero-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center 30%;
+  }
+
+  .story-hero-overlay {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      to top,
+      rgba(26, 27, 31, 0.95) 0%,
+      rgba(26, 27, 31, 0.6) 40%,
+      rgba(26, 27, 31, 0.3) 100%
+    );
+  }
+
+  .story-hero-inner {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    max-width: var(--max-width);
+    margin-inline: auto;
+    padding: var(--space-4xl) var(--space-lg) var(--space-3xl);
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: var(--space-2xl);
+  }
+
+  .story-hero-content { max-width: 680px; }
+
+  .story-hero h1 {
+    color: var(--c-white);
+    font-size: clamp(2.25rem, 5vw, 3.5rem);
+    line-height: 1.15;
+    margin-bottom: var(--space-lg);
+  }
+
+  .story-hero h1 em {
+    font-style: italic;
+    color: var(--c-yellow);
+  }
+
+  .story-hero-lead {
+    font-size: clamp(1rem, 2vw, 1.15rem);
+    color: rgba(255, 255, 255, 0.8);
+    line-height: 1.7;
+    max-width: 560px;
+  }
+
+  .story-hero-stat {
+    text-align: center;
+    flex-shrink: 0;
+  }
+
+  .story-hero-stat-num {
+    display: block;
+    font-family: var(--font-display);
+    font-size: clamp(3rem, 6vw, 4.5rem);
+    font-weight: 700;
+    color: var(--c-yellow);
+    line-height: 1;
+  }
+
+  .story-hero-stat-num span {
+    font-size: 0.45em;
+    vertical-align: super;
+    margin-left: 2px;
+  }
+
+  .story-hero-stat-label {
+    display: block;
+    font-size: 0.85rem;
+    color: rgba(255, 255, 255, 0.65);
+    margin-top: var(--space-sm);
+    line-height: 1.4;
+  }
+
+  @media (max-width: 768px) {
+    .story-hero { min-height: 60vh; }
+    .story-hero-inner { flex-direction: column; align-items: flex-start; padding-block: var(--space-3xl) var(--space-2xl); }
+    .story-hero-stat { display: none; }
+  }
+
+  /* ══════════════════════════════════════════
+     SHARED
+     ══════════════════════════════════════════ */
+  .section-label {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--c-accent);
+    margin-bottom: 20px;
+  }
+  .section-label::before {
+    content: '';
+    width: 28px;
+    height: 2px;
+    background: currentColor;
+    flex-shrink: 0;
+  }
+  .section-label--yellow { color: var(--c-yellow); }
+  .highlight {
+    font-style: italic;
+    background-image: linear-gradient(transparent 55%, var(--c-yellow-soft) 55%);
+    padding: 0 0.1em;
+  }
+  h2 em:not(.highlight) { font-style: italic; color: var(--c-yellow); }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 14px 32px;
+    font-family: var(--font-body);
+    font-size: 15px;
+    font-weight: 600;
+    border-radius: 60px;
+    border: none;
+    cursor: pointer;
+    text-decoration: none;
+    transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+    white-space: nowrap;
+  }
+  .btn:hover { transform: translateY(-3px); }
+  .btn-dark {
+    background: var(--c-dark);
+    color: var(--c-white);
+  }
+  .btn-dark:hover {
+    background: #3a3b40;
+    box-shadow: 0 8px 24px rgba(45, 46, 51, 0.3);
+  }
+  .btn-outline {
+    background: transparent;
+    color: var(--c-dark);
+    border: 2px solid var(--c-border);
+  }
+  .btn-outline:hover {
+    border-color: var(--c-dark);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+  }
+  .btn-outline-dark {
+    background: transparent;
+    color: var(--c-dark);
+    border: 2px solid var(--c-dark);
+  }
+  .btn-outline-dark:hover {
+    background: var(--c-dark);
+    color: var(--c-white);
+  }
+  .btn-lg { padding: 16px 40px; font-size: 16px; }
+
+  /* ══════════════════════════════════════════
+     FOUNDERS — Split layout
+     ══════════════════════════════════════════ */
+  .founders {
+    padding-block: var(--space-5xl) var(--space-4xl);
+  }
+
+  .founders-inner {
+    max-width: var(--max-width);
+    margin-inline: auto;
+    padding-inline: var(--space-lg);
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-4xl);
+    align-items: center;
+  }
+
+  .founders-photos { position: relative; }
+
+  .founders-photo--main {
+    border-radius: var(--border-radius-lg);
+    overflow: hidden;
+    box-shadow: var(--shadow-xl);
+  }
+
+  .founders-photo--main img {
+    width: 100%;
+    height: auto;
+    display: block;
+  }
+
+  .founders-photo--accent {
+    position: absolute;
+    bottom: -30px;
+    right: -30px;
+    width: 55%;
+    border-radius: var(--border-radius-lg);
+    overflow: hidden;
+    box-shadow: var(--shadow-xl);
+    border: 4px solid var(--c-cream);
+  }
+
+  .founders-photo--accent img {
+    width: 100%;
+    height: auto;
+    display: block;
+  }
+
+  .founders-text h2 {
+    font-size: clamp(1.5rem, 3vw, 2.25rem);
+    margin-bottom: var(--space-xl);
+  }
+
+  .founders-text p {
+    font-size: 1.05rem;
+    line-height: 1.75;
+    color: var(--c-text);
+    margin-bottom: var(--space-md);
+  }
+
+  .founders-text p:last-of-type {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-size: 1.1rem;
+    color: var(--c-text-muted);
+  }
+
+  @media (max-width: 768px) {
+    .founders { padding-block: var(--space-3xl); }
+    .founders-inner {
+      grid-template-columns: 1fr;
+      gap: var(--space-2xl);
+    }
+    .founders-photo--accent {
+      bottom: -20px;
+      right: -10px;
+      width: 45%;
+    }
+  }
+
+  /* ══════════════════════════════════════════
+     TURNING POINT — Reversed split
+     ══════════════════════════════════════════ */
+  .turning-point {
+    background: var(--c-warm-gray);
+    padding-block: var(--space-4xl);
+  }
+
+  .turning-point-inner {
+    max-width: var(--max-width);
+    margin-inline: auto;
+    padding-inline: var(--space-lg);
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-4xl);
+    align-items: center;
+  }
+
+  .turning-point-text h2 {
+    font-size: clamp(1.5rem, 3vw, 2.25rem);
+    margin-bottom: var(--space-xl);
+  }
+
+  .turning-point-text p {
+    font-size: 1.05rem;
+    line-height: 1.75;
+    color: var(--c-text);
+    margin-bottom: var(--space-md);
+  }
+
+  .turning-point-photo {
+    border-radius: var(--border-radius-lg);
+    overflow: hidden;
+    box-shadow: var(--shadow-xl);
+  }
+
+  .turning-point-photo img {
+    width: 100%;
+    height: auto;
+    display: block;
+  }
+
+  @media (max-width: 768px) {
+    .turning-point { padding-block: var(--space-3xl); }
+    .turning-point-inner {
+      grid-template-columns: 1fr;
+      gap: var(--space-2xl);
+    }
+    .turning-point-text { order: 1; }
+    .turning-point-photo { order: 2; }
+  }
+
+  /* ══════════════════════════════════════════
+     TIMELINE
+     ══════════════════════════════════════════ */
+  .timeline-section {
+    background: var(--c-dark);
+    color: var(--c-white);
+    padding-block: var(--space-5xl);
+  }
+
+  .timeline-header {
+    text-align: center;
+    max-width: 600px;
+    margin-inline: auto;
+    margin-bottom: var(--space-4xl);
+    padding-inline: var(--space-lg);
+  }
+
+  .timeline-header .section-label {
+    justify-content: center;
+  }
+
+  .timeline-header h2 {
+    color: var(--c-white);
+    font-size: clamp(1.75rem, 4vw, 2.5rem);
+  }
+
+  .timeline {
+    position: relative;
+    max-width: 800px;
+    margin-inline: auto;
+    padding-inline: var(--space-lg);
+  }
+
+  /* Vertical line */
+  .timeline::before {
+    content: '';
+    position: absolute;
+    left: calc(var(--space-lg) + 60px + 14px);
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: rgba(255, 218, 36, 0.25);
+  }
+
+  .tl-item {
+    display: grid;
+    grid-template-columns: 60px 30px 1fr;
+    gap: 0;
+    align-items: start;
+    margin-bottom: var(--space-2xl);
+  }
+
+  .tl-item:last-child { margin-bottom: 0; }
+
+  .tl-year {
+    font-family: var(--font-display);
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--c-yellow);
+    text-align: right;
+    padding-top: 4px;
+    line-height: 1;
+  }
+
+  .tl-dot {
+    display: flex;
+    justify-content: center;
+    padding-top: 6px;
+  }
+
+  .tl-dot::before {
+    content: '';
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--c-yellow);
+    box-shadow: 0 0 0 4px rgba(255, 218, 36, 0.2);
+    flex-shrink: 0;
+  }
+
+  .tl-card {
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: var(--border-radius);
+    padding: var(--space-lg) var(--space-xl);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .tl-title {
+    font-family: var(--font-body);
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--c-white);
+    margin-bottom: var(--space-xs);
+  }
+
+  .tl-desc {
+    font-size: 0.95rem;
+    line-height: 1.65;
+    color: rgba(255, 255, 255, 0.7);
+  }
+
+  @media (max-width: 768px) {
+    .timeline-section { padding-block: var(--space-3xl); }
+    .timeline::before { left: calc(var(--space-lg) + 14px); }
+    .tl-item {
+      grid-template-columns: 30px 1fr;
+      gap: 0;
+    }
+    .tl-year {
+      grid-column: 1 / -1;
+      text-align: left;
+      margin-bottom: var(--space-sm);
+      padding-left: 36px;
+    }
+    .tl-card { padding: var(--space-md) var(--space-lg); }
+  }
+
+  /* ══════════════════════════════════════════
+     IMPACT RIBBON
+     ══════════════════════════════════════════ */
+  .ribbon {
+    background: var(--c-yellow);
+    padding-block: var(--space-2xl);
+  }
+
+  .ribbon-inner {
+    max-width: var(--max-width);
+    margin-inline: auto;
+    padding-inline: var(--space-lg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2xl);
+    flex-wrap: wrap;
+  }
+
+  .ribbon-stat { text-align: center; }
+
+  .ribbon-num {
+    display: block;
+    font-family: var(--font-display);
+    font-size: clamp(2rem, 4vw, 2.75rem);
+    font-weight: 700;
+    color: var(--c-dark);
+    line-height: 1;
+  }
+
+  .ribbon-pct { font-size: 0.6em; }
+
+  .ribbon-label {
+    display: block;
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: rgba(45, 46, 51, 0.7);
+    margin-top: 6px;
+  }
+
+  .ribbon-divider {
+    width: 1px;
+    height: 48px;
+    background: rgba(45, 46, 51, 0.2);
+  }
+
+  @media (max-width: 640px) {
+    .ribbon-inner { gap: var(--space-lg); }
+    .ribbon-divider { display: none; }
+    .ribbon-stat { flex: 1 1 40%; }
+  }
+
+  /* ══════════════════════════════════════════
+     MASCOT — Gracie
+     ══════════════════════════════════════════ */
+  .mascot {
+    padding-block: var(--space-5xl);
+  }
+
+  .mascot-inner {
+    max-width: var(--max-width);
+    margin-inline: auto;
+    padding-inline: var(--space-lg);
+    display: grid;
+    grid-template-columns: 1.2fr 0.8fr;
+    gap: var(--space-4xl);
+    align-items: center;
+  }
+
+  .mascot-text h2 {
+    font-size: clamp(1.5rem, 3vw, 2.25rem);
+    margin-bottom: var(--space-xl);
+  }
+
+  .mascot-text p {
+    font-size: 1.05rem;
+    line-height: 1.75;
+    color: var(--c-text);
+    margin-bottom: var(--space-md);
+  }
+
+  .mascot-tagline {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-size: 1.1rem !important;
+    color: var(--c-text-muted) !important;
+    margin-top: var(--space-lg) !important;
+  }
+
+  .mascot-visual {
+    display: flex;
+    justify-content: center;
+  }
+
+  .mascot-frame {
+    width: 280px;
+    height: 280px;
+    border-radius: 50%;
+    background: var(--c-yellow);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 12px 40px rgba(255, 218, 36, 0.3);
+    transition: transform var(--transition-slow);
+  }
+
+  .mascot-frame:hover {
+    transform: scale(1.05) rotate(3deg);
+  }
+
+  .mascot-img {
+    width: 180px;
+    height: 180px;
+    object-fit: contain;
+    filter: drop-shadow(0 4px 8px rgba(0,0,0,0.15));
+  }
+
+  @media (max-width: 768px) {
+    .mascot { padding-block: var(--space-3xl); }
+    .mascot-inner {
+      grid-template-columns: 1fr;
+      gap: var(--space-2xl);
+    }
+    .mascot-visual { order: -1; }
+    .mascot-frame { width: 200px; height: 200px; }
+    .mascot-img { width: 130px; height: 130px; }
+  }
+
+  /* ══════════════════════════════════════════
+     STORE — Sunny & Ranney
+     ══════════════════════════════════════════ */
+  .store-section {
+    background: var(--c-warm-gray);
+    padding-block: var(--space-4xl);
+  }
+
+  .store-inner {
+    max-width: var(--max-width);
+    margin-inline: auto;
+    padding-inline: var(--space-lg);
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-4xl);
+    align-items: center;
+  }
+
+  .store-photo {
+    border-radius: var(--border-radius-lg);
+    overflow: hidden;
+    box-shadow: var(--shadow-xl);
+  }
+
+  .store-photo img {
+    width: 100%;
+    height: auto;
+    display: block;
+  }
+
+  .store-text h2 {
+    font-size: clamp(1.5rem, 3vw, 2.25rem);
+    margin-bottom: var(--space-xl);
+  }
+
+  .store-text p {
+    font-size: 1.05rem;
+    line-height: 1.75;
+    color: var(--c-text);
+    margin-bottom: var(--space-md);
+  }
+
+  .store-text a:not(.btn) {
+    color: var(--c-accent);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+
+  .store-text .btn { margin-top: var(--space-lg); }
+
+  @media (max-width: 768px) {
+    .store-section { padding-block: var(--space-3xl); }
+    .store-inner {
+      grid-template-columns: 1fr;
+      gap: var(--space-2xl);
+    }
+  }
+
+  /* ══════════════════════════════════════════
+     TODAY — Where We Are
+     ══════════════════════════════════════════ */
+  .today-section {
+    padding-block: var(--space-5xl);
+    text-align: center;
+  }
+
+  .today-inner {
+    max-width: 720px;
+    margin-inline: auto;
+    padding-inline: var(--space-lg);
+  }
+
+  .today-inner .section-label {
+    justify-content: center;
+  }
+
+  .today-inner h2 {
+    font-size: clamp(1.75rem, 4vw, 2.5rem);
+    margin-bottom: var(--space-xl);
+  }
+
+  .today-body {
+    font-size: 1.1rem;
+    line-height: 1.8;
+    color: var(--c-text);
+  }
+
+  .today-links {
+    margin-top: var(--space-2xl);
+    display: flex;
+    gap: var(--space-md);
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  @media (max-width: 768px) {
+    .today-section { padding-block: var(--space-3xl); }
+  }
+
+  /* ══════════════════════════════════════════
+     FINALE CTA
+     ══════════════════════════════════════════ */
+  .story-finale {
+    background: var(--c-yellow);
+    padding-block: var(--space-5xl);
+    text-align: center;
+  }
+
+  .story-finale-inner {
+    max-width: 700px;
+    margin-inline: auto;
+    padding-inline: var(--space-lg);
+  }
+
+  .story-finale h2 {
+    font-size: clamp(1.75rem, 4vw, 2.75rem);
+    color: var(--c-dark);
+  }
+
+  .story-finale h2 em {
+    font-style: italic;
+  }
+
+  .story-finale > p,
+  .story-finale-inner > p {
+    font-size: 1.15rem;
+    color: rgba(45, 46, 51, 0.8);
+    margin-top: var(--space-md);
+    line-height: 1.6;
+  }
+
+  .story-finale-ctas {
+    margin-top: var(--space-2xl);
+    display: flex;
+    gap: var(--space-md);
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  .story-finale-note {
+    margin-top: var(--space-2xl);
+    font-size: 0.85rem;
+    color: rgba(45, 46, 51, 0.5);
+    letter-spacing: 0.02em;
+  }
+
+  @media (max-width: 768px) {
+    .story-finale { padding-block: var(--space-3xl); }
+  }
+
+  /* ══════════════════════════════════════════
+     SCROLL REVEALS
+     ══════════════════════════════════════════ */
+  [data-reveal] {
+    opacity: 0;
+    transform: translateY(24px);
+    transition: opacity 0.7s ease, transform 0.7s ease;
+  }
+  [data-reveal].revealed {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  [data-delay="1"] { transition-delay: 0.12s; }
+  [data-delay="2"] { transition-delay: 0.24s; }
+  [data-delay="3"] { transition-delay: 0.36s; }
+
+  @media (prefers-reduced-motion: reduce) {
+    [data-reveal] { opacity: 1; transform: none; transition: none; }
+  }
+</style>
+
+<script>
+  // Scroll-reveal observer
+  const reveals = document.querySelectorAll('[data-reveal]');
+  if (reveals.length && 'IntersectionObserver' in window) {
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach(e => {
+        if (e.isIntersecting) {
+          e.target.classList.add('revealed');
+          io.unobserve(e.target);
+        }
+      });
+    }, { threshold: 0.15, rootMargin: '0px 0px -40px 0px' });
+    reveals.forEach(el => io.observe(el));
+  } else {
+    reveals.forEach(el => el.classList.add('revealed'));
+  }
+</script>

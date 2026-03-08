@@ -10,6 +10,11 @@
   Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
   Content-Security-Policy: frame-ancestors 'self'
 
+## Cache financial PDFs (rarely change, large files)
+/financials/*
+  Cache-Control: public, max-age=2592000, s-maxage=31536000
+  Content-Disposition: inline
+
 ## Cache static assets aggressively
 /fonts/*
   Cache-Control: public, max-age=31536000, immutable

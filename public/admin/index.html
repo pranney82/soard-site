@@ -477,6 +477,18 @@
     .gap-2 { gap: 1rem; }
     .items-center { align-items: center; }
     .justify-between { justify-content: space-between; }
+    /* ─── Image Picker ──────────────────── */
+    .img-picker-modal { max-width: 900px; width: 95vw; max-height: 85vh; display: flex; flex-direction: column; }
+    .img-picker-toolbar { display: flex; gap: 0.75rem; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; }
+    .img-picker-toolbar input { flex: 1; min-width: 200px; }
+    .img-picker-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 0.75rem; overflow-y: auto; flex: 1; padding: 0.25rem; }
+    .img-picker-thumb { position: relative; aspect-ratio: 1; border-radius: 10px; overflow: hidden; cursor: pointer; border: 3px solid transparent; transition: all 0.15s ease; background: #F5F4F0; }
+    .img-picker-thumb:hover { border-color: #FFD500; transform: translateY(-2px); box-shadow: 0 4px 16px rgba(0,0,0,0.12); }
+    .img-picker-thumb.selected { border-color: #FFD500; box-shadow: 0 0 0 2px #FFD500; }
+    .img-picker-thumb img { width: 100%; height: 100%; object-fit: cover; }
+    .img-picker-id { position: absolute; bottom: 0; left: 0; right: 0; background: rgba(0,0,0,0.7); color: #fff; font-size: 0.6rem; padding: 4px 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .img-picker-pager { display: flex; justify-content: center; align-items: center; gap: 0.75rem; padding-top: 1rem; border-top: 1px solid rgba(45,46,51,0.08); margin-top: 0.75rem; }
+    .img-picker-empty { text-align: center; padding: 3rem; color: #6B6C72; grid-column: 1 / -1; }
   </style>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -568,6 +580,10 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ type, kid }),
         });
+        return r.json();
+      },
+      async listImages(page = 1, perPage = 50) {
+        const r = await fetch(`/api/list-images?page=${page}&per_page=${perPage}`);
         return r.json();
       },
     };
@@ -868,6 +884,30 @@
           partnerLogos: d.partnerLogos.filter((_, i) => i !== index),
         }));
       };
+
+      // Auto-generate SEO fields when enough context is filled in (new kids only)
+      const seoAutoRan = useRef(false);
+      useEffect(() => {
+        if (slug) return; // editing existing kid — don't auto-run
+        if (seoAutoRan.current || generatingSeo) return;
+        if (!data.name || (!data.diagnosis && !data.bio)) return;
+        if (data.shortDescription || data.metaDescription) return;
+        seoAutoRan.current = true;
+        handleGenerateSeo();
+      }, [data.name, data.diagnosis, data.bio]);
+
+      // Auto-generate alt text when all uploads finish
+      const prevUploadCount = useRef(0);
+      useEffect(() => {
+        const count = Object.keys(uploading).length;
+        if (prevUploadCount.current > 0 && count === 0) {
+          const hasBlankAlt = data.photos.some(p => p.url && !p._tempId && !p.alt);
+          if (hasBlankAlt && !generatingAlt) {
+            handleGenerateAlt();
+          }
+        }
+        prevUploadCount.current = count;
+      }, [uploading]);
 
       // Warn on browser close/refresh with unsaved changes
       useEffect(() => {
@@ -1172,10 +1212,10 @@
           <div class="flex items-center justify-between mb-1">
             <h3>SEO & Descriptions</h3>
             <button class="btn btn-secondary btn-sm" onClick=${handleGenerateSeo} disabled=${generatingSeo}>
-              ${generatingSeo ? html`<span class="spinner" />` : '✨'} ${generatingSeo ? 'Generating...' : 'Generate with AI'}
+              ${generatingSeo ? html`<span class="spinner" />` : '✨'} ${generatingSeo ? 'Generating...' : 'Regenerate with AI'}
             </button>
           </div>
-          <p class="text-sm text-muted mb-1">AI generates these from the name, diagnosis, and bio above.</p>
+          <p class="text-sm text-muted mb-1">Auto-generates when you fill in name + diagnosis or bio. Click to regenerate anytime.</p>
           <div class="form-group">
             <label class="form-label">Short Description</label>
             <textarea class="form-textarea" style="min-height: 80px;" value=${data.shortDescription || ''}
@@ -1197,11 +1237,11 @@
             <h3>Photos</h3>
             ${data.photos.length > 0 ? html`
               <button class="btn btn-secondary btn-sm" onClick=${handleGenerateAlt} disabled=${generatingAlt}>
-                ${generatingAlt ? html`<span class="spinner" />` : '✨'} ${generatingAlt ? 'Generating...' : 'Generate Alt Text with AI'}
+                ${generatingAlt ? html`<span class="spinner" />` : '✨'} ${generatingAlt ? 'Generating...' : 'Regenerate Alt Text'}
               </button>
             ` : null}
           </div>
-          <p class="text-sm text-muted mb-1">Upload photos, click ⭐ for hero. AI can write alt text for all photos at once.</p>
+          <p class="text-sm text-muted mb-1">Upload photos, click ⭐ for hero. Alt text generates automatically after upload.</p>
           <${DropZone} onFiles=${handlePhotoUpload} label="JPG, PNG, WebP — upload as many as you need" />
           ${data.photos.length > 0 ? html`
             <div class="photo-grid">
@@ -2846,6 +2886,148 @@
     }
 
     // ═══════════════════════════════════════════
+    // IMAGE PICKER MODAL
+    // ═══════════════════════════════════════════
+    function ImagePicker({ onSelect, onClose }) {
+      const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
+      const [allImages, setAllImages] = useState([]);
+      const [loading, setLoading] = useState(true);
+      const [progress, setProgress] = useState({ loaded: 0, total: 0 });
+      const [search, setSearch] = useState('');
+      const [category, setCategory] = useState('kids');
+      const [displayPage, setDisplayPage] = useState(1);
+      const THUMBS_PER_PAGE = 60;
+
+      // Load ALL images on mount by paginating through CF API
+      useEffect(() => {
+        let cancelled = false;
+        (async () => {
+          try {
+            // First call: get total count
+            const first = await api.listImages(1, 100);
+            if (!first.success || cancelled) return;
+            const total = first.totalCount || 0;
+            const totalPages = Math.ceil(total / 100);
+            let collected = [...(first.images || [])];
+            setProgress({ loaded: collected.length, total });
+
+            // Fetch remaining pages in batches of 6
+            for (let batch = 1; batch < totalPages; batch += 6) {
+              const promises = [];
+              for (let p = batch + 1; p <= Math.min(batch + 6, totalPages); p++) {
+                promises.push(api.listImages(p, 100));
+              }
+              const results = await Promise.all(promises);
+              if (cancelled) return;
+              for (const res of results) {
+                if (res.success) collected = collected.concat(res.images || []);
+              }
+              setProgress({ loaded: collected.length, total });
+              setAllImages([...collected]);
+            }
+
+            setAllImages(collected);
+          } catch (err) {
+            console.error('Image load error', err);
+          }
+          if (!cancelled) setLoading(false);
+        })();
+        return () => { cancelled = true; };
+      }, []);
+
+      // Filter images by category and search
+      const filtered = useMemo(() => {
+        let list = allImages;
+        if (category === 'kids') list = list.filter(img => img.id.startsWith('kids/'));
+        else if (category === 'logos') list = list.filter(img => img.id.startsWith('logos/'));
+        else if (category === 'other') list = list.filter(img => !img.id.startsWith('kids/') && !img.id.startsWith('logos/'));
+        if (search.trim()) {
+          const q = search.toLowerCase().trim();
+          list = list.filter(img => img.id.toLowerCase().includes(q));
+        }
+        return list;
+      }, [allImages, category, search]);
+
+      // Extract kid names for quick-pick buttons
+      const kidNames = useMemo(() => {
+        const names = new Set();
+        allImages.forEach(img => {
+          if (img.id.startsWith('kids/')) {
+            const name = img.id.split('/')[1];
+            if (name) names.add(name);
+          }
+        });
+        return [...names].sort();
+      }, [allImages]);
+
+      const pageCount = Math.ceil(filtered.length / THUMBS_PER_PAGE);
+      const pageImages = filtered.slice((displayPage - 1) * THUMBS_PER_PAGE, displayPage * THUMBS_PER_PAGE);
+
+      // Reset to page 1 when filters change
+      useEffect(() => { setDisplayPage(1); }, [search, category]);
+
+      return html`<div class="modal-overlay" onClick=${onClose}>
+        <div class="modal img-picker-modal" onClick=${e => e.stopPropagation()}>
+          <h3 style="margin-bottom: 0.75rem;">Choose an Image</h3>
+
+          <div class="img-picker-toolbar">
+            <div style="display: flex; gap: 0.35rem;">
+              ${[['kids', '👶 Kids'], ['logos', '🏢 Logos'], ['all', '📁 All'], ['other', '📎 Other']].map(([id, label]) => html`
+                <button key=${id} class="chip" style="${category === id
+                  ? 'background: #2D2E33; color: #fff;'
+                  : 'background: rgba(45,46,51,0.08); color: #2D2E33; cursor: pointer;'}"
+                  onClick=${() => setCategory(id)}>${label}</button>
+              `)}
+            </div>
+          </div>
+
+          <div style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.75rem;">
+            <input class="form-input" type="text" style="flex:1"
+              placeholder="${category === 'kids' ? 'Search by kid name (e.g. harper, zyah, liam)...' : 'Search by image ID...'}"
+              value=${search} onInput=${e => setSearch(e.target.value)} />
+            <span class="text-sm text-muted" style="white-space: nowrap;">
+              ${loading ? html`${progress.loaded.toLocaleString()} / ${progress.total.toLocaleString()}` : html`${filtered.length.toLocaleString()} images`}
+            </span>
+          </div>
+
+          ${category === 'kids' && kidNames.length > 0 && !search ? html`
+            <div style="display: flex; flex-wrap: wrap; gap: 0.3rem; margin-bottom: 0.75rem; max-height: 72px; overflow-y: auto;">
+              ${kidNames.map(name => html`
+                <button key=${name} class="chip" style="background: rgba(45,46,51,0.06); color: #2D2E33; cursor: pointer; font-size: 0.75rem; padding: 3px 10px;"
+                  onClick=${() => setSearch(name)}>${name}</button>
+              `)}
+            </div>
+          ` : null}
+
+          <div class="img-picker-grid">
+            ${loading && allImages.length === 0
+              ? html`<div class="img-picker-empty">
+                  <div class="spinner" style="width:32px;height:32px;margin:0 auto 0.75rem;" />
+                  <div>Loading images... ${progress.loaded} of ${progress.total}</div>
+                </div>`
+              : pageImages.length === 0
+              ? html`<div class="img-picker-empty">No images match "${search || category}". ${loading ? 'Still loading more...' : ''}</div>`
+              : pageImages.map(img => html`
+                <div key=${img.id} class="img-picker-thumb" title=${img.id}
+                  onClick=${() => { onSelect(img.id); onClose(); }}>
+                  <img src="${CF}/${img.id}/w=280,h=280,fit=cover,f=auto" alt="" loading="lazy" />
+                  <div class="img-picker-id">${img.id.startsWith('kids/') ? img.id.replace('kids/', '') : img.id}</div>
+                </div>
+              `)
+            }
+          </div>
+          ${pageCount > 1 ? html`
+            <div class="img-picker-pager">
+              <button class="btn btn-ghost btn-sm" disabled=${displayPage <= 1} onClick=${() => setDisplayPage(p => p - 1)}>← Prev</button>
+              <span class="text-sm">Page ${displayPage} of ${pageCount}</span>
+              <button class="btn btn-ghost btn-sm" disabled=${displayPage >= pageCount} onClick=${() => setDisplayPage(p => p + 1)}>Next →</button>
+            </div>
+          ` : null}
+        </div>
+      </div>`;
+    }
+
+    // ═══════════════════════════════════════════
     // SITE SETTINGS
     // ═══════════════════════════════════════════
     function SiteSettings({ addToast }) {
@@ -2853,6 +3035,7 @@
       const [saving, setSaving] = useState(false);
       const [sha, setSha] = useState(null);
       const [data, setData] = useState({});
+      const [showImagePicker, setShowImagePicker] = useState(false);
 
       useEffect(() => {
         (async () => {
@@ -2909,6 +3092,10 @@
       if (loading) return html`<div class="card" style="text-align: center; padding: 3rem;"><div class="spinner" style="width: 32px; height: 32px;" /></div>`;
 
       return html`
+        ${showImagePicker ? html`<${ImagePicker}
+          onSelect=${(id) => updateField('homeHero.imageId', id)}
+          onClose=${() => setShowImagePicker(false)}
+        />` : null}
         <div class="page-header">
           <h2>Site Settings</h2>
           <button class="btn btn-primary" onClick=${handleSave} disabled=${saving}>
@@ -2938,7 +3125,7 @@
         </div>
         <div class="card">
           <h3 style="margin-bottom: 1rem;">Home Hero Image</h3>
-          <p class="text-sm text-muted mb-1">The full-bleed background image on the homepage hero. Use a Cloudflare Images ID (e.g. <code>kids/harper/hero-c6a714</code>).</p>
+          <p class="text-sm text-muted mb-1">The full-bleed background image on the homepage hero.</p>
           ${data.homeHero?.imageId ? html`
             <div style="margin: 1rem 0; border-radius: 12px; overflow: hidden; max-height: 200px;">
               <img src=${'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/' + data.homeHero.imageId + '/w=800,f=auto'}
@@ -2947,9 +3134,12 @@
           ` : null}
           <div class="form-group">
             <label class="form-label">Cloudflare Image ID</label>
-            <input class="form-input" value=${data.homeHero?.imageId || ''}
-              placeholder="kids/harper/hero-c6a714"
-              onInput=${e => updateField('homeHero.imageId', e.target.value)} />
+            <div style="display: flex; gap: 0.5rem;">
+              <input class="form-input" style="flex:1" value=${data.homeHero?.imageId || ''}
+                placeholder="kids/harper/hero-c6a714"
+                onInput=${e => updateField('homeHero.imageId', e.target.value)} />
+              <button class="btn btn-ghost" type="button" onClick=${() => setShowImagePicker(true)}>Browse</button>
+            </div>
           </div>
           <div class="form-group">
             <label class="form-label">Alt Text</label>

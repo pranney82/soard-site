@@ -101,6 +101,7 @@ const jsonLd = {
             </div>
             <span class="doc-card__year">{doc.year}</span>
             <span class="doc-card__label">View PDF</span>
+            {doc.fileSize && <span class="doc-card__size">{doc.fileSize}</span>}
           </a>
         ))}
       </div>
@@ -131,6 +132,7 @@ const jsonLd = {
             </div>
             <span class="doc-card__year">{doc.year}</span>
             <span class="doc-card__label">View PDF</span>
+            {doc.fileSize && <span class="doc-card__size">{doc.fileSize}</span>}
           </a>
         ))}
       </div>
@@ -356,6 +358,13 @@ const jsonLd = {
 
   .doc-card:hover .doc-card__label {
     color: var(--c-dark);
+  }
+
+  .doc-card__size {
+    font-size: 0.65rem;
+    color: var(--c-text-light);
+    opacity: 0.6;
+    margin-top: -0.25rem;
   }
 
   /* ─── Annual Reports Grid ──────────────── */
