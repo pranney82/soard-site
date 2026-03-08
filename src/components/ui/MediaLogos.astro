@@ -29,7 +29,7 @@ const logos = [
 <div class="ml" data-theme={theme}>
   <div class="ml__label">As Featured In</div>
   <div class="ml__row">
-    {logos.map(logo => (
+    {logos.map(logo => href ? (
       <a href={href} class:list={["ml__item", { "ml__item--wide": logo.wide }]} aria-label={`Featured on ${logo.alt}`}>
         <img
           src={`${CF}/${logo.id}/w=400,f=auto`}
@@ -41,6 +41,18 @@ const logos = [
           height="60"
         />
       </a>
+    ) : (
+      <div class:list={["ml__item", { "ml__item--wide": logo.wide }]}>
+        <img
+          src={`${CF}/${logo.id}/w=400,f=auto`}
+          alt={logo.alt}
+          class="ml__logo"
+          loading="lazy"
+          decoding="async"
+          width="200"
+          height="60"
+        />
+      </div>
     ))}
   </div>
 </div>

@@ -9,6 +9,7 @@
   --c-yellow: #FFDA24;
   --c-yellow-soft: rgba(255, 218, 36, 0.45);
   --c-yellow-hover: #E6C400;
+  --c-yellow-glow: rgba(255, 218, 36, 0.35);
   --c-accent: #373A36;
   --c-accent-soft: rgba(55, 58, 54, 0.1);
   --c-dark: #373A36;
@@ -47,7 +48,7 @@
   --max-width: 1200px;
   --max-width-narrow: 800px;
   --max-width-wide: 1400px;
-  --header-height: 72px;
+  --header-height: 104px;
   --border-radius: 8px;
   --border-radius-lg: 16px;
 
@@ -335,7 +336,7 @@ h4, .h4 {
 .btn-primary:hover {
   background: var(--c-yellow-hover);
   transform: translateY(-3px);
-  box-shadow: 0 8px 24px rgba(255, 218, 36, 0.35);
+  box-shadow: 0 8px 24px var(--c-yellow-glow);
 }
 .btn-dark {
   background: var(--c-dark);
@@ -364,6 +365,6 @@ h4, .h4 {
   }
 
   :root {
-    --header-height: 60px;
+    --header-height: 88px;
   }
 }

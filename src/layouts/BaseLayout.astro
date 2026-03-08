@@ -225,17 +225,23 @@ const structuredData = buildSchemaGraph(...graphSchemas);
   <!-- JSON-LD: Unified @graph with Organization + WebPage + page-specific schemas -->
   <script type="application/ld+json" set:html={JSON.stringify(structuredData)} />
 
-  <!-- Facebook Pixel (async) -->
+  <!-- Facebook Pixel (deferred until after page load for speed) -->
   <script is:inline>
-    !function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?
-    n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;
-    n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;
-    t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,
-    document,'script','https://connect.facebook.net/en_US/fbevents.js');
-    fbq('init','1325956761183424');fbq('track','PageView');
+    (function(){
+      function loadFBPixel(){
+        !function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+        n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;
+        n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;
+        t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,
+        document,'script','https://connect.facebook.net/en_US/fbevents.js');
+        fbq('init','1325956761183424');fbq('track','PageView');
+      }
+      if('requestIdleCallback' in window){requestIdleCallback(loadFBPixel)}
+      else{setTimeout(loadFBPixel,2000)}
+    })();
   </script>
   <noscript>
-    <img height="1" width="1" style="display:none"
+    <img height="1" width="1" style="display:none" alt=""
       src="https://www.facebook.com/tr?id=1325956761183424&ev=PageView&noscript=1" />
   </noscript>
 </head>
@@ -246,5 +252,9 @@ const structuredData = buildSchemaGraph(...graphSchemas);
     <slot />
   </main>
   <Footer />
+  <!-- Register service worker for repeat visitor speed -->
+  <script is:inline>
+    if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js',{scope:'/'}).catch(function(){})}
+  </script>
 </body>
 </html>

@@ -75,7 +75,7 @@ function formatDate(dateStr: string): string {
               {item.data.url && (
                 <a href={item.data.url} class="featured-card__link" target="_blank" rel="noopener noreferrer">
                   Read Article
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 17L17 7"/><path d="M7 7h10v10"/></svg>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M7 17L17 7"/><path d="M7 7h10v10"/></svg>
                 </a>
               )}
             </div>
@@ -111,7 +111,7 @@ function formatDate(dateStr: string): string {
             </div>
             {item.data.url && (
               <a href={item.data.url} class="coverage-item__arrow" target="_blank" rel="noopener noreferrer" aria-label={`Read ${item.data.title}`}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 17L17 7"/><path d="M7 7h10v10"/></svg>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M7 17L17 7"/><path d="M7 7h10v10"/></svg>
               </a>
             )}
           </article>
@@ -168,7 +168,7 @@ function formatDate(dateStr: string): string {
   }
   .highlight {
     font-style: normal;
-    background-image: linear-gradient(transparent 55%, rgba(255,213,0,0.45) 55%);
+    background-image: linear-gradient(transparent 55%, var(--c-yellow-soft) 55%);
   }
 
   /* ══════ SECTION TITLES ══════ */

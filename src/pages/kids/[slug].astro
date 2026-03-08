@@ -45,6 +45,8 @@ const breadcrumbs = [
     <!-- Hero Section -->
     <section class="profile-hero">
       <div class="container container--narrow">
+        <h1 class="profile-name">{kid.name}</h1>
+
         <!-- Stats -->
         <div class="profile-meta">
           {kid.age && <span class="meta-item">🙂 {kid.age} years old</span>}
@@ -127,7 +129,7 @@ const breadcrumbs = [
           <div class="partner-logo-grid">
             {kid.partnerLogos.map(logo => (
               <div class="partner-logo">
-                <img src={logo.url} alt="Project partner logo" loading="lazy" decoding="async" />
+                <img src={logo.url} alt={logo.name || 'Project partner'} loading="lazy" decoding="async" />
               </div>
             ))}
           </div>
@@ -150,6 +152,11 @@ const breadcrumbs = [
   /* ─── Profile Hero ─────────────────────── */
   .profile-hero {
     padding-block: var(--space-3xl) var(--space-2xl);
+  }
+
+  .profile-name {
+    font-size: clamp(2rem, 5vw, 3rem);
+    margin-bottom: var(--space-lg);
   }
 
   .profile-meta {
