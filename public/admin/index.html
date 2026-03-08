@@ -229,15 +229,15 @@
     .chip {
       display: inline-flex; align-items: center; gap: 0.3rem;
       padding: 0.25rem 0.65rem;
-      background: rgba(122,0,223,0.08);
-      color: #7A00DF;
+      background: rgba(45,46,51,0.08);
+      color: #2D2E33;
       border-radius: 100px;
       font-size: 0.78rem;
       font-weight: 500;
     }
     .chip-remove {
       background: none; border: none;
-      color: #7A00DF; font-size: 1rem;
+      color: #2D2E33; font-size: 1rem;
       line-height: 1; cursor: pointer;
       padding: 0 0.1rem;
     }
@@ -413,7 +413,7 @@
     }
     .badge-green { background: #C6F6D5; color: #22543D; }
     .badge-yellow { background: #FEFCBF; color: #744210; }
-    .badge-purple { background: rgba(122,0,223,0.1); color: #7A00DF; }
+    .badge-accent { background: rgba(45,46,51,0.1); color: #2D2E33; }
     .badge-gray { background: #E2E8F0; color: #4A5568; }
 
     /* ─── Spinner ─────────────────────────── */
@@ -615,8 +615,8 @@
         ${ROOM_TYPES.map(type => html`
           <button key=${type} type="button"
             class="chip" style="${value.includes(type)
-              ? 'background: #7A00DF; color: #fff;'
-              : 'background: rgba(122,0,223,0.08); color: #7A00DF; cursor: pointer;'}"
+              ? 'background: #2D2E33; color: #fff;'
+              : 'background: rgba(45,46,51,0.08); color: #2D2E33; cursor: pointer;'}"
             onClick=${() => toggle(type)}>
             ${type}
           </button>
@@ -1228,7 +1228,7 @@
                     style="width: 18px; height: 18px; accent-color: #FFD500; flex-shrink: 0;" />
                   ${p.logo ? html`<img src=${p.logo} alt="" style="width: 32px; height: 32px; object-fit: contain; flex-shrink: 0;" />` : null}
                   <span style="font-size: 0.9rem;">${p.name}</span>
-                  <span class="badge badge-purple" style="margin-left: auto; font-size: 0.7rem;">${p.tier}</span>
+                  <span class="badge badge-accent" style="margin-left: auto; font-size: 0.7rem;">${p.tier}</span>
                 </label>
               `)}
           </div>
@@ -1260,7 +1260,7 @@
               ${partners.map(p => html`<tr key=${p.slug}>
                 <td>${p.logo ? html`<img class="td-thumb" src="${p.logo}" alt="" style="object-fit: contain; background: #fff;" />` : '—'}</td>
                 <td><strong>${p.name}</strong></td>
-                <td><span class="badge badge-purple">${p.tier}</span></td>
+                <td><span class="badge badge-accent">${p.tier}</span></td>
                 <td>${p.featured ? '✅' : '—'}</td>
                 <td style="white-space: nowrap;">
                   <button class="btn btn-ghost btn-sm" onClick=${() => onEdit(p.slug)}>Edit</button>
