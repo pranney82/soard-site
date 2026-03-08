@@ -1,15 +1,807 @@
 ---
-import PageLayout from '../../layouts/PageLayout.astro';
+/**
+ * Community Projects — Sunshine on a Ranney Day
+ * Large-scale renovations at schools, camps, and nonprofits
+ * serving children with special needs.
+ *
+ * PERF NOTES:
+ * - Hero image: fetchpriority="high", eager loading
+ * - All below-fold images: loading="lazy"
+ * - data-reveal on below-fold elements
+ */
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { getWebPageSchema, getBreadcrumbSchema, buildSchemaGraph } from '../../utils/schema';
+
+const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
+
+/* ── Hero ── */
+const heroImageId = 'kids/jackson/hero-4b1747';
+
+/* ── Section photos (reuse known CF Images) ── */
+const sectionPhotoA = 'kids/griffin/hero-dbeb0f';
+const sectionPhotoB = 'kids/eli/photo-001-70ddd7';
+
+/* ── Community Projects data ── */
+const projects = [
+  {
+    name: 'Camp Twin Lakes',
+    impact: '10,000',
+    label: 'children impacted yearly',
+    year: '2018',
+    description: 'Camp Twin Lakes provides life-changing camp experiences for children with serious illnesses, disabilities, and other challenges across Georgia. SOARD partnered to renovate camp facilities, creating sensory-friendly spaces and accessible areas where thousands of children can play, grow, and experience the magic of camp — many for the very first time.',
+    color: '#2E7D32',
+  },
+  {
+    name: 'The Summit Counseling Center',
+    impact: '4,800',
+    label: 'children impacted yearly',
+    year: '2016',
+    description: 'The Summit Counseling Center provides professional counseling services to children and families across North Atlanta. SOARD renovated their child therapy spaces, transforming clinical environments into warm, welcoming rooms designed to help kids feel safe and supported during their most vulnerable moments.',
+    color: '#1565C0',
+  },
+  {
+    name: "Children's Healthcare of Atlanta",
+    impact: '2,500',
+    label: 'children impacted yearly',
+    year: '2016',
+    description: "SOARD renovated parent sleep rooms at Children's Healthcare of Atlanta, giving families a comfortable retreat during their child's hospital stay. This project was featured on NBC's Today Show, shining a national spotlight on the power of thoughtful design in healthcare settings.",
+    color: '#6A1B9A',
+  },
+  {
+    name: 'The Drake House',
+    impact: '250',
+    label: 'families served',
+    year: '2022',
+    description: 'The Drake House provides housing and education for single mothers and their children experiencing homelessness in North Metro Atlanta. SOARD renovated their main headquarters — redesigning classrooms, activity spaces, a community kitchen, and teen gathering rooms to create an environment where families can recover, learn, and rebuild with dignity.',
+    color: '#C62828',
+  },
+];
+
+const totalImpact = '17,000+';
+
+/* ── Schema ── */
+const pageUrl = 'https://sunshineonaranneyday.com/rooms/community/';
+const breadcrumbs = [
+  { name: 'Home', url: 'https://sunshineonaranneyday.com/' },
+  { name: 'Rooms', url: 'https://sunshineonaranneyday.com/rooms/' },
+  { name: 'Community Projects', url: pageUrl },
+];
+const jsonLd = buildSchemaGraph(
+  getWebPageSchema({
+    url: pageUrl,
+    title: 'Community Projects',
+    description: 'Sunshine on a Ranney Day partners with nonprofits, schools, and camps to complete large-scale renovation projects that impact thousands of children with special needs each year.',
+  }),
+  getBreadcrumbSchema(breadcrumbs, pageUrl),
+);
 ---
 
-<PageLayout
-  title="Community Projects"
-  heroTitle="Community Projects"
-  heroSubtitle="Making an impact beyond the home"
+<BaseLayout
+  title="Community Projects — Large-Scale Renovations"
+  description="Sunshine on a Ranney Day partners with nonprofits, schools, and camps to complete large-scale renovation projects that impact thousands of children with special needs each year."
+  jsonLd={jsonLd}
+  breadcrumbs={breadcrumbs}
 >
-  <section class="section">
-    <div class="container container--narrow" style="text-align: center; padding-block: var(--space-4xl);">
-      <p style="color: var(--c-text-muted);">This page is being built. Check back soon!</p>
+
+  <!-- ══════ HERO ══════ -->
+  <section class="cp-hero" aria-label="Community Projects">
+    <div class="cp-hero-media">
+      <picture>
+        <source type="image/avif" srcset={`${CF}/${heroImageId}/w=640,f=avif 640w, ${CF}/${heroImageId}/w=1024,f=avif 1024w, ${CF}/${heroImageId}/w=1600,f=avif 1600w, ${CF}/${heroImageId}/w=2400,f=avif 2400w`} sizes="100vw" />
+        <source type="image/webp" srcset={`${CF}/${heroImageId}/w=640,f=webp 640w, ${CF}/${heroImageId}/w=1024,f=webp 1024w, ${CF}/${heroImageId}/w=1600,f=webp 1600w, ${CF}/${heroImageId}/w=2400,f=webp 2400w`} sizes="100vw" />
+        <img class="cp-hero-img" src={`${CF}/${heroImageId}/w=1600,q=80`} alt="Volunteers and community partners working together on a SOARD renovation project" width="1600" height="900" loading="eager" decoding="async" fetchpriority="high" />
+      </picture>
+      <div class="cp-hero-overlay"></div>
+    </div>
+    <div class="cp-hero-inner">
+      <div class="cp-hero-content">
+        <div class="section-label section-label--yellow">Community Projects</div>
+        <h1>Building dreams at <em>scale</em>.</h1>
+        <p class="cp-hero-lead">Once a year, we partner with like-minded organizations on large-scale renovations that reach thousands of children beyond the home.</p>
+      </div>
+      <div class="cp-hero-stat">
+        <span class="cp-hero-stat-num">{totalImpact}</span>
+        <span class="cp-hero-stat-label">children impacted<br/>through community projects</span>
+      </div>
     </div>
   </section>
-</PageLayout>
+
+  <!-- ══════ INTRO ══════ -->
+  <section class="cp-intro" id="about" aria-labelledby="intro-heading">
+    <div class="cp-intro-inner">
+      <div class="cp-intro-photos" data-reveal>
+        <div class="cp-intro-photo cp-intro-photo--main">
+          <picture>
+            <source type="image/avif" srcset={`${CF}/${sectionPhotoA}/w=500,f=avif 500w, ${CF}/${sectionPhotoA}/w=800,f=avif 800w`} sizes="(max-width:768px) 90vw, 40vw" />
+            <source type="image/webp" srcset={`${CF}/${sectionPhotoA}/w=500,f=webp 500w, ${CF}/${sectionPhotoA}/w=800,f=webp 800w`} sizes="(max-width:768px) 90vw, 40vw" />
+            <img src={`${CF}/${sectionPhotoA}/w=800,q=80`} alt="Community renovation project in progress" width="800" height="600" loading="lazy" decoding="async" />
+          </picture>
+        </div>
+        <div class="cp-intro-photo cp-intro-photo--accent" data-reveal data-delay="1">
+          <picture>
+            <source type="image/avif" srcset={`${CF}/${sectionPhotoB}/w=400,f=avif 400w, ${CF}/${sectionPhotoB}/w=600,f=avif 600w`} sizes="(max-width:768px) 60vw, 25vw" />
+            <source type="image/webp" srcset={`${CF}/${sectionPhotoB}/w=400,f=webp 400w, ${CF}/${sectionPhotoB}/w=600,f=webp 600w`} sizes="(max-width:768px) 60vw, 25vw" />
+            <img src={`${CF}/${sectionPhotoB}/w=600,q=80`} alt="Completed community space designed for children" width="600" height="450" loading="lazy" decoding="async" />
+          </picture>
+        </div>
+      </div>
+      <div class="cp-intro-text" data-reveal>
+        <div class="section-label">Beyond the Home</div>
+        <h2 id="intro-heading">When one room isn't enough, we think <em class="highlight">bigger</em>.</h2>
+        <p>At Sunshine on a Ranney Day, our mission doesn't stop at the front door. We proudly collaborate with nonprofits, schools, camps, and healthcare facilities to <strong>expand our impact and reach even more children</strong>.</p>
+        <p>These large-scale community projects go beyond a single bedroom or bathroom. They transform entire facilities — creating classrooms, therapy spaces, play areas, and gathering rooms that serve hundreds or even thousands of children with special needs every single year.</p>
+        <p>Through these partnerships, our projects have provided over <strong>17,000 children</strong> with spaces where they can learn, grow, and let their imaginations soar.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════ IMPACT RIBBON ══════ -->
+  <section class="cp-ribbon" aria-label="Community project impact">
+    <div class="cp-ribbon-inner">
+      <div class="cp-ribbon-stat" data-reveal>
+        <span class="cp-ribbon-num">4</span>
+        <span class="cp-ribbon-label">Major Community<br/>Partners</span>
+      </div>
+      <div class="cp-ribbon-divider" role="presentation"></div>
+      <div class="cp-ribbon-stat" data-reveal data-delay="1">
+        <span class="cp-ribbon-num">17K+</span>
+        <span class="cp-ribbon-label">Children<br/>Impacted</span>
+      </div>
+      <div class="cp-ribbon-divider" role="presentation"></div>
+      <div class="cp-ribbon-stat" data-reveal data-delay="2">
+        <span class="cp-ribbon-num">100<span class="cp-ribbon-pct">%</span></span>
+        <span class="cp-ribbon-label">Volunteer<br/>Driven</span>
+      </div>
+      <div class="cp-ribbon-divider" role="presentation"></div>
+      <div class="cp-ribbon-stat" data-reveal data-delay="3">
+        <span class="cp-ribbon-num">$0</span>
+        <span class="cp-ribbon-label">Cost to<br/>Organizations</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════ PROJECTS ══════ -->
+  <section class="cp-projects" aria-labelledby="projects-heading">
+    <div class="cp-projects-header" data-reveal>
+      <div class="section-label">Our Partners</div>
+      <h2 id="projects-heading">Kids impacted each year from <em class="highlight">community projects</em>.</h2>
+      <p class="cp-projects-sub">Each partnership represents a large-scale renovation that continues to serve children year after year.</p>
+    </div>
+
+    <div class="cp-projects-grid">
+      {projects.map((project, i) => (
+        <article class="cp-card" data-reveal data-delay={String(i % 4)}>
+          <div class="cp-card-accent" style={`background: ${project.color};`}></div>
+          <div class="cp-card-impact">
+            <span class="cp-card-num">{project.impact}</span>
+            <span class="cp-card-label">{project.label}</span>
+          </div>
+          <h3 class="cp-card-name">{project.name}</h3>
+          <span class="cp-card-year">{project.year} Project</span>
+          <p class="cp-card-desc">{project.description}</p>
+        </article>
+      ))}
+    </div>
+  </section>
+
+  <!-- ══════ QUOTE BREAK ══════ -->
+  <section class="cp-quote" aria-label="Quote">
+    <div class="cp-quote-inner" data-reveal>
+      <blockquote>
+        <p>"These large-scale community projects have helped <em>thousands</em> of families in their most stressful time."</p>
+      </blockquote>
+      <cite>— Peter Ranney, Co-Founder</cite>
+    </div>
+  </section>
+
+  <!-- ══════ DRAKE HOUSE SPOTLIGHT ══════ -->
+  <section class="cp-spotlight" aria-labelledby="spotlight-heading">
+    <div class="cp-spotlight-inner">
+      <div class="cp-spotlight-text" data-reveal>
+        <div class="section-label">2022 Spotlight</div>
+        <h2 id="spotlight-heading">Transforming The Drake House for families <em class="highlight">starting over</em>.</h2>
+        <p>The Drake House provides housing and education programs for single mothers and their children experiencing homelessness in North Metro Atlanta. Over 40% of Atlanta's homeless population are women and children.</p>
+        <p>In 2022, SOARD partnered with The Drake House to renovate their main headquarters. The makeover included redesigning and renovating multiple rooms — classrooms for studying and learning life skills, arts and crafts spaces, and safe areas for kids to simply be kids. The rooms also support moms with relationship building, parenting, health and wellness, and money management.</p>
+        <p>The goal was to create flexible spaces that allow children to feel at home in a learning environment while building a sense of extended family among the community of families the organization serves.</p>
+      </div>
+      <div class="cp-spotlight-visual" data-reveal data-delay="1">
+        <div class="cp-spotlight-frame">
+          <picture>
+            <source type="image/avif" srcset={`${CF}/${sectionPhotoA}/w=500,f=avif 500w, ${CF}/${sectionPhotoA}/w=800,f=avif 800w`} sizes="(max-width:768px) 90vw, 45vw" />
+            <source type="image/webp" srcset={`${CF}/${sectionPhotoA}/w=500,f=webp 500w, ${CF}/${sectionPhotoA}/w=800,f=webp 800w`} sizes="(max-width:768px) 90vw, 45vw" />
+            <img src={`${CF}/${sectionPhotoA}/w=800,q=80`} alt="The Drake House renovation — new community spaces for families" width="800" height="600" loading="lazy" decoding="async" />
+          </picture>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════ FINAL CTA ══════ -->
+  <section class="cp-finale">
+    <div class="cp-finale-inner">
+      <h2 data-reveal>Help us build the <em>next</em> community project.</h2>
+      <p data-reveal data-delay="1">Every donation helps fund large-scale renovations that reach thousands of children at schools, camps, and nonprofits across greater Atlanta.</p>
+      <div class="cp-finale-ctas" data-reveal data-delay="2">
+        <a href="/donate" class="btn btn-dark btn-lg">Donate Today</a>
+        <a href="/kids" class="btn cp-btn-outline-dark">Meet the Kids</a>
+      </div>
+      <p class="cp-finale-note" data-reveal data-delay="3">501(c)(3) · EIN 45-4773997 · All donations tax-deductible</p>
+    </div>
+  </section>
+
+</BaseLayout>
+
+<style>
+  /* ══════════════════════════════════════════
+     HERO
+     ══════════════════════════════════════════ */
+  .cp-hero {
+    position: relative;
+    min-height: 70vh;
+    display: flex;
+    align-items: flex-end;
+    overflow: hidden;
+  }
+
+  .cp-hero-media {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+  }
+
+  .cp-hero-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center 30%;
+  }
+
+  .cp-hero-overlay {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      to top,
+      rgba(26, 27, 31, 0.95) 0%,
+      rgba(26, 27, 31, 0.6) 40%,
+      rgba(26, 27, 31, 0.3) 100%
+    );
+  }
+
+  .cp-hero-inner {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    max-width: 1200px;
+    margin-inline: auto;
+    padding: var(--space-4xl) var(--space-lg) var(--space-3xl);
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: var(--space-2xl);
+  }
+
+  .section-label--yellow {
+    color: var(--c-yellow);
+  }
+  .section-label--yellow::before {
+    background: var(--c-yellow);
+  }
+
+  .cp-hero h1 {
+    color: var(--c-white);
+    font-size: clamp(2rem, 5vw, 3.5rem);
+    line-height: 1.1;
+    margin-top: var(--space-sm);
+  }
+
+  .cp-hero h1 em {
+    font-style: italic;
+    color: var(--c-yellow);
+  }
+
+  .cp-hero-lead {
+    max-width: 540px;
+    margin-top: var(--space-lg);
+    color: rgba(255, 255, 255, 0.85);
+    font-size: clamp(1rem, 1.5vw, 1.15rem);
+    line-height: 1.6;
+  }
+
+  .cp-hero-stat {
+    text-align: right;
+    flex-shrink: 0;
+  }
+
+  .cp-hero-stat-num {
+    display: block;
+    font-family: var(--font-display);
+    font-size: clamp(2.5rem, 5vw, 4rem);
+    font-weight: 700;
+    color: var(--c-yellow);
+    line-height: 1;
+  }
+
+  .cp-hero-stat-label {
+    display: block;
+    margin-top: var(--space-xs);
+    font-size: 0.85rem;
+    color: rgba(255, 255, 255, 0.7);
+    line-height: 1.4;
+    letter-spacing: 0.02em;
+  }
+
+  @media (max-width: 768px) {
+    .cp-hero { min-height: 60vh; }
+    .cp-hero-inner {
+      flex-direction: column;
+      align-items: flex-start;
+      padding: var(--space-3xl) var(--space-lg) var(--space-2xl);
+    }
+    .cp-hero-stat { text-align: left; }
+  }
+
+  /* ══════════════════════════════════════════
+     INTRO — Split layout
+     ══════════════════════════════════════════ */
+  .cp-intro {
+    padding-block: var(--space-5xl) var(--space-4xl);
+  }
+
+  .cp-intro-inner {
+    max-width: 1200px;
+    margin-inline: auto;
+    padding-inline: var(--space-lg);
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-3xl);
+    align-items: center;
+  }
+
+  .cp-intro-photos {
+    position: relative;
+  }
+
+  .cp-intro-photo--main {
+    border-radius: var(--border-radius-lg);
+    overflow: hidden;
+    box-shadow: var(--shadow-lg);
+  }
+
+  .cp-intro-photo--main img {
+    width: 100%;
+    height: auto;
+    display: block;
+  }
+
+  .cp-intro-photo--accent {
+    position: absolute;
+    bottom: -24px;
+    right: -24px;
+    width: 55%;
+    border-radius: var(--border-radius-lg);
+    overflow: hidden;
+    box-shadow: var(--shadow-xl);
+    border: 4px solid var(--c-cream);
+  }
+
+  .cp-intro-photo--accent img {
+    width: 100%;
+    height: auto;
+    display: block;
+  }
+
+  .cp-intro-text h2 {
+    font-size: clamp(1.5rem, 3vw, 2.25rem);
+    line-height: 1.2;
+  }
+
+  .cp-intro-text h2 em {
+    font-style: normal;
+  }
+
+  .cp-intro-text p {
+    margin-top: var(--space-md);
+    line-height: 1.7;
+    color: var(--c-text);
+  }
+
+  @media (max-width: 768px) {
+    .cp-intro { padding-block: var(--space-3xl); }
+    .cp-intro-inner {
+      grid-template-columns: 1fr;
+      gap: var(--space-2xl);
+    }
+    .cp-intro-photo--accent {
+      bottom: -16px;
+      right: -8px;
+      width: 50%;
+    }
+  }
+
+  /* ══════════════════════════════════════════
+     IMPACT RIBBON
+     ══════════════════════════════════════════ */
+  .cp-ribbon {
+    background: var(--c-dark);
+    padding-block: var(--space-3xl);
+  }
+
+  .cp-ribbon-inner {
+    max-width: 1000px;
+    margin-inline: auto;
+    padding-inline: var(--space-lg);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--space-xl);
+  }
+
+  .cp-ribbon-stat {
+    text-align: center;
+    flex: 1;
+  }
+
+  .cp-ribbon-num {
+    display: block;
+    font-family: var(--font-display);
+    font-size: clamp(2rem, 4vw, 3rem);
+    font-weight: 700;
+    color: var(--c-yellow);
+    line-height: 1;
+  }
+
+  .cp-ribbon-pct {
+    font-size: 0.6em;
+    vertical-align: super;
+  }
+
+  .cp-ribbon-label {
+    display: block;
+    margin-top: var(--space-sm);
+    font-size: 0.8rem;
+    color: rgba(255, 255, 255, 0.65);
+    letter-spacing: 0.03em;
+    line-height: 1.4;
+    text-transform: uppercase;
+    font-weight: 600;
+  }
+
+  .cp-ribbon-divider {
+    width: 1px;
+    height: 48px;
+    background: rgba(255, 255, 255, 0.15);
+    flex-shrink: 0;
+  }
+
+  @media (max-width: 600px) {
+    .cp-ribbon-inner {
+      flex-wrap: wrap;
+      gap: var(--space-lg);
+    }
+    .cp-ribbon-stat { flex: 0 0 calc(50% - var(--space-md)); }
+    .cp-ribbon-divider { display: none; }
+  }
+
+  /* ══════════════════════════════════════════
+     PROJECTS SECTION
+     ══════════════════════════════════════════ */
+  .cp-projects {
+    padding-block: var(--space-5xl);
+    background: var(--c-warm-gray);
+  }
+
+  .cp-projects-header {
+    max-width: 640px;
+    margin-inline: auto;
+    text-align: center;
+    padding-inline: var(--space-lg);
+    margin-bottom: var(--space-3xl);
+  }
+
+  .cp-projects-header .section-label {
+    justify-content: center;
+  }
+
+  .cp-projects-header h2 {
+    font-size: clamp(1.5rem, 3vw, 2.25rem);
+    line-height: 1.2;
+  }
+
+  .cp-projects-header h2 em { font-style: normal; }
+
+  .cp-projects-sub {
+    margin-top: var(--space-md);
+    color: var(--c-text-muted);
+    font-size: 1.05rem;
+    line-height: 1.6;
+  }
+
+  .cp-projects-grid {
+    max-width: 1200px;
+    margin-inline: auto;
+    padding-inline: var(--space-lg);
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--space-xl);
+  }
+
+  .cp-card {
+    position: relative;
+    background: var(--c-white);
+    border-radius: var(--border-radius-lg);
+    padding: var(--space-2xl);
+    box-shadow: var(--shadow-sm);
+    overflow: hidden;
+    transition: transform var(--transition-base), box-shadow var(--transition-base);
+  }
+
+  .cp-card:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-lg);
+  }
+
+  .cp-card-accent {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 4px;
+  }
+
+  .cp-card-impact {
+    margin-bottom: var(--space-lg);
+  }
+
+  .cp-card-num {
+    display: block;
+    font-family: var(--font-display);
+    font-size: clamp(2rem, 4vw, 2.75rem);
+    font-weight: 700;
+    color: var(--c-dark);
+    line-height: 1;
+  }
+
+  .cp-card-label {
+    display: block;
+    margin-top: 4px;
+    font-size: 0.8rem;
+    color: var(--c-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-weight: 600;
+  }
+
+  .cp-card-name {
+    font-family: var(--font-display);
+    font-size: 1.2rem;
+    color: var(--c-dark);
+    margin-bottom: 4px;
+    line-height: 1.3;
+  }
+
+  .cp-card-year {
+    display: inline-block;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--c-text-light);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: var(--space-md);
+  }
+
+  .cp-card-desc {
+    font-size: 0.95rem;
+    line-height: 1.65;
+    color: var(--c-text-muted);
+  }
+
+  @media (max-width: 768px) {
+    .cp-projects { padding-block: var(--space-3xl); }
+    .cp-projects-grid {
+      grid-template-columns: 1fr;
+      gap: var(--space-lg);
+    }
+  }
+
+  /* ══════════════════════════════════════════
+     QUOTE BREAK
+     ══════════════════════════════════════════ */
+  .cp-quote {
+    padding-block: var(--space-4xl);
+    background: var(--c-cream);
+  }
+
+  .cp-quote-inner {
+    max-width: 760px;
+    margin-inline: auto;
+    padding-inline: var(--space-lg);
+    text-align: center;
+  }
+
+  .cp-quote blockquote p {
+    font-family: var(--font-display);
+    font-size: clamp(1.25rem, 3vw, 1.75rem);
+    line-height: 1.5;
+    color: var(--c-dark);
+    font-style: italic;
+  }
+
+  .cp-quote blockquote em {
+    font-style: italic;
+    background-image: linear-gradient(transparent 55%, var(--c-yellow-soft) 55%);
+  }
+
+  .cp-quote cite {
+    display: block;
+    margin-top: var(--space-lg);
+    font-size: 0.9rem;
+    font-style: normal;
+    font-weight: 600;
+    color: var(--c-text-muted);
+    letter-spacing: 0.02em;
+  }
+
+  /* ══════════════════════════════════════════
+     SPOTLIGHT — Drake House
+     ══════════════════════════════════════════ */
+  .cp-spotlight {
+    padding-block: var(--space-5xl);
+  }
+
+  .cp-spotlight-inner {
+    max-width: 1200px;
+    margin-inline: auto;
+    padding-inline: var(--space-lg);
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-3xl);
+    align-items: center;
+  }
+
+  .cp-spotlight-text h2 {
+    font-size: clamp(1.5rem, 3vw, 2.25rem);
+    line-height: 1.2;
+  }
+
+  .cp-spotlight-text h2 em { font-style: normal; }
+
+  .cp-spotlight-text p {
+    margin-top: var(--space-md);
+    line-height: 1.7;
+    color: var(--c-text);
+  }
+
+  .cp-spotlight-frame {
+    border-radius: var(--border-radius-lg);
+    overflow: hidden;
+    box-shadow: var(--shadow-lg);
+  }
+
+  .cp-spotlight-frame img {
+    width: 100%;
+    height: auto;
+    display: block;
+  }
+
+  @media (max-width: 768px) {
+    .cp-spotlight { padding-block: var(--space-3xl); }
+    .cp-spotlight-inner {
+      grid-template-columns: 1fr;
+      gap: var(--space-2xl);
+    }
+    .cp-spotlight-text { order: 2; }
+    .cp-spotlight-visual { order: 1; }
+  }
+
+  /* ══════════════════════════════════════════
+     FINAL CTA
+     ══════════════════════════════════════════ */
+  .cp-finale {
+    background: var(--c-yellow);
+    padding-block: var(--space-5xl);
+    text-align: center;
+  }
+
+  .cp-finale-inner {
+    max-width: 700px;
+    margin-inline: auto;
+    padding-inline: var(--space-lg);
+  }
+
+  .cp-finale h2 {
+    font-size: clamp(1.75rem, 4vw, 2.75rem);
+    color: var(--c-dark);
+  }
+
+  .cp-finale h2 em { font-style: italic; }
+
+  .cp-finale > p,
+  .cp-finale-inner > p:not(.cp-finale-note) {
+    font-size: 1.15rem;
+    color: rgba(45, 46, 51, 0.8);
+    margin-top: var(--space-md);
+    line-height: 1.6;
+  }
+
+  .cp-finale-ctas {
+    margin-top: var(--space-2xl);
+    display: flex;
+    gap: var(--space-md);
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  .btn-lg { padding: 16px 40px; font-size: 16px; }
+
+  .cp-btn-outline-dark {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 14px 32px;
+    font-family: var(--font-body);
+    font-size: 15px;
+    font-weight: 600;
+    border-radius: 60px;
+    cursor: pointer;
+    text-decoration: none;
+    transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+    white-space: nowrap;
+    background: transparent;
+    color: var(--c-dark);
+    border: 2px solid var(--c-dark);
+  }
+
+  .cp-btn-outline-dark:hover {
+    background: var(--c-dark);
+    color: var(--c-white);
+  }
+
+  .cp-finale-note {
+    margin-top: var(--space-2xl);
+    font-size: 0.85rem;
+    color: rgba(45, 46, 51, 0.5);
+    letter-spacing: 0.02em;
+  }
+
+  @media (max-width: 768px) {
+    .cp-finale { padding-block: var(--space-3xl); }
+  }
+
+  /* ══════════════════════════════════════════
+     SCROLL REVEALS
+     ══════════════════════════════════════════ */
+  [data-reveal] {
+    opacity: 0;
+    transform: translateY(24px);
+    transition: opacity 0.7s ease, transform 0.7s ease;
+  }
+  [data-reveal].revealed {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  [data-delay="1"] { transition-delay: 0.12s; }
+  [data-delay="2"] { transition-delay: 0.24s; }
+  [data-delay="3"] { transition-delay: 0.36s; }
+
+  @media (prefers-reduced-motion: reduce) {
+    [data-reveal] { opacity: 1; transform: none; transition: none; }
+  }
+</style>
+
+<script>
+  // Scroll-reveal observer
+  const reveals = document.querySelectorAll('[data-reveal]');
+  if (reveals.length && 'IntersectionObserver' in window) {
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach(e => {
+        if (e.isIntersecting) {
+          e.target.classList.add('revealed');
+          io.unobserve(e.target);
+        }
+      });
+    }, { threshold: 0.15, rootMargin: '0px 0px -40px 0px' });
+    reveals.forEach(el => io.observe(el));
+  } else {
+    reveals.forEach(el => el.classList.add('revealed'));
+  }
+</script>

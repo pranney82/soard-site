@@ -44,57 +44,65 @@
       "title": "2019 990 Tax Return",
       "year": 2019,
       "type": "990",
-      "url": "https://0d31564e-4b7e-49f5-87bd-6f4c09651fa0.filesusr.com/ugd/2b5272_496aa4666a6d4cecb43451f4b21edc4e.pdf",
-      "source": "external"
+      "url": "/financials/2019-990.pdf",
+      "source": "local",
+      "fileSize": "8.1 MB"
     },
     {
       "title": "2018 990 Tax Return",
       "year": 2018,
       "type": "990",
-      "url": "https://0d31564e-4b7e-49f5-87bd-6f4c09651fa0.filesusr.com/ugd/2b5272_0c032f7800a149a1af2aa5bd27778aff.pdf",
-      "source": "external"
+      "url": "/financials/2018-990.pdf",
+      "source": "local",
+      "fileSize": "1.5 MB"
     },
     {
       "title": "2017 990 Tax Return",
       "year": 2017,
       "type": "990",
-      "url": "https://0d31564e-4b7e-49f5-87bd-6f4c09651fa0.filesusr.com/ugd/e4f885_393114189b4e461f8a5da20c517b5ecf.pdf?index=true",
-      "source": "external"
+      "url": "/financials/2017-990.pdf",
+      "source": "local",
+      "fileSize": "919 KB"
     },
     {
       "title": "2016 990 Tax Return",
       "year": 2016,
       "type": "990",
-      "url": "https://0d31564e-4b7e-49f5-87bd-6f4c09651fa0.filesusr.com/ugd/e4f885_001e0d287bc149ee8bfa595d8260175d.pdf?index=true",
-      "source": "external"
+      "url": "/financials/2016-990.pdf",
+      "source": "local",
+      "fileSize": "155 KB"
     },
     {
       "title": "2015 990 Tax Return",
       "year": 2015,
       "type": "990",
-      "url": "https://0d31564e-4b7e-49f5-87bd-6f4c09651fa0.filesusr.com/ugd/e4f885_546c913c9679423f989e6966f58c544e.pdf?index=true",
-      "source": "external"
+      "url": "/financials/2015-990.pdf",
+      "source": "local",
+      "fileSize": "334 KB"
     },
     {
       "title": "2014 990 Tax Return",
       "year": 2014,
       "type": "990",
-      "url": "https://0d31564e-4b7e-49f5-87bd-6f4c09651fa0.filesusr.com/ugd/e4f885_5df75d4de1464d0db7cfd036220cc172.pdf?index=true",
-      "source": "external"
+      "url": "/financials/2014-990.pdf",
+      "source": "local",
+      "fileSize": "293 KB"
     },
     {
       "title": "2013 990 Tax Return",
       "year": 2013,
       "type": "990",
-      "url": "https://0d31564e-4b7e-49f5-87bd-6f4c09651fa0.filesusr.com/ugd/e4f885_d89e6c33d3344756aab20fd81f662a32.pdf?index=true",
-      "source": "external"
+      "url": "/financials/2013-990.pdf",
+      "source": "local",
+      "fileSize": "353 KB"
     },
     {
       "title": "2012 990 Tax Return",
       "year": 2012,
       "type": "990",
-      "url": "https://0d31564e-4b7e-49f5-87bd-6f4c09651fa0.filesusr.com/ugd/e4f885_c91d2f25002c48158240b17b925cafc3.pdf?index=true",
-      "source": "external"
+      "url": "/financials/2012-990.pdf",
+      "source": "local",
+      "fileSize": "84 KB"
     },
     {
       "title": "2024 Audited Financials",
@@ -140,57 +148,65 @@
       "title": "2019 Audited Financials",
       "year": 2019,
       "type": "audit",
-      "url": "https://0d31564e-4b7e-49f5-87bd-6f4c09651fa0.filesusr.com/ugd/2b5272_14496ea01fbd4f8780395f82824959ba.pdf",
-      "source": "external"
+      "url": "/financials/2019-Audit.pdf",
+      "source": "local",
+      "fileSize": "4.4 MB"
     },
     {
       "title": "2018 Audited Financials",
       "year": 2018,
       "type": "audit",
-      "url": "https://0d31564e-4b7e-49f5-87bd-6f4c09651fa0.filesusr.com/ugd/2b5272_60d90e3537f44fb5a7a93a5884d08006.pdf",
-      "source": "external"
+      "url": "/financials/2018-Audit.pdf",
+      "source": "local",
+      "fileSize": "511 KB"
     },
     {
       "title": "2017 Audited Financials",
       "year": 2017,
       "type": "audit",
-      "url": "https://0d31564e-4b7e-49f5-87bd-6f4c09651fa0.filesusr.com/ugd/e4f885_971a4e4a3bf843cb80429ababf577ab8.pdf?index=true",
-      "source": "external"
+      "url": "/financials/2017-Audit.pdf",
+      "source": "local",
+      "fileSize": "387 KB"
     },
     {
       "title": "2016 Audited Financials",
       "year": 2016,
       "type": "audit",
-      "url": "https://0d31564e-4b7e-49f5-87bd-6f4c09651fa0.filesusr.com/ugd/e4f885_6b8919130d19453e8da3ad33a1cd2168.pdf?index=true",
-      "source": "external"
+      "url": "/financials/2016-Audit.pdf",
+      "source": "local",
+      "fileSize": "342 KB"
     },
     {
       "title": "2015 Audited Financials",
       "year": 2015,
       "type": "audit",
-      "url": "https://0d31564e-4b7e-49f5-87bd-6f4c09651fa0.filesusr.com/ugd/e4f885_19de432c664842d4bc42288cb2d2abdc.pdf?index=true",
-      "source": "external"
+      "url": "/financials/2015-Audit.pdf",
+      "source": "local",
+      "fileSize": "1.6 MB"
     },
     {
       "title": "2014 Audited Financials",
       "year": 2014,
       "type": "audit",
-      "url": "https://0d31564e-4b7e-49f5-87bd-6f4c09651fa0.filesusr.com/ugd/e4f885_7a17ef1a2e06492e8e9c765ae03524ca.pdf",
-      "source": "external"
+      "url": "/financials/2014-Audit.pdf",
+      "source": "local",
+      "fileSize": "169 KB"
     },
     {
       "title": "2013 Audited Financials",
       "year": 2013,
       "type": "audit",
-      "url": "https://0d31564e-4b7e-49f5-87bd-6f4c09651fa0.filesusr.com/ugd/e4f885_252f22dfa4bd4f5a9b8d137f2104ede9.pdf?index=true",
-      "source": "external"
+      "url": "/financials/2013-Audit.pdf",
+      "source": "local",
+      "fileSize": "170 KB"
     },
     {
       "title": "501(c)(3) Ruling Letter",
       "year": 2012,
       "type": "other",
-      "url": "https://0d31564e-4b7e-49f5-87bd-6f4c09651fa0.filesusr.com/ugd/e4f885_79646ca731834d40ac271006b3d4bb2f.pdf?index=true",
-      "source": "external"
+      "url": "/financials/2012-501(c)(3)-Ruling-Letter.pdf",
+      "source": "local",
+      "fileSize": "627 KB"
     }
   ],
   "annualReports": []

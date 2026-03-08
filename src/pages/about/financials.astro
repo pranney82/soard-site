@@ -1,8 +1,8 @@
 ---
 /**
  * Financials — /about/financials/
- * Transparency page with 990 tax returns, audited financials, 
- * annual reports, and GuideStar seal.
+ * Best-in-class transparency page: financial snapshot, trust badges,
+ * stores-cover-overhead narrative, 990s, audits, annual reports, GuideStar seal.
  */
 import PageLayout from '../../layouts/PageLayout.astro';
 import financialsData from '../../content/site/financials.json';
@@ -22,6 +22,25 @@ const docsOther = financialsData.documents
 
 const annualReports = (financialsData.annualReports || [])
   .sort((a, b) => b.year - a.year);
+
+// 2023 990 data (most recent with full-year comparable data)
+const snapshot = {
+  year: 2023,
+  totalRevenue: 2785033,
+  totalExpenses: 2500902,
+  programExpenses: 2032175,
+  managementExpenses: 248271,
+  fundraisingExpenses: 220456,
+  contributions: 1386004,
+  storeRevenue: 1399005,
+  netAssets: 944625,
+  employees: 19,
+  volunteers: 1000,
+  boardMembers: 17,
+  programPct: 81,
+  managementPct: 10,
+  fundraisingPct: 9,
+};
 
 // JSON-LD
 const jsonLd = {
@@ -50,28 +69,138 @@ const jsonLd = {
   heroSubtitle="Transparency you can trust"
   jsonLd={jsonLd}
 >
-  <!-- Intro -->
+  <!-- Trust Badges -->
   <section class="section section--sm">
     <div class="container container--narrow" style="text-align: center;">
       <p class="fin-intro">
-        It's important that your donation is being used properly. That's why we complete a 
-        <span class="highlight">voluntary audit</span> each year and post it here — along with our 
-        990 tax returns, annual reports, and our GuideStar transparency seal.
+        We believe every dollar you give should make a difference. That's why we complete a 
+        <span class="highlight">voluntary audit</span> each year, maintain the highest transparency standards, 
+        and post everything here for you to see.
       </p>
-      <div class="trust-badges">
+      <div class="trust-row">
+        <a href="https://www.charitynavigator.org/ein/454773997" 
+           target="_blank" rel="noopener noreferrer" class="trust-badge" aria-label="View our Charity Navigator profile">
+          <img 
+            src="https://cdn.charitynavigator.org/img/badges/three-star.svg" 
+            alt="Charity Navigator 3-Star Rating" 
+            width="88" height="88" loading="eager"
+            onerror="this.parentElement.style.display='none'"
+          />
+          <span class="trust-badge__label">Charity Navigator</span>
+          <span class="trust-badge__detail">87% Score</span>
+        </a>
         <a href="https://www.guidestar.org/profile/shared/2954b510-8c76-42e4-b589-7e826ca2cc47" 
            target="_blank" rel="noopener noreferrer" class="trust-badge" aria-label="View our GuideStar profile">
           <img 
             src="https://widgets.guidestar.org/TransparencySeal/9198660" 
             alt="GuideStar Transparency Seal" 
-            width="100" 
-            height="100" 
-            loading="lazy"
+            width="88" height="88" loading="eager"
           />
+          <span class="trust-badge__label">GuideStar</span>
+          <span class="trust-badge__detail">Transparency Seal</span>
         </a>
-        <div class="trust-info">
-          <span class="trust-label">EIN: 45-4773997</span>
-          <span class="trust-label">501(c)(3) since 2012</span>
+        <div class="trust-badge trust-badge--info">
+          <div class="trust-badge__ein">
+            <span class="trust-badge__label">EIN</span>
+            <span class="trust-badge__number">45-4773997</span>
+          </div>
+          <span class="trust-badge__detail">501(c)(3) since 2012</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Financial Snapshot -->
+  <section class="section section--dark" id="snapshot">
+    <div class="container">
+      <div class="snapshot-header">
+        <h2 class="snapshot-title">Where Your Money Goes</h2>
+        <span class="snapshot-year">FY {snapshot.year} &middot; From our IRS Form 990</span>
+      </div>
+      
+      <div class="expense-breakdown">
+        <div class="expense-bar">
+          <div class="expense-bar__header">
+            <span class="expense-bar__name">Programs &amp; Room Makeovers</span>
+            <span class="expense-bar__pct">{snapshot.programPct}¢</span>
+          </div>
+          <div class="expense-bar__track">
+            <div class="expense-bar__fill expense-bar__fill--program" style={`width: ${snapshot.programPct}%`}></div>
+          </div>
+          <span class="expense-bar__amount">${(snapshot.programExpenses / 1000000).toFixed(1)}M of every dollar</span>
+        </div>
+        <div class="expense-bar">
+          <div class="expense-bar__header">
+            <span class="expense-bar__name">Management &amp; General</span>
+            <span class="expense-bar__pct">{snapshot.managementPct}¢</span>
+          </div>
+          <div class="expense-bar__track">
+            <div class="expense-bar__fill expense-bar__fill--mgmt" style={`width: ${snapshot.managementPct}%`}></div>
+          </div>
+          <span class="expense-bar__amount">${(snapshot.managementExpenses / 1000).toFixed(0)}K</span>
+        </div>
+        <div class="expense-bar">
+          <div class="expense-bar__header">
+            <span class="expense-bar__name">Fundraising</span>
+            <span class="expense-bar__pct">{snapshot.fundraisingPct}¢</span>
+          </div>
+          <div class="expense-bar__track">
+            <div class="expense-bar__fill expense-bar__fill--fund" style={`width: ${snapshot.fundraisingPct}%`}></div>
+          </div>
+          <span class="expense-bar__amount">${(snapshot.fundraisingExpenses / 1000).toFixed(0)}K</span>
+        </div>
+      </div>
+
+      <div class="stats-grid">
+        <div class="stat-card">
+          <span class="stat-card__number">$2.8M</span>
+          <span class="stat-card__label">Total Revenue</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-card__number">1,000+</span>
+          <span class="stat-card__label">Volunteers</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-card__number">17</span>
+          <span class="stat-card__label">Board Members</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-card__number">$945K</span>
+          <span class="stat-card__label">Net Assets</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Our Model -->
+  <section class="section" id="our-model">
+    <div class="container container--narrow">
+      <div class="model-block">
+        <div class="model-block__icon" aria-hidden="true">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>
+          </svg>
+        </div>
+        <div class="model-block__content">
+          <h2>Our stores fund our overhead</h2>
+          <p>
+            In 2020, SOARD founders Peter and Holly Ranney opened 
+            <a href="https://sunnyandranney.com" target="_blank" rel="noopener noreferrer">Sunny &amp; Ranney</a>, 
+            a designer home furnishings store in Roswell, GA. A second store, 
+            <strong>Partly Sunny</strong>, followed in 2023. Together, the stores cover 
+            <span class="highlight">all operational overhead</span> — rent, utilities, and employee salaries — 
+            so that donor dollars go directly to building rooms for kids.
+          </p>
+          <div class="model-numbers">
+            <div class="model-stat">
+              <span class="model-stat__number">$1.4M</span>
+              <span class="model-stat__label">Store revenue (2023)</span>
+            </div>
+            <div class="model-stat">
+              <span class="model-stat__number">$1.4M</span>
+              <span class="model-stat__label">Donations &amp; grants (2023)</span>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -92,8 +221,9 @@ const jsonLd = {
         </div>
       </div>
       <div class="doc-grid">
-        {docs990.map(doc => (
-          <a href={doc.url} target="_blank" rel="noopener noreferrer" class="doc-card">
+        {docs990.map((doc, i) => (
+          <a href={doc.url} target="_blank" rel="noopener noreferrer" class:list={["doc-card", { "doc-card--latest": i === 0 }]}>
+            {i === 0 && <span class="doc-card__badge">Latest</span>}
             <div class="doc-card__icon" aria-hidden="true">
               <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
@@ -123,8 +253,9 @@ const jsonLd = {
         </div>
       </div>
       <div class="doc-grid">
-        {docsAudit.map(doc => (
-          <a href={doc.url} target="_blank" rel="noopener noreferrer" class="doc-card">
+        {docsAudit.map((doc, i) => (
+          <a href={doc.url} target="_blank" rel="noopener noreferrer" class:list={["doc-card", { "doc-card--latest": i === 0 }]}>
+            {i === 0 && <span class="doc-card__badge">Latest</span>}
             <div class="doc-card__icon" aria-hidden="true">
               <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M9 12l2 2 4-4"/><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
@@ -139,21 +270,21 @@ const jsonLd = {
     </div>
   </section>
 
-  <!-- Annual Reports -->
-  <section class="section section--gray" id="annual-reports">
-    <div class="container">
-      <div class="doc-section-header">
-        <div class="doc-icon doc-icon--yellow" aria-hidden="true">
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
-          </svg>
+  <!-- Annual Reports (only if populated) -->
+  {annualReports.length > 0 && (
+    <section class="section section--gray" id="annual-reports">
+      <div class="container">
+        <div class="doc-section-header">
+          <div class="doc-icon doc-icon--yellow" aria-hidden="true">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
+            </svg>
+          </div>
+          <div>
+            <h2>Annual Reports</h2>
+            <p class="doc-section-desc">Year-in-review reports highlighting our impact, projects, and the families we've served.</p>
+          </div>
         </div>
-        <div>
-          <h2>Annual Reports</h2>
-          <p class="doc-section-desc">Year-in-review reports highlighting our impact, projects, and the families we've served.</p>
-        </div>
-      </div>
-      {annualReports.length > 0 ? (
         <div class="report-grid">
           {annualReports.map(report => (
             <a href={report.url} target="_blank" rel="noopener noreferrer" class="report-card">
@@ -174,17 +305,13 @@ const jsonLd = {
             </a>
           ))}
         </div>
-      ) : (
-        <div class="empty-annual">
-          <p>Annual reports are coming soon! Check back for our year-in-review publications.</p>
-        </div>
-      )}
-    </div>
-  </section>
+      </div>
+    </section>
+  )}
 
   <!-- Other Documents -->
   {docsOther.length > 0 && (
-    <section class="section" id="other">
+    <section class="section section--gray" id="other">
       <div class="container">
         <div class="doc-section-header">
           <div class="doc-icon" aria-hidden="true">
@@ -230,7 +357,6 @@ const jsonLd = {
 </PageLayout>
 
 <style>
-  /* ─── Intro ────────────────────────────── */
   .fin-intro {
     font-size: clamp(1.05rem, 2vw, 1.2rem);
     line-height: 1.7;
@@ -239,38 +365,200 @@ const jsonLd = {
     margin-inline: auto;
   }
 
-  .trust-badges {
+  /* ─── Trust Badges ─────────────────────── */
+  .trust-row {
+    display: flex;
+    align-items: stretch;
+    justify-content: center;
+    gap: var(--space-xl);
+    margin-top: var(--space-2xl);
+    flex-wrap: wrap;
+  }
+  .trust-badge {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-xs);
+    padding: var(--space-lg);
+    background: var(--c-warm-gray);
+    border-radius: var(--border-radius-lg);
+    text-decoration: none;
+    transition: all var(--transition-base);
+    min-width: 140px;
+  }
+  a.trust-badge:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--shadow-md);
+  }
+  .trust-badge img {
+    width: 88px;
+    height: 88px;
+    object-fit: contain;
+  }
+  .trust-badge__label {
+    font-size: 0.8rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--c-dark);
+  }
+  .trust-badge__detail {
+    font-size: 0.75rem;
+    color: var(--c-text-muted);
+  }
+  .trust-badge--info {
+    justify-content: center;
+    cursor: default;
+  }
+  .trust-badge__ein {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.15rem;
+  }
+  .trust-badge__number {
+    font-family: var(--font-display);
+    font-size: 1.3rem;
+    font-weight: 700;
+    color: var(--c-dark);
+    letter-spacing: 0.02em;
+  }
+
+  /* ─── Snapshot (Dark) ──────────────────── */
+  .snapshot-header {
+    text-align: center;
+    margin-bottom: var(--space-2xl);
+  }
+  .snapshot-title {
+    color: var(--c-white);
+    font-size: clamp(1.6rem, 3vw, 2.2rem);
+  }
+  .snapshot-year {
+    display: inline-block;
+    margin-top: var(--space-sm);
+    font-size: 0.85rem;
+    color: rgba(255,255,255,0.5);
+    font-weight: 500;
+  }
+  .expense-breakdown {
+    max-width: 640px;
+    margin-inline: auto;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-lg);
+  }
+  .expense-bar__header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: var(--space-xs);
+  }
+  .expense-bar__name {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--c-white);
+  }
+  .expense-bar__pct {
+    font-family: var(--font-display);
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: var(--c-yellow);
+  }
+  .expense-bar__track {
+    height: 12px;
+    background: rgba(255,255,255,0.1);
+    border-radius: 100px;
+    overflow: hidden;
+  }
+  .expense-bar__fill {
+    height: 100%;
+    border-radius: 100px;
+  }
+  .expense-bar__fill--program { background: var(--c-yellow); }
+  .expense-bar__fill--mgmt { background: rgba(255,255,255,0.4); }
+  .expense-bar__fill--fund { background: rgba(255,255,255,0.25); }
+  .expense-bar__amount {
+    font-size: 0.8rem;
+    color: rgba(255,255,255,0.45);
+    margin-top: 0.2rem;
+    display: block;
+  }
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: var(--space-md);
+    margin-top: var(--space-3xl);
+    max-width: 720px;
+    margin-inline: auto;
+  }
+  .stat-card {
+    text-align: center;
+    padding: var(--space-lg) var(--space-sm);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: var(--border-radius-lg);
+  }
+  .stat-card__number {
+    display: block;
+    font-family: var(--font-display);
+    font-size: clamp(1.2rem, 2.5vw, 1.5rem);
+    font-weight: 700;
+    color: var(--c-yellow);
+  }
+  .stat-card__label {
+    display: block;
+    font-size: 0.75rem;
+    color: rgba(255,255,255,0.5);
+    margin-top: var(--space-xs);
+    font-weight: 500;
+  }
+
+  /* ─── Our Model ────────────────────────── */
+  .model-block {
+    display: flex;
+    gap: var(--space-xl);
+    align-items: flex-start;
+    padding: var(--space-2xl);
+    background: var(--c-warm-gray);
+    border-radius: var(--border-radius-lg);
+    border-left: 4px solid var(--c-yellow);
+  }
+  .model-block__icon {
+    flex-shrink: 0;
+    width: 56px;
+    height: 56px;
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: var(--space-xl);
-    margin-top: var(--space-xl);
-    flex-wrap: wrap;
+    background: var(--c-yellow);
+    color: var(--c-dark);
+    border-radius: var(--border-radius-lg);
   }
-
-  .trust-badge {
-    display: block;
-    transition: transform var(--transition-base);
+  .model-block__content h2 {
+    font-size: 1.35rem;
+    margin-bottom: var(--space-md);
   }
-
-  .trust-badge:hover {
-    transform: scale(1.05);
-  }
-
-  .trust-info {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-xs);
-  }
-
-  .trust-label {
-    display: inline-block;
-    font-size: 0.85rem;
-    font-weight: 600;
+  .model-block__content p {
     color: var(--c-text-muted);
-    background: var(--c-warm-gray);
-    padding: 0.35rem 0.85rem;
-    border-radius: 100px;
+    line-height: 1.7;
+    font-size: 1.02rem;
+  }
+  .model-numbers {
+    display: flex;
+    gap: var(--space-2xl);
+    margin-top: var(--space-xl);
+    padding-top: var(--space-lg);
+    border-top: 1px solid var(--c-border);
+  }
+  .model-stat__number {
+    display: block;
+    font-family: var(--font-display);
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--c-dark);
+  }
+  .model-stat__label {
+    font-size: 0.8rem;
+    color: var(--c-text-muted);
   }
 
   /* ─── Section Headers ──────────────────── */
@@ -280,7 +568,6 @@ const jsonLd = {
     gap: var(--space-lg);
     margin-bottom: var(--space-2xl);
   }
-
   .doc-icon {
     flex-shrink: 0;
     width: 56px;
@@ -292,26 +579,24 @@ const jsonLd = {
     color: var(--c-white);
     border-radius: var(--border-radius-lg);
   }
-
   .doc-icon--yellow {
     background: var(--c-yellow);
     color: var(--c-dark);
   }
-
   .doc-section-desc {
     margin-top: var(--space-xs);
     color: var(--c-text-muted);
     font-size: 1.05rem;
   }
 
-  /* ─── Document Grid (990s, Audits) ─────── */
+  /* ─── Document Grid ────────────────────── */
   .doc-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
     gap: var(--space-md);
   }
-
   .doc-card {
+    position: relative;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -324,29 +609,36 @@ const jsonLd = {
     transition: all var(--transition-base);
     text-decoration: none;
   }
-
   .doc-card:hover {
     border-color: var(--c-yellow);
     transform: translateY(-4px);
     box-shadow: var(--shadow-md);
   }
-
-  .doc-card__icon {
-    color: #C0392B;
-    opacity: 0.7;
+  .doc-card--latest {
+    border-color: var(--c-yellow);
+    background: linear-gradient(to bottom, rgba(255,213,0,0.06), var(--c-white));
   }
-
-  .doc-card:hover .doc-card__icon {
-    opacity: 1;
+  .doc-card__badge {
+    position: absolute;
+    top: -8px;
+    right: -4px;
+    font-size: 0.6rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    background: var(--c-yellow);
+    color: var(--c-dark);
+    padding: 0.2rem 0.5rem;
+    border-radius: 100px;
   }
-
+  .doc-card__icon { color: #C0392B; opacity: 0.7; }
+  .doc-card:hover .doc-card__icon { opacity: 1; }
   .doc-card__year {
     font-family: var(--font-display);
     font-size: 1.35rem;
     font-weight: 700;
     color: var(--c-dark);
   }
-
   .doc-card__label {
     font-size: 0.75rem;
     font-weight: 600;
@@ -355,11 +647,7 @@ const jsonLd = {
     color: var(--c-text-light);
     transition: color var(--transition-fast);
   }
-
-  .doc-card:hover .doc-card__label {
-    color: var(--c-dark);
-  }
-
+  .doc-card:hover .doc-card__label { color: var(--c-dark); }
   .doc-card__size {
     font-size: 0.65rem;
     color: var(--c-text-light);
@@ -367,13 +655,12 @@ const jsonLd = {
     margin-top: -0.25rem;
   }
 
-  /* ─── Annual Reports Grid ──────────────── */
+  /* ─── Annual Reports ───────────────────── */
   .report-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
     gap: var(--space-xl);
   }
-
   .report-card {
     display: block;
     background: var(--c-white);
@@ -383,29 +670,17 @@ const jsonLd = {
     transition: all var(--transition-base);
     text-decoration: none;
   }
-
   .report-card:hover {
     transform: translateY(-6px);
     box-shadow: var(--shadow-lg);
     border-color: var(--c-yellow);
   }
-
-  .report-card__cover {
-    aspect-ratio: 3 / 4;
-    overflow: hidden;
-  }
-
+  .report-card__cover { aspect-ratio: 3 / 4; overflow: hidden; }
   .report-card__cover img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
+    width: 100%; height: 100%; object-fit: cover;
     transition: transform var(--transition-slow);
   }
-
-  .report-card:hover .report-card__cover img {
-    transform: scale(1.04);
-  }
-
+  .report-card:hover .report-card__cover img { transform: scale(1.04); }
   .report-card__cover--placeholder {
     display: flex;
     flex-direction: column;
@@ -414,47 +689,21 @@ const jsonLd = {
     background: var(--c-dark);
     color: var(--c-white);
   }
-
   .report-card__cover-year {
     font-family: var(--font-display);
     font-size: 2.5rem;
     font-weight: 700;
     color: var(--c-yellow);
   }
-
   .report-card__cover-label {
     font-size: 0.85rem;
     font-weight: 500;
-    color: rgba(255, 255, 255, 0.6);
+    color: rgba(255,255,255,0.6);
     margin-top: var(--space-xs);
   }
-
-  .report-card__info {
-    padding: var(--space-lg);
-  }
-
-  .report-card__title {
-    display: block;
-    font-weight: 600;
-    color: var(--c-dark);
-  }
-
-  .report-card__desc {
-    display: block;
-    font-size: 0.875rem;
-    color: var(--c-text-muted);
-    margin-top: var(--space-xs);
-  }
-
-  .empty-annual {
-    text-align: center;
-    padding: var(--space-2xl);
-    background: var(--c-white);
-    border: 2px dashed var(--c-border);
-    border-radius: var(--border-radius-lg);
-    color: var(--c-text-muted);
-    font-size: 1.05rem;
-  }
+  .report-card__info { padding: var(--space-lg); }
+  .report-card__title { display: block; font-weight: 600; color: var(--c-dark); }
+  .report-card__desc { display: block; font-size: 0.875rem; color: var(--c-text-muted); margin-top: var(--space-xs); }
 
   /* ─── Other Documents ──────────────────── */
   .other-docs {
@@ -463,7 +712,6 @@ const jsonLd = {
     gap: var(--space-sm);
     max-width: 600px;
   }
-
   .other-doc {
     display: flex;
     align-items: center;
@@ -476,48 +724,26 @@ const jsonLd = {
     color: var(--c-text);
     font-weight: 500;
   }
-
-  .other-doc:hover {
-    background: var(--c-yellow);
-    color: var(--c-dark);
-  }
-
-  .other-doc span {
-    flex: 1;
-  }
-
-  .other-doc__arrow {
-    opacity: 0.4;
-    transition: opacity var(--transition-fast);
-  }
-
-  .other-doc:hover .other-doc__arrow {
-    opacity: 1;
-  }
+  .other-doc:hover { background: var(--c-yellow); color: var(--c-dark); }
+  .other-doc span { flex: 1; }
+  .other-doc__arrow { opacity: 0.4; transition: opacity var(--transition-fast); }
+  .other-doc:hover .other-doc__arrow { opacity: 1; }
 
   /* ─── Responsive ───────────────────────── */
+  @media (max-width: 768px) {
+    .stats-grid { grid-template-columns: repeat(2, 1fr); }
+    .model-block { flex-direction: column; gap: var(--space-md); padding: var(--space-xl); }
+    .model-numbers { flex-direction: column; gap: var(--space-md); }
+    .trust-row { gap: var(--space-md); }
+    .trust-badge { padding: var(--space-md); min-width: 120px; }
+    .trust-badge img { width: 64px; height: 64px; }
+  }
   @media (max-width: 600px) {
-    .doc-grid {
-      grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
-      gap: var(--space-sm);
-    }
-
-    .doc-card {
-      padding: var(--space-md) var(--space-sm);
-    }
-
-    .doc-card__year {
-      font-size: 1.1rem;
-    }
-
-    .doc-section-header {
-      flex-direction: column;
-      gap: var(--space-md);
-    }
-
-    .report-grid {
-      grid-template-columns: 1fr 1fr;
-      gap: var(--space-md);
-    }
+    .doc-grid { grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: var(--space-sm); }
+    .doc-card { padding: var(--space-md) var(--space-sm); }
+    .doc-card__year { font-size: 1.1rem; }
+    .doc-section-header { flex-direction: column; gap: var(--space-md); }
+    .report-grid { grid-template-columns: 1fr 1fr; gap: var(--space-md); }
+    .expense-bar__pct { font-size: 1.1rem; }
   }
 </style>
