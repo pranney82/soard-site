@@ -35,7 +35,7 @@ interface Props {
 const {
   title,
   description = 'Sunshine on a Ranney Day creates life-changing home makeovers for children with special needs — dream bedrooms, accessible bathrooms, and therapy rooms — all at no cost to families.',
-  ogImage = '/og-default.jpg',
+  ogImage,
   ogType = 'website',
   jsonLd,
   bodyClass = '',
@@ -50,10 +50,33 @@ const fullTitle = title === 'Home'
   ? 'Sunshine on a Ranney Day — Dreams Built Here'
   : `${title} | Sunshine on a Ranney Day`;
 
+// ── Auto-compute OG image from page path ──────────
+function computeOgImage(pathname: string): string {
+  const clean = pathname.replace(/\/+$/, '') || '/';
+  
+  // Homepage
+  if (clean === '/') return '/og/home.png';
+  
+  // Kid profiles: /kids/amari/ → /og/kids/amari.png
+  const kidMatch = clean.match(/^\/kids\/([^/]+)$/);
+  if (kidMatch) return `/og/kids/${kidMatch[1]}.png`;
+  
+  // Articles: /resources/accessible-home-design/ → /og/resources/accessible-home-design.png
+  const artMatch = clean.match(/^\/resources\/([^/]+)$/);
+  if (artMatch) return `/og/resources/${artMatch[1]}.png`;
+  
+  // Static pages: /donate/ → /og/donate.png, /about/leadership/ → /og/leadership.png
+  const segments = clean.split('/').filter(Boolean);
+  const lastSegment = segments[segments.length - 1];
+  return `/og/${lastSegment}.png`;
+}
+
+const resolvedOgImage = ogImage || computeOgImage(Astro.url.pathname);
+
 // Resolve OG image to absolute URL
-const ogImageAbsolute = ogImage.startsWith('http')
-  ? ogImage
-  : new URL(ogImage, Astro.site).toString();
+const ogImageAbsolute = resolvedOgImage.startsWith('http')
+  ? resolvedOgImage
+  : new URL(resolvedOgImage, Astro.site).toString();
 
 // ── Build the JSON-LD @graph for this page ──────────────
 const graphSchemas: (Record<string, any> | Record<string, any>[])[] = [

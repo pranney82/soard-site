@@ -14,8 +14,12 @@
   "license": "ISC",
   "dependencies": {
     "@astrojs/sitemap": "^3.7.0",
+    "astro": "^5.18.0",
+    "satori": "^0.25.0",
+    "sharp": "^0.34.5"
+  },
+  "devDependencies": {
     "@fontsource/libre-baskerville": "^5.2.10",
-    "@fontsource/outfit": "^5.2.8",
-    "astro": "^5.18.0"
+    "@fontsource/outfit": "^5.2.8"
   }
 }
