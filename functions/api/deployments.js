@@ -10,7 +10,7 @@
  */
 
 const REPO = 'pranney82/soard';
-const CF_PROJECT = 'soard';
+const CF_PROJECT = 'soard-site';
 
 export async function onRequestGet(context) {
   const cors = {
