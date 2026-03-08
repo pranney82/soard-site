@@ -88,4 +88,19 @@ const articles = defineCollection({
   }),
 });
 
-export const collections = { kids, partners, team, articles };
+const press = defineCollection({
+  type: 'data',
+  schema: z.object({
+    outlet: z.string(),
+    outletLogo: z.string(),
+    category: z.enum(['national-tv', 'local-tv', 'print', 'magazine', 'entertainment']),
+    title: z.string(),
+    date: z.string(),
+    url: z.string(),
+    excerpt: z.string(),
+    featured: z.boolean().default(false),
+    order: z.number().default(0),
+  }),
+});
+
+export const collections = { kids, partners, team, articles, press };

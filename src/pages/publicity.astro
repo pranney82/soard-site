@@ -1,15 +1,488 @@
 ---
-import PageLayout from '../layouts/PageLayout.astro';
+/**
+ * Publicity Page — Sunshine on a Ranney Day
+ * Media coverage, press features, and news highlights
+ * Data-driven from src/content/press/ collection
+ */
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { getCollection } from 'astro:content';
+
+const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
+
+const allPress = await getCollection('press');
+const press = allPress.sort((a, b) => new Date(b.data.date).getTime() - new Date(a.data.date).getTime());
+const featured = press.filter(p => p.data.featured);
+
+// Category labels
+const categoryLabels: Record<string, string> = {
+  'national-tv': 'National TV',
+  'local-tv': 'Local TV',
+  'print': 'Print & News',
+  'magazine': 'Magazine',
+  'entertainment': 'Entertainment',
+};
+
+// Category icon SVGs
+const categoryIcons: Record<string, string> = {
+  'national-tv': '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="15" rx="2"/><polyline points="17 2 12 7 7 2"/></svg>',
+  'local-tv': '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="15" rx="2"/><polyline points="17 2 12 7 7 2"/></svg>',
+  'print': '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 22h16a2 2 0 002-2V4a2 2 0 00-2-2H8a2 2 0 00-2 2v16a2 2 0 01-2 2zm0 0a2 2 0 01-2-2v-9c0-1.1.9-2 2-2h2"/><line x1="10" y1="6" x2="16" y2="6"/><line x1="10" y1="10" x2="16" y2="10"/><line x1="10" y1="14" x2="14" y2="14"/></svg>',
+  'magazine': '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>',
+  'entertainment': '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg>',
+};
+
+function formatDate(dateStr: string): string {
+  const d = new Date(dateStr + 'T00:00:00');
+  return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+}
+
+// Media outlets for the "As Seen On" bar
+const mediaOutlets = [
+  'Today Show', '11Alive', 'FOX 5', 'WSB-TV', 'AJC',
+  'Atlanta Magazine', 'StyleBlueprint', 'City Lifestyle',
+];
 ---
 
-<PageLayout
-  title="Publicity"
-  heroTitle="Publicity"
-  heroSubtitle="Sharing stories that shine"
+<BaseLayout
+  title="Publicity & Media Coverage"
+  description="Sunshine on a Ranney Day has been featured on the Today Show, 11Alive, Fox 5 Atlanta, AJC, Atlanta Magazine, and more. Explore our media coverage."
 >
-  <section class="section">
-    <div class="container container--narrow" style="text-align: center; padding-block: var(--space-4xl);">
-      <p style="color: var(--c-text-muted);">This page is being built. Check back soon!</p>
+
+  <!-- ══════ HERO ══════ -->
+  <section class="pub-hero">
+    <div class="container">
+      <div class="pub-hero__label">Media Coverage</div>
+      <h1 class="pub-hero__title">Our story, in the <em class="highlight">spotlight</em>.</h1>
+      <p class="pub-hero__sub">From the Today Show to Atlanta's top newsrooms, the media has helped us share the stories of the incredible children and families we serve.</p>
     </div>
   </section>
-</PageLayout>
+
+  <!-- ══════ AS SEEN ON — LOGO BAR ══════ -->
+  <section class="seen-on" aria-label="Featured in">
+    <div class="container">
+      <div class="seen-on__label">As Featured In</div>
+      <div class="seen-on__grid">
+        {mediaOutlets.map(name => (
+          <div class="seen-on__logo">{name}</div>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════ FEATURED COVERAGE ══════ -->
+  <section class="pub-featured" aria-labelledby="featured-heading">
+    <div class="container">
+      <h2 id="featured-heading" class="pub-section-title">Highlighted Coverage</h2>
+      <div class="featured-grid">
+        {featured.map(item => (
+          <article class="featured-card">
+            <div class="featured-card__top">
+              <div class="featured-card__badge" set:html={categoryIcons[item.data.category]} />
+              <div class="featured-card__cat">{categoryLabels[item.data.category]}</div>
+            </div>
+            <h3 class="featured-card__title">{item.data.title}</h3>
+            <p class="featured-card__outlet">{item.data.outlet}</p>
+            <p class="featured-card__excerpt">{item.data.excerpt}</p>
+            <div class="featured-card__foot">
+              <time class="featured-card__date" datetime={item.data.date}>{formatDate(item.data.date)}</time>
+              {item.data.url && (
+                <a href={item.data.url} class="featured-card__link" target="_blank" rel="noopener noreferrer">
+                  Read Article
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 17L17 7"/><path d="M7 7h10v10"/></svg>
+                </a>
+              )}
+            </div>
+          </article>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════ ALL COVERAGE ══════ -->
+  <section class="pub-all" aria-labelledby="all-heading">
+    <div class="container">
+      <h2 id="all-heading" class="pub-section-title">All Coverage</h2>
+      <div class="coverage-list">
+        {press.map(item => (
+          <article class="coverage-item">
+            <div class="coverage-item__icon" set:html={categoryIcons[item.data.category]} />
+            <div class="coverage-item__content">
+              <div class="coverage-item__meta">
+                <span class="coverage-item__outlet">{item.data.outlet}</span>
+                <span class="coverage-item__sep" aria-hidden="true">&middot;</span>
+                <time class="coverage-item__date" datetime={item.data.date}>{formatDate(item.data.date)}</time>
+                <span class="coverage-item__tag">{categoryLabels[item.data.category]}</span>
+              </div>
+              <h3 class="coverage-item__title">
+                {item.data.url ? (
+                  <a href={item.data.url} target="_blank" rel="noopener noreferrer">{item.data.title}</a>
+                ) : (
+                  <span>{item.data.title}</span>
+                )}
+              </h3>
+              <p class="coverage-item__excerpt">{item.data.excerpt}</p>
+            </div>
+            {item.data.url && (
+              <a href={item.data.url} class="coverage-item__arrow" target="_blank" rel="noopener noreferrer" aria-label={`Read ${item.data.title}`}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 17L17 7"/><path d="M7 7h10v10"/></svg>
+              </a>
+            )}
+          </article>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════ MEDIA CONTACT CTA ══════ -->
+  <section class="pub-cta">
+    <div class="container container--narrow">
+      <h2>Media Inquiries</h2>
+      <p>Interested in covering Sunshine on a Ranney Day? We'd love to connect.</p>
+      <div class="pub-cta__actions">
+        <a href="mailto:info@soardcharity.com?subject=Media%20Inquiry" class="btn btn-primary btn-lg">Contact Us</a>
+        <a href="/branding" class="btn btn-outline">Brand & Media Kit</a>
+      </div>
+    </div>
+  </section>
+
+</BaseLayout>
+
+<style>
+  /* ══════ HERO ══════ */
+  .pub-hero {
+    background: var(--c-dark);
+    color: var(--c-white);
+    padding: var(--space-5xl) 0 var(--space-3xl);
+    text-align: center;
+  }
+  .pub-hero__label {
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--c-yellow);
+    margin-bottom: var(--space-md);
+  }
+  .pub-hero__title {
+    font-family: var(--f-display);
+    font-size: clamp(2rem, 5vw, 3.5rem);
+    color: var(--c-white);
+    line-height: 1.15;
+    max-width: 700px;
+    margin: 0 auto;
+  }
+  .pub-hero__sub {
+    margin-top: var(--space-lg);
+    font-size: clamp(1rem, 2vw, 1.15rem);
+    color: rgba(255,255,255,0.7);
+    max-width: 600px;
+    margin-inline: auto;
+    line-height: 1.7;
+  }
+  .highlight {
+    font-style: normal;
+    background-image: linear-gradient(transparent 55%, rgba(255,213,0,0.45) 55%);
+  }
+
+  /* ══════ AS SEEN ON ══════ */
+  .seen-on {
+    padding: var(--space-2xl) 0;
+    background: var(--c-warm-gray);
+    border-bottom: 1px solid var(--c-border);
+  }
+  .seen-on__label {
+    text-align: center;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+    color: var(--c-text-light);
+    margin-bottom: var(--space-lg);
+  }
+  .seen-on__grid {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: var(--space-sm) var(--space-xl);
+    align-items: center;
+  }
+  .seen-on__logo {
+    font-family: var(--f-body);
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--c-text-muted);
+    padding: var(--space-sm) var(--space-lg);
+    opacity: 0.55;
+    transition: opacity var(--transition-base);
+  }
+  .seen-on__logo:hover { opacity: 1; }
+
+  /* ══════ SECTION TITLES ══════ */
+  .pub-section-title {
+    font-family: var(--f-display);
+    font-size: clamp(1.5rem, 3vw, 2rem);
+    margin-bottom: var(--space-2xl);
+  }
+
+  /* ══════ FEATURED CARDS ══════ */
+  .pub-featured {
+    padding: var(--space-4xl) 0;
+  }
+  .featured-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: var(--space-xl);
+  }
+  .featured-card {
+    background: var(--c-white);
+    border: 1px solid var(--c-border);
+    border-radius: var(--border-radius-lg);
+    padding: var(--space-xl);
+    display: flex;
+    flex-direction: column;
+    transition: box-shadow var(--transition-base), transform var(--transition-base);
+  }
+  .featured-card:hover {
+    box-shadow: var(--shadow-lg);
+    transform: translateY(-2px);
+  }
+  .featured-card__top {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    margin-bottom: var(--space-md);
+  }
+  .featured-card__badge {
+    width: 36px;
+    height: 36px;
+    background: var(--c-yellow);
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--c-dark);
+  }
+  .featured-card__cat {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--c-text-light);
+  }
+  .featured-card__title {
+    font-family: var(--f-display);
+    font-size: 1.1rem;
+    line-height: 1.4;
+    margin-bottom: var(--space-xs);
+  }
+  .featured-card__outlet {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--c-text-muted);
+    margin-bottom: var(--space-md);
+  }
+  .featured-card__excerpt {
+    font-size: 0.9rem;
+    line-height: 1.65;
+    color: var(--c-text-muted);
+    flex: 1;
+  }
+  .featured-card__foot {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: var(--space-lg);
+    padding-top: var(--space-md);
+    border-top: 1px solid var(--c-border);
+  }
+  .featured-card__date {
+    font-size: 0.8rem;
+    color: var(--c-text-light);
+  }
+  .featured-card__link {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--c-dark);
+    text-decoration: none;
+    transition: color var(--transition-fast);
+  }
+  .featured-card__link:hover { color: var(--c-yellow-hover); }
+
+  /* ══════ ALL COVERAGE LIST ══════ */
+  .pub-all {
+    padding: var(--space-4xl) 0;
+    background: var(--c-warm-gray);
+  }
+  .coverage-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    background: var(--c-border);
+    border-radius: var(--border-radius-lg);
+    overflow: hidden;
+  }
+  .coverage-item {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-lg);
+    padding: var(--space-xl);
+    background: var(--c-white);
+    transition: background var(--transition-fast);
+  }
+  .coverage-item:hover { background: var(--c-cream); }
+  .coverage-item__icon {
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
+    background: var(--c-warm-gray);
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--c-text-muted);
+    margin-top: 2px;
+  }
+  .coverage-item__content { flex: 1; min-width: 0; }
+  .coverage-item__meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-xs) var(--space-sm);
+    margin-bottom: var(--space-xs);
+  }
+  .coverage-item__outlet {
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--c-text);
+  }
+  .coverage-item__sep {
+    color: var(--c-text-light);
+    font-size: 0.8rem;
+  }
+  .coverage-item__date {
+    font-size: 0.8rem;
+    color: var(--c-text-light);
+  }
+  .coverage-item__tag {
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--c-text-light);
+    background: var(--c-warm-gray);
+    padding: 2px 8px;
+    border-radius: 4px;
+  }
+  .coverage-item__title {
+    font-family: var(--f-display);
+    font-size: 1.05rem;
+    line-height: 1.4;
+    margin-bottom: var(--space-xs);
+  }
+  .coverage-item__title a {
+    color: var(--c-text);
+    text-decoration: none;
+  }
+  .coverage-item__title a:hover {
+    color: var(--c-dark);
+    text-decoration: underline;
+    text-decoration-color: var(--c-yellow);
+    text-underline-offset: 3px;
+    text-decoration-thickness: 2px;
+  }
+  .coverage-item__excerpt {
+    font-size: 0.875rem;
+    line-height: 1.6;
+    color: var(--c-text-muted);
+  }
+  .coverage-item__arrow {
+    min-width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--c-text-light);
+    border-radius: 10px;
+    transition: color var(--transition-fast), background var(--transition-fast);
+    margin-top: 2px;
+  }
+  .coverage-item__arrow:hover {
+    color: var(--c-dark);
+    background: var(--c-warm-gray);
+  }
+
+  /* ══════ CTA ══════ */
+  .pub-cta {
+    padding: var(--space-4xl) 0;
+    text-align: center;
+  }
+  .pub-cta h2 {
+    font-family: var(--f-display);
+    font-size: clamp(1.5rem, 3vw, 2rem);
+    margin-bottom: var(--space-sm);
+  }
+  .pub-cta p {
+    color: var(--c-text-muted);
+    font-size: 1.05rem;
+    margin-bottom: var(--space-xl);
+  }
+  .pub-cta__actions {
+    display: flex;
+    gap: var(--space-md);
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  /* ══════ SHARED BUTTON STYLES ══════ */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0.75rem 1.75rem;
+    font-family: var(--f-body);
+    font-size: 0.9rem;
+    font-weight: 600;
+    border-radius: 100px;
+    text-decoration: none;
+    transition: all var(--transition-fast);
+    cursor: pointer;
+    border: 2px solid transparent;
+  }
+  .btn-primary {
+    background: var(--c-yellow);
+    color: var(--c-dark);
+    border-color: var(--c-yellow);
+  }
+  .btn-primary:hover {
+    background: var(--c-yellow-hover);
+    border-color: var(--c-yellow-hover);
+  }
+  .btn-outline {
+    background: transparent;
+    color: var(--c-dark);
+    border-color: var(--c-border);
+  }
+  .btn-outline:hover { border-color: var(--c-dark); }
+  .btn-lg { padding: 0.85rem 2rem; font-size: 0.95rem; }
+
+  /* ══════ CONTAINER ══════ */
+  .container {
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding-inline: var(--page-padding);
+  }
+  .container--narrow { max-width: var(--max-width-narrow); }
+
+  /* ══════ RESPONSIVE ══════ */
+  @media (max-width: 640px) {
+    .featured-grid { grid-template-columns: 1fr; }
+    .coverage-item { flex-direction: column; gap: var(--space-md); }
+    .coverage-item__icon { display: none; }
+    .coverage-item__arrow { display: none; }
+    .seen-on__grid { gap: var(--space-sm) var(--space-md); }
+    .seen-on__logo { font-size: 0.85rem; padding: var(--space-xs) var(--space-md); }
+  }
+</style>
