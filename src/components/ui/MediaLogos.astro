@@ -1,7 +1,8 @@
 ---
 /**
  * MediaLogos.astro
- * Bold SVG-styled media outlet logos for "As Seen On" bars.
+ * "As Featured In" media outlet logo bar using CF Images.
+ * Logos are grayscale by default, darken on hover.
  * Used on homepage and publicity page.
  */
 interface Props {
@@ -10,79 +11,37 @@ interface Props {
 }
 
 const { theme = 'dark', linked = true } = Astro.props;
-const fill = theme === 'light' ? '#FFFFFF' : '#2D2E33';
+const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
 const href = linked ? '/publicity' : undefined;
+
+const logos = [
+  { id: 'press-logo-today-show',        alt: 'Today Show',                 wide: false },
+  { id: 'press-logo-11alive',           alt: '11Alive',                    wide: false },
+  { id: 'press-logo-fox5',              alt: 'Fox 5 Atlanta',              wide: false },
+  { id: 'press-logo-wsb-tv',            alt: 'WSB-TV',                     wide: false },
+  { id: 'press-logo-ajc',               alt: 'Atlanta Journal-Constitution', wide: true },
+  { id: 'press-logo-atlanta-magazine',  alt: 'Atlanta Magazine',           wide: false },
+  { id: 'press-logo-styleblueprint',    alt: 'StyleBlueprint',             wide: true },
+  { id: 'press-logo-41nbc',             alt: '41NBC',                      wide: false },
+];
 ---
 
 <div class="ml" data-theme={theme}>
   <div class="ml__label">As Featured In</div>
   <div class="ml__row">
-
-    <!-- TODAY -->
-    <a href={href} class="ml__item" aria-label="Today Show">
-      <svg viewBox="0 0 160 50" xmlns="http://www.w3.org/2000/svg" class="ml__svg">
-        <path d="M78 8 C84 2, 94 2, 100 8" stroke={fill} stroke-width="3" fill="none" stroke-linecap="round"/>
-        <circle cx="89" cy="4" r="2.5" fill={fill}/>
-        <text x="50%" y="38" text-anchor="middle" font-family="'Outfit',sans-serif" font-weight="900" font-size="32" fill={fill} letter-spacing="-1">TODAY</text>
-      </svg>
-    </a>
-
-    <!-- 11Alive -->
-    <a href={href} class="ml__item" aria-label="11Alive">
-      <svg viewBox="0 0 150 50" xmlns="http://www.w3.org/2000/svg" class="ml__svg">
-        <text x="6" y="38" font-family="'Outfit',sans-serif" font-weight="900" font-size="36" fill={fill}>11</text>
-        <text x="56" y="38" font-family="'Libre Baskerville',serif" font-weight="700" font-size="28" fill={fill}>alive</text>
-      </svg>
-    </a>
-
-    <!-- FOX 5 -->
-    <a href={href} class="ml__item" aria-label="Fox 5 Atlanta">
-      <svg viewBox="0 0 130 50" xmlns="http://www.w3.org/2000/svg" class="ml__svg">
-        <text x="6" y="38" font-family="'Outfit',sans-serif" font-weight="900" font-size="36" fill={fill} letter-spacing="-1.5">FOX</text>
-        <text x="86" y="38" font-family="'Outfit',sans-serif" font-weight="300" font-size="36" fill={fill}>5</text>
-      </svg>
-    </a>
-
-    <!-- WSB-TV -->
-    <a href={href} class="ml__item" aria-label="WSB-TV">
-      <svg viewBox="0 0 160 50" xmlns="http://www.w3.org/2000/svg" class="ml__svg">
-        <text x="6" y="37" font-family="'Outfit',sans-serif" font-weight="900" font-size="32" fill={fill} letter-spacing="1.5">WSB</text>
-        <text x="105" y="37" font-family="'Outfit',sans-serif" font-weight="400" font-size="22" fill={fill} letter-spacing="1">TV</text>
-      </svg>
-    </a>
-
-    <!-- AJC -->
-    <a href={href} class="ml__item" aria-label="Atlanta Journal-Constitution">
-      <svg viewBox="0 0 240 50" xmlns="http://www.w3.org/2000/svg" class="ml__svg ml__svg--wide">
-        <text x="6" y="20" font-family="'Outfit',sans-serif" font-weight="300" font-size="13" fill={fill} letter-spacing="4">THE ATLANTA</text>
-        <text x="6" y="42" font-family="'Libre Baskerville',serif" font-weight="700" font-size="21" fill={fill}>Journal-Constitution</text>
-      </svg>
-    </a>
-
-    <!-- Atlanta Magazine -->
-    <a href={href} class="ml__item" aria-label="Atlanta Magazine">
-      <svg viewBox="0 0 175 50" xmlns="http://www.w3.org/2000/svg" class="ml__svg ml__svg--wide">
-        <text x="6" y="20" font-family="'Outfit',sans-serif" font-weight="300" font-size="13" fill={fill} letter-spacing="5">ATLANTA</text>
-        <text x="6" y="42" font-family="'Libre Baskerville',serif" font-weight="700" font-size="22" fill={fill}>Magazine</text>
-      </svg>
-    </a>
-
-    <!-- StyleBlueprint -->
-    <a href={href} class="ml__item" aria-label="StyleBlueprint">
-      <svg viewBox="0 0 210 50" xmlns="http://www.w3.org/2000/svg" class="ml__svg ml__svg--wide">
-        <text x="6" y="36" font-family="'Libre Baskerville',serif" font-weight="700" font-size="22" fill={fill}>Style</text>
-        <text x="72" y="36" font-family="'Outfit',sans-serif" font-weight="300" font-size="22" fill={fill}>Blueprint</text>
-      </svg>
-    </a>
-
-    <!-- 41NBC -->
-    <a href={href} class="ml__item" aria-label="41NBC">
-      <svg viewBox="0 0 130 50" xmlns="http://www.w3.org/2000/svg" class="ml__svg">
-        <text x="6" y="38" font-family="'Outfit',sans-serif" font-weight="900" font-size="36" fill={fill}>41</text>
-        <text x="56" y="36" font-family="'Outfit',sans-serif" font-weight="700" font-size="22" fill={fill} letter-spacing="1.5">NBC</text>
-      </svg>
-    </a>
-
+    {logos.map(logo => (
+      <a href={href} class:list={["ml__item", { "ml__item--wide": logo.wide }]} aria-label={`Featured on ${logo.alt}`}>
+        <img
+          src={`${CF}/${logo.id}/w=400,f=auto`}
+          alt={logo.alt}
+          class="ml__logo"
+          loading="lazy"
+          decoding="async"
+          width="200"
+          height="60"
+        />
+      </a>
+    ))}
   </div>
 </div>
 
@@ -117,7 +76,7 @@ const href = linked ? '/publicity' : undefined;
     flex-wrap: wrap;
     justify-content: center;
     align-items: center;
-    gap: 16px 40px;
+    gap: 20px 48px;
     max-width: 1200px;
     margin: 0 auto;
     padding: 0 clamp(1rem, 4vw, 2rem);
@@ -129,34 +88,41 @@ const href = linked ? '/publicity' : undefined;
     justify-content: center;
     text-decoration: none;
     transition: opacity 0.3s ease, transform 0.3s ease;
-    padding: 8px 4px;
   }
-  .ml[data-theme="dark"] .ml__item { opacity: 0.4; }
-  .ml[data-theme="light"] .ml__item { opacity: 0.45; }
+  .ml[data-theme="dark"] .ml__item { opacity: 0.35; }
+  .ml[data-theme="light"] .ml__item { opacity: 0.4; }
 
   .ml__item:hover {
-    opacity: 0.85 !important;
+    opacity: 0.8 !important;
     transform: translateY(-1px);
   }
 
-  .ml__svg {
+  .ml__logo {
     height: 48px;
     width: auto;
+    object-fit: contain;
   }
-  .ml__svg--wide {
-    height: 48px;
+  /* Light theme: invert the dark logos to white */
+  .ml[data-theme="light"] .ml__logo {
+    filter: invert(1) brightness(2);
+  }
+
+  .ml__item--wide .ml__logo {
+    height: 44px;
   }
 
   /* ── Tablet ── */
   @media (max-width: 900px) {
-    .ml__row { gap: 12px 28px; }
-    .ml__svg, .ml__svg--wide { height: 40px; }
+    .ml__row { gap: 16px 32px; }
+    .ml__logo { height: 40px; }
+    .ml__item--wide .ml__logo { height: 36px; }
     .ml { padding: 40px 0; }
   }
   /* ── Mobile ── */
   @media (max-width: 600px) {
-    .ml__row { gap: 8px 20px; }
-    .ml__svg, .ml__svg--wide { height: 32px; }
+    .ml__row { gap: 12px 24px; }
+    .ml__logo { height: 32px; }
+    .ml__item--wide .ml__logo { height: 28px; }
     .ml { padding: 32px 0; }
     .ml__label { margin-bottom: 24px; }
   }
