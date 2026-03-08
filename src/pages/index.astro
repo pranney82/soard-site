@@ -12,8 +12,10 @@ import { getCollection } from 'astro:content';
 const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
 const stats = { totalKids: 132, totalRooms: 106, years: 13 };
 
-/* ── Hero ── */
-const heroImageId = 'kids/harper/hero-c6a714';
+/* ── Hero (from site settings) ── */
+import siteSettings from '../content/site/settings.json';
+const heroImageId = siteSettings.homeHero?.imageId || 'kids/harper/hero-c6a714';
+const heroAltText = siteSettings.homeHero?.altText || 'A child seeing their dream room for the first time';
 
 /* ── Featured Story ── */
 const allKids = await getCollection('kids');
@@ -81,7 +83,7 @@ const jsonLd = getWebSiteSchema();
       <picture>
         <source type="image/avif" srcset={`${CF}/${heroImageId}/w=640,f=avif 640w, ${CF}/${heroImageId}/w=1024,f=avif 1024w, ${CF}/${heroImageId}/w=1600,f=avif 1600w, ${CF}/${heroImageId}/w=2400,f=avif 2400w`} sizes="100vw" />
         <source type="image/webp" srcset={`${CF}/${heroImageId}/w=640,f=webp 640w, ${CF}/${heroImageId}/w=1024,f=webp 1024w, ${CF}/${heroImageId}/w=1600,f=webp 1600w, ${CF}/${heroImageId}/w=2400,f=webp 2400w`} sizes="100vw" />
-        <img class="hero-img" src={`${CF}/${heroImageId}/w=1600,q=80`} alt="A child seeing their dream room for the first time" width="1600" height="900" loading="eager" decoding="async" fetchpriority="high" />
+        <img class="hero-img" src={`${CF}/${heroImageId}/w=1600,q=80`} alt={heroAltText} width="1600" height="900" loading="eager" decoding="async" fetchpriority="high" />
       </picture>
       <div class="hero-overlay"></div>
     </div>

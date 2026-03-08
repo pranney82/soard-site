@@ -26,5 +26,9 @@
     "kidsServed": 132,
     "partners": 45
   },
-  "guidestarUrl": "https://www.guidestar.org/profile/shared/2954b510-8c76-42e4-b589-7e826ca2cc47"
+  "guidestarUrl": "https://www.guidestar.org/profile/shared/2954b510-8c76-42e4-b589-7e826ca2cc47",
+  "homeHero": {
+    "imageId": "kids/harper/hero-c6a714",
+    "altText": "A child seeing their dream room for the first time"
+  }
 }

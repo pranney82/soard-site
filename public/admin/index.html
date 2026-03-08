@@ -2626,6 +2626,7 @@
           const keys = path.split('.');
           let obj = copy;
           for (let i = 0; i < keys.length - 1; i++) {
+            if (!obj[keys[i]] || typeof obj[keys[i]] !== 'object') obj[keys[i]] = {};
             obj = obj[keys[i]];
           }
           obj[keys[keys.length - 1]] = value;
@@ -2681,6 +2682,28 @@
               <input class="form-input" type="number" value=${data.stats?.partners || 0}
                 onInput=${e => updateStat('partners', e.target.value)} />
             </div>
+          </div>
+        </div>
+        <div class="card">
+          <h3 style="margin-bottom: 1rem;">Home Hero Image</h3>
+          <p class="text-sm text-muted mb-1">The full-bleed background image on the homepage hero. Use a Cloudflare Images ID (e.g. <code>kids/harper/hero-c6a714</code>).</p>
+          ${data.homeHero?.imageId ? html`
+            <div style="margin: 1rem 0; border-radius: 12px; overflow: hidden; max-height: 200px;">
+              <img src=${'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/' + data.homeHero.imageId + '/w=800,f=auto'}
+                alt="Hero preview" style="width: 100%; height: 200px; object-fit: cover; display: block;" />
+            </div>
+          ` : null}
+          <div class="form-group">
+            <label class="form-label">Cloudflare Image ID</label>
+            <input class="form-input" value=${data.homeHero?.imageId || ''}
+              placeholder="kids/harper/hero-c6a714"
+              onInput=${e => updateField('homeHero.imageId', e.target.value)} />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Alt Text</label>
+            <input class="form-input" value=${data.homeHero?.altText || ''}
+              placeholder="A child seeing their dream room for the first time"
+              onInput=${e => updateField('homeHero.altText', e.target.value)} />
           </div>
         </div>
         <div class="card">
