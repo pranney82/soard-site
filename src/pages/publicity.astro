@@ -5,6 +5,7 @@
  * Data-driven from src/content/press/ collection
  */
 import BaseLayout from '../layouts/BaseLayout.astro';
+import MediaLogos from '../components/ui/MediaLogos.astro';
 import { getCollection } from 'astro:content';
 
 const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
@@ -36,11 +37,6 @@ function formatDate(dateStr: string): string {
   return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 }
 
-// Media outlets for the "As Seen On" bar
-const mediaOutlets = [
-  'Today Show', '11Alive', 'FOX 5', 'WSB-TV', 'AJC',
-  'Atlanta Magazine', 'StyleBlueprint', 'City Lifestyle',
-];
 ---
 
 <BaseLayout
@@ -58,16 +54,7 @@ const mediaOutlets = [
   </section>
 
   <!-- ══════ AS SEEN ON — LOGO BAR ══════ -->
-  <section class="seen-on" aria-label="Featured in">
-    <div class="container">
-      <div class="seen-on__label">As Featured In</div>
-      <div class="seen-on__grid">
-        {mediaOutlets.map(name => (
-          <div class="seen-on__logo">{name}</div>
-        ))}
-      </div>
-    </div>
-  </section>
+  <MediaLogos theme="dark" linked={false} />
 
   <!-- ══════ FEATURED COVERAGE ══════ -->
   <section class="pub-featured" aria-labelledby="featured-heading">
@@ -183,39 +170,6 @@ const mediaOutlets = [
     font-style: normal;
     background-image: linear-gradient(transparent 55%, rgba(255,213,0,0.45) 55%);
   }
-
-  /* ══════ AS SEEN ON ══════ */
-  .seen-on {
-    padding: var(--space-2xl) 0;
-    background: var(--c-warm-gray);
-    border-bottom: 1px solid var(--c-border);
-  }
-  .seen-on__label {
-    text-align: center;
-    font-size: 0.7rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.16em;
-    color: var(--c-text-light);
-    margin-bottom: var(--space-lg);
-  }
-  .seen-on__grid {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    gap: var(--space-sm) var(--space-xl);
-    align-items: center;
-  }
-  .seen-on__logo {
-    font-family: var(--f-body);
-    font-size: 0.95rem;
-    font-weight: 700;
-    color: var(--c-text-muted);
-    padding: var(--space-sm) var(--space-lg);
-    opacity: 0.55;
-    transition: opacity var(--transition-base);
-  }
-  .seen-on__logo:hover { opacity: 1; }
 
   /* ══════ SECTION TITLES ══════ */
   .pub-section-title {
@@ -482,7 +436,5 @@ const mediaOutlets = [
     .coverage-item { flex-direction: column; gap: var(--space-md); }
     .coverage-item__icon { display: none; }
     .coverage-item__arrow { display: none; }
-    .seen-on__grid { gap: var(--space-sm) var(--space-md); }
-    .seen-on__logo { font-size: 0.85rem; padding: var(--space-xs) var(--space-md); }
   }
 </style>

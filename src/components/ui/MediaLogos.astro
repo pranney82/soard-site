@@ -1,0 +1,167 @@
+---
+/**
+ * MediaLogos.astro
+ * SVG-styled media outlet logos for "As Seen On" bars.
+ * These are code-based SVG text treatments, not image files.
+ * Used on homepage and publicity page.
+ */
+interface Props {
+  /** 'light' for dark backgrounds, 'dark' for light backgrounds */
+  theme?: 'light' | 'dark';
+  /** Show link to publicity page */
+  linked?: boolean;
+}
+
+const { theme = 'dark', linked = true } = Astro.props;
+const fillColor = theme === 'light' ? '#FFFFFF' : '#2D2E33';
+const opacity = theme === 'light' ? '0.6' : '0.45';
+---
+
+<div class="media-logos" data-theme={theme}>
+  <div class="media-logos__label">As Featured In</div>
+  <div class="media-logos__grid">
+
+    <!-- TODAY (NBC) -->
+    <a href={linked ? '/publicity' : undefined} class="media-logos__item" aria-label="Featured on the Today Show">
+      <svg viewBox="0 0 140 40" fill="none" xmlns="http://www.w3.org/2000/svg" class="media-logos__svg" role="img" aria-label="Today Show">
+        <path d="M70 6 C75 2, 82 2, 87 6" stroke={fillColor} stroke-width="2.5" fill="none" stroke-linecap="round"/>
+        <circle cx="78.5" cy="4" r="2" fill={fillColor}/>
+        <text x="70" y="30" font-family="'Outfit', sans-serif" font-weight="800" font-size="22" fill={fillColor} letter-spacing="-0.5">TODAY</text>
+      </svg>
+    </a>
+
+    <!-- 11Alive (NBC Atlanta) -->
+    <a href={linked ? '/publicity' : undefined} class="media-logos__item" aria-label="Featured on 11Alive">
+      <svg viewBox="0 0 130 40" fill="none" xmlns="http://www.w3.org/2000/svg" class="media-logos__svg" role="img" aria-label="11Alive">
+        <text x="4" y="30" font-family="'Outfit', sans-serif" font-weight="900" font-size="26" fill={fillColor}>11</text>
+        <text x="40" y="30" font-family="'Libre Baskerville', serif" font-weight="700" font-size="20" fill={fillColor}>alive</text>
+      </svg>
+    </a>
+
+    <!-- FOX 5 Atlanta -->
+    <a href={linked ? '/publicity' : undefined} class="media-logos__item" aria-label="Featured on Fox 5 Atlanta">
+      <svg viewBox="0 0 120 40" fill="none" xmlns="http://www.w3.org/2000/svg" class="media-logos__svg" role="img" aria-label="Fox 5">
+        <text x="4" y="30" font-family="'Outfit', sans-serif" font-weight="900" font-size="26" fill={fillColor} letter-spacing="-1">FOX</text>
+        <text x="68" y="30" font-family="'Outfit', sans-serif" font-weight="300" font-size="26" fill={fillColor}>5</text>
+      </svg>
+    </a>
+
+    <!-- WSB-TV (ABC Atlanta) -->
+    <a href={linked ? '/publicity' : undefined} class="media-logos__item" aria-label="Featured on WSB-TV">
+      <svg viewBox="0 0 130 40" fill="none" xmlns="http://www.w3.org/2000/svg" class="media-logos__svg" role="img" aria-label="WSB-TV">
+        <text x="4" y="29" font-family="'Outfit', sans-serif" font-weight="800" font-size="22" fill={fillColor} letter-spacing="1">WSB</text>
+        <text x="74" y="29" font-family="'Outfit', sans-serif" font-weight="400" font-size="16" fill={fillColor} letter-spacing="0.5">TV</text>
+      </svg>
+    </a>
+
+    <!-- Atlanta Journal-Constitution -->
+    <a href={linked ? '/publicity' : undefined} class="media-logos__item" aria-label="Featured in the Atlanta Journal-Constitution">
+      <svg viewBox="0 0 180 40" fill="none" xmlns="http://www.w3.org/2000/svg" class="media-logos__svg media-logos__svg--wide" role="img" aria-label="Atlanta Journal-Constitution">
+        <text x="4" y="18" font-family="'Outfit', sans-serif" font-weight="300" font-size="11" fill={fillColor} letter-spacing="3" text-transform="uppercase">THE ATLANTA</text>
+        <text x="4" y="34" font-family="'Libre Baskerville', serif" font-weight="700" font-size="16" fill={fillColor} letter-spacing="0">Journal-Constitution</text>
+      </svg>
+    </a>
+
+    <!-- Atlanta Magazine -->
+    <a href={linked ? '/publicity' : undefined} class="media-logos__item" aria-label="Featured in Atlanta Magazine">
+      <svg viewBox="0 0 160 40" fill="none" xmlns="http://www.w3.org/2000/svg" class="media-logos__svg media-logos__svg--wide" role="img" aria-label="Atlanta Magazine">
+        <text x="4" y="18" font-family="'Outfit', sans-serif" font-weight="300" font-size="11" fill={fillColor} letter-spacing="3.5">ATLANTA</text>
+        <text x="4" y="34" font-family="'Libre Baskerville', serif" font-weight="700" font-size="17" fill={fillColor}>Magazine</text>
+      </svg>
+    </a>
+
+    <!-- StyleBlueprint -->
+    <a href={linked ? '/publicity' : undefined} class="media-logos__item" aria-label="Featured on StyleBlueprint">
+      <svg viewBox="0 0 170 40" fill="none" xmlns="http://www.w3.org/2000/svg" class="media-logos__svg media-logos__svg--wide" role="img" aria-label="StyleBlueprint">
+        <text x="4" y="28" font-family="'Libre Baskerville', serif" font-weight="700" font-size="14" fill={fillColor} letter-spacing="0.5">Style</text>
+        <text x="52" y="28" font-family="'Outfit', sans-serif" font-weight="300" font-size="14" fill={fillColor} letter-spacing="0.5">Blueprint</text>
+      </svg>
+    </a>
+
+    <!-- 41NBC -->
+    <a href={linked ? '/publicity' : undefined} class="media-logos__item" aria-label="Featured on 41NBC">
+      <svg viewBox="0 0 110 40" fill="none" xmlns="http://www.w3.org/2000/svg" class="media-logos__svg" role="img" aria-label="41NBC">
+        <text x="4" y="30" font-family="'Outfit', sans-serif" font-weight="900" font-size="26" fill={fillColor}>41</text>
+        <text x="42" y="28" font-family="'Outfit', sans-serif" font-weight="600" font-size="16" fill={fillColor} letter-spacing="1">NBC</text>
+      </svg>
+    </a>
+
+  </div>
+</div>
+
+<style>
+  .media-logos {
+    padding: 32px 0;
+    overflow: hidden;
+  }
+  .media-logos[data-theme="dark"] {
+    background: var(--c-warm-gray, #F5F4F0);
+    border-bottom: 1px solid var(--c-border, #E5E4E0);
+  }
+  .media-logos[data-theme="light"] {
+    background: rgba(255,255,255,0.04);
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+  }
+  .media-logos__label {
+    text-align: center;
+    margin-bottom: 24px;
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+  }
+  .media-logos[data-theme="dark"] .media-logos__label {
+    color: var(--c-text-light, #9B9CA0);
+  }
+  .media-logos[data-theme="light"] .media-logos__label {
+    color: rgba(255,255,255,0.4);
+  }
+  .media-logos__grid {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    gap: 8px 12px;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 clamp(1rem, 4vw, 2rem);
+  }
+  .media-logos__item {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-decoration: none;
+    transition: opacity 0.25s ease, transform 0.25s ease;
+    padding: 6px 8px;
+  }
+  .media-logos__item:hover {
+    opacity: 1 !important;
+    transform: scale(1.05);
+  }
+  .media-logos__svg {
+    height: 28px;
+    width: auto;
+  }
+  .media-logos__svg--wide {
+    height: 28px;
+  }
+  /* Apply opacity via the SVG elements */
+  .media-logos[data-theme="dark"] .media-logos__item {
+    opacity: 0.45;
+  }
+  .media-logos[data-theme="light"] .media-logos__item {
+    opacity: 0.5;
+  }
+
+  @media (max-width: 768px) {
+    .media-logos__grid { gap: 4px 8px; }
+    .media-logos__svg { height: 22px; }
+    .media-logos__svg--wide { height: 22px; }
+    .media-logos { padding: 24px 0; }
+    .media-logos__label { margin-bottom: 16px; }
+  }
+  @media (max-width: 480px) {
+    .media-logos__svg { height: 18px; }
+    .media-logos__svg--wide { height: 18px; }
+  }
+</style>

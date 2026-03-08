@@ -6,6 +6,7 @@
  * SEO: JSON-LD NonprofitOrganization, semantic HTML5
  */
 import BaseLayout from '../layouts/BaseLayout.astro';
+import MediaLogos from '../components/ui/MediaLogos.astro';
 
 const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
 const stats = { totalKids: 132, totalRooms: 106, years: 13 };
@@ -171,14 +172,7 @@ const jsonLd = getWebSiteSchema();
   </section>
 
   <!-- ══════ AS SEEN ON — MEDIA LOGO BAR ══════ -->
-  <section class="seen-on" aria-label="As seen on">
-    <div class="seen-on__label">As Featured In</div>
-    <div class="seen-on__track">
-      {['Today Show', '11Alive', 'FOX 5', 'WSB-TV', 'AJC', 'Atlanta Magazine', 'StyleBlueprint', 'City Lifestyle'].map(name => (
-        <a href="/publicity" class="seen-on__logo">{name}</a>
-      ))}
-    </div>
-  </section>
+  <MediaLogos theme="dark" linked={true} />
 
   <!-- ══════ MISSION — EDITORIAL SPREAD ══════ -->
   <section class="mission" aria-labelledby="mission-heading">
@@ -742,51 +736,6 @@ const jsonLd = getWebSiteSchema();
     .ribbon-inner { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; }
     .ribbon-divider { display: none; }
     .ribbon-stat { min-width: 0; }
-  }
-
-  /* ══════════════════════════════════════════
-     AS SEEN ON — Media Logo Bar
-     ══════════════════════════════════════════ */
-  .seen-on {
-    padding: 28px 0;
-    background: #fff;
-    border-top: 1px solid rgba(45,46,51,0.04);
-    border-bottom: 1px solid rgba(45,46,51,0.04);
-    overflow: hidden;
-  }
-  .seen-on__label {
-    text-align: center;
-    margin-bottom: 20px;
-    font-size: 11px;
-    font-weight: 700;
-    color: var(--c-text-light);
-    text-transform: uppercase;
-    letter-spacing: 0.14em;
-  }
-  .seen-on__track {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    align-items: center;
-    gap: 8px 28px;
-    max-width: var(--max-width);
-    margin: 0 auto;
-    padding: 0 var(--page-padding);
-  }
-  .seen-on__logo {
-    font-family: var(--font-body);
-    font-size: 14px;
-    font-weight: 700;
-    color: var(--c-text-muted);
-    opacity: 0.5;
-    text-decoration: none;
-    transition: opacity var(--transition-base);
-    padding: 4px 8px;
-  }
-  .seen-on__logo:hover { opacity: 1; }
-  @media (max-width: 600px) {
-    .seen-on__track { gap: 6px 16px; }
-    .seen-on__logo { font-size: 12px; }
   }
 
   /* ══════════════════════════════════════════
