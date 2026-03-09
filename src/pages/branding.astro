@@ -207,6 +207,23 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 </style>
 
 <script>
-  document.querySelectorAll('.color-card').forEach(card=>{card.addEventListener('click',()=>{const hex=card.dataset.hex;navigator.clipboard.writeText(hex);let toast=document.querySelector('.brand-toast');if(!toast){toast=document.createElement('div');toast.className='brand-toast';document.body.appendChild(toast)}toast.textContent=`Copied ${hex}`;toast.classList.add('visible');setTimeout(()=>toast.classList.remove('visible'),2000)})});
-  const sections=document.querySelectorAll('.brand-section');const links=document.querySelectorAll('.sidebar-link');const observer=new IntersectionObserver(entries=>{entries.forEach(entry=>{if(entry.isIntersecting){links.forEach(l=>l.classList.remove('active'));const id=entry.target.id;const active=document.querySelector(`.sidebar-link[href="#${id}"]`);if(active)active.classList.add('active')}})},{rootMargin:'-100px 0px -60% 0px'});sections.forEach(s=>observer.observe(s));
+  let _brandObserver: IntersectionObserver | null = null;
+
+  function cleanupBranding() {
+    _brandObserver?.disconnect();
+    _brandObserver = null;
+  }
+
+  function initBranding() {
+    const cards = document.querySelectorAll('.color-card');
+    if (!cards.length) return;
+
+    cleanupBranding();
+
+    cards.forEach(card=>{card.addEventListener('click',()=>{const hex=(card as HTMLElement).dataset.hex;navigator.clipboard.writeText(hex!);let toast=document.querySelector('.brand-toast');if(!toast){toast=document.createElement('div');toast.className='brand-toast';document.body.appendChild(toast)}toast.textContent=`Copied ${hex}`;toast.classList.add('visible');setTimeout(()=>toast.classList.remove('visible'),2000)})});
+    const sections=document.querySelectorAll('.brand-section');const links=document.querySelectorAll('.sidebar-link');_brandObserver=new IntersectionObserver(entries=>{entries.forEach(entry=>{if(entry.isIntersecting){links.forEach(l=>l.classList.remove('active'));const id=entry.target.id;const active=document.querySelector(`.sidebar-link[href="#${id}"]`);if(active)active.classList.add('active')}})},{rootMargin:'-100px 0px -60% 0px'});sections.forEach(s=>_brandObserver!.observe(s));
+  }
+
+  document.addEventListener('astro:page-load', initBranding);
+  document.addEventListener('astro:before-swap', cleanupBranding);
 </script>

@@ -621,10 +621,9 @@ const jsonLd = getWebSiteSchema();
   }
 </style>
 
-<!-- No-JS fallback: all content visible if scripts are blocked -->
+<!-- Hero-specific no-JS fallback (data-reveal handled by ScrollReveal in BaseLayout) -->
 <noscript>
   <style>
-    [data-reveal] { opacity: 1 !important; transform: none !important; }
     .hero-eyebrow, .hero-lead, .hero-ctas, .hero-proof, .hero-impact { opacity: 1 !important; }
     .hero-line-inner { transform: none !important; }
     .hero-eyebrow-line { width: 32px !important; }
@@ -632,30 +631,26 @@ const jsonLd = getWebSiteSchema();
 </noscript>
 
 <script>
-  /* ── Home page initialization ──
-   * Uses astro:page-load to work with View Transitions (ClientRouter).
-   * Module scripts execute once — the lifecycle listener persists across
-   * navigations, calling initHomePage on every page-load event.
-   * Guard: bails if .hero is absent (navigated to a non-home page).
+  /* ── Home page: hero entrance, counter, parallax ──
+   * Scroll reveals for [data-reveal] are handled by the shared
+   * ScrollReveal component in BaseLayout. This script only handles
+   * hero-specific animations that are unique to the home page.
    *
-   * Safety net: 3s timeout force-adds is-loaded / is-visible classes
-   * if observer or hero-load somehow failed. Class-based (not CSS
-   * animation) to avoid animation/transition priority conflicts. */
+   * Uses astro:page-load for View Transition compatibility.
+   * Guard: bails if .hero is absent (navigated to a non-home page). */
 
-  let _observer: IntersectionObserver | null = null;
   let _scrollHandler: (() => void) | null = null;
   let _heroTimeout: ReturnType<typeof setTimeout> | null = null;
   let _counterTimeout: ReturnType<typeof setTimeout> | null = null;
-  let _safetyTimeout: ReturnType<typeof setTimeout> | null = null;
+  let _heroSafety: ReturnType<typeof setTimeout> | null = null;
 
   function cleanup() {
-    _observer?.disconnect(); _observer = null;
     if (_scrollHandler) window.removeEventListener('scroll', _scrollHandler);
     _scrollHandler = null;
     if (_heroTimeout) clearTimeout(_heroTimeout);
     if (_counterTimeout) clearTimeout(_counterTimeout);
-    if (_safetyTimeout) clearTimeout(_safetyTimeout);
-    _heroTimeout = _counterTimeout = _safetyTimeout = null;
+    if (_heroSafety) clearTimeout(_heroSafety);
+    _heroTimeout = _counterTimeout = _heroSafety = null;
   }
 
   function initHomePage() {
@@ -663,17 +658,6 @@ const jsonLd = getWebSiteSchema();
     if (!hero) return;
 
     cleanup();
-
-    // ── Scroll reveal observer ──
-    _observer = new IntersectionObserver((entries) => {
-      entries.forEach(entry => {
-        if (entry.isIntersecting) {
-          entry.target.classList.add('is-visible');
-          _observer?.unobserve(entry.target);
-        }
-      });
-    }, { threshold: 0.15, rootMargin: '0px 0px -40px 0px' });
-    document.querySelectorAll('[data-reveal]').forEach(el => _observer!.observe(el));
 
     // ── Hero entrance ──
     const heroImg = hero.querySelector('.hero-img') as HTMLImageElement;
@@ -741,10 +725,9 @@ const jsonLd = getWebSiteSchema();
       }
     }
 
-    // ── Safety net: force-reveal after 3s if anything is still hidden ──
-    _safetyTimeout = setTimeout(() => {
+    // ── Hero safety net: force is-loaded after 3s if image load failed ──
+    _heroSafety = setTimeout(() => {
       if (!hero.classList.contains('is-loaded')) hero.classList.add('is-loaded');
-      document.querySelectorAll('[data-reveal]:not(.is-visible)').forEach(el => el.classList.add('is-visible'));
     }, 3000);
   }
 

@@ -325,7 +325,23 @@ const gridKids = [...kids];
 </PageLayout>
 
 <script>
-  const cards = document.querySelectorAll<HTMLElement>('.kid-card');
+  let _kidsObserver: IntersectionObserver | null = null;
+  let _kidsScrollHandler: (() => void) | null = null;
+
+  function cleanupKidsIndex() {
+    _kidsObserver?.disconnect();
+    _kidsObserver = null;
+    if (_kidsScrollHandler) window.removeEventListener('scroll', _kidsScrollHandler);
+    _kidsScrollHandler = null;
+  }
+
+  function initKidsIndex() {
+    // Guard: only run on kids index page
+    const cards = document.querySelectorAll<HTMLElement>('.kid-card');
+    if (!cards.length) return;
+
+    cleanupKidsIndex();
+
   const searchInput = document.getElementById('kid-search') as HTMLInputElement;
   const yearSelect = document.getElementById('filter-year') as HTMLSelectElement;
   const typeSelect = document.getElementById('filter-type') as HTMLSelectElement;
@@ -454,14 +470,14 @@ const gridKids = [...kids];
 
   // ── Staggered reveal on scroll ───────────
   if (!reducedMotion) {
-    const observer = new IntersectionObserver(
+    _kidsObserver = new IntersectionObserver(
       (entries) => {
         const visible = entries.filter(e => e.isIntersecting);
         visible.forEach((entry, i) => {
           const el = entry.target as HTMLElement;
           el.style.setProperty('--stagger', String(i));
           el.classList.add('revealed');
-          observer.unobserve(el);
+          _kidsObserver?.unobserve(el);
         });
       },
       { rootMargin: '60px', threshold: 0.01 }
@@ -469,14 +485,14 @@ const gridKids = [...kids];
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         document.documentElement.classList.add('js-anim');
-        cards.forEach(card => observer.observe(card));
+        cards.forEach(card => _kidsObserver!.observe(card));
       });
     });
   }
 
   // ── Toolbar scroll shadow ────────────────
   let ticking = false;
-  window.addEventListener('scroll', () => {
+  _kidsScrollHandler = function () {
     if (!ticking) {
       ticking = true;
       requestAnimationFrame(() => {
@@ -484,7 +500,8 @@ const gridKids = [...kids];
         ticking = false;
       });
     }
-  }, { passive: true });
+  };
+  window.addEventListener('scroll', _kidsScrollHandler, { passive: true });
 
   // ── Apply URL filters + scroll to grid ───
   const hasURLFilters = params.get('year') || params.get('type') || params.get('q') || params.get('status');
@@ -492,6 +509,11 @@ const gridKids = [...kids];
     applyFilters();
     toolbar.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
+
+  } // end initKidsIndex
+
+  document.addEventListener('astro:page-load', initKidsIndex);
+  document.addEventListener('astro:before-swap', cleanupKidsIndex);
 </script>
 
 <style>

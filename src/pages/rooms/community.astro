@@ -818,7 +818,7 @@ const jsonLd = buildSchemaGraph(
     transform: translateY(24px);
     transition: opacity 0.7s ease, transform 0.7s ease;
   }
-  [data-reveal].revealed {
+  [data-reveal].is-visible {
     opacity: 1;
     transform: translateY(0);
   }
@@ -831,20 +831,4 @@ const jsonLd = buildSchemaGraph(
   }
 </style>
 
-<script>
-  // Scroll-reveal observer
-  const reveals = document.querySelectorAll('[data-reveal]');
-  if (reveals.length && 'IntersectionObserver' in window) {
-    const io = new IntersectionObserver((entries) => {
-      entries.forEach(e => {
-        if (e.isIntersecting) {
-          e.target.classList.add('revealed');
-          io.unobserve(e.target);
-        }
-      });
-    }, { threshold: 0.15, rootMargin: '0px 0px -40px 0px' });
-    reveals.forEach(el => io.observe(el));
-  } else {
-    reveals.forEach(el => el.classList.add('revealed'));
-  }
-</script>
+

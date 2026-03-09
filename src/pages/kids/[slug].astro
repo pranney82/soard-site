@@ -395,6 +395,16 @@ const dateModified = kid.year ? `${kid.year}-01-01` : undefined;
 
 <!-- ═══ Client-side JS ═══════════════════════ -->
 <script>
+  let _kidObserver: IntersectionObserver | null = null;
+
+  function cleanupKidPage() {
+    _kidObserver?.disconnect();
+    _kidObserver = null;
+  }
+
+  function initKidPage() {
+    cleanupKidPage();
+
   // ── YouTube facade ──────────────────────
   const facade = document.getElementById('yt-facade');
   if (facade) {
@@ -558,12 +568,12 @@ const dateModified = kid.year ? `${kid.year}-01-01` : undefined;
 
   // ── Scroll reveal for sections ──────────
   if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-    const observer = new IntersectionObserver(
+    _kidObserver = new IntersectionObserver(
       (entries) => {
         entries.forEach(entry => {
           if (entry.isIntersecting) {
             (entry.target as HTMLElement).classList.add('revealed');
-            observer.unobserve(entry.target);
+            _kidObserver?.unobserve(entry.target);
           }
         });
       },
@@ -571,9 +581,14 @@ const dateModified = kid.year ? `${kid.year}-01-01` : undefined;
     );
     document.querySelectorAll('.bio-section, .gallery-section, .video-section, .partners-section').forEach(el => {
       el.classList.add('reveal-target');
-      observer.observe(el);
+      _kidObserver!.observe(el);
     });
   }
+
+  } // end initKidPage
+
+  document.addEventListener('astro:page-load', initKidPage);
+  document.addEventListener('astro:before-swap', cleanupKidPage);
 </script>
 
 <style>
