@@ -3900,15 +3900,15 @@
           <h3 style="margin-bottom: 0.5rem;">Page Images</h3>
           <p class="text-sm text-muted mb-1">Cloudflare Image IDs for each section.</p>
           <div class="form-row">
-            ${renderImageField('Hero Image', 'images.hero', data.images?.hero)}
             ${renderImageField('Founders Photo', 'images.founder', data.images?.founder)}
+            ${renderImageField('Turning Point Photo', 'images.community', data.images?.community)}
           </div>
           <div class="form-row">
-            ${renderImageField('Turning Point Photo', 'images.community', data.images?.community)}
             ${renderImageField('Reveal / Accent Photo', 'images.reveal', data.images?.reveal)}
+            ${renderImageField('Store Photo', 'images.store', data.images?.store)}
           </div>
           <div class="form-row" style="grid-template-columns: 1fr 1fr;">
-            ${renderImageField('Store Photo', 'images.store', data.images?.store)}
+            ${renderImageField('Mascot (Gracie) Photo', 'images.gracie', data.images?.gracie)}
             <div></div>
           </div>
         </div>
