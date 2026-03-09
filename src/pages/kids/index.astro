@@ -363,6 +363,15 @@ const gridKids = [...kids];
       img.classList.add('is-loaded');
     } else {
       img.addEventListener('load', () => img.classList.add('is-loaded'), { once: true });
+      img.addEventListener('error', () => {
+        // Replace broken image with placeholder
+        const frame = img.closest('.kid-card__frame, .featured-card__image');
+        if (frame) {
+          frame.style.animation = 'none';
+          frame.style.background = 'var(--c-warm-gray)';
+        }
+        img.style.display = 'none';
+      }, { once: true });
     }
   });
 
@@ -900,10 +909,11 @@ const gridKids = [...kids];
     font-size: 0.85rem;
   }
 
-  /* ─── Kid Grid (Masonry) ─────────────────── */
+  /* ─── Kid Grid ──────────────────────────── */
   .kids-grid {
-    columns: 4 240px;
-    column-gap: var(--space-lg);
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: var(--space-lg);
   }
 
   /* ─── Shimmer skeleton for loading images ── */
@@ -914,15 +924,12 @@ const gridKids = [...kids];
 
   /* ─── Card ─────────────────────────────── */
   .kid-card {
-    display: inline-block;
-    width: 100%;
+    display: block;
     text-decoration: none;
     outline-offset: 4px;
     border-radius: var(--border-radius-lg);
     transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1),
                 box-shadow 0.35s cubic-bezier(0.16, 1, 0.3, 1);
-    break-inside: avoid;
-    margin-bottom: var(--space-lg);
   }
 
   .kid-card:hover {
@@ -960,6 +967,7 @@ const gridKids = [...kids];
     position: relative;
     border-radius: var(--border-radius-lg);
     overflow: hidden;
+    aspect-ratio: 3 / 4;
     /* Shimmer skeleton background while image loads */
     background: linear-gradient(
       90deg,
@@ -979,7 +987,9 @@ const gridKids = [...kids];
 
   .kid-card__img {
     width: 100%;
-    height: auto;
+    height: 100%;
+    object-fit: cover;
+    object-position: center 20%;
     display: block;
     transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1),
                 opacity 0.4s ease;
@@ -1182,19 +1192,15 @@ const gridKids = [...kids];
   /* ─── Responsive: Large screens ──────────── */
   @media (min-width: 1400px) {
     .kids-grid {
-      columns: 5;
+      grid-template-columns: repeat(5, 1fr);
     }
   }
 
   /* ─── Responsive: Tablet ─────────────────── */
   @media (max-width: 1100px) {
     .kids-grid {
-      columns: 3;
-      column-gap: var(--space-md);
-    }
-
-    .kid-card {
-      margin-bottom: var(--space-md);
+      grid-template-columns: repeat(3, 1fr);
+      gap: var(--space-md);
     }
 
     .featured-card__content {
@@ -1293,12 +1299,8 @@ const gridKids = [...kids];
 
     /* Grid: 2 columns on mobile */
     .kids-grid {
-      columns: 2;
-      column-gap: var(--space-sm);
-    }
-
-    .kid-card {
-      margin-bottom: var(--space-sm);
+      grid-template-columns: repeat(2, 1fr);
+      gap: var(--space-sm);
     }
 
     .kid-card__frame {
