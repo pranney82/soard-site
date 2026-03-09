@@ -118,7 +118,7 @@ const year = new Date().getFullYear();
         <div class="footer-col">
           <h4 class="footer-heading">Shop & Support</h4>
           <ul>
-            <li><a href="https://sunnyandranney.com" target="_blank" rel="noopener noreferrer">Sunny & Ranney <span class="external-icon" aria-hidden="true">↗</span></a></li>
+            <li><a href="/shop/">Shop</a></li>
             <li><a href="/resources/">Resources</a></li>
             <li><a href="/faq/">FAQs</a></li>
           </ul>
@@ -131,6 +131,17 @@ const year = new Date().getFullYear();
   <div class="footer-trust">
     <div class="footer-container footer-trust-inner">
       <div class="footer-trust-badges">
+        <a href="https://www.charitynavigator.org/ein/454773997"
+           target="_blank" rel="noopener noreferrer" class="trust-badge" aria-label="View our Charity Navigator profile">
+          <img
+            src="https://cdn.charitynavigator.org/img/badges/three-star.svg"
+            alt="Charity Navigator 3-Star Rating"
+            width="64"
+            height="64"
+            loading="lazy"
+            onerror="this.parentElement.style.display='none'"
+          />
+        </a>
         <a href="https://www.guidestar.org/profile/shared/2954b510-8c76-42e4-b589-7e826ca2cc47"
            target="_blank" rel="noopener noreferrer" class="trust-badge" aria-label="View our GuideStar Transparency profile">
           <img
@@ -149,6 +160,10 @@ const year = new Date().getFullYear();
           <span class="trust-badge-label">Tax-Deductible</span>
           <span class="trust-badge-value">100% of donations</span>
         </div>
+        <a href="/financials/ga-contractor-license.pdf" target="_blank" rel="noopener noreferrer" class="trust-badge trust-badge--text" aria-label="View Georgia Contractor License">
+          <span class="trust-badge-label">Licensed Contractor</span>
+          <span class="trust-badge-value">State of Georgia</span>
+        </a>
       </div>
 
       <address class="footer-contact">
@@ -243,7 +258,12 @@ const year = new Date().getFullYear();
   .newsletter-input:focus {
     outline: none;
     border-color: var(--c-yellow);
-    box-shadow: 0 0 0 3px rgba(255, 218, 36, 0.2);
+    box-shadow: 0 0 0 3px rgba(255, 218, 36, 0.25);
+  }
+  .newsletter-input:focus-visible {
+    outline: 3px solid var(--c-yellow);
+    outline-offset: 2px;
+    box-shadow: 0 0 0 5px rgba(255, 218, 36, 0.15);
   }
   .newsletter-btn {
     padding: 14px 28px;
@@ -281,7 +301,7 @@ const year = new Date().getFullYear();
 
   /* ─── Main Footer ──────────────────────── */
   .footer-main {
-    background: var(--c-dark);
+    background: var(--c-dark-deep);
     color: rgba(255, 255, 255, 0.75);
     padding: 72px 0 56px;
   }

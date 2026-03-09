@@ -38,15 +38,17 @@ self.addEventListener('fetch', (event) => {
 
   const isSameOrigin = url.origin === self.location.origin;
   const isCFImage = url.hostname === 'imagedelivery.net';
+  const isWPImage = url.hostname === 'sunshineonaranneyday.com' && url.pathname.startsWith('/wp-content/uploads/');
 
-  if (!isSameOrigin && !isCFImage) return;
+  if (!isSameOrigin && !isCFImage && !isWPImage) return;
 
   // Fonts & images: cache-first (immutable assets)
   if (
     url.pathname.startsWith('/fonts/') ||
     url.pathname.startsWith('/images/') ||
     url.pathname.match(/\.(woff2|png|jpg|jpeg|webp|avif|svg|ico)$/) ||
-    isCFImage
+    isCFImage ||
+    isWPImage
   ) {
     event.respondWith(cacheFirst(request));
     return;

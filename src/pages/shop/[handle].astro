@@ -1,0 +1,496 @@
+---
+/**
+ * Product Detail Page — /shop/[handle]
+ * Pre-rendered at build time via Shopify Storefront API.
+ */
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { isShopifyConfigured, fetchAllProductHandles, fetchProductByHandle, formatPrice } from '../../lib/shopify';
+
+export async function getStaticPaths() {
+  if (!isShopifyConfigured()) return [];
+  try {
+    const handles = await fetchAllProductHandles();
+    return handles.map((handle) => ({ params: { handle } }));
+  } catch (e) {
+    console.error('Failed to fetch product handles:', e);
+    return [];
+  }
+}
+
+const { handle } = Astro.params;
+let product: any = null;
+
+if (isShopifyConfigured() && handle) {
+  try {
+    product = await fetchProductByHandle(handle);
+  } catch (e) {
+    console.error(`Failed to fetch product ${handle}:`, e);
+  }
+}
+
+if (!product) {
+  return Astro.redirect('/shop/');
+}
+
+const images = product.images.edges.map((e: any) => e.node);
+const variants = product.variants.edges.map((e: any) => e.node);
+const hasVariants = variants.length > 1;
+const firstVariant = variants[0];
+const price = firstVariant.price;
+const compareAt = firstVariant.compareAtPrice;
+const hasDiscount = compareAt && parseFloat(compareAt.amount) > parseFloat(price.amount);
+const seoTitle = product.seo?.title || product.title;
+const seoDesc = product.seo?.description || product.description?.slice(0, 160);
+
+/* ── Product structured data (schema.org/Product) ── */
+const productSchema = {
+  "@type": "Product",
+  "@id": `https://sunshineonaranneyday.com/shop/${handle}/#product`,
+  "name": product.title,
+  "description": product.description,
+  "url": `https://sunshineonaranneyday.com/shop/${handle}/`,
+  ...(images[0] && { "image": images.map((img: any) => img.url) }),
+  "brand": {
+    "@type": "Organization",
+    "name": "Sunshine on a Ranney Day",
+    "@id": "https://sunshineonaranneyday.com/#organization",
+  },
+  "offers": variants.map((v: any) => ({
+    "@type": "Offer",
+    "url": `https://sunshineonaranneyday.com/shop/${handle}/`,
+    "priceCurrency": v.price.currencyCode,
+    "price": v.price.amount,
+    "availability": v.availableForSale
+      ? "https://schema.org/InStock"
+      : "https://schema.org/OutOfStock",
+    ...(v.title !== "Default Title" && { "name": v.title }),
+    "seller": {
+      "@type": "Organization",
+      "name": "Sunshine on a Ranney Day",
+      "@id": "https://sunshineonaranneyday.com/#organization",
+    },
+  })),
+};
+---
+
+<BaseLayout
+  title={seoTitle}
+  description={seoDesc}
+  jsonLd={productSchema}
+>
+  <section class="pdp" aria-label={product.title}>
+    <div class="pdp-inner">
+      <!-- Image Gallery -->
+      <div class="pdp-gallery">
+        <div class="pdp-main-image" id="pdp-main-image">
+          {images[0] && (
+            <img
+              src={`${images[0].url}&width=1200`}
+              alt={images[0].altText || product.title}
+              width="1200"
+              height="1200"
+              loading="eager"
+              fetchpriority="high"
+              decoding="async"
+              id="pdp-hero-img"
+            />
+          )}
+        </div>
+        {images.length > 1 && (
+          <div class="pdp-thumbs">
+            {images.map((img: any, i: number) => (
+              <button
+                class:list={['pdp-thumb', { 'pdp-thumb--active': i === 0 }]}
+                data-pdp-thumb={i}
+                data-img-src={`${img.url}&width=1200`}
+                data-img-alt={img.altText || product.title}
+                type="button"
+                aria-label={`View image ${i + 1}`}
+              >
+                <img
+                  src={`${img.url}&width=150`}
+                  alt=""
+                  width="150"
+                  height="150"
+                  loading="lazy"
+                  decoding="async"
+                />
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <!-- Product Info -->
+      <div class="pdp-info">
+        <a href="/shop/" class="pdp-back">← Back to Shop</a>
+        <h1 class="pdp-title">{product.title}</h1>
+
+        <div class="pdp-price">
+          <span class:list={['pdp-price-amount', { 'pdp-price-amount--sale': hasDiscount }]}>
+            {formatPrice(price.amount, price.currencyCode)}
+          </span>
+          {hasDiscount && (
+            <span class="pdp-price-compare">
+              {formatPrice(compareAt.amount, compareAt.currencyCode)}
+            </span>
+          )}
+        </div>
+
+        {/* Variant Selectors */}
+        {hasVariants && product.options.map((option: any) => (
+          <div class="pdp-option" data-option-name={option.name}>
+            <label class="pdp-option-label">{option.name}</label>
+            <div class="pdp-option-values">
+              {option.values.map((value: string, vi: number) => (
+                <button
+                  type="button"
+                  class:list={['pdp-option-btn', { 'pdp-option-btn--active': vi === 0 }]}
+                  data-option-value={value}
+                  data-option-name={option.name}
+                >
+                  {value}
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
+
+        <!-- Add to Cart -->
+        <button
+          type="button"
+          class="pdp-atc btn btn-primary"
+          id="pdp-atc"
+          data-variant-id={firstVariant.id}
+          data-product-title={product.title}
+          data-product-image={images[0]?.url ? `${images[0].url}&width=200` : ''}
+          disabled={!product.availableForSale}
+        >
+          {product.availableForSale ? (
+            <>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+              Add to Cart
+            </>
+          ) : (
+            'Sold Out'
+          )}
+        </button>
+
+        {/* Description */}
+        <div class="pdp-description prose" set:html={product.descriptionHtml} />
+
+        {/* Tags */}
+        {product.tags?.length > 0 && (
+          <div class="pdp-tags">
+            {product.tags.map((tag: string) => (
+              <span class="pdp-tag">{tag}</span>
+            ))}
+          </div>
+        )}
+
+        <p class="pdp-mission-note">100% of proceeds fund dream room makeovers for kids with special needs.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Variants data for JS -->
+  <script define:vars={{ variants: JSON.stringify(variants) }}>
+    window.__SHOPIFY_VARIANTS__ = JSON.parse(variants);
+  </script>
+</BaseLayout>
+
+<style>
+  .pdp {
+    padding: 140px 0 80px;
+  }
+  .pdp-inner {
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding: 0 var(--page-padding);
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 64px;
+    align-items: start;
+  }
+
+  /* ── Gallery ── */
+  .pdp-gallery {
+    position: sticky;
+    top: calc(var(--header-height) + 24px);
+  }
+  .pdp-main-image {
+    border-radius: 20px;
+    overflow: hidden;
+    background: var(--c-warm-gray);
+    aspect-ratio: 1;
+  }
+  .pdp-main-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  .pdp-thumbs {
+    display: flex;
+    gap: 10px;
+    margin-top: 12px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    padding-bottom: 4px;
+  }
+  .pdp-thumbs::-webkit-scrollbar { display: none; }
+  .pdp-thumb {
+    width: 72px;
+    height: 72px;
+    flex-shrink: 0;
+    border-radius: 12px;
+    overflow: hidden;
+    border: 2px solid transparent;
+    cursor: pointer;
+    background: var(--c-warm-gray);
+    padding: 0;
+    transition: border-color 0.2s ease, opacity 0.2s ease;
+    opacity: 0.6;
+  }
+  .pdp-thumb:hover { opacity: 0.9; }
+  .pdp-thumb--active {
+    border-color: var(--c-yellow);
+    opacity: 1;
+  }
+  .pdp-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  /* ── Info ── */
+  .pdp-info {
+    padding-top: 8px;
+  }
+  .pdp-back {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--c-text-muted);
+    transition: color 0.2s ease;
+    display: inline-block;
+    margin-bottom: 24px;
+  }
+  .pdp-back:hover { color: var(--c-dark); }
+  .pdp-title {
+    font-size: clamp(24px, 3vw, 36px);
+    margin-bottom: 16px;
+    line-height: 1.2;
+  }
+  .pdp-price {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 28px;
+  }
+  .pdp-price-amount {
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--c-dark);
+  }
+  .pdp-price-amount--sale { color: #c0392b; }
+  .pdp-price-compare {
+    font-size: 18px;
+    color: var(--c-text-light);
+    text-decoration: line-through;
+  }
+
+  /* ── Variant Options ── */
+  .pdp-option { margin-bottom: 20px; }
+  .pdp-option-label {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--c-text-muted);
+    margin-bottom: 10px;
+  }
+  .pdp-option-values { display: flex; gap: 8px; flex-wrap: wrap; }
+  .pdp-option-btn {
+    padding: 10px 20px;
+    border: 2px solid var(--c-border);
+    border-radius: 60px;
+    background: #fff;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+  .pdp-option-btn:hover { border-color: var(--c-dark); }
+  .pdp-option-btn--active {
+    border-color: var(--c-dark);
+    background: var(--c-dark);
+    color: #fff;
+  }
+
+  /* ── Add to Cart ── */
+  .pdp-atc {
+    width: 100%;
+    justify-content: center;
+    padding: 18px 32px;
+    font-size: 17px;
+    margin-bottom: 32px;
+    margin-top: 8px;
+  }
+  .pdp-atc:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    background: var(--c-text-light);
+  }
+  .pdp-atc.is-added {
+    background: var(--c-dark);
+    color: var(--c-yellow);
+  }
+
+  /* ── Description ── */
+  .pdp-description {
+    font-size: 16px;
+    line-height: 1.75;
+    color: var(--c-text-muted);
+    margin-bottom: 24px;
+  }
+
+  /* ── Tags ── */
+  .pdp-tags {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 24px;
+  }
+  .pdp-tag {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--c-text-muted);
+    background: var(--c-warm-gray);
+    padding: 4px 14px;
+    border-radius: 50px;
+  }
+
+  .pdp-mission-note {
+    font-size: 13px;
+    color: var(--c-text-light);
+    font-style: italic;
+    padding-top: 16px;
+    border-top: 1px solid var(--c-border);
+  }
+
+  @media (max-width: 768px) {
+    .pdp { padding: 120px 0 48px; }
+    .pdp-inner { grid-template-columns: 1fr; gap: 32px; }
+    .pdp-gallery { position: static; }
+    .pdp-title { font-size: 24px; }
+  }
+</style>
+
+<script>
+  /* ── Thumbnail Gallery ── */
+  const thumbs = document.querySelectorAll<HTMLButtonElement>('[data-pdp-thumb]');
+  const heroImg = document.getElementById('pdp-hero-img') as HTMLImageElement;
+
+  thumbs.forEach((thumb) => {
+    thumb.addEventListener('click', () => {
+      thumbs.forEach((t) => t.classList.remove('pdp-thumb--active'));
+      thumb.classList.add('pdp-thumb--active');
+      if (heroImg && thumb.dataset.imgSrc) {
+        heroImg.src = thumb.dataset.imgSrc;
+        heroImg.alt = thumb.dataset.imgAlt || '';
+      }
+    });
+  });
+
+  /* ── Variant Selection ── */
+  const variants: any[] = (window as any).__SHOPIFY_VARIANTS__ || [];
+  const optionBtns = document.querySelectorAll<HTMLButtonElement>('.pdp-option-btn');
+  const atcBtn = document.getElementById('pdp-atc') as HTMLButtonElement;
+  const priceEl = document.querySelector('.pdp-price-amount');
+  const compareEl = document.querySelector('.pdp-price-compare');
+
+  // Track selected options
+  const selectedOptions: Record<string, string> = {};
+  document.querySelectorAll('.pdp-option').forEach((group) => {
+    const name = (group as HTMLElement).dataset.optionName || '';
+    const first = group.querySelector('.pdp-option-btn--active');
+    if (first) selectedOptions[name] = (first as HTMLElement).dataset.optionValue || '';
+  });
+
+  optionBtns.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const name = btn.dataset.optionName || '';
+      const value = btn.dataset.optionValue || '';
+      selectedOptions[name] = value;
+
+      // Update active states within same option group
+      btn.closest('.pdp-option-values')?.querySelectorAll('.pdp-option-btn').forEach((b) => {
+        b.classList.toggle('pdp-option-btn--active', b === btn);
+      });
+
+      // Find matching variant
+      const match = variants.find((v: any) =>
+        v.selectedOptions.every((opt: any) => selectedOptions[opt.name] === opt.value)
+      );
+
+      if (match) {
+        atcBtn.dataset.variantId = match.id;
+        atcBtn.disabled = !match.availableForSale;
+        atcBtn.innerHTML = match.availableForSale
+          ? '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg> Add to Cart'
+          : 'Sold Out';
+
+        // Update price display
+        if (priceEl) {
+          const formatter = new Intl.NumberFormat('en-US', { style: 'currency', currency: match.price.currencyCode });
+          priceEl.textContent = formatter.format(parseFloat(match.price.amount));
+          priceEl.classList.toggle('pdp-price-amount--sale', !!(match.compareAtPrice && parseFloat(match.compareAtPrice.amount) > parseFloat(match.price.amount)));
+        }
+        if (compareEl) {
+          if (match.compareAtPrice && parseFloat(match.compareAtPrice.amount) > parseFloat(match.price.amount)) {
+            const formatter = new Intl.NumberFormat('en-US', { style: 'currency', currency: match.compareAtPrice.currencyCode });
+            (compareEl as HTMLElement).textContent = formatter.format(parseFloat(match.compareAtPrice.amount));
+            (compareEl as HTMLElement).style.display = '';
+          } else {
+            (compareEl as HTMLElement).style.display = 'none';
+          }
+        }
+
+        // Update image if variant has one
+        if (match.image && heroImg) {
+          heroImg.src = `${match.image.url}&width=1200`;
+          heroImg.alt = match.image.altText || '';
+        }
+      }
+    });
+  });
+
+  /* ── Add to Cart ── */
+  if (atcBtn) {
+    atcBtn.addEventListener('click', () => {
+      const variantId = atcBtn.dataset.variantId;
+      if (!variantId || atcBtn.disabled) return;
+
+      // Dispatch custom event for the cart system
+      window.dispatchEvent(new CustomEvent('cart:add', {
+        detail: {
+          variantId,
+          quantity: 1,
+          title: atcBtn.dataset.productTitle,
+          image: atcBtn.dataset.productImage,
+        },
+      }));
+
+      // Optimistic feedback
+      const originalHTML = atcBtn.innerHTML;
+      atcBtn.classList.add('is-added');
+      atcBtn.innerHTML = '✓ Added to Cart';
+      setTimeout(() => {
+        atcBtn.classList.remove('is-added');
+        atcBtn.innerHTML = originalHTML;
+      }, 1800);
+    });
+  }
+</script>

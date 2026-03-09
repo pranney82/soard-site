@@ -10,30 +10,45 @@ import MediaLogos from '../components/ui/MediaLogos.astro';
 import { getCollection } from 'astro:content';
 
 const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
-const stats = { totalKids: 132, totalRooms: 106, years: 13 };
+
+/* ── Site settings (all editable from admin) ── */
+import siteSettings from '../content/site/settings.json';
+const stats = {
+  totalKids: siteSettings.stats?.kidsServed || 132,
+  totalRooms: siteSettings.stats?.roomsCompleted || 106,
+  years: siteSettings.stats?.yearsOfImpact || 13,
+};
 
 /* ── Hero (from site settings) ── */
-import siteSettings from '../content/site/settings.json';
 const heroImageId = siteSettings.homeHero?.imageId || 'kids/harper/hero-c6a714';
 const heroAltText = siteSettings.homeHero?.altText || 'A child seeing their dream room for the first time';
+const heroEyebrow = siteSettings.homeHero?.eyebrow || '501(c)(3) Nonprofit · Atlanta, GA · Since 2012';
+const heroHeadlineLine1 = siteSettings.homeHero?.headlineLine1 || 'Building <em>dreams</em>,';
+const heroHeadlineLine2 = siteSettings.homeHero?.headlineLine2 || 'one room at a time';
+const heroLead = siteSettings.homeHero?.lead || 'We create life-changing spaces for children with special needs — dream bedrooms, accessible bathrooms, and therapy rooms — all at <strong>no cost to families</strong>.';
+const heroCta1Label = siteSettings.homeHero?.cta1Label || 'Give Today';
+const heroCta1Link = siteSettings.homeHero?.cta1Link || '/donate';
+const heroCta2Label = siteSettings.homeHero?.cta2Label || 'See Our Work ↓';
+const heroCta2Link = siteSettings.homeHero?.cta2Link || '#stories';
 
 /* ── Featured Story ── */
 const allKids = await getCollection('kids');
-const featuredSlug = 'zyah';
+const featuredSlug = siteSettings.featuredKidSlug || 'zyah';
 const featuredKid = allKids.find(k => k.id === featuredSlug);
 const fd = featuredKid?.data;
 
-/* ── Kids Strip — 8 diverse kids ── */
-const kidShowcase = [
-  { slug: 'liam',     cfId: 'kids/liam/hero-7ab7f9' },
-  { slug: 'sophia',   cfId: 'kids/sophia/hero-63933e' },
-  { slug: 'jackson',  cfId: 'kids/jackson/hero-4b1747' },
-  { slug: 'griffin',  cfId: 'kids/griffin/hero-dbeb0f' },
-  { slug: 'madison',  cfId: 'kids/madison/hero-2d8210' },
-  { slug: 'harper',   cfId: 'kids/harper/hero-c6a714' },
-  { slug: 'noah',     cfId: 'kids/noah/hero-1ba6ae' },
-  { slug: 'summer',   cfId: 'kids/summer/hero-22c2e2' },
-].map(item => {
+/* ── Kids Strip (from settings) ── */
+const kidShowcaseData = siteSettings.kidShowcase || [
+  { slug: 'liam', cfId: 'kids/liam/hero-7ab7f9' },
+  { slug: 'sophia', cfId: 'kids/sophia/hero-63933e' },
+  { slug: 'jackson', cfId: 'kids/jackson/hero-4b1747' },
+  { slug: 'griffin', cfId: 'kids/griffin/hero-dbeb0f' },
+  { slug: 'madison', cfId: 'kids/madison/hero-2d8210' },
+  { slug: 'harper', cfId: 'kids/harper/hero-c6a714' },
+  { slug: 'noah', cfId: 'kids/noah/hero-1ba6ae' },
+  { slug: 'summer', cfId: 'kids/summer/hero-22c2e2' },
+];
+const kidShowcase = kidShowcaseData.map(item => {
   const kid = allKids.find(k => k.id === item.slug);
   return {
     ...item,
@@ -43,28 +58,29 @@ const kidShowcase = [
   };
 });
 
-/* ── Section photos ── */
-const missionMainId = 'kids/eli/photo-001-70ddd7';
-const missionAccentId = 'kids/georgia/photo-001-bd7eb4';
-const storyPhotoId = 'kids/zyah/hero-2a16fd';
+/* ── Section photos (from settings) ── */
+const sp = siteSettings.sectionPhotos || {};
+const missionMainId = sp.missionMain || 'kids/eli/photo-001-70ddd7';
+const missionAccentId = sp.missionAccent || 'kids/georgia/photo-001-bd7eb4';
+const storyPhotoId = sp.storyPhoto || 'kids/zyah/hero-2a16fd';
 const roomPhotos = {
-  bedroom: 'kids/griffin/hero-dbeb0f',
-  bath: 'kids/zyah/hero-2a16fd',
-  therapy: 'kids/jackson/hero-4b1747',
+  bedroom: sp.roomBedroom || 'kids/griffin/hero-dbeb0f',
+  bath: sp.roomBath || 'kids/zyah/hero-2a16fd',
+  therapy: sp.roomTherapy || 'kids/jackson/hero-4b1747',
 };
 
-/* ── Partner logos ── */
-const partnerLogos = [
-  { id: 'logos/logo-gas-south-afb96260',         name: 'Gas South' },
-  { id: 'logos/logo-randall-paulson-b01b8322',    name: 'Randall Paulson' },
-  { id: 'logos/logo-kids-r-kids-2c18b077',        name: 'Kids R Kids' },
-  { id: 'logos/logo-cambria-5af4504f',            name: 'Cambria' },
-  { id: 'logos/logo-mohawk-9784da88',             name: 'Mohawk' },
+/* ── Partner logos (from settings) ── */
+const partnerLogos = siteSettings.partnerLogos || [
+  { id: 'logos/logo-gas-south-afb96260', name: 'Gas South' },
+  { id: 'logos/logo-randall-paulson-b01b8322', name: 'Randall Paulson' },
+  { id: 'logos/logo-kids-r-kids-2c18b077', name: 'Kids R Kids' },
+  { id: 'logos/logo-cambria-5af4504f', name: 'Cambria' },
+  { id: 'logos/logo-mohawk-9784da88', name: 'Mohawk' },
   { id: 'logos/logo-jackson-healthcare-3c0f6126', name: 'Jackson Healthcare' },
-  { id: 'logos/logo-crosby-design-group-d6cf63',  name: 'Crosby Design Group' },
-  { id: 'logos/logo-msi-e55b3f4c',               name: 'MSI' },
+  { id: 'logos/logo-crosby-design-group-d6cf63', name: 'Crosby Design Group' },
+  { id: 'logos/logo-msi-e55b3f4c', name: 'MSI' },
   { id: 'logos/logo-cr-construction-v2-bc7affde', name: 'CR Construction' },
-  { id: 'logos/logo-stag-partners-3399d7',        name: 'Stag Partners' },
+  { id: 'logos/logo-stag-partners-3399d7', name: 'Stag Partners' },
 ];
 
 import { getWebSiteSchema } from '../utils/schema';
@@ -99,19 +115,19 @@ const jsonLd = getWebSiteSchema();
       <div class="hero-content">
         <div class="hero-eyebrow" data-hero-reveal="eyebrow">
           <span class="hero-eyebrow-line"></span>
-          501(c)(3) Nonprofit · Atlanta, GA · Since 2012
+          {heroEyebrow}
         </div>
         <h1 data-hero-reveal="headline">
-          <span class="hero-line"><span class="hero-line-inner">Building <em>dreams</em>,</span></span>
-          <span class="hero-line"><span class="hero-line-inner">one room at a time</span></span>
+          <span class="hero-line"><span class="hero-line-inner" set:html={heroHeadlineLine1} /></span>
+          <span class="hero-line"><span class="hero-line-inner" set:html={heroHeadlineLine2} /></span>
         </h1>
-        <p class="hero-lead" data-hero-reveal="lead">We create life-changing spaces for children with special needs — dream bedrooms, accessible bathrooms, and therapy rooms — all at <strong>no cost to families</strong>.</p>
+        <p class="hero-lead" data-hero-reveal="lead" set:html={heroLead} />
         <div class="hero-ctas" data-hero-reveal="ctas">
-          <a href="/donate" class="btn btn-primary btn-glow">
-            Give Today
+          <a href={heroCta1Link} class="btn btn-primary btn-glow">
+            {heroCta1Label}
             <svg width="18" height="18" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 2.5C6.5 1 4 1 2.75 2.75S2.5 6.5 8 11.5C13.5 6.5 13.75 4.5 13.25 2.75S9.5 1 8 2.5Z" fill="currentColor"/></svg>
           </a>
-          <a href="#stories" class="btn btn-ghost-light">See Our Work ↓</a>
+          <a href={heroCta2Link} class="btn btn-ghost-light">{heroCta2Label}</a>
         </div>
         <div class="hero-proof" data-hero-reveal="proof">
           <span class="hero-proof-avatars" aria-hidden="true">
@@ -128,11 +144,6 @@ const jsonLd = getWebSiteSchema();
       </div>
     </div>
 
-    <!-- Scroll indicator -->
-    <div class="hero-scroll" aria-hidden="true">
-      <span class="hero-scroll-text">Scroll</span>
-      <div class="hero-scroll-track"><div class="hero-scroll-dot"></div></div>
-    </div>
   </section>
 
   <!-- ══════ IMPACT RIBBON ══════ -->
@@ -437,13 +448,6 @@ const jsonLd = getWebSiteSchema();
   .hero-impact-num span { font-size: 32px; }
   .hero-impact-label { font-size: 13px; font-weight: 500; color: rgba(255,255,255,0.5); margin-top: 6px; line-height: 1.4; }
 
-  /* Scroll indicator — centered via left/right/margin (not transform, which conflicts with animation) */
-  .hero-scroll { position: absolute; bottom: 28px; left: 0; right: 0; margin: 0 auto; width: fit-content; z-index: 3; display: flex; flex-direction: column; align-items: center; gap: 8px; opacity: 0; }
-  .hero.is-loaded .hero-scroll { animation: heroFadeUp 0.6s cubic-bezier(0.16,1,0.3,1) 1.8s both; }
-  .hero-scroll-text { font-size: 10px; font-weight: 600; letter-spacing: 0.2em; text-transform: uppercase; color: rgba(255,255,255,0.3); }
-  .hero-scroll-track { width: 1px; height: 40px; background: rgba(255,255,255,0.1); border-radius: 1px; position: relative; overflow: hidden; }
-  .hero-scroll-dot { position: absolute; top: 0; left: 0; width: 1px; height: 8px; background: var(--c-yellow); border-radius: 1px; animation: scrollDot 2s cubic-bezier(0.4,0,0.2,1) infinite; }
-  @keyframes scrollDot { 0% { transform: translateY(-8px); opacity: 0; } 20% { opacity: 1; } 80% { opacity: 1; } 100% { transform: translateY(40px); opacity: 0; } }
 
   /* Hero shared keyframes */
   @keyframes heroFadeUp { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: translateY(0); } }

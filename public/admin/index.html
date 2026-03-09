@@ -282,7 +282,8 @@
       border-color: #FFD500;
       background: rgba(255,213,0,0.05);
     }
-    .dropzone-icon { font-size: 2rem; margin-bottom: 0.5rem; }
+    .dropzone-icon { font-size: 2rem; margin-bottom: 0.5rem; color: #6B6C72; }
+    .dropzone-icon svg { width: 32px; height: 32px; }
     .dropzone-text { color: #6B6C72; font-size: 0.9rem; }
     .dropzone-text strong { color: #FFD500; }
 
@@ -394,7 +395,8 @@
       text-align: center; padding: 3rem 1rem;
       color: #6B6C72;
     }
-    .empty-state-icon { font-size: 3rem; margin-bottom: 0.75rem; }
+    .empty-state-icon { font-size: 3rem; margin-bottom: 0.75rem; color: #9B9CA0; }
+    .empty-state-icon svg { width: 48px; height: 48px; }
 
     /* ─── Back link ──────────────────────── */
     .back-link {
@@ -502,6 +504,33 @@
     import { useState, useEffect, useCallback, useRef, useMemo } from 'https://esm.sh/preact@10.25.4/hooks';
     import htm from 'https://esm.sh/htm@3.1.1';
     const html = htm.bind(h);
+
+    // ─── SVG Icons ───────────────────────────
+    const _s = (d, size = 16) => html`<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;flex-shrink:0;">${d}</svg>`;
+    const icons = {
+      arrowLeft:  _s(html`<path d="M19 12H5"/><path d="m12 19-7-7 7-7"/>`),
+      x:          _s(html`<path d="M18 6 6 18"/><path d="m6 6 12 12"/>`),
+      star:       html`<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;flex-shrink:0;"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`,
+      starOutline:_s(html`<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>`),
+      fileText:   _s(html`<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 13H8"/><path d="M16 17H8"/><path d="M16 13h-2"/>`),
+      search:     _s(html`<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>`),
+      barChart:   _s(html`<line x1="12" x2="12" y1="20" y2="10"/><line x1="18" x2="18" y1="20" y2="4"/><line x1="6" x2="6" y1="20" y2="16"/>`, 20),
+      folder:     _s(html`<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>`),
+      folderOpen: _s(html`<path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/>`, 20),
+      sparkle:    _s(html`<path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"/>`),
+      video:      _s(html`<path d="m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5"/><rect x="2" y="6" width="14" height="12" rx="2"/>`, 24),
+      camera:     _s(html`<path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/>`),
+      user:       _s(html`<path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>`, 20),
+      check:      _s(html`<path d="M20 6 9 17l-5-5"/>`),
+      pencil:     _s(html`<path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/>`),
+      trash:      _s(html`<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>`),
+      users:      _s(html`<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>`),
+      building:   _s(html`<rect width="16" height="20" x="4" y="2" rx="2" ry="2"/><path d="M9 22v-4h6v4"/><path d="M8 6h.01"/><path d="M16 6h.01"/><path d="M12 6h.01"/><path d="M12 10h.01"/><path d="M12 14h.01"/><path d="M16 10h.01"/><path d="M16 14h.01"/><path d="M8 10h.01"/><path d="M8 14h.01"/>`),
+      paperclip:  _s(html`<path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/>`),
+      warning:    _s(html`<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/>`),
+      menu:       _s(html`<line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/>`),
+      chevLeft:   _s(html`<path d="m15 18-6-6 6-6"/>`),
+    };
 
     // ─── API Helpers ────────────────────────
     const api = {
@@ -642,7 +671,7 @@
           onDrop=${handleDrop}
           onClick=${() => inputRef.current?.click()}
         >
-          <div class="dropzone-icon">${accept.includes('pdf') ? '📄' : '📸'}</div>
+          <div class="dropzone-icon">${accept.includes('pdf') ? icons.fileText : icons.camera}</div>
           <div class="dropzone-text">
             <strong>Click to browse</strong> or drag files here
             <br/>${label || (multiple ? 'Upload multiple files' : 'Upload a file')}
@@ -749,7 +778,7 @@
         </div>
         <div class="card" style="margin-bottom: 1rem; padding: 0.75rem 1rem;">
           <div class="search-bar" style="max-width: 100%;">
-            <span class="search-icon">🔍</span>
+            <span class="search-icon">${icons.search}</span>
             <input placeholder="Search by name, diagnosis, or year..."
               value=${search} onInput=${e => setSearch(e.target.value)} />
           </div>
@@ -1097,7 +1126,7 @@
           onConfirm=${handleDelete}
           onCancel=${() => setShowDeleteModal(false)}
         />` : null}
-        <button class="back-link" onClick=${safeBack}>← Back to Kids</button>
+        <button class="back-link" onClick=${safeBack}>${icons.arrowLeft} Back to Kids</button>
         <div class="page-header">
           <h2>${slug ? `Edit: ${data.name}` : 'Add New Kid'}</h2>
           <div class="flex gap-1 items-center">
@@ -1183,7 +1212,7 @@
             <label class="form-label">Cloudflare Stream Video (optional)</label>
             ${data.streamVideoId ? html`
               <div style="display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem; background: rgba(122, 0, 223, 0.06); border-radius: 8px; border: 1px solid rgba(122, 0, 223, 0.15);">
-                <span style="font-size: 1.5rem;">🎬</span>
+                <span style="font-size: 1.5rem;">${icons.video}</span>
                 <div style="flex: 1; min-width: 0;">
                   <div style="font-weight: 600; font-size: 0.9rem;">Stream video linked</div>
                   <div style="font-size: 0.8rem; color: rgba(0,0,0,0.45); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${data.streamVideoId}</div>
@@ -1212,7 +1241,7 @@
           <div class="flex items-center justify-between mb-1">
             <h3>SEO & Descriptions</h3>
             <button class="btn btn-secondary btn-sm" onClick=${handleGenerateSeo} disabled=${generatingSeo}>
-              ${generatingSeo ? html`<span class="spinner" />` : '✨'} ${generatingSeo ? 'Generating...' : 'Regenerate with AI'}
+              ${generatingSeo ? html`<span class="spinner" />` : icons.sparkle} ${generatingSeo ? 'Generating...' : 'Regenerate with AI'}
             </button>
           </div>
           <p class="text-sm text-muted mb-1">Auto-generates when you fill in name + diagnosis or bio. Click to regenerate anytime.</p>
@@ -1237,11 +1266,11 @@
             <h3>Photos</h3>
             ${data.photos.length > 0 ? html`
               <button class="btn btn-secondary btn-sm" onClick=${handleGenerateAlt} disabled=${generatingAlt}>
-                ${generatingAlt ? html`<span class="spinner" />` : '✨'} ${generatingAlt ? 'Generating...' : 'Regenerate Alt Text'}
+                ${generatingAlt ? html`<span class="spinner" />` : icons.sparkle} ${generatingAlt ? 'Generating...' : 'Regenerate Alt Text'}
               </button>
             ` : null}
           </div>
-          <p class="text-sm text-muted mb-1">Upload photos, click ⭐ for hero. Alt text generates automatically after upload.</p>
+          <p class="text-sm text-muted mb-1">Upload photos, click star for hero. Alt text generates automatically after upload.</p>
           <${DropZone} onFiles=${handlePhotoUpload} label="JPG, PNG, WebP — upload as many as you need" />
           ${data.photos.length > 0 ? html`
             <div class="photo-grid">
@@ -1251,8 +1280,8 @@
                   ${uploading[photo._tempId] ? html`<div class="photo-uploading"><span class="spinner" /></div>` : null}
                   <div class="photo-actions">
                     <button class="photo-btn ${photo.url === data.heroImage ? 'hero-btn' : ''}"
-                      onClick=${() => setHero(i)} title="Set as hero image">⭐</button>
-                    <button class="photo-btn" onClick=${() => removePhoto(i)} title="Remove">✕</button>
+                      onClick=${() => setHero(i)} title="Set as hero image">${icons.star}</button>
+                    <button class="photo-btn" onClick=${() => removePhoto(i)} title="Remove">${icons.x}</button>
                   </div>
                 </div>
               `)}
@@ -1342,7 +1371,7 @@
                 <td>${p.logo ? html`<img class="td-thumb" src="${p.logo}" alt="" style="object-fit: contain; background: #fff;" />` : '—'}</td>
                 <td><strong>${p.name}</strong></td>
                 <td><span class="badge badge-accent">${p.tier}</span></td>
-                <td>${p.featured ? '✅' : '—'}</td>
+                <td>${p.featured ? icons.check : '—'}</td>
                 <td style="white-space: nowrap;">
                   <button class="btn btn-ghost btn-sm" onClick=${() => onEdit(p.slug)}>Edit</button>
                   <button class="btn btn-ghost btn-sm" style="color: #E53E3E;" onClick=${(e) => { e.stopPropagation(); onDelete(p); }}>Delete</button>
@@ -1478,7 +1507,7 @@
           onConfirm=${handleDelete}
           onCancel=${() => setShowDeleteModal(false)}
         />` : null}
-        <button class="back-link" onClick=${safeBack}>← Back to Partners</button>
+        <button class="back-link" onClick=${safeBack}>${icons.arrowLeft} Back to Partners</button>
         <div class="page-header">
           <h2>${slug ? `Edit: ${data.name}` : 'Add New Partner'}</h2>
           <div class="flex gap-1 items-center">
@@ -1668,7 +1697,7 @@
           ${['documents', 'annual-reports', 'upload'].map(t => html`
             <button key=${t} class="btn ${tab === t ? 'btn-primary' : 'btn-ghost'} btn-sm"
               onClick=${() => setTab(t)}>
-              ${t === 'documents' ? '📄 990s & Audits' : t === 'annual-reports' ? '📊 Annual Reports' : '📁 Upload Files'}
+              ${t === 'documents' ? html`${icons.fileText} 990s & Audits` : t === 'annual-reports' ? html`${icons.barChart} Annual Reports` : html`${icons.folder} Upload Files`}
             </button>
           `)}
         </div>
@@ -1691,7 +1720,7 @@
                     <td><span class="badge ${d.source === 'local' ? 'badge-green' : 'badge-gray'}">${d.source}</span></td>
                     <td style="text-align:right;">
                       <a href=${d.url} target="_blank" class="btn btn-ghost btn-sm">View ↗</a>
-                      <button class="btn btn-ghost btn-sm" style="color:#c00;" onClick=${() => removeDocument(realIdx)}>✕</button>
+                      <button class="btn btn-ghost btn-sm" style="color:#c00;" onClick=${() => removeDocument(realIdx)}>${icons.x}</button>
                     </td>
                   </tr>`;
                 })}</tbody>
@@ -1715,7 +1744,7 @@
                     <td><span class="badge ${d.source === 'local' ? 'badge-green' : 'badge-gray'}">${d.source}</span></td>
                     <td style="text-align:right;">
                       <a href=${d.url} target="_blank" class="btn btn-ghost btn-sm">View ↗</a>
-                      <button class="btn btn-ghost btn-sm" style="color:#c00;" onClick=${() => removeDocument(realIdx)}>✕</button>
+                      <button class="btn btn-ghost btn-sm" style="color:#c00;" onClick=${() => removeDocument(realIdx)}>${icons.x}</button>
                     </td>
                   </tr>`;
                 })}</tbody>
@@ -1738,7 +1767,7 @@
                     <td><span class="badge ${d.source === 'local' ? 'badge-green' : 'badge-gray'}">${d.source}</span></td>
                     <td style="text-align:right;">
                       <a href=${d.url} target="_blank" class="btn btn-ghost btn-sm">View ↗</a>
-                      <button class="btn btn-ghost btn-sm" style="color:#c00;" onClick=${() => removeDocument(realIdx)}>✕</button>
+                      <button class="btn btn-ghost btn-sm" style="color:#c00;" onClick=${() => removeDocument(realIdx)}>${icons.x}</button>
                     </td>
                   </tr>`;
                 })}</tbody>
@@ -1795,7 +1824,7 @@
             </div>
             ${reports.length === 0 ? html`
               <div class="empty-state">
-                <div class="empty-state-icon">📊</div>
+                <div class="empty-state-icon">${icons.barChart}</div>
                 <p>No annual reports yet.</p>
                 <p class="text-sm">Add your first annual report with a cover image and PDF link.</p>
               </div>
@@ -1811,7 +1840,7 @@
                   <td>${r.coverImage ? html`<img src=${r.coverImage} alt="" style="width:40px;height:52px;object-fit:cover;border-radius:4px;" />` : html`<span class="text-sm text-muted">—</span>`}</td>
                   <td style="text-align:right;">
                     <a href=${r.url} target="_blank" class="btn btn-ghost btn-sm">View ↗</a>
-                    <button class="btn btn-ghost btn-sm" style="color:#c00;" onClick=${() => removeReport(i)}>✕</button>
+                    <button class="btn btn-ghost btn-sm" style="color:#c00;" onClick=${() => removeReport(i)}>${icons.x}</button>
                   </td>
                 </tr>`)}</tbody>
               </table></div>
@@ -1871,7 +1900,7 @@
             <h3 style="margin-bottom: 1rem;">Uploaded Files (${files.length})</h3>
             ${files.length === 0 ? html`
               <div class="empty-state">
-                <div class="empty-state-icon">📂</div>
+                <div class="empty-state-icon">${icons.folderOpen}</div>
                 <p>No files uploaded yet.</p>
               </div>
             ` : html`
@@ -1879,7 +1908,7 @@
                 <thead><tr><th>File</th><th>Size</th><th>Path</th><th>Link</th></tr></thead>
                 <tbody>
                   ${files.map(f => html`<tr key=${f.name}>
-                    <td>📄 <strong>${f.name}</strong></td>
+                    <td>${icons.fileText} <strong>${f.name}</strong></td>
                     <td class="text-sm text-muted">${(f.size / 1024).toFixed(0)} KB</td>
                     <td class="text-sm"><code>/financials/${f.name}</code></td>
                     <td><a href="/financials/${f.name}" target="_blank" class="btn btn-ghost btn-sm">View ↗</a></td>
@@ -1909,7 +1938,7 @@
               <thead><tr><th></th><th>Name</th><th>Title</th><th>Organization</th><th>Order</th><th></th></tr></thead>
               <tbody>
                 ${members.map(t => html`<tr key=${t.slug}>
-                  <td>${t.photo ? html`<img class="td-thumb" src="${t.photo}" alt="" style="border-radius: 50%;" />` : html`<div class="td-thumb" style="border-radius: 50%; background: #E5E4E0; display: flex; align-items: center; justify-content: center; font-size: 1.2rem;">👤</div>`}</td>
+                  <td>${t.photo ? html`<img class="td-thumb" src="${t.photo}" alt="" style="border-radius: 50%;" />` : html`<div class="td-thumb" style="border-radius: 50%; background: #E5E4E0; display: flex; align-items: center; justify-content: center; font-size: 1.2rem;">${icons.user}</div>`}</td>
                   <td><strong>${t.name}</strong></td>
                   <td class="text-sm">${t.title || '—'}</td>
                   <td class="text-sm">${t.organization || '—'}</td>
@@ -2060,7 +2089,7 @@
           onConfirm=${handleDelete}
           onCancel=${() => setShowDeleteModal(false)}
         />` : null}
-        <button class="back-link" onClick=${safeBack}>← Back to Team</button>
+        <button class="back-link" onClick=${safeBack}>${icons.arrowLeft} Back to Team</button>
         <div class="page-header">
           <h2>${slug ? `Edit: ${data.name}` : 'Add Team Member'}</h2>
           <div class="flex gap-1 items-center">
@@ -2259,7 +2288,7 @@
       return html`
         <div class="page-header">
           <div style="display: flex; align-items: center; gap: 0.75rem;">
-            <button class="btn btn-ghost" onClick=${onBack}>← Back</button>
+            <button class="btn btn-ghost" onClick=${onBack}>${icons.arrowLeft} Back</button>
             <h2>${slug ? 'Edit Article' : 'New Article'}</h2>
           </div>
           <button class="btn btn-primary" onClick=${handleSave} disabled=${saving}>
@@ -2398,7 +2427,7 @@
         </div>
         <div class="card" style="margin-bottom: 1rem; padding: 0.75rem 1rem;">
           <div class="search-bar" style="max-width: 100%;">
-            <span class="search-icon">🔍</span>
+            <span class="search-icon">${icons.search}</span>
             <input placeholder="Search by title, location, or category..."
               value=${search} onInput=${e => setSearch(e.target.value)} />
           </div>
@@ -2414,7 +2443,7 @@
                 <td class="text-sm">${(e.location || '—').slice(0, 30)}${(e.location || '').length > 30 ? '…' : ''}</td>
                 <td><span class="badge badge-accent">${EVENT_CAT_LABELS[e.category] || e.category}</span></td>
                 <td><span class="badge ${e.status === 'upcoming' ? 'badge-green' : e.status === 'cancelled' ? 'badge-red' : 'badge-gray'}">${e.status}</span></td>
-                <td>${e.featured ? '⭐' : '—'}</td>
+                <td>${e.featured ? icons.star : '—'}</td>
                 <td style="white-space: nowrap;">
                   <button class="btn btn-ghost btn-sm" onClick=${() => onEdit(e.slug)}>Edit</button>
                   <button class="btn btn-ghost btn-sm" style="color: #E53E3E;" onClick=${(ev) => { ev.stopPropagation(); onDelete(e); }}>Delete</button>
@@ -2506,7 +2535,7 @@
       return html`
         <div class="page-header">
           <div style="display: flex; align-items: center; gap: 0.75rem;">
-            <button class="btn btn-ghost" onClick=${() => { if (dirty && !confirm('You have unsaved changes. Leave?')) return; onBack(); }}>← Back</button>
+            <button class="btn btn-ghost" onClick=${() => { if (dirty && !confirm('You have unsaved changes. Leave?')) return; onBack(); }}>${icons.arrowLeft} Back</button>
             <h2>${slug ? 'Edit Event' : 'New Event'}</h2>
           </div>
           <button class="btn btn-primary" onClick=${handleSave} disabled=${saving}>
@@ -2600,6 +2629,18 @@
                 ${EVENT_STATUSES.map(s => html`<option key=${s} value=${s}>${s.charAt(0).toUpperCase() + s.slice(1)}</option>`)}
               </select>
             </div>
+          </div>
+          <div class="form-group" style="margin-bottom: 1.25rem;">
+            <span class="form-label">Event Image (Cloudflare Image ID)</span>
+            <input class="form-input" type="text" value=${data.image || ''}
+              onInput=${e => update('image', e.target.value || null)} placeholder="events/spring-gala-abc123" />
+            <span class="form-hint">Cloudflare Image ID for the event card. Leave blank for no image.</span>
+            ${data.image ? html`
+              <div style="margin-top: 0.75rem; border-radius: 8px; overflow: hidden; max-width: 400px;">
+                <img src=${'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/' + data.image + '/w=400,f=auto'}
+                  alt="Event image preview" style="width: 100%; height: 160px; object-fit: cover; display: block;" />
+              </div>
+            ` : null}
           </div>
           <div class="form-row">
             <div class="form-group">
@@ -2752,7 +2793,7 @@
         return html`
           <div class="page-header">
             <div style="display: flex; align-items: center; gap: 0.75rem;">
-              <button class="btn btn-ghost btn-sm" onClick=${() => setEditItem(null)}>← Back</button>
+              <button class="btn btn-ghost btn-sm" onClick=${() => setEditItem(null)}>${icons.arrowLeft} Back</button>
               <h2>${item.question ? 'Edit FAQ' : 'New FAQ'}</h2>
             </div>
             <button class="btn btn-primary" onClick=${handleSave} disabled=${saving}>
@@ -2783,7 +2824,7 @@
           </div>
           <div style="margin-top: 1rem;">
             <button class="btn btn-ghost" style="color: #e53e3e;" onClick=${() => { deleteItem(item.id); }}>
-              🗑 Delete this FAQ
+              ${icons.trash} Delete this FAQ
             </button>
           </div>
         `;
@@ -2800,7 +2841,7 @@
             </button>
           </div>
         </div>
-        <p class="text-sm text-muted" style="margin-bottom: 1rem;">Manage FAQ questions shown on the Donate page and the FAQ page. Categories marked with ⭐ appear on the Donate page.</p>
+        <p class="text-sm text-muted" style="margin-bottom: 1rem;">Manage FAQ questions shown on the Donate page and the FAQ page. Categories marked with a star appear on the Donate page.</p>
 
         ${data.categories.map(cat => {
           const catItems = data.items
@@ -2825,9 +2866,9 @@
                   </div>
                 ` : html`
                   <div style="display: flex; align-items: center; gap: 0.5rem;">
-                    <h3 style="margin: 0;">${cat.showOnDonatePage ? '⭐ ' : ''}${cat.label}</h3>
+                    <h3 style="margin: 0;">${cat.showOnDonatePage ? html`${icons.star} ` : ''}${cat.label}</h3>
                     <span class="text-sm text-muted">(${catItems.length})</span>
-                    <button class="btn btn-ghost btn-sm" onClick=${() => setEditCat(cat.id)} title="Edit category">✏️</button>
+                    <button class="btn btn-ghost btn-sm" onClick=${() => setEditCat(cat.id)} title="Edit category">${icons.pencil}</button>
                   </div>
                 `}
                 <button class="btn btn-ghost btn-sm" onClick=${() => addItem(cat.id)}>+ Add FAQ</button>
@@ -2861,7 +2902,7 @@
                         <td>
                           <div style="display: flex; gap: 0.25rem;">
                             <button class="btn btn-ghost btn-sm" onClick=${() => setEditItem(item.id)}>Edit</button>
-                            <button class="btn btn-ghost btn-sm" style="color: #e53e3e;" onClick=${() => deleteItem(item.id)}>🗑</button>
+                            <button class="btn btn-ghost btn-sm" style="color: #e53e3e;" onClick=${() => deleteItem(item.id)}>${icons.trash}</button>
                           </div>
                         </td>
                       </tr>
@@ -2972,7 +3013,7 @@
 
           <div class="img-picker-toolbar">
             <div style="display: flex; gap: 0.35rem;">
-              ${[['kids', '👶 Kids'], ['logos', '🏢 Logos'], ['all', '📁 All'], ['other', '📎 Other']].map(([id, label]) => html`
+              ${[['kids', 'Kids'], ['logos', 'Logos'], ['all', 'All'], ['other', 'Other']].map(([id, label]) => html`
                 <button key=${id} class="chip" style="${category === id
                   ? 'background: #2D2E33; color: #fff;'
                   : 'background: rgba(45,46,51,0.08); color: #2D2E33; cursor: pointer;'}"
@@ -3018,7 +3059,7 @@
           </div>
           ${pageCount > 1 ? html`
             <div class="img-picker-pager">
-              <button class="btn btn-ghost btn-sm" disabled=${displayPage <= 1} onClick=${() => setDisplayPage(p => p - 1)}>← Prev</button>
+              <button class="btn btn-ghost btn-sm" disabled=${displayPage <= 1} onClick=${() => setDisplayPage(p => p - 1)}>${icons.chevLeft} Prev</button>
               <span class="text-sm">Page ${displayPage} of ${pageCount}</span>
               <button class="btn btn-ghost btn-sm" disabled=${displayPage >= pageCount} onClick=${() => setDisplayPage(p => p + 1)}>Next →</button>
             </div>
@@ -3069,6 +3110,28 @@
         });
       };
 
+      const addToArray = (key, item) => {
+        setData(d => ({ ...d, [key]: [...(d[key] || []), item] }));
+      };
+      const removeFromArray = (key, index) => {
+        setData(d => ({ ...d, [key]: (d[key] || []).filter((_, i) => i !== index) }));
+      };
+      const updateArrayItem = (key, index, field, value) => {
+        setData(d => {
+          const arr = [...(d[key] || [])];
+          arr[index] = { ...arr[index], [field]: value };
+          return { ...d, [key]: arr };
+        });
+      };
+      const moveArrayItem = (key, from, to) => {
+        setData(d => {
+          const arr = [...(d[key] || [])];
+          const [item] = arr.splice(from, 1);
+          arr.splice(to, 0, item);
+          return { ...d, [key]: arr };
+        });
+      };
+
       const handleSave = async () => {
         setSaving(true);
         try {
@@ -3105,7 +3168,7 @@
         <div class="card">
           <h3 style="margin-bottom: 1rem;">Impact Numbers</h3>
           <p class="text-sm text-muted mb-1">These appear on the homepage and throughout the site.</p>
-          <div class="form-row" style="grid-template-columns: 1fr 1fr 1fr;">
+          <div class="form-row" style="grid-template-columns: 1fr 1fr 1fr 1fr;">
             <div class="form-group">
               <label class="form-label">Rooms Completed</label>
               <input class="form-input" type="number" value=${data.stats?.roomsCompleted || 0}
@@ -3120,6 +3183,11 @@
               <label class="form-label">Partners</label>
               <input class="form-input" type="number" value=${data.stats?.partners || 0}
                 onInput=${e => updateStat('partners', e.target.value)} />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Years of Impact</label>
+              <input class="form-input" type="number" value=${data.stats?.yearsOfImpact || 0}
+                onInput=${e => updateStat('yearsOfImpact', e.target.value)} />
             </div>
           </div>
         </div>
@@ -3148,6 +3216,162 @@
               onInput=${e => updateField('homeHero.altText', e.target.value)} />
           </div>
         </div>
+
+        <div class="card">
+          <h3 style="margin-bottom: 1rem;">Hero Text & CTAs</h3>
+          <p class="text-sm text-muted mb-1">The text content displayed on the homepage hero section.</p>
+          <div class="form-group">
+            <label class="form-label">Eyebrow Text</label>
+            <input class="form-input" value=${data.homeHero?.eyebrow || ''}
+              placeholder="501(c)(3) Nonprofit · Atlanta, GA · Since 2012"
+              onInput=${e => updateField('homeHero.eyebrow', e.target.value)} />
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Headline Line 1</label>
+              <input class="form-input" value=${data.homeHero?.headlineLine1 || ''}
+                placeholder="Building <em>dreams</em>,"
+                onInput=${e => updateField('homeHero.headlineLine1', e.target.value)} />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Headline Line 2</label>
+              <input class="form-input" value=${data.homeHero?.headlineLine2 || ''}
+                placeholder="one room at a time"
+                onInput=${e => updateField('homeHero.headlineLine2', e.target.value)} />
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Lead Paragraph</label>
+            <textarea class="form-input" rows="3" value=${data.homeHero?.lead || ''}
+              placeholder="We create life-changing spaces..."
+              onInput=${e => updateField('homeHero.lead', e.target.value)} />
+          </div>
+          <p class="text-sm text-muted" style="margin: 0.75rem 0 0.25rem;">You can use &lt;em&gt; in headlines and &lt;strong&gt; in the lead for emphasis.</p>
+          <div class="form-row" style="margin-top: 1rem;">
+            <div class="form-group">
+              <label class="form-label">Primary CTA Label</label>
+              <input class="form-input" value=${data.homeHero?.cta1Label || ''}
+                placeholder="Give Today" onInput=${e => updateField('homeHero.cta1Label', e.target.value)} />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Primary CTA Link</label>
+              <input class="form-input" value=${data.homeHero?.cta1Link || ''}
+                placeholder="/donate" onInput=${e => updateField('homeHero.cta1Link', e.target.value)} />
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Secondary CTA Label</label>
+              <input class="form-input" value=${data.homeHero?.cta2Label || ''}
+                placeholder="See Our Work ↓" onInput=${e => updateField('homeHero.cta2Label', e.target.value)} />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Secondary CTA Link</label>
+              <input class="form-input" value=${data.homeHero?.cta2Link || ''}
+                placeholder="#stories" onInput=${e => updateField('homeHero.cta2Link', e.target.value)} />
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3 style="margin-bottom: 1rem;">Featured Kid Story</h3>
+          <p class="text-sm text-muted mb-1">The kid slug highlighted in the Featured Story section on the homepage.</p>
+          <div class="form-group">
+            <label class="form-label">Kid Slug</label>
+            <input class="form-input" value=${data.featuredKidSlug || ''}
+              placeholder="zyah"
+              onInput=${e => updateField('featuredKidSlug', e.target.value)} />
+          </div>
+        </div>
+
+        <div class="card">
+          <h3 style="margin-bottom: 1rem;">Kid Showcase Strip</h3>
+          <p class="text-sm text-muted mb-1">The row of featured kids on the homepage. Names and details are pulled from kid records automatically.</p>
+          ${(data.kidShowcase || []).map((kid, i) => html`
+            <div style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.5rem; padding: 0.5rem; background: rgba(0,0,0,0.02); border-radius: 8px;">
+              ${kid.cfId ? html`<img src=${'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/' + kid.cfId + '/w=60,h=60,fit=cover,f=auto'}
+                alt="" style="width: 36px; height: 36px; border-radius: 6px; object-fit: cover; flex-shrink: 0;" />` : null}
+              <input class="form-input" style="flex: 1" value=${kid.slug || ''} placeholder="Kid slug"
+                onInput=${e => updateArrayItem('kidShowcase', i, 'slug', e.target.value)} />
+              <input class="form-input" style="flex: 2" value=${kid.cfId || ''} placeholder="Cloudflare Image ID"
+                onInput=${e => updateArrayItem('kidShowcase', i, 'cfId', e.target.value)} />
+              <button class="btn btn-ghost" style="padding: 0.3rem 0.5rem; font-size: 0.8rem;" disabled=${i === 0}
+                onClick=${() => moveArrayItem('kidShowcase', i, i - 1)}>↑</button>
+              <button class="btn btn-ghost" style="padding: 0.3rem 0.5rem; font-size: 0.8rem;" disabled=${i === (data.kidShowcase || []).length - 1}
+                onClick=${() => moveArrayItem('kidShowcase', i, i + 1)}>↓</button>
+              <button class="btn btn-ghost" style="padding: 0.3rem 0.5rem; color: #c00;"
+                onClick=${() => removeFromArray('kidShowcase', i)}>✕</button>
+            </div>
+          `)}
+          <button class="btn btn-ghost" style="margin-top: 0.5rem;"
+            onClick=${() => addToArray('kidShowcase', { slug: '', cfId: '' })}>+ Add Kid</button>
+        </div>
+
+        <div class="card">
+          <h3 style="margin-bottom: 1rem;">Section Photos</h3>
+          <p class="text-sm text-muted mb-1">Cloudflare Image IDs for photos used in homepage sections.</p>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Mission — Main Photo</label>
+              <input class="form-input" value=${data.sectionPhotos?.missionMain || ''}
+                placeholder="kids/eli/photo-001-70ddd7"
+                onInput=${e => updateField('sectionPhotos.missionMain', e.target.value)} />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Mission — Accent Photo</label>
+              <input class="form-input" value=${data.sectionPhotos?.missionAccent || ''}
+                placeholder="kids/georgia/photo-001-bd7eb4"
+                onInput=${e => updateField('sectionPhotos.missionAccent', e.target.value)} />
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Featured Story Photo</label>
+            <input class="form-input" value=${data.sectionPhotos?.storyPhoto || ''}
+              placeholder="kids/zyah/hero-2a16fd"
+              onInput=${e => updateField('sectionPhotos.storyPhoto', e.target.value)} />
+          </div>
+          <div class="form-row" style="grid-template-columns: 1fr 1fr 1fr;">
+            <div class="form-group">
+              <label class="form-label">Room — Bedroom</label>
+              <input class="form-input" value=${data.sectionPhotos?.roomBedroom || ''}
+                onInput=${e => updateField('sectionPhotos.roomBedroom', e.target.value)} />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Room — Bathroom</label>
+              <input class="form-input" value=${data.sectionPhotos?.roomBath || ''}
+                onInput=${e => updateField('sectionPhotos.roomBath', e.target.value)} />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Room — Therapy</label>
+              <input class="form-input" value=${data.sectionPhotos?.roomTherapy || ''}
+                onInput=${e => updateField('sectionPhotos.roomTherapy', e.target.value)} />
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3 style="margin-bottom: 1rem;">Partner Logos</h3>
+          <p class="text-sm text-muted mb-1">Logos shown in the scrolling partner marquee on the homepage.</p>
+          ${(data.partnerLogos || []).map((logo, i) => html`
+            <div style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.5rem; padding: 0.5rem; background: rgba(0,0,0,0.02); border-radius: 8px;">
+              ${logo.id ? html`<img src=${'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/' + logo.id + '/w=80,h=40,fit=contain,f=auto'}
+                alt="" style="width: 60px; height: 30px; object-fit: contain; flex-shrink: 0; background: #fff; border-radius: 4px; padding: 2px;" />` : null}
+              <input class="form-input" style="flex: 1" value=${logo.name || ''} placeholder="Partner name"
+                onInput=${e => updateArrayItem('partnerLogos', i, 'name', e.target.value)} />
+              <input class="form-input" style="flex: 2" value=${logo.id || ''} placeholder="Logo Image ID"
+                onInput=${e => updateArrayItem('partnerLogos', i, 'id', e.target.value)} />
+              <button class="btn btn-ghost" style="padding: 0.3rem 0.5rem; font-size: 0.8rem;" disabled=${i === 0}
+                onClick=${() => moveArrayItem('partnerLogos', i, i - 1)}>↑</button>
+              <button class="btn btn-ghost" style="padding: 0.3rem 0.5rem; font-size: 0.8rem;" disabled=${i === (data.partnerLogos || []).length - 1}
+                onClick=${() => moveArrayItem('partnerLogos', i, i + 1)}>↓</button>
+              <button class="btn btn-ghost" style="padding: 0.3rem 0.5rem; color: #c00;"
+                onClick=${() => removeFromArray('partnerLogos', i)}>✕</button>
+            </div>
+          `)}
+          <button class="btn btn-ghost" style="margin-top: 0.5rem;"
+            onClick=${() => addToArray('partnerLogos', { id: '', name: '' })}>+ Add Partner Logo</button>
+        </div>
+
         <div class="card">
           <h3 style="margin-bottom: 1rem;">Contact Info</h3>
           <div class="form-row">
@@ -3198,6 +3422,425 @@
               <input class="form-input" value=${data.social?.instagram || ''}
                 onInput=${e => updateField('social.instagram', e.target.value)} />
             </div>
+          </div>
+        </div>
+      `;
+    }
+
+    // ═══════════════════════════════════════════
+    // OUR STORY PAGE
+    // ═══════════════════════════════════════════
+    function OurStory({ addToast }) {
+      const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
+      const [loading, setLoading] = useState(true);
+      const [saving, setSaving] = useState(false);
+      const [sha, setSha] = useState(null);
+      const [data, setData] = useState({});
+      const [showImagePicker, setShowImagePicker] = useState(false);
+      const [imagePickerTarget, setImagePickerTarget] = useState(null);
+
+      useEffect(() => {
+        (async () => {
+          const res = await api.readContent('src/content/site/our-story.json');
+          if (res.success) {
+            setData(JSON.parse(res.content));
+            setSha(res.sha);
+          }
+          setLoading(false);
+        })();
+      }, []);
+
+      const updateField = (path, value) => {
+        setData(d => {
+          const copy = JSON.parse(JSON.stringify(d));
+          const keys = path.split('.');
+          let obj = copy;
+          for (let i = 0; i < keys.length - 1; i++) {
+            if (!obj[keys[i]] || typeof obj[keys[i]] !== 'object') obj[keys[i]] = {};
+            obj = obj[keys[i]];
+          }
+          obj[keys[keys.length - 1]] = value;
+          return copy;
+        });
+      };
+
+      const updateStat = (key, value) => {
+        setData(d => ({
+          ...d,
+          stats: { ...d.stats, [key]: Number(value) || 0 },
+        }));
+      };
+
+      const updateParagraph = (section, index, value) => {
+        setData(d => {
+          const copy = JSON.parse(JSON.stringify(d));
+          copy[section].paragraphs[index] = value;
+          return copy;
+        });
+      };
+
+      const addParagraph = (section) => {
+        setData(d => {
+          const copy = JSON.parse(JSON.stringify(d));
+          copy[section].paragraphs.push('');
+          return copy;
+        });
+      };
+
+      const removeParagraph = (section, index) => {
+        setData(d => {
+          const copy = JSON.parse(JSON.stringify(d));
+          copy[section].paragraphs.splice(index, 1);
+          return copy;
+        });
+      };
+
+      const updateMilestone = (index, field, value) => {
+        setData(d => {
+          const copy = JSON.parse(JSON.stringify(d));
+          copy.milestones[index][field] = value;
+          return copy;
+        });
+      };
+
+      const addMilestone = () => {
+        setData(d => ({
+          ...d,
+          milestones: [...(d.milestones || []), { year: '', title: '', desc: '' }],
+        }));
+      };
+
+      const removeMilestone = (index) => {
+        setData(d => {
+          const copy = JSON.parse(JSON.stringify(d));
+          copy.milestones.splice(index, 1);
+          return copy;
+        });
+      };
+
+      const moveMilestone = (index, dir) => {
+        setData(d => {
+          const copy = JSON.parse(JSON.stringify(d));
+          const newIdx = index + dir;
+          if (newIdx < 0 || newIdx >= copy.milestones.length) return d;
+          [copy.milestones[index], copy.milestones[newIdx]] = [copy.milestones[newIdx], copy.milestones[index]];
+          return copy;
+        });
+      };
+
+      const updateRibbon = (index, field, value) => {
+        setData(d => {
+          const copy = JSON.parse(JSON.stringify(d));
+          copy.ribbon[index][field] = value;
+          return copy;
+        });
+      };
+
+      const addRibbon = () => {
+        setData(d => ({
+          ...d,
+          ribbon: [...(d.ribbon || []), { value: '', label: '' }],
+        }));
+      };
+
+      const removeRibbon = (index) => {
+        setData(d => {
+          const copy = JSON.parse(JSON.stringify(d));
+          copy.ribbon.splice(index, 1);
+          return copy;
+        });
+      };
+
+      const openImagePicker = (target) => {
+        setImagePickerTarget(target);
+        setShowImagePicker(true);
+      };
+
+      const handleSave = async () => {
+        setSaving(true);
+        try {
+          const content = JSON.stringify(data, null, 2);
+          const res = await api.saveContent(
+            'src/content/site/our-story.json', content,
+            'Update Our Story page content', sha
+          );
+          if (res.success) {
+            setSha(res.sha);
+            addToast('Our Story page saved!', 'success');
+          } else {
+            addToast(`Failed: ${res.error}`, 'error');
+          }
+        } catch (err) {
+          addToast(`Error: ${err.message}`, 'error');
+        }
+        setSaving(false);
+      };
+
+      if (loading) return html`<div class="card" style="text-align: center; padding: 3rem;"><div class="spinner" style="width: 32px; height: 32px;" /></div>`;
+
+      const renderImageField = (label, fieldPath, currentId) => html`
+        <div class="form-group">
+          <label class="form-label">${label}</label>
+          ${currentId ? html`
+            <div style="margin-bottom: 0.5rem; border-radius: 8px; overflow: hidden; max-height: 140px;">
+              <img src="${CF}/${currentId}/w=400,f=auto" alt="Preview" style="width: 100%; height: 140px; object-fit: cover; display: block;" />
+            </div>
+          ` : null}
+          <div style="display: flex; gap: 0.5rem;">
+            <input class="form-input" style="flex:1" value=${currentId || ''}
+              placeholder="kids/name/hero-xxxxx"
+              onInput=${e => updateField(fieldPath, e.target.value)} />
+            <button class="btn btn-ghost" type="button" onClick=${() => openImagePicker(fieldPath)}>Browse</button>
+          </div>
+        </div>
+      `;
+
+      const renderParagraphs = (section, sectionLabel) => html`
+        <div class="form-group">
+          <label class="form-label">${sectionLabel} Paragraphs</label>
+          <div class="form-hint mb-1">HTML is supported (bold, links, etc.).</div>
+          ${(data[section]?.paragraphs || []).map((p, i) => html`
+            <div key=${i} style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
+              <textarea class="form-input" style="flex: 1; min-height: 80px;" value=${p}
+                onInput=${e => updateParagraph(section, i, e.target.value)} />
+              <button class="btn btn-ghost btn-sm" style="color: #c00; flex-shrink: 0; align-self: flex-start;"
+                onClick=${() => removeParagraph(section, i)} title="Remove paragraph">✕</button>
+            </div>
+          `)}
+          <button class="btn btn-ghost btn-sm" onClick=${() => addParagraph(section)}>+ Add Paragraph</button>
+        </div>
+      `;
+
+      return html`
+        ${showImagePicker ? html`<${ImagePicker}
+          onSelect=${(id) => { updateField(imagePickerTarget, id); }}
+          onClose=${() => setShowImagePicker(false)}
+        />` : null}
+        <div class="page-header">
+          <h2>Our Story</h2>
+          <button class="btn btn-primary" onClick=${handleSave} disabled=${saving}>
+            ${saving ? html`<span class="spinner" />` : null} ${saving ? 'Saving...' : 'Save & Publish'}
+          </button>
+        </div>
+
+        <!-- Stats -->
+        <div class="card">
+          <h3 style="margin-bottom: 0.5rem;">Impact Stats</h3>
+          <p class="text-sm text-muted mb-1">These appear in the hero, ribbon, and throughout the page.</p>
+          <div class="form-row" style="grid-template-columns: 1fr 1fr 1fr 1fr;">
+            <div class="form-group">
+              <label class="form-label">Total Rooms</label>
+              <input class="form-input" type="number" value=${data.stats?.totalRooms || 0}
+                onInput=${e => updateStat('totalRooms', e.target.value)} />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Total Kids</label>
+              <input class="form-input" type="number" value=${data.stats?.totalKids || 0}
+                onInput=${e => updateStat('totalKids', e.target.value)} />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Years Active</label>
+              <input class="form-input" type="number" value=${data.stats?.years || 0}
+                onInput=${e => updateStat('years', e.target.value)} />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Community Kids</label>
+              <input class="form-input" type="number" value=${data.stats?.communityKids || 0}
+                onInput=${e => updateStat('communityKids', e.target.value)} />
+            </div>
+          </div>
+        </div>
+
+        <!-- Ribbon Stats -->
+        <div class="card">
+          <h3 style="margin-bottom: 0.5rem;">Impact Ribbon</h3>
+          <p class="text-sm text-muted mb-1">The yellow stat bar. Use <code>{totalRooms}</code>, <code>{totalKids}</code>, <code>{communityKids}</code>, <code>{years}</code> to insert stat values.</p>
+          ${(data.ribbon || []).map((r, i) => html`
+            <div key=${i} style="display: flex; gap: 0.75rem; align-items: center; padding: 0.5rem; margin-bottom: 0.5rem; background: rgba(45,46,51,0.03); border-radius: 8px;">
+              <div style="flex: 0 0 160px;">
+                <label class="form-label" style="font-size: 0.75rem;">Value</label>
+                <input class="form-input" value=${r.value} placeholder="{totalRooms}+"
+                  onInput=${e => updateRibbon(i, 'value', e.target.value)} />
+              </div>
+              <div style="flex: 1;">
+                <label class="form-label" style="font-size: 0.75rem;">Label</label>
+                <input class="form-input" value=${r.label} placeholder="Room Makeovers"
+                  onInput=${e => updateRibbon(i, 'label', e.target.value)} />
+              </div>
+              <button class="btn btn-ghost btn-sm" style="color: #c00; flex-shrink: 0; margin-top: 16px;"
+                onClick=${() => removeRibbon(i)} title="Remove">✕</button>
+            </div>
+          `)}
+          <button class="btn btn-ghost" onClick=${addRibbon} style="margin-top: 0.5rem;">+ Add Stat</button>
+        </div>
+
+        <!-- Images -->
+        <div class="card">
+          <h3 style="margin-bottom: 0.5rem;">Page Images</h3>
+          <p class="text-sm text-muted mb-1">Cloudflare Image IDs for each section.</p>
+          <div class="form-row">
+            ${renderImageField('Hero Image', 'images.hero', data.images?.hero)}
+            ${renderImageField('Founders Photo', 'images.founder', data.images?.founder)}
+          </div>
+          <div class="form-row">
+            ${renderImageField('Turning Point Photo', 'images.community', data.images?.community)}
+            ${renderImageField('Reveal / Accent Photo', 'images.reveal', data.images?.reveal)}
+          </div>
+          <div class="form-row" style="grid-template-columns: 1fr 1fr;">
+            ${renderImageField('Store Photo', 'images.store', data.images?.store)}
+            <div></div>
+          </div>
+        </div>
+
+        <!-- Hero Section -->
+        <div class="card">
+          <h3 style="margin-bottom: 0.5rem;">Hero Section</h3>
+          <div class="form-group">
+            <label class="form-label">Label</label>
+            <input class="form-input" value=${data.hero?.label || ''} onInput=${e => updateField('hero.label', e.target.value)} />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Heading</label>
+            <input class="form-input" value=${data.hero?.heading || ''} onInput=${e => updateField('hero.heading', e.target.value)} />
+            <div class="form-hint">HTML supported. Use &lt;em&gt; for italic yellow text.</div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Lead Text</label>
+            <textarea class="form-input" style="min-height: 80px;" value=${data.hero?.lead || ''}
+              onInput=${e => updateField('hero.lead', e.target.value)} />
+          </div>
+        </div>
+
+        <!-- Founders Section -->
+        <div class="card">
+          <h3 style="margin-bottom: 0.5rem;">How It Began</h3>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Label</label>
+              <input class="form-input" value=${data.founders?.label || ''} onInput=${e => updateField('founders.label', e.target.value)} />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Heading</label>
+              <input class="form-input" value=${data.founders?.heading || ''} onInput=${e => updateField('founders.heading', e.target.value)} />
+            </div>
+          </div>
+          ${renderParagraphs('founders', 'Founders')}
+        </div>
+
+        <!-- Turning Point Section -->
+        <div class="card">
+          <h3 style="margin-bottom: 0.5rem;">Turning Point (Tripp)</h3>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Label</label>
+              <input class="form-input" value=${data.turningPoint?.label || ''} onInput=${e => updateField('turningPoint.label', e.target.value)} />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Heading</label>
+              <input class="form-input" value=${data.turningPoint?.heading || ''} onInput=${e => updateField('turningPoint.heading', e.target.value)} />
+            </div>
+          </div>
+          ${renderParagraphs('turningPoint', 'Turning Point')}
+        </div>
+
+        <!-- Timeline Milestones -->
+        <div class="card">
+          <h3 style="margin-bottom: 0.5rem;">Timeline Milestones</h3>
+          <p class="text-sm text-muted mb-1">Key moments in SOARD's history. Drag to reorder.</p>
+          ${(data.milestones || []).map((m, i) => html`
+            <div key=${i} style="display: flex; gap: 0.75rem; align-items: flex-start; padding: 0.75rem; margin-bottom: 0.5rem; background: rgba(45,46,51,0.03); border-radius: 8px;">
+              <div style="display: flex; flex-direction: column; gap: 2px; padding-top: 6px;">
+                <button class="btn btn-ghost btn-sm" style="padding: 2px 6px; font-size: 0.7rem;" onClick=${() => moveMilestone(i, -1)} disabled=${i === 0}>↑</button>
+                <button class="btn btn-ghost btn-sm" style="padding: 2px 6px; font-size: 0.7rem;" onClick=${() => moveMilestone(i, 1)} disabled=${i === data.milestones.length - 1}>↓</button>
+              </div>
+              <div style="flex: 0 0 80px;">
+                <label class="form-label" style="font-size: 0.75rem;">Year</label>
+                <input class="form-input" value=${m.year} onInput=${e => updateMilestone(i, 'year', e.target.value)} />
+              </div>
+              <div style="flex: 0 0 180px;">
+                <label class="form-label" style="font-size: 0.75rem;">Title</label>
+                <input class="form-input" value=${m.title} onInput=${e => updateMilestone(i, 'title', e.target.value)} />
+              </div>
+              <div style="flex: 1;">
+                <label class="form-label" style="font-size: 0.75rem;">Description</label>
+                <textarea class="form-input" style="min-height: 56px;" value=${m.desc}
+                  onInput=${e => updateMilestone(i, 'desc', e.target.value)} />
+              </div>
+              <button class="btn btn-ghost btn-sm" style="color: #c00; align-self: flex-start; margin-top: 18px; flex-shrink: 0;"
+                onClick=${() => removeMilestone(i)} title="Remove milestone">✕</button>
+            </div>
+          `)}
+          <button class="btn btn-ghost" onClick=${addMilestone} style="margin-top: 0.5rem;">+ Add Milestone</button>
+        </div>
+
+        <!-- Mascot Section -->
+        <div class="card">
+          <h3 style="margin-bottom: 0.5rem;">Mascot (Gracie)</h3>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Label</label>
+              <input class="form-input" value=${data.mascot?.label || ''} onInput=${e => updateField('mascot.label', e.target.value)} />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Heading</label>
+              <input class="form-input" value=${data.mascot?.heading || ''} onInput=${e => updateField('mascot.heading', e.target.value)} />
+            </div>
+          </div>
+          ${renderParagraphs('mascot', 'Mascot')}
+          <div class="form-group">
+            <label class="form-label">Tagline</label>
+            <textarea class="form-input" style="min-height: 60px;" value=${data.mascot?.tagline || ''}
+              onInput=${e => updateField('mascot.tagline', e.target.value)} />
+          </div>
+        </div>
+
+        <!-- Store Section -->
+        <div class="card">
+          <h3 style="margin-bottom: 0.5rem;">Sunny & Ranney Store</h3>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Label</label>
+              <input class="form-input" value=${data.store?.label || ''} onInput=${e => updateField('store.label', e.target.value)} />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Heading</label>
+              <input class="form-input" value=${data.store?.heading || ''} onInput=${e => updateField('store.heading', e.target.value)} />
+            </div>
+          </div>
+          ${renderParagraphs('store', 'Store')}
+        </div>
+
+        <!-- Today Section -->
+        <div class="card">
+          <h3 style="margin-bottom: 0.5rem;">Where We Are Today</h3>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Label</label>
+              <input class="form-input" value=${data.today?.label || ''} onInput=${e => updateField('today.label', e.target.value)} />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Heading</label>
+              <input class="form-input" value=${data.today?.heading || ''} onInput=${e => updateField('today.heading', e.target.value)} />
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Body</label>
+            <textarea class="form-input" style="min-height: 100px;" value=${data.today?.body || ''}
+              onInput=${e => updateField('today.body', e.target.value)} />
+          </div>
+        </div>
+
+        <!-- Finale CTA -->
+        <div class="card">
+          <h3 style="margin-bottom: 0.5rem;">Final CTA</h3>
+          <div class="form-group">
+            <label class="form-label">Heading</label>
+            <input class="form-input" value=${data.finale?.heading || ''} onInput=${e => updateField('finale.heading', e.target.value)} />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Body</label>
+            <textarea class="form-input" style="min-height: 60px;" value=${data.finale?.body || ''}
+              onInput=${e => updateField('finale.body', e.target.value)} />
           </div>
         </div>
       `;
@@ -3319,7 +3962,7 @@
         const map = {
           success: { cls: 'badge-green', label: '● Success' },
           active: { cls: 'badge-blue', label: '◉ Building' },
-          failure: { cls: 'badge-red', label: '✕ Failed' },
+          failure: { cls: 'badge-red', label: 'Failed' },
           canceled: { cls: 'badge-gray', label: '— Canceled' },
           unknown: { cls: 'badge-gray', label: '? Unknown' },
         };
@@ -3348,7 +3991,7 @@
         return html`
           <div class="page-header"><h2>Deploys</h2></div>
           <div class="card" style="text-align: center; padding: 2rem;">
-            <p style="color: #E53E3E; margin-bottom: 1rem;">⚠ ${error}</p>
+            <p style="color: #E53E3E; margin-bottom: 1rem;">${icons.warning} ${error}</p>
             <button class="btn btn-primary" onClick=${loadDeploys}>Retry</button>
           </div>`;
       }
@@ -3379,7 +4022,7 @@
               <div class="deploy-item" key=${d.id}>
                 ${d.avatar
                   ? html`<img class="deploy-avatar" src="${d.avatar}" alt="" />`
-                  : html`<div class="deploy-avatar" style="display:flex;align-items:center;justify-content:center;font-size:0.8rem;color:#6B6C72;">👤</div>`
+                  : html`<div class="deploy-avatar" style="display:flex;align-items:center;justify-content:center;font-size:0.8rem;color:#6B6C72;">${icons.user}</div>`
                 }
                 <div class="deploy-body">
                   <div class="deploy-msg" title=${d.commitMessage || ''}>${d.commitMessage || 'No commit message'}</div>
@@ -3525,6 +4168,7 @@
         globe: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" /></svg>`,
         github: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22" /></svg>`,
         applications: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" /></svg>`,
+        ourstory: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" /><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" /></svg>`,
       };
 
       const navSections = [
@@ -3537,6 +4181,7 @@
           { id: 'team', icon: icons.team, label: 'Team' },
           { id: 'articles', icon: icons.articles, label: 'Articles' },
           { id: 'events', icon: icons.events, label: 'Events' },
+          { id: 'ourstory', icon: icons.ourstory, label: 'Our Story' },
           { id: 'faq', icon: icons.faq, label: 'FAQs' },
           { id: 'financials', icon: icons.financials, label: 'Financials' },
           { id: 'settings', icon: icons.settings, label: 'Site Settings' },
@@ -3586,6 +4231,8 @@
             return html`<${Applications} addToast=${addToast} />`;
           case 'financials':
             return html`<${Financials} addToast=${addToast} />`;
+          case 'ourstory':
+            return html`<${OurStory} addToast=${addToast} />`;
           case 'faq':
             return html`<${FAQManager} addToast=${addToast} />`;
           case 'deploys':
@@ -3605,7 +4252,7 @@
             onCancel=${() => setDeleteModal(null)}
           />` : null}
           <button class="hamburger" onClick=${() => setSidebarOpen(!sidebarOpen)}>
-            ${sidebarOpen ? '✕' : '☰'}
+            ${sidebarOpen ? icons.x : icons.menu}
           </button>
           <div class="overlay ${sidebarOpen ? 'open' : ''}" onClick=${() => setSidebarOpen(false)} />
 

@@ -9,10 +9,10 @@
  * - All below-fold images: loading="lazy"
  * - FAQ uses native <details name="..."> for exclusive accordion (zero JS in modern browsers)
  * - Scroll observer is tiny (~300 bytes)
- * - preconnect hint for WP image domain in BaseLayout
+ * - preconnect to imagedelivery.net in BaseLayout
  * - All sections use reduced padding on mobile
- * 
- * TODO: Migrate images to Cloudflare Images for AVIF/WebP + srcset
+ *
+ * TODO: Migrate why-section Amari image to Cloudflare Images for AVIF/WebP + srcset
  */
 import BaseLayout from '../layouts/BaseLayout.astro';
 import faqData from '../content/site/faq.json';
@@ -38,16 +38,13 @@ const breadcrumbs = [
   jsonLd={donateJsonLd}
   breadcrumbs={breadcrumbs}
 >
-  <!-- 
-    TODO: Add preconnect hints to BaseLayout when images move to CF Images:
-    <link rel="preconnect" href="https://imagedelivery.net" />
-  -->
-
   <!-- ══════ HERO — No data-reveal on hero content (LCP critical) ══════ -->
   <section class="donate-hero">
     <div class="donate-hero-media">
       <img
-        src="https://sunshineonaranneyday.com/wp-content/uploads/2023/07/Oakley_2023_family_0003-e1710961594224.jpg"
+        src="https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/58888c84-79bc-484a-5d24-4efd93c31f00/w=1600,f=auto"
+        srcset="https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/58888c84-79bc-484a-5d24-4efd93c31f00/w=640,f=auto 640w, https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/58888c84-79bc-484a-5d24-4efd93c31f00/w=1024,f=auto 1024w, https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/58888c84-79bc-484a-5d24-4efd93c31f00/w=1600,f=auto 1600w"
+        sizes="100vw"
         alt="A family seeing their child's new accessible room for the first time"
         width="1024"
         height="683"

@@ -11,30 +11,25 @@
  */
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import { getWebPageSchema, getBreadcrumbSchema, buildSchemaGraph } from '../../utils/schema';
+import page from '../../content/site/our-story.json';
 
 const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
 
-const stats = { totalKids: 132, totalRooms: 106, years: 13, communityKids: 17000 };
-
-/* ── Hero image ── */
-const heroImageId = 'kids/harper/hero-c6a714';
-
-/* ── Section photos ── */
-const founderPhotoId = 'kids/eli/photo-001-70ddd7';
-const revealPhotoId = 'kids/griffin/hero-dbeb0f';
-const communityPhotoId = 'kids/jackson/hero-4b1747';
-const storePhotoId = 'kids/madison/hero-2d8210';
-
-/* ── Timeline milestones ── */
-const milestones = [
-  { year: '2012', title: 'The First Room', desc: 'Inspired by a church sermon, Peter and Holly Ranney build their first room — a military-themed bedroom for 11-year-old Mathew.' },
-  { year: '2013', title: 'Tripp Halstead', desc: 'A whole-home makeover for Tripp captures 1.6 million viewers on a WSB-TV livestream, launching SOARD into the national spotlight.' },
-  { year: '2016', title: 'The Today Show', desc: 'Peter and Holly appear on NBC\'s Today Show for their renovation of parent sleep rooms at Children\'s Healthcare of Atlanta.' },
-  { year: '2018', title: 'Braves Community Heroes', desc: 'Holly and Peter are honored as Atlanta Braves Community Heroes at SunTrust Park alongside Dansby Swanson and Freddie Freeman.' },
-  { year: '2020', title: 'Sunny & Ranney Opens', desc: 'SOARD opens a nonprofit home furnishings store in Roswell, with 100% of profits funding room makeovers for kids.' },
-  { year: '2021', title: 'Women Making a Mark', desc: 'Atlanta Magazine honors Holly as one of their "Women Making a Mark" for her impact on the community.' },
-  { year: '2024', title: '100+ Rooms', desc: 'SOARD crosses the 100-room milestone, having served over 130 children and impacted 17,000+ through community projects.' },
-];
+const stats = page.stats;
+const heroImageId = page.images.hero;
+const founderPhotoId = page.images.founder;
+const revealPhotoId = page.images.reveal;
+const communityPhotoId = page.images.community;
+const storePhotoId = page.images.store;
+const milestones = page.milestones;
+const ribbon = (page.ribbon || []).map((r: { value: string; label: string }) => ({
+  ...r,
+  value: r.value
+    .replace('{totalRooms}', String(stats.totalRooms))
+    .replace('{totalKids}', String(stats.totalKids))
+    .replace('{communityKids}', stats.communityKids >= 1000 ? Math.floor(stats.communityKids / 1000) + 'K' : String(stats.communityKids))
+    .replace('{years}', String(stats.years)),
+}));
 
 /* ── Schema ── */
 const pageUrl = 'https://sunshineonaranneyday.com/about/';
@@ -67,9 +62,9 @@ const jsonLd = buildSchemaGraph(
     </div>
     <div class="story-hero-inner">
       <div class="story-hero-content">
-        <div class="section-label section-label--yellow">Our Story</div>
-        <h1>Changing lives,<br/>room by room, <em>since&nbsp;2012</em>.</h1>
-        <p class="story-hero-lead">Sunshine on a Ranney Day transforms the lives of children with special needs by creating dream spaces that bring comfort, joy, and independence — all at <strong>no cost to families</strong>.</p>
+        <div class="section-label section-label--yellow">{page.hero.label}</div>
+        <h1 set:html={page.hero.heading} />
+        <p class="story-hero-lead" set:html={page.hero.lead} />
       </div>
       <div class="story-hero-stat">
         <span class="story-hero-stat-num">{stats.years}<span>yrs</span></span>
@@ -81,28 +76,17 @@ const jsonLd = buildSchemaGraph(
   <!-- ══════ FOUNDERS — The Beginning ══════ -->
   <section class="founders" id="our-story" aria-labelledby="founders-heading">
     <div class="founders-inner">
-      <div class="founders-photos" data-reveal>
-        <div class="founders-photo founders-photo--main">
-          <picture>
-            <source type="image/avif" srcset={`${CF}/${founderPhotoId}/w=500,f=avif 500w, ${CF}/${founderPhotoId}/w=800,f=avif 800w`} sizes="(max-width:768px) 90vw, 40vw" />
-            <source type="image/webp" srcset={`${CF}/${founderPhotoId}/w=500,f=webp 500w, ${CF}/${founderPhotoId}/w=800,f=webp 800w`} sizes="(max-width:768px) 90vw, 40vw" />
-            <img src={`${CF}/${founderPhotoId}/w=800,q=80`} alt="Peter and Holly Ranney, founders of Sunshine on a Ranney Day" width="800" height="600" loading="lazy" decoding="async" />
-          </picture>
-        </div>
-        <div class="founders-photo founders-photo--accent" data-reveal data-delay="1">
-          <picture>
-            <source type="image/avif" srcset={`${CF}/${revealPhotoId}/w=400,f=avif 400w, ${CF}/${revealPhotoId}/w=600,f=avif 600w`} sizes="(max-width:768px) 60vw, 25vw" />
-            <source type="image/webp" srcset={`${CF}/${revealPhotoId}/w=400,f=webp 400w, ${CF}/${revealPhotoId}/w=600,f=webp 600w`} sizes="(max-width:768px) 60vw, 25vw" />
-            <img src={`${CF}/${revealPhotoId}/w=600,q=80`} alt="A completed dream room reveal" width="600" height="450" loading="lazy" decoding="async" />
-          </picture>
-        </div>
+      <div class="founders-photo" data-reveal>
+        <picture>
+          <source type="image/avif" srcset={`${CF}/${founderPhotoId}/w=500,f=avif 500w, ${CF}/${founderPhotoId}/w=800,f=avif 800w`} sizes="(max-width:768px) 90vw, 40vw" />
+          <source type="image/webp" srcset={`${CF}/${founderPhotoId}/w=500,f=webp 500w, ${CF}/${founderPhotoId}/w=800,f=webp 800w`} sizes="(max-width:768px) 90vw, 40vw" />
+          <img src={`${CF}/${founderPhotoId}/w=800,q=80`} alt="Peter and Holly Ranney, founders of Sunshine on a Ranney Day" width="800" height="600" loading="lazy" decoding="async" />
+        </picture>
       </div>
       <div class="founders-text" data-reveal>
-        <div class="section-label">How It Began</div>
-        <h2 id="founders-heading">A sermon, a calling, and a room that changed <em class="highlight">everything</em>.</h2>
-        <p>In 2012, inspired by a church sermon, Peter and Holly Ranney felt a deep calling to use their God-given talents to serve others. With a vision rooted in love, purpose, and creativity, <strong>Sunshine on a Ranney Day</strong> was born — founded on the belief that every child deserves a space that reflects their personality, brings them joy, and supports their unique needs.</p>
-        <p>The very first makeover was for 11-year-old Mathew, who dreamed of spending his final days in a military-themed bunker bedroom. That room became more than just a space — it became a sanctuary. His story profoundly moved the Ranneys and solidified the impact that a thoughtfully designed room could have on a child's life and family.</p>
-        <p>It was the beginning of something much bigger.</p>
+        <div class="section-label">{page.founders.label}</div>
+        <h2 id="founders-heading" set:html={page.founders.heading} />
+        {page.founders.paragraphs.map((p: string) => <p set:html={p} />)}
       </div>
     </div>
   </section>
@@ -111,10 +95,9 @@ const jsonLd = buildSchemaGraph(
   <section class="turning-point" aria-labelledby="tripp-heading">
     <div class="turning-point-inner">
       <div class="turning-point-text" data-reveal>
-        <div class="section-label">A National Moment</div>
-        <h2 id="tripp-heading">Then the world met <em class="highlight">Tripp</em>.</h2>
-        <p>Soon after, the world was introduced to Tripp Halstead, a young boy whose story captured hearts across the country after a traumatic brain injury. When Sunshine on a Ranney Day completed a whole-home makeover for Tripp, 1.6 million people tuned in to watch the reveal live on WSB-TV.</p>
-        <p>The national attention helped shine a light on the mission and expand the reach of the organization. Tripp's joyful spirit and incredible resilience left a lasting legacy — and further inspired the work still being done today.</p>
+        <div class="section-label">{page.turningPoint.label}</div>
+        <h2 id="tripp-heading" set:html={page.turningPoint.heading} />
+        {page.turningPoint.paragraphs.map((p: string) => <p set:html={p} />)}
       </div>
       <div class="turning-point-photo" data-reveal data-delay="1">
         <picture>
@@ -130,7 +113,7 @@ const jsonLd = buildSchemaGraph(
   <section class="timeline-section" aria-labelledby="timeline-heading">
     <div class="timeline-header" data-reveal>
       <div class="section-label section-label--yellow">Milestones</div>
-      <h2 id="timeline-heading">13 years of building <em>dreams</em>.</h2>
+      <h2 id="timeline-heading">{stats.years} years of building <em>dreams</em>.</h2>
     </div>
     <div class="timeline">
       {milestones.map((m, i) => (
@@ -149,25 +132,15 @@ const jsonLd = buildSchemaGraph(
   <!-- ══════ IMPACT RIBBON ══════ -->
   <section class="ribbon" aria-label="Impact numbers">
     <div class="ribbon-inner">
-      <div class="ribbon-stat" data-reveal>
-        <span class="ribbon-num">{stats.totalRooms}+</span>
-        <span class="ribbon-label">Room Makeovers</span>
-      </div>
-      <div class="ribbon-divider" role="presentation"></div>
-      <div class="ribbon-stat" data-reveal data-delay="1">
-        <span class="ribbon-num">{stats.totalKids}+</span>
-        <span class="ribbon-label">Children Served</span>
-      </div>
-      <div class="ribbon-divider" role="presentation"></div>
-      <div class="ribbon-stat" data-reveal data-delay="2">
-        <span class="ribbon-num">17K+</span>
-        <span class="ribbon-label">Kids Impacted</span>
-      </div>
-      <div class="ribbon-divider" role="presentation"></div>
-      <div class="ribbon-stat" data-reveal data-delay="3">
-        <span class="ribbon-num">100<span class="ribbon-pct">%</span></span>
-        <span class="ribbon-label">Goes to Kids</span>
-      </div>
+      {ribbon.map((r: { value: string; label: string }, i: number) => (
+        <>
+          {i > 0 && <div class="ribbon-divider" role="presentation"></div>}
+          <div class="ribbon-stat" data-reveal data-delay={String(i)}>
+            <span class="ribbon-num" set:html={r.value} />
+            <span class="ribbon-label">{r.label}</span>
+          </div>
+        </>
+      ))}
     </div>
   </section>
 
@@ -175,12 +148,10 @@ const jsonLd = buildSchemaGraph(
   <section class="mascot" aria-labelledby="mascot-heading">
     <div class="mascot-inner">
       <div class="mascot-text" data-reveal>
-        <div class="section-label">Our Mascot</div>
-        <h2 id="mascot-heading">Meet <em class="highlight">Gracie the Pig</em>, the heart and spirit of SOARD.</h2>
-        <p>Gracie was inspired by an unforgettable wedding gift — when Peter surprised Holly with a baby pot-bellied pig named Gracie. What started as a unique and heartfelt gesture has since grown into something magical.</p>
-        <p>Over the years, Gracie has transformed into our golden, high-flying mascot, soaring above the clouds in her signature cape, always on the lookout for children and families in need of a little extra sunshine.</p>
-        <p>With her trusty handsaw and a heart full of hope, Gracie leads her team of Sunshiners to build wheelchair-accessible bathrooms, dream bedrooms, and in-home therapy spaces — spaces that bring comfort, independence, and joy to children facing daily challenges.</p>
-        <p class="mascot-tagline">She's a reminder that with creativity, compassion, and a whole lot of heart, <strong>anything is possible with a little bit of Sunshine.</strong></p>
+        <div class="section-label">{page.mascot.label}</div>
+        <h2 id="mascot-heading" set:html={page.mascot.heading} />
+        {page.mascot.paragraphs.map((p: string) => <p set:html={p} />)}
+        <p class="mascot-tagline" set:html={page.mascot.tagline} />
       </div>
       <div class="mascot-visual" data-reveal data-delay="1">
         <div class="mascot-frame">
@@ -201,10 +172,9 @@ const jsonLd = buildSchemaGraph(
         </picture>
       </div>
       <div class="store-text" data-reveal data-delay="1">
-        <div class="section-label">Sustaining the Mission</div>
-        <h2 id="store-heading">Shopping that builds <em class="highlight">dream rooms</em>.</h2>
-        <p>In 2020, Sunshine on a Ranney Day took a bold step to sustain its mission by opening <strong><a href="https://sunnyandranney.com" target="_blank" rel="noopener noreferrer">Sunny & Ranney</a></strong>, a nonprofit home furnishings and décor store in Roswell, GA.</p>
-        <p>The shop features all brand-new, designer home goods and furniture, with 100% of the profits going directly to fund custom renovations for children with special needs.</p>
+        <div class="section-label">{page.store.label}</div>
+        <h2 id="store-heading" set:html={page.store.heading} />
+        {page.store.paragraphs.map((p: string) => <p set:html={p} />)}
         <a href="https://sunnyandranney.com" target="_blank" rel="noopener noreferrer" class="btn btn-dark">Shop Sunny & Ranney →</a>
       </div>
     </div>
@@ -213,9 +183,9 @@ const jsonLd = buildSchemaGraph(
   <!-- ══════ WHERE WE ARE TODAY ══════ -->
   <section class="today-section" aria-labelledby="today-heading">
     <div class="today-inner" data-reveal>
-      <div class="section-label">Where We Are Today</div>
-      <h2 id="today-heading">What began as a simple idea has become a <em class="highlight">movement</em>.</h2>
-      <p class="today-body">Thanks to the unwavering support of donors, partners, and customers, Sunshine on a Ranney Day has grown into a community-driven force for good — touching the lives of more than 17,000 children and families across the greater Atlanta area. What started as a single room has become a beacon of hope, bringing comfort, dignity, independence, and joy to children who deserve nothing less than a space to thrive.</p>
+      <div class="section-label">{page.today.label}</div>
+      <h2 id="today-heading" set:html={page.today.heading} />
+      <p class="today-body" set:html={page.today.body} />
       <div class="today-links">
         <a href="/about/leadership" class="btn btn-dark">Meet Our Team →</a>
         <a href="/about/financials" class="btn btn-outline">View Financials →</a>
@@ -226,8 +196,8 @@ const jsonLd = buildSchemaGraph(
   <!-- ══════ FINAL CTA ══════ -->
   <section class="story-finale">
     <div class="story-finale-inner">
-      <h2 data-reveal>Be part of the <em>next</em> chapter.</h2>
-      <p data-reveal data-delay="1">Every donation, every volunteer hour, every shared story builds another dream room for a child who needs it most.</p>
+      <h2 data-reveal set:html={page.finale.heading} />
+      <p data-reveal data-delay="1" set:html={page.finale.body} />
       <div class="story-finale-ctas" data-reveal data-delay="2">
         <a href="/donate" class="btn btn-dark btn-lg">Donate Today</a>
         <a href="/kids" class="btn btn-outline-dark">Meet the Kids</a>
@@ -432,32 +402,13 @@ const jsonLd = buildSchemaGraph(
     align-items: center;
   }
 
-  .founders-photos { position: relative; }
-
-  .founders-photo--main {
+  .founders-photo {
     border-radius: var(--border-radius-lg);
     overflow: hidden;
     box-shadow: var(--shadow-xl);
   }
 
-  .founders-photo--main img {
-    width: 100%;
-    height: auto;
-    display: block;
-  }
-
-  .founders-photo--accent {
-    position: absolute;
-    bottom: -30px;
-    right: -30px;
-    width: 55%;
-    border-radius: var(--border-radius-lg);
-    overflow: hidden;
-    box-shadow: var(--shadow-xl);
-    border: 4px solid var(--c-cream);
-  }
-
-  .founders-photo--accent img {
+  .founders-photo img {
     width: 100%;
     height: auto;
     display: block;
@@ -487,11 +438,6 @@ const jsonLd = buildSchemaGraph(
     .founders-inner {
       grid-template-columns: 1fr;
       gap: var(--space-2xl);
-    }
-    .founders-photo--accent {
-      bottom: -20px;
-      right: -10px;
-      width: 45%;
     }
   }
 

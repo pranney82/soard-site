@@ -42,26 +42,37 @@ const { title, description, heroTitle, heroSubtitle, ogImage, ogType, jsonLd, br
 
 <style>
   .page-hero {
-    background: var(--c-dark);
-    color: var(--c-white);
-    padding-block: var(--space-3xl) var(--space-2xl);
+    background: var(--c-warm-gray);
+    color: var(--c-text);
+    padding-block: var(--space-4xl) var(--space-3xl);
     text-align: center;
+    border-bottom: 1px solid var(--c-border);
   }
 
   .page-hero__title {
-    color: var(--c-white);
+    color: var(--c-text);
     font-size: clamp(2rem, 5vw, 3.25rem);
+    letter-spacing: -0.02em;
+    animation: fadeInUp 0.5s ease both;
   }
 
   .page-hero__subtitle {
-    margin-top: var(--space-md);
-    font-size: clamp(1rem, 2vw, 1.2rem);
-    color: rgba(255, 255, 255, 0.75);
-    max-width: 640px;
+    margin-top: var(--space-lg);
+    font-size: clamp(1.05rem, 2vw, 1.2rem);
+    line-height: 1.7;
+    color: var(--c-text-muted);
+    max-width: 580px;
     margin-inline: auto;
+    animation: fadeInUp 0.5s ease 0.1s both;
   }
 
   .page-content {
     min-height: 40vh;
+  }
+
+  @media (max-width: 768px) {
+    .page-hero {
+      padding-block: var(--space-3xl) var(--space-2xl);
+    }
   }
 </style>

@@ -7,3 +7,7 @@ directory = "./dist"
 
 [ai]
 binding = "AI"
+
+# Shopify Storefront API — set these in the CF Pages dashboard (Settings > Environment Variables)
+# SHOPIFY_STORE_DOMAIN = "your-store.myshopify.com"
+# SHOPIFY_STOREFRONT_TOKEN = "your-storefront-access-token"

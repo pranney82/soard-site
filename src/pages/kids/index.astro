@@ -1,6 +1,11 @@
 ---
 /**
- * Meet the Kids — Grid page with filtering
+ * Meet the Kids — Premium grid page with filtering
+ *
+ * PERF: CF Image transforms with srcset, content-visibility, eager first 8
+ * SEO:  CollectionPage + ItemList + FAQPage schema, breadcrumbs, rich meta
+ * A11Y: proper heading hierarchy, ARIA labels, focus management, 44px targets
+ * UX:   Featured hero card, smooth filter transitions, mobile-optimized info
  */
 import PageLayout from '../../layouts/PageLayout.astro';
 import { getCollection } from 'astro:content';
@@ -9,56 +14,290 @@ const allKids = await getCollection('kids');
 const kids = allKids
   .sort((a, b) => (b.data.year || 0) - (a.data.year || 0));
 
-// Get unique years and room types for filters
 const years = [...new Set(kids.map(k => k.data.year).filter(Boolean))].sort((a, b) => b - a);
 const roomTypes = [...new Set(kids.flatMap(k => k.data.roomTypes || []))].sort();
+const hasInProgress = kids.some(k => k.data.status === 'in-progress');
+const totalKids = kids.length;
+
+// ── CF Image helpers ──────────────────────
+const CF_BASE = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
+function cfUrl(src: string, opts: string) {
+  if (!src || !src.includes('imagedelivery.net')) return src;
+  const id = src.replace(`${CF_BASE}/`, '').replace('/public', '');
+  return `${CF_BASE}/${id}/${opts}`;
+}
+function cfSrcset(src: string, widths: number[], format = 'auto') {
+  return widths.map(w => `${cfUrl(src, `w=${w},f=${format},q=80`)} ${w}w`).join(', ');
+}
+
+// ── SEO: CollectionPage + ItemList + FAQ schema ──────────
+const SITE = 'https://sunshineonaranneyday.com';
+const completedCount = kids.filter(k => k.data.status === 'completed').length;
+const inProgressCount = kids.filter(k => k.data.status === 'in-progress').length;
+const yearRange = years.length > 1 ? `${years[years.length - 1]}–${years[0]}` : years[0] || '';
+
+const pageDescription = `Meet ${totalKids} children whose lives were transformed by Sunshine on a Ranney Day — dream bedrooms, accessible bathrooms, therapy rooms, and more. ${completedCount} projects completed${inProgressCount > 0 ? `, ${inProgressCount} in progress` : ''}.`;
+
+const itemListSchema = {
+  "@type": "CollectionPage",
+  "@id": `${SITE}/kids/#collectionpage`,
+  "name": "Meet the Kids — Sunshine on a Ranney Day",
+  "description": pageDescription,
+  "url": `${SITE}/kids/`,
+  "isPartOf": { "@id": `${SITE}/#website` },
+  "about": { "@id": `${SITE}/#organization` },
+  "mainEntity": {
+    "@type": "ItemList",
+    "numberOfItems": totalKids,
+    "itemListElement": kids.slice(0, 50).map((kid, i) => ({
+      "@type": "ListItem",
+      "position": i + 1,
+      "url": `${SITE}/kids/${kid.data.slug}/`,
+      "name": kid.data.name,
+      ...(kid.data.heroImage ? { "image": cfUrl(kid.data.heroImage, 'w=600,f=auto,q=80') } : {}),
+    })),
+  },
+};
+
+const faqSchema = {
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "What does Sunshine on a Ranney Day do for children?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": `Sunshine on a Ranney Day transforms the living spaces of children with serious illnesses or disabilities. We've completed ${completedCount} projects${inProgressCount > 0 ? ` with ${inProgressCount} currently in progress` : ''}, creating dream bedrooms, accessible bathrooms, and therapy rooms tailored to each child's specific needs.`
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "How can I help a child through Sunshine on a Ranney Day?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "You can support our mission by donating, volunteering for room builds, or nominating a child in need. Visit our donate page or contact us to learn more about how you can make a difference."
+      }
+    },
+  ],
+};
+
+const breadcrumbs = [
+  { name: 'Home', url: SITE },
+  { name: 'Meet the Kids', url: `${SITE}/kids/` },
+];
+
+// Featured kid = most recent with a hero image
+const featuredKid = kids.find(k => k.data.heroImage);
+const gridKids = [...kids];
 ---
 
 <PageLayout
   title="Meet the Kids"
+  description={pageDescription}
   heroTitle="Meet our Sunshine Kids"
-  heroSubtitle="Meet the incredible children behind our projects and learn how Sunshine on a Ranney Day transformed their lives."
+  heroSubtitle={`${totalKids} children. ${completedCount} lives transformed. Discover the incredible stories behind every room we build.`}
+  jsonLd={[itemListSchema, faqSchema]}
+  breadcrumbs={breadcrumbs}
 >
-  <section class="section">
+  <section class="kids-section">
     <div class="container container--wide">
-      <!-- Filters -->
-      <div class="filters" role="group" aria-label="Filter kids by year or room type">
-        <button class="filter-btn active" data-filter="all" aria-pressed="true">All</button>
-        {years.map(year => (
-          <button class="filter-btn" data-filter={`year-${year}`} aria-pressed="false">{year}</button>
-        ))}
-        <span class="filter-divider" aria-hidden="true"></span>
-        {roomTypes.map(type => (
-          <button class="filter-btn" data-filter={`type-${type.toLowerCase().replace(/\s+/g, '-')}`} aria-pressed="false">{type}</button>
-        ))}
+
+      <!-- Impact Stats -->
+      <div class="impact-bar" aria-label="Impact statistics">
+        <div class="impact-stat">
+          <span class="impact-stat__number">{totalKids}</span>
+          <span class="impact-stat__label">Kids Helped</span>
+        </div>
+        <div class="impact-stat">
+          <span class="impact-stat__number">{completedCount}</span>
+          <span class="impact-stat__label">Rooms Built</span>
+        </div>
+        {inProgressCount > 0 && (
+          <div class="impact-stat">
+            <span class="impact-stat__number">{inProgressCount}</span>
+            <span class="impact-stat__label">In Progress</span>
+          </div>
+        )}
+        <div class="impact-stat">
+          <span class="impact-stat__number">{yearRange}</span>
+          <span class="impact-stat__label">Years Active</span>
+        </div>
+      </div>
+
+      <!-- Featured Kid -->
+      {featuredKid && (
+        <a
+          href={`/kids/${featuredKid.data.slug}/`}
+          class="featured-card"
+          aria-label={`Featured: ${featuredKid.data.name}'s story`}
+          data-year={`year-${featuredKid.data.year}`}
+          data-types={(featuredKid.data.roomTypes || []).map(t => `type-${t.toLowerCase().replace(/\s+/g, '-')}`).join(' ')}
+          data-name={featuredKid.data.name.toLowerCase()}
+          data-diagnosis={(featuredKid.data.diagnosis || '').toLowerCase()}
+          data-status={featuredKid.data.status || 'completed'}
+        >
+          <div class="featured-card__image">
+            <picture>
+              <source
+                type="image/avif"
+                srcset={cfSrcset(featuredKid.data.heroImage, [640, 1024, 1600], 'avif')}
+                sizes="(max-width: 768px) 100vw, 60vw"
+              />
+              <source
+                type="image/webp"
+                srcset={cfSrcset(featuredKid.data.heroImage, [640, 1024, 1600], 'webp')}
+                sizes="(max-width: 768px) 100vw, 60vw"
+              />
+              <img
+                src={cfUrl(featuredKid.data.heroImage, 'w=1024,f=auto,q=80')}
+                alt={`Photo of ${featuredKid.data.name}${featuredKid.data.diagnosis ? ` — ${featuredKid.data.diagnosis}` : ''}`}
+                class="featured-card__img"
+                width="1024"
+                height="680"
+                loading="eager"
+                decoding="sync"
+                fetchpriority="high"
+              />
+            </picture>
+          </div>
+          <div class="featured-card__content">
+            <span class="featured-card__label">Latest Story</span>
+            <h2 class="featured-card__name">{featuredKid.data.name}</h2>
+            {featuredKid.data.diagnosis && (
+              <p class="featured-card__diagnosis">{featuredKid.data.diagnosis}</p>
+            )}
+            {featuredKid.data.roomTypes && featuredKid.data.roomTypes.length > 0 && (
+              <div class="featured-card__tags">
+                {featuredKid.data.roomTypes.map(type => (
+                  <span class="featured-card__tag">{type}</span>
+                ))}
+              </div>
+            )}
+            {featuredKid.data.status === 'in-progress' && (
+              <span class="featured-card__badge">In Progress</span>
+            )}
+            <span class="featured-card__cta">Read their story &rarr;</span>
+          </div>
+        </a>
+      )}
+
+      <!-- Toolbar -->
+      <div class="toolbar" id="toolbar">
+        <div class="toolbar__row">
+          <div class="search-box">
+            <svg class="search-box__icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input
+              type="search"
+              id="kid-search"
+              class="search-box__input"
+              placeholder="Search by name or diagnosis..."
+              aria-label="Search kids by name or diagnosis"
+              autocomplete="off"
+            />
+          </div>
+
+          <div class="toolbar__filters">
+            <select id="filter-year" class="filter-select" aria-label="Filter by year">
+              <option value="all">All Years</option>
+              {years.map(year => (
+                <option value={`year-${year}`}>{year}</option>
+              ))}
+            </select>
+
+            <select id="filter-type" class="filter-select" aria-label="Filter by project type">
+              <option value="all">All Projects</option>
+              {roomTypes.map(type => (
+                <option value={`type-${type.toLowerCase().replace(/\s+/g, '-')}`}>{type}</option>
+              ))}
+            </select>
+
+            {hasInProgress && (
+              <button class="pill-toggle" id="filter-status" aria-pressed="false">
+                <span class="pill-toggle__dot" aria-hidden="true"></span>
+                In Progress
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div class="toolbar__status" aria-live="polite" aria-atomic="true">
+          <span class="result-count" id="result-count">
+            Showing <strong id="visible-count">{gridKids.length}</strong> of {gridKids.length} kids
+          </span>
+          <button class="clear-btn" id="clear-filters" hidden aria-label="Clear all filters">
+            Clear filters
+          </button>
+        </div>
       </div>
 
       <!-- Kid Grid -->
-      <div class="kids-grid">
-        {kids.map(kid => (
+      <h2 class="sr-only">All kid profiles</h2>
+      <div class="kids-grid" id="kids-grid">
+        {gridKids.map((kid, i) => (
           <a
             href={`/kids/${kid.data.slug}/`}
             class="kid-card"
             data-year={`year-${kid.data.year}`}
             data-types={(kid.data.roomTypes || []).map(t => `type-${t.toLowerCase().replace(/\s+/g, '-')}`).join(' ')}
+            data-name={kid.data.name.toLowerCase()}
+            data-diagnosis={(kid.data.diagnosis || '').toLowerCase()}
+            data-status={kid.data.status || 'completed'}
           >
-            {kid.data.heroImage && (
-              <img
-                src={kid.data.heroImage}
-                alt={`${kid.data.name}'s photo`}
-                class="kid-card__img"
-                loading="lazy"
-                decoding="async"
-              />
-            )}
-            <div class="kid-card__overlay">
-              <h3 class="kid-card__name">{kid.data.name}</h3>
+            <div class="kid-card__frame">
+              {kid.data.heroImage ? (
+                <picture>
+                  <source
+                    type="image/avif"
+                    srcset={cfSrcset(kid.data.heroImage, [300, 440, 600], 'avif')}
+                    sizes="(max-width: 480px) 45vw, (max-width: 768px) 45vw, (max-width: 1100px) 25vw, 260px"
+                  />
+                  <source
+                    type="image/webp"
+                    srcset={cfSrcset(kid.data.heroImage, [300, 440, 600], 'webp')}
+                    sizes="(max-width: 480px) 45vw, (max-width: 768px) 45vw, (max-width: 1100px) 25vw, 260px"
+                  />
+                  <img
+                    src={cfUrl(kid.data.heroImage, 'w=440,f=auto,q=80')}
+                    alt={`Photo of ${kid.data.name}${kid.data.diagnosis ? `, diagnosed with ${kid.data.diagnosis}` : ''} — Sunshine on a Ranney Day`}
+                    class="kid-card__img"
+                    width="300"
+                    height="400"
+                    loading={i < 8 ? 'eager' : 'lazy'}
+                    decoding={i < 8 ? 'sync' : 'async'}
+                    fetchpriority={i < 4 ? 'high' : undefined}
+                  />
+                </picture>
+              ) : (
+                <div class="kid-card__placeholder" aria-hidden="true">
+                  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                </div>
+              )}
+              <div class="kid-card__hover-overlay" aria-hidden="true">
+                {kid.data.diagnosis && (
+                  <span class="kid-card__overlay-diagnosis">{kid.data.diagnosis}</span>
+                )}
+                <span class="kid-card__cta">Read their story &rarr;</span>
+              </div>
+            </div>
+            <div class="kid-card__info">
+              <span class="kid-card__name">{kid.data.name}</span>
               {kid.data.status === 'in-progress' && (
                 <span class="kid-card__badge">In Progress</span>
               )}
             </div>
+            {kid.data.diagnosis && (
+              <span class="kid-card__diagnosis">{kid.data.diagnosis}</span>
+            )}
           </a>
         ))}
+      </div>
+
+      <!-- No results -->
+      <div class="no-results" id="no-results" hidden>
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="8" x2="14" y2="14"/><line x1="14" y1="8" x2="8" y2="14"/></svg>
+        <p class="no-results__title">No kids found</p>
+        <p class="no-results__hint">Try a different search term or adjust your filters.</p>
+        <button class="btn btn-dark btn--sm" id="clear-filters-alt">Clear all filters</button>
       </div>
 
       {kids.length === 0 && (
@@ -70,143 +309,869 @@ const roomTypes = [...new Set(kids.flatMap(k => k.data.roomTypes || []))].sort()
   </section>
 </PageLayout>
 
-<!-- Minimal JS for filtering (Astro island) -->
 <script>
-  document.addEventListener('DOMContentLoaded', () => {
-    const buttons = document.querySelectorAll('.filter-btn');
-    const cards = document.querySelectorAll('.kid-card');
+  const cards = document.querySelectorAll<HTMLElement>('.kid-card');
+  const searchInput = document.getElementById('kid-search') as HTMLInputElement;
+  const yearSelect = document.getElementById('filter-year') as HTMLSelectElement;
+  const typeSelect = document.getElementById('filter-type') as HTMLSelectElement;
+  const statusBtn = document.getElementById('filter-status') as HTMLButtonElement | null;
+  const noResults = document.getElementById('no-results') as HTMLElement;
+  const visibleCountEl = document.getElementById('visible-count') as HTMLElement;
+  const clearBtn = document.getElementById('clear-filters') as HTMLButtonElement;
+  const clearBtnAlt = document.getElementById('clear-filters-alt') as HTMLButtonElement;
+  const toolbar = document.getElementById('toolbar') as HTMLElement;
+  const featuredCard = document.querySelector('.featured-card') as HTMLElement | null;
 
-    buttons.forEach(btn => {
-      btn.addEventListener('click', () => {
-        buttons.forEach(b => { b.classList.remove('active'); b.setAttribute('aria-pressed', 'false'); });
-        btn.classList.add('active');
-        btn.setAttribute('aria-pressed', 'true');
+  let statusActive = false;
 
-        const filter = btn.getAttribute('data-filter');
+  // ── URL state restore ────────────────────
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('year')) yearSelect.value = params.get('year')!;
+  if (params.get('type')) typeSelect.value = params.get('type')!;
+  if (params.get('q')) searchInput.value = params.get('q')!;
+  if (params.get('status') === 'in-progress' && statusBtn) {
+    statusActive = true;
+    statusBtn.classList.add('active');
+    statusBtn.setAttribute('aria-pressed', 'true');
+  }
 
-        cards.forEach(card => {
-          if (filter === 'all') {
-            (card as HTMLElement).style.display = '';
-            return;
-          }
-          const year = card.getAttribute('data-year') || '';
-          const types = card.getAttribute('data-types') || '';
+  // ── Filtering with smooth transitions ────
+  function applyFilters() {
+    const query = searchInput.value.toLowerCase().trim();
+    const yearFilter = yearSelect.value;
+    const typeFilter = typeSelect.value;
+    let visibleCount = 0;
 
-          const match = year === filter || types.includes(filter);
-          (card as HTMLElement).style.display = match ? '' : 'none';
-        });
-      });
+    const hasFilters = yearFilter !== 'all' || typeFilter !== 'all' || statusActive || query.length > 0;
+
+    // Hide featured card when it doesn't match active filters
+    if (featuredCard) {
+      const fd = featuredCard.dataset;
+      const fMatchYear = yearFilter === 'all' || fd.year === yearFilter;
+      const fMatchType = typeFilter === 'all' || (fd.types ? fd.types.split(' ').includes(typeFilter) : false);
+      const fMatchStatus = !statusActive || fd.status === 'in-progress';
+      const fMatchSearch = !query || (fd.name || '').includes(query) || (fd.diagnosis || '').includes(query);
+      featuredCard.classList.toggle('is-filtered', hasFilters && !(fMatchYear && fMatchType && fMatchStatus && fMatchSearch));
+    }
+
+    cards.forEach(card => {
+      const { year, types, name, diagnosis, status } = card.dataset;
+
+      const matchesYear = yearFilter === 'all' || year === yearFilter;
+      const matchesType = typeFilter === 'all' || (types ? types.split(' ').includes(typeFilter) : false);
+      const matchesStatus = !statusActive || status === 'in-progress';
+      const matchesSearch = !query || (name || '').includes(query) || (diagnosis || '').includes(query);
+
+      const visible = matchesYear && matchesType && matchesStatus && matchesSearch;
+
+      if (visible) {
+        card.classList.remove('is-hidden');
+        visibleCount++;
+      } else {
+        card.classList.add('is-hidden');
+      }
     });
+
+    visibleCountEl.textContent = String(visibleCount);
+    noResults.hidden = visibleCount > 0;
+    clearBtn.hidden = !hasFilters;
+
+    // Sync URL without reload
+    const url = new URL(window.location.href);
+    yearFilter !== 'all' ? url.searchParams.set('year', yearFilter) : url.searchParams.delete('year');
+    typeFilter !== 'all' ? url.searchParams.set('type', typeFilter) : url.searchParams.delete('type');
+    query ? url.searchParams.set('q', query) : url.searchParams.delete('q');
+    statusActive ? url.searchParams.set('status', 'in-progress') : url.searchParams.delete('status');
+    history.replaceState(null, '', url.toString());
+  }
+
+  function clearAll() {
+    searchInput.value = '';
+    yearSelect.value = 'all';
+    typeSelect.value = 'all';
+    if (statusBtn) {
+      statusActive = false;
+      statusBtn.classList.remove('active');
+      statusBtn.setAttribute('aria-pressed', 'false');
+    }
+    applyFilters();
+    searchInput.focus();
+  }
+
+  // ── Events ───────────────────────────────
+  let searchTimer: ReturnType<typeof setTimeout>;
+  yearSelect.addEventListener('change', applyFilters);
+  typeSelect.addEventListener('change', applyFilters);
+  searchInput.addEventListener('input', () => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(applyFilters, 150);
   });
+  clearBtn.addEventListener('click', clearAll);
+  clearBtnAlt.addEventListener('click', clearAll);
+
+  if (statusBtn) {
+    statusBtn.addEventListener('click', () => {
+      statusActive = !statusActive;
+      statusBtn.classList.toggle('active', statusActive);
+      statusBtn.setAttribute('aria-pressed', String(statusActive));
+      applyFilters();
+    });
+  }
+
+  // ── Staggered reveal on scroll ───────────
+  if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries.filter(e => e.isIntersecting);
+        visible.forEach((entry, i) => {
+          const el = entry.target as HTMLElement;
+          el.style.setProperty('--stagger', String(i));
+          el.classList.add('revealed');
+          observer.unobserve(el);
+        });
+      },
+      { rootMargin: '60px', threshold: 0.05 }
+    );
+    cards.forEach(card => observer.observe(card));
+    document.documentElement.classList.add('js-anim');
+  }
+
+  // ── Toolbar scroll shadow ────────────────
+  let ticking = false;
+  window.addEventListener('scroll', () => {
+    if (!ticking) {
+      ticking = true;
+      requestAnimationFrame(() => {
+        toolbar.classList.toggle('is-scrolled', window.scrollY > 300);
+        ticking = false;
+      });
+    }
+  }, { passive: true });
+
+  // ── Apply URL filters + scroll to grid ───
+  const hasURLFilters = params.get('year') || params.get('type') || params.get('q') || params.get('status');
+  if (hasURLFilters) {
+    applyFilters();
+    toolbar.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
 </script>
 
 <style>
-  /* ─── Filters ──────────────────────────── */
-  .filters {
+  /* ─── Section ────────────────────────────── */
+  .kids-section {
+    padding-block: 0 var(--space-4xl);
+  }
+
+  /* ─── Impact Stats Bar ─────────────────── */
+  .impact-bar {
     display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-sm);
-    margin-bottom: var(--space-2xl);
     justify-content: center;
+    gap: var(--space-2xl);
+    padding: var(--space-xl) var(--space-lg);
+    margin-bottom: var(--space-2xl);
+    border-bottom: 1px solid var(--c-border);
   }
 
-  .filter-btn {
-    padding: 0.4rem 1rem;
-    background: var(--c-white);
-    border: 1px solid var(--c-border);
-    border-radius: 100px;
-    font-size: 0.85rem;
+  .impact-stat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+  }
+
+  .impact-stat__number {
+    font-family: var(--font-display);
+    font-size: clamp(1.5rem, 3vw, 2rem);
+    font-weight: 700;
+    color: var(--c-dark);
+    line-height: 1.1;
+  }
+
+  .impact-stat__label {
+    font-size: 0.75rem;
     font-weight: 500;
-    cursor: pointer;
-    transition: all var(--transition-fast);
     color: var(--c-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
   }
 
-  .filter-btn:hover {
-    border-color: var(--c-accent);
-    color: var(--c-accent);
-  }
-
-  .filter-btn.active {
-    background: var(--c-accent);
-    color: var(--c-white);
-    border-color: var(--c-accent);
-  }
-
-  .filter-divider {
-    width: 1px;
-    background: var(--c-border);
-    align-self: stretch;
-    margin-inline: var(--space-sm);
-  }
-
-  /* ─── Kid Grid ─────────────────────────── */
-  .kids-grid {
+  /* ─── Featured Card ────────────────────── */
+  .featured-card {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-    gap: var(--space-lg);
-  }
-
-  .kid-card {
-    position: relative;
-    aspect-ratio: 3 / 4;
+    grid-template-columns: 1.2fr 1fr;
+    gap: 0;
     border-radius: var(--border-radius-lg);
     overflow: hidden;
     background: var(--c-warm-gray);
     text-decoration: none;
-    transition: transform var(--transition-base), box-shadow var(--transition-base);
+    margin-bottom: var(--space-2xl);
+    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.3s ease;
   }
 
-  .kid-card:hover {
-    transform: translateY(-4px);
+  .featured-card:hover {
+    transform: translateY(-3px);
     box-shadow: var(--shadow-lg);
   }
 
-  .kid-card__img {
+  .featured-card.is-filtered {
+    display: none;
+  }
+
+  .featured-card__image {
+    aspect-ratio: 3 / 2;
+    overflow: hidden;
+  }
+
+  .featured-card__img {
     width: 100%;
     height: 100%;
     object-fit: cover;
-    transition: transform var(--transition-slow);
+    transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
-  .kid-card:hover .kid-card__img {
-    transform: scale(1.05);
+  .featured-card:hover .featured-card__img {
+    transform: scale(1.04);
   }
 
-  .kid-card__overlay {
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(to top, rgba(0,0,0,0.7) 0%, transparent 50%);
+  .featured-card__content {
     display: flex;
     flex-direction: column;
-    justify-content: flex-end;
-    padding: var(--space-lg);
+    justify-content: center;
+    padding: var(--space-2xl);
+    gap: var(--space-sm);
   }
 
-  .kid-card__name {
-    color: var(--c-white);
-    font-family: var(--font-display);
-    font-size: 1.25rem;
-  }
-
-  .kid-card__badge {
-    display: inline-block;
-    margin-top: var(--space-xs);
-    padding: 2px 10px;
-    background: var(--c-yellow);
-    color: var(--c-dark);
+  .featured-card__label {
     font-size: 0.7rem;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.1em;
+    color: var(--c-text-muted);
+  }
+
+  .featured-card__name {
+    font-family: var(--font-display);
+    font-size: clamp(1.5rem, 3vw, 2.25rem);
+    font-weight: 700;
+    color: var(--c-dark);
+    line-height: 1.2;
+  }
+
+  .featured-card__diagnosis {
+    font-size: 0.95rem;
+    color: var(--c-text-muted);
+    line-height: 1.5;
+  }
+
+  .featured-card__tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: var(--space-xs);
+  }
+
+  .featured-card__tag {
+    padding: 4px 12px;
+    background: var(--c-white);
+    border: 1px solid var(--c-border);
+    border-radius: 100px;
+    font-size: 0.72rem;
+    font-weight: 500;
+    color: var(--c-text);
+  }
+
+  .featured-card__badge {
+    display: inline-block;
+    padding: 4px 14px;
+    background: var(--c-yellow);
+    color: var(--c-dark);
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
     border-radius: 100px;
     width: fit-content;
   }
 
-  @media (max-width: 600px) {
+  .featured-card__cta {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--c-dark);
+    margin-top: var(--space-sm);
+    transition: color var(--transition-fast);
+  }
+
+  .featured-card:hover .featured-card__cta {
+    color: var(--c-text-muted);
+  }
+
+  /* ─── Toolbar ────────────────────────────── */
+  .toolbar {
+    position: sticky;
+    top: var(--header-height, 104px);
+    z-index: 20;
+    background: rgba(254, 252, 245, 0.92);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    margin-inline: calc(-1 * var(--space-lg));
+    padding: var(--space-md) var(--space-lg);
+    margin-bottom: var(--space-xl);
+    border-bottom: 1px solid transparent;
+    transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+    scroll-margin-top: var(--header-height, 104px);
+  }
+
+  .toolbar.is-scrolled {
+    border-bottom-color: var(--c-border);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
+  }
+
+  .toolbar__row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+  }
+
+  .toolbar__status {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: var(--space-sm);
+    font-size: 0.8rem;
+    color: var(--c-text-muted);
+  }
+
+  .result-count strong {
+    color: var(--c-text);
+    font-weight: 600;
+  }
+
+  /* ─── Search Box ─────────────────────────── */
+  .search-box {
+    position: relative;
+    flex: 1;
+    min-width: 180px;
+    max-width: 340px;
+  }
+
+  .search-box__icon {
+    position: absolute;
+    left: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--c-text-light);
+    pointer-events: none;
+    transition: color var(--transition-fast);
+  }
+
+  .search-box__input {
+    width: 100%;
+    height: 44px;
+    padding: 0 14px 0 42px;
+    font-size: 0.9rem;
+    border: 1px solid var(--c-border);
+    border-radius: var(--border-radius);
+    background: var(--c-white);
+    color: var(--c-text);
+    transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+  }
+
+  .search-box__input::placeholder {
+    color: var(--c-text-light);
+  }
+
+  .search-box__input:focus {
+    outline: none;
+    border-color: var(--c-dark);
+    box-shadow: 0 0 0 3px var(--c-accent-soft);
+  }
+
+  .search-box:focus-within .search-box__icon {
+    color: var(--c-dark);
+  }
+
+  .search-box__input::-webkit-search-cancel-button {
+    -webkit-appearance: none;
+    appearance: none;
+  }
+
+  /* ─── Filter Controls ────────────────────── */
+  .toolbar__filters {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+  }
+
+  .filter-select {
+    height: 44px;
+    padding: 0 36px 0 14px;
+    background: var(--c-white);
+    border: 1px solid var(--c-border);
+    border-radius: var(--border-radius);
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+    color: var(--c-text);
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%236B6C72' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+  }
+
+  .filter-select:hover {
+    border-color: var(--c-dark);
+  }
+
+  .filter-select:focus {
+    outline: none;
+    border-color: var(--c-dark);
+    box-shadow: 0 0 0 3px var(--c-accent-soft);
+  }
+
+  /* ─── Pill Toggle ────────────────────────── */
+  .pill-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 44px;
+    padding: 0 16px;
+    background: var(--c-white);
+    border: 1px solid var(--c-border);
+    border-radius: var(--border-radius);
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
+    color: var(--c-text);
+    white-space: nowrap;
+  }
+
+  .pill-toggle__dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--c-border);
+    transition: background var(--transition-fast);
+  }
+
+  .pill-toggle:hover {
+    border-color: var(--c-dark);
+  }
+
+  .pill-toggle.active {
+    background: var(--c-yellow);
+    border-color: var(--c-yellow);
+    color: var(--c-dark);
+    font-weight: 600;
+  }
+
+  .pill-toggle.active .pill-toggle__dot {
+    background: var(--c-dark);
+  }
+
+  /* ─── Clear Button ──────────────────────── */
+  .clear-btn {
+    background: none;
+    border: none;
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: var(--c-text-muted);
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    transition: color var(--transition-fast);
+    white-space: nowrap;
+    padding: 4px 0;
+  }
+
+  .clear-btn:hover {
+    color: var(--c-dark);
+  }
+
+  .btn--sm {
+    padding: 10px 24px;
+    font-size: 0.85rem;
+  }
+
+  /* ─── Kid Grid (Masonry) ─────────────────── */
+  .kids-grid {
+    columns: 4 240px;
+    column-gap: var(--space-lg);
+  }
+
+  /* ─── Card ─────────────────────────────── */
+  .kid-card {
+    display: inline-block;
+    width: 100%;
+    text-decoration: none;
+    outline-offset: 4px;
+    border-radius: var(--border-radius-lg);
+    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease;
+    content-visibility: auto;
+    contain-intrinsic-size: auto 380px;
+    break-inside: avoid;
+    margin-bottom: var(--space-lg);
+  }
+
+  .kid-card:hover {
+    transform: translateY(-4px);
+  }
+
+  .kid-card:focus-visible {
+    outline: 2px solid var(--c-dark);
+    outline-offset: 4px;
+    border-radius: var(--border-radius-lg);
+  }
+
+  /* Staggered reveal animation */
+  :global(.js-anim) .kid-card:not(.revealed) {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+
+  :global(.js-anim) .kid-card.revealed {
+    animation: cardIn 0.45s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    animation-delay: calc(var(--stagger, 0) * 60ms);
+  }
+
+  @keyframes cardIn {
+    from { opacity: 0; transform: translateY(16px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .kid-card.is-hidden {
+    display: none;
+  }
+
+  .kid-card__frame {
+    position: relative;
+    border-radius: var(--border-radius-lg);
+    overflow: hidden;
+    background: var(--c-warm-gray);
+  }
+
+  .kid-card__img {
+    width: 100%;
+    height: auto;
+    display: block;
+    transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  @media (hover: hover) {
+    .kid-card:hover .kid-card__img {
+      transform: scale(1.05);
+    }
+  }
+
+  .kid-card__placeholder {
+    width: 100%;
+    aspect-ratio: 3 / 4;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--c-warm-gray);
+    color: var(--c-text-light);
+  }
+
+  /* ─── Hover Overlay (desktop only) ──────── */
+  .kid-card__hover-overlay {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      to top,
+      rgba(55, 58, 54, 0.75) 0%,
+      rgba(55, 58, 54, 0.4) 40%,
+      rgba(55, 58, 54, 0.2) 100%
+    );
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+  }
+
+  @media (hover: hover) {
+    .kid-card:hover .kid-card__hover-overlay {
+      opacity: 1;
+    }
+  }
+
+  .kid-card:focus-visible .kid-card__hover-overlay {
+    opacity: 1;
+  }
+
+  .kid-card__overlay-diagnosis {
+    color: rgba(255, 255, 255, 0.92);
+    font-size: 0.82rem;
+    font-weight: 500;
+    text-align: center;
+    padding: 0 var(--space-md);
+    max-width: 90%;
+  }
+
+  .kid-card__cta {
+    color: var(--c-white);
+    font-size: 0.82rem;
+    font-weight: 600;
+    padding: 8px 20px;
+    border: 1.5px solid rgba(255, 255, 255, 0.7);
+    border-radius: 100px;
+    transition: background 0.2s ease, border-color 0.2s ease;
+  }
+
+  .kid-card:hover .kid-card__cta {
+    background: rgba(255, 255, 255, 0.15);
+    border-color: var(--c-white);
+  }
+
+  /* ─── Info Below Photo ─────────────────── */
+  .kid-card__info {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    padding: 10px 4px 0;
+  }
+
+  .kid-card__name {
+    color: var(--c-text);
+    font-family: var(--font-display);
+    font-size: 1rem;
+    font-weight: 600;
+    line-height: 1.3;
+  }
+
+  .kid-card__diagnosis {
+    display: block;
+    padding: 0 4px;
+    font-size: 0.78rem;
+    color: var(--c-text-muted);
+    line-height: 1.4;
+  }
+
+  .kid-card__badge {
+    display: inline-block;
+    padding: 2px 10px;
+    background: var(--c-yellow);
+    color: var(--c-dark);
+    font-size: 0.6rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    border-radius: 100px;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  /* ─── No Results ─────────────────────────── */
+  .no-results[hidden] {
+    display: none;
+  }
+
+  .no-results {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-sm);
+    text-align: center;
+    padding: var(--space-4xl) var(--space-lg);
+    color: var(--c-text-light);
+  }
+
+  .no-results__title {
+    font-family: var(--font-display);
+    font-size: 1.25rem;
+    color: var(--c-text);
+  }
+
+  .no-results__hint {
+    font-size: 0.9rem;
+    color: var(--c-text-muted);
+    margin-bottom: var(--space-sm);
+  }
+
+  /* ─── Responsive: Large screens ──────────── */
+  @media (min-width: 1400px) {
     .kids-grid {
-      grid-template-columns: repeat(2, 1fr);
+      columns: 5;
+    }
+  }
+
+  /* ─── Responsive: Tablet ─────────────────── */
+  @media (max-width: 1100px) {
+    .kids-grid {
+      columns: 3;
+      column-gap: var(--space-md);
+    }
+
+    .kid-card {
+      margin-bottom: var(--space-md);
+    }
+
+    .featured-card__content {
+      padding: var(--space-xl);
+    }
+  }
+
+  /* ─── Responsive: Mobile ─────────────────── */
+  @media (max-width: 768px) {
+    .kids-section {
+      padding-block: 0 var(--space-3xl);
+    }
+
+    /* Impact bar: horizontal scroll on small screens */
+    .impact-bar {
+      gap: var(--space-lg);
+      padding: var(--space-md) var(--space-sm);
+      margin-bottom: var(--space-xl);
+    }
+
+    .impact-stat__number {
+      font-size: 1.35rem;
+    }
+
+    .impact-stat__label {
+      font-size: 0.65rem;
+    }
+
+    /* Featured card: stack vertically */
+    .featured-card {
+      grid-template-columns: 1fr;
+      margin-bottom: var(--space-xl);
+    }
+
+    .featured-card__image {
+      aspect-ratio: 16 / 10;
+    }
+
+    .featured-card__content {
+      padding: var(--space-lg);
+    }
+
+    .featured-card__name {
+      font-size: 1.5rem;
+    }
+
+    /* Toolbar */
+    .toolbar {
+      top: var(--header-height, 88px);
+      margin-inline: calc(-1 * var(--space-lg));
+      padding: var(--space-sm) var(--space-lg);
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+      background: rgba(254, 252, 245, 0.97);
+    }
+
+    .toolbar__row {
+      flex-direction: column;
+      align-items: stretch;
+      gap: var(--space-sm);
+    }
+
+    .search-box {
+      max-width: none;
+      min-width: 0;
+    }
+
+    .search-box__input {
+      height: 44px;
+      padding: 0 12px 0 38px;
+      font-size: 0.88rem;
+    }
+
+    .toolbar__filters {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: var(--space-sm);
+    }
+
+    .filter-select {
+      min-width: 0;
+      height: 44px;
+      font-size: 0.82rem;
+      padding: 0 32px 0 12px;
+    }
+
+    .pill-toggle {
+      grid-column: 1 / -1;
+      justify-content: center;
+      height: 44px;
+    }
+
+    .toolbar__status {
+      font-size: 0.75rem;
+    }
+
+    /* Grid: 2 columns on mobile */
+    .kids-grid {
+      columns: 2;
+      column-gap: var(--space-sm);
+    }
+
+    .kid-card {
+      margin-bottom: var(--space-sm);
+      contain-intrinsic-size: auto 280px;
+    }
+
+    .kid-card__frame {
+      border-radius: 12px;
+    }
+
+    /* Hide hover overlay on touch, but keep it for keyboard focus */
+    .kid-card__hover-overlay {
+      display: none;
+    }
+    .kid-card:focus-visible .kid-card__hover-overlay {
+      display: flex;
+      opacity: 1;
+    }
+
+    .kid-card__info {
+      padding: 6px 2px 0;
+    }
+
+    .kid-card__name {
+      font-size: 0.85rem;
+    }
+
+    .kid-card__diagnosis {
+      font-size: 0.7rem;
+      padding: 0 2px;
+    }
+
+    .kid-card__badge {
+      font-size: 0.55rem;
+      padding: 2px 8px;
+    }
+  }
+
+  @media (max-width: 380px) {
+    .toolbar__filters {
+      grid-template-columns: 1fr;
+    }
+
+    .impact-bar {
+      flex-wrap: wrap;
       gap: var(--space-md);
+    }
+  }
+
+  /* ─── Reduced Motion ─────────────────────── */
+  @media (prefers-reduced-motion: reduce) {
+    .kid-card,
+    :global(.js-anim) .kid-card:not(.revealed),
+    :global(.js-anim) .kid-card.revealed {
+      opacity: 1;
+      transform: none;
+      animation: none;
+      transition: none;
+    }
+
+    .featured-card,
+    .featured-card__img {
+      transition: none;
     }
   }
 </style>

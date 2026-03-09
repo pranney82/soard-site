@@ -1,0 +1,79 @@
+{
+  "stats": {
+    "totalKids": 132,
+    "totalRooms": 106,
+    "years": 13,
+    "communityKids": 17000
+  },
+  "images": {
+    "hero": "kids/harper/hero-c6a714",
+    "founder": "team/holly-ranney",
+    "reveal": "kids/griffin/hero-dbeb0f",
+    "community": "kids/jackson/hero-4b1747",
+    "store": "kids/madison/hero-2d8210"
+  },
+  "hero": {
+    "label": "Our Story",
+    "heading": "Changing lives, room by room, <em>since&nbsp;2012</em>.",
+    "lead": "Sunshine on a Ranney Day transforms the lives of children with special needs by creating dream spaces that bring comfort, joy, and independence — all at <strong>no cost to families</strong>."
+  },
+  "founders": {
+    "label": "How It Began",
+    "heading": "A sermon, a calling, and a room that changed <em class=\"highlight\">everything</em>.",
+    "paragraphs": [
+      "In 2012, inspired by a church sermon, Peter and Holly Ranney felt a deep calling to use their God-given talents to serve others. With a vision rooted in love, purpose, and creativity, <strong>Sunshine on a Ranney Day</strong> was born — founded on the belief that every child deserves a space that reflects their personality, brings them joy, and supports their unique needs.",
+      "The very first makeover was for 11-year-old Mathew, who dreamed of spending his final days in a military-themed bunker bedroom. That room became more than just a space — it became a sanctuary. His story profoundly moved the Ranneys and solidified the impact that a thoughtfully designed room could have on a child's life and family.",
+      "It was the beginning of something much bigger."
+    ]
+  },
+  "turningPoint": {
+    "label": "A National Moment",
+    "heading": "Then the world met <em class=\"highlight\">Tripp</em>.",
+    "paragraphs": [
+      "Soon after, the world was introduced to Tripp Halstead, a young boy whose story captured hearts across the country after a traumatic brain injury. When Sunshine on a Ranney Day completed a whole-home makeover for Tripp, 1.6 million people tuned in to watch the reveal live on WSB-TV.",
+      "The national attention helped shine a light on the mission and expand the reach of the organization. Tripp's joyful spirit and incredible resilience left a lasting legacy — and further inspired the work still being done today."
+    ]
+  },
+  "milestones": [
+    { "year": "2012", "title": "The First Room", "desc": "Inspired by a church sermon, Peter and Holly Ranney build their first room — a military-themed bedroom for 11-year-old Mathew." },
+    { "year": "2013", "title": "Tripp Halstead", "desc": "A whole-home makeover for Tripp captures 1.6 million viewers on a WSB-TV livestream, launching SOARD into the national spotlight." },
+    { "year": "2016", "title": "The Today Show", "desc": "Peter and Holly appear on NBC's Today Show for their renovation of parent sleep rooms at Children's Healthcare of Atlanta." },
+    { "year": "2018", "title": "Braves Community Heroes", "desc": "Holly and Peter are honored as Atlanta Braves Community Heroes at SunTrust Park alongside Dansby Swanson and Freddie Freeman." },
+    { "year": "2020", "title": "Sunny & Ranney Opens", "desc": "SOARD opens a nonprofit home furnishings store in Roswell, with 100% of profits funding room makeovers for kids." },
+    { "year": "2021", "title": "Women Making a Mark", "desc": "Atlanta Magazine honors Holly as one of their \"Women Making a Mark\" for her impact on the community." },
+    { "year": "2024", "title": "100+ Rooms", "desc": "SOARD crosses the 100-room milestone, having served over 130 children and impacted 17,000+ through community projects." }
+  ],
+  "ribbon": [
+    { "value": "{totalRooms}+", "label": "Room Makeovers" },
+    { "value": "{totalKids}+", "label": "Children Served" },
+    { "value": "{communityKids}+", "label": "Kids Impacted" },
+    { "value": "100%", "label": "Goes to Kids" }
+  ],
+  "mascot": {
+    "label": "Our Mascot",
+    "heading": "Meet <em class=\"highlight\">Gracie the Pig</em>, the heart and spirit of SOARD.",
+    "paragraphs": [
+      "Gracie was inspired by an unforgettable wedding gift — when Peter surprised Holly with a baby pot-bellied pig named Gracie. What started as a unique and heartfelt gesture has since grown into something magical.",
+      "Over the years, Gracie has transformed into our golden, high-flying mascot, soaring above the clouds in her signature cape, always on the lookout for children and families in need of a little extra sunshine.",
+      "With her trusty handsaw and a heart full of hope, Gracie leads her team of Sunshiners to build wheelchair-accessible bathrooms, dream bedrooms, and in-home therapy spaces — spaces that bring comfort, independence, and joy to children facing daily challenges."
+    ],
+    "tagline": "She's a reminder that with creativity, compassion, and a whole lot of heart, <strong>anything is possible with a little bit of Sunshine.</strong>"
+  },
+  "store": {
+    "label": "Sustaining the Mission",
+    "heading": "Shopping that builds <em class=\"highlight\">dream rooms</em>.",
+    "paragraphs": [
+      "In 2020, Sunshine on a Ranney Day took a bold step to sustain its mission by opening <strong><a href=\"https://sunnyandranney.com\" target=\"_blank\" rel=\"noopener noreferrer\">Sunny & Ranney</a></strong>, a nonprofit home furnishings and décor store in Roswell, GA.",
+      "The shop features all brand-new, designer home goods and furniture, with 100% of the profits going directly to fund custom renovations for children with special needs."
+    ]
+  },
+  "today": {
+    "label": "Where We Are Today",
+    "heading": "What began as a simple idea has become a <em class=\"highlight\">movement</em>.",
+    "body": "Thanks to the unwavering support of donors, partners, and customers, Sunshine on a Ranney Day has grown into a community-driven force for good — touching the lives of more than 17,000 children and families across the greater Atlanta area. What started as a single room has become a beacon of hope, bringing comfort, dignity, independence, and joy to children who deserve nothing less than a space to thrive."
+  },
+  "finale": {
+    "heading": "Be part of the <em>next</em> chapter.",
+    "body": "Every donation, every volunteer hour, every shared story builds another dream room for a child who needs it most."
+  }
+}
