@@ -14,7 +14,7 @@
  * - theme-color for mobile browsers
  * - Absolute OG image URLs
  */
-import { ViewTransitions } from 'astro:transitions';
+import { ClientRouter } from 'astro:transitions';
 import Header from '../components/global/Header.astro';
 import Footer from '../components/global/Footer.astro';
 import CartDrawer from '../components/shop/CartDrawer.astro';
@@ -238,8 +238,8 @@ const structuredData = buildSchemaGraph(...graphSchemas);
     }
   </style>
 
-  <!-- View Transitions for smooth page navigation -->
-  <ViewTransitions />
+  <!-- Client-side router for smooth page navigation -->
+  <ClientRouter />
 
   <!-- JSON-LD: Unified @graph with Organization + WebPage + page-specific schemas -->
   <script type="application/ld+json" set:html={JSON.stringify(structuredData)} />
