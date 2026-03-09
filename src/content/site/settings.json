@@ -43,84 +43,84 @@
   "kidShowcase": [
     {
       "slug": "liam",
-      "cfId": "kids/liam/hero-7ab7f9"
+      "cfId": "kids/liam/hero"
     },
     {
       "slug": "sophia",
-      "cfId": "kids/sophia/hero-63933e"
+      "cfId": "kids/sophia/hero"
     },
     {
       "slug": "jackson",
-      "cfId": "kids/jackson/hero-4b1747"
+      "cfId": "kids/jackson/hero"
     },
     {
       "slug": "griffin",
-      "cfId": "kids/griffin/hero-dbeb0f"
+      "cfId": "kids/griffin/hero"
     },
     {
       "slug": "madison",
-      "cfId": "kids/madison/hero-2d8210"
+      "cfId": "kids/madison/hero"
     },
     {
       "slug": "harper",
-      "cfId": "kids/harper/hero-c6a714"
+      "cfId": "kids/harper/hero"
     },
     {
       "slug": "noah",
-      "cfId": "kids/noah/hero-1ba6ae"
+      "cfId": "kids/noah/hero"
     },
     {
       "slug": "summer",
-      "cfId": "kids/summer/hero-22c2e2"
+      "cfId": "kids/summer/hero"
     }
   ],
   "sectionPhotos": {
-    "missionMain": "kids/eli/photo-001-70ddd7",
-    "missionAccent": "kids/georgia/photo-001-bd7eb4",
-    "storyPhoto": "kids/zyah/hero-2a16fd",
-    "roomBedroom": "kids/griffin/hero-dbeb0f",
-    "roomBath": "kids/zyah/hero-2a16fd",
-    "roomTherapy": "kids/jackson/hero-4b1747"
+    "missionMain": "kids/eli/photo-01",
+    "missionAccent": "kids/georgia/photo-01",
+    "storyPhoto": "kids/zyah/hero",
+    "roomBedroom": "kids/griffin/hero",
+    "roomBath": "kids/zyah/hero",
+    "roomTherapy": "kids/jackson/hero"
   },
   "partnerLogos": [
     {
-      "id": "logos/logo-gas-south-afb96260",
+      "id": "partners/gas-south",
       "name": "Gas South"
     },
     {
-      "id": "logos/logo-randall-paulson-b01b8322",
+      "id": "partners/randall-paulson",
       "name": "Randall Paulson"
     },
     {
-      "id": "logos/logo-kids-r-kids-2c18b077",
+      "id": "partners/kids-r-kids",
       "name": "Kids R Kids"
     },
     {
-      "id": "logos/logo-cambria-5af4504f",
+      "id": "partners/cambria",
       "name": "Cambria"
     },
     {
-      "id": "logos/logo-mohawk-9784da88",
+      "id": "partners/mohawk",
       "name": "Mohawk"
     },
     {
-      "id": "logos/logo-jackson-healthcare-3c0f6126",
+      "id": "partners/jackson-healthcare",
       "name": "Jackson Healthcare"
     },
     {
-      "id": "logos/logo-crosby-design-group-d6cf63",
+      "id": "partners/crosby-design-group",
       "name": "Crosby Design Group"
     },
     {
-      "id": "logos/logo-msi-e55b3f4c",
+      "id": "partners/msi",
       "name": "MSI"
     },
     {
-      "id": "logos/logo-cr-construction-v2-bc7affde",
+      "id": "partners/cr-construction",
       "name": "CR Construction"
     },
     {
-      "id": "logos/logo-stag-partners-3399d7",
+      "id": "partners/stag-partners",
       "name": "Stag Partners"
     }
   ],
@@ -128,152 +128,152 @@
     {
       "slug": "zyah",
       "name": "Zyah",
-      "cfId": "b7ae8742-5431-4c85-aa74-a36b173c6200"
+      "cfId": "kids/zyah/hero"
     },
     {
       "slug": "bryce",
       "name": "Bryce",
-      "cfId": "8c30d105-b021-4a7a-19a7-c247b3531500"
+      "cfId": "kids/bryce/hero"
     },
     {
       "slug": "alex",
       "name": "Alex",
-      "cfId": "1e6a46a7-c998-4afe-2c0e-24027dc77800"
+      "cfId": "kids/alex/hero"
     },
     {
       "slug": "griffin",
       "name": "Griffin",
-      "cfId": "dfd10b8a-a636-4cb6-f748-c59bbd31a500"
+      "cfId": "kids/griffin/hero"
     },
     {
       "slug": "ethan-2022",
       "name": "Ethan",
-      "cfId": "5424eb2a-ab4d-4305-aea1-3149b7a7cc00"
+      "cfId": "kids/ethan-2022/hero"
     },
     {
       "slug": "elizabeth",
       "name": "Elizabeth",
-      "cfId": "8bf4ac37-d5a0-43d0-5e7f-93df38508b00"
+      "cfId": "kids/elizabeth/hero"
     },
     {
       "slug": "brianna",
       "name": "Brianna",
-      "cfId": "473ec592-3e39-4a74-af36-a409ab33c500"
+      "cfId": "kids/brianna/hero"
     },
     {
       "slug": "braxton",
       "name": "Braxton",
-      "cfId": "c4686f1d-343f-4936-25e7-9118f5093900"
+      "cfId": "kids/braxton/hero"
     },
     {
       "slug": "samantha",
       "name": "Samantha",
-      "cfId": "31f4acf8-daea-400f-cc98-19d5dcb93a00"
+      "cfId": "kids/samantha/hero"
     },
     {
       "slug": "leland",
       "name": "Leland",
-      "cfId": "8e7ec97e-f72a-444a-9f51-6c26960cb400"
+      "cfId": "kids/leland/hero"
     },
     {
       "slug": "amanda-caleb-and-isaac",
       "name": "Amanda, Caleb & Isaac",
-      "cfId": "c749d2a0-bf64-459c-9503-f589a70a1800"
+      "cfId": "kids/amanda-caleb-and-isaac/hero"
     },
     {
       "slug": "ally",
       "name": "Ally",
-      "cfId": "1767682f-9806-49a0-bd90-6f3d4e81cd00"
+      "cfId": "kids/ally/hero"
     },
     {
       "slug": "breanna",
       "name": "Breanna",
-      "cfId": "3550059b-79ba-47d7-dbd7-9a37be050d00"
+      "cfId": "kids/breanna/hero"
     },
     {
       "slug": "eli",
       "name": "Eli",
-      "cfId": "85e1c185-6f97-4bcd-a5d7-8cf3cc8dec00"
+      "cfId": "kids/eli/hero"
     },
     {
       "slug": "ellie",
       "name": "Ellie",
-      "cfId": "5543acf4-5a16-4a75-2859-12709174e200"
+      "cfId": "kids/ellie/hero"
     },
     {
       "slug": "monica",
       "name": "Monica",
-      "cfId": "fd5e6be1-748b-4db4-c182-472321f56100"
+      "cfId": "kids/monica/hero"
     },
     {
       "slug": "rachel",
       "name": "Rachel",
-      "cfId": "09d0e72d-677c-4628-5aeb-d0497b746200"
+      "cfId": "kids/rachel/hero"
     },
     {
       "slug": "devon",
       "name": "Devon",
-      "cfId": "1b41b4ef-d921-4fa3-9080-fcc295318f00"
+      "cfId": "kids/devon/hero"
     },
     {
       "slug": "shawn",
       "name": "Shawn",
-      "cfId": "7f02fcda-71e1-4b1a-dfd8-38ba076c9d00"
+      "cfId": "kids/shawn/hero"
     },
     {
       "slug": "landon",
       "name": "Landon",
-      "cfId": "b23f46b7-206f-4c96-d9e6-8815bfb2b800"
+      "cfId": "kids/landon/hero"
     },
     {
       "slug": "eliavah",
       "name": "Eliavah",
-      "cfId": "50054953-a4b3-4ed7-2e36-5dda71d6da00"
+      "cfId": "kids/eliavah/hero"
     },
     {
       "slug": "lizzie",
       "name": "Lizzie",
-      "cfId": "43476e06-cfeb-4167-622c-aecaa288b400"
+      "cfId": "kids/lizzie/hero"
     },
     {
       "slug": "haleigh",
       "name": "Haleigh",
-      "cfId": "557be3e1-5fc3-4302-e5f8-ee43db474300"
+      "cfId": "kids/haleigh/hero"
     },
     {
       "slug": "adam",
       "name": "Adam",
-      "cfId": "845313dc-e883-435e-0b63-271f7c048500"
+      "cfId": "kids/adam/hero"
     },
     {
       "slug": "charlie",
       "name": "Charlie",
-      "cfId": "520c76a8-45e3-4d22-b8e6-51bbc72c0100"
+      "cfId": "kids/charlie/hero"
     },
     {
       "slug": "samuel",
       "name": "Samuel",
-      "cfId": "d7c26883-40ed-4be9-cf16-95135d1cc500"
+      "cfId": "kids/samuel/hero"
     },
     {
       "slug": "john-and-joseph",
       "name": "John & Joseph",
-      "cfId": "95362728-7938-45a8-709d-06cf25403a00"
+      "cfId": "kids/john-and-joseph/hero"
     },
     {
       "slug": "harper",
       "name": "Harper",
-      "cfId": "97e6435d-0d88-44db-20c6-f91c182f0d00"
+      "cfId": "kids/harper/hero"
     },
     {
       "slug": "noah",
       "name": "Noah",
-      "cfId": "f0f1f46b-2180-49ad-d714-c46641ff2d00"
+      "cfId": "kids/noah/hero"
     },
     {
       "slug": "karson",
       "name": "Karson",
-      "cfId": "19bad55d-e080-41cc-eb82-d16c3663a800"
+      "cfId": "kids/karson/hero"
     }
   ]
 }
