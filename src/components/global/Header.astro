@@ -511,6 +511,7 @@ function isGroupActive(group: NavGroup) {
 
   function mOpen() {
     mobileOpen = true; savedY = window.scrollY;
+    mPanel.style.transition = '';            /* restore in case mHideInstant killed it */
     document.documentElement.classList.add('menu-open');
     document.body.style.top = '-' + savedY + 'px';
     mBtn.setAttribute('aria-expanded', 'true');
@@ -520,25 +521,9 @@ function isGroupActive(group: NavGroup) {
     if (footerEl) footerEl.setAttribute('inert', '');
     var firstLink = mPanel.querySelector('a');
     if (firstLink) firstLink.focus();
-    history.pushState({ mobileMenu: true }, '');
   }
 
-  /* Hide menu instantly (no transition) — used when navigating away */
-  function mHideInstant() {
-    if (!mobileOpen) return;
-    mobileOpen = false;
-    mPanel.style.transition = 'none';
-    mPanel.classList.remove('is-open'); mPanel.setAttribute('aria-hidden', 'true');
-    document.documentElement.classList.remove('menu-open');
-    document.body.style.top = '';
-    mBtn.setAttribute('aria-expanded', 'false');
-    mBtn.classList.remove('is-open');
-    if (mainEl) mainEl.removeAttribute('inert');
-    if (footerEl) footerEl.removeAttribute('inert');
-    /* Don't call history.back() — the link navigation replaces the history entry */
-  }
-
-  function mCloseMenu(fromPopstate) {
+  function mCloseMenu() {
     if (!mobileOpen) return;
     mobileOpen = false;
     document.documentElement.classList.remove('menu-open');
@@ -550,16 +535,23 @@ function isGroupActive(group: NavGroup) {
     if (mainEl) mainEl.removeAttribute('inert');
     if (footerEl) footerEl.removeAttribute('inert');
     mBtn.focus();
-    if (!fromPopstate && history.state && history.state.mobileMenu) {
-      history.back();
-    }
+  }
+
+  /* Hide instantly (no transition) — used when a link navigates away */
+  function mHideInstant() {
+    if (!mobileOpen) return;
+    mobileOpen = false;
+    mPanel.style.transition = 'none';
+    mPanel.classList.remove('is-open'); mPanel.setAttribute('aria-hidden', 'true');
+    document.documentElement.classList.remove('menu-open');
+    document.body.style.top = '';
+    mBtn.setAttribute('aria-expanded', 'false');
+    mBtn.classList.remove('is-open');
+    if (mainEl) mainEl.removeAttribute('inert');
+    if (footerEl) footerEl.removeAttribute('inert');
   }
 
   if (mBtn) mBtn.addEventListener('click', function () { mobileOpen ? mCloseMenu() : mOpen(); });
-
-  window.addEventListener('popstate', function (e) {
-    if (mobileOpen) mCloseMenu(true);
-  });
 
   document.addEventListener('keydown', function (e) {
     if (!mobileOpen) return;
@@ -575,10 +567,7 @@ function isGroupActive(group: NavGroup) {
 
   if (mPanel) {
     mPanel.querySelectorAll('a').forEach(function (a) {
-      a.addEventListener('click', function () {
-        /* Hide instantly — no transition, no history.back() race */
-        mHideInstant();
-      });
+      a.addEventListener('click', function () { mHideInstant(); });
     });
   }
 })();
