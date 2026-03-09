@@ -120,6 +120,50 @@
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/oakley/photo-32/public",
       "alt": ""
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/c12d1c5a-919e-4acc-39c4-169dcd03e500/full",
+      "alt": "Peyton makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/60da6553-0f6c-4f6c-9ab8-d688e6653f00/full",
+      "alt": "Peyton makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/c75d2680-2df5-4a0f-550d-43b71bfdb500/full",
+      "alt": "Peyton makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/68058424-28cd-4cfb-3488-2b7339c52200/full",
+      "alt": "Peyton makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/d1ae873f-50af-4cf1-17fc-52142d85e000/full",
+      "alt": "Peyton makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/2ae9e935-7a02-4d01-ce86-1b1443a19a00/full",
+      "alt": "Peyton makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/c09f0df3-5efd-4f56-5333-3cb79410c500/full",
+      "alt": "Peyton makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/e128fe09-e0a9-49d7-a29f-ed9eab5d7700/full",
+      "alt": "Peyton makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/8544fb99-357f-42c5-2af3-8d87d0ca9900/full",
+      "alt": "Peyton makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/313d2df8-caf5-4164-c0da-042ded43c600/full",
+      "alt": "Peyton makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/d9f0eaef-fd7c-4e27-4f5a-198f87217b00/full",
+      "alt": "Peyton makeover photo"
     }
   ],
   "photoCount": 27,
@@ -181,5 +225,29 @@
   "shortDescription": null,
   "metaDescription": null,
   "altTexts": null,
-  "jsonLd": null
+  "jsonLd": null,
+  "_migration": {
+    "scrapedAt": "2026-03-06T13:32:09.487Z",
+    "source": "wordpress-xml-export",
+    "wpPostDate": "2022-12-08 21:47:32",
+    "wpCategories": [
+      "Artisan Design Studio",
+      "Bin There Dump That Atlanta",
+      "Cambria",
+      "Construction Resources",
+      "Meet the Kids",
+      "Pulley and Associates",
+      "Randall Brothers",
+      "ServiceWise Electric",
+      "TKO Plumbing Services"
+    ],
+    "wpTags": [
+      "2023",
+      "Accessible Bathroom",
+      "Dream Bedroom"
+    ],
+    "thumbnailId": 5477,
+    "needsReview": [],
+    "cfHeroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/c12d1c5a-919e-4acc-39c4-169dcd03e500/full"
+  }
 }

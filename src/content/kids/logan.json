@@ -116,6 +116,66 @@
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/oakley/photo-32/public",
       "alt": ""
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/980e366f-9c04-44c1-de5b-1dc5652adb00/full",
+      "alt": "Logan makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/531584fe-9419-45f7-4d22-4b07aac84100/full",
+      "alt": "Logan makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/c12d1c5a-919e-4acc-39c4-169dcd03e500/full",
+      "alt": "Logan makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/b53d62a8-e3ec-4b0e-245d-ffeb14b31d00/full",
+      "alt": "Logan makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/60da6553-0f6c-4f6c-9ab8-d688e6653f00/full",
+      "alt": "Logan makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/c75d2680-2df5-4a0f-550d-43b71bfdb500/full",
+      "alt": "Logan makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/387e1491-5c98-45c8-e9d7-118864cf6000/full",
+      "alt": "Logan makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/7634bd59-f482-4e5f-fa6c-4e8accd04100/full",
+      "alt": "Logan makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/e9db8a63-c447-4a6a-b9b9-7f2ca7274100/full",
+      "alt": "Logan makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/86bf558a-dc7b-4e77-6637-db25ccbd8c00/full",
+      "alt": "Logan makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/26238054-a10a-4bd9-7576-1705789d1a00/full",
+      "alt": "Logan makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/627887f7-435a-4738-06db-084c6f8ec400/full",
+      "alt": "Logan makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/c0ab6563-2651-4955-12c5-61bb803e5700/full",
+      "alt": "Logan makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/f933f67b-081e-4326-3b50-36f60766cf00/full",
+      "alt": "Logan makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/db0989b7-3054-43e5-29d4-e7f4e192fb00/full",
+      "alt": "Logan makeover photo"
     }
   ],
   "photoCount": 26,
@@ -189,5 +249,31 @@
   "shortDescription": null,
   "metaDescription": null,
   "altTexts": null,
-  "jsonLd": null
+  "jsonLd": null,
+  "_migration": {
+    "scrapedAt": "2026-03-06T13:32:09.488Z",
+    "source": "wordpress-xml-export",
+    "wpPostDate": "2023-06-30 16:36:27",
+    "wpCategories": [
+      "Bin There Dump That Atlanta",
+      "Cambria",
+      "Construction Resources",
+      "Meet the Kids",
+      "Mohawk",
+      "Pulley and Associates",
+      "Randall Brothers",
+      "Ranney Blair Weidmann",
+      "Real Floors Commercial",
+      "ServiceWise Electric",
+      "TKO Plumbing Services"
+    ],
+    "wpTags": [
+      "2023",
+      "Accessible Bathroom",
+      "Dream Bedroom"
+    ],
+    "thumbnailId": 5917,
+    "needsReview": [],
+    "cfHeroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/980e366f-9c04-44c1-de5b-1dc5652adb00/full"
+  }
 }

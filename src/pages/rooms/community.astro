@@ -11,6 +11,7 @@
  */
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import { getWebPageSchema, getBreadcrumbSchema, buildSchemaGraph } from '../../utils/schema';
+import { getCollection } from 'astro:content';
 
 const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
 
@@ -21,41 +22,11 @@ const heroImageId = 'kids/jackson/hero-4b1747';
 const sectionPhotoA = 'kids/griffin/hero-dbeb0f';
 const sectionPhotoB = 'kids/eli/photo-001-70ddd7';
 
-/* ── Community Projects data ── */
-const projects = [
-  {
-    name: 'Camp Twin Lakes',
-    impact: '10,000',
-    label: 'children impacted yearly',
-    year: '2018',
-    description: 'Camp Twin Lakes provides life-changing camp experiences for children with serious illnesses, disabilities, and other challenges across Georgia. SOARD partnered to renovate camp facilities, creating sensory-friendly spaces and accessible areas where thousands of children can play, grow, and experience the magic of camp — many for the very first time.',
-    color: '#2E7D32',
-  },
-  {
-    name: 'The Summit Counseling Center',
-    impact: '4,800',
-    label: 'children impacted yearly',
-    year: '2016',
-    description: 'The Summit Counseling Center provides professional counseling services to children and families across North Atlanta. SOARD renovated their child therapy spaces, transforming clinical environments into warm, welcoming rooms designed to help kids feel safe and supported during their most vulnerable moments.',
-    color: '#1565C0',
-  },
-  {
-    name: "Children's Healthcare of Atlanta",
-    impact: '2,500',
-    label: 'children impacted yearly',
-    year: '2016',
-    description: "SOARD renovated parent sleep rooms at Children's Healthcare of Atlanta, giving families a comfortable retreat during their child's hospital stay. This project was featured on NBC's Today Show, shining a national spotlight on the power of thoughtful design in healthcare settings.",
-    color: '#6A1B9A',
-  },
-  {
-    name: 'The Drake House',
-    impact: '250',
-    label: 'families served',
-    year: '2022',
-    description: 'The Drake House provides housing and education for single mothers and their children experiencing homelessness in North Metro Atlanta. SOARD renovated their main headquarters — redesigning classrooms, activity spaces, a community kitchen, and teen gathering rooms to create an environment where families can recover, learn, and rebuild with dignity.',
-    color: '#C62828',
-  },
-];
+/* ── Community Projects from content collection ── */
+const allProjects = await getCollection('community');
+const projects = allProjects
+  .map(p => p.data)
+  .sort((a, b) => (a.order || 0) - (b.order || 0));
 
 const totalImpact = '17,000+';
 
@@ -139,7 +110,7 @@ const jsonLd = buildSchemaGraph(
   <section class="cp-ribbon" aria-label="Community project impact">
     <div class="cp-ribbon-inner">
       <div class="cp-ribbon-stat" data-reveal>
-        <span class="cp-ribbon-num">4</span>
+        <span class="cp-ribbon-num">{projects.length}</span>
         <span class="cp-ribbon-label">Major Community<br/>Partners</span>
       </div>
       <div class="cp-ribbon-divider" role="presentation"></div>
@@ -170,15 +141,31 @@ const jsonLd = buildSchemaGraph(
 
     <div class="cp-projects-grid">
       {projects.map((project, i) => (
-        <article class="cp-card" data-reveal data-delay={String(i % 4)}>
+        <article class="cp-card" data-reveal data-delay={String(i % 3)}>
           <div class="cp-card-accent" style={`background: ${project.color};`}></div>
-          <div class="cp-card-impact">
-            <span class="cp-card-num">{project.impact}</span>
-            <span class="cp-card-label">{project.label}</span>
+          {project.imageId ? (
+            <div class="cp-card-img-wrap">
+              <picture>
+                <source type="image/avif" srcset={`${CF}/${project.imageId}/w=400,f=avif 400w, ${CF}/${project.imageId}/w=600,f=avif 600w`} sizes="(max-width:768px) 90vw, 33vw" />
+                <source type="image/webp" srcset={`${CF}/${project.imageId}/w=400,f=webp 400w, ${CF}/${project.imageId}/w=600,f=webp 600w`} sizes="(max-width:768px) 90vw, 33vw" />
+                <img src={`${CF}/${project.imageId}/w=600,q=80`} alt={project.imageAlt} width="600" height="340" loading="lazy" decoding="async" class="cp-card-img" />
+              </picture>
+            </div>
+          ) : (
+            <div class="cp-card-img-placeholder" style={`background: linear-gradient(135deg, ${project.color}22, ${project.color}44);`}>
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke={project.color} stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+            </div>
+          )}
+          {project.badge && <span class="cp-card-badge">{project.badge}</span>}
+          <div class="cp-card-body">
+            <div class="cp-card-impact">
+              <span class="cp-card-num">{project.impact}</span>
+              <span class="cp-card-label">{project.impactLabel}</span>
+            </div>
+            <h3 class="cp-card-name">{project.name}</h3>
+            <span class="cp-card-year">{project.year} Project</span>
+            <p class="cp-card-desc">{project.description}</p>
           </div>
-          <h3 class="cp-card-name">{project.name}</h3>
-          <span class="cp-card-year">{project.year} Project</span>
-          <p class="cp-card-desc">{project.description}</p>
         </article>
       ))}
     </div>
@@ -521,7 +508,7 @@ const jsonLd = buildSchemaGraph(
     margin-inline: auto;
     padding-inline: var(--space-lg);
     display: grid;
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(3, 1fr);
     gap: var(--space-xl);
   }
 
@@ -529,10 +516,11 @@ const jsonLd = buildSchemaGraph(
     position: relative;
     background: var(--c-white);
     border-radius: var(--border-radius-lg);
-    padding: var(--space-2xl);
     box-shadow: var(--shadow-sm);
     overflow: hidden;
     transition: transform var(--transition-base), box-shadow var(--transition-base);
+    display: flex;
+    flex-direction: column;
   }
 
   .cp-card:hover {
@@ -546,6 +534,39 @@ const jsonLd = buildSchemaGraph(
     left: 0;
     width: 100%;
     height: 4px;
+    z-index: 1;
+  }
+
+  .cp-card-img-wrap {
+    overflow: hidden;
+  }
+
+  .cp-card-img {
+    width: 100%;
+    height: 200px;
+    object-fit: cover;
+    display: block;
+    transition: transform var(--transition-slow);
+  }
+
+  .cp-card:hover .cp-card-img {
+    transform: scale(1.05);
+  }
+
+  .cp-card-img-placeholder {
+    height: 200px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .cp-card-img-placeholder svg {
+    opacity: 0.5;
+  }
+
+  .cp-card-body {
+    padding: var(--space-xl) var(--space-xl) var(--space-2xl);
+    flex: 1;
   }
 
   .cp-card-impact {
@@ -601,6 +622,28 @@ const jsonLd = buildSchemaGraph(
       grid-template-columns: 1fr;
       gap: var(--space-lg);
     }
+  }
+
+  @media (min-width: 769px) and (max-width: 1024px) {
+    .cp-projects-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+
+  .cp-card-badge {
+    position: absolute;
+    top: var(--space-md);
+    right: var(--space-md);
+    display: inline-block;
+    padding: 3px 12px;
+    background: var(--c-yellow);
+    color: var(--c-dark);
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border-radius: 100px;
+    z-index: 2;
   }
 
   /* ══════════════════════════════════════════

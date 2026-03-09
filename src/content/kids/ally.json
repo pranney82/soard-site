@@ -99,6 +99,66 @@
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/e830a0a4-c594-4ab8-c4e8-a2b955ab4300/public",
       "alt": ""
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/ccf79ea1-73b1-4aae-74b7-d03f7c565800/full",
+      "alt": "Ally makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/c12d1c5a-919e-4acc-39c4-169dcd03e500/full",
+      "alt": "Ally makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/60da6553-0f6c-4f6c-9ab8-d688e6653f00/full",
+      "alt": "Ally makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/c75d2680-2df5-4a0f-550d-43b71bfdb500/full",
+      "alt": "Ally makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/f266f36d-9b28-407f-d7c0-af6a82890400/full",
+      "alt": "Ally makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/55ba1d23-6b0c-42b5-9470-84ecf5412e00/full",
+      "alt": "Ally makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/31c6fafa-0f57-441c-8912-8c90c9752600/full",
+      "alt": "Ally makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/a68a793f-2193-4e28-b5e1-6b7bcac04600/full",
+      "alt": "Ally makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/e0e4238c-e1fd-46ca-6bc9-3b0a61962000/full",
+      "alt": "Ally makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/e326c557-4a2d-4b2d-6565-c3604c947400/full",
+      "alt": "Ally makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/118faea3-9164-466b-5603-b61ea869fa00/full",
+      "alt": "Ally makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/4a28e695-82cf-42f8-bdca-9fd5bd4d0800/full",
+      "alt": "Ally makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/069b2ec2-0a77-4666-6629-912191366700/full",
+      "alt": "Ally makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/8544fb99-357f-42c5-2af3-8d87d0ca9900/full",
+      "alt": "Ally makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/da6ce528-dbce-48c7-3b61-3322d5ff2900/full",
+      "alt": "Ally makeover photo"
     }
   ],
   "photoCount": 22,
@@ -139,5 +199,20 @@
   "shortDescription": null,
   "metaDescription": null,
   "altTexts": null,
-  "jsonLd": null
+  "jsonLd": null,
+  "_migration": {
+    "scrapedAt": "2026-03-06T13:32:09.405Z",
+    "source": "wordpress-xml-export",
+    "wpPostDate": "2018-03-20 19:46:54",
+    "wpCategories": [
+      "Meet the Kids"
+    ],
+    "wpTags": [
+      "2018",
+      "Dream Bedroom"
+    ],
+    "thumbnailId": 6551,
+    "needsReview": [],
+    "cfHeroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/ccf79ea1-73b1-4aae-74b7-d03f7c565800/full"
+  }
 }

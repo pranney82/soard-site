@@ -1,0 +1,43 @@
+{
+  "name": "Katie",
+  "slug": "katie",
+  "year": 2013,
+  "status": "completed",
+  "bio": "Katie Belle is a beautiful and happy 2 \u00bd -year old with mitochondrial disease. In addition, Katie Belle has severe global developmental delays and is non-verbal. She does not understand speech except her name and &quot;no&quot;. We do not know how long we have left with her, but we are cherishing every moment.  She currently receives occupational therapy, speech therapy, physical therapy and feeding therapy. Katie loves water, loves to be chased around, and will eat just about anything except eggs. She would play outside forever if she could. She enjoys playing in her sand box and sliding down slides. She loves veggie tales. It is the only thing she will watch. She is beautiful, sweet, loving and happy. This project will include the installation of much needed therapy equipment as well as minor room redecoration. ",
+  "quote": "Katie Belle is a beautiful and happy 2 \u00bd -year old with mitochondrial disease. In addition, Katie Belle has severe global developmental delays and is non-verbal. She does not understand speech except her name and &quot;no&quot;. We do not know how long we have left with her, but we are cherishing ev",
+  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/a51a88cc-5383-4648-4301-76636bf88e00/full",
+  "roomTypes": [],
+  "photos": [
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/a51a88cc-5383-4648-4301-76636bf88e00/full",
+      "alt": "Katie makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/fef76021-721d-40f1-04a6-f466d2282800/full",
+      "alt": "Katie makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/ef0ac4be-26c8-470c-a2b9-463bd52fed00/full",
+      "alt": "Katie makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/adfb93d0-109c-42f8-30c1-ed907cdf2600/full",
+      "alt": "Katie makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/dee2f5a0-c276-45cf-0992-1ec086675600/full",
+      "alt": "Katie makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/29cd5913-a2ac-41de-617a-ee9be2e84c00/full",
+      "alt": "Katie makeover photo"
+    }
+  ],
+  "age": null,
+  "diagnosis": null,
+  "_migration": {
+    "cfHeroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/a51a88cc-5383-4648-4301-76636bf88e00/full",
+    "source": "wix-migration",
+    "wixNumber": 9
+  }
+}

@@ -119,6 +119,70 @@
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/6e61745f-1c51-461b-8d9e-ae0f6629ff00/public",
       "alt": ""
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/9d3b0563-5c22-4389-8822-c8d9055eac00/full",
+      "alt": "Liliana makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/65a82718-7622-4889-94b1-4935a40c2d00/full",
+      "alt": "Liliana makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/d019f44e-7485-4d89-8736-e0dac97bb500/full",
+      "alt": "Liliana makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/531584fe-9419-45f7-4d22-4b07aac84100/full",
+      "alt": "Liliana makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/c808e9f6-3099-41e3-6fa4-c1341dbdab00/full",
+      "alt": "Liliana makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/c12d1c5a-919e-4acc-39c4-169dcd03e500/full",
+      "alt": "Liliana makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/c75d2680-2df5-4a0f-550d-43b71bfdb500/full",
+      "alt": "Liliana makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/d3de2436-7b30-4e0d-41fa-997b29fc8600/full",
+      "alt": "Liliana makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/6b8ace6a-8edc-47f0-2173-099bf9465e00/full",
+      "alt": "Liliana makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/5fbb1e99-adec-4276-4f30-57e240bbf100/full",
+      "alt": "Liliana makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/3631a0ae-1ce6-48d9-7cf5-c27bf61e1800/full",
+      "alt": "Liliana makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/f7b3a33e-7c18-4bad-b321-7a9f55835b00/full",
+      "alt": "Liliana makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/5fe5a606-049c-4613-797b-a93cf9f91e00/full",
+      "alt": "Liliana makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/2a9ecba4-5477-4ebf-7f80-a8489fe0af00/full",
+      "alt": "Liliana makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/48481983-ffe1-4906-bf1c-76cca04de600/full",
+      "alt": "Liliana makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/76b9a733-69c2-4bc8-9edf-2888cf8aaa00/full",
+      "alt": "Liliana makeover photo"
     }
   ],
   "photoCount": 27,
@@ -156,5 +220,20 @@
   "shortDescription": null,
   "metaDescription": null,
   "altTexts": null,
-  "jsonLd": null
+  "jsonLd": null,
+  "_migration": {
+    "scrapedAt": "2026-03-06T13:32:09.444Z",
+    "source": "wordpress-xml-export",
+    "wpPostDate": "2018-05-16 15:28:57",
+    "wpCategories": [
+      "Meet the Kids"
+    ],
+    "wpTags": [
+      "2018",
+      "Dream Bedroom"
+    ],
+    "thumbnailId": 7439,
+    "needsReview": [],
+    "cfHeroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/9d3b0563-5c22-4389-8822-c8d9055eac00/full"
+  }
 }

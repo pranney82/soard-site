@@ -123,6 +123,66 @@
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/2cb293c7-d715-44ac-43d2-86f82a0b7100/public",
       "alt": ""
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/b90ad1b0-3459-4032-0695-e6990c270a00/full",
+      "alt": "Mason makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/65a82718-7622-4889-94b1-4935a40c2d00/full",
+      "alt": "Mason makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/531584fe-9419-45f7-4d22-4b07aac84100/full",
+      "alt": "Mason makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/d9028945-ddc6-4759-6f64-df7773e24000/full",
+      "alt": "Mason makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/ccf79ea1-73b1-4aae-74b7-d03f7c565800/full",
+      "alt": "Mason makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/d3de2436-7b30-4e0d-41fa-997b29fc8600/full",
+      "alt": "Mason makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/6b8ace6a-8edc-47f0-2173-099bf9465e00/full",
+      "alt": "Mason makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/4b5a49bc-c565-4004-c3c8-80bf6c652200/full",
+      "alt": "Mason makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/7634bd59-f482-4e5f-fa6c-4e8accd04100/full",
+      "alt": "Mason makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/eeaf16fe-beca-41d3-325f-7b337fa48500/full",
+      "alt": "Mason makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/7d3cc01d-2249-4892-358f-0c58fafb5d00/full",
+      "alt": "Mason makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/3b88fe04-090c-48d0-347f-aa7657d5d600/full",
+      "alt": "Mason makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/ff0f3e95-5bbd-4488-dec1-cbfe64654b00/full",
+      "alt": "Mason makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/4e05a3fd-29cc-4407-e8a5-a6e38f5bb800/full",
+      "alt": "Mason makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/148bb68e-54a2-46ee-25a3-65da82866600/full",
+      "alt": "Mason makeover photo"
     }
   ],
   "photoCount": 28,
@@ -157,5 +217,20 @@
   "shortDescription": null,
   "metaDescription": null,
   "altTexts": null,
-  "jsonLd": null
+  "jsonLd": null,
+  "_migration": {
+    "scrapedAt": "2026-03-06T13:32:09.417Z",
+    "source": "wordpress-xml-export",
+    "wpPostDate": "2018-05-14 19:38:16",
+    "wpCategories": [
+      "Meet the Kids"
+    ],
+    "wpTags": [
+      "2018",
+      "Dream Bedroom"
+    ],
+    "thumbnailId": 7341,
+    "needsReview": [],
+    "cfHeroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/b90ad1b0-3459-4032-0695-e6990c270a00/full"
+  }
 }

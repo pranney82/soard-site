@@ -127,6 +127,66 @@
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/500b66c8-6150-4657-0137-7a3056d18f00/public",
       "alt": ""
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/d1d3bf66-268a-4192-166d-8647f6885c00/full",
+      "alt": "Sophia makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/ccf79ea1-73b1-4aae-74b7-d03f7c565800/full",
+      "alt": "Sophia makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/c12d1c5a-919e-4acc-39c4-169dcd03e500/full",
+      "alt": "Sophia makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/6b8ace6a-8edc-47f0-2173-099bf9465e00/full",
+      "alt": "Sophia makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/b3680f93-8b2a-4748-a09a-634fbd465a00/full",
+      "alt": "Sophia makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/45c62aaa-5986-4a56-2a95-b32a44f5e100/full",
+      "alt": "Sophia makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/269f3ea5-0aa2-4663-150d-9133b172c900/full",
+      "alt": "Sophia makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/912a08a1-1a2b-40b6-36f4-30a74b4d9100/full",
+      "alt": "Sophia makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/9e8a00ee-e332-4fd3-b7eb-1dce2c755400/full",
+      "alt": "Sophia makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/671729ba-f7fa-44d2-1dd4-03b248dae700/full",
+      "alt": "Sophia makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/74284fad-65e4-4239-1440-4e16c665e600/full",
+      "alt": "Sophia makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/bea919d4-133d-4c1d-f3f7-1f4bc5f1f100/full",
+      "alt": "Sophia makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/8d23d9ca-e779-4e73-f400-ca0a42c20100/full",
+      "alt": "Sophia makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/46c2da2c-0bed-48de-99e1-4ea2fb673300/full",
+      "alt": "Sophia makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/b5997704-d667-4f34-c34f-e269e49b4800/full",
+      "alt": "Sophia makeover photo"
     }
   ],
   "photoCount": 29,
@@ -161,5 +221,20 @@
   "shortDescription": null,
   "metaDescription": null,
   "altTexts": null,
-  "jsonLd": null
+  "jsonLd": null,
+  "_migration": {
+    "scrapedAt": "2026-03-06T13:32:09.455Z",
+    "source": "wordpress-xml-export",
+    "wpPostDate": "2021-06-26 14:08:00",
+    "wpCategories": [
+      "Meet the Kids"
+    ],
+    "wpTags": [
+      "2019",
+      "Dream Bedroom"
+    ],
+    "thumbnailId": 1202,
+    "needsReview": [],
+    "cfHeroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/d1d3bf66-268a-4192-166d-8647f6885c00/full"
+  }
 }

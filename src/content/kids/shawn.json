@@ -157,6 +157,66 @@
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/6ed0521c-86a6-42b2-416a-257e60312800/public",
       "alt": ""
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/520c76a8-45e3-4d22-b8e6-51bbc72c0100/full",
+      "alt": "Shawn makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/c12d1c5a-919e-4acc-39c4-169dcd03e500/full",
+      "alt": "Shawn makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/60da6553-0f6c-4f6c-9ab8-d688e6653f00/full",
+      "alt": "Shawn makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/c75d2680-2df5-4a0f-550d-43b71bfdb500/full",
+      "alt": "Shawn makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/932ec1d4-70da-4674-67cc-489e8db75d00/full",
+      "alt": "Shawn makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/09e0454a-5e00-428d-5a4a-d938c1ca4b00/full",
+      "alt": "Shawn makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/c6451c93-565f-44d7-e6ee-01ae3395d300/full",
+      "alt": "Shawn makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/581bffa9-9c69-4661-cadf-0c45f9702500/full",
+      "alt": "Shawn makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/bc939385-51f6-4dbf-dcc0-5d3774569500/full",
+      "alt": "Shawn makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/141a0d5b-9eef-4498-7066-bcc3f0ad3100/full",
+      "alt": "Shawn makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/c466296b-3ae4-471b-495c-0376c9530200/full",
+      "alt": "Shawn makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/d2d9001b-e94d-4fb6-a758-5b8c293fae00/full",
+      "alt": "Shawn makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/af0ce6c8-cc53-4bfe-64af-f610d4338200/full",
+      "alt": "Shawn makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/cf1571e3-9fbc-45af-a092-afc09f906d00/full",
+      "alt": "Shawn makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/f41aafb6-558b-4123-a632-1e1857608700/full",
+      "alt": "Shawn makeover photo"
     }
   ],
   "photoCount": 36,
@@ -236,5 +296,23 @@
   "shortDescription": null,
   "metaDescription": null,
   "altTexts": null,
-  "jsonLd": null
+  "jsonLd": null,
+  "_migration": {
+    "scrapedAt": "2026-03-06T13:32:09.398Z",
+    "source": "wordpress-xml-export",
+    "wpPostDate": "2017-04-15 20:43:03",
+    "wpCategories": [
+      "Meet the Kids",
+      "Mohawk"
+    ],
+    "wpTags": [
+      "2017",
+      "Accessible Bathroom",
+      "Dream Bedroom",
+      "Therapy Room"
+    ],
+    "thumbnailId": 8121,
+    "needsReview": [],
+    "cfHeroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/520c76a8-45e3-4d22-b8e6-51bbc72c0100/full"
+  }
 }

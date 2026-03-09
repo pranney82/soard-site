@@ -120,6 +120,66 @@
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/oakley/photo-32/public",
       "alt": ""
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/bfce39e9-d0ab-4ba4-160b-dfe733fa9600/full",
+      "alt": "Jason makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/a61d1dbc-75f9-46c4-8b35-bdca2c949700/full",
+      "alt": "Jason makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/05bad361-e8f8-4a10-bae3-e83432813100/full",
+      "alt": "Jason makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/fa90279d-f641-461b-9d45-aa7580f6e300/full",
+      "alt": "Jason makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/b90c39b2-55ca-408d-a826-ffb411249000/full",
+      "alt": "Jason makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/0f8750d9-6bbb-4d7c-03e5-4803d69b9100/full",
+      "alt": "Jason makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/8152c297-43d8-4bb3-2058-08f5a948f200/full",
+      "alt": "Jason makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/a96f2b96-a751-4d4b-9641-999c3e110300/full",
+      "alt": "Jason makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/2c789d64-3d82-42ff-dff6-3172544b9300/full",
+      "alt": "Jason makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/8193a0a9-8e74-4e4d-c176-e9fd58da0700/full",
+      "alt": "Jason makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/9c42f60b-7c52-4392-26ea-8278a5d32300/full",
+      "alt": "Jason makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/df0e8c0d-6964-421e-59a7-b038172b0900/full",
+      "alt": "Jason makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/0b465872-650e-4a1b-075e-6cac37582000/full",
+      "alt": "Jason makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/2131b560-0ed6-4c80-6c85-6b1c9e43e500/full",
+      "alt": "Jason makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/1138d2d0-cfa1-4c8e-49ca-1e77346a7100/full",
+      "alt": "Jason makeover photo"
     }
   ],
   "photoCount": 27,
@@ -208,5 +268,31 @@
   "shortDescription": null,
   "metaDescription": null,
   "altTexts": null,
-  "jsonLd": null
+  "jsonLd": null,
+  "_migration": {
+    "scrapedAt": "2026-03-06T13:32:09.483Z",
+    "source": "wordpress-xml-export",
+    "wpPostDate": "2022-12-08 16:38:37",
+    "wpCategories": [
+      "Bin There Dump That Atlanta",
+      "Cambria",
+      "Construction Resources",
+      "Meet the Kids",
+      "Mohawk",
+      "Pulley and Associates",
+      "Randall Brothers",
+      "Randall Paulson Architects",
+      "Real Floors Commercial",
+      "ServiceWise Electric",
+      "TKO Plumbing Services"
+    ],
+    "wpTags": [
+      "2023",
+      "Accessible Bathroom",
+      "Dream Bedroom"
+    ],
+    "thumbnailId": 5713,
+    "needsReview": [],
+    "cfHeroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/bfce39e9-d0ab-4ba4-160b-dfe733fa9600/full"
+  }
 }

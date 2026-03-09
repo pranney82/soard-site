@@ -123,6 +123,90 @@
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/e12b646f-15bb-475b-4f14-bf2bccd1e600/public",
       "alt": ""
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/531584fe-9419-45f7-4d22-4b07aac84100/full",
+      "alt": "Carson makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/520c76a8-45e3-4d22-b8e6-51bbc72c0100/full",
+      "alt": "Carson makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/80c4ad5c-4886-424f-872d-a81a3c6c5100/full",
+      "alt": "Carson makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/7e123ada-9698-4d53-6bc4-c52838c85000/full",
+      "alt": "Carson makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/112c1e94-a0cf-464c-41a3-081c70ce8900/full",
+      "alt": "Carson makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/60da6553-0f6c-4f6c-9ab8-d688e6653f00/full",
+      "alt": "Carson makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/ffe6dcc2-123c-419e-4cbf-6517b320fa00/full",
+      "alt": "Carson makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/d3de2436-7b30-4e0d-41fa-997b29fc8600/full",
+      "alt": "Carson makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/47ad4f0f-fa10-48e2-71b7-18127fe81f00/full",
+      "alt": "Carson makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/4a446a3b-2ad8-4305-d1de-4dd11e95e900/full",
+      "alt": "Carson makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/f2f1b976-70da-4c89-7073-99484bc69200/full",
+      "alt": "Carson makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/5b1601ad-a746-4935-3088-98851d8c1a00/full",
+      "alt": "Carson makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/660e3288-2f12-4d13-ee65-57f8b438b300/full",
+      "alt": "Carson makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/b1c9cf26-1e5a-4587-c267-c195a7fb3200/full",
+      "alt": "Carson makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/4113c7db-0ed5-447d-35c0-fbe6d4ced600/full",
+      "alt": "Carson makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/c206ac7c-2f6f-4fdc-6b9f-63e319ec0b00/full",
+      "alt": "Carson makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/5f5c26af-d887-4ae8-ab23-6c6e9b307300/full",
+      "alt": "Carson makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/b433e4de-fd66-4aee-2db7-5e836accf100/full",
+      "alt": "Carson makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/97b3e67c-811d-4a2d-7d41-2e579bd9a400/full",
+      "alt": "Carson makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/d9eecb6a-7aa0-4256-84d8-5bfaa946a700/full",
+      "alt": "Carson makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/f92a555a-f3fe-46ac-864a-806d9c196c00/full",
+      "alt": "Carson makeover photo"
     }
   ],
   "photoCount": 28,
@@ -175,5 +259,22 @@
   "shortDescription": null,
   "metaDescription": null,
   "altTexts": null,
-  "jsonLd": null
+  "jsonLd": null,
+  "_migration": {
+    "scrapedAt": "2026-03-06T13:32:09.468Z",
+    "source": "wordpress-xml-export",
+    "wpPostDate": "2021-06-26 22:36:45",
+    "wpCategories": [
+      "Artisan Design Studio",
+      "Meet the Kids",
+      "The Wall Nut"
+    ],
+    "wpTags": [
+      "2021",
+      "Therapy Room"
+    ],
+    "thumbnailId": 1262,
+    "needsReview": [],
+    "cfHeroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/531584fe-9419-45f7-4d22-4b07aac84100/full"
+  }
 }

@@ -56,22 +56,10 @@
       display: block;
       flex-shrink: 0;
     }
-    .sidebar-logo .logo-label {
-      display: flex;
-      flex-direction: column;
-      line-height: 1.15;
-    }
-    .sidebar-logo .logo-name {
-      font-family: 'Libre Baskerville', Georgia, serif;
-      font-size: 0.8rem;
-      font-weight: 700;
-      color: #FFD500;
-    }
     .sidebar-logo small {
       font-size: 0.65rem;
       color: rgba(255,255,255,0.4);
       display: block;
-      margin-top: 0.15rem;
       letter-spacing: 0.04em;
       text-transform: uppercase;
     }
@@ -709,7 +697,7 @@
     // ═══════════════════════════════════════════
     // DASHBOARD
     // ═══════════════════════════════════════════
-    function Dashboard({ kids, partners, team, events }) {
+    function Dashboard({ kids, partners, team, events, communityProjects }) {
       return html`
         <div class="page-header"><h2>Dashboard</h2></div>
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
@@ -736,6 +724,10 @@
           <div class="stat-card">
             <div class="stat-number">${(events || []).filter(e => e.status === 'upcoming').length}</div>
             <div class="stat-label">Upcoming Events</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-number">${(communityProjects || []).length}</div>
+            <div class="stat-label">Community Projects</div>
           </div>
         </div>
         <div class="card">
@@ -2662,6 +2654,235 @@
 
     // FAQ MANAGEMENT
     // ═══════════════════════════════════════════
+
+    // ═══════════════════════════════════════════
+    // COMMUNITY PROJECTS LIST
+    // ═══════════════════════════════════════════
+    function CommunityList({ projects, onEdit, onAdd, onDelete }) {
+      return html`
+        <div class="page-header">
+          <h2>Community Projects (${projects.length})</h2>
+          <button class="btn btn-primary" onClick=${onAdd}>+ Add Project</button>
+        </div>
+        <div class="card">
+          <div class="table-wrap"><table>
+            <thead><tr><th>Name</th><th>Year</th><th>Impact</th><th>Badge</th><th>Image</th><th>Order</th><th></th></tr></thead>
+            <tbody>
+              ${projects.length === 0 ? html`<tr><td colspan="7" style="text-align:center; color: #6B6C72;">No community projects yet</td></tr>` : null}
+              ${projects.map(p => html`<tr key=${p.slug}>
+                <td>
+                  <div style="display: flex; align-items: center; gap: 0.5rem;">
+                    <span style="width: 12px; height: 12px; border-radius: 50%; background: ${p.color}; flex-shrink: 0;" />
+                    <strong>${p.name}</strong>
+                  </div>
+                </td>
+                <td class="text-sm">${p.year}</td>
+                <td class="text-sm">${p.impact} ${p.impactLabel}</td>
+                <td>${p.badge ? html`<span class="badge badge-accent">${p.badge}</span>` : '—'}</td>
+                <td>${p.imageId ? '✅' : '—'}</td>
+                <td class="text-sm">${p.order || 0}</td>
+                <td style="white-space: nowrap;">
+                  <button class="btn btn-ghost btn-sm" onClick=${() => onEdit(p.slug)}>Edit</button>
+                  <button class="btn btn-ghost btn-sm" style="color: #E53E3E;" onClick=${(ev) => { ev.stopPropagation(); onDelete(p); }}>Delete</button>
+                </td>
+              </tr>`)}
+            </tbody>
+          </table></div>
+        </div>
+      `;
+    }
+
+    // ═══════════════════════════════════════════
+    // COMMUNITY PROJECT EDITOR
+    // ═══════════════════════════════════════════
+    function CommunityEditor({ slug, onBack, addToast }) {
+      const [loading, setLoading] = useState(!!slug);
+      const [saving, setSaving] = useState(false);
+      const [sha, setSha] = useState(null);
+      const [dirty, setDirty] = useState(false);
+      const [data, setData] = useState({
+        name: '', slug: '', impact: '', impactLabel: 'children impacted yearly',
+        year: new Date().getFullYear().toString(), description: '',
+        color: '#373A36', imageId: '', imageAlt: '', badge: '', order: 0,
+      });
+
+      useEffect(() => {
+        if (!slug) return;
+        (async () => {
+          try {
+            const res = await api.readContent(`src/content/community/${slug}.json`);
+            if (res.success && res.content) {
+              const parsed = typeof res.content === 'string' ? JSON.parse(res.content) : res.content;
+              setData(parsed);
+              setSha(res.sha);
+            } else {
+              addToast('Project not found', 'error');
+              onBack();
+            }
+          } catch (err) {
+            addToast(`Load error: ${err.message}`, 'error');
+          }
+          setLoading(false);
+        })();
+      }, [slug]);
+
+      const update = (key, val) => {
+        setData(d => {
+          const updated = { ...d, [key]: val };
+          if (key === 'name' && !slug) {
+            updated.slug = slugify(val);
+          }
+          return updated;
+        });
+        setDirty(true);
+      };
+
+      const handleSave = async () => {
+        if (!data.name) { addToast('Name is required', 'error'); return; }
+        if (!data.slug) data.slug = slugify(data.name);
+        setSaving(true);
+        try {
+          const path = `src/content/community/${data.slug}.json`;
+          const content = JSON.stringify(data, null, 2);
+          const message = slug ? `Update community project: ${data.name}` : `Add community project: ${data.name}`;
+          const res = await api.saveContent(path, content, message, sha || undefined);
+          if (res.success) {
+            setSha(res.sha);
+            setDirty(false);
+            addToast('Project saved & published!', 'success');
+          } else {
+            addToast(`Save failed: ${res.error}`, 'error');
+          }
+        } catch (err) {
+          addToast(`Save error: ${err.message}`, 'error');
+        }
+        setSaving(false);
+      };
+
+      useEffect(() => {
+        const handler = (e) => { if (dirty) { e.preventDefault(); e.returnValue = ''; } };
+        window.addEventListener('beforeunload', handler);
+        return () => window.removeEventListener('beforeunload', handler);
+      }, [dirty]);
+
+      if (loading) return html`<div class="card" style="text-align: center; padding: 3rem;"><div class="spinner" style="width: 32px; height: 32px;" /></div>`;
+
+      const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
+      const PRESET_COLORS = ['#2E7D32', '#1565C0', '#6A1B9A', '#C62828', '#E65100', '#00838F', '#373A36', '#AD1457'];
+
+      return html`
+        <div class="page-header">
+          <div style="display: flex; align-items: center; gap: 0.75rem;">
+            <button class="btn btn-ghost" onClick=${() => { if (dirty && !confirm('You have unsaved changes. Leave?')) return; onBack(); }}>← Back</button>
+            <h2>${slug ? 'Edit Project' : 'New Community Project'}</h2>
+          </div>
+          <button class="btn btn-primary" onClick=${handleSave} disabled=${saving}>
+            ${saving ? 'Saving...' : dirty ? '💾 Save & Publish' : 'Save & Publish'}
+          </button>
+        </div>
+
+        <div class="card" style="margin-bottom: 1rem;">
+          <h3 style="margin-bottom: 1rem;">Project Details</h3>
+          <div class="form-row" style="margin-bottom: 1.25rem;">
+            <div class="form-group">
+              <span class="form-label">Organization Name *</span>
+              <input class="form-input" type="text" value=${data.name}
+                onInput=${e => update('name', e.target.value)} placeholder="Camp Twin Lakes" />
+            </div>
+            <div class="form-group">
+              <span class="form-label">Slug</span>
+              <input class="form-input" type="text" value=${data.slug}
+                onInput=${e => update('slug', e.target.value)} placeholder="camp-twin-lakes" />
+              <span class="form-hint">Auto-generated from name</span>
+            </div>
+          </div>
+          <div class="form-row" style="margin-bottom: 1.25rem;">
+            <div class="form-group">
+              <span class="form-label">Year *</span>
+              <input class="form-input" type="text" value=${data.year}
+                onInput=${e => update('year', e.target.value)} placeholder="2024" />
+            </div>
+            <div class="form-group">
+              <span class="form-label">Badge</span>
+              <input class="form-input" type="text" value=${data.badge || ''}
+                onInput=${e => update('badge', e.target.value)} placeholder="In Progress (leave empty for none)" />
+              <span class="form-hint">Shows a yellow pill on the card, e.g. "In Progress"</span>
+            </div>
+          </div>
+          <div class="form-row" style="margin-bottom: 1.25rem;">
+            <div class="form-group">
+              <span class="form-label">Impact Number *</span>
+              <input class="form-input" type="text" value=${data.impact}
+                onInput=${e => update('impact', e.target.value)} placeholder="10,000" />
+              <span class="form-hint">Big number shown on the card, e.g. "4,800"</span>
+            </div>
+            <div class="form-group">
+              <span class="form-label">Impact Label *</span>
+              <input class="form-input" type="text" value=${data.impactLabel}
+                onInput=${e => update('impactLabel', e.target.value)} placeholder="children impacted yearly" />
+              <span class="form-hint">Small text below the number</span>
+            </div>
+          </div>
+          <div class="form-group" style="margin-bottom: 1.25rem;">
+            <span class="form-label">Description *</span>
+            <textarea class="form-textarea" rows="4" value=${data.description}
+              onInput=${e => update('description', e.target.value)}
+              placeholder="Describe the organization and what SOARD's renovation accomplished..." />
+            <span class="form-hint">${(data.description || '').length} characters</span>
+          </div>
+          <div class="form-row" style="margin-bottom: 1.25rem;">
+            <div class="form-group">
+              <span class="form-label">Display Order</span>
+              <input class="form-input" type="number" value=${data.order || 0}
+                onInput=${e => update('order', Number(e.target.value))} />
+              <span class="form-hint">Lower numbers appear first</span>
+            </div>
+            <div class="form-group">
+              <span class="form-label">Card Color</span>
+              <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.25rem;">
+                ${PRESET_COLORS.map(c => html`
+                  <button key=${c} onClick=${() => update('color', c)}
+                    style="width: 32px; height: 32px; border-radius: 6px; background: ${c}; border: 2px solid ${data.color === c ? '#FFD500' : 'transparent'}; cursor: pointer; transition: border-color 0.15s;" />
+                `)}
+              </div>
+              <input class="form-input" type="text" value=${data.color} style="margin-top: 0.5rem; max-width: 140px;"
+                onInput=${e => update('color', e.target.value)} placeholder="#2E7D32" />
+            </div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-bottom: 1rem;">
+          <h3 style="margin-bottom: 1rem;">Card Image</h3>
+          <div class="form-row" style="margin-bottom: 1.25rem;">
+            <div class="form-group" style="flex: 2;">
+              <span class="form-label">Cloudflare Image ID</span>
+              <input class="form-input" type="text" value=${data.imageId || ''}
+                onInput=${e => update('imageId', e.target.value)} placeholder="community/drake-house-hero or UUID" />
+              <span class="form-hint">Custom ID or UUID from Cloudflare Images. Leave empty for a color placeholder.</span>
+            </div>
+            <div class="form-group">
+              <span class="form-label">Image Alt Text</span>
+              <input class="form-input" type="text" value=${data.imageAlt || ''}
+                onInput=${e => update('imageAlt', e.target.value)} placeholder="Describe the image" />
+            </div>
+          </div>
+          ${data.imageId ? html`
+            <div style="margin-top: 0.5rem; border-radius: 8px; overflow: hidden; max-width: 400px;">
+              <img src="${CF}/${data.imageId}/w=400,q=80" alt=${data.imageAlt || 'Preview'}
+                style="width: 100%; height: 150px; object-fit: cover; display: block;"
+                onError=${e => { e.target.style.display = 'none'; }} />
+            </div>
+          ` : html`
+            <div style="margin-top: 0.5rem; padding: 1rem; background: ${data.color}22; border-radius: 8px; text-align: center; color: #6B6C72; font-size: 0.85rem; max-width: 400px;">
+              No image — will show color placeholder
+            </div>
+          `}
+        </div>
+      `;
+    }
+
+    // FAQ MANAGEMENT
+    // ═══════════════════════════════════════════
     function FAQManager({ addToast }) {
       const [loading, setLoading] = useState(true);
       const [saving, setSaving] = useState(false);
@@ -4055,6 +4276,7 @@
       const [team, setTeam] = useState([]);
       const [articles, setArticles] = useState([]);
       const [events, setEvents] = useState([]);
+      const [communityProjects, setCommunityProjects] = useState([]);
       const [loading, setLoading] = useState(true);
       const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -4102,6 +4324,13 @@
             setEvents(evRes.items.map(i => i.content).filter(Boolean)
               .sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0)));
           }
+
+          // Load community projects (bulk — one API call)
+          const cpRes = await api.bulkListContent('src/content/community');
+          if (cpRes.success) {
+            setCommunityProjects(cpRes.items.map(i => i.content).filter(Boolean)
+              .sort((a, b) => (a.order || 0) - (b.order || 0)));
+          }
         } catch (err) {
           addToast('Failed to load content. Check API settings.', 'error');
         }
@@ -4124,7 +4353,7 @@
         if (!deleteModal) return;
         setDeleteLoading(true);
         const { type, item } = deleteModal;
-        const dir = type === 'kid' ? 'kids' : type === 'partner' ? 'partners' : type === 'team member' ? 'team' : type === 'article' ? 'articles' : type === 'event' ? 'events' : 'partners';
+        const dir = type === 'kid' ? 'kids' : type === 'partner' ? 'partners' : type === 'team member' ? 'team' : type === 'article' ? 'articles' : type === 'event' ? 'events' : type === 'community project' ? 'community' : 'partners';
         try {
           // Get SHA first
           const fileRes = await api.readContent(`src/content/${dir}/${item.slug}.json`);
@@ -4161,6 +4390,7 @@
         team: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="9" cy="7" r="3" /><path d="M3 21v-1a5 5 0 0 1 10 0v1" /><circle cx="18" cy="9" r="2.5" /><path d="M15 21v-1a3.5 3.5 0 0 1 7 0v1" /></svg>`,
         articles: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 4h16v16H4z" /><path d="M8 8h8M8 12h8M8 16h5" /></svg>`,
         events: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" /></svg>`,
+        community: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" /></svg>`,
         faq: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" /><circle cx="12" cy="17" r="0.5" /></svg>`,
         financials: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" /></svg>`,
         deploys: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z" /><path d="M12 15l-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z" /><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0" /><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5" /></svg>`,
@@ -4182,6 +4412,7 @@
           { id: 'articles', icon: icons.articles, label: 'Articles' },
           { id: 'events', icon: icons.events, label: 'Events' },
           { id: 'ourstory', icon: icons.ourstory, label: 'Our Story' },
+          { id: 'community', icon: icons.community, label: 'Community Projects' },
           { id: 'faq', icon: icons.faq, label: 'FAQs' },
           { id: 'financials', icon: icons.financials, label: 'Financials' },
           { id: 'settings', icon: icons.settings, label: 'Site Settings' },
@@ -4201,7 +4432,7 @@
 
         switch (view) {
           case 'dashboard':
-            return html`<${Dashboard} kids=${kids} partners=${partners} team=${team} events=${events} />`;
+            return html`<${Dashboard} kids=${kids} partners=${partners} team=${team} events=${events} communityProjects=${communityProjects} />`;
           case 'kids':
             return editSlug !== null
               ? html`<${KidEditor} slug=${editSlug || undefined} onBack=${() => { navigate('kids'); loadData(); }} addToast=${addToast} partners=${partners} />`
@@ -4227,6 +4458,11 @@
               ? html`<${EventEditor} slug=${editSlug || undefined} onBack=${() => { navigate('events'); loadData(); }} addToast=${addToast} />`
               : html`<${EventsList} events=${events} onEdit=${s => navigate('events', s)} onAdd=${() => navigate('events', '')}
                   onDelete=${e => setDeleteModal({ type: 'event', item: { ...e, name: e.title } })} />`;
+          case 'community':
+            return editSlug !== null
+              ? html`<${CommunityEditor} slug=${editSlug || undefined} onBack=${() => { navigate('community'); loadData(); }} addToast=${addToast} />`
+              : html`<${CommunityList} projects=${communityProjects} onEdit=${s => navigate('community', s)} onAdd=${() => navigate('community', '')}
+                  onDelete=${p => setDeleteModal({ type: 'community project', item: p })} />`;
           case 'applications':
             return html`<${Applications} addToast=${addToast} />`;
           case 'financials':
@@ -4259,10 +4495,7 @@
           <nav class="sidebar ${sidebarOpen ? 'open' : ''}">
             <div class="sidebar-logo">
               <img src="/images/logos/logo-admin.png" alt="" />
-              <div class="logo-label">
-                <span class="logo-name">Sunshine on a Ranney Day</span>
-                <small>Content Admin</small>
-              </div>
+              <small>Content Admin</small>
             </div>
             ${navSections.map(section => html`
               ${section.label ? html`<div class="nav-section">${section.label}</div>` : null}

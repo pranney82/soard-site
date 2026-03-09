@@ -1,0 +1,71 @@
+{
+  "name": "Ruby",
+  "slug": "ruby",
+  "year": 2016,
+  "status": "completed",
+  "bio": "This precious gem is Ruby!  Her gorgeous smile is contagious and feeds the soul of all those lucky enough to see it.  Sunshine on a Ranney Day and Make-a-Wish teamed up to ensure that those smiles spread like wildfire by making one of her heart\u2019s deepest desires come true. In 2015, she was diagnosed with embryonal rhabdomyosarcoma, which is a form of soft tissue cancer.  Although, she remains strong and irrepressible, the chemotherapy and proton radiation therapy she undergoes is quite treacherous. Though always positive, the hardest part of treatment for Ruby is all the activities she has had to miss. The physical pain can be quickly forgotten, but the disappointments are harder to endure. Ruby has a burning passion for dancing and a fervent social conscious.  Her dreams include a future in which world peace, a cure for cancer and universal happiness exists.  Her personal aspirations are to have a family, open her own dance studio, to perform on Broadway and to travel the world.  The joint mission of SOARD and Make-a-Wish partnership transformed her basement into her very own dance studio so she can pursue her lifelong goals.  Ruby was walking on sunshine, dancing across the dance floor and glowing with incessant smiles once seeing her new therapy room!",
+  "quote": "This precious gem is Ruby!  Her gorgeous smile is contagious and feeds the soul of all those lucky enough to see it.  Sunshine on a Ranney Day and Make-a-Wish teamed up to ensure that those smiles spread like wildfire by making one of her heart\u2019s deepest desires come true. In 2015, she was diagnosed",
+  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/0fadbe5f-1179-4301-22b6-6f04f117b500/full",
+  "roomTypes": [],
+  "photos": [
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/0fadbe5f-1179-4301-22b6-6f04f117b500/full",
+      "alt": "Ruby makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/d019f44e-7485-4d89-8736-e0dac97bb500/full",
+      "alt": "Ruby makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/7e123ada-9698-4d53-6bc4-c52838c85000/full",
+      "alt": "Ruby makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/c75d2680-2df5-4a0f-550d-43b71bfdb500/full",
+      "alt": "Ruby makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/d680353c-e8fc-455c-feb4-9c99a722ec00/full",
+      "alt": "Ruby makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/20d53a6f-aeea-4094-343d-ce5aca53b400/full",
+      "alt": "Ruby makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/4d09985e-28be-48df-a8c6-6c12c8a1dc00/full",
+      "alt": "Ruby makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/2f130590-51e4-4b34-7879-509ad1e00e00/full",
+      "alt": "Ruby makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/9fe1dac1-e237-4289-7917-f6e2e9b4ef00/full",
+      "alt": "Ruby makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/171a70d1-5513-48b8-874b-610b3fed4f00/full",
+      "alt": "Ruby makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/2fbb693b-2aeb-405e-f0a2-bd6af0ea5200/full",
+      "alt": "Ruby makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/c0f29c1d-f6dc-449b-3560-87cc68bf3a00/full",
+      "alt": "Ruby makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/5da87ab2-96e9-4609-9739-53d2c14abd00/full",
+      "alt": "Ruby makeover photo"
+    }
+  ],
+  "age": null,
+  "diagnosis": null,
+  "_migration": {
+    "cfHeroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/0fadbe5f-1179-4301-22b6-6f04f117b500/full",
+    "source": "wix-migration",
+    "wixNumber": 41
+  }
+}
