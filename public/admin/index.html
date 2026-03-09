@@ -56,22 +56,10 @@
       display: block;
       flex-shrink: 0;
     }
-    .sidebar-logo .logo-label {
-      display: flex;
-      flex-direction: column;
-      line-height: 1.15;
-    }
-    .sidebar-logo .logo-name {
-      font-family: 'Libre Baskerville', Georgia, serif;
-      font-size: 0.8rem;
-      font-weight: 700;
-      color: #FFD500;
-    }
     .sidebar-logo small {
       font-size: 0.65rem;
       color: rgba(255,255,255,0.4);
       display: block;
-      margin-top: 0.15rem;
       letter-spacing: 0.04em;
       text-transform: uppercase;
     }
@@ -3860,10 +3848,7 @@
           <nav class="sidebar ${sidebarOpen ? 'open' : ''}">
             <div class="sidebar-logo">
               <img src="/images/logos/logo-admin.png" alt="" />
-              <div class="logo-label">
-                <span class="logo-name">Sunshine on a Ranney Day</span>
-                <small>Content Admin</small>
-              </div>
+              <small>Content Admin</small>
             </div>
             ${navSections.map(section => html`
               ${section.label ? html`<div class="nav-section">${section.label}</div>` : null}
