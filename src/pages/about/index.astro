@@ -21,6 +21,7 @@ const founderPhotoId = page.images.founder;
 const revealPhotoId = page.images.reveal;
 const communityPhotoId = page.images.community;
 const storePhotoId = page.images.store;
+const graciePhotoId = page.images.gracie;
 const milestones = page.milestones;
 const ribbon = (page.ribbon || []).map((r: { value: string; label: string }) => ({
   ...r,
@@ -154,8 +155,12 @@ const jsonLd = buildSchemaGraph(
         <p class="mascot-tagline" set:html={page.mascot.tagline} />
       </div>
       <div class="mascot-visual" data-reveal data-delay="1">
-        <div class="mascot-frame">
-          <img src="/favicon.png" alt="Gracie the Pig — SOARD's flying pig mascot with a cape and handsaw" width="300" height="300" loading="lazy" decoding="async" class="mascot-img" />
+        <div class="mascot-photo">
+          <picture>
+            <source type="image/avif" srcset={`${CF}/${graciePhotoId}/w=500,f=avif 500w, ${CF}/${graciePhotoId}/w=800,f=avif 800w`} sizes="(max-width:768px) 90vw, 40vw" />
+            <source type="image/webp" srcset={`${CF}/${graciePhotoId}/w=500,f=webp 500w, ${CF}/${graciePhotoId}/w=800,f=webp 800w`} sizes="(max-width:768px) 90vw, 40vw" />
+            <img src={`${CF}/${graciePhotoId}/w=800,q=80`} alt="Gracie the Pig — the real pot-bellied pig that inspired SOARD's mascot" width="800" height="533" loading="lazy" decoding="async" />
+          </picture>
         </div>
       </div>
     </div>
@@ -706,27 +711,21 @@ const jsonLd = buildSchemaGraph(
     justify-content: center;
   }
 
-  .mascot-frame {
-    width: 280px;
-    height: 280px;
-    border-radius: 50%;
-    background: var(--c-yellow);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    box-shadow: 0 12px 40px rgba(255, 218, 36, 0.3);
+  .mascot-photo {
+    border-radius: var(--border-radius-lg);
+    overflow: hidden;
+    box-shadow: var(--shadow-xl);
     transition: transform var(--transition-slow);
   }
 
-  .mascot-frame:hover {
-    transform: scale(1.05) rotate(3deg);
+  .mascot-photo:hover {
+    transform: scale(1.02);
   }
 
-  .mascot-img {
-    width: 180px;
-    height: 180px;
-    object-fit: contain;
-    filter: drop-shadow(0 4px 8px rgba(0,0,0,0.15));
+  .mascot-photo img {
+    width: 100%;
+    height: auto;
+    display: block;
   }
 
   @media (max-width: 768px) {
@@ -736,8 +735,6 @@ const jsonLd = buildSchemaGraph(
       gap: var(--space-2xl);
     }
     .mascot-visual { order: -1; }
-    .mascot-frame { width: 200px; height: 200px; }
-    .mascot-img { width: 130px; height: 130px; }
   }
 
   /* ══════════════════════════════════════════
