@@ -594,7 +594,7 @@ document.addEventListener('astro:before-swap', function () {
     backdrop-filter: blur(20px) saturate(1.2);
     -webkit-backdrop-filter: blur(20px) saturate(1.2);
     height: var(--header-height);
-    border-bottom: 3px solid var(--c-yellow);
+    border-bottom: none;
     transition: background 0.3s ease, box-shadow 0.3s ease;
     isolation: isolate;
     transform: translateZ(0);
@@ -884,7 +884,7 @@ document.addEventListener('astro:before-swap', function () {
     overflow: hidden; position: fixed; width: 100%; overscroll-behavior: none;
   }
   :global(html.menu-open) .site-header {
-    border-bottom-color: var(--c-yellow);
+    box-shadow: 0 1px 0 var(--c-border);
   }
 
   /* ═══════ MOBILE NAV ═══════ */
