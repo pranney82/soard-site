@@ -55,6 +55,23 @@ const projects = [
     description: 'The Drake House provides housing and education for single mothers and their children experiencing homelessness in North Metro Atlanta. SOARD renovated their main headquarters — redesigning classrooms, activity spaces, a community kitchen, and teen gathering rooms to create an environment where families can recover, learn, and rebuild with dignity.',
     color: '#C62828',
   },
+  {
+    name: 'Murphy-Harpst Children\'s Center',
+    impact: '101',
+    label: 'children served on campus',
+    year: '2015',
+    description: 'Murphy-Harpst Children\'s Center in Cedartown, Georgia provides residential treatment and foster care for some of the state\'s most vulnerable children — youth who have experienced severe abuse, neglect, and trauma. SOARD renovated living spaces on their 160-acre campus, creating environments where children in state custody can feel safe, supported, and at home during their healing journey.',
+    color: '#E65100',
+  },
+  {
+    name: "Children's Development Academy",
+    impact: '100+',
+    label: 'children enrolled',
+    year: '2025',
+    description: "Founded in 1967, the CDA in Roswell gives young children the best chance to read on grade level by third grade, graduate high school, and break the cycle of generational poverty. SOARD is part of the CDA's Learn.Play.Serve campaign — creating a new toddler classroom and community room with architecture by Randall Paulson, design by Crosby Design Group, and construction by Trident Construction.",
+    color: '#00838F',
+    badge: 'In Progress',
+  },
 ];
 
 const totalImpact = '17,000+';
@@ -139,7 +156,7 @@ const jsonLd = buildSchemaGraph(
   <section class="cp-ribbon" aria-label="Community project impact">
     <div class="cp-ribbon-inner">
       <div class="cp-ribbon-stat" data-reveal>
-        <span class="cp-ribbon-num">4</span>
+        <span class="cp-ribbon-num">6</span>
         <span class="cp-ribbon-label">Major Community<br/>Partners</span>
       </div>
       <div class="cp-ribbon-divider" role="presentation"></div>
@@ -170,8 +187,9 @@ const jsonLd = buildSchemaGraph(
 
     <div class="cp-projects-grid">
       {projects.map((project, i) => (
-        <article class="cp-card" data-reveal data-delay={String(i % 4)}>
+        <article class="cp-card" data-reveal data-delay={String(i % 3)}>
           <div class="cp-card-accent" style={`background: ${project.color};`}></div>
+          {project.badge && <span class="cp-card-badge">{project.badge}</span>}
           <div class="cp-card-impact">
             <span class="cp-card-num">{project.impact}</span>
             <span class="cp-card-label">{project.label}</span>
@@ -521,7 +539,7 @@ const jsonLd = buildSchemaGraph(
     margin-inline: auto;
     padding-inline: var(--space-lg);
     display: grid;
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(3, 1fr);
     gap: var(--space-xl);
   }
 
@@ -601,6 +619,27 @@ const jsonLd = buildSchemaGraph(
       grid-template-columns: 1fr;
       gap: var(--space-lg);
     }
+  }
+
+  @media (min-width: 769px) and (max-width: 1024px) {
+    .cp-projects-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+
+  .cp-card-badge {
+    position: absolute;
+    top: var(--space-md);
+    right: var(--space-md);
+    display: inline-block;
+    padding: 3px 12px;
+    background: var(--c-yellow);
+    color: var(--c-dark);
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border-radius: 100px;
   }
 
   /* ══════════════════════════════════════════
