@@ -608,41 +608,45 @@ const jsonLd = getWebSiteSchema();
   [data-delay="3"] { transition-delay: 0.3s; }
   [data-delay="4"] { transition-delay: 0.4s; }
 
-  /* Safety net: if JS hasn't revealed content within 4s, force it visible.
-     Prevents blank pages from View Transition race conditions, script errors,
-     or any other JS failure. Content > animation. */
-  @keyframes forceReveal { to { opacity: 1; transform: none; } }
-  [data-reveal]:not(.is-visible) { animation: forceReveal 0s 4s both; }
-  .hero:not(.is-loaded) .hero-eyebrow,
-  .hero:not(.is-loaded) .hero-lead,
-  .hero:not(.is-loaded) .hero-ctas,
-  .hero:not(.is-loaded) .hero-proof,
-  .hero:not(.is-loaded) .hero-impact { animation: forceReveal 0s 4s both; }
-  .hero:not(.is-loaded) .hero-line-inner { animation: forceReveal 0s 4s both; }
-
   @media (prefers-reduced-motion: reduce) {
-    [data-reveal] { opacity: 1; transform: none; transition: none; animation: none !important; }
+    [data-reveal] { opacity: 1; transform: none; transition: none; }
     .btn-glow { animation: none; }
     .marquee-track { animation: none; }
     .hero-img { animation: none; }
     .particle { animation: none; display: none; }
     .hero-scroll-dot { animation: none; }
-    .hero-eyebrow, .hero-lead, .hero-ctas, .hero-proof, .hero-impact, .hero-scroll { opacity: 1; transform: none; animation: none !important; }
-    .hero-line-inner { transform: none; animation: none !important; }
+    .hero-eyebrow, .hero-lead, .hero-ctas, .hero-proof, .hero-impact, .hero-scroll { opacity: 1; transform: none; }
+    .hero-line-inner { transform: none; }
     .hero-eyebrow-line { width: 32px; }
   }
 </style>
 
+<!-- No-JS fallback: all content visible if scripts are blocked -->
+<noscript>
+  <style>
+    [data-reveal] { opacity: 1 !important; transform: none !important; }
+    .hero-eyebrow, .hero-lead, .hero-ctas, .hero-proof, .hero-impact { opacity: 1 !important; }
+    .hero-line-inner { transform: none !important; }
+    .hero-eyebrow-line { width: 32px !important; }
+  </style>
+</noscript>
+
 <script>
   /* ── Home page initialization ──
    * Uses astro:page-load to work with View Transitions (ClientRouter).
-   * Module scripts may not re-run on client-side navigation — this
-   * lifecycle event fires reliably on every navigation. */
+   * Module scripts execute once — the lifecycle listener persists across
+   * navigations, calling initHomePage on every page-load event.
+   * Guard: bails if .hero is absent (navigated to a non-home page).
+   *
+   * Safety net: 3s timeout force-adds is-loaded / is-visible classes
+   * if observer or hero-load somehow failed. Class-based (not CSS
+   * animation) to avoid animation/transition priority conflicts. */
 
   let _observer: IntersectionObserver | null = null;
   let _scrollHandler: (() => void) | null = null;
   let _heroTimeout: ReturnType<typeof setTimeout> | null = null;
   let _counterTimeout: ReturnType<typeof setTimeout> | null = null;
+  let _safetyTimeout: ReturnType<typeof setTimeout> | null = null;
 
   function cleanup() {
     _observer?.disconnect(); _observer = null;
@@ -650,19 +654,17 @@ const jsonLd = getWebSiteSchema();
     _scrollHandler = null;
     if (_heroTimeout) clearTimeout(_heroTimeout);
     if (_counterTimeout) clearTimeout(_counterTimeout);
+    if (_safetyTimeout) clearTimeout(_safetyTimeout);
+    _heroTimeout = _counterTimeout = _safetyTimeout = null;
   }
 
   function initHomePage() {
     const hero = document.querySelector('.hero') as HTMLElement;
-    if (!hero) return; // Not on home page — bail
+    if (!hero) return;
 
     cleanup();
 
-    // Reset state (needed when returning via View Transitions)
-    hero.classList.remove('is-loaded');
-    document.querySelectorAll('[data-reveal]').forEach(el => el.classList.remove('is-visible'));
-
-    // ── Scroll reveal observer (sections below hero) ──
+    // ── Scroll reveal observer ──
     _observer = new IntersectionObserver((entries) => {
       entries.forEach(entry => {
         if (entry.isIntersecting) {
@@ -673,9 +675,12 @@ const jsonLd = getWebSiteSchema();
     }, { threshold: 0.15, rootMargin: '0px 0px -40px 0px' });
     document.querySelectorAll('[data-reveal]').forEach(el => _observer!.observe(el));
 
-    // ── Hero entrance orchestration ──
+    // ── Hero entrance ──
     const heroImg = hero.querySelector('.hero-img') as HTMLImageElement;
-    const startHero = () => hero.classList.add('is-loaded');
+    const startHero = () => {
+      if (_heroTimeout) { clearTimeout(_heroTimeout); _heroTimeout = null; }
+      hero.classList.add('is-loaded');
+    };
     if (heroImg?.complete) {
       requestAnimationFrame(startHero);
     } else if (heroImg) {
@@ -689,8 +694,6 @@ const jsonLd = getWebSiteSchema();
     const counterEl = document.querySelector('[data-count-to]') as HTMLElement;
     if (counterEl) {
       const target = parseInt(counterEl.dataset.countTo || '0', 10);
-      // Reset counter text
-      if (counterEl.firstChild) counterEl.firstChild.textContent = '0';
 
       function easeOutExpo(t: number): number {
         return t === 1 ? 1 : 1 - Math.pow(2, -10 * t);
@@ -712,11 +715,6 @@ const jsonLd = getWebSiteSchema();
       const heroBg = document.querySelector('[data-parallax="bg"]') as HTMLElement;
       const heroContent = document.querySelector('[data-parallax="content"]') as HTMLElement;
       if (heroBg && heroContent) {
-        // Reset inline styles from previous visit
-        heroBg.style.transform = '';
-        heroContent.style.transform = '';
-        heroContent.style.opacity = '';
-
         const heroH = hero.offsetHeight || window.innerHeight;
         let ticking = false;
         let pastHero = false;
@@ -742,10 +740,14 @@ const jsonLd = getWebSiteSchema();
         window.addEventListener('scroll', _scrollHandler, { passive: true });
       }
     }
+
+    // ── Safety net: force-reveal after 3s if anything is still hidden ──
+    _safetyTimeout = setTimeout(() => {
+      if (!hero.classList.contains('is-loaded')) hero.classList.add('is-loaded');
+      document.querySelectorAll('[data-reveal]:not(.is-visible)').forEach(el => el.classList.add('is-visible'));
+    }, 3000);
   }
 
-  // Fire on every navigation (initial + View Transitions)
   document.addEventListener('astro:page-load', initHomePage);
-  // Clean up when navigating away
   document.addEventListener('astro:before-swap', cleanup);
 </script>
