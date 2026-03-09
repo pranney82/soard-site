@@ -99,9 +99,20 @@ const jsonLd = buildSchemaGraph(
         <div class="tl-item" data-reveal data-delay={String(Math.min(i, 3))}>
           <div class="tl-year">{m.year}</div>
           <div class="tl-dot" aria-hidden="true"></div>
-          <div class="tl-card">
-            <h3 class="tl-title">{m.title}</h3>
-            <p class="tl-desc">{m.desc}</p>
+          <div class={`tl-card${m.image ? ' has-image' : ''}`}>
+            {m.image && (
+              <div class="tl-image">
+                <picture>
+                  <source type="image/avif" srcset={`${CF}/${m.image}/w=320,f=avif 320w, ${CF}/${m.image}/w=480,f=avif 480w`} sizes="(max-width:768px) 100%, 200px" />
+                  <source type="image/webp" srcset={`${CF}/${m.image}/w=320,f=webp 320w, ${CF}/${m.image}/w=480,f=webp 480w`} sizes="(max-width:768px) 100%, 200px" />
+                  <img src={`${CF}/${m.image}/w=480,q=80`} alt={m.title} width="480" height="320" loading="lazy" decoding="async" />
+                </picture>
+              </div>
+            )}
+            <div class="tl-text">
+              <h3 class="tl-title">{m.title}</h3>
+              <p class="tl-desc">{m.desc}</p>
+            </div>
           </div>
         </div>
       ))}
@@ -456,8 +467,28 @@ const jsonLd = buildSchemaGraph(
   .tl-card {
     background: rgba(255, 255, 255, 0.06);
     border-radius: var(--border-radius);
-    padding: var(--space-lg) var(--space-xl);
     border: 1px solid rgba(255, 255, 255, 0.08);
+    overflow: hidden;
+  }
+
+  .tl-card .tl-text {
+    padding: var(--space-lg) var(--space-xl);
+  }
+
+  .tl-card.has-image {
+    display: grid;
+    grid-template-columns: 180px 1fr;
+  }
+
+  .tl-image {
+    overflow: hidden;
+  }
+
+  .tl-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
   }
 
   .tl-title {
@@ -487,7 +518,13 @@ const jsonLd = buildSchemaGraph(
       margin-bottom: var(--space-sm);
       padding-left: 36px;
     }
-    .tl-card { padding: var(--space-md) var(--space-lg); }
+    .tl-card .tl-text { padding: var(--space-md) var(--space-lg); }
+    .tl-card.has-image {
+      grid-template-columns: 1fr;
+    }
+    .tl-image {
+      max-height: 160px;
+    }
   }
 
   /* ══════════════════════════════════════════
