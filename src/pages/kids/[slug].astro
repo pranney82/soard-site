@@ -15,17 +15,32 @@ import { getKidProfileSchema } from '../../utils/schema';
 export async function getStaticPaths() {
   const kids = await getCollection('kids');
   const sorted = kids.sort((a, b) => (b.data.year || 0) - (a.data.year || 0));
-  return sorted.map((kid, i) => ({
-    params: { slug: kid.data.slug },
-    props: {
-      kid: kid.data,
-      prevKid: i > 0 ? sorted[i - 1].data : null,
-      nextKid: i < sorted.length - 1 ? sorted[i + 1].data : null,
-    },
-  }));
+  return sorted.map((kid, i) => {
+    // Find related kids: same room type or same year, excluding self
+    const others = sorted.filter((k, j) => j !== i);
+    const sameType = others.filter(k =>
+      k.data.roomTypes?.some(t => kid.data.roomTypes?.includes(t))
+    );
+    const sameYear = others.filter(k => k.data.year === kid.data.year);
+    // Prioritize same room type, then same year, then nearest in list
+    const related = [...new Set([...sameType, ...sameYear, ...others])]
+      .filter(k => k.data.heroImage)
+      .slice(0, 4)
+      .map(k => ({ name: k.data.name, slug: k.data.slug, heroImage: k.data.heroImage, diagnosis: k.data.diagnosis }));
+
+    return {
+      params: { slug: kid.data.slug },
+      props: {
+        kid: kid.data,
+        prevKid: i > 0 ? sorted[i - 1].data : null,
+        nextKid: i < sorted.length - 1 ? sorted[i + 1].data : null,
+        relatedKids: related,
+      },
+    };
+  });
 }
 
-const { kid, prevKid, nextKid } = Astro.props;
+const { kid, prevKid, nextKid, relatedKids } = Astro.props;
 const photos = kid.photos || [];
 
 // ── CF Image helpers ──────────────────────
@@ -49,7 +64,13 @@ const ytId = kid.videoUrl ? getYouTubeId(kid.videoUrl) : null;
 
 // ── SEO ───────────────────────────────────
 const SITE = 'https://sunshineonaranneyday.com';
-const kidSchemas = getKidProfileSchema(kid);
+const kidSchemas = getKidProfileSchema({
+  ...kid,
+  videoUrl: kid.videoUrl,
+  photos: kid.photos,
+  photographer: kid.photographer,
+  status: kid.status,
+});
 const breadcrumbs = [
   { name: 'Home', url: SITE },
   { name: 'Meet the Kids', url: `${SITE}/kids/` },
@@ -59,6 +80,10 @@ const breadcrumbs = [
 const metaDesc = kid.metaDescription
   || kid.shortDescription
   || `Meet ${kid.name}${kid.diagnosis ? `, diagnosed with ${kid.diagnosis}` : ''}. Learn how Sunshine on a Ranney Day transformed their space${kid.roomTypes?.length ? ` with a ${kid.roomTypes.join(' & ')}` : ''}.`;
+
+// Extract dateModified from migration data if available
+const wpPostDate = kid._migration?.wpPostDate;
+const dateModified = wpPostDate ? wpPostDate.split(' ')[0] : undefined;
 ---
 
 <BaseLayout
@@ -68,6 +93,7 @@ const metaDesc = kid.metaDescription
   jsonLd={kidSchemas}
   breadcrumbs={breadcrumbs}
   datePublished={kid.year ? `${kid.year}-01-01` : undefined}
+  dateModified={dateModified}
 >
   <article class="kid-profile" itemscope itemtype="https://schema.org/Article">
     <!-- ═══ Hero ═══════════════════════════════ -->
@@ -95,6 +121,7 @@ const metaDesc = kid.metaDescription
               decoding="sync"
               fetchpriority="high"
               itemprop="image"
+              transition:name={`kid-hero-${kid.slug}`}
             />
           </picture>
           <div class="hero__gradient" aria-hidden="true"></div>
@@ -107,7 +134,7 @@ const metaDesc = kid.metaDescription
           All Kids
         </a>
 
-        <h1 class="hero__name" itemprop="headline">{kid.name}</h1>
+        <h1 class="hero__name" itemprop="headline" transition:name={`kid-name-${kid.slug}`}>{kid.name}</h1>
 
         <div class="hero__meta">
           {kid.age && (
@@ -135,6 +162,11 @@ const metaDesc = kid.metaDescription
             <span class="meta-pill meta-pill--status">In Progress</span>
           )}
         </div>
+
+        <button class="hero__share" id="share-btn" type="button" aria-label="Share this story">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+          Share
+        </button>
       </div>
     </section>
 
@@ -259,6 +291,49 @@ const metaDesc = kid.metaDescription
       </section>
     )}
 
+    <!-- ═══ Related Kids ═══════════════════════ -->
+    {relatedKids && relatedKids.length > 0 && (
+      <section class="related-section section section--cream">
+        <div class="container">
+          <h2 class="section-heading" style="text-align: center;">More Sunshine Stories</h2>
+          <div class="related-grid">
+            {relatedKids.map(rk => (
+              <a href={`/kids/${rk.slug}/`} class="related-card">
+                <div class="related-card__frame">
+                  <picture>
+                    <source
+                      type="image/avif"
+                      srcset={cfSrcset(rk.heroImage, [300, 440], 'avif')}
+                      sizes="(max-width: 600px) 45vw, 220px"
+                    />
+                    <source
+                      type="image/webp"
+                      srcset={cfSrcset(rk.heroImage, [300, 440], 'webp')}
+                      sizes="(max-width: 600px) 45vw, 220px"
+                    />
+                    <img
+                      src={cfUrl(rk.heroImage, 'w=440,f=auto,q=80')}
+                      alt={`Photo of ${rk.name}`}
+                      class="related-card__img"
+                      loading="lazy"
+                      decoding="async"
+                      width="300"
+                      height="400"
+                      transition:name={`kid-hero-${rk.slug}`}
+                    />
+                  </picture>
+                </div>
+                <span class="related-card__name" transition:name={`kid-name-${rk.slug}`}>{rk.name}</span>
+                {rk.diagnosis && (
+                  <span class="related-card__diagnosis">{rk.diagnosis}</span>
+                )}
+              </a>
+            ))}
+          </div>
+        </div>
+      </section>
+    )}
+
     <!-- ═══ Prev / Next Navigation ════════════ -->
     <nav class="kid-nav" aria-label="Navigate between kid profiles">
       <div class="container">
@@ -355,6 +430,7 @@ const metaDesc = kid.metaDescription
   if (lightbox && galleryItems.length > 0) {
     let currentIndex = 0;
     let previousFocus: HTMLElement | null = null;
+    const prefetched = new Set<string>();
 
     function showPhoto(index: number) {
       const item = galleryItems[index];
@@ -365,13 +441,14 @@ const metaDesc = kid.metaDescription
       lbCounter.textContent = `${index + 1} / ${galleryItems.length}`;
       lbPrev.style.display = index === 0 ? 'none' : '';
       lbNext.style.display = index === galleryItems.length - 1 ? 'none' : '';
-      // Preload adjacent images for instant navigation
+      // Preload adjacent images (deduplicated)
       [index - 1, index + 1].forEach(adj => {
-        const adjItem = galleryItems[adj];
-        if (adjItem?.dataset.src) {
+        const src = galleryItems[adj]?.dataset.src;
+        if (src && !prefetched.has(src)) {
+          prefetched.add(src);
           const link = document.createElement('link');
           link.rel = 'prefetch';
-          link.href = adjItem.dataset.src;
+          link.href = src;
           link.as = 'image';
           document.head.appendChild(link);
         }
@@ -392,6 +469,25 @@ const metaDesc = kid.metaDescription
       previousFocus?.focus();
     }
 
+    // Focus trap: keep Tab/Shift+Tab within lightbox (WCAG 2.1 AA)
+    function trapFocus(e: KeyboardEvent) {
+      if (e.key !== 'Tab') return;
+      const focusable = lightbox.querySelectorAll<HTMLElement>(
+        'button:not([style*="display: none"]):not([hidden]), [tabindex="0"]'
+      );
+      const list = Array.from(focusable).filter(el => el.offsetParent !== null);
+      if (list.length === 0) return;
+      const first = list[0];
+      const last = list[list.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
+
     galleryItems.forEach((item, i) => {
       item.addEventListener('click', () => openLightbox(i));
     });
@@ -407,6 +503,7 @@ const metaDesc = kid.metaDescription
       if (e.key === 'Escape') closeLightbox();
       if (e.key === 'ArrowLeft' && currentIndex > 0) showPhoto(currentIndex - 1);
       if (e.key === 'ArrowRight' && currentIndex < galleryItems.length - 1) showPhoto(currentIndex + 1);
+      trapFocus(e);
     });
 
     // Touch swipe support for mobile
@@ -426,6 +523,31 @@ const metaDesc = kid.metaDescription
         if (dx > 0 && currentIndex > 0) showPhoto(currentIndex - 1);
       }
     }, { passive: true });
+  }
+
+  // ── Share button ───────────────────────
+  const shareBtn = document.getElementById('share-btn');
+  if (shareBtn) {
+    shareBtn.addEventListener('click', async () => {
+      const shareData = {
+        title: document.title,
+        url: window.location.href,
+      };
+      try {
+        if (navigator.share) {
+          await navigator.share(shareData);
+        } else {
+          await navigator.clipboard.writeText(shareData.url);
+          shareBtn.classList.add('shared');
+          shareBtn.querySelector('svg')!.style.display = 'none';
+          shareBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg> Copied!';
+          setTimeout(() => {
+            shareBtn.classList.remove('shared');
+            shareBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg> Share';
+          }, 2000);
+        }
+      } catch { /* user cancelled share */ }
+    });
   }
 
   // ── Scroll reveal for sections ──────────
@@ -547,6 +669,37 @@ const metaDesc = kid.metaDescription
     font-weight: 600;
   }
 
+  /* ═══ Share Button ═══════════════════════ */
+  .hero__share {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: var(--space-lg);
+    padding: 8px 18px;
+    background: rgba(255, 255, 255, 0.12);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    border-radius: 100px;
+    color: rgba(255, 255, 255, 0.9);
+    font-size: 0.82rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
+  }
+
+  .hero__share:hover {
+    background: rgba(255, 255, 255, 0.2);
+    border-color: rgba(255, 255, 255, 0.5);
+    color: var(--c-white);
+  }
+
+  .hero__share.shared {
+    background: rgba(255, 218, 36, 0.25);
+    border-color: rgba(255, 218, 36, 0.5);
+    color: var(--c-yellow);
+  }
+
   .meta-pill--status {
     background: var(--c-yellow);
     border-color: var(--c-yellow);
@@ -639,6 +792,8 @@ const metaDesc = kid.metaDescription
   /* ═══ Gallery (Masonry) ═════════════════ */
   .gallery-section {
     padding-block: var(--space-3xl);
+    content-visibility: auto;
+    contain-intrinsic-size: auto 800px;
   }
 
   .gallery-header {
@@ -707,6 +862,8 @@ const metaDesc = kid.metaDescription
   /* ═══ Partners ═════════════════════════ */
   .partners-section {
     padding-block: var(--space-3xl);
+    content-visibility: auto;
+    contain-intrinsic-size: auto 400px;
   }
 
   .partners-subtitle {
@@ -742,6 +899,65 @@ const metaDesc = kid.metaDescription
     width: 100%;
     height: auto;
     object-fit: contain;
+  }
+
+  /* ═══ Related Kids ═══════════════════ */
+  .related-section {
+    padding-block: var(--space-3xl);
+  }
+
+  .related-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: var(--space-lg);
+  }
+
+  .related-card {
+    text-decoration: none;
+    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .related-card:hover {
+    transform: translateY(-4px);
+  }
+
+  .related-card__frame {
+    border-radius: var(--border-radius-lg);
+    overflow: hidden;
+    background: var(--c-warm-gray);
+    aspect-ratio: 3 / 4;
+  }
+
+  .related-card__img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  @media (hover: hover) {
+    .related-card:hover .related-card__img {
+      transform: scale(1.05);
+    }
+  }
+
+  .related-card__name {
+    display: block;
+    padding: 10px 4px 0;
+    font-family: var(--font-display);
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--c-text);
+    line-height: 1.3;
+  }
+
+  .related-card__diagnosis {
+    display: block;
+    padding: 0 4px;
+    font-size: 0.78rem;
+    color: var(--c-text-muted);
+    line-height: 1.4;
   }
 
   /* ═══ Prev/Next Navigation ═════════════ */
@@ -841,6 +1057,10 @@ const metaDesc = kid.metaDescription
   }
 
   /* ═══ Lightbox ═════════════════════════ */
+  .lightbox[hidden] {
+    display: none;
+  }
+
   .lightbox {
     position: fixed;
     inset: 0;
@@ -986,6 +1206,19 @@ const metaDesc = kid.metaDescription
       margin-bottom: var(--space-sm);
     }
 
+    .related-grid {
+      grid-template-columns: repeat(2, 1fr);
+      gap: var(--space-md);
+    }
+
+    .related-card__name {
+      font-size: 0.85rem;
+    }
+
+    .related-card__diagnosis {
+      font-size: 0.7rem;
+    }
+
     .kid-nav__grid {
       grid-template-columns: 1fr 1fr;
       gap: var(--space-sm);
@@ -1012,8 +1245,8 @@ const metaDesc = kid.metaDescription
 
     .lightbox__nav,
     .lightbox__close {
-      width: 40px;
-      height: 40px;
+      width: 44px;
+      height: 44px;
     }
 
     .partner-logo {

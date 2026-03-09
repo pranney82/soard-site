@@ -14,6 +14,7 @@
  * - theme-color for mobile browsers
  * - Absolute OG image URLs
  */
+import { ViewTransitions } from 'astro:transitions';
 import Header from '../components/global/Header.astro';
 import Footer from '../components/global/Footer.astro';
 import CartDrawer from '../components/shop/CartDrawer.astro';
@@ -118,13 +119,17 @@ const structuredData = buildSchemaGraph(...graphSchemas);
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="format-detection" content="telephone=no" />
 
   <!-- SEO -->
   <title>{fullTitle}</title>
   <meta name="description" content={description} />
   <link rel="canonical" href={canonicalURL} />
-  {noindex && <meta name="robots" content="noindex, nofollow" />}
+  {noindex
+    ? <meta name="robots" content="noindex, nofollow" />
+    : <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+  }
 
   <!-- Local SEO geo signals -->
   <meta name="geo.region" content="US-GA" />
@@ -149,9 +154,15 @@ const structuredData = buildSchemaGraph(...graphSchemas);
   <meta name="twitter:title" content={fullTitle} />
   <meta name="twitter:description" content={description} />
   <meta name="twitter:image" content={ogImageAbsolute} />
+  <meta name="twitter:image:alt" content={`${title} — Sunshine on a Ranney Day`} />
 
-  <!-- Theme color -->
+  <!-- Theme color — light/dark support for iOS Safari & Android Chrome -->
+  <meta name="theme-color" content="#1A1B1F" media="(prefers-color-scheme: dark)" />
+  <meta name="theme-color" content="#FEFCF5" media="(prefers-color-scheme: light)" />
   <meta name="theme-color" content="#1A1B1F" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 
   <!-- Favicon -->
   <link rel="icon" href="/favicon.ico" sizes="any" />
@@ -225,6 +236,9 @@ const structuredData = buildSchemaGraph(...graphSchemas);
       src: url('/fonts/outfit-latin-700-normal.woff2') format('woff2');
     }
   </style>
+
+  <!-- View Transitions for smooth page navigation -->
+  <ViewTransitions />
 
   <!-- JSON-LD: Unified @graph with Organization + WebPage + page-specific schemas -->
   <script type="application/ld+json" set:html={JSON.stringify(structuredData)} />

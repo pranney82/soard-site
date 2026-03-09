@@ -194,6 +194,9 @@ const gridKids = [...kids];
               aria-label="Search kids by name or diagnosis"
               autocomplete="off"
             />
+            <button class="search-box__clear" id="search-clear" type="button" aria-label="Clear search" hidden>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
           </div>
 
           <div class="toolbar__filters">
@@ -265,6 +268,7 @@ const gridKids = [...kids];
                     loading={i < 8 ? 'eager' : 'lazy'}
                     decoding={i < 8 ? 'sync' : 'async'}
                     fetchpriority={i < 4 ? 'high' : undefined}
+                    transition:name={`kid-hero-${kid.data.slug}`}
                   />
                 </picture>
               ) : (
@@ -280,7 +284,7 @@ const gridKids = [...kids];
               </div>
             </div>
             <div class="kid-card__info">
-              <span class="kid-card__name">{kid.data.name}</span>
+              <span class="kid-card__name" transition:name={`kid-name-${kid.data.slug}`}>{kid.data.name}</span>
               {kid.data.status === 'in-progress' && (
                 <span class="kid-card__badge">In Progress</span>
               )}
@@ -307,6 +311,18 @@ const gridKids = [...kids];
       )}
     </div>
   </section>
+
+  <!-- Bottom CTA -->
+  <section class="bottom-cta section section--dark">
+    <div class="container container--narrow" style="text-align: center;">
+      <h2 class="bottom-cta__title">Every child deserves a space to thrive</h2>
+      <p class="bottom-cta__text">Your generosity helps us transform bedrooms, bathrooms, and therapy rooms for children with serious illnesses and disabilities.</p>
+      <div class="bottom-cta__buttons">
+        <a href="/donate/" class="btn btn-yellow">Donate Now</a>
+        <a href="/about/" class="btn btn-outline-light">Our Story</a>
+      </div>
+    </div>
+  </section>
 </PageLayout>
 
 <script>
@@ -321,6 +337,7 @@ const gridKids = [...kids];
   const clearBtnAlt = document.getElementById('clear-filters-alt') as HTMLButtonElement;
   const toolbar = document.getElementById('toolbar') as HTMLElement;
   const featuredCard = document.querySelector('.featured-card') as HTMLElement | null;
+  const searchClear = document.getElementById('search-clear') as HTMLButtonElement;
 
   let statusActive = false;
 
@@ -328,7 +345,10 @@ const gridKids = [...kids];
   const params = new URLSearchParams(window.location.search);
   if (params.get('year')) yearSelect.value = params.get('year')!;
   if (params.get('type')) typeSelect.value = params.get('type')!;
-  if (params.get('q')) searchInput.value = params.get('q')!;
+  if (params.get('q')) {
+    searchInput.value = params.get('q')!;
+    searchClear.hidden = false;
+  }
   if (params.get('status') === 'in-progress' && statusBtn) {
     statusActive = true;
     statusBtn.classList.add('active');
@@ -405,6 +425,13 @@ const gridKids = [...kids];
   searchInput.addEventListener('input', () => {
     clearTimeout(searchTimer);
     searchTimer = setTimeout(applyFilters, 150);
+    searchClear.hidden = !searchInput.value;
+  });
+  searchClear.addEventListener('click', () => {
+    searchInput.value = '';
+    searchClear.hidden = true;
+    applyFilters();
+    searchInput.focus();
   });
   clearBtn.addEventListener('click', clearAll);
   clearBtnAlt.addEventListener('click', clearAll);
@@ -693,6 +720,30 @@ const gridKids = [...kids];
   .search-box__input::-webkit-search-cancel-button {
     -webkit-appearance: none;
     appearance: none;
+  }
+
+  .search-box__clear {
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: var(--c-warm-gray);
+    border: none;
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--c-text-muted);
+    cursor: pointer;
+    transition: background var(--transition-fast), color var(--transition-fast);
+    padding: 0;
+  }
+
+  .search-box__clear:hover {
+    background: var(--c-border);
+    color: var(--c-dark);
   }
 
   /* ─── Filter Controls ────────────────────── */
@@ -990,6 +1041,53 @@ const gridKids = [...kids];
     font-size: 0.9rem;
     color: var(--c-text-muted);
     margin-bottom: var(--space-sm);
+  }
+
+  /* ─── Bottom CTA ─────────────────────────── */
+  .bottom-cta {
+    padding-block: var(--space-4xl);
+  }
+
+  .bottom-cta__title {
+    font-family: var(--font-display);
+    font-size: clamp(1.5rem, 3vw, 2.25rem);
+    color: var(--c-white);
+    margin-bottom: var(--space-md);
+    line-height: 1.3;
+  }
+
+  .bottom-cta__text {
+    color: rgba(255, 255, 255, 0.75);
+    font-size: 1.05rem;
+    max-width: 540px;
+    margin-inline: auto;
+    margin-bottom: var(--space-xl);
+    line-height: 1.6;
+  }
+
+  .bottom-cta__buttons {
+    display: flex;
+    gap: var(--space-md);
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  .btn-outline-light {
+    display: inline-flex;
+    align-items: center;
+    padding: 12px 28px;
+    border: 1.5px solid rgba(255, 255, 255, 0.5);
+    border-radius: var(--border-radius);
+    color: var(--c-white);
+    font-size: 0.95rem;
+    font-weight: 600;
+    text-decoration: none;
+    transition: background var(--transition-fast), border-color var(--transition-fast);
+  }
+
+  .btn-outline-light:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: var(--c-white);
   }
 
   /* ─── Responsive: Large screens ──────────── */

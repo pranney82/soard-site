@@ -412,7 +412,13 @@ function isGroupActive(group: NavGroup) {
   navItems.forEach(function (item) {
     item.addEventListener('mouseenter', function () {
       cancelClose();
-      openDD(item);
+      // If item has no dropdown (e.g. "Sunny & Ranney"), close all dropdowns instead
+      var hasDropdown = item.querySelector('.dropdown-panel');
+      if (hasDropdown) {
+        openDD(item);
+      } else {
+        closeAllDD();
+      }
     });
   });
   if (desktopNav) desktopNav.addEventListener('mouseleave', scheduleClose);
@@ -438,6 +444,10 @@ function isGroupActive(group: NavGroup) {
     if (ab) posInd(ab); else indicator.style.opacity = '0';
   }
   navButtons.forEach(function (b) { b.addEventListener('mouseenter', function () { posInd(this); }); });
+  // Also track direct nav links (like "Sunny & Ranney") for the indicator
+  document.querySelectorAll('.nav-item > a.nav-link').forEach(function (a) {
+    a.addEventListener('mouseenter', function () { posInd(this); });
+  });
   if (desktopNav) desktopNav.addEventListener('mouseleave', resetInd);
   requestAnimationFrame(function () {
     var ab = document.querySelector('.nav-link.parent-active');

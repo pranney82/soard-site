@@ -74,6 +74,8 @@
 html {
   scroll-behavior: smooth;
   -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+  text-rendering: optimizeLegibility;
 }
 
 body {
@@ -356,6 +358,27 @@ h4, .h4 {
     transition-duration: 0.01ms !important;
   }
   html { scroll-behavior: auto; }
+}
+
+/* ─── Safe Area Insets (notch/Dynamic Island) ── */
+.container,
+.header-inner,
+.footer-container {
+  padding-inline: max(var(--space-lg), env(safe-area-inset-left))
+                   max(var(--space-lg), env(safe-area-inset-right));
+}
+
+/* ─── Touch & Interaction ──────────────── */
+@media (hover: none) and (pointer: coarse) {
+  /* Ensure 44px minimum tap targets on touch devices */
+  a, button, [role="button"], select, input, textarea {
+    min-height: 44px;
+  }
+
+  /* Disable hover-dependent transforms on touch */
+  .btn:hover {
+    transform: none;
+  }
 }
 
 /* ─── Responsive Helpers ────────────────── */

@@ -165,7 +165,7 @@ export function getDonateSchema() {
 }
 
 /**
- * Kid profile schema — Article + Person
+ * Kid profile schema — Article + Person + VideoObject + ImageGallery
  */
 export function getKidProfileSchema(kid: {
   name: string;
@@ -177,20 +177,41 @@ export function getKidProfileSchema(kid: {
   metaDescription?: string;
   roomTypes?: string[];
   year?: number;
+  videoUrl?: string;
+  photos?: { url: string; alt?: string }[];
+  photographer?: string;
+  status?: string;
 }) {
   const url = `${SITE_URL}/kids/${kid.slug}/`;
   const schemas: Record<string, any>[] = [];
+
+  // Person schema for the child
+  const person: Record<string, any> = {
+    "@type": "Person",
+    "@id": `${url}#person`,
+    "name": kid.name,
+    ...(kid.heroImage ? { "image": kid.heroImage } : {}),
+  };
+  if (kid.age) person.age = kid.age;
+  if (kid.diagnosis) {
+    person.health = {
+      "@type": "MedicalCondition",
+      "name": kid.diagnosis,
+    };
+  }
+  schemas.push(person);
 
   // Article schema for the profile page
   schemas.push({
     "@type": "Article",
     "@id": `${url}#article`,
     "headline": `${kid.name}'s Story — Sunshine on a Ranney Day`,
-    "description": kid.metaDescription || `Meet ${kid.name} — learn how SOARD is transforming their space.`,
+    "description": kid.metaDescription || `Meet ${kid.name}${kid.diagnosis ? `, diagnosed with ${kid.diagnosis}` : ''} — learn how Sunshine on a Ranney Day transformed their space${kid.roomTypes?.length ? ` with a ${kid.roomTypes.join(' & ')}` : ''}.`,
     "url": url,
     "isPartOf": { "@id": `${SITE_URL}/#website` },
     "publisher": { "@id": `${SITE_URL}/#organization` },
     "mainEntityOfPage": { "@id": `${url}#webpage` },
+    "mainEntity": { "@id": `${url}#person` },
     ...(kid.heroImage ? { "image": kid.heroImage } : {}),
     ...(kid.year ? { "datePublished": `${kid.year}-01-01` } : {}),
     "inLanguage": "en-US",
@@ -205,6 +226,43 @@ export function getKidProfileSchema(kid: {
       }
     ]
   });
+
+  // VideoObject schema if YouTube video exists
+  if (kid.videoUrl) {
+    const ytMatch = kid.videoUrl.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/))([a-zA-Z0-9_-]{11})/);
+    if (ytMatch) {
+      const ytId = ytMatch[1];
+      schemas.push({
+        "@type": "VideoObject",
+        "@id": `${url}#video`,
+        "name": `${kid.name}'s Story — Sunshine on a Ranney Day`,
+        "description": kid.metaDescription || `Watch how Sunshine on a Ranney Day transformed ${kid.name}'s space.`,
+        "thumbnailUrl": `https://i.ytimg.com/vi/${ytId}/maxresdefault.jpg`,
+        "uploadDate": kid.year ? `${kid.year}-01-01` : undefined,
+        "contentUrl": `https://www.youtube.com/watch?v=${ytId}`,
+        "embedUrl": `https://www.youtube-nocookie.com/embed/${ytId}`,
+        "publisher": { "@id": `${SITE_URL}/#organization` },
+      });
+    }
+  }
+
+  // ImageGallery schema if photos exist
+  if (kid.photos && kid.photos.length > 1) {
+    schemas.push({
+      "@type": "ImageGallery",
+      "@id": `${url}#gallery`,
+      "name": `${kid.name}'s Room Transformation — Photo Gallery`,
+      "description": `Photos of ${kid.name}'s ${kid.roomTypes?.join(' & ') || 'room'} transformation by Sunshine on a Ranney Day.`,
+      "url": url,
+      "about": { "@id": `${url}#person` },
+      ...(kid.photographer ? { "creator": { "@type": "Person", "name": kid.photographer } } : {}),
+      "image": kid.photos.slice(0, 20).map((photo, i) => ({
+        "@type": "ImageObject",
+        "url": photo.url,
+        "caption": photo.alt || `${kid.name}'s room transformation photo ${i + 1}`,
+      })),
+    });
+  }
 
   return schemas;
 }
