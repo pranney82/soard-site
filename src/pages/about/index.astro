@@ -9,14 +9,13 @@
  * - data-reveal only on below-fold elements
  * - Team photos from CF Images
  */
-import BaseLayout from '../../layouts/BaseLayout.astro';
+import PageLayout from '../../layouts/PageLayout.astro';
 import { getWebPageSchema, getBreadcrumbSchema, buildSchemaGraph } from '../../utils/schema';
 import page from '../../content/site/our-story.json';
 
 const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
 
 const stats = page.stats;
-const heroImageId = page.images.hero;
 const founderPhotoId = page.images.founder;
 const revealPhotoId = page.images.reveal;
 const communityPhotoId = page.images.community;
@@ -44,35 +43,14 @@ const jsonLd = buildSchemaGraph(
 );
 ---
 
-<BaseLayout
+<PageLayout
   title="Our Story — How It All Started"
   description="How Peter and Holly Ranney founded Sunshine on a Ranney Day in 2012 — and built a movement that has transformed 106+ rooms for children with special needs across greater Atlanta."
   jsonLd={jsonLd}
   breadcrumbs={breadcrumbs}
+  heroTitle="Our Story"
+  heroSubtitle="How it all started — and where we're headed"
 >
-
-  <!-- ══════ HERO ══════ -->
-  <section class="story-hero" aria-label="Our Story">
-    <div class="story-hero-media">
-      <picture>
-        <source type="image/avif" srcset={`${CF}/${heroImageId}/w=640,f=avif 640w, ${CF}/${heroImageId}/w=1024,f=avif 1024w, ${CF}/${heroImageId}/w=1600,f=avif 1600w, ${CF}/${heroImageId}/w=2400,f=avif 2400w`} sizes="100vw" />
-        <source type="image/webp" srcset={`${CF}/${heroImageId}/w=640,f=webp 640w, ${CF}/${heroImageId}/w=1024,f=webp 1024w, ${CF}/${heroImageId}/w=1600,f=webp 1600w, ${CF}/${heroImageId}/w=2400,f=webp 2400w`} sizes="100vw" />
-        <img class="story-hero-img" src={`${CF}/${heroImageId}/w=1600,q=80`} alt="A child seeing their dream room for the first time" width="1600" height="900" loading="eager" decoding="async" fetchpriority="high" />
-      </picture>
-      <div class="story-hero-overlay"></div>
-    </div>
-    <div class="story-hero-inner">
-      <div class="story-hero-content">
-        <div class="section-label section-label--yellow">{page.hero.label}</div>
-        <h1 set:html={page.hero.heading} />
-        <p class="story-hero-lead" set:html={page.hero.lead} />
-      </div>
-      <div class="story-hero-stat">
-        <span class="story-hero-stat-num">{stats.years}<span>yrs</span></span>
-        <span class="story-hero-stat-label">of building dreams<br/>for families</span>
-      </div>
-    </div>
-  </section>
 
   <!-- ══════ FOUNDERS — The Beginning ══════ -->
   <section class="founders" id="our-story" aria-labelledby="founders-heading">
@@ -211,112 +189,9 @@ const jsonLd = buildSchemaGraph(
     </div>
   </section>
 
-</BaseLayout>
+</PageLayout>
 
 <style>
-  /* ══════════════════════════════════════════
-     HERO
-     ══════════════════════════════════════════ */
-  .story-hero {
-    position: relative;
-    min-height: 70vh;
-    display: flex;
-    align-items: flex-end;
-    overflow: hidden;
-  }
-
-  .story-hero-media {
-    position: absolute;
-    inset: 0;
-    z-index: 0;
-  }
-
-  .story-hero-img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    object-position: center 30%;
-  }
-
-  .story-hero-overlay {
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(
-      to top,
-      rgba(26, 27, 31, 0.95) 0%,
-      rgba(26, 27, 31, 0.6) 40%,
-      rgba(26, 27, 31, 0.3) 100%
-    );
-  }
-
-  .story-hero-inner {
-    position: relative;
-    z-index: 1;
-    width: 100%;
-    max-width: var(--max-width);
-    margin-inline: auto;
-    padding: var(--space-4xl) var(--space-lg) var(--space-3xl);
-    display: flex;
-    align-items: flex-end;
-    justify-content: space-between;
-    gap: var(--space-2xl);
-  }
-
-  .story-hero-content { max-width: 680px; }
-
-  .story-hero h1 {
-    color: var(--c-white);
-    font-size: clamp(2.25rem, 5vw, 3.5rem);
-    line-height: 1.15;
-    margin-bottom: var(--space-lg);
-  }
-
-  .story-hero h1 em {
-    font-style: italic;
-    color: var(--c-yellow);
-  }
-
-  .story-hero-lead {
-    font-size: clamp(1rem, 2vw, 1.15rem);
-    color: rgba(255, 255, 255, 0.8);
-    line-height: 1.7;
-    max-width: 560px;
-  }
-
-  .story-hero-stat {
-    text-align: center;
-    flex-shrink: 0;
-  }
-
-  .story-hero-stat-num {
-    display: block;
-    font-family: var(--font-display);
-    font-size: clamp(3rem, 6vw, 4.5rem);
-    font-weight: 700;
-    color: var(--c-yellow);
-    line-height: 1;
-  }
-
-  .story-hero-stat-num span {
-    font-size: 0.45em;
-    vertical-align: super;
-    margin-left: 2px;
-  }
-
-  .story-hero-stat-label {
-    display: block;
-    font-size: 0.85rem;
-    color: rgba(255, 255, 255, 0.65);
-    margin-top: var(--space-sm);
-    line-height: 1.4;
-  }
-
-  @media (max-width: 768px) {
-    .story-hero { min-height: 60vh; }
-    .story-hero-inner { flex-direction: column; align-items: flex-start; padding-block: var(--space-3xl) var(--space-2xl); }
-    .story-hero-stat { display: none; }
-  }
-
   /* ══════════════════════════════════════════
      SHARED
      ══════════════════════════════════════════ */
