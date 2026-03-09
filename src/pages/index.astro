@@ -607,99 +607,145 @@ const jsonLd = getWebSiteSchema();
   [data-delay="2"] { transition-delay: 0.2s; }
   [data-delay="3"] { transition-delay: 0.3s; }
   [data-delay="4"] { transition-delay: 0.4s; }
+
+  /* Safety net: if JS hasn't revealed content within 4s, force it visible.
+     Prevents blank pages from View Transition race conditions, script errors,
+     or any other JS failure. Content > animation. */
+  @keyframes forceReveal { to { opacity: 1; transform: none; } }
+  [data-reveal]:not(.is-visible) { animation: forceReveal 0s 4s both; }
+  .hero:not(.is-loaded) .hero-eyebrow,
+  .hero:not(.is-loaded) .hero-lead,
+  .hero:not(.is-loaded) .hero-ctas,
+  .hero:not(.is-loaded) .hero-proof,
+  .hero:not(.is-loaded) .hero-impact { animation: forceReveal 0s 4s both; }
+  .hero:not(.is-loaded) .hero-line-inner { animation: forceReveal 0s 4s both; }
+
   @media (prefers-reduced-motion: reduce) {
-    [data-reveal] { opacity: 1; transform: none; transition: none; }
+    [data-reveal] { opacity: 1; transform: none; transition: none; animation: none !important; }
     .btn-glow { animation: none; }
     .marquee-track { animation: none; }
     .hero-img { animation: none; }
     .particle { animation: none; display: none; }
     .hero-scroll-dot { animation: none; }
-    .hero-eyebrow, .hero-lead, .hero-ctas, .hero-proof, .hero-impact, .hero-scroll { opacity: 1; transform: none; }
-    .hero-line-inner { transform: none; }
+    .hero-eyebrow, .hero-lead, .hero-ctas, .hero-proof, .hero-impact, .hero-scroll { opacity: 1; transform: none; animation: none !important; }
+    .hero-line-inner { transform: none; animation: none !important; }
     .hero-eyebrow-line { width: 32px; }
   }
 </style>
 
 <script>
-  // ── Scroll reveal observer (sections below hero) ──
-  const observer = new IntersectionObserver((entries) => {
-    entries.forEach(entry => {
-      if (entry.isIntersecting) {
-        entry.target.classList.add('is-visible');
-        observer.unobserve(entry.target);
-      }
-    });
-  }, { threshold: 0.15, rootMargin: '0px 0px -40px 0px' });
-  document.querySelectorAll('[data-reveal]').forEach(el => observer.observe(el));
+  /* ── Home page initialization ──
+   * Uses astro:page-load to work with View Transitions (ClientRouter).
+   * Module scripts may not re-run on client-side navigation — this
+   * lifecycle event fires reliably on every navigation. */
 
-  // ── Hero entrance orchestration ──
-  const hero = document.querySelector('.hero') as HTMLElement;
-  if (hero) {
-    // Trigger cinematic entrance once image is ready
+  let _observer: IntersectionObserver | null = null;
+  let _scrollHandler: (() => void) | null = null;
+  let _heroTimeout: ReturnType<typeof setTimeout> | null = null;
+  let _counterTimeout: ReturnType<typeof setTimeout> | null = null;
+
+  function cleanup() {
+    _observer?.disconnect(); _observer = null;
+    if (_scrollHandler) window.removeEventListener('scroll', _scrollHandler);
+    _scrollHandler = null;
+    if (_heroTimeout) clearTimeout(_heroTimeout);
+    if (_counterTimeout) clearTimeout(_counterTimeout);
+  }
+
+  function initHomePage() {
+    const hero = document.querySelector('.hero') as HTMLElement;
+    if (!hero) return; // Not on home page — bail
+
+    cleanup();
+
+    // Reset state (needed when returning via View Transitions)
+    hero.classList.remove('is-loaded');
+    document.querySelectorAll('[data-reveal]').forEach(el => el.classList.remove('is-visible'));
+
+    // ── Scroll reveal observer (sections below hero) ──
+    _observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('is-visible');
+          _observer?.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.15, rootMargin: '0px 0px -40px 0px' });
+    document.querySelectorAll('[data-reveal]').forEach(el => _observer!.observe(el));
+
+    // ── Hero entrance orchestration ──
     const heroImg = hero.querySelector('.hero-img') as HTMLImageElement;
     const startHero = () => hero.classList.add('is-loaded');
     if (heroImg?.complete) {
       requestAnimationFrame(startHero);
     } else if (heroImg) {
       heroImg.addEventListener('load', startHero, { once: true });
-      // Fallback if image takes too long
-      setTimeout(startHero, 2000);
+      _heroTimeout = setTimeout(startHero, 2000);
     } else {
       startHero();
     }
-  }
 
-  // ── Animated counter ──
-  const counterEl = document.querySelector('[data-count-to]') as HTMLElement;
-  if (counterEl) {
-    const target = parseInt(counterEl.dataset.countTo || '0', 10);
-    const duration = 2000;
-    const delay = 1400;
+    // ── Animated counter ──
+    const counterEl = document.querySelector('[data-count-to]') as HTMLElement;
+    if (counterEl) {
+      const target = parseInt(counterEl.dataset.countTo || '0', 10);
+      // Reset counter text
+      if (counterEl.firstChild) counterEl.firstChild.textContent = '0';
 
-    function easeOutExpo(t: number): number {
-      return t === 1 ? 1 : 1 - Math.pow(2, -10 * t);
+      function easeOutExpo(t: number): number {
+        return t === 1 ? 1 : 1 - Math.pow(2, -10 * t);
+      }
+
+      _counterTimeout = setTimeout(() => {
+        const start = performance.now();
+        function tick(now: number) {
+          const progress = Math.min((now - start) / 2000, 1);
+          counterEl.firstChild!.textContent = String(Math.round(easeOutExpo(progress) * target));
+          if (progress < 1) requestAnimationFrame(tick);
+        }
+        requestAnimationFrame(tick);
+      }, 1400);
     }
 
-    setTimeout(() => {
-      const start = performance.now();
-      function tick(now: number) {
-        const progress = Math.min((now - start) / duration, 1);
-        counterEl.firstChild!.textContent = String(Math.round(easeOutExpo(progress) * target));
-        if (progress < 1) requestAnimationFrame(tick);
-      }
-      requestAnimationFrame(tick);
-    }, delay);
-  }
+    // ── Scroll parallax ──
+    if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      const heroBg = document.querySelector('[data-parallax="bg"]') as HTMLElement;
+      const heroContent = document.querySelector('[data-parallax="content"]') as HTMLElement;
+      if (heroBg && heroContent) {
+        // Reset inline styles from previous visit
+        heroBg.style.transform = '';
+        heroContent.style.transform = '';
+        heroContent.style.opacity = '';
 
-  // ── Scroll parallax (all viewports — GPU-only, no layout thrashing) ──
-  if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-    const heroBg = document.querySelector('[data-parallax="bg"]') as HTMLElement;
-    const heroContent = document.querySelector('[data-parallax="content"]') as HTMLElement;
-    if (heroBg && heroContent) {
-      const heroH = hero?.offsetHeight || window.innerHeight;
-      let ticking = false;
-      let pastHero = false;
-      function onScroll() {
-        if (ticking) return;
-        ticking = true;
-        requestAnimationFrame(() => {
-          const scrollY = window.scrollY;
-          if (scrollY < heroH) {
-            pastHero = false;
-            const ratio = scrollY / heroH;
-            heroBg.style.transform = `translate3d(0, ${scrollY * 0.3}px, 0)`;
-            heroContent.style.transform = `translate3d(0, ${scrollY * 0.12}px, 0)`;
-            heroContent.style.opacity = String(1 - ratio * 0.8);
-          } else if (!pastHero) {
-            // Set final state once and stop computing
-            pastHero = true;
-            heroBg.style.transform = `translate3d(0, ${heroH * 0.3}px, 0)`;
-            heroContent.style.opacity = '0.2';
-          }
-          ticking = false;
-        });
+        const heroH = hero.offsetHeight || window.innerHeight;
+        let ticking = false;
+        let pastHero = false;
+        _scrollHandler = function () {
+          if (ticking) return;
+          ticking = true;
+          requestAnimationFrame(() => {
+            const scrollY = window.scrollY;
+            if (scrollY < heroH) {
+              pastHero = false;
+              const ratio = scrollY / heroH;
+              heroBg.style.transform = `translate3d(0, ${scrollY * 0.3}px, 0)`;
+              heroContent.style.transform = `translate3d(0, ${scrollY * 0.12}px, 0)`;
+              heroContent.style.opacity = String(1 - ratio * 0.8);
+            } else if (!pastHero) {
+              pastHero = true;
+              heroBg.style.transform = `translate3d(0, ${heroH * 0.3}px, 0)`;
+              heroContent.style.opacity = '0.2';
+            }
+            ticking = false;
+          });
+        };
+        window.addEventListener('scroll', _scrollHandler, { passive: true });
       }
-      window.addEventListener('scroll', onScroll, { passive: true });
     }
   }
+
+  // Fire on every navigation (initial + View Transitions)
+  document.addEventListener('astro:page-load', initHomePage);
+  // Clean up when navigating away
+  document.addEventListener('astro:before-swap', cleanup);
 </script>
