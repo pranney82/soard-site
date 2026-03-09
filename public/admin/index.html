@@ -4068,6 +4068,172 @@
     }
 
     // ═══════════════════════════════════════════
+    // MEDIA KIT EDITOR
+    // ═══════════════════════════════════════════
+    function MediaKit({ addToast }) {
+      const [data, setData] = useState({});
+      const [sha, setSha] = useState(null);
+      const [loading, setLoading] = useState(true);
+      const [saving, setSaving] = useState(false);
+
+      useEffect(() => {
+        (async () => {
+          const res = await api.readContent('src/content/site/media.json');
+          if (res.success) {
+            setData(JSON.parse(res.content));
+            setSha(res.sha);
+          }
+          setLoading(false);
+        })();
+      }, []);
+
+      const updateField = (path, value) => {
+        setData(d => {
+          const copy = JSON.parse(JSON.stringify(d));
+          const keys = path.split('.');
+          let obj = copy;
+          for (let i = 0; i < keys.length - 1; i++) {
+            if (!obj[keys[i]] || typeof obj[keys[i]] !== 'object') obj[keys[i]] = {};
+            obj = obj[keys[i]];
+          }
+          obj[keys[keys.length - 1]] = value;
+          return copy;
+        });
+      };
+
+      const handleSave = async () => {
+        setSaving(true);
+        try {
+          const content = JSON.stringify(data, null, 2);
+          const res = await api.saveContent(
+            'src/content/site/media.json', content,
+            'Update Media Kit content', sha
+          );
+          if (res.success) {
+            setSha(res.sha);
+            addToast('Media Kit saved!', 'success');
+          } else {
+            addToast(`Failed: ${res.error}`, 'error');
+          }
+        } catch (err) {
+          addToast(`Error: ${err.message}`, 'error');
+        }
+        setSaving(false);
+      };
+
+      if (loading) return html`<div class="card" style="text-align: center; padding: 3rem;"><div class="spinner" style="width: 32px; height: 32px;" /></div>`;
+
+      return html`
+        <div class="page-header">
+          <h2>Media Kit</h2>
+          <button class="btn btn-primary" onClick=${handleSave} disabled=${saving}>
+            ${saving ? html`<span class="spinner" />` : null} ${saving ? 'Saving...' : 'Save & Publish'}
+          </button>
+        </div>
+
+        <div class="card">
+          <h3 style="margin-bottom: 0.5rem;">Organization Bio</h3>
+          <p class="text-sm text-muted mb-1">Basic organization details shown on the branding page.</p>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Organization Name</label>
+              <input class="form-input" value=${data.bio?.orgName || ''} onInput=${e => updateField('bio.orgName', e.target.value)} />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Founded</label>
+              <input class="form-input" value=${data.bio?.founded || ''} onInput=${e => updateField('bio.founded', e.target.value)} />
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Founders</label>
+              <input class="form-input" value=${data.bio?.founders || ''} onInput=${e => updateField('bio.founders', e.target.value)} />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Location</label>
+              <input class="form-input" value=${data.bio?.location || ''} onInput=${e => updateField('bio.location', e.target.value)} />
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">EIN</label>
+              <input class="form-input" value=${data.bio?.ein || ''} onInput=${e => updateField('bio.ein', e.target.value)} />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Website</label>
+              <input class="form-input" value=${data.bio?.website || ''} onInput=${e => updateField('bio.website', e.target.value)} />
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Boilerplate (one-line bio for press)</label>
+            <textarea class="form-input" style="min-height: 60px;" value=${data.bio?.boilerplate || ''}
+              onInput=${e => updateField('bio.boilerplate', e.target.value)} />
+          </div>
+        </div>
+
+        <div class="card">
+          <h3 style="margin-bottom: 0.5rem;">Mission Statement</h3>
+          <div class="form-group">
+            <label class="form-label">Mission</label>
+            <textarea class="form-input" style="min-height: 100px;" value=${data.mission || ''}
+              onInput=${e => updateField('mission', e.target.value)} />
+          </div>
+        </div>
+
+        <div class="card">
+          <h3 style="margin-bottom: 0.5rem;">Who We Are</h3>
+          <div class="form-group">
+            <label class="form-label">Who</label>
+            <textarea class="form-input" style="min-height: 80px;" value=${data.who || ''}
+              onInput=${e => updateField('who', e.target.value)} />
+          </div>
+        </div>
+
+        <div class="card">
+          <h3 style="margin-bottom: 0.5rem;">Founder's Story</h3>
+          <p class="text-sm text-muted mb-1">Use blank lines between paragraphs. They will render as separate &lt;p&gt; tags on the page.</p>
+          <div class="form-group">
+            <label class="form-label">Founder's Story</label>
+            <textarea class="form-input" style="min-height: 160px;" value=${data.founderStory || ''}
+              onInput=${e => updateField('founderStory', e.target.value)} />
+          </div>
+        </div>
+
+        <div class="card">
+          <h3 style="margin-bottom: 0.5rem;">Contact & Social</h3>
+          <div class="form-group">
+            <label class="form-label">Contact Email</label>
+            <input class="form-input" value=${data.contactEmail || ''} onInput=${e => updateField('contactEmail', e.target.value)} />
+          </div>
+          <div class="form-row" style="grid-template-columns: 1fr 1fr 1fr;">
+            <div class="form-group">
+              <label class="form-label">Facebook URL</label>
+              <input class="form-input" value=${data.socialLinks?.facebook || ''} onInput=${e => updateField('socialLinks.facebook', e.target.value)} />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Instagram URL</label>
+              <input class="form-input" value=${data.socialLinks?.instagram || ''} onInput=${e => updateField('socialLinks.instagram', e.target.value)} />
+            </div>
+            <div class="form-group">
+              <label class="form-label">YouTube URL</label>
+              <input class="form-input" value=${data.socialLinks?.youtube || ''} onInput=${e => updateField('socialLinks.youtube', e.target.value)} />
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3 style="margin-bottom: 0.5rem;">SEO</h3>
+          <div class="form-group">
+            <label class="form-label">Meta Description</label>
+            <textarea class="form-input" style="min-height: 60px;" value=${data.metaDescription || ''}
+              onInput=${e => updateField('metaDescription', e.target.value)} />
+            <div class="form-hint">${(data.metaDescription || '').length}/160 characters</div>
+          </div>
+        </div>
+      `;
+    }
+
+    // ═══════════════════════════════════════════
     // APPLICATIONS (Makeover Intake via JotForm)
     // ═══════════════════════════════════════════
     function Applications({ addToast }) {
@@ -4399,6 +4565,7 @@
         github: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22" /></svg>`,
         applications: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" /></svg>`,
         ourstory: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" /><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" /></svg>`,
+        mediakit: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" /><path d="M14 2v4a2 2 0 0 0 2 2h4" /><path d="M10 9H8" /><path d="M16 13H8" /><path d="M16 17H8" /></svg>`,
       };
 
       const navSections = [
@@ -4412,6 +4579,7 @@
           { id: 'articles', icon: icons.articles, label: 'Articles' },
           { id: 'events', icon: icons.events, label: 'Events' },
           { id: 'ourstory', icon: icons.ourstory, label: 'Our Story' },
+          { id: 'mediakit', icon: icons.mediakit, label: 'Media Kit' },
           { id: 'community', icon: icons.community, label: 'Community Projects' },
           { id: 'faq', icon: icons.faq, label: 'FAQs' },
           { id: 'financials', icon: icons.financials, label: 'Financials' },
@@ -4469,6 +4637,8 @@
             return html`<${Financials} addToast=${addToast} />`;
           case 'ourstory':
             return html`<${OurStory} addToast=${addToast} />`;
+          case 'mediakit':
+            return html`<${MediaKit} addToast=${addToast} />`;
           case 'faq':
             return html`<${FAQManager} addToast=${addToast} />`;
           case 'deploys':

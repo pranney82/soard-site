@@ -1,13 +1,16 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
+import media from '../content/site/media.json';
+
+const founderParagraphs = media.founderStory.split('\n\n');
 ---
-<BaseLayout title="Brand Guidelines" description="Official brand resources, logos, and usage guidelines for representing Sunshine on a Ranney Day.">
+<BaseLayout title="Brand & Media Kit" description={media.metaDescription}>
 
   <section class="page-hero">
     <div class="container">
-      <p class="hero-label">Brand Resources</p>
-      <h1>Brand Guidelines</h1>
-      <p class="page-hero-sub">Official brand resources, logos, and usage guidelines for representing Sunshine on a Ranney Day.</p>
+      <p class="hero-label">Brand & Media Resources</p>
+      <h1>Brand & Media Kit</h1>
+      <p class="page-hero-sub">Official brand assets, logos, and press-ready information for representing Sunshine on a Ranney Day.</p>
     </div>
   </section>
 
@@ -15,12 +18,18 @@ import BaseLayout from '../layouts/BaseLayout.astro';
     <aside class="brand-sidebar">
       <div class="sidebar-inner">
         <p class="sidebar-label">Contents</p>
+        <p class="sidebar-group-label">Brand Guidelines</p>
         <a href="#logos" class="sidebar-link active">Logos</a>
         <a href="#icons" class="sidebar-link">Icons</a>
         <a href="#logo-usage" class="sidebar-link">Logo Usage</a>
         <a href="#colors" class="sidebar-link">Colors</a>
         <a href="#typography" class="sidebar-link">Typography</a>
         <a href="#voice" class="sidebar-link">Voice & Tone</a>
+        <p class="sidebar-group-label">Media Kit</p>
+        <a href="#media-bio" class="sidebar-link">Bio & Overview</a>
+        <a href="#media-mission" class="sidebar-link">Mission</a>
+        <a href="#media-founders" class="sidebar-link">Founder's Story</a>
+        <a href="#media-contact" class="sidebar-link">Contact & Social</a>
       </div>
     </aside>
 
@@ -95,6 +104,118 @@ import BaseLayout from '../layouts/BaseLayout.astro';
         <div class="two-col">
           <div class="info-card"><h3>We are</h3><div class="voice-items"><div class="voice-item"><h5>Warm &amp; Genuine</h5><p>Approachable and heartfelt in every interaction</p></div><div class="voice-item"><h5>Hopeful &amp; Empowering</h5><p>Focused on possibility, never pity</p></div><div class="voice-item"><h5>Professional</h5><p>Yet approachable and human</p></div><div class="voice-item"><h5>Joyful</h5><p>Building dream rooms is what we do — let the energy show</p></div></div></div>
           <div class="info-card"><h3>We are not</h3><div class="voice-items"><div class="voice-item"><h5>Pitying</h5><p>Never reduce children to their diagnosis</p></div><div class="voice-item"><h5>Clinical</h5><p>Not stiff or corporate — always personal</p></div><div class="voice-item"><h5>Guilt-Driven</h5><p>Inspire through joy, never through pressure</p></div><div class="voice-item"><h5>Sloppy</h5><p>Playful doesn't mean careless</p></div></div></div>
+        </div>
+      </section>
+
+      <!-- ═══ MEDIA KIT ═══ -->
+
+      <div class="media-divider">
+        <span class="media-divider-label">Media Kit</span>
+      </div>
+
+      <section id="media-bio" class="brand-section">
+        <h2>Bio & Overview</h2>
+        <p class="section-desc">Press-ready organization information. Click any block to copy text to clipboard.</p>
+
+        <div class="media-card" data-copy>
+          <div class="media-card-header">
+            <h3>Organization Bio</h3>
+            <button class="copy-btn" aria-label="Copy to clipboard"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>Copy</button>
+          </div>
+          <p class="media-copy-text">{media.bio.boilerplate}</p>
+        </div>
+
+        <div class="media-details-grid">
+          <div class="media-detail">
+            <span class="media-detail-label">Organization</span>
+            <span class="media-detail-value">{media.bio.orgName}</span>
+          </div>
+          <div class="media-detail">
+            <span class="media-detail-label">Founded</span>
+            <span class="media-detail-value">{media.bio.founded}</span>
+          </div>
+          <div class="media-detail">
+            <span class="media-detail-label">Founders</span>
+            <span class="media-detail-value">{media.bio.founders}</span>
+          </div>
+          <div class="media-detail">
+            <span class="media-detail-label">Location</span>
+            <span class="media-detail-value">{media.bio.location}</span>
+          </div>
+          <div class="media-detail">
+            <span class="media-detail-label">EIN</span>
+            <span class="media-detail-value">{media.bio.ein}</span>
+          </div>
+          <div class="media-detail">
+            <span class="media-detail-label">Website</span>
+            <span class="media-detail-value">{media.bio.website}</span>
+          </div>
+        </div>
+      </section>
+
+      <section id="media-mission" class="brand-section">
+        <h2>Mission Statement</h2>
+        <p class="section-desc">Our official mission statement for press materials and publications.</p>
+
+        <div class="media-card" data-copy>
+          <div class="media-card-header">
+            <h3>Mission</h3>
+            <button class="copy-btn" aria-label="Copy to clipboard"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>Copy</button>
+          </div>
+          <p class="media-copy-text">{media.mission}</p>
+        </div>
+
+        <div class="media-card" data-copy>
+          <div class="media-card-header">
+            <h3>Who We Are</h3>
+            <button class="copy-btn" aria-label="Copy to clipboard"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>Copy</button>
+          </div>
+          <p class="media-copy-text">{media.who}</p>
+        </div>
+      </section>
+
+      <section id="media-founders" class="brand-section">
+        <h2>Founder's Story</h2>
+        <p class="section-desc">Background on how Sunshine on a Ranney Day began.</p>
+
+        <div class="media-card" data-copy>
+          <div class="media-card-header">
+            <h3>Founder's Story</h3>
+            <button class="copy-btn" aria-label="Copy to clipboard"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>Copy</button>
+          </div>
+          <div class="media-copy-text">
+            {founderParagraphs.map((p: string) => <p>{p}</p>)}
+          </div>
+        </div>
+      </section>
+
+      <section id="media-contact" class="brand-section" style="border-bottom:none;">
+        <h2>Contact & Social</h2>
+        <p class="section-desc">Official contact information and social media links for press inquiries.</p>
+
+        <div class="media-details-grid">
+          <div class="media-detail">
+            <span class="media-detail-label">Press Contact</span>
+            <span class="media-detail-value"><a href={`mailto:${media.contactEmail}`}>{media.contactEmail}</a></span>
+          </div>
+          {media.socialLinks.facebook && (
+            <div class="media-detail">
+              <span class="media-detail-label">Facebook</span>
+              <span class="media-detail-value"><a href={media.socialLinks.facebook} target="_blank" rel="noopener">{media.socialLinks.facebook.replace('https://www.facebook.com/', 'facebook.com/')}</a></span>
+            </div>
+          )}
+          {media.socialLinks.instagram && (
+            <div class="media-detail">
+              <span class="media-detail-label">Instagram</span>
+              <span class="media-detail-value"><a href={media.socialLinks.instagram} target="_blank" rel="noopener">{media.socialLinks.instagram.replace('https://www.instagram.com/', 'instagram.com/')}</a></span>
+            </div>
+          )}
+          {media.socialLinks.youtube && (
+            <div class="media-detail">
+              <span class="media-detail-label">YouTube</span>
+              <span class="media-detail-value"><a href={media.socialLinks.youtube} target="_blank" rel="noopener">YouTube Channel</a></span>
+            </div>
+          )}
         </div>
       </section>
 
@@ -201,8 +322,28 @@ import BaseLayout from '../layouts/BaseLayout.astro';
   .voice-item p{font-size:14px;color:rgba(55,58,54,.6)}
   .brand-toast{position:fixed;bottom:32px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--c-dark-deep);color:#fff;padding:12px 24px;border-radius:10px;font-size:14px;font-weight:500;opacity:0;pointer-events:none;transition:all .3s ease;z-index:999;box-shadow:0 8px 32px rgba(0,0,0,.2)}
   .brand-toast.visible{opacity:1;transform:translateX(-50%) translateY(0)}
+  .sidebar-group-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:rgba(55,58,54,.35);padding:20px 16px 6px;margin:0}
+  .sidebar-group-label:first-of-type{padding-top:0}
+  .media-divider{text-align:center;margin:0 0 64px;padding:48px 0 0;border-top:2px solid rgba(55,58,54,.1)}
+  .media-divider-label{display:inline-block;background:var(--c-cream,#FEFCF5);padding:0 24px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:rgba(55,58,54,.4);position:relative;top:-28px}
+  .media-card{background:#fff;border:1px solid rgba(55,58,54,.12);border-radius:12px;overflow:hidden;margin-bottom:24px;transition:box-shadow .15s}
+  .media-card:hover{box-shadow:0 4px 16px rgba(0,0,0,.06)}
+  .media-card-header{display:flex;justify-content:space-between;align-items:center;padding:16px 24px;border-bottom:1px solid rgba(55,58,54,.08);background:rgba(55,58,54,.02)}
+  .media-card-header h3{font-size:15px;font-weight:600;color:var(--c-dark);margin:0}
+  .copy-btn{display:inline-flex;align-items:center;gap:6px;padding:6px 14px;background:transparent;border:1px solid rgba(55,58,54,.15);border-radius:6px;font-size:13px;font-weight:500;color:rgba(55,58,54,.6);cursor:pointer;transition:all .15s}
+  .copy-btn:hover{background:var(--c-yellow);color:var(--c-dark);border-color:var(--c-yellow)}
+  .copy-btn.copied{background:#16a34a;color:#fff;border-color:#16a34a}
+  .media-copy-text{padding:20px 24px;font-size:15px;line-height:1.7;color:var(--c-dark)}
+  .media-copy-text p{margin:0 0 12px}
+  .media-copy-text p:last-child{margin-bottom:0}
+  .media-details-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:1px;background:rgba(55,58,54,.1);border:1px solid rgba(55,58,54,.12);border-radius:12px;overflow:hidden}
+  .media-detail{padding:20px 24px;background:#fff}
+  .media-detail-label{display:block;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:rgba(55,58,54,.45);margin-bottom:6px}
+  .media-detail-value{font-size:15px;font-weight:500;color:var(--c-dark)}
+  .media-detail-value a{color:var(--c-dark);text-decoration:underline;text-decoration-color:rgba(55,58,54,.25);text-underline-offset:2px;transition:text-decoration-color .15s}
+  .media-detail-value a:hover{text-decoration-color:var(--c-yellow)}
   @media(max-width:1024px){.brand-sidebar{display:none}.brand-layout{padding:32px 20px 48px}}
-  @media(max-width:768px){.logo-grid{grid-template-columns:1fr}.icon-grid{grid-template-columns:1fr}.usage-grid{grid-template-columns:1fr}.dodont-grid{grid-template-columns:1fr}.color-grid{grid-template-columns:1fr 1fr}.two-col{grid-template-columns:1fr}.vis-grid{grid-template-columns:1fr 1fr}.section-header-row{flex-direction:column}}
+  @media(max-width:768px){.logo-grid{grid-template-columns:1fr}.icon-grid{grid-template-columns:1fr}.usage-grid{grid-template-columns:1fr}.dodont-grid{grid-template-columns:1fr}.color-grid{grid-template-columns:1fr 1fr}.two-col{grid-template-columns:1fr}.vis-grid{grid-template-columns:1fr 1fr}.section-header-row{flex-direction:column}.media-details-grid{grid-template-columns:1fr}}
   @media(max-width:480px){.color-grid{grid-template-columns:1fr}.vis-grid{grid-template-columns:1fr}}
 </style>
 
@@ -221,6 +362,25 @@ import BaseLayout from '../layouts/BaseLayout.astro';
     cleanupBranding();
 
     cards.forEach(card=>{card.addEventListener('click',()=>{const hex=(card as HTMLElement).dataset.hex;navigator.clipboard.writeText(hex!);let toast=document.querySelector('.brand-toast');if(!toast){toast=document.createElement('div');toast.className='brand-toast';document.body.appendChild(toast)}toast.textContent=`Copied ${hex}`;toast.classList.add('visible');setTimeout(()=>toast.classList.remove('visible'),2000)})});
+
+    // Copy buttons on media cards
+    document.querySelectorAll('.copy-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const card = btn.closest('.media-card');
+        if (!card) return;
+        const textEl = card.querySelector('.media-copy-text');
+        if (!textEl) return;
+        const text = (textEl as HTMLElement).innerText.trim();
+        navigator.clipboard.writeText(text);
+        btn.classList.add('copied');
+        btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>Copied!';
+        setTimeout(() => {
+          btn.classList.remove('copied');
+          btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>Copy';
+        }, 2000);
+      });
+    });
+
     const sections=document.querySelectorAll('.brand-section');const links=document.querySelectorAll('.sidebar-link');_brandObserver=new IntersectionObserver(entries=>{entries.forEach(entry=>{if(entry.isIntersecting){links.forEach(l=>l.classList.remove('active'));const id=entry.target.id;const active=document.querySelector(`.sidebar-link[href="#${id}"]`);if(active)active.classList.add('active')}})},{rootMargin:'-100px 0px -60% 0px'});sections.forEach(s=>_brandObserver!.observe(s));
   }
 
