@@ -11,6 +11,7 @@
  */
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import { getWebPageSchema, getBreadcrumbSchema, buildSchemaGraph } from '../../utils/schema';
+import { getCollection } from 'astro:content';
 
 const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
 
@@ -21,70 +22,11 @@ const heroImageId = 'kids/jackson/hero-4b1747';
 const sectionPhotoA = 'kids/griffin/hero-dbeb0f';
 const sectionPhotoB = 'kids/eli/photo-001-70ddd7';
 
-/* ── Community Projects data ── */
-const projects = [
-  {
-    name: 'Camp Twin Lakes',
-    impact: '10,000',
-    label: 'children impacted yearly',
-    year: '2018',
-    description: 'Camp Twin Lakes provides life-changing camp experiences for children with serious illnesses, disabilities, and other challenges across Georgia. SOARD partnered to renovate camp facilities, creating sensory-friendly spaces and accessible areas where thousands of children can play, grow, and experience the magic of camp — many for the very first time.',
-    color: '#2E7D32',
-    imageId: '4ebebf46-b670-4157-1aa7-1b736894f800',
-    imageAlt: 'Camp Twin Lakes facility renovated by SOARD',
-  },
-  {
-    name: 'The Summit Counseling Center',
-    impact: '4,800',
-    label: 'children impacted yearly',
-    year: '2016',
-    description: 'The Summit Counseling Center provides professional counseling services to children and families across North Atlanta. SOARD renovated their child therapy spaces, transforming clinical environments into warm, welcoming rooms designed to help kids feel safe and supported during their most vulnerable moments.',
-    color: '#1565C0',
-    imageId: 'fe70be61-b0f9-44a0-e149-216a29efdd00',
-    imageAlt: 'The Summit Counseling Center renovation by SOARD',
-  },
-  {
-    name: "Children's Healthcare of Atlanta",
-    impact: '2,500',
-    label: 'children impacted yearly',
-    year: '2016',
-    description: "SOARD renovated parent sleep rooms at Children's Healthcare of Atlanta, giving families a comfortable retreat during their child's hospital stay. This project was featured on NBC's Today Show, shining a national spotlight on the power of thoughtful design in healthcare settings.",
-    color: '#6A1B9A',
-    imageId: '',
-    imageAlt: '',
-  },
-  {
-    name: 'The Drake House',
-    impact: '250',
-    label: 'families served',
-    year: '2022',
-    description: 'The Drake House provides housing and education for single mothers and their children experiencing homelessness in North Metro Atlanta. SOARD renovated their main headquarters — redesigning classrooms, activity spaces, a community kitchen, and teen gathering rooms to create an environment where families can recover, learn, and rebuild with dignity.',
-    color: '#C62828',
-    imageId: 'community/drake-house-hero',
-    imageAlt: 'The Drake House headquarters renovated by SOARD',
-  },
-  {
-    name: 'Murphy-Harpst Children\'s Center',
-    impact: '101',
-    label: 'children served on campus',
-    year: '2015',
-    description: 'Murphy-Harpst Children\'s Center in Cedartown, Georgia provides residential treatment and foster care for some of the state\'s most vulnerable children — youth who have experienced severe abuse, neglect, and trauma. SOARD renovated living spaces on their 160-acre campus, creating environments where children in state custody can feel safe, supported, and at home during their healing journey.',
-    color: '#E65100',
-    imageId: '073abb97-a6e0-46e6-7b37-e590493c2b00',
-    imageAlt: 'Murphy-Harpst Children\'s Center campus renovation',
-  },
-  {
-    name: "Children's Development Academy",
-    impact: '100+',
-    label: 'children enrolled',
-    year: '2025',
-    description: "Founded in 1967, the CDA in Roswell gives young children the best chance to read on grade level by third grade, graduate high school, and break the cycle of generational poverty. SOARD is part of the CDA's Learn.Play.Serve campaign — creating a new toddler classroom and community room with architecture by Randall Paulson, design by Crosby Design Group, and construction by Trident Construction.",
-    color: '#00838F',
-    badge: 'In Progress',
-    imageId: 'community/cda-hero',
-    imageAlt: 'Children\'s Development Academy building before renovation',
-  },
-];
+/* ── Community Projects from content collection ── */
+const allProjects = await getCollection('community');
+const projects = allProjects
+  .map(p => p.data)
+  .sort((a, b) => (a.order || 0) - (b.order || 0));
 
 const totalImpact = '17,000+';
 
@@ -168,7 +110,7 @@ const jsonLd = buildSchemaGraph(
   <section class="cp-ribbon" aria-label="Community project impact">
     <div class="cp-ribbon-inner">
       <div class="cp-ribbon-stat" data-reveal>
-        <span class="cp-ribbon-num">6</span>
+        <span class="cp-ribbon-num">{projects.length}</span>
         <span class="cp-ribbon-label">Major Community<br/>Partners</span>
       </div>
       <div class="cp-ribbon-divider" role="presentation"></div>
@@ -218,7 +160,7 @@ const jsonLd = buildSchemaGraph(
           <div class="cp-card-body">
             <div class="cp-card-impact">
               <span class="cp-card-num">{project.impact}</span>
-              <span class="cp-card-label">{project.label}</span>
+              <span class="cp-card-label">{project.impactLabel}</span>
             </div>
             <h3 class="cp-card-name">{project.name}</h3>
             <span class="cp-card-year">{project.year} Project</span>

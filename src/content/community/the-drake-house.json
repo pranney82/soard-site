@@ -1,0 +1,12 @@
+{
+  "name": "The Drake House",
+  "slug": "the-drake-house",
+  "impact": "250",
+  "impactLabel": "families served",
+  "year": "2022",
+  "description": "The Drake House provides housing and education for single mothers and their children experiencing homelessness in North Metro Atlanta. SOARD renovated their main headquarters — redesigning classrooms, activity spaces, a community kitchen, and teen gathering rooms to create an environment where families can recover, learn, and rebuild with dignity.",
+  "color": "#C62828",
+  "imageId": "community/drake-house-hero",
+  "imageAlt": "The Drake House headquarters renovated by SOARD",
+  "order": 4
+}

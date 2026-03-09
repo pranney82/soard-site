@@ -125,4 +125,21 @@ const press = defineCollection({
   }),
 });
 
-export const collections = { kids, partners, team, articles, press, events };
+const community = defineCollection({
+  type: 'data',
+  schema: z.object({
+    name: z.string(),
+    slug: z.string(),
+    impact: z.string(),
+    impactLabel: z.string(),
+    year: z.string(),
+    description: z.string(),
+    color: z.string().default('#373A36'),
+    imageId: z.string().optional(),
+    imageAlt: z.string().optional(),
+    badge: z.string().optional(),
+    order: z.number().default(0),
+  }),
+});
+
+export const collections = { kids, partners, team, articles, press, events, community };
