@@ -380,7 +380,7 @@ window.__shopPreload = fetch('/api/shopify', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({
-    query: 'query CollectionProducts{collection(id:"gid://shopify/Collection/497995219228"){products(first:50,sortKey:BEST_SELLING){edges{node{id handle title description descriptionHtml availableForSale priceRange{minVariantPrice{amount currencyCode}maxVariantPrice{amount currencyCode}}compareAtPriceRange{minVariantPrice{amount currencyCode}}featuredImage{url altText width height}images(first:10){edges{node{url altText width height}}}options{id name values}variants(first:100){edges{node{id title availableForSale price{amount currencyCode}compareAtPrice{amount currencyCode}selectedOptions{name value}image{url altText width height}}}}tags}}}}}'
+    query: 'query AllCollections{collections(first:50){edges{node{id handle title products(first:100,sortKey:BEST_SELLING){edges{node{id handle title description descriptionHtml availableForSale priceRange{minVariantPrice{amount currencyCode}maxVariantPrice{amount currencyCode}}compareAtPriceRange{minVariantPrice{amount currencyCode}}featuredImage{url altText width height}images(first:10){edges{node{url altText width height}}}options{id name values}variants(first:100){edges{node{id title availableForSale price{amount currencyCode}compareAtPrice{amount currencyCode}selectedOptions{name value}image{url altText width height}}}}tags}}}}}}}' 
   })
 }).then(function(r){ return r.json(); });
 </script>
@@ -453,7 +453,25 @@ window.__shopPreload = fetch('/api/shopify', {
     dataPromise
       .then(function (json) {
         if (json.errors) throw new Error(json.errors[0].message);
-        var products = (json.data.collection ? json.data.collection.products : json.data.products).edges.map(function (e) { return e.node; });
+
+        // Extract products from all collections, deduplicate by handle
+        var products = [];
+        var seen = {};
+        var d = json.data;
+        if (d.collections) {
+          d.collections.edges.forEach(function (ce) {
+            ce.node.products.edges.forEach(function (pe) {
+              if (!seen[pe.node.handle]) {
+                seen[pe.node.handle] = true;
+                products.push(pe.node);
+              }
+            });
+          });
+        } else if (d.collection) {
+          products = d.collection.products.edges.map(function (e) { return e.node; });
+        } else if (d.products) {
+          products = d.products.edges.map(function (e) { return e.node; });
+        }
 
         if (!products.length) {
           skeleton.style.display = 'none';
@@ -490,7 +508,7 @@ window.__shopPreload = fetch('/api/shopify', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        query: 'query CollectionProducts{collection(id:"gid://shopify/Collection/497995219228"){products(first:50,sortKey:BEST_SELLING){edges{node{id handle title description descriptionHtml availableForSale priceRange{minVariantPrice{amount currencyCode}maxVariantPrice{amount currencyCode}}compareAtPriceRange{minVariantPrice{amount currencyCode}}featuredImage{url altText width height}images(first:10){edges{node{url altText width height}}}options{id name values}variants(first:100){edges{node{id title availableForSale price{amount currencyCode}compareAtPrice{amount currencyCode}selectedOptions{name value}image{url altText width height}}}}tags}}}}}'
+        query: 'query AllCollections{collections(first:50){edges{node{id handle title products(first:100,sortKey:BEST_SELLING){edges{node{id handle title description descriptionHtml availableForSale priceRange{minVariantPrice{amount currencyCode}maxVariantPrice{amount currencyCode}}compareAtPriceRange{minVariantPrice{amount currencyCode}}featuredImage{url altText width height}images(first:10){edges{node{url altText width height}}}options{id name values}variants(first:100){edges{node{id title availableForSale price{amount currencyCode}compareAtPrice{amount currencyCode}selectedOptions{name value}image{url altText width height}}}}tags}}}}}}}'
       })
     }).then(function (r) { return r.json(); });
   }
