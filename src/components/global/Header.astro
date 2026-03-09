@@ -577,6 +577,14 @@ document.addEventListener('astro:page-load', function () {
     });
   }
 });
+
+/* Force-clean menu state before View Transition swaps the DOM.
+   Prevents html.menu-open (position:fixed, overflow:hidden) from
+   leaking into the new page if mHideInstant() timing races the swap. */
+document.addEventListener('astro:before-swap', function () {
+  document.documentElement.classList.remove('menu-open');
+  document.body.style.top = '';
+});
 </script>
 
 <style>
@@ -590,6 +598,9 @@ document.addEventListener('astro:page-load', function () {
     transition: background 0.3s ease, box-shadow 0.3s ease;
     isolation: isolate;
     transform: translateZ(0);
+    /* Exclude from View Transition morphing — fixed-position elements
+       get captured in transition snapshots causing flash/disappear */
+    view-transition-name: none;
   }
   .site-header.header--scrolled {
     background: rgba(45, 46, 51, 0.97);
@@ -886,6 +897,7 @@ document.addEventListener('astro:page-load', function () {
     transition: opacity 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94),
                 transform 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94), visibility 0.25s;
     will-change: transform, opacity;
+    view-transition-name: none;
   }
   .mobile-nav.is-open { opacity: 1; visibility: visible; transform: translateY(0); }
   @media (min-width: 1024px) { .mobile-nav { display: none !important; } }
