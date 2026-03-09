@@ -30,6 +30,8 @@ const projects = [
     year: '2018',
     description: 'Camp Twin Lakes provides life-changing camp experiences for children with serious illnesses, disabilities, and other challenges across Georgia. SOARD partnered to renovate camp facilities, creating sensory-friendly spaces and accessible areas where thousands of children can play, grow, and experience the magic of camp — many for the very first time.',
     color: '#2E7D32',
+    imageId: '4ebebf46-b670-4157-1aa7-1b736894f800',
+    imageAlt: 'Camp Twin Lakes facility renovated by SOARD',
   },
   {
     name: 'The Summit Counseling Center',
@@ -38,6 +40,8 @@ const projects = [
     year: '2016',
     description: 'The Summit Counseling Center provides professional counseling services to children and families across North Atlanta. SOARD renovated their child therapy spaces, transforming clinical environments into warm, welcoming rooms designed to help kids feel safe and supported during their most vulnerable moments.',
     color: '#1565C0',
+    imageId: 'fe70be61-b0f9-44a0-e149-216a29efdd00',
+    imageAlt: 'The Summit Counseling Center renovation by SOARD',
   },
   {
     name: "Children's Healthcare of Atlanta",
@@ -46,6 +50,8 @@ const projects = [
     year: '2016',
     description: "SOARD renovated parent sleep rooms at Children's Healthcare of Atlanta, giving families a comfortable retreat during their child's hospital stay. This project was featured on NBC's Today Show, shining a national spotlight on the power of thoughtful design in healthcare settings.",
     color: '#6A1B9A',
+    imageId: '',
+    imageAlt: '',
   },
   {
     name: 'The Drake House',
@@ -54,6 +60,8 @@ const projects = [
     year: '2022',
     description: 'The Drake House provides housing and education for single mothers and their children experiencing homelessness in North Metro Atlanta. SOARD renovated their main headquarters — redesigning classrooms, activity spaces, a community kitchen, and teen gathering rooms to create an environment where families can recover, learn, and rebuild with dignity.',
     color: '#C62828',
+    imageId: 'community/drake-house-hero',
+    imageAlt: 'The Drake House headquarters renovated by SOARD',
   },
   {
     name: 'Murphy-Harpst Children\'s Center',
@@ -62,6 +70,8 @@ const projects = [
     year: '2015',
     description: 'Murphy-Harpst Children\'s Center in Cedartown, Georgia provides residential treatment and foster care for some of the state\'s most vulnerable children — youth who have experienced severe abuse, neglect, and trauma. SOARD renovated living spaces on their 160-acre campus, creating environments where children in state custody can feel safe, supported, and at home during their healing journey.',
     color: '#E65100',
+    imageId: '073abb97-a6e0-46e6-7b37-e590493c2b00',
+    imageAlt: 'Murphy-Harpst Children\'s Center campus renovation',
   },
   {
     name: "Children's Development Academy",
@@ -71,6 +81,8 @@ const projects = [
     description: "Founded in 1967, the CDA in Roswell gives young children the best chance to read on grade level by third grade, graduate high school, and break the cycle of generational poverty. SOARD is part of the CDA's Learn.Play.Serve campaign — creating a new toddler classroom and community room with architecture by Randall Paulson, design by Crosby Design Group, and construction by Trident Construction.",
     color: '#00838F',
     badge: 'In Progress',
+    imageId: 'community/cda-hero',
+    imageAlt: 'Children\'s Development Academy building before renovation',
   },
 ];
 
@@ -189,14 +201,29 @@ const jsonLd = buildSchemaGraph(
       {projects.map((project, i) => (
         <article class="cp-card" data-reveal data-delay={String(i % 3)}>
           <div class="cp-card-accent" style={`background: ${project.color};`}></div>
+          {project.imageId ? (
+            <div class="cp-card-img-wrap">
+              <picture>
+                <source type="image/avif" srcset={`${CF}/${project.imageId}/w=400,f=avif 400w, ${CF}/${project.imageId}/w=600,f=avif 600w`} sizes="(max-width:768px) 90vw, 33vw" />
+                <source type="image/webp" srcset={`${CF}/${project.imageId}/w=400,f=webp 400w, ${CF}/${project.imageId}/w=600,f=webp 600w`} sizes="(max-width:768px) 90vw, 33vw" />
+                <img src={`${CF}/${project.imageId}/w=600,q=80`} alt={project.imageAlt} width="600" height="340" loading="lazy" decoding="async" class="cp-card-img" />
+              </picture>
+            </div>
+          ) : (
+            <div class="cp-card-img-placeholder" style={`background: linear-gradient(135deg, ${project.color}22, ${project.color}44);`}>
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke={project.color} stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+            </div>
+          )}
           {project.badge && <span class="cp-card-badge">{project.badge}</span>}
-          <div class="cp-card-impact">
-            <span class="cp-card-num">{project.impact}</span>
-            <span class="cp-card-label">{project.label}</span>
+          <div class="cp-card-body">
+            <div class="cp-card-impact">
+              <span class="cp-card-num">{project.impact}</span>
+              <span class="cp-card-label">{project.label}</span>
+            </div>
+            <h3 class="cp-card-name">{project.name}</h3>
+            <span class="cp-card-year">{project.year} Project</span>
+            <p class="cp-card-desc">{project.description}</p>
           </div>
-          <h3 class="cp-card-name">{project.name}</h3>
-          <span class="cp-card-year">{project.year} Project</span>
-          <p class="cp-card-desc">{project.description}</p>
         </article>
       ))}
     </div>
@@ -547,10 +574,11 @@ const jsonLd = buildSchemaGraph(
     position: relative;
     background: var(--c-white);
     border-radius: var(--border-radius-lg);
-    padding: var(--space-2xl);
     box-shadow: var(--shadow-sm);
     overflow: hidden;
     transition: transform var(--transition-base), box-shadow var(--transition-base);
+    display: flex;
+    flex-direction: column;
   }
 
   .cp-card:hover {
@@ -564,6 +592,39 @@ const jsonLd = buildSchemaGraph(
     left: 0;
     width: 100%;
     height: 4px;
+    z-index: 1;
+  }
+
+  .cp-card-img-wrap {
+    overflow: hidden;
+  }
+
+  .cp-card-img {
+    width: 100%;
+    height: 200px;
+    object-fit: cover;
+    display: block;
+    transition: transform var(--transition-slow);
+  }
+
+  .cp-card:hover .cp-card-img {
+    transform: scale(1.05);
+  }
+
+  .cp-card-img-placeholder {
+    height: 200px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .cp-card-img-placeholder svg {
+    opacity: 0.5;
+  }
+
+  .cp-card-body {
+    padding: var(--space-xl) var(--space-xl) var(--space-2xl);
+    flex: 1;
   }
 
   .cp-card-impact {
@@ -640,6 +701,7 @@ const jsonLd = buildSchemaGraph(
     text-transform: uppercase;
     letter-spacing: 0.05em;
     border-radius: 100px;
+    z-index: 2;
   }
 
   /* ══════════════════════════════════════════
