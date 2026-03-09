@@ -47,4 +47,4 @@ Content lives in `src/content/` as JSON files:
 | Cream | `#FEFCF5` | Backgrounds |
 
 <!-- build trigger -->
-<!-- test Fri Mar  6 14:27:29 UTC 2026 -->
+<!-- test Mon Mar  9 15:18:33 UTC 2026 -->
