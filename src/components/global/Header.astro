@@ -292,7 +292,13 @@ function isGroupActive(group: NavGroup) {
 </div>
 
 <script>
-(function () {
+document.addEventListener('astro:page-load', function () {
+  /* Abort previous listeners to prevent stacking across View Transitions */
+  if (window.__headerAC) window.__headerAC.abort();
+  var ac = new AbortController();
+  window.__headerAC = ac;
+  var sig = ac.signal;
+
   var header = document.getElementById('site-header');
   var desktopNav = document.getElementById('desktop-nav');
   var indicator = document.getElementById('nav-indicator');
@@ -425,9 +431,9 @@ function isGroupActive(group: NavGroup) {
 
   document.addEventListener('click', function (e) {
     if (!e.target.closest('.nav-item') && !e.target.closest('.dd-morph')) closeAllDD();
-  });
+  }, { signal: sig });
 
-  window.addEventListener('resize', function () { if (activeGroup >= 0) closeAllDD(); });
+  window.addEventListener('resize', function () { if (activeGroup >= 0) closeAllDD(); }, { signal: sig });
 
   /* ═══════ SLIDING INDICATOR ═══════ */
   function posInd(el) {
@@ -496,7 +502,7 @@ function isGroupActive(group: NavGroup) {
   }
   window.addEventListener('scroll', function () {
     if (!ticking) { requestAnimationFrame(onScroll); ticking = true; }
-  }, { passive: true });
+  }, { passive: true, signal: sig });
 
   /* ═══════ MOBILE NAV ═══════ */
   var mBtn = document.getElementById('mobile-toggle');
@@ -561,16 +567,16 @@ function isGroupActive(group: NavGroup) {
       if (e.shiftKey) { if (document.activeElement === first) { e.preventDefault(); last.focus(); } }
       else { if (document.activeElement === last) { e.preventDefault(); first.focus(); } }
     }
-  });
+  }, { signal: sig });
 
-  window.matchMedia('(min-width: 1024px)').addEventListener('change', function (e) { if (e.matches && mobileOpen) mCloseMenu(); });
+  window.matchMedia('(min-width: 1024px)').addEventListener('change', function (e) { if (e.matches && mobileOpen) mCloseMenu(); }, { signal: sig });
 
   if (mPanel) {
     mPanel.querySelectorAll('a').forEach(function (a) {
       a.addEventListener('click', function () { mHideInstant(); });
     });
   }
-})();
+});
 </script>
 
 <style>

@@ -17,10 +17,10 @@
 ---
 
 <!-- Cart Backdrop -->
-<div class="cart-backdrop" id="cart-backdrop" aria-hidden="true"></div>
+<div class="cart-backdrop" id="cart-backdrop" aria-hidden="true" transition:persist="cart-backdrop"></div>
 
 <!-- Cart Drawer -->
-<aside class="cart-drawer" id="cart-drawer" role="dialog" aria-label="Shopping cart" aria-hidden="true">
+<aside class="cart-drawer" id="cart-drawer" role="dialog" aria-label="Shopping cart" aria-hidden="true" transition:persist="cart-drawer">
   <div class="cart-drawer-header">
     <h2 class="cart-drawer-title">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
@@ -351,11 +351,6 @@
   const footerEl = document.getElementById('cart-drawer-footer');
   const subtotalEl = document.getElementById('cart-subtotal-amount');
   const checkoutBtn = document.getElementById('cart-checkout-btn');
-  const headerCartBtn = document.getElementById('header-cart-btn');
-  const headerCartCount = document.getElementById('header-cart-count');
-  const mobileCartBtn = document.getElementById('mobile-cart-btn');
-  const mobileCartCount = document.getElementById('mobile-cart-count');
-
   if (!drawer) return;
 
   // ── State ──
@@ -363,6 +358,12 @@
   let cartLines: any[] = [];
   let checkoutUrl = '';
   let isOpen = false;
+
+  /* Header cart buttons get swapped by View Transitions, so use event delegation */
+  document.addEventListener('click', function (e) {
+    var btn = (e.target as Element).closest('#header-cart-btn, #mobile-cart-btn');
+    if (btn) { e.preventDefault(); openCart(); }
+  });
 
   // ── API Helper ──
   async function shopifyFetch(query: string, variables: Record<string, any> = {}) {
@@ -522,8 +523,8 @@
   function renderCart() {
     const totalItems = cartLines.reduce((sum, line) => sum + line.quantity, 0);
 
-    // Header + mobile badges
-    [headerCartCount, mobileCartCount, countEl].forEach((el) => {
+    // Header + mobile badges (re-query each time — Header swaps on View Transitions)
+    [document.getElementById('header-cart-count'), document.getElementById('mobile-cart-count'), countEl].forEach((el) => {
       if (!el) return;
       el.textContent = String(totalItems);
       el.classList.toggle('has-items', totalItems > 0);
@@ -637,16 +638,6 @@
     if (e.key === 'Escape' && isOpen) closeCart();
   });
 
-  // Header & mobile cart buttons
-  headerCartBtn?.addEventListener('click', (e) => {
-    e.preventDefault();
-    openCart();
-  });
-  mobileCartBtn?.addEventListener('click', (e) => {
-    e.preventDefault();
-    openCart();
-  });
-
   // ── Listen for add-to-cart events ──
   window.addEventListener('cart:add', async (e: Event) => {
     const { variantId, quantity } = (e as CustomEvent).detail;
@@ -686,5 +677,11 @@
         cartId = '';
       });
   }
+
+  /* After View Transition navigation, the Header is fresh HTML with count=0.
+     Re-render to push current cart count into the new Header badges. */
+  document.addEventListener('astro:page-load', function () {
+    renderCart();
+  });
 })();
 </script>
