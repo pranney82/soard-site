@@ -21,9 +21,18 @@ const cors = {
   'Access-Control-Allow-Headers': 'Content-Type',
 };
 
+// Public API routes that don't require authentication
+const PUBLIC_ROUTES = ['/api/shopify'];
+
 export async function onRequest(context) {
   // Always allow preflight
   if (context.request.method === 'OPTIONS') {
+    return context.next();
+  }
+
+  // Skip auth for public API routes (e.g. Shopify storefront proxy)
+  const url = new URL(context.request.url);
+  if (PUBLIC_ROUTES.some(route => url.pathname === route)) {
     return context.next();
   }
 
