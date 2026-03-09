@@ -523,6 +523,21 @@ function isGroupActive(group: NavGroup) {
     history.pushState({ mobileMenu: true }, '');
   }
 
+  /* Hide menu instantly (no transition) — used when navigating away */
+  function mHideInstant() {
+    if (!mobileOpen) return;
+    mobileOpen = false;
+    mPanel.style.transition = 'none';
+    mPanel.classList.remove('is-open'); mPanel.setAttribute('aria-hidden', 'true');
+    document.documentElement.classList.remove('menu-open');
+    document.body.style.top = '';
+    mBtn.setAttribute('aria-expanded', 'false');
+    mBtn.classList.remove('is-open');
+    if (mainEl) mainEl.removeAttribute('inert');
+    if (footerEl) footerEl.removeAttribute('inert');
+    /* Don't call history.back() — the link navigation replaces the history entry */
+  }
+
   function mCloseMenu(fromPopstate) {
     if (!mobileOpen) return;
     mobileOpen = false;
@@ -532,8 +547,6 @@ function isGroupActive(group: NavGroup) {
     mBtn.setAttribute('aria-expanded', 'false');
     mBtn.classList.remove('is-open');
     mPanel.classList.remove('is-open'); mPanel.setAttribute('aria-hidden', 'true');
-    mPanel.style.transform = '';
-    mPanel.style.opacity = '';
     if (mainEl) mainEl.removeAttribute('inert');
     if (footerEl) footerEl.removeAttribute('inert');
     mBtn.focus();
@@ -561,7 +574,12 @@ function isGroupActive(group: NavGroup) {
   window.matchMedia('(min-width: 1024px)').addEventListener('change', function (e) { if (e.matches && mobileOpen) mCloseMenu(); });
 
   if (mPanel) {
-    mPanel.querySelectorAll('a').forEach(function (a) { a.addEventListener('click', function () { mCloseMenu(); }); });
+    mPanel.querySelectorAll('a').forEach(function (a) {
+      a.addEventListener('click', function () {
+        /* Hide instantly — no transition, no history.back() race */
+        mHideInstant();
+      });
+    });
   }
 })();
 </script>
