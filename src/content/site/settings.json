@@ -2,7 +2,7 @@
   "name": "Sunshine on a Ranney Day",
   "shortName": "SOARD",
   "tagline": "Dreams Built Here",
-  "description": "Sunshine on a Ranney Day creates life-changing home makeovers for children with special needs — dream bedrooms, accessible bathrooms, and therapy rooms — all at no cost to families.",
+  "description": "Sunshine on a Ranney Day creates life-changing home makeovers for children with special needs \u2014 dream bedrooms, accessible bathrooms, and therapy rooms \u2014 all at no cost to families.",
   "founded": 2012,
   "ein": "45-4773997",
   "address": {
@@ -30,25 +30,49 @@
   "homeHero": {
     "imageId": "kids/harper/hero-c6a714",
     "altText": "A child seeing their dream room for the first time",
-    "eyebrow": "501(c)(3) Nonprofit · Atlanta, GA · Since 2012",
+    "eyebrow": "501(c)(3) Nonprofit \u00b7 Atlanta, GA \u00b7 Since 2012",
     "headlineLine1": "Building <em>dreams</em>,",
     "headlineLine2": "one room at a time",
-    "lead": "We create life-changing spaces for children with special needs — dream bedrooms, accessible bathrooms, and therapy rooms — all at <strong>no cost to families</strong>.",
+    "lead": "We create life-changing spaces for children with special needs \u2014 dream bedrooms, accessible bathrooms, and therapy rooms \u2014 all at <strong>no cost to families</strong>.",
     "cta1Label": "Give Today",
     "cta1Link": "/donate",
-    "cta2Label": "See Our Work ↓",
+    "cta2Label": "See Our Work \u2193",
     "cta2Link": "#stories"
   },
   "featuredKidSlug": "zyah",
   "kidShowcase": [
-    { "slug": "liam", "cfId": "kids/liam/hero-7ab7f9" },
-    { "slug": "sophia", "cfId": "kids/sophia/hero-63933e" },
-    { "slug": "jackson", "cfId": "kids/jackson/hero-4b1747" },
-    { "slug": "griffin", "cfId": "kids/griffin/hero-dbeb0f" },
-    { "slug": "madison", "cfId": "kids/madison/hero-2d8210" },
-    { "slug": "harper", "cfId": "kids/harper/hero-c6a714" },
-    { "slug": "noah", "cfId": "kids/noah/hero-1ba6ae" },
-    { "slug": "summer", "cfId": "kids/summer/hero-22c2e2" }
+    {
+      "slug": "liam",
+      "cfId": "kids/liam/hero-7ab7f9"
+    },
+    {
+      "slug": "sophia",
+      "cfId": "kids/sophia/hero-63933e"
+    },
+    {
+      "slug": "jackson",
+      "cfId": "kids/jackson/hero-4b1747"
+    },
+    {
+      "slug": "griffin",
+      "cfId": "kids/griffin/hero-dbeb0f"
+    },
+    {
+      "slug": "madison",
+      "cfId": "kids/madison/hero-2d8210"
+    },
+    {
+      "slug": "harper",
+      "cfId": "kids/harper/hero-c6a714"
+    },
+    {
+      "slug": "noah",
+      "cfId": "kids/noah/hero-1ba6ae"
+    },
+    {
+      "slug": "summer",
+      "cfId": "kids/summer/hero-22c2e2"
+    }
   ],
   "sectionPhotos": {
     "missionMain": "kids/eli/photo-001-70ddd7",
@@ -59,15 +83,197 @@
     "roomTherapy": "kids/jackson/hero-4b1747"
   },
   "partnerLogos": [
-    { "id": "logos/logo-gas-south-afb96260", "name": "Gas South" },
-    { "id": "logos/logo-randall-paulson-b01b8322", "name": "Randall Paulson" },
-    { "id": "logos/logo-kids-r-kids-2c18b077", "name": "Kids R Kids" },
-    { "id": "logos/logo-cambria-5af4504f", "name": "Cambria" },
-    { "id": "logos/logo-mohawk-9784da88", "name": "Mohawk" },
-    { "id": "logos/logo-jackson-healthcare-3c0f6126", "name": "Jackson Healthcare" },
-    { "id": "logos/logo-crosby-design-group-d6cf63", "name": "Crosby Design Group" },
-    { "id": "logos/logo-msi-e55b3f4c", "name": "MSI" },
-    { "id": "logos/logo-cr-construction-v2-bc7affde", "name": "CR Construction" },
-    { "id": "logos/logo-stag-partners-3399d7", "name": "Stag Partners" }
+    {
+      "id": "logos/logo-gas-south-afb96260",
+      "name": "Gas South"
+    },
+    {
+      "id": "logos/logo-randall-paulson-b01b8322",
+      "name": "Randall Paulson"
+    },
+    {
+      "id": "logos/logo-kids-r-kids-2c18b077",
+      "name": "Kids R Kids"
+    },
+    {
+      "id": "logos/logo-cambria-5af4504f",
+      "name": "Cambria"
+    },
+    {
+      "id": "logos/logo-mohawk-9784da88",
+      "name": "Mohawk"
+    },
+    {
+      "id": "logos/logo-jackson-healthcare-3c0f6126",
+      "name": "Jackson Healthcare"
+    },
+    {
+      "id": "logos/logo-crosby-design-group-d6cf63",
+      "name": "Crosby Design Group"
+    },
+    {
+      "id": "logos/logo-msi-e55b3f4c",
+      "name": "MSI"
+    },
+    {
+      "id": "logos/logo-cr-construction-v2-bc7affde",
+      "name": "CR Construction"
+    },
+    {
+      "id": "logos/logo-stag-partners-3399d7",
+      "name": "Stag Partners"
+    }
+  ],
+  "heroMosaic": [
+    {
+      "slug": "zyah",
+      "name": "Zyah",
+      "cfId": "b7ae8742-5431-4c85-aa74-a36b173c6200"
+    },
+    {
+      "slug": "bryce",
+      "name": "Bryce",
+      "cfId": "8c30d105-b021-4a7a-19a7-c247b3531500"
+    },
+    {
+      "slug": "alex",
+      "name": "Alex",
+      "cfId": "1e6a46a7-c998-4afe-2c0e-24027dc77800"
+    },
+    {
+      "slug": "griffin",
+      "name": "Griffin",
+      "cfId": "dfd10b8a-a636-4cb6-f748-c59bbd31a500"
+    },
+    {
+      "slug": "ethan-2022",
+      "name": "Ethan",
+      "cfId": "5424eb2a-ab4d-4305-aea1-3149b7a7cc00"
+    },
+    {
+      "slug": "elizabeth",
+      "name": "Elizabeth",
+      "cfId": "8bf4ac37-d5a0-43d0-5e7f-93df38508b00"
+    },
+    {
+      "slug": "brianna",
+      "name": "Brianna",
+      "cfId": "473ec592-3e39-4a74-af36-a409ab33c500"
+    },
+    {
+      "slug": "braxton",
+      "name": "Braxton",
+      "cfId": "c4686f1d-343f-4936-25e7-9118f5093900"
+    },
+    {
+      "slug": "samantha",
+      "name": "Samantha",
+      "cfId": "31f4acf8-daea-400f-cc98-19d5dcb93a00"
+    },
+    {
+      "slug": "leland",
+      "name": "Leland",
+      "cfId": "8e7ec97e-f72a-444a-9f51-6c26960cb400"
+    },
+    {
+      "slug": "amanda-caleb-and-isaac",
+      "name": "Amanda, Caleb & Isaac",
+      "cfId": "c749d2a0-bf64-459c-9503-f589a70a1800"
+    },
+    {
+      "slug": "ally",
+      "name": "Ally",
+      "cfId": "1767682f-9806-49a0-bd90-6f3d4e81cd00"
+    },
+    {
+      "slug": "breanna",
+      "name": "Breanna",
+      "cfId": "3550059b-79ba-47d7-dbd7-9a37be050d00"
+    },
+    {
+      "slug": "eli",
+      "name": "Eli",
+      "cfId": "85e1c185-6f97-4bcd-a5d7-8cf3cc8dec00"
+    },
+    {
+      "slug": "ellie",
+      "name": "Ellie",
+      "cfId": "5543acf4-5a16-4a75-2859-12709174e200"
+    },
+    {
+      "slug": "monica",
+      "name": "Monica",
+      "cfId": "fd5e6be1-748b-4db4-c182-472321f56100"
+    },
+    {
+      "slug": "rachel",
+      "name": "Rachel",
+      "cfId": "09d0e72d-677c-4628-5aeb-d0497b746200"
+    },
+    {
+      "slug": "devon",
+      "name": "Devon",
+      "cfId": "1b41b4ef-d921-4fa3-9080-fcc295318f00"
+    },
+    {
+      "slug": "shawn",
+      "name": "Shawn",
+      "cfId": "7f02fcda-71e1-4b1a-dfd8-38ba076c9d00"
+    },
+    {
+      "slug": "landon",
+      "name": "Landon",
+      "cfId": "b23f46b7-206f-4c96-d9e6-8815bfb2b800"
+    },
+    {
+      "slug": "eliavah",
+      "name": "Eliavah",
+      "cfId": "50054953-a4b3-4ed7-2e36-5dda71d6da00"
+    },
+    {
+      "slug": "lizzie",
+      "name": "Lizzie",
+      "cfId": "43476e06-cfeb-4167-622c-aecaa288b400"
+    },
+    {
+      "slug": "haleigh",
+      "name": "Haleigh",
+      "cfId": "557be3e1-5fc3-4302-e5f8-ee43db474300"
+    },
+    {
+      "slug": "adam",
+      "name": "Adam",
+      "cfId": "845313dc-e883-435e-0b63-271f7c048500"
+    },
+    {
+      "slug": "charlie",
+      "name": "Charlie",
+      "cfId": "520c76a8-45e3-4d22-b8e6-51bbc72c0100"
+    },
+    {
+      "slug": "samuel",
+      "name": "Samuel",
+      "cfId": "d7c26883-40ed-4be9-cf16-95135d1cc500"
+    },
+    {
+      "slug": "john-and-joseph",
+      "name": "John & Joseph",
+      "cfId": "95362728-7938-45a8-709d-06cf25403a00"
+    },
+    {
+      "slug": "harper",
+      "name": "Harper",
+      "cfId": "97e6435d-0d88-44db-20c6-f91c182f0d00"
+    },
+    {
+      "slug": "noah",
+      "name": "Noah",
+      "cfId": "f0f1f46b-2180-49ad-d714-c46641ff2d00"
+    },
+    {
+      "slug": "karson",
+      "name": "Karson",
+      "cfId": "19bad55d-e080-41cc-eb82-d16c3663a800"
+    }
   ]
 }
