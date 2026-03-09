@@ -1,8 +1,6 @@
 {
   "name": "Oakley",
   "slug": "oakley",
-  "wpSlug": "oakley",
-  "wpUrl": "https://sunshineonaranneyday.com/blog/2023/07/03/oakley/",
   "age": 9,
   "diagnosis": "Spina Bifida & Hydrocephalus",
   "roomTypes": [
@@ -16,162 +14,130 @@
   "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/oakley/hero/public",
   "photos": [
     {
-      "wpPath": "wp-content/uploads/2023/07/Oakley_2023_family_0001.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/oakley/photo-01/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2023/07/Oakley_2023_family_0008.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/oakley/photo-02/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2023/07/Oakley_2023_family_0002.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/oakley/photo-03/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2023/07/Oakley_2023_family_0006.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/oakley/photo-04/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2023/07/Oakley_2023_family_0007.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/oakley/photo-05/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2023/07/Oakley_2023_family_0005.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/oakley/photo-06/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2023/07/Oakley_2023_family_0004.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/oakley/photo-07/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/01/Hales-Photo-Oakleys-Reveal-web-0086.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/oakley/photo-08/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/01/Hales-Photo-Oakleys-Reveal-web-0090.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/oakley/photo-09/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/01/Hales-Photo-Oakleys-Reveal-web-0087.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/oakley/photo-10/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/01/Hales-Photo-Oakleys-Reveal-web-0089.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/oakley/photo-11/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/01/Hales-Photo-Oakleys-Reveal-web-0097.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/oakley/photo-12/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/01/Hales-Photo-Oakleys-Reveal-web-0095.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/oakley/photo-13/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/01/Hales-Photo-Oakleys-Reveal-web-0069.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/oakley/photo-14/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/01/Hales-Photo-Oakleys-Reveal-web-0074.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/oakley/photo-15/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/01/Hales-Photo-Oakleys-Reveal-web-0099.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/oakley/photo-16/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/01/Hales-Photo-Oakleys-Reveal-web-0100.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/oakley/photo-17/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/01/Hales-Photo-Oakleys-Reveal-web-0077.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/oakley/photo-18/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/01/Hales-Photo-Oakleys-Reveal-web-0093.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/oakley/photo-19/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/01/Hales-Photo-Oakleys-Reveal-web-0006.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/oakley/photo-20/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/01/Hales-Photo-Oakleys-Reveal-web-0082.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/oakley/photo-21/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/01/Hales-Photo-Oakleys-Reveal-web-0029.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/oakley/photo-22/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/01/Hales-Photo-Oakleys-Reveal-web-0032.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/oakley/photo-23/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/01/Hales-Photo-Oakleys-Reveal-web-0018.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/oakley/photo-24/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/01/Hales-Photo-Oakleys-Reveal-web-0038.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/oakley/photo-25/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/01/Hales-Photo-Oakleys-Reveal-web-0060.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/oakley/photo-26/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/01/Hales-Photo-Oakleys-Reveal-web-0062.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/oakley/photo-27/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/01/Hales-Photo-Oakleys-Reveal-web-0068.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/oakley/photo-28/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/01/Hales-Photo-Oakleys-Reveal-web-0065.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/oakley/photo-29/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/01/reveal_Oakley_2023_0024.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/oakley/photo-30/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/01/Hales-Photo-Oakleys-Reveal-web-0044.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/oakley/photo-31/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2023/02/Sunshine_on_a_Ranney_Fairway_Golf_Club_for_light_backgrounds.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/oakley/photo-32/public",
       "alt": ""
     }
@@ -181,108 +147,65 @@
   "photographer": "Hales Photo",
   "partnerLogos": [
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_gas_south.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/gas-south/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/logo_linen__flax_home.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/linen-flax-home/public"
     },
     {
-      "wpPath": "wp-content/uploads/2023/07/logo_hales_photo.jpeg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/hales-photo/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/10/logo_randall_brothers.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/356e1d21-cd6a-4384-281f-60502aab5200/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_wall_nut_custom_wall_murals.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/wall-nut-custom-wall-murals/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_delta_faucet.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/delta-faucet/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_pulleyassociates.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/pulleyassociates/public"
     },
     {
-      "wpPath": "wp-content/uploads/2022/12/logo_traditions_in_tile.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/traditions-in-tile/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_top_knobs.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/top-knobs/public"
     },
     {
-      "wpPath": "wp-content/uploads/2022/11/logo_schluter_systems.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/schluter-systems/public"
     },
     {
-      "wpPath": "wp-content/uploads/2023/02/logo_cowan_supply.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/cowan-supply/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_cambria.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/74dde091-0863-4b13-ac63-49a409a43300/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/logo_cr_construction_v2.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/6065c6ad-380f-432d-241f-4f0ed613b200/public"
     },
     {
-      "wpPath": "wp-content/uploads/2022/12/logo_servicewise_electric.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/ee74b1f3-1851-4717-fe7b-55c222cae300/public"
     },
     {
-      "wpPath": "wp-content/uploads/2022/10/logo_tko_plumbing.webp",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/tko-plumbing/public"
     },
     {
-      "wpPath": "wp-content/uploads/2022/04/logo_pls_carpentry.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/pls-carpentry/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/logo_bin_there_dump_that.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/ac9afc83-55f9-424e-f6c2-ca3dbd8cb100/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_iframe_media.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/iframe-media/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_nothing_bundt_cakes.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/nothing-bundt-cakes/public"
     }
   ],
   "shortDescription": null,
   "metaDescription": null,
   "altTexts": null,
-  "jsonLd": null,
-  "_migration": {
-    "scrapedAt": "2026-03-06T13:32:09.491Z",
-    "source": "wordpress-xml-export",
-    "wpPostDate": "2023-07-03 16:16:14",
-    "wpCategories": [
-      "Bin There Dump That Atlanta",
-      "Cambria",
-      "Construction Resources",
-      "Meet the Kids",
-      "Pulley and Associates",
-      "Randall Brothers",
-      "Real Floors Commercial",
-      "ServiceWise Electric",
-      "The Wall Nut",
-      "TKO Plumbing Services"
-    ],
-    "wpTags": [
-      "2023",
-      "Accessible Bathroom",
-      "Wheelchair Ramp"
-    ],
-    "thumbnailId": 6072,
-    "needsReview": []
-  }
+  "jsonLd": null
 }

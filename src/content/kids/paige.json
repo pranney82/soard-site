@@ -1,8 +1,6 @@
 {
   "name": "Paige",
   "slug": "paige",
-  "wpSlug": "paige",
-  "wpUrl": "https://sunshineonaranneyday.com/blog/2018/03/27/paige/",
   "age": 15,
   "diagnosis": "FOXG1 Syndrome",
   "roomTypes": [
@@ -15,82 +13,66 @@
   "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/fd16ce7d-cc58-4952-7709-44f01e7d4600/public",
   "photos": [
     {
-      "wpPath": "wp-content/uploads/2024/03/2018_paige_family_photo_1.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/a6c2f377-e016-4c0f-1e8a-117e0185b200/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/03/2018_paige_family_photo_3.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/ed7e65c6-54c0-4979-008f-ae6a30e29400/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/03/2018_paige_family_photo_2.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/3990f20a-4029-477a-69c1-3763a3020400/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/03/2018_paige_reveal_photo_1.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/094ae3da-e794-420c-48b8-7db5445a0200/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/03/2018_paige_reveal_photo_2.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/4e2db7f2-6342-491c-12fd-c15caebb9e00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/03/2018_paige_reveal_photo_3.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/89c56fb0-5e65-4752-8583-6048da74fe00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/03/2018_paige_reveal_photo_4.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/ad019e83-b5cd-4e7f-a51a-fb93974bd300/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/03/2018_paige_reveal_photo_6.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/7c4e570a-2e41-4ef5-472c-79cf82f6c000/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/03/2018_paige_reveal_photo_7.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/e2934b3f-afa9-4fd1-0c8b-4d86c3499d00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/03/2018_paige_reveal_photo_8.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/0d6a7ab8-765d-4836-51f0-03d763e65b00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/03/2018_paige_reveal_photo_9.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/4746f1d4-6e8d-485f-6e80-bbb1c3d69200/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/03/2018_paige_reveal_photo_13.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/311c08f4-3123-4151-ffa4-e75f240f2500/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/03/2018_paige_reveal_photo_10.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/cbb1cc87-b85e-4126-a569-46e42ab37600/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/03/2018_paige_reveal_photo_11.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/3fe067fc-c7f2-41cb-0463-cab425750a00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/03/2018_paige_reveal_photo_12.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/28e7c2e7-f732-4cc0-3574-71f24f429a00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/03/2018_paige_reveal_photo_5.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/25a6ca4a-1dc4-4b16-fddd-600f8a0b1400/public",
       "alt": ""
     }
@@ -100,78 +82,50 @@
   "photographer": "Niki Murphy Photography",
   "partnerLogos": [
     {
-      "wpPath": "wp-content/uploads/2024/03/logo_cambria_black.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/cambria-black/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_jackson_healthcare.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/jackson-healthcare/public"
     },
     {
-      "wpPath": "wp-content/uploads/2024/03/logo_kids_r_kids.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/kids-r-kids/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_interceramic.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/interceramic/public"
     },
     {
-      "wpPath": "wp-content/uploads/2024/03/logo_reliable_heating_and_air.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/reliable-heating-and-air/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_giovannis_tile_design.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/giovannis-tile-design/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_niki_murphy_photography.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/niki-murphy-photography/public"
     },
     {
-      "wpPath": "wp-content/uploads/2024/03/logo_the_town_carpenter.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/the-town-carpenter/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_atlas_disposal.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/atlas-disposal/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/logo_united_site_services.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/united-site-services/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/logo_cr_construction_v2.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/6065c6ad-380f-432d-241f-4f0ed613b200/public"
     },
     {
-      "wpPath": "wp-content/uploads/2024/03/logo_premier_anesthesia.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/premier-anesthesia/public"
     },
     {
-      "wpPath": "wp-content/uploads/2024/03/logo_ian_hunter.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/ian-hunter/public"
     },
     {
-      "wpPath": "wp-content/uploads/2024/03/logo_roswell_womens_club.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/roswell-womens-club/public"
     }
   ],
   "shortDescription": null,
   "metaDescription": null,
   "altTexts": null,
-  "jsonLd": null,
-  "_migration": {
-    "scrapedAt": "2026-03-06T13:32:09.411Z",
-    "source": "wordpress-xml-export",
-    "wpPostDate": "2018-03-27 23:06:16",
-    "wpCategories": [
-      "Meet the Kids"
-    ],
-    "wpTags": [
-      "2018",
-      "Accessible Bathroom"
-    ],
-    "thumbnailId": 6889,
-    "needsReview": []
-  }
+  "jsonLd": null
 }

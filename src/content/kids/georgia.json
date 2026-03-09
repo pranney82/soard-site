@@ -1,8 +1,6 @@
 {
   "name": "Georgia",
   "slug": "georgia",
-  "wpSlug": "georgia",
-  "wpUrl": "https://sunshineonaranneyday.com/blog/2018/04/16/georgia/",
   "age": 15,
   "diagnosis": "Cerebral Palsy, motor control issues",
   "roomTypes": [
@@ -16,127 +14,102 @@
   "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/11700fe1-8566-4133-06f0-14bc93144400/public",
   "photos": [
     {
-      "wpPath": "wp-content/uploads/2024/04/2018_georgia_family_photo_1.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/90ccfff9-3167-4f9c-5c69-3eedb5425100/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/04/2018_georgia_family_photo_2.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/a1015e87-c7cf-4b16-696b-1c74114c9200/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/04/2018_georgia_family_photo_3.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/cc8a611d-3f58-4ad6-cbb6-a487584d7600/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/04/2018_georgia_reveal_photo_1.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/62e0b005-68af-41f2-5eef-8eca019ce700/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/04/2018_georgia_reveal_photo_7.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/00805f8e-00a8-4518-d6b3-61e64eb18300/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/04/2018_georgia_reveal_photo_14.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/6b201882-6f78-44d2-a88d-2575d42de900/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/04/2018_georgia_reveal_photo_12.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/4371fbf2-faa3-4e4a-e7d3-aa8d74108100/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/04/2018_georgia_reveal_photo_13.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/3e3c4ac0-4c4a-4a7b-3dd2-602e61436e00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/04/2018_georgia_reveal_photo_11.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/4991e53b-09a2-47e6-4fda-91ac3cb15100/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/04/2018_georgia_reveal_photo_5.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/f8992b3a-d073-493a-8ef3-fca6ad020700/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/04/2018_georgia_reveal_photo_17.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/b42c8e11-000a-4ed8-6a9b-7c2d89c61a00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/04/2018_georgia_reveal_photo_20.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/f5d119d7-f192-4228-00f8-62ce8c88de00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/04/2018_georgia_reveal_photo_9.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/85b45907-c86c-429a-84f4-c951c2607600/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/04/2018_georgia_reveal_photo_19.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/d1fc8da9-2501-47a6-519c-d38ebd520100/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/04/2018_georgia_reveal_photo_2.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/5dec0bfc-c9bf-4f70-8555-992186b72700/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/04/2018_georgia_reveal_photo_6.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/ca3d54c5-216d-4f65-fd74-12f75b2c6100/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/04/2018_georgia_reveal_photo_10.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/361b4aca-8957-4fe6-c639-d6105d27e800/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/04/2018_georgia_reveal_photo_18.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/1e66def3-ebba-481b-0318-a71686c6ff00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/04/2018_georgia_reveal_photo_15.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/c9695cb5-827a-477e-5e54-f9f5acf53600/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/04/2018_georgia_reveal_photo_16.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/895856a5-0b2c-4410-fe29-5ecb1675b200/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/04/2018_georgia_reveal_photo_4.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/e3fded57-9348-4aa0-a1bb-c76ceda01e00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/04/2018_georgia_reveal_photo_8.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/6e5f136d-9259-4e91-1f29-b09d429c2400/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/04/2018_georgia_reveal_photo_3.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/3037ff0b-cf03-4b37-e4b0-9c6283f69100/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/04/2018_georgia_reveal_photo_21.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/4c8c90a1-fcfb-48e5-24b1-ad837f306a00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/04/2018_georgia_reveal_photo_22.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/d34f7af3-c9a8-42cf-5a62-840f69427300/public",
       "alt": ""
     }
@@ -146,95 +119,62 @@
   "photographer": "Nicole Bryant",
   "partnerLogos": [
     {
-      "wpPath": "wp-content/uploads/2024/03/logo_real_floors_commercial_2.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/real-floors-commercial-2/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_nicole_photography.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/nicole-photography/public"
     },
     {
-      "wpPath": "wp-content/uploads/2024/03/logo_kids_r_kids.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/kids-r-kids/public"
     },
     {
-      "wpPath": "wp-content/uploads/2024/03/logo_cambria_black.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/cambria-black/public"
     },
     {
-      "wpPath": "wp-content/uploads/2024/03/logo_tafollas.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/tafollas/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_cr_construction.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/cr-construction/public"
     },
     {
-      "wpPath": "wp-content/uploads/2024/03/logo_the_town_carpenter.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/the-town-carpenter/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/logo_sawnee_electric_round_up.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/sawnee-electric-round-up/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_echols.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/echols/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_interceramic.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/interceramic/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_rooms_to_go.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/rooms-to-go/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/logo_duett_design.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/duett-design/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_mohawk.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/9b604dfa-6877-4b76-e52c-1da806521b00/public"
     },
     {
-      "wpPath": "wp-content/uploads/2024/03/logo_reliable_heating_and_air.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/reliable-heating-and-air/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_jackson_healthcare.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/jackson-healthcare/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_stag_partners.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/stag-partners/public"
     },
     {
-      "wpPath": "wp-content/uploads/2024/04/logo_roll_off.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/roll-off/public"
     },
     {
-      "wpPath": "wp-content/uploads/2024/04/logo_abc_supply.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/abc-supply/public"
     }
   ],
   "shortDescription": null,
   "metaDescription": null,
   "altTexts": null,
-  "jsonLd": null,
-  "_migration": {
-    "scrapedAt": "2026-03-06T13:32:09.414Z",
-    "source": "wordpress-xml-export",
-    "wpPostDate": "2018-04-16 00:18:00",
-    "wpCategories": [
-      "Meet the Kids"
-    ],
-    "wpTags": [
-      "2018",
-      "Accessible Bathroom",
-      "Dream Bedroom"
-    ],
-    "thumbnailId": 7061,
-    "needsReview": []
-  }
+  "jsonLd": null
 }

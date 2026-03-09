@@ -1,8 +1,6 @@
 {
   "name": "Naji",
   "slug": "naji",
-  "wpSlug": "naji",
-  "wpUrl": "https://sunshineonaranneyday.com/blog/2024/12/26/naji/",
   "age": 19,
   "diagnosis": "T4 to L5 Spinal Injury",
   "roomTypes": [
@@ -15,77 +13,62 @@
   "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/84bdcc6c-7266-43c7-a4a3-88fadb559500/public",
   "photos": [
     {
-      "wpPath": "wp-content/uploads/2023/12/Naji_2024_family_0006-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/baaf6638-31b9-4aaa-a0e2-786ae5125300/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2023/12/Naji_2024_family_0001-scaled.jpeg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/d7d109c8-99b3-460a-711c-c81aa7635900/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2023/12/Naji_2024_family_0005-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/f59c859c-57da-411b-7692-4317f41e9b00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2023/12/Naji_2024_family_0004-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/fa07c007-5b56-4138-acb7-14c1162e8a00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2025/06/Naji-Reveal-40-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/1c0f0555-6d9c-49f6-8a6e-c3bb6c540500/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2025/06/Naji-Reveal-41-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/98a123b9-0071-4663-4421-abc76828f900/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2025/06/Naji-Reveal-43-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/f3abd85e-2d9b-442a-f7c5-aafbb277a700/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2025/06/Naji-Reveal-44-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/84bbc00a-c509-48a8-69d1-dcb7cccfed00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2025/06/Naji-Reveal-45-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/c02fd472-3a7a-41cc-6128-5bdb69074100/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2025/06/Naji-Reveal-46-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/fa956ff4-c0b2-427d-de69-df80baaa8300/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2025/06/Naji-Reveal-47-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/5cb43882-763a-4d34-31ca-2674d22df100/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2025/06/Naji-Reveal-48-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/b18944ec-bca1-4169-7a8e-7452752a9800/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2025/06/Naji-Reveal-49-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/e20b2149-83c9-47b1-7590-d03f20d7ab00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/07/Cheryl-Bischof.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/6cb44dd5-f386-4a82-d521-29d91d806200/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2025/06/thibaut-logo.svg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/14403406-5d8c-41b8-b2c7-9ed5ed365700/public",
       "alt": ""
     }
@@ -95,67 +78,41 @@
   "photographer": "Niki Murphy",
   "partnerLogos": [
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_gas_south.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/gas-south/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_jackson_healthcare.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/jackson-healthcare/public"
     },
     {
-      "wpPath": "wp-content/uploads/2024/03/logo_kids_r_kids.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/kids-r-kids/public"
     },
     {
-      "wpPath": "wp-content/uploads/2024/03/logo_real_floors_commercial_2.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/real-floors-commercial-2/public"
     },
     {
-      "wpPath": "wp-content/uploads/2025/01/logo_Georgia_Interior_Painting.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/georgia-interior-painting/public"
     },
     {
-      "wpPath": "wp-content/uploads/2022/12/logo_servicewise_electric.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/ee74b1f3-1851-4717-fe7b-55c222cae300/public"
     },
     {
-      "wpPath": "wp-content/uploads/2025/06/thibaut-logo.svg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/14403406-5d8c-41b8-b2c7-9ed5ed365700/public"
     },
     {
-      "wpPath": "wp-content/uploads/2025/06/logo_frank_advertising.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/frank-advertising/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_niki_murphy_photography.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/niki-murphy-photography/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_iframe_media.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/iframe-media/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_nothing_bundt_cakes.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/nothing-bundt-cakes/public"
     }
   ],
   "shortDescription": null,
   "metaDescription": null,
   "altTexts": null,
-  "jsonLd": null,
-  "_migration": {
-    "scrapedAt": "2026-03-06T13:32:09.501Z",
-    "source": "wordpress-xml-export",
-    "wpPostDate": "2024-12-26 18:09:37",
-    "wpCategories": [
-      "Bin There Dump That Atlanta",
-      "Meet the Kids"
-    ],
-    "wpTags": [
-      "2025",
-      "Therapy Room"
-    ],
-    "thumbnailId": 6481,
-    "needsReview": []
-  }
+  "jsonLd": null
 }

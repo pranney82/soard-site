@@ -1,8 +1,6 @@
 {
   "name": "Harper",
   "slug": "harper",
-  "wpSlug": "harper",
-  "wpUrl": "https://sunshineonaranneyday.com/blog/2018/04/09/harper/",
   "age": 4,
   "diagnosis": "PTHS - Pitt Hopkins Syndrome",
   "roomTypes": [
@@ -15,117 +13,94 @@
   "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/97e6435d-0d88-44db-20c6-f91c182f0d00/public",
   "photos": [
     {
-      "wpPath": "wp-content/uploads/2024/04/2018_harper_family_photo_1.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/c9049c5c-3553-4545-a2a6-511aea8a3700/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/04/2018_harper_family_photo_2.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/793abcc9-0fba-44ae-585a-9f3081b7c500/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/04/2018_harper_family_photo_3.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/37341524-0920-4973-e7eb-17b2a1bcb400/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/04/2018_harper_reveal_photo_1.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/bb677276-39cb-4b12-7133-1435acfe8b00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/04/2018_harper_reveal_photo_2.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/d50c1b60-3d5a-4b1b-70a7-07c71dd6e800/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/04/2018_harper_reveal_photo_3.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/a23fb43b-db41-4db8-9367-eb06e0296500/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/04/2018_harper_reveal_photo_4.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/d4996e13-84e4-41b0-b05c-b7dc25aa9000/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/04/2018_harper_reveal_photo_5.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/72185d99-dfcb-49fe-e85e-d4e3e1365a00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/04/2018_harper_reveal_photo_6.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/4ee820d0-b84c-4904-2d5a-e3747fd28400/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/04/2018_harper_reveal_photo_7.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/866db539-5403-41e9-ffa2-46c064c92200/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/04/2018_harper_reveal_photo_8.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/afabdb49-d7fd-401b-d411-d2dbbadc0d00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/04/2018_harper_reveal_photo_9.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/6fe79d28-8aee-46d6-b88e-981c12336300/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/04/2018_harper_reveal_photo_10.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/7e8cdb60-665d-4fa0-8500-cc16067a2400/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/04/2018_harper_reveal_photo_12.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/6ee45162-834b-4ac3-9224-260b17dd7f00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/04/2018_harper_reveal_photo_11.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/c20b2ce0-058a-465e-0cde-73f5b6765c00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/04/2018_harper_reveal_photo_13.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/4b7ffeea-5463-47a1-8792-fbaa12307e00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/04/2018_harper_reveal_photo_14.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/e6eb16e0-174b-4538-5066-30115f4e4c00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/04/2018_harper_reveal_photo_15.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/b73e71ee-0fdd-4436-60fd-028ec55d5100/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/04/2018_harper_reveal_photo_16.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/514aa81e-4778-47bd-4533-860a17a42f00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/04/2018_harper_reveal_photo_18.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/b3296057-9233-4a02-7f79-fdb15c4f8a00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/04/2018_harper_reveal_photo_17.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/a3c379eb-58e3-4cc9-349d-8af24851c300/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/04/2018_harper_reveal_photo_19.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/cc81dd10-0562-4633-62ed-49b27177f700/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/04/2018_harper_reveal_photo_20.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/d7011439-3baf-4f4a-a349-34595698d600/public",
       "alt": ""
     }
@@ -135,75 +110,47 @@
   "photographer": "Kristi Weaver Photography",
   "partnerLogos": [
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_rooms_to_go.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/rooms-to-go/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_mohawk.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/9b604dfa-6877-4b76-e52c-1da806521b00/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_reliable_heatingair.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/reliable-heatingair/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_jackson_healthcare.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/jackson-healthcare/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_wall_nut_custom_wall_murals.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/wall-nut-custom-wall-murals/public"
     },
     {
-      "wpPath": "wp-content/uploads/2022/10/logo_means_and_carney.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/means-and-carney/public"
     },
     {
-      "wpPath": "wp-content/uploads/2024/03/logo_kids_r_kids.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/kids-r-kids/public"
     },
     {
-      "wpPath": "wp-content/uploads/2024/04/logo_clean_cut_fabricators.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/clean-cut-fabricators/public"
     },
     {
-      "wpPath": "wp-content/uploads/2024/04/logo_gate_city_brewing.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/gate-city-brewing/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_kristi_weaver_photography.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/kristi-weaver-photography/public"
     },
     {
-      "wpPath": "wp-content/uploads/2024/03/logo_real_floors_commercial_2.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/real-floors-commercial-2/public"
     },
     {
-      "wpPath": "wp-content/uploads/2024/04/logo_united_supply_company.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/united-supply-company/public"
     },
     {
-      "wpPath": "wp-content/uploads/2024/04/logo_thibaut.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/thibaut/public"
     }
   ],
   "shortDescription": null,
   "metaDescription": null,
   "altTexts": null,
-  "jsonLd": null,
-  "_migration": {
-    "scrapedAt": "2026-03-06T13:32:09.412Z",
-    "source": "wordpress-xml-export",
-    "wpPostDate": "2018-04-09 19:32:35",
-    "wpCategories": [
-      "Means &amp; Carney Interiors",
-      "Meet the Kids"
-    ],
-    "wpTags": [
-      "2018",
-      "Dream Bedroom"
-    ],
-    "thumbnailId": 6976,
-    "needsReview": []
-  }
+  "jsonLd": null
 }

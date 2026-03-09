@@ -1,8 +1,6 @@
 {
   "name": "Jocelyn",
   "slug": "jocelyn",
-  "wpSlug": "jocelyn",
-  "wpUrl": "https://sunshineonaranneyday.com/blog/2021/06/13/jocelyn/",
   "age": 4,
   "diagnosis": "Retinoblastoma in right eye",
   "roomTypes": [
@@ -15,122 +13,98 @@
   "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/e7d04859-025a-4d25-2171-a99639f44700/public",
   "photos": [
     {
-      "wpPath": "wp-content/uploads/2021/07/jocelyn_2018_family_00008-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/07ed8e77-3556-4f9f-97b1-2ee179bfbe00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/jocelyn_2018_family_00004-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/fb758c67-2a17-4636-569d-3bead49a9800/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/jocelyn_2018_family_00006-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/33e4131e-ce79-4c82-50a7-522fbbc0f800/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/jocelyn_2018_family_00005-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/e2149633-a9a2-4ed7-36f6-4e6cb9a15900/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/jocelyn_2018_family_00001-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/e45193d4-527f-4ca9-4a59-8bd9cfca3100/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/jocelyn_2018_family_00002-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/22dd00a2-4cb3-4343-2f62-813ba2cd7400/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/jocelyn_2018_family_00003-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/945bba77-f0c7-470f-dea3-3f7cfd6e1c00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/jocelyn_2018_family_00007-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/0c71189d-bc40-4dc5-36a5-fde8e2f85700/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/jocelyn_2018_reveal_00004-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/6426952d-85d9-4c6f-5bbd-484e21158c00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/jocelyn_2018_reveal_00011-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/1abfee8a-8ba6-4684-5f51-506ca1a19900/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/jocelyn_2018_reveal_00013-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/aee03013-fcbc-475c-4431-80ab361a6700/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/jocelyn_2018_reveal_00014-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/1cc180af-f9b0-4fea-6c33-c292fbfa4f00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/jocelyn_2018_reveal_00008-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/61354d72-b655-485f-af75-359536eff400/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/jocelyn_2018_reveal_00001-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/04fe5808-e2d3-4115-c991-4aebb463c200/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/jocelyn_2018_reveal_00002-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/31b4611d-ea2c-4e67-9858-d82976389100/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/jocelyn_2018_reveal_00003-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/4d2d20ee-8af4-48cd-006c-30ee3fd57700/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/jocelyn_2018_reveal_00005-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/026de0f9-9107-4248-af4c-caec615c7400/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/jocelyn_2018_reveal_00006-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/4c31576b-c357-43fe-cc2f-f60d6d95f000/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/jocelyn_2018_reveal_00007-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/f656aae6-e28b-4763-e0d5-d3ec8208e100/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/jocelyn_2018_reveal_00009-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/08ccbb5b-c33c-4d65-fcaf-58e8d30cf200/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/jocelyn_2018_reveal_00010-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/033ac995-a7e8-4761-4af7-cc3f0b2a8a00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/jocelyn_2018_reveal_00012-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/baa0d0c6-00f5-4179-e895-6d42c8820800/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/jocelyn_2018_reveal_00015-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/3d9e116a-db49-4eef-6738-299e56588c00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/jocelyn_2018_reveal_00016-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/00c06e6f-592e-4f9d-81a1-77d77a7ff800/public",
       "alt": ""
     }
@@ -140,54 +114,32 @@
   "photographer": "Dinah Sutton Photography",
   "partnerLogos": [
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_jackson_healthcare.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/jackson-healthcare/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/logo_rbc_designs.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/rbc-designs/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_reliable_heatingair.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/reliable-heatingair/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_nothing_bundt_cakes.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/nothing-bundt-cakes/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_rooms_to_go.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/rooms-to-go/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_behr_paint.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/behr-paint/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_dinah_sutton_photography.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/0844fe05-9dba-4777-5aa5-98c12c5ae400/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/logo_sims_patrick_studio.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/sims-patrick-studio/public"
     }
   ],
   "shortDescription": null,
   "metaDescription": null,
   "altTexts": null,
-  "jsonLd": null,
-  "_migration": {
-    "scrapedAt": "2026-03-06T13:32:09.445Z",
-    "source": "wordpress-xml-export",
-    "wpPostDate": "2021-06-13 23:18:00",
-    "wpCategories": [
-      "Meet the Kids"
-    ],
-    "wpTags": [
-      "2018",
-      "Dream Bedroom"
-    ],
-    "thumbnailId": 1297,
-    "needsReview": []
-  }
+  "jsonLd": null
 }

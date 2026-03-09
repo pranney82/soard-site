@@ -1,8 +1,6 @@
 {
   "name": "Liliana",
   "slug": "liliana",
-  "wpSlug": "liliana",
-  "wpUrl": "https://sunshineonaranneyday.com/blog/2018/05/16/liliana/",
   "age": 5,
   "diagnosis": "Leukemia",
   "roomTypes": [
@@ -15,137 +13,110 @@
   "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/4b0af4b4-57b4-41d3-d782-785c6166e800/public",
   "photos": [
     {
-      "wpPath": "wp-content/uploads/2024/05/2018_liliana_family_photo_2.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/0af8e06b-ecbd-4b6a-e43c-f389081f5900/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/05/2018_liliana_family_photo_1.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/5977bdb2-e4fd-4f0d-befa-4d5242bfa500/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/05/2018_liliana_family_photo_3.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/fe4af1d4-0b70-4c88-b057-01c6de854100/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/05/2018_liliana_reveal_photo_1.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/8c2eb8b8-7490-4fdc-290c-84fadee62400/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/05/2018_liliana_reveal_photo_3.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/ac4599b8-9eef-474e-17ce-1b9b0af96400/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/05/2018_liliana_reveal_photo_4.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/59934930-afff-4bb6-5042-d463392d2c00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/05/2018_liliana_reveal_photo_6.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/b6c47a60-3c47-4044-495f-4a5557700400/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/05/2018_liliana_reveal_photo_7.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/c278d8a5-0e9e-4e54-805d-f58f4e447c00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/05/2018_liliana_reveal_photo_24.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/d610a1b5-4bdb-4e9b-629e-c97a1812b700/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/05/2018_liliana_reveal_photo_8.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/97d8ddfb-1d7d-42eb-cdd4-7c711ea29200/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/05/2018_liliana_reveal_photo_9.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/8f9875f4-69eb-4684-cccb-f5c97f905f00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/05/2018_liliana_reveal_photo_5.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/39b9997b-dbfc-45f2-e6aa-d2ec24982600/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/05/2018_liliana_reveal_photo_10.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/db3b889e-d3eb-4576-adc6-f9a57dac8500/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/05/2018_liliana_reveal_photo_11.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/1ddfb422-6612-4ddd-cfc2-8c2f9ae31200/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/05/2018_liliana_reveal_photo_12.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/d7e1a315-70f7-43eb-2d72-024c9179f000/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/05/2018_liliana_reveal_photo_13.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/0e17bec9-7e83-4c93-cf7f-585725e88700/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/05/2018_liliana_reveal_photo_14.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/c5945c36-9f4b-4fb7-5fee-3eb1035b1b00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/05/2018_liliana_reveal_photo_15.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/d71e4fc6-1ac3-4b4a-4332-4f2419cedb00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/05/2018_liliana_reveal_photo_2.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/2a1b966c-ff5f-41d5-1cbe-ffa4d51f8000/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/05/2018_liliana_reveal_photo_16.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/d90e7e46-6061-4845-305c-4ab712530000/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/05/2018_liliana_reveal_photo_17.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/f3d76006-9bee-48f8-e977-c62867e42900/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/05/2018_liliana_reveal_photo_18.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/93aeb527-bec7-422a-d5dc-a5e82cbbda00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/05/2018_liliana_reveal_photo_19.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/30e6064d-1f58-43c6-9d2f-c93b6f976a00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/05/2018_liliana_reveal_photo_20.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/2386848f-f83e-448b-7536-c37ca8d11e00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/05/2018_liliana_reveal_photo_21.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/90bc2406-e3c7-4eb1-ce52-1e185ea24a00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/05/2018_liliana_reveal_photo_22.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/ee0c2296-5f6f-4136-a1c6-9bfe8e3b6100/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/05/2018_liliana_reveal_photo_23.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/6e61745f-1c51-461b-8d9e-ae0f6629ff00/public",
       "alt": ""
     }
@@ -155,58 +126,35 @@
   "photographer": "Dinah Sutton Photography",
   "partnerLogos": [
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_rooms_to_go.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/rooms-to-go/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_jackson_healthcare.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/jackson-healthcare/public"
     },
     {
-      "wpPath": "wp-content/uploads/2024/03/logo_reliable_heating_and_air.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/reliable-heating-and-air/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_echols.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/echols/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_nothing_bundt_cakes.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/nothing-bundt-cakes/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/logo_three_little_dogs.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/three-little-dogs/public"
     },
     {
-      "wpPath": "wp-content/uploads/2024/03/logo_comfort_research.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/comfort-research/public"
     },
     {
-      "wpPath": "wp-content/uploads/2024/03/logo_dinah_sutton_photography.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/dinah-sutton-photography/public"
     },
     {
-      "wpPath": "wp-content/uploads/2024/03/logo_kids_r_kids.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/kids-r-kids/public"
     }
   ],
   "shortDescription": null,
   "metaDescription": null,
   "altTexts": null,
-  "jsonLd": null,
-  "_migration": {
-    "scrapedAt": "2026-03-06T13:32:09.444Z",
-    "source": "wordpress-xml-export",
-    "wpPostDate": "2018-05-16 15:28:57",
-    "wpCategories": [
-      "Meet the Kids"
-    ],
-    "wpTags": [
-      "2018",
-      "Dream Bedroom"
-    ],
-    "thumbnailId": 7439,
-    "needsReview": []
-  }
+  "jsonLd": null
 }

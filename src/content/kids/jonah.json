@@ -1,8 +1,6 @@
 {
   "name": "Jonah",
   "slug": "jonah",
-  "wpSlug": "jonah",
-  "wpUrl": "https://sunshineonaranneyday.com/blog/2021/06/25/jonah/",
   "age": 6,
   "diagnosis": "Heart Defect",
   "roomTypes": [
@@ -15,122 +13,98 @@
   "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/e2a42c02-e51d-4230-bee9-f75897a25100/public",
   "photos": [
     {
-      "wpPath": "wp-content/uploads/2021/07/jonah_2019_family_00001-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/8fb14dc3-b7ce-464e-aa4b-52f2de592500/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/jonah_2019_family_00002-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/f970b2a4-a6ce-4e05-0d47-55c77605cd00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/jonah_2019_family_00003-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/a1ddcb3b-80f8-4caf-4d26-f513fb1a4300/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/jonah_2019_family_00004-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/0210edb4-562f-4375-3f53-cce09bd91b00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/jonah_2019_family_00005-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/0d5ac35f-801e-4129-0e3b-13c8ef7abb00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/jonah_2019_family_00006-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/50291785-9f7c-440f-a69e-38d08434a100/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/jonah_2019_family_00007-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/28923916-4eda-4bb6-28cb-e7de3de59500/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/jonah_2019_reveal_00001.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/63c3f9c9-7c22-40c4-5016-32c7c8a71800/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/jonah_2019_reveal_00010.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/6d6ee5ad-8592-4d84-8d02-f0585c7a0d00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/jonah_2019_reveal_00004.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/9d93cbb7-18e0-43ee-f64b-1112a2031700/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/jonah_2019_reveal_00002.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/b7a640b2-7365-4fc4-d5a8-c545ccce5700/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/jonah_2019_reveal_00003.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/cbffff43-3418-43d2-ad2b-786833e29f00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/jonah_2019_reveal_00005.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/1df238ca-5200-4870-79fd-3daa02b62200/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/jonah_2019_reveal_00006.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/5aa2a3da-eaeb-46b9-e7c7-a06ddb799100/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/jonah_2019_reveal_00007.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/ece293f8-e7dc-4656-7f62-61cf04b63f00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/jonah_2019_reveal_00008.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/b0174656-b2df-4ed6-fd1d-6fea1cc21f00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/jonah_2019_reveal_00009.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/f9fc43cf-40a3-40d5-e542-77a21680fa00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/jonah_2019_reveal_00011.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/c837ea1b-bd95-437c-4c3b-6ad6b44c6e00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/jonah_2019_reveal_00012.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/9f415659-d223-497d-c888-9a3c21c54000/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/jonah_2019_reveal_00013.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/02f537cc-c58c-422e-9221-1c77cef66400/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/jonah_2019_reveal_00014.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/78d91505-4add-45b8-df45-f7dd6e54ce00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/jonah_2019_reveal_00015.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/b3e1d05d-2c2f-4790-e6f5-a0495aa13300/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/jonah_2019_reveal_00016.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/7402f338-4d71-404f-ad78-b14377314800/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/jonah_2019_reveal_00017.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/852f63d5-7754-4a54-8064-27a1555a5700/public",
       "alt": ""
     }
@@ -140,106 +114,71 @@
   "photographer": "Nicole Photography",
   "partnerLogos": [
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_swinerton_foundation.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/swinerton-foundation/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/logo_rbc_designs.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/rbc-designs/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_braves.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/braves/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_atlas_disposal.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/atlas-disposal/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_pmc_building_materials.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/pmc-building-materials/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_mohawk.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/9b604dfa-6877-4b76-e52c-1da806521b00/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_real_floors_commercial.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/b30e9f15-c3f4-412f-cdbd-0bd67b8b2400/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_reliable_heatingair.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/reliable-heatingair/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_kids_r_kids.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/kids-r-kids/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_jackson_healthcare.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/jackson-healthcare/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_nicole_photography.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/nicole-photography/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_pear_tree_photography.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/pear-tree-photography/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_comfort_research.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/bf841d37-17ff-46b2-51fb-8b82220e0300/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/logo_tafollas_concrete.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/tafollas-concrete/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/logo_plygem.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/plygem/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/logo_roof_depot.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/roof-depot/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/logo_capitol_materials.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/capitol-materials/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/logo_ernst_concrete.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/ernst-concrete/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/logo_williams_park_design_studio.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/williams-park-design-studio/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/logo_ivey__cruz.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/ivey-cruz/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/logo_sei_group.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/sei-group/public"
     }
   ],
   "shortDescription": null,
   "metaDescription": null,
   "altTexts": null,
-  "jsonLd": null,
-  "_migration": {
-    "scrapedAt": "2026-03-06T13:32:09.451Z",
-    "source": "wordpress-xml-export",
-    "wpPostDate": "2021-06-25 22:11:34",
-    "wpCategories": [
-      "Meet the Kids"
-    ],
-    "wpTags": [
-      "2019",
-      "Therapy Room"
-    ],
-    "thumbnailId": 1182,
-    "needsReview": []
-  }
+  "jsonLd": null
 }

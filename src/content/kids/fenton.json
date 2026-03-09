@@ -1,8 +1,6 @@
 {
   "name": "Fenton",
   "slug": "fenton",
-  "wpSlug": "fenton",
-  "wpUrl": "https://sunshineonaranneyday.com/blog/2021/06/26/fenton/",
   "age": 5,
   "diagnosis": "Modern Day Polio",
   "roomTypes": [
@@ -15,137 +13,110 @@
   "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/c7d0a4ec-b8d5-4118-f369-1b03887c6200/public",
   "photos": [
     {
-      "wpPath": "wp-content/uploads/2021/07/fenton_2019_family_00001-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/7453f205-8a82-47bf-6a28-d3eab52e6100/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/fenton_2019_family_00002-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/4a2ae246-984f-43ac-01c4-543db18e1400/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/fenton_2019_family_00003-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/6f128acd-1991-4e54-89d0-665a49da2500/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/fenton_2019_family_00004-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/b79652a3-5e1c-41b2-8936-364655ce7f00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/fenton_2019_family_00005-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/9a28a5a6-491b-45b2-e566-7c4d90f53000/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/fenton_2019_family_00006-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/39acfc47-ce63-4fdf-4051-01de869d4a00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/fenton_2019_reveal_00012-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/01087721-285f-4b56-c870-5cefe8878600/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/fenton_2019_reveal_00016-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/6fe9c45b-10b6-4834-c64d-65acaee66f00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/fenton_2019_reveal_00001-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/aaa4e007-9e18-4686-6c65-78e14b0c5800/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/fenton_2019_reveal_00002-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/b64f5a45-c583-490a-c774-b6d6ffca0400/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/fenton_2019_reveal_00003-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/f0dc2f50-9539-4ba7-9b3d-84ff3dc06e00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/fenton_2019_reveal_00004-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/5a238b76-e99a-49ec-1db3-c1645bdbf800/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/fenton_2019_reveal_00005-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/d91ca2d4-a200-43db-6e50-0d4203ec3c00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/fenton_2019_reveal_00006-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/3358be9a-7537-40f0-9fc9-b235fc703700/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/fenton_2019_reveal_00007-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/d455480f-a466-42c3-ba8d-7f7ee64cf000/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/fenton_2019_reveal_00008-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/9df24036-4c83-484d-6dc6-f98b9da4d000/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/fenton_2019_reveal_00009-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/d013249d-367f-4735-9440-8a38874cf600/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/fenton_2019_reveal_00010-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/ada36a5a-6a6f-4be6-4945-2ce9cd9e9a00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/fenton_2019_reveal_00011-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/a1dc7722-87d8-4f5f-49ef-dfe4fff7ed00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/fenton_2019_reveal_00013-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/4b5591a6-c803-4c4b-b37c-c1ca8d46e800/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/fenton_2019_reveal_00014-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/7d525f65-2ef9-468b-08bf-97e695daaa00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/fenton_2019_reveal_00015-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/ed923b82-1fe0-4430-54fe-2903c9152e00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/fenton_2019_reveal_00017-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/aa7ee988-aaa7-42f1-b980-1569281c0700/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/fenton_2019_reveal_00018-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/c4fe1664-b52d-4cbd-088c-d8f3a0380300/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/fenton_2019_reveal_00019-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/d920d8dc-3f63-493c-b995-2d29d3d82000/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/fenton_2019_reveal_00020-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/52291779-a73f-409d-368f-a8b6a425a700/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/fenton_2019_reveal_00021-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/23f1ddbb-70db-4bae-5f80-b440aacf1100/public",
       "alt": ""
     }
@@ -155,62 +126,38 @@
   "photographer": "Niki Murphy Photography",
   "partnerLogos": [
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_jackson_healthcare.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/jackson-healthcare/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_kids_r_kids.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/kids-r-kids/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_real_floors_commercial.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/b30e9f15-c3f4-412f-cdbd-0bd67b8b2400/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_mohawk.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/9b604dfa-6877-4b76-e52c-1da806521b00/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_rooms_to_go.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/rooms-to-go/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_niki_murphy_photography.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/niki-murphy-photography/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_nothing_bundt_cakes.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/nothing-bundt-cakes/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_echols.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/echols/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_reliable_heatingair.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/reliable-heatingair/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/logo_copper_sky_renovations.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/copper-sky-renovations/public"
     }
   ],
   "shortDescription": null,
   "metaDescription": null,
   "altTexts": null,
-  "jsonLd": null,
-  "_migration": {
-    "scrapedAt": "2026-03-06T13:32:09.457Z",
-    "source": "wordpress-xml-export",
-    "wpPostDate": "2021-06-26 14:16:22",
-    "wpCategories": [
-      "Meet the Kids"
-    ],
-    "wpTags": [
-      "2019",
-      "Therapy Room"
-    ],
-    "thumbnailId": 1214,
-    "needsReview": []
-  }
+  "jsonLd": null
 }

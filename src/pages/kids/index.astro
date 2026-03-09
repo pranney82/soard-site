@@ -268,7 +268,6 @@ const gridKids = [...kids];
                     loading={i < 8 ? 'eager' : 'lazy'}
                     decoding={i < 8 ? 'sync' : 'async'}
                     fetchpriority={i < 4 ? 'high' : undefined}
-                    transition:name={`kid-hero-${kid.data.slug}`}
                   />
                 </picture>
               ) : (
@@ -284,7 +283,7 @@ const gridKids = [...kids];
               </div>
             </div>
             <div class="kid-card__info">
-              <span class="kid-card__name" transition:name={`kid-name-${kid.data.slug}`}>{kid.data.name}</span>
+              <span class="kid-card__name">{kid.data.name}</span>
               {kid.data.status === 'in-progress' && (
                 <span class="kid-card__badge">In Progress</span>
               )}
@@ -338,8 +337,18 @@ const gridKids = [...kids];
   const toolbar = document.getElementById('toolbar') as HTMLElement;
   const featuredCard = document.querySelector('.featured-card') as HTMLElement | null;
   const searchClear = document.getElementById('search-clear') as HTMLButtonElement;
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   let statusActive = false;
+
+  // ── Image fade-in on load (premium feel) ──
+  document.querySelectorAll<HTMLImageElement>('.kid-card__img, .featured-card__img').forEach(img => {
+    if (img.complete && img.naturalWidth > 0) {
+      img.classList.add('is-loaded');
+    } else {
+      img.addEventListener('load', () => img.classList.add('is-loaded'), { once: true });
+    }
+  });
 
   // ── URL state restore ────────────────────
   const params = new URLSearchParams(window.location.search);
@@ -355,7 +364,7 @@ const gridKids = [...kids];
     statusBtn.setAttribute('aria-pressed', 'true');
   }
 
-  // ── Filtering with smooth transitions ────
+  // ── Filtering with animated transitions ───
   function applyFilters() {
     const query = searchInput.value.toLowerCase().trim();
     const yearFilter = yearSelect.value;
@@ -364,7 +373,6 @@ const gridKids = [...kids];
 
     const hasFilters = yearFilter !== 'all' || typeFilter !== 'all' || statusActive || query.length > 0;
 
-    // Hide featured card when it doesn't match active filters
     if (featuredCard) {
       const fd = featuredCard.dataset;
       const fMatchYear = yearFilter === 'all' || fd.year === yearFilter;
@@ -396,7 +404,6 @@ const gridKids = [...kids];
     noResults.hidden = visibleCount > 0;
     clearBtn.hidden = !hasFilters;
 
-    // Sync URL without reload
     const url = new URL(window.location.href);
     yearFilter !== 'all' ? url.searchParams.set('year', yearFilter) : url.searchParams.delete('year');
     typeFilter !== 'all' ? url.searchParams.set('type', typeFilter) : url.searchParams.delete('type');
@@ -446,7 +453,7 @@ const gridKids = [...kids];
   }
 
   // ── Staggered reveal on scroll ───────────
-  if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+  if (!reducedMotion) {
     const observer = new IntersectionObserver(
       (entries) => {
         const visible = entries.filter(e => e.isIntersecting);
@@ -457,10 +464,14 @@ const gridKids = [...kids];
           observer.unobserve(el);
         });
       },
-      { rootMargin: '60px', threshold: 0.05 }
+      { rootMargin: '60px', threshold: 0.01 }
     );
-    cards.forEach(card => observer.observe(card));
-    document.documentElement.classList.add('js-anim');
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        document.documentElement.classList.add('js-anim');
+        cards.forEach(card => observer.observe(card));
+      });
+    });
   }
 
   // ── Toolbar scroll shadow ────────────────
@@ -532,12 +543,13 @@ const gridKids = [...kids];
     background: var(--c-warm-gray);
     text-decoration: none;
     margin-bottom: var(--space-2xl);
-    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.3s ease;
+    transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+                box-shadow 0.4s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
   .featured-card:hover {
-    transform: translateY(-3px);
-    box-shadow: var(--shadow-lg);
+    transform: translateY(-4px);
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.12);
   }
 
   .featured-card.is-filtered {
@@ -547,13 +559,31 @@ const gridKids = [...kids];
   .featured-card__image {
     aspect-ratio: 3 / 2;
     overflow: hidden;
+    background: linear-gradient(
+      90deg,
+      var(--c-warm-gray) 0%,
+      #eae9e5 40%,
+      var(--c-warm-gray) 80%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.8s ease-in-out infinite;
+  }
+
+  .featured-card__image:has(.is-loaded) {
+    animation: none;
   }
 
   .featured-card__img {
     width: 100%;
     height: 100%;
     object-fit: cover;
-    transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1),
+                opacity 0.4s ease;
+    opacity: 0;
+  }
+
+  .featured-card__img.is-loaded {
+    opacity: 1;
   }
 
   .featured-card:hover .featured-card__img {
@@ -625,11 +655,14 @@ const gridKids = [...kids];
     font-weight: 600;
     color: var(--c-dark);
     margin-top: var(--space-sm);
-    transition: color var(--transition-fast);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: gap 0.3s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
   .featured-card:hover .featured-card__cta {
-    color: var(--c-text-muted);
+    gap: 10px;
   }
 
   /* ─── Toolbar ────────────────────────────── */
@@ -851,6 +884,12 @@ const gridKids = [...kids];
     column-gap: var(--space-lg);
   }
 
+  /* ─── Shimmer skeleton for loading images ── */
+  @keyframes shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+  }
+
   /* ─── Card ─────────────────────────────── */
   .kid-card {
     display: inline-block;
@@ -858,15 +897,15 @@ const gridKids = [...kids];
     text-decoration: none;
     outline-offset: 4px;
     border-radius: var(--border-radius-lg);
-    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease;
-    content-visibility: auto;
-    contain-intrinsic-size: auto 380px;
+    transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+                box-shadow 0.35s cubic-bezier(0.16, 1, 0.3, 1);
     break-inside: avoid;
     margin-bottom: var(--space-lg);
   }
 
   .kid-card:hover {
-    transform: translateY(-4px);
+    transform: translateY(-6px);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.1);
   }
 
   .kid-card:focus-visible {
@@ -875,22 +914,22 @@ const gridKids = [...kids];
     border-radius: var(--border-radius-lg);
   }
 
-  /* Staggered reveal animation */
+  /* Staggered reveal — opacity only to avoid column reflow */
   :global(.js-anim) .kid-card:not(.revealed) {
     opacity: 0;
-    transform: translateY(16px);
   }
 
   :global(.js-anim) .kid-card.revealed {
-    animation: cardIn 0.45s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-    animation-delay: calc(var(--stagger, 0) * 60ms);
+    animation: cardIn 0.4s ease forwards;
+    animation-delay: calc(var(--stagger, 0) * 50ms);
   }
 
   @keyframes cardIn {
-    from { opacity: 0; transform: translateY(16px); }
-    to { opacity: 1; transform: translateY(0); }
+    from { opacity: 0; }
+    to { opacity: 1; }
   }
 
+  /* Smooth filter hide — animate out then collapse */
   .kid-card.is-hidden {
     display: none;
   }
@@ -899,6 +938,20 @@ const gridKids = [...kids];
     position: relative;
     border-radius: var(--border-radius-lg);
     overflow: hidden;
+    /* Shimmer skeleton background while image loads */
+    background: linear-gradient(
+      90deg,
+      var(--c-warm-gray) 0%,
+      #eae9e5 40%,
+      var(--c-warm-gray) 80%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.8s ease-in-out infinite;
+  }
+
+  /* Stop shimmer once any image inside has loaded */
+  .kid-card__frame:has(.is-loaded) {
+    animation: none;
     background: var(--c-warm-gray);
   }
 
@@ -906,7 +959,14 @@ const gridKids = [...kids];
     width: 100%;
     height: auto;
     display: block;
-    transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1),
+                opacity 0.4s ease;
+    /* Start invisible, fade in when loaded */
+    opacity: 0;
+  }
+
+  .kid-card__img.is-loaded {
+    opacity: 1;
   }
 
   @media (hover: hover) {
@@ -931,15 +991,16 @@ const gridKids = [...kids];
     inset: 0;
     background: linear-gradient(
       to top,
-      rgba(55, 58, 54, 0.75) 0%,
-      rgba(55, 58, 54, 0.4) 40%,
-      rgba(55, 58, 54, 0.2) 100%
+      rgba(55, 58, 54, 0.8) 0%,
+      rgba(55, 58, 54, 0.35) 50%,
+      transparent 100%
     );
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-end;
     gap: 10px;
+    padding-bottom: var(--space-xl);
     opacity: 0;
     transition: opacity 0.3s ease;
   }
@@ -970,12 +1031,13 @@ const gridKids = [...kids];
     padding: 8px 20px;
     border: 1.5px solid rgba(255, 255, 255, 0.7);
     border-radius: 100px;
-    transition: background 0.2s ease, border-color 0.2s ease;
+    transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
   }
 
   .kid-card:hover .kid-card__cta {
     background: rgba(255, 255, 255, 0.15);
     border-color: var(--c-white);
+    transform: translateY(-1px);
   }
 
   /* ─── Info Below Photo ─────────────────── */
@@ -992,6 +1054,11 @@ const gridKids = [...kids];
     font-size: 1rem;
     font-weight: 600;
     line-height: 1.3;
+    transition: color var(--transition-fast);
+  }
+
+  .kid-card:hover .kid-card__name {
+    color: var(--c-dark);
   }
 
   .kid-card__diagnosis {
@@ -1119,7 +1186,7 @@ const gridKids = [...kids];
       padding-block: 0 var(--space-3xl);
     }
 
-    /* Impact bar: horizontal scroll on small screens */
+    /* Impact bar */
     .impact-bar {
       gap: var(--space-lg);
       padding: var(--space-md) var(--space-sm);
@@ -1152,14 +1219,14 @@ const gridKids = [...kids];
       font-size: 1.5rem;
     }
 
-    /* Toolbar */
+    /* Toolbar — disable backdrop-filter on mobile for perf */
     .toolbar {
       top: var(--header-height, 88px);
       margin-inline: calc(-1 * var(--space-lg));
       padding: var(--space-sm) var(--space-lg);
       backdrop-filter: none;
       -webkit-backdrop-filter: none;
-      background: rgba(254, 252, 245, 0.97);
+      background: var(--c-cream);
     }
 
     .toolbar__row {
@@ -1176,7 +1243,7 @@ const gridKids = [...kids];
     .search-box__input {
       height: 44px;
       padding: 0 12px 0 38px;
-      font-size: 0.88rem;
+      font-size: 16px; /* prevent iOS zoom on focus */
     }
 
     .toolbar__filters {
@@ -1188,7 +1255,7 @@ const gridKids = [...kids];
     .filter-select {
       min-width: 0;
       height: 44px;
-      font-size: 0.82rem;
+      font-size: 16px; /* prevent iOS zoom on focus */
       padding: 0 32px 0 12px;
     }
 
@@ -1210,14 +1277,13 @@ const gridKids = [...kids];
 
     .kid-card {
       margin-bottom: var(--space-sm);
-      contain-intrinsic-size: auto 280px;
     }
 
     .kid-card__frame {
       border-radius: 12px;
     }
 
-    /* Hide hover overlay on touch, but keep it for keyboard focus */
+    /* Hide hover overlay on touch, keep for keyboard */
     .kid-card__hover-overlay {
       display: none;
     }
@@ -1265,6 +1331,17 @@ const gridKids = [...kids];
       transform: none;
       animation: none;
       transition: none;
+    }
+
+    .kid-card__img,
+    .featured-card__img {
+      opacity: 1 !important;
+    }
+
+    .kid-card__frame,
+    .featured-card__image {
+      animation: none;
+      background: var(--c-warm-gray);
     }
 
     .featured-card,

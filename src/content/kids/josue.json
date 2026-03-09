@@ -1,8 +1,6 @@
 {
   "name": "Josué",
   "slug": "josue",
-  "wpSlug": "josue",
-  "wpUrl": "https://sunshineonaranneyday.com/blog/2025/04/23/josue/",
   "age": 18,
   "diagnosis": "Cerebral Palsy",
   "roomTypes": [
@@ -15,47 +13,38 @@
   "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/ba7d31ee-40e9-491f-5f89-34d29b7e6700/public",
   "photos": [
     {
-      "wpPath": "wp-content/uploads/2026/02/Josue-2-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/ba7d31ee-40e9-491f-5f89-34d29b7e6700/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2026/02/Josue-3-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/7b5915bf-c8af-4ea3-897f-9b0ed2654100/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2026/02/Josue-6-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/e8c40a60-4f56-4f3b-daf2-cab5436c3300/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2026/02/Josue-8-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/ad26c310-2491-4e4b-47f2-77a83da6f600/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2026/02/Josue-7-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/b33d50f3-21f6-42e6-c88a-a343ac4fa100/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2026/02/Josue-9-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/580c60f6-ac20-49dd-2fbe-d6ab321d7800/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2026/02/Josue-4-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/a038261f-c294-407f-40cc-10529cce7a00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2026/02/Josue-5-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/19cad8de-34bd-4272-a321-ab98d1e26300/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/meet_the_kids_makeover_in_progress.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/416515ff-79c8-4e9a-0c4c-3ff501702900/public",
       "alt": ""
     }
@@ -65,39 +54,20 @@
   "photographer": null,
   "partnerLogos": [
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_gas_south.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/gas-south/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_kids_r_kids.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/kids-r-kids/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_jackson_healthcare.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/jackson-healthcare/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_cr_construction.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/cr-construction/public"
     }
   ],
   "shortDescription": null,
   "metaDescription": null,
   "altTexts": null,
-  "jsonLd": null,
-  "_migration": {
-    "scrapedAt": "2026-03-06T13:32:09.506Z",
-    "source": "wordpress-xml-export",
-    "wpPostDate": "2025-04-23 17:05:02",
-    "wpCategories": [
-      "Meet the Kids"
-    ],
-    "wpTags": [
-      "2026",
-      "Dream Bedroom",
-      "In Progress"
-    ],
-    "thumbnailId": 10521,
-    "needsReview": []
-  }
+  "jsonLd": null
 }

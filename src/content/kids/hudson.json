@@ -1,8 +1,6 @@
 {
   "name": "Hudson",
   "slug": "hudson",
-  "wpSlug": "hudson-2",
-  "wpUrl": "https://sunshineonaranneyday.com/blog/2022/12/08/hudson-2/",
   "age": 6,
   "diagnosis": "Gaucher Disease Type 2",
   "roomTypes": [
@@ -15,147 +13,118 @@
   "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/f601fa36-67b5-4d4d-6987-9555f13cd900/public",
   "photos": [
     {
-      "wpPath": "wp-content/uploads/2023/01/Hudson_2023_family_00005-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/6f92d9e3-7e04-4ecd-8f79-8afe11c10500/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2023/01/Hudson_2023_family_00004-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/3ad735c7-32fd-460d-a234-b06355a23500/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2023/01/Hudson_2023_family_00002-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/088becd3-7b0f-4e12-a77d-5dd4894d8d00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2023/01/Hudson_2023_family_00009-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/85cb355e-7538-42b8-a39c-5931deb44000/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2023/01/Hudson_2023_family_00012-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/7de73fbe-6b6b-400b-9571-3a4d430a5c00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2023/01/Hudson_2023_family_00008-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/980b6e18-630e-4ad8-698c-b6ea5e962800/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2023/03/Hudson_2023_reveal_00023-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/52d192df-8aa7-46cd-c55e-716ffef3db00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2023/03/Hudson_2023_reveal_00027-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/b1a78906-3618-48f8-4f53-c97ce9003c00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2023/03/Hudson_2023_reveal_00028-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/a592bc2a-e36e-4e77-7803-86d4c8d3f400/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2023/03/Hudson_2023_reveal_00011-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/33ba0847-8283-49ca-ad73-22dfc85b6800/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2023/03/Hudson_2023_reveal_00060-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/298a6868-0c90-428b-f99e-32bb191bf600/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2023/03/Hudson_2023_reveal_00010-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/5428e4f3-ad10-452e-0f9c-536876bf9700/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2023/03/Hudson_2023_reveal_00076-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/1c3b78d8-f255-47d3-bc14-875c23ccbc00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2023/03/Hudson_2023_reveal_00001-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/8febafc2-15de-4479-463a-f61336305900/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2023/03/Hudson_2023_reveal_00058-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/601c79b5-71db-4341-b78f-f895238b2800/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2023/03/Hudson_2023_reveal_00004-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/6189d429-6b26-4d72-ea43-958c22742b00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2023/03/Hudson_2023_reveal_00009-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/48d0f016-023b-4ae3-95ef-1af363528000/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2023/03/Hudson_2023_reveal_00008-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/135fa1d6-dd30-4458-12bb-e15f6859f700/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2023/03/Hudson_2023_reveal_00015-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/eb9b28fa-90c8-4960-a3da-1c50f86c5000/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2023/03/Hudson_2023_reveal_00061-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/2887788b-80be-4b13-d894-ec07bba16300/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2023/03/Hudson_2023_reveal_00022-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/fef1256a-00a5-4d6a-e4d0-f469f04b0600/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2023/03/Hudson_2023_reveal_00063-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/d0aa1eae-088b-4f71-6ef4-561bfcf35000/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2023/03/Hudson_2023_reveal_00016-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/2c286a5f-372d-47e9-63fa-74090bfcdf00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2023/03/Hudson_2023_reveal_00019-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/cc551b2f-29f6-42a6-5213-5ad0bb773700/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2023/03/Hudson_2023_reveal_00033-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/eb47b906-f808-4661-4d26-6f8e5a9a7400/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2023/03/Hudson_2023_reveal_00046-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/47846be9-7eb0-465c-9377-91e201a78000/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2023/03/Hudson_2023_reveal_00050-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/e672cfce-38d2-4934-1b19-9c0793560900/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2023/03/Hudson_2023_reveal_00040-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/0e0a9f15-8434-4377-9f19-0f1a281b0200/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2023/03/Hudson_2023_reveal_00041-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/bc481ee1-c8b1-4b4e-b008-fcf01d36b500/public",
       "alt": ""
     }
@@ -165,71 +134,44 @@
   "photographer": "Vicki Alsup Photography",
   "partnerLogos": [
     {
-      "wpPath": "wp-content/uploads/2023/03/logo_cobb_emc_foundation.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/cobb-emc-foundation/public"
     },
     {
-      "wpPath": "wp-content/uploads/2023/04/logo_reynard_custom_homes.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/reynard-custom-homes/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_real_floors_commercial.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/b30e9f15-c3f4-412f-cdbd-0bd67b8b2400/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/10/Vicki-Alsup-Logo-Stacked.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/f7ac6c71-7c80-4f9c-bddf-86f8c5b46200/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_mohawk.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/9b604dfa-6877-4b76-e52c-1da806521b00/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_rooms_to_go.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/rooms-to-go/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/10/logo_randall_brothers.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/356e1d21-cd6a-4384-281f-60502aab5200/public"
     },
     {
-      "wpPath": "wp-content/uploads/2023/03/logo_nugget.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/nugget/public"
     },
     {
-      "wpPath": "wp-content/uploads/2022/11/logo_asv_productions.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/asv-productions/public"
     },
     {
-      "wpPath": "wp-content/uploads/2022/12/logo_servicewise_electric.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/ee74b1f3-1851-4717-fe7b-55c222cae300/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/logo_bin_there_dump_that.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/ac9afc83-55f9-424e-f6c2-ca3dbd8cb100/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_nothing_bundt_cakes.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/nothing-bundt-cakes/public"
     }
   ],
   "shortDescription": null,
   "metaDescription": null,
   "altTexts": null,
-  "jsonLd": null,
-  "_migration": {
-    "scrapedAt": "2026-03-06T13:32:09.487Z",
-    "source": "wordpress-xml-export",
-    "wpPostDate": "2022-12-08 21:43:58",
-    "wpCategories": [
-      "Meet the Kids",
-      "Reynard Custom Homes"
-    ],
-    "wpTags": [
-      "2023",
-      "Accessible Bathroom"
-    ],
-    "thumbnailId": 5104,
-    "needsReview": []
-  }
+  "jsonLd": null
 }

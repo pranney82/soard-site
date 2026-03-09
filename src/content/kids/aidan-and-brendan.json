@@ -1,8 +1,6 @@
 {
   "name": "Aidan & Brendan",
   "slug": "aidan-and-brendan",
-  "wpSlug": "aidan-brendan",
-  "wpUrl": "https://sunshineonaranneyday.com/blog/2021/09/15/aidan-brendan/",
   "age": 15,
   "diagnosis": "Autism",
   "roomTypes": [
@@ -15,37 +13,30 @@
   "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/4e0e9bac-5116-42a1-b17a-3800a8a63900/public",
   "photos": [
     {
-      "wpPath": "wp-content/uploads/2022/04/A-B_25-min-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/8fad9473-c4ad-456e-3cd2-6c270355f000/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2022/04/A-B_12-min-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/4e3e682a-e748-4821-8972-c2a4b711df00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2022/04/A-B_18-min-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/5b5e03d1-058c-4cc1-be74-fc83767ef800/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2022/04/A-B_21-min-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/9e4063d3-7dd8-4815-a91c-8a866d311b00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2022/04/A-B_42-min-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/0d97588b-02c7-4a44-4a68-884229a2ab00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2022/04/A-B_48-min-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/07eb87d0-6ee6-4c8f-169f-ba695d381900/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2022/04/A-B_61-min-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/4ab74cac-6051-43e8-ccf7-c03049509000/public",
       "alt": ""
     }
@@ -55,66 +46,41 @@
   "photographer": null,
   "partnerLogos": [
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_kids_r_kids.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/kids-r-kids/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/10/JC-logo_final-1.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/jc-logo-final/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_rooms_to_go.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/rooms-to-go/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_real_floors_commercial.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/b30e9f15-c3f4-412f-cdbd-0bd67b8b2400/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/10/logo_randall_brothers.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/356e1d21-cd6a-4384-281f-60502aab5200/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/logo_five_star_painting.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/five-star-painting/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/logo_bin_there_dump_that.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/ac9afc83-55f9-424e-f6c2-ca3dbd8cb100/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_reliable_heatingair.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/reliable-heatingair/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_pear_tree_photography.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/pear-tree-photography/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_nothing_bundt_cakes.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/nothing-bundt-cakes/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_iframe_media.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/iframe-media/public"
     }
   ],
   "shortDescription": null,
   "metaDescription": null,
   "altTexts": null,
-  "jsonLd": null,
-  "_migration": {
-    "scrapedAt": "2026-03-06T13:32:09.472Z",
-    "source": "wordpress-xml-export",
-    "wpPostDate": "2021-09-15 20:57:00",
-    "wpCategories": [
-      "Meet the Kids"
-    ],
-    "wpTags": [
-      "2022",
-      "Dream Bedroom"
-    ],
-    "thumbnailId": 3528,
-    "needsReview": []
-  }
+  "jsonLd": null
 }

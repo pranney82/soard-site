@@ -1,8 +1,6 @@
 {
   "name": "Devon",
   "slug": "devon",
-  "wpSlug": "devon",
-  "wpUrl": "https://sunshineonaranneyday.com/blog/2021/06/25/devon/",
   "age": 20,
   "diagnosis": "Spinal Injury",
   "roomTypes": [
@@ -17,202 +15,162 @@
   "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/1b41b4ef-d921-4fa3-9080-fcc295318f00/public",
   "photos": [
     {
-      "wpPath": "wp-content/uploads/2021/07/devon_2019_family_00002-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/c0f4bd9b-f611-40f5-ac3d-27280466de00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/devon_2019_family_00003-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/3fd1af51-4ae6-4403-5c6c-99f486db6500/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/devon_2019_family_00001-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/96eab40d-e9b2-4a06-1eb9-baf1baf78b00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/devon_2019_family_00004-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/5b0126d8-04d2-4541-1b4e-7a419552d400/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/devon_2019_family_00005-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/fbb80550-f87e-4e73-9799-2b6a92700500/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/devon_2019_family_00006-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/86fe530e-a6e6-4d6d-7fc9-6c82c3304700/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/devon_2019_family_00007-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/f26d837b-58d5-4de8-632e-81edaa802400/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/devon_2019_family_00009-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/4116c54f-fd9f-4fcb-3099-b148abccb500/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/devon_2019_reveal_00009-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/e00b48e9-22de-49c4-53c7-f5e05fe99400/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/devon_2019_reveal_00030.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/41090a2b-1480-4ea9-9f98-4d4c16ee6900/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/devon_2019_reveal_00013-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/d7134e3a-537a-477b-58a1-1f7872d3dd00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/devon_2019_reveal_00014-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/154d967a-f738-4c1c-de8f-6da74691ad00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/devon_2019_reveal_00010-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/4ea851b8-b68e-42fd-4ed2-9baa4a4c4400/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/devon_2019_reveal_00011-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/815a766c-38dd-4f6e-ed8a-78a76ef59200/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/devon_2019_reveal_00001-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/353afdf2-8020-4b97-9f59-f30e08694200/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/devon_2019_reveal_00002-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/dc2f9c06-b690-45ad-3048-a0e9658ad100/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/devon_2019_reveal_00003-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/819fdd32-ee42-418f-8c04-a5e53348e300/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/devon_2019_reveal_00004-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/2b507da2-46dd-4405-f21c-d4d37412da00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/devon_2019_reveal_00005-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/275e4ed0-994e-4178-4c77-ab873061b500/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/devon_2019_reveal_00006-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/f0e9977f-ba17-482e-7c88-6a153f884300/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/devon_2019_reveal_00007-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/924d15ac-4009-4010-ddf8-c0ea86dec100/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/devon_2019_reveal_00008-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/93e9c9a0-6f0d-460c-3259-cd8dd54e2800/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/devon_2019_reveal_00015-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/0e6a88df-e3d5-4939-91f6-b9997cf3b800/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/devon_2019_reveal_00016-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/6f046006-07c9-4b45-b280-8e3c2df85200/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/devon_2019_reveal_00017-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/d52752c0-f997-480d-7a07-2ee080f59200/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/devon_2019_reveal_00018-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/c99ed8b9-1b14-46d9-7d07-43486eba8200/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/devon_2019_reveal_00019-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/465afcaa-bd98-4c7d-ba90-4705db348f00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/devon_2019_reveal_00020-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/6b574cc1-7b21-42b6-e5c6-8d2e0f74af00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/devon_2019_reveal_00021-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/6b25f568-6aa0-4af9-6eec-d42470a71400/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/devon_2019_reveal_00022-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/49a4e434-e4b8-41b6-4e06-11cc38ac1f00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/devon_2019_reveal_00023-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/ccf718a5-cc45-45c7-1458-1d50cdf03d00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/devon_2019_reveal_00024.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/49bb293b-5303-4490-ed79-ea7764b17500/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/devon_2019_reveal_00025.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/1e0857de-af83-4dc2-2568-ad2b4b055500/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/devon_2019_reveal_00026.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/d381ccb0-a0ea-4cf6-daf6-1b1b553a1e00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/devon_2019_reveal_00027.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/74272a64-9ad9-46d4-cbdd-80655a947b00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/devon_2019_reveal_00028.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/d4db82e1-4410-4d81-2375-c56eba9d3c00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/devon_2019_reveal_00029.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/1107192a-9d49-4708-5622-4fbc80519100/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/devon_2019_reveal_00031.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/48747b8a-044d-41b9-482e-53b98ff1d400/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/devon_2019_reveal_00032.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/c153e5cb-a1ed-4983-f8a3-1d476fdec200/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/devon_2019_reveal_00033.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/6cb1934a-6ee2-4ccd-66b6-40c51459a600/public",
       "alt": ""
     }
@@ -222,89 +180,56 @@
   "photographer": "Nicole Photography",
   "partnerLogos": [
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_delta_faucet.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/delta-faucet/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_jackson_healthcare.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/jackson-healthcare/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_kids_r_kids.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/kids-r-kids/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_mohawk.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/9b604dfa-6877-4b76-e52c-1da806521b00/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_wall_nut_custom_wall_murals.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/wall-nut-custom-wall-murals/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/logo_keuco.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/keuco/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_real_floors_commercial.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/b30e9f15-c3f4-412f-cdbd-0bd67b8b2400/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_interceramic.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/interceramic/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_cr_construction.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/cr-construction/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_cambria.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/74dde091-0863-4b13-ac63-49a409a43300/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_crosby_design_group.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/5cb8b8a4-2f39-47c6-3652-9b344ac54800/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_echols.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/echols/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_pulleyassociates.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/pulleyassociates/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_nicole_photography.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/nicole-photography/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_iframe_media.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/iframe-media/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/logo_meridian_brick.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/meridian-brick/public"
     }
   ],
   "shortDescription": null,
   "metaDescription": null,
   "altTexts": null,
-  "jsonLd": null,
-  "_migration": {
-    "scrapedAt": "2026-03-06T13:32:09.450Z",
-    "source": "wordpress-xml-export",
-    "wpPostDate": "2021-06-25 22:03:32",
-    "wpCategories": [
-      "Meet the Kids",
-      "The Wall Nut"
-    ],
-    "wpTags": [
-      "2019",
-      "Accessible Bathroom",
-      "Dream Bedroom",
-      "Therapy Room"
-    ],
-    "thumbnailId": 1180,
-    "needsReview": []
-  }
+  "jsonLd": null
 }

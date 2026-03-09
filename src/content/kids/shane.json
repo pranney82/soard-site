@@ -1,8 +1,6 @@
 {
   "name": "Shane",
   "slug": "shane",
-  "wpSlug": "shane",
-  "wpUrl": "https://sunshineonaranneyday.com/blog/2021/06/26/shane/",
   "age": 8,
   "diagnosis": "Cerebral Palsy",
   "roomTypes": [
@@ -16,112 +14,90 @@
   "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/87395dea-d385-4058-0812-318861825600/public",
   "photos": [
     {
-      "wpPath": "wp-content/uploads/2021/07/shane_2020_family_00003.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/ad8fe76c-62de-4efa-aa42-f1565219ab00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/shane_2020_family_00001.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/0089cbd1-d995-45cc-66ab-08d93a3b6800/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/shane_2020_family_00002.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/e8ed4fb9-408c-44db-5a5a-0e53f63a8700/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/shane_2020_family_00004.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/aad8d2e5-2fe0-4f1f-3015-3d001e472700/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/shane_2020_family_00005.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/23d2ce66-2cdf-48f3-9c1e-854667fa0c00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/shane_2020_family_00006.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/05345c60-2fdd-4d74-1980-f4873ff7c500/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/shane_2020_family_00007.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/0ccb3ad7-adf3-4f77-ff75-db29a047d600/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/shane_2020_reveal_00001.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/21847575-102f-47dc-6830-31c6cb82b300/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/shane_2020_reveal_00011.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/0147a183-b56a-4b85-0352-5d9f9997be00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/shane_2020_reveal_00002.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/217e738a-06b7-41f4-b24d-5d9c4d487800/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/shane_2020_reveal_00003.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/5eec5260-bda4-42cb-e2f0-6c71b47b4d00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/shane_2020_reveal_00004.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/dc7fdb7f-7986-4f4c-ed22-a401d14e9200/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/shane_2020_reveal_00005.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/39897ece-a814-4044-5ffc-022e13819400/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/shane_2020_reveal_00006.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/6db92500-952f-43df-a62f-a704bf1ba400/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/shane_2020_reveal_00007.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/a6d38dc0-5603-4208-d9a6-a050ebcb7d00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/shane_2020_reveal_00008.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/c1d37ca8-ed87-4dd4-2975-afb45a6db600/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/shane_2020_reveal_00009.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/3ebbac0a-d71d-4bb4-a251-096715570c00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/shane_2020_reveal_00010.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/49ac9bcd-4f93-4d8e-5cbf-4791543ff600/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/shane_2020_reveal_00012.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/bfe8c11b-04bd-4f1f-2e37-b2ecaa508100/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/shane_2020_reveal_00013.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/d9c360c3-1c99-48c1-f471-fe65738cdb00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/shane_2020_reveal_00014.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/faeb12a4-acb4-4932-fe6b-fe95e2f13e00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/shane_2020_reveal_00015.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/c53fd69d-3d12-42ef-e924-9fd3a01d3800/public",
       "alt": ""
     }
@@ -131,107 +107,71 @@
   "photographer": "Sweet Life Photography by Kim",
   "partnerLogos": [
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_kids_r_kids.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/kids-r-kids/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/logo_mainstreet_building_group.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/mainstreet-building-group/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/logo_lakehaus_designstudio.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/lakehaus-designstudio/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_us_cabinetworks.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/us-cabinetworks/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_reliable_heatingair.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/reliable-heatingair/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_delta_faucet.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/delta-faucet/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_pulleyassociates.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/pulleyassociates/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_interceramic.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/interceramic/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_cambria.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/74dde091-0863-4b13-ac63-49a409a43300/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_cr_construction.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/cr-construction/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_real_floors_commercial.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/b30e9f15-c3f4-412f-cdbd-0bd67b8b2400/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/10/logo_randall_brothers.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/356e1d21-cd6a-4384-281f-60502aab5200/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_echols.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/echols/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_rooms_to_go.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/rooms-to-go/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_behr_paint.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/behr-paint/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/logo_devore__johnson.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/devore-johnson/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/logo_keuco.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/keuco/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_mohawk.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/9b604dfa-6877-4b76-e52c-1da806521b00/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_iframe_media.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/iframe-media/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_signature_hardware.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/signature-hardware/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/logo_sweet_life_photography.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/sweet-life-photography/public"
     }
   ],
   "shortDescription": null,
   "metaDescription": null,
   "altTexts": null,
-  "jsonLd": null,
-  "_migration": {
-    "scrapedAt": "2026-03-06T13:32:09.464Z",
-    "source": "wordpress-xml-export",
-    "wpPostDate": "2021-06-26 22:27:51",
-    "wpCategories": [
-      "Meet the Kids"
-    ],
-    "wpTags": [
-      "2020",
-      "Accessible Bathroom",
-      "Dream Bedroom"
-    ],
-    "thumbnailId": 1244,
-    "needsReview": []
-  }
+  "jsonLd": null
 }

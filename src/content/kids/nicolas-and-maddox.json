@@ -1,8 +1,6 @@
 {
   "name": "Nicolas & Maddox",
   "slug": "nicolas-and-maddox",
-  "wpSlug": "nicolas-maddox",
-  "wpUrl": "https://sunshineonaranneyday.com/blog/2024/04/03/nicolas-maddox/",
   "age": 8,
   "diagnosis": "Metachromatic Leukodystrophy",
   "roomTypes": [
@@ -16,37 +14,30 @@
   "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/7832e279-d2ce-438d-01d2-120e5e22b400/public",
   "photos": [
     {
-      "wpPath": "wp-content/uploads/2024/04/NicolasMaddox_2024_family_0001-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/196dde02-4862-4e37-786b-270674c8b500/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/04/NicolasMaddox_2024_family_0004-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/18fbbfda-bc87-4433-9a01-ae7356c34f00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/04/NicolasMaddox_2024_family_0006-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/2f8857fd-d585-4538-5a9e-65f2c4edb300/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/04/NicolasMaddox_2024_family_0008-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/25d2194a-4342-4f16-123a-a7dd4cb1c300/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/04/NicolasMaddox_2024_family_0009-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/fb0da51d-e860-4391-6fcc-3350ddf20f00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/meet_the_kids_makeover_in_progress.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/416515ff-79c8-4e9a-0c4c-3ff501702900/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2022/03/Original-on-Transparent-1.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/67c345c5-8af6-483e-39d3-11f3aea5f600/public",
       "alt": ""
     }
@@ -56,61 +47,35 @@
   "photographer": null,
   "partnerLogos": [
     {
-      "wpPath": "wp-content/uploads/2024/10/logo_forsyth_rotary.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/forsyth-rotary/public"
     },
     {
-      "wpPath": "wp-content/uploads/2024/08/logo_bc_homes_inc.gif",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/bc-homes-inc/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/10/logo_randall_brothers.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/356e1d21-cd6a-4384-281f-60502aab5200/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_mohawk.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/9b604dfa-6877-4b76-e52c-1da806521b00/public"
     },
     {
-      "wpPath": "wp-content/uploads/2022/11/logo_schluter_systems.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/schluter-systems/public"
     },
     {
-      "wpPath": "wp-content/uploads/2024/05/logo_Real_Floors_Commercial.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/0bd4b37f-9463-41e4-cb1d-7a820fbf3f00/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_wall_nut_custom_wall_murals.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/wall-nut-custom-wall-murals/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/logo_bin_there_dump_that.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/ac9afc83-55f9-424e-f6c2-ca3dbd8cb100/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_nothing_bundt_cakes.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/nothing-bundt-cakes/public"
     }
   ],
   "shortDescription": null,
   "metaDescription": null,
   "altTexts": null,
-  "jsonLd": null,
-  "_migration": {
-    "scrapedAt": "2026-03-06T13:32:09.496Z",
-    "source": "wordpress-xml-export",
-    "wpPostDate": "2024-04-03 17:34:35",
-    "wpCategories": [
-      "Bin There Dump That Atlanta",
-      "Meet the Kids",
-      "Seabrook Design Co"
-    ],
-    "wpTags": [
-      "2024",
-      "Dream Bedroom",
-      "Therapy Room"
-    ],
-    "thumbnailId": 6937,
-    "needsReview": []
-  }
+  "jsonLd": null
 }

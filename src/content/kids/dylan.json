@@ -1,8 +1,6 @@
 {
   "name": "Dylan",
   "slug": "dylan",
-  "wpSlug": "dylan",
-  "wpUrl": "https://sunshineonaranneyday.com/blog/2017/01/27/dylan/",
   "age": 6,
   "diagnosis": "MECP2 Duplication Syndrome, Cortical Visual Impairment",
   "roomTypes": [
@@ -16,142 +14,114 @@
   "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/55e38618-ac7f-48d4-7542-854b8d71a400/public",
   "photos": [
     {
-      "wpPath": "wp-content/uploads/2025/01/2017_dylan_family_photo_1-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/6aa62c68-6a39-4e5b-c20e-346654f57800/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2025/01/2017_dylan_family_photo_2-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/8444cf55-87ce-463c-6a79-8f453fcb3800/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2025/01/2017_dylan_family_photo_3-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/0168ab43-10b7-4d33-6b21-0c8563102b00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2025/01/2017_dylan_reveal_photo_1-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/3135a966-164b-4aba-7f8d-704cb57e9400/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2025/01/2017_dylan_reveal_photo_4-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/3917b953-1fb9-4abd-4c0d-30f7add02700/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2025/01/2017_dylan_reveal_photo_3-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/d3a4d596-d600-42fd-646d-a5a3c7056500/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2025/01/2017_dylan_reveal_photo_5-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/c80b7a7c-cd71-40e2-f948-96610a665800/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2025/01/2017_dylan_reveal_photo_6-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/deeddc1c-3616-4f40-7010-bbfa77dda100/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2025/01/2017_dylan_reveal_photo_12-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/5ecb3c92-a468-44d6-1821-e35d41f33f00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2025/01/2017_dylan_reveal_photo_7-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/3f87094c-dcb6-4578-f46c-7cc90a3f5c00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2025/01/2017_dylan_reveal_photo_17-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/8d064d7f-9b0d-4500-6f59-2b38b1278d00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2025/01/2017_dylan_reveal_photo_9-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/9c93e9b9-bb58-47ac-af75-9b2f38baf500/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2025/01/2017_dylan_reveal_photo_10-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/390e4976-bd9c-481b-275c-ace97e3ba800/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2025/01/2017_dylan_reveal_photo_8-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/6e10cdd4-d26c-4e01-3aa1-6b1395895200/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2025/01/2017_dylan_reveal_photo_11-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/045776b4-825c-4ee0-4394-edeee2042900/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2025/01/2017_dylan_reveal_photo_13-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/676e089f-a075-40a0-babe-fd2db04f9e00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2025/01/2017_dylan_reveal_photo_14-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/37278ae2-0fd8-4362-9455-d9a9cbcd0d00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2025/01/2017_dylan_reveal_photo_15-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/c408855e-bfe3-459c-0ab6-f39899ee1e00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2025/01/2017_dylan_reveal_photo_18-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/60d79891-6716-4c67-ba25-4deb3ded6900/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2025/01/2017_dylan_reveal_photo_16-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/a218856d-b9e4-4de9-6b96-da4fc43bd500/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2025/01/2017_dylan_reveal_photo_19-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/ce63fe77-18f0-453b-7ede-b65120803500/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2025/01/2017_dylan_reveal_photo_20-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/5c0affc9-912e-470d-7b56-e576f5c55500/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2025/01/2017_dylan_reveal_photo_2-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/2f6e4902-c427-4c2e-e40b-e31309097900/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2025/01/2017_dylan_reveal_photo_21-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/3ff2ab64-52b4-4b22-8daf-883a83e57c00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2025/01/2017_dylan_reveal_photo_22-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/3a962409-6e67-4a2e-26be-4d55f60b2c00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2025/01/2017_dylan_reveal_photo_24-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/8da8e6df-efc1-46ca-02cc-e66a575abf00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2025/01/2017_dylan_reveal_photo_25-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/3a69a179-5d31-43ed-db21-16ba6d5f7e00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2025/01/2017_dylan_reveal_photo_26-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/e8345ab9-9bf3-43d8-7ddc-4e6d31be1300/public",
       "alt": ""
     }
@@ -161,88 +131,50 @@
   "photographer": "Dinah Sutton Photography",
   "partnerLogos": [
     {
-      "wpPath": "wp-content/uploads/2023/03/logo_cobb_emc_foundation.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/cobb-emc-foundation/public"
     },
     {
-      "wpPath": "wp-content/uploads/2024/03/logo_kids_r_kids.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/kids-r-kids/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_cambria.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/74dde091-0863-4b13-ac63-49a409a43300/public"
     },
     {
-      "wpPath": "wp-content/uploads/2024/03/logo_reliable_heating_and_air.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/reliable-heating-and-air/public"
     },
     {
-      "wpPath": "wp-content/uploads/2024/06/logo_randall_paulson_2.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/randall-paulson-2/public"
     },
     {
-      "wpPath": "wp-content/uploads/2024/07/logo_atlanta_kitchen.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/atlanta-kitchen/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_interceramic.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/interceramic/public"
     },
     {
-      "wpPath": "wp-content/uploads/2024/07/logo_noland.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/noland/public"
     },
     {
-      "wpPath": "wp-content/uploads/2024/03/logo_dinah_sutton_photography.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/dinah-sutton-photography/public"
     },
     {
-      "wpPath": "wp-content/uploads/2025/01/logo_girl_scouts.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/girl-scouts/public"
     },
     {
-      "wpPath": "wp-content/uploads/2025/01/logo_vivid_south.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/vivid-south/public"
     },
     {
-      "wpPath": "wp-content/uploads/2025/01/logo_weatherby_renovations.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/weatherby-renovations/public"
     },
     {
-      "wpPath": "wp-content/uploads/2025/01/logo_hughes_carpet_cleaning.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/hughes-carpet-cleaning/public"
     },
     {
-      "wpPath": "wp-content/uploads/2025/01/logo_molly_maid.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/molly-maid/public"
     }
   ],
   "shortDescription": null,
   "metaDescription": null,
   "altTexts": null,
-  "jsonLd": null,
-  "_migration": {
-    "scrapedAt": "2026-03-06T13:32:09.396Z",
-    "source": "wordpress-xml-export",
-    "wpPostDate": "2017-01-27 23:04:58",
-    "wpCategories": [
-      "Artisan Design Studio",
-      "Bin There Dump That Atlanta",
-      "Cambria",
-      "Construction Resources",
-      "Meet the Kids",
-      "Pulley and Associates",
-      "Randall Brothers",
-      "Real Floors Commercial",
-      "ServiceWise Electric",
-      "TKO Plumbing Services"
-    ],
-    "wpTags": [
-      "2017",
-      "Accessible Bathroom",
-      "Dream Bedroom"
-    ],
-    "thumbnailId": 9176,
-    "needsReview": []
-  }
+  "jsonLd": null
 }

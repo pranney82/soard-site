@@ -1,8 +1,6 @@
 {
   "name": "Carson",
   "slug": "carson",
-  "wpSlug": "carson",
-  "wpUrl": "https://sunshineonaranneyday.com/blog/2021/06/26/carson/",
   "age": 9,
   "diagnosis": "Autism, Sensory Processing Disorder",
   "roomTypes": [
@@ -15,142 +13,114 @@
   "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/8ecfa4d9-99db-4b97-0910-d8c0b54f1a00/public",
   "photos": [
     {
-      "wpPath": "wp-content/uploads/2021/07/carson_2021_family_00008.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/e4c1cb75-513a-4bfc-72cb-0aecf44f3000/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/carson_2021_family_00009.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/08fa56f2-2ec1-45e1-3fa3-ba8b36f9cc00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/carson_2021_family_00001.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/7c0010e9-ccd6-4bac-d397-60be8c390500/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/carson_2021_family_00002.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/1fc95c10-e838-4dc9-9d2b-8be1cb297a00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/carson_2021_family_00003.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/325a9118-7b71-4626-16d0-43e9bbb2bf00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/carson_2021_family_00004.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/51c897d9-ddc6-4b8e-f3c6-dabac1704000/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/carson_2021_family_00005.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/7e13934c-ffae-4a65-8a7c-88bacc368e00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/carson_2021_family_00006.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/b7ec4d03-2b87-40f7-cf67-e28edec47000/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/carson_2021_family_00007.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/a4213597-c181-4d63-00ce-68cedf5c9500/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/carson_2021_reveal_00001.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/ca4141ce-6029-4a3b-ed3b-075c0ca12600/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/carson_2021_reveal_00015.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/adbb735f-c0b3-4c7b-665f-5ee0f5884800/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/carson_2021_reveal_00002.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/c3611e70-2c71-44f4-43c3-c635b484ec00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/carson_2021_reveal_00003.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/dd3ad8fa-35b2-4dff-678e-14790fb8ed00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/carson_2021_reveal_00004.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/c2f46129-3c06-48be-fb92-df60d3e85700/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/carson_2021_reveal_00005.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/a345010c-99fc-4d3f-a746-b18448b97000/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/carson_2021_reveal_00011.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/55ed93d8-462b-4c98-8722-4d0a5c674900/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/carson_2021_reveal_00006.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/584b7d91-f82b-4f35-e63b-a40034f63200/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/carson_2021_reveal_00013.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/d8caa2a4-bd26-4a50-94c4-01db41b9f800/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/carson_2021_reveal_00007.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/9ef084b8-8307-46e4-1c2c-329d44543b00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/carson_2021_reveal_00008.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/59213391-ddfa-4bdb-6a9c-fb06354e7200/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/carson_2021_reveal_00009.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/55848994-3d5a-4a4e-482b-301752591d00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/carson_2021_reveal_00010.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/7cbe88ef-ae3c-4477-6ce1-78fee591d500/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/carson_2021_reveal_00012.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/79d6dbc8-076a-4c51-eeb4-564bfb253c00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/carson_2021_reveal_00014.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/f23323ab-6d93-474c-8c7a-c4862e941200/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/carson_2021_reveal_00016.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/f7078d31-41c7-4bbc-3f6d-f40f1ab4d900/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/carson_2021_reveal_00017.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/ef7dc5a6-349f-4021-263d-45b36d4e6400/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/carson_2021_reveal_00018.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/0ef11fbb-aabe-40bb-51d4-4cf730f2f000/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/carson_2021_reveal_00019.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/e12b646f-15bb-475b-4f14-bf2bccd1e600/public",
       "alt": ""
     }
@@ -160,80 +130,50 @@
   "photographer": "Pear Tree Photography",
   "partnerLogos": [
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_jackson_healthcare.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/jackson-healthcare/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/logo_artisan_design_studio.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/1ec1be64-3518-4492-aea5-6435512b2f00/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/10/logo_randall_brothers.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/356e1d21-cd6a-4384-281f-60502aab5200/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_mohawk.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/9b604dfa-6877-4b76-e52c-1da806521b00/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_real_floors_commercial.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/b30e9f15-c3f4-412f-cdbd-0bd67b8b2400/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_wall_nut_custom_wall_murals.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/wall-nut-custom-wall-murals/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_reliable_heatingair.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/reliable-heatingair/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_atlas_disposal.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/atlas-disposal/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_comfort_research.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/bf841d37-17ff-46b2-51fb-8b82220e0300/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/logo_united_site_services.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/united-site-services/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/logo_five_star_painting.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/five-star-painting/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/logo_firefly_forts.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/firefly-forts/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_pear_tree_photography.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/pear-tree-photography/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_nothing_bundt_cakes.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/nothing-bundt-cakes/public"
     }
   ],
   "shortDescription": null,
   "metaDescription": null,
   "altTexts": null,
-  "jsonLd": null,
-  "_migration": {
-    "scrapedAt": "2026-03-06T13:32:09.468Z",
-    "source": "wordpress-xml-export",
-    "wpPostDate": "2021-06-26 22:36:45",
-    "wpCategories": [
-      "Artisan Design Studio",
-      "Meet the Kids",
-      "The Wall Nut"
-    ],
-    "wpTags": [
-      "2021",
-      "Therapy Room"
-    ],
-    "thumbnailId": 1262,
-    "needsReview": []
-  }
+  "jsonLd": null
 }

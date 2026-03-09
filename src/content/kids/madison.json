@@ -1,8 +1,6 @@
 {
   "name": "Madison",
   "slug": "madison",
-  "wpSlug": "madison",
-  "wpUrl": "https://sunshineonaranneyday.com/blog/2022/02/14/madison/",
   "age": 12,
   "diagnosis": "Autism, Dysarthria, Apraxia, SPD",
   "roomTypes": [
@@ -15,72 +13,58 @@
   "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/082656cb-a33c-4a9c-761e-e44145f06300/public",
   "photos": [
     {
-      "wpPath": "wp-content/uploads/2022/03/DSC_1139-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/aa96e9f9-49d8-422f-8b46-558468337000/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2022/03/DSC_1060-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/041dc0eb-7ad4-4ed0-8e45-e1e8351b1800/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2022/03/DSC_1088-1-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/6f786c27-eb08-4951-680e-d15750a5f900/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2022/02/DSC_1072-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/082656cb-a33c-4a9c-761e-e44145f06300/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2022/03/DSC_1061-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/09633a53-b239-44c1-a9f8-c8bd45a58000/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2022/03/DSC_1078-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/3e302b7b-a970-4a99-978a-0f21c881c000/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2022/04/Madison_2-min-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/6861eb0d-5bdf-41d1-20e3-38167c6b8700/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2022/04/Madison_33-min-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/83015d70-7ac5-410d-0a88-204f4387f000/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2022/04/Madison_29-min-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/1dba187f-61fc-4fe2-41d7-db1068f36700/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2022/04/Madison_23-min-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/7c5405ff-c687-4d47-62e3-f6bef73c0500/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2022/04/Madison_1-min-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/a04c6e07-45d6-4179-2abd-2723e8b5d700/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2022/04/Madison-min-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/5b5cffa3-1ce4-44af-2bbf-107a537c5e00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2022/04/Madison_6-min-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/3d5e4780-1eb5-446c-2b99-3c5ff5e6ad00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2022/03/Original-on-Transparent-1.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/67c345c5-8af6-483e-39d3-11f3aea5f600/public",
       "alt": ""
     }
@@ -90,67 +74,41 @@
   "photographer": "Birchfield Photography",
   "partnerLogos": [
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_finlistics_solutions.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/finlistics-2024/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_kids_r_kids.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/kids-r-kids/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_reliable_heatingair.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/reliable-heatingair/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/10/logo_randall_brothers.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/356e1d21-cd6a-4384-281f-60502aab5200/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_american_signature_furniture.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/american-signature-furniture/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/logo_bin_there_dump_that.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/ac9afc83-55f9-424e-f6c2-ca3dbd8cb100/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_real_floors_commercial.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/b30e9f15-c3f4-412f-cdbd-0bd67b8b2400/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_mohawk.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/9b604dfa-6877-4b76-e52c-1da806521b00/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/logo_birchfield_photography.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/birchfield-photography/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_nothing_bundt_cakes.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/nothing-bundt-cakes/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_iframe_media.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/iframe-media/public"
     }
   ],
   "shortDescription": null,
   "metaDescription": null,
   "altTexts": null,
-  "jsonLd": null,
-  "_migration": {
-    "scrapedAt": "2026-03-06T13:32:09.475Z",
-    "source": "wordpress-xml-export",
-    "wpPostDate": "2022-02-14 16:00:37",
-    "wpCategories": [
-      "Meet the Kids",
-      "Seabrook Design Co"
-    ],
-    "wpTags": [
-      "2022",
-      "Dream Bedroom"
-    ],
-    "thumbnailId": 4169,
-    "needsReview": []
-  }
+  "jsonLd": null
 }

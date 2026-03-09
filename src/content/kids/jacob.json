@@ -1,8 +1,6 @@
 {
   "name": "Jacob",
   "slug": "jacob",
-  "wpSlug": "jacob-2",
-  "wpUrl": "https://sunshineonaranneyday.com/blog/2017/08/21/jacob-2/",
   "age": 9,
   "diagnosis": "Autism, PDD-NOS, Sensory Integration Disorder, Anxiety, Developmental Delays",
   "roomTypes": [
@@ -15,167 +13,134 @@
   "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/c406777e-a38f-4e5d-3ee8-aea5fae02500/public",
   "photos": [
     {
-      "wpPath": "wp-content/uploads/2024/08/2017_jacob_family_photo_2-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/c3bd154c-a7cb-447c-4085-d9e18c3a9800/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/08/2017_jacob_family_photo_3-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/265a95e1-71f4-4cce-c161-c565e6cb6200/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/08/2017_jacob_family_photo_4-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/d2616e30-6ebf-442c-1251-8463ff71f000/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/08/2017_jacob_family_photo_1-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/f3774f90-4bca-4812-8479-ee473f958f00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/08/2017_jacob_family_photo_6-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/5677a851-1f4d-457d-6139-260208db5c00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/08/2017_jacob_family_photo_5-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/18d73ef2-7664-4af6-f73f-39ed65472d00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/08/2017_jacob_family_photo_8-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/38029454-b983-415b-ed98-924d06261300/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/08/2017_jacob_reveal_photo_1-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/3acad85d-f120-46b4-254d-0e23f9961a00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/08/2017_jacob_reveal_photo_9-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/00c7b20a-9926-4f17-a4a3-12d1f7895b00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/08/2017_jacob_reveal_photo_11-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/337a52f6-9f9c-40f6-3c39-2e3f63635800/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/08/2017_jacob_reveal_photo_10-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/b4efe9e0-3688-4b70-c46a-acf0e2237600/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/08/2017_jacob_reveal_photo_8-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/2087786c-e1d4-4c24-1fc6-ee2220c1c400/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/08/2017_jacob_reveal_photo_6-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/19cf4280-8eb7-405a-8927-6f654d54b700/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/08/2017_jacob_reveal_photo_7-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/a5beae87-be9a-410f-8cb8-c006a96c2a00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/08/2017_jacob_reveal_photo_5-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/9cbe5016-5867-4aad-8060-8e6687739e00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/08/2017_jacob_reveal_photo_4-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/d89662e7-04af-4b33-4669-e3d9661ce700/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/08/2017_jacob_reveal_photo_3-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/2a2ef3d3-1dc3-479a-e662-d2d0a94b0800/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/08/2017_jacob_reveal_photo_2-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/21a6742d-65f7-4686-dac4-6dae6e29a500/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/08/2017_jacob_reveal_photo_27-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/93ce98c1-1ca2-4b88-a726-484daecbe500/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/08/2017_jacob_reveal_photo_25-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/c85c5346-34c7-44d1-d1a1-45b495d80d00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/08/2017_jacob_reveal_photo_24-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/b6e94e25-1b68-4f6e-404e-00eaaeab6400/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/08/2017_jacob_reveal_photo_23-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/a62462b0-20e9-4433-fecf-f27650057700/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/08/2017_jacob_reveal_photo_22-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/cef1cfbc-9cfa-4fd9-746d-ef1c0ca9bd00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/08/2017_jacob_reveal_photo_21-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/dfb7eeb9-e2de-42fb-3f1e-40c37e8c5e00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/08/2017_jacob_reveal_photo_20-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/eddd9217-64a5-4532-6321-75d229ec6000/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/08/2017_jacob_reveal_photo_19-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/1b9e9cd3-df9d-4fe6-5c1b-89131bde8300/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/08/2017_jacob_reveal_photo_18-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/9656a67a-fae2-4366-a59a-bcf68afed700/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/08/2017_jacob_reveal_photo_15-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/76115e93-db78-4420-88b3-9fd0b29b8f00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/08/2017_jacob_reveal_photo_16-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/0a3c130e-35c7-43f0-1421-14b7322af500/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/08/2017_jacob_reveal_photo_13-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/5814cb70-c4bd-4dd7-dc4e-c3a83b917800/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/08/2017_jacob_reveal_photo_14-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/385cbd6b-bd2b-41f0-9f91-2d86fa738e00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/08/2017_jacob_reveal_photo_12-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/10959416-0bfc-4b81-fc43-cb2966f3a700/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/08/2017_jacob_reveal_photo_17-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/a512004a-ecb8-4294-ff26-d47e3be47000/public",
       "alt": ""
     }
@@ -185,47 +150,26 @@
   "photographer": "Niki Murphy Photography",
   "partnerLogos": [
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_niki_murphy_photography.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/niki-murphy-photography/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_mohawk.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/9b604dfa-6877-4b76-e52c-1da806521b00/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/logo_a_color_affair.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/a-color-affair/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_dinah_sutton_photography.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/0844fe05-9dba-4777-5aa5-98c12c5ae400/public"
     },
     {
-      "wpPath": "wp-content/uploads/2024/03/logo_reliable_heating_and_air.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/reliable-heating-and-air/public"
     },
     {
-      "wpPath": "wp-content/uploads/2024/08/logo_lucy_the_lap_dog.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/lucy-the-lap-dog/public"
     }
   ],
   "shortDescription": null,
   "metaDescription": null,
   "altTexts": null,
-  "jsonLd": null,
-  "_migration": {
-    "scrapedAt": "2026-03-06T13:32:09.402Z",
-    "source": "wordpress-xml-export",
-    "wpPostDate": "2017-08-21 22:56:41",
-    "wpCategories": [
-      "Meet the Kids",
-      "Mohawk"
-    ],
-    "wpTags": [
-      "2017",
-      "Therapy Room"
-    ],
-    "thumbnailId": 8498,
-    "needsReview": []
-  }
+  "jsonLd": null
 }

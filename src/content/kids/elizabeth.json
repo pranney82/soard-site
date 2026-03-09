@@ -1,8 +1,6 @@
 {
   "name": "Elizabeth",
   "slug": "elizabeth",
-  "wpSlug": "elizabeth",
-  "wpUrl": "https://sunshineonaranneyday.com/blog/2021/06/26/elizabeth/",
   "age": 17,
   "diagnosis": "Tranverse Myelitis",
   "roomTypes": [
@@ -17,232 +15,186 @@
   "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/8bf4ac37-d5a0-43d0-5e7f-93df38508b00/public",
   "photos": [
     {
-      "wpPath": "wp-content/uploads/2021/07/elizabeth_2019_family_00001.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/ec3bed12-cefe-444e-f61e-90ab234efc00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/elizabeth_2019_family_00002.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/a9fb7109-9ec8-4a6b-c4f0-8f7079d34300/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/elizabeth_2019_family_00003.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/15fb095a-f833-4cd5-5bf7-8fb4d61f5f00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/elizabeth_2019_family_00004.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/7180c0b8-d41e-46e7-c516-ef4de28f6c00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/elizabeth_2019_family_00005.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/a316fd16-3337-44d8-1c56-ae0ca099ca00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/elizabeth_2019_family_00006.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/c4d934b5-051b-457d-a262-46b362bd5400/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/elizabeth_2019_reveal_00029.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/cb4c55d8-5b4c-463c-afc7-c1ae4e7ac600/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/elizabeth_2019_reveal_00031.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/68552319-f907-4def-4fc1-ba237c5cdb00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/elizabeth_2019_reveal_00001.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/b08b1a79-bf80-40cb-4eb9-6dc9c947fd00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/elizabeth_2019_reveal_00002.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/405e560b-bfb2-423a-fa19-d89247900f00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/elizabeth_2019_reveal_00003.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/5d31fc45-68c4-407a-b06e-76ed0dd73200/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/elizabeth_2019_reveal_00004.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/9e2d6a4a-78de-462e-3dd0-52d34d6d5100/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/elizabeth_2019_reveal_00006.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/280cc481-eb69-41e0-a128-0174c04b4300/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/elizabeth_2019_reveal_00008.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/8c1abd94-40a3-46df-7d1a-90bdd1cc9500/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/elizabeth_2019_reveal_00009.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/bada1457-c6d6-4205-7c7d-5ebe0ae02000/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/elizabeth_2019_reveal_00010.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/2b99342b-6232-4e38-5d35-28d813946e00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/elizabeth_2019_reveal_00011.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/28a700c8-f880-4902-a2eb-f9db5b004a00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/elizabeth_2019_reveal_00012.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/4d34b86c-37e3-4083-eb55-c18d2dff7400/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/elizabeth_2019_reveal_00013.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/c7493b69-1163-4827-3152-2d4587003f00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/elizabeth_2019_reveal_00014.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/d1c3bb13-2e66-47eb-1c95-a6b5ddb9f400/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/elizabeth_2019_reveal_00015.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/5f424045-c823-4008-611b-61d7207cc500/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/elizabeth_2019_reveal_00016.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/b7b8c0b7-7f77-4f42-a185-56dc11525700/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/elizabeth_2019_reveal_00017.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/381953c8-b871-4707-d393-b9daa36f2900/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/elizabeth_2019_reveal_00018.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/34ba80f8-f48b-448c-6c82-aae362dfb600/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/elizabeth_2019_reveal_00019.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/ca18cc60-7beb-4ad9-6962-ffc8d7c14700/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/elizabeth_2019_reveal_00020.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/0a8e6a2c-2482-4d62-0384-e4ad36f5cd00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/elizabeth_2019_reveal_00021.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/4ec5187a-b027-4018-6fd8-9e7c57929b00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/elizabeth_2019_reveal_00022.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/5dc1ce23-87bf-4758-26f4-a88f60a07e00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/elizabeth_2019_reveal_00023.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/75506609-babb-441f-ee92-4f37b5bc0900/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/elizabeth_2019_reveal_00024.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/3d63214b-aa12-4d8d-92f9-bfd9130a2200/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/elizabeth_2019_reveal_00025.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/18a0a266-cc8d-48aa-e33d-959dc1ac3100/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/elizabeth_2019_reveal_00026.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/91d92f96-46a9-47c7-19de-a850007f8300/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/elizabeth_2019_reveal_00027.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/cf9e3639-215a-49db-af58-471cb910a100/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/elizabeth_2019_reveal_00028.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/4a25e7c9-0d73-4443-8b31-be22f9f3fb00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/elizabeth_2019_reveal_00030.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/a35e8c65-2c67-4a3d-3741-a3b3c69c1c00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/elizabeth_2019_reveal_00032.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/2655e020-9e52-48ca-59e0-97a992b09800/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/elizabeth_2019_reveal_00033.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/787c5aa2-dce3-447b-f217-e097f395cb00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/elizabeth_2019_reveal_00034.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/66bd5da9-7f62-4f4b-f06b-53ddb2215b00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/elizabeth_2019_reveal_00035.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/d03cbf7a-f52d-4d5f-2017-7728fd43ea00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/elizabeth_2019_reveal_00036.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/f681de0b-271e-4e4c-6ee3-3b7f1fb9de00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/elizabeth_2019_reveal_00037.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/1d7d87df-3221-4e57-c2df-30bccd19f400/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/elizabeth_2019_reveal_00038.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/bcd31840-a03e-4a3d-86aa-5c20fb9fd200/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/elizabeth_2019_reveal_00039.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/a0638db5-90a2-4685-e035-14c430d69f00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/elizabeth_2019_reveal_00040.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/19f29845-9f70-4ca8-6485-04dce328e800/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/elizabeth_2019_reveal_00041.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/66caf7d3-18cd-421d-e006-e94dd1005600/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/elizabeth_2019_reveal_00042.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/e59ab08e-e915-400c-898d-46111282ee00/public",
       "alt": ""
     }
@@ -252,120 +204,80 @@
   "photographer": "Nicole Photography",
   "partnerLogos": [
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_luxe.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/luxe/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/logo_keuco.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/keuco/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_kids_r_kids.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/kids-r-kids/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_jackson_healthcare.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/jackson-healthcare/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_real_floors_commercial.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/b30e9f15-c3f4-412f-cdbd-0bd67b8b2400/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_mohawk.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/9b604dfa-6877-4b76-e52c-1da806521b00/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_interceramic.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/interceramic/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_pmc_building_materials.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/pmc-building-materials/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_echols.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/echols/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_nicole_photography.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/nicole-photography/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_nothing_bundt_cakes.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/nothing-bundt-cakes/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_pulleyassociates.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/pulleyassociates/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_california_closets.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/california-closets/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_top_knobs.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/top-knobs/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/logo_artisans_of_atlanta.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/artisans-of-atlanta/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/logo_universal_explore_home.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/universal-explore-home/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/logo_stearns__foster.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/stearns-foster/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/logo_aj_madison.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/aj-madison/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/logo_hammerton.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/hammerton/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/logo_samsung.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/samsung/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/llogo_accurate_lock__hardware.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/llogo-accurate-lock-hardware/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/logo_3shm.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/3shm/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/logo_blanco.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/blanco/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/logo_westbrook_interiors.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/westbrook-interiors/public"
     }
   ],
   "shortDescription": null,
   "metaDescription": null,
   "altTexts": null,
-  "jsonLd": null,
-  "_migration": {
-    "scrapedAt": "2026-03-06T13:32:09.457Z",
-    "source": "wordpress-xml-export",
-    "wpPostDate": "2021-06-26 14:17:53",
-    "wpCategories": [
-      "Meet the Kids"
-    ],
-    "wpTags": [
-      "2019",
-      "Accessible Bathroom",
-      "Dream Bedroom",
-      "Therapy Room"
-    ],
-    "thumbnailId": 1181,
-    "needsReview": []
-  }
+  "jsonLd": null
 }

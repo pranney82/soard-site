@@ -1,8 +1,6 @@
 {
   "name": "Hannah",
   "slug": "hannah",
-  "wpSlug": "hannah",
-  "wpUrl": "https://sunshineonaranneyday.com/blog/2024/06/27/hannah/",
   "age": 17,
   "diagnosis": "Cerebral palsy, epilepsy, KCNQ2, Lennox-Gastaut Syndrome, non-verbal",
   "roomTypes": [
@@ -15,107 +13,86 @@
   "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/c27de9a1-23ff-4661-84a3-feb217d4ba00/public",
   "photos": [
     {
-      "wpPath": "wp-content/uploads/2024/10/hannah_2024_family_0011-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/36a04384-2336-4364-af8a-4176f38a4b00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/10/hannah_2024_family_0014-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/01a96024-1fb3-4c29-edb0-eac5eddcc900/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/10/hannah_2024_family_0005-1-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/3a7dfeaf-ac5e-4b14-30a6-daacd1177500/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/10/hannah_2024_family_0008-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/b2e2adc0-6b64-4249-4c4e-fea547498600/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/10/hannah_2024_family_0012-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/0b402bab-1bc7-4857-ae78-eaccb82d6900/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2025/01/Hannah-Reveal-6-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/3b983b88-1368-4792-9801-d4e802373e00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2025/01/Hannah-Reveal-8-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/4c6590e3-7097-4b13-b70c-ae1b96d7a600/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2025/01/Hannah-Reveal-3-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/c4f74eeb-08cb-4107-43c0-6b7c0a8e5900/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2025/01/Hannah-Reveal-4-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/e93c73dd-ac3c-4226-7f33-72bd29faf900/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2025/01/Hannah-Reveal-9-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/bf966031-2d37-4644-56e0-284aa3cfc000/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2025/01/Hannah-Reveal-10-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/a8cea337-30ed-4d09-2c6c-e7595cf40a00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2025/01/Hannah-Reveal-13-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/cb3984e8-b95a-4638-51ff-8605dc62c100/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2025/01/Hannah-Reveal-11-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/607a5517-ea4a-4d93-9a85-7cbd583cca00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2025/01/Hannah-Reveal-16-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/3e92d7ac-a3ba-4a8e-bbb3-5356d399ea00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2025/01/Hannah-Reveal-19-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/b21fcd54-ad22-4870-ede4-bcdf35c7ac00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2025/01/Hannah-Reveal-20-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/b93cb96f-a2a1-4ea7-a796-5f12a537e400/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2025/01/Hannah-Reveal-25-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/4ae3c639-b65e-476e-5b00-90dfe7719300/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2025/01/Hannah-Reveal-26-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/b074666d-83da-4941-a383-bfe319ccaf00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2025/01/Hannah-Reveal-33-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/e9ce1df5-91eb-48d2-0723-1a4523fe9200/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2025/01/Hannah-Reveal-2-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/aa94487d-b91a-4ab1-394c-e35d237ad400/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2023/02/Sunshine_on_a_Ranney_Fairway_Golf_Club_for_light_backgrounds.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/oakley/photo-32/public",
       "alt": ""
     }
@@ -125,107 +102,68 @@
   "photographer": "Niki Murphy",
   "partnerLogos": [
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_gas_south.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/gas-south/public"
     },
     {
-      "wpPath": "wp-content/uploads/2024/03/logo_kids_r_kids.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/kids-r-kids/public"
     },
     {
-      "wpPath": "wp-content/uploads/2025/01/logo_Kianna-Patrick.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/kianna-patrick/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_niki_murphy_photography.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/niki-murphy-photography/public"
     },
     {
-      "wpPath": "wp-content/uploads/2024/07/logo_construction_partner_real_floors_commercial.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/real-floors-commercial/public"
     },
     {
-      "wpPath": "wp-content/uploads/2024/09/logo_construction_partner_cambria.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/cambria/public"
     },
     {
-      "wpPath": "wp-content/uploads/2024/09/logo_construction_partner_construction_resources.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/construction-resources/public"
     },
     {
-      "wpPath": "wp-content/uploads/2022/07/logo_builders_cabinet_company.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/builders-cabinet-company/public"
     },
     {
-      "wpPath": "wp-content/uploads/2024/05/logo_sherwin_williams-2.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/sherwin-williams/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_echols.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/echols/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_top_knobs.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/top-knobs/public"
     },
     {
-      "wpPath": "wp-content/uploads/2024/05/logo_msi.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/5e3ef0ac-fa90-4fb7-4201-3c0de8117d00/public"
     },
     {
-      "wpPath": "wp-content/uploads/2022/12/logo_traditions_in_tile.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/traditions-in-tile/public"
     },
     {
-      "wpPath": "wp-content/uploads/2022/11/logo_schluter_systems.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/schluter-systems/public"
     },
     {
-      "wpPath": "wp-content/uploads/2025/01/logo_Georgia_Interior_Painting.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/georgia-interior-painting/public"
     },
     {
-      "wpPath": "wp-content/uploads/2024/08/logo_construction_partner_tko_plumbing.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/tko-plumbing/public"
     },
     {
-      "wpPath": "wp-content/uploads/2024/08/logo_construction_partner_servicewise_electric.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/servicewise-electric/public"
     },
     {
-      "wpPath": "wp-content/uploads/2024/09/logo_construction_partner_bin_there_dump_that.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/bin-there-dump-that/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_nothing_bundt_cakes.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/nothing-bundt-cakes/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_iframe_media.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/iframe-media/public"
     }
   ],
   "shortDescription": null,
   "metaDescription": null,
   "altTexts": null,
-  "jsonLd": null,
-  "_migration": {
-    "scrapedAt": "2026-03-06T13:32:09.498Z",
-    "source": "wordpress-xml-export",
-    "wpPostDate": "2024-06-27 16:00:52",
-    "wpCategories": [
-      "Bin There Dump That Atlanta",
-      "Cambria",
-      "Construction Resources",
-      "Meet the Kids",
-      "ServiceWise Electric",
-      "TKO Plumbing Services"
-    ],
-    "wpTags": [
-      "2024",
-      "Accessible Bathroom"
-    ],
-    "thumbnailId": 8922,
-    "needsReview": []
-  }
+  "jsonLd": null
 }

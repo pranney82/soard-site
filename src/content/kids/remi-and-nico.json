@@ -1,8 +1,6 @@
 {
   "name": "Remi & Nico",
   "slug": "remi-and-nico",
-  "wpSlug": "remi-nico",
-  "wpUrl": "https://sunshineonaranneyday.com/blog/2026/03/05/remi-nico/",
   "age": 14,
   "diagnosis": "Rare genetic disease",
   "roomTypes": [
@@ -15,7 +13,6 @@
   "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/d1091dab-51d7-42fa-1192-756021597000/public",
   "photos": [
     {
-      "wpPath": "wp-content/uploads/2025/10/ChatGPT-Image-Apr-23-2025-at-10_29_09-AM-7ab43c21.webp",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jackson/photo-01/public",
       "alt": ""
     }
@@ -25,40 +22,20 @@
   "photographer": null,
   "partnerLogos": [
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_donors.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/donors/public"
     },
     {
-      "wpPath": "wp-content/uploads/2024/03/logo_kids_r_kids.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/kids-r-kids/public"
     },
     {
-      "wpPath": "wp-content/uploads/2024/07/logo_construction_partner_real_floors_commercial.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/real-floors-commercial/public"
     },
     {
-      "wpPath": "wp-content/uploads/2025/03/WYP-Logo-e1742501745449.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/ad322505-dd8a-4806-4831-1dbca9b3c500/public"
     }
   ],
   "shortDescription": null,
   "metaDescription": null,
   "altTexts": null,
-  "jsonLd": null,
-  "_migration": {
-    "scrapedAt": "2026-03-06T13:32:09.507Z",
-    "source": "wordpress-xml-export",
-    "wpPostDate": "2026-03-05 16:42:19",
-    "wpCategories": [
-      "Meet the Kids"
-    ],
-    "wpTags": [
-      "2026",
-      "Accessible Bathroom",
-      "background-center-center",
-      "In Progress"
-    ],
-    "thumbnailId": 10549,
-    "needsReview": []
-  }
+  "jsonLd": null
 }

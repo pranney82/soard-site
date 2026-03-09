@@ -1,8 +1,6 @@
 {
   "name": "Ally",
   "slug": "ally",
-  "wpSlug": "ally",
-  "wpUrl": "https://sunshineonaranneyday.com/blog/2018/03/20/ally/",
   "age": 4,
   "diagnosis": "B-cell ALL Leukemia",
   "roomTypes": [
@@ -15,112 +13,90 @@
   "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/1767682f-9806-49a0-bd90-6f3d4e81cd00/public",
   "photos": [
     {
-      "wpPath": "wp-content/uploads/2024/03/2018_ally_family_photo_1.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/ecf4e9aa-2c00-4958-2ac3-7e080ca51d00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/03/2018_ally_family_photo_2.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/b8911a9e-302d-40ad-7ead-5cc7e4bde700/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/03/2018_ally_family_photo_3.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/58d440b8-cc2d-4a8b-6465-f4590cdbfb00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/03/2018_ally_reveal_photo1.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/95a6d68b-8a0c-4207-9012-6b6ea45a1000/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/03/2018_ally_reveal_photo8.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/bf20ce80-8ab8-4bc6-1c38-001426af7200/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/03/2018_ally_reveal_photo10.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/737489e6-a1b8-4663-529c-66fd50f00600/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/03/2018_ally_reveal_photo9.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/9beae430-6aa4-477f-1fdf-ee35c9ea0400/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/03/2018_ally_reveal_photo6.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/332e546d-b063-4718-ac3d-e5f33c7e2200/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/03/2018_ally_reveal_photo7.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/006fb72a-730a-40c7-7350-6d75e3d14400/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/03/2018_ally_reveal_photo5.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/fa7ce784-c521-43eb-1d76-194c12e28b00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/03/2018_ally_reveal_photo12.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/3eec9465-27a7-4d8b-6901-1c5487e37a00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/03/2018_ally_reveal_photo11.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/c1253595-5734-40d4-55e2-d816cadc2c00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/03/2018_ally_reveal_photo15.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/2f96a9ee-5d88-49af-6835-9fe7575fde00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/03/2018_ally_reveal_photo16.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/c3acc10d-2ad8-4d8c-d1f7-7f9e239f4500/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/03/2018_ally_reveal_photo20.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/d4d8d39c-062f-4f52-bc96-1bcb0aaf3200/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/03/2018_ally_reveal_photo21.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/affe4b5f-fe81-4476-98e5-21d65ec9f800/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/03/2018_ally_reveal_photo17.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/5142d8a8-c299-4291-ab58-b87192a8fa00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/03/2018_ally-reveal_photo22.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/87999b1c-2846-4631-5b3c-f9a5fc3f0e00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/03/2018_ally_reveal_photo18.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/03b1bea0-7cbf-4120-274c-16fae874fa00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/03/2018_ally_reveal_photo19.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/119a5eab-f73d-43a5-10f9-ae3959b8b900/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/03/2018_ally_reveal_photo2.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/c9719bbf-8541-4de3-e1c4-5ae8307d5b00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2024/03/2018_ally_reveal_photo3.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/e830a0a4-c594-4ab8-c4e8-a2b955ab4300/public",
       "alt": ""
     }
@@ -130,62 +106,38 @@
   "photographer": "Niki Murphy Photography",
   "partnerLogos": [
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_rooms_to_go.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/rooms-to-go/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_mohawk.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/9b604dfa-6877-4b76-e52c-1da806521b00/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_niki_murphy_photography.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/niki-murphy-photography/public"
     },
     {
-      "wpPath": "wp-content/uploads/2024/03/logo_reliable_heating_and_air.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/reliable-heating-and-air/public"
     },
     {
-      "wpPath": "wp-content/uploads/2024/03/logo_stray_dog_designs.gif",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/stray-dog-designs/public"
     },
     {
-      "wpPath": "wp-content/uploads/2024/03/logo_bridals_by_lori.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/bridals-by-lori/public"
     },
     {
-      "wpPath": "wp-content/uploads/2024/03/logo_say_yes_to_the_dress.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/say-yes-to-the-dress/public"
     },
     {
-      "wpPath": "wp-content/uploads/2024/03/logo_smiths_floor_coverings.gif",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/smiths-floor-coverings/public"
     },
     {
-      "wpPath": "wp-content/uploads/2024/03/logo_matilda_jane_clothing.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/matilda-jane-clothing/public"
     },
     {
-      "wpPath": "wp-content/uploads/2024/03/logo_double_cakes.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/double-cakes/public"
     }
   ],
   "shortDescription": null,
   "metaDescription": null,
   "altTexts": null,
-  "jsonLd": null,
-  "_migration": {
-    "scrapedAt": "2026-03-06T13:32:09.405Z",
-    "source": "wordpress-xml-export",
-    "wpPostDate": "2018-03-20 19:46:54",
-    "wpCategories": [
-      "Meet the Kids"
-    ],
-    "wpTags": [
-      "2018",
-      "Dream Bedroom"
-    ],
-    "thumbnailId": 6551,
-    "needsReview": []
-  }
+  "jsonLd": null
 }

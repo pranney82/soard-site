@@ -72,7 +72,8 @@
 }
 
 html {
-  scroll-behavior: smooth;
+  /* scroll-behavior: smooth causes jank with sticky elements and on iOS —
+     use targeted JS scrollIntoView({ behavior: 'smooth' }) instead */
   -webkit-text-size-adjust: 100%;
   -webkit-tap-highlight-color: transparent;
   text-rendering: optimizeLegibility;
@@ -87,6 +88,8 @@ body {
   background-color: var(--c-cream);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: none;
 }
 
 img, picture, video, canvas, svg {

@@ -1,8 +1,6 @@
 {
   "name": "Landon",
   "slug": "landon",
-  "wpSlug": "landon",
-  "wpUrl": "https://sunshineonaranneyday.com/blog/2021/06/26/landon/",
   "age": 9,
   "diagnosis": "Heart Transplant",
   "roomTypes": [
@@ -15,97 +13,78 @@
   "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/b23f46b7-206f-4c96-d9e6-8815bfb2b800/public",
   "photos": [
     {
-      "wpPath": "wp-content/uploads/2021/07/landon_2019_family_00005-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/2e01c329-b678-42f3-9013-d46343407e00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/landon_2019_family_00002-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/545c30c5-3469-4944-a4ee-0d565440f100/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/landon_2019_family_00003-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/65d41dd3-5d93-4c48-1640-967449b51200/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/landon_2019_family_00004-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/0e8ae323-ad36-41e3-7a32-adb0b0e1eb00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/landon_2019_family_00001-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/f7207f60-e8e8-430a-96ed-4e06a7960100/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/landon_2019_reveal_00007-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/45c3b7c0-a934-46c1-0795-3e54bbc74d00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/landon_2019_reveal_00004-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/0bf5b0fd-87df-4303-2721-9047087ae000/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/landon_2019_reveal_00013-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/1eb2ed07-c91f-4bac-fdf7-2c383daa0d00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/landon_2019_reveal_00001-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/67c59064-1288-4ba8-4b94-b10ab7accd00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/landon_2019_reveal_00002-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/266cb82e-8733-4221-8347-092c90d3c300/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/landon_2019_reveal_00003-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/d0a7f6ff-2008-44aa-fe98-8734851cf900/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/landon_2019_reveal_00005-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/185783b6-8ea6-4b90-10b7-c9d84e385a00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/landon_2019_reveal_00006-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/6fb4d990-1a46-4d61-5e88-a96b4521a400/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/landon_2019_reveal_00008-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/fb423bd8-fd94-47b9-a287-822a83ef2600/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/landon_2019_reveal_00009-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/7b0c4a08-664f-4d8f-51ee-4285cec52900/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/landon_2019_reveal_00010-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/04391f00-4297-4745-d323-2cb280ab7600/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/landon_2019_reveal_00011-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/3899be3b-535c-4123-334e-bcbb1af14000/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/landon_2019_reveal_00012-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/9df81358-bb46-4de1-6192-e4ebec725200/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/landon_2019_reveal_00014-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/58ce8e6d-747e-4aaf-1717-07fed02a7400/public",
       "alt": ""
     }
@@ -115,58 +94,35 @@
   "photographer": "Niki Murphy Photography",
   "partnerLogos": [
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_make_a_wish_georgia.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/make-a-wish-georgia/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_kids_r_kids.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/kids-r-kids/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_nothing_bundt_cakes.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/nothing-bundt-cakes/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_reliable_heatingair.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/reliable-heatingair/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_niki_murphy_photography.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/niki-murphy-photography/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_interceramic.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/interceramic/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_jackson_healthcare.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/jackson-healthcare/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_giovannis_tile_design.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/giovannis-tile-design/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/logo_interior_architects.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/interior-architects/public"
     }
   ],
   "shortDescription": null,
   "metaDescription": null,
   "altTexts": null,
-  "jsonLd": null,
-  "_migration": {
-    "scrapedAt": "2026-03-06T13:32:09.455Z",
-    "source": "wordpress-xml-export",
-    "wpPostDate": "2021-06-26 14:09:42",
-    "wpCategories": [
-      "Meet the Kids"
-    ],
-    "wpTags": [
-      "2019",
-      "Accessible Bathroom"
-    ],
-    "thumbnailId": 1205,
-    "needsReview": []
-  }
+  "jsonLd": null
 }

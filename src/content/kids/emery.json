@@ -1,8 +1,6 @@
 {
   "name": "Emery",
   "slug": "emery",
-  "wpSlug": "emery",
-  "wpUrl": "https://sunshineonaranneyday.com/blog/2024/03/12/emery/",
   "age": 6,
   "diagnosis": "Rubinstein-Taybi Syndrome, Agenesis of the Corpus Callosum, Chiari Type 1, Severe Photophobia & Tethered Spinal Cord",
   "roomTypes": [
@@ -15,152 +13,122 @@
   "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/81e54f6b-1999-47f2-2f52-4f62d0200200/public",
   "photos": [
     {
-      "wpPath": "wp-content/uploads/2023/12/Emery_2024_family_0005-scaled.jpeg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/e967cb1c-4e52-4016-8071-c1a846ffb700/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2023/12/Emery_2024_family_0003-scaled.jpeg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/10aead64-77f8-4868-c04a-09bfb0cadf00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2023/12/Emery_2024_family_0012-scaled.jpeg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/9ee2187e-1e0f-4a54-d939-4613ff9cdc00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2023/12/Emery_2024_family_0016-scaled.jpeg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/00edb66d-24cf-4029-fb3c-24981f357500/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2023/12/Emery_2024_family_0008-scaled.jpeg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/d25546ab-6ab2-42b1-a037-f54745b25600/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2023/12/Emery_2024_family_0006-scaled.jpeg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/7c1adc13-a991-459e-e3f4-eb726a990700/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2023/12/Emery_2024_family_0002-scaled.jpeg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/355921c8-e89c-4145-87eb-ce473e41cc00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2025/02/5W9A0048-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/e0fe9d20-124c-4cb8-1f79-5c6b08275800/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2025/02/5W9A0069-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/0d291ee1-f40c-4c72-e98f-e0cddc354a00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2025/02/5W9A0079-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/2618f24d-aa1c-4ed6-006b-f2a8e7c86f00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2025/02/5W9A0088-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/4ac462b2-b577-415b-0f94-c046a3dbe600/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2025/02/5W9A0217-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/80fb980d-4c2e-43f1-cfad-32e57e416e00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2025/02/5W9A0235-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/c1737e1f-9e22-4253-3cee-dfdda2a48700/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2025/02/5W9A0316-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/2a8869d5-98db-4e81-4595-9e5453dc9600/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2025/02/5W9A0395-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/2fc2aefe-0b95-4d24-6eb9-416a13abfe00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2025/02/5W9A0415-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/6b7b1fc2-da7b-48ea-040d-3cb659e60700/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2025/02/5W9A0487-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/155120a0-8980-429e-0575-34fef5a2a100/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2025/02/5W9A0561-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/11f33b5d-5215-4370-0395-51e323f12c00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2025/01/DECKSOUTH.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/96cb2481-3d7c-487e-46c8-4c4d14e42f00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2025/01/head-logo-retina.webp",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/head-logo-retina/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2025/03/IMG_BF6903EA538C-1.jpeg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/d2939136-e624-4b8a-a02c-23399ec07600/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2025/01/432873745_10168369204140534_7613747515691370203_n.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/8dc408d0-6e42-4d16-470b-c42a4497fa00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2025/01/fayettesepticlogo-225w.png.webp",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/fayettesepticlogo-225w.png/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2025/01/519@2x.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/8fd9e240-c0ca-454a-3e08-c02b9d26c700/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2025/01/logo.webp",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/37ece3e1-6a08-4595-2d9e-b7339a1e4000/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2025/01/aaeaaqaaaaaaaapuaaaajddjzwvhmjliltm2ngutnda0ny1imjywltdhmdyxyzvizdnmnw.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/2a5fd2c1-bd3b-473d-b6f3-2b8e14b7d400/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2025/01/MA-logo-hori-green-blk-600x147-1.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/ma-logo-hori-green-blk/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2025/02/Screenshot-2025-02-05-at-15.14.47.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/1033d724-e695-46ba-ce68-baf6dae92c00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2025/02/Screenshot-2025-02-05-at-15.23.31.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/f4cf5743-ed96-400f-084a-a821d1fbcd00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2025/02/Screenshot-2025-02-05-at-15.18.28.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/b5185db9-c8d9-4887-feeb-c094ba510b00/public",
       "alt": ""
     }
@@ -170,79 +138,50 @@
   "photographer": "Donna Hagin",
   "partnerLogos": [
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_gas_south.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/gas-south/public"
     },
     {
-      "wpPath": "wp-content/uploads/2025/01/ORU-Logo.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/9409e26f-9b80-4655-f47c-c20ffe4db300/public"
     },
     {
-      "wpPath": "wp-content/uploads/2025/03/Louver-Boss-Logo-940-x-940-px.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/ad0a096c-318f-4d0f-5c14-2b9598fdb200/public"
     },
     {
-      "wpPath": "wp-content/uploads/2025/01/MHRLogoNew.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/ee1a3c7e-0f90-41af-7b28-1953193d7c00/public"
     },
     {
-      "wpPath": "wp-content/uploads/2025/01/head-logo-retina.webp",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/head-logo-retina/public"
     },
     {
-      "wpPath": "wp-content/uploads/2025/01/fayettesepticlogo-225w.png.webp",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/fayettesepticlogo-225w.png/public"
     },
     {
-      "wpPath": "wp-content/uploads/2025/01/logo.webp",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/37ece3e1-6a08-4595-2d9e-b7339a1e4000/public"
     },
     {
-      "wpPath": "wp-content/uploads/2025/01/MA-logo-hori-green-blk-600x147-1.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/ma-logo-hori-green-blk/public"
     },
     {
-      "wpPath": "wp-content/uploads/2023/12/logo_copper_sky.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/copper-sky/public"
     },
     {
-      "wpPath": "wp-content/uploads/2023/01/logo_maddyem_photography.jpeg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/maddyem-photography/public"
     },
     {
-      "wpPath": "wp-content/uploads/2022/12/logo_servicewise_electric.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/ee74b1f3-1851-4717-fe7b-55c222cae300/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_comfort_research.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/bf841d37-17ff-46b2-51fb-8b82220e0300/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/logo_bin_there_dump_that.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/ac9afc83-55f9-424e-f6c2-ca3dbd8cb100/public"
     },
     {
-      "wpPath": "wp-content/uploads/2025/02/Chick-fil-A-Logo.wine_.svg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/9f1df64c-3304-4828-65e7-de19b13d2800/public"
     }
   ],
   "shortDescription": null,
   "metaDescription": null,
   "altTexts": null,
-  "jsonLd": null,
-  "_migration": {
-    "scrapedAt": "2026-03-06T13:32:09.495Z",
-    "source": "wordpress-xml-export",
-    "wpPostDate": "2024-03-12 15:57:54",
-    "wpCategories": [
-      "Bin There Dump That Atlanta",
-      "Meet the Kids"
-    ],
-    "wpTags": [
-      "2025",
-      "Therapy Room"
-    ],
-    "thumbnailId": 6440,
-    "needsReview": []
-  }
+  "jsonLd": null
 }

@@ -1,8 +1,6 @@
 {
   "name": "Alejandro",
   "slug": "alejandro",
-  "wpSlug": "alejandro",
-  "wpUrl": "https://sunshineonaranneyday.com/blog/2021/06/26/alejandro/",
   "age": 15,
   "diagnosis": "Duchenne Muscular Dystrophy",
   "roomTypes": [
@@ -16,82 +14,66 @@
   "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/61863121-f436-439b-7805-ed1b47136f00/public",
   "photos": [
     {
-      "wpPath": "wp-content/uploads/2021/07/alejandro_2020_family_00001.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/54034031-0faa-4e01-49c7-9e8cab5e1400/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/alejandro_2020_family_00002.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/9c0fc292-b67e-4867-dabf-204382a85f00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/alejandro_2020_family_00003.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/832e903f-f30b-4786-6384-7b4e641b0300/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/alejandro_2020_family_00004.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/d33dde46-c776-42f1-897a-d0d3c7d39d00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/alejandro_2020_family_00005.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/5c64d769-3ebd-4a41-c259-238f5e171d00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/alejandro_2020_family_00006.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/96871a4e-1fc3-4a12-1044-209e17779000/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/alejandro_2020_family_00007.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/6fd94ad2-7ab7-490d-e1eb-d7875a0b5500/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/alejandro_2020_reveal_00008-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/a1d51249-a0b6-46e6-e16f-4b08fc5d5d00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/alejandro_2020_reveal_00009-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/01caf937-63dd-40df-311d-eead6fbe2700/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/alejandro_2020_reveal_00001-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/2c196c52-e484-4c31-1571-965a7bc3ee00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/alejandro_2020_reveal_00002-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/1bb18451-b167-4279-50ab-726864cd5100/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/alejandro_2020_reveal_00003-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/aa40f533-40d5-4347-d6ee-e263aa073900/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/alejandro_2020_reveal_00007-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/5c83cf9c-7294-4aac-f6fb-d974a7f9bc00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/alejandro_2020_reveal_00004-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/589fa680-dfd7-4c39-abcd-c4ce8ed1fa00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/alejandro_2020_reveal_00005-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/b65dcf1d-d84f-48f5-2b72-39d01293df00/public",
       "alt": ""
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/alejandro_2020_reveal_00006-scaled.jpg",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/69f18efb-266f-4b5e-47c4-ee7f237cad00/public",
       "alt": ""
     }
@@ -101,111 +83,74 @@
   "photographer": "Sweet Life Photography by Kim",
   "partnerLogos": [
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_gas_south.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/gas-south/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_kids_r_kids.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/kids-r-kids/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/logo_mainstreet_building_group.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/mainstreet-building-group/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/logo_orange__orange.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/orange-orange/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_interceramic.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/interceramic/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/10/logo_randall_brothers.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/356e1d21-cd6a-4384-281f-60502aab5200/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_reliable_heatingair.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/reliable-heatingair/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_us_cabinetworks.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/us-cabinetworks/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_american_signature_furniture.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/american-signature-furniture/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_mohawk.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/9b604dfa-6877-4b76-e52c-1da806521b00/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_real_floors_commercial.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/b30e9f15-c3f4-412f-cdbd-0bd67b8b2400/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_delta_faucet.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/delta-faucet/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_pulleyassociates.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/pulleyassociates/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/logo_finecuts_custom.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/finecuts-custom/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_cambria.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/74dde091-0863-4b13-ac63-49a409a43300/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_cr_construction.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/cr-construction/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_echols.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/echols/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_behr_paint.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/behr-paint/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/logo_devore__johnson.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/devore-johnson/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/06/logo_signature_hardware.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/signature-hardware/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/logo_sweet_life_photography.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/sweet-life-photography/public"
     },
     {
-      "wpPath": "wp-content/uploads/2021/07/logo_boheme_winter_photography.png",
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/boheme-winter-photography/public"
     }
   ],
   "shortDescription": null,
   "metaDescription": null,
   "altTexts": null,
-  "jsonLd": null,
-  "_migration": {
-    "scrapedAt": "2026-03-06T13:32:09.463Z",
-    "source": "wordpress-xml-export",
-    "wpPostDate": "2021-06-26 22:26:31",
-    "wpCategories": [
-      "Meet the Kids"
-    ],
-    "wpTags": [
-      "2020",
-      "Accessible Bathroom",
-      "Dream Bedroom"
-    ],
-    "thumbnailId": 1241,
-    "needsReview": []
-  }
+  "jsonLd": null
 }
