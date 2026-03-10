@@ -257,7 +257,10 @@ const jsonLd = {
 
       <section id="typography" class="brand-section">
         <h2>Typography</h2>
-        <p class="section-desc">Libre Baskerville for display and Outfit for body — editorial warmth with modern readability.</p>
+        <p class="section-desc">Our type system pairs editorial warmth with modern readability. The website uses Libre Baskerville and Outfit; print materials use the brand fonts listed below.</p>
+
+        <h3 class="logo-subhead" style="margin-top:0;">Web Fonts</h3>
+        <p class="section-desc">Optimized for screen rendering and performance.</p>
 
         <div class="type-block">
           <div class="type-block-header"><h3>Libre Baskerville</h3><span>Display / Headlines</span></div>
@@ -293,6 +296,59 @@ const jsonLd = {
         </div>
 
         <div class="two-col"><div class="info-card"><h4>Font Weight Usage</h4><ul><li><span class="bullet">●</span>Light (300) for hero text, large displays</li><li><span class="bullet">●</span>Regular (400) for body copy</li><li><span class="bullet">●</span>Semibold (600) for emphasis, buttons</li><li><span class="bullet">●</span>Bold (700) for headings, CTAs</li></ul></div><div class="info-card"><h4>Spacing &amp; Hierarchy</h4><ul><li><span class="bullet">●</span>Very tight leading (1.05–1.2) for headings</li><li><span class="bullet">●</span>Relaxed leading (1.625) for body text</li><li><span class="bullet">●</span>Tight tracking for headlines</li><li><span class="bullet">●</span>Wide tracking (0.05em) for uppercase labels</li></ul></div></div>
+
+        <!-- Print & Brand Fonts -->
+        <h3 class="logo-subhead" style="margin-top:48px;">Print & Brand Fonts</h3>
+        <p class="section-desc">Official brand typefaces for print materials, signage, and merchandise. These are licensed fonts — contact us for access.</p>
+
+        <div class="print-fonts-grid">
+          <div class="print-font-card">
+            <div class="print-font-header">
+              <h4>Rainer North 100</h4>
+              <span class="print-font-role">Primary Display</span>
+            </div>
+            <div class="print-font-specimen" style="font-family:'Georgia',serif;font-weight:400;">
+              <p class="print-font-alpha">ABCDEFGHIJKLMNOPQRSTUVWXYZ</p>
+              <p class="print-font-alpha-lower">abcdefghijklmnopqrstuvwxyz</p>
+              <p class="print-font-nums">1234567890</p>
+            </div>
+          </div>
+          <div class="print-font-card">
+            <div class="print-font-header">
+              <h4>Brandon Grotesque Bold</h4>
+              <span class="print-font-role">Headlines & Subheads</span>
+            </div>
+            <div class="print-font-specimen" style="font-family:'Outfit',sans-serif;font-weight:700;">
+              <p class="print-font-alpha">ABCDEFGHIJKLMNOPQRSTUVWXYZ</p>
+              <p class="print-font-alpha-lower">abcdefghijklmnopqrstuvwxyz</p>
+              <p class="print-font-nums">1234567890</p>
+            </div>
+          </div>
+          <div class="print-font-card">
+            <div class="print-font-header">
+              <h4>DIN Neuzeit Grotesk</h4>
+              <span class="print-font-role">Body Copy</span>
+            </div>
+            <div class="print-font-specimen" style="font-family:'Outfit',sans-serif;font-weight:400;">
+              <p class="print-font-alpha">ABCDEFGHIJKLMNOPQRSTUVWXYZ</p>
+              <p class="print-font-alpha-lower">abcdefghijklmnopqrstuvwxyz</p>
+              <p class="print-font-nums">1234567890</p>
+            </div>
+          </div>
+          <div class="print-font-card">
+            <div class="print-font-header">
+              <h4>Montserrat</h4>
+              <span class="print-font-role">Alternate / Digital Fallback</span>
+            </div>
+            <div class="print-font-specimen" style="font-family:'Montserrat','Outfit',sans-serif;font-weight:400;">
+              <p class="print-font-alpha">ABCDEFGHIJKLMNOPQRSTUVWXYZ</p>
+              <p class="print-font-alpha-lower">abcdefghijklmnopqrstuvwxyz</p>
+              <p class="print-font-nums">1234567890</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="info-box" style="margin-top:24px;"><p><strong>Web vs. Print:</strong> The website uses Libre Baskerville and Outfit as web-optimized equivalents. For print materials, signage, and merchandise, use the brand fonts listed above. Montserrat is freely available via Google Fonts and can be used as a digital fallback when brand fonts are unavailable.</p></div>
       </section>
 
       <section id="voice" class="brand-section">
@@ -499,6 +555,18 @@ const jsonLd = {
   .vis-preview{height:100px;display:flex;align-items:center;justify-content:center;padding:16px}
   .vis-card p{font-size:12px;color:rgba(55,58,54,.55);padding:10px 14px;border-top:1px solid rgba(55,58,54,.06)}
 
+  /* ═══ PRINT FONT CARDS ═══ */
+  .print-fonts-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:20px}
+  .print-font-card{background:#fff;border:1px solid rgba(55,58,54,.1);border-radius:16px;overflow:hidden;transition:box-shadow .2s ease}
+  .print-font-card:hover{box-shadow:0 8px 24px rgba(0,0,0,.05)}
+  .print-font-header{display:flex;justify-content:space-between;align-items:center;padding:16px 24px;border-bottom:1px solid rgba(55,58,54,.06);background:rgba(55,58,54,.02)}
+  .print-font-header h4{font-size:15px;font-weight:600;color:var(--c-dark);margin:0}
+  .print-font-role{font-size:12px;color:rgba(55,58,54,.45);font-weight:500}
+  .print-font-specimen{padding:20px 24px}
+  .print-font-alpha{font-size:15px;letter-spacing:.08em;color:var(--c-dark);margin-bottom:4px;line-height:1.6}
+  .print-font-alpha-lower{font-size:15px;letter-spacing:.04em;color:rgba(55,58,54,.6);margin-bottom:4px;line-height:1.6}
+  .print-font-nums{font-size:15px;letter-spacing:.06em;color:rgba(55,58,54,.4);line-height:1.6}
+
   /* ═══ SOCIAL SPECS TABLE ═══ */
   .specs-table-wrap{background:#fff;border:1px solid rgba(55,58,54,.1);border-radius:16px;overflow:hidden}
   .specs-table{width:100%;border-collapse:collapse;font-size:14px}
@@ -515,7 +583,7 @@ const jsonLd = {
   /* ═══ RESPONSIVE ═══ */
   @media(max-width:1024px){.brand-sidebar{display:none}.brand-layout{padding:32px 20px 48px}.logo-grid-3{grid-template-columns:repeat(3,1fr)}.brand-mobile-nav{display:block}.brand-section{scroll-margin-top:160px}}
   @media(max-width:900px){.logo-grid-3{grid-template-columns:repeat(2,1fr)}}
-  @media(max-width:768px){.brand-hero{padding:72px 20px 60px}.logo-grid{grid-template-columns:1fr}.logo-grid-3{grid-template-columns:1fr}.usage-grid{grid-template-columns:1fr}.dodont-grid{grid-template-columns:1fr}.color-grid{grid-template-columns:1fr 1fr}.two-col{grid-template-columns:1fr}.vis-grid{grid-template-columns:1fr 1fr}.section-header-row{flex-direction:column}.media-details-grid{grid-template-columns:1fr}.dl-btn{padding:10px 16px;font-size:13px;min-height:44px}.specs-table-wrap{overflow-x:auto}.specs-table{min-width:540px}}
+  @media(max-width:768px){.brand-hero{padding:72px 20px 60px}.logo-grid{grid-template-columns:1fr}.logo-grid-3{grid-template-columns:1fr}.usage-grid{grid-template-columns:1fr}.dodont-grid{grid-template-columns:1fr}.color-grid{grid-template-columns:1fr 1fr}.two-col{grid-template-columns:1fr}.vis-grid{grid-template-columns:1fr 1fr}.section-header-row{flex-direction:column}.media-details-grid{grid-template-columns:1fr}.dl-btn{padding:10px 16px;font-size:13px;min-height:44px}.specs-table-wrap{overflow-x:auto}.specs-table{min-width:540px}.print-fonts-grid{grid-template-columns:1fr}}
   @media(max-width:480px){.color-grid{grid-template-columns:1fr}.vis-grid{grid-template-columns:1fr}.hero-btn{width:100%;justify-content:center}}
 </style>
 
