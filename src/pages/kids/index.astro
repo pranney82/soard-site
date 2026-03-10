@@ -26,8 +26,8 @@ function cfUrl(src: string, opts: string) {
   const id = src.replace(`${CF_BASE}/`, '').replace('/public', '');
   return `${CF_BASE}/${id}/${opts}`;
 }
-function cfSrcset(src: string, widths: number[], format = 'auto') {
-  return widths.map(w => `${cfUrl(src, `w=${w},f=${format},q=80`)} ${w}w`).join(', ');
+function cfSrcset(src: string, widths: number[]) {
+  return widths.map(w => `${cfUrl(src, `w=${w},f=auto,q=80`)} ${w}w`).join(', ');
 }
 
 // ── SEO: CollectionPage + ItemList + FAQ schema ──────────
@@ -137,28 +137,18 @@ const gridKids = [...kids];
           data-status={featuredKid.data.status || 'completed'}
         >
           <div class="featured-card__image">
-            <picture>
-              <source
-                type="image/avif"
-                srcset={cfSrcset(featuredKid.data.heroImage, [640, 1024, 1600], 'avif')}
-                sizes="(max-width: 768px) 100vw, 60vw"
-              />
-              <source
-                type="image/webp"
-                srcset={cfSrcset(featuredKid.data.heroImage, [640, 1024, 1600], 'webp')}
-                sizes="(max-width: 768px) 100vw, 60vw"
-              />
               <img
                 src={cfUrl(featuredKid.data.heroImage, 'w=1024,f=auto,q=80')}
+                srcset={cfSrcset(featuredKid.data.heroImage, [640, 1024, 1600])}
+                sizes="(max-width: 768px) 100vw, 60vw"
                 alt={`Photo of ${featuredKid.data.name}${featuredKid.data.diagnosis ? ` — ${featuredKid.data.diagnosis}` : ''}`}
                 class="featured-card__img"
                 width="1024"
                 height="680"
                 loading="eager"
-                decoding="sync"
+                decoding="async"
                 fetchpriority="high"
               />
-            </picture>
           </div>
           <div class="featured-card__content">
             <span class="featured-card__label">Latest Story</span>
@@ -248,28 +238,18 @@ const gridKids = [...kids];
           >
             <div class="kid-card__frame">
               {kid.data.heroImage ? (
-                <picture>
-                  <source
-                    type="image/avif"
-                    srcset={cfSrcset(kid.data.heroImage, [300, 440, 600], 'avif')}
-                    sizes="(max-width: 480px) 45vw, (max-width: 768px) 45vw, (max-width: 1100px) 25vw, 260px"
-                  />
-                  <source
-                    type="image/webp"
-                    srcset={cfSrcset(kid.data.heroImage, [300, 440, 600], 'webp')}
-                    sizes="(max-width: 480px) 45vw, (max-width: 768px) 45vw, (max-width: 1100px) 25vw, 260px"
-                  />
-                  <img
-                    src={cfUrl(kid.data.heroImage, 'w=440,f=auto,q=80')}
-                    alt={`Photo of ${kid.data.name}${kid.data.diagnosis ? `, diagnosed with ${kid.data.diagnosis}` : ''} — Sunshine on a Ranney Day`}
-                    class="kid-card__img"
-                    width="300"
-                    height="400"
-                    loading={i < 8 ? 'eager' : 'lazy'}
-                    decoding={i < 8 ? 'sync' : 'async'}
-                    fetchpriority={i < 4 ? 'high' : undefined}
-                  />
-                </picture>
+                <img
+                  src={cfUrl(kid.data.heroImage, 'w=440,f=auto,q=80')}
+                  srcset={cfSrcset(kid.data.heroImage, [300, 440])}
+                  sizes="(max-width: 480px) 45vw, (max-width: 768px) 45vw, (max-width: 1100px) 25vw, 260px"
+                  alt={`Photo of ${kid.data.name}${kid.data.diagnosis ? `, diagnosed with ${kid.data.diagnosis}` : ''} — Sunshine on a Ranney Day`}
+                  class="kid-card__img"
+                  width="300"
+                  height="400"
+                  loading={i < 8 ? 'eager' : 'lazy'}
+                  decoding="async"
+                  fetchpriority={i < 4 ? 'high' : undefined}
+                />
               ) : (
                 <div class="kid-card__placeholder" aria-hidden="true">
                   <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
@@ -336,7 +316,6 @@ const gridKids = [...kids];
   }
 
   function initKidsIndex() {
-    // Guard: only run on kids index page
     const cards = document.querySelectorAll<HTMLElement>('.kid-card');
     if (!cards.length) return;
 
@@ -357,24 +336,6 @@ const gridKids = [...kids];
 
   let statusActive = false;
 
-  // ── Image fade-in on load (premium feel) ──
-  document.querySelectorAll<HTMLImageElement>('.kid-card__img, .featured-card__img').forEach(img => {
-    if (img.complete && img.naturalWidth > 0) {
-      img.classList.add('is-loaded');
-    } else {
-      img.addEventListener('load', () => img.classList.add('is-loaded'), { once: true });
-      img.addEventListener('error', () => {
-        // Replace broken image with placeholder
-        const frame = img.closest('.kid-card__frame, .featured-card__image');
-        if (frame) {
-          frame.style.animation = 'none';
-          frame.style.background = 'var(--c-warm-gray)';
-        }
-        img.style.display = 'none';
-      }, { once: true });
-    }
-  });
-
   // ── URL state restore ────────────────────
   const params = new URLSearchParams(window.location.search);
   if (params.get('year')) yearSelect.value = params.get('year')!;
@@ -389,7 +350,7 @@ const gridKids = [...kids];
     statusBtn.setAttribute('aria-pressed', 'true');
   }
 
-  // ── Filtering with animated transitions ───
+  // ── Filtering ─────────────────────────────
   function applyFilters() {
     const query = searchInput.value.toLowerCase().trim();
     const yearFilter = yearSelect.value;
@@ -477,8 +438,14 @@ const gridKids = [...kids];
     });
   }
 
-  // ── Staggered reveal on scroll ───────────
+  // ── Staggered reveal on scroll (simple, no double-opacity) ──
   if (!reducedMotion) {
+    document.documentElement.classList.add('js-anim');
+    // Mark above-fold cards as already revealed
+    cards.forEach((card, i) => {
+      if (i < 8) card.classList.add('revealed');
+    });
+
     _kidsObserver = new IntersectionObserver(
       (entries) => {
         const visible = entries.filter(e => e.isIntersecting);
@@ -489,13 +456,10 @@ const gridKids = [...kids];
           _kidsObserver?.unobserve(el);
         });
       },
-      { rootMargin: '60px', threshold: 0.01 }
+      { rootMargin: '100px', threshold: 0.01 }
     );
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        document.documentElement.classList.add('js-anim');
-        cards.forEach(card => _kidsObserver!.observe(card));
-      });
+    cards.forEach((card, i) => {
+      if (i >= 8) _kidsObserver!.observe(card);
     });
   }
 
@@ -590,31 +554,14 @@ const gridKids = [...kids];
   .featured-card__image {
     aspect-ratio: 3 / 2;
     overflow: hidden;
-    background: linear-gradient(
-      90deg,
-      var(--c-warm-gray) 0%,
-      #eae9e5 40%,
-      var(--c-warm-gray) 80%
-    );
-    background-size: 200% 100%;
-    animation: shimmer 1.8s ease-in-out infinite;
-  }
-
-  .featured-card__image:has(.is-loaded) {
-    animation: none;
+    background: var(--c-warm-gray);
   }
 
   .featured-card__img {
     width: 100%;
     height: 100%;
     object-fit: cover;
-    transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1),
-                opacity 0.4s ease;
-    opacity: 0;
-  }
-
-  .featured-card__img.is-loaded {
-    opacity: 1;
+    transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
   .featured-card:hover .featured-card__img {
@@ -701,9 +648,7 @@ const gridKids = [...kids];
     position: sticky;
     top: var(--header-height, 104px);
     z-index: 20;
-    background: rgba(254, 252, 245, 0.92);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
+    background: var(--c-cream);
     margin-inline: calc(-1 * var(--space-lg));
     padding: var(--space-md) var(--space-lg);
     margin-bottom: var(--space-xl);
@@ -916,12 +861,6 @@ const gridKids = [...kids];
     gap: var(--space-lg);
   }
 
-  /* ─── Shimmer skeleton for loading images ── */
-  @keyframes shimmer {
-    0% { background-position: -200% 0; }
-    100% { background-position: 200% 0; }
-  }
-
   /* ─── Card ─────────────────────────────── */
   .kid-card {
     display: block;
@@ -930,6 +869,9 @@ const gridKids = [...kids];
     border-radius: var(--border-radius-lg);
     transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1),
                 box-shadow 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+    /* Skip rendering off-screen cards entirely */
+    content-visibility: auto;
+    contain-intrinsic-size: auto 220px auto 340px;
   }
 
   .kid-card:hover {
@@ -943,14 +885,14 @@ const gridKids = [...kids];
     border-radius: var(--border-radius-lg);
   }
 
-  /* Staggered reveal — opacity only to avoid column reflow */
+  /* Staggered reveal — cards start visible, only animate below-fold ones */
   :global(.js-anim) .kid-card:not(.revealed) {
     opacity: 0;
   }
 
   :global(.js-anim) .kid-card.revealed {
-    animation: cardIn 0.4s ease forwards;
-    animation-delay: calc(var(--stagger, 0) * 50ms);
+    animation: cardIn 0.3s ease forwards;
+    animation-delay: calc(var(--stagger, 0) * 40ms);
   }
 
   @keyframes cardIn {
@@ -958,7 +900,6 @@ const gridKids = [...kids];
     to { opacity: 1; }
   }
 
-  /* Smooth filter hide — animate out then collapse */
   .kid-card.is-hidden {
     display: none;
   }
@@ -968,20 +909,6 @@ const gridKids = [...kids];
     border-radius: var(--border-radius-lg);
     overflow: hidden;
     aspect-ratio: 3 / 4;
-    /* Shimmer skeleton background while image loads */
-    background: linear-gradient(
-      90deg,
-      var(--c-warm-gray) 0%,
-      #eae9e5 40%,
-      var(--c-warm-gray) 80%
-    );
-    background-size: 200% 100%;
-    animation: shimmer 1.8s ease-in-out infinite;
-  }
-
-  /* Stop shimmer once any image inside has loaded */
-  .kid-card__frame:has(.is-loaded) {
-    animation: none;
     background: var(--c-warm-gray);
   }
 
@@ -991,14 +918,7 @@ const gridKids = [...kids];
     object-fit: cover;
     object-position: center 20%;
     display: block;
-    transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1),
-                opacity 0.4s ease;
-    /* Start invisible, fade in when loaded */
-    opacity: 0;
-  }
-
-  .kid-card__img.is-loaded {
-    opacity: 1;
+    transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
   @media (hover: hover) {
@@ -1247,14 +1167,11 @@ const gridKids = [...kids];
       font-size: 1.5rem;
     }
 
-    /* Toolbar — disable backdrop-filter on mobile for perf */
+    /* Toolbar — already solid bg for perf */
     .toolbar {
       top: var(--header-height, 88px);
       margin-inline: calc(-1 * var(--space-lg));
       padding: var(--space-sm) var(--space-lg);
-      backdrop-filter: none;
-      -webkit-backdrop-filter: none;
-      background: var(--c-cream);
     }
 
     .toolbar__row {
@@ -1355,17 +1272,6 @@ const gridKids = [...kids];
       transform: none;
       animation: none;
       transition: none;
-    }
-
-    .kid-card__img,
-    .featured-card__img {
-      opacity: 1 !important;
-    }
-
-    .kid-card__frame,
-    .featured-card__image {
-      animation: none;
-      background: var(--c-warm-gray);
     }
 
     .featured-card,
