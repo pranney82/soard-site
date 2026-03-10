@@ -117,7 +117,7 @@ function isGroupActive(group: NavGroup) {
 }
 ---
 
-<header class="site-header" id="site-header">
+<header class="site-header" id="site-header" transition:persist="site-header">
   <div class="header-inner">
     <!-- Logo — responsive srcset: browser picks optimal size for DPR -->
     <a href="/" class="logo" aria-label="Sunshine on a Ranney Day — Home">
@@ -237,7 +237,7 @@ function isGroupActive(group: NavGroup) {
 </header>
 
 <!-- Mobile drop-down nav (extends from header) -->
-<div class="mobile-nav" id="mobile-panel" role="dialog" aria-label="Mobile navigation" aria-modal="true" aria-hidden="true">
+<div class="mobile-nav" id="mobile-panel" role="dialog" aria-label="Mobile navigation" aria-modal="true" aria-hidden="true" transition:persist="mobile-panel">
   <div class="mnav-body">
     {nav.map((item, i) => (
       <div class="mnav-group" style={`--i:${i}`}>
@@ -299,6 +299,42 @@ document.addEventListener('astro:page-load', function () {
   var navItems = document.querySelectorAll('.nav-item[data-nav-group]');
   var navButtons = document.querySelectorAll('.nav-item > button');
   if (!header) return;
+
+  /* ═══════ UPDATE ACTIVE STATES (for transition:persist) ═══════ */
+  /* Since the header DOM persists across navigations, build-time
+     active classes become stale. Re-compute them from the URL. */
+  (function updateActiveStates() {
+    var path = window.location.pathname;
+    /* Desktop nav */
+    navItems.forEach(function (item) {
+      var links = item.querySelectorAll('.dd-link');
+      var directLink = item.querySelector(':scope > a.nav-link');
+      var btn = item.querySelector(':scope > button.nav-link');
+      var groupActive = false;
+
+      links.forEach(function (a) {
+        var href = a.getAttribute('href');
+        var isActive = href === path;
+        a.classList.toggle('active', isActive);
+        if (isActive) groupActive = true;
+      });
+
+      if (directLink) {
+        var isActive = directLink.getAttribute('href') === path;
+        directLink.classList.toggle('parent-active', isActive);
+        item.classList.toggle('group-active', isActive);
+      } else {
+        item.classList.toggle('group-active', groupActive);
+        if (btn) btn.classList.toggle('parent-active', groupActive);
+      }
+    });
+
+    /* Mobile nav */
+    document.querySelectorAll('.mnav-link').forEach(function (a) {
+      var href = a.getAttribute('href');
+      a.classList.toggle('active', href === path);
+    });
+  })();
 
   /* ═══════ DESKTOP DROPDOWNS — Morphing Container ═══════ */
   var activeGroup = -1;

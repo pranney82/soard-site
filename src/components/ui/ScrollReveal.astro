@@ -4,14 +4,16 @@
  *
  * Include once in BaseLayout. Handles all [data-reveal] elements
  * site-wide with proper View Transition lifecycle:
- *   - astro:page-load  → set up observer on every navigation
- *   - astro:before-swap → disconnect observer before DOM swap
- *   - 3s safety timeout → force-reveal if observer somehow fails
- *   - <noscript>        → all content visible if JS is blocked
+ *   - astro:after-swap  → instantly reveal above-fold elements BEFORE paint
+ *   - astro:page-load   → set up observer for below-fold elements
+ *   - astro:before-swap  → disconnect observer before DOM swap
+ *   - 3s safety timeout  → force-reveal if observer somehow fails
+ *   - <noscript>         → all content visible if JS is blocked
  *
- * Pages provide their own scoped CSS for [data-reveal] base state
- * and [data-reveal].is-visible reveal state. This component only
- * manages the class toggle.
+ * The key anti-flicker trick: astro:after-swap fires synchronously
+ * after the new DOM is inserted but BEFORE the browser paints. By
+ * adding .is-visible to above-fold elements here, users never see
+ * the opacity:0 base state on client-side navigation.
  */
 ---
 
@@ -31,20 +33,37 @@
     if (_revealSafety) { clearTimeout(_revealSafety); _revealSafety = null; }
   }
 
+  /**
+   * Instantly reveal above-fold [data-reveal] elements.
+   * Called from astro:after-swap (before paint) to prevent flicker,
+   * and also from initReveal as a fallback for initial page load.
+   */
+  function revealAboveFold() {
+    const viewH = window.innerHeight;
+    document.querySelectorAll('[data-reveal]:not(.is-visible)').forEach(el => {
+      const rect = el.getBoundingClientRect();
+      if (rect.top < viewH * 0.85) {
+        (el as HTMLElement).style.transition = 'none';
+        el.classList.add('is-visible');
+      }
+    });
+  }
+
   function initReveal() {
     cleanupReveal();
 
     const els = document.querySelectorAll('[data-reveal]');
     if (!els.length) return;
 
-    // On soft (client-side) navigation, instantly reveal above-fold
-    // elements so they don't re-flash from opacity:0.
-    const viewH = window.innerHeight;
-    els.forEach(el => {
-      const rect = el.getBoundingClientRect();
-      if (rect.top < viewH * 0.85) {
-        el.classList.add('is-visible');
-      }
+    // Reveal above-fold elements instantly (covers initial hard load)
+    revealAboveFold();
+
+    // Restore transitions for any elements we force-revealed above
+    // (allow future scroll-triggered reveals to animate normally)
+    requestAnimationFrame(() => {
+      document.querySelectorAll('[data-reveal].is-visible').forEach(el => {
+        (el as HTMLElement).style.transition = '';
+      });
     });
 
     // Observe remaining below-fold elements normally
@@ -70,6 +89,10 @@
     }, 3000);
   }
 
+  // CRITICAL: after-swap fires synchronously BEFORE paint.
+  // Revealing above-fold elements here prevents the opacity:0 flash
+  // that otherwise appears for 1-2 frames on client-side navigation.
+  document.addEventListener('astro:after-swap', revealAboveFold);
   document.addEventListener('astro:page-load', initReveal);
   document.addEventListener('astro:before-swap', cleanupReveal);
 </script>
