@@ -2400,6 +2400,9 @@
     const EVENT_STATUSES = ['upcoming', 'past', 'cancelled'];
     const EVENT_CAT_LABELS = { fundraiser: 'Fundraiser', volunteer: 'Volunteer', reveal: 'Room Reveal', community: 'Community', other: 'Other' };
 
+    const PRESS_CATEGORIES = ['national-tv', 'local-tv', 'print', 'magazine', 'entertainment'];
+    const PRESS_CAT_LABELS = { 'national-tv': 'National TV', 'local-tv': 'Local TV', 'print': 'Print & News', 'magazine': 'Magazine', 'entertainment': 'Entertainment' };
+
     function EventsList({ events, onEdit, onAdd, onDelete }) {
       const [search, setSearch] = useState('');
       const filtered = useMemo(() => {
@@ -2654,6 +2657,253 @@
 
     // FAQ MANAGEMENT
     // ═══════════════════════════════════════════
+
+    // ═══════════════════════════════════════════
+    // PRESS LIST
+    // ═══════════════════════════════════════════
+    function PressList({ press, onEdit, onAdd, onDelete }) {
+      const [search, setSearch] = useState('');
+      const filtered = useMemo(() => {
+        if (!search) return press;
+        const q = search.toLowerCase();
+        return press.filter(p =>
+          p.title.toLowerCase().includes(q) ||
+          p.outlet.toLowerCase().includes(q) ||
+          (p.category || '').toLowerCase().includes(q)
+        );
+      }, [press, search]);
+
+      return html`
+        <div class="page-header">
+          <h2>Press & Media (${press.length})</h2>
+          <button class="btn btn-primary" onClick=${onAdd}>+ Add Article</button>
+        </div>
+        <div class="card" style="margin-bottom: 1rem; padding: 0.75rem 1rem;">
+          <div class="search-bar" style="max-width: 100%;">
+            <span class="search-icon">${icons.search}</span>
+            <input placeholder="Search by title, outlet, or category..."
+              value=${search} onInput=${e => setSearch(e.target.value)} />
+          </div>
+        </div>
+        <div class="card">
+          <div class="table-wrap"><table>
+            <thead><tr><th>Image</th><th>Title</th><th>Outlet</th><th>Date</th><th>Category</th><th>Featured</th><th></th></tr></thead>
+            <tbody>
+              ${filtered.length === 0 ? html`<tr><td colspan="7" style="text-align:center; color: #6B6C72;">No press articles found</td></tr>` : null}
+              ${filtered.map(p => html`<tr key=${p.slug}>
+                <td style="width: 64px; padding: 0.4rem 0.5rem;">
+                  ${p.image ? html`<img src=${p.image + '/nav'}
+                    alt="" style="width: 56px; height: 36px; object-fit: cover; border-radius: 4px; display: block;" />` : html`<div style="width: 56px; height: 36px; background: #eee; border-radius: 4px;" />`}
+                </td>
+                <td><strong>${p.title.length > 55 ? p.title.slice(0, 55) + '…' : p.title}</strong></td>
+                <td class="text-sm">${p.outlet}</td>
+                <td class="text-sm">${p.date || '—'}</td>
+                <td><span class="badge badge-accent">${PRESS_CAT_LABELS[p.category] || p.category}</span></td>
+                <td>${p.featured ? icons.star : '—'}</td>
+                <td style="white-space: nowrap;">
+                  <button class="btn btn-ghost btn-sm" onClick=${() => onEdit(p.slug)}>Edit</button>
+                  <button class="btn btn-ghost btn-sm" style="color: #E53E3E;" onClick=${(ev) => { ev.stopPropagation(); onDelete({ ...p, name: p.title }); }}>Delete</button>
+                </td>
+              </tr>`)}
+            </tbody>
+          </table></div>
+        </div>
+      `;
+    }
+
+    // ═══════════════════════════════════════════
+    // PRESS EDITOR
+    // ═══════════════════════════════════════════
+    function PressEditor({ slug, onBack, addToast }) {
+      const [loading, setLoading] = useState(!!slug);
+      const [saving, setSaving] = useState(false);
+      const [sha, setSha] = useState(null);
+      const [dirty, setDirty] = useState(false);
+      const [data, setData] = useState({
+        outlet: '', outletLogo: '', category: 'print',
+        title: '', slug: '', date: new Date().toISOString().split('T')[0],
+        url: '', excerpt: '', image: null,
+        featured: false, order: 0,
+      });
+
+      useEffect(() => {
+        if (!slug) return;
+        (async () => {
+          try {
+            const res = await api.readContent(`src/content/press/${slug}.json`);
+            if (res.success && res.content) {
+              const parsed = typeof res.content === 'string' ? JSON.parse(res.content) : res.content;
+              if (!parsed.slug) parsed.slug = slug;
+              setData(parsed);
+              setSha(res.sha);
+            } else {
+              addToast('Press article not found', 'error');
+              onBack();
+            }
+          } catch (err) {
+            addToast(`Load error: ${err.message}`, 'error');
+          }
+          setLoading(false);
+        })();
+      }, [slug]);
+
+      const update = (key, val) => {
+        setData(d => {
+          const updated = { ...d, [key]: val };
+          if (key === 'outlet' && !slug) {
+            const yr = (d.date || '').split('-')[0] || '';
+            updated.slug = slugify(val + (yr ? ' ' + yr : ''));
+          }
+          if (key === 'date' && !slug && d.outlet) {
+            const yr = (val || '').split('-')[0] || '';
+            updated.slug = slugify(d.outlet + (yr ? ' ' + yr : ''));
+          }
+          return updated;
+        });
+        setDirty(true);
+      };
+
+      const handleSave = async () => {
+        if (!data.title) { addToast('Title is required', 'error'); return; }
+        if (!data.outlet) { addToast('Outlet is required', 'error'); return; }
+        if (!data.slug) {
+          const yr = (data.date || '').split('-')[0] || '';
+          data.slug = slugify(data.outlet + (yr ? ' ' + yr : ''));
+        }
+        setSaving(true);
+        try {
+          const saveData = { ...data };
+          const fileSlug = saveData.slug;
+          delete saveData.slug;
+          const path = `src/content/press/${fileSlug}.json`;
+          const content = JSON.stringify(saveData, null, 2);
+          const message = slug ? `Update press: ${saveData.title}` : `Add press: ${saveData.title}`;
+          const res = await api.saveContent(path, content, message, sha || undefined);
+          if (res.success) {
+            setSha(res.sha);
+            setDirty(false);
+            addToast('Press article saved & published!', 'success');
+          } else {
+            addToast(`Save failed: ${res.error}`, 'error');
+          }
+        } catch (err) {
+          addToast(`Save error: ${err.message}`, 'error');
+        }
+        setSaving(false);
+      };
+
+      useEffect(() => {
+        const handler = (e) => { if (dirty) { e.preventDefault(); e.returnValue = ''; } };
+        window.addEventListener('beforeunload', handler);
+        return () => window.removeEventListener('beforeunload', handler);
+      }, [dirty]);
+
+      if (loading) return html`<div class="card" style="text-align: center; padding: 3rem;"><div class="spinner" style="width: 32px; height: 32px;" /></div>`;
+
+      return html`
+        <div class="page-header">
+          <div style="display: flex; align-items: center; gap: 0.75rem;">
+            <button class="btn btn-ghost" onClick=${() => { if (dirty && !confirm('You have unsaved changes. Leave?')) return; onBack(); }}>${icons.arrowLeft} Back</button>
+            <h2>${slug ? 'Edit Press Article' : 'New Press Article'}</h2>
+          </div>
+          <button class="btn btn-primary" onClick=${handleSave} disabled=${saving}>
+            ${saving ? 'Saving...' : dirty ? '💾 Save & Publish' : 'Save & Publish'}
+          </button>
+        </div>
+
+        <div class="card" style="margin-bottom: 1rem;">
+          <h3 style="margin-bottom: 1rem;">Article Details</h3>
+          <div class="form-group" style="margin-bottom: 1.25rem;">
+            <span class="form-label">Article Title *</span>
+            <input class="form-input" type="text" value=${data.title}
+              onInput=${e => update('title', e.target.value)} placeholder="How SOARD Transforms Homes and Lives" />
+          </div>
+          <div class="form-row" style="margin-bottom: 1.25rem;">
+            <div class="form-group">
+              <span class="form-label">Outlet *</span>
+              <input class="form-input" type="text" value=${data.outlet}
+                onInput=${e => update('outlet', e.target.value)} placeholder="11Alive (NBC Atlanta)" />
+            </div>
+            <div class="form-group">
+              <span class="form-label">Outlet Logo Key</span>
+              <input class="form-input" type="text" value=${data.outletLogo || ''}
+                onInput=${e => update('outletLogo', e.target.value)} placeholder="11alive" />
+              <span class="form-hint">Used for logo matching on the page</span>
+            </div>
+          </div>
+          <div class="form-row" style="margin-bottom: 1.25rem;">
+            <div class="form-group">
+              <span class="form-label">Date *</span>
+              <input class="form-input" type="date" value=${data.date}
+                onInput=${e => update('date', e.target.value)} />
+            </div>
+            <div class="form-group">
+              <span class="form-label">Category</span>
+              <select class="form-select" value=${data.category}
+                onChange=${e => update('category', e.target.value)}>
+                ${PRESS_CATEGORIES.map(c => html`<option key=${c} value=${c}>${PRESS_CAT_LABELS[c]}</option>`)}
+              </select>
+            </div>
+          </div>
+          <div class="form-group" style="margin-bottom: 1.25rem;">
+            <span class="form-label">Slug</span>
+            <input class="form-input" type="text" value=${data.slug || ''}
+              onInput=${e => { setData(d => ({ ...d, slug: e.target.value })); setDirty(true); }}
+              placeholder="11alive-2025" />
+            <span class="form-hint">File name — auto-generated from outlet + year</span>
+          </div>
+          <div class="form-group" style="margin-bottom: 1.25rem;">
+            <span class="form-label">Article URL *</span>
+            <input class="form-input" type="url" value=${data.url}
+              onInput=${e => update('url', e.target.value)} placeholder="https://www.11alive.com/article/..." />
+          </div>
+          <div class="form-group" style="margin-bottom: 1.25rem;">
+            <span class="form-label">Excerpt *</span>
+            <textarea class="form-textarea" rows="3" value=${data.excerpt}
+              onInput=${e => update('excerpt', e.target.value)}
+              placeholder="Brief summary of the coverage..." />
+            <span class="form-hint">${(data.excerpt || '').length}/300 characters</span>
+          </div>
+        </div>
+
+        <div class="card" style="margin-bottom: 1rem;">
+          <h3 style="margin-bottom: 1rem;">Image</h3>
+          <div class="form-group" style="margin-bottom: 1.25rem;">
+            <span class="form-label">Cloudflare Image URL</span>
+            <input class="form-input" type="text" value=${data.image || ''}
+              onInput=${e => update('image', e.target.value || null)}
+              placeholder="https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/press/11alive-2025" />
+            <span class="form-hint">Full Cloudflare Images base URL (without variant). Leave blank for no image.</span>
+            ${data.image ? html`
+              <div style="margin-top: 0.75rem; border-radius: 8px; overflow: hidden; max-width: 400px;">
+                <img src=${data.image + '/public'}
+                  alt="Article image preview" style="width: 100%; height: 200px; object-fit: cover; display: block;"
+                  onError=${e => { e.target.style.display = 'none'; }} />
+              </div>
+            ` : null}
+          </div>
+        </div>
+
+        <div class="card">
+          <h3 style="margin-bottom: 1rem;">Display Options</h3>
+          <div class="form-row">
+            <div class="form-group">
+              <span class="form-label">Display Order</span>
+              <input class="form-input" type="number" value=${data.order || 0}
+                onInput=${e => update('order', Number(e.target.value))} />
+              <span class="form-hint">Lower = higher priority in featured section</span>
+            </div>
+            <div class="form-group" style="display: flex; align-items: end; padding-bottom: 0.3rem;">
+              <label class="checkbox-label">
+                <input type="checkbox" checked=${data.featured}
+                  onChange=${e => update('featured', e.target.checked)} />
+                Featured article (shown in highlighted section)
+              </label>
+            </div>
+          </div>
+        </div>
+      `;
+    }
 
     // ═══════════════════════════════════════════
     // COMMUNITY PROJECTS LIST
@@ -4540,6 +4790,7 @@
       const [articles, setArticles] = useState([]);
       const [events, setEvents] = useState([]);
       const [communityProjects, setCommunityProjects] = useState([]);
+      const [press, setPress] = useState([]);
       const [loading, setLoading] = useState(true);
       const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -4594,6 +4845,17 @@
             setCommunityProjects(cpRes.items.map(i => i.content).filter(Boolean)
               .sort((a, b) => (a.order || 0) - (b.order || 0)));
           }
+
+          // Load press (bulk — one API call)
+          const pressRes = await api.bulkListContent('src/content/press');
+          if (pressRes.success) {
+            setPress(pressRes.items.map(i => {
+              const c = i.content;
+              if (c && !c.slug) c.slug = i.name.replace(/\.json$/, '');
+              return c;
+            }).filter(Boolean)
+              .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0)));
+          }
         } catch (err) {
           addToast('Failed to load content. Check API settings.', 'error');
         }
@@ -4616,7 +4878,7 @@
         if (!deleteModal) return;
         setDeleteLoading(true);
         const { type, item } = deleteModal;
-        const dir = type === 'kid' ? 'kids' : type === 'partner' ? 'partners' : type === 'team member' ? 'team' : type === 'article' ? 'articles' : type === 'event' ? 'events' : type === 'community project' ? 'community' : 'partners';
+        const dir = type === 'kid' ? 'kids' : type === 'partner' ? 'partners' : type === 'team member' ? 'team' : type === 'article' ? 'articles' : type === 'event' ? 'events' : type === 'community project' ? 'community' : type === 'press article' ? 'press' : 'partners';
         try {
           // Get SHA first
           const fileRes = await api.readContent(`src/content/${dir}/${item.slug}.json`);
@@ -4663,6 +4925,7 @@
         applications: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" /></svg>`,
         ourstory: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" /><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" /></svg>`,
         mediakit: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" /><path d="M14 2v4a2 2 0 0 0 2 2h4" /><path d="M10 9H8" /><path d="M16 13H8" /><path d="M16 17H8" /></svg>`,
+        press: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2" /><path d="M18 14h-8" /><path d="M15 18h-5" /><path d="M10 6h8v4h-8V6Z" /></svg>`,
       };
 
       const navSections = [
@@ -4677,6 +4940,7 @@
           { id: 'events', icon: icons.events, label: 'Events' },
           { id: 'ourstory', icon: icons.ourstory, label: 'Our Story' },
           { id: 'mediakit', icon: icons.mediakit, label: 'Media Kit' },
+          { id: 'press', icon: icons.press, label: 'Press & Media' },
           { id: 'community', icon: icons.community, label: 'Community Projects' },
           { id: 'faq', icon: icons.faq, label: 'FAQs' },
           { id: 'financials', icon: icons.financials, label: 'Financials' },
@@ -4728,6 +4992,11 @@
               ? html`<${CommunityEditor} slug=${editSlug || undefined} onBack=${() => { navigate('community'); loadData(); }} addToast=${addToast} />`
               : html`<${CommunityList} projects=${communityProjects} onEdit=${s => navigate('community', s)} onAdd=${() => navigate('community', '')}
                   onDelete=${p => setDeleteModal({ type: 'community project', item: p })} />`;
+          case 'press':
+            return editSlug !== null
+              ? html`<${PressEditor} slug=${editSlug || undefined} onBack=${() => { navigate('press'); loadData(); }} addToast=${addToast} />`
+              : html`<${PressList} press=${press} onEdit=${s => navigate('press', s)} onAdd=${() => navigate('press', '')}
+                  onDelete=${p => setDeleteModal({ type: 'press article', item: p })} />`;
           case 'applications':
             return html`<${Applications} addToast=${addToast} />`;
           case 'financials':
