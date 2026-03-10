@@ -50,8 +50,8 @@ function cfUrl(src: string, opts: string) {
   const id = src.replace(`${CF_BASE}/`, '').replace('/public', '');
   return `${CF_BASE}/${id}/${opts}`;
 }
-function cfSrcset(src: string, widths: number[], format = 'auto') {
-  return widths.map(w => `${cfUrl(src, `w=${w},f=${format},q=80`)} ${w}w`).join(', ');
+function cfSrcset(src: string, widths: number[]) {
+  return widths.map(w => `${cfUrl(src, `w=${w},f=auto,q=85`)} ${w}w`).join(', ');
 }
 
 // ── YouTube ID extraction ─────────────────
@@ -61,6 +61,8 @@ function getYouTubeId(url: string): string | null {
   return match ? match[1] : null;
 }
 const ytId = kid.videoUrl ? getYouTubeId(kid.videoUrl) : null;
+const streamId = kid.streamVideoId || null;
+const hasVideo = streamId || ytId;
 
 // ── SEO ───────────────────────────────────
 const SITE = 'https://sunshineonaranneyday.com';
@@ -98,29 +100,19 @@ const dateModified = kid.year ? `${kid.year}-01-01` : undefined;
     <section class="hero">
       {kid.heroImage && (
         <div class="hero__image">
-          <picture>
-            <source
-              type="image/avif"
-              srcset={cfSrcset(kid.heroImage, [640, 1024, 1600, 2400], 'avif')}
-              sizes="100vw"
-            />
-            <source
-              type="image/webp"
-              srcset={cfSrcset(kid.heroImage, [640, 1024, 1600, 2400], 'webp')}
-              sizes="100vw"
-            />
-            <img
-              src={cfUrl(kid.heroImage, 'w=1600,f=auto,q=80')}
-              alt={`Photo of ${kid.name}${kid.diagnosis ? ` — ${kid.diagnosis}` : ''}`}
-              class="hero__img"
-              width="1600"
-              height="900"
-              loading="eager"
-              decoding="sync"
-              fetchpriority="high"
-              itemprop="image"
-            />
-          </picture>
+          <img
+            src={cfUrl(kid.heroImage, 'w=1600,f=auto,q=85')}
+            srcset={cfSrcset(kid.heroImage, [640, 1024, 1600, 2400])}
+            sizes="100vw"
+            alt={`Photo of ${kid.name}${kid.diagnosis ? ` — ${kid.diagnosis}` : ''}`}
+            class="hero__img"
+            width="1600"
+            height="900"
+            loading="eager"
+            decoding="async"
+            fetchpriority="high"
+            itemprop="image"
+          />
           <div class="hero__gradient" aria-hidden="true"></div>
         </div>
       )}
@@ -187,28 +179,49 @@ const dateModified = kid.year ? `${kid.year}-01-01` : undefined;
     )}
 
     <!-- ═══ Video ══════════════════════════════ -->
-    {ytId && (
+    {hasVideo && (
       <section class="video-section section">
         <div class="container container--narrow">
           <h2 class="section-heading">Watch {kid.name}'s Story</h2>
-          <div class="yt-facade" id="yt-facade" data-id={ytId} role="button" tabindex="0" aria-label={`Play ${kid.name}'s video`}>
-            <picture>
-              <source type="image/webp" srcset={`https://i.ytimg.com/vi_webp/${ytId}/maxresdefault.webp`} />
-              <img
-                src={`https://i.ytimg.com/vi/${ytId}/maxresdefault.jpg`}
-                alt={`Video thumbnail for ${kid.name}'s story`}
-                class="yt-facade__thumb"
+          {streamId ? (
+            <div class="video-wrap">
+              <iframe
+                src={`https://iframe.videodelivery.net/${streamId}`}
+                title={`${kid.name}'s story video`}
+                allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture"
+                allowfullscreen
                 loading="lazy"
-                decoding="async"
-              />
-            </picture>
-            <div class="yt-facade__play" aria-hidden="true">
-              <svg width="68" height="48" viewBox="0 0 68 48">
-                <path d="M66.52 7.74c-.78-2.93-2.49-5.41-5.42-6.19C55.79.13 34 0 34 0S12.21.13 6.9 1.55C3.97 2.33 2.27 4.81 1.48 7.74.06 13.05 0 24 0 24s.06 10.95 1.48 16.26c.78 2.93 2.49 5.41 5.42 6.19C12.21 47.87 34 48 34 48s21.79-.13 27.1-1.55c2.93-.78 4.64-3.26 5.42-6.19C67.94 34.95 68 24 68 24s-.06-10.95-1.48-16.26z" fill="red"/>
-                <path d="M45 24L27 14v20" fill="white"/>
-              </svg>
+                class="video-iframe"
+              ></iframe>
+              {ytId && (
+                <p class="video-yt-link">
+                  <a href={`https://www.youtube.com/watch?v=${ytId}`} target="_blank" rel="noopener noreferrer">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                    Watch on YouTube
+                  </a>
+                </p>
+              )}
             </div>
-          </div>
+          ) : ytId ? (
+            <div class="yt-facade" id="yt-facade" data-id={ytId} role="button" tabindex="0" aria-label={`Play ${kid.name}'s video`}>
+              <picture>
+                <source type="image/webp" srcset={`https://i.ytimg.com/vi_webp/${ytId}/maxresdefault.webp`} />
+                <img
+                  src={`https://i.ytimg.com/vi/${ytId}/maxresdefault.jpg`}
+                  alt={`Video thumbnail for ${kid.name}'s story`}
+                  class="yt-facade__thumb"
+                  loading="lazy"
+                  decoding="async"
+                />
+              </picture>
+              <div class="yt-facade__play" aria-hidden="true">
+                <svg width="68" height="48" viewBox="0 0 68 48">
+                  <path d="M66.52 7.74c-.78-2.93-2.49-5.41-5.42-6.19C55.79.13 34 0 34 0S12.21.13 6.9 1.55C3.97 2.33 2.27 4.81 1.48 7.74.06 13.05 0 24 0 24s.06 10.95 1.48 16.26c.78 2.93 2.49 5.41 5.42 6.19C12.21 47.87 34 48 34 48s21.79-.13 27.1-1.55c2.93-.78 4.64-3.26 5.42-6.19C67.94 34.95 68 24 68 24s-.06-10.95-1.48-16.26z" fill="red"/>
+                  <path d="M45 24L27 14v20" fill="white"/>
+                </svg>
+              </div>
+            </div>
+          ) : null}
         </div>
       </section>
     )}
@@ -236,27 +249,17 @@ const dateModified = kid.year ? `${kid.year}-01-01` : undefined;
                 aria-label={`View photo ${i + 1} of ${Math.min(photos.length, 30)}`}
                 type="button"
               >
-                <picture>
-                  <source
-                    type="image/avif"
-                    srcset={cfSrcset(photo.url, [300, 500], 'avif')}
-                    sizes="(max-width: 600px) 45vw, (max-width: 1100px) 30vw, 280px"
-                  />
-                  <source
-                    type="image/webp"
-                    srcset={cfSrcset(photo.url, [300, 500], 'webp')}
-                    sizes="(max-width: 600px) 45vw, (max-width: 1100px) 30vw, 280px"
-                  />
-                  <img
-                    src={cfUrl(photo.url, 'w=500,f=auto,q=80')}
-                    alt={photo.alt || `${kid.name}'s room transformation photo ${i + 1}`}
-                    class="gallery-item__img"
-                    loading="lazy"
-                    decoding="async"
-                    width="500"
-                    height="500"
-                  />
-                </picture>
+                <img
+                  src={cfUrl(photo.url, 'w=500,f=auto,q=85')}
+                  srcset={cfSrcset(photo.url, [300, 500])}
+                  sizes="(max-width: 600px) 45vw, (max-width: 1100px) 30vw, 280px"
+                  alt={photo.alt || `${kid.name}'s room transformation photo ${i + 1}`}
+                  class="gallery-item__img"
+                  loading="lazy"
+                  decoding="async"
+                  width="500"
+                  height="500"
+                />
               </button>
             ))}
           </div>
@@ -274,7 +277,7 @@ const dateModified = kid.year ? `${kid.year}-01-01` : undefined;
             {kid.partnerLogos.map(logo => (
               <div class="partner-logo">
                 <img
-                  src={cfUrl(logo.url, 'w=200,f=auto,q=80')}
+                  src={cfUrl(logo.url, 'w=200,f=auto,q=85')}
                   alt={logo.name || 'Project partner'}
                   loading="lazy"
                   decoding="async"
@@ -297,28 +300,17 @@ const dateModified = kid.year ? `${kid.year}-01-01` : undefined;
             {relatedKids.map(rk => (
               <a href={`/kids/${rk.slug}/`} class="related-card">
                 <div class="related-card__frame">
-                  <picture>
-                    <source
-                      type="image/avif"
-                      srcset={cfSrcset(rk.heroImage, [300, 440], 'avif')}
-                      sizes="(max-width: 600px) 45vw, 220px"
-                    />
-                    <source
-                      type="image/webp"
-                      srcset={cfSrcset(rk.heroImage, [300, 440], 'webp')}
-                      sizes="(max-width: 600px) 45vw, 220px"
-                    />
-                    <img
-                      src={cfUrl(rk.heroImage, 'w=440,f=auto,q=80')}
-                      alt={`Photo of ${rk.name}`}
-                      class="related-card__img"
-                      loading="lazy"
-                      decoding="async"
-                      width="300"
-                      height="400"
-
-                    />
-                  </picture>
+                  <img
+                    src={cfUrl(rk.heroImage, 'w=440,f=auto,q=85')}
+                    srcset={cfSrcset(rk.heroImage, [300, 440, 600])}
+                    sizes="(max-width: 600px) 45vw, 220px"
+                    alt={`Photo of ${rk.name}`}
+                    class="related-card__img"
+                    loading="lazy"
+                    decoding="async"
+                    width="300"
+                    height="400"
+                  />
                 </div>
                 <span class="related-card__name">{rk.name}</span>
                 {rk.diagnosis && (
@@ -814,6 +806,39 @@ const dateModified = kid.year ? `${kid.year}-01-01` : undefined;
   .yt-facade:hover .yt-facade__play {
     opacity: 1;
     transform: translate(-50%, -50%) scale(1.08);
+  }
+
+  /* CF Stream embed */
+  .video-wrap {
+    border-radius: var(--border-radius-lg);
+    overflow: hidden;
+    background: var(--c-dark);
+  }
+
+  .video-iframe {
+    display: block;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    border: 0;
+  }
+
+  .video-yt-link {
+    text-align: center;
+    margin-top: var(--space-sm);
+    font-size: 0.85rem;
+  }
+
+  .video-yt-link a {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--c-text-muted);
+    text-decoration: none;
+    transition: color var(--transition-fast);
+  }
+
+  .video-yt-link a:hover {
+    color: var(--c-dark);
   }
 
   /* ═══ Gallery (Masonry) ═════════════════ */

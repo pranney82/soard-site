@@ -6,7 +6,6 @@ export default defineConfig({
   output: 'static',
   integrations: [sitemap()],
   prefetch: {
-    prefetchAll: true,
     defaultStrategy: 'viewport',
   },
   build: {

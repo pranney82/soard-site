@@ -1,9 +1,13 @@
 ---
 /**
  * CFImage.astro
- * Responsive image component with automatic srcset generation.
- * - Cloudflare Images: generates <picture> with AVIF/WebP srcset
- * - Other URLs: renders a plain optimized <img>
+ * Responsive image component for Cloudflare Images.
+ *
+ * CF Images `f=auto` negotiates format (AVIF → WebP → JPEG) server-side
+ * via the Accept header, so <picture> with explicit format sources is
+ * unnecessary. A single <img> with srcset is the correct approach.
+ *
+ * Non-CF URLs pass through as plain <img>.
  */
 interface Props {
   src: string;
@@ -17,9 +21,11 @@ interface Props {
   style?: string;
   /** Override default responsive widths (px) */
   widths?: number[];
-  /** Quality 1-100 for CF transforms */
+  /** Quality 1-100 for CF transforms (default 85) */
   quality?: number;
 }
+
+const CF_BASE = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
 
 const {
   src,
@@ -32,64 +38,41 @@ const {
   class: className = '',
   style = '',
   widths = [400, 640, 800, 1024, 1600],
-  quality = 80,
+  quality = 85,
 } = Astro.props;
 
 const isCFImage = src.includes('imagedelivery.net');
 
-/**
- * For CF Images URLs like:
- *   https://imagedelivery.net/HASH/IMAGE_ID/w=800,q=80
- * We extract the base (everything before the last slash) and generate
- * srcset entries with width + format transforms.
- */
-function cfSrcset(format: 'avif' | 'webp'): string {
-  // Strip any existing transform suffix to get the base path
-  // CF Images URL: https://imagedelivery.net/HASH/IMAGE_ID/transforms
-  const lastSlash = src.lastIndexOf('/');
-  const base = src.substring(0, lastSlash);
-  return widths.map(w => `${base}/w=${w},f=${format},q=${quality} ${w}w`).join(', ');
+function getBase(url: string): string {
+  const id = url.replace(`${CF_BASE}/`, '').replace('/public', '').split('/')[0];
+  return `${CF_BASE}/${id}`;
 }
 
-function cfFallbackSrc(): string {
-  const lastSlash = src.lastIndexOf('/');
-  const base = src.substring(0, lastSlash);
-  // Use the second-largest width as default fallback
+function buildSrcset(): string {
+  const base = getBase(src);
+  return widths.map(w => `${base}/w=${w},f=auto,q=${quality} ${w}w`).join(', ');
+}
+
+function buildSrc(): string {
+  const base = getBase(src);
   const fallbackW = widths[widths.length - 2] || widths[widths.length - 1];
-  return `${base}/w=${fallbackW},q=${quality}`;
+  return `${base}/w=${fallbackW},f=auto,q=${quality}`;
 }
 ---
 
-{isCFImage ? (
-  <picture>
-    <source type="image/avif" srcset={cfSrcset('avif')} sizes={sizes} />
-    <source type="image/webp" srcset={cfSrcset('webp')} sizes={sizes} />
-    <img
-      src={cfFallbackSrc()}
-      alt={alt}
-      width={width}
-      height={height}
-      loading={loading}
-      decoding="async"
-      fetchpriority={fetchpriority}
-      class:list={['cf-image', className]}
-      style={style}
-    />
-  </picture>
-) : (
-  <img
-    src={src}
-    alt={alt}
-    width={width}
-    height={height}
-    sizes={sizes}
-    loading={loading}
-    decoding="async"
-    fetchpriority={fetchpriority}
-    class:list={['cf-image', className]}
-    style={style}
-  />
-)}
+<img
+  src={isCFImage ? buildSrc() : src}
+  srcset={isCFImage ? buildSrcset() : undefined}
+  alt={alt}
+  width={width}
+  height={height}
+  sizes={isCFImage ? sizes : undefined}
+  loading={loading}
+  decoding="async"
+  fetchpriority={fetchpriority}
+  class:list={['cf-image', className]}
+  style={style}
+/>
 
 <style>
   .cf-image {

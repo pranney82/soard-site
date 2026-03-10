@@ -57,11 +57,7 @@ const jsonLd = buildSchemaGraph(
   <!-- ══════ HERO ══════ -->
   <section class="cp-hero" aria-label="Community Projects">
     <div class="cp-hero-media">
-      <picture>
-        <source type="image/avif" srcset={`${CF}/${heroImageId}/w=640,f=avif 640w, ${CF}/${heroImageId}/w=1024,f=avif 1024w, ${CF}/${heroImageId}/w=1600,f=avif 1600w, ${CF}/${heroImageId}/w=2400,f=avif 2400w`} sizes="100vw" />
-        <source type="image/webp" srcset={`${CF}/${heroImageId}/w=640,f=webp 640w, ${CF}/${heroImageId}/w=1024,f=webp 1024w, ${CF}/${heroImageId}/w=1600,f=webp 1600w, ${CF}/${heroImageId}/w=2400,f=webp 2400w`} sizes="100vw" />
-        <img class="cp-hero-img" src={`${CF}/${heroImageId}/w=1600,q=80`} alt="Volunteers and community partners working together on a SOARD renovation project" width="1600" height="900" loading="eager" decoding="async" fetchpriority="high" />
-      </picture>
+      <img class="cp-hero-img" src={`${CF}/${heroImageId}/w=1600,f=auto,q=85`} srcset={`${CF}/${heroImageId}/w=640,f=auto,q=85 640w, ${CF}/${heroImageId}/w=1024,f=auto,q=85 1024w, ${CF}/${heroImageId}/w=1600,f=auto,q=85 1600w, ${CF}/${heroImageId}/w=2400,f=auto,q=85 2400w`} sizes="100vw" alt="Volunteers and community partners working together on a SOARD renovation project" width="1600" height="900" loading="eager" decoding="async" fetchpriority="high" />
       <div class="cp-hero-overlay"></div>
     </div>
     <div class="cp-hero-inner">
@@ -82,18 +78,10 @@ const jsonLd = buildSchemaGraph(
     <div class="cp-intro-inner">
       <div class="cp-intro-photos" data-reveal>
         <div class="cp-intro-photo cp-intro-photo--main">
-          <picture>
-            <source type="image/avif" srcset={`${CF}/${sectionPhotoA}/w=500,f=avif 500w, ${CF}/${sectionPhotoA}/w=800,f=avif 800w`} sizes="(max-width:768px) 90vw, 40vw" />
-            <source type="image/webp" srcset={`${CF}/${sectionPhotoA}/w=500,f=webp 500w, ${CF}/${sectionPhotoA}/w=800,f=webp 800w`} sizes="(max-width:768px) 90vw, 40vw" />
-            <img src={`${CF}/${sectionPhotoA}/w=800,q=80`} alt="Community renovation project in progress" width="800" height="600" loading="lazy" decoding="async" />
-          </picture>
+          <img src={`${CF}/${sectionPhotoA}/w=800,f=auto,q=85`} srcset={`${CF}/${sectionPhotoA}/w=500,f=auto,q=85 500w, ${CF}/${sectionPhotoA}/w=800,f=auto,q=85 800w`} sizes="(max-width:768px) 90vw, 40vw" alt="Community renovation project in progress" width="800" height="600" loading="lazy" decoding="async" />
         </div>
         <div class="cp-intro-photo cp-intro-photo--accent" data-reveal data-delay="1">
-          <picture>
-            <source type="image/avif" srcset={`${CF}/${sectionPhotoB}/w=400,f=avif 400w, ${CF}/${sectionPhotoB}/w=600,f=avif 600w`} sizes="(max-width:768px) 60vw, 25vw" />
-            <source type="image/webp" srcset={`${CF}/${sectionPhotoB}/w=400,f=webp 400w, ${CF}/${sectionPhotoB}/w=600,f=webp 600w`} sizes="(max-width:768px) 60vw, 25vw" />
-            <img src={`${CF}/${sectionPhotoB}/w=600,q=80`} alt="Completed community space designed for children" width="600" height="450" loading="lazy" decoding="async" />
-          </picture>
+          <img src={`${CF}/${sectionPhotoB}/w=600,f=auto,q=85`} srcset={`${CF}/${sectionPhotoB}/w=400,f=auto,q=85 400w, ${CF}/${sectionPhotoB}/w=600,f=auto,q=85 600w`} sizes="(max-width:768px) 60vw, 25vw" alt="Completed community space designed for children" width="600" height="450" loading="lazy" decoding="async" />
         </div>
       </div>
       <div class="cp-intro-text" data-reveal>
@@ -145,11 +133,7 @@ const jsonLd = buildSchemaGraph(
           <div class="cp-card-accent" style={`background: ${project.color};`}></div>
           {project.imageId ? (
             <div class="cp-card-img-wrap">
-              <picture>
-                <source type="image/avif" srcset={`${CF}/${project.imageId}/w=400,f=avif 400w, ${CF}/${project.imageId}/w=600,f=avif 600w`} sizes="(max-width:768px) 90vw, 33vw" />
-                <source type="image/webp" srcset={`${CF}/${project.imageId}/w=400,f=webp 400w, ${CF}/${project.imageId}/w=600,f=webp 600w`} sizes="(max-width:768px) 90vw, 33vw" />
-                <img src={`${CF}/${project.imageId}/w=600,q=80`} alt={project.imageAlt} width="600" height="340" loading="lazy" decoding="async" class="cp-card-img" />
-              </picture>
+              <img src={`${CF}/${project.imageId}/w=600,f=auto,q=85`} srcset={`${CF}/${project.imageId}/w=400,f=auto,q=85 400w, ${CF}/${project.imageId}/w=600,f=auto,q=85 600w`} sizes="(max-width:768px) 90vw, 33vw" alt={project.imageAlt} width="600" height="340" loading="lazy" decoding="async" class="cp-card-img" />
             </div>
           ) : (
             <div class="cp-card-img-placeholder" style={`background: linear-gradient(135deg, ${project.color}22, ${project.color}44);`}>
@@ -193,11 +177,7 @@ const jsonLd = buildSchemaGraph(
       </div>
       <div class="cp-spotlight-visual" data-reveal data-delay="1">
         <div class="cp-spotlight-frame">
-          <picture>
-            <source type="image/avif" srcset={`${CF}/${sectionPhotoA}/w=500,f=avif 500w, ${CF}/${sectionPhotoA}/w=800,f=avif 800w`} sizes="(max-width:768px) 90vw, 45vw" />
-            <source type="image/webp" srcset={`${CF}/${sectionPhotoA}/w=500,f=webp 500w, ${CF}/${sectionPhotoA}/w=800,f=webp 800w`} sizes="(max-width:768px) 90vw, 45vw" />
-            <img src={`${CF}/${sectionPhotoA}/w=800,q=80`} alt="The Drake House renovation — new community spaces for families" width="800" height="600" loading="lazy" decoding="async" />
-          </picture>
+          <img src={`${CF}/${sectionPhotoA}/w=800,f=auto,q=85`} srcset={`${CF}/${sectionPhotoA}/w=500,f=auto,q=85 500w, ${CF}/${sectionPhotoA}/w=800,f=auto,q=85 800w`} sizes="(max-width:768px) 90vw, 45vw" alt="The Drake House renovation — new community spaces for families" width="800" height="600" loading="lazy" decoding="async" />
         </div>
       </div>
     </div>

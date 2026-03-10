@@ -11,8 +11,6 @@
  * - Scroll observer is tiny (~300 bytes)
  * - preconnect to imagedelivery.net in BaseLayout
  * - All sections use reduced padding on mobile
- *
- * TODO: Migrate why-section Amari image to Cloudflare Images for AVIF/WebP + srcset
  */
 import BaseLayout from '../layouts/BaseLayout.astro';
 import faqData from '../content/site/faq.json';
@@ -78,7 +76,9 @@ const breadcrumbs = [
       <div class="why-photos" data-reveal>
         <div class="why-photo why-photo--main">
           <img
-            src="https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/amari/why-section/public"
+            src="https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/amari/why-section/w=800,f=auto,q=85"
+            srcset="https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/amari/why-section/w=500,f=auto,q=85 500w, https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/amari/why-section/w=800,f=auto,q=85 800w"
+            sizes="(max-width:768px) 90vw, 40vw"
             alt="Amari in his new accessible bedroom"
             width="800"
             height="600"

@@ -27,7 +27,7 @@ function cfUrl(src: string, opts: string) {
   return `${CF_BASE}/${id}/${opts}`;
 }
 function cfSrcset(src: string, widths: number[]) {
-  return widths.map(w => `${cfUrl(src, `w=${w},f=auto,q=80`)} ${w}w`).join(', ');
+  return widths.map(w => `${cfUrl(src, `w=${w},f=auto,q=85`)} ${w}w`).join(', ');
 }
 
 // ── SEO: CollectionPage + ItemList + FAQ schema ──────────
@@ -54,7 +54,7 @@ const itemListSchema = {
       "position": i + 1,
       "url": `${SITE}/kids/${kid.data.slug}/`,
       "name": kid.data.name,
-      ...(kid.data.heroImage ? { "image": cfUrl(kid.data.heroImage, 'w=600,f=auto,q=80') } : {}),
+      ...(kid.data.heroImage ? { "image": cfUrl(kid.data.heroImage, 'w=600,f=auto,q=85') } : {}),
     })),
   },
 };
@@ -138,7 +138,7 @@ const gridKids = [...kids];
         >
           <div class="featured-card__image">
               <img
-                src={cfUrl(featuredKid.data.heroImage, 'w=1024,f=auto,q=80')}
+                src={cfUrl(featuredKid.data.heroImage, 'w=1024,f=auto,q=85')}
                 srcset={cfSrcset(featuredKid.data.heroImage, [640, 1024, 1600])}
                 sizes="(max-width: 768px) 100vw, 60vw"
                 alt={`Photo of ${featuredKid.data.name}${featuredKid.data.diagnosis ? ` — ${featuredKid.data.diagnosis}` : ''}`}
@@ -239,8 +239,8 @@ const gridKids = [...kids];
             <div class="kid-card__frame">
               {kid.data.heroImage ? (
                 <img
-                  src={cfUrl(kid.data.heroImage, 'w=440,f=auto,q=80')}
-                  srcset={cfSrcset(kid.data.heroImage, [300, 440])}
+                  src={cfUrl(kid.data.heroImage, 'w=440,f=auto,q=85')}
+                  srcset={cfSrcset(kid.data.heroImage, [300, 440, 600])}
                   sizes="(max-width: 480px) 45vw, (max-width: 768px) 45vw, (max-width: 1100px) 25vw, 260px"
                   alt={`Photo of ${kid.data.name}${kid.data.diagnosis ? `, diagnosed with ${kid.data.diagnosis}` : ''} — Sunshine on a Ranney Day`}
                   class="kid-card__img"
