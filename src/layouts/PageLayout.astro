@@ -1,7 +1,7 @@
 ---
 /**
  * PageLayout.astro
- * Standard page layout with ruled editorial hero, main content area,
+ * Standard page layout with editorial hero, main content area,
  * and optional bottom CTA. Wraps BaseLayout.
  */
 import BaseLayout from './BaseLayout.astro';
@@ -28,15 +28,10 @@ const { title, description, heroTitle, heroSubtitle, heroLabel, ogImage, ogType,
   {(heroTitle || heroSubtitle) && (
     <section class="page-hero">
       <div class="container">
-        <div class="page-hero__rule-top" aria-hidden="true"></div>
-        <div class="page-hero__body">
-          {heroLabel && <p class="page-hero__label">{heroLabel}</p>}
-          {heroTitle && <h1 class="page-hero__title">{heroTitle}</h1>}
-          {heroSubtitle && <p class="page-hero__subtitle">{heroSubtitle}</p>}
-        </div>
-        <div class="page-hero__rule-bottom" aria-hidden="true">
-          <span class="page-hero__rule-accent"></span>
-        </div>
+        {heroLabel && <p class="page-hero__label">{heroLabel}</p>}
+        {heroTitle && <h1 class="page-hero__title">{heroTitle}</h1>}
+        {heroSubtitle && <p class="page-hero__subtitle">{heroSubtitle}</p>}
+        <div class="page-hero__accent" aria-hidden="true"></div>
       </div>
     </section>
   )}
@@ -51,15 +46,14 @@ const { title, description, heroTitle, heroSubtitle, heroLabel, ogImage, ogType,
 <style>
   .page-hero {
     background: var(--c-cream);
-  }
-
-  .page-hero__rule-top {
-    border-top: 2px solid var(--c-text);
-  }
-
-  .page-hero__body {
     padding-block: var(--space-2xl) var(--space-xl);
     text-align: center;
+  }
+
+  .page-hero .container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
   }
 
   .page-hero__label {
@@ -91,21 +85,12 @@ const { title, description, heroTitle, heroSubtitle, heroLabel, ogImage, ogType,
     margin-inline: auto;
   }
 
-  .page-hero__rule-bottom {
-    position: relative;
-    height: 2px;
-    background: var(--c-border);
-  }
-
-  .page-hero__rule-accent {
-    position: absolute;
-    left: 50%;
-    transform: translateX(-50%);
-    top: -1px;
-    width: 48px;
+  .page-hero__accent {
+    width: 40px;
     height: 3px;
     background: var(--c-yellow);
-    border-radius: 1px;
+    border-radius: 2px;
+    margin-top: var(--space-lg);
   }
 
   .page-content {
@@ -113,7 +98,7 @@ const { title, description, heroTitle, heroSubtitle, heroLabel, ogImage, ogType,
   }
 
   @media (max-width: 768px) {
-    .page-hero__body {
+    .page-hero {
       padding-block: var(--space-xl) var(--space-lg);
     }
   }
