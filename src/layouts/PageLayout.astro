@@ -29,9 +29,11 @@ const { title, description, heroTitle, heroSubtitle, heroLabel, ogImage, ogType,
     <section class="page-hero">
       <div class="container">
         {heroLabel && <p class="page-hero__label">{heroLabel}</p>}
-        {heroTitle && <h1 class="page-hero__title">{heroTitle}</h1>}
+        {heroTitle && <h1 class="page-hero__title" set:html={heroTitle} />}
         {heroSubtitle && <p class="page-hero__subtitle">{heroSubtitle}</p>}
-        <div class="page-hero__accent" aria-hidden="true"></div>
+        <div class="page-hero__rule" aria-hidden="true">
+          <span class="page-hero__rule-accent"></span>
+        </div>
       </div>
     </section>
   )}
@@ -85,12 +87,23 @@ const { title, description, heroTitle, heroSubtitle, heroLabel, ogImage, ogType,
     margin-inline: auto;
   }
 
-  .page-hero__accent {
-    width: 40px;
+  .page-hero__rule {
+    position: relative;
+    height: 2px;
+    background: var(--c-border);
+    margin-top: var(--space-lg);
+    width: 100%;
+  }
+
+  .page-hero__rule-accent {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    top: -1px;
+    width: 48px;
     height: 3px;
     background: var(--c-yellow);
-    border-radius: 2px;
-    margin-top: var(--space-lg);
+    border-radius: 1px;
   }
 
   .page-content {
