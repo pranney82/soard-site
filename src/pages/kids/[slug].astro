@@ -113,7 +113,7 @@ const dateModified = kid.year ? `${kid.year}-01-01` : undefined;
             decoding="async"
             fetchpriority="high"
             itemprop="image"
-            style="view-transition-name: kid-hero"
+            transition:name="kid-hero"
           />
           <div class="hero__gradient" aria-hidden="true"></div>
         </div>
@@ -125,7 +125,7 @@ const dateModified = kid.year ? `${kid.year}-01-01` : undefined;
           All Kids
         </a>
 
-        <h1 class="hero__name" itemprop="headline" style="view-transition-name: kid-name">{kid.name}</h1>
+        <h1 class="hero__name" itemprop="headline" transition:name="kid-name">{kid.name}</h1>
 
         <div class="hero__meta">
           {kid.age && (
