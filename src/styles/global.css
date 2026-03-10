@@ -72,18 +72,16 @@
 }
 
 html {
-  /* scroll-behavior: smooth causes jank with sticky elements and on iOS —
-     use targeted JS scrollIntoView({ behavior: 'smooth' }) instead */
   -webkit-text-size-adjust: 100%;
   -webkit-tap-highlight-color: transparent;
   text-rendering: optimizeLegibility;
+  /* Prevent horizontal scroll from any overflowing element */
+  overflow-x: hidden;
   /* Match body background so View Transitions never flash white */
   background-color: var(--c-cream);
 }
 
 /* ─── View Transition (ClientRouter) — eliminate flash ── */
-/* Disable the default cross-fade; swap instantly to prevent
-   the white-flash between old and new page snapshots. */
 ::view-transition-old(root) {
   animation: none;
   mix-blend-mode: normal;
@@ -92,7 +90,6 @@ html {
   animation: none;
   mix-blend-mode: normal;
 }
-/* Keep the transition group layer opaque during swap */
 ::view-transition-group(root) {
   animation-duration: 0s;
 }
@@ -108,6 +105,8 @@ body {
   -moz-osx-font-smoothing: grayscale;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-y: none;
+  /* Prevent long words (diagnoses, URLs) from breaking layout */
+  overflow-wrap: break-word;
 }
 
 img, picture, video, canvas, svg {

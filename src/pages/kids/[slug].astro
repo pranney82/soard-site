@@ -550,15 +550,6 @@ const dateModified = kid.year ? `${kid.year}-01-01` : undefined;
     });
   }
 
-  // ── Image fade-in on load ──────────────
-  document.querySelectorAll<HTMLImageElement>('.gallery-item__img, .related-card__img, .hero__img').forEach(img => {
-    if (img.complete && img.naturalWidth > 0) {
-      img.classList.add('is-loaded');
-    } else {
-      img.addEventListener('load', () => img.classList.add('is-loaded'), { once: true });
-    }
-  });
-
   // ── Scroll reveal for sections ──────────
   if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
     _kidObserver = new IntersectionObserver(
@@ -605,12 +596,6 @@ const dateModified = kid.year ? `${kid.year}-01-01` : undefined;
     height: 100%;
     object-fit: cover;
     object-position: center 30%;
-    opacity: 0;
-    transition: opacity 0.5s ease;
-  }
-
-  .hero__img.is-loaded {
-    opacity: 1;
   }
 
   .hero__gradient {
@@ -873,11 +858,6 @@ const dateModified = kid.year ? `${kid.year}-01-01` : undefined;
     column-gap: var(--space-md);
   }
 
-  @keyframes shimmer {
-    0% { background-position: -200% 0; }
-    100% { background-position: 200% 0; }
-  }
-
   .gallery-item {
     display: inline-block;
     width: 100%;
@@ -885,9 +865,7 @@ const dateModified = kid.year ? `${kid.year}-01-01` : undefined;
     margin-bottom: var(--space-md);
     border-radius: var(--border-radius);
     overflow: hidden;
-    background: linear-gradient(90deg, var(--c-warm-gray) 0%, #eae9e5 40%, var(--c-warm-gray) 80%);
-    background-size: 200% 100%;
-    animation: shimmer 1.8s ease-in-out infinite;
+    background: var(--c-warm-gray);
     border: none;
     padding: 0;
     cursor: pointer;
@@ -895,14 +873,11 @@ const dateModified = kid.year ? `${kid.year}-01-01` : undefined;
                 box-shadow 0.35s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
-  .gallery-item:has(.is-loaded) {
-    animation: none;
-    background: var(--c-border);
-  }
-
-  .gallery-item:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.12);
+  @media (hover: hover) {
+    .gallery-item:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.12);
+    }
   }
 
   .gallery-item:focus-visible {
@@ -914,13 +889,6 @@ const dateModified = kid.year ? `${kid.year}-01-01` : undefined;
     width: 100%;
     height: auto;
     display: block;
-    opacity: 0;
-    transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1),
-                opacity 0.4s ease;
-  }
-
-  .gallery-item__img.is-loaded {
-    opacity: 1;
   }
 
   @media (hover: hover) {
@@ -985,8 +953,13 @@ const dateModified = kid.year ? `${kid.year}-01-01` : undefined;
     transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
-  .related-card:hover {
-    transform: translateY(-6px);
+  @media (hover: hover) {
+    .related-card:hover {
+      transform: translateY(-6px);
+    }
+    .related-card:hover .related-card__img {
+      transform: scale(1.05);
+    }
   }
 
   .related-card__frame {
@@ -999,19 +972,7 @@ const dateModified = kid.year ? `${kid.year}-01-01` : undefined;
     height: 100%;
     object-fit: cover;
     display: block;
-    opacity: 0;
-    transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1),
-                opacity 0.4s ease;
-  }
-
-  .related-card__img.is-loaded {
-    opacity: 1;
-  }
-
-  @media (hover: hover) {
-    .related-card:hover .related-card__img {
-      transform: scale(1.05);
-    }
+    transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
   .related-card__name {
@@ -1354,20 +1315,10 @@ const dateModified = kid.year ? `${kid.year}-01-01` : undefined;
       transition: none;
     }
 
-    .hero__img,
-    .gallery-item__img,
-    .related-card__img {
-      opacity: 1 !important;
-    }
-
-    .gallery-item {
-      animation: none;
-      background: var(--c-border);
-    }
-
     .yt-facade__thumb,
     .gallery-item__img,
-    .gallery-item {
+    .gallery-item,
+    .related-card__img {
       transition: none;
     }
   }
