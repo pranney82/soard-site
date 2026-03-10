@@ -77,6 +77,8 @@ html {
   text-rendering: optimizeLegibility;
   /* Prevent horizontal scroll from any overflowing element */
   overflow-x: hidden;
+  /* Prevent content from hiding behind sticky header on anchor nav / find-in-page */
+  scroll-padding-top: calc(var(--header-height) + 1rem);
   /* Match body background so View Transitions never flash white */
   background-color: var(--c-cream);
 }
@@ -399,6 +401,17 @@ h4, .h4 {
   .btn:hover {
     transform: none;
   }
+}
+
+/* Instant visual feedback on tap for interactive elements */
+.btn:active {
+  transform: scale(0.97);
+  transition-duration: 50ms;
+}
+
+a:active img {
+  opacity: 0.85;
+  transition-duration: 50ms;
 }
 
 /* ─── Responsive Helpers ────────────────── */

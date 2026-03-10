@@ -889,6 +889,11 @@ const gridKids = [...kids];
     border-radius: var(--border-radius-lg);
   }
 
+  .kid-card:active {
+    transform: scale(0.97);
+    transition-duration: 80ms;
+  }
+
   /* Staggered reveal — cards start visible, only animate below-fold ones */
   :global(.js-anim) .kid-card:not(.revealed) {
     opacity: 0;
