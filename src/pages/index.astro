@@ -21,47 +21,12 @@ const stats = {
 
 /* ── Hero (from site settings) ── */
 const heroEyebrow = siteSettings.homeHero?.eyebrow || '501(c)(3) Nonprofit · Atlanta, GA · Since 2012';
-const heroHeadlineLine1 = siteSettings.homeHero?.headlineLine1 || 'Building <em>dreams</em>,';
-const heroHeadlineLine2 = siteSettings.homeHero?.headlineLine2 || 'one room at a time';
-const heroLead = siteSettings.homeHero?.lead || 'We create life-changing spaces for children with special needs — dream bedrooms, accessible bathrooms, and therapy rooms — all at <strong>no cost to families</strong>.';
+const heroHeadline = siteSettings.homeHero?.headline || 'Every child deserves a room that feels like <em>theirs</em>.';
+const heroSub = siteSettings.homeHero?.lead || 'Dream bedrooms, accessible bathrooms, and therapy rooms for children with special needs — at no cost to families.';
 const heroCta1Label = siteSettings.homeHero?.cta1Label || 'Give Today';
 const heroCta1Link = siteSettings.homeHero?.cta1Link || '/donate';
 const heroCta2Label = siteSettings.homeHero?.cta2Label || 'See Our Work ↓';
 const heroCta2Link = siteSettings.homeHero?.cta2Link || '#stories';
-
-/* ── Hero Mosaic — 30 kids, each a ~4KB thumbnail ── */
-const mosaicKids = siteSettings.heroMosaic || [
-  { slug: 'zyah', name: 'Zyah', cfId: 'b7ae8742-5431-4c85-aa74-a36b173c6200' },
-  { slug: 'bryce', name: 'Bryce', cfId: '8c30d105-b021-4a7a-19a7-c247b3531500' },
-  { slug: 'alex', name: 'Alex', cfId: '1e6a46a7-c998-4afe-2c0e-24027dc77800' },
-  { slug: 'griffin', name: 'Griffin', cfId: 'dfd10b8a-a636-4cb6-f748-c59bbd31a500' },
-  { slug: 'ethan-2022', name: 'Ethan', cfId: '5424eb2a-ab4d-4305-aea1-3149b7a7cc00' },
-  { slug: 'elizabeth', name: 'Elizabeth', cfId: '8bf4ac37-d5a0-43d0-5e7f-93df38508b00' },
-  { slug: 'brianna', name: 'Brianna', cfId: '473ec592-3e39-4a74-af36-a409ab33c500' },
-  { slug: 'braxton', name: 'Braxton', cfId: 'c4686f1d-343f-4936-25e7-9118f5093900' },
-  { slug: 'samantha', name: 'Samantha', cfId: '31f4acf8-daea-400f-cc98-19d5dcb93a00' },
-  { slug: 'leland', name: 'Leland', cfId: '8e7ec97e-f72a-444a-9f51-6c26960cb400' },
-  { slug: 'amanda-caleb-and-isaac', name: 'Amanda, Caleb & Isaac', cfId: 'c749d2a0-bf64-459c-9503-f589a70a1800' },
-  { slug: 'ally', name: 'Ally', cfId: '1767682f-9806-49a0-bd90-6f3d4e81cd00' },
-  { slug: 'breanna', name: 'Breanna', cfId: '3550059b-79ba-47d7-dbd7-9a37be050d00' },
-  { slug: 'eli', name: 'Eli', cfId: '85e1c185-6f97-4bcd-a5d7-8cf3cc8dec00' },
-  { slug: 'ellie', name: 'Ellie', cfId: '5543acf4-5a16-4a75-2859-12709174e200' },
-  { slug: 'monica', name: 'Monica', cfId: 'fd5e6be1-748b-4db4-c182-472321f56100' },
-  { slug: 'rachel', name: 'Rachel', cfId: '09d0e72d-677c-4628-5aeb-d0497b746200' },
-  { slug: 'devon', name: 'Devon', cfId: '1b41b4ef-d921-4fa3-9080-fcc295318f00' },
-  { slug: 'shawn', name: 'Shawn', cfId: '7f02fcda-71e1-4b1a-dfd8-38ba076c9d00' },
-  { slug: 'landon', name: 'Landon', cfId: 'b23f46b7-206f-4c96-d9e6-8815bfb2b800' },
-  { slug: 'eliavah', name: 'Eliavah', cfId: '50054953-a4b3-4ed7-2e36-5dda71d6da00' },
-  { slug: 'lizzie', name: 'Lizzie', cfId: '43476e06-cfeb-4167-622c-aecaa288b400' },
-  { slug: 'haleigh', name: 'Haleigh', cfId: '557be3e1-5fc3-4302-e5f8-ee43db474300' },
-  { slug: 'adam', name: 'Adam', cfId: '845313dc-e883-435e-0b63-271f7c048500' },
-  { slug: 'charlie', name: 'Charlie', cfId: '520c76a8-45e3-4d22-b8e6-51bbc72c0100' },
-  { slug: 'samuel', name: 'Samuel', cfId: 'd7c26883-40ed-4be9-cf16-95135d1cc500' },
-  { slug: 'john-and-joseph', name: 'John & Joseph', cfId: '95362728-7938-45a8-709d-06cf25403a00' },
-  { slug: 'harper', name: 'Harper', cfId: '97e6435d-0d88-44db-20c6-f91c182f0d00' },
-  { slug: 'noah', name: 'Noah', cfId: 'f0f1f46b-2180-49ad-d714-c46641ff2d00' },
-  { slug: 'karson', name: 'Karson', cfId: '19bad55d-e080-41cc-eb82-d16c3663a800' },
-];
 
 /* ── Featured Story ── */
 const allKids = await getCollection('kids');
@@ -138,8 +103,8 @@ const jsonLd = getWebSiteSchema();
     <div class="hero-inner">
       <div class="hero-text">
         <p class="hero-eyebrow">{heroEyebrow}</p>
-        <h1 class="hero-headline">Every child deserves<br/>a room that feels<br/>like <em>theirs</em>.</h1>
-        <p class="hero-sub">Dream bedrooms, accessible bathrooms, and therapy rooms for children with special needs — at no cost to families.</p>
+        <h1 class="hero-headline" set:html={heroHeadline} />
+        <p class="hero-sub">{heroSub}</p>
         <div class="hero-ctas">
           <a href={heroCta1Link} class="btn btn-primary btn-hero-glow">{heroCta1Label}</a>
           <a href={heroCta2Link} class="btn btn-dark">{heroCta2Label}</a>
@@ -209,10 +174,10 @@ const jsonLd = getWebSiteSchema();
       </div>
       <div class="mission-visual" role="presentation">
         <div class="mission-photo mission-photo--main" data-reveal>
-          <img src={`${CF}/${missionMainId}/w=800,f=auto,q=85`} srcset={`${CF}/${missionMainId}/w=500,f=auto,q=85 500w, ${CF}/${missionMainId}/w=800,f=auto,q=85 800w`} sizes="(max-width:768px) 90vw, 40vw" alt="A transformed room designed for a child with special needs" width="800" height="600" loading="lazy" decoding="async" />
+          <img src={`${CF}/${missionMainId}/w=800,f=auto,q=80`} srcset={`${CF}/${missionMainId}/w=500,f=auto,q=80 500w, ${CF}/${missionMainId}/w=800,f=auto,q=80 800w`} sizes="(max-width:768px) 90vw, 40vw" alt="A transformed room designed for a child with special needs" width="800" height="600" loading="lazy" decoding="async" />
         </div>
         <div class="mission-photo mission-photo--accent" data-reveal data-delay="1">
-          <img src={`${CF}/${missionAccentId}/w=600,f=auto,q=85`} srcset={`${CF}/${missionAccentId}/w=400,f=auto,q=85 400w, ${CF}/${missionAccentId}/w=600,f=auto,q=85 600w`} sizes="(max-width:768px) 60vw, 30vw" alt="A happy child in their new dream room" width="600" height="450" loading="lazy" decoding="async" />
+          <img src={`${CF}/${missionAccentId}/w=600,f=auto,q=80`} srcset={`${CF}/${missionAccentId}/w=400,f=auto,q=80 400w, ${CF}/${missionAccentId}/w=600,f=auto,q=80 600w`} sizes="(max-width:768px) 60vw, 30vw" alt="A happy child in their new dream room" width="600" height="450" loading="lazy" decoding="async" />
         </div>
       </div>
     </div>
@@ -222,7 +187,7 @@ const jsonLd = getWebSiteSchema();
   <section class="story" id="stories" aria-labelledby="story-heading">
     <div class="story-split">
       <figure class="story-photo">
-        <img src={`${CF}/${storyPhotoId}/w=900,f=auto,q=85`} srcset={`${CF}/${storyPhotoId}/w=600,f=auto,q=85 600w, ${CF}/${storyPhotoId}/w=900,f=auto,q=85 900w, ${CF}/${storyPhotoId}/w=1200,f=auto,q=85 1200w`} sizes="(max-width:768px) 100vw, 55vw" alt={`${fd?.name || 'Zyah'}'s room reveal`} width="900" height="600" loading="lazy" decoding="async" class="story-photo-img" />
+        <img src={`${CF}/${storyPhotoId}/w=900,f=auto,q=80`} srcset={`${CF}/${storyPhotoId}/w=600,f=auto,q=80 600w, ${CF}/${storyPhotoId}/w=900,f=auto,q=80 900w, ${CF}/${storyPhotoId}/w=1200,f=auto,q=80 1200w`} sizes="(max-width:768px) 100vw, 55vw" alt={`${fd?.name || 'Zyah'}'s room reveal`} width="900" height="600" loading="lazy" decoding="async" class="story-photo-img" />
         <div class="story-photo-tag">Latest Reveal</div>
       </figure>
       <div class="story-content" data-reveal>
@@ -249,7 +214,7 @@ const jsonLd = getWebSiteSchema();
         <li class="kid-thumb-item">
           <a href={`/kids/${kid.slug}`} class="kid-thumb">
             <div class="kid-thumb-photo">
-              <img src={`${CF}/${kid.cfId}/w=440,h=440,fit=cover,f=auto`} alt={`${kid.name}'s room reveal`} width="220" height="220" loading="lazy" decoding="async" />
+              <img src={`${CF}/${kid.cfId}/w=440,h=440,fit=cover,f=auto,q=80`} alt={`${kid.name}'s room reveal`} width="220" height="220" loading="lazy" decoding="async" />
             </div>
             <h3 class="kid-thumb-name">{kid.name}</h3>
             <p>{kid.roomLabel}{kid.age ? ` · Age ${kid.age}` : ''}</p>
@@ -296,7 +261,7 @@ const jsonLd = getWebSiteSchema();
       </div>
       <div class="rooms-grid">
         <a href="/kids" class="room-tile" data-accent="bedroom" data-reveal>
-          <div class="room-tile-photo"><img src={`${CF}/${roomPhotos.bedroom}/w=600,h=375,fit=cover,f=auto`} alt="A custom dream bedroom" width="600" height="375" loading="lazy" decoding="async" /></div>
+          <div class="room-tile-photo"><img src={`${CF}/${roomPhotos.bedroom}/w=600,h=375,fit=cover,f=auto,q=80`} alt="A custom dream bedroom" width="600" height="375" loading="lazy" decoding="async" /></div>
           <div class="room-tile-content">
             <span class="room-tile-tag">Most Popular</span>
             <h3>Dream Bedrooms</h3>
@@ -305,7 +270,7 @@ const jsonLd = getWebSiteSchema();
           </div>
         </a>
         <a href="/kids" class="room-tile" data-accent="bath" data-reveal data-delay="1">
-          <div class="room-tile-photo"><img src={`${CF}/${roomPhotos.bath}/w=600,h=375,fit=cover,f=auto`} alt="An accessible bathroom" width="600" height="375" loading="lazy" decoding="async" /></div>
+          <div class="room-tile-photo"><img src={`${CF}/${roomPhotos.bath}/w=600,h=375,fit=cover,f=auto,q=80`} alt="An accessible bathroom" width="600" height="375" loading="lazy" decoding="async" /></div>
           <div class="room-tile-content">
             <span class="room-tile-tag">Life-Changing</span>
             <h3>Accessible Bathrooms</h3>
@@ -314,7 +279,7 @@ const jsonLd = getWebSiteSchema();
           </div>
         </a>
         <a href="/kids" class="room-tile" data-accent="therapy" data-reveal data-delay="2">
-          <div class="room-tile-photo"><img src={`${CF}/${roomPhotos.therapy}/w=600,h=375,fit=cover,f=auto`} alt="A sensory therapy room" width="600" height="375" loading="lazy" decoding="async" /></div>
+          <div class="room-tile-photo"><img src={`${CF}/${roomPhotos.therapy}/w=600,h=375,fit=cover,f=auto,q=80`} alt="A sensory therapy room" width="600" height="375" loading="lazy" decoding="async" /></div>
           <div class="room-tile-content">
             <span class="room-tile-tag">Therapeutic</span>
             <h3>Sensory & Therapy Rooms</h3>
@@ -481,10 +446,12 @@ const jsonLd = getWebSiteSchema();
     height: 100%;
     object-fit: cover;
     display: block;
+    /* --parallax-y is set by JS scroll handler; defaults to 0 */
+    transform: translate3d(0, var(--parallax-y, 0px), 0);
     transition: transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
   }
   .hero-photo:hover img {
-    transform: scale(1.03);
+    transform: scale(1.03) translate3d(0, var(--parallax-y, 0px), 0);
   }
 
   .hero-photo-name {
@@ -619,15 +586,6 @@ const jsonLd = getWebSiteSchema();
   .btn-ghost-light:hover {
     background: rgba(255,255,255,0.15);
     border-color: rgba(255,255,255,0.4);
-    transform: translateY(-3px);
-  }
-  .btn-outline-dark {
-    background: transparent; color: var(--c-dark);
-    border: 1.5px solid var(--c-border);
-  }
-  .btn-outline-dark:hover {
-    background: var(--c-dark); color: #fff;
-    border-color: var(--c-dark);
     transform: translateY(-3px);
   }
 
@@ -816,7 +774,7 @@ const jsonLd = getWebSiteSchema();
           requestAnimationFrame(() => {
             const scrollY = window.scrollY;
             if (scrollY < heroH) {
-              photo.style.transform = `scale(1) translate3d(0, ${scrollY * 0.06}px, 0)`;
+              photo.style.setProperty('--parallax-y', `${scrollY * 0.06}px`);
             }
             ticking = false;
           });
