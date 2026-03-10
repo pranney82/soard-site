@@ -113,6 +113,21 @@ if (jsonLd) {
 }
 
 const structuredData = buildSchemaGraph(...graphSchemas);
+
+// ── Page content transition animation ─────────────
+// Uses transition:animate directive (Astro's intended API) so it:
+//   - generates fallback CSS for non-native browsers
+//   - differentiates forward vs. backward navigation
+const pageContentAnim = {
+  forwards: {
+    old: { name: 'vt-fade-out', duration: '80ms', easing: 'cubic-bezier(0.4, 0, 1, 1)', fillMode: 'both' },
+    new: { name: 'vt-slide-in', duration: '150ms', delay: '40ms', easing: 'cubic-bezier(0, 0, 0.2, 1)', fillMode: 'both' },
+  },
+  backwards: {
+    old: { name: 'vt-slide-out', duration: '80ms', easing: 'cubic-bezier(0.4, 0, 1, 1)', fillMode: 'both' },
+    new: { name: 'vt-fade-in', duration: '120ms', easing: 'cubic-bezier(0, 0, 0.2, 1)', fillMode: 'both' },
+  },
+};
 ---
 
 <!DOCTYPE html>
@@ -269,7 +284,7 @@ const structuredData = buildSchemaGraph(...graphSchemas);
 <body class={bodyClass}>
   <a href="#main-content" class="skip-link">Skip to main content</a>
   <Header />
-  <main id="main-content" transition:name="page-content">
+  <main id="main-content" transition:name="page-content" transition:animate={pageContentAnim}>
     <slot />
   </main>
   <Footer />

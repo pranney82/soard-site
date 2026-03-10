@@ -93,6 +93,9 @@ html {
 @keyframes vt-slide-in {
   from { opacity: 0; transform: translateY(8px); }
 }
+@keyframes vt-slide-out {
+  to { opacity: 0; transform: translateY(8px); }
+}
 
 /* Root: crisp crossfade — old disappears fast, new materializes */
 ::view-transition-old(root) {
@@ -101,15 +104,6 @@ html {
 }
 ::view-transition-new(root) {
   animation: 120ms cubic-bezier(0, 0, 0.2, 1) 30ms both vt-fade-in;
-}
-
-/* Main content: subtle upward resolve on page entrance */
-::view-transition-old(page-content) {
-  animation: 80ms cubic-bezier(0.4, 0, 1, 1) both vt-fade-out;
-  z-index: -1;
-}
-::view-transition-new(page-content) {
-  animation: 150ms cubic-bezier(0, 0, 0.2, 1) 40ms both vt-slide-in;
 }
 
 /* Shared element morph for kid hero images — the View Transitions
