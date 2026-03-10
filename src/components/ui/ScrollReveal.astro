@@ -37,6 +37,20 @@
     const els = document.querySelectorAll('[data-reveal]');
     if (!els.length) return;
 
+    // On soft (client-side) navigation, instantly reveal above-fold
+    // elements so they don't re-flash from opacity:0.
+    const viewH = window.innerHeight;
+    els.forEach(el => {
+      const rect = el.getBoundingClientRect();
+      if (rect.top < viewH * 0.85) {
+        el.classList.add('is-visible');
+      }
+    });
+
+    // Observe remaining below-fold elements normally
+    const remaining = document.querySelectorAll('[data-reveal]:not(.is-visible)');
+    if (!remaining.length) return;
+
     _revealObserver = new IntersectionObserver((entries) => {
       entries.forEach(entry => {
         if (entry.isIntersecting) {
@@ -46,7 +60,7 @@
       });
     }, { threshold: 0.15, rootMargin: '0px 0px -40px 0px' });
 
-    els.forEach(el => _revealObserver!.observe(el));
+    remaining.forEach(el => _revealObserver!.observe(el));
 
     // Safety net: force-reveal any still-hidden elements after 3s
     _revealSafety = setTimeout(() => {
