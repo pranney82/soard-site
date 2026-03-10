@@ -125,65 +125,64 @@ const jsonLd = getWebSiteSchema();
   jsonLd={jsonLd}
 >
 
-  <!-- ══════ HERO — Editorial Split ══════ -->
+  <!-- ══════ HERO — Typography + Bento ══════ -->
   <section class="hero" aria-label="Introduction">
-    <div class="hero-grid">
-      <!-- Left: Content -->
-      <div class="hero-content">
-        <div class="hero-badge">
-          <span class="hero-badge-dot"></span>
-          {heroEyebrow}
-        </div>
-        <h1>
-          <span class="hero-line"><span class="hero-line-inner" set:html={heroHeadlineLine1} /></span>
-          <span class="hero-line"><span class="hero-line-inner" set:html={heroHeadlineLine2} /></span>
-        </h1>
-        <p class="hero-lead" set:html={heroLead} />
-        <div class="hero-ctas">
-          <a href={heroCta1Link} class="btn btn-primary btn-glow">
-            {heroCta1Label}
-            <svg width="18" height="18" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 2.5C6.5 1 4 1 2.75 2.75S2.5 6.5 8 11.5C13.5 6.5 13.75 4.5 13.25 2.75S9.5 1 8 2.5Z" fill="currentColor"/></svg>
-          </a>
-          <a href={heroCta2Link} class="btn btn-outline-dark">{heroCta2Label}</a>
-        </div>
-        <div class="hero-stats">
-          <div class="hero-stat">
-            <span class="hero-stat-num">{stats.totalKids}+</span>
-            <span class="hero-stat-label">Kids Served</span>
-          </div>
-          <div class="hero-stat-divider"></div>
-          <div class="hero-stat">
-            <span class="hero-stat-num">{stats.totalRooms}+</span>
-            <span class="hero-stat-label">Rooms Built</span>
-          </div>
-          <div class="hero-stat-divider"></div>
-          <div class="hero-stat">
-            <span class="hero-stat-num">{stats.years}</span>
-            <span class="hero-stat-label">Years Strong</span>
-          </div>
-        </div>
+    <!-- Top: Pure typography — paints instantly, zero images -->
+    <div class="hero-text">
+      <div class="hero-badge">
+        <span class="hero-badge-dot"></span>
+        {heroEyebrow}
       </div>
-
-      <!-- Right: Photo Composition -->
-      <div class="hero-visual" aria-hidden="true">
-        <div class="hero-visual-frame">
-          <div class="hero-deco-yellow"></div>
-          <div class="hero-photo-main">
-            <picture>
-              <source type="image/avif" srcset={`${CF}/${storyPhotoId}/w=600,f=avif 600w, ${CF}/${storyPhotoId}/w=900,f=avif 900w`} sizes="(max-width:900px) 85vw, 42vw" />
-              <source type="image/webp" srcset={`${CF}/${storyPhotoId}/w=600,f=webp 600w, ${CF}/${storyPhotoId}/w=900,f=webp 900w`} sizes="(max-width:900px) 85vw, 42vw" />
-              <img src={`${CF}/${storyPhotoId}/w=900,q=82`} alt="A child seeing their dream bedroom for the first time" width="900" height="600" loading="eager" fetchpriority="high" />
-            </picture>
-          </div>
-          <div class="hero-photo-accent">
-            <img src={`${CF}/${mosaicKids[3].cfId}/w=280,h=280,fit=cover,f=auto,q=75`} alt="" width="280" height="280" loading="eager" />
-          </div>
-          <div class="hero-deco-dots" aria-hidden="true"></div>
-        </div>
+      <h1>
+        <span class="hero-line"><span class="hero-line-inner" set:html={heroHeadlineLine1} /></span>
+        <span class="hero-line"><span class="hero-line-inner" set:html={heroHeadlineLine2} /></span>
+      </h1>
+      <p class="hero-lead" set:html={heroLead} />
+      <div class="hero-ctas">
+        <a href={heroCta1Link} class="btn btn-primary btn-glow">
+          {heroCta1Label}
+          <svg width="18" height="18" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 2.5C6.5 1 4 1 2.75 2.75S2.5 6.5 8 11.5C13.5 6.5 13.75 4.5 13.25 2.75S9.5 1 8 2.5Z" fill="currentColor"/></svg>
+        </a>
+        <a href={heroCta2Link} class="btn btn-outline-dark">{heroCta2Label}</a>
       </div>
     </div>
 
-    <!-- Auto-scrolling filmstrip of kids -->
+    <!-- Bento grid: photo + stats -->
+    <div class="bento">
+      <div class="bento-cell bento-photo" style="--bi:0">
+        <picture>
+          <source type="image/avif" srcset={`${CF}/${storyPhotoId}/w=700,f=avif 700w, ${CF}/${storyPhotoId}/w=1100,f=avif 1100w`} sizes="(max-width:768px) 94vw, 55vw" />
+          <source type="image/webp" srcset={`${CF}/${storyPhotoId}/w=700,f=webp 700w, ${CF}/${storyPhotoId}/w=1100,f=webp 1100w`} sizes="(max-width:768px) 94vw, 55vw" />
+          <img src={`${CF}/${storyPhotoId}/w=1100,q=82`} alt="A child seeing their dream bedroom for the first time" width="1100" height="733" loading="eager" fetchpriority="high" />
+        </picture>
+        <div class="bento-photo-tag">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 2.5C6.5 1 4 1 2.75 2.75S2.5 6.5 8 11.5C13.5 6.5 13.75 4.5 13.25 2.75S9.5 1 8 2.5Z" fill="currentColor"/></svg>
+          The Reveal Moment
+        </div>
+      </div>
+      <div class="bento-cell bento-stat" style="--bi:1">
+        <span class="bento-num">{stats.totalKids}<span class="bento-plus">+</span></span>
+        <span class="bento-label">Children Served</span>
+        <span class="bento-sub">since 2012</span>
+      </div>
+      <div class="bento-cell bento-stat" style="--bi:2">
+        <span class="bento-num">{stats.totalRooms}<span class="bento-plus">+</span></span>
+        <span class="bento-label">Rooms Built</span>
+        <span class="bento-sub">dream bedrooms, baths & therapy</span>
+      </div>
+      <div class="bento-cell bento-stat" style="--bi:3">
+        <span class="bento-num">{stats.years}</span>
+        <span class="bento-label">Years of Impact</span>
+        <span class="bento-sub">greater Atlanta area</span>
+      </div>
+      <div class="bento-cell bento-stat bento-stat--accent" style="--bi:4">
+        <span class="bento-num">100<span class="bento-pct">%</span></span>
+        <span class="bento-label">Free for Families</span>
+        <span class="bento-sub">stores fund our overhead</span>
+      </div>
+    </div>
+
+    <!-- Auto-scrolling filmstrip -->
     <div class="hero-filmstrip" aria-hidden="true">
       <div class="filmstrip-track">
         {[...mosaicKids, ...mosaicKids].map((kid) => (
@@ -423,39 +422,32 @@ const jsonLd = getWebSiteSchema();
 </BaseLayout>
 
 <style>
-  /* ── HERO — Editorial Split ── */
+  /* ══════ HERO — Typography + Bento ══════ */
   .hero {
     position: relative;
     background: var(--c-cream);
     overflow: hidden;
     contain: layout style;
-    padding-top: clamp(32px, 6vh, 72px);
+    padding-top: clamp(40px, 7vh, 80px);
     padding-bottom: 0;
   }
 
-  .hero-grid {
-    max-width: var(--max-width-wide);
+  /* ── Top: Typography block ── */
+  .hero-text {
+    text-align: center;
+    max-width: 780px;
     margin: 0 auto;
     padding: 0 var(--page-padding);
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: clamp(40px, 5vw, 80px);
-    align-items: center;
-    min-height: calc(100vh - var(--header-height) - 120px);
-    min-height: calc(100dvh - var(--header-height) - 120px);
   }
-
-  /* ── Content (left) ── */
-  .hero-content { padding: clamp(20px, 4vw, 48px) 0; }
 
   .hero-badge {
     display: inline-flex; align-items: center; gap: 10px;
     font-size: 11px; font-weight: 700;
     letter-spacing: 0.16em; text-transform: uppercase;
     color: var(--c-text-muted);
-    margin-bottom: 28px;
+    margin-bottom: 24px;
     opacity: 0;
-    animation: heroFadeUp 0.7s cubic-bezier(0.16,1,0.3,1) 0.15s both;
+    animation: heroFadeUp 0.7s cubic-bezier(0.16,1,0.3,1) 0.1s both;
   }
   .hero-badge-dot {
     width: 8px; height: 8px; border-radius: 50%;
@@ -470,34 +462,33 @@ const jsonLd = getWebSiteSchema();
   }
 
   .hero h1 {
-    font-size: clamp(38px, 5.5vw, 72px);
-    color: var(--c-dark); line-height: 1.06;
-    margin-bottom: 24px; letter-spacing: -0.03em;
+    font-size: clamp(42px, 6.5vw, 80px);
+    color: var(--c-dark); line-height: 1.04;
+    margin-bottom: 24px; letter-spacing: -0.035em;
   }
   .hero h1 em {
     font-style: italic;
-    background-image: linear-gradient(transparent 55%, var(--c-yellow-soft) 55%);
+    background-image: linear-gradient(transparent 52%, var(--c-yellow-soft) 52%);
   }
   .hero-line { display: block; overflow: hidden; padding-bottom: 0.15em; margin-bottom: -0.15em; }
   .hero-line-inner { display: block; transform: translateY(110%); }
-  .hero-line:nth-child(1) .hero-line-inner { animation: lineReveal 0.9s cubic-bezier(0.16,1,0.3,1) 0.3s both; }
-  .hero-line:nth-child(2) .hero-line-inner { animation: lineReveal 0.9s cubic-bezier(0.16,1,0.3,1) 0.45s both; }
+  .hero-line:nth-child(1) .hero-line-inner { animation: lineReveal 0.9s cubic-bezier(0.16,1,0.3,1) 0.25s both; }
+  .hero-line:nth-child(2) .hero-line-inner { animation: lineReveal 0.9s cubic-bezier(0.16,1,0.3,1) 0.4s both; }
   @keyframes lineReveal { to { transform: translateY(0); } }
 
   .hero-lead {
     font-size: clamp(16px, 1.8vw, 19px);
     color: var(--c-text-muted); line-height: 1.75;
-    max-width: 520px; margin-bottom: 36px;
+    max-width: 580px; margin: 0 auto 32px;
     opacity: 0;
-    animation: heroFadeUp 0.8s cubic-bezier(0.16,1,0.3,1) 0.65s both;
+    animation: heroFadeUp 0.8s cubic-bezier(0.16,1,0.3,1) 0.6s both;
   }
   .hero-lead :global(strong) { color: var(--c-dark); font-weight: 600; }
 
   .hero-ctas {
-    display: flex; gap: 14px; flex-wrap: wrap;
-    margin-bottom: 40px;
+    display: flex; gap: 14px; flex-wrap: wrap; justify-content: center;
     opacity: 0;
-    animation: heroFadeUp 0.8s cubic-bezier(0.16,1,0.3,1) 0.85s both;
+    animation: heroFadeUp 0.8s cubic-bezier(0.16,1,0.3,1) 0.78s both;
   }
   .btn-outline-dark {
     background: transparent;
@@ -516,91 +507,104 @@ const jsonLd = getWebSiteSchema();
     50% { box-shadow: 0 8px 40px rgba(255,218,36,0.55); }
   }
 
-  /* Stats row */
-  .hero-stats {
-    display: flex; align-items: center; gap: 24px;
-    opacity: 0;
-    animation: heroFadeUp 0.7s cubic-bezier(0.16,1,0.3,1) 1.05s both;
+  /* ══════ BENTO GRID ══════ */
+  .bento {
+    max-width: var(--max-width);
+    margin: clamp(40px, 6vh, 64px) auto 0;
+    padding: 0 var(--page-padding);
+    display: grid;
+    grid-template-columns: 3fr 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
+    gap: 12px;
   }
-  .hero-stat-num {
-    font-family: var(--font-display);
-    font-size: 26px; font-weight: 700;
-    color: var(--c-dark); line-height: 1; display: block;
-  }
-  .hero-stat-label {
-    font-size: 11px; font-weight: 600;
-    color: var(--c-text-light);
-    text-transform: uppercase; letter-spacing: 0.1em;
-    margin-top: 4px; display: block;
-  }
-  .hero-stat-divider { width: 1px; height: 28px; background: var(--c-border); }
 
-  /* ── Photo composition (right) ── */
-  .hero-visual {
-    position: relative;
+  .bento-cell {
+    border-radius: 20px;
+    overflow: hidden;
     opacity: 0;
-    animation: heroPhotoIn 1.1s cubic-bezier(0.16,1,0.3,1) 0.3s both;
+    animation: bentoIn 0.7s cubic-bezier(0.16,1,0.3,1) both;
+    animation-delay: calc(0.9s + var(--bi) * 0.08s);
   }
-  @keyframes heroPhotoIn {
-    from { opacity: 0; transform: translateY(32px) scale(0.97); }
+  @keyframes bentoIn {
+    from { opacity: 0; transform: translateY(20px) scale(0.97); }
     to { opacity: 1; transform: translateY(0) scale(1); }
   }
 
-  .hero-visual-frame { position: relative; }
-
-  .hero-photo-main {
-    position: relative; border-radius: 20px; overflow: hidden;
-    box-shadow:
-      0 32px 80px rgba(0,0,0,0.1),
-      0 8px 24px rgba(0,0,0,0.06),
-      0 0 0 1px rgba(0,0,0,0.03);
-    z-index: 2;
+  /* Photo cell — spans both rows */
+  .bento-photo {
+    grid-row: 1 / -1;
+    position: relative;
+    background: var(--c-dark);
   }
-  .hero-photo-main img {
-    width: 100%; height: auto; display: block;
-    aspect-ratio: 3 / 2; object-fit: cover;
+  .bento-photo img {
+    width: 100%; height: 100%;
+    object-fit: cover; display: block;
+    transition: transform 0.6s cubic-bezier(0.16,1,0.3,1);
   }
+  .bento-photo:hover img { transform: scale(1.03); }
 
-  .hero-photo-accent {
+  .bento-photo-tag {
     position: absolute;
-    bottom: -28px; left: -28px;
-    width: 140px; height: 140px;
-    border-radius: 16px; overflow: hidden;
-    box-shadow: 0 16px 40px rgba(0,0,0,0.14);
-    border: 4px solid var(--c-cream);
-    z-index: 3;
-    animation: accentFloat 5s ease-in-out infinite alternate;
+    bottom: 16px; left: 16px;
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 8px 14px;
+    background: rgba(0,0,0,0.55);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-radius: 100px;
+    font-size: 12px; font-weight: 600; color: #fff;
+    letter-spacing: 0.02em;
   }
-  .hero-photo-accent img { width: 100%; height: 100%; object-fit: cover; display: block; }
-  @keyframes accentFloat {
-    0% { transform: translateY(0) rotate(-1deg); }
-    100% { transform: translateY(-10px) rotate(0.5deg); }
+  .bento-photo-tag svg { color: var(--c-yellow); }
+
+  /* Stat cells */
+  .bento-stat {
+    display: flex; flex-direction: column;
+    justify-content: center; align-items: center;
+    text-align: center;
+    padding: 28px 16px;
+    background: var(--c-white);
+    border: 1px solid rgba(0,0,0,0.05);
+    transition: transform 0.35s cubic-bezier(0.16,1,0.3,1), box-shadow 0.35s ease;
+  }
+  .bento-stat:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 12px 32px rgba(0,0,0,0.06);
   }
 
-  /* Yellow decorative rectangle behind photo */
-  .hero-deco-yellow {
-    position: absolute;
-    top: -14px; right: -14px;
-    width: 50%; height: 55%;
+  .bento-num {
+    font-family: var(--font-display);
+    font-size: clamp(32px, 3.5vw, 44px);
+    font-weight: 700; color: var(--c-dark);
+    line-height: 1; letter-spacing: -0.02em;
+  }
+  .bento-plus { font-size: 0.65em; color: var(--c-yellow); }
+  .bento-pct { font-size: 0.55em; color: var(--c-yellow); }
+  .bento-label {
+    font-size: 13px; font-weight: 600;
+    color: var(--c-dark);
+    margin-top: 8px; letter-spacing: 0.01em;
+  }
+  .bento-sub {
+    font-size: 11px; color: var(--c-text-light);
+    margin-top: 4px;
+  }
+
+  /* Accent stat — yellow bg */
+  .bento-stat--accent {
     background: var(--c-yellow);
-    border-radius: 20px; z-index: 0;
-    opacity: 0.22;
+    border-color: transparent;
   }
-
-  /* Dot grid decoration */
-  .hero-deco-dots {
-    position: absolute;
-    bottom: 16px; right: -44px;
-    width: 84px; height: 84px; z-index: 1;
-    background-image: radial-gradient(circle, var(--c-yellow) 2px, transparent 2px);
-    background-size: 14px 14px;
-    opacity: 0.45;
-  }
+  .bento-stat--accent .bento-num { color: var(--c-dark); }
+  .bento-stat--accent .bento-plus,
+  .bento-stat--accent .bento-pct { color: rgba(55,58,54,0.4); }
+  .bento-stat--accent .bento-label { color: var(--c-dark); }
+  .bento-stat--accent .bento-sub { color: rgba(55,58,54,0.5); }
 
   /* ── Filmstrip ── */
   .hero-filmstrip {
     position: relative;
-    margin-top: clamp(36px, 5vh, 56px);
+    margin-top: clamp(40px, 6vh, 64px);
     padding: 16px 0 28px;
     overflow: hidden;
     mask-image: linear-gradient(to right, transparent 0%, black 6%, black 94%, transparent 100%);
@@ -649,31 +653,28 @@ const jsonLd = getWebSiteSchema();
 
   /* ── Responsive ── */
   @media (max-width: 900px) {
-    .hero { padding-top: clamp(16px, 3vh, 32px); }
-    .hero-grid {
-      grid-template-columns: 1fr;
-      min-height: auto; gap: 28px;
+    .hero { padding-top: clamp(24px, 4vh, 40px); }
+    .hero h1 { font-size: clamp(34px, 9vw, 52px); }
+    .bento {
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: auto auto auto;
     }
-    .hero-content { text-align: center; order: 2; padding: 0; }
-    .hero-lead { margin-inline: auto; }
-    .hero-ctas { justify-content: center; }
-    .hero-stats { justify-content: center; }
-    .hero-visual { order: 1; max-width: 480px; margin: 0 auto; }
-    .hero-photo-accent { width: 100px; height: 100px; bottom: -16px; left: -12px; border-width: 3px; }
-    .hero-deco-yellow { top: -10px; right: -10px; }
-    .hero-deco-dots { display: none; }
-    .hero h1 { font-size: clamp(32px, 8.5vw, 50px); }
+    .bento-photo { grid-row: 1; grid-column: 1 / -1; aspect-ratio: 16 / 9; }
+    .bento-stat { padding: 24px 12px; }
+    .bento-num { font-size: clamp(28px, 5vw, 36px); }
   }
 
   @media (max-width: 480px) {
-    .hero-visual { max-width: 100%; }
-    .hero-photo-accent { width: 80px; height: 80px; bottom: -10px; left: -6px; }
+    .bento { gap: 8px; }
+    .bento-cell { border-radius: 14px; }
+    .bento-stat { padding: 20px 10px; }
+    .bento-num { font-size: 26px; }
+    .bento-label { font-size: 11px; }
+    .bento-sub { display: none; }
     .hero-ctas { width: 100%; }
     .hero-ctas .btn { flex: 1; justify-content: center; min-width: 130px; }
     .filmstrip-cell img { width: 56px; height: 56px; border-radius: 10px; }
     .filmstrip-name { font-size: 9px; }
-    .hero-stat-num { font-size: 21px; }
-    .hero-stats { gap: 16px; }
   }
 
   /* ── RIBBON ── */
