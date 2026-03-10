@@ -124,8 +124,8 @@ const jsonLd = getWebSiteSchema();
   description="Sunshine on a Ranney Day is a 501(c)(3) nonprofit creating life-changing home makeovers for children with special needs — dream bedrooms, accessible bathrooms, and therapy spaces — all at no cost to families in greater Atlanta."
   jsonLd={jsonLd}
 >
-  <!-- Preload hero LCP image -->
-  <link slot="head" rel="preload" as="image" href={`${CF}/${storyPhotoId}/w=800,h=1000,fit=cover,f=auto,q=80`} fetchpriority="high" />
+  <!-- Preload hero LCP image — imagesrcset/imagesizes must match the <img> -->
+  <link slot="head" rel="preload" as="image" imagesrcset={`${CF}/${storyPhotoId}/w=560,h=700,fit=cover,f=auto,q=80 560w, ${CF}/${storyPhotoId}/w=800,h=1000,fit=cover,f=auto,q=80 800w`} imagesizes="(max-width:768px) 85vw, 420px" fetchpriority="high" />
 
   <!-- ══════ HERO — Editorial ══════ -->
   <section class="hero" aria-label="Introduction">
@@ -147,7 +147,7 @@ const jsonLd = getWebSiteSchema();
             sizes="(max-width:768px) 85vw, 420px"
             alt={`${fd?.name || 'Zyah'}'s room reveal — a life-changing moment`}
             width="800" height="1000"
-            loading="eager" fetchpriority="high" decoding="async"
+            loading="eager" fetchpriority="high"
           />
           <span class="hero-photo-name">{fd?.name || 'Zyah'}, age {fd?.age || 7}</span>
         </a>
