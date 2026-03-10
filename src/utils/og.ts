@@ -41,7 +41,7 @@ function loadFonts() {
 let logoB64: string | null = null;
 function getLogo(): string {
   if (logoB64) return logoB64;
-  const buf = fs.readFileSync(path.resolve('./public/images/logos/sunny-pig-transparent.png'));
+  const buf = fs.readFileSync(path.resolve('./public/images/logos/logo-circle.png'));
   logoB64 = `data:image/png;base64,${buf.toString('base64')}`;
   return logoB64;
 }

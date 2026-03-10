@@ -50,13 +50,16 @@ const year = new Date().getFullYear();
       <!-- Brand Block -->
       <div class="footer-brand">
         <a href="/" class="footer-logo" aria-label="Sunshine on a Ranney Day — Home">
-          <img
-            src="/images/logos/logo-tagline-dark-bg-transparent.png"
-            alt="Sunshine on a Ranney Day logo"
-            width="180"
-            height="72"
-            loading="lazy"
-          />
+          <picture>
+            <source type="image/webp" srcset="/images/logos/logo-dark-bg-tagline.webp" />
+            <img
+              src="/images/logos/logo-dark-bg-tagline.png"
+              alt="Sunshine on a Ranney Day logo"
+              width="180"
+              height="180"
+              loading="lazy"
+            />
+          </picture>
         </a>
         <p class="footer-mission">
           A 501(c)(3) nonprofit creating life-changing home makeovers for children with special needs in the greater Atlanta area.
