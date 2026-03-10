@@ -125,112 +125,43 @@ const jsonLd = getWebSiteSchema();
   jsonLd={jsonLd}
 >
 
-  <!-- ══════ HERO — Three Pillars ══════ -->
+  <!-- ══════ HERO — The Grid ══════ -->
   <section class="hero" aria-label="Introduction">
-    <div class="hero-inner">
-      <!-- Headline block -->
-      <div class="hero-header">
-        <div class="hero-badge">
-          <span class="hero-badge-dot"></span>
-          {heroEyebrow}
-        </div>
-        <h1>
-          <span class="hero-line"><span class="hero-line-inner" set:html={heroHeadlineLine1} /></span>
-          <span class="hero-line"><span class="hero-line-inner" set:html={heroHeadlineLine2} /></span>
-        </h1>
-        <p class="hero-lead" set:html={heroLead} />
-      </div>
+    <div class="hero-grid">
+      <!-- 6 photos in staggered grid — THE hero -->
+      <a href="/kids/" class="hg-cell hg-tall" style="--gi:0">
+        <img src={`${CF}/${roomPhotos.bedroom}/w=600,h=800,fit=cover,f=auto,q=78`} alt="Dream bedroom reveal" width="600" height="800" loading="eager" fetchpriority="high" />
+        <span class="hg-tag">Dream Bedrooms</span>
+      </a>
+      <a href="/kids/" class="hg-cell" style="--gi:1">
+        <img src={`${CF}/${mosaicKids[0].cfId}/w=400,h=400,fit=cover,f=auto,q=75`} alt={mosaicKids[0].name} width="400" height="400" loading="eager" />
+      </a>
+      <a href="/kids/" class="hg-cell hg-tall" style="--gi:2">
+        <img src={`${CF}/${roomPhotos.bath}/w=600,h=800,fit=cover,f=auto,q=78`} alt="Accessible bathroom" width="600" height="800" loading="eager" />
+        <span class="hg-tag">Accessible Baths</span>
+      </a>
+      <a href="/kids/" class="hg-cell" style="--gi:3">
+        <img src={`${CF}/${mosaicKids[5].cfId}/w=400,h=400,fit=cover,f=auto,q=75`} alt={mosaicKids[5].name} width="400" height="400" loading="eager" />
+      </a>
+      <a href="/kids/" class="hg-cell" style="--gi:4">
+        <img src={`${CF}/${mosaicKids[2].cfId}/w=400,h=400,fit=cover,f=auto,q=75`} alt={mosaicKids[2].name} width="400" height="400" loading="eager" />
+      </a>
+      <a href="/kids/" class="hg-cell hg-tall" style="--gi:5">
+        <img src={`${CF}/${roomPhotos.therapy}/w=600,h=800,fit=cover,f=auto,q=78`} alt="Therapy room" width="600" height="800" loading="eager" />
+        <span class="hg-tag">Therapy Rooms</span>
+      </a>
 
-      <!-- Three pillar cards — each shows a room type -->
-      <div class="pillars">
-        <a href="/kids/" class="pillar" style="--pi:0">
-          <div class="pillar-img">
-            <picture>
-              <source type="image/avif" srcset={`${CF}/${roomPhotos.bedroom}/w=480,h=600,fit=cover,f=avif`} />
-              <source type="image/webp" srcset={`${CF}/${roomPhotos.bedroom}/w=480,h=600,fit=cover,f=webp`} />
-              <img src={`${CF}/${roomPhotos.bedroom}/w=480,h=600,fit=cover,q=78`} alt="A completed dream bedroom designed for a child with special needs" width="480" height="600" loading="eager" />
-            </picture>
-            <div class="pillar-badge">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 22v-2c0-2.2 1.8-4 4-4h2"/><path d="M9 16c0 2.2 1.8 4 4 4h4c2.2 0 4-1.8 4-4v-6"/><path d="M3 10V6c0-1.1.9-2 2-2h14a2 2 0 0 1 2 2v4"/><path d="M3 10h18"/></svg>
-              Dream Bedrooms
-            </div>
-          </div>
-          <div class="pillar-caption">
-            <span class="pillar-count">{Math.round(stats.totalRooms * 0.6)}+ built</span>
-            <p>Themes chosen by the child. Sensory-friendly lighting. A space that's truly <em>theirs</em>.</p>
-          </div>
-        </a>
-
-        <a href="/kids/" class="pillar" style="--pi:1">
-          <div class="pillar-img">
-            <picture>
-              <source type="image/avif" srcset={`${CF}/${roomPhotos.bath}/w=480,h=600,fit=cover,f=avif`} />
-              <source type="image/webp" srcset={`${CF}/${roomPhotos.bath}/w=480,h=600,fit=cover,f=webp`} />
-              <img src={`${CF}/${roomPhotos.bath}/w=480,h=600,fit=cover,q=78`} alt="An accessible bathroom renovation for a child in a wheelchair" width="480" height="600" loading="eager" />
-            </picture>
-            <div class="pillar-badge">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12h16a1 1 0 0 1 1 1v3a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4v-3a1 1 0 0 1 1-1z"/><path d="M6 12V4a2 2 0 0 1 2-2h3v2.25a.75.75 0 0 0 1.5 0V2h.5"/></svg>
-              Accessible Bathrooms
-            </div>
-          </div>
-          <div class="pillar-caption">
-            <span class="pillar-count">Roll-in showers & grab bars</span>
-            <p>Adaptive fixtures that grant independence and dignity. Built for every ability.</p>
-          </div>
-        </a>
-
-        <a href="/kids/" class="pillar" style="--pi:2">
-          <div class="pillar-img">
-            <picture>
-              <source type="image/avif" srcset={`${CF}/${roomPhotos.therapy}/w=480,h=600,fit=cover,f=avif`} />
-              <source type="image/webp" srcset={`${CF}/${roomPhotos.therapy}/w=480,h=600,fit=cover,f=webp`} />
-              <img src={`${CF}/${roomPhotos.therapy}/w=480,h=600,fit=cover,q=78`} alt="A therapy room designed for a child's sensory and developmental needs" width="480" height="600" loading="eager" />
-            </picture>
-            <div class="pillar-badge">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.912 5.813a2 2 0 0 0 1.275 1.275L21 12l-5.813 1.912a2 2 0 0 0-1.275 1.275L12 21l-1.912-5.813a2 2 0 0 0-1.275-1.275L3 12l5.813-1.912a2 2 0 0 0 1.275-1.275L12 3z"/></svg>
-              Therapy Rooms
-            </div>
-          </div>
-          <div class="pillar-caption">
-            <span class="pillar-count">Sensory-designed spaces</span>
-            <p>Calming environments for therapy, play, and growth. Custom-built for each child's needs.</p>
-          </div>
-        </a>
-      </div>
-
-      <!-- CTA + Stats row -->
-      <div class="hero-bottom">
-        <div class="hero-ctas">
+      <!-- Overlaid center content — just headline + CTA -->
+      <div class="hg-overlay">
+        <h1 set:html={`${heroHeadlineLine1}<br/>${heroHeadlineLine2}`} />
+        <div class="hg-ctas">
           <a href={heroCta1Link} class="btn btn-primary btn-glow">
             {heroCta1Label}
             <svg width="18" height="18" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 2.5C6.5 1 4 1 2.75 2.75S2.5 6.5 8 11.5C13.5 6.5 13.75 4.5 13.25 2.75S9.5 1 8 2.5Z" fill="currentColor"/></svg>
           </a>
-          <a href={heroCta2Link} class="btn btn-outline-dark">{heroCta2Label}</a>
+          <a href={heroCta2Link} class="btn btn-dark">{heroCta2Label}</a>
         </div>
-        <div class="hero-proof">
-          <div class="proof-item"><span class="proof-num">{stats.totalKids}+</span> kids served</div>
-          <span class="proof-sep">·</span>
-          <div class="proof-item"><span class="proof-num">{stats.years}</span> years</div>
-          <span class="proof-sep">·</span>
-          <div class="proof-item"><span class="proof-num">100%</span> free for families</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Auto-scrolling filmstrip -->
-    <div class="hero-filmstrip" aria-hidden="true">
-      <div class="filmstrip-track">
-        {[...mosaicKids, ...mosaicKids].map((kid) => (
-          <a href={`/kids/${kid.slug}`} class="filmstrip-cell">
-            <img
-              src={`${CF}/${kid.cfId}/w=96,h=96,fit=cover,f=auto,q=60`}
-              alt=""
-              width="96" height="96"
-              loading="lazy" decoding="async"
-            />
-            <span class="filmstrip-name">{kid.name}</span>
-          </a>
-        ))}
+        <p class="hg-stat">{stats.totalKids}+ kids · {stats.totalRooms}+ rooms · {stats.years} years · 100% free</p>
       </div>
     </div>
   </section>
@@ -457,164 +388,115 @@ const jsonLd = getWebSiteSchema();
 </BaseLayout>
 
 <style>
-  /* ══════ HERO — Three Pillars ══════ */
+  /* ══════ HERO — The Grid ══════ */
   .hero {
     position: relative;
     background: var(--c-cream);
     contain: layout style;
-    padding-bottom: 0;
+    padding: clamp(12px, 2vh, 24px) 0 0;
   }
-  .hero-inner {
-    max-width: var(--max-width);
+
+  .hero-grid {
+    max-width: var(--max-width-wide);
     margin: 0 auto;
-    padding: clamp(32px, 6vh, 72px) var(--page-padding) 0;
-  }
-
-  /* ── Header ── */
-  .hero-header { text-align: center; max-width: 720px; margin: 0 auto clamp(36px, 5vh, 56px); }
-
-  .hero-badge {
-    display: inline-flex; align-items: center; gap: 10px;
-    font-size: 11px; font-weight: 700;
-    letter-spacing: 0.16em; text-transform: uppercase;
-    color: var(--c-text-muted);
-    margin-bottom: 20px;
-    opacity: 0;
-    animation: heroFadeUp 0.7s cubic-bezier(0.16,1,0.3,1) 0.1s both;
-  }
-  .hero-badge-dot {
-    width: 8px; height: 8px; border-radius: 50%;
-    background: var(--c-yellow);
-    box-shadow: 0 0 0 3px rgba(255,218,36,0.2);
-    animation: dotPulse 2.5s ease-in-out infinite;
-    flex-shrink: 0;
-  }
-  @keyframes dotPulse {
-    0%, 100% { box-shadow: 0 0 0 3px rgba(255,218,36,0.2); }
-    50% { box-shadow: 0 0 0 8px rgba(255,218,36,0.06); }
-  }
-
-  .hero h1 {
-    font-size: clamp(36px, 5.5vw, 68px);
-    color: var(--c-dark); line-height: 1.06;
-    margin-bottom: 20px; letter-spacing: -0.035em;
-  }
-  .hero h1 em {
-    font-style: italic;
-    background-image: linear-gradient(transparent 52%, var(--c-yellow-soft) 52%);
-  }
-  .hero-line { display: block; overflow: hidden; padding-bottom: 0.15em; margin-bottom: -0.15em; }
-  .hero-line-inner { display: block; transform: translateY(110%); }
-  .hero-line:nth-child(1) .hero-line-inner { animation: lineReveal 0.9s cubic-bezier(0.16,1,0.3,1) 0.25s both; }
-  .hero-line:nth-child(2) .hero-line-inner { animation: lineReveal 0.9s cubic-bezier(0.16,1,0.3,1) 0.4s both; }
-  @keyframes lineReveal { to { transform: translateY(0); } }
-
-  .hero-lead {
-    font-size: clamp(15px, 1.6vw, 18px);
-    color: var(--c-text-muted); line-height: 1.7;
-    max-width: 560px; margin: 0 auto;
-    opacity: 0;
-    animation: heroFadeUp 0.8s cubic-bezier(0.16,1,0.3,1) 0.55s both;
-  }
-  .hero-lead :global(strong) { color: var(--c-dark); font-weight: 600; }
-
-  /* ══════ PILLAR CARDS ══════ */
-  .pillars {
+    padding: 0 var(--page-padding);
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 20px;
-    opacity: 0;
-    animation: heroFadeUp 0.9s cubic-bezier(0.16,1,0.3,1) 0.7s both;
+    grid-template-rows: auto auto;
+    gap: 10px;
+    position: relative;
   }
 
-  .pillar {
-    text-decoration: none; color: inherit;
-    display: flex; flex-direction: column;
-    border-radius: 20px;
-    overflow: hidden;
-    background: var(--c-white);
-    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
-    border: 1px solid rgba(0,0,0,0.05);
-    transition: transform 0.45s cubic-bezier(0.16,1,0.3,1), box-shadow 0.45s ease;
-    opacity: 0;
-    animation: pillarIn 0.7s cubic-bezier(0.16,1,0.3,1) both;
-    animation-delay: calc(0.8s + var(--pi) * 0.12s);
-  }
-  .pillar:hover {
-    transform: translateY(-8px);
-    box-shadow: 0 20px 48px rgba(0,0,0,0.1), 0 8px 20px rgba(0,0,0,0.04);
-  }
-  @keyframes pillarIn {
-    from { opacity: 0; transform: translateY(28px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
-
-  .pillar-img {
+  /* ── Grid cells ── */
+  .hg-cell {
     position: relative; overflow: hidden;
-    aspect-ratio: 4 / 5;
+    border-radius: 16px;
+    display: block; text-decoration: none;
+    opacity: 0;
+    animation: gridIn 0.6s cubic-bezier(0.16,1,0.3,1) both;
+    animation-delay: calc(0.05s + var(--gi) * 0.07s);
   }
-  .pillar-img img {
+  @keyframes gridIn {
+    from { opacity: 0; transform: scale(0.94); }
+    to { opacity: 1; transform: scale(1); }
+  }
+
+  .hg-cell img {
     width: 100%; height: 100%;
     object-fit: cover; display: block;
-    transition: transform 0.6s cubic-bezier(0.16,1,0.3,1);
+    transition: transform 0.5s cubic-bezier(0.16,1,0.3,1);
   }
-  .pillar:hover .pillar-img img { transform: scale(1.05); }
+  .hg-cell:hover img { transform: scale(1.06); }
 
-  /* Room type badge on photo */
-  .pillar-badge {
+  /* Tall cells span 2 rows */
+  .hg-tall { grid-row: span 2; }
+  .hg-cell:not(.hg-tall) { aspect-ratio: 1; }
+
+  /* Room type tag on photos */
+  .hg-tag {
     position: absolute;
-    bottom: 12px; left: 12px;
-    display: inline-flex; align-items: center; gap: 6px;
-    padding: 8px 14px;
+    bottom: 10px; left: 10px;
+    padding: 7px 14px;
     background: rgba(0,0,0,0.5);
-    backdrop-filter: blur(12px) saturate(1.3);
-    -webkit-backdrop-filter: blur(12px) saturate(1.3);
+    backdrop-filter: blur(14px) saturate(1.4);
+    -webkit-backdrop-filter: blur(14px) saturate(1.4);
+    border: 1px solid rgba(255,255,255,0.1);
     border-radius: 100px;
     font-size: 12px; font-weight: 700; color: #fff;
-    letter-spacing: 0.02em;
-    border: 1px solid rgba(255,255,255,0.1);
+    letter-spacing: 0.03em;
+    pointer-events: none;
   }
-  .pillar-badge svg { color: var(--c-yellow); }
 
-  .pillar-caption {
-    padding: 16px 20px 20px;
-    display: flex; flex-direction: column; gap: 6px;
-    flex: 1;
-  }
-  .pillar-count {
-    font-size: 11px; font-weight: 700;
-    color: var(--c-yellow-hover);
-    text-transform: uppercase; letter-spacing: 0.08em;
-  }
-  .pillar-caption p {
-    font-size: 14px; line-height: 1.55;
-    color: var(--c-text-muted);
-    margin: 0;
-  }
-  .pillar-caption em { font-style: italic; color: var(--c-dark); }
-
-  /* ── Bottom: CTAs + proof ── */
-  .hero-bottom {
+  /* ── Center overlay ── */
+  .hg-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
     text-align: center;
-    padding: clamp(36px, 5vh, 56px) 0 0;
-    opacity: 0;
-    animation: heroFadeUp 0.8s cubic-bezier(0.16,1,0.3,1) 1.2s both;
+    z-index: 5;
+    padding: 20px;
+    pointer-events: none;
   }
-  .hero-ctas {
-    display: flex; gap: 14px; flex-wrap: wrap; justify-content: center;
-    margin-bottom: 24px;
-  }
-  .btn-outline-dark {
-    background: transparent;
+
+  .hg-overlay h1 {
+    font-size: clamp(34px, 5vw, 64px);
     color: var(--c-dark);
-    border: 1.5px solid var(--c-border);
+    line-height: 1.08;
+    letter-spacing: -0.035em;
+    margin-bottom: 20px;
+    text-shadow: 0 2px 20px rgba(254,252,245,0.8), 0 0 60px rgba(254,252,245,0.6);
+    opacity: 0;
+    animation: heroFadeUp 0.9s cubic-bezier(0.16,1,0.3,1) 0.4s both;
   }
-  .btn-outline-dark:hover {
-    background: var(--c-dark); color: #fff;
-    border-color: var(--c-dark);
-    transform: translateY(-3px);
-    box-shadow: 0 8px 24px rgba(55,58,54,0.15);
+  .hg-overlay h1 :global(em) {
+    font-style: italic;
+    background-image: linear-gradient(transparent 50%, var(--c-yellow-soft) 50%);
   }
+
+  .hg-ctas {
+    display: flex; gap: 12px; flex-wrap: wrap; justify-content: center;
+    pointer-events: all;
+    opacity: 0;
+    animation: heroFadeUp 0.8s cubic-bezier(0.16,1,0.3,1) 0.65s both;
+  }
+  .btn-glow { animation: pulseGlow 3s ease-in-out 2.5s infinite; }
+  @keyframes pulseGlow {
+    0%, 100% { box-shadow: 0 8px 24px rgba(255,218,36,0.3); }
+    50% { box-shadow: 0 8px 40px rgba(255,218,36,0.55); }
+  }
+
+  .hg-stat {
+    margin-top: 16px;
+    font-size: 12px; font-weight: 600;
+    color: var(--c-text-muted);
+    letter-spacing: 0.02em;
+    text-shadow: 0 1px 8px rgba(254,252,245,0.9);
+    opacity: 0;
+    animation: heroFadeUp 0.7s cubic-bezier(0.16,1,0.3,1) 0.85s both;
+  }
+
+  /* btn-ghost-light for trust section */
   .btn-ghost-light {
     background: rgba(255,255,255,0.08);
     color: #fff;
@@ -627,118 +509,46 @@ const jsonLd = getWebSiteSchema();
     border-color: rgba(255,255,255,0.4);
     transform: translateY(-3px);
   }
-  .btn-glow { animation: pulseGlow 3s ease-in-out 3s infinite; }
-  @keyframes pulseGlow {
-    0%, 100% { box-shadow: 0 8px 24px rgba(255,218,36,0.3); }
-    50% { box-shadow: 0 8px 40px rgba(255,218,36,0.55); }
+  .btn-outline-dark {
+    background: transparent; color: var(--c-dark);
+    border: 1.5px solid var(--c-border);
   }
-
-  .hero-proof {
-    display: flex; align-items: center; justify-content: center;
-    gap: 8px; flex-wrap: wrap;
-    font-size: 13px; color: var(--c-text-light); font-weight: 500;
+  .btn-outline-dark:hover {
+    background: var(--c-dark); color: #fff;
+    border-color: var(--c-dark);
+    transform: translateY(-3px);
   }
-  .proof-num {
-    font-family: var(--font-display);
-    font-weight: 700; color: var(--c-dark);
-    font-size: 14px;
-  }
-  .proof-sep { color: var(--c-border); font-size: 18px; line-height: 1; }
-
-  /* ── Filmstrip ── */
-  .hero-filmstrip {
-    position: relative;
-    margin-top: clamp(36px, 5vh, 56px);
-    padding: 16px 0 28px;
-    overflow: hidden;
-    mask-image: linear-gradient(to right, transparent 0%, black 6%, black 94%, transparent 100%);
-    -webkit-mask-image: linear-gradient(to right, transparent 0%, black 6%, black 94%, transparent 100%);
-  }
-  .filmstrip-track {
-    display: flex; gap: 20px;
-    animation: filmScroll 90s linear infinite;
-    width: max-content;
-    will-change: transform;
-  }
-  .filmstrip-track:hover { animation-play-state: paused; }
-  @keyframes filmScroll {
-    0% { transform: translateX(0); }
-    100% { transform: translateX(-50%); }
-  }
-  .filmstrip-cell {
-    flex-shrink: 0;
-    display: flex; flex-direction: column;
-    align-items: center; gap: 6px;
-    text-decoration: none;
-    transition: transform 0.3s ease;
-  }
-  .filmstrip-cell:hover { transform: translateY(-5px); }
-  .filmstrip-cell img {
-    width: 72px; height: 72px;
-    border-radius: 14px; object-fit: cover; display: block;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.07);
-    transition: box-shadow 0.3s ease, transform 0.3s ease;
-  }
-  .filmstrip-cell:hover img {
-    box-shadow: 0 8px 28px rgba(0,0,0,0.14);
-    transform: scale(1.06);
-  }
-  .filmstrip-name {
-    font-size: 10px; font-weight: 600;
-    color: var(--c-text-light);
-    letter-spacing: 0.02em; white-space: nowrap;
-  }
-  .filmstrip-cell:hover .filmstrip-name { color: var(--c-dark); }
 
   @keyframes heroFadeUp {
-    from { opacity: 0; transform: translateY(24px); }
+    from { opacity: 0; transform: translateY(20px); }
     to { opacity: 1; transform: translateY(0); }
   }
 
   /* ── Responsive ── */
   @media (max-width: 900px) {
-    .hero-inner { padding-top: clamp(12px, 3vh, 24px); }
-    .hero h1 { font-size: clamp(28px, 7.5vw, 42px); margin-bottom: 12px; }
-    .hero-header { margin-bottom: clamp(20px, 3vh, 28px); }
-    .hero-lead { font-size: 14px; line-height: 1.6; margin-bottom: 0; }
-
-    /* Horizontal snap-scroll cards */
-    .pillars {
-      display: flex;
-      gap: 14px;
-      overflow-x: auto;
-      overflow-y: hidden;
-      scroll-snap-type: x mandatory;
-      -webkit-overflow-scrolling: touch;
-      padding: 4px 0 16px;
-      margin: 0 calc(-1 * var(--page-padding));
-      padding-left: var(--page-padding);
-      padding-right: var(--page-padding);
-      scrollbar-width: none;
+    .hero { padding-top: 8px; }
+    .hero-grid {
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: auto auto auto;
+      gap: 6px;
     }
-    .pillars::-webkit-scrollbar { display: none; }
-
-    .pillar {
-      flex: 0 0 78vw;
-      max-width: 320px;
-      scroll-snap-align: start;
-      border-radius: 16px;
+    .hg-tall { grid-row: span 2; }
+    .hg-cell { border-radius: 12px; }
+    .hg-tag { font-size: 10px; padding: 5px 10px; bottom: 6px; left: 6px; }
+    .hg-overlay h1 {
+      font-size: clamp(26px, 7vw, 38px);
+      text-shadow: 0 2px 16px rgba(254,252,245,0.95), 0 0 40px rgba(254,252,245,0.8);
     }
-    .pillar-img { aspect-ratio: 4 / 3; }
-    .pillar-caption { padding: 12px 16px 16px; }
-    .pillar-caption p { font-size: 13px; }
-
-    .hero-bottom { padding-top: clamp(20px, 3vh, 32px); }
-    .hero-proof { font-size: 12px; gap: 6px; }
+    .hg-ctas .btn { font-size: 14px; padding: 12px 24px; }
+    .hg-stat { font-size: 11px; }
   }
 
   @media (max-width: 480px) {
-    .hero h1 { font-size: clamp(26px, 7vw, 34px); }
-    .pillar { flex: 0 0 82vw; }
-    .hero-ctas { width: 100%; }
-    .hero-ctas .btn { flex: 1; justify-content: center; min-width: 120px; }
-    .filmstrip-cell img { width: 56px; height: 56px; border-radius: 10px; }
-    .filmstrip-name { font-size: 9px; }
+    .hero-grid { gap: 4px; }
+    .hg-cell { border-radius: 10px; }
+    .hg-overlay h1 { font-size: clamp(24px, 6.5vw, 32px); }
+    .hg-ctas .btn { padding: 11px 20px; font-size: 13px; }
+    .hg-stat { font-size: 10px; margin-top: 10px; }
   }
 
   /* ── RIBBON ── */
