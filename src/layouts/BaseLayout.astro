@@ -263,6 +263,8 @@ const structuredData = buildSchemaGraph(...graphSchemas);
     <img height="1" width="1" style="display:none" alt=""
       src="https://www.facebook.com/tr?id=1325956761183424&ev=PageView&noscript=1" />
   </noscript>
+  <!-- Page-specific head content (preloads, etc.) -->
+  <slot name="head" />
 </head>
 <body class={bodyClass}>
   <a href="#main-content" class="skip-link">Skip to main content</a>
