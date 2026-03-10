@@ -115,6 +115,12 @@ const partnerLogos = siteSettings.partnerLogos || [
   { id: 'logos/logo-stag-partners-3399d7', name: 'Stag Partners' },
 ];
 
+/* ── Hero image URLs (DRY — preload + img must be byte-identical) ── */
+const heroImg560 = `${CF}/${storyPhotoId}/w=560,h=700,fit=cover,f=auto,q=80`;
+const heroImg800 = `${CF}/${storyPhotoId}/w=800,h=1000,fit=cover,f=auto,q=80`;
+const heroSrcset = `${heroImg560} 560w, ${heroImg800} 800w`;
+const heroSizes = '(max-width:768px) 85vw, 420px';
+
 import { getWebSiteSchema } from '../utils/schema';
 const jsonLd = getWebSiteSchema();
 ---
@@ -125,7 +131,7 @@ const jsonLd = getWebSiteSchema();
   jsonLd={jsonLd}
 >
   <!-- Preload hero LCP image — imagesrcset/imagesizes must match the <img> -->
-  <link slot="head" rel="preload" as="image" imagesrcset={`${CF}/${storyPhotoId}/w=560,h=700,fit=cover,f=auto,q=80 560w, ${CF}/${storyPhotoId}/w=800,h=1000,fit=cover,f=auto,q=80 800w`} imagesizes="(max-width:768px) 85vw, 420px" fetchpriority="high" />
+  <link slot="head" rel="preload" as="image" imagesrcset={heroSrcset} imagesizes={heroSizes} fetchpriority="high" />
 
   <!-- ══════ HERO — Editorial ══════ -->
   <section class="hero" aria-label="Introduction">
@@ -142,9 +148,9 @@ const jsonLd = getWebSiteSchema();
       <div class="hero-photo-wrap">
         <a href={`/kids/${featuredSlug}`} class="hero-photo">
           <img
-            src={`${CF}/${storyPhotoId}/w=800,h=1000,fit=cover,f=auto,q=85`}
-            srcset={`${CF}/${storyPhotoId}/w=560,h=700,fit=cover,f=auto,q=85 560w, ${CF}/${storyPhotoId}/w=800,h=1000,fit=cover,f=auto,q=85 800w`}
-            sizes="(max-width:768px) 85vw, 420px"
+            src={heroImg800}
+            srcset={heroSrcset}
+            sizes={heroSizes}
             alt={`${fd?.name || 'Zyah'}'s room reveal — a life-changing moment`}
             width="800" height="1000"
             loading="eager" fetchpriority="high"
