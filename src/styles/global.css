@@ -48,7 +48,7 @@
   --max-width: 1200px;
   --max-width-narrow: 800px;
   --max-width-wide: 1400px;
-  --header-height: 104px;
+  --header-height: 76px;
   --border-radius: 8px;
   --border-radius-lg: 16px;
 
@@ -409,6 +409,6 @@ h4, .h4 {
   }
 
   :root {
-    --header-height: 88px;
+    --header-height: 64px;
   }
 }
