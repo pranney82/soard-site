@@ -21,6 +21,7 @@ const revealPhotoId = page.images.reveal;
 const communityPhotoId = page.images.community;
 const storePhotoId = page.images.store;
 const graciePhotoId = page.images.gracie;
+const trippPhotoId = page.images.tripp;
 const milestones = page.milestones;
 const ribbon = (page.ribbon || []).map((r: { value: string; label: string }) => ({
   ...r,
@@ -76,7 +77,7 @@ const jsonLd = buildSchemaGraph(
         {page.turningPoint.paragraphs.map((p: string) => <p set:html={p} />)}
       </div>
       <div class="turning-point-photo" data-reveal data-delay="1">
-        <img src={`${CF}/${communityPhotoId}/w=800,f=auto,q=85`} srcset={`${CF}/${communityPhotoId}/w=500,f=auto,q=85 500w, ${CF}/${communityPhotoId}/w=800,f=auto,q=85 800w`} sizes="(max-width:768px) 90vw, 45vw" alt="A child's transformed room reveal — the moment that changes everything" width="800" height="600" loading="lazy" decoding="async" />
+        <img src={`${CF}/${trippPhotoId}/w=800,f=auto,q=85`} srcset={`${CF}/${trippPhotoId}/w=500,f=auto,q=85 500w, ${CF}/${trippPhotoId}/w=800,f=auto,q=85 800w`} sizes="(max-width:768px) 90vw, 45vw" alt="The Halstead family — Tripp's story inspired millions and helped expand SOARD's mission" width="800" height="600" loading="lazy" decoding="async" />
       </div>
     </div>
   </section>
