@@ -178,6 +178,7 @@ export function getKidProfileSchema(kid: {
   roomTypes?: string[];
   year?: number;
   videoUrl?: string;
+  streamVideoId?: string;
   photos?: { url: string; alt?: string }[];
   photographer?: string;
   status?: string;
@@ -227,11 +228,25 @@ export function getKidProfileSchema(kid: {
     ]
   });
 
-  // VideoObject schema if YouTube video exists
-  if (kid.videoUrl) {
-    const ytMatch = kid.videoUrl.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/))([a-zA-Z0-9_-]{11})/);
-    if (ytMatch) {
-      const ytId = ytMatch[1];
+  // VideoObject schema — prefer CF Stream, fallback to YouTube
+  if (kid.streamVideoId || kid.videoUrl) {
+    const ytMatch = kid.videoUrl?.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/))([a-zA-Z0-9_-]{11})/);
+    const ytId = ytMatch ? ytMatch[1] : null;
+
+    if (kid.streamVideoId) {
+      const STREAM = 'customer-cuav5h47lgfe96ql.cloudflarestream.com';
+      schemas.push({
+        "@type": "VideoObject",
+        "@id": `${url}#video`,
+        "name": `${kid.name}'s Story — Sunshine on a Ranney Day`,
+        "description": kid.metaDescription || `Watch how Sunshine on a Ranney Day transformed ${kid.name}'s space.`,
+        "thumbnailUrl": `https://${STREAM}/${kid.streamVideoId}/thumbnails/thumbnail.jpg?width=1280&height=720`,
+        "uploadDate": kid.year ? `${kid.year}-01-01` : undefined,
+        "contentUrl": `https://${STREAM}/${kid.streamVideoId}/watch`,
+        "embedUrl": `https://iframe.videodelivery.net/${kid.streamVideoId}`,
+        "publisher": { "@id": `${SITE_URL}/#organization` },
+      });
+    } else if (ytId) {
       schemas.push({
         "@type": "VideoObject",
         "@id": `${url}#video`,

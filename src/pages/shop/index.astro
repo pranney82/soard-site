@@ -755,7 +755,7 @@ window.__shopPreload = fetch('/api/shopify', {
       html += '<div class="pdp-thumbs">';
       images.forEach(function (img, i) {
         html += '<button type="button" class="pdp-thumb' + (i === 0 ? ' is-active' : '') + '" data-idx="' + i + '" data-src="' + img.url + '&width=900" data-alt="' + esc(img.altText || p.title) + '" aria-label="View image ' + (i + 1) + '">' +
-          '<img src="' + img.url + '&width=120" alt="" width="64" height="64" loading="lazy" /></button>';
+          '<img src="' + img.url + '&width=120" alt="" width="64" height="64" loading="lazy" decoding="async" /></button>';
       });
       html += '</div>';
     }

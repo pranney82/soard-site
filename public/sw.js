@@ -3,7 +3,7 @@
  * Cache-first for static assets (fonts, images, CSS/JS).
  * Network-first for HTML pages (fresh content, offline fallback).
  */
-const CACHE_NAME = 'soard-v1';
+const CACHE_NAME = 'soard-v2';
 
 const PRECACHE_URLS = [
   '/fonts/outfit-latin-400-normal.woff2',

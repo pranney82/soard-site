@@ -65,7 +65,7 @@ function formatDate(dateStr: string): string {
           <article class="featured-card">
             {item.data.image && (
               <div class="featured-card__img-wrap">
-                <img src={`${item.data.image}/public`} alt={item.data.title} class="featured-card__img" loading="lazy" />
+                <img src={`${item.data.image}/public`} alt={item.data.title} class="featured-card__img" width="1366" height="768" loading="lazy" decoding="async" />
               </div>
             )}
             <div class="featured-card__body">
@@ -101,7 +101,7 @@ function formatDate(dateStr: string): string {
           <article class="coverage-item">
             {item.data.image && (
               <div class="coverage-item__thumb">
-                <img src={`${item.data.image}/nav`} alt="" class="coverage-item__thumb-img" loading="lazy" />
+                <img src={`${item.data.image}/nav`} alt="" class="coverage-item__thumb-img" width="240" height="120" loading="lazy" decoding="async" />
               </div>
             )}
             {!item.data.image && (
