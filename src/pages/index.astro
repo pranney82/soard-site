@@ -823,3 +823,18 @@ const jsonLd = getWebSiteSchema();
   document.addEventListener('astro:page-load', initHomePage);
   document.addEventListener('astro:before-swap', cleanup);
 </script>
+
+<!-- Shared element morph: kid thumbnail → profile hero -->
+<script>
+  function initHomeKidTransitions() {
+    document.querySelectorAll<HTMLAnchorElement>('.kid-thumb').forEach(thumb => {
+      thumb.addEventListener('click', () => {
+        const img = thumb.querySelector('img') as HTMLElement | null;
+        const name = thumb.querySelector('.kid-thumb-name') as HTMLElement | null;
+        if (img) img.style.viewTransitionName = 'kid-hero';
+        if (name) name.style.viewTransitionName = 'kid-name';
+      });
+    });
+  }
+  document.addEventListener('astro:page-load', initHomeKidTransitions);
+</script>

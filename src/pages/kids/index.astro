@@ -489,6 +489,27 @@ const gridKids = [...kids];
   document.addEventListener('astro:before-swap', cleanupKidsIndex);
 </script>
 
+<!-- Shared element morph: card image → hero image on profile page -->
+<script>
+  function initKidTransitions() {
+    document.querySelectorAll<HTMLAnchorElement>('.kid-card').forEach(card => {
+      card.addEventListener('click', () => {
+        // Clear any previous transition names
+        document.querySelectorAll('[style*="view-transition-name"]').forEach(el => {
+          (el as HTMLElement).style.viewTransitionName = '';
+        });
+        // Assign morph targets to the clicked card
+        const img = card.querySelector('.kid-card__img') as HTMLElement | null;
+        const name = card.querySelector('.kid-card__name') as HTMLElement | null;
+        if (img) img.style.viewTransitionName = 'kid-hero';
+        if (name) name.style.viewTransitionName = 'kid-name';
+      });
+    });
+  }
+
+  document.addEventListener('astro:page-load', initKidTransitions);
+</script>
+
 <style>
   /* ─── Section ────────────────────────────── */
   .kids-section {

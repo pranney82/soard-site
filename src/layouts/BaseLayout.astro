@@ -269,7 +269,7 @@ const structuredData = buildSchemaGraph(...graphSchemas);
 <body class={bodyClass}>
   <a href="#main-content" class="skip-link">Skip to main content</a>
   <Header />
-  <main id="main-content">
+  <main id="main-content" transition:name="page-content">
     <slot />
   </main>
   <Footer />
