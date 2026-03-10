@@ -26,26 +26,39 @@ const jsonLd = {
 ---
 <BaseLayout title="Brand & Media Kit" description={media.metaDescription} breadcrumbs={breadcrumbs} jsonLd={jsonLd}>
 
-  <section class="page-hero">
-    <div class="container">
-      <p class="hero-label">Brand & Media Resources</p>
-      <h1>Brand & Media Kit</h1>
-      <p class="page-hero-sub">Official brand assets, logos, and press-ready information for representing Sunshine on a Ranney Day.</p>
+  <!-- ═══ DARK HERO ═══ -->
+  <section class="brand-hero">
+    <div class="brand-hero-deco" aria-hidden="true">
+      <div class="deco-ring" style="top:12%;left:7%;width:72px;height:72px;animation-delay:0s;"></div>
+      <div class="deco-ring" style="top:55%;left:4%;width:48px;height:48px;animation-delay:-2s;"></div>
+      <div class="deco-ring" style="top:22%;right:9%;width:56px;height:56px;animation-delay:-4s;"></div>
+      <div class="deco-ring" style="bottom:18%;right:5%;width:64px;height:64px;animation-delay:-1s;"></div>
+    </div>
+    <div class="brand-hero-inner">
+      <p class="brand-hero-label">Brand & Media Resources</p>
+      <h1>Brand & <span class="highlight">Media Kit</span></h1>
+      <p class="brand-hero-sub">Official brand assets, logos, and press-ready information for representing Sunshine on a Ranney Day.</p>
+      <div class="brand-hero-actions">
+        <a href="/SOARD-Logo-Kit.zip" download class="hero-btn hero-btn-primary" aria-label="Download full media kit ZIP">
+          <Fragment set:html={dlIcon} />Download Full Media Kit
+        </a>
+      </div>
     </div>
   </section>
 
   <!-- Mobile sticky horizontal nav -->
   <nav class="brand-mobile-nav" aria-label="Brand kit sections">
     <div class="mobile-nav-scroll">
-      <a href="#logos" class="mobile-nav-link active">Logos</a>
+      <a href="#media-bio" class="mobile-nav-link active">Bio</a>
+      <a href="#logos" class="mobile-nav-link">Logos</a>
       <a href="#logo-usage" class="mobile-nav-link">Usage</a>
       <a href="#colors" class="mobile-nav-link">Colors</a>
       <a href="#typography" class="mobile-nav-link">Typography</a>
       <a href="#voice" class="mobile-nav-link">Voice</a>
-      <a href="#media-bio" class="mobile-nav-link">Bio</a>
       <a href="#media-mission" class="mobile-nav-link">Mission</a>
       <a href="#media-founders" class="mobile-nav-link">Founders</a>
       <a href="#media-contact" class="mobile-nav-link">Contact</a>
+      <a href="#social-specs" class="mobile-nav-link">Social Specs</a>
     </div>
   </nav>
 
@@ -53,102 +66,24 @@ const jsonLd = {
     <nav class="brand-sidebar" aria-label="Brand kit navigation">
       <div class="sidebar-inner">
         <p class="sidebar-label">Contents</p>
+        <p class="sidebar-group-label">Media Kit</p>
+        <a href="#media-bio" class="sidebar-link active">Bio & Overview</a>
+        <a href="#media-mission" class="sidebar-link">Mission</a>
+        <a href="#media-founders" class="sidebar-link">Founder's Story</a>
+        <a href="#media-contact" class="sidebar-link">Contact & Social</a>
         <p class="sidebar-group-label">Brand Guidelines</p>
-        <a href="#logos" class="sidebar-link active">Logos</a>
+        <a href="#logos" class="sidebar-link">Logos</a>
         <a href="#logo-usage" class="sidebar-link">Logo Usage</a>
         <a href="#colors" class="sidebar-link">Colors</a>
         <a href="#typography" class="sidebar-link">Typography</a>
         <a href="#voice" class="sidebar-link">Voice & Tone</a>
-        <p class="sidebar-group-label">Media Kit</p>
-        <a href="#media-bio" class="sidebar-link">Bio & Overview</a>
-        <a href="#media-mission" class="sidebar-link">Mission</a>
-        <a href="#media-founders" class="sidebar-link">Founder's Story</a>
-        <a href="#media-contact" class="sidebar-link">Contact & Social</a>
+        <a href="#social-specs" class="sidebar-link">Social Specs</a>
       </div>
     </nav>
 
     <div class="brand-content">
 
-      <section id="logos" class="brand-section">
-        <div class="section-header-row">
-          <div><h2>Logos</h2><p>Download our official logos in various formats and variations.</p></div>
-          <a href="/SOARD-Logo-Kit.zip" download class="download-all-btn" aria-label="Download all logo assets as ZIP"><Fragment set:html={dlIcon} />Download All Assets</a>
-        </div>
-
-        <h3 class="logo-subhead">Primary Logos</h3>
-        <p class="section-desc">Main logos with the "Dreams Built Here" tagline.</p>
-        <div class="logo-grid logo-grid-3">
-          <div class="card"><div class="card-preview bg-light"><picture><source type="image/webp" srcset="/images/logos/logo-light-bg-tagline-display.webp" /><img src="/images/logos/logo-light-bg-tagline-display.png" alt="Sunshine on a Ranney Day logo with Dreams Built Here tagline on white background" class="logo-img" width="600" height="600" loading="lazy" decoding="async"/></picture></div><div class="card-body"><h3>White Background</h3><p>Logo with tagline for light backgrounds</p><div class="btn-row"><a href="/images/logos/logo-light-bg-tagline.svg" download class="dl-btn" aria-label="Download white background logo with tagline as SVG"><Fragment set:html={dlIcon} />SVG</a><a href="/images/logos/logo-light-bg-tagline.png" download class="dl-btn" aria-label="Download white background logo with tagline as PNG"><Fragment set:html={dlIcon} />PNG</a></div></div></div>
-          <div class="card"><div class="card-preview bg-dark"><picture><source type="image/webp" srcset="/images/logos/logo-dark-bg-tagline-display.webp" /><img src="/images/logos/logo-dark-bg-tagline-display.png" alt="Sunshine on a Ranney Day logo with Dreams Built Here tagline on dark background" class="logo-img" width="600" height="600" loading="lazy" decoding="async"/></picture></div><div class="card-body"><h3>Dark Background</h3><p>Logo with tagline for dark backgrounds</p><div class="btn-row"><a href="/images/logos/logo-dark-bg-tagline.svg" download class="dl-btn" aria-label="Download dark background logo with tagline as SVG"><Fragment set:html={dlIcon} />SVG</a><a href="/images/logos/logo-dark-bg-tagline.png" download class="dl-btn" aria-label="Download dark background logo with tagline as PNG"><Fragment set:html={dlIcon} />PNG</a></div></div></div>
-          <div class="card"><div class="card-preview bg-light"><picture><source type="image/webp" srcset="/images/logos/logo-circle-tagline-display.webp" /><img src="/images/logos/logo-circle-tagline-display.png" alt="Sunshine on a Ranney Day circle logo with Dreams Built Here tagline" class="logo-img logo-img-circle" width="600" height="600" loading="lazy" decoding="async"/></picture></div><div class="card-body"><h3>Circle</h3><p>Circle logo with tagline</p><div class="btn-row"><a href="/images/logos/logo-circle-tagline.svg" download class="dl-btn" aria-label="Download circle logo with tagline as SVG"><Fragment set:html={dlIcon} />SVG</a><a href="/images/logos/logo-circle-tagline.png" download class="dl-btn" aria-label="Download circle logo with tagline as PNG"><Fragment set:html={dlIcon} />PNG</a></div></div></div>
-        </div>
-
-        <h3 class="logo-subhead">Alternate Logos</h3>
-        <p class="section-desc">Logos without the tagline for smaller uses.</p>
-        <div class="logo-grid logo-grid-3">
-          <div class="card"><div class="card-preview bg-light"><picture><source type="image/webp" srcset="/images/logos/logo-light-bg-display.webp" /><img src="/images/logos/logo-light-bg-display.png" alt="Sunshine on a Ranney Day logo without tagline on white background" class="logo-img" width="600" height="600" loading="lazy" decoding="async"/></picture></div><div class="card-body"><h3>White Background</h3><p>Logo without tagline for light backgrounds</p><div class="btn-row"><a href="/images/logos/logo-light-bg.svg" download class="dl-btn" aria-label="Download white background logo without tagline as SVG"><Fragment set:html={dlIcon} />SVG</a><a href="/images/logos/logo-light-bg.png" download class="dl-btn" aria-label="Download white background logo without tagline as PNG"><Fragment set:html={dlIcon} />PNG</a></div></div></div>
-          <div class="card"><div class="card-preview bg-dark"><picture><source type="image/webp" srcset="/images/logos/logo-dark-bg-display.webp" /><img src="/images/logos/logo-dark-bg-display.png" alt="Sunshine on a Ranney Day logo without tagline on dark background" class="logo-img" width="600" height="600" loading="lazy" decoding="async"/></picture></div><div class="card-body"><h3>Dark Background</h3><p>Logo without tagline for dark backgrounds</p><div class="btn-row"><a href="/images/logos/logo-dark-bg.svg" download class="dl-btn" aria-label="Download dark background logo without tagline as SVG"><Fragment set:html={dlIcon} />SVG</a><a href="/images/logos/logo-dark-bg.png" download class="dl-btn" aria-label="Download dark background logo without tagline as PNG"><Fragment set:html={dlIcon} />PNG</a></div></div></div>
-          <div class="card"><div class="card-preview bg-light"><picture><source type="image/webp" srcset="/images/logos/logo-circle-display.webp" /><img src="/images/logos/logo-circle-display.png" alt="Sunshine on a Ranney Day circle logo without tagline" class="logo-img logo-img-circle" width="600" height="600" loading="lazy" decoding="async"/></picture></div><div class="card-body"><h3>Circle</h3><p>Circle logo without tagline</p><div class="btn-row"><a href="/images/logos/logo-circle.svg" download class="dl-btn" aria-label="Download circle logo without tagline as SVG"><Fragment set:html={dlIcon} />SVG</a><a href="/images/logos/logo-circle.png" download class="dl-btn" aria-label="Download circle logo without tagline as PNG"><Fragment set:html={dlIcon} />PNG</a></div></div></div>
-        </div>
-      </section>
-
-      <section id="logo-usage" class="brand-section">
-        <h2>Logo Usage</h2>
-        <p class="section-desc">Guidelines for proper logo implementation and presentation.</p>
-        <div class="usage-grid">
-          <div class="usage-card"><div class="usage-label">Light Background</div><div class="usage-preview bg-light"><picture><source type="image/webp" srcset="/images/logos/logo-light-bg-tagline-display.webp" /><img src="/images/logos/logo-light-bg-tagline-display.png" alt="Logo correctly placed on light background" class="logo-img" width="600" height="600" loading="lazy" decoding="async"/></picture></div><p class="usage-text">Use the primary logo on light backgrounds. Ensure adequate contrast and clear space.</p></div>
-          <div class="usage-card"><div class="usage-label">Dark Background</div><div class="usage-preview bg-dark"><picture><source type="image/webp" srcset="/images/logos/logo-dark-bg-tagline-display.webp" /><img src="/images/logos/logo-dark-bg-tagline-display.png" alt="Logo correctly placed on dark background" class="logo-img" width="600" height="600" loading="lazy" decoding="async"/></picture></div><p class="usage-text">Use the dark background version on dark backgrounds. Maintain strong contrast.</p></div>
-        </div>
-        <h3>Logo Guidelines</h3>
-        <div class="dodont-grid">
-          <div class="dodont-card do"><h4>✓ Do</h4><ul><li><span class="chk">✓</span>Maintain clear space around logo</li><li><span class="chk">✓</span>Scale proportionally</li><li><span class="chk">✓</span>Ensure sufficient contrast</li><li><span class="chk">✓</span>Min. 1.25" print, 75px digital</li></ul></div>
-          <div class="dodont-card dont"><h4>✗ Don't</h4><ul><li><span class="x">✗</span>Distort or rotate the logo</li><li><span class="x">✗</span>Change logo colors</li><li><span class="x">✗</span>Add effects or shadows</li><li><span class="x">✗</span>Modify or recreate</li></ul></div>
-        </div>
-        <h3>Visual Examples</h3>
-        <div class="vis-grid">
-          <div class="vis-card ok"><div class="vis-badge ok">Correct</div><div class="vis-preview bg-light"><picture><source type="image/webp" srcset="/images/logos/logo-light-bg-tagline-display.webp" /><img src="/images/logos/logo-light-bg-tagline-display.png" alt="Logo displayed correctly with proper proportions" class="vis-logo" width="600" height="600" loading="lazy" decoding="async"/></picture></div><p>Proper proportions and clear space</p></div>
-          <div class="vis-card bad"><div class="vis-badge bad">Incorrect</div><div class="vis-preview bg-light"><picture><source type="image/webp" srcset="/images/logos/logo-light-bg-tagline-display.webp" /><img src="/images/logos/logo-light-bg-tagline-display.png" alt="Logo incorrectly stretched horizontally" class="vis-logo" width="600" height="600" loading="lazy" decoding="async" style="transform:scaleX(1.4);"/></picture></div><p>Don't stretch or distort</p></div>
-          <div class="vis-card ok"><div class="vis-badge ok">Correct</div><div class="vis-preview bg-dark"><picture><source type="image/webp" srcset="/images/logos/logo-dark-bg-tagline-display.webp" /><img src="/images/logos/logo-dark-bg-tagline-display.png" alt="Logo displayed correctly on dark background" class="vis-logo" width="600" height="600" loading="lazy" decoding="async"/></picture></div><p>Good contrast with background</p></div>
-          <div class="vis-card bad"><div class="vis-badge bad">Incorrect</div><div class="vis-preview" style="background:#e8e0c0;"><picture><source type="image/webp" srcset="/images/logos/logo-light-bg-tagline-display.webp" /><img src="/images/logos/logo-light-bg-tagline-display.png" alt="Logo incorrectly placed on low-contrast background" class="vis-logo" width="600" height="600" loading="lazy" decoding="async" style="opacity:0.3;"/></picture></div><p>Don't use on low-contrast backgrounds</p></div>
-        </div>
-      </section>
-
-      <section id="colors" class="brand-section">
-        <h2>Color Palette</h2>
-        <p class="section-desc">Our color system ensures visual consistency and brand recognition.</p>
-        <div class="color-grid">
-          <div class="color-card" data-hex="#FFDA24"><div class="color-swatch" style="background:#FFDA24;"></div><div class="color-body"><h3>Sunshine Yellow</h3><p class="color-usage">CTAs, brand accents</p><div class="color-vals"><span class="pms">PMS 116 C</span><span class="hex">#FFDA24</span><span>RGB 254, 217, 37</span><span>CMYK 0, 6, 87, 0</span></div></div></div>
-          <div class="color-card" data-hex="#373A36"><div class="color-swatch" style="background:#373A36;"></div><div class="color-body"><h3>SOARD Dark</h3><p class="color-usage">Primary text, headings</p><div class="color-vals"><span class="pms">PMS 447 C</span><span class="hex">#373A36</span><span>RGB 55, 58, 54</span><span>CMYK 50, 30, 40, 90</span></div></div></div>
-          <div class="color-card" data-hex="#FFFFFF"><div class="color-swatch" style="background:#FFFFFF;border-bottom:1px solid #E5E7EB;"></div><div class="color-body"><h3>White</h3><p class="color-usage">Backgrounds</p><div class="color-vals"><span class="hex">#FFFFFF</span><span>RGB 255, 255, 255</span><span>CMYK 0, 0, 0, 0</span></div></div></div>
-
-          <div class="color-card" data-hex="#1A1B1F"><div class="color-swatch" style="background:#1A1B1F;"></div><div class="color-body"><h3>Dark Deep</h3><p class="color-usage">Footer, dark sections</p><div class="color-vals"><span class="hex">#1A1B1F</span><span>RGB 26, 27, 31</span></div></div></div>
-          <div class="color-card" data-hex="#FEFCF5"><div class="color-swatch" style="background:#FEFCF5;border-bottom:1px solid #E5E7EB;"></div><div class="color-body"><h3>Cream</h3><p class="color-usage">Page backgrounds</p><div class="color-vals"><span class="hex">#FEFCF5</span><span>RGB 254, 252, 245</span></div></div></div>
-        </div>
-        <div class="info-box"><p>💡 <strong>Color Usage</strong></p><p>Use Sunshine Yellow (#FFDA24) sparingly for CTAs and highlights. SOARD Dark and neutrals form the foundation. <strong>Important:</strong> The three core brand colors — Sunshine Yellow (PMS 116 C), SOARD Dark (PMS 447 C), and White — are required for all print materials. Ensure WCAG AA contrast minimum for accessibility. Click any color to copy HEX.</p></div>
-      </section>
-
-      <section id="typography" class="brand-section">
-        <h2>Typography</h2>
-        <p class="section-desc">We use Libre Baskerville for display and Outfit for body text, providing an editorial feel with modern readability.</p>
-        <div class="type-block"><div class="type-block-header"><h3>Libre Baskerville</h3><span>Display / Headlines</span></div><div class="type-rows"><div class="type-row"><span class="wt-name">Regular (400)</span><span class="wt-sample" style="font-family:var(--font-display);font-weight:400;">Dreams built here since 2012</span></div><div class="type-row"><span class="wt-name">Italic (400)</span><span class="wt-sample" style="font-family:var(--font-display);font-style:italic;">Dreams built here since 2012</span></div><div class="type-row"><span class="wt-name">Bold (700)</span><span class="wt-sample" style="font-family:var(--font-display);font-weight:700;">Dreams built here since 2012</span></div></div></div>
-        <div class="type-block"><div class="type-block-header"><h3>Outfit</h3><span>Body / UI</span></div><div class="type-rows"><div class="type-row"><span class="wt-name">Light (300)</span><span class="wt-sample" style="font-family:var(--font-body);font-weight:300;">The quick brown fox jumps over the lazy dog</span></div><div class="type-row"><span class="wt-name">Regular (400)</span><span class="wt-sample" style="font-family:var(--font-body);font-weight:400;">The quick brown fox jumps over the lazy dog</span></div><div class="type-row"><span class="wt-name">Medium (500)</span><span class="wt-sample" style="font-family:var(--font-body);font-weight:500;">The quick brown fox jumps over the lazy dog</span></div><div class="type-row"><span class="wt-name">Semibold (600)</span><span class="wt-sample" style="font-family:var(--font-body);font-weight:600;">The quick brown fox jumps over the lazy dog</span></div><div class="type-row"><span class="wt-name">Bold (700)</span><span class="wt-sample" style="font-family:var(--font-body);font-weight:700;">The quick brown fox jumps over the lazy dog</span></div></div></div>
-        <div class="two-col"><div class="info-card"><h4>Font Weight Usage</h4><ul><li><span class="bullet">●</span>Light (300) for hero text, large displays</li><li><span class="bullet">●</span>Regular (400) for body copy</li><li><span class="bullet">●</span>Semibold (600) for emphasis, buttons</li><li><span class="bullet">●</span>Bold (700) for headings, CTAs</li></ul></div><div class="info-card"><h4>Spacing &amp; Hierarchy</h4><ul><li><span class="bullet">●</span>Very tight leading (1.05–1.2) for headings</li><li><span class="bullet">●</span>Relaxed leading (1.625) for body text</li><li><span class="bullet">●</span>Tight tracking for headlines</li><li><span class="bullet">●</span>Wide tracking (0.05em) for uppercase labels</li></ul></div></div>
-      </section>
-
-      <section id="voice" class="brand-section" style="border-bottom:none;">
-        <h2>Voice &amp; Tone</h2>
-        <p class="section-desc">Our brand voice reflects who we are and how we communicate.</p>
-        <div class="two-col">
-          <div class="info-card"><h3>We are</h3><div class="voice-items"><div class="voice-item"><h5>Warm &amp; Genuine</h5><p>Approachable and heartfelt in every interaction</p></div><div class="voice-item"><h5>Hopeful &amp; Empowering</h5><p>Focused on possibility, never pity</p></div><div class="voice-item"><h5>Professional</h5><p>Yet approachable and human</p></div><div class="voice-item"><h5>Joyful</h5><p>Building dream rooms is what we do — let the energy show</p></div></div></div>
-          <div class="info-card"><h3>We are not</h3><div class="voice-items"><div class="voice-item"><h5>Pitying</h5><p>Never reduce children to their diagnosis</p></div><div class="voice-item"><h5>Clinical</h5><p>Not stiff or corporate — always personal</p></div><div class="voice-item"><h5>Guilt-Driven</h5><p>Inspire through joy, never through pressure</p></div><div class="voice-item"><h5>Sloppy</h5><p>Playful doesn't mean careless</p></div></div></div>
-        </div>
-      </section>
-
-      <!-- ═══ MEDIA KIT ═══ -->
-
-      <div class="media-divider">
-        <span class="media-divider-label">Media Kit</span>
-      </div>
+      <!-- ═══ MEDIA KIT — moved to top ═══ -->
 
       <section id="media-bio" class="brand-section">
         <h2>Bio & Overview</h2>
@@ -226,7 +161,7 @@ const jsonLd = {
         </div>
       </section>
 
-      <section id="media-contact" class="brand-section" style="border-bottom:none;">
+      <section id="media-contact" class="brand-section">
         <h2>Contact & Social</h2>
         <p class="section-desc">Official contact information and social media links for press inquiries.</p>
 
@@ -256,16 +191,171 @@ const jsonLd = {
         </div>
       </section>
 
+      <!-- ═══ BRAND GUIDELINES ═══ -->
+
+      <div class="brand-divider">
+        <span class="brand-divider-label">Brand Guidelines</span>
+      </div>
+
+      <section id="logos" class="brand-section">
+        <div class="section-header-row">
+          <div><h2>Logos</h2><p>Download our official logos in various formats and variations.</p></div>
+          <a href="/SOARD-Logo-Kit.zip" download class="download-all-btn" aria-label="Download all logo assets as ZIP"><Fragment set:html={dlIcon} />Download All Logos</a>
+        </div>
+
+        <h3 class="logo-subhead">Primary Logos</h3>
+        <p class="section-desc">Main logos with the "Dreams Built Here" tagline.</p>
+        <div class="logo-grid logo-grid-3">
+          <div class="card"><div class="card-preview bg-light"><picture><source type="image/webp" srcset="/images/logos/logo-light-bg-tagline-display.webp" /><img src="/images/logos/logo-light-bg-tagline-display.png" alt="Sunshine on a Ranney Day logo with Dreams Built Here tagline on white background" class="logo-img" width="600" height="600" loading="lazy" decoding="async"/></picture></div><div class="card-body"><h3>White Background</h3><p>Logo with tagline for light backgrounds</p><div class="btn-row"><a href="/images/logos/logo-light-bg-tagline.svg" download class="dl-btn" aria-label="Download white background logo with tagline as SVG"><Fragment set:html={dlIcon} />SVG</a><a href="/images/logos/logo-light-bg-tagline.png" download class="dl-btn" aria-label="Download white background logo with tagline as PNG"><Fragment set:html={dlIcon} />PNG</a></div></div></div>
+          <div class="card"><div class="card-preview bg-dark"><picture><source type="image/webp" srcset="/images/logos/logo-dark-bg-tagline-display.webp" /><img src="/images/logos/logo-dark-bg-tagline-display.png" alt="Sunshine on a Ranney Day logo with Dreams Built Here tagline on dark background" class="logo-img" width="600" height="600" loading="lazy" decoding="async"/></picture></div><div class="card-body"><h3>Dark Background</h3><p>Logo with tagline for dark backgrounds</p><div class="btn-row"><a href="/images/logos/logo-dark-bg-tagline.svg" download class="dl-btn" aria-label="Download dark background logo with tagline as SVG"><Fragment set:html={dlIcon} />SVG</a><a href="/images/logos/logo-dark-bg-tagline.png" download class="dl-btn" aria-label="Download dark background logo with tagline as PNG"><Fragment set:html={dlIcon} />PNG</a></div></div></div>
+          <div class="card"><div class="card-preview bg-light"><picture><source type="image/webp" srcset="/images/logos/logo-circle-tagline-display.webp" /><img src="/images/logos/logo-circle-tagline-display.png" alt="Sunshine on a Ranney Day circle logo with Dreams Built Here tagline" class="logo-img logo-img-circle" width="600" height="600" loading="lazy" decoding="async"/></picture></div><div class="card-body"><h3>Circle</h3><p>Circle logo with tagline</p><div class="btn-row"><a href="/images/logos/logo-circle-tagline.svg" download class="dl-btn" aria-label="Download circle logo with tagline as SVG"><Fragment set:html={dlIcon} />SVG</a><a href="/images/logos/logo-circle-tagline.png" download class="dl-btn" aria-label="Download circle logo with tagline as PNG"><Fragment set:html={dlIcon} />PNG</a></div></div></div>
+        </div>
+
+        <h3 class="logo-subhead">Alternate Logos</h3>
+        <p class="section-desc">Logos without the tagline for smaller uses.</p>
+        <div class="logo-grid logo-grid-3">
+          <div class="card"><div class="card-preview bg-light"><picture><source type="image/webp" srcset="/images/logos/logo-light-bg-display.webp" /><img src="/images/logos/logo-light-bg-display.png" alt="Sunshine on a Ranney Day logo without tagline on white background" class="logo-img" width="600" height="600" loading="lazy" decoding="async"/></picture></div><div class="card-body"><h3>White Background</h3><p>Logo without tagline for light backgrounds</p><div class="btn-row"><a href="/images/logos/logo-light-bg.svg" download class="dl-btn" aria-label="Download white background logo without tagline as SVG"><Fragment set:html={dlIcon} />SVG</a><a href="/images/logos/logo-light-bg.png" download class="dl-btn" aria-label="Download white background logo without tagline as PNG"><Fragment set:html={dlIcon} />PNG</a></div></div></div>
+          <div class="card"><div class="card-preview bg-dark"><picture><source type="image/webp" srcset="/images/logos/logo-dark-bg-display.webp" /><img src="/images/logos/logo-dark-bg-display.png" alt="Sunshine on a Ranney Day logo without tagline on dark background" class="logo-img" width="600" height="600" loading="lazy" decoding="async"/></picture></div><div class="card-body"><h3>Dark Background</h3><p>Logo without tagline for dark backgrounds</p><div class="btn-row"><a href="/images/logos/logo-dark-bg.svg" download class="dl-btn" aria-label="Download dark background logo without tagline as SVG"><Fragment set:html={dlIcon} />SVG</a><a href="/images/logos/logo-dark-bg.png" download class="dl-btn" aria-label="Download dark background logo without tagline as PNG"><Fragment set:html={dlIcon} />PNG</a></div></div></div>
+          <div class="card"><div class="card-preview bg-light"><picture><source type="image/webp" srcset="/images/logos/logo-circle-display.webp" /><img src="/images/logos/logo-circle-display.png" alt="Sunshine on a Ranney Day circle logo without tagline" class="logo-img logo-img-circle" width="600" height="600" loading="lazy" decoding="async"/></picture></div><div class="card-body"><h3>Circle</h3><p>Circle logo without tagline</p><div class="btn-row"><a href="/images/logos/logo-circle.svg" download class="dl-btn" aria-label="Download circle logo without tagline as SVG"><Fragment set:html={dlIcon} />SVG</a><a href="/images/logos/logo-circle.png" download class="dl-btn" aria-label="Download circle logo without tagline as PNG"><Fragment set:html={dlIcon} />PNG</a></div></div></div>
+        </div>
+      </section>
+
+      <section id="logo-usage" class="brand-section">
+        <h2>Logo Usage</h2>
+        <p class="section-desc">Guidelines for proper logo implementation and presentation.</p>
+        <div class="usage-grid">
+          <div class="usage-card"><div class="usage-label">Light Background</div><div class="usage-preview bg-light"><picture><source type="image/webp" srcset="/images/logos/logo-light-bg-tagline-display.webp" /><img src="/images/logos/logo-light-bg-tagline-display.png" alt="Logo correctly placed on light background" class="logo-img" width="600" height="600" loading="lazy" decoding="async"/></picture></div><p class="usage-text">Use the primary logo on light backgrounds. Ensure adequate contrast and clear space.</p></div>
+          <div class="usage-card"><div class="usage-label">Dark Background</div><div class="usage-preview bg-dark"><picture><source type="image/webp" srcset="/images/logos/logo-dark-bg-tagline-display.webp" /><img src="/images/logos/logo-dark-bg-tagline-display.png" alt="Logo correctly placed on dark background" class="logo-img" width="600" height="600" loading="lazy" decoding="async"/></picture></div><p class="usage-text">Use the dark background version on dark backgrounds. Maintain strong contrast.</p></div>
+        </div>
+        <h3>Logo Guidelines</h3>
+        <div class="dodont-grid">
+          <div class="dodont-card do"><h4>✓ Do</h4><ul><li><span class="chk">✓</span>Maintain clear space around logo</li><li><span class="chk">✓</span>Scale proportionally</li><li><span class="chk">✓</span>Ensure sufficient contrast</li><li><span class="chk">✓</span>Min. 1.25" print, 75px digital</li></ul></div>
+          <div class="dodont-card dont"><h4>✗ Don't</h4><ul><li><span class="x">✗</span>Distort or rotate the logo</li><li><span class="x">✗</span>Change logo colors</li><li><span class="x">✗</span>Add effects or shadows</li><li><span class="x">✗</span>Modify or recreate</li></ul></div>
+        </div>
+        <h3>Visual Examples</h3>
+        <div class="vis-grid">
+          <div class="vis-card ok"><div class="vis-badge ok">Correct</div><div class="vis-preview bg-light"><picture><source type="image/webp" srcset="/images/logos/logo-light-bg-tagline-display.webp" /><img src="/images/logos/logo-light-bg-tagline-display.png" alt="Logo displayed correctly with proper proportions" class="vis-logo" width="600" height="600" loading="lazy" decoding="async"/></picture></div><p>Proper proportions and clear space</p></div>
+          <div class="vis-card bad"><div class="vis-badge bad">Incorrect</div><div class="vis-preview bg-light"><picture><source type="image/webp" srcset="/images/logos/logo-light-bg-tagline-display.webp" /><img src="/images/logos/logo-light-bg-tagline-display.png" alt="Logo incorrectly stretched horizontally" class="vis-logo" width="600" height="600" loading="lazy" decoding="async" style="transform:scaleX(1.4);"/></picture></div><p>Don't stretch or distort</p></div>
+          <div class="vis-card ok"><div class="vis-badge ok">Correct</div><div class="vis-preview bg-dark"><picture><source type="image/webp" srcset="/images/logos/logo-dark-bg-tagline-display.webp" /><img src="/images/logos/logo-dark-bg-tagline-display.png" alt="Logo displayed correctly on dark background" class="vis-logo" width="600" height="600" loading="lazy" decoding="async"/></picture></div><p>Good contrast with background</p></div>
+          <div class="vis-card bad"><div class="vis-badge bad">Incorrect</div><div class="vis-preview" style="background:#e8e0c0;"><picture><source type="image/webp" srcset="/images/logos/logo-light-bg-tagline-display.webp" /><img src="/images/logos/logo-light-bg-tagline-display.png" alt="Logo incorrectly placed on low-contrast background" class="vis-logo" width="600" height="600" loading="lazy" decoding="async" style="opacity:0.3;"/></picture></div><p>Don't use on low-contrast backgrounds</p></div>
+        </div>
+      </section>
+
+      <section id="colors" class="brand-section">
+        <h2>Color Palette</h2>
+        <p class="section-desc">Our color system ensures visual consistency and brand recognition. Click any swatch to copy its hex value.</p>
+        <div class="color-grid">
+          <div class="color-card" data-hex="#FFDA24"><div class="color-swatch" style="background:#FFDA24;"><span class="swatch-hover">Click to copy</span></div><div class="color-body"><h3>Sunshine Yellow</h3><p class="color-usage">CTAs, brand accents</p><div class="color-vals"><span class="pms">PMS 116 C</span><span class="hex">#FFDA24</span><span>RGB 254, 217, 37</span><span>CMYK 0, 6, 87, 0</span></div></div></div>
+          <div class="color-card" data-hex="#373A36"><div class="color-swatch" style="background:#373A36;"><span class="swatch-hover">Click to copy</span></div><div class="color-body"><h3>SOARD Dark</h3><p class="color-usage">Primary text, headings</p><div class="color-vals"><span class="pms">PMS 447 C</span><span class="hex">#373A36</span><span>RGB 55, 58, 54</span><span>CMYK 50, 30, 40, 90</span></div></div></div>
+          <div class="color-card" data-hex="#FFFFFF"><div class="color-swatch" style="background:#FFFFFF;border-bottom:1px solid #E5E7EB;"><span class="swatch-hover swatch-hover-light">Click to copy</span></div><div class="color-body"><h3>White</h3><p class="color-usage">Backgrounds, logo element</p><div class="color-vals"><span class="hex">#FFFFFF</span><span>RGB 255, 255, 255</span><span>CMYK 0, 0, 0, 0</span></div></div></div>
+          <div class="color-card" data-hex="#1A1B1F"><div class="color-swatch" style="background:#1A1B1F;"><span class="swatch-hover">Click to copy</span></div><div class="color-body"><h3>Dark Deep</h3><p class="color-usage">Footer, dark sections</p><div class="color-vals"><span class="hex">#1A1B1F</span><span>RGB 26, 27, 31</span></div></div></div>
+          <div class="color-card" data-hex="#FEFCF5"><div class="color-swatch" style="background:#FEFCF5;border-bottom:1px solid #E5E7EB;"><span class="swatch-hover swatch-hover-light">Click to copy</span></div><div class="color-body"><h3>Cream</h3><p class="color-usage">Page backgrounds</p><div class="color-vals"><span class="hex">#FEFCF5</span><span>RGB 254, 252, 245</span></div></div></div>
+          <div class="color-card" data-hex="#F5F4F0"><div class="color-swatch" style="background:#F5F4F0;border-bottom:1px solid #E5E7EB;"><span class="swatch-hover swatch-hover-light">Click to copy</span></div><div class="color-body"><h3>Warm Gray</h3><p class="color-usage">Section backgrounds, cards</p><div class="color-vals"><span class="hex">#F5F4F0</span><span>RGB 245, 244, 240</span></div></div></div>
+        </div>
+        <div class="info-box"><p><strong>Print requirement:</strong> The three core brand colors — Sunshine Yellow (PMS 116 C), SOARD Dark (PMS 447 C), and White — are required for all print materials. Digital applications should use the hex values listed above. Ensure WCAG AA contrast minimum for accessibility.</p></div>
+      </section>
+
+      <section id="typography" class="brand-section">
+        <h2>Typography</h2>
+        <p class="section-desc">Libre Baskerville for display and Outfit for body — editorial warmth with modern readability.</p>
+
+        <div class="type-block">
+          <div class="type-block-header"><h3>Libre Baskerville</h3><span>Display / Headlines</span></div>
+          <div class="type-specimen">
+            <p class="type-specimen-label">Hero / Display — 48px, Weight 400</p>
+            <p class="type-specimen-sample" style="font-family:var(--font-display);font-size:clamp(32px,4vw,48px);font-weight:400;letter-spacing:-.02em;line-height:1.15;">Dreams Built Here</p>
+            <p class="type-specimen-meta">Tight tracking, regular weight for large sizes</p>
+          </div>
+          <div class="type-specimen">
+            <p class="type-specimen-label">Section Heading — 32px, Weight 400</p>
+            <p class="type-specimen-sample" style="font-family:var(--font-display);font-size:clamp(24px,3vw,32px);font-weight:400;line-height:1.2;">Every Child Deserves a Space to Dream</p>
+          </div>
+          <div class="type-specimen">
+            <p class="type-specimen-label">Italic Accent — 20px, Weight 400 Italic</p>
+            <p class="type-specimen-sample" style="font-family:var(--font-display);font-size:clamp(16px,2vw,20px);font-style:italic;color:rgba(55,58,54,.6);line-height:1.4;">"The look on her face when she saw the room — that's why we do this."</p>
+          </div>
+        </div>
+
+        <div class="type-block">
+          <div class="type-block-header"><h3>Outfit</h3><span>Body / UI</span></div>
+          <div class="type-specimen">
+            <p class="type-specimen-label">Body Copy — 16px, Weight 400</p>
+            <p class="type-specimen-sample" style="font-family:var(--font-body);font-size:16px;font-weight:400;line-height:1.625;max-width:600px;">Sunshine on a Ranney Day creates dream bedrooms, accessible bathrooms, and therapy rooms for children with special needs in the greater Atlanta area — all at no cost to families.</p>
+          </div>
+          <div class="type-specimen">
+            <p class="type-specimen-label">UI / Button — 14px, Weight 600</p>
+            <p class="type-specimen-sample" style="font-family:var(--font-body);font-size:14px;font-weight:600;letter-spacing:.02em;">DONATE NOW &nbsp;&middot;&nbsp; READ THEIR STORY &nbsp;&middot;&nbsp; GET INVOLVED</p>
+          </div>
+          <div class="type-specimen">
+            <p class="type-specimen-label">Label / Overline — 12px, Weight 600, Uppercase</p>
+            <p class="type-specimen-sample" style="font-family:var(--font-body);font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:rgba(55,58,54,.5);">Featured Room &nbsp;&middot;&nbsp; Dream Bedroom &nbsp;&middot;&nbsp; Accessible Bathroom</p>
+          </div>
+        </div>
+
+        <div class="two-col"><div class="info-card"><h4>Font Weight Usage</h4><ul><li><span class="bullet">●</span>Light (300) for hero text, large displays</li><li><span class="bullet">●</span>Regular (400) for body copy</li><li><span class="bullet">●</span>Semibold (600) for emphasis, buttons</li><li><span class="bullet">●</span>Bold (700) for headings, CTAs</li></ul></div><div class="info-card"><h4>Spacing &amp; Hierarchy</h4><ul><li><span class="bullet">●</span>Very tight leading (1.05–1.2) for headings</li><li><span class="bullet">●</span>Relaxed leading (1.625) for body text</li><li><span class="bullet">●</span>Tight tracking for headlines</li><li><span class="bullet">●</span>Wide tracking (0.05em) for uppercase labels</li></ul></div></div>
+      </section>
+
+      <section id="voice" class="brand-section">
+        <h2>Voice &amp; Tone</h2>
+        <p class="section-desc">Our brand voice reflects who we are and how we communicate.</p>
+        <div class="two-col">
+          <div class="info-card"><h3>We are</h3><div class="voice-items"><div class="voice-item"><h5>Warm &amp; Genuine</h5><p>Approachable and heartfelt in every interaction</p></div><div class="voice-item"><h5>Hopeful &amp; Empowering</h5><p>Focused on possibility, never pity</p></div><div class="voice-item"><h5>Professional</h5><p>Yet approachable and human</p></div><div class="voice-item"><h5>Joyful</h5><p>Building dream rooms is what we do — let the energy show</p></div></div></div>
+          <div class="info-card"><h3>We are not</h3><div class="voice-items"><div class="voice-item"><h5>Pitying</h5><p>Never reduce children to their diagnosis</p></div><div class="voice-item"><h5>Clinical</h5><p>Not stiff or corporate — always personal</p></div><div class="voice-item"><h5>Guilt-Driven</h5><p>Inspire through joy, never through pressure</p></div><div class="voice-item"><h5>Sloppy</h5><p>Playful doesn't mean careless</p></div></div></div>
+        </div>
+      </section>
+
+      <!-- ═══ SOCIAL MEDIA SPECS (new) ═══ -->
+      <section id="social-specs" class="brand-section" style="border-bottom:none;">
+        <h2>Social Media Specs</h2>
+        <p class="section-desc">Recommended image dimensions and which logo variant to use for each platform.</p>
+
+        <div class="specs-table-wrap">
+          <table class="specs-table">
+            <thead>
+              <tr>
+                <th>Platform</th>
+                <th>Asset</th>
+                <th>Dimensions</th>
+                <th>Logo Variant</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td class="specs-platform">Facebook</td><td>Cover Photo</td><td><span class="specs-dims">1640 × 856</span></td><td>Primary on dark</td></tr>
+              <tr><td class="specs-platform">Facebook</td><td>Profile Picture</td><td><span class="specs-dims">320 × 320</span></td><td>Circle badge</td></tr>
+              <tr><td class="specs-platform">Instagram</td><td>Profile Picture</td><td><span class="specs-dims">320 × 320</span></td><td>Circle badge</td></tr>
+              <tr><td class="specs-platform">Instagram</td><td>Story / Reel</td><td><span class="specs-dims">1080 × 1920</span></td><td>Primary on dark</td></tr>
+              <tr><td class="specs-platform">X / Twitter</td><td>Header</td><td><span class="specs-dims">1500 × 500</span></td><td>Primary on dark</td></tr>
+              <tr><td class="specs-platform">LinkedIn</td><td>Banner</td><td><span class="specs-dims">1128 × 191</span></td><td>Primary on dark</td></tr>
+              <tr><td class="specs-platform">YouTube</td><td>Channel Art</td><td><span class="specs-dims">2560 × 1440</span></td><td>Primary on dark</td></tr>
+              <tr><td class="specs-platform">Email</td><td>Signature Logo</td><td><span class="specs-dims">300 × 80</span></td><td>Primary on light</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
     </div>
   </div>
 
 </BaseLayout>
 
 <style>
-  .page-hero{background:var(--c-cream);padding:80px 0 60px;text-align:center}
-  .hero-label{font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--c-yellow);margin-bottom:16px}
-  .page-hero h1{font-size:clamp(2.5rem,5vw,3.75rem);font-weight:300;color:var(--c-dark);margin-bottom:16px;letter-spacing:-.02em}
-  .page-hero-sub{font-size:clamp(1.1rem,2vw,1.35rem);color:rgba(55,58,54,.6);max-width:600px;margin-inline:auto;line-height:1.6}
+  /* ═══ DARK HERO ═══ */
+  .brand-hero{position:relative;background:var(--c-dark-deep);padding:100px 24px 80px;text-align:center;overflow:hidden}
+  .brand-hero::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse 600px 600px at 15% 80%,rgba(255,218,36,.06) 0%,transparent 70%),radial-gradient(ellipse 400px 400px at 85% 20%,rgba(255,218,36,.04) 0%,transparent 70%);pointer-events:none}
+  .brand-hero-deco{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+  .deco-ring{position:absolute;border-radius:50%;border:1px solid rgba(255,218,36,.1);animation:brand-float 6s ease-in-out infinite}
+  @keyframes brand-float{0%,100%{transform:translateY(0) rotate(0deg)}50%{transform:translateY(-12px) rotate(3deg)}}
+  .brand-hero-inner{position:relative;max-width:700px;margin:0 auto}
+  .brand-hero-label{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.12em;color:var(--c-yellow);margin-bottom:20px}
+  .brand-hero h1{font-size:clamp(2.5rem,5vw,4rem);font-weight:400;color:#fff;margin-bottom:20px;letter-spacing:-.02em;line-height:1.15}
+  .brand-hero h1 .highlight{background-image:linear-gradient(transparent 55%,rgba(255,218,36,.3) 55%);padding:0 4px}
+  .brand-hero-sub{font-size:clamp(1rem,2vw,1.2rem);color:rgba(255,255,255,.5);max-width:560px;margin:0 auto 36px;line-height:1.7}
+  .brand-hero-actions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+  .hero-btn{display:inline-flex;align-items:center;gap:8px;padding:14px 28px;border-radius:100px;font-size:14px;font-weight:600;text-decoration:none;transition:all .2s ease;border:none;cursor:pointer}
+  .hero-btn-primary{background:var(--c-yellow);color:var(--c-dark)}
+  .hero-btn-primary:hover{filter:brightness(1.05);box-shadow:0 4px 16px rgba(255,218,36,.35);transform:translateY(-1px)}
+
+  /* ═══ LAYOUT ═══ */
   .brand-layout{max-width:1280px;margin:0 auto;padding:48px 24px 64px;display:flex;gap:48px}
   .brand-sidebar{width:220px;flex-shrink:0}
   .sidebar-inner{position:sticky;top:96px;display:flex;flex-direction:column;gap:4px}
@@ -273,11 +363,17 @@ const jsonLd = {
   .sidebar-link{display:block;padding:10px 16px;font-size:14px;font-weight:500;color:rgba(55,58,54,.6);border-radius:10px;text-decoration:none;transition:all .15s ease;min-height:44px;display:flex;align-items:center}
   .sidebar-link:hover{color:var(--c-dark);background:rgba(55,58,54,.05)}
   .sidebar-link.active{background:var(--c-yellow);color:var(--c-dark);font-weight:600;box-shadow:0 2px 8px rgba(255,213,0,.25)}
+  .sidebar-group-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:rgba(55,58,54,.35);padding:20px 16px 6px;margin:0}
+  .sidebar-group-label:first-of-type{padding-top:0}
+
+  /* Mobile nav */
   .brand-mobile-nav{display:none;position:sticky;top:72px;z-index:90;background:var(--c-cream,#FEFCF5);border-bottom:1px solid rgba(55,58,54,.1);-webkit-overflow-scrolling:touch}
   .mobile-nav-scroll{display:flex;gap:4px;padding:10px 16px;overflow-x:auto;scrollbar-width:none;-ms-overflow-style:none}
   .mobile-nav-scroll::-webkit-scrollbar{display:none}
   .mobile-nav-link{flex-shrink:0;padding:8px 16px;font-size:13px;font-weight:600;color:rgba(55,58,54,.55);background:rgba(55,58,54,.05);border-radius:100px;text-decoration:none;white-space:nowrap;transition:all .15s ease;min-height:40px;display:flex;align-items:center}
   .mobile-nav-link:hover,.mobile-nav-link.active{background:var(--c-yellow);color:var(--c-dark)}
+
+  /* Content area */
   .brand-content{flex:1;min-width:0;max-width:900px}
   .brand-section{margin-bottom:80px;scroll-margin-top:96px}
   .brand-section h2{font-size:clamp(1.75rem,3vw,2.25rem);font-weight:300;color:var(--c-dark);margin-bottom:12px;letter-spacing:-.01em}
@@ -286,6 +382,30 @@ const jsonLd = {
   .section-header-row{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-start;gap:24px;margin-bottom:32px}
   .section-header-row h2{margin-bottom:8px}
   .section-header-row p{font-size:16px;color:rgba(55,58,54,.6);line-height:1.6}
+
+  /* Section divider */
+  .brand-divider{text-align:center;margin:0 0 64px;padding:48px 0 0;border-top:2px solid rgba(55,58,54,.1)}
+  .brand-divider-label{display:inline-block;background:var(--c-cream,#FEFCF5);padding:0 24px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:rgba(55,58,54,.4);position:relative;top:-28px}
+
+  /* ═══ MEDIA KIT CARDS ═══ */
+  .media-card{background:#fff;border:1px solid rgba(55,58,54,.1);border-radius:16px;overflow:hidden;margin-bottom:24px;transition:box-shadow .2s ease}
+  .media-card:hover{box-shadow:0 8px 24px rgba(0,0,0,.05)}
+  .media-card-header{display:flex;justify-content:space-between;align-items:center;padding:16px 24px;border-bottom:1px solid rgba(55,58,54,.06);background:rgba(55,58,54,.02)}
+  .media-card-header h3{font-size:15px;font-weight:600;color:var(--c-dark);margin:0}
+  .copy-btn{display:inline-flex;align-items:center;gap:6px;padding:6px 14px;background:transparent;border:1px solid rgba(55,58,54,.12);border-radius:8px;font-size:12px;font-weight:600;color:rgba(55,58,54,.55);cursor:pointer;transition:all .2s ease;font-family:var(--font-body)}
+  .copy-btn:hover{background:var(--c-yellow);color:var(--c-dark);border-color:var(--c-yellow)}
+  .copy-btn.copied{background:#16a34a;color:#fff;border-color:#16a34a}
+  .media-copy-text{padding:20px 24px;font-size:15px;line-height:1.7;color:var(--c-dark)}
+  .media-copy-text p{margin:0 0 12px}
+  .media-copy-text p:last-child{margin-bottom:0}
+  .media-details-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:1px;background:rgba(55,58,54,.08);border:1px solid rgba(55,58,54,.1);border-radius:16px;overflow:hidden}
+  .media-detail{padding:20px 24px;background:#fff}
+  .media-detail-label{display:block;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:rgba(55,58,54,.45);margin-bottom:6px}
+  .media-detail-value{font-size:15px;font-weight:500;color:var(--c-dark)}
+  .media-detail-value a{color:var(--c-dark);text-decoration:underline;text-decoration-color:rgba(55,58,54,.25);text-underline-offset:2px;transition:text-decoration-color .15s}
+  .media-detail-value a:hover{text-decoration-color:var(--c-yellow)}
+
+  /* ═══ LOGO CARDS ═══ */
   .card{background:#fff;border:1px solid rgba(55,58,54,.1);border-radius:16px;overflow:hidden;transition:transform .2s ease,box-shadow .2s ease;display:flex;flex-direction:column}
   .card:hover{transform:translateY(-3px);box-shadow:0 12px 32px rgba(0,0,0,.08)}
   .card-preview{padding:32px;border-bottom:1px solid rgba(55,58,54,.08);display:flex;align-items:center;justify-content:center;height:220px;background:linear-gradient(135deg,#f9fafb,#f3f4f6)}
@@ -309,8 +429,50 @@ const jsonLd = {
   .usage-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:24px;margin-bottom:40px}
   .dodont-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:24px;margin-bottom:40px}
   .vis-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+
+  /* ═══ COLOR CARDS — hover overlay ═══ */
   .color-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:24px;margin-bottom:32px}
+  .color-card{border:1px solid rgba(55,58,54,.1);border-radius:16px;overflow:hidden;cursor:pointer;background:#fff;transition:transform .2s ease,box-shadow .2s ease}
+  .color-card:hover{transform:translateY(-3px);box-shadow:0 12px 32px rgba(0,0,0,.08)}
+  .color-swatch{height:128px;position:relative;display:flex;align-items:center;justify-content:center}
+  .swatch-hover{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;color:rgba(255,255,255,.9);background:rgba(0,0,0,.25);opacity:0;transition:opacity .15s ease}
+  .swatch-hover-light{color:var(--c-dark);background:rgba(0,0,0,.06)}
+  .color-card:hover .swatch-hover{opacity:1}
+  .color-body{padding:16px 20px}
+  .color-body h3{font-family:var(--font-body);font-size:15px;font-weight:600;margin:0 0 4px}
+  .color-usage{font-size:13px;color:rgba(55,58,54,.6);margin-bottom:12px}
+  .color-vals{display:flex;flex-direction:column;gap:3px}
+  .color-vals span{font-size:13px;font-family:'SF Mono','Courier New',monospace;color:rgba(55,58,54,.6)}
+  .color-vals .hex{font-weight:700;color:var(--c-dark)}
+  .color-vals .pms{font-weight:700;color:var(--c-dark);font-family:var(--font-body);font-size:11px;letter-spacing:.04em}
+  .info-box{background:linear-gradient(135deg,#fafafa,#f5f5f4);border:1px solid rgba(55,58,54,.1);border-radius:16px;padding:24px}
+  .info-box p{font-size:14px;line-height:1.65}
+  .info-box strong{color:var(--c-dark)}
+
+  /* ═══ TYPOGRAPHY — live specimens ═══ */
+  .type-block{border:1px solid rgba(55,58,54,.1);border-radius:16px;overflow:hidden;margin-bottom:24px;background:#fff}
+  .type-block-header{padding:20px 28px;border-bottom:1px solid rgba(55,58,54,.08);display:flex;justify-content:space-between;align-items:baseline}
+  .type-block-header h3{font-size:18px;margin:0}
+  .type-block-header span{font-size:14px;color:rgba(55,58,54,.5)}
+  .type-specimen{padding:28px 28px;border-bottom:1px solid rgba(55,58,54,.04)}
+  .type-specimen:last-child{border-bottom:none}
+  .type-specimen-label{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:rgba(55,58,54,.4);margin-bottom:12px}
+  .type-specimen-sample{color:var(--c-dark);line-height:1.2}
+  .type-specimen-meta{margin-top:10px;font-size:12px;color:rgba(55,58,54,.4)}
   .two-col{display:grid;grid-template-columns:repeat(2,1fr);gap:24px;margin-top:24px}
+  .info-card{border:1px solid rgba(55,58,54,.1);border-radius:16px;padding:24px 28px;background:#fff}
+  .info-card h3{font-size:18px;margin-top:0;margin-bottom:24px}
+  .info-card h4{font-family:var(--font-body);font-size:15px;font-weight:700;margin-bottom:16px}
+  .info-card ul{display:flex;flex-direction:column;gap:8px}
+  .info-card li{font-size:14px;display:flex;align-items:flex-start;gap:8px;line-height:1.5}
+  .bullet{color:var(--c-yellow);font-size:18px;line-height:1;flex-shrink:0;margin-top:2px}
+
+  /* Voice & Tone */
+  .voice-items{display:flex;flex-direction:column;gap:24px}
+  .voice-item h5{font-family:var(--font-body);font-size:15px;font-weight:600;color:var(--c-dark);margin-bottom:4px}
+  .voice-item p{font-size:14px;color:rgba(55,58,54,.6)}
+
+  /* Logo usage */
   .usage-card{border:1px solid rgba(55,58,54,.1);border-radius:16px;overflow:hidden;background:#fff;transition:box-shadow .2s ease}
   .usage-card:hover{box-shadow:0 8px 24px rgba(0,0,0,.05)}
   .usage-label{font-size:13px;font-weight:700;color:var(--c-dark);padding:16px 20px 0;letter-spacing:.02em;text-transform:uppercase}
@@ -336,62 +498,25 @@ const jsonLd = {
   .vis-badge.bad{background:#fef2f2;color:#991b1b}
   .vis-preview{height:100px;display:flex;align-items:center;justify-content:center;padding:16px}
   .vis-card p{font-size:12px;color:rgba(55,58,54,.55);padding:10px 14px;border-top:1px solid rgba(55,58,54,.06)}
-  .color-card{border:1px solid rgba(55,58,54,.1);border-radius:16px;overflow:hidden;cursor:pointer;background:#fff;transition:transform .2s ease,box-shadow .2s ease}
-  .color-card:hover{transform:translateY(-3px);box-shadow:0 12px 32px rgba(0,0,0,.08)}
-  .color-swatch{height:128px;position:relative}
-  .color-body{padding:16px 20px}
-  .color-body h3{font-family:var(--font-body);font-size:15px;font-weight:600;margin:0 0 4px}
-  .color-usage{font-size:13px;color:rgba(55,58,54,.6);margin-bottom:12px}
-  .color-vals{display:flex;flex-direction:column;gap:3px}
-  .color-vals span{font-size:13px;font-family:'SF Mono','Courier New',monospace;color:rgba(55,58,54,.6)}
-  .color-vals .hex{font-weight:700;color:var(--c-dark)}
-  .color-vals .pms{font-weight:700;color:var(--c-dark);font-family:var(--font-body);font-size:11px;letter-spacing:.04em}
-  .info-box{background:linear-gradient(135deg,#fafafa,#f5f5f4);border:1px solid rgba(55,58,54,.1);border-radius:16px;padding:24px}
-  .info-box p{font-size:14px;line-height:1.65}
-  .info-box strong{color:var(--c-dark)}
-  .info-card{border:1px solid rgba(55,58,54,.1);border-radius:16px;padding:24px 28px;background:#fff}
-  .info-card h3{font-size:18px;margin-top:0;margin-bottom:24px}
-  .info-card h4{font-family:var(--font-body);font-size:15px;font-weight:700;margin-bottom:16px}
-  .info-card ul{display:flex;flex-direction:column;gap:8px}
-  .info-card li{font-size:14px;display:flex;align-items:flex-start;gap:8px;line-height:1.5}
-  .bullet{color:var(--c-yellow);font-size:18px;line-height:1;flex-shrink:0;margin-top:2px}
-  .type-block{border:1px solid rgba(55,58,54,.1);border-radius:16px;overflow:hidden;margin-bottom:24px;background:#fff}
-  .type-block-header{padding:20px 28px;border-bottom:1px solid rgba(55,58,54,.08);display:flex;justify-content:space-between;align-items:baseline}
-  .type-block-header h3{font-size:18px;margin:0}
-  .type-block-header span{font-size:14px;color:rgba(55,58,54,.5)}
-  .type-row{display:flex;align-items:baseline;justify-content:space-between;padding:14px 28px;border-bottom:1px solid rgba(55,58,54,.06);gap:16px}
-  .type-row:last-child{border-bottom:none}
-  .wt-name{font-size:13px;font-weight:500;color:rgba(55,58,54,.5);min-width:100px;flex-shrink:0}
-  .wt-sample{font-size:20px;color:var(--c-dark);flex:1}
-  .voice-items{display:flex;flex-direction:column;gap:24px}
-  .voice-item h5{font-family:var(--font-body);font-size:15px;font-weight:600;color:var(--c-dark);margin-bottom:4px}
-  .voice-item p{font-size:14px;color:rgba(55,58,54,.6)}
+
+  /* ═══ SOCIAL SPECS TABLE ═══ */
+  .specs-table-wrap{background:#fff;border:1px solid rgba(55,58,54,.1);border-radius:16px;overflow:hidden}
+  .specs-table{width:100%;border-collapse:collapse;font-size:14px}
+  .specs-table th{text-align:left;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:rgba(55,58,54,.45);padding:14px 20px;border-bottom:2px solid rgba(55,58,54,.08);background:rgba(55,58,54,.02)}
+  .specs-table td{padding:14px 20px;border-bottom:1px solid rgba(55,58,54,.04);color:rgba(55,58,54,.65)}
+  .specs-table tr:last-child td{border-bottom:none}
+  .specs-platform{font-weight:600;color:var(--c-dark)}
+  .specs-dims{font-family:'SF Mono','Courier New',monospace;font-size:13px;background:var(--c-warm-gray,#F5F4F0);padding:4px 10px;border-radius:6px;display:inline-block}
+
+  /* Toast */
   .brand-toast{position:fixed;bottom:32px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--c-dark-deep);color:#fff;padding:12px 24px;border-radius:10px;font-size:14px;font-weight:500;opacity:0;pointer-events:none;transition:all .3s ease;z-index:999;box-shadow:0 8px 32px rgba(0,0,0,.2)}
   .brand-toast.visible{opacity:1;transform:translateX(-50%) translateY(0)}
-  .sidebar-group-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:rgba(55,58,54,.35);padding:20px 16px 6px;margin:0}
-  .sidebar-group-label:first-of-type{padding-top:0}
-  .media-divider{text-align:center;margin:0 0 64px;padding:48px 0 0;border-top:2px solid rgba(55,58,54,.1)}
-  .media-divider-label{display:inline-block;background:var(--c-cream,#FEFCF5);padding:0 24px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:rgba(55,58,54,.4);position:relative;top:-28px}
-  .media-card{background:#fff;border:1px solid rgba(55,58,54,.1);border-radius:16px;overflow:hidden;margin-bottom:24px;transition:box-shadow .2s ease}
-  .media-card:hover{box-shadow:0 8px 24px rgba(0,0,0,.05)}
-  .media-card-header{display:flex;justify-content:space-between;align-items:center;padding:16px 24px;border-bottom:1px solid rgba(55,58,54,.06);background:rgba(55,58,54,.02)}
-  .media-card-header h3{font-size:15px;font-weight:600;color:var(--c-dark);margin:0}
-  .copy-btn{display:inline-flex;align-items:center;gap:6px;padding:6px 14px;background:transparent;border:1px solid rgba(55,58,54,.12);border-radius:8px;font-size:12px;font-weight:600;color:rgba(55,58,54,.55);cursor:pointer;transition:all .2s ease}
-  .copy-btn:hover{background:var(--c-yellow);color:var(--c-dark);border-color:var(--c-yellow)}
-  .copy-btn.copied{background:#16a34a;color:#fff;border-color:#16a34a}
-  .media-copy-text{padding:20px 24px;font-size:15px;line-height:1.7;color:var(--c-dark)}
-  .media-copy-text p{margin:0 0 12px}
-  .media-copy-text p:last-child{margin-bottom:0}
-  .media-details-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:1px;background:rgba(55,58,54,.08);border:1px solid rgba(55,58,54,.1);border-radius:16px;overflow:hidden}
-  .media-detail{padding:20px 24px;background:#fff}
-  .media-detail-label{display:block;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:rgba(55,58,54,.45);margin-bottom:6px}
-  .media-detail-value{font-size:15px;font-weight:500;color:var(--c-dark)}
-  .media-detail-value a{color:var(--c-dark);text-decoration:underline;text-decoration-color:rgba(55,58,54,.25);text-underline-offset:2px;transition:text-decoration-color .15s}
-  .media-detail-value a:hover{text-decoration-color:var(--c-yellow)}
+
+  /* ═══ RESPONSIVE ═══ */
   @media(max-width:1024px){.brand-sidebar{display:none}.brand-layout{padding:32px 20px 48px}.logo-grid-3{grid-template-columns:repeat(3,1fr)}.brand-mobile-nav{display:block}.brand-section{scroll-margin-top:160px}}
   @media(max-width:900px){.logo-grid-3{grid-template-columns:repeat(2,1fr)}}
-  @media(max-width:768px){.logo-grid{grid-template-columns:1fr}.logo-grid-3{grid-template-columns:1fr}.usage-grid{grid-template-columns:1fr}.dodont-grid{grid-template-columns:1fr}.color-grid{grid-template-columns:1fr 1fr}.two-col{grid-template-columns:1fr}.vis-grid{grid-template-columns:1fr 1fr}.section-header-row{flex-direction:column}.media-details-grid{grid-template-columns:1fr}.dl-btn{padding:10px 16px;font-size:13px;min-height:44px}}
-  @media(max-width:480px){.color-grid{grid-template-columns:1fr}.vis-grid{grid-template-columns:1fr}}
+  @media(max-width:768px){.brand-hero{padding:72px 20px 60px}.logo-grid{grid-template-columns:1fr}.logo-grid-3{grid-template-columns:1fr}.usage-grid{grid-template-columns:1fr}.dodont-grid{grid-template-columns:1fr}.color-grid{grid-template-columns:1fr 1fr}.two-col{grid-template-columns:1fr}.vis-grid{grid-template-columns:1fr 1fr}.section-header-row{flex-direction:column}.media-details-grid{grid-template-columns:1fr}.dl-btn{padding:10px 16px;font-size:13px;min-height:44px}.specs-table-wrap{overflow-x:auto}.specs-table{min-width:540px}}
+  @media(max-width:480px){.color-grid{grid-template-columns:1fr}.vis-grid{grid-template-columns:1fr}.hero-btn{width:100%;justify-content:center}}
 </style>
 
 <script>
