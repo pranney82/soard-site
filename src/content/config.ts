@@ -115,6 +115,7 @@ const press = defineCollection({
     date: z.string(),
     url: z.string(),
     excerpt: z.string(),
+    image: z.string().nullable().optional(),
     featured: z.boolean().default(false),
     order: z.number().default(0),
   }),

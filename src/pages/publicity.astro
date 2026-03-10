@@ -63,6 +63,12 @@ function formatDate(dateStr: string): string {
       <div class="featured-grid">
         {featured.map(item => (
           <article class="featured-card">
+            {item.data.image && (
+              <div class="featured-card__img-wrap">
+                <img src={`${item.data.image}/public`} alt={item.data.title} class="featured-card__img" loading="lazy" />
+              </div>
+            )}
+            <div class="featured-card__body">
             <div class="featured-card__top">
               <div class="featured-card__badge" set:html={categoryIcons[item.data.category]} />
               <div class="featured-card__cat">{categoryLabels[item.data.category]}</div>
@@ -79,6 +85,7 @@ function formatDate(dateStr: string): string {
                 </a>
               )}
             </div>
+            </div>
           </article>
         ))}
       </div>
@@ -92,7 +99,14 @@ function formatDate(dateStr: string): string {
       <div class="coverage-list">
         {press.map(item => (
           <article class="coverage-item">
-            <div class="coverage-item__icon" set:html={categoryIcons[item.data.category]} />
+            {item.data.image && (
+              <div class="coverage-item__thumb">
+                <img src={`${item.data.image}/nav`} alt="" class="coverage-item__thumb-img" loading="lazy" />
+              </div>
+            )}
+            {!item.data.image && (
+              <div class="coverage-item__icon" set:html={categoryIcons[item.data.category]} />
+            )}
             <div class="coverage-item__content">
               <div class="coverage-item__meta">
                 <span class="coverage-item__outlet">{item.data.outlet}</span>
@@ -191,7 +205,7 @@ function formatDate(dateStr: string): string {
     background: var(--c-white);
     border: 1px solid var(--c-border);
     border-radius: var(--border-radius-lg);
-    padding: var(--space-xl);
+    overflow: hidden;
     display: flex;
     flex-direction: column;
     transition: box-shadow var(--transition-base), transform var(--transition-base);
@@ -199,6 +213,26 @@ function formatDate(dateStr: string): string {
   .featured-card:hover {
     box-shadow: var(--shadow-lg);
     transform: translateY(-2px);
+  }
+  .featured-card__img-wrap {
+    aspect-ratio: 16 / 9;
+    overflow: hidden;
+    background: var(--c-warm-gray);
+  }
+  .featured-card__img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform 0.4s ease;
+  }
+  .featured-card:hover .featured-card__img {
+    transform: scale(1.03);
+  }
+  .featured-card__body {
+    padding: var(--space-xl);
+    display: flex;
+    flex-direction: column;
+    flex: 1;
   }
   .featured-card__top {
     display: flex;
@@ -298,6 +332,20 @@ function formatDate(dateStr: string): string {
     justify-content: center;
     color: var(--c-text-muted);
     margin-top: 2px;
+  }
+  .coverage-item__thumb {
+    width: 80px;
+    height: 56px;
+    min-width: 80px;
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--c-warm-gray);
+    margin-top: 2px;
+  }
+  .coverage-item__thumb-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
   }
   .coverage-item__content { flex: 1; min-width: 0; }
   .coverage-item__meta {
@@ -435,6 +483,7 @@ function formatDate(dateStr: string): string {
     .featured-grid { grid-template-columns: 1fr; }
     .coverage-item { flex-direction: column; gap: var(--space-md); }
     .coverage-item__icon { display: none; }
+    .coverage-item__thumb { display: none; }
     .coverage-item__arrow { display: none; }
   }
 </style>
