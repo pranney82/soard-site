@@ -26,9 +26,11 @@ const { title, description, heroTitle, heroSubtitle, ogImage, ogType, jsonLd, br
 <BaseLayout title={title} description={description} ogImage={ogImage} ogType={ogType} jsonLd={jsonLd} breadcrumbs={breadcrumbs} datePublished={datePublished} dateModified={dateModified} noindex={noindex}>
   {(heroTitle || heroSubtitle) && (
     <section class="page-hero">
-      <div class="container">
-        {heroTitle && <h1 class="page-hero__title">{heroTitle}</h1>}
-        {heroSubtitle && <p class="page-hero__subtitle">{heroSubtitle}</p>}
+      <div class="page-hero__inner container">
+        <div class="page-hero__text">
+          {heroTitle && <h1 class="page-hero__title">{heroTitle}</h1>}
+          {heroSubtitle && <p class="page-hero__subtitle">{heroSubtitle}</p>}
+        </div>
       </div>
     </section>
   )}
@@ -42,26 +44,34 @@ const { title, description, heroTitle, heroSubtitle, ogImage, ogType, jsonLd, br
 
 <style>
   .page-hero {
-    background: var(--c-cream);
-    color: var(--c-text);
-    padding-block: var(--space-4xl) var(--space-3xl);
-    text-align: center;
-    border-bottom: 1px solid var(--c-border);
+    background: var(--c-dark);
+    color: #fff;
+    padding-block: var(--space-2xl);
+  }
+
+  .page-hero__inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-xl);
+  }
+
+  .page-hero__text {
+    min-width: 0;
   }
 
   .page-hero__title {
-    color: var(--c-text);
-    font-size: clamp(2rem, 5vw, 3.25rem);
+    color: #fff;
+    font-size: clamp(1.6rem, 3.5vw, 2.25rem);
     letter-spacing: -0.02em;
   }
 
   .page-hero__subtitle {
-    margin-top: var(--space-lg);
-    font-size: clamp(1.05rem, 2vw, 1.2rem);
-    line-height: 1.7;
-    color: var(--c-text-muted);
-    max-width: 580px;
-    margin-inline: auto;
+    margin-top: var(--space-xs);
+    font-size: clamp(0.9rem, 1.5vw, 1.05rem);
+    line-height: 1.6;
+    color: rgba(255, 255, 255, 0.55);
+    max-width: 480px;
   }
 
   .page-content {
@@ -70,7 +80,7 @@ const { title, description, heroTitle, heroSubtitle, ogImage, ogType, jsonLd, br
 
   @media (max-width: 768px) {
     .page-hero {
-      padding-block: var(--space-3xl) var(--space-2xl);
+      padding-block: var(--space-xl);
     }
   }
 </style>
