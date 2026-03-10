@@ -301,8 +301,8 @@ const dateModified = kid.year ? `${kid.year}-01-01` : undefined;
               <a href={`/kids/${rk.slug}/`} class="related-card">
                 <div class="related-card__frame">
                   <img
-                    src={cfUrl(rk.heroImage, 'w=440,f=auto,q=85')}
-                    srcset={cfSrcset(rk.heroImage, [300, 440, 600])}
+                    src={cfUrl(rk.heroImage, 'w=600,f=auto,q=85')}
+                    srcset={cfSrcset(rk.heroImage, [300, 600])}
                     sizes="(max-width: 600px) 45vw, 220px"
                     alt={`Photo of ${rk.name}`}
                     class="related-card__img"

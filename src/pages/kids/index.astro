@@ -239,9 +239,9 @@ const gridKids = [...kids];
             <div class="kid-card__frame">
               {kid.data.heroImage ? (
                 <img
-                  src={cfUrl(kid.data.heroImage, 'w=440,f=auto,q=85')}
-                  srcset={cfSrcset(kid.data.heroImage, [300, 440, 600])}
-                  sizes="(max-width: 480px) 45vw, (max-width: 768px) 45vw, (max-width: 1100px) 25vw, 260px"
+                  src={cfUrl(kid.data.heroImage, 'w=600,f=auto,q=85')}
+                  srcset={cfSrcset(kid.data.heroImage, [300, 600, 900])}
+                  sizes="(max-width: 768px) 45vw, (max-width: 1100px) 30vw, 280px"
                   alt={`Photo of ${kid.data.name}${kid.data.diagnosis ? `, diagnosed with ${kid.data.diagnosis}` : ''} — Sunshine on a Ranney Day`}
                   class="kid-card__img"
                   width="300"
