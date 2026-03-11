@@ -1,17 +1,20 @@
 import type { APIRoute, GetStaticPaths } from 'astro';
 import { generateOgImage } from '../../utils/og';
+import { getSiteStats } from '../../utils/stats';
 
 /**
  * Static page OG image definitions.
  * Add new pages here when creating them.
  */
-const pages = [
+const getPages = async () => {
+  const stats = await getSiteStats();
+  return [
   { slug: 'home', title: 'Dreams Built Here', subtitle: 'Creating life-changing home makeovers for children with special needs — at no cost to families.' },
   { slug: 'donate', title: 'Help Build a Brighter Home', subtitle: 'Every dollar builds accessible bathrooms, dream bedrooms, and therapy rooms for children with special needs.' },
   { slug: 'about', title: 'Our Story', subtitle: 'Transforming lives since 2012 in the greater Atlanta area.' },
   { slug: 'leadership', title: 'Leadership', subtitle: 'The team and board behind Sunshine on a Ranney Day.' },
   { slug: 'financials', title: 'Financials', subtitle: 'Transparency you can trust. 990 filings and annual reports.' },
-  { slug: 'kids', title: 'Meet the Kids', subtitle: '132+ children whose lives have been transformed by a room makeover.' },
+  { slug: 'kids', title: 'Meet the Kids', subtitle: `${stats.totalKids}+ children whose lives have been transformed by a room makeover.` },
   { slug: 'rooms', title: 'Featured Rooms', subtitle: 'Dream bedrooms, accessible bathrooms, and therapy rooms we\'ve built.' },
   { slug: 'before-after', title: 'Before & After', subtitle: 'See the dramatic transformations in our room makeovers.' },
   { slug: 'community', title: 'Community Projects', subtitle: 'Large-scale projects serving thousands of children with special needs.' },
@@ -25,9 +28,11 @@ const pages = [
   { slug: 'privacy-policy', title: 'Privacy Policy', subtitle: undefined },
   { slug: 'terms', title: 'Terms of Service', subtitle: undefined },
   { slug: 'branding', title: 'Brand Guidelines', subtitle: 'Sunshine on a Ranney Day brand assets and usage.' },
-];
+  ];
+};
 
 export const getStaticPaths: GetStaticPaths = async () => {
+  const pages = await getPages();
   return pages.map(p => ({
     params: { page: p.slug },
     props: { page: p },
@@ -35,7 +40,7 @@ export const getStaticPaths: GetStaticPaths = async () => {
 };
 
 export const GET: APIRoute = async ({ props }) => {
-  const { page } = props as { page: typeof pages[0] };
+  const { page } = props as { page: { slug: string; title: string; subtitle?: string } };
   
   const png = await generateOgImage({
     template: 'default',

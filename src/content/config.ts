@@ -28,6 +28,7 @@ const kids = defineCollection({
     metaDescription: z.string().nullable().optional(),
     altTexts: z.any().nullable().optional(),
     jsonLd: z.any().nullable().optional(),
+    childCount: z.number().default(1),
   }),
 });
 

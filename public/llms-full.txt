@@ -18,7 +18,7 @@ We are a volunteer-driven nonprofit that partners with professional designers, c
 - GuideStar: https://www.guidestar.org/profile/shared/2954b510-8c76-42e4-b589-7e826ca2cc47
 
 ## Mission & Impact
-Sunshine on a Ranney Day (SOARD) creates life-changing home makeovers for children with special needs and life-altering illnesses. Since 2012, we have served over 132 children, completed over 106 rooms, built over 45 therapy rooms, and impacted over 17,000 children through community projects. Every room is designed and built by volunteer professionals — designers, contractors, and suppliers — who donate their time, materials, and expertise. Families pay nothing.
+Sunshine on a Ranney Day (SOARD) creates life-changing home makeovers for children with special needs and life-altering illnesses. Since 2012, we have served over 203 children, completed over 193 makeover projects, built over 45 therapy rooms, and impacted over 17,000 children through community projects. Every room is designed and built by volunteer professionals — designers, contractors, and suppliers — who donate their time, materials, and expertise. Families pay nothing.
 
 ## Programs
 
@@ -228,7 +228,7 @@ Each child's profile includes their story, diagnosis, room type, and photos of t
 - [About — Our Story](https://sunshineonaranneyday.com/about/): Founding story and mission
 - [About — Leadership](https://sunshineonaranneyday.com/about/leadership/): Board and team bios
 - [About — Financials](https://sunshineonaranneyday.com/about/financials/): 990 filings and reports
-- [Meet the Kids](https://sunshineonaranneyday.com/kids/): All 132+ kid profiles
+- [Meet the Kids](https://sunshineonaranneyday.com/kids/): All 203+ kid profiles
 - [Featured Rooms](https://sunshineonaranneyday.com/rooms/): Room gallery
 - [Before & After](https://sunshineonaranneyday.com/rooms/before-after/): Photo comparisons
 - [Community Projects](https://sunshineonaranneyday.com/rooms/community/): School/facility projects

@@ -8,15 +8,19 @@
 import BaseLayout from '../layouts/BaseLayout.astro';
 import MediaLogos from '../components/ui/MediaLogos.astro';
 import { getCollection } from 'astro:content';
+import { getSiteStats } from '../utils/stats';
 
 const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
 
 /* ── Site settings (all editable from admin) ── */
 import siteSettings from '../content/site/settings.json';
+
+/* ── Auto-computed stats from content collections ── */
+const computed = await getSiteStats();
 const stats = {
-  totalKids: siteSettings.stats?.kidsServed || 132,
-  totalRooms: siteSettings.stats?.roomsCompleted || 106,
-  years: siteSettings.stats?.yearsOfImpact || 14,
+  totalKids: computed.totalKids,
+  totalRooms: computed.totalProjects,
+  years: computed.years,
 };
 
 /* ── Hero (from site settings) ── */

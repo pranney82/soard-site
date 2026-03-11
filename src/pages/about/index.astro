@@ -11,11 +11,19 @@
  */
 import PageLayout from '../../layouts/PageLayout.astro';
 import { getWebPageSchema, getBreadcrumbSchema, buildSchemaGraph } from '../../utils/schema';
+import { getSiteStats } from '../../utils/stats';
 import page from '../../content/site/our-story.json';
 
 const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
 
-const stats = page.stats;
+/* ── Auto-computed stats ── */
+const computed = await getSiteStats();
+const stats = {
+  totalKids: computed.totalKids,
+  totalRooms: computed.totalProjects,
+  years: computed.years,
+  communityKids: 17000, // kept from page data — community reach is a separate metric
+};
 const founderPhotoId = page.images.founder;
 const revealPhotoId = page.images.reveal;
 const communityPhotoId = page.images.community;
@@ -34,19 +42,20 @@ const ribbon = (page.ribbon || []).map((r: { value: string; label: string }) => 
 
 /* ── Schema ── */
 const pageUrl = 'https://sunshineonaranneyday.com/about/';
+const aboutDesc = `How Peter and Holly Ranney founded Sunshine on a Ranney Day in 2012 — and built a movement that has transformed ${stats.totalRooms}+ rooms for children with special needs across greater Atlanta.`;
 const breadcrumbs = [
   { name: 'Home', url: 'https://sunshineonaranneyday.com/' },
   { name: 'Our Story', url: pageUrl },
 ];
 const jsonLd = buildSchemaGraph(
-  getWebPageSchema({ url: pageUrl, title: 'Our Story', description: 'How Peter and Holly Ranney founded Sunshine on a Ranney Day in 2012 — and built a movement that has transformed 106+ rooms for children with special needs across greater Atlanta.' }),
+  getWebPageSchema({ url: pageUrl, title: 'Our Story', description: aboutDesc }),
   getBreadcrumbSchema(breadcrumbs, pageUrl),
 );
 ---
 
 <PageLayout
   title="Our Story — How It All Started"
-  description="How Peter and Holly Ranney founded Sunshine on a Ranney Day in 2012 — and built a movement that has transformed 106+ rooms for children with special needs across greater Atlanta."
+  description={aboutDesc}
   jsonLd={jsonLd}
   breadcrumbs={breadcrumbs}
   heroLabel="About"

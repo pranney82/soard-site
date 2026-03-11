@@ -18,7 +18,7 @@ const kids = allKids
 const years = [...new Set(kids.map(k => k.data.year).filter(Boolean))].sort((a, b) => b - a);
 const roomTypes = [...new Set(kids.flatMap(k => k.data.roomTypes || []))].sort();
 const hasInProgress = kids.some(k => k.data.status === 'in-progress');
-const totalKids = kids.length;
+const totalKids = kids.reduce((sum, k) => sum + (k.data.childCount || 1), 0);
 
 // ── CF Image helpers ──────────────────────
 const CF_BASE = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';

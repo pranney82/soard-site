@@ -15,6 +15,9 @@
 import BaseLayout from '../layouts/BaseLayout.astro';
 import faqData from '../content/site/faq.json';
 import { getDonateSchema } from '../utils/schema';
+import { getSiteStats } from '../utils/stats';
+
+const computed = await getSiteStats();
 
 const donateFaqs = faqData.items
   .filter(item => {
@@ -201,9 +204,9 @@ const breadcrumbs = [
           <p>Registered nonprofit. EIN 45-4773997. All donations are fully tax-deductible.</p>
         </div>
         <div class="dt-card" data-reveal data-delay="1">
-          <span class="dt-big">106+</span>
+          <span class="dt-big">{computed.totalProjects}+</span>
           <span class="dt-label">Rooms Completed</span>
-          <p>Over 132 children served across the greater Atlanta area since 2012.</p>
+          <p>Over {computed.totalKids} children served across the greater Atlanta area since 2012.</p>
         </div>
         <div class="dt-card" data-reveal data-delay="2">
           <span class="dt-big" aria-hidden="true">📋</span>
