@@ -11,10 +11,9 @@ const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
       <div class="hero-404">
         <span class="digit">4</span>
         <div class="gracie-zone" id="gracie-zone">
-          <div class="gracie-ring" aria-hidden="true"></div>
           <img
-            src={`${CF}/sunny-pig/w=280,h=280,fit=contain`}
-            srcset={`${CF}/sunny-pig/w=160,h=160,fit=contain 160w, ${CF}/sunny-pig/w=280,h=280,fit=contain 280w`}
+            src={`${CF}/sunny-pig/w=280,h=280,fit=cover`}
+            srcset={`${CF}/sunny-pig/w=160,h=160,fit=cover 160w, ${CF}/sunny-pig/w=280,h=280,fit=cover 280w`}
             sizes="(max-width: 600px) 140px, 240px"
             alt="Gracie the Pig — SOARD's golden flying mascot"
             width="280"
@@ -127,22 +126,12 @@ const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
     cursor: pointer;
   }
 
-  /* Yellow circle behind Gracie */
-  .gracie-ring {
-    position: absolute;
-    inset: 10%;
-    border-radius: 50%;
-    background: var(--c-warm-gray);
-    opacity: 1;
-  }
-
   .gracie {
     position: relative;
     width: clamp(110px, 28vw, 240px);
     height: auto;
     display: block;
-    /* Black bg → transparent via blend mode */
-    mix-blend-mode: screen;
+    border-radius: 50%;
     animation: float 4s ease-in-out infinite;
   }
 
