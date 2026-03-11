@@ -458,6 +458,9 @@ document.addEventListener('astro:page-load', function () {
   if (desktopNav) desktopNav.addEventListener('mouseleave', scheduleClose);
 
   document.addEventListener('click', function (e) {
+    /* Close dropdown when clicking a link inside it (navigating away) */
+    if (e.target.closest('.dd-link')) { closeAllDD(); return; }
+    /* Close dropdown when clicking outside the nav */
     if (!e.target.closest('.nav-item') && !e.target.closest('.dd-morph')) closeAllDD();
   }, { signal: sig });
 
