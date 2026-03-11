@@ -45,7 +45,7 @@ export async function onRequest(context) {
     return context.next();
   }
 
-  const jwt = context.request.headers.get('CF-Access-JWT-Assertion');
+  const jwt = context.request.headers.get('CF-Access-JWT-Assertion') || getCookieValue(context.request, 'CF_Authorization');
   if (!jwt) {
     return Response.json(
       { success: false, error: 'Unauthorized — missing access token' },
@@ -135,6 +135,14 @@ async function getPublicKeys(teamDomain) {
   _cachedKeysExpiry = Date.now() + CACHE_TTL_MS;
 
   return _cachedKeys;
+}
+
+// ─── Cookie Helper ────────────────────────────────────────────────
+
+function getCookieValue(request, name) {
+  const cookie = request.headers.get('Cookie') || '';
+  const match = cookie.match(new RegExp(`(?:^|;\\s*)${name}=([^;]*)`));
+  return match ? match[1] : null;
 }
 
 // ─── Base64URL Helpers ─────────────────────────────────────────────
