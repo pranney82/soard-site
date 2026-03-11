@@ -8,6 +8,22 @@ const founderParagraphs = media.founderStory.split('\n\n');
 const dlIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>`;
 const copyIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>`;
 
+/* Cloudflare Images helper — serves AVIF/WebP automatically via format=auto */
+const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
+const cfSrc = (id: string, w: number) => `${CF}/${id}/w=${w},format=auto`;
+const cfSrcset = (id: string, widths: number[]) =>
+  widths.map(w => `${cfSrc(id, w)} ${w}w`).join(', ');
+
+/* Display image IDs on CF Images */
+const logos = {
+  lightTagline: 'brand-logo-light-bg-tagline-display',
+  darkTagline:  'brand-logo-dark-bg-tagline-display',
+  circleTagline:'brand-logo-circle-tagline-display',
+  light:        'brand-logo-light-bg-display',
+  dark:         'brand-logo-dark-bg-display',
+  circle:       'brand-logo-circle-display',
+};
+
 const breadcrumbs = [
   { name: 'Home', url: '/' },
   { name: 'Brand & Media Kit', url: '/branding/' },
@@ -200,17 +216,17 @@ const jsonLd = {
         <h3 class="logo-subhead">Primary Logos</h3>
         <p class="section-desc">Main logos with the "Dreams Built Here" tagline.</p>
         <div class="logo-grid logo-grid-3">
-          <div class="card"><div class="card-preview bg-light"><picture><source type="image/webp" srcset="/images/logos/logo-light-bg-tagline-display.webp" /><img src="/images/logos/logo-light-bg-tagline-display.png" alt="Sunshine on a Ranney Day logo with Dreams Built Here tagline on white background" class="logo-img" width="600" height="600" loading="lazy" decoding="async"/></picture></div><div class="card-body"><h3>White Background</h3><p>Logo with tagline for light backgrounds</p><div class="btn-row"><a href="/images/logos/logo-light-bg-tagline.svg" download class="dl-btn" aria-label="Download white background logo with tagline as SVG"><Fragment set:html={dlIcon} />SVG</a><a href="/images/logos/logo-light-bg-tagline.png" download class="dl-btn" aria-label="Download white background logo with tagline as PNG"><Fragment set:html={dlIcon} />PNG</a></div></div></div>
-          <div class="card"><div class="card-preview bg-dark"><picture><source type="image/webp" srcset="/images/logos/logo-dark-bg-tagline-display.webp" /><img src="/images/logos/logo-dark-bg-tagline-display.png" alt="Sunshine on a Ranney Day logo with Dreams Built Here tagline on dark background" class="logo-img" width="600" height="600" loading="lazy" decoding="async"/></picture></div><div class="card-body"><h3>Dark Background</h3><p>Logo with tagline for dark backgrounds</p><div class="btn-row"><a href="/images/logos/logo-dark-bg-tagline.svg" download class="dl-btn" aria-label="Download dark background logo with tagline as SVG"><Fragment set:html={dlIcon} />SVG</a><a href="/images/logos/logo-dark-bg-tagline.png" download class="dl-btn" aria-label="Download dark background logo with tagline as PNG"><Fragment set:html={dlIcon} />PNG</a></div></div></div>
-          <div class="card"><div class="card-preview bg-light"><picture><source type="image/webp" srcset="/images/logos/logo-circle-tagline-display.webp" /><img src="/images/logos/logo-circle-tagline-display.png" alt="Sunshine on a Ranney Day circle logo with Dreams Built Here tagline" class="logo-img logo-img-circle" width="600" height="600" loading="lazy" decoding="async"/></picture></div><div class="card-body"><h3>Circle</h3><p>Circle logo with tagline</p><div class="btn-row"><a href="/images/logos/logo-circle-tagline.svg" download class="dl-btn" aria-label="Download circle logo with tagline as SVG"><Fragment set:html={dlIcon} />SVG</a><a href="/images/logos/logo-circle-tagline.png" download class="dl-btn" aria-label="Download circle logo with tagline as PNG"><Fragment set:html={dlIcon} />PNG</a></div></div></div>
+          <div class="card"><div class="card-preview bg-light"><img src={cfSrc(logos.lightTagline, 400)} srcset={cfSrcset(logos.lightTagline, [200, 400, 600])} sizes="(max-width: 768px) 80vw, 200px" alt="Sunshine on a Ranney Day logo with Dreams Built Here tagline on white background" class="logo-img" width="600" height="600" loading="lazy" decoding="async"/></div><div class="card-body"><h3>White Background</h3><p>Logo with tagline for light backgrounds</p><div class="btn-row"><a href="/images/logos/logo-light-bg-tagline.svg" download class="dl-btn" aria-label="Download white background logo with tagline as SVG"><Fragment set:html={dlIcon} />SVG</a><a href="/images/logos/logo-light-bg-tagline.png" download class="dl-btn" aria-label="Download white background logo with tagline as PNG"><Fragment set:html={dlIcon} />PNG</a></div></div></div>
+          <div class="card"><div class="card-preview bg-dark"><img src={cfSrc(logos.darkTagline, 400)} srcset={cfSrcset(logos.darkTagline, [200, 400, 600])} sizes="(max-width: 768px) 80vw, 200px" alt="Sunshine on a Ranney Day logo with Dreams Built Here tagline on dark background" class="logo-img" width="600" height="600" loading="lazy" decoding="async"/></div><div class="card-body"><h3>Dark Background</h3><p>Logo with tagline for dark backgrounds</p><div class="btn-row"><a href="/images/logos/logo-dark-bg-tagline.svg" download class="dl-btn" aria-label="Download dark background logo with tagline as SVG"><Fragment set:html={dlIcon} />SVG</a><a href="/images/logos/logo-dark-bg-tagline.png" download class="dl-btn" aria-label="Download dark background logo with tagline as PNG"><Fragment set:html={dlIcon} />PNG</a></div></div></div>
+          <div class="card"><div class="card-preview bg-light"><img src={cfSrc(logos.circleTagline, 400)} srcset={cfSrcset(logos.circleTagline, [200, 400, 600])} sizes="(max-width: 768px) 80vw, 200px" alt="Sunshine on a Ranney Day circle logo with Dreams Built Here tagline" class="logo-img logo-img-circle" width="600" height="600" loading="lazy" decoding="async"/></div><div class="card-body"><h3>Circle</h3><p>Circle logo with tagline</p><div class="btn-row"><a href="/images/logos/logo-circle-tagline.svg" download class="dl-btn" aria-label="Download circle logo with tagline as SVG"><Fragment set:html={dlIcon} />SVG</a><a href="/images/logos/logo-circle-tagline.png" download class="dl-btn" aria-label="Download circle logo with tagline as PNG"><Fragment set:html={dlIcon} />PNG</a></div></div></div>
         </div>
 
         <h3 class="logo-subhead">Alternate Logos</h3>
         <p class="section-desc">Logos without the tagline for smaller uses.</p>
         <div class="logo-grid logo-grid-3">
-          <div class="card"><div class="card-preview bg-light"><picture><source type="image/webp" srcset="/images/logos/logo-light-bg-display.webp" /><img src="/images/logos/logo-light-bg-display.png" alt="Sunshine on a Ranney Day logo without tagline on white background" class="logo-img" width="600" height="600" loading="lazy" decoding="async"/></picture></div><div class="card-body"><h3>White Background</h3><p>Logo without tagline for light backgrounds</p><div class="btn-row"><a href="/images/logos/logo-light-bg.svg" download class="dl-btn" aria-label="Download white background logo without tagline as SVG"><Fragment set:html={dlIcon} />SVG</a><a href="/images/logos/logo-light-bg.png" download class="dl-btn" aria-label="Download white background logo without tagline as PNG"><Fragment set:html={dlIcon} />PNG</a></div></div></div>
-          <div class="card"><div class="card-preview bg-dark"><picture><source type="image/webp" srcset="/images/logos/logo-dark-bg-display.webp" /><img src="/images/logos/logo-dark-bg-display.png" alt="Sunshine on a Ranney Day logo without tagline on dark background" class="logo-img" width="600" height="600" loading="lazy" decoding="async"/></picture></div><div class="card-body"><h3>Dark Background</h3><p>Logo without tagline for dark backgrounds</p><div class="btn-row"><a href="/images/logos/logo-dark-bg.svg" download class="dl-btn" aria-label="Download dark background logo without tagline as SVG"><Fragment set:html={dlIcon} />SVG</a><a href="/images/logos/logo-dark-bg.png" download class="dl-btn" aria-label="Download dark background logo without tagline as PNG"><Fragment set:html={dlIcon} />PNG</a></div></div></div>
-          <div class="card"><div class="card-preview bg-light"><picture><source type="image/webp" srcset="/images/logos/logo-circle-display.webp" /><img src="/images/logos/logo-circle-display.png" alt="Sunshine on a Ranney Day circle logo without tagline" class="logo-img logo-img-circle" width="600" height="600" loading="lazy" decoding="async"/></picture></div><div class="card-body"><h3>Circle</h3><p>Circle logo without tagline</p><div class="btn-row"><a href="/images/logos/logo-circle.svg" download class="dl-btn" aria-label="Download circle logo without tagline as SVG"><Fragment set:html={dlIcon} />SVG</a><a href="/images/logos/logo-circle.png" download class="dl-btn" aria-label="Download circle logo without tagline as PNG"><Fragment set:html={dlIcon} />PNG</a></div></div></div>
+          <div class="card"><div class="card-preview bg-light"><img src={cfSrc(logos.light, 400)} srcset={cfSrcset(logos.light, [200, 400, 600])} sizes="(max-width: 768px) 80vw, 200px" alt="Sunshine on a Ranney Day logo without tagline on white background" class="logo-img" width="600" height="600" loading="lazy" decoding="async"/></div><div class="card-body"><h3>White Background</h3><p>Logo without tagline for light backgrounds</p><div class="btn-row"><a href="/images/logos/logo-light-bg.svg" download class="dl-btn" aria-label="Download white background logo without tagline as SVG"><Fragment set:html={dlIcon} />SVG</a><a href="/images/logos/logo-light-bg.png" download class="dl-btn" aria-label="Download white background logo without tagline as PNG"><Fragment set:html={dlIcon} />PNG</a></div></div></div>
+          <div class="card"><div class="card-preview bg-dark"><img src={cfSrc(logos.dark, 400)} srcset={cfSrcset(logos.dark, [200, 400, 600])} sizes="(max-width: 768px) 80vw, 200px" alt="Sunshine on a Ranney Day logo without tagline on dark background" class="logo-img" width="600" height="600" loading="lazy" decoding="async"/></div><div class="card-body"><h3>Dark Background</h3><p>Logo without tagline for dark backgrounds</p><div class="btn-row"><a href="/images/logos/logo-dark-bg.svg" download class="dl-btn" aria-label="Download dark background logo without tagline as SVG"><Fragment set:html={dlIcon} />SVG</a><a href="/images/logos/logo-dark-bg.png" download class="dl-btn" aria-label="Download dark background logo without tagline as PNG"><Fragment set:html={dlIcon} />PNG</a></div></div></div>
+          <div class="card"><div class="card-preview bg-light"><img src={cfSrc(logos.circle, 400)} srcset={cfSrcset(logos.circle, [200, 400, 600])} sizes="(max-width: 768px) 80vw, 200px" alt="Sunshine on a Ranney Day circle logo without tagline" class="logo-img logo-img-circle" width="600" height="600" loading="lazy" decoding="async"/></div><div class="card-body"><h3>Circle</h3><p>Circle logo without tagline</p><div class="btn-row"><a href="/images/logos/logo-circle.svg" download class="dl-btn" aria-label="Download circle logo without tagline as SVG"><Fragment set:html={dlIcon} />SVG</a><a href="/images/logos/logo-circle.png" download class="dl-btn" aria-label="Download circle logo without tagline as PNG"><Fragment set:html={dlIcon} />PNG</a></div></div></div>
         </div>
       </section>
 
@@ -218,8 +234,8 @@ const jsonLd = {
         <h2>Logo Usage</h2>
         <p class="section-desc">Guidelines for proper logo implementation and presentation.</p>
         <div class="usage-grid">
-          <div class="usage-card"><div class="usage-label">Light Background</div><div class="usage-preview bg-light"><picture><source type="image/webp" srcset="/images/logos/logo-light-bg-tagline-display.webp" /><img src="/images/logos/logo-light-bg-tagline-display.png" alt="Logo correctly placed on light background" class="logo-img" width="600" height="600" loading="lazy" decoding="async"/></picture></div><p class="usage-text">Use the primary logo on light backgrounds. Ensure adequate contrast and clear space.</p></div>
-          <div class="usage-card"><div class="usage-label">Dark Background</div><div class="usage-preview bg-dark"><picture><source type="image/webp" srcset="/images/logos/logo-dark-bg-tagline-display.webp" /><img src="/images/logos/logo-dark-bg-tagline-display.png" alt="Logo correctly placed on dark background" class="logo-img" width="600" height="600" loading="lazy" decoding="async"/></picture></div><p class="usage-text">Use the dark background version on dark backgrounds. Maintain strong contrast.</p></div>
+          <div class="usage-card"><div class="usage-label">Light Background</div><div class="usage-preview bg-light"><img src={cfSrc(logos.lightTagline, 400)} srcset={cfSrcset(logos.lightTagline, [200, 400, 600])} sizes="(max-width: 768px) 80vw, 270px" alt="Logo correctly placed on light background" class="logo-img" width="600" height="600" loading="lazy" decoding="async"/></div><p class="usage-text">Use the primary logo on light backgrounds. Ensure adequate contrast and clear space.</p></div>
+          <div class="usage-card"><div class="usage-label">Dark Background</div><div class="usage-preview bg-dark"><img src={cfSrc(logos.darkTagline, 400)} srcset={cfSrcset(logos.darkTagline, [200, 400, 600])} sizes="(max-width: 768px) 80vw, 270px" alt="Logo correctly placed on dark background" class="logo-img" width="600" height="600" loading="lazy" decoding="async"/></div><p class="usage-text">Use the dark background version on dark backgrounds. Maintain strong contrast.</p></div>
         </div>
         <h3>Logo Guidelines</h3>
         <div class="dodont-grid">
@@ -228,10 +244,10 @@ const jsonLd = {
         </div>
         <h3>Visual Examples</h3>
         <div class="vis-grid">
-          <div class="vis-card ok"><div class="vis-badge ok">Correct</div><div class="vis-preview bg-light"><picture><source type="image/webp" srcset="/images/logos/logo-light-bg-tagline-display.webp" /><img src="/images/logos/logo-light-bg-tagline-display.png" alt="Logo displayed correctly with proper proportions" class="vis-logo" width="600" height="600" loading="lazy" decoding="async"/></picture></div><p>Proper proportions and clear space</p></div>
-          <div class="vis-card bad"><div class="vis-badge bad">Incorrect</div><div class="vis-preview bg-light"><picture><source type="image/webp" srcset="/images/logos/logo-light-bg-tagline-display.webp" /><img src="/images/logos/logo-light-bg-tagline-display.png" alt="Logo incorrectly stretched horizontally" class="vis-logo" width="600" height="600" loading="lazy" decoding="async" style="transform:scaleX(1.4);"/></picture></div><p>Don't stretch or distort</p></div>
-          <div class="vis-card ok"><div class="vis-badge ok">Correct</div><div class="vis-preview bg-dark"><picture><source type="image/webp" srcset="/images/logos/logo-dark-bg-tagline-display.webp" /><img src="/images/logos/logo-dark-bg-tagline-display.png" alt="Logo displayed correctly on dark background" class="vis-logo" width="600" height="600" loading="lazy" decoding="async"/></picture></div><p>Good contrast with background</p></div>
-          <div class="vis-card bad"><div class="vis-badge bad">Incorrect</div><div class="vis-preview" style="background:#e8e0c0;"><picture><source type="image/webp" srcset="/images/logos/logo-light-bg-tagline-display.webp" /><img src="/images/logos/logo-light-bg-tagline-display.png" alt="Logo incorrectly placed on low-contrast background" class="vis-logo" width="600" height="600" loading="lazy" decoding="async" style="opacity:0.3;"/></picture></div><p>Don't use on low-contrast backgrounds</p></div>
+          <div class="vis-card ok"><div class="vis-badge ok">Correct</div><div class="vis-preview bg-light"><img src={cfSrc(logos.lightTagline, 260)} srcset={cfSrcset(logos.lightTagline, [130, 260])} sizes="130px" alt="Logo displayed correctly with proper proportions" class="vis-logo" width="600" height="600" loading="lazy" decoding="async"/></div><p>Proper proportions and clear space</p></div>
+          <div class="vis-card bad"><div class="vis-badge bad">Incorrect</div><div class="vis-preview bg-light"><img src={cfSrc(logos.lightTagline, 260)} srcset={cfSrcset(logos.lightTagline, [130, 260])} sizes="130px" alt="Logo incorrectly stretched horizontally" class="vis-logo" width="600" height="600" loading="lazy" decoding="async" style="transform:scaleX(1.4);"/></div><p>Don't stretch or distort</p></div>
+          <div class="vis-card ok"><div class="vis-badge ok">Correct</div><div class="vis-preview bg-dark"><img src={cfSrc(logos.darkTagline, 260)} srcset={cfSrcset(logos.darkTagline, [130, 260])} sizes="130px" alt="Logo displayed correctly on dark background" class="vis-logo" width="600" height="600" loading="lazy" decoding="async"/></div><p>Good contrast with background</p></div>
+          <div class="vis-card bad"><div class="vis-badge bad">Incorrect</div><div class="vis-preview" style="background:#e8e0c0;"><img src={cfSrc(logos.lightTagline, 260)} srcset={cfSrcset(logos.lightTagline, [130, 260])} sizes="130px" alt="Logo incorrectly placed on low-contrast background" class="vis-logo" width="600" height="600" loading="lazy" decoding="async" style="opacity:0.3;"/></div><p>Don't use on low-contrast backgrounds</p></div>
         </div>
       </section>
 
@@ -403,11 +419,11 @@ const jsonLd = {
   .brand-layout{max-width:1280px;margin:0 auto;padding:48px 24px 64px;display:flex;gap:48px}
   .brand-sidebar{width:220px;flex-shrink:0}
   .sidebar-inner{position:sticky;top:96px;display:flex;flex-direction:column;gap:4px}
-  .sidebar-label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:rgba(55,58,54,.5);padding:0 16px;margin-bottom:8px}
+  .sidebar-label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:rgba(55,58,54,.62);padding:0 16px;margin-bottom:8px}
   .sidebar-link{display:block;padding:10px 16px;font-size:14px;font-weight:500;color:rgba(55,58,54,.6);border-radius:10px;text-decoration:none;transition:all .15s ease;min-height:44px;display:flex;align-items:center}
   .sidebar-link:hover{color:var(--c-dark);background:rgba(55,58,54,.05)}
   .sidebar-link.active{background:var(--c-yellow);color:var(--c-dark);font-weight:600;box-shadow:0 2px 8px rgba(255,213,0,.25)}
-  .sidebar-group-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:rgba(55,58,54,.35);padding:20px 16px 6px;margin:0}
+  .sidebar-group-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:rgba(55,58,54,.58);padding:20px 16px 6px;margin:0}
   .sidebar-group-label:first-of-type{padding-top:0}
 
   /* Mobile nav */
@@ -429,7 +445,7 @@ const jsonLd = {
 
   /* Section divider */
   .brand-divider{text-align:center;margin:0 0 64px;padding:48px 0 0;border-top:2px solid rgba(55,58,54,.1)}
-  .brand-divider-label{display:inline-block;background:var(--c-cream,#FEFCF5);padding:0 24px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:rgba(55,58,54,.4);position:relative;top:-28px}
+  .brand-divider-label{display:inline-block;background:var(--c-cream,#FEFCF5);padding:0 24px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:rgba(55,58,54,.58);position:relative;top:-28px}
 
   /* ═══ MEDIA KIT CARDS ═══ */
   .media-card{background:#fff;border:1px solid rgba(55,58,54,.1);border-radius:16px;overflow:hidden;margin-bottom:24px;transition:box-shadow .2s ease}
@@ -444,7 +460,7 @@ const jsonLd = {
   .media-copy-text p:last-child{margin-bottom:0}
   .media-details-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:1px;background:rgba(55,58,54,.08);border:1px solid rgba(55,58,54,.1);border-radius:16px;overflow:hidden}
   .media-detail{padding:20px 24px;background:#fff}
-  .media-detail-label{display:block;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:rgba(55,58,54,.45);margin-bottom:6px}
+  .media-detail-label{display:block;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:rgba(55,58,54,.58);margin-bottom:6px}
   .media-detail-value{font-size:15px;font-weight:500;color:var(--c-dark)}
   .media-detail-value a{color:var(--c-dark);text-decoration:underline;text-decoration-color:rgba(55,58,54,.25);text-underline-offset:2px;transition:text-decoration-color .15s}
   .media-detail-value a:hover{text-decoration-color:var(--c-yellow)}
@@ -497,12 +513,12 @@ const jsonLd = {
   .type-block{border:1px solid rgba(55,58,54,.1);border-radius:16px;overflow:hidden;margin-bottom:24px;background:#fff}
   .type-block-header{padding:20px 28px;border-bottom:1px solid rgba(55,58,54,.08);display:flex;justify-content:space-between;align-items:baseline}
   .type-block-header h3{font-size:18px;margin:0}
-  .type-block-header span{font-size:14px;color:rgba(55,58,54,.5)}
+  .type-block-header span{font-size:14px;color:rgba(55,58,54,.62)}
   .type-specimen{padding:28px 28px;border-bottom:1px solid rgba(55,58,54,.04)}
   .type-specimen:last-child{border-bottom:none}
-  .type-specimen-label{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:rgba(55,58,54,.4);margin-bottom:12px}
+  .type-specimen-label{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:rgba(55,58,54,.58);margin-bottom:12px}
   .type-specimen-sample{color:var(--c-dark);line-height:1.2}
-  .type-specimen-meta{margin-top:10px;font-size:12px;color:rgba(55,58,54,.4)}
+  .type-specimen-meta{margin-top:10px;font-size:12px;color:rgba(55,58,54,.58)}
   .two-col{display:grid;grid-template-columns:repeat(2,1fr);gap:24px;margin-top:24px}
   .info-card{border:1px solid rgba(55,58,54,.1);border-radius:16px;padding:24px 28px;background:#fff}
   .info-card h3{font-size:18px;margin-top:0;margin-bottom:24px}
@@ -549,16 +565,16 @@ const jsonLd = {
   .print-font-card:hover{box-shadow:0 8px 24px rgba(0,0,0,.05)}
   .print-font-header{display:flex;justify-content:space-between;align-items:center;padding:16px 24px;border-bottom:1px solid rgba(55,58,54,.06);background:rgba(55,58,54,.02)}
   .print-font-header h4{font-size:15px;font-weight:600;color:var(--c-dark);margin:0}
-  .print-font-role{font-size:12px;color:rgba(55,58,54,.45);font-weight:500}
+  .print-font-role{font-size:12px;color:rgba(55,58,54,.58);font-weight:500}
   .print-font-specimen{padding:20px 24px}
   .print-font-alpha{font-size:15px;letter-spacing:.08em;color:var(--c-dark);margin-bottom:4px;line-height:1.6}
   .print-font-alpha-lower{font-size:15px;letter-spacing:.04em;color:rgba(55,58,54,.6);margin-bottom:4px;line-height:1.6}
-  .print-font-nums{font-size:15px;letter-spacing:.06em;color:rgba(55,58,54,.4);line-height:1.6}
+  .print-font-nums{font-size:15px;letter-spacing:.06em;color:rgba(55,58,54,.58);line-height:1.6}
 
   /* ═══ SOCIAL SPECS TABLE ═══ */
   .specs-table-wrap{background:#fff;border:1px solid rgba(55,58,54,.1);border-radius:16px;overflow:hidden}
   .specs-table{width:100%;border-collapse:collapse;font-size:14px}
-  .specs-table th{text-align:left;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:rgba(55,58,54,.45);padding:14px 20px;border-bottom:2px solid rgba(55,58,54,.08);background:rgba(55,58,54,.02)}
+  .specs-table th{text-align:left;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:rgba(55,58,54,.58);padding:14px 20px;border-bottom:2px solid rgba(55,58,54,.08);background:rgba(55,58,54,.02)}
   .specs-table td{padding:14px 20px;border-bottom:1px solid rgba(55,58,54,.04);color:rgba(55,58,54,.65)}
   .specs-table tr:last-child td{border-bottom:none}
   .specs-platform{font-weight:600;color:var(--c-dark)}
@@ -573,6 +589,16 @@ const jsonLd = {
   @media(max-width:900px){.logo-grid-3{grid-template-columns:repeat(2,1fr)}}
   @media(max-width:768px){.brand-hero{padding:72px 20px 60px}.logo-grid{grid-template-columns:1fr}.logo-grid-3{grid-template-columns:1fr}.usage-grid{grid-template-columns:1fr}.dodont-grid{grid-template-columns:1fr}.color-grid{grid-template-columns:1fr 1fr}.two-col{grid-template-columns:1fr}.vis-grid{grid-template-columns:1fr 1fr}.section-header-row{flex-direction:column}.media-details-grid{grid-template-columns:1fr}.dl-btn{padding:10px 16px;font-size:13px;min-height:44px}.specs-table-wrap{overflow-x:auto}.specs-table{min-width:540px}.print-fonts-grid{grid-template-columns:1fr}}
   @media(max-width:480px){.color-grid{grid-template-columns:1fr}.vis-grid{grid-template-columns:1fr}.hero-btn{width:100%;justify-content:center}}
+
+  /* ═══ REDUCED MOTION ═══ */
+  @media(prefers-reduced-motion:reduce){
+    .card,.usage-card,.color-card,.print-font-card,.media-card,.brand-toast{transition:none}
+    .card:hover{transform:none;box-shadow:none}
+    .color-card:hover{transform:none;box-shadow:none}
+    .hero-btn-primary:hover{transform:none}
+    .brand-toast.visible{transition:none}
+    .sidebar-link,.copy-btn,.dl-btn,.download-all-btn,.mobile-nav-link,.media-detail-value a{transition:none}
+  }
 </style>
 
 <script>
