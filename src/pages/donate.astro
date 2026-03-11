@@ -5,7 +5,7 @@
  * PERF NOTES:
  * - Hero content has NO data-reveal (prevents LCP penalty from opacity:0)
  * - Hero image: fetchpriority="high", explicit dimensions, eager loading
- * - No Zeffy iframe — all donate CTAs link directly to Zeffy (saves ~800KB)
+ * - No Zeffy iframe on page load — iframe loads on-demand in popup modal (saves ~800KB)
  * - All below-fold images: loading="lazy"
  * - FAQ uses native <details name="..."> for exclusive accordion (zero JS in modern browsers)
  * - Scroll observer is tiny (~300 bytes)
@@ -62,7 +62,7 @@ const breadcrumbs = [
         <h1>A room can change<br/>a child's <em>entire</em> life.</h1>
         <p class="donate-hero-lead">Your gift builds dream bedrooms, accessible bathrooms, and therapy rooms for children with special needs — at <strong>no cost to families</strong>.</p>
         <div class="donate-hero-ctas">
-          <a href="https://www.zeffy.com/en-US/donation-form/help-build-a-brighter-home" target="_blank" rel="noopener noreferrer" class="btn btn-primary btn-glow btn-lg">Donate Now →</a>
+          <a href="https://www.zeffy.com/en-US/donation-form/help-build-a-brighter-home" target="_blank" rel="noopener noreferrer" data-zeffy class="btn btn-primary btn-glow btn-lg" >Donate Now →</a>
           <a href="#why" class="btn btn-ghost-light">See Your Impact</a>
         </div>
       </div>
@@ -113,26 +113,26 @@ const breadcrumbs = [
           <div class="tier-amount">$60</div>
           <div class="tier-what">Paint & Supplies</div>
           <p>Covers all the paint, primer, and materials to transform a child's walls into their dream canvas.</p>
-          <a href="https://www.zeffy.com/en-US/donation-form/help-build-a-brighter-home?amount=60" target="_blank" rel="noopener noreferrer" class="tier-cta">Give $60 →</a>
+          <a href="https://www.zeffy.com/en-US/donation-form/help-build-a-brighter-home?amount=60" target="_blank" rel="noopener noreferrer" data-zeffy class="tier-cta" >Give $60 →</a>
         </div>
         <div class="tier-card" data-reveal data-delay="1">
           <div class="tier-amount">$125</div>
           <div class="tier-what">Bedding & Décor</div>
           <p>Funds new bedding, curtains, rugs, and wall décor — the details that make a room feel like <em>home</em>.</p>
-          <a href="https://www.zeffy.com/en-US/donation-form/help-build-a-brighter-home?amount=125" target="_blank" rel="noopener noreferrer" class="tier-cta">Give $125 →</a>
+          <a href="https://www.zeffy.com/en-US/donation-form/help-build-a-brighter-home?amount=125" target="_blank" rel="noopener noreferrer" data-zeffy class="tier-cta">Give $125 →</a>
         </div>
         <div class="tier-card tier-card--featured" data-reveal data-delay="2">
           <div class="tier-badge">Most Popular</div>
           <div class="tier-amount">$500</div>
           <div class="tier-what">Furniture & Flooring</div>
           <p>Sponsors adaptive furniture or new flooring for an accessible bathroom — the structural pieces that change daily life.</p>
-          <a href="https://www.zeffy.com/en-US/donation-form/help-build-a-brighter-home?amount=500" target="_blank" rel="noopener noreferrer" class="tier-cta tier-cta--featured">Give $500 →</a>
+          <a href="https://www.zeffy.com/en-US/donation-form/help-build-a-brighter-home?amount=500" target="_blank" rel="noopener noreferrer" data-zeffy class="tier-cta tier-cta--featured">Give $500 →</a>
         </div>
         <div class="tier-card" data-reveal data-delay="3">
           <div class="tier-amount">$1,000</div>
           <div class="tier-what">Full Room Sponsor</div>
           <p>Helps fund a complete room transformation — from design to demolition to the big reveal moment.</p>
-          <a href="https://www.zeffy.com/en-US/donation-form/help-build-a-brighter-home?amount=1000" target="_blank" rel="noopener noreferrer" class="tier-cta">Give $1,000 →</a>
+          <a href="https://www.zeffy.com/en-US/donation-form/help-build-a-brighter-home?amount=1000" target="_blank" rel="noopener noreferrer" data-zeffy class="tier-cta">Give $1,000 →</a>
         </div>
       </div>
       <p class="tiers-note" data-reveal>Every amount makes a difference. Our average room costs $8,000–$15,000 and is funded entirely by generous donors like you.</p>
@@ -152,7 +152,7 @@ const breadcrumbs = [
         Donors like you have helped build <strong>{computed.totalRooms}+ rooms</strong> for <strong>{computed.totalKids}+ kids</strong> since 2012
       </div>
       <div class="give-cta-block" data-reveal>
-        <a href="https://www.zeffy.com/en-US/donation-form/help-build-a-brighter-home" target="_blank" rel="noopener noreferrer" class="btn btn-primary btn-glow btn-xl">Donate Any Amount →</a>
+        <a href="https://www.zeffy.com/en-US/donation-form/help-build-a-brighter-home" target="_blank" rel="noopener noreferrer" data-zeffy class="btn btn-primary btn-glow btn-xl">Donate Any Amount →</a>
         <p class="give-cta-note">You'll be taken to our secure donation page on Zeffy</p>
       </div>
       <div class="give-badges" data-reveal>
@@ -256,7 +256,7 @@ const breadcrumbs = [
       <h2 data-reveal>Every child deserves a room<br/>that feels like <em>home</em>.</h2>
       <p data-reveal data-delay="1">You can make that happen today.</p>
       <div class="donate-finale-ctas" data-reveal data-delay="2">
-        <a href="https://www.zeffy.com/en-US/donation-form/help-build-a-brighter-home" target="_blank" rel="noopener noreferrer" class="btn btn-dark btn-lg">Donate Now →</a>
+        <a href="https://www.zeffy.com/en-US/donation-form/help-build-a-brighter-home" target="_blank" rel="noopener noreferrer" data-zeffy class="btn btn-dark btn-lg">Donate Now →</a>
         <a href="/kids" class="btn btn-outline-dark">Meet the Kids</a>
       </div>
       <p class="donate-finale-note" data-reveal data-delay="3">501(c)(3) · EIN 45-4773997 · All donations tax-deductible</p>
@@ -267,33 +267,88 @@ const breadcrumbs = [
   <div class="sticky-cta" id="sticky-cta" aria-hidden="true">
     <div class="sticky-cta-inner">
       <span class="sticky-cta-text">100% goes to kids</span>
-      <a href="https://www.zeffy.com/en-US/donation-form/help-build-a-brighter-home" target="_blank" rel="noopener noreferrer" class="btn btn-primary btn-glow sticky-cta-btn">Donate Now</a>
+      <a href="https://www.zeffy.com/en-US/donation-form/help-build-a-brighter-home" target="_blank" rel="noopener noreferrer" data-zeffy class="btn btn-primary btn-glow sticky-cta-btn">Donate Now</a>
+    </div>
+  </div>
+
+  <!-- ══════ ZEFFY POPUP MODAL ══════ -->
+  <div class="zeffy-modal" id="zeffy-modal" aria-hidden="true" role="dialog" aria-label="Donation form">
+    <div class="zeffy-modal-backdrop" id="zeffy-modal-close"></div>
+    <div class="zeffy-modal-container">
+      <button class="zeffy-modal-x" id="zeffy-modal-x" type="button" aria-label="Close donation form">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+      </button>
+      <iframe id="zeffy-iframe" title="Donation form powered by Zeffy" allowpaymentrequest></iframe>
     </div>
   </div>
 
 </BaseLayout>
 
 <script>
-  // Sticky CTA: show after scrolling past hero, hide near give section
+  const ZEFFY_EMBED = 'https://www.zeffy.com/embed/donation-form/help-build-a-brighter-home';
+
   document.addEventListener('astro:page-load', () => {
     const stickyBar = document.getElementById('sticky-cta');
     const hero = document.querySelector('.donate-hero');
     const giveSection = document.getElementById('give');
-    if (!stickyBar || !hero) return;
+    const modal = document.getElementById('zeffy-modal');
+    const iframe = document.getElementById('zeffy-iframe') as HTMLIFrameElement | null;
+    const closeBtn = document.getElementById('zeffy-modal-close');
+    const closeX = document.getElementById('zeffy-modal-x');
 
-    const observer = new IntersectionObserver(([entry]) => {
-      const heroGone = !entry.isIntersecting;
-      stickyBar.classList.toggle('is-visible', heroGone);
-      stickyBar.setAttribute('aria-hidden', String(!heroGone));
-    }, { threshold: 0 });
-    observer.observe(hero);
+    // --- Sticky bar ---
+    if (stickyBar && hero) {
+      const obs = new IntersectionObserver(([e]) => {
+        stickyBar.classList.toggle('is-visible', !e.isIntersecting);
+        stickyBar.setAttribute('aria-hidden', String(e.isIntersecting));
+      }, { threshold: 0 });
+      obs.observe(hero);
 
-    if (giveSection) {
-      const giveObserver = new IntersectionObserver(([entry]) => {
-        stickyBar.classList.toggle('at-form', entry.isIntersecting);
-      }, { threshold: 0.2 });
-      giveObserver.observe(giveSection);
+      if (giveSection) {
+        const giveObs = new IntersectionObserver(([e]) => {
+          stickyBar.classList.toggle('at-form', e.isIntersecting);
+        }, { threshold: 0.2 });
+        giveObs.observe(giveSection);
+      }
     }
+
+    // --- Zeffy popup ---
+    function openModal(amount?: string) {
+      if (!modal || !iframe) return;
+      const src = amount ? `${ZEFFY_EMBED}?amount=${amount}` : ZEFFY_EMBED;
+      iframe.src = src;
+      modal.classList.add('is-open');
+      modal.setAttribute('aria-hidden', 'false');
+      document.body.style.overflow = 'hidden';
+    }
+
+    function closeModal() {
+      if (!modal || !iframe) return;
+      modal.classList.remove('is-open');
+      modal.setAttribute('aria-hidden', 'true');
+      document.body.style.overflow = '';
+      // Unload iframe to stop any payment processing visuals
+      setTimeout(() => { if (!modal.classList.contains('is-open')) iframe.src = ''; }, 350);
+    }
+
+    // Intercept all data-zeffy links
+    document.querySelectorAll('[data-zeffy]').forEach(link => {
+      link.addEventListener('click', (e) => {
+        e.preventDefault();
+        const href = (link as HTMLAnchorElement).href;
+        const url = new URL(href);
+        const amount = url.searchParams.get('amount') || undefined;
+        openModal(amount);
+      });
+    });
+
+    closeBtn?.addEventListener('click', closeModal);
+    closeX?.addEventListener('click', closeModal);
+
+    // Escape key closes
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && modal?.classList.contains('is-open')) closeModal();
+    });
   });
 </script>
 
@@ -916,6 +971,73 @@ const breadcrumbs = [
   }
 
   /* ══════════════════════════════════════════
+     ZEFFY POPUP MODAL
+     ══════════════════════════════════════════ */
+  .zeffy-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 200;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    view-transition-name: none;
+  }
+  .zeffy-modal.is-open {
+    pointer-events: auto;
+    opacity: 1;
+  }
+  .zeffy-modal-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+  }
+  .zeffy-modal-container {
+    position: relative;
+    width: 90vw;
+    max-width: 520px;
+    height: 85vh;
+    max-height: 700px;
+    background: #fff;
+    border-radius: 20px;
+    overflow: hidden;
+    box-shadow: 0 32px 80px rgba(0, 0, 0, 0.25);
+    transform: translateY(24px) scale(0.97);
+    transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .zeffy-modal.is-open .zeffy-modal-container {
+    transform: translateY(0) scale(1);
+  }
+  .zeffy-modal-x {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    z-index: 10;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.06);
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    color: var(--c-dark);
+    transition: background 0.2s ease;
+  }
+  .zeffy-modal-x:hover { background: rgba(0, 0, 0, 0.12); }
+  #zeffy-iframe {
+    width: 100%;
+    height: 100%;
+    border: 0;
+    display: block;
+  }
+
+  /* ══════════════════════════════════════════
      TIER CTA BUTTONS
      ══════════════════════════════════════════ */
   .tier-cta {
@@ -1066,6 +1188,14 @@ const breadcrumbs = [
 
     .donate-finale { padding: 64px 0; }
     .sticky-cta { display: block; }
+    .zeffy-modal-container {
+      width: 100vw;
+      max-width: 100vw;
+      height: 100vh;
+      height: 100dvh;
+      max-height: none;
+      border-radius: 0;
+    }
     .donate-finale-inner { padding-bottom: 72px; } /* room for sticky bar */
   }
 
@@ -1082,6 +1212,7 @@ const breadcrumbs = [
     .btn:hover { transform: none; }
     .tier-card:hover, .way-card:hover, .dt-card:hover { transform: none; }
     .give-proof-dot { animation: none; }
+    .zeffy-modal, .zeffy-modal-container { transition: none; }
   }
 </style>
 
