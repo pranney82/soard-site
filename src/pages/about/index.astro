@@ -22,7 +22,6 @@ const stats = {
   totalKids: computed.totalKids,
   totalRooms: computed.totalRooms,
   years: computed.years,
-  communityKids: 17000, // kept from page data — community reach is a separate metric
 };
 const founderPhotoId = page.images.founder;
 const revealPhotoId = page.images.reveal;
@@ -31,14 +30,6 @@ const storePhotoId = page.images.store;
 const graciePhotoId = page.images.gracie;
 const trippPhotoId = page.images.tripp;
 const milestones = page.milestones;
-const ribbon = (page.ribbon || []).map((r: { value: string; label: string }) => ({
-  ...r,
-  value: r.value
-    .replace('{totalRooms}', String(stats.totalRooms))
-    .replace('{totalKids}', String(stats.totalKids))
-    .replace('{communityKids}', stats.communityKids >= 1000 ? Math.floor(stats.communityKids / 1000) + 'K' : String(stats.communityKids))
-    .replace('{years}', String(stats.years)),
-}));
 
 /* ── Schema ── */
 const pageUrl = 'https://sunshineonaranneyday.com/about/';
@@ -121,15 +112,25 @@ const jsonLd = buildSchemaGraph(
   <!-- ══════ IMPACT RIBBON ══════ -->
   <section class="ribbon" aria-label="Impact numbers">
     <div class="ribbon-inner">
-      {ribbon.map((r: { value: string; label: string }, i: number) => (
-        <>
-          {i > 0 && <div class="ribbon-divider" role="presentation"></div>}
-          <div class="ribbon-stat" data-reveal data-delay={String(i)}>
-            <span class="ribbon-num" set:html={r.value} />
-            <span class="ribbon-label">{r.label}</span>
-          </div>
-        </>
-      ))}
+      <div class="ribbon-stat" data-reveal>
+        <span class="ribbon-num">{stats.totalRooms}+</span>
+        <span class="ribbon-label">Room Makeovers</span>
+      </div>
+      <div class="ribbon-divider" role="presentation"></div>
+      <div class="ribbon-stat" data-reveal data-delay="1">
+        <span class="ribbon-num">{stats.totalKids}+</span>
+        <span class="ribbon-label">Children Served</span>
+      </div>
+      <div class="ribbon-divider" role="presentation"></div>
+      <div class="ribbon-stat" data-reveal data-delay="2">
+        <span class="ribbon-num">{stats.years}</span>
+        <span class="ribbon-label">Years of Impact</span>
+      </div>
+      <div class="ribbon-divider" role="presentation"></div>
+      <div class="ribbon-stat" data-reveal data-delay="3">
+        <span class="ribbon-num">100<span class="ribbon-pct">%</span></span>
+        <span class="ribbon-label">Goes to Kids</span>
+      </div>
     </div>
   </section>
 

@@ -4142,29 +4142,6 @@
         });
       };
 
-      const updateRibbon = (index, field, value) => {
-        setData(d => {
-          const copy = JSON.parse(JSON.stringify(d));
-          copy.ribbon[index][field] = value;
-          return copy;
-        });
-      };
-
-      const addRibbon = () => {
-        setData(d => ({
-          ...d,
-          ribbon: [...(d.ribbon || []), { value: '', label: '' }],
-        }));
-      };
-
-      const removeRibbon = (index) => {
-        setData(d => {
-          const copy = JSON.parse(JSON.stringify(d));
-          copy.ribbon.splice(index, 1);
-          return copy;
-        });
-      };
-
       const openImagePicker = (target) => {
         setImagePickerTarget(target);
         setShowImagePicker(true);
@@ -4235,29 +4212,6 @@
           <button class="btn btn-primary" onClick=${handleSave} disabled=${saving}>
             ${saving ? html`<span class="spinner" />` : null} ${saving ? 'Saving...' : 'Save & Publish'}
           </button>
-        </div>
-
-        <!-- Ribbon Stats -->
-        <div class="card">
-          <h3 style="margin-bottom: 0.5rem;">Impact Ribbon</h3>
-          <p class="text-sm text-muted mb-1">The yellow stat bar. Use <code>{totalRooms}</code>, <code>{totalKids}</code>, <code>{communityKids}</code>, <code>{years}</code> to insert stat values.</p>
-          ${(data.ribbon || []).map((r, i) => html`
-            <div key=${i} style="display: flex; gap: 0.75rem; align-items: center; padding: 0.5rem; margin-bottom: 0.5rem; background: rgba(45,46,51,0.03); border-radius: 8px;">
-              <div style="flex: 0 0 160px;">
-                <label class="form-label" style="font-size: 0.75rem;">Value</label>
-                <input class="form-input" value=${r.value} placeholder="{totalRooms}+"
-                  onInput=${e => updateRibbon(i, 'value', e.target.value)} />
-              </div>
-              <div style="flex: 1;">
-                <label class="form-label" style="font-size: 0.75rem;">Label</label>
-                <input class="form-input" value=${r.label} placeholder="Room Makeovers"
-                  onInput=${e => updateRibbon(i, 'label', e.target.value)} />
-              </div>
-              <button class="btn btn-ghost btn-sm" style="color: #c00; flex-shrink: 0; margin-top: 16px;"
-                onClick=${() => removeRibbon(i)} title="Remove">✕</button>
-            </div>
-          `)}
-          <button class="btn btn-ghost" onClick=${addRibbon} style="margin-top: 0.5rem;">+ Add Stat</button>
         </div>
 
         <!-- Images -->
