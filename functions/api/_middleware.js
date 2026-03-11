@@ -1,9 +1,9 @@
 /**
  * Cloudflare Access JWT Validation Middleware
  * ============================================
- * Validates the CF-Access-JWT-Assertion header on every /api/ request.
- * Defense-in-depth: even if the Access policy is misconfigured, requests
- * without a valid JWT are rejected before reaching any API handler.
+ * Validates the CF-Access-JWT-Assertion header OR the CF_Authorization cookie
+ * on every /api/ request. The Access app covers /admin* which sets the browser
+ * cookie; /api/* fetch requests carry that cookie automatically (same origin).
  *
  * Required environment variables (set in CF Pages → Settings → Environment Variables):
  *   CF_ACCESS_TEAM_DOMAIN  — e.g. "soard" (the <team>.cloudflareaccess.com subdomain)
@@ -22,7 +22,7 @@ const cors = {
 };
 
 // Public API routes that don't require authentication
-const PUBLIC_ROUTES = ['/api/shopify'];
+const PUBLIC_ROUTES = ['/api/shopify', '/api/newsletter'];
 
 export async function onRequest(context) {
   // Always allow preflight
@@ -45,7 +45,11 @@ export async function onRequest(context) {
     return context.next();
   }
 
-  const jwt = context.request.headers.get('CF-Access-JWT-Assertion');
+  // Check header first (set by Access reverse proxy), then cookie (set on browser after login).
+  // The /admin* Access app sets CF_Authorization cookie; /api/* isn't in the Access app scope
+  // so browser fetch requests carry the cookie but not the header.
+  const jwt = context.request.headers.get('CF-Access-JWT-Assertion')
+    || getCookie(context.request, 'CF_Authorization');
   if (!jwt) {
     return Response.json(
       { success: false, error: 'Unauthorized — missing access token' },
@@ -135,6 +139,15 @@ async function getPublicKeys(teamDomain) {
   _cachedKeysExpiry = Date.now() + CACHE_TTL_MS;
 
   return _cachedKeys;
+}
+
+// ─── Cookie Helper ────────────────────────────────────────────────
+
+function getCookie(request, name) {
+  const cookieHeader = request.headers.get('Cookie');
+  if (!cookieHeader) return null;
+  const match = cookieHeader.split(';').map(c => c.trim()).find(c => c.startsWith(`${name}=`));
+  return match ? match.slice(name.length + 1) : null;
 }
 
 // ─── Base64URL Helpers ─────────────────────────────────────────────
