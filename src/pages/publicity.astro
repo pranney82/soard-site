@@ -4,7 +4,7 @@
  * Media coverage, press features, and news highlights
  * Data-driven from src/content/press/ collection
  */
-import BaseLayout from '../layouts/BaseLayout.astro';
+import PageLayout from '../layouts/PageLayout.astro';
 import MediaLogos from '../components/ui/MediaLogos.astro';
 import { getCollection } from 'astro:content';
 
@@ -39,19 +39,13 @@ function formatDate(dateStr: string): string {
 
 ---
 
-<BaseLayout
+<PageLayout
   title="Publicity & Media Coverage"
   description="Sunshine on a Ranney Day has been featured on the Today Show, 11Alive, Fox 5 Atlanta, AJC, Atlanta Magazine, and more. Explore our media coverage."
+  heroLabel="Publicity"
+  heroTitle={'Our story, in the <em class="highlight">spotlight</em>.'}
+  heroSubtitle="From the Today Show to Atlanta's top newsrooms, the media has helped us share the stories of the incredible children and families we serve."
 >
-
-  <!-- ══════ HERO ══════ -->
-  <section class="pub-hero">
-    <div class="container">
-      <div class="pub-hero__label">Media Coverage</div>
-      <h1 class="pub-hero__title">Our story, in the <em class="highlight">spotlight</em>.</h1>
-      <p class="pub-hero__sub">From the Today Show to Atlanta's top newsrooms, the media has helped us share the stories of the incredible children and families we serve.</p>
-    </div>
-  </section>
 
   <!-- ══════ AS SEEN ON — LOGO BAR ══════ -->
   <MediaLogos theme="dark" linked={false} />
@@ -146,45 +140,9 @@ function formatDate(dateStr: string): string {
     </div>
   </section>
 
-</BaseLayout>
+</PageLayout>
 
 <style>
-  /* ══════ HERO ══════ */
-  .pub-hero {
-    background: var(--c-dark);
-    color: var(--c-white);
-    padding: var(--space-5xl) 0 var(--space-3xl);
-    text-align: center;
-  }
-  .pub-hero__label {
-    font-size: 0.75rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.14em;
-    color: var(--c-yellow);
-    margin-bottom: var(--space-md);
-  }
-  .pub-hero__title {
-    font-family: var(--f-display);
-    font-size: clamp(2rem, 5vw, 3.5rem);
-    color: var(--c-white);
-    line-height: 1.15;
-    max-width: 700px;
-    margin: 0 auto;
-  }
-  .pub-hero__sub {
-    margin-top: var(--space-lg);
-    font-size: clamp(1rem, 2vw, 1.15rem);
-    color: rgba(255,255,255,0.7);
-    max-width: 600px;
-    margin-inline: auto;
-    line-height: 1.7;
-  }
-  .highlight {
-    font-style: normal;
-    background-image: linear-gradient(transparent 55%, var(--c-yellow-soft) 55%);
-  }
-
   /* ══════ SECTION TITLES ══════ */
   .pub-section-title {
     font-family: var(--f-display);
@@ -195,6 +153,7 @@ function formatDate(dateStr: string): string {
   /* ══════ FEATURED CARDS ══════ */
   .pub-featured {
     padding: var(--space-4xl) 0;
+    background: var(--c-warm-gray);
   }
   .featured-grid {
     display: grid;
