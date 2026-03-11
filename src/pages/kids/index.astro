@@ -2239,7 +2239,7 @@ const featuredQuote = featuredKid?.data.quote
 
     .kid-card__frame {
       border-radius: 12px;
-      aspect-ratio: 1 / 1;
+      aspect-ratio: 3 / 4;
     }
 
     /* Hide hover overlay on touch */
@@ -2260,7 +2260,7 @@ const featuredQuote = featuredKid?.data.quote
     }
 
     .kid-card__info {
-      padding: 10px 2px 4px;
+      padding: 10px 2px 2px;
       gap: 6px;
     }
 
@@ -2272,9 +2272,10 @@ const featuredQuote = featuredKid?.data.quote
       min-width: 0;
     }
 
-    /* Hide diagnosis on mobile grid — visible on detail page */
     .kid-card__diagnosis {
-      display: none;
+      -webkit-line-clamp: 1;
+      font-size: 0.72rem;
+      padding: 0 2px;
     }
 
     .kid-card__badge {
