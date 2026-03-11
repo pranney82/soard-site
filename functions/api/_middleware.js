@@ -1,9 +1,11 @@
 /**
  * Cloudflare Access JWT Validation Middleware
  * ============================================
- * Validates the CF-Access-JWT-Assertion header OR the CF_Authorization cookie
- * on every /api/ request. The Access app covers /admin* which sets the browser
- * cookie; /api/* fetch requests carry that cookie automatically (same origin).
+ * Security layers (evaluated in order):
+ *   1. CORS — restricts Access-Control-Allow-Origin to same origin (not *)
+ *   2. CSRF — Origin header must match request host on state-changing methods
+ *   3. JWT  — validates CF-Access-JWT-Assertion header OR CF_Authorization cookie
+ *             against Cloudflare's JWKS public keys (issuer, audience, signature, expiry)
  *
  * Required environment variables (set in CF Pages → Settings → Environment Variables):
  *   CF_ACCESS_TEAM_DOMAIN  — e.g. "soard" (the <team>.cloudflareaccess.com subdomain)
@@ -15,23 +17,36 @@ let _cachedKeys = null;
 let _cachedKeysExpiry = 0;
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 
-const cors = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
-};
-
 // Public API routes that don't require authentication
 const PUBLIC_ROUTES = ['/api/shopify', '/api/newsletter'];
 
+// Methods that change state — require CSRF origin check when auth is cookie-based
+const STATE_CHANGING_METHODS = ['POST', 'PUT', 'PATCH', 'DELETE'];
+
+function getCorsHeaders(request) {
+  // Reflect the request origin only if it matches our own host,
+  // otherwise return no ACAO header (browser blocks the response)
+  const origin = request.headers.get('Origin');
+  const host = new URL(request.url).origin;
+  return {
+    'Access-Control-Allow-Origin': origin === host ? origin : 'null',
+    'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
+    'Vary': 'Origin',
+  };
+}
+
 export async function onRequest(context) {
+  const { request } = context;
+  const corsHeaders = getCorsHeaders(request);
+
   // Always allow preflight
-  if (context.request.method === 'OPTIONS') {
-    return context.next();
+  if (request.method === 'OPTIONS') {
+    return new Response(null, { status: 204, headers: corsHeaders });
   }
 
-  // Skip auth for public API routes (e.g. Shopify storefront proxy)
-  const url = new URL(context.request.url);
+  // Skip auth for public API routes (e.g. Shopify storefront proxy, newsletter)
+  const url = new URL(request.url);
   if (PUBLIC_ROUTES.some(route => url.pathname === route)) {
     return context.next();
   }
@@ -45,24 +60,39 @@ export async function onRequest(context) {
     return context.next();
   }
 
-  // Check header first (set by Access reverse proxy), then cookie (set on browser after login).
-  // The /admin* Access app sets CF_Authorization cookie; /api/* isn't in the Access app scope
-  // so browser fetch requests carry the cookie but not the header.
-  const jwt = context.request.headers.get('CF-Access-JWT-Assertion')
-    || getCookie(context.request, 'CF_Authorization');
+  // ── CSRF Protection ──────────────────────────────────────────────
+  // When auth comes from a cookie (not a header), state-changing requests
+  // must prove they originate from our own site via the Origin header.
+  const jwtFromHeader = request.headers.get('CF-Access-JWT-Assertion');
+  const jwtFromCookie = getCookie(request, 'CF_Authorization');
+  const jwt = jwtFromHeader || jwtFromCookie;
+
   if (!jwt) {
     return Response.json(
       { success: false, error: 'Unauthorized — missing access token' },
-      { status: 403, headers: cors }
+      { status: 403, headers: corsHeaders }
     );
   }
 
+  // If auth is cookie-based and method is state-changing, enforce origin check
+  if (!jwtFromHeader && STATE_CHANGING_METHODS.includes(request.method)) {
+    const origin = request.headers.get('Origin');
+    const expected = url.origin;
+    if (!origin || origin !== expected) {
+      return Response.json(
+        { success: false, error: 'Forbidden — origin mismatch' },
+        { status: 403, headers: corsHeaders }
+      );
+    }
+  }
+
+  // ── JWT Validation ───────────────────────────────────────────────
   try {
     await verifyJwt(jwt, CF_ACCESS_TEAM_DOMAIN, CF_ACCESS_AUD);
   } catch (err) {
     return Response.json(
       { success: false, error: `Unauthorized — ${err.message}` },
-      { status: 403, headers: cors }
+      { status: 403, headers: corsHeaders }
     );
   }
 
