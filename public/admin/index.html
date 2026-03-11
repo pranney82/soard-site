@@ -2702,7 +2702,7 @@
             <span class="form-hint">Cloudflare Image ID for the event card. Leave blank for no image.</span>
             ${data.image ? html`
               <div style="margin-top: 0.75rem; border-radius: 8px; overflow: hidden; max-width: 400px;">
-                <img src=${'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/' + data.image + '/w=400,f=auto'}
+                <img src=${'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/' + data.image + '/w=400'}
                   alt="Event image preview" style="width: 100%; height: 160px; object-fit: cover; display: block;" />
               </div>
             ` : null}
@@ -3592,7 +3592,7 @@
               : pageImages.map(img => html`
                 <div key=${img.id} class="img-picker-thumb" title=${img.id}
                   onClick=${() => { onSelect(img.id); onClose(); }}>
-                  <img src="${CF}/${img.id}/w=280,h=280,fit=cover,f=auto" alt="" loading="lazy" />
+                  <img src="${CF}/${img.id}/w=280,h=280,fit=cover" alt="" loading="lazy" />
                   <div class="img-picker-id">${img.id.startsWith('kids/') ? img.id.replace('kids/', '') : img.id}</div>
                 </div>
               `)
@@ -3738,7 +3738,7 @@
           <p class="text-sm text-muted mb-1">The full-bleed background image on the homepage hero.</p>
           ${data.homeHero?.imageId ? html`
             <div style="margin: 1rem 0; border-radius: 12px; overflow: hidden; max-height: 200px;">
-              <img src=${'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/' + data.homeHero.imageId + '/w=800,f=auto'}
+              <img src=${'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/' + data.homeHero.imageId + '/w=800'}
                 alt="Hero preview" style="width: 100%; height: 200px; object-fit: cover; display: block;" />
             </div>
           ` : null}
@@ -3831,7 +3831,7 @@
           <p class="text-sm text-muted mb-1">The row of featured kids on the homepage. Names and details are pulled from kid records automatically.</p>
           ${(data.kidShowcase || []).map((kid, i) => html`
             <div style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.5rem; padding: 0.5rem; background: rgba(0,0,0,0.02); border-radius: 8px;">
-              ${kid.cfId ? html`<img src=${'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/' + kid.cfId + '/w=60,h=60,fit=cover,f=auto'}
+              ${kid.cfId ? html`<img src=${'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/' + kid.cfId + '/w=60,h=60,fit=cover'}
                 alt="" style="width: 36px; height: 36px; border-radius: 6px; object-fit: cover; flex-shrink: 0;" />` : null}
               <input class="form-input" style="flex: 1" value=${kid.slug || ''} placeholder="Kid slug"
                 onInput=${e => updateArrayItem('kidShowcase', i, 'slug', e.target.value)} />
@@ -3856,7 +3856,7 @@
             ${(data.heroMosaic || []).map((kid, i) => html`
               <div key=${i} style="position: relative; aspect-ratio: 1; border-radius: 4px; overflow: hidden; cursor: pointer; border: 2px solid ${data._mosaicEditing === i ? '#FFD500' : 'transparent'};"
                 onClick=${() => setData(d => ({ ...d, _mosaicEditing: d._mosaicEditing === i ? null : i }))}>
-                ${kid.cfId ? html`<img src=${'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/' + kid.cfId + '/w=120,h=120,fit=cover,f=auto,q=60'}
+                ${kid.cfId ? html`<img src=${'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/' + kid.cfId + '/w=120,h=120,fit=cover,q=60'}
                   alt="" style="width: 100%; height: 100%; object-fit: cover; display: block; filter: brightness(0.7);" />` :
                   html`<div style="width: 100%; height: 100%; background: #373A36; display: flex; align-items: center; justify-content: center; color: #666; font-size: 0.65rem;">empty</div>`}
                 <div style="position: absolute; bottom: 0; left: 0; right: 0; padding: 2px 4px; background: linear-gradient(transparent, rgba(0,0,0,0.8)); color: #fff; font-size: 0.6rem; font-weight: 600; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
@@ -3975,7 +3975,7 @@
           <p class="text-sm text-muted mb-1">Logos shown in the scrolling partner marquee on the homepage.</p>
           ${(data.partnerLogos || []).map((logo, i) => html`
             <div style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.5rem; padding: 0.5rem; background: rgba(0,0,0,0.02); border-radius: 8px;">
-              ${logo.id ? html`<img src=${'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/' + logo.id + '/w=80,h=40,fit=contain,f=auto'}
+              ${logo.id ? html`<img src=${'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/' + logo.id + '/w=80,h=40,fit=contain'}
                 alt="" style="width: 60px; height: 30px; object-fit: contain; flex-shrink: 0; background: #fff; border-radius: 4px; padding: 2px;" />` : null}
               <input class="form-input" style="flex: 1" value=${logo.name || ''} placeholder="Partner name"
                 onInput=${e => updateArrayItem('partnerLogos', i, 'name', e.target.value)} />
@@ -4204,7 +4204,7 @@
           <label class="form-label">${label}</label>
           ${currentId ? html`
             <div style="margin-bottom: 0.5rem; border-radius: 8px; overflow: hidden; max-height: 140px;">
-              <img src="${CF}/${currentId}/w=400,f=auto" alt="Preview" style="width: 100%; height: 140px; object-fit: cover; display: block;" />
+              <img src="${CF}/${currentId}/w=400" alt="Preview" style="width: 100%; height: 140px; object-fit: cover; display: block;" />
             </div>
           ` : null}
           <div style="display: flex; gap: 0.5rem;">
@@ -4393,7 +4393,7 @@
               </div>
               <div style="display: flex; gap: 0.75rem; align-items: center; margin-top: 0.5rem; padding-left: 2.5rem;">
                 ${m.image ? html`
-                  <img src="${CF}/${m.image}/w=120,f=auto" alt="" style="width: 80px; height: 52px; object-fit: cover; border-radius: 6px; flex-shrink: 0;" />
+                  <img src="${CF}/${m.image}/w=120" alt="" style="width: 80px; height: 52px; object-fit: cover; border-radius: 6px; flex-shrink: 0;" />
                 ` : null}
                 <div style="flex: 1;">
                   <label class="form-label" style="font-size: 0.75rem;">Image (optional)</label>

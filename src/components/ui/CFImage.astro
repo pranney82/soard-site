@@ -3,9 +3,11 @@
  * CFImage.astro
  * Responsive image component for Cloudflare Images.
  *
- * CF Images `f=auto` negotiates format (AVIF → WebP → JPEG) server-side
- * via the Accept header, so <picture> with explicit format sources is
- * unnecessary. A single <img> with srcset is the correct approach.
+ * imagedelivery.net auto-negotiates format (AVIF → WebP → JPEG)
+ * via the Accept header — no `f=auto` needed. `f=auto` is only
+ * required on `/cdn-cgi/image/` URLs (transform-via-URL on your
+ * own domain). A single <img> with srcset is the correct approach;
+ * <picture> with explicit format sources is unnecessary.
  *
  * Non-CF URLs pass through as plain <img>.
  */
@@ -50,13 +52,13 @@ function getBase(url: string): string {
 
 function buildSrcset(): string {
   const base = getBase(src);
-  return widths.map(w => `${base}/w=${w},f=auto,q=${quality} ${w}w`).join(', ');
+  return widths.map(w => `${base}/w=${w},q=${quality} ${w}w`).join(', ');
 }
 
 function buildSrc(): string {
   const base = getBase(src);
   const fallbackW = widths[widths.length - 2] || widths[widths.length - 1];
-  return `${base}/w=${fallbackW},f=auto,q=${quality}`;
+  return `${base}/w=${fallbackW},q=${quality}`;
 }
 ---
 

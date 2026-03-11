@@ -67,7 +67,7 @@ const jsonLd = buildSchemaGraph(
   <section class="founders" id="our-story" aria-labelledby="founders-heading">
     <div class="founders-inner">
       <div class="founders-photo" data-reveal>
-        <img src={`${CF}/${founderPhotoId}/w=800,f=auto,q=85`} srcset={`${CF}/${founderPhotoId}/w=500,f=auto,q=85 500w, ${CF}/${founderPhotoId}/w=800,f=auto,q=85 800w`} sizes="(max-width:768px) 90vw, 40vw" alt="Peter and Holly Ranney, founders of Sunshine on a Ranney Day" width="800" height="600" loading="lazy" decoding="async" />
+        <img src={`${CF}/${founderPhotoId}/w=800,q=85`} srcset={`${CF}/${founderPhotoId}/w=500,q=85 500w, ${CF}/${founderPhotoId}/w=800,q=85 800w`} sizes="(max-width:768px) 90vw, 40vw" alt="Peter and Holly Ranney, founders of Sunshine on a Ranney Day" width="800" height="600" loading="lazy" decoding="async" />
       </div>
       <div class="founders-text" data-reveal>
         <div class="section-label">{page.founders.label}</div>
@@ -86,7 +86,7 @@ const jsonLd = buildSchemaGraph(
         {page.turningPoint.paragraphs.map((p: string) => <p set:html={p} />)}
       </div>
       <div class="turning-point-photo" data-reveal data-delay="1">
-        <img src={`${CF}/${trippPhotoId}/w=800,f=auto,q=85`} srcset={`${CF}/${trippPhotoId}/w=500,f=auto,q=85 500w, ${CF}/${trippPhotoId}/w=800,f=auto,q=85 800w`} sizes="(max-width:768px) 90vw, 45vw" alt="The Halstead family — Tripp's story inspired millions and helped expand SOARD's mission" width="800" height="600" loading="lazy" decoding="async" />
+        <img src={`${CF}/${trippPhotoId}/w=800,q=85`} srcset={`${CF}/${trippPhotoId}/w=500,q=85 500w, ${CF}/${trippPhotoId}/w=800,q=85 800w`} sizes="(max-width:768px) 90vw, 45vw" alt="The Halstead family — Tripp's story inspired millions and helped expand SOARD's mission" width="800" height="600" loading="lazy" decoding="async" />
       </div>
     </div>
   </section>
@@ -105,7 +105,7 @@ const jsonLd = buildSchemaGraph(
           <div class={`tl-card${m.image ? ' has-image' : ''}`}>
             {m.image && (
               <div class="tl-image">
-                <img src={`${CF}/${m.image}/w=480,f=auto,q=85`} srcset={`${CF}/${m.image}/w=320,f=auto,q=85 320w, ${CF}/${m.image}/w=480,f=auto,q=85 480w`} sizes="(max-width:768px) 100%, 200px" alt={m.title} width="480" height="320" loading="lazy" decoding="async" />
+                <img src={`${CF}/${m.image}/w=480,q=85`} srcset={`${CF}/${m.image}/w=320,q=85 320w, ${CF}/${m.image}/w=480,q=85 480w`} sizes="(max-width:768px) 100%, 200px" alt={m.title} width="480" height="320" loading="lazy" decoding="async" />
               </div>
             )}
             <div class="tl-text">
@@ -144,7 +144,7 @@ const jsonLd = buildSchemaGraph(
       </div>
       <div class="mascot-visual" data-reveal data-delay="1">
         <div class="mascot-photo">
-          <img src={`${CF}/${graciePhotoId}/w=800,f=auto,q=85`} srcset={`${CF}/${graciePhotoId}/w=500,f=auto,q=85 500w, ${CF}/${graciePhotoId}/w=800,f=auto,q=85 800w`} sizes="(max-width:768px) 90vw, 40vw" alt="Gracie the Pig — the real pot-bellied pig that inspired SOARD's mascot" width="800" height="533" loading="lazy" decoding="async" />
+          <img src={`${CF}/${graciePhotoId}/w=800,q=85`} srcset={`${CF}/${graciePhotoId}/w=500,q=85 500w, ${CF}/${graciePhotoId}/w=800,q=85 800w`} sizes="(max-width:768px) 90vw, 40vw" alt="Gracie the Pig — the real pot-bellied pig that inspired SOARD's mascot" width="800" height="533" loading="lazy" decoding="async" />
         </div>
       </div>
     </div>
@@ -154,7 +154,7 @@ const jsonLd = buildSchemaGraph(
   <section class="store-section" aria-labelledby="store-heading">
     <div class="store-inner">
       <div class="store-photo" data-reveal>
-        <img src={`${CF}/${storePhotoId}/w=800,f=auto,q=85`} srcset={`${CF}/${storePhotoId}/w=500,f=auto,q=85 500w, ${CF}/${storePhotoId}/w=800,f=auto,q=85 800w`} sizes="(max-width:768px) 90vw, 45vw" alt="Sunny & Ranney, a nonprofit home furnishings store in Roswell, Georgia" width="800" height="600" loading="lazy" decoding="async" />
+        <img src={`${CF}/${storePhotoId}/w=800,q=85`} srcset={`${CF}/${storePhotoId}/w=500,q=85 500w, ${CF}/${storePhotoId}/w=800,q=85 800w`} sizes="(max-width:768px) 90vw, 45vw" alt="Sunny & Ranney, a nonprofit home furnishings store in Roswell, Georgia" width="800" height="600" loading="lazy" decoding="async" />
       </div>
       <div class="store-text" data-reveal data-delay="1">
         <div class="section-label">{page.store.label}</div>

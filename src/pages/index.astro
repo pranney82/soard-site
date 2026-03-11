@@ -85,8 +85,8 @@ const partnerLogos = siteSettings.partnerLogos || [
 ];
 
 /* ── Hero image URLs (DRY — preload + img must be byte-identical) ── */
-const heroImg560 = `${CF}/${storyPhotoId}/w=560,h=700,fit=cover,f=auto,q=80`;
-const heroImg800 = `${CF}/${storyPhotoId}/w=800,h=1000,fit=cover,f=auto,q=80`;
+const heroImg560 = `${CF}/${storyPhotoId}/w=560,h=700,fit=cover,q=80`;
+const heroImg800 = `${CF}/${storyPhotoId}/w=800,h=1000,fit=cover,q=80`;
 const heroSrcset = `${heroImg560} 560w, ${heroImg800} 800w`;
 const heroSizes = '(max-width:768px) 85vw, 420px';
 
@@ -178,10 +178,10 @@ const jsonLd = getWebSiteSchema();
       </div>
       <div class="mission-visual" role="presentation">
         <div class="mission-photo mission-photo--main" data-reveal>
-          <img src={`${CF}/${missionMainId}/w=800,f=auto,q=80`} srcset={`${CF}/${missionMainId}/w=500,f=auto,q=80 500w, ${CF}/${missionMainId}/w=800,f=auto,q=80 800w`} sizes="(max-width:768px) 90vw, 40vw" alt="A transformed room designed for a child with special needs" width="800" height="600" loading="lazy" decoding="async" />
+          <img src={`${CF}/${missionMainId}/w=800,q=80`} srcset={`${CF}/${missionMainId}/w=500,q=80 500w, ${CF}/${missionMainId}/w=800,q=80 800w`} sizes="(max-width:768px) 90vw, 40vw" alt="A transformed room designed for a child with special needs" width="800" height="600" loading="lazy" decoding="async" />
         </div>
         <div class="mission-photo mission-photo--accent" data-reveal data-delay="1">
-          <img src={`${CF}/${missionAccentId}/w=600,f=auto,q=80`} srcset={`${CF}/${missionAccentId}/w=400,f=auto,q=80 400w, ${CF}/${missionAccentId}/w=600,f=auto,q=80 600w`} sizes="(max-width:768px) 60vw, 30vw" alt="A happy child in their new dream room" width="600" height="450" loading="lazy" decoding="async" />
+          <img src={`${CF}/${missionAccentId}/w=600,q=80`} srcset={`${CF}/${missionAccentId}/w=400,q=80 400w, ${CF}/${missionAccentId}/w=600,q=80 600w`} sizes="(max-width:768px) 60vw, 30vw" alt="A happy child in their new dream room" width="600" height="450" loading="lazy" decoding="async" />
         </div>
       </div>
     </div>
@@ -191,7 +191,7 @@ const jsonLd = getWebSiteSchema();
   <section class="story" id="stories" aria-labelledby="story-heading">
     <div class="story-split">
       <figure class="story-photo">
-        <img src={`${CF}/${storyPhotoId}/w=900,f=auto,q=80`} srcset={`${CF}/${storyPhotoId}/w=600,f=auto,q=80 600w, ${CF}/${storyPhotoId}/w=900,f=auto,q=80 900w, ${CF}/${storyPhotoId}/w=1200,f=auto,q=80 1200w`} sizes="(max-width:768px) 100vw, 55vw" alt={`${fd?.name || 'Zyah'}'s room reveal`} width="900" height="600" loading="lazy" decoding="async" class="story-photo-img" />
+        <img src={`${CF}/${storyPhotoId}/w=900,q=80`} srcset={`${CF}/${storyPhotoId}/w=600,q=80 600w, ${CF}/${storyPhotoId}/w=900,q=80 900w, ${CF}/${storyPhotoId}/w=1200,q=80 1200w`} sizes="(max-width:768px) 100vw, 55vw" alt={`${fd?.name || 'Zyah'}'s room reveal`} width="900" height="600" loading="lazy" decoding="async" class="story-photo-img" />
         <div class="story-photo-tag">Latest Reveal</div>
       </figure>
       <div class="story-content" data-reveal>
@@ -218,7 +218,7 @@ const jsonLd = getWebSiteSchema();
         <li class="kid-thumb-item">
           <a href={`/kids/${kid.slug}`} class="kid-thumb">
             <div class="kid-thumb-photo">
-              <img src={`${CF}/${kid.cfId}/w=440,h=440,fit=cover,f=auto,q=80`} alt={`${kid.name}'s room reveal`} width="220" height="220" loading="lazy" decoding="async" />
+              <img src={`${CF}/${kid.cfId}/w=440,h=440,fit=cover,q=80`} alt={`${kid.name}'s room reveal`} width="220" height="220" loading="lazy" decoding="async" />
             </div>
             <h3 class="kid-thumb-name">{kid.name}</h3>
             <p>{kid.roomLabel}{kid.age ? ` · Age ${kid.age}` : ''}</p>
@@ -265,7 +265,7 @@ const jsonLd = getWebSiteSchema();
       </div>
       <div class="rooms-grid">
         <a href="/kids" class="room-tile" data-accent="bedroom" data-reveal>
-          <div class="room-tile-photo"><img src={`${CF}/${roomPhotos.bedroom}/w=600,h=375,fit=cover,f=auto,q=80`} alt="A custom dream bedroom" width="600" height="375" loading="lazy" decoding="async" /></div>
+          <div class="room-tile-photo"><img src={`${CF}/${roomPhotos.bedroom}/w=600,h=375,fit=cover,q=80`} alt="A custom dream bedroom" width="600" height="375" loading="lazy" decoding="async" /></div>
           <div class="room-tile-content">
             <span class="room-tile-tag">Most Popular</span>
             <h3>Dream Bedrooms</h3>
@@ -274,7 +274,7 @@ const jsonLd = getWebSiteSchema();
           </div>
         </a>
         <a href="/kids" class="room-tile" data-accent="bath" data-reveal data-delay="1">
-          <div class="room-tile-photo"><img src={`${CF}/${roomPhotos.bath}/w=600,h=375,fit=cover,f=auto,q=80`} alt="An accessible bathroom" width="600" height="375" loading="lazy" decoding="async" /></div>
+          <div class="room-tile-photo"><img src={`${CF}/${roomPhotos.bath}/w=600,h=375,fit=cover,q=80`} alt="An accessible bathroom" width="600" height="375" loading="lazy" decoding="async" /></div>
           <div class="room-tile-content">
             <span class="room-tile-tag">Life-Changing</span>
             <h3>Accessible Bathrooms</h3>
@@ -283,7 +283,7 @@ const jsonLd = getWebSiteSchema();
           </div>
         </a>
         <a href="/kids" class="room-tile" data-accent="therapy" data-reveal data-delay="2">
-          <div class="room-tile-photo"><img src={`${CF}/${roomPhotos.therapy}/w=600,h=375,fit=cover,f=auto,q=80`} alt="A sensory therapy room" width="600" height="375" loading="lazy" decoding="async" /></div>
+          <div class="room-tile-photo"><img src={`${CF}/${roomPhotos.therapy}/w=600,h=375,fit=cover,q=80`} alt="A sensory therapy room" width="600" height="375" loading="lazy" decoding="async" /></div>
           <div class="room-tile-content">
             <span class="room-tile-tag">Therapeutic</span>
             <h3>Sensory & Therapy Rooms</h3>
@@ -327,7 +327,7 @@ const jsonLd = getWebSiteSchema();
     <div class="marquee-track" aria-hidden="true">
       {[...partnerLogos, ...partnerLogos, ...partnerLogos].map(p => (
         <div class="marquee-logo">
-          <img src={`${CF}/${p.id}/w=280,h=80,fit=contain,f=auto`} alt={p.name} width="140" height="40" loading="lazy" decoding="async" />
+          <img src={`${CF}/${p.id}/w=280,h=80,fit=contain`} alt={p.name} width="140" height="40" loading="lazy" decoding="async" />
         </div>
       ))}
     </div>
@@ -336,7 +336,7 @@ const jsonLd = getWebSiteSchema();
   <!-- ══════ FINAL CTA ══════ -->
   <section class="finale" aria-labelledby="cta-heading">
     <div class="finale-inner">
-      <img src={`${CF}/sunny-pig/w=80,h=80,fit=contain,f=auto`} alt="" class="finale-pig" width="80" height="80" aria-hidden="true" loading="lazy" decoding="async" />
+      <img src={`${CF}/sunny-pig/w=80,h=80,fit=contain`} alt="" class="finale-pig" width="80" height="80" aria-hidden="true" loading="lazy" decoding="async" />
       <h2 id="cta-heading" data-reveal>A room can change a child's life.<br/><em>You</em> can make it happen.</h2>
       <p data-reveal data-delay="1">Every donation — every dollar — goes directly to building dream spaces for children with special needs in the Atlanta area. No middlemen. No overhead bloat. Just kids, rooms, and community.</p>
       <div class="finale-ctas" data-reveal data-delay="2">

@@ -51,7 +51,7 @@ function cfUrl(src: string, opts: string) {
   return `${CF_BASE}/${id}/${opts}`;
 }
 function cfSrcset(src: string, widths: number[]) {
-  return widths.map(w => `${cfUrl(src, `w=${w},f=auto,q=85`)} ${w}w`).join(', ');
+  return widths.map(w => `${cfUrl(src, `w=${w},q=85`)} ${w}w`).join(', ');
 }
 
 // ── YouTube ID extraction ─────────────────
@@ -102,7 +102,7 @@ const dateModified = kid.year ? `${kid.year}-01-01` : undefined;
       {kid.heroImage && (
         <div class="hero__image">
           <img
-            src={cfUrl(kid.heroImage, 'w=1600,f=auto,q=85')}
+            src={cfUrl(kid.heroImage, 'w=1600,q=85')}
             srcset={cfSrcset(kid.heroImage, [640, 1024, 1600, 2400])}
             sizes="100vw"
             alt={`Photo of ${kid.name}${kid.diagnosis ? ` — ${kid.diagnosis}` : ''}`}
@@ -246,13 +246,13 @@ const dateModified = kid.year ? `${kid.year}-01-01` : undefined;
               <button
                 class="gallery-item"
                 data-index={i}
-                data-src={cfUrl(photo.url, 'w=1600,f=auto,q=85')}
+                data-src={cfUrl(photo.url, 'w=1600,q=85')}
                 data-alt={photo.alt || `${kid.name}'s room transformation photo ${i + 1}`}
                 aria-label={`View photo ${i + 1} of ${Math.min(photos.length, 30)}`}
                 type="button"
               >
                 <img
-                  src={cfUrl(photo.url, 'w=500,f=auto,q=85')}
+                  src={cfUrl(photo.url, 'w=500,q=85')}
                   srcset={cfSrcset(photo.url, [300, 500])}
                   sizes="(max-width: 600px) 45vw, (max-width: 1100px) 30vw, 280px"
                   alt={photo.alt || `${kid.name}'s room transformation photo ${i + 1}`}
@@ -279,7 +279,7 @@ const dateModified = kid.year ? `${kid.year}-01-01` : undefined;
             {kid.partnerLogos.map(logo => (
               <div class="partner-logo">
                 <img
-                  src={cfUrl(logo.url, 'w=200,f=auto,q=85')}
+                  src={cfUrl(logo.url, 'w=200,q=85')}
                   alt={logo.name || 'Project partner'}
                   loading="lazy"
                   decoding="async"
@@ -303,7 +303,7 @@ const dateModified = kid.year ? `${kid.year}-01-01` : undefined;
               <a href={`/kids/${rk.slug}/`} class="related-card">
                 <div class="related-card__frame">
                   <img
-                    src={cfUrl(rk.heroImage, 'w=600,f=auto,q=85')}
+                    src={cfUrl(rk.heroImage, 'w=600,q=85')}
                     srcset={cfSrcset(rk.heroImage, [300, 600])}
                     sizes="(max-width: 600px) 45vw, 220px"
                     alt={`Photo of ${rk.name}`}
