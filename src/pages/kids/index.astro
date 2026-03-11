@@ -32,7 +32,7 @@ function cfUrl(src: string, opts: string) {
 function cfCropSrcset(src: string, widths: number[], hwRatio: number) {
   return widths.map(w => {
     const h = Math.round(w * hwRatio);
-    return `${cfUrl(src, `w=${w},h=${h},fit=cover,gravity=face,q=80`)} ${w}w`;
+    return `${cfUrl(src, `w=${w},h=${h},fit=cover,gravity=face,format=auto,q=80`)} ${w}w`;
   }).join(', ');
 }
 
@@ -159,8 +159,8 @@ const featuredQuote = featuredKid?.data.quote
             aria-label={kid.data.name}
           >
             <img
-              src={cfUrl(kid.data.heroImage, 'w=80,h=80,fit=cover,gravity=face,q=80')}
-              srcset={`${cfUrl(kid.data.heroImage, 'w=80,h=80,fit=cover,gravity=face,q=80')} 1x, ${cfUrl(kid.data.heroImage, 'w=140,h=140,fit=cover,gravity=face,q=80')} 2x`}
+              src={cfUrl(kid.data.heroImage, 'w=80,h=80,fit=cover,gravity=face,format=auto,q=80')}
+              srcset={`${cfUrl(kid.data.heroImage, 'w=80,h=80,fit=cover,gravity=face,format=auto,q=80')} 1x, ${cfUrl(kid.data.heroImage, 'w=140,h=140,fit=cover,gravity=face,format=auto,q=80')} 2x`}
               alt={kid.data.name}
               width="70"
               height="70"
@@ -216,7 +216,7 @@ const featuredQuote = featuredKid?.data.quote
         >
           <div class="featured__media">
             <img
-              src={cfUrl(featuredKid.data.heroImage, 'w=960,h=411,fit=cover,gravity=face,q=82')}
+              src={cfUrl(featuredKid.data.heroImage, 'w=960,h=411,fit=cover,gravity=face,format=auto,q=82')}
               srcset={featuredImgSrcset}
               sizes={featuredImgSizes}
               alt={`Photo of ${featuredKid.data.name}${featuredKid.data.diagnosis ? ` — ${featuredKid.data.diagnosis}` : ''}`}
@@ -383,7 +383,7 @@ const featuredQuote = featuredKid?.data.quote
             <div class="kid-card__frame">
               {kid.data.heroImage ? (
                 <img
-                  src={cfUrl(kid.data.heroImage, 'w=340,h=453,fit=cover,gravity=face,q=80')}
+                  src={cfUrl(kid.data.heroImage, 'w=340,h=453,fit=cover,gravity=face,format=auto,q=80')}
                   srcset={cfCropSrcset(kid.data.heroImage, [170, 340, 520, 680], 4/3)}
                   sizes="(max-width: 768px) calc(50vw - 30px), (max-width: 1100px) calc(33vw - 27px), 260px"
                   alt={`Photo of ${kid.data.name}${kid.data.diagnosis ? `, diagnosed with ${kid.data.diagnosis}` : ''} — Sunshine on a Ranney Day`}
@@ -459,12 +459,15 @@ const featuredQuote = featuredKid?.data.quote
 <script>
   let _kidsObserver: IntersectionObserver | null = null;
   let _kidsScrollHandler: (() => void) | null = null;
+  let _kidsAbortController: AbortController | null = null;
 
   function cleanupKidsIndex() {
     _kidsObserver?.disconnect();
     _kidsObserver = null;
     if (_kidsScrollHandler) window.removeEventListener('scroll', _kidsScrollHandler);
     _kidsScrollHandler = null;
+    _kidsAbortController?.abort();
+    _kidsAbortController = null;
   }
 
   function initKidsIndex() {
@@ -472,6 +475,8 @@ const featuredQuote = featuredKid?.data.quote
     if (!cards.length) return;
 
     cleanupKidsIndex();
+    _kidsAbortController = new AbortController();
+    const signal = _kidsAbortController.signal;
 
     const searchInput = document.getElementById('kid-search') as HTMLInputElement;
     const yearSelect = document.getElementById('filter-year') as HTMLSelectElement;
@@ -678,10 +683,28 @@ const featuredQuote = featuredKid?.data.quote
       closeSheet();
     });
 
-    // Close on escape
+    // Close on escape + focus trap
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && sheet.classList.contains('is-open')) closeSheet();
-    });
+      if (!sheet.classList.contains('is-open')) return;
+      if (e.key === 'Escape') { closeSheet(); return; }
+      // Focus trap: cycle Tab within the sheet panel
+      if (e.key === 'Tab') {
+        const panel = sheet.querySelector('.bottom-sheet__panel') as HTMLElement;
+        const focusable = panel.querySelectorAll<HTMLElement>(
+          'button, select, input, [tabindex]:not([tabindex="-1"])'
+        );
+        if (!focusable.length) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
+    }, { signal });
 
     // ── Staggered reveal on scroll ──
     if (!reducedMotion) {
@@ -720,14 +743,29 @@ const featuredQuote = featuredKid?.data.quote
     };
     window.addEventListener('scroll', _kidsScrollHandler, { passive: true });
 
-    // ── Image shimmer: remove on load ─────────
+    // ── Image shimmer: remove on load, fallback on error ──
     document.querySelectorAll<HTMLImageElement>('.kid-card__img').forEach(img => {
-      if (img.complete) {
+      function onLoaded() {
         img.closest('.kid-card__frame')?.classList.add('is-loaded');
+      }
+      function onError() {
+        // Replace broken image with placeholder
+        const frame = img.closest('.kid-card__frame');
+        if (frame) {
+          img.remove();
+          frame.classList.add('is-loaded');
+          const ph = document.createElement('div');
+          ph.className = 'kid-card__placeholder';
+          ph.setAttribute('aria-hidden', 'true');
+          ph.innerHTML = '<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>';
+          frame.prepend(ph);
+        }
+      }
+      if (img.complete) {
+        img.naturalWidth === 0 ? onError() : onLoaded();
       } else {
-        img.addEventListener('load', () => {
-          img.closest('.kid-card__frame')?.classList.add('is-loaded');
-        }, { once: true });
+        img.addEventListener('load', onLoaded, { once: true });
+        img.addEventListener('error', onError, { once: true });
       }
     });
 
