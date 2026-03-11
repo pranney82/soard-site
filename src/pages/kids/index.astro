@@ -3,7 +3,7 @@
  * Meet the Kids — Bespoke hero + premium grid with filtering
  *
  * PERF: gravity=face on CF Images, optimized srcsets, LCP preload,
- *       content-visibility, shimmer placeholders, smooth filter animations
+ *       shimmer placeholders, static JSON manifest for load-more
  * SEO:  CollectionPage + ItemList + FAQPage schema, breadcrumbs, rich meta
  * A11Y: proper heading hierarchy, ARIA labels, focus management, 44px targets
  * UX:   Face collage hero, cinematic featured card, mobile bottom-sheet filters
@@ -1742,8 +1742,6 @@ const featuredQuote = featuredKid?.data.quote
     display: none;
   }
 
-  /* content-visibility: applied via is:global block below */
-
   /* Load More button */
   .load-more {
     display: flex;
@@ -2355,13 +2353,5 @@ const featuredQuote = featuredKid?.data.quote
       animation: none;
       display: none;
     }
-  }
-</style>
-
-<!-- content-visibility must be global — Astro scoped styles strip complex :nth-child selectors -->
-<style is:global>
-  .kids-grid .kid-card:nth-child(n+9) {
-    content-visibility: auto;
-    contain-intrinsic-size: auto 300px;
   }
 </style>
