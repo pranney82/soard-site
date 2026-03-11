@@ -3810,6 +3810,74 @@
       `;
     }
 
+    function ShopCollections({ selected, onChange }) {
+      const [collections, setCollections] = useState([]);
+      const [loading, setLoading] = useState(true);
+      const [error, setError] = useState(null);
+
+      useEffect(() => {
+        (async () => {
+          try {
+            const res = await fetch('/api/shopify', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                query: 'query{collections(first:50){edges{node{id handle title image{url}products(first:1){edges{node{featuredImage{url}}}}}}}}'
+              })
+            });
+            const json = await res.json();
+            if (json.data?.collections?.edges) {
+              setCollections(json.data.collections.edges.map(e => e.node));
+            }
+          } catch (err) {
+            setError('Could not load Shopify collections');
+          }
+          setLoading(false);
+        })();
+      }, []);
+
+      const toggle = (handle) => {
+        const current = selected || [];
+        if (current.includes(handle)) {
+          onChange(current.filter(h => h !== handle));
+        } else {
+          onChange([...current, handle]);
+        }
+      };
+
+      const isSelected = (handle) => !selected || selected.length === 0 || selected.includes(handle);
+
+      return html`
+        <div class="card">
+          <h3 style="margin-bottom: 0.5rem;">Shop Collections</h3>
+          <p class="text-sm text-muted mb-1">Choose which Shopify collections appear on the shop page. If none are selected, all collections with products will show.</p>
+          ${loading ? html`<div style="padding: 1rem; text-align: center;"><div class="spinner" style="width: 24px; height: 24px;" /></div>` : null}
+          ${error ? html`<p class="text-sm" style="color: #c00;">${error}</p>` : null}
+          ${!loading && !error ? html`
+            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin-top: 1rem;">
+              ${collections.map(c => {
+                const img = c.image?.url || c.products?.edges?.[0]?.node?.featuredImage?.url;
+                const checked = isSelected(c.handle);
+                const productCount = c.products?.edges?.length || 0;
+                return html`
+                  <label style="display: flex; gap: 10px; align-items: center; padding: 10px 12px; border-radius: 10px; border: 2px solid ${selected?.includes(c.handle) ? 'var(--accent)' : 'var(--border)'}; cursor: pointer; transition: all 0.15s ease; background: ${selected?.includes(c.handle) ? 'rgba(255,218,36,0.06)' : 'transparent'};">
+                    <input type="checkbox" checked=${selected?.includes(c.handle)} onChange=${() => toggle(c.handle)}
+                      style="width: 18px; height: 18px; flex-shrink: 0; accent-color: var(--accent);" />
+                    ${img ? html`<img src="${img}&width=80" alt="" style="width: 40px; height: 40px; border-radius: 6px; object-fit: cover; flex-shrink: 0;" />` : null}
+                    <div style="min-width: 0;">
+                      <div style="font-weight: 600; font-size: 0.875rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${c.title}</div>
+                      <div class="text-sm text-muted">${c.handle}</div>
+                    </div>
+                  </label>
+                `;
+              })}
+            </div>
+            <p class="text-sm text-muted" style="margin-top: 0.75rem;">${selected?.length ? selected.length + ' selected' : 'All collections shown (none explicitly selected)'}</p>
+          ` : null}
+        </div>
+      `;
+    }
+
     function SiteSettings({ addToast }) {
       const [loading, setLoading] = useState(true);
       const [saving, setSaving] = useState(false);
@@ -4227,6 +4295,8 @@
           </div>
         </div>
         <${NewsletterSettings} listId=${data.newsletter?.listId || ''} onSelect=${(id) => updateField('newsletter.listId', id)} />
+
+        <${ShopCollections} selected=${data.shopCollections || []} onChange=${(val) => updateField('shopCollections', val)} />
 
         <div class="card">
           <h3 style="margin-bottom: 1rem;">Social Links</h3>

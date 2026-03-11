@@ -12,6 +12,7 @@
  */
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import { isShopifyConfigured, fetchAllCollections, formatPrice } from '../../lib/shopify';
+import siteSettings from '../../content/site/settings.json';
 
 let collections: any[] = [];
 let productMap: Record<string, any> = {};
@@ -19,7 +20,15 @@ let buildError = false;
 
 if (isShopifyConfigured()) {
   try {
-    collections = await fetchAllCollections();
+    let allCollections = await fetchAllCollections();
+
+    // Filter to admin-selected collections (if any selected)
+    const selected: string[] = (siteSettings as any)?.shopCollections || [];
+    if (selected.length > 0) {
+      allCollections = allCollections.filter((c: any) => selected.includes(c.handle));
+    }
+
+    collections = allCollections;
     for (const c of collections) {
       for (const edge of c.products.edges) {
         productMap[edge.node.handle] = edge.node;

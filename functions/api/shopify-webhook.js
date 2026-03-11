@@ -13,11 +13,15 @@
  *      Add webhooks for these topics pointing to
  *      https://sunshineonaranneyday.com/api/shopify-webhook
  *        - products/create
- *        - products/update
  *        - products/delete
  *        - collections/create
  *        - collections/update
  *        - collections/delete
+ *
+ *      NOTE: Do NOT add products/update — every purchase changes inventory
+ *      count which fires this webhook, causing unnecessary rebuilds.
+ *      Price/title/image changes require a manual rebuild or products/delete
+ *      + products/create cycle. Availability is handled by Shopify checkout.
  *
  *   3. Copy the webhook signing secret from Shopify, save as
  *      SHOPIFY_WEBHOOK_SECRET env var in CF Pages.
