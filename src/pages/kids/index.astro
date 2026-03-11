@@ -143,6 +143,8 @@ const featuredQuote = featuredKid?.data.quote
   {featuredKid?.data.heroImage && (
     <link slot="head" rel="preload" as="image" imagesrcset={featuredImgSrcset} imagesizes={featuredImgSizes} fetchpriority="high" />
   )}
+  <!-- Prefetch kid data manifest for instant search/load-more (5KB gzip, edge-cached) -->
+  <link slot="head" rel="prefetch" href="/kids/data.json" as="fetch" crossorigin="anonymous" />
 
   <!-- ══════ HERO — Face Collage + Headline + Stats ══════ -->
   <section class="kids-hero" aria-label="Meet the Kids">
@@ -274,8 +276,8 @@ const featuredQuote = featuredKid?.data.quote
               type="search"
               id="kid-search"
               class="search-box__input"
-              placeholder="Search by name or diagnosis..."
-              aria-label="Search kids by name or diagnosis"
+              placeholder="Search name, diagnosis, year..."
+              aria-label="Search kids by name, diagnosis, year, or project type"
               autocomplete="off"
             />
             <button class="search-box__clear" id="search-clear" type="button" aria-label="Clear search" hidden>
@@ -318,6 +320,10 @@ const featuredQuote = featuredKid?.data.quote
         <div class="toolbar__status" aria-live="polite" aria-atomic="true">
           <span class="result-count" id="result-count">
             Showing <strong id="visible-count">{INITIAL_BATCH}</strong> of <span id="total-count">{totalKidsCount}</span> kids
+          </span>
+          <span class="result-loading" id="result-loading" hidden>
+            <svg class="result-loading__spinner" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+            Loading all kids...
           </span>
           <button class="clear-btn" id="clear-filters" hidden aria-label="Clear all filters">
             Clear filters
@@ -560,12 +566,24 @@ const featuredQuote = featuredKid?.data.quote
     const loadMoreWrap = document.getElementById('load-more') as HTMLElement | null;
     const loadMoreBtn = document.getElementById('load-more-btn') as HTMLButtonElement | null;
     const loadMoreCount = document.getElementById('load-more-count') as HTMLElement | null;
+    const resultLoading = document.getElementById('result-loading') as HTMLElement | null;
+    const resultCount = document.getElementById('result-count') as HTMLElement | null;
 
     // ── Fetch full manifest from static JSON (Cloudflare edge-cached) ──
     async function ensureAllData(): Promise<KidCard[]> {
       if (allKidsData) return allKidsData;
+      // Show loading state
+      if (resultLoading && resultCount) {
+        resultCount.hidden = true;
+        resultLoading.hidden = false;
+      }
       const res = await fetch('/kids/data.json');
       allKidsData = await res.json();
+      // Hide loading state
+      if (resultLoading && resultCount) {
+        resultLoading.hidden = true;
+        resultCount.hidden = false;
+      }
       return allKidsData!;
     }
 
@@ -683,7 +701,7 @@ const featuredQuote = featuredKid?.data.quote
         const fMatchYear = yearFilter === 'all' || fd.year === yearFilter;
         const fMatchType = typeFilter === 'all' || (fd.types ? fd.types.split(' ').includes(typeFilter) : false);
         const fMatchStatus = !statusActive || fd.status === 'in-progress';
-        const fMatchSearch = !query || (fd.name || '').includes(query) || (fd.diagnosis || '').includes(query);
+        const fMatchSearch = !query || (fd.name || '').includes(query) || (fd.diagnosis || '').includes(query) || (fd.year || '').replace('year-', '').includes(query) || (fd.types || '').replace(/type-/g, '').replace(/-/g, ' ').includes(query);
         featuredCard.closest('.featured-section')?.classList.toggle('is-filtered', hasFilters && !(fMatchYear && fMatchType && fMatchStatus && fMatchSearch));
       }
 
@@ -694,7 +712,12 @@ const featuredQuote = featuredKid?.data.quote
         const matchesYear = yearFilter === 'all' || year === yearFilter;
         const matchesType = typeFilter === 'all' || (types ? types.split(' ').includes(typeFilter) : false);
         const matchesStatus = !statusActive || status === 'in-progress';
-        const matchesSearch = !query || (name || '').includes(query) || (diagnosis || '').includes(query);
+        // Search across name, diagnosis, year number, and room types
+        const matchesSearch = !query
+          || (name || '').includes(query)
+          || (diagnosis || '').includes(query)
+          || (year || '').replace('year-', '').includes(query)
+          || (types || '').replace(/type-/g, '').replace(/-/g, ' ').includes(query);
 
         if (matchesYear && matchesType && matchesStatus && matchesSearch) {
           card.classList.remove('is-hidden');
@@ -746,7 +769,7 @@ const featuredQuote = featuredKid?.data.quote
     typeSelect.addEventListener('change', () => applyFilters(), { signal });
     searchInput.addEventListener('input', () => {
       clearTimeout(searchTimer);
-      searchTimer = setTimeout(() => applyFilters(), 200);
+      searchTimer = setTimeout(() => applyFilters(), 80);
       searchClear.hidden = !searchInput.value;
     }, { signal });
     searchClear.addEventListener('click', () => {
@@ -1286,6 +1309,30 @@ const featuredQuote = featuredKid?.data.quote
   .result-count strong {
     color: var(--c-text);
     font-weight: 600;
+  }
+
+  .result-count[hidden] {
+    display: none;
+  }
+
+  .result-loading {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.8rem;
+    color: var(--c-text-muted);
+  }
+
+  .result-loading[hidden] {
+    display: none;
+  }
+
+  .result-loading__spinner {
+    animation: spin 1s linear infinite;
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
   }
 
   /* ── Search Box ── */
