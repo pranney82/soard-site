@@ -111,9 +111,9 @@ const uniqueOutlets = new Set(press.map(p => p.data.outlet)).size;
         <div class="vc" data-reveal>
           <div class="vc__wrap" id="yt-today-show">
             <img
-              src="https://i.ytimg.com/vi/Tej9V0MPQbY/hqdefault.jpg"
+              src="https://i.ytimg.com/vi/Tej9V0MPQbY/maxresdefault.jpg"
               alt="Today Show — Sunshine on a Ranney Day"
-              width="480" height="360"
+              width="1280" height="720"
               loading="lazy" decoding="async"
               class="vc__poster"
             />
@@ -229,16 +229,30 @@ const uniqueOutlets = new Set(press.map(p => p.data.outlet)).size;
 
 </PageLayout>
 
-<!-- Click-to-load YouTube facade (zero JS until click) -->
+<!-- Click-to-load YouTube facade: nocookie domain + preconnect warming -->
 <script>
   document.addEventListener('astro:page-load', () => {
+    let warmed = false;
+    function warmConnections() {
+      if (warmed) return;
+      warmed = true;
+      ['https://www.youtube-nocookie.com', 'https://i.ytimg.com'].forEach(origin => {
+        const link = document.createElement('link');
+        link.rel = 'preconnect';
+        link.href = origin;
+        document.head.appendChild(link);
+      });
+    }
+
     document.querySelectorAll<HTMLButtonElement>('[data-yt-id]').forEach(btn => {
+      btn.addEventListener('pointerover', warmConnections, { once: true });
+      btn.addEventListener('focus', warmConnections, { once: true });
       btn.addEventListener('click', () => {
         const id = btn.dataset.ytId;
         const wrap = btn.closest('.vc__wrap');
         if (!wrap || !id) return;
         const iframe = document.createElement('iframe');
-        iframe.src = `https://www.youtube.com/embed/${id}?autoplay=1`;
+        iframe.src = `https://www.youtube-nocookie.com/embed/${id}?autoplay=1`;
         iframe.title = btn.getAttribute('aria-label') || '';
         iframe.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture';
         iframe.allowFullscreen = true;
