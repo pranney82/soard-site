@@ -605,7 +605,7 @@ const year = new Date().getFullYear();
   /* ─── Legal Bar ────────────────────────── */
   .footer-legal {
     background: var(--c-dark-deep);
-    padding: 20px 0;
+    padding: 20px 0 calc(20px + env(safe-area-inset-bottom, 0px));
     border-top: 1px solid rgba(255, 255, 255, 0.04);
   }
   .footer-legal-inner {
