@@ -84,20 +84,11 @@ html {
 }
 
 /* ─── View Transitions — ultra-fast crossfade (Linear-style) ── */
-@keyframes vt-noop {
-  from, to { opacity: 1; }
-}
 @keyframes vt-fade-out {
   to { opacity: 0; }
 }
 @keyframes vt-fade-in {
   from { opacity: 0; }
-}
-@keyframes vt-slide-in {
-  from { opacity: 0; transform: translateY(8px); }
-}
-@keyframes vt-slide-out {
-  to { opacity: 0; transform: translateY(8px); }
 }
 
 /* Root: old snapshot stays fully opaque as a backboard while new

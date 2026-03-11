@@ -118,16 +118,6 @@ const structuredData = buildSchemaGraph(...graphSchemas);
 // Uses transition:animate directive (Astro's intended API) so it:
 //   - generates fallback CSS for non-native browsers
 //   - differentiates forward vs. backward navigation
-const pageContentAnim = {
-  forwards: {
-    old: { name: 'vt-noop', duration: '120ms', fillMode: 'both' },
-    new: { name: 'vt-slide-in', duration: '120ms', easing: 'cubic-bezier(0, 0, 0.2, 1)', fillMode: 'both' },
-  },
-  backwards: {
-    old: { name: 'vt-noop', duration: '120ms', fillMode: 'both' },
-    new: { name: 'vt-fade-in', duration: '120ms', easing: 'cubic-bezier(0, 0, 0.2, 1)', fillMode: 'both' },
-  },
-};
 ---
 
 <!DOCTYPE html>
@@ -286,7 +276,7 @@ const pageContentAnim = {
 <body class={bodyClass}>
   <a href="#main-content" class="skip-link">Skip to main content</a>
   <Header />
-  <main id="main-content" transition:name="page-content" transition:animate={pageContentAnim}>
+  <main id="main-content">
     <slot />
   </main>
   <Footer />
