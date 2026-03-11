@@ -96,11 +96,11 @@ const breadcrumbs = [
 
 // ── Featured kid = most recent with hero image ──
 const featuredKid = kids.find(k => k.data.heroImage);
-const gridKids = [...kids];
 
-// ── Load-more batching for rendering performance ──
-const BATCH_SIZE = 24;
-const totalBatches = Math.ceil(gridKids.length / BATCH_SIZE);
+// ── Load-more: SSR only first batch, JS fetches rest from /kids/data.json ──
+const INITIAL_BATCH = 24;
+const gridKids = kids.slice(0, INITIAL_BATCH);
+const totalKidsCount = kids.length;
 
 // ── Hero face collage: 12 diverse kids across years ──
 const heroFacePool = kids.filter(k => k.data.heroImage?.includes('imagedelivery.net'));
@@ -317,7 +317,7 @@ const featuredQuote = featuredKid?.data.quote
 
         <div class="toolbar__status" aria-live="polite" aria-atomic="true">
           <span class="result-count" id="result-count">
-            Showing <strong id="visible-count">{gridKids.length}</strong> of {gridKids.length} kids
+            Showing <strong id="visible-count">{INITIAL_BATCH}</strong> of <span id="total-count">{totalKidsCount}</span> kids
           </span>
           <button class="clear-btn" id="clear-filters" hidden aria-label="Clear all filters">
             Clear filters
@@ -384,18 +384,15 @@ const featuredQuote = featuredKid?.data.quote
       <!-- Kid Grid -->
       <h2 class="sr-only">All kid profiles</h2>
       <div class="kids-grid" id="kids-grid">
-        {gridKids.map((kid, i) => {
-          const batch = Math.floor(i / BATCH_SIZE);
-          return (
+        {gridKids.map((kid, i) => (
           <a
             href={`/kids/${kid.data.slug}/`}
-            class:list={['kid-card', { 'kid-card--deferred': batch > 0 }]}
+            class="kid-card"
             data-year={`year-${kid.data.year}`}
             data-types={(kid.data.roomTypes || []).map(t => `type-${t.toLowerCase().replace(/\s+/g, '-')}`).join(' ')}
             data-name={kid.data.name.toLowerCase()}
             data-diagnosis={(kid.data.diagnosis || '').toLowerCase()}
             data-status={kid.data.status || 'completed'}
-            data-batch={batch}
           >
             <div class="kid-card__frame">
               {kid.data.heroImage ? (
@@ -440,15 +437,17 @@ const featuredQuote = featuredKid?.data.quote
               <span class="kid-card__diagnosis">{kid.data.diagnosis}</span>
             )}
           </a>
-        )})}
+        ))}}
       </div>
 
       <!-- Load More -->
-      {totalBatches > 1 && (
+      {totalKidsCount > INITIAL_BATCH && (
         <div class="load-more" id="load-more">
-          <button class="btn btn-dark btn--sm load-more__btn" id="load-more-btn" type="button">
+          <button class="btn btn-dark btn--sm load-more__btn" id="load-more-btn" type="button"
+            data-total={totalKidsCount}
+            data-loaded={INITIAL_BATCH}>
             Show More Kids
-            <span class="load-more__count" id="load-more-count">({gridKids.length - BATCH_SIZE} remaining)</span>
+            <span class="load-more__count" id="load-more-count">({totalKidsCount - INITIAL_BATCH} remaining)</span>
           </button>
         </div>
       )}
@@ -486,8 +485,10 @@ const featuredQuote = featuredKid?.data.quote
   <noscript>
     <style>
       .toolbar, .bottom-sheet, .filter-btn-mobile, .load-more { display: none !important; }
-      .kid-card--deferred { display: block !important; }
     </style>
+    <p style="text-align: center; color: var(--c-text-muted); padding: var(--space-lg);">
+      Showing {INITIAL_BATCH} of {totalKidsCount} kids. Enable JavaScript to see all profiles, search, and filter.
+    </p>
   </noscript>
 </BaseLayout>
 
@@ -504,12 +505,33 @@ const featuredQuote = featuredKid?.data.quote
   }
 
   function initKidsIndex() {
-    const cards = document.querySelectorAll<HTMLElement>('.kid-card');
-    if (!cards.length) return;
+    const grid = document.getElementById('kids-grid') as HTMLElement;
+    if (!grid) return;
 
     cleanupKidsIndex();
     _kidsAbortController = new AbortController();
     const signal = _kidsAbortController.signal;
+
+    // ── CF Image URL helpers (mirrors Astro helpers) ──
+    const CF_BASE = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
+    function cfUrl(src: string, opts: string) {
+      if (!src || !src.includes('imagedelivery.net')) return src;
+      const id = src.replace(`${CF_BASE}/`, '').replace('/public', '');
+      return `${CF_BASE}/${id}/${opts}`;
+    }
+    function cfCropSrcset(src: string, widths: number[], hwRatio: number) {
+      return widths.map(w => {
+        const h = Math.round(w * hwRatio);
+        return `${cfUrl(src, `w=${w},h=${h},fit=cover,gravity=face,format=auto,q=80`)} ${w}w`;
+      }).join(', ');
+    }
+
+    // ── State ──
+    type KidCard = { slug: string; name: string; year: number | null; diagnosis: string | null; status: string; roomTypes: string[]; heroImage: string | null; };
+    let allKidsData: KidCard[] | null = null; // fetched on demand
+    let allCardsLoaded = false;
+    let statusActive = false;
+    const BATCH_SIZE = 24;
 
     const searchInput = document.getElementById('kid-search') as HTMLInputElement;
     const yearSelect = document.getElementById('filter-year') as HTMLSelectElement;
@@ -524,7 +546,6 @@ const featuredQuote = featuredKid?.data.quote
     const searchClear = document.getElementById('search-clear') as HTMLButtonElement;
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-    // ── Bottom sheet elements ──
     const sheet = document.getElementById('bottom-sheet') as HTMLElement;
     const sheetBackdrop = document.getElementById('sheet-backdrop') as HTMLElement;
     const sheetClose = document.getElementById('sheet-close') as HTMLButtonElement;
@@ -536,67 +557,91 @@ const featuredQuote = featuredKid?.data.quote
     const filterBtnMobile = document.getElementById('filter-btn-mobile') as HTMLButtonElement;
     const mobileFilterCount = document.getElementById('mobile-filter-count') as HTMLElement;
 
-    // ── Load-more elements ──
     const loadMoreWrap = document.getElementById('load-more') as HTMLElement | null;
     const loadMoreBtn = document.getElementById('load-more-btn') as HTMLButtonElement | null;
     const loadMoreCount = document.getElementById('load-more-count') as HTMLElement | null;
-    const BATCH_SIZE = 24;
-    let loadedBatches = 1;
-    const totalCards = cards.length;
-    const totalBatches = Math.ceil(totalCards / BATCH_SIZE);
 
-    let statusActive = false;
-
-    // ── Load-more logic ──────────────────────
-    function revealBatch(batchNum: number) {
-      cards.forEach(card => {
-        if (Number(card.dataset.batch) === batchNum) {
-          card.classList.remove('kid-card--deferred');
-          // Observe for staggered reveal if animations enabled
-          if (!reducedMotion && _kidsObserver) {
-            _kidsObserver.observe(card);
-          } else {
-            card.classList.add('revealed');
-          }
-          // Wire up shimmer removal for newly revealed images
-          const img = card.querySelector<HTMLImageElement>('.kid-card__img');
-          if (img) wireShimmer(img);
-        }
-      });
+    // ── Fetch full manifest from static JSON (Cloudflare edge-cached) ──
+    async function ensureAllData(): Promise<KidCard[]> {
+      if (allKidsData) return allKidsData;
+      const res = await fetch('/kids/data.json');
+      allKidsData = await res.json();
+      return allKidsData!;
     }
 
-    function showAllBatches() {
-      cards.forEach(card => card.classList.remove('kid-card--deferred'));
-    }
+    // ── Create card DOM from JSON data ──
+    function createCard(kid: KidCard): HTMLAnchorElement {
+      const a = document.createElement('a');
+      a.href = `/kids/${kid.slug}/`;
+      a.className = 'kid-card';
+      a.dataset.year = `year-${kid.year}`;
+      a.dataset.types = (kid.roomTypes || []).map(t => `type-${t.toLowerCase().replace(/\s+/g, '-')}`).join(' ');
+      a.dataset.name = kid.name.toLowerCase();
+      a.dataset.diagnosis = (kid.diagnosis || '').toLowerCase();
+      a.dataset.status = kid.status || 'completed';
 
-    function reapplyBatches() {
-      cards.forEach(card => {
-        const batch = Number(card.dataset.batch);
-        if (batch >= loadedBatches) {
-          card.classList.add('kid-card--deferred');
-        }
-      });
-    }
+      const diagAttr = kid.diagnosis ? `, diagnosed with ${kid.diagnosis}` : '';
+      const badgeHtml = kid.status === 'in-progress'
+        ? `<span class="kid-card__badge">In Progress</span>` : '';
+      const diagHtml = kid.diagnosis
+        ? `<span class="kid-card__diagnosis">${kid.diagnosis}</span>` : '';
 
-    function updateLoadMoreUI() {
-      if (!loadMoreWrap || !loadMoreCount) return;
-      if (loadedBatches >= totalBatches) {
-        loadMoreWrap.classList.add('is-hidden');
+      if (kid.heroImage) {
+        const mobileSrcset = cfCropSrcset(kid.heroImage, [180, 360, 540], 1);
+        const desktopSrcset = cfCropSrcset(kid.heroImage, [170, 340, 520, 680], 4/3);
+        const src = cfUrl(kid.heroImage, 'w=340,h=453,fit=cover,gravity=face,format=auto,q=80');
+        a.innerHTML = `<div class="kid-card__frame"><picture><source media="(max-width: 768px)" srcset="${mobileSrcset}" sizes="calc(50vw - 24px)"><img src="${src}" srcset="${desktopSrcset}" sizes="(max-width: 1100px) calc(33vw - 27px), 260px" alt="Photo of ${kid.name}${diagAttr} — Sunshine on a Ranney Day" class="kid-card__img" width="340" height="453" loading="lazy" decoding="async"></picture><div class="kid-card__hover-overlay" aria-hidden="true"><span class="kid-card__cta"><span class="kid-card__cta-text">Read their story</span><svg class="kid-card__cta-arrow" width="14" height="14"><use href="#icon-cta-arrow"/></svg></span></div></div><div class="kid-card__info"><span class="kid-card__name">${kid.name}</span>${badgeHtml}</div>${diagHtml}`;
       } else {
-        const remaining = totalCards - (loadedBatches * BATCH_SIZE);
-        loadMoreCount.textContent = `(${remaining} remaining)`;
+        a.innerHTML = `<div class="kid-card__frame"><div class="kid-card__placeholder" aria-hidden="true"><svg width="48" height="48"><use href="#icon-placeholder"/></svg></div><div class="kid-card__hover-overlay" aria-hidden="true"><span class="kid-card__cta"><span class="kid-card__cta-text">Read their story</span><svg class="kid-card__cta-arrow" width="14" height="14"><use href="#icon-cta-arrow"/></svg></span></div></div><div class="kid-card__info"><span class="kid-card__name">${kid.name}</span>${badgeHtml}</div>${diagHtml}`;
       }
+
+      // Wire shimmer
+      const img = a.querySelector<HTMLImageElement>('.kid-card__img');
+      if (img) wireShimmer(img);
+
+      return a;
+    }
+
+    // ── Append a batch of cards to the grid ──
+    function appendCards(kids: KidCard[]) {
+      const frag = document.createDocumentFragment();
+      kids.forEach(kid => {
+        const card = createCard(kid);
+        if (!reducedMotion && _kidsObserver) {
+          _kidsObserver.observe(card);
+        } else {
+          card.classList.add('revealed');
+        }
+        frag.appendChild(card);
+      });
+      grid.appendChild(frag);
+    }
+
+    // ── Load more handler ──
+    async function handleLoadMore() {
+      if (!loadMoreBtn || !loadMoreWrap) return;
+      loadMoreBtn.disabled = true;
+      loadMoreBtn.textContent = 'Loading...';
+
+      const data = await ensureAllData();
+      const currentCount = grid.querySelectorAll('.kid-card').length;
+
+      if (!allCardsLoaded) {
+        // Append ALL remaining cards at once (they're lazy-loaded images)
+        const remaining = data.slice(currentCount);
+        appendCards(remaining);
+        allCardsLoaded = true;
+      }
+
+      loadMoreWrap.classList.add('is-hidden');
+      visibleCountEl.textContent = String(data.length);
     }
 
     if (loadMoreBtn) {
-      loadMoreBtn.addEventListener('click', () => {
-        revealBatch(loadedBatches);
-        loadedBatches++;
-        updateLoadMoreUI();
-      }, { signal });
+      loadMoreBtn.addEventListener('click', handleLoadMore, { signal });
     }
 
-    // ── URL state restore ────────────────────
+    // ── URL state restore ──
     const params = new URLSearchParams(window.location.search);
     if (params.get('year')) yearSelect.value = params.get('year')!;
     if (params.get('type')) typeSelect.value = params.get('type')!;
@@ -610,22 +655,27 @@ const featuredQuote = featuredKid?.data.quote
       statusBtn.setAttribute('aria-pressed', 'true');
     }
 
-    // ── Filtering ─────────────────────────────
-    function applyFilters() {
+    // ── Filtering ──
+    async function applyFilters() {
       const query = searchInput.value.toLowerCase().trim();
       const yearFilter = yearSelect.value;
       const typeFilter = typeSelect.value;
-      let visibleCount = 0;
-
       const hasFilters = yearFilter !== 'all' || typeFilter !== 'all' || statusActive || query.length > 0;
 
-      // When filtering, bypass batch restrictions so search finds all kids
-      if (hasFilters) {
-        showAllBatches();
+      // When filtering, ensure all cards are in the DOM so search is exhaustive
+      if (hasFilters && !allCardsLoaded) {
+        const data = await ensureAllData();
+        const currentCount = grid.querySelectorAll('.kid-card').length;
+        if (currentCount < data.length) {
+          appendCards(data.slice(currentCount));
+          allCardsLoaded = true;
+        }
         if (loadMoreWrap) loadMoreWrap.classList.add('is-hidden');
-      } else {
-        reapplyBatches();
-        updateLoadMoreUI();
+      }
+
+      // Show/hide load-more when filters are cleared
+      if (!hasFilters && !allCardsLoaded && loadMoreWrap) {
+        loadMoreWrap.classList.remove('is-hidden');
       }
 
       if (featuredCard) {
@@ -637,15 +687,16 @@ const featuredQuote = featuredKid?.data.quote
         featuredCard.closest('.featured-section')?.classList.toggle('is-filtered', hasFilters && !(fMatchYear && fMatchType && fMatchStatus && fMatchSearch));
       }
 
+      const cards = grid.querySelectorAll<HTMLElement>('.kid-card');
+      let visibleCount = 0;
       cards.forEach(card => {
         const { year, types, name, diagnosis, status } = card.dataset;
         const matchesYear = yearFilter === 'all' || year === yearFilter;
         const matchesType = typeFilter === 'all' || (types ? types.split(' ').includes(typeFilter) : false);
         const matchesStatus = !statusActive || status === 'in-progress';
         const matchesSearch = !query || (name || '').includes(query) || (diagnosis || '').includes(query);
-        const visible = matchesYear && matchesType && matchesStatus && matchesSearch;
 
-        if (visible) {
+        if (matchesYear && matchesType && matchesStatus && matchesSearch) {
           card.classList.remove('is-hidden');
           visibleCount++;
         } else {
@@ -657,7 +708,6 @@ const featuredQuote = featuredKid?.data.quote
       noResults.hidden = visibleCount > 0;
       clearBtn.hidden = !hasFilters;
 
-      // Mobile filter count badge
       let filterCount = 0;
       if (yearFilter !== 'all') filterCount++;
       if (typeFilter !== 'all') filterCount++;
@@ -690,13 +740,13 @@ const featuredQuote = featuredKid?.data.quote
       searchInput.focus();
     }
 
-    // ── Events (all with signal for View Transition cleanup) ──
+    // ── Events (all with signal) ──
     let searchTimer: ReturnType<typeof setTimeout>;
-    yearSelect.addEventListener('change', applyFilters, { signal });
-    typeSelect.addEventListener('change', applyFilters, { signal });
+    yearSelect.addEventListener('change', () => applyFilters(), { signal });
+    typeSelect.addEventListener('change', () => applyFilters(), { signal });
     searchInput.addEventListener('input', () => {
       clearTimeout(searchTimer);
-      searchTimer = setTimeout(applyFilters, 150);
+      searchTimer = setTimeout(() => applyFilters(), 200);
       searchClear.hidden = !searchInput.value;
     }, { signal });
     searchClear.addEventListener('click', () => {
@@ -717,9 +767,8 @@ const featuredQuote = featuredKid?.data.quote
       }, { signal });
     }
 
-    // ── Bottom sheet ─────────────────────────
+    // ── Bottom sheet ──
     let savedScrollY = 0;
-
     function openSheet() {
       sheetYear.value = yearSelect.value;
       sheetType.value = typeSelect.value;
@@ -736,7 +785,6 @@ const featuredQuote = featuredKid?.data.quote
       document.body.style.right = '0';
       document.body.style.overflow = 'hidden';
     }
-
     function closeSheet() {
       sheet.classList.remove('is-open');
       sheet.setAttribute('aria-hidden', 'true');
@@ -751,14 +799,12 @@ const featuredQuote = featuredKid?.data.quote
     filterBtnMobile?.addEventListener('click', openSheet, { signal });
     sheetBackdrop?.addEventListener('click', closeSheet, { signal });
     sheetClose?.addEventListener('click', closeSheet, { signal });
-
     if (sheetStatus) {
       sheetStatus.addEventListener('click', () => {
         const isActive = sheetStatus.classList.toggle('active');
         sheetStatus.setAttribute('aria-pressed', String(isActive));
       }, { signal });
     }
-
     sheetClear?.addEventListener('click', () => {
       sheetYear.value = 'all';
       sheetType.value = 'all';
@@ -767,7 +813,6 @@ const featuredQuote = featuredKid?.data.quote
         sheetStatus.setAttribute('aria-pressed', 'false');
       }
     }, { signal });
-
     sheetApply?.addEventListener('click', () => {
       yearSelect.value = sheetYear.value;
       typeSelect.value = sheetType.value;
@@ -780,40 +825,29 @@ const featuredQuote = featuredKid?.data.quote
       closeSheet();
     }, { signal });
 
-    // Close on escape + focus trap
     document.addEventListener('keydown', (e) => {
       if (!sheet.classList.contains('is-open')) return;
       if (e.key === 'Escape') { closeSheet(); return; }
       if (e.key === 'Tab') {
         const panel = sheet.querySelector('.bottom-sheet__panel') as HTMLElement;
-        const focusable = panel.querySelectorAll<HTMLElement>(
-          'button, select, input, [tabindex]:not([tabindex="-1"])'
-        );
+        const focusable = panel.querySelectorAll<HTMLElement>('button, select, input, [tabindex]:not([tabindex="-1"])');
         if (!focusable.length) return;
         const first = focusable[0];
         const last = focusable[focusable.length - 1];
-        if (e.shiftKey && document.activeElement === first) {
-          e.preventDefault();
-          last.focus();
-        } else if (!e.shiftKey && document.activeElement === last) {
-          e.preventDefault();
-          first.focus();
-        }
+        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
       }
     }, { signal });
 
-    // ── Staggered reveal on scroll ──
+    // ── Staggered reveal ──
     if (!reducedMotion) {
       document.documentElement.classList.add('js-anim');
-      // Only reveal first-batch cards immediately
-      cards.forEach((card, i) => {
-        if (i < 8 && !card.classList.contains('kid-card--deferred')) card.classList.add('revealed');
+      grid.querySelectorAll<HTMLElement>('.kid-card').forEach((card, i) => {
+        if (i < 8) card.classList.add('revealed');
       });
-
       _kidsObserver = new IntersectionObserver(
         (entries) => {
-          const visible = entries.filter(e => e.isIntersecting);
-          visible.forEach((entry, i) => {
+          entries.filter(e => e.isIntersecting).forEach((entry, i) => {
             const el = entry.target as HTMLElement;
             el.style.setProperty('--stagger', String(i));
             el.classList.add('revealed');
@@ -822,14 +856,12 @@ const featuredQuote = featuredKid?.data.quote
         },
         { rootMargin: '100px', threshold: 0.01 }
       );
-      cards.forEach((card, i) => {
-        if (i >= 8 && !card.classList.contains('kid-card--deferred')) {
-          _kidsObserver!.observe(card);
-        }
+      grid.querySelectorAll<HTMLElement>('.kid-card').forEach((card, i) => {
+        if (i >= 8) _kidsObserver!.observe(card);
       });
     }
 
-    // ── Toolbar scroll shadow (passive, uses signal via AbortController) ──
+    // ── Toolbar scroll shadow ──
     let ticking = false;
     window.addEventListener('scroll', () => {
       if (!ticking) {
@@ -841,11 +873,9 @@ const featuredQuote = featuredKid?.data.quote
       }
     }, { passive: true, signal });
 
-    // ── Image shimmer: remove on load, fallback on error ──
+    // ── Shimmer ──
     function wireShimmer(img: HTMLImageElement) {
-      function onLoaded() {
-        img.closest('.kid-card__frame')?.classList.add('is-loaded');
-      }
+      function onLoaded() { img.closest('.kid-card__frame')?.classList.add('is-loaded'); }
       function onError() {
         const frame = img.closest('.kid-card__frame');
         if (frame) {
@@ -858,18 +888,15 @@ const featuredQuote = featuredKid?.data.quote
           frame.prepend(ph);
         }
       }
-      if (img.complete) {
-        img.naturalWidth === 0 ? onError() : onLoaded();
-      } else {
+      if (img.complete) { img.naturalWidth === 0 ? onError() : onLoaded(); }
+      else {
         img.addEventListener('load', onLoaded, { once: true });
         img.addEventListener('error', onError, { once: true });
       }
     }
+    grid.querySelectorAll<HTMLImageElement>('.kid-card__img').forEach(wireShimmer);
 
-    // Wire shimmer for first-batch images (deferred batch images wired on reveal)
-    document.querySelectorAll<HTMLImageElement>('.kid-card:not(.kid-card--deferred) .kid-card__img').forEach(wireShimmer);
-
-    // ── Apply URL filters + scroll to grid ───
+    // ── URL filter restore ──
     const hasURLFilters = params.get('year') || params.get('type') || params.get('q') || params.get('status');
     if (hasURLFilters) {
       applyFilters();
@@ -1667,11 +1694,6 @@ const featuredQuote = featuredKid?.data.quote
   }
 
   .kid-card.is-hidden {
-    display: none;
-  }
-
-  /* ── Deferred cards (load-more) ── */
-  .kid-card--deferred {
     display: none;
   }
 
