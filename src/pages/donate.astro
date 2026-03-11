@@ -113,22 +113,26 @@ const breadcrumbs = [
           <div class="tier-amount">$60</div>
           <div class="tier-what">Paint & Supplies</div>
           <p>Covers all the paint, primer, and materials to transform a child's walls into their dream canvas.</p>
+          <a href="#give" class="tier-cta">Give $60 →</a>
         </div>
         <div class="tier-card" data-reveal data-delay="1">
           <div class="tier-amount">$125</div>
           <div class="tier-what">Bedding & Décor</div>
           <p>Funds new bedding, curtains, rugs, and wall décor — the details that make a room feel like <em>home</em>.</p>
+          <a href="#give" class="tier-cta">Give $125 →</a>
         </div>
         <div class="tier-card tier-card--featured" data-reveal data-delay="2">
           <div class="tier-badge">Most Popular</div>
           <div class="tier-amount">$500</div>
           <div class="tier-what">Furniture & Flooring</div>
           <p>Sponsors adaptive furniture or new flooring for an accessible bathroom — the structural pieces that change daily life.</p>
+          <a href="#give" class="tier-cta tier-cta--featured">Give $500 →</a>
         </div>
         <div class="tier-card" data-reveal data-delay="3">
           <div class="tier-amount">$1,000</div>
           <div class="tier-what">Full Room Sponsor</div>
           <p>Helps fund a complete room transformation — from design to demolition to the big reveal moment.</p>
+          <a href="#give" class="tier-cta">Give $1,000 →</a>
         </div>
       </div>
       <p class="tiers-note" data-reveal>Every amount makes a difference. Our average room costs $8,000–$15,000 and is funded entirely by generous donors like you.</p>
@@ -142,6 +146,10 @@ const breadcrumbs = [
         <div class="section-label">Donate Securely</div>
         <h2>Ready to build a <em class="highlight">dream</em>?</h2>
         <p class="give-subtitle">Zeffy charges zero fees — 100% of your donation goes to our mission.</p>
+      </div>
+      <div class="give-social-proof" data-reveal>
+        <span class="give-proof-dot" aria-hidden="true"></span>
+        Donors like you have helped build <strong>{computed.totalRooms}+ rooms</strong> for <strong>{computed.totalKids}+ kids</strong> since 2012
       </div>
       <div class="zeffy-wrapper" data-reveal>
         <iframe
@@ -259,7 +267,42 @@ const breadcrumbs = [
     </div>
   </section>
 
+  <!-- ══════ STICKY MOBILE CTA BAR ══════ -->
+  <div class="sticky-cta" id="sticky-cta" aria-hidden="true">
+    <div class="sticky-cta-inner">
+      <span class="sticky-cta-text">100% goes to kids</span>
+      <a href="#give" class="btn btn-primary btn-glow sticky-cta-btn">Donate Now</a>
+    </div>
+  </div>
+
 </BaseLayout>
+
+<script>
+  // Sticky CTA: show after scrolling past hero, hide when Zeffy form is visible
+  document.addEventListener('astro:page-load', () => {
+    const stickyBar = document.getElementById('sticky-cta');
+    const hero = document.querySelector('.donate-hero');
+    const giveSection = document.getElementById('give');
+    if (!stickyBar || !hero) return;
+
+    const observer = new IntersectionObserver(([entry]) => {
+      // Show sticky bar when hero is NOT visible
+      const heroGone = !entry.isIntersecting;
+      stickyBar.classList.toggle('is-visible', heroGone);
+      stickyBar.setAttribute('aria-hidden', String(!heroGone));
+    }, { threshold: 0 });
+
+    observer.observe(hero);
+
+    // Hide when Zeffy form is on screen so it doesn't overlap
+    if (giveSection) {
+      const giveObserver = new IntersectionObserver(([entry]) => {
+        stickyBar.classList.toggle('at-form', entry.isIntersecting);
+      }, { threshold: 0.2 });
+      giveObserver.observe(giveSection);
+    }
+  });
+</script>
 
 <style>
   /* ══════════════════════════════════════════
@@ -863,6 +906,102 @@ const breadcrumbs = [
   }
 
   /* ══════════════════════════════════════════
+     TIER CTA BUTTONS
+     ══════════════════════════════════════════ */
+  .tier-cta {
+    display: inline-block;
+    margin-top: 20px;
+    font-family: var(--font-body);
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--c-accent);
+    text-decoration: none;
+    padding: 10px 24px;
+    border: 2px solid var(--c-accent);
+    border-radius: 100px;
+    transition: background 0.25s ease, color 0.25s ease, transform 0.25s ease;
+  }
+  .tier-cta:hover {
+    background: var(--c-accent);
+    color: #fff;
+    transform: translateY(-2px);
+  }
+  .tier-cta--featured {
+    color: var(--c-yellow);
+    border-color: var(--c-yellow);
+  }
+  .tier-cta--featured:hover {
+    background: var(--c-yellow);
+    color: var(--c-dark);
+  }
+
+  /* ══════════════════════════════════════════
+     SOCIAL PROOF
+     ══════════════════════════════════════════ */
+  .give-social-proof {
+    text-align: center;
+    font-size: 14px;
+    color: var(--c-text-muted);
+    margin-bottom: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+  .give-social-proof strong { color: var(--c-dark); }
+  .give-proof-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #22c55e;
+    flex-shrink: 0;
+    animation: pulse-dot 2s ease-in-out infinite;
+  }
+  @keyframes pulse-dot {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(0.8); }
+  }
+
+  /* ══════════════════════════════════════════
+     STICKY MOBILE CTA BAR
+     ══════════════════════════════════════════ */
+  .sticky-cta {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 90;
+    background: var(--c-dark);
+    border-top: 1px solid rgba(255,255,255,0.08);
+    padding: 12px 20px;
+    transform: translateY(100%);
+    transition: transform 0.4s cubic-bezier(0.16,1,0.3,1);
+    display: none; /* hidden on desktop */
+    view-transition-name: none;
+  }
+  .sticky-cta.is-visible { transform: translateY(0); }
+  .sticky-cta.at-form { transform: translateY(100%); }
+  .sticky-cta-inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    max-width: 480px;
+    margin: 0 auto;
+  }
+  .sticky-cta-text {
+    font-size: 13px;
+    font-weight: 600;
+    color: rgba(255,255,255,0.7);
+  }
+  .sticky-cta-btn {
+    padding: 12px 28px;
+    font-size: 14px;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  /* ══════════════════════════════════════════
      SCROLL REVEALS — below-fold only
      ══════════════════════════════════════════ */
   [data-reveal] {
@@ -916,6 +1055,8 @@ const breadcrumbs = [
     .faq-answer { padding-left: 60px; }
 
     .donate-finale { padding: 64px 0; }
+    .sticky-cta { display: block; }
+    .donate-finale-inner { padding-bottom: 72px; } /* room for sticky bar */
   }
 
   @media (max-width: 480px) {
@@ -931,6 +1072,7 @@ const breadcrumbs = [
     .btn-glow { animation: none; }
     .btn:hover { transform: none; }
     .tier-card:hover, .way-card:hover, .dt-card:hover { transform: none; }
+    .give-proof-dot { animation: none; }
   }
 </style>
 
