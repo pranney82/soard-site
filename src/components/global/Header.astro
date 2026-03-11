@@ -618,9 +618,7 @@ document.addEventListener('astro:before-swap', function () {
 <style>
   .site-header {
     position: sticky; top: 0; z-index: 1000;
-    background: rgba(254, 252, 245, 0.92);
-    backdrop-filter: blur(20px) saturate(1.2);
-    -webkit-backdrop-filter: blur(20px) saturate(1.2);
+    background: var(--c-cream, #FEFCF5);
     height: var(--header-height);
     border-bottom: none;
     transition: background 0.3s ease, box-shadow 0.3s ease;
@@ -632,6 +630,8 @@ document.addEventListener('astro:before-swap', function () {
   }
   .site-header.header--scrolled {
     background: rgba(254, 252, 245, 0.97);
+    backdrop-filter: blur(20px) saturate(1.2);
+    -webkit-backdrop-filter: blur(20px) saturate(1.2);
     box-shadow: 0 2px 20px rgba(55, 58, 54, 0.08);
   }
   .header-inner {

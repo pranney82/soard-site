@@ -108,7 +108,7 @@ const jsonLd = getWebSiteSchema();
       <div class="hero-text">
         <p class="hero-eyebrow">{heroEyebrow}</p>
         <h1 class="hero-headline" set:html={heroHeadline} />
-        <p class="hero-sub">{heroSub}</p>
+        <p class="hero-sub" set:html={heroSub} />
         <div class="hero-ctas">
           <a href={heroCta1Link} class="btn btn-primary btn-hero-glow">{heroCta1Label}</a>
           <a href={heroCta2Link} class="btn btn-dark">{heroCta2Label}</a>
