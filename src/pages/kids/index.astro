@@ -146,7 +146,7 @@ const featuredQuote = featuredKid?.data.quote
       <div class="kids-hero__text">
         <p class="kids-hero__label">Our Kids</p>
         <h1 class="kids-hero__title">Meet our <em class="highlight">Sunshine</em> Kids</h1>
-        <p class="kids-hero__subtitle">{totalKids} children. {completedCount} lives transformed. Discover the incredible stories behind every room we build.</p>
+        <p class="kids-hero__subtitle">Discover the incredible stories behind every room we build.</p>
       </div>
 
       <!-- Face constellation -->
@@ -191,6 +191,11 @@ const featuredQuote = featuredKid?.data.quote
           <span class="hero-stat__num">{yearRange}</span>
           <span class="hero-stat__label">& Counting</span>
         </div>
+      </div>
+
+      <!-- Accent rule — matches site-wide PageLayout pattern -->
+      <div class="kids-hero__rule" aria-hidden="true">
+        <span class="kids-hero__rule-accent"></span>
       </div>
     </div>
   </section>
@@ -763,7 +768,7 @@ const featuredQuote = featuredKid?.data.quote
      ═══════════════════════════════════════════ */
   .kids-hero {
     background: var(--c-cream);
-    padding: var(--space-3xl) 0 var(--space-xl);
+    padding: var(--space-2xl) 0 var(--space-md);
     text-align: center;
     overflow: hidden;
   }
@@ -775,7 +780,7 @@ const featuredQuote = featuredKid?.data.quote
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: var(--space-xl);
+    gap: var(--space-md);
   }
 
   .kids-hero__label {
@@ -894,6 +899,25 @@ const featuredQuote = featuredKid?.data.quote
     color: var(--c-text-muted);
     text-transform: uppercase;
     letter-spacing: 0.08em;
+  }
+
+  /* ── Hero Accent Rule — matches PageLayout ── */
+  .kids-hero__rule {
+    position: relative;
+    height: 2px;
+    background: var(--c-border);
+    width: 100%;
+  }
+
+  .kids-hero__rule-accent {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    top: -1px;
+    width: 48px;
+    height: 3px;
+    background: var(--c-yellow);
+    border-radius: 1px;
   }
 
   /* ═══════════════════════════════════════════
@@ -1120,7 +1144,7 @@ const featuredQuote = featuredKid?.data.quote
   .search-box__input {
     width: 100%;
     height: 44px;
-    padding: 0 14px 0 42px;
+    padding: 0 44px 0 42px;
     font-size: 0.9rem;
     border: 1px solid var(--c-border);
     border-radius: var(--border-radius);
@@ -1150,24 +1174,31 @@ const featuredQuote = featuredKid?.data.quote
 
   .search-box__clear {
     position: absolute;
-    right: 10px;
+    right: 0;
     top: 50%;
     transform: translateY(-50%);
-    background: var(--c-warm-gray);
+    background: none;
     border: none;
-    border-radius: 50%;
-    width: 24px;
-    height: 24px;
+    width: 44px;
+    height: 44px;
     display: flex;
     align-items: center;
     justify-content: center;
     color: var(--c-text-muted);
     cursor: pointer;
-    transition: background var(--transition-fast), color var(--transition-fast);
     padding: 0;
   }
 
-  .search-box__clear:hover {
+  .search-box__clear svg {
+    background: var(--c-warm-gray);
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    padding: 4px;
+    transition: background var(--transition-fast), color var(--transition-fast);
+  }
+
+  .search-box__clear:hover svg {
     background: var(--c-border);
     color: var(--c-dark);
   }
@@ -1769,11 +1800,11 @@ const featuredQuote = featuredKid?.data.quote
   /* Mobile */
   @media (max-width: 768px) {
     .kids-hero {
-      padding: var(--space-xl) 0 var(--space-md);
+      padding: var(--space-lg) 0 var(--space-sm);
     }
 
     .kids-hero__inner {
-      gap: var(--space-md);
+      gap: var(--space-sm);
     }
 
     .kids-hero__title {
@@ -1796,14 +1827,14 @@ const featuredQuote = featuredKid?.data.quote
       margin-inline: 0;
     }
 
-    /* Mobile: flatten arc — uniform size, no vertical offset, hide extras */
+    /* Mobile: flatten arc — 44px for recognizable faces, no vertical offset */
     .face:nth-child(n) {
-      --face-s: 38px;
+      --face-s: 44px;
       --face-y: 0px;
     }
 
-    /* Hide last 4 faces so 8 fit in one row: 8 × 38 + 7 × 4 = 332px */
-    .face:nth-child(n+9) {
+    /* Hide last 5 faces so 7 fit in one row: 7 × 44 + 6 × 4 = 332px */
+    .face:nth-child(n+8) {
       display: none;
     }
 
@@ -1906,7 +1937,7 @@ const featuredQuote = featuredKid?.data.quote
 
     .search-box__input {
       height: 44px;
-      padding: 0 36px 0 38px;
+      padding: 0 44px 0 38px;
       font-size: 16px; /* Prevents iOS zoom */
     }
 
@@ -1997,8 +2028,8 @@ const featuredQuote = featuredKid?.data.quote
       max-width: 260px;
     }
 
-    /* At 320px, 8×38+7×4=332px > 288px container. Show 6 instead. */
-    .face:nth-child(n+7) {
+    /* At 320px, 7×44+6×4=332px > 288px container. Show 5 instead. */
+    .face:nth-child(n+6) {
       display: none;
     }
 
