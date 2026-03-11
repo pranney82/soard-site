@@ -120,7 +120,7 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
 const featuredImgSrcset = featuredKid?.data.heroImage
   ? cfCropSrcset(featuredKid.data.heroImage, [640, 960, 1400], 9/21)
   : '';
-const featuredImgSizes = '(max-width: 768px) 100vw, (max-width: 1100px) 80vw, 1200px';
+const featuredImgSizes = '(max-width: 768px) calc(100vw - 48px), (max-width: 1100px) calc(80vw - 48px), 1200px';
 
 // ── Pull quote from featured kid ──
 const featuredQuote = featuredKid?.data.quote
@@ -159,7 +159,8 @@ const featuredQuote = featuredKid?.data.quote
             aria-label={kid.data.name}
           >
             <img
-              src={cfUrl(kid.data.heroImage, 'w=140,h=140,fit=cover,gravity=face,f=auto,q=80')}
+              src={cfUrl(kid.data.heroImage, 'w=80,h=80,fit=cover,gravity=face,f=auto,q=80')}
+              srcset={`${cfUrl(kid.data.heroImage, 'w=80,h=80,fit=cover,gravity=face,f=auto,q=80')} 1x, ${cfUrl(kid.data.heroImage, 'w=140,h=140,fit=cover,gravity=face,f=auto,q=80')} 2x`}
               alt={kid.data.name}
               width="70"
               height="70"
@@ -384,7 +385,7 @@ const featuredQuote = featuredKid?.data.quote
                   class="kid-card__img"
                   width="340"
                   height="453"
-                  loading={i < 8 ? 'eager' : 'lazy'}
+                  loading={i < 4 ? 'eager' : 'lazy'}
                   decoding="async"
                   fetchpriority={i < 2 ? 'high' : undefined}
                 />
