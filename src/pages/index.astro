@@ -42,14 +42,14 @@ const fd = featuredKid?.data;
 
 /* ── Kids Strip (from settings) ── */
 const kidShowcaseData = siteSettings.kidShowcase || [
-  { slug: 'liam', cfId: 'kids/liam/hero-7ab7f9' },
-  { slug: 'sophia', cfId: 'kids/sophia/hero-63933e' },
-  { slug: 'jackson', cfId: 'kids/jackson/hero-4b1747' },
-  { slug: 'griffin', cfId: 'kids/griffin/hero-dbeb0f' },
-  { slug: 'madison', cfId: 'kids/madison/hero-2d8210' },
-  { slug: 'harper', cfId: 'kids/harper/hero-c6a714' },
-  { slug: 'noah', cfId: 'kids/noah/hero-1ba6ae' },
-  { slug: 'summer', cfId: 'kids/summer/hero-22c2e2' },
+  { slug: 'liam', cfId: 'kids/liam/hero' },
+  { slug: 'sophia', cfId: 'kids/sophia/hero' },
+  { slug: 'jackson', cfId: 'kids/jackson/hero' },
+  { slug: 'griffin', cfId: 'kids/griffin/hero' },
+  { slug: 'madison', cfId: 'kids/madison/hero' },
+  { slug: 'harper', cfId: 'kids/harper/hero' },
+  { slug: 'noah', cfId: 'kids/noah/hero' },
+  { slug: 'summer', cfId: 'kids/summer/hero' },
 ];
 const kidShowcase = kidShowcaseData.map(item => {
   const kid = allKids.find(k => k.id === item.slug);
@@ -63,27 +63,27 @@ const kidShowcase = kidShowcaseData.map(item => {
 
 /* ── Section photos (from settings) ── */
 const sp = siteSettings.sectionPhotos || {};
-const missionMainId = sp.missionMain || 'kids/eli/photo-001-70ddd7';
-const missionAccentId = sp.missionAccent || 'kids/georgia/photo-001-bd7eb4';
-const storyPhotoId = sp.storyPhoto || 'kids/zyah/hero-2a16fd';
+const missionMainId = sp.missionMain || 'kids/eli/photo-01';
+const missionAccentId = sp.missionAccent || 'kids/georgia/photo-01';
+const storyPhotoId = sp.storyPhoto || 'kids/zyah/hero';
 const roomPhotos = {
-  bedroom: sp.roomBedroom || 'kids/griffin/hero-dbeb0f',
-  bath: sp.roomBath || 'kids/zyah/hero-2a16fd',
-  therapy: sp.roomTherapy || 'kids/jackson/hero-4b1747',
+  bedroom: sp.roomBedroom || 'kids/griffin/hero',
+  bath: sp.roomBath || 'kids/zyah/hero',
+  therapy: sp.roomTherapy || 'kids/jackson/hero',
 };
 
 /* ── Partner logos (from settings) ── */
-const partnerLogos = siteSettings.partnerLogos || [
-  { id: 'logos/logo-gas-south-afb96260', name: 'Gas South' },
-  { id: 'logos/logo-randall-paulson-b01b8322', name: 'Randall Paulson' },
-  { id: 'logos/logo-kids-r-kids-2c18b077', name: 'Kids R Kids' },
-  { id: 'logos/logo-cambria-5af4504f', name: 'Cambria' },
-  { id: 'logos/logo-mohawk-9784da88', name: 'Mohawk' },
-  { id: 'logos/logo-jackson-healthcare-3c0f6126', name: 'Jackson Healthcare' },
-  { id: 'logos/logo-crosby-design-group-d6cf63', name: 'Crosby Design Group' },
-  { id: 'logos/logo-msi-e55b3f4c', name: 'MSI' },
-  { id: 'logos/logo-cr-construction-v2-bc7affde', name: 'CR Construction' },
-  { id: 'logos/logo-stag-partners-3399d7', name: 'Stag Partners' },
+const partnerLogos = siteSettings.partnerLogos || siteSettings.homeLogos || [
+  { id: 'partners/gas-south', name: 'Gas South' },
+  { id: 'partners/randall-paulson', name: 'Randall Paulson' },
+  { id: 'partners/kids-r-kids', name: 'Kids R Kids' },
+  { id: 'partners/cambria', name: 'Cambria' },
+  { id: 'partners/mohawk', name: 'Mohawk' },
+  { id: 'partners/jackson-healthcare', name: 'Jackson Healthcare' },
+  { id: 'partners/crosby-design-group', name: 'Crosby Design Group' },
+  { id: 'partners/msi', name: 'MSI' },
+  { id: 'partners/cr-construction', name: 'CR Construction' },
+  { id: 'partners/stag-partners', name: 'Stag Partners' },
 ];
 
 /* ── Hero image URLs (DRY — preload + img must be byte-identical) ── */
