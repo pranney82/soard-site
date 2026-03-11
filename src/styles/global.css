@@ -81,8 +81,6 @@ html {
   scroll-padding-top: calc(var(--header-height) + 1rem);
   /* Match footer background so overscroll / bounce never shows cream */
   background-color: var(--c-dark-deep);
-  /* Reserve scrollbar space to prevent layout shift when content grows */
-  scrollbar-gutter: stable;
 }
 
 /* ─── View Transitions — ultra-fast crossfade (Linear-style) ── */
