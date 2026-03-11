@@ -606,6 +606,8 @@ const featuredQuote = featuredKid?.data.quote
     }
 
     // ── Bottom sheet ─────────────────────────
+    let savedScrollY = 0;
+
     function openSheet() {
       // Sync sheet values with main filters
       sheetYear.value = yearSelect.value;
@@ -616,13 +618,24 @@ const featuredQuote = featuredKid?.data.quote
       }
       sheet.classList.add('is-open');
       sheet.setAttribute('aria-hidden', 'false');
+      // iOS-safe scroll lock: position:fixed preserves scroll pos
+      savedScrollY = window.scrollY;
+      document.body.style.position = 'fixed';
+      document.body.style.top = `-${savedScrollY}px`;
+      document.body.style.left = '0';
+      document.body.style.right = '0';
       document.body.style.overflow = 'hidden';
     }
 
     function closeSheet() {
       sheet.classList.remove('is-open');
       sheet.setAttribute('aria-hidden', 'true');
+      document.body.style.position = '';
+      document.body.style.top = '';
+      document.body.style.left = '';
+      document.body.style.right = '';
       document.body.style.overflow = '';
+      window.scrollTo(0, savedScrollY);
     }
 
     filterBtnMobile?.addEventListener('click', openSheet);
@@ -798,7 +811,7 @@ const featuredQuote = featuredKid?.data.quote
     justify-content: center;
     align-items: center;
     flex-wrap: wrap;
-    max-width: 600px;
+    max-width: 640px;
     padding-block: var(--space-sm);
   }
 
@@ -1764,19 +1777,24 @@ const featuredQuote = featuredKid?.data.quote
     .faces {
       max-width: 360px;
       padding-block: var(--space-xs);
+      gap: 2px;
+      flex-wrap: nowrap;
     }
 
     .face {
-      margin-inline: -4px;
+      margin-inline: 0;
     }
 
-    /* Scale arc down for mobile */
-    .face:nth-child(1), .face:nth-child(12) { --face-s: 36px; --face-y: 6px; }
-    .face:nth-child(2), .face:nth-child(11) { --face-s: 40px; --face-y: 2px; }
-    .face:nth-child(3), .face:nth-child(10) { --face-s: 44px; --face-y: -1px; }
-    .face:nth-child(4), .face:nth-child(9)  { --face-s: 46px; --face-y: -3px; }
-    .face:nth-child(5), .face:nth-child(8)  { --face-s: 50px; --face-y: -5px; }
-    .face:nth-child(6), .face:nth-child(7)  { --face-s: 52px; --face-y: -8px; }
+    /* Mobile: flatten arc — uniform size, no vertical offset, hide extras */
+    .face:nth-child(n) {
+      --face-s: 40px;
+      --face-y: 0px;
+    }
+
+    /* Hide last 4 faces so 8 fit in one row: 8 × 40 + 7 × 4 = 348px */
+    .face:nth-child(n+9) {
+      display: none;
+    }
 
     .hero-stats {
       gap: var(--space-lg);
@@ -1906,6 +1924,11 @@ const featuredQuote = featuredKid?.data.quote
     .hero-stats {
       flex-wrap: wrap;
       gap: var(--space-md);
+    }
+
+    /* At 320px, 8×40+7×4=348px > 288px container. Show 6 instead. */
+    .face:nth-child(n+7) {
+      display: none;
     }
   }
 
