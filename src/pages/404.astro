@@ -1,37 +1,378 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
 import Button from '../components/ui/Button.astro';
+
+const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
 ---
 
-<BaseLayout title="Page Not Found">
-  <section class="not-found">
-    <div class="container" style="text-align: center;">
-      <span class="not-found__emoji" aria-hidden="true">🐷</span>
-      <h1>Oops! Page Not Found</h1>
-      <p style="margin-top: var(--space-md); color: var(--c-text-muted); font-size: 1.1rem; max-width: 500px; margin-inline: auto;">
-        Gracie couldn't find the page you're looking for.
-        It may have been moved during our site rebuild.
+<BaseLayout title="Page Not Found — Sunshine on a Ranney Day">
+  <section class="lost">
+    <!-- Floating clouds -->
+    <div class="clouds" aria-hidden="true">
+      <div class="cloud cloud--1"></div>
+      <div class="cloud cloud--2"></div>
+      <div class="cloud cloud--3"></div>
+    </div>
+
+    <!-- Floating tool particles -->
+    <div class="particles" aria-hidden="true">
+      <span class="particle particle--1">🔨</span>
+      <span class="particle particle--2">🪚</span>
+      <span class="particle particle--3">⭐</span>
+      <span class="particle particle--4">💛</span>
+      <span class="particle particle--5">🔧</span>
+    </div>
+
+    <div class="container">
+      <!-- Big 404 with Gracie as the 0 -->
+      <div class="hero-404">
+        <span class="digit digit--left">4</span>
+        <div class="gracie-wrap">
+          <img
+            src={`${CF}/sunny-pig/w=280,h=280,fit=contain`}
+            srcset={`${CF}/sunny-pig/w=160,h=160,fit=contain 160w, ${CF}/sunny-pig/w=280,h=280,fit=contain 280w`}
+            sizes="(max-width: 600px) 160px, 280px"
+            alt="Gracie the Pig — SOARD's golden flying mascot"
+            width="280"
+            height="280"
+            class="gracie"
+            loading="eager"
+            decoding="async"
+          />
+          <div class="gracie-shadow" aria-hidden="true"></div>
+        </div>
+        <span class="digit digit--right">4</span>
+      </div>
+
+      <h1 class="title">Gracie flew off&nbsp;course!</h1>
+
+      <p class="subtitle">
+        She searched high and low, but this room hasn't been built yet.
+        <br />Let's get you back on track.
       </p>
-      <div style="margin-top: var(--space-xl); display: flex; gap: var(--space-md); justify-content: center; flex-wrap: wrap;">
-        <Button href="/">Go Home</Button>
-        <Button href="/kids/" variant="outline">Meet the Kids</Button>
+
+      <div class="actions">
+        <Button href="/" size="lg">Fly Home</Button>
+        <Button href="/kids/" variant="outline" size="lg">Meet the Kids</Button>
+      </div>
+
+      <div class="fun-links">
+        <p class="fun-links__label">Or explore:</p>
+        <div class="fun-links__list">
+          <a href="/about/">Our Story</a>
+          <span class="fun-links__dot" aria-hidden="true"></span>
+          <a href="/donate/">Donate</a>
+          <span class="fun-links__dot" aria-hidden="true"></span>
+          <a href="/partners/">Partners</a>
+          <span class="fun-links__dot" aria-hidden="true"></span>
+          <a href="/shop/">Shop</a>
+        </div>
       </div>
     </div>
   </section>
 </BaseLayout>
 
 <style>
-  .not-found {
-    padding-block: var(--space-5xl);
-    min-height: 60vh;
-    min-height: 60dvh;
+  /* ─── Scene ────────────────────────────── */
+  .lost {
+    position: relative;
+    overflow: hidden;
+    min-height: calc(100vh - var(--header-height));
+    min-height: calc(100dvh - var(--header-height));
     display: flex;
     align-items: center;
+    justify-content: center;
+    padding-block: var(--space-3xl);
+    background:
+      radial-gradient(ellipse 80% 50% at 50% 100%, rgba(255, 218, 36, 0.08) 0%, transparent 70%),
+      var(--c-cream);
   }
 
-  .not-found__emoji {
-    font-size: 4rem;
-    display: block;
-    margin-bottom: var(--space-lg);
+  .container {
+    text-align: center;
+    position: relative;
+    z-index: 2;
+  }
+
+  /* ─── Clouds ───────────────────────────── */
+  .clouds {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .cloud {
+    position: absolute;
+    background: var(--c-white);
+    border-radius: 999px;
+    opacity: 0.5;
+  }
+
+  .cloud::before,
+  .cloud::after {
+    content: '';
+    position: absolute;
+    background: inherit;
+    border-radius: inherit;
+  }
+
+  .cloud--1 {
+    width: 120px;
+    height: 40px;
+    top: 12%;
+    animation: drift 28s linear infinite;
+  }
+  .cloud--1::before { width: 50px; height: 50px; top: -25px; left: 20px; }
+  .cloud--1::after  { width: 70px; height: 55px; top: -30px; left: 50px; }
+
+  .cloud--2 {
+    width: 90px;
+    height: 30px;
+    top: 25%;
+    opacity: 0.3;
+    animation: drift 36s linear infinite;
+    animation-delay: -12s;
+  }
+  .cloud--2::before { width: 40px; height: 40px; top: -20px; left: 15px; }
+  .cloud--2::after  { width: 55px; height: 45px; top: -25px; left: 40px; }
+
+  .cloud--3 {
+    width: 100px;
+    height: 35px;
+    top: 8%;
+    opacity: 0.35;
+    animation: drift 32s linear infinite;
+    animation-delay: -20s;
+  }
+  .cloud--3::before { width: 45px; height: 45px; top: -22px; left: 18px; }
+  .cloud--3::after  { width: 60px; height: 48px; top: -28px; left: 45px; }
+
+  @keyframes drift {
+    from { transform: translateX(-200px); }
+    to   { transform: translateX(calc(100vw + 200px)); }
+  }
+
+  /* ─── Floating particles ───────────────── */
+  .particles {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  .particle {
+    position: absolute;
+    font-size: 1.5rem;
+    opacity: 0;
+    animation: float-up 6s ease-in-out infinite;
+  }
+
+  .particle--1 { left: 10%; bottom: 5%;  animation-delay: 0s; }
+  .particle--2 { left: 85%; bottom: 10%; animation-delay: 1.2s; }
+  .particle--3 { left: 20%; bottom: 15%; animation-delay: 2.4s; font-size: 1.2rem; }
+  .particle--4 { left: 75%; bottom: 8%;  animation-delay: 3.6s; }
+  .particle--5 { left: 50%; bottom: 5%;  animation-delay: 4.8s; }
+
+  @keyframes float-up {
+    0%   { opacity: 0; transform: translateY(0) rotate(0deg) scale(0.8); }
+    15%  { opacity: 0.7; }
+    85%  { opacity: 0.7; }
+    100% { opacity: 0; transform: translateY(-60vh) rotate(25deg) scale(1.1); }
+  }
+
+  /* ─── 4 GRACIE 4 ───────────────────────── */
+  .hero-404 {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: clamp(0.25rem, 2vw, 1rem);
+    margin-bottom: var(--space-xl);
+  }
+
+  .digit {
+    font-family: var(--font-display);
+    font-size: clamp(6rem, 18vw, 14rem);
+    font-weight: 700;
+    line-height: 1;
+    color: var(--c-dark);
+    opacity: 0;
+    animation: digit-in 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+
+  .digit--left  { animation-delay: 0.1s; }
+  .digit--right { animation-delay: 0.3s; }
+
+  @keyframes digit-in {
+    from { opacity: 0; transform: translateY(30px) scale(0.9); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+  }
+
+  /* ─── Gracie ───────────────────────────── */
+  .gracie-wrap {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    opacity: 0;
+    animation: gracie-enter 0.8s cubic-bezier(0.34, 1.56, 0.64, 1) 0.2s forwards;
+  }
+
+  @keyframes gracie-enter {
+    from { opacity: 0; transform: translateY(40px) scale(0.7) rotate(-10deg); }
+    to   { opacity: 1; transform: translateY(0) scale(1) rotate(0deg); }
+  }
+
+  .gracie {
+    width: clamp(100px, 25vw, 220px);
+    height: auto;
+    animation: bob 3s ease-in-out infinite;
+    filter: drop-shadow(0 8px 24px rgba(255, 218, 36, 0.3));
+    cursor: pointer;
+    transition: filter var(--transition-base);
+  }
+
+  .gracie:hover {
+    filter: drop-shadow(0 12px 32px rgba(255, 218, 36, 0.5));
+    animation-play-state: paused;
+  }
+
+  @keyframes bob {
+    0%, 100% { transform: translateY(0) rotate(0deg); }
+    25%      { transform: translateY(-12px) rotate(2deg); }
+    75%      { transform: translateY(4px) rotate(-1deg); }
+  }
+
+  /* Shadow beneath Gracie that scales with the bob */
+  .gracie-shadow {
+    width: 80px;
+    height: 12px;
+    border-radius: 50%;
+    background: radial-gradient(ellipse, rgba(0, 0, 0, 0.1) 0%, transparent 70%);
+    margin-top: -4px;
+    animation: shadow-pulse 3s ease-in-out infinite;
+  }
+
+  @keyframes shadow-pulse {
+    0%, 100% { transform: scaleX(1);   opacity: 0.6; }
+    25%      { transform: scaleX(0.7); opacity: 0.3; }
+    75%      { transform: scaleX(1.1); opacity: 0.7; }
+  }
+
+  /* ─── Copy ─────────────────────────────── */
+  .title {
+    font-family: var(--font-display);
+    font-size: clamp(1.5rem, 4vw, 2.2rem);
+    font-weight: 700;
+    color: var(--c-dark);
+    margin-bottom: var(--space-md);
+    opacity: 0;
+    animation: fade-up 0.5s ease 0.5s forwards;
+  }
+
+  .subtitle {
+    font-family: var(--font-body);
+    font-size: clamp(1rem, 2.5vw, 1.15rem);
+    color: var(--c-text-muted);
+    line-height: 1.7;
+    max-width: 440px;
+    margin-inline: auto;
+    margin-bottom: var(--space-2xl);
+    opacity: 0;
+    animation: fade-up 0.5s ease 0.65s forwards;
+  }
+
+  @keyframes fade-up {
+    from { opacity: 0; transform: translateY(16px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ─── Actions ──────────────────────────── */
+  .actions {
+    display: flex;
+    gap: var(--space-md);
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-bottom: var(--space-3xl);
+    opacity: 0;
+    animation: fade-up 0.5s ease 0.8s forwards;
+  }
+
+  /* ─── Explore links ────────────────────── */
+  .fun-links {
+    opacity: 0;
+    animation: fade-up 0.5s ease 0.95s forwards;
+  }
+
+  .fun-links__label {
+    font-family: var(--font-body);
+    font-size: 0.85rem;
+    color: var(--c-text-light);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: var(--space-sm);
+  }
+
+  .fun-links__list {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-sm);
+    flex-wrap: wrap;
+  }
+
+  .fun-links__list a {
+    font-family: var(--font-body);
+    font-size: 0.95rem;
+    color: var(--c-dark);
+    text-decoration: none;
+    padding: 0.25rem 0;
+    background-image: linear-gradient(transparent 55%, rgba(255, 218, 36, 0.45) 55%);
+    background-size: 0% 100%;
+    background-repeat: no-repeat;
+    transition: background-size var(--transition-base);
+  }
+
+  .fun-links__list a:hover {
+    background-size: 100% 100%;
+  }
+
+  .fun-links__dot {
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: var(--c-text-light);
+    flex-shrink: 0;
+  }
+
+  /* ─── Reduced motion ───────────────────── */
+  @media (prefers-reduced-motion: reduce) {
+    .cloud,
+    .particle,
+    .gracie,
+    .gracie-shadow {
+      animation: none;
+    }
+
+    .digit,
+    .gracie-wrap,
+    .title,
+    .subtitle,
+    .actions,
+    .fun-links {
+      opacity: 1;
+      animation: none;
+    }
+  }
+
+  /* ─── Mobile polish ────────────────────── */
+  @media (max-width: 600px) {
+    .lost {
+      padding-block: var(--space-2xl);
+    }
+
+    .cloud { display: none; }
+
+    .particle { font-size: 1.2rem; }
   }
 </style>
