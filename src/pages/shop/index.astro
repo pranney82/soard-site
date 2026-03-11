@@ -368,6 +368,83 @@ function getProductMap() {
   return shopState.productMap;
 }
 
+/* ── Real-time availability check via /api/shopify proxy ──
+   Queries only availableForSale + variant availability for one product.
+   Called after modal opens — non-blocking, updates button state in-place. */
+var AVAIL_QUERY = 'query ProductAvail($handle:String!){product(handle:$handle){availableForSale variants(first:100){edges{node{id availableForSale}}}}}';
+
+function fetchLiveAvailability(handle, onResult) {
+  fetch('/api/shopify', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query: AVAIL_QUERY, variables: { handle: handle } })
+  })
+  .then(function (r) { return r.json(); })
+  .then(function (json) {
+    if (json.data && json.data.product) onResult(json.data.product);
+  })
+  .catch(function () { /* Silently fail — build-time data is the fallback */ });
+}
+
+function applyLiveAvailability(liveData, variants, atcBtn, selectedFn) {
+  if (!atcBtn) return;
+
+  /* Build a map of variant ID → live availableForSale */
+  var liveMap = {};
+  if (liveData.variants && liveData.variants.edges) {
+    liveData.variants.edges.forEach(function (e) {
+      liveMap[e.node.id] = e.node.availableForSale;
+    });
+  }
+
+  /* Update each variant's availableForSale in memory */
+  variants.forEach(function (v) {
+    if (liveMap.hasOwnProperty(v.id)) v.availableForSale = liveMap[v.id];
+  });
+
+  /* Update the currently selected variant's button state */
+  var selected = selectedFn();
+  var match = variants.find(function (v) {
+    return v.selectedOptions.every(function (o) { return selected[o.name] === o.value; });
+  }) || variants[0];
+
+  if (match) {
+    if (match.availableForSale) {
+      atcBtn.tagName === 'BUTTON' && atcBtn.parentNode && convertToLink(atcBtn, match);
+      if (atcBtn.tagName === 'A') {
+        atcBtn.classList.remove('is-disabled');
+        atcBtn.removeAttribute('aria-disabled');
+        atcBtn.removeAttribute('disabled');
+        atcBtn.innerHTML = SHOP_SVG + ' Buy Now';
+      }
+    } else {
+      atcBtn.innerHTML = 'Sold Out';
+      atcBtn.classList.add('is-disabled');
+      atcBtn.setAttribute('aria-disabled', 'true');
+      if (atcBtn.tagName === 'A') atcBtn.removeAttribute('href');
+    }
+  }
+
+  /* Also update product-level availability for future opens */
+  if (liveData.hasOwnProperty('availableForSale')) {
+    var pm = getProductMap();
+    if (pm[liveData.handle || '']) pm[liveData.handle].availableForSale = liveData.availableForSale;
+  }
+}
+
+/* Helper: if build-time rendered a disabled <button> but live data says available,
+   we need to swap it for a link. Rarely needed but handles the edge case. */
+function convertToLink(btn, variant) {
+  var a = document.createElement('a');
+  a.id = 'pdp-atc-btn';
+  a.className = 'pdp-atc btn btn-primary';
+  a.target = '_blank';
+  a.rel = 'noopener';
+  a.href = STORE_URL + '/products/' + (btn.closest('.pdp-info') ? '' : '') + '?variant=' + variant.id.replace(/\D/g, '');
+  a.innerHTML = SHOP_SVG + ' Buy Now';
+  btn.replaceWith(a);
+}
+
 function openProduct(handle) {
   shopState.previousFocus = document.activeElement;
   var pm = getProductMap();
@@ -429,6 +506,21 @@ function openProduct(handle) {
   var priceEl = document.getElementById('pdp-live-price');
   var compareEl = document.getElementById('pdp-live-compare');
 
+  var selected = {};
+  modalBody.querySelectorAll('.pdp-option').forEach(function (g) {
+    var n = g.dataset.optionName;
+    var f = g.querySelector('.pdp-option-btn.is-active');
+    if (f) selected[n] = f.dataset.optValue;
+  });
+  function getSelected() { return selected; }
+
+  /* ── Real-time availability: fire immediately, update when ready ── */
+  fetchLiveAvailability(p.handle, function (liveData) {
+    /* Re-query atcBtn in case convertToLink replaced it */
+    var liveBtn = document.getElementById('pdp-atc-btn');
+    applyLiveAvailability(liveData, variants, liveBtn, getSelected);
+  });
+
   modalBody.querySelectorAll('.pdp-thumb').forEach(function (thumb) {
     thumb.addEventListener('click', function () {
       modalBody.querySelectorAll('.pdp-thumb').forEach(function (t) { t.classList.remove('is-active'); });
@@ -437,26 +529,24 @@ function openProduct(handle) {
     });
   });
 
-  var selected = {};
-  modalBody.querySelectorAll('.pdp-option').forEach(function (g) {
-    var n = g.dataset.optionName;
-    var f = g.querySelector('.pdp-option-btn.is-active');
-    if (f) selected[n] = f.dataset.optValue;
-  });
-
   modalBody.querySelectorAll('.pdp-option-btn').forEach(function (btn) {
     btn.addEventListener('click', function () {
       selected[btn.dataset.optName] = btn.dataset.optValue;
       btn.closest('.pdp-option-values').querySelectorAll('.pdp-option-btn').forEach(function (b) { b.classList.toggle('is-active', b === btn); });
       var match = variants.find(function (v) { return v.selectedOptions.every(function (o) { return selected[o.name] === o.value; }); });
-      if (match && atcBtn) {
+      /* Re-query atcBtn each time — may have been replaced by live availability check */
+      var liveAtcBtn = document.getElementById('pdp-atc-btn');
+      if (match && liveAtcBtn) {
         if (match.availableForSale) {
-          atcBtn.href = STORE_URL + '/products/' + p.handle + '?variant=' + match.id.replace(/\D/g, '');
-          atcBtn.innerHTML = SHOP_SVG + ' Buy Now';
-          atcBtn.classList.remove('is-disabled'); atcBtn.removeAttribute('aria-disabled');
+          if (liveAtcBtn.tagName === 'A') {
+            liveAtcBtn.href = STORE_URL + '/products/' + p.handle + '?variant=' + match.id.replace(/\D/g, '');
+          }
+          liveAtcBtn.innerHTML = SHOP_SVG + ' Buy Now';
+          liveAtcBtn.classList.remove('is-disabled'); liveAtcBtn.removeAttribute('aria-disabled');
         } else {
-          atcBtn.removeAttribute('href'); atcBtn.innerHTML = 'Sold Out';
-          atcBtn.classList.add('is-disabled'); atcBtn.setAttribute('aria-disabled', 'true');
+          if (liveAtcBtn.tagName === 'A') liveAtcBtn.removeAttribute('href');
+          liveAtcBtn.innerHTML = 'Sold Out';
+          liveAtcBtn.classList.add('is-disabled'); liveAtcBtn.setAttribute('aria-disabled', 'true');
         }
         if (priceEl) { priceEl.textContent = fmtPrice(match.price.amount, match.price.currencyCode); priceEl.classList.toggle('has-sale', !!(match.compareAtPrice && parseFloat(match.compareAtPrice.amount) > parseFloat(match.price.amount))); }
         if (compareEl) {
