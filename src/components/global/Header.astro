@@ -125,12 +125,12 @@ function isGroupActive(group: NavGroup) {
         <source
           type="image/webp"
           srcset="/images/logos/logo-nav-circle-128.webp 128w, /images/logos/logo-nav-circle-192.webp 192w, /images/logos/logo-nav-circle-256.webp 256w, /images/logos/logo-nav-circle-384.webp 384w"
-          sizes="(min-width: 1024px) 72px, (min-width: 481px) 60px, 56px"
+          sizes="(min-width: 1024px) 56px, (min-width: 481px) 48px, 44px"
         />
         <img
           src="/images/logos/logo-nav-circle-256.png"
           srcset="/images/logos/logo-nav-circle-128.png 128w, /images/logos/logo-nav-circle-192.png 192w, /images/logos/logo-nav-circle-256.png 256w, /images/logos/logo-nav-circle-384.png 384w"
-          sizes="(min-width: 1024px) 72px, (min-width: 481px) 60px, 56px"
+          sizes="(min-width: 1024px) 56px, (min-width: 481px) 48px, 44px"
           alt="Sunshine on a Ranney Day"
           class="logo-img"
           width="256" height="256"
@@ -649,11 +649,11 @@ document.addEventListener('astro:before-swap', function () {
   .logo:hover { opacity: 0.88; }
   .logo-img {
     height: 100%; width: auto;
-    max-height: 56px;
+    max-height: 44px;
     object-fit: contain;
   }
-  @media (min-width: 481px) { .logo-img { max-height: 60px; } }
-  @media (min-width: 1024px) { .logo-img { max-height: 72px; } }
+  @media (min-width: 481px) { .logo-img { max-height: 48px; } }
+  @media (min-width: 1024px) { .logo-img { max-height: 56px; } }
 
   .desktop-nav { display: none; position: relative; }
   @media (min-width: 1024px) { .desktop-nav { display: flex; align-items: center; } }
