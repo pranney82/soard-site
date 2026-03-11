@@ -7,10 +7,8 @@ import { getCollection } from 'astro:content';
 export interface SiteStats {
   /** Total individual children served (accounts for sibling profiles via childCount) */
   totalKids: number;
-  /** Total makeover projects (kid profile files + community projects) */
-  totalProjects: number;
-  /** Total room makeover profiles (kid JSON files) */
-  totalRoomProfiles: number;
+  /** Total rooms built (sum of roomCount across all kid profiles) */
+  totalRooms: number;
   /** Community projects count */
   communityProjects: number;
   /** Years of impact since 2012 */
@@ -25,17 +23,14 @@ export async function getSiteStats(): Promise<SiteStats> {
   const kids = await getCollection('kids');
   const community = await getCollection('community');
 
-  // Sum childCount across all kid profiles (defaults to 1 for single-child profiles)
   const totalKids = kids.reduce((sum, k) => sum + (k.data.childCount || 1), 0);
-
-  const currentYear = new Date().getFullYear();
+  const totalRooms = kids.reduce((sum, k) => sum + (k.data.roomCount || 1), 0);
 
   _cached = {
     totalKids,
-    totalRoomProfiles: kids.length,
-    totalProjects: kids.length + community.length,
+    totalRooms,
     communityProjects: community.length,
-    years: currentYear - 2012,
+    years: new Date().getFullYear() - 2012,
   };
 
   return _cached;

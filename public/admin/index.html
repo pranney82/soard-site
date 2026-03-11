@@ -870,6 +870,7 @@
         quote: '', heroImage: '', photos: [], photoCount: 0,
         videoUrl: '', streamVideoId: '', photographer: '', partnerLogos: [],
         shortDescription: '', metaDescription: '',
+        roomCount: 1, childCount: 1,
       });
       const [uploading, setUploading] = useState({});
       const [videoUploading, setVideoUploading] = useState(false);
@@ -1232,6 +1233,20 @@
               <option value="completed">Completed</option>
               <option value="in-progress">In Progress</option>
             </select>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Room Count</label>
+              <input class="form-input" type="number" min="1" value=${data.roomCount || 1}
+                onInput=${e => updateField('roomCount', parseInt(e.target.value) || 1)} />
+              <div class="form-hint">Number of rooms built for this kid (auto-counted in site stats)</div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Child Count</label>
+              <input class="form-input" type="number" min="1" value=${data.childCount || 1}
+                onInput=${e => updateField('childCount', parseInt(e.target.value) || 1)} />
+              <div class="form-hint">Number of children in this profile (>1 for siblings)</div>
+            </div>
           </div>
         </div>
 

@@ -60,5 +60,6 @@
     "source": "wix-migration",
     "wixNumber": 20
   },
-  "childCount": 2
+  "childCount": 2,
+  "roomCount": 1
 }
