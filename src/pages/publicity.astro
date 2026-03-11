@@ -1,10 +1,11 @@
 ---
 /**
  * Publicity Page — Sunshine on a Ranney Day
- * Authority-first design: stats → logos → celebrity supporters → video → featured → archive
+ * Authority-first: stats → logos → celebrity supporters → video → featured → archive
  */
 import PageLayout from '../layouts/PageLayout.astro';
 import MediaLogos from '../components/ui/MediaLogos.astro';
+import CFImage from '../components/ui/CFImage.astro';
 import { getCollection } from 'astro:content';
 
 const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
@@ -13,7 +14,6 @@ const allPress = await getCollection('press');
 const press = allPress.sort((a, b) => new Date(b.data.date).getTime() - new Date(a.data.date).getTime());
 const featured = press.filter(p => p.data.featured);
 
-/* Group press by year */
 const years = [...new Set(press.map(p => new Date(p.data.date).getFullYear()))].sort((a, b) => b - a);
 const pressByYear: Record<number, typeof press> = {};
 years.forEach(y => { pressByYear[y] = press.filter(p => new Date(p.data.date).getFullYear() === y); });
@@ -28,7 +28,6 @@ function formatDate(dateStr: string): string {
   return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 }
 
-/* Celebrity supporters */
 const celebrities = [
   { name: 'Atlanta Braves', desc: 'Holly & Peter honored as Community Heroes. Players Dansby Swanson, Max Fried, Charlie Culberson & Ender Inciarte surprised them at a makeover with a $5,000 donation.', imageId: 'press-braves-community-heroes', type: 'Community Heroes' },
   { name: 'Coach Nick Saban', desc: 'University of Alabama Coach Nick Saban surprised makeover recipient and cancer survivor Ally with a meeting with her favorite coach.', imageId: 'press-nick-saban-ally', type: 'Celebrity Surprise' },
@@ -54,7 +53,7 @@ const uniqueOutlets = new Set(press.map(p => p.data.outlet)).size;
 >
 
   <!-- ══════ IMPACT STATS ══════ -->
-  <section class="stats-bar" aria-label="Media impact">
+  <section class="stats-bar" aria-label="Media impact" data-reveal>
     <div class="container">
       <div class="stats-bar__grid">
         <div class="stats-bar__item"><span class="stats-bar__num">{totalPress}+</span><span class="stats-bar__label">Media Features</span></div>
@@ -70,16 +69,24 @@ const uniqueOutlets = new Set(press.map(p => p.data.outlet)).size;
   <!-- ══════ CELEBRITY SUPPORTERS ══════ -->
   <section class="celebs" aria-labelledby="celebs-heading">
     <div class="container">
-      <div class="celebs__header">
+      <div class="celebs__header" data-reveal>
         <span class="sec-label">Notable Supporters</span>
         <h2 id="celebs-heading" class="sec-title">Championed by <em class="highlight">Atlanta's best</em></h2>
         <p class="celebs__sub">From coaches and athletes to TV personalities and Georgia's governor, the people who meet our families become our biggest advocates.</p>
       </div>
       <div class="celebs__grid">
-        {celebrities.map(c => (
-          <article class="cc">
+        {celebrities.map((c, i) => (
+          <article class="cc" data-reveal data-delay={i < 4 ? String(i) : undefined}>
             <div class="cc__img-wrap">
-              <img src={`${CF}/${c.imageId}/public`} alt={c.name} class="cc__img" width="600" height="500" loading="lazy" decoding="async" />
+              <CFImage
+                src={`${CF}/${c.imageId}/public`}
+                alt={c.name}
+                width={600}
+                height={500}
+                sizes="(max-width: 480px) 100vw, (max-width: 768px) 50vw, 280px"
+                widths={[280, 400, 560, 800]}
+                class="cc__img"
+              />
               <div class="cc__overlay"><span class="cc__type">{c.type}</span></div>
             </div>
             <div class="cc__body">
@@ -95,30 +102,41 @@ const uniqueOutlets = new Set(press.map(p => p.data.outlet)).size;
   <!-- ══════ VIDEO HIGHLIGHTS ══════ -->
   <section class="videos" aria-labelledby="vid-heading">
     <div class="container">
-      <div class="videos__header">
-        <span class="sec-label" style="color:var(--c-yellow)">Watch</span>
-        <h2 id="vid-heading" class="sec-title" style="color:white">See the <em class="highlight">moments</em> that matter</h2>
+      <div class="videos__header" data-reveal>
+        <span class="sec-label sec-label--on-dark">Watch</span>
+        <h2 id="vid-heading" class="sec-title sec-title--on-dark">See the <em class="highlight">moments</em> that matter</h2>
       </div>
       <div class="videos__grid">
-        <div class="vc">
-          <div class="vc__wrap">
-            <iframe
-              width="100%" height="100%"
-              src="https://www.youtube.com/embed/Tej9V0MPQbY"
-              title="Today Show — Sunshine on a Ranney Day"
-              frameborder="0"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-              allowfullscreen
-              loading="lazy"
-              style="position:absolute;inset:0;"
-            ></iframe>
+        <!-- Today Show — click-to-load facade (no eager iframe) -->
+        <div class="vc" data-reveal>
+          <div class="vc__wrap" id="yt-today-show">
+            <img
+              src="https://i.ytimg.com/vi/Tej9V0MPQbY/hqdefault.jpg"
+              alt="Today Show — Sunshine on a Ranney Day"
+              width="480" height="360"
+              loading="lazy" decoding="async"
+              class="vc__poster"
+            />
+            <button class="vc__play-btn" aria-label="Play Today Show video" data-yt-id="Tej9V0MPQbY">
+              <svg width="68" height="48" viewBox="0 0 68 48"><path d="M66.52 7.74c-.78-2.93-2.49-5.41-5.42-6.19C55.79.13 34 0 34 0S12.21.13 6.9 1.55c-2.93.78-4.63 3.26-5.42 6.19C.06 13.05 0 24 0 24s.06 10.95 1.48 16.26c.78 2.93 2.49 5.41 5.42 6.19C12.21 47.87 34 48 34 48s21.79-.13 27.1-1.55c2.93-.78 4.64-3.26 5.42-6.19C67.94 34.95 68 24 68 24s-.06-10.95-1.48-16.26z" fill="red"/><path d="M45 24L27 14v20" fill="white"/></svg>
+            </button>
           </div>
           <h3 class="vc__title">NBC Today Show Feature</h3>
           <p class="vc__desc">Peter & Holly renovate parent sleep rooms at Children's Healthcare of Atlanta as part of NBC's #ShareKindness campaign.</p>
         </div>
-        <div class="vc">
-          <div class="vc__wrap" style={`background: url('${CF}/press-braves-community-heroes/public') center/cover no-repeat;`}>
-            <a href="https://www.mlb.com/video/2018-community-heroes-week/c-2525462483" target="_blank" rel="noopener noreferrer" class="vc__play" aria-label="Watch on MLB.com">
+        <!-- Braves Community Heroes — external link to MLB.com -->
+        <div class="vc" data-reveal data-delay="1">
+          <div class="vc__wrap">
+            <CFImage
+              src={`${CF}/press-braves-community-heroes/public`}
+              alt="Atlanta Braves Community Heroes — Sunshine on a Ranney Day"
+              width={960}
+              height={540}
+              sizes="(max-width: 768px) 100vw, 480px"
+              widths={[480, 640, 960]}
+              class="vc__poster"
+            />
+            <a href="https://www.mlb.com/video/2018-community-heroes-week/c-2525462483" target="_blank" rel="noopener noreferrer" class="vc__play-btn" aria-label="Watch Braves Community Heroes on MLB.com">
               <svg width="68" height="48" viewBox="0 0 68 48"><path d="M66.52 7.74c-.78-2.93-2.49-5.41-5.42-6.19C55.79.13 34 0 34 0S12.21.13 6.9 1.55c-2.93.78-4.63 3.26-5.42 6.19C.06 13.05 0 24 0 24s.06 10.95 1.48 16.26c.78 2.93 2.49 5.41 5.42 6.19C12.21 47.87 34 48 34 48s21.79-.13 27.1-1.55c2.93-.78 4.64-3.26 5.42-6.19C67.94 34.95 68 24 68 24s-.06-10.95-1.48-16.26z" fill="#CE1141"/><path d="M45 24L27 14v20" fill="white"/></svg>
             </a>
           </div>
@@ -132,11 +150,13 @@ const uniqueOutlets = new Set(press.map(p => p.data.outlet)).size;
   <!-- ══════ FEATURED COVERAGE ══════ -->
   <section class="pub-featured" aria-labelledby="feat-heading">
     <div class="container">
-      <span class="sec-label">Featured Stories</span>
-      <h2 id="feat-heading" class="sec-title">Highlighted <em class="highlight">coverage</em></h2>
+      <div data-reveal>
+        <span class="sec-label">Featured Stories</span>
+        <h2 id="feat-heading" class="sec-title">Highlighted <em class="highlight">coverage</em></h2>
+      </div>
       <div class="feat-grid">
         {featured.map(item => (
-          <article class="fc">
+          <article class="fc" data-reveal>
             <div class="fc__body">
               <span class="fc__cat">{categoryLabels[item.data.category]}</span>
               <h3 class="fc__title">{item.data.title}</h3>
@@ -160,10 +180,12 @@ const uniqueOutlets = new Set(press.map(p => p.data.outlet)).size;
   <!-- ══════ PRESS ARCHIVE ══════ -->
   <section class="pub-archive" aria-labelledby="arch-heading">
     <div class="container">
-      <span class="sec-label">Press Archive</span>
-      <h2 id="arch-heading" class="sec-title">All <em class="highlight">{totalPress} stories</em></h2>
+      <div data-reveal>
+        <span class="sec-label">Press Archive</span>
+        <h2 id="arch-heading" class="sec-title">All <em class="highlight">{totalPress} stories</em></h2>
+      </div>
       {years.map(year => (
-        <div class="yg">
+        <div class="yg" data-reveal>
           <div class="yg__label"><span class="yg__year">{year}</span><span class="yg__ct">{pressByYear[year].length}</span></div>
           <div class="cl">
             {pressByYear[year].map(item => (
@@ -194,8 +216,8 @@ const uniqueOutlets = new Set(press.map(p => p.data.outlet)).size;
   </section>
 
   <!-- ══════ CTA ══════ -->
-  <section class="pub-cta">
-    <div class="container" style="max-width:var(--max-width-narrow)">
+  <section class="pub-cta" data-reveal>
+    <div class="container container--narrow">
       <h2>Media Inquiries</h2>
       <p>Interested in covering Sunshine on a Ranney Day? We'd love to connect.</p>
       <div class="pub-cta__actions">
@@ -207,18 +229,49 @@ const uniqueOutlets = new Set(press.map(p => p.data.outlet)).size;
 
 </PageLayout>
 
+<!-- Click-to-load YouTube facade (zero JS until click) -->
+<script>
+  document.addEventListener('astro:page-load', () => {
+    document.querySelectorAll<HTMLButtonElement>('[data-yt-id]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.dataset.ytId;
+        const wrap = btn.closest('.vc__wrap');
+        if (!wrap || !id) return;
+        const iframe = document.createElement('iframe');
+        iframe.src = `https://www.youtube.com/embed/${id}?autoplay=1`;
+        iframe.title = btn.getAttribute('aria-label') || '';
+        iframe.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture';
+        iframe.allowFullscreen = true;
+        iframe.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border:0;';
+        wrap.innerHTML = '';
+        wrap.appendChild(iframe);
+      });
+    });
+  });
+</script>
+
 <style>
   .container { max-width: var(--max-width); margin: 0 auto; padding-inline: var(--page-padding); }
+  .container--narrow { max-width: var(--max-width-narrow); }
   .sec-label { display:block; font-size:0.7rem; font-weight:700; text-transform:uppercase; letter-spacing:0.14em; color:var(--c-yellow); margin-bottom:var(--space-sm); }
   .sec-title { font-family:var(--font-display); font-size:clamp(1.6rem,3.5vw,2.4rem); line-height:1.2; margin-bottom:var(--space-lg); }
+  .sec-label--on-dark { color:var(--c-yellow); }
+  .sec-title--on-dark { color:white; }
 
-  /* Stats */
+  /* ── data-reveal scroll animations ── */
+  [data-reveal] { opacity:0; transform:translateY(24px); transition:opacity 0.7s ease, transform 0.7s ease; }
+  [data-reveal].is-visible { opacity:1; transform:translateY(0); }
+  [data-delay="1"] { transition-delay:0.12s; }
+  [data-delay="2"] { transition-delay:0.24s; }
+  [data-delay="3"] { transition-delay:0.36s; }
+
+  /* ── Stats ── */
   .stats-bar { background:var(--c-dark); padding:var(--space-2xl) 0; }
   .stats-bar__grid { display:grid; grid-template-columns:repeat(4,1fr); gap:var(--space-xl); text-align:center; }
   .stats-bar__num { display:block; font-family:var(--font-display); font-size:clamp(2rem,4vw,3rem); font-weight:700; color:var(--c-yellow); line-height:1; }
   .stats-bar__label { display:block; font-size:0.75rem; font-weight:600; color:rgba(255,255,255,0.55); text-transform:uppercase; letter-spacing:0.1em; margin-top:var(--space-xs); }
 
-  /* Celebs */
+  /* ── Celebs ── */
   .celebs { padding:var(--space-4xl) 0; }
   .celebs__header { text-align:center; max-width:640px; margin:0 auto var(--space-3xl); }
   .celebs__sub { font-size:1.05rem; color:var(--c-text-muted); line-height:1.6; }
@@ -226,31 +279,33 @@ const uniqueOutlets = new Set(press.map(p => p.data.outlet)).size;
   .cc { background:var(--c-white); border:1px solid var(--c-border); border-radius:16px; overflow:hidden; transition:box-shadow 0.3s,transform 0.3s; }
   .cc:hover { box-shadow:0 12px 40px rgba(0,0,0,0.12); transform:translateY(-3px); }
   .cc__img-wrap { position:relative; aspect-ratio:6/5; overflow:hidden; background:var(--c-warm-gray); }
-  .cc__img { width:100%; height:100%; object-fit:cover; transition:transform 0.5s; }
-  .cc:hover .cc__img { transform:scale(1.05); }
-  .cc__overlay { position:absolute; bottom:0; left:0; right:0; padding:var(--space-md) var(--space-lg); background:linear-gradient(transparent,rgba(0,0,0,0.7)); }
+  .cc__img-wrap :global(.cf-image) { width:100%; height:100%; object-fit:cover; transition:transform 0.5s ease; }
+  .cc:hover .cc__img-wrap :global(.cf-image) { transform:scale(1.05); }
+  .cc__overlay { position:absolute; bottom:0; left:0; right:0; padding:var(--space-md) var(--space-lg); background:linear-gradient(transparent,rgba(0,0,0,0.7)); pointer-events:none; }
   .cc__type { font-size:0.65rem; font-weight:700; text-transform:uppercase; letter-spacing:0.1em; color:var(--c-yellow); }
   .cc__body { padding:var(--space-lg) var(--space-xl) var(--space-xl); }
   .cc__name { font-family:var(--font-display); font-size:1.05rem; margin-bottom:var(--space-sm); }
   .cc__desc { font-size:0.85rem; line-height:1.6; color:var(--c-text-muted); }
 
-  /* Videos */
+  /* ── Videos ── */
   .videos { padding:var(--space-4xl) 0; background:var(--c-dark); color:white; }
   .videos__header { text-align:center; max-width:640px; margin:0 auto var(--space-3xl); }
   .videos__grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(420px,1fr)); gap:var(--space-2xl); }
-  .vc__wrap { border-radius:12px; overflow:hidden; aspect-ratio:16/9; margin-bottom:var(--space-lg); background:#000; position:relative; display:flex; align-items:center; justify-content:center; background-size:cover; background-position:center; }
-  .vc__play { display:flex; transition:transform 0.2s; }
-  .vc__play:hover { transform:scale(1.1); }
+  .vc__wrap { border-radius:12px; overflow:hidden; aspect-ratio:16/9; margin-bottom:var(--space-lg); background:#000; position:relative; display:flex; align-items:center; justify-content:center; cursor:pointer; }
+  .vc__poster { width:100%; height:100%; object-fit:cover; }
+  .vc__wrap :global(.cf-image) { width:100%; height:100%; object-fit:cover; }
+  .vc__play-btn { position:absolute; background:none; border:none; cursor:pointer; padding:0; transition:transform 0.2s ease; z-index:1; }
+  .vc__play-btn:hover { transform:scale(1.1); }
   .vc__title { font-family:var(--font-display); font-size:1.1rem; margin-bottom:var(--space-xs); }
   .vc__desc { font-size:0.875rem; color:rgba(255,255,255,0.6); line-height:1.6; }
 
-  /* Featured */
+  /* ── Featured ── */
   .pub-featured { padding:var(--space-4xl) 0; }
   .feat-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:var(--space-xl); }
   .fc { background:var(--c-white); border:1px solid var(--c-border); border-radius:16px; overflow:hidden; display:flex; flex-direction:column; transition:box-shadow 0.3s,transform 0.3s; }
   .fc:hover { box-shadow:0 8px 30px rgba(0,0,0,0.08); transform:translateY(-2px); }
   .fc__body { padding:var(--space-xl); display:flex; flex-direction:column; flex:1; }
-  .fc__cat { font-size:0.6rem; font-weight:700; text-transform:uppercase; letter-spacing:0.12em; color:var(--c-yellow); background:rgba(255,218,36,0.12); padding:3px 10px; border-radius:6px; display:inline-block; margin-bottom:var(--space-md); }
+  .fc__cat { font-size:0.6rem; font-weight:700; text-transform:uppercase; letter-spacing:0.12em; color:var(--c-yellow); background:rgba(255,218,36,0.12); padding:3px 10px; border-radius:6px; display:inline-block; margin-bottom:var(--space-md); width:fit-content; }
   .fc__title { font-family:var(--font-display); font-size:1rem; line-height:1.4; margin-bottom:var(--space-xs); }
   .fc__outlet { font-size:0.85rem; font-weight:600; color:var(--c-text-muted); margin-bottom:var(--space-md); }
   .fc__excerpt { font-size:0.85rem; line-height:1.65; color:var(--c-text-muted); flex:1; }
@@ -259,7 +314,7 @@ const uniqueOutlets = new Set(press.map(p => p.data.outlet)).size;
   .fc__link { display:inline-flex; align-items:center; gap:4px; font-size:0.85rem; font-weight:600; color:var(--c-dark); text-decoration:none; transition:color 0.2s; }
   .fc__link:hover { color:var(--c-yellow); }
 
-  /* Archive */
+  /* ── Archive ── */
   .pub-archive { padding:var(--space-4xl) 0; background:var(--c-warm-gray); }
   .yg { margin-bottom:var(--space-2xl); }
   .yg__label { display:flex; align-items:center; gap:var(--space-md); margin-bottom:var(--space-lg); padding-bottom:var(--space-sm); border-bottom:2px solid var(--c-yellow); }
@@ -281,7 +336,7 @@ const uniqueOutlets = new Set(press.map(p => p.data.outlet)).size;
   .ci__arrow { min-width:36px; height:36px; display:flex; align-items:center; justify-content:center; color:var(--c-text-light); border-radius:10px; transition:color 0.15s,background 0.15s; margin-top:2px; }
   .ci__arrow:hover { color:var(--c-dark); background:var(--c-warm-gray); }
 
-  /* CTA */
+  /* ── CTA ── */
   .pub-cta { padding:var(--space-4xl) 0; text-align:center; }
   .pub-cta h2 { font-family:var(--font-display); font-size:clamp(1.5rem,3vw,2rem); margin-bottom:var(--space-sm); }
   .pub-cta p { color:var(--c-text-muted); font-size:1.05rem; margin-bottom:var(--space-xl); }
@@ -294,6 +349,7 @@ const uniqueOutlets = new Set(press.map(p => p.data.outlet)).size;
   .btn-outline:hover { border-color:var(--c-dark); }
   .btn-lg { padding:0.85rem 2rem; font-size:0.95rem; }
 
+  /* ── Responsive ── */
   @media (max-width:768px) {
     .stats-bar__grid { grid-template-columns:repeat(2,1fr); gap:var(--space-lg); }
     .celebs__grid { grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); }
@@ -305,5 +361,14 @@ const uniqueOutlets = new Set(press.map(p => p.data.outlet)).size;
   @media (max-width:480px) {
     .stats-bar__num { font-size:1.8rem; }
     .celebs__grid { grid-template-columns:1fr; }
+  }
+
+  /* ── Reduced motion ── */
+  @media (prefers-reduced-motion: reduce) {
+    [data-reveal] { opacity:1; transform:none; transition:none; }
+    .cc:hover { transform:none; }
+    .cc:hover .cc__img-wrap :global(.cf-image) { transform:none; }
+    .fc:hover { transform:none; }
+    .vc__play-btn:hover { transform:none; }
   }
 </style>
