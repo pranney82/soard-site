@@ -120,11 +120,11 @@ const structuredData = buildSchemaGraph(...graphSchemas);
 //   - differentiates forward vs. backward navigation
 const pageContentAnim = {
   forwards: {
-    old: { name: 'vt-fade-out', duration: '80ms', easing: 'cubic-bezier(0.4, 0, 1, 1)', fillMode: 'both' },
-    new: { name: 'vt-slide-in', duration: '150ms', delay: '40ms', easing: 'cubic-bezier(0, 0, 0.2, 1)', fillMode: 'both' },
+    old: { name: 'vt-noop', duration: '120ms', fillMode: 'both' },
+    new: { name: 'vt-slide-in', duration: '120ms', easing: 'cubic-bezier(0, 0, 0.2, 1)', fillMode: 'both' },
   },
   backwards: {
-    old: { name: 'vt-slide-out', duration: '80ms', easing: 'cubic-bezier(0.4, 0, 1, 1)', fillMode: 'both' },
+    old: { name: 'vt-noop', duration: '120ms', fillMode: 'both' },
     new: { name: 'vt-fade-in', duration: '120ms', easing: 'cubic-bezier(0, 0, 0.2, 1)', fillMode: 'both' },
   },
 };

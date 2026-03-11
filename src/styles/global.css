@@ -84,6 +84,9 @@ html {
 }
 
 /* ─── View Transitions — ultra-fast crossfade (Linear-style) ── */
+@keyframes vt-noop {
+  from, to { opacity: 1; }
+}
 @keyframes vt-fade-out {
   to { opacity: 0; }
 }
