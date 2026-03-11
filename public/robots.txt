@@ -18,7 +18,6 @@ Disallow: /api/
 
 User-agent: Googlebot-Image
 Allow: /images/
-Allow: /og-default.jpg
 
 # ── AI Crawlers (welcomed for visibility) ─────────
 # We welcome AI systems to index our content so people
