@@ -4,7 +4,7 @@
  * Adds an email to the Constant Contact mailing list via their v3 API.
  *
  * Required Cloudflare Pages env vars:
- *   CC_API_TOKEN  — Constant Contact API access token (v3)
+ *   CC_CLIENT_ID, CC_CLIENT_SECRET, CC_REFRESH_TOKEN
  *
  * List ID source (in priority order):
  *   1. CC_LIST_ID env var (override)
@@ -14,12 +14,14 @@
  * Response:     { "ok": true } or { "ok": false, "error": "..." }
  */
 
-export async function onRequestPost(context) {
-  const cors = {
-    'Access-Control-Allow-Origin': '*',
-    'Content-Type': 'application/json',
-  };
+import { getCCAccessToken, clearCCTokenCache, CCAuthError } from './_cc-auth.js';
 
+const cors = {
+  'Access-Control-Allow-Origin': '*',
+  'Content-Type': 'application/json',
+};
+
+export async function onRequestPost(context) {
   try {
     const { email } = await context.request.json();
 
@@ -30,13 +32,18 @@ export async function onRequestPost(context) {
       );
     }
 
-    const token = context.env.CC_API_TOKEN;
-    if (!token) {
-      console.error('Missing CC_API_TOKEN env var');
-      return new Response(
-        JSON.stringify({ ok: false, error: 'Newsletter signup is not configured yet. Please try again later.' }),
-        { status: 503, headers: cors }
-      );
+    let token;
+    try {
+      token = await getCCAccessToken(context.env);
+    } catch (err) {
+      if (err instanceof CCAuthError) {
+        console.error(err.message);
+        return new Response(
+          JSON.stringify({ ok: false, error: 'Newsletter signup is not configured yet. Please try again later.' }),
+          { status: 503, headers: cors }
+        );
+      }
+      throw err;
     }
 
     // Resolve list ID: env var takes priority, then static config from admin
@@ -63,7 +70,7 @@ export async function onRequestPost(context) {
       );
     }
 
-    const res = await fetch('https://api.cc.email/v3/contacts/sign_up_form', {
+    let res = await fetch('https://api.cc.email/v3/contacts/sign_up_form', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${token}`,
@@ -74,6 +81,23 @@ export async function onRequestPost(context) {
         list_memberships: [listId],
       }),
     });
+
+    // If 401, clear cache and retry once with a fresh token
+    if (res.status === 401) {
+      clearCCTokenCache();
+      token = await getCCAccessToken(context.env);
+      res = await fetch('https://api.cc.email/v3/contacts/sign_up_form', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email_address: email,
+          list_memberships: [listId],
+        }),
+      });
+    }
 
     if (res.ok || res.status === 409) {
       // 409 = already subscribed, still a success from the user's perspective
@@ -90,6 +114,12 @@ export async function onRequestPost(context) {
       { status: 502, headers: cors }
     );
   } catch (err) {
+    if (err instanceof CCAuthError) {
+      return new Response(
+        JSON.stringify({ ok: false, error: 'Newsletter signup is not configured yet. Please try again later.' }),
+        { status: 503, headers: cors }
+      );
+    }
     console.error('Newsletter handler error:', err);
     return new Response(
       JSON.stringify({ ok: false, error: 'Something went wrong. Please try again.' }),

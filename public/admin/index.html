@@ -3751,7 +3751,7 @@
             setError(data.error || 'Failed to fetch lists.');
           }
         } catch (err) {
-          setError('Failed to connect. Check that CC_API_TOKEN is set in Cloudflare env vars.');
+          setError('Failed to connect. Use the "Connect Constant Contact" button above to authorize.');
         }
         setLoading(false);
       };
@@ -3761,7 +3761,12 @@
       return html`
         <div class="card">
           <h3 style="margin-bottom: 1rem;">Newsletter (Constant Contact)</h3>
-          <p class="text-sm text-muted mb-1">Choose which Constant Contact list new subscribers are added to. Requires <code>CC_API_TOKEN</code> in Cloudflare env vars.</p>
+          <p class="text-sm text-muted mb-1">Choose which Constant Contact list new subscribers are added to.</p>
+          <div style="margin: 0.75rem 0;">
+            <a href="/api/cc-oauth-start" class="btn btn-ghost" style="font-size: 0.85rem; text-decoration: none;">
+              ↗ Connect / Reconnect Constant Contact
+            </a>
+          </div>
           <div style="display: flex; gap: 0.5rem; align-items: flex-start; margin-top: 0.75rem;">
             <div class="form-group" style="flex: 1; margin-bottom: 0;">
               <label class="form-label">List ID</label>
