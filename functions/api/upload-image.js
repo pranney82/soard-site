@@ -33,7 +33,13 @@ export async function onRequestPost(context) {
       );
     }
 
-    // Build the upload form for Cloudflare Images API
+    // 10 MB max for images
+    if (file.size > 10 * 1024 * 1024) {
+      return Response.json(
+        { success: false, error: 'Image too large. Maximum size is 10 MB.' },
+        { status: 413 }
+      );
+    }
     const uploadForm = new FormData();
     uploadForm.append('file', file);
     if (customId) {
@@ -75,12 +81,10 @@ export async function onRequestPost(context) {
       {}
     );
   } catch (err) {
+    console.error("[upload-image]", err);
     return Response.json(
-      { success: false, error: err.message },
+      { success: false, error: "An unexpected error occurred" },
       { status: 500 }
     );
   }
-}
-,
-  });
 }

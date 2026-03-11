@@ -19,6 +19,14 @@ const REPO = 'pranney82/soard';
 const BRANCH = 'main';
 const MAX_PER_PAGE = 45; // Leave room for 1 tree call + 45 file fetches = 46 < 50
 
+const ALLOWED_DIR_PREFIXES = ['src/content/', 'public/financials/'];
+
+function isDirAllowed(dir) {
+  if (!dir || dir.includes('..') || dir.includes('//') || dir.startsWith('/')) return false;
+  const normalized = dir.endsWith('/') ? dir : dir + '/';
+  return ALLOWED_DIR_PREFIXES.some(prefix => normalized.startsWith(prefix));
+}
+
 export async function onRequestGet(context) {
   try {
     const { GITHUB_TOKEN } = context.env;
@@ -31,6 +39,13 @@ export async function onRequestGet(context) {
       return Response.json(
         { success: false, error: 'Provide ?dir= parameter' },
         { status: 400 }
+      );
+    }
+
+    if (!isDirAllowed(dir)) {
+      return Response.json(
+        { success: false, error: 'Directory not allowed' },
+        { status: 403 }
       );
     }
 
@@ -95,12 +110,10 @@ export async function onRequestGet(context) {
       {}
     );
   } catch (err) {
+    console.error("[list-content]", err);
     return Response.json(
-      { success: false, error: err.message },
+      { success: false, error: "An unexpected error occurred" },
       { status: 500 }
     );
   }
-}
-,
-  });
 }

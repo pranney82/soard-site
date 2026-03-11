@@ -11,6 +11,13 @@
 
 const REPO = 'pranney82/soard';
 
+const ALLOWED_READ_PREFIXES = ['src/content/', 'public/financials/'];
+
+function isPathAllowed(p) {
+  if (!p || p.includes('..') || p.includes('//') || p.startsWith('/')) return false;
+  return ALLOWED_READ_PREFIXES.some(prefix => p.startsWith(prefix));
+}
+
 export async function onRequestGet(context) {
   try {
     const { GITHUB_TOKEN } = context.env;
@@ -20,9 +27,17 @@ export async function onRequestGet(context) {
 
     if (!GITHUB_TOKEN) {
       return Response.json(
-        { success: false, error: 'Missing GITHUB_TOKEN' },
+        { success: false, error: 'Server configuration error' },
         { status: 500 }
       );
+    }
+
+    // Validate path/dir before touching GitHub API
+    if (path && !isPathAllowed(path)) {
+      return Response.json({ success: false, error: 'Path not allowed' }, { status: 403 });
+    }
+    if (dir && !isPathAllowed(dir.endsWith('/') ? dir : dir + '/')) {
+      return Response.json({ success: false, error: 'Directory not allowed' }, { status: 403 });
     }
 
     const headers = {
@@ -96,12 +111,10 @@ export async function onRequestGet(context) {
       { status: 400 }
     );
   } catch (err) {
+    console.error("[read-content]", err);
     return Response.json(
-      { success: false, error: err.message },
+      { success: false, error: "An unexpected error occurred" },
       { status: 500 }
     );
   }
-}
-,
-  });
 }

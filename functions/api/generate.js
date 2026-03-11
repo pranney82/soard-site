@@ -48,6 +48,18 @@ export async function onRequestPost(context) {
 
         for (const photo of toProcess) {
           try {
+            // SSRF protection: only fetch from Cloudflare Images
+            try {
+              const photoHost = new URL(photo.url).hostname;
+              if (photoHost !== 'imagedelivery.net') {
+                altTexts.push('');
+                continue;
+              }
+            } catch {
+              altTexts.push('');
+              continue;
+            }
+
             // Fetch the image and convert to base64
             const imgResponse = await fetch(photo.url);
             if (!imgResponse.ok) {
@@ -142,12 +154,10 @@ META_DESCRIPTION: [text]`;
       {}
     );
   } catch (err) {
+    console.error("[generate]", err);
     return Response.json(
-      { success: false, error: err.message },
+      { success: false, error: "An unexpected error occurred" },
       { status: 500 }
     );
   }
-}
-,
-  });
 }

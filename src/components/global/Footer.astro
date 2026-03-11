@@ -47,6 +47,8 @@ const year = new Date().getFullYear();
             </span>
           </button>
         </div>
+        <!-- Cloudflare Turnstile — invisible bot protection -->
+        <div id="newsletter-turnstile" class="cf-turnstile" data-sitekey="YOUR_TURNSTILE_SITE_KEY" data-size="flexible" data-theme="dark"></div>
         <p class="newsletter-note" id="newsletter-note">No spam, ever. Unsubscribe anytime.</p>
       </form>
     </div>
@@ -208,6 +210,7 @@ const year = new Date().getFullYear();
       </div>
     </div>
   </div>
+  <script is:inline src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
   <script>
     document.addEventListener('astro:page-load', () => {
       const form = document.getElementById('newsletter-form');
@@ -221,6 +224,10 @@ const year = new Date().getFullYear();
         const email = input.value.trim();
         if (!email) return;
 
+        // Get Turnstile token
+        const turnstileInput = form.querySelector('[name="cf-turnstile-response"]');
+        const turnstileToken = turnstileInput ? turnstileInput.value : '';
+
         // Sending state
         btn.classList.add('is-sending');
         btn.disabled = true;
@@ -230,7 +237,7 @@ const year = new Date().getFullYear();
           const res = await fetch('/api/newsletter', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email }),
+            body: JSON.stringify({ email, turnstileToken }),
           });
           const data = await res.json();
 
@@ -246,6 +253,8 @@ const year = new Date().getFullYear();
             note.classList.add('newsletter-note--error');
             btn.disabled = false;
             input.disabled = false;
+            // Reset Turnstile widget for retry
+            if (window.turnstile) window.turnstile.reset('#newsletter-turnstile');
           }
         } catch {
           btn.classList.remove('is-sending');
@@ -253,6 +262,7 @@ const year = new Date().getFullYear();
           note.classList.add('newsletter-note--error');
           btn.disabled = false;
           input.disabled = false;
+          if (window.turnstile) window.turnstile.reset('#newsletter-turnstile');
         }
       });
     });

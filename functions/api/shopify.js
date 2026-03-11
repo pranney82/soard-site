@@ -53,6 +53,14 @@ export async function onRequestPost({ request, env, waitUntil }) {
     });
   }
 
+  // Block GraphQL introspection queries
+  if (/__schema|__type/i.test(query)) {
+    return new Response(JSON.stringify({ error: 'Introspection not allowed' }), {
+      status: 403,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
   // ── Mutations: pass through, no cache ──
   if (isMutation(query)) {
     return proxyToShopify(domain, token, query, variables, false);

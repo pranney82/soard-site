@@ -15,6 +15,14 @@
 
 const REPO = 'pranney82/soard';
 
+// Only allow writes to content and financial directories
+const ALLOWED_WRITE_PREFIXES = ['src/content/', 'public/financials/'];
+
+function isPathAllowed(path) {
+  if (!path || path.includes('..') || path.includes('//') || path.startsWith('/')) return false;
+  return ALLOWED_WRITE_PREFIXES.some(prefix => path.startsWith(prefix));
+}
+
 export async function onRequestPost(context) {
   try {
     const { GITHUB_TOKEN } = context.env;
@@ -24,6 +32,13 @@ export async function onRequestPost(context) {
       return Response.json(
         { success: false, error: 'Missing required fields: path, content, message' },
         { status: 400 }
+      );
+    }
+
+    if (!isPathAllowed(path)) {
+      return Response.json(
+        { success: false, error: 'Path not allowed' },
+        { status: 403 }
       );
     }
 
@@ -74,12 +89,10 @@ export async function onRequestPost(context) {
       {}
     );
   } catch (err) {
+    console.error("[save-content]", err);
     return Response.json(
-      { success: false, error: err.message },
+      { success: false, error: "An unexpected error occurred" },
       { status: 500 }
     );
   }
-}
-,
-  });
 }

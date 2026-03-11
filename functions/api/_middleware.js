@@ -76,12 +76,14 @@ export async function onRequest(context) {
 
   const { CF_ACCESS_TEAM_DOMAIN, CF_ACCESS_AUD } = context.env;
 
-  // If Access env vars aren't set yet, let requests through
-  // (avoids breaking the site during initial setup)
+  // Fail closed: if Access env vars aren't configured, reject all authenticated requests.
+  // Never silently skip auth — one missing env var should not expose the entire admin API.
   if (!CF_ACCESS_TEAM_DOMAIN || !CF_ACCESS_AUD) {
-    console.warn('[middleware] CF_ACCESS_TEAM_DOMAIN or CF_ACCESS_AUD not set — skipping JWT validation');
-    const response = await context.next();
-    return applyCors(response, corsHeaders);
+    console.error('[middleware] CRITICAL: CF_ACCESS_TEAM_DOMAIN or CF_ACCESS_AUD not set — blocking request');
+    return Response.json(
+      { success: false, error: 'Authentication not configured' },
+      { status: 503, headers: corsHeaders }
+    );
   }
 
   // ── CSRF Protection ──────────────────────────────────────────────

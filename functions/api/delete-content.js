@@ -14,6 +14,13 @@
 
 const REPO = 'pranney82/soard';
 
+const ALLOWED_WRITE_PREFIXES = ['src/content/', 'public/financials/'];
+
+function isPathAllowed(path) {
+  if (!path || path.includes('..') || path.includes('//') || path.startsWith('/')) return false;
+  return ALLOWED_WRITE_PREFIXES.some(prefix => path.startsWith(prefix));
+}
+
 export async function onRequestPost(context) {
   try {
     const { GITHUB_TOKEN } = context.env;
@@ -23,6 +30,13 @@ export async function onRequestPost(context) {
       return Response.json(
         { success: false, error: 'Missing required fields: path, sha, message' },
         { status: 400 }
+      );
+    }
+
+    if (!isPathAllowed(path)) {
+      return Response.json(
+        { success: false, error: 'Path not allowed' },
+        { status: 403 }
       );
     }
 
@@ -50,12 +64,10 @@ export async function onRequestPost(context) {
 
     return Response.json({ success: true }, {});
   } catch (err) {
+    console.error("[delete-content]", err);
     return Response.json(
-      { success: false, error: err.message },
+      { success: false, error: "An unexpected error occurred" },
       { status: 500 }
     );
   }
-}
-,
-  });
 }

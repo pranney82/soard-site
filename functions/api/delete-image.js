@@ -36,12 +36,10 @@ export async function onRequestPost(context) {
       {}
     );
   } catch (err) {
+    console.error("[delete-image]", err);
     return Response.json(
-      { success: false, error: err.message },
+      { success: false, error: "An unexpected error occurred" },
       { status: 500 }
     );
   }
-}
-,
-  });
 }

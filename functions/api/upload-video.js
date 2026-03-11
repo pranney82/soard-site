@@ -50,6 +50,14 @@ export async function onRequestPost(context) {
       );
     }
 
+    // 200 MB max for video uploads
+    if (file.size > 200 * 1024 * 1024) {
+      return Response.json(
+        { success: false, error: 'Video too large. Maximum size is 200 MB.' },
+        { status: 413 }
+      );
+    }
+
     // Upload to Cloudflare Stream via direct upload
     const uploadForm = new FormData();
     uploadForm.append('file', file);
@@ -93,12 +101,10 @@ export async function onRequestPost(context) {
       {}
     );
   } catch (err) {
+    console.error("[upload-video]", err);
     return Response.json(
-      { success: false, error: err.message },
+      { success: false, error: "An unexpected error occurred" },
       { status: 500 }
     );
   }
-}
-,
-  });
 }

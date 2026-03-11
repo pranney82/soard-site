@@ -18,7 +18,7 @@ export async function onRequestGet(context) {
 
     if (!GITHUB_TOKEN) {
       return Response.json(
-        { success: false, error: 'Missing GITHUB_TOKEN' },
+        { success: false, error: 'Server configuration error' },
         { status: 500 }
       );
     }
@@ -131,12 +131,10 @@ export async function onRequestGet(context) {
       {}
     );
   } catch (err) {
+    console.error("[deployments]", err);
     return Response.json(
-      { success: false, error: err.message },
+      { success: false, error: "An unexpected error occurred" },
       { status: 500 }
     );
   }
-}
-,
-  });
 }

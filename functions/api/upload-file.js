@@ -11,6 +11,14 @@
  */
 
 const REPO = 'pranney82/soard';
+const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50 MB max for repo uploads
+
+const ALLOWED_UPLOAD_PREFIXES = ['src/content/', 'public/financials/'];
+
+function isPathAllowed(path) {
+  if (!path || path.includes('..') || path.includes('//') || path.startsWith('/')) return false;
+  return ALLOWED_UPLOAD_PREFIXES.some(prefix => path.startsWith(prefix));
+}
 
 export async function onRequestPost(context) {
   try {
@@ -24,6 +32,20 @@ export async function onRequestPost(context) {
       return Response.json(
         { success: false, error: 'Missing file or path' },
         { status: 400 }
+      );
+    }
+
+    if (!isPathAllowed(path)) {
+      return Response.json(
+        { success: false, error: 'Path not allowed' },
+        { status: 403 }
+      );
+    }
+
+    if (file.size > MAX_FILE_SIZE) {
+      return Response.json(
+        { success: false, error: `File too large. Maximum size is ${MAX_FILE_SIZE / 1024 / 1024} MB.` },
+        { status: 413 }
       );
     }
 
@@ -92,12 +114,10 @@ export async function onRequestPost(context) {
       {}
     );
   } catch (err) {
+    console.error("[upload-file]", err);
     return Response.json(
-      { success: false, error: err.message },
+      { success: false, error: "An unexpected error occurred" },
       { status: 500 }
     );
   }
-}
-,
-  });
 }
