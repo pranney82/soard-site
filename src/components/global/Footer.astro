@@ -25,7 +25,7 @@ const year = new Date().getFullYear();
         <h2><span class="highlight">Brighten your inbox</span> with a little Sunshine.</h2>
         <p>Room reveals, impact stories, and upcoming events — delivered monthly.</p>
       </div>
-      <form class="newsletter-form" action="#" method="POST">
+      <form class="newsletter-form" id="newsletter-form">
         <div class="newsletter-fields">
           <input
             type="email"
@@ -35,10 +35,19 @@ const year = new Date().getFullYear();
             autocomplete="email"
             aria-label="Email address for newsletter"
             class="newsletter-input"
+            id="newsletter-email"
           />
-          <button type="submit" class="newsletter-btn">Subscribe</button>
+          <button type="submit" class="newsletter-btn" id="newsletter-btn">
+            <span class="btn-text">Subscribe</span>
+            <span class="btn-sending" aria-hidden="true">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+            </span>
+            <span class="btn-done" aria-hidden="true">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            </span>
+          </button>
         </div>
-        <p class="newsletter-note">No spam, ever. Unsubscribe anytime.</p>
+        <p class="newsletter-note" id="newsletter-note">No spam, ever. Unsubscribe anytime.</p>
       </form>
     </div>
   </div>
@@ -201,6 +210,55 @@ const year = new Date().getFullYear();
       </div>
     </div>
   </div>
+  <script>
+    document.addEventListener('astro:page-load', () => {
+      const form = document.getElementById('newsletter-form');
+      if (!form) return;
+
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const btn = document.getElementById('newsletter-btn');
+        const input = document.getElementById('newsletter-email');
+        const note = document.getElementById('newsletter-note');
+        const email = input.value.trim();
+        if (!email) return;
+
+        // Sending state
+        btn.classList.add('is-sending');
+        btn.disabled = true;
+        input.disabled = true;
+
+        try {
+          const res = await fetch('/api/newsletter', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email }),
+          });
+          const data = await res.json();
+
+          btn.classList.remove('is-sending');
+
+          if (data.ok) {
+            btn.classList.add('is-done');
+            input.value = '';
+            note.textContent = "You're in! Welcome to the Sunshine family.";
+            note.classList.add('newsletter-note--success');
+          } else {
+            note.textContent = data.error || 'Something went wrong. Please try again.';
+            note.classList.add('newsletter-note--error');
+            btn.disabled = false;
+            input.disabled = false;
+          }
+        } catch {
+          btn.classList.remove('is-sending');
+          note.textContent = 'Something went wrong. Please try again.';
+          note.classList.add('newsletter-note--error');
+          btn.disabled = false;
+          input.disabled = false;
+        }
+      });
+    });
+  </script>
 </footer>
 
 <style>
@@ -291,7 +349,27 @@ const year = new Date().getFullYear();
     color: var(--c-text-light);
     margin-top: 10px;
     padding-left: 20px;
+    transition: color 0.3s ease;
   }
+  .newsletter-note--success { color: #22c55e; }
+  .newsletter-note--error { color: #ef4444; }
+
+  /* Button states */
+  .newsletter-btn { position: relative; }
+  .btn-sending, .btn-done { display: none; }
+  .newsletter-btn.is-sending .btn-text { display: none; }
+  .newsletter-btn.is-sending .btn-sending {
+    display: inline-flex;
+    animation: nl-spin 0.8s linear infinite;
+  }
+  .newsletter-btn.is-done .btn-text { display: none; }
+  .newsletter-btn.is-done .btn-done { display: inline-flex; }
+  .newsletter-btn.is-done {
+    background: #22c55e;
+    color: white;
+    pointer-events: none;
+  }
+  @keyframes nl-spin { to { transform: rotate(360deg); } }
 
   @media (max-width: 768px) {
     .footer-newsletter { padding: 56px 0; }
