@@ -6,15 +6,19 @@ const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
 ---
 
 <BaseLayout title="Page Not Found — Sunshine on a Ranney Day">
-  <section class="lost">
-    <!-- Atmospheric layers -->
-    <div class="sky" aria-hidden="true">
+  <section class="lost" id="scene">
+    <!-- Blueprint grid background -->
+    <div class="blueprint" aria-hidden="true"></div>
+
+    <!-- Parallax sky layer -->
+    <div class="sky" id="sky" aria-hidden="true">
       <div class="cloud cloud--1"></div>
       <div class="cloud cloud--2"></div>
       <div class="cloud cloud--3"></div>
       <div class="cloud cloud--4"></div>
     </div>
 
+    <!-- Floating tool particles -->
     <div class="particles" aria-hidden="true">
       <span class="particle particle--1">🔨</span>
       <span class="particle particle--2">🪚</span>
@@ -25,20 +29,23 @@ const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
       <span class="particle particle--7">✨</span>
     </div>
 
+    <!-- Confetti canvas for easter egg -->
+    <canvas id="confetti" class="confetti-canvas" aria-hidden="true"></canvas>
+
     <div class="container">
       <!-- 4 · GRACIE · 4 -->
-      <div class="hero-404">
-        <span class="digit digit--left">4</span>
-        <div class="gracie-zone">
+      <div class="hero-404" id="hero-404">
+        <span class="digit digit--left" id="digit-l">4</span>
+        <div class="gracie-zone" id="gracie-zone">
           <!-- Sunshine rays behind Gracie -->
-          <div class="rays" aria-hidden="true">
+          <div class="rays" id="rays" aria-hidden="true">
             <div class="ray"></div><div class="ray"></div><div class="ray"></div>
             <div class="ray"></div><div class="ray"></div><div class="ray"></div>
             <div class="ray"></div><div class="ray"></div><div class="ray"></div>
             <div class="ray"></div><div class="ray"></div><div class="ray"></div>
           </div>
           <!-- Yellow glow ring -->
-          <div class="glow-ring" aria-hidden="true"></div>
+          <div class="glow-ring" id="glow-ring" aria-hidden="true"></div>
           <div class="gracie-wrap" id="gracie-wrap">
             <img
               src={`${CF}/sunny-pig/w=300,h=300,fit=contain`}
@@ -55,15 +62,21 @@ const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
             <!-- Click sparkle container -->
             <div class="sparkles" id="sparkles" aria-hidden="true"></div>
           </div>
-          <div class="gracie-shadow" aria-hidden="true"></div>
+          <div class="gracie-shadow" id="gracie-shadow" aria-hidden="true"></div>
         </div>
-        <span class="digit digit--right">4</span>
+        <span class="digit digit--right" id="digit-r">4</span>
+      </div>
+
+      <!-- Click counter badge -->
+      <div class="oink-counter" id="oink-counter" aria-hidden="true">
+        <span class="oink-counter__icon">🐷</span>
+        <span class="oink-counter__num" id="oink-num">0</span>
+        <span class="oink-counter__label">oinks</span>
       </div>
 
       <!-- Speech bubble -->
       <div class="bubble" id="bubble">
         <p class="bubble__text" id="bubble-text">Gracie flew off&nbsp;course!</p>
-        <div class="bubble__tail" aria-hidden="true"></div>
       </div>
 
       <p class="subtitle">
@@ -73,7 +86,7 @@ const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
 
       <!-- Click prompt -->
       <p class="tap-hint" id="tap-hint" aria-hidden="true">
-        <span class="tap-hint__icon">👆</span> Tap Gracie for a surprise
+        <span class="tap-hint__icon">👆</span> Tap Gracie
       </p>
 
       <div class="actions">
@@ -100,7 +113,6 @@ const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
 </BaseLayout>
 
 <script>
-  // Gracie click interaction — barrel roll + sparkle burst + rotating quotes
   const quotes = [
     "Gracie flew off\u00a0course!",
     "This room hasn't been\u00a0built\u00a0yet!",
@@ -108,64 +120,217 @@ const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
     "Even flying pigs get\u00a0lost!",
     "Hold my cape, I'll find\u00a0it!",
     "404 dreams — still\u00a0searching!",
-    "Sawing through pages\u00a0here…",
+    "Sawing through pages\u00a0here\u2026",
     "Let's build this page\u00a0together!",
   ];
-  let quoteIdx = 0;
-  let spinning = false;
+
+  const EASTER_EGG_CLICKS = 7;
 
   function init() {
     const gracie = document.getElementById('gracie');
     const wrap = document.getElementById('gracie-wrap');
-    const bubble = document.getElementById('bubble-text');
+    const bubbleText = document.getElementById('bubble-text');
     const sparkles = document.getElementById('sparkles');
     const hint = document.getElementById('tap-hint');
+    const digitL = document.getElementById('digit-l');
+    const digitR = document.getElementById('digit-r');
+    const scene = document.getElementById('scene');
+    const sky = document.getElementById('sky');
+    const gracieZone = document.getElementById('gracie-zone');
+    const rays = document.getElementById('rays');
+    const glowRing = document.getElementById('glow-ring');
+    const counter = document.getElementById('oink-counter');
+    const counterNum = document.getElementById('oink-num');
+    const canvas = document.getElementById('confetti');
 
-    if (!gracie || !wrap || !bubble || !sparkles) return;
+    if (!gracie || !wrap || !bubbleText || !sparkles || !scene) return;
 
+    let quoteIdx = 0;
+    let clickCount = 0;
+    let spinning = false;
+    let easterEggTriggered = false;
+
+    // ── Mouse Parallax ──────────────────────
+    const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    if (!prefersReduced && sky && gracieZone && rays) {
+      let mx = 0, my = 0, cx = 0, cy = 0;
+      let ticking = false;
+
+      scene.addEventListener('mousemove', (e) => {
+        const rect = scene.getBoundingClientRect();
+        mx = ((e.clientX - rect.left) / rect.width - 0.5) * 2;   // -1 to 1
+        my = ((e.clientY - rect.top) / rect.height - 0.5) * 2;
+        if (!ticking) {
+          ticking = true;
+          requestAnimationFrame(applyParallax);
+        }
+      });
+
+      scene.addEventListener('mouseleave', () => {
+        mx = 0; my = 0;
+        if (!ticking) { ticking = true; requestAnimationFrame(applyParallax); }
+      });
+
+      function applyParallax() {
+        // Lerp toward target
+        cx += (mx - cx) * 0.08;
+        cy += (my - cy) * 0.08;
+
+        // Clouds drift with cursor
+        sky.style.transform = `translate(${cx * 20}px, ${cy * 10}px)`;
+
+        // Gracie tilts toward cursor
+        gracieZone.style.transform = `translate(${cx * 8}px, ${cy * 5}px)`;
+        gracie.style.transform = `rotate(${cx * 4}deg)`;
+
+        // Rays shift opposite for depth
+        if (rays) rays.style.setProperty('--parallax-x', `${cx * -12}px`);
+        if (glowRing) glowRing.style.setProperty('--parallax-x', `${cx * -6}px`);
+
+        if (Math.abs(mx - cx) > 0.001 || Math.abs(my - cy) > 0.001) {
+          requestAnimationFrame(applyParallax);
+        } else {
+          ticking = false;
+        }
+      }
+    }
+
+    // ── Gracie Click ────────────────────────
     gracie.addEventListener('click', () => {
       if (spinning) return;
       spinning = true;
+      clickCount++;
 
-      // Hide hint after first click
-      if (hint) hint.style.opacity = '0';
+      // Show counter after first click
+      if (counter && clickCount === 1) {
+        counter.classList.add('visible');
+      }
+      if (counterNum) {
+        counterNum.textContent = clickCount;
+        counterNum.classList.remove('bump');
+        void counterNum.offsetWidth; // reflow
+        counterNum.classList.add('bump');
+      }
+
+      // Hide hint
+      if (hint && clickCount === 1) hint.style.opacity = '0';
 
       // Barrel roll
       wrap.classList.add('barrel-roll');
 
+      // Digits react — wobble outward
+      if (digitL) { digitL.classList.remove('wobble'); void digitL.offsetWidth; digitL.classList.add('wobble'); }
+      if (digitR) { digitR.classList.remove('wobble'); void digitR.offsetWidth; digitR.classList.add('wobble'); }
+
+      // Tiny screen shake
+      scene.classList.remove('shake');
+      void scene.offsetWidth;
+      scene.classList.add('shake');
+
       // Sparkle burst
-      for (let i = 0; i < 12; i++) {
+      const sparkEmoji = ['✨','⭐','💛','🌟','☀️','🐷'];
+      for (let i = 0; i < 14; i++) {
         const s = document.createElement('span');
         s.className = 'spark';
-        s.textContent = ['✨','⭐','💛','🌟','☀️'][Math.floor(Math.random() * 5)];
-        const angle = (i / 12) * 360;
-        const dist = 60 + Math.random() * 50;
+        s.textContent = sparkEmoji[Math.floor(Math.random() * sparkEmoji.length)];
+        const angle = (i / 14) * 360;
+        const dist = 55 + Math.random() * 60;
         s.style.setProperty('--angle', angle + 'deg');
         s.style.setProperty('--dist', dist + 'px');
-        s.style.setProperty('--delay', (Math.random() * 0.1) + 's');
+        s.style.setProperty('--delay', (Math.random() * 0.12) + 's');
         sparkles.appendChild(s);
       }
 
       // Rotate quote
       quoteIdx = (quoteIdx + 1) % quotes.length;
-      bubble.style.opacity = '0';
-      bubble.style.transform = 'translateY(6px)';
+      bubbleText.style.opacity = '0';
+      bubbleText.style.transform = 'translateY(8px)';
       setTimeout(() => {
-        bubble.innerHTML = quotes[quoteIdx];
-        bubble.style.opacity = '1';
-        bubble.style.transform = 'translateY(0)';
+        bubbleText.innerHTML = quotes[quoteIdx];
+        bubbleText.style.opacity = '1';
+        bubbleText.style.transform = 'translateY(0)';
       }, 200);
+
+      // ── Easter Egg at N clicks ──
+      if (clickCount === EASTER_EGG_CLICKS && !easterEggTriggered) {
+        easterEggTriggered = true;
+        setTimeout(() => {
+          bubbleText.innerHTML = "You found Gracie's secret\u00a0room! 🎉";
+          scene.classList.add('golden-mode');
+          fireConfetti(canvas);
+        }, 300);
+      }
 
       // Cleanup
       setTimeout(() => {
         wrap.classList.remove('barrel-roll');
         sparkles.innerHTML = '';
+        scene.classList.remove('shake');
         spinning = false;
       }, 800);
     });
+
+    // ── Confetti ────────────────────────────
+    function fireConfetti(canvasEl) {
+      if (!canvasEl) return;
+      const ctx = canvasEl.getContext('2d');
+      if (!ctx) return;
+
+      canvasEl.width = window.innerWidth;
+      canvasEl.height = window.innerHeight;
+      canvasEl.style.display = 'block';
+
+      const pieces = [];
+      const colors = ['#FFDA24', '#FFE766', '#FFC107', '#FFFFFF', '#373A36', '#FFD700', '#FFA500'];
+
+      for (let i = 0; i < 150; i++) {
+        pieces.push({
+          x: Math.random() * canvasEl.width,
+          y: -20 - Math.random() * canvasEl.height * 0.5,
+          w: 4 + Math.random() * 8,
+          h: 6 + Math.random() * 10,
+          color: colors[Math.floor(Math.random() * colors.length)],
+          vx: (Math.random() - 0.5) * 4,
+          vy: 2 + Math.random() * 5,
+          rot: Math.random() * 360,
+          rv: (Math.random() - 0.5) * 12,
+          opacity: 1,
+        });
+      }
+
+      let frame = 0;
+      function draw() {
+        ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
+        let alive = false;
+        for (const p of pieces) {
+          p.x += p.vx;
+          p.vy += 0.1;
+          p.y += p.vy;
+          p.rot += p.rv;
+          if (frame > 80) p.opacity -= 0.015;
+          if (p.opacity <= 0) continue;
+          alive = true;
+          ctx.save();
+          ctx.globalAlpha = Math.max(0, p.opacity);
+          ctx.translate(p.x, p.y);
+          ctx.rotate((p.rot * Math.PI) / 180);
+          ctx.fillStyle = p.color;
+          ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+          ctx.restore();
+        }
+        frame++;
+        if (alive && frame < 250) {
+          requestAnimationFrame(draw);
+        } else {
+          ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
+          canvasEl.style.display = 'none';
+        }
+      }
+      requestAnimationFrame(draw);
+    }
   }
 
-  // Support View Transitions
   document.addEventListener('astro:page-load', init);
   init();
 </script>
@@ -181,8 +346,14 @@ const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
     align-items: center;
     justify-content: center;
     padding-block: var(--space-3xl);
+    background: var(--c-cream);
+    transition: background 0.6s ease;
+  }
+
+  /* Golden mode (easter egg) */
+  .lost.golden-mode {
     background:
-      radial-gradient(ellipse 60% 40% at 50% 40%, rgba(255, 218, 36, 0.06) 0%, transparent 70%),
+      radial-gradient(ellipse 80% 60% at 50% 40%, rgba(255, 218, 36, 0.15) 0%, transparent 70%),
       var(--c-cream);
   }
 
@@ -195,12 +366,52 @@ const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
     padding-inline: var(--page-padding);
   }
 
+  /* ═══ Blueprint Grid ══════════════════════ */
+  .blueprint {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background-image:
+      linear-gradient(rgba(55, 58, 54, 0.025) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(55, 58, 54, 0.025) 1px, transparent 1px);
+    background-size: 40px 40px;
+    mask-image: radial-gradient(ellipse 70% 60% at 50% 45%, black 20%, transparent 70%);
+    -webkit-mask-image: radial-gradient(ellipse 70% 60% at 50% 45%, black 20%, transparent 70%);
+  }
+
+  /* ═══ Screen Shake ════════════════════════ */
+  :global(.lost.shake) {
+    animation: shake 0.35s ease;
+  }
+  @keyframes shake {
+    0%, 100% { transform: translate(0, 0); }
+    15%  { transform: translate(-2px, 1px); }
+    30%  { transform: translate(2px, -1px); }
+    45%  { transform: translate(-1px, 2px); }
+    60%  { transform: translate(1px, -1px); }
+    75%  { transform: translate(-1px, 0px); }
+  }
+
+  /* ═══ Confetti Canvas ═════════════════════ */
+  .confetti-canvas {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 100;
+    pointer-events: none;
+    display: none;
+  }
+
   /* ═══ Sky & Clouds ════════════════════════ */
   .sky {
     position: absolute;
     inset: 0;
     pointer-events: none;
     z-index: 0;
+    transition: transform 0.05s linear;
+    will-change: transform;
   }
 
   .cloud {
@@ -285,7 +496,7 @@ const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
     align-items: center;
     justify-content: center;
     gap: clamp(0rem, 1vw, 0.5rem);
-    margin-bottom: var(--space-lg);
+    margin-bottom: var(--space-sm);
   }
 
   .digit {
@@ -297,6 +508,7 @@ const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
     opacity: 0;
     animation: digit-in 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards;
     user-select: none;
+    transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
 
   .digit--left {
@@ -318,6 +530,26 @@ const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
     100% { opacity: 1; transform: translateY(0) scale(1) rotate(2deg); }
   }
 
+  /* Digit wobble on click */
+  :global(.digit.wobble) {
+    animation: digit-wobble 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  :global(.digit--left.wobble) {
+    animation-name: digit-wobble-l;
+  }
+  @keyframes digit-wobble {
+    0%   { transform: scale(1) rotate(2deg); }
+    25%  { transform: scale(1.06) rotate(6deg) translateX(6px); }
+    50%  { transform: scale(0.97) rotate(0deg); }
+    100% { transform: scale(1) rotate(2deg); }
+  }
+  @keyframes digit-wobble-l {
+    0%   { transform: scale(1) rotate(-2deg); }
+    25%  { transform: scale(1.06) rotate(-6deg) translateX(-6px); }
+    50%  { transform: scale(0.97) rotate(0deg); }
+    100% { transform: scale(1) rotate(-2deg); }
+  }
+
   /* ═══ Gracie Zone ═════════════════════════ */
   .gracie-zone {
     position: relative;
@@ -325,27 +557,30 @@ const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
     flex-direction: column;
     align-items: center;
     flex-shrink: 0;
+    transition: transform 0.05s linear;
+    will-change: transform;
   }
 
   /* Sunshine rays */
   .rays {
     position: absolute;
-    width: clamp(180px, 35vw, 320px);
-    height: clamp(180px, 35vw, 320px);
+    width: clamp(200px, 38vw, 360px);
+    height: clamp(200px, 38vw, 360px);
     top: 50%;
     left: 50%;
-    transform: translate(-50%, -55%);
+    transform: translate(calc(-50% + var(--parallax-x, 0px)), -55%);
     animation: rays-spin 30s linear infinite, rays-enter 1s ease 0.3s both;
     pointer-events: none;
+    will-change: transform;
   }
 
   @keyframes rays-enter {
-    from { opacity: 0; transform: translate(-50%, -55%) scale(0.5); }
-    to   { opacity: 1; transform: translate(-50%, -55%) scale(1); }
+    from { opacity: 0; transform: translate(calc(-50% + var(--parallax-x, 0px)), -55%) scale(0.5); }
+    to   { opacity: 1; transform: translate(calc(-50% + var(--parallax-x, 0px)), -55%) scale(1); }
   }
 
   @keyframes rays-spin {
-    to { transform: translate(-50%, -55%) rotate(360deg); }
+    to { transform: translate(calc(-50% + var(--parallax-x, 0px)), -55%) rotate(360deg); }
   }
 
   .ray {
@@ -353,8 +588,8 @@ const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
     top: 50%;
     left: 50%;
     width: 3px;
-    height: 45%;
-    background: linear-gradient(to top, rgba(255, 218, 36, 0.25), transparent);
+    height: 48%;
+    background: linear-gradient(to top, rgba(255, 218, 36, 0.22), transparent);
     transform-origin: bottom center;
     border-radius: 3px;
   }
@@ -371,23 +606,42 @@ const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
   .ray:nth-child(11) { transform: rotate(300deg); }
   .ray:nth-child(12) { transform: rotate(330deg); }
 
-  /* Soft yellow glow behind Gracie */
+  /* Golden mode — rays get bigger and brighter */
+  :global(.lost.golden-mode) .rays {
+    width: clamp(240px, 45vw, 440px);
+    height: clamp(240px, 45vw, 440px);
+    transition: width 0.8s ease, height 0.8s ease;
+  }
+  :global(.lost.golden-mode) .ray {
+    background: linear-gradient(to top, rgba(255, 218, 36, 0.4), transparent);
+    width: 4px;
+  }
+
+  /* Soft yellow glow */
   .glow-ring {
     position: absolute;
-    width: clamp(130px, 28vw, 240px);
-    height: clamp(130px, 28vw, 240px);
+    width: clamp(140px, 30vw, 260px);
+    height: clamp(140px, 30vw, 260px);
     top: 50%;
     left: 50%;
-    transform: translate(-50%, -55%);
+    transform: translate(calc(-50% + var(--parallax-x, 0px)), -55%);
     border-radius: 50%;
-    background: radial-gradient(circle, rgba(255, 218, 36, 0.2) 0%, rgba(255, 218, 36, 0.06) 50%, transparent 70%);
+    background: radial-gradient(circle, rgba(255, 218, 36, 0.18) 0%, rgba(255, 218, 36, 0.05) 50%, transparent 70%);
     animation: glow-pulse 4s ease-in-out infinite;
     pointer-events: none;
+    will-change: transform;
+  }
+
+  :global(.lost.golden-mode) .glow-ring {
+    background: radial-gradient(circle, rgba(255, 218, 36, 0.35) 0%, rgba(255, 218, 36, 0.12) 50%, transparent 70%);
+    width: clamp(180px, 38vw, 340px);
+    height: clamp(180px, 38vw, 340px);
+    transition: all 0.8s ease;
   }
 
   @keyframes glow-pulse {
-    0%, 100% { transform: translate(-50%, -55%) scale(1);   opacity: 0.8; }
-    50%      { transform: translate(-50%, -55%) scale(1.12); opacity: 1; }
+    0%, 100% { opacity: 0.8; scale: 1; }
+    50%      { opacity: 1; scale: 1.1; }
   }
 
   /* ═══ Gracie ══════════════════════════════ */
@@ -407,16 +661,17 @@ const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
   }
 
   .gracie {
-    width: clamp(110px, 28vw, 240px);
+    width: clamp(120px, 30vw, 250px);
     height: auto;
     animation: bob 3.5s ease-in-out infinite;
     filter: drop-shadow(0 10px 30px rgba(255, 218, 36, 0.35));
     cursor: pointer;
-    transition: filter var(--transition-base);
+    transition: filter var(--transition-base), transform 0.05s linear;
+    will-change: transform, filter;
   }
 
   .gracie:hover {
-    filter: drop-shadow(0 14px 40px rgba(255, 218, 36, 0.55));
+    filter: drop-shadow(0 16px 44px rgba(255, 218, 36, 0.6));
   }
 
   @keyframes bob {
@@ -426,13 +681,13 @@ const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
   }
 
   /* Barrel roll on click */
-  .gracie-wrap.barrel-roll .gracie {
-    animation: barrel 0.7s cubic-bezier(0.34, 1.56, 0.64, 1);
+  :global(.gracie-wrap.barrel-roll) .gracie {
+    animation: barrel 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) !important;
   }
   @keyframes barrel {
     0%   { transform: scale(1) rotate(0deg); }
-    30%  { transform: scale(1.15) rotate(-20deg); }
-    60%  { transform: scale(0.95) rotate(380deg); }
+    25%  { transform: scale(1.2) rotate(-20deg); }
+    55%  { transform: scale(0.92) rotate(380deg); }
     100% { transform: scale(1) rotate(360deg); }
   }
 
@@ -476,9 +731,7 @@ const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
       opacity: 1;
       transform: translate(0, 0) scale(0.3);
     }
-    60% {
-      opacity: 1;
-    }
+    60% { opacity: 1; }
     100% {
       opacity: 0;
       transform:
@@ -488,6 +741,54 @@ const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
         )
         scale(1.2);
     }
+  }
+
+  /* ═══ Oink Counter ════════════════════════ */
+  .oink-counter {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.3rem 0.75rem;
+    border-radius: 999px;
+    background: rgba(255, 218, 36, 0.15);
+    border: 1.5px solid rgba(255, 218, 36, 0.3);
+    font-family: var(--font-body);
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--c-dark);
+    margin-bottom: var(--space-md);
+    opacity: 0;
+    transform: scale(0.8);
+    transition: opacity 0.3s ease, transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    pointer-events: none;
+  }
+
+  .oink-counter.visible {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  .oink-counter__icon { font-size: 1rem; }
+
+  .oink-counter__num {
+    display: inline-block;
+    min-width: 1ch;
+    font-weight: 700;
+    font-size: 0.95rem;
+  }
+
+  :global(.oink-counter__num.bump) {
+    animation: num-bump 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  @keyframes num-bump {
+    0%   { transform: scale(1); }
+    40%  { transform: scale(1.5); }
+    100% { transform: scale(1); }
+  }
+
+  .oink-counter__label {
+    color: var(--c-text-muted);
+    font-weight: 500;
   }
 
   /* ═══ Speech Bubble ═══════════════════════ */
@@ -505,7 +806,6 @@ const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
     font-weight: 700;
     color: var(--c-dark);
     transition: opacity 0.2s ease, transform 0.2s ease;
-    /* Signature yellow highlight */
     background-image: linear-gradient(transparent 55%, rgba(255, 218, 36, 0.45) 55%);
     background-repeat: no-repeat;
     background-size: 100% 100%;
@@ -531,7 +831,7 @@ const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
     font-family: var(--font-body);
     font-size: 0.85rem;
     color: var(--c-text-light);
-    margin-bottom: var(--space-xl);
+    margin-bottom: var(--space-lg);
     opacity: 0;
     animation: fade-up 0.5s ease 0.9s forwards;
     transition: opacity 0.4s ease;
@@ -613,12 +913,13 @@ const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
   /* ═══ Reduced Motion ══════════════════════ */
   @media (prefers-reduced-motion: reduce) {
     .cloud, .particle, .gracie, .gracie-shadow,
-    .rays, .glow-ring, .tap-hint__icon {
+    .rays, .glow-ring, .tap-hint__icon, .blueprint {
       animation: none !important;
     }
 
     .digit, .gracie-wrap, .bubble, .subtitle,
-    .tap-hint, .actions, .fun-links, .rays {
+    .tap-hint, .actions, .fun-links, .rays,
+    .oink-counter {
       opacity: 1 !important;
       animation: none !important;
     }
@@ -631,6 +932,7 @@ const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
     }
     .cloud { display: none; }
     .particle { font-size: 1.1rem; }
-    .ray { height: 40%; }
+    .ray { height: 42%; }
+    .blueprint { background-size: 30px 30px; }
   }
 </style>
