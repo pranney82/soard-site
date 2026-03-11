@@ -1767,17 +1767,26 @@ const featuredQuote = featuredKid?.data.quote
   /* Mobile */
   @media (max-width: 768px) {
     .kids-hero {
-      padding: var(--space-2xl) 0 var(--space-lg);
+      padding: var(--space-xl) 0 var(--space-md);
     }
 
     .kids-hero__inner {
-      gap: var(--space-lg);
+      gap: var(--space-md);
+    }
+
+    .kids-hero__title {
+      font-size: clamp(1.75rem, 7vw, 2.25rem);
+    }
+
+    .kids-hero__subtitle {
+      font-size: 0.9rem;
+      max-width: 320px;
     }
 
     .faces {
-      max-width: 360px;
+      max-width: 340px;
       padding-block: var(--space-xs);
-      gap: 2px;
+      gap: 4px;
       flex-wrap: nowrap;
     }
 
@@ -1787,39 +1796,49 @@ const featuredQuote = featuredKid?.data.quote
 
     /* Mobile: flatten arc — uniform size, no vertical offset, hide extras */
     .face:nth-child(n) {
-      --face-s: 40px;
+      --face-s: 38px;
       --face-y: 0px;
     }
 
-    /* Hide last 4 faces so 8 fit in one row: 8 × 40 + 7 × 4 = 348px */
+    /* Hide last 4 faces so 8 fit in one row: 8 × 38 + 7 × 4 = 332px */
     .face:nth-child(n+9) {
       display: none;
     }
 
+    /* Stats as 2×2 grid for breathing room */
     .hero-stats {
-      gap: var(--space-lg);
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: var(--space-sm) var(--space-xl);
       padding-top: var(--space-sm);
+      max-width: 300px;
+      justify-items: center;
     }
 
     .hero-stat__num {
-      font-size: 1.2rem;
+      font-size: 1.15rem;
     }
 
     .hero-stat__label {
       font-size: 0.6rem;
     }
 
-    /* Featured card: full-bleed stacked */
+    /* Featured card: tighter, mobile-native aspect ratio */
+    .featured-section {
+      padding-bottom: var(--space-sm);
+    }
+
     .featured {
-      aspect-ratio: auto;
-      min-height: 380px;
+      aspect-ratio: 16 / 10;
+      min-height: 0;
+      border-radius: var(--border-radius);
     }
 
     .featured__gradient {
       background: linear-gradient(
         to top,
-        rgba(30, 31, 37, 0.9) 0%,
-        rgba(30, 31, 37, 0.5) 50%,
+        rgba(30, 31, 37, 0.92) 0%,
+        rgba(30, 31, 37, 0.55) 55%,
         transparent 100%
       );
     }
@@ -1827,26 +1846,50 @@ const featuredQuote = featuredKid?.data.quote
     .featured__overlay {
       max-width: 100%;
       justify-content: flex-end;
-      padding: var(--space-lg);
+      padding: var(--space-md);
+      gap: 4px;
+    }
+
+    .featured__label {
+      font-size: 0.6rem;
     }
 
     .featured__name {
-      font-size: 1.75rem;
+      font-size: 1.5rem;
+    }
+
+    .featured__diagnosis {
+      font-size: 0.82rem;
     }
 
     .featured__quote {
       display: none;
     }
 
+    .featured__meta {
+      margin-top: 2px;
+    }
+
+    .featured__tag {
+      font-size: 0.62rem;
+      padding: 2px 10px;
+    }
+
+    .featured__cta {
+      font-size: 0.82rem;
+      margin-top: 4px;
+    }
+
     .kids-section {
-      padding-block: 0 var(--space-3xl);
+      padding-block: 0 var(--space-2xl);
     }
 
     /* Toolbar */
     .toolbar {
-      top: var(--header-height, 84px);
+      top: var(--header-height, 68px);
       margin-inline: calc(-1 * var(--space-lg));
       padding: var(--space-sm) var(--space-lg);
+      margin-bottom: var(--space-md);
     }
 
     .toolbar__row {
@@ -1861,8 +1904,8 @@ const featuredQuote = featuredKid?.data.quote
 
     .search-box__input {
       height: 44px;
-      padding: 0 12px 0 38px;
-      font-size: 16px;
+      padding: 0 36px 0 38px;
+      font-size: 16px; /* Prevents iOS zoom */
     }
 
     /* Hide desktop filters, show mobile button */
@@ -1876,12 +1919,17 @@ const featuredQuote = featuredKid?.data.quote
 
     .toolbar__status {
       font-size: 0.75rem;
+      margin-top: var(--space-xs);
     }
 
-    /* Grid: 2 columns on mobile */
+    /* Grid: 2 columns with proper spacing */
     .kids-grid {
       grid-template-columns: repeat(2, 1fr);
-      gap: var(--space-sm);
+      gap: var(--space-md) var(--space-sm);
+    }
+
+    .kid-card {
+      contain-intrinsic-size: auto 170px auto 280px;
     }
 
     .kid-card__frame {
@@ -1898,37 +1946,70 @@ const featuredQuote = featuredKid?.data.quote
     }
 
     .kid-card__info {
-      padding: 6px 2px 0;
+      padding: 8px 2px 2px;
+      gap: 6px;
     }
 
     .kid-card__name {
-      font-size: 0.85rem;
+      font-size: 0.88rem;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      min-width: 0;
     }
 
     .kid-card__diagnosis {
-      font-size: 0.7rem;
+      font-size: 0.72rem;
       padding: 0 2px;
       display: -webkit-box;
-      -webkit-line-clamp: 2;
+      -webkit-line-clamp: 1;
       -webkit-box-orient: vertical;
       overflow: hidden;
+      line-height: 1.35;
     }
 
     .kid-card__badge {
-      font-size: 0.55rem;
+      font-size: 0.58rem;
       padding: 2px 8px;
+      flex-shrink: 0;
+    }
+
+    /* Bottom CTA tighter on mobile */
+    .bottom-cta {
+      padding-block: var(--space-2xl);
+    }
+
+    .bottom-cta__title {
+      font-size: 1.35rem;
+    }
+
+    .bottom-cta__text {
+      font-size: 0.92rem;
+      margin-bottom: var(--space-lg);
     }
   }
 
   @media (max-width: 380px) {
     .hero-stats {
-      flex-wrap: wrap;
-      gap: var(--space-md);
+      gap: var(--space-xs) var(--space-lg);
+      max-width: 260px;
     }
 
-    /* At 320px, 8×40+7×4=348px > 288px container. Show 6 instead. */
+    /* At 320px, 8×38+7×4=332px > 288px container. Show 6 instead. */
     .face:nth-child(n+7) {
       display: none;
+    }
+
+    .kids-grid {
+      gap: var(--space-sm);
+    }
+
+    .kid-card__name {
+      font-size: 0.8rem;
+    }
+
+    .kid-card__diagnosis {
+      font-size: 0.65rem;
     }
   }
 
