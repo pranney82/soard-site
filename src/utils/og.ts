@@ -39,10 +39,19 @@ function loadFonts() {
 
 // ── Logo as base64 ────────────────────────────────
 let logoB64: string | null = null;
-function getLogo(): string {
+async function getLogo(): Promise<string> {
   if (logoB64) return logoB64;
-  const buf = fs.readFileSync(path.resolve('./public/images/logos/logo-circle.png'));
-  logoB64 = `data:image/png;base64,${buf.toString('base64')}`;
+  const url = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/brand-logo-nav-circle/w=256';
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    if (!res.ok) throw new Error(`CF Images responded ${res.status}`);
+    const buf = Buffer.from(await res.arrayBuffer());
+    logoB64 = `data:image/png;base64,${buf.toString('base64')}`;
+  } catch (e) {
+    console.warn('⚠ Could not fetch logo from CF Images for OG generation:', e);
+    // Return a 1x1 transparent PNG as last resort
+    logoB64 = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==';
+  }
   return logoB64;
 }
 
@@ -78,7 +87,7 @@ function brandBadge() {
       children: [
         {
           type: 'img',
-          props: { src: getLogo(), width: 48, height: 17, style: { objectFit: 'contain' as const } },
+          props: { src: logoB64!, width: 48, height: 17, style: { objectFit: 'contain' as const } },
         },
         {
           type: 'div',
@@ -483,6 +492,7 @@ export interface OgOptions {
 
 export async function generateOgImage(opts: OgOptions): Promise<Buffer> {
   const fonts = loadFonts();
+  await getLogo();
 
   let element: any;
   switch (opts.template) {

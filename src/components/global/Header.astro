@@ -119,24 +119,17 @@ function isGroupActive(group: NavGroup) {
 
 <header class="site-header" id="site-header" transition:persist="site-header">
   <div class="header-inner">
-    <!-- Logo — responsive srcset: browser picks optimal size for DPR -->
+    <!-- Logo — CF Images serves optimal format (AVIF/WebP) via format=auto -->
     <a href="/" class="logo" aria-label="Sunshine on a Ranney Day — Home">
-      <picture>
-        <source
-          type="image/webp"
-          srcset="/images/logos/logo-nav-circle-128.webp 128w, /images/logos/logo-nav-circle-192.webp 192w, /images/logos/logo-nav-circle-256.webp 256w, /images/logos/logo-nav-circle-384.webp 384w"
-          sizes="(min-width: 1024px) 64px, (min-width: 481px) 52px, 52px"
-        />
         <img
-          src="/images/logos/logo-nav-circle-256.png"
-          srcset="/images/logos/logo-nav-circle-128.png 128w, /images/logos/logo-nav-circle-192.png 192w, /images/logos/logo-nav-circle-256.png 256w, /images/logos/logo-nav-circle-384.png 384w"
+          src="https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/brand-logo-nav-circle/w=256,format=auto"
+          srcset="https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/brand-logo-nav-circle/w=128,format=auto 128w, https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/brand-logo-nav-circle/w=192,format=auto 192w, https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/brand-logo-nav-circle/w=256,format=auto 256w, https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/brand-logo-nav-circle/w=384,format=auto 384w"
           sizes="(min-width: 1024px) 64px, (min-width: 481px) 52px, 52px"
           alt="Sunshine on a Ranney Day"
           class="logo-img"
           width="256" height="256"
           loading="eager" fetchpriority="high"
         />
-      </picture>
     </a>
 
     <!-- Desktop Nav -->
