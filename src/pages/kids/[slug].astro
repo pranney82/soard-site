@@ -51,7 +51,7 @@ function cfUrl(src: string, opts: string) {
   return `${CF_BASE}/${id}/${opts}`;
 }
 function cfSrcset(src: string, widths: number[]) {
-  return widths.map(w => `${cfUrl(src, `w=${w},q=85`)} ${w}w`).join(', ');
+  return widths.map(w => `${cfUrl(src, `w=${w},format=auto,q=85`)} ${w}w`).join(', ');
 }
 
 // ── YouTube ID extraction ─────────────────
@@ -187,14 +187,23 @@ const dateModified = kid.year ? `${kid.year}-01-01` : undefined;
           <h2 class="section-heading">Watch {kid.name}'s Story</h2>
           {streamId ? (
             <div class="video-wrap">
-              <iframe
-                src={`https://iframe.videodelivery.net/${streamId}`}
-                title={`${kid.name}'s story video`}
-                allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture"
-                allowfullscreen
-                loading="lazy"
-                class="video-iframe"
-              ></iframe>
+              <div class="stream-facade" id="stream-facade" data-id={streamId} role="button" tabindex="0" aria-label={`Play ${kid.name}'s video`}>
+                <img
+                  src={`https://videodelivery.net/${streamId}/thumbnails/thumbnail.jpg?time=2s&height=720`}
+                  alt={`Video thumbnail for ${kid.name}'s story`}
+                  class="stream-facade__thumb"
+                  loading="lazy"
+                  decoding="async"
+                  width="1280"
+                  height="720"
+                />
+                <div class="stream-facade__play" aria-hidden="true">
+                  <svg width="68" height="48" viewBox="0 0 68 48">
+                    <path d="M66.52 7.74c-.78-2.93-2.49-5.41-5.42-6.19C55.79.13 34 0 34 0S12.21.13 6.9 1.55C3.97 2.33 2.27 4.81 1.48 7.74.06 13.05 0 24 0 24s.06 10.95 1.48 16.26c.78 2.93 2.49 5.41 5.42 6.19C12.21 47.87 34 48 34 48s21.79-.13 27.1-1.55c2.93-.78 4.64-3.26 5.42-6.19C67.94 34.95 68 24 68 24s-.06-10.95-1.48-16.26z" fill="#F6A500"/>
+                    <path d="M45 24L27 14v20" fill="white"/>
+                  </svg>
+                </div>
+              </div>
               {ytId && (
                 <p class="video-yt-link">
                   <a href={`https://www.youtube.com/watch?v=${ytId}`} target="_blank" rel="noopener noreferrer">
@@ -417,6 +426,28 @@ const dateModified = kid.year ? `${kid.year}-01-01` : undefined;
     facade.addEventListener('click', activate);
     facade.addEventListener('keydown', (e: KeyboardEvent) => {
       if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activate(); }
+    });
+  }
+
+  // ── Cloudflare Stream facade ────────────
+  const streamFacade = document.getElementById('stream-facade');
+  if (streamFacade) {
+    const activateStream = () => {
+      const id = streamFacade.dataset.id;
+      const wrapper = document.createElement('div');
+      wrapper.style.cssText = 'position:relative;aspect-ratio:16/9;border-radius:var(--border-radius-lg);overflow:hidden';
+      const iframe = document.createElement('iframe');
+      iframe.src = `https://iframe.videodelivery.net/${id}?autoplay=true`;
+      iframe.allow = 'accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture';
+      iframe.allowFullscreen = true;
+      iframe.title = 'Video player';
+      iframe.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border:0';
+      wrapper.appendChild(iframe);
+      streamFacade.replaceWith(wrapper);
+    };
+    streamFacade.addEventListener('click', activateStream);
+    streamFacade.addEventListener('keydown', (e: KeyboardEvent) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activateStream(); }
     });
   }
 
@@ -792,6 +823,43 @@ const dateModified = kid.year ? `${kid.year}-01-01` : undefined;
   }
 
   .yt-facade:hover .yt-facade__play {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.08);
+  }
+
+  /* Stream facade — matches YT facade pattern */
+  .stream-facade {
+    position: relative;
+    aspect-ratio: 16 / 9;
+    border-radius: var(--border-radius-lg);
+    overflow: hidden;
+    cursor: pointer;
+    background: var(--c-dark);
+  }
+
+  .stream-facade__thumb {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform 0.3s ease, filter 0.3s ease;
+  }
+
+  .stream-facade:hover .stream-facade__thumb {
+    transform: scale(1.03);
+    filter: brightness(0.85);
+  }
+
+  .stream-facade__play {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    opacity: 0.9;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+    filter: drop-shadow(0 4px 20px rgba(0, 0, 0, 0.4));
+  }
+
+  .stream-facade:hover .stream-facade__play {
     opacity: 1;
     transform: translate(-50%, -50%) scale(1.08);
   }
@@ -1320,6 +1388,7 @@ const dateModified = kid.year ? `${kid.year}-01-01` : undefined;
     }
 
     .yt-facade__thumb,
+    .stream-facade__thumb,
     .gallery-item__img,
     .gallery-item,
     .related-card__img {

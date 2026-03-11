@@ -98,6 +98,10 @@ const breadcrumbs = [
 const featuredKid = kids.find(k => k.data.heroImage);
 const gridKids = [...kids];
 
+// ── Load-more batching for rendering performance ──
+const BATCH_SIZE = 24;
+const totalBatches = Math.ceil(gridKids.length / BATCH_SIZE);
+
 // ── Hero face collage: 12 diverse kids across years ──
 const heroFacePool = kids.filter(k => k.data.heroImage?.includes('imagedelivery.net'));
 // Round-robin across years for visual diversity
@@ -164,7 +168,7 @@ const featuredQuote = featuredKid?.data.quote
               alt={kid.data.name}
               width="70"
               height="70"
-              loading="eager"
+              loading="lazy"
               decoding="async"
             />
           </a>
@@ -367,18 +371,31 @@ const featuredQuote = featuredKid?.data.quote
         </div>
       </div>
 
+      <!-- SVG sprite for repeated icons (avoids 187 inline copies) -->
+      <svg xmlns="http://www.w3.org/2000/svg" style="display:none">
+        <symbol id="icon-cta-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
+        </symbol>
+        <symbol id="icon-placeholder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3">
+          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+        </symbol>
+      </svg>
+
       <!-- Kid Grid -->
       <h2 class="sr-only">All kid profiles</h2>
       <div class="kids-grid" id="kids-grid">
-        {gridKids.map((kid, i) => (
+        {gridKids.map((kid, i) => {
+          const batch = Math.floor(i / BATCH_SIZE);
+          return (
           <a
             href={`/kids/${kid.data.slug}/`}
-            class="kid-card"
+            class:list={['kid-card', { 'kid-card--deferred': batch > 0 }]}
             data-year={`year-${kid.data.year}`}
             data-types={(kid.data.roomTypes || []).map(t => `type-${t.toLowerCase().replace(/\s+/g, '-')}`).join(' ')}
             data-name={kid.data.name.toLowerCase()}
             data-diagnosis={(kid.data.diagnosis || '').toLowerCase()}
             data-status={kid.data.status || 'completed'}
+            data-batch={batch}
           >
             <div class="kid-card__frame">
               {kid.data.heroImage ? (
@@ -396,20 +413,20 @@ const featuredQuote = featuredKid?.data.quote
                     class="kid-card__img"
                     width="340"
                     height="453"
-                    loading={i < 4 ? 'eager' : 'lazy'}
+                    loading={i < 2 ? 'eager' : 'lazy'}
                     decoding="async"
-                    fetchpriority={i < 2 ? 'high' : undefined}
+                    fetchpriority={i === 0 ? 'high' : undefined}
                   />
                 </picture>
               ) : (
                 <div class="kid-card__placeholder" aria-hidden="true">
-                  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                  <svg width="48" height="48"><use href="#icon-placeholder"/></svg>
                 </div>
               )}
               <div class="kid-card__hover-overlay" aria-hidden="true">
                 <span class="kid-card__cta">
                   <span class="kid-card__cta-text">Read their story</span>
-                  <svg class="kid-card__cta-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+                  <svg class="kid-card__cta-arrow" width="14" height="14"><use href="#icon-cta-arrow"/></svg>
                 </span>
               </div>
             </div>
@@ -423,7 +440,18 @@ const featuredQuote = featuredKid?.data.quote
               <span class="kid-card__diagnosis">{kid.data.diagnosis}</span>
             )}
           </a>
-        ))}
+        )})}
+      </div>
+
+      <!-- Load More -->
+      {totalBatches > 1 && (
+        <div class="load-more" id="load-more">
+          <button class="btn btn-dark btn--sm load-more__btn" id="load-more-btn" type="button">
+            Show More Kids
+            <span class="load-more__count" id="load-more-count">({gridKids.length - BATCH_SIZE} remaining)</span>
+          </button>
+        </div>
+      )}
       </div>
 
       <!-- No results -->
@@ -457,7 +485,8 @@ const featuredQuote = featuredKid?.data.quote
   <!-- Noscript: hide dead controls -->
   <noscript>
     <style>
-      .toolbar, .bottom-sheet, .filter-btn-mobile { display: none !important; }
+      .toolbar, .bottom-sheet, .filter-btn-mobile, .load-more { display: none !important; }
+      .kid-card--deferred { display: block !important; }
     </style>
   </noscript>
 </BaseLayout>
@@ -465,14 +494,11 @@ const featuredQuote = featuredKid?.data.quote
 <!-- ══════ FILTERING + INTERACTIONS ══════ -->
 <script>
   let _kidsObserver: IntersectionObserver | null = null;
-  let _kidsScrollHandler: (() => void) | null = null;
   let _kidsAbortController: AbortController | null = null;
 
   function cleanupKidsIndex() {
     _kidsObserver?.disconnect();
     _kidsObserver = null;
-    if (_kidsScrollHandler) window.removeEventListener('scroll', _kidsScrollHandler);
-    _kidsScrollHandler = null;
     _kidsAbortController?.abort();
     _kidsAbortController = null;
   }
@@ -510,7 +536,65 @@ const featuredQuote = featuredKid?.data.quote
     const filterBtnMobile = document.getElementById('filter-btn-mobile') as HTMLButtonElement;
     const mobileFilterCount = document.getElementById('mobile-filter-count') as HTMLElement;
 
+    // ── Load-more elements ──
+    const loadMoreWrap = document.getElementById('load-more') as HTMLElement | null;
+    const loadMoreBtn = document.getElementById('load-more-btn') as HTMLButtonElement | null;
+    const loadMoreCount = document.getElementById('load-more-count') as HTMLElement | null;
+    const BATCH_SIZE = 24;
+    let loadedBatches = 1;
+    const totalCards = cards.length;
+    const totalBatches = Math.ceil(totalCards / BATCH_SIZE);
+
     let statusActive = false;
+
+    // ── Load-more logic ──────────────────────
+    function revealBatch(batchNum: number) {
+      cards.forEach(card => {
+        if (Number(card.dataset.batch) === batchNum) {
+          card.classList.remove('kid-card--deferred');
+          // Observe for staggered reveal if animations enabled
+          if (!reducedMotion && _kidsObserver) {
+            _kidsObserver.observe(card);
+          } else {
+            card.classList.add('revealed');
+          }
+          // Wire up shimmer removal for newly revealed images
+          const img = card.querySelector<HTMLImageElement>('.kid-card__img');
+          if (img) wireShimmer(img);
+        }
+      });
+    }
+
+    function showAllBatches() {
+      cards.forEach(card => card.classList.remove('kid-card--deferred'));
+    }
+
+    function reapplyBatches() {
+      cards.forEach(card => {
+        const batch = Number(card.dataset.batch);
+        if (batch >= loadedBatches) {
+          card.classList.add('kid-card--deferred');
+        }
+      });
+    }
+
+    function updateLoadMoreUI() {
+      if (!loadMoreWrap || !loadMoreCount) return;
+      if (loadedBatches >= totalBatches) {
+        loadMoreWrap.classList.add('is-hidden');
+      } else {
+        const remaining = totalCards - (loadedBatches * BATCH_SIZE);
+        loadMoreCount.textContent = `(${remaining} remaining)`;
+      }
+    }
+
+    if (loadMoreBtn) {
+      loadMoreBtn.addEventListener('click', () => {
+        revealBatch(loadedBatches);
+        loadedBatches++;
+        updateLoadMoreUI();
+      }, { signal });
+    }
 
     // ── URL state restore ────────────────────
     const params = new URLSearchParams(window.location.search);
@@ -534,6 +618,15 @@ const featuredQuote = featuredKid?.data.quote
       let visibleCount = 0;
 
       const hasFilters = yearFilter !== 'all' || typeFilter !== 'all' || statusActive || query.length > 0;
+
+      // When filtering, bypass batch restrictions so search finds all kids
+      if (hasFilters) {
+        showAllBatches();
+        if (loadMoreWrap) loadMoreWrap.classList.add('is-hidden');
+      } else {
+        reapplyBatches();
+        updateLoadMoreUI();
+      }
 
       if (featuredCard) {
         const fd = featuredCard.dataset;
@@ -597,23 +690,23 @@ const featuredQuote = featuredKid?.data.quote
       searchInput.focus();
     }
 
-    // ── Events ───────────────────────────────
+    // ── Events (all with signal for View Transition cleanup) ──
     let searchTimer: ReturnType<typeof setTimeout>;
-    yearSelect.addEventListener('change', applyFilters);
-    typeSelect.addEventListener('change', applyFilters);
+    yearSelect.addEventListener('change', applyFilters, { signal });
+    typeSelect.addEventListener('change', applyFilters, { signal });
     searchInput.addEventListener('input', () => {
       clearTimeout(searchTimer);
       searchTimer = setTimeout(applyFilters, 150);
       searchClear.hidden = !searchInput.value;
-    });
+    }, { signal });
     searchClear.addEventListener('click', () => {
       searchInput.value = '';
       searchClear.hidden = true;
       applyFilters();
       searchInput.focus();
-    });
-    clearBtn.addEventListener('click', clearAll);
-    clearBtnAlt.addEventListener('click', clearAll);
+    }, { signal });
+    clearBtn.addEventListener('click', clearAll, { signal });
+    clearBtnAlt.addEventListener('click', clearAll, { signal });
 
     if (statusBtn) {
       statusBtn.addEventListener('click', () => {
@@ -621,14 +714,13 @@ const featuredQuote = featuredKid?.data.quote
         statusBtn.classList.toggle('active', statusActive);
         statusBtn.setAttribute('aria-pressed', String(statusActive));
         applyFilters();
-      });
+      }, { signal });
     }
 
     // ── Bottom sheet ─────────────────────────
     let savedScrollY = 0;
 
     function openSheet() {
-      // Sync sheet values with main filters
       sheetYear.value = yearSelect.value;
       sheetType.value = typeSelect.value;
       if (sheetStatus) {
@@ -637,7 +729,6 @@ const featuredQuote = featuredKid?.data.quote
       }
       sheet.classList.add('is-open');
       sheet.setAttribute('aria-hidden', 'false');
-      // iOS-safe scroll lock: position:fixed preserves scroll pos
       savedScrollY = window.scrollY;
       document.body.style.position = 'fixed';
       document.body.style.top = `-${savedScrollY}px`;
@@ -657,15 +748,15 @@ const featuredQuote = featuredKid?.data.quote
       window.scrollTo(0, savedScrollY);
     }
 
-    filterBtnMobile?.addEventListener('click', openSheet);
-    sheetBackdrop?.addEventListener('click', closeSheet);
-    sheetClose?.addEventListener('click', closeSheet);
+    filterBtnMobile?.addEventListener('click', openSheet, { signal });
+    sheetBackdrop?.addEventListener('click', closeSheet, { signal });
+    sheetClose?.addEventListener('click', closeSheet, { signal });
 
     if (sheetStatus) {
       sheetStatus.addEventListener('click', () => {
         const isActive = sheetStatus.classList.toggle('active');
         sheetStatus.setAttribute('aria-pressed', String(isActive));
-      });
+      }, { signal });
     }
 
     sheetClear?.addEventListener('click', () => {
@@ -675,10 +766,9 @@ const featuredQuote = featuredKid?.data.quote
         sheetStatus.classList.remove('active');
         sheetStatus.setAttribute('aria-pressed', 'false');
       }
-    });
+    }, { signal });
 
     sheetApply?.addEventListener('click', () => {
-      // Apply sheet values to main filters
       yearSelect.value = sheetYear.value;
       typeSelect.value = sheetType.value;
       if (statusBtn && sheetStatus) {
@@ -688,13 +778,12 @@ const featuredQuote = featuredKid?.data.quote
       }
       applyFilters();
       closeSheet();
-    });
+    }, { signal });
 
     // Close on escape + focus trap
     document.addEventListener('keydown', (e) => {
       if (!sheet.classList.contains('is-open')) return;
       if (e.key === 'Escape') { closeSheet(); return; }
-      // Focus trap: cycle Tab within the sheet panel
       if (e.key === 'Tab') {
         const panel = sheet.querySelector('.bottom-sheet__panel') as HTMLElement;
         const focusable = panel.querySelectorAll<HTMLElement>(
@@ -716,8 +805,9 @@ const featuredQuote = featuredKid?.data.quote
     // ── Staggered reveal on scroll ──
     if (!reducedMotion) {
       document.documentElement.classList.add('js-anim');
+      // Only reveal first-batch cards immediately
       cards.forEach((card, i) => {
-        if (i < 8) card.classList.add('revealed');
+        if (i < 8 && !card.classList.contains('kid-card--deferred')) card.classList.add('revealed');
       });
 
       _kidsObserver = new IntersectionObserver(
@@ -733,13 +823,15 @@ const featuredQuote = featuredKid?.data.quote
         { rootMargin: '100px', threshold: 0.01 }
       );
       cards.forEach((card, i) => {
-        if (i >= 8) _kidsObserver!.observe(card);
+        if (i >= 8 && !card.classList.contains('kid-card--deferred')) {
+          _kidsObserver!.observe(card);
+        }
       });
     }
 
-    // ── Toolbar scroll shadow ────────────────
+    // ── Toolbar scroll shadow (passive, uses signal via AbortController) ──
     let ticking = false;
-    _kidsScrollHandler = function () {
+    window.addEventListener('scroll', () => {
       if (!ticking) {
         ticking = true;
         requestAnimationFrame(() => {
@@ -747,16 +839,14 @@ const featuredQuote = featuredKid?.data.quote
           ticking = false;
         });
       }
-    };
-    window.addEventListener('scroll', _kidsScrollHandler, { passive: true });
+    }, { passive: true, signal });
 
     // ── Image shimmer: remove on load, fallback on error ──
-    document.querySelectorAll<HTMLImageElement>('.kid-card__img').forEach(img => {
+    function wireShimmer(img: HTMLImageElement) {
       function onLoaded() {
         img.closest('.kid-card__frame')?.classList.add('is-loaded');
       }
       function onError() {
-        // Replace broken image with placeholder
         const frame = img.closest('.kid-card__frame');
         if (frame) {
           img.remove();
@@ -764,7 +854,7 @@ const featuredQuote = featuredKid?.data.quote
           const ph = document.createElement('div');
           ph.className = 'kid-card__placeholder';
           ph.setAttribute('aria-hidden', 'true');
-          ph.innerHTML = '<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>';
+          ph.innerHTML = '<svg width="48" height="48"><use href="#icon-placeholder"/></svg>';
           frame.prepend(ph);
         }
       }
@@ -774,7 +864,10 @@ const featuredQuote = featuredKid?.data.quote
         img.addEventListener('load', onLoaded, { once: true });
         img.addEventListener('error', onError, { once: true });
       }
-    });
+    }
+
+    // Wire shimmer for first-batch images (deferred batch images wired on reveal)
+    document.querySelectorAll<HTMLImageElement>('.kid-card:not(.kid-card--deferred) .kid-card__img').forEach(wireShimmer);
 
     // ── Apply URL filters + scroll to grid ───
     const hasURLFilters = params.get('year') || params.get('type') || params.get('q') || params.get('status');
@@ -1577,6 +1670,35 @@ const featuredQuote = featuredKid?.data.quote
     display: none;
   }
 
+  /* ── Deferred cards (load-more) ── */
+  .kid-card--deferred {
+    display: none;
+  }
+
+  /* content-visibility: applied via is:global block below */
+
+  /* Load More button */
+  .load-more {
+    display: flex;
+    justify-content: center;
+    padding: var(--space-xl) 0 var(--space-md);
+  }
+
+  .load-more.is-hidden {
+    display: none;
+  }
+
+  .load-more__btn {
+    gap: var(--space-sm);
+    min-width: 220px;
+    justify-content: center;
+  }
+
+  .load-more__count {
+    font-weight: 400;
+    opacity: 0.7;
+  }
+
   /* ── Card Frame + Shimmer ── */
   .kid-card__frame {
     position: relative;
@@ -2165,5 +2287,13 @@ const featuredQuote = featuredKid?.data.quote
       animation: none;
       display: none;
     }
+  }
+</style>
+
+<!-- content-visibility must be global — Astro scoped styles strip complex :nth-child selectors -->
+<style is:global>
+  .kids-grid .kid-card:nth-child(n+9) {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 300px;
   }
 </style>
