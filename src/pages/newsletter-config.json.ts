@@ -1,10 +1,8 @@
-import fs from 'node:fs';
-import path from 'node:path';
+// @ts-nocheck
+import settingsRaw from '../content/site/settings.json?raw';
 
 export async function GET() {
-  const settingsPath = path.join(process.cwd(), 'src/content/site/settings.json');
-  const raw = fs.readFileSync(settingsPath, 'utf-8');
-  const settings = JSON.parse(raw);
+  const settings = JSON.parse(settingsRaw);
   return new Response(
     JSON.stringify({ listId: settings.newsletter?.listId || '' }),
     { headers: { 'Content-Type': 'application/json' } }
