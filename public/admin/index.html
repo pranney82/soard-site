@@ -4085,13 +4085,6 @@
         });
       };
 
-      const updateStat = (key, value) => {
-        setData(d => ({
-          ...d,
-          stats: { ...d.stats, [key]: Number(value) || 0 },
-        }));
-      };
-
       const updateParagraph = (section, index, value) => {
         setData(d => {
           const copy = JSON.parse(JSON.stringify(d));
@@ -4242,34 +4235,6 @@
           <button class="btn btn-primary" onClick=${handleSave} disabled=${saving}>
             ${saving ? html`<span class="spinner" />` : null} ${saving ? 'Saving...' : 'Save & Publish'}
           </button>
-        </div>
-
-        <!-- Stats -->
-        <div class="card">
-          <h3 style="margin-bottom: 0.5rem;">Impact Stats</h3>
-          <p class="text-sm text-muted mb-1">These appear in the hero, ribbon, and throughout the page.</p>
-          <div class="form-row" style="grid-template-columns: 1fr 1fr 1fr 1fr;">
-            <div class="form-group">
-              <label class="form-label">Total Rooms</label>
-              <input class="form-input" type="number" value=${data.stats?.totalRooms || 0}
-                onInput=${e => updateStat('totalRooms', e.target.value)} />
-            </div>
-            <div class="form-group">
-              <label class="form-label">Total Kids</label>
-              <input class="form-input" type="number" value=${data.stats?.totalKids || 0}
-                onInput=${e => updateStat('totalKids', e.target.value)} />
-            </div>
-            <div class="form-group">
-              <label class="form-label">Years Active</label>
-              <input class="form-input" type="number" value=${data.stats?.years || 0}
-                onInput=${e => updateStat('years', e.target.value)} />
-            </div>
-            <div class="form-group">
-              <label class="form-label">Community Kids</label>
-              <input class="form-input" type="number" value=${data.stats?.communityKids || 0}
-                onInput=${e => updateStat('communityKids', e.target.value)} />
-            </div>
-          </div>
         </div>
 
         <!-- Ribbon Stats -->
