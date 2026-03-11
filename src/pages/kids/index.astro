@@ -400,10 +400,10 @@ const featuredQuote = featuredKid?.data.quote
                 </div>
               )}
               <div class="kid-card__hover-overlay" aria-hidden="true">
-                {kid.data.diagnosis && (
-                  <span class="kid-card__overlay-diagnosis">{kid.data.diagnosis}</span>
-                )}
-                <span class="kid-card__cta">Read their story &rarr;</span>
+                <span class="kid-card__cta">
+                  <span class="kid-card__cta-text">Read their story</span>
+                  <svg class="kid-card__cta-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+                </span>
               </div>
             </div>
             <div class="kid-card__info">
@@ -1641,24 +1641,40 @@ const featuredQuote = featuredKid?.data.quote
     inset: 0;
     background: linear-gradient(
       to top,
-      rgba(55, 58, 54, 0.8) 0%,
-      rgba(55, 58, 54, 0.35) 50%,
+      rgba(45, 46, 51, 0.75) 0%,
+      rgba(45, 46, 51, 0.15) 45%,
       transparent 100%
     );
     display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 10px;
-    padding-bottom: var(--space-xl);
+    align-items: flex-end;
+    justify-content: center;
+    padding-bottom: var(--space-lg);
     opacity: 0;
-    transition: opacity 0.3s ease;
+    transition: opacity 0.35s cubic-bezier(0.16, 1, 0.3, 1);
     z-index: 2;
+  }
+
+  /* Yellow accent bar at bottom of frame */
+  .kid-card__frame::before {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: var(--c-yellow);
+    z-index: 3;
+    transform: scaleX(0);
+    transform-origin: center;
+    transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
   @media (hover: hover) {
     .kid-card:hover .kid-card__hover-overlay {
       opacity: 1;
+    }
+    .kid-card:hover .kid-card__frame::before {
+      transform: scaleX(1);
     }
   }
 
@@ -1666,29 +1682,39 @@ const featuredQuote = featuredKid?.data.quote
     opacity: 1;
   }
 
-  .kid-card__overlay-diagnosis {
-    color: rgba(255, 255, 255, 0.92);
-    font-size: 0.82rem;
-    font-weight: 500;
-    text-align: center;
-    padding: 0 var(--space-md);
-    max-width: 90%;
+  .kid-card:focus-visible .kid-card__frame::before {
+    transform: scaleX(1);
   }
 
   .kid-card__cta {
-    color: var(--c-white);
-    font-size: 0.82rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 9px 20px;
+    background: var(--c-white);
+    color: var(--c-dark);
+    font-size: 0.78rem;
     font-weight: 600;
-    padding: 8px 20px;
-    border: 1.5px solid rgba(255, 255, 255, 0.7);
+    letter-spacing: 0.01em;
     border-radius: 100px;
-    transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+    transform: translateY(8px);
+    transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+                box-shadow 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
   }
 
   .kid-card:hover .kid-card__cta {
-    background: rgba(255, 255, 255, 0.15);
-    border-color: var(--c-white);
-    transform: translateY(-1px);
+    transform: translateY(0);
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.2);
+  }
+
+  .kid-card__cta-arrow {
+    transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    flex-shrink: 0;
+  }
+
+  .kid-card:hover .kid-card__cta-arrow {
+    transform: translateX(3px);
   }
 
   /* ── Info Below Photo ── */
@@ -1706,10 +1732,18 @@ const featuredQuote = featuredKid?.data.quote
     font-weight: 600;
     line-height: 1.3;
     transition: color var(--transition-fast);
+    background-image: linear-gradient(transparent 55%, rgba(255, 218, 36, 0.45) 55%);
+    background-size: 0% 100%;
+    background-repeat: no-repeat;
+    background-position: left bottom;
+    transition: background-size 0.35s cubic-bezier(0.16, 1, 0.3, 1), color var(--transition-fast);
   }
 
-  .kid-card:hover .kid-card__name {
-    color: var(--c-dark);
+  @media (hover: hover) {
+    .kid-card:hover .kid-card__name {
+      color: var(--c-dark);
+      background-size: 100% 100%;
+    }
   }
 
   .kid-card__diagnosis {
@@ -2007,9 +2041,16 @@ const featuredQuote = featuredKid?.data.quote
     .kid-card__hover-overlay {
       display: none;
     }
+    .kid-card__frame::before {
+      display: none;
+    }
     .kid-card:focus-visible .kid-card__hover-overlay {
       display: flex;
       opacity: 1;
+    }
+    .kid-card:focus-visible .kid-card__frame::before {
+      display: block;
+      transform: scaleX(1);
     }
 
     .kid-card__info {
@@ -2095,6 +2136,12 @@ const featuredQuote = featuredKid?.data.quote
       opacity: 1;
       transform: none;
       animation: none;
+      transition: none;
+    }
+
+    .kid-card__hover-overlay,
+    .kid-card__cta,
+    .kid-card__frame::before {
       transition: none;
     }
 
