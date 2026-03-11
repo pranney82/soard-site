@@ -382,18 +382,25 @@ const featuredQuote = featuredKid?.data.quote
           >
             <div class="kid-card__frame">
               {kid.data.heroImage ? (
-                <img
-                  src={cfUrl(kid.data.heroImage, 'w=340,h=453,fit=cover,gravity=face,format=auto,q=80')}
-                  srcset={cfCropSrcset(kid.data.heroImage, [170, 340, 520, 680], 4/3)}
-                  sizes="(max-width: 768px) calc(50vw - 30px), (max-width: 1100px) calc(33vw - 27px), 260px"
-                  alt={`Photo of ${kid.data.name}${kid.data.diagnosis ? `, diagnosed with ${kid.data.diagnosis}` : ''} — Sunshine on a Ranney Day`}
-                  class="kid-card__img"
-                  width="340"
-                  height="453"
-                  loading={i < 4 ? 'eager' : 'lazy'}
-                  decoding="async"
-                  fetchpriority={i < 2 ? 'high' : undefined}
-                />
+                <picture>
+                  <source
+                    media="(max-width: 768px)"
+                    srcset={cfCropSrcset(kid.data.heroImage, [180, 360, 540], 1)}
+                    sizes="calc(50vw - 24px)"
+                  />
+                  <img
+                    src={cfUrl(kid.data.heroImage, 'w=340,h=453,fit=cover,gravity=face,format=auto,q=80')}
+                    srcset={cfCropSrcset(kid.data.heroImage, [170, 340, 520, 680], 4/3)}
+                    sizes="(max-width: 1100px) calc(33vw - 27px), 260px"
+                    alt={`Photo of ${kid.data.name}${kid.data.diagnosis ? `, diagnosed with ${kid.data.diagnosis}` : ''} — Sunshine on a Ranney Day`}
+                    class="kid-card__img"
+                    width="340"
+                    height="453"
+                    loading={i < 4 ? 'eager' : 'lazy'}
+                    decoding="async"
+                    fetchpriority={i < 2 ? 'high' : undefined}
+                  />
+                </picture>
               ) : (
                 <div class="kid-card__placeholder" aria-hidden="true">
                   <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
@@ -1631,7 +1638,7 @@ const featuredQuote = featuredKid?.data.quote
 
   .kid-card__placeholder {
     width: 100%;
-    aspect-ratio: 3 / 4;
+    height: 100%;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -2036,15 +2043,16 @@ const featuredQuote = featuredKid?.data.quote
       margin-top: var(--space-xs);
     }
 
-    /* Grid: 2 columns with proper spacing */
+    /* Grid: 2 columns, tight gaps */
     .kids-grid {
       grid-template-columns: repeat(2, 1fr);
-      gap: var(--space-md) var(--space-sm);
+      gap: var(--space-md) 10px;
     }
 
 
     .kid-card__frame {
       border-radius: 12px;
+      aspect-ratio: 1 / 1;
     }
 
     /* Hide hover overlay on touch */
@@ -2077,14 +2085,9 @@ const featuredQuote = featuredKid?.data.quote
       min-width: 0;
     }
 
+    /* Hide diagnosis on mobile grid — visible on detail page */
     .kid-card__diagnosis {
-      font-size: 0.72rem;
-      padding: 0 2px;
-      display: -webkit-box;
-      -webkit-line-clamp: 1;
-      -webkit-box-orient: vertical;
-      overflow: hidden;
-      line-height: 1.35;
+      display: none;
     }
 
     .kid-card__badge {
@@ -2120,15 +2123,11 @@ const featuredQuote = featuredKid?.data.quote
     }
 
     .kids-grid {
-      gap: var(--space-sm);
+      gap: var(--space-sm) 8px;
     }
 
     .kid-card__name {
       font-size: 0.8rem;
-    }
-
-    .kid-card__diagnosis {
-      font-size: 0.65rem;
     }
   }
 
