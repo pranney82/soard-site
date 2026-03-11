@@ -113,26 +113,26 @@ const breadcrumbs = [
           <div class="tier-amount">$60</div>
           <div class="tier-what">Paint & Supplies</div>
           <p>Covers all the paint, primer, and materials to transform a child's walls into their dream canvas.</p>
-          <a href="#give" class="tier-cta">Give $60 →</a>
+          <a href="#give" class="tier-cta" data-amount="60">Give $60 →</a>
         </div>
         <div class="tier-card" data-reveal data-delay="1">
           <div class="tier-amount">$125</div>
           <div class="tier-what">Bedding & Décor</div>
           <p>Funds new bedding, curtains, rugs, and wall décor — the details that make a room feel like <em>home</em>.</p>
-          <a href="#give" class="tier-cta">Give $125 →</a>
+          <a href="#give" class="tier-cta" data-amount="125">Give $125 →</a>
         </div>
         <div class="tier-card tier-card--featured" data-reveal data-delay="2">
           <div class="tier-badge">Most Popular</div>
           <div class="tier-amount">$500</div>
           <div class="tier-what">Furniture & Flooring</div>
           <p>Sponsors adaptive furniture or new flooring for an accessible bathroom — the structural pieces that change daily life.</p>
-          <a href="#give" class="tier-cta tier-cta--featured">Give $500 →</a>
+          <a href="#give" class="tier-cta tier-cta--featured" data-amount="500">Give $500 →</a>
         </div>
         <div class="tier-card" data-reveal data-delay="3">
           <div class="tier-amount">$1,000</div>
           <div class="tier-what">Full Room Sponsor</div>
           <p>Helps fund a complete room transformation — from design to demolition to the big reveal moment.</p>
-          <a href="#give" class="tier-cta">Give $1,000 →</a>
+          <a href="#give" class="tier-cta" data-amount="1000">Give $1,000 →</a>
         </div>
       </div>
       <p class="tiers-note" data-reveal>Every amount makes a difference. Our average room costs $8,000–$15,000 and is funded entirely by generous donors like you.</p>
@@ -153,6 +153,7 @@ const breadcrumbs = [
       </div>
       <div class="zeffy-wrapper" data-reveal>
         <iframe
+          id="zeffy-iframe"
           title="Donation form powered by Zeffy"
           src="https://www.zeffy.com/embed/donation-form/help-build-a-brighter-home"
           allowpaymentrequest
@@ -279,28 +280,41 @@ const breadcrumbs = [
 
 <script>
   // Sticky CTA: show after scrolling past hero, hide when Zeffy form is visible
+  // Tier CTAs: pre-fill Zeffy iframe with selected amount
+  const ZEFFY_BASE = 'https://www.zeffy.com/embed/donation-form/help-build-a-brighter-home';
+
   document.addEventListener('astro:page-load', () => {
     const stickyBar = document.getElementById('sticky-cta');
     const hero = document.querySelector('.donate-hero');
     const giveSection = document.getElementById('give');
-    if (!stickyBar || !hero) return;
+    const zeffyIframe = document.getElementById('zeffy-iframe') as HTMLIFrameElement | null;
 
-    const observer = new IntersectionObserver(([entry]) => {
-      // Show sticky bar when hero is NOT visible
-      const heroGone = !entry.isIntersecting;
-      stickyBar.classList.toggle('is-visible', heroGone);
-      stickyBar.setAttribute('aria-hidden', String(!heroGone));
-    }, { threshold: 0 });
+    // --- Sticky bar visibility ---
+    if (stickyBar && hero) {
+      const observer = new IntersectionObserver(([entry]) => {
+        const heroGone = !entry.isIntersecting;
+        stickyBar.classList.toggle('is-visible', heroGone);
+        stickyBar.setAttribute('aria-hidden', String(!heroGone));
+      }, { threshold: 0 });
+      observer.observe(hero);
 
-    observer.observe(hero);
-
-    // Hide when Zeffy form is on screen so it doesn't overlap
-    if (giveSection) {
-      const giveObserver = new IntersectionObserver(([entry]) => {
-        stickyBar.classList.toggle('at-form', entry.isIntersecting);
-      }, { threshold: 0.2 });
-      giveObserver.observe(giveSection);
+      if (giveSection) {
+        const giveObserver = new IntersectionObserver(([entry]) => {
+          stickyBar.classList.toggle('at-form', entry.isIntersecting);
+        }, { threshold: 0.2 });
+        giveObserver.observe(giveSection);
+      }
     }
+
+    // --- Tier CTA → pre-fill Zeffy amount ---
+    document.querySelectorAll('.tier-cta[data-amount]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const amount = (btn as HTMLElement).dataset.amount;
+        if (zeffyIframe && amount) {
+          zeffyIframe.src = `${ZEFFY_BASE}?amount=${amount}`;
+        }
+      });
+    });
   });
 </script>
 
