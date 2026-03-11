@@ -129,15 +129,7 @@ const jsonLd = getWebSiteSchema();
         <div class="hero-photo-accent" aria-hidden="true"></div>
       </div>
     </div>
-    <div class="hero-proof">
-      <span>{stats.totalKids}+ children served</span>
-      <span class="hero-proof-dot" aria-hidden="true"></span>
-      <span>{stats.totalRooms}+ rooms built</span>
-      <span class="hero-proof-dot" aria-hidden="true"></span>
-      <span>{stats.years} years</span>
-      <span class="hero-proof-dot" aria-hidden="true"></span>
-      <span>100% free</span>
-    </div>
+
   </section>
 
   <!-- ══════ IMPACT RIBBON ══════ -->
@@ -489,30 +481,7 @@ const jsonLd = getWebSiteSchema();
     animation: accentIn 1s cubic-bezier(0.16, 1, 0.3, 1) 0.7s both;
   }
 
-  /* ── Proof bar ── */
-  .hero-proof {
-    max-width: var(--max-width-wide);
-    margin: clamp(40px, 5vh, 64px) auto 0;
-    padding: 0 var(--page-padding) clamp(32px, 4vh, 48px);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 20px;
-    flex-wrap: wrap;
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--c-text-muted);
-    letter-spacing: 0.01em;
-    opacity: 0;
-    animation: heroUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.9s both;
-  }
-  .hero-proof-dot {
-    width: 4px;
-    height: 4px;
-    border-radius: 50%;
-    background: var(--c-border);
-    flex-shrink: 0;
-  }
+
 
   /* ── Animations ── */
   @keyframes heroUp {
@@ -570,15 +539,7 @@ const jsonLd = getWebSiteSchema();
     .hero-photo {
       border-radius: 18px;
     }
-    .hero-proof {
-      gap: 12px;
-      font-size: 12px;
-    }
-    .hero-proof-dot { display: none; }
-    .hero-proof {
-      flex-direction: column;
-      gap: 4px;
-    }
+
   }
   .btn-ghost-light {
     background: rgba(255,255,255,0.08);
@@ -737,7 +698,7 @@ const jsonLd = getWebSiteSchema();
     .btn-hero-glow { animation: none; }
     .marquee-track { animation: none; }
     .hero-headline, .hero-photo-wrap { transform: none; animation: none; }
-    .hero-eyebrow, .hero-sub, .hero-ctas, .hero-proof, .hero-photo-accent { opacity: 1; transform: none; animation: none; }
+    .hero-eyebrow, .hero-sub, .hero-ctas, .hero-photo-accent { opacity: 1; transform: none; animation: none; }
   }
 </style>
 
@@ -745,7 +706,7 @@ const jsonLd = getWebSiteSchema();
 <noscript>
   <style>
     .hero-headline, .hero-photo-wrap { transform: none !important; animation: none !important; }
-    .hero-eyebrow, .hero-sub, .hero-ctas, .hero-proof, .hero-photo-accent { opacity: 1 !important; animation: none !important; transform: none !important; }
+    .hero-eyebrow, .hero-sub, .hero-ctas, .hero-photo-accent { opacity: 1 !important; animation: none !important; transform: none !important; }
   </style>
 </noscript>
 
