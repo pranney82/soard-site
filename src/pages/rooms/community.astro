@@ -133,7 +133,7 @@ const jsonLd = buildSchemaGraph(
           <div class="cp-card-accent" style={`background: ${project.color};`}></div>
           {project.imageId ? (
             <div class="cp-card-img-wrap">
-              <img src={`${CF}/${project.imageId}/w=600,q=85`} srcset={`${CF}/${project.imageId}/w=400,q=85 400w, ${CF}/${project.imageId}/w=600,q=85 600w`} sizes="(max-width:768px) 90vw, 33vw" alt={project.imageAlt} width="600" height="340" loading="lazy" decoding="async" class="cp-card-img" />
+              <img src={`${CF}/${project.imageId}/w=600,q=85`} srcset={`${CF}/${project.imageId}/w=400,q=85 400w, ${CF}/${project.imageId}/w=600,q=85 600w`} sizes="(max-width:768px) 90vw, 33vw" alt={project.imageAlt || `${project.name} project by SOARD`} width="600" height="340" loading="lazy" decoding="async" class="cp-card-img" />
             </div>
           ) : (
             <div class="cp-card-img-placeholder" style={`background: linear-gradient(135deg, ${project.color}22, ${project.color}44);`}>

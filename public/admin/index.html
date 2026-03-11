@@ -1301,38 +1301,9 @@
 
         <div class="card">
           <div class="flex items-center justify-between mb-1">
-            <h3>SEO & Descriptions</h3>
-            <button class="btn btn-secondary btn-sm" onClick=${handleGenerateSeo} disabled=${generatingSeo}>
-              ${generatingSeo ? html`<span class="spinner" />` : icons.sparkle} ${generatingSeo ? 'Generating...' : 'Regenerate with AI'}
-            </button>
-          </div>
-          <p class="text-sm text-muted mb-1">Auto-generates when you fill in name + diagnosis or bio. Click to regenerate anytime.</p>
-          <div class="form-group">
-            <label class="form-label">Short Description</label>
-            <textarea class="form-textarea" style="min-height: 80px;" value=${data.shortDescription || ''}
-              onInput=${e => updateField('shortDescription', e.target.value)}
-              placeholder="1-2 sentence summary for card previews..." />
-            <div class="form-hint">${(data.shortDescription || '').length} characters</div>
-          </div>
-          <div class="form-group">
-            <label class="form-label">Meta Description</label>
-            <input class="form-input" value=${data.metaDescription || ''}
-              onInput=${e => updateField('metaDescription', e.target.value)}
-              placeholder="SEO meta description (120-155 characters)..." />
-            <div class="form-hint">${(data.metaDescription || '').length}/155 characters</div>
-          </div>
-        </div>
-
-        <div class="card">
-          <div class="flex items-center justify-between mb-1">
             <h3>Photos</h3>
-            ${data.photos.length > 0 ? html`
-              <button class="btn btn-secondary btn-sm" onClick=${handleGenerateAlt} disabled=${generatingAlt}>
-                ${generatingAlt ? html`<span class="spinner" />` : icons.sparkle} ${generatingAlt ? 'Generating...' : 'Regenerate Alt Text'}
-              </button>
-            ` : null}
           </div>
-          <p class="text-sm text-muted mb-1">Upload photos, click star for hero. Alt text generates automatically after upload.</p>
+          <p class="text-sm text-muted mb-1">Upload photos, click star for hero.</p>
           <${DropZone} onFiles=${handlePhotoUpload} label="JPG, PNG, WebP — upload as many as you need" />
           ${data.photos.length > 0 ? html`
             <div class="photo-grid">
@@ -1345,18 +1316,6 @@
                       onClick=${() => setHero(i)} title="Set as hero image">${icons.star}</button>
                     <button class="photo-btn" onClick=${() => removePhoto(i)} title="Remove">${icons.x}</button>
                   </div>
-                </div>
-              `)}
-            </div>
-            <div class="mt-2">
-              <h4 style="font-size: 0.9rem; margin-bottom: 0.75rem;">Alt Text ${data.photos.filter(p => p.alt).length}/${data.photos.length} filled</h4>
-              ${data.photos.map((photo, i) => html`
-                <div key=${i} class="flex gap-1 items-center" style="margin-bottom: 0.5rem;">
-                  <img src=${photo.url} alt="" style="width: 48px; height: 36px; object-fit: cover; border-radius: 4px; flex-shrink: 0;" />
-                  <input class="form-input" style="font-size: 0.85rem; padding: 0.4rem 0.6rem;"
-                    value=${photo.alt || ''}
-                    onInput=${e => updatePhotoAlt(i, e.target.value)}
-                    placeholder="Describe this photo for screen readers..." />
                 </div>
               `)}
             </div>
@@ -2375,11 +2334,6 @@
               <input type="text" value=${data.tag} onInput=${e => update('tag', e.target.value)} placeholder="Accessibility" />
             </label>
             <label class="form-group span-2">
-              <span class="form-label">Meta Description</span>
-              <textarea rows="2" value=${data.description} onInput=${e => update('description', e.target.value)} placeholder="SEO meta description (150-160 characters ideal)" />
-              <span class="text-sm text-muted">${(data.description || '').length}/160 characters</span>
-            </label>
-            <label class="form-group span-2">
               <span class="form-label">Hero Lead Text</span>
               <textarea rows="2" value=${data.heroLead} onInput=${e => update('heroLead', e.target.value)} placeholder="The subtitle shown below the title on the page" />
             </label>
@@ -3180,11 +3134,6 @@
                 onInput=${e => update('imageId', e.target.value)} placeholder="community/drake-house-hero or UUID" />
               <span class="form-hint">Custom ID or UUID from Cloudflare Images. Leave empty for a color placeholder.</span>
             </div>
-            <div class="form-group">
-              <span class="form-label">Image Alt Text</span>
-              <input class="form-input" type="text" value=${data.imageAlt || ''}
-                onInput=${e => update('imageAlt', e.target.value)} placeholder="Describe the image" />
-            </div>
           </div>
           ${data.imageId ? html`
             <div style="margin-top: 0.5rem; border-radius: 8px; overflow: hidden; max-width: 400px;">
@@ -3750,12 +3699,6 @@
                 onInput=${e => updateField('homeHero.imageId', e.target.value)} />
               <button class="btn btn-ghost" type="button" onClick=${() => setShowImagePicker(true)}>Browse</button>
             </div>
-          </div>
-          <div class="form-group">
-            <label class="form-label">Alt Text</label>
-            <input class="form-input" value=${data.homeHero?.altText || ''}
-              placeholder="A child seeing their dream room for the first time"
-              onInput=${e => updateField('homeHero.altText', e.target.value)} />
           </div>
         </div>
 
@@ -4554,16 +4497,6 @@
               <label class="form-label">YouTube URL</label>
               <input class="form-input" value=${data.socialLinks?.youtube || ''} onInput=${e => updateField('socialLinks.youtube', e.target.value)} />
             </div>
-          </div>
-        </div>
-
-        <div class="card">
-          <h3 style="margin-bottom: 0.5rem;">SEO</h3>
-          <div class="form-group">
-            <label class="form-label">Meta Description</label>
-            <textarea class="form-input" style="min-height: 60px;" value=${data.metaDescription || ''}
-              onInput=${e => updateField('metaDescription', e.target.value)} />
-            <div class="form-hint">${(data.metaDescription || '').length}/160 characters</div>
           </div>
         </div>
       `;

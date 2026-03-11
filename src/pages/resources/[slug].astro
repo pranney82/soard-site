@@ -18,6 +18,12 @@ export async function getStaticPaths() {
 
 const { article } = Astro.props;
 
+/* Auto-generate meta description from body if not provided */
+const autoDesc = article.description
+  || (article.body
+    ? article.body.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 155).replace(/\s\S*$/, '…')
+    : `${article.title} — a resource guide from Sunshine on a Ranney Day.`);
+
 const breadcrumbs = [
   { name: 'Home', url: 'https://sunshineonaranneyday.com/' },
   { name: 'Resources', url: 'https://sunshineonaranneyday.com/resources/' },
@@ -31,7 +37,7 @@ const pageSchemas: Record<string, any>[] = [];
 pageSchemas.push({
   "@type": "Article",
   "headline": article.title,
-  "description": article.description,
+  "description": autoDesc,
   "author": { "@id": "https://sunshineonaranneyday.com/#organization" },
   "publisher": { "@id": "https://sunshineonaranneyday.com/#organization" },
   "datePublished": article.datePublished,
@@ -49,7 +55,7 @@ if (article.faqs && article.faqs.length > 0) {
 
 <BaseLayout
   title={article.title}
-  description={article.description}
+  description={autoDesc}
   ogType="article"
   ogImage={article.heroImage || undefined}
   jsonLd={pageSchemas}
