@@ -150,6 +150,7 @@ body {
   -moz-osx-font-smoothing: grayscale;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-y: none;
+  overflow-x: clip;
   /* Prevent long words (diagnoses, URLs) from breaking layout */
   overflow-wrap: break-word;
 }
