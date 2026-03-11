@@ -1,279 +1,113 @@
 {
-  "name": "Sunshine on a Ranney Day",
-  "shortName": "SOARD",
-  "tagline": "Dreams Built Here",
-  "description": "Sunshine on a Ranney Day creates life-changing home makeovers for children with special needs \u2014 dream bedrooms, accessible bathrooms, and therapy rooms \u2014 all at no cost to families.",
-  "founded": 2012,
-  "ein": "45-4773997",
-  "address": {
-    "street": "250 Hembree Park Drive, Suite 106",
-    "city": "Roswell",
-    "state": "GA",
-    "zip": "30076"
-  },
-  "phone": "770.990.2434",
-  "email": "info@soardcharity.com",
-  "social": {
-    "facebook": "https://www.facebook.com/sunshineonaranneyday",
-    "instagram": "https://www.instagram.com/sunshineonaranneyday"
-  },
-  "stores": {
-    "sunnyAndRanney": "https://sunnyandranney.com"
-  },
-  "stats": {
-    "roomsCompleted": 106,
-    "kidsServed": 132,
-    "partners": 45,
-    "yearsOfImpact": 14
-  },
-  "guidestarUrl": "https://www.guidestar.org/profile/shared/2954b510-8c76-42e4-b589-7e826ca2cc47",
-  "homeHero": {
-    "imageId": "kids/harper/hero-c6a714",
-    "altText": "A child seeing their dream room for the first time",
-    "eyebrow": "501(c)(3) Nonprofit \u00b7 Atlanta, GA \u00b7 Since 2012",
-    "headlineLine1": "Building <em>dreams</em>,",
-    "headlineLine2": "one room at a time",
-    "lead": "We create life-changing spaces for children with special needs \u2014 dream bedrooms, accessible bathrooms, and therapy rooms \u2014 all at <strong>no cost to families</strong>.",
-    "cta1Label": "Give Today",
-    "cta1Link": "/donate",
-    "cta2Label": "See Our Work \u2193",
-    "cta2Link": "#stories"
-  },
-  "featuredKidSlug": "zyah",
-  "kidShowcase": [
-    {
-      "slug": "liam",
-      "cfId": "kids/liam/hero"
+    "name": "Sunshine on a Ranney Day",
+    "shortName": "SOARD",
+    "tagline": "Dreams Built Here",
+    "ein": "45-4773997",
+    "address": {
+        "street": "250 Hembree Park Drive, Suite 106",
+        "city": "Roswell",
+        "state": "GA",
+        "zip": "30076"
     },
-    {
-      "slug": "sophia",
-      "cfId": "kids/sophia/hero"
+    "phone": "770.990.2434",
+    "email": "info@soardcharity.com",
+    "social": {
+        "facebook": "https://www.facebook.com/sunshineonaranneyday",
+        "instagram": "https://www.instagram.com/sunshineonaranneyday"
     },
-    {
-      "slug": "jackson",
-      "cfId": "kids/jackson/hero"
+    "homeHero": {
+        "eyebrow": "501(c)(3) Nonprofit · Atlanta, GA · Since 2012",
+        "headlineLine1": "Building <em>dreams</em>,",
+        "headlineLine2": "one room at a time",
+        "lead": "We create life-changing spaces for children with special needs — dream bedrooms, accessible bathrooms, and therapy rooms — all at <strong>no cost to families</strong>.",
+        "cta1Label": "Give Today",
+        "cta1Link": "/donate",
+        "cta2Label": "See Our Work ↓",
+        "cta2Link": "#stories"
     },
-    {
-      "slug": "griffin",
-      "cfId": "kids/griffin/hero"
+    "featuredKidSlug": "zyah",
+    "kidShowcase": [
+        {
+            "slug": "liam",
+            "cfId": "kids/liam/hero"
+        },
+        {
+            "slug": "sophia",
+            "cfId": "kids/sophia/hero"
+        },
+        {
+            "slug": "jackson",
+            "cfId": "kids/jackson/hero"
+        },
+        {
+            "slug": "griffin",
+            "cfId": "kids/griffin/hero"
+        },
+        {
+            "slug": "madison",
+            "cfId": "kids/madison/hero"
+        },
+        {
+            "slug": "harper",
+            "cfId": "kids/harper/hero"
+        },
+        {
+            "slug": "noah",
+            "cfId": "kids/noah/hero"
+        },
+        {
+            "slug": "summer",
+            "cfId": "kids/summer/hero"
+        }
+    ],
+    "sectionPhotos": {
+        "missionMain": "kids/eli/photo-01",
+        "missionAccent": "kids/georgia/photo-01",
+        "storyPhoto": "kids/zyah/hero",
+        "roomBedroom": "kids/griffin/hero",
+        "roomBath": "kids/zyah/hero",
+        "roomTherapy": "kids/jackson/hero"
     },
-    {
-      "slug": "madison",
-      "cfId": "kids/madison/hero"
-    },
-    {
-      "slug": "harper",
-      "cfId": "kids/harper/hero"
-    },
-    {
-      "slug": "noah",
-      "cfId": "kids/noah/hero"
-    },
-    {
-      "slug": "summer",
-      "cfId": "kids/summer/hero"
-    }
-  ],
-  "sectionPhotos": {
-    "missionMain": "kids/eli/photo-01",
-    "missionAccent": "kids/georgia/photo-01",
-    "storyPhoto": "kids/zyah/hero",
-    "roomBedroom": "kids/griffin/hero",
-    "roomBath": "kids/zyah/hero",
-    "roomTherapy": "kids/jackson/hero"
-  },
-  "partnerLogos": [
-    {
-      "id": "partners/gas-south",
-      "name": "Gas South"
-    },
-    {
-      "id": "partners/randall-paulson",
-      "name": "Randall Paulson"
-    },
-    {
-      "id": "partners/kids-r-kids",
-      "name": "Kids R Kids"
-    },
-    {
-      "id": "partners/cambria",
-      "name": "Cambria"
-    },
-    {
-      "id": "partners/mohawk",
-      "name": "Mohawk"
-    },
-    {
-      "id": "partners/jackson-healthcare",
-      "name": "Jackson Healthcare"
-    },
-    {
-      "id": "partners/crosby-design-group",
-      "name": "Crosby Design Group"
-    },
-    {
-      "id": "partners/msi",
-      "name": "MSI"
-    },
-    {
-      "id": "partners/cr-construction",
-      "name": "CR Construction"
-    },
-    {
-      "id": "partners/stag-partners",
-      "name": "Stag Partners"
-    }
-  ],
-  "heroMosaic": [
-    {
-      "slug": "zyah",
-      "name": "Zyah",
-      "cfId": "kids/zyah/hero"
-    },
-    {
-      "slug": "bryce",
-      "name": "Bryce",
-      "cfId": "kids/bryce/hero"
-    },
-    {
-      "slug": "alex",
-      "name": "Alex",
-      "cfId": "kids/alex/hero"
-    },
-    {
-      "slug": "griffin",
-      "name": "Griffin",
-      "cfId": "kids/griffin/hero"
-    },
-    {
-      "slug": "ethan-2022",
-      "name": "Ethan",
-      "cfId": "kids/ethan-2022/hero"
-    },
-    {
-      "slug": "elizabeth",
-      "name": "Elizabeth",
-      "cfId": "kids/elizabeth/hero"
-    },
-    {
-      "slug": "brianna",
-      "name": "Brianna",
-      "cfId": "kids/brianna/hero"
-    },
-    {
-      "slug": "braxton",
-      "name": "Braxton",
-      "cfId": "kids/braxton/hero"
-    },
-    {
-      "slug": "samantha",
-      "name": "Samantha",
-      "cfId": "kids/samantha/hero"
-    },
-    {
-      "slug": "leland",
-      "name": "Leland",
-      "cfId": "kids/leland/hero"
-    },
-    {
-      "slug": "amanda-caleb-and-isaac",
-      "name": "Amanda, Caleb & Isaac",
-      "cfId": "kids/amanda-caleb-and-isaac/hero"
-    },
-    {
-      "slug": "ally",
-      "name": "Ally",
-      "cfId": "kids/ally/hero"
-    },
-    {
-      "slug": "breanna",
-      "name": "Breanna",
-      "cfId": "kids/breanna/hero"
-    },
-    {
-      "slug": "eli",
-      "name": "Eli",
-      "cfId": "kids/eli/hero"
-    },
-    {
-      "slug": "ellie",
-      "name": "Ellie",
-      "cfId": "kids/ellie/hero"
-    },
-    {
-      "slug": "monica",
-      "name": "Monica",
-      "cfId": "kids/monica/hero"
-    },
-    {
-      "slug": "rachel",
-      "name": "Rachel",
-      "cfId": "kids/rachel/hero"
-    },
-    {
-      "slug": "devon",
-      "name": "Devon",
-      "cfId": "kids/devon/hero"
-    },
-    {
-      "slug": "shawn",
-      "name": "Shawn",
-      "cfId": "kids/shawn/hero"
-    },
-    {
-      "slug": "landon",
-      "name": "Landon",
-      "cfId": "kids/landon/hero"
-    },
-    {
-      "slug": "eliavah",
-      "name": "Eliavah",
-      "cfId": "kids/eliavah/hero"
-    },
-    {
-      "slug": "lizzie",
-      "name": "Lizzie",
-      "cfId": "kids/lizzie/hero"
-    },
-    {
-      "slug": "haleigh",
-      "name": "Haleigh",
-      "cfId": "kids/haleigh/hero"
-    },
-    {
-      "slug": "adam",
-      "name": "Adam",
-      "cfId": "kids/adam/hero"
-    },
-    {
-      "slug": "charlie",
-      "name": "Charlie",
-      "cfId": "kids/charlie/hero"
-    },
-    {
-      "slug": "samuel",
-      "name": "Samuel",
-      "cfId": "kids/samuel/hero"
-    },
-    {
-      "slug": "john-and-joseph",
-      "name": "John & Joseph",
-      "cfId": "kids/john-and-joseph/hero"
-    },
-    {
-      "slug": "harper",
-      "name": "Harper",
-      "cfId": "kids/harper/hero"
-    },
-    {
-      "slug": "noah",
-      "name": "Noah",
-      "cfId": "kids/noah/hero"
-    },
-    {
-      "slug": "karson",
-      "name": "Karson",
-      "cfId": "kids/karson/hero"
-    }
-  ]
+    "partnerLogos": [
+        {
+            "id": "partners/gas-south",
+            "name": "Gas South"
+        },
+        {
+            "id": "partners/randall-paulson",
+            "name": "Randall Paulson"
+        },
+        {
+            "id": "partners/kids-r-kids",
+            "name": "Kids R Kids"
+        },
+        {
+            "id": "partners/cambria",
+            "name": "Cambria"
+        },
+        {
+            "id": "partners/mohawk",
+            "name": "Mohawk"
+        },
+        {
+            "id": "partners/jackson-healthcare",
+            "name": "Jackson Healthcare"
+        },
+        {
+            "id": "partners/crosby-design-group",
+            "name": "Crosby Design Group"
+        },
+        {
+            "id": "partners/msi",
+            "name": "MSI"
+        },
+        {
+            "id": "partners/cr-construction",
+            "name": "CR Construction"
+        },
+        {
+            "id": "partners/stag-partners",
+            "name": "Stag Partners"
+        }
+    ]
 }

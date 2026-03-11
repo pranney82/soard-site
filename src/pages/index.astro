@@ -25,7 +25,9 @@ const stats = {
 
 /* ── Hero (from site settings) ── */
 const heroEyebrow = siteSettings.homeHero?.eyebrow || '501(c)(3) Nonprofit · Atlanta, GA · Since 2012';
-const heroHeadline = siteSettings.homeHero?.headline || 'Every child deserves a room that feels like <em>theirs</em>.';
+const heroLine1 = siteSettings.homeHero?.headlineLine1 || 'Building <em>dreams</em>,';
+const heroLine2 = siteSettings.homeHero?.headlineLine2 || 'one room at a time';
+const heroHeadline = `${heroLine1}<br>${heroLine2}`;
 const heroSub = siteSettings.homeHero?.lead || 'Dream bedrooms, accessible bathrooms, and therapy rooms for children with special needs — at no cost to families.';
 const heroCta1Label = siteSettings.homeHero?.cta1Label || 'Give Today';
 const heroCta1Link = siteSettings.homeHero?.cta1Link || '/donate';

@@ -249,17 +249,6 @@
         margin-left: auto;
       }
 
-      /* Hero mosaic grid: 3 cols on mobile */
-      .mosaic-grid {
-        grid-template-columns: repeat(3, 1fr) !important;
-      }
-      /* Mosaic cell editor buttons */
-      .mosaic-edit-actions {
-        flex-wrap: wrap !important;
-        gap: 0.35rem !important;
-      }
-      .mosaic-edit-actions .btn { flex: 1; min-width: 0; justify-content: center; font-size: 0.72rem !important; }
-
       /* Back link: bigger touch target */
       .back-link { min-height: 44px; display: inline-flex; align-items: center; font-size: 0.9rem; }
 
@@ -3891,7 +3880,6 @@
       const [saving, setSaving] = useState(false);
       const [sha, setSha] = useState(null);
       const [data, setData] = useState({});
-      const [showImagePicker, setShowImagePicker] = useState(false);
 
       useEffect(() => {
         (async () => {
@@ -3903,13 +3891,6 @@
           setLoading(false);
         })();
       }, []);
-
-      const updateStat = (key, value) => {
-        setData(d => ({
-          ...d,
-          stats: { ...d.stats, [key]: Number(value) || 0 },
-        }));
-      };
 
       const updateField = (path, value) => {
         setData(d => {
@@ -3950,8 +3931,7 @@
       const handleSave = async () => {
         setSaving(true);
         try {
-          const { _mosaicEditing, ...saveData } = data;
-          const content = JSON.stringify(saveData, null, 2);
+          const content = JSON.stringify(data, null, 2);
           const res = await api.saveContent(
             'src/content/site/settings.json', content,
             'Update site settings', sha
@@ -3971,62 +3951,12 @@
       if (loading) return html`<div class="card" style="text-align: center; padding: 3rem;"><div class="spinner" style="width: 32px; height: 32px;" /></div>`;
 
       return html`
-        ${showImagePicker ? html`<${ImagePicker}
-          onSelect=${(id) => updateField('homeHero.imageId', id)}
-          onClose=${() => setShowImagePicker(false)}
-        />` : null}
         <div class="page-header">
           <h2>Site Settings</h2>
           <button class="btn btn-primary" onClick=${handleSave} disabled=${saving}>
             ${saving ? html`<span class="spinner" />` : null} ${saving ? 'Saving...' : 'Save & Publish'}
           </button>
         </div>
-        <div class="card">
-          <h3 style="margin-bottom: 1rem;">Impact Numbers</h3>
-          <p class="text-sm text-muted mb-1">These appear on the homepage and throughout the site.</p>
-          <div class="form-row" style="grid-template-columns: 1fr 1fr 1fr 1fr;">
-            <div class="form-group">
-              <label class="form-label">Rooms Completed</label>
-              <input class="form-input" type="number" value=${data.stats?.roomsCompleted || 0}
-                onInput=${e => updateStat('roomsCompleted', e.target.value)} />
-            </div>
-            <div class="form-group">
-              <label class="form-label">Kids Served</label>
-              <input class="form-input" type="number" value=${data.stats?.kidsServed || 0}
-                onInput=${e => updateStat('kidsServed', e.target.value)} />
-            </div>
-            <div class="form-group">
-              <label class="form-label">Partners</label>
-              <input class="form-input" type="number" value=${data.stats?.partners || 0}
-                onInput=${e => updateStat('partners', e.target.value)} />
-            </div>
-            <div class="form-group">
-              <label class="form-label">Years of Impact</label>
-              <input class="form-input" type="number" value=${data.stats?.yearsOfImpact || 0}
-                onInput=${e => updateStat('yearsOfImpact', e.target.value)} />
-            </div>
-          </div>
-        </div>
-        <div class="card">
-          <h3 style="margin-bottom: 1rem;">Home Hero Image</h3>
-          <p class="text-sm text-muted mb-1">The full-bleed background image on the homepage hero.</p>
-          ${data.homeHero?.imageId ? html`
-            <div style="margin: 1rem 0; border-radius: 12px; overflow: hidden; max-height: 200px;">
-              <img src=${'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/' + data.homeHero.imageId + '/w=800'}
-                alt="Hero preview" style="width: 100%; height: 200px; object-fit: cover; display: block;" />
-            </div>
-          ` : null}
-          <div class="form-group">
-            <label class="form-label">Cloudflare Image ID</label>
-            <div style="display: flex; gap: 0.5rem;">
-              <input class="form-input" style="flex:1" value=${data.homeHero?.imageId || ''}
-                placeholder="kids/harper/hero-c6a714"
-                onInput=${e => updateField('homeHero.imageId', e.target.value)} />
-              <button class="btn btn-ghost" type="button" onClick=${() => setShowImagePicker(true)}>Browse</button>
-            </div>
-          </div>
-        </div>
-
         <div class="card">
           <h3 style="margin-bottom: 1rem;">Hero Text & CTAs</h3>
           <p class="text-sm text-muted mb-1">The text content displayed on the homepage hero section.</p>
@@ -4117,85 +4047,6 @@
           `)}
           <button class="btn btn-ghost" style="margin-top: 0.5rem;"
             onClick=${() => addToArray('kidShowcase', { slug: '', cfId: '' })}>+ Add Kid</button>
-        </div>
-
-        <div class="card">
-          <h3 style="margin-bottom: 1rem;">Hero Mosaic Grid</h3>
-          <p class="text-sm text-muted mb-1">The background photo grid behind the homepage hero. Arrange in a 6-column layout — order here matches the visual layout on the site (left→right, top→bottom). Click a cell to edit, drag to rearrange.</p>
-          <div class="mosaic-grid" style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; margin: 1rem 0; background: #1A1B1F; padding: 4px; border-radius: 8px;">
-            ${(data.heroMosaic || []).map((kid, i) => html`
-              <div key=${i} style="position: relative; aspect-ratio: 1; border-radius: 4px; overflow: hidden; cursor: pointer; border: 2px solid ${data._mosaicEditing === i ? '#FFD500' : 'transparent'};"
-                onClick=${() => setData(d => ({ ...d, _mosaicEditing: d._mosaicEditing === i ? null : i }))}>
-                ${kid.cfId ? html`<img src=${'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/' + kid.cfId + '/w=120,h=120,fit=cover,q=60'}
-                  alt="" style="width: 100%; height: 100%; object-fit: cover; display: block; filter: brightness(0.7);" />` :
-                  html`<div style="width: 100%; height: 100%; background: #373A36; display: flex; align-items: center; justify-content: center; color: #666; font-size: 0.65rem;">empty</div>`}
-                <div style="position: absolute; bottom: 0; left: 0; right: 0; padding: 2px 4px; background: linear-gradient(transparent, rgba(0,0,0,0.8)); color: #fff; font-size: 0.6rem; font-weight: 600; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                  ${kid.name || kid.slug || (i + 1)}
-                </div>
-                <div style="position: absolute; top: 2px; right: 2px; background: rgba(0,0,0,0.6); color: #999; font-size: 0.55rem; padding: 1px 4px; border-radius: 3px;">${i + 1}</div>
-              </div>
-            `)}
-          </div>
-
-          ${data._mosaicEditing != null && (data.heroMosaic || [])[data._mosaicEditing] ? (() => {
-            const idx = data._mosaicEditing;
-            const kid = (data.heroMosaic || [])[idx];
-            const row = Math.floor(idx / 6) + 1;
-            const col = (idx % 6) + 1;
-            return html`
-              <div style="background: #FEFCF5; border: 1px solid #E5E4E0; border-radius: 8px; padding: 1rem; margin-bottom: 1rem;">
-                <div class="flex items-center justify-between" style="margin-bottom: 0.75rem;">
-                  <h4 style="font-size: 0.9rem; margin: 0;">Cell #${idx + 1} <span style="color: #6B6C72; font-weight: 400;">(row ${row}, col ${col})</span></h4>
-                  <div class="flex gap-1 mosaic-edit-actions" style="gap: 0.35rem;">
-                    <button class="btn btn-ghost" style="padding: 0.2rem 0.5rem; font-size: 0.75rem;" disabled=${idx === 0}
-                      onClick=${() => { moveArrayItem('heroMosaic', idx, idx - 1); setData(d => ({ ...d, _mosaicEditing: idx - 1 })); }} title="Move left/up">← Move</button>
-                    <button class="btn btn-ghost" style="padding: 0.2rem 0.5rem; font-size: 0.75rem;" disabled=${idx >= (data.heroMosaic || []).length - 1}
-                      onClick=${() => { moveArrayItem('heroMosaic', idx, idx + 1); setData(d => ({ ...d, _mosaicEditing: idx + 1 })); }} title="Move right/down">Move →</button>
-                    <button class="btn btn-ghost" style="padding: 0.2rem 0.5rem; font-size: 0.75rem;" title="Swap with…"
-                      onClick=${() => {
-                        const target = prompt('Swap with cell # (1-' + (data.heroMosaic || []).length + '):', '');
-                        if (target) {
-                          const t = parseInt(target, 10) - 1;
-                          if (t >= 0 && t < (data.heroMosaic || []).length && t !== idx) {
-                            setData(d => {
-                              const arr = [...(d.heroMosaic || [])];
-                              [arr[idx], arr[t]] = [arr[t], arr[idx]];
-                              return { ...d, heroMosaic: arr, _mosaicEditing: t };
-                            });
-                          }
-                        }
-                      }}>⇄ Swap</button>
-                    <button class="btn btn-ghost" style="padding: 0.2rem 0.5rem; font-size: 0.75rem; color: #c00;"
-                      onClick=${() => { removeFromArray('heroMosaic', idx); setData(d => ({ ...d, _mosaicEditing: null })); }}>✕ Remove</button>
-                  </div>
-                </div>
-                <div class="form-row" style="grid-template-columns: 1fr 1fr 2fr;">
-                  <div class="form-group">
-                    <label class="form-label" style="font-size: 0.8rem;">Name</label>
-                    <input class="form-input" style="font-size: 0.85rem;" value=${kid.name || ''}
-                      placeholder="Zyah" onInput=${e => updateArrayItem('heroMosaic', idx, 'name', e.target.value)} />
-                  </div>
-                  <div class="form-group">
-                    <label class="form-label" style="font-size: 0.8rem;">Kid Slug</label>
-                    <input class="form-input" style="font-size: 0.85rem;" value=${kid.slug || ''}
-                      placeholder="zyah" onInput=${e => updateArrayItem('heroMosaic', idx, 'slug', e.target.value)} />
-                  </div>
-                  <div class="form-group">
-                    <label class="form-label" style="font-size: 0.8rem;">Cloudflare Image ID</label>
-                    <input class="form-input" style="font-size: 0.85rem;" value=${kid.cfId || ''}
-                      placeholder="b7ae8742-5431-4c85-aa74-a36b173c6200"
-                      onInput=${e => updateArrayItem('heroMosaic', idx, 'cfId', e.target.value)} />
-                  </div>
-                </div>
-              </div>
-            `;
-          })() : null}
-
-          <div class="flex items-center gap-1" style="gap: 0.5rem;">
-            <button class="btn btn-ghost" style="margin-top: 0.25rem;"
-              onClick=${() => addToArray('heroMosaic', { slug: '', name: '', cfId: '' })}>+ Add Cell</button>
-            <span class="text-sm text-muted">${(data.heroMosaic || []).length} cells · ${Math.ceil((data.heroMosaic || []).length / 6)} rows × 6 cols</span>
-          </div>
         </div>
 
         <div class="card">
