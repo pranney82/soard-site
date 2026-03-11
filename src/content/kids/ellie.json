@@ -2,7 +2,7 @@
   "name": "Ellie",
   "slug": "ellie",
   "age": 5,
-  "diagnosis": "Down Syndrome,",
+  "diagnosis": "Down Syndrome",
   "roomTypes": [
     "Dream Bedroom",
     "Therapy Room"
