@@ -4172,6 +4172,18 @@
                 onInput=${e => updateField('social.instagram', e.target.value)} />
             </div>
           </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">YouTube</label>
+              <input class="form-input" value=${data.social?.youtube || ''}
+                onInput=${e => updateField('social.youtube', e.target.value)} />
+            </div>
+            <div class="form-group">
+              <label class="form-label">TikTok</label>
+              <input class="form-input" value=${data.social?.tiktok || ''}
+                onInput=${e => updateField('social.tiktok', e.target.value)} />
+            </div>
+          </div>
         </div>
       `;
     }
