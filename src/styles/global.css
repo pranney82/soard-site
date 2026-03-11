@@ -93,19 +93,18 @@ html {
 
 /* Root: old snapshot stays fully opaque as a backboard while new
    page paints over it — the dark body bg can never peek through.  */
+::view-transition {
+  /* Canvas bg is dark-deep (for overscroll), but the transition backdrop
+     must match page content so any sub-pixel gaps between groups flash
+     cream (invisible), not dark. This is the View Transition API's
+     intended customization point for this exact issue. */
+  background-color: var(--c-cream);
+}
 ::view-transition-old(root) {
   animation: none;
 }
 ::view-transition-new(root) {
   animation: 90ms cubic-bezier(0, 0, 0.2, 1) both vt-fade-in;
-}
-
-/* Header: own transition group via transition:name + transition:persist.
-   Excluded from root snapshot so no compositing seam at the header/content
-   boundary. Persisted DOM element — no animation needed. */
-::view-transition-old(site-header),
-::view-transition-new(site-header) {
-  animation: none;
 }
 
 /* Shared element morph for kid hero images — the View Transitions

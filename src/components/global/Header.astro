@@ -117,7 +117,7 @@ function isGroupActive(group: NavGroup) {
 }
 ---
 
-<header class="site-header" id="site-header" transition:persist="site-header" transition:name="site-header">
+<header class="site-header" id="site-header" transition:persist="site-header">
   <div class="header-inner">
     <!-- Logo — responsive srcset: browser picks optimal size for DPR -->
     <a href="/" class="logo" aria-label="Sunshine on a Ranney Day — Home">
@@ -624,9 +624,10 @@ document.addEventListener('astro:before-swap', function () {
     transition: background 0.3s ease, box-shadow 0.3s ease;
     isolation: isolate;
     transform: translateZ(0);
-    /* view-transition-name set by transition:name="site-header" in template —
-       gives the header its own transition group, excluding it from the root
-       snapshot so the dark body can never peek through at the boundary. */
+    /* Keep header inside the root view-transition snapshot —
+       a separate group would create a compositing boundary
+       where the dark ::view-transition bg peeks through on mobile. */
+    view-transition-name: none;
   }
   .site-header.header--scrolled {
     background: rgba(254, 252, 245, 0.97);
