@@ -2,72 +2,64 @@
  * POST /api/newsletter
  *
  * Adds an email to the Constant Contact mailing list via their v3 API.
- * Protected by Cloudflare Turnstile to prevent bot signups.
  *
  * Required Cloudflare Pages env vars:
- *   CC_API_TOKEN          — Constant Contact API key (v3)
- *   CC_LIST_ID            — UUID of the contact list to add subscribers to
- *   TURNSTILE_SECRET_KEY  — Cloudflare Turnstile secret key (required)
+ *   CC_API_TOKEN  — Constant Contact API access token (v3)
  *
- * Request body: { "email": "user@example.com", "turnstileToken": "..." }
+ * List ID source (in priority order):
+ *   1. CC_LIST_ID env var (override)
+ *   2. newsletter.listId from site settings (set via admin panel)
+ *
+ * Request body: { "email": "user@example.com" }
  * Response:     { "ok": true } or { "ok": false, "error": "..." }
  */
 
-const TURNSTILE_VERIFY_URL = 'https://challenges.cloudflare.com/turnstile/v0/siteverify';
-
 export async function onRequestPost(context) {
+  const cors = {
+    'Access-Control-Allow-Origin': '*',
+    'Content-Type': 'application/json',
+  };
+
   try {
-    const { email, turnstileToken } = await context.request.json();
+    const { email } = await context.request.json();
 
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      return Response.json(
-        { ok: false, error: 'Please enter a valid email address.' },
-        { status: 400 }
+      return new Response(
+        JSON.stringify({ ok: false, error: 'Please enter a valid email address.' }),
+        { status: 400, headers: cors }
       );
     }
 
-    // ── Turnstile bot protection ──────────────────────────────────
-    const turnstileSecret = context.env.TURNSTILE_SECRET_KEY;
-    if (turnstileSecret) {
-      if (!turnstileToken) {
-        return Response.json(
-          { ok: false, error: 'Bot verification failed. Please try again.' },
-          { status: 403 }
-        );
-      }
-
-      const ip = context.request.headers.get('CF-Connecting-IP') || '';
-      const verifyRes = await fetch(TURNSTILE_VERIFY_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          secret: turnstileSecret,
-          response: turnstileToken,
-          remoteip: ip,
-        }),
-      });
-
-      const verifyData = await verifyRes.json();
-      if (!verifyData.success) {
-        console.error('[newsletter] Turnstile verification failed:', verifyData['error-codes']);
-        return Response.json(
-          { ok: false, error: 'Bot verification failed. Please try again.' },
-          { status: 403 }
-        );
-      }
-    } else {
-      console.warn('[newsletter] TURNSTILE_SECRET_KEY not set — skipping bot protection');
+    const token = context.env.CC_API_TOKEN;
+    if (!token) {
+      console.error('Missing CC_API_TOKEN env var');
+      return new Response(
+        JSON.stringify({ ok: false, error: 'Newsletter signup is not configured yet. Please try again later.' }),
+        { status: 503, headers: cors }
+      );
     }
 
-    // ── Constant Contact signup ───────────────────────────────────
-    const token = context.env.CC_API_TOKEN;
-    const listId = context.env.CC_LIST_ID;
+    // Resolve list ID: env var takes priority, then static config from admin
+    let listId = context.env.CC_LIST_ID || '';
+    if (!listId) {
+      try {
+        const configRes = await context.env.ASSETS.fetch(
+          new URL('/newsletter-config.json', context.request.url)
+        );
+        if (configRes.ok) {
+          const config = await configRes.json();
+          listId = config.listId || '';
+        }
+      } catch (e) {
+        console.error('Failed to read newsletter config:', e);
+      }
+    }
 
-    if (!token || !listId) {
-      console.error('[newsletter] Missing CC_API_TOKEN or CC_LIST_ID env vars');
-      return Response.json(
-        { ok: false, error: 'Newsletter signup is not configured yet. Please try again later.' },
-        { status: 503 }
+    if (!listId) {
+      console.error('No CC_LIST_ID env var or newsletter.listId in settings');
+      return new Response(
+        JSON.stringify({ ok: false, error: 'Newsletter signup is not configured yet. Please try again later.' }),
+        { status: 503, headers: cors }
       );
     }
 
@@ -84,20 +76,35 @@ export async function onRequestPost(context) {
     });
 
     if (res.ok || res.status === 409) {
-      return Response.json({ ok: true }, { status: 200 });
+      // 409 = already subscribed, still a success from the user's perspective
+      return new Response(
+        JSON.stringify({ ok: true }),
+        { status: 200, headers: cors }
+      );
     }
 
     const errBody = await res.text();
-    console.error(`[newsletter] CC API error ${res.status}: ${errBody}`);
-    return Response.json(
-      { ok: false, error: 'Something went wrong. Please try again.' },
-      { status: 502 }
+    console.error(`CC API error ${res.status}: ${errBody}`);
+    return new Response(
+      JSON.stringify({ ok: false, error: 'Something went wrong. Please try again.' }),
+      { status: 502, headers: cors }
     );
   } catch (err) {
-    console.error('[newsletter]', err);
-    return Response.json(
-      { ok: false, error: 'Something went wrong. Please try again.' },
-      { status: 500 }
+    console.error('Newsletter handler error:', err);
+    return new Response(
+      JSON.stringify({ ok: false, error: 'Something went wrong. Please try again.' }),
+      { status: 500, headers: cors }
     );
   }
+}
+
+// Handle CORS preflight
+export async function onRequestOptions() {
+  return new Response(null, {
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type',
+    },
+  });
 }

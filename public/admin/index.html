@@ -3726,6 +3726,90 @@
     // ═══════════════════════════════════════════
     // SITE SETTINGS
     // ═══════════════════════════════════════════
+    // ═══════════════════════════════════════════
+    // NEWSLETTER SETTINGS (sub-component)
+    // ═══════════════════════════════════════════
+    function NewsletterSettings({ listId, onSelect }) {
+      const [lists, setLists] = useState([]);
+      const [loading, setLoading] = useState(false);
+      const [error, setError] = useState('');
+      const [fetched, setFetched] = useState(false);
+
+      const fetchLists = async () => {
+        setLoading(true);
+        setError('');
+        try {
+          const res = await fetch('/api/newsletter-lists');
+          const data = await res.json();
+          if (data.ok) {
+            setLists(data.lists);
+            setFetched(true);
+          } else {
+            setError(data.error || 'Failed to fetch lists.');
+          }
+        } catch (err) {
+          setError('Failed to connect. Check that CC_API_TOKEN is set in Cloudflare env vars.');
+        }
+        setLoading(false);
+      };
+
+      const selectedName = lists.find(l => l.id === listId)?.name || '';
+
+      return html`
+        <div class="card">
+          <h3 style="margin-bottom: 1rem;">Newsletter (Constant Contact)</h3>
+          <p class="text-sm text-muted mb-1">Choose which Constant Contact list new subscribers are added to. Requires <code>CC_API_TOKEN</code> in Cloudflare env vars.</p>
+          <div style="display: flex; gap: 0.5rem; align-items: flex-start; margin-top: 0.75rem;">
+            <div class="form-group" style="flex: 1; margin-bottom: 0;">
+              <label class="form-label">List ID</label>
+              <input class="form-input" value=${listId} placeholder="Click 'Fetch Lists' to browse →"
+                onInput=${e => onSelect(e.target.value)} readonly style="background: #f8f8f6;" />
+            </div>
+            <div style="padding-top: 1.6rem;">
+              <button class="btn btn-ghost" onClick=${fetchLists} disabled=${loading}
+                style="white-space: nowrap;">
+                ${loading ? html`<span class="spinner" style="width:14px;height:14px;" />` : null}
+                ${loading ? ' Loading...' : 'Fetch Lists'}
+              </button>
+            </div>
+          </div>
+          ${selectedName ? html`<p class="text-sm" style="margin-top: 0.5rem; color: #22c55e;">✓ Selected: <strong>${selectedName}</strong></p>` : null}
+          ${error ? html`<p class="text-sm" style="margin-top: 0.5rem; color: #ef4444;">${error}</p>` : null}
+          ${fetched && lists.length > 0 ? html`
+            <div style="margin-top: 0.75rem; border: 1px solid #E5E4E0; border-radius: 8px; overflow: hidden;">
+              <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem;">
+                <thead>
+                  <tr style="background: #f5f4f0; text-align: left;">
+                    <th style="padding: 0.5rem 0.75rem; font-weight: 600;">List Name</th>
+                    <th style="padding: 0.5rem 0.75rem; font-weight: 600; width: 80px; text-align: right;">Members</th>
+                    <th style="padding: 0.5rem 0.75rem; width: 70px;"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${lists.map(l => html`
+                    <tr style="border-top: 1px solid #E5E4E0; background: ${l.id === listId ? 'rgba(255,213,0,0.08)' : 'transparent'};">
+                      <td style="padding: 0.5rem 0.75rem;">
+                        ${l.name}
+                        ${l.id === listId ? html` <span style="color: #22c55e; font-weight: 600; font-size: 0.75rem;">✓ Active</span>` : null}
+                      </td>
+                      <td style="padding: 0.5rem 0.75rem; text-align: right; color: #6B6C72;">${l.memberCount.toLocaleString()}</td>
+                      <td style="padding: 0.5rem 0.75rem; text-align: center;">
+                        ${l.id !== listId ? html`
+                          <button class="btn btn-ghost" style="padding: 0.2rem 0.6rem; font-size: 0.8rem;"
+                            onClick=${() => onSelect(l.id)}>Select</button>
+                        ` : null}
+                      </td>
+                    </tr>
+                  `)}
+                </tbody>
+              </table>
+            </div>
+          ` : null}
+          ${fetched && lists.length === 0 && !error ? html`<p class="text-sm text-muted" style="margin-top: 0.5rem;">No active lists found in your Constant Contact account.</p>` : null}
+        </div>
+      `;
+    }
+
     function SiteSettings({ addToast }) {
       const [loading, setLoading] = useState(true);
       const [saving, setSaving] = useState(false);
@@ -4142,6 +4226,8 @@
             </div>
           </div>
         </div>
+        <${NewsletterSettings} listId=${data.newsletter?.listId || ''} onSelect=${(id) => updateField('newsletter.listId', id)} />
+
         <div class="card">
           <h3 style="margin-bottom: 1rem;">Social Links</h3>
           <div class="form-row">
