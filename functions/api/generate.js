@@ -15,19 +15,13 @@
  */
 
 export async function onRequestPost(context) {
-  const cors = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
-  };
-
   try {
     const ai = context.env.AI;
 
     if (!ai) {
       return Response.json(
         { success: false, error: 'AI binding not configured. Add [ai] binding = "AI" to wrangler.toml.' },
-        { status: 500, headers: cors }
+        { status: 500 }
       );
     }
 
@@ -36,7 +30,7 @@ export async function onRequestPost(context) {
     if (!type || !kid) {
       return Response.json(
         { success: false, error: 'Missing type or kid data' },
-        { status: 400, headers: cors }
+        { status: 400 }
       );
     }
 
@@ -145,22 +139,15 @@ META_DESCRIPTION: [text]`;
 
     return Response.json(
       { success: true, ...results },
-      { headers: cors }
+      {}
     );
   } catch (err) {
     return Response.json(
       { success: false, error: err.message },
-      { status: 500, headers: cors }
+      { status: 500 }
     );
   }
 }
-
-export async function onRequestOptions() {
-  return new Response(null, {
-    headers: {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type',
-    },
+,
   });
 }

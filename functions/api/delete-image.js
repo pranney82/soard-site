@@ -8,12 +8,6 @@
  */
 
 export async function onRequestPost(context) {
-  const cors = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
-  };
-
   try {
     const { CF_ACCOUNT_ID, CF_IMAGES_TOKEN } = context.env;
     const { imageId } = await context.request.json();
@@ -21,7 +15,7 @@ export async function onRequestPost(context) {
     if (!imageId) {
       return Response.json(
         { success: false, error: 'No imageId provided' },
-        { status: 400, headers: cors }
+        { status: 400 }
       );
     }
 
@@ -39,22 +33,15 @@ export async function onRequestPost(context) {
 
     return Response.json(
       { success: result.success },
-      { headers: cors }
+      {}
     );
   } catch (err) {
     return Response.json(
       { success: false, error: err.message },
-      { status: 500, headers: cors }
+      { status: 500 }
     );
   }
 }
-
-export async function onRequestOptions() {
-  return new Response(null, {
-    headers: {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type',
-    },
+,
   });
 }

@@ -13,12 +13,6 @@
 const REPO = 'pranney82/soard';
 
 export async function onRequestPost(context) {
-  const cors = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
-  };
-
   try {
     const { GITHUB_TOKEN } = context.env;
     const formData = await context.request.formData();
@@ -29,7 +23,7 @@ export async function onRequestPost(context) {
     if (!file || !path) {
       return Response.json(
         { success: false, error: 'Missing file or path' },
-        { status: 400, headers: cors }
+        { status: 400 }
       );
     }
 
@@ -84,7 +78,7 @@ export async function onRequestPost(context) {
     if (!response.ok) {
       return Response.json(
         { success: false, error: result.message || `GitHub error: ${response.status}` },
-        { status: response.status, headers: cors }
+        { status: response.status }
       );
     }
 
@@ -95,22 +89,15 @@ export async function onRequestPost(context) {
         sha: result.content.sha,
         downloadUrl: result.content.download_url,
       },
-      { headers: cors }
+      {}
     );
   } catch (err) {
     return Response.json(
       { success: false, error: err.message },
-      { status: 500, headers: cors }
+      { status: 500 }
     );
   }
 }
-
-export async function onRequestOptions() {
-  return new Response(null, {
-    headers: {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type',
-    },
+,
   });
 }

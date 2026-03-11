@@ -2,8 +2,8 @@
  * Cloudflare Access JWT Validation Middleware
  * ============================================
  * Security layers (evaluated in order):
- *   1. CORS — restricts Access-Control-Allow-Origin to same origin (not *)
- *   2. CSRF — Origin header must match request host on state-changing methods
+ *   1. CORS — same-origin only; overrides any ACAO header set by downstream handlers
+ *   2. CSRF — Origin header must match request host on state-changing methods (cookie auth)
  *   3. JWT  — validates CF-Access-JWT-Assertion header OR CF_Authorization cookie
  *             against Cloudflare's JWKS public keys (issuer, audience, signature, expiry)
  *
@@ -23,17 +23,39 @@ const PUBLIC_ROUTES = ['/api/shopify', '/api/newsletter'];
 // Methods that change state — require CSRF origin check when auth is cookie-based
 const STATE_CHANGING_METHODS = ['POST', 'PUT', 'PATCH', 'DELETE'];
 
+/**
+ * Build CORS headers. Same-origin only for authenticated endpoints.
+ * Never return ACAO 'null' (sandboxed iframes send Origin: null and would match).
+ */
 function getCorsHeaders(request) {
-  // Reflect the request origin only if it matches our own host,
-  // otherwise return no ACAO header (browser blocks the response)
   const origin = request.headers.get('Origin');
   const host = new URL(request.url).origin;
-  return {
-    'Access-Control-Allow-Origin': origin === host ? origin : 'null',
+  const headers = {
     'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type',
     'Vary': 'Origin',
   };
+  // Only reflect origin if it matches our host — otherwise omit ACAO entirely
+  if (origin && origin === host) {
+    headers['Access-Control-Allow-Origin'] = origin;
+  }
+  return headers;
+}
+
+/**
+ * Stamp CORS headers onto any Response, overriding handler-set ACAO: * headers.
+ */
+function applyCors(response, corsHeaders) {
+  const wrapped = new Response(response.body, response);
+  // Remove any ACAO set by downstream handlers
+  wrapped.headers.delete('Access-Control-Allow-Origin');
+  wrapped.headers.delete('Access-Control-Allow-Methods');
+  wrapped.headers.delete('Access-Control-Allow-Headers');
+  wrapped.headers.delete('Access-Control-Max-Age');
+  for (const [key, value] of Object.entries(corsHeaders)) {
+    wrapped.headers.set(key, value);
+  }
+  return wrapped;
 }
 
 export async function onRequest(context) {
@@ -48,7 +70,8 @@ export async function onRequest(context) {
   // Skip auth for public API routes (e.g. Shopify storefront proxy, newsletter)
   const url = new URL(request.url);
   if (PUBLIC_ROUTES.some(route => url.pathname === route)) {
-    return context.next();
+    const response = await context.next();
+    return applyCors(response, corsHeaders);
   }
 
   const { CF_ACCESS_TEAM_DOMAIN, CF_ACCESS_AUD } = context.env;
@@ -57,7 +80,8 @@ export async function onRequest(context) {
   // (avoids breaking the site during initial setup)
   if (!CF_ACCESS_TEAM_DOMAIN || !CF_ACCESS_AUD) {
     console.warn('[middleware] CF_ACCESS_TEAM_DOMAIN or CF_ACCESS_AUD not set — skipping JWT validation');
-    return context.next();
+    const response = await context.next();
+    return applyCors(response, corsHeaders);
   }
 
   // ── CSRF Protection ──────────────────────────────────────────────
@@ -96,7 +120,9 @@ export async function onRequest(context) {
     );
   }
 
-  return context.next();
+  // ── Authorized — run handler and stamp CORS ──────────────────────
+  const response = await context.next();
+  return applyCors(response, corsHeaders);
 }
 
 // ─── JWT Verification ──────────────────────────────────────────────
@@ -108,10 +134,16 @@ async function verifyJwt(token, teamDomain, expectedAud) {
   const header = JSON.parse(b64UrlDecode(parts[0]));
   const payload = JSON.parse(b64UrlDecode(parts[1]));
 
-  // Check expiration
   const now = Math.floor(Date.now() / 1000);
+
+  // Check expiration
   if (payload.exp && payload.exp < now) {
     throw new Error('token expired');
+  }
+
+  // Check not-before
+  if (payload.nbf && payload.nbf > now + 30) { // 30s clock skew tolerance
+    throw new Error('token not yet valid');
   }
 
   // Check issuer
@@ -129,6 +161,7 @@ async function verifyJwt(token, teamDomain, expectedAud) {
   // Fetch public keys and verify signature
   const keys = await getPublicKeys(teamDomain);
   const kid = header.kid;
+  if (!kid) throw new Error('missing key ID');
   const key = keys.find(k => k.kid === kid);
   if (!key) throw new Error('signing key not found');
 

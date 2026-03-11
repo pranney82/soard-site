@@ -20,13 +20,6 @@ const BRANCH = 'main';
 const MAX_PER_PAGE = 45; // Leave room for 1 tree call + 45 file fetches = 46 < 50
 
 export async function onRequestGet(context) {
-  const cors = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
-    'Cache-Control': 'no-cache',
-  };
-
   try {
     const { GITHUB_TOKEN } = context.env;
     const url = new URL(context.request.url);
@@ -37,7 +30,7 @@ export async function onRequestGet(context) {
     if (!dir) {
       return Response.json(
         { success: false, error: 'Provide ?dir= parameter' },
-        { status: 400, headers: cors }
+        { status: 400 }
       );
     }
 
@@ -55,7 +48,7 @@ export async function onRequestGet(context) {
     if (!treeRes.ok) {
       return Response.json(
         { success: false, error: `GitHub Trees API error: ${treeRes.status}` },
-        { status: treeRes.status, headers: cors }
+        { status: treeRes.status }
       );
     }
 
@@ -99,22 +92,15 @@ export async function onRequestGet(context) {
 
     return Response.json(
       { success: true, count: items.length, total, page, pages, items },
-      { headers: cors }
+      {}
     );
   } catch (err) {
     return Response.json(
       { success: false, error: err.message },
-      { status: 500, headers: cors }
+      { status: 500 }
     );
   }
 }
-
-export async function onRequestOptions() {
-  return new Response(null, {
-    headers: {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type',
-    },
+,
   });
 }

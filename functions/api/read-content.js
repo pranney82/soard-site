@@ -12,12 +12,6 @@
 const REPO = 'pranney82/soard';
 
 export async function onRequestGet(context) {
-  const cors = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
-  };
-
   try {
     const { GITHUB_TOKEN } = context.env;
     const url = new URL(context.request.url);
@@ -27,7 +21,7 @@ export async function onRequestGet(context) {
     if (!GITHUB_TOKEN) {
       return Response.json(
         { success: false, error: 'Missing GITHUB_TOKEN' },
-        { status: 500, headers: cors }
+        { status: 500 }
       );
     }
 
@@ -47,7 +41,7 @@ export async function onRequestGet(context) {
       if (!response.ok) {
         return Response.json(
           { success: false, error: `GitHub API error: ${response.status}` },
-          { status: response.status, headers: cors }
+          { status: response.status }
         );
       }
 
@@ -61,7 +55,7 @@ export async function onRequestGet(context) {
           size: f.size,
         }));
 
-      return Response.json({ success: true, files: fileList }, { headers: cors });
+      return Response.json({ success: true, files: fileList }, {});
     }
 
     // Read single file
@@ -74,7 +68,7 @@ export async function onRequestGet(context) {
       if (!response.ok) {
         return Response.json(
           { success: false, error: `GitHub API error: ${response.status}` },
-          { status: response.status, headers: cors }
+          { status: response.status }
         );
       }
 
@@ -93,28 +87,21 @@ export async function onRequestGet(context) {
           name: file.name,
           path: file.path,
         },
-        { headers: cors }
+        {}
       );
     }
 
     return Response.json(
       { success: false, error: 'Provide ?path= or ?dir= parameter' },
-      { status: 400, headers: cors }
+      { status: 400 }
     );
   } catch (err) {
     return Response.json(
       { success: false, error: err.message },
-      { status: 500, headers: cors }
+      { status: 500 }
     );
   }
 }
-
-export async function onRequestOptions() {
-  return new Response(null, {
-    headers: {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type',
-    },
+,
   });
 }

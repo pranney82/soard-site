@@ -12,13 +12,6 @@
  * Environment variables needed:
  *   CF_ACCOUNT_ID, CF_IMAGES_TOKEN
  */
-
-const cors = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
-};
-
 export async function onRequestGet(context) {
   try {
     const { CF_ACCOUNT_ID, CF_IMAGES_TOKEN } = context.env;
@@ -26,7 +19,7 @@ export async function onRequestGet(context) {
     if (!CF_ACCOUNT_ID || !CF_IMAGES_TOKEN) {
       return Response.json(
         { success: false, error: 'Missing Cloudflare credentials.' },
-        { status: 500, headers: cors }
+        { status: 500 }
       );
     }
 
@@ -45,7 +38,7 @@ export async function onRequestGet(context) {
     if (!result.success) {
       return Response.json(
         { success: false, error: result.errors?.[0]?.message || 'Failed to list images' },
-        { status: 400, headers: cors }
+        { status: 400 }
       );
     }
 
@@ -64,16 +57,14 @@ export async function onRequestGet(context) {
         page,
         perPage,
       },
-      { headers: cors }
+      {}
     );
   } catch (err) {
     return Response.json(
       { success: false, error: err.message },
-      { status: 500, headers: cors }
+      { status: 500 }
     );
   }
 }
-
-export async function onRequestOptions() {
-  return new Response(null, { headers: cors });
+);
 }

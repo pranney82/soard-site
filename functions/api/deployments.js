@@ -13,19 +13,13 @@ const REPO = 'pranney82/soard';
 const CF_PROJECT = 'soard-site';
 
 export async function onRequestGet(context) {
-  const cors = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
-  };
-
   try {
     const { GITHUB_TOKEN, CF_ACCOUNT_ID, CF_PAGES_TOKEN } = context.env;
 
     if (!GITHUB_TOKEN) {
       return Response.json(
         { success: false, error: 'Missing GITHUB_TOKEN' },
-        { status: 500, headers: cors }
+        { status: 500 }
       );
     }
 
@@ -110,7 +104,7 @@ export async function onRequestGet(context) {
 
       return Response.json(
         { success: true, source: 'cloudflare', deploys, commits },
-        { headers: cors }
+        {}
       );
     }
 
@@ -134,22 +128,15 @@ export async function onRequestGet(context) {
 
     return Response.json(
       { success: true, source: 'github', deploys, commits },
-      { headers: cors }
+      {}
     );
   } catch (err) {
     return Response.json(
       { success: false, error: err.message },
-      { status: 500, headers: cors }
+      { status: 500 }
     );
   }
 }
-
-export async function onRequestOptions() {
-  return new Response(null, {
-    headers: {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type',
-    },
+,
   });
 }

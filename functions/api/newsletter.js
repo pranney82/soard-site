@@ -12,18 +12,13 @@
  */
 
 export async function onRequestPost(context) {
-  const cors = {
-    'Access-Control-Allow-Origin': '*',
-    'Content-Type': 'application/json',
-  };
-
   try {
     const { email } = await context.request.json();
 
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return new Response(
         JSON.stringify({ ok: false, error: 'Please enter a valid email address.' }),
-        { status: 400, headers: cors }
+        { status: 400 }
       );
     }
 
@@ -34,7 +29,7 @@ export async function onRequestPost(context) {
       console.error('Missing CC_API_TOKEN or CC_LIST_ID env vars');
       return new Response(
         JSON.stringify({ ok: false, error: 'Newsletter signup is not configured yet. Please try again later.' }),
-        { status: 503, headers: cors }
+        { status: 503 }
       );
     }
 
@@ -54,7 +49,7 @@ export async function onRequestPost(context) {
       // 409 = already subscribed, still a success from the user's perspective
       return new Response(
         JSON.stringify({ ok: true }),
-        { status: 200, headers: cors }
+        { status: 200 }
       );
     }
 
@@ -62,24 +57,18 @@ export async function onRequestPost(context) {
     console.error(`CC API error ${res.status}: ${errBody}`);
     return new Response(
       JSON.stringify({ ok: false, error: 'Something went wrong. Please try again.' }),
-      { status: 502, headers: cors }
+      { status: 502 }
     );
   } catch (err) {
     console.error('Newsletter handler error:', err);
     return new Response(
       JSON.stringify({ ok: false, error: 'Something went wrong. Please try again.' }),
-      { status: 500, headers: cors }
+      { status: 500 }
     );
   }
 }
 
 // Handle CORS preflight
-export async function onRequestOptions() {
-  return new Response(null, {
-    headers: {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type',
-    },
+,
   });
 }

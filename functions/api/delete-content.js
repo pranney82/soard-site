@@ -15,12 +15,6 @@
 const REPO = 'pranney82/soard';
 
 export async function onRequestPost(context) {
-  const cors = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
-  };
-
   try {
     const { GITHUB_TOKEN } = context.env;
     const { path, sha, message } = await context.request.json();
@@ -28,7 +22,7 @@ export async function onRequestPost(context) {
     if (!path || !sha || !message) {
       return Response.json(
         { success: false, error: 'Missing required fields: path, sha, message' },
-        { status: 400, headers: cors }
+        { status: 400 }
       );
     }
 
@@ -50,25 +44,18 @@ export async function onRequestPost(context) {
       const result = await response.json();
       return Response.json(
         { success: false, error: result.message || `GitHub error: ${response.status}` },
-        { status: response.status, headers: cors }
+        { status: response.status }
       );
     }
 
-    return Response.json({ success: true }, { headers: cors });
+    return Response.json({ success: true }, {});
   } catch (err) {
     return Response.json(
       { success: false, error: err.message },
-      { status: 500, headers: cors }
+      { status: 500 }
     );
   }
 }
-
-export async function onRequestOptions() {
-  return new Response(null, {
-    headers: {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type',
-    },
+,
   });
 }

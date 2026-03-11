@@ -17,19 +17,13 @@
  */
 
 export async function onRequestPost(context) {
-  const cors = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
-  };
-
   try {
     const { CF_ACCOUNT_ID, CF_STREAM_TOKEN } = context.env;
 
     if (!CF_ACCOUNT_ID || !CF_STREAM_TOKEN) {
       return Response.json(
         { success: false, error: 'Missing Cloudflare credentials. Set CF_ACCOUNT_ID and CF_STREAM_TOKEN in Pages settings.' },
-        { status: 500, headers: cors }
+        { status: 500 }
       );
     }
 
@@ -40,7 +34,7 @@ export async function onRequestPost(context) {
     if (!file) {
       return Response.json(
         { success: false, error: 'No file provided' },
-        { status: 400, headers: cors }
+        { status: 400 }
       );
     }
 
@@ -52,7 +46,7 @@ export async function onRequestPost(context) {
     if (file.type && !validTypes.includes(file.type)) {
       return Response.json(
         { success: false, error: `Invalid file type: ${file.type}. Upload MP4, MOV, WebM, or MKV.` },
-        { status: 400, headers: cors }
+        { status: 400 }
       );
     }
 
@@ -79,7 +73,7 @@ export async function onRequestPost(context) {
     if (!result.success) {
       return Response.json(
         { success: false, error: result.errors?.[0]?.message || 'Stream upload failed' },
-        { status: 400, headers: cors }
+        { status: 400 }
       );
     }
 
@@ -96,22 +90,15 @@ export async function onRequestPost(context) {
         status: result.result.status,
         duration: result.result.duration,
       },
-      { headers: cors }
+      {}
     );
   } catch (err) {
     return Response.json(
       { success: false, error: err.message },
-      { status: 500, headers: cors }
+      { status: 500 }
     );
   }
 }
-
-export async function onRequestOptions() {
-  return new Response(null, {
-    headers: {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type',
-    },
+,
   });
 }
