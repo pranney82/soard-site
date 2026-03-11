@@ -165,3 +165,71 @@ export function formatPrice(amount: string, currencyCode: string = 'USD'): strin
     currency: currencyCode,
   }).format(parseFloat(amount));
 }
+
+/* ─── Collections (build-time SSG) ─────────── */
+
+const COLLECTION_WITH_PRODUCTS_FRAGMENT = `
+  fragment CollectionFull on Collection {
+    id
+    handle
+    title
+    description
+    image { url altText width height }
+    products(first: 100, sortKey: BEST_SELLING) {
+      edges {
+        node {
+          id
+          handle
+          title
+          description
+          descriptionHtml
+          availableForSale
+          priceRange {
+            minVariantPrice { amount currencyCode }
+            maxVariantPrice { amount currencyCode }
+          }
+          compareAtPriceRange {
+            minVariantPrice { amount currencyCode }
+          }
+          featuredImage { url altText width height }
+          images(first: 10) {
+            edges { node { url altText width height } }
+          }
+          options { id name values }
+          variants(first: 100) {
+            edges {
+              node {
+                id
+                title
+                availableForSale
+                price { amount currencyCode }
+                compareAtPrice { amount currencyCode }
+                selectedOptions { name value }
+                image { url altText width height }
+              }
+            }
+          }
+          tags
+        }
+      }
+    }
+  }
+`;
+
+export async function fetchAllCollections() {
+  const query = `
+    ${COLLECTION_WITH_PRODUCTS_FRAGMENT}
+    query AllCollections {
+      collections(first: 50) {
+        edges {
+          node { ...CollectionFull }
+        }
+      }
+    }
+  `;
+  const data = await storefrontFetch<{ collections: { edges: { node: any }[] } }>(query);
+  // Filter out empty collections
+  return data.collections.edges
+    .map((e) => e.node)
+    .filter((c) => c.products.edges.length > 0);
+}
