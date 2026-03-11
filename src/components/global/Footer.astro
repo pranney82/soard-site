@@ -162,6 +162,7 @@ const year = new Date().getFullYear();
             width="64"
             height="64"
             loading="lazy"
+            onerror="this.parentElement.style.display='none'"
           />
         </a>
         <div class="trust-badge trust-badge--text">
@@ -502,8 +503,11 @@ const year = new Date().getFullYear();
       grid-template-columns: 1fr;
       gap: 48px;
     }
+  }
+  @media (max-width: 768px) {
     .footer-nav {
-      grid-template-columns: repeat(4, 1fr);
+      grid-template-columns: 1fr 1fr;
+      gap: 32px 24px;
     }
   }
   @media (max-width: 640px) {
@@ -512,10 +516,6 @@ const year = new Date().getFullYear();
     .footer-mission { max-width: 100%; }
     .footer-social { justify-content: center; }
     .footer-donate-btn { align-self: center; }
-    .footer-nav {
-      grid-template-columns: 1fr 1fr;
-      gap: 32px 24px;
-    }
   }
 
   /* ─── Trust Signals Bar ────────────────── */
