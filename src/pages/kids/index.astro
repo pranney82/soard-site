@@ -1,13 +1,14 @@
 ---
 /**
- * Meet the Kids — Premium grid page with filtering
+ * Meet the Kids — Bespoke hero + premium grid with filtering
  *
- * PERF: CF Image transforms with srcset, content-visibility, eager first 8
+ * PERF: gravity=face on CF Images, optimized srcsets, LCP preload,
+ *       content-visibility, shimmer placeholders, smooth filter animations
  * SEO:  CollectionPage + ItemList + FAQPage schema, breadcrumbs, rich meta
  * A11Y: proper heading hierarchy, ARIA labels, focus management, 44px targets
- * UX:   Featured hero card, smooth filter transitions, mobile-optimized info
+ * UX:   Face collage hero, cinematic featured card, mobile bottom-sheet filters
  */
-import PageLayout from '../../layouts/PageLayout.astro';
+import BaseLayout from '../../layouts/BaseLayout.astro';
 import { getCollection } from 'astro:content';
 
 const allKids = await getCollection('kids');
@@ -26,16 +27,20 @@ function cfUrl(src: string, opts: string) {
   const id = src.replace(`${CF_BASE}/`, '').replace('/public', '');
   return `${CF_BASE}/${id}/${opts}`;
 }
-function cfSrcset(src: string, widths: number[]) {
-  return widths.map(w => `${cfUrl(src, `w=${w},f=auto,q=85`)} ${w}w`).join(', ');
+function cfSrcset(src: string, widths: number[], extraOpts = '') {
+  return widths.map(w => {
+    const opts = `w=${w},f=auto,q=80${extraOpts ? ',' + extraOpts : ''}`;
+    return `${cfUrl(src, opts)} ${w}w`;
+  }).join(', ');
 }
 
-// ── SEO: CollectionPage + ItemList + FAQ schema ──────────
-const SITE = 'https://sunshineonaranneyday.com';
+// ── Stats ────────────────────────────────
 const completedCount = kids.filter(k => k.data.status === 'completed').length;
 const inProgressCount = kids.filter(k => k.data.status === 'in-progress').length;
 const yearRange = years.length > 1 ? `${years[years.length - 1]}–${years[0]}` : years[0] || '';
 
+// ── SEO ──────────────────────────────────
+const SITE = 'https://sunshineonaranneyday.com';
 const pageDescription = `Meet ${totalKids} children whose lives were transformed by Sunshine on a Ranney Day — dream bedrooms, accessible bathrooms, therapy rooms, and more. ${completedCount} projects completed${inProgressCount > 0 ? `, ${inProgressCount} in progress` : ''}.`;
 
 const itemListSchema = {
@@ -54,7 +59,7 @@ const itemListSchema = {
       "position": i + 1,
       "url": `${SITE}/kids/${kid.data.slug}/`,
       "name": kid.data.name,
-      ...(kid.data.heroImage ? { "image": cfUrl(kid.data.heroImage, 'w=600,f=auto,q=85') } : {}),
+      ...(kid.data.heroImage ? { "image": cfUrl(kid.data.heroImage, 'w=600,f=auto,q=80') } : {}),
     })),
   },
 };
@@ -86,50 +91,100 @@ const breadcrumbs = [
   { name: 'Meet the Kids', url: `${SITE}/kids/` },
 ];
 
-// Featured kid = most recent with a hero image
+// ── Featured kid = most recent with hero image ──
 const featuredKid = kids.find(k => k.data.heroImage);
 const gridKids = [...kids];
+
+// ── Hero face collage: 10 diverse kids with CF Images ──
+const heroFaces = kids
+  .filter(k => k.data.heroImage?.includes('imagedelivery.net'))
+  .slice(0, 10);
+
+// ── LCP: Preload featured card image ──
+const featuredImgSrcset = featuredKid?.data.heroImage
+  ? cfSrcset(featuredKid.data.heroImage, [640, 960, 1400], 'h=580,fit=cover,gravity=face')
+  : '';
+const featuredImgSizes = '(max-width: 768px) 100vw, (max-width: 1100px) 80vw, 1200px';
+
+// ── Pull quote from featured kid ──
+const featuredQuote = featuredKid?.data.quote
+  || (featuredKid?.data.bio
+    ? featuredKid.data.bio.split(/[.!]/).filter((s: string) => s.trim().length > 20 && s.trim().length < 120)[0]?.trim()
+    : null);
 ---
 
-<PageLayout
+<BaseLayout
   title="Meet the Kids"
   description={pageDescription}
-  heroLabel="Our Kids"
-  heroTitle={'Meet our <em class="highlight">Sunshine</em> Kids'}
-  heroSubtitle={`${totalKids} children. ${completedCount} lives transformed. Discover the incredible stories behind every room we build.`}
   jsonLd={[itemListSchema, faqSchema]}
   breadcrumbs={breadcrumbs}
 >
-  <section class="kids-section">
-    <div class="container container--wide">
+  <!-- LCP preload: featured card image -->
+  {featuredKid?.data.heroImage && (
+    <link slot="head" rel="preload" as="image" imagesrcset={featuredImgSrcset} imagesizes={featuredImgSizes} fetchpriority="high" />
+  )}
 
-      <!-- Impact Stats -->
-      <div class="impact-bar" aria-label="Impact statistics">
-        <div class="impact-stat">
-          <span class="impact-stat__number">{totalKids}</span>
-          <span class="impact-stat__label">Kids Helped</span>
-        </div>
-        <div class="impact-stat">
-          <span class="impact-stat__number">{completedCount}</span>
-          <span class="impact-stat__label">Rooms Built</span>
-        </div>
-        {inProgressCount > 0 && (
-          <div class="impact-stat">
-            <span class="impact-stat__number">{inProgressCount}</span>
-            <span class="impact-stat__label">In Progress</span>
-          </div>
-        )}
-        <div class="impact-stat">
-          <span class="impact-stat__number">{yearRange}</span>
-          <span class="impact-stat__label">Years Active</span>
-        </div>
+  <!-- ══════ HERO — Face Collage + Headline + Stats ══════ -->
+  <section class="kids-hero" aria-label="Meet the Kids">
+    <div class="kids-hero__inner">
+      <div class="kids-hero__text">
+        <p class="kids-hero__label">Our Kids</p>
+        <h1 class="kids-hero__title">Meet our <em class="highlight">Sunshine</em> Kids</h1>
+        <p class="kids-hero__subtitle">{totalKids} children. {completedCount} lives transformed. Discover the incredible stories behind every room we build.</p>
       </div>
 
-      <!-- Featured Kid -->
-      {featuredKid && (
+      <!-- Face constellation -->
+      <div class="faces" aria-label={`Photos of ${heroFaces.length} children helped by SOARD`}>
+        {heroFaces.map((kid, i) => (
+          <a
+            href={`/kids/${kid.data.slug}/`}
+            class="face"
+            style={`--i:${i}`}
+            aria-label={kid.data.name}
+          >
+            <img
+              src={cfUrl(kid.data.heroImage, 'w=120,h=120,fit=cover,gravity=face,f=auto,q=80')}
+              alt={kid.data.name}
+              width="60"
+              height="60"
+              loading="eager"
+              decoding="async"
+            />
+          </a>
+        ))}
+      </div>
+
+      <!-- Impact stats inline -->
+      <div class="hero-stats" aria-label="Impact statistics">
+        <div class="hero-stat">
+          <span class="hero-stat__num">{totalKids}</span>
+          <span class="hero-stat__label">Kids Helped</span>
+        </div>
+        <div class="hero-stat">
+          <span class="hero-stat__num">{completedCount}</span>
+          <span class="hero-stat__label">Rooms Built</span>
+        </div>
+        {inProgressCount > 0 && (
+          <div class="hero-stat">
+            <span class="hero-stat__num">{inProgressCount}</span>
+            <span class="hero-stat__label">In Progress</span>
+          </div>
+        )}
+        <div class="hero-stat">
+          <span class="hero-stat__num">{yearRange}</span>
+          <span class="hero-stat__label">Years Active</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════ FEATURED KID — Cinematic Full-Bleed ══════ -->
+  {featuredKid && (
+    <section class="featured-section">
+      <div class="container container--wide">
         <a
           href={`/kids/${featuredKid.data.slug}/`}
-          class="featured-card"
+          class="featured"
           aria-label={`Featured: ${featuredKid.data.name}'s story`}
           data-year={`year-${featuredKid.data.year}`}
           data-types={(featuredKid.data.roomTypes || []).map(t => `type-${t.toLowerCase().replace(/\s+/g, '-')}`).join(' ')}
@@ -137,40 +192,52 @@ const gridKids = [...kids];
           data-diagnosis={(featuredKid.data.diagnosis || '').toLowerCase()}
           data-status={featuredKid.data.status || 'completed'}
         >
-          <div class="featured-card__image">
-              <img
-                src={cfUrl(featuredKid.data.heroImage, 'w=1024,f=auto,q=85')}
-                srcset={cfSrcset(featuredKid.data.heroImage, [640, 1024, 1600])}
-                sizes="(max-width: 768px) 100vw, 60vw"
-                alt={`Photo of ${featuredKid.data.name}${featuredKid.data.diagnosis ? ` — ${featuredKid.data.diagnosis}` : ''}`}
-                class="featured-card__img"
-                width="1024"
-                height="680"
-                loading="eager"
-                decoding="async"
-                fetchpriority="high"
-              />
+          <div class="featured__media">
+            <img
+              src={cfUrl(featuredKid.data.heroImage, 'w=960,h=580,fit=cover,gravity=face,f=auto,q=82')}
+              srcset={featuredImgSrcset}
+              sizes={featuredImgSizes}
+              alt={`Photo of ${featuredKid.data.name}${featuredKid.data.diagnosis ? ` — ${featuredKid.data.diagnosis}` : ''}`}
+              class="featured__img"
+              width="960"
+              height="580"
+              loading="eager"
+              decoding="async"
+              fetchpriority="high"
+            />
+            <div class="featured__gradient"></div>
           </div>
-          <div class="featured-card__content">
-            <span class="featured-card__label">Latest Story</span>
-            <h2 class="featured-card__name">{featuredKid.data.name}</h2>
+          <div class="featured__overlay">
+            <span class="featured__label">Latest Story</span>
+            <h2 class="featured__name">{featuredKid.data.name}</h2>
             {featuredKid.data.diagnosis && (
-              <p class="featured-card__diagnosis">{featuredKid.data.diagnosis}</p>
+              <p class="featured__diagnosis">{featuredKid.data.diagnosis}</p>
             )}
-            {featuredKid.data.roomTypes && featuredKid.data.roomTypes.length > 0 && (
-              <div class="featured-card__tags">
-                {featuredKid.data.roomTypes.map(type => (
-                  <span class="featured-card__tag">{type}</span>
-                ))}
-              </div>
+            {featuredQuote && (
+              <p class="featured__quote">&ldquo;{featuredQuote}&rdquo;</p>
             )}
-            {featuredKid.data.status === 'in-progress' && (
-              <span class="featured-card__badge">In Progress</span>
-            )}
-            <span class="featured-card__cta">Read their story &rarr;</span>
+            <div class="featured__meta">
+              {featuredKid.data.roomTypes && featuredKid.data.roomTypes.length > 0 && (
+                <div class="featured__tags">
+                  {featuredKid.data.roomTypes.map(type => (
+                    <span class="featured__tag">{type}</span>
+                  ))}
+                </div>
+              )}
+              {featuredKid.data.status === 'in-progress' && (
+                <span class="featured__badge">In Progress</span>
+              )}
+            </div>
+            <span class="featured__cta">Read their story <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></span>
           </div>
         </a>
-      )}
+      </div>
+    </section>
+  )}
+
+  <!-- ══════ GRID SECTION ══════ -->
+  <section class="kids-section">
+    <div class="container container--wide">
 
       <!-- Toolbar -->
       <div class="toolbar" id="toolbar">
@@ -190,7 +257,8 @@ const gridKids = [...kids];
             </button>
           </div>
 
-          <div class="toolbar__filters">
+          <!-- Desktop filters -->
+          <div class="toolbar__filters toolbar__filters--desktop">
             <select id="filter-year" class="filter-select" aria-label="Filter by year">
               <option value="all">All Years</option>
               {years.map(year => (
@@ -212,6 +280,13 @@ const gridKids = [...kids];
               </button>
             )}
           </div>
+
+          <!-- Mobile filter button -->
+          <button class="filter-btn-mobile" id="filter-btn-mobile" type="button" aria-label="Open filters">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" y1="6" x2="20" y2="6"/><line x1="8" y1="12" x2="20" y2="12"/><line x1="12" y1="18" x2="20" y2="18"/></svg>
+            Filters
+            <span class="filter-btn-mobile__count" id="mobile-filter-count" hidden></span>
+          </button>
         </div>
 
         <div class="toolbar__status" aria-live="polite" aria-atomic="true">
@@ -221,6 +296,52 @@ const gridKids = [...kids];
           <button class="clear-btn" id="clear-filters" hidden aria-label="Clear all filters">
             Clear filters
           </button>
+        </div>
+      </div>
+
+      <!-- Mobile Bottom Sheet -->
+      <div class="bottom-sheet" id="bottom-sheet" aria-hidden="true">
+        <div class="bottom-sheet__backdrop" id="sheet-backdrop"></div>
+        <div class="bottom-sheet__panel" role="dialog" aria-label="Filter options">
+          <div class="bottom-sheet__handle" aria-hidden="true"><span></span></div>
+          <div class="bottom-sheet__header">
+            <h3 class="bottom-sheet__title">Filters</h3>
+            <button class="bottom-sheet__close" id="sheet-close" type="button" aria-label="Close filters">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+          <div class="bottom-sheet__body">
+            <div class="sheet-group">
+              <label class="sheet-label" for="sheet-year">Year</label>
+              <select id="sheet-year" class="sheet-select" aria-label="Filter by year">
+                <option value="all">All Years</option>
+                {years.map(year => (
+                  <option value={`year-${year}`}>{year}</option>
+                ))}
+              </select>
+            </div>
+            <div class="sheet-group">
+              <label class="sheet-label" for="sheet-type">Project Type</label>
+              <select id="sheet-type" class="sheet-select" aria-label="Filter by project type">
+                <option value="all">All Projects</option>
+                {roomTypes.map(type => (
+                  <option value={`type-${type.toLowerCase().replace(/\s+/g, '-')}`}>{type}</option>
+                ))}
+              </select>
+            </div>
+            {hasInProgress && (
+              <div class="sheet-group">
+                <button class="pill-toggle pill-toggle--sheet" id="sheet-status" aria-pressed="false">
+                  <span class="pill-toggle__dot" aria-hidden="true"></span>
+                  In Progress Only
+                </button>
+              </div>
+            )}
+          </div>
+          <div class="bottom-sheet__footer">
+            <button class="btn btn-dark btn--sm" id="sheet-clear" type="button">Clear All</button>
+            <button class="btn btn-yellow btn--sm" id="sheet-apply" type="button">Show Results</button>
+          </div>
         </div>
       </div>
 
@@ -240,13 +361,13 @@ const gridKids = [...kids];
             <div class="kid-card__frame">
               {kid.data.heroImage ? (
                 <img
-                  src={cfUrl(kid.data.heroImage, 'w=600,f=auto,q=85')}
-                  srcset={cfSrcset(kid.data.heroImage, [300, 600, 900])}
-                  sizes="(max-width: 768px) 45vw, (max-width: 1100px) 30vw, 280px"
+                  src={cfUrl(kid.data.heroImage, 'w=400,h=533,fit=cover,gravity=face,f=auto,q=80')}
+                  srcset={cfSrcset(kid.data.heroImage, [280, 400, 560], 'h=373,fit=cover,gravity=face')}
+                  sizes="(max-width: 768px) 45vw, (max-width: 1100px) 30vw, 220px"
                   alt={`Photo of ${kid.data.name}${kid.data.diagnosis ? `, diagnosed with ${kid.data.diagnosis}` : ''} — Sunshine on a Ranney Day`}
                   class="kid-card__img"
-                  width="300"
-                  height="400"
+                  width="400"
+                  height="533"
                   loading={i < 8 ? 'eager' : 'lazy'}
                   decoding="async"
                   fetchpriority={i < 4 ? 'high' : undefined}
@@ -303,8 +424,16 @@ const gridKids = [...kids];
       </div>
     </div>
   </section>
-</PageLayout>
 
+  <!-- Noscript: hide dead controls -->
+  <noscript>
+    <style>
+      .toolbar, .bottom-sheet, .filter-btn-mobile { display: none !important; }
+    </style>
+  </noscript>
+</BaseLayout>
+
+<!-- ══════ FILTERING + INTERACTIONS ══════ -->
 <script>
   let _kidsObserver: IntersectionObserver | null = null;
   let _kidsScrollHandler: (() => void) | null = null;
@@ -322,167 +451,257 @@ const gridKids = [...kids];
 
     cleanupKidsIndex();
 
-  const searchInput = document.getElementById('kid-search') as HTMLInputElement;
-  const yearSelect = document.getElementById('filter-year') as HTMLSelectElement;
-  const typeSelect = document.getElementById('filter-type') as HTMLSelectElement;
-  const statusBtn = document.getElementById('filter-status') as HTMLButtonElement | null;
-  const noResults = document.getElementById('no-results') as HTMLElement;
-  const visibleCountEl = document.getElementById('visible-count') as HTMLElement;
-  const clearBtn = document.getElementById('clear-filters') as HTMLButtonElement;
-  const clearBtnAlt = document.getElementById('clear-filters-alt') as HTMLButtonElement;
-  const toolbar = document.getElementById('toolbar') as HTMLElement;
-  const featuredCard = document.querySelector('.featured-card') as HTMLElement | null;
-  const searchClear = document.getElementById('search-clear') as HTMLButtonElement;
-  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const searchInput = document.getElementById('kid-search') as HTMLInputElement;
+    const yearSelect = document.getElementById('filter-year') as HTMLSelectElement;
+    const typeSelect = document.getElementById('filter-type') as HTMLSelectElement;
+    const statusBtn = document.getElementById('filter-status') as HTMLButtonElement | null;
+    const noResults = document.getElementById('no-results') as HTMLElement;
+    const visibleCountEl = document.getElementById('visible-count') as HTMLElement;
+    const clearBtn = document.getElementById('clear-filters') as HTMLButtonElement;
+    const clearBtnAlt = document.getElementById('clear-filters-alt') as HTMLButtonElement;
+    const toolbar = document.getElementById('toolbar') as HTMLElement;
+    const featuredCard = document.querySelector('.featured') as HTMLElement | null;
+    const searchClear = document.getElementById('search-clear') as HTMLButtonElement;
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-  let statusActive = false;
+    // ── Bottom sheet elements ──
+    const sheet = document.getElementById('bottom-sheet') as HTMLElement;
+    const sheetBackdrop = document.getElementById('sheet-backdrop') as HTMLElement;
+    const sheetClose = document.getElementById('sheet-close') as HTMLButtonElement;
+    const sheetYear = document.getElementById('sheet-year') as HTMLSelectElement;
+    const sheetType = document.getElementById('sheet-type') as HTMLSelectElement;
+    const sheetStatus = document.getElementById('sheet-status') as HTMLButtonElement | null;
+    const sheetClear = document.getElementById('sheet-clear') as HTMLButtonElement;
+    const sheetApply = document.getElementById('sheet-apply') as HTMLButtonElement;
+    const filterBtnMobile = document.getElementById('filter-btn-mobile') as HTMLButtonElement;
+    const mobileFilterCount = document.getElementById('mobile-filter-count') as HTMLElement;
 
-  // ── URL state restore ────────────────────
-  const params = new URLSearchParams(window.location.search);
-  if (params.get('year')) yearSelect.value = params.get('year')!;
-  if (params.get('type')) typeSelect.value = params.get('type')!;
-  if (params.get('q')) {
-    searchInput.value = params.get('q')!;
-    searchClear.hidden = false;
-  }
-  if (params.get('status') === 'in-progress' && statusBtn) {
-    statusActive = true;
-    statusBtn.classList.add('active');
-    statusBtn.setAttribute('aria-pressed', 'true');
-  }
+    let statusActive = false;
 
-  // ── Filtering ─────────────────────────────
-  function applyFilters() {
-    const query = searchInput.value.toLowerCase().trim();
-    const yearFilter = yearSelect.value;
-    const typeFilter = typeSelect.value;
-    let visibleCount = 0;
-
-    const hasFilters = yearFilter !== 'all' || typeFilter !== 'all' || statusActive || query.length > 0;
-
-    if (featuredCard) {
-      const fd = featuredCard.dataset;
-      const fMatchYear = yearFilter === 'all' || fd.year === yearFilter;
-      const fMatchType = typeFilter === 'all' || (fd.types ? fd.types.split(' ').includes(typeFilter) : false);
-      const fMatchStatus = !statusActive || fd.status === 'in-progress';
-      const fMatchSearch = !query || (fd.name || '').includes(query) || (fd.diagnosis || '').includes(query);
-      featuredCard.classList.toggle('is-filtered', hasFilters && !(fMatchYear && fMatchType && fMatchStatus && fMatchSearch));
+    // ── URL state restore ────────────────────
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('year')) yearSelect.value = params.get('year')!;
+    if (params.get('type')) typeSelect.value = params.get('type')!;
+    if (params.get('q')) {
+      searchInput.value = params.get('q')!;
+      searchClear.hidden = false;
+    }
+    if (params.get('status') === 'in-progress' && statusBtn) {
+      statusActive = true;
+      statusBtn.classList.add('active');
+      statusBtn.setAttribute('aria-pressed', 'true');
     }
 
-    cards.forEach(card => {
-      const { year, types, name, diagnosis, status } = card.dataset;
+    // ── Filtering ─────────────────────────────
+    function applyFilters() {
+      const query = searchInput.value.toLowerCase().trim();
+      const yearFilter = yearSelect.value;
+      const typeFilter = typeSelect.value;
+      let visibleCount = 0;
 
-      const matchesYear = yearFilter === 'all' || year === yearFilter;
-      const matchesType = typeFilter === 'all' || (types ? types.split(' ').includes(typeFilter) : false);
-      const matchesStatus = !statusActive || status === 'in-progress';
-      const matchesSearch = !query || (name || '').includes(query) || (diagnosis || '').includes(query);
+      const hasFilters = yearFilter !== 'all' || typeFilter !== 'all' || statusActive || query.length > 0;
 
-      const visible = matchesYear && matchesType && matchesStatus && matchesSearch;
+      if (featuredCard) {
+        const fd = featuredCard.dataset;
+        const fMatchYear = yearFilter === 'all' || fd.year === yearFilter;
+        const fMatchType = typeFilter === 'all' || (fd.types ? fd.types.split(' ').includes(typeFilter) : false);
+        const fMatchStatus = !statusActive || fd.status === 'in-progress';
+        const fMatchSearch = !query || (fd.name || '').includes(query) || (fd.diagnosis || '').includes(query);
+        featuredCard.closest('.featured-section')?.classList.toggle('is-filtered', hasFilters && !(fMatchYear && fMatchType && fMatchStatus && fMatchSearch));
+      }
 
-      if (visible) {
-        card.classList.remove('is-hidden');
-        visibleCount++;
+      cards.forEach(card => {
+        const { year, types, name, diagnosis, status } = card.dataset;
+        const matchesYear = yearFilter === 'all' || year === yearFilter;
+        const matchesType = typeFilter === 'all' || (types ? types.split(' ').includes(typeFilter) : false);
+        const matchesStatus = !statusActive || status === 'in-progress';
+        const matchesSearch = !query || (name || '').includes(query) || (diagnosis || '').includes(query);
+        const visible = matchesYear && matchesType && matchesStatus && matchesSearch;
+
+        if (visible) {
+          card.classList.remove('is-hidden');
+          visibleCount++;
+        } else {
+          card.classList.add('is-hidden');
+        }
+      });
+
+      visibleCountEl.textContent = String(visibleCount);
+      noResults.hidden = visibleCount > 0;
+      clearBtn.hidden = !hasFilters;
+
+      // Mobile filter count badge
+      let filterCount = 0;
+      if (yearFilter !== 'all') filterCount++;
+      if (typeFilter !== 'all') filterCount++;
+      if (statusActive) filterCount++;
+      if (filterCount > 0) {
+        mobileFilterCount.textContent = String(filterCount);
+        mobileFilterCount.hidden = false;
       } else {
-        card.classList.add('is-hidden');
+        mobileFilterCount.hidden = true;
+      }
+
+      const url = new URL(window.location.href);
+      yearFilter !== 'all' ? url.searchParams.set('year', yearFilter) : url.searchParams.delete('year');
+      typeFilter !== 'all' ? url.searchParams.set('type', typeFilter) : url.searchParams.delete('type');
+      query ? url.searchParams.set('q', query) : url.searchParams.delete('q');
+      statusActive ? url.searchParams.set('status', 'in-progress') : url.searchParams.delete('status');
+      history.replaceState(null, '', url.toString());
+    }
+
+    function clearAll() {
+      searchInput.value = '';
+      yearSelect.value = 'all';
+      typeSelect.value = 'all';
+      if (statusBtn) {
+        statusActive = false;
+        statusBtn.classList.remove('active');
+        statusBtn.setAttribute('aria-pressed', 'false');
+      }
+      applyFilters();
+      searchInput.focus();
+    }
+
+    // ── Events ───────────────────────────────
+    let searchTimer: ReturnType<typeof setTimeout>;
+    yearSelect.addEventListener('change', applyFilters);
+    typeSelect.addEventListener('change', applyFilters);
+    searchInput.addEventListener('input', () => {
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(applyFilters, 150);
+      searchClear.hidden = !searchInput.value;
+    });
+    searchClear.addEventListener('click', () => {
+      searchInput.value = '';
+      searchClear.hidden = true;
+      applyFilters();
+      searchInput.focus();
+    });
+    clearBtn.addEventListener('click', clearAll);
+    clearBtnAlt.addEventListener('click', clearAll);
+
+    if (statusBtn) {
+      statusBtn.addEventListener('click', () => {
+        statusActive = !statusActive;
+        statusBtn.classList.toggle('active', statusActive);
+        statusBtn.setAttribute('aria-pressed', String(statusActive));
+        applyFilters();
+      });
+    }
+
+    // ── Bottom sheet ─────────────────────────
+    function openSheet() {
+      // Sync sheet values with main filters
+      sheetYear.value = yearSelect.value;
+      sheetType.value = typeSelect.value;
+      if (sheetStatus) {
+        sheetStatus.classList.toggle('active', statusActive);
+        sheetStatus.setAttribute('aria-pressed', String(statusActive));
+      }
+      sheet.classList.add('is-open');
+      sheet.setAttribute('aria-hidden', 'false');
+      document.body.style.overflow = 'hidden';
+    }
+
+    function closeSheet() {
+      sheet.classList.remove('is-open');
+      sheet.setAttribute('aria-hidden', 'true');
+      document.body.style.overflow = '';
+    }
+
+    filterBtnMobile?.addEventListener('click', openSheet);
+    sheetBackdrop?.addEventListener('click', closeSheet);
+    sheetClose?.addEventListener('click', closeSheet);
+
+    if (sheetStatus) {
+      sheetStatus.addEventListener('click', () => {
+        const isActive = sheetStatus.classList.toggle('active');
+        sheetStatus.setAttribute('aria-pressed', String(isActive));
+      });
+    }
+
+    sheetClear?.addEventListener('click', () => {
+      sheetYear.value = 'all';
+      sheetType.value = 'all';
+      if (sheetStatus) {
+        sheetStatus.classList.remove('active');
+        sheetStatus.setAttribute('aria-pressed', 'false');
       }
     });
 
-    visibleCountEl.textContent = String(visibleCount);
-    noResults.hidden = visibleCount > 0;
-    clearBtn.hidden = !hasFilters;
-
-    const url = new URL(window.location.href);
-    yearFilter !== 'all' ? url.searchParams.set('year', yearFilter) : url.searchParams.delete('year');
-    typeFilter !== 'all' ? url.searchParams.set('type', typeFilter) : url.searchParams.delete('type');
-    query ? url.searchParams.set('q', query) : url.searchParams.delete('q');
-    statusActive ? url.searchParams.set('status', 'in-progress') : url.searchParams.delete('status');
-    history.replaceState(null, '', url.toString());
-  }
-
-  function clearAll() {
-    searchInput.value = '';
-    yearSelect.value = 'all';
-    typeSelect.value = 'all';
-    if (statusBtn) {
-      statusActive = false;
-      statusBtn.classList.remove('active');
-      statusBtn.setAttribute('aria-pressed', 'false');
-    }
-    applyFilters();
-    searchInput.focus();
-  }
-
-  // ── Events ───────────────────────────────
-  let searchTimer: ReturnType<typeof setTimeout>;
-  yearSelect.addEventListener('change', applyFilters);
-  typeSelect.addEventListener('change', applyFilters);
-  searchInput.addEventListener('input', () => {
-    clearTimeout(searchTimer);
-    searchTimer = setTimeout(applyFilters, 150);
-    searchClear.hidden = !searchInput.value;
-  });
-  searchClear.addEventListener('click', () => {
-    searchInput.value = '';
-    searchClear.hidden = true;
-    applyFilters();
-    searchInput.focus();
-  });
-  clearBtn.addEventListener('click', clearAll);
-  clearBtnAlt.addEventListener('click', clearAll);
-
-  if (statusBtn) {
-    statusBtn.addEventListener('click', () => {
-      statusActive = !statusActive;
-      statusBtn.classList.toggle('active', statusActive);
-      statusBtn.setAttribute('aria-pressed', String(statusActive));
+    sheetApply?.addEventListener('click', () => {
+      // Apply sheet values to main filters
+      yearSelect.value = sheetYear.value;
+      typeSelect.value = sheetType.value;
+      if (statusBtn && sheetStatus) {
+        statusActive = sheetStatus.classList.contains('active');
+        statusBtn.classList.toggle('active', statusActive);
+        statusBtn.setAttribute('aria-pressed', String(statusActive));
+      }
       applyFilters();
-    });
-  }
-
-  // ── Staggered reveal on scroll (simple, no double-opacity) ──
-  if (!reducedMotion) {
-    document.documentElement.classList.add('js-anim');
-    // Mark above-fold cards as already revealed
-    cards.forEach((card, i) => {
-      if (i < 8) card.classList.add('revealed');
+      closeSheet();
     });
 
-    _kidsObserver = new IntersectionObserver(
-      (entries) => {
-        const visible = entries.filter(e => e.isIntersecting);
-        visible.forEach((entry, i) => {
-          const el = entry.target as HTMLElement;
-          el.style.setProperty('--stagger', String(i));
-          el.classList.add('revealed');
-          _kidsObserver?.unobserve(el);
-        });
-      },
-      { rootMargin: '100px', threshold: 0.01 }
-    );
-    cards.forEach((card, i) => {
-      if (i >= 8) _kidsObserver!.observe(card);
+    // Close on escape
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && sheet.classList.contains('is-open')) closeSheet();
     });
-  }
 
-  // ── Toolbar scroll shadow ────────────────
-  let ticking = false;
-  _kidsScrollHandler = function () {
-    if (!ticking) {
-      ticking = true;
-      requestAnimationFrame(() => {
-        toolbar.classList.toggle('is-scrolled', window.scrollY > 300);
-        ticking = false;
+    // ── Staggered reveal on scroll ──
+    if (!reducedMotion) {
+      document.documentElement.classList.add('js-anim');
+      cards.forEach((card, i) => {
+        if (i < 8) card.classList.add('revealed');
+      });
+
+      _kidsObserver = new IntersectionObserver(
+        (entries) => {
+          const visible = entries.filter(e => e.isIntersecting);
+          visible.forEach((entry, i) => {
+            const el = entry.target as HTMLElement;
+            el.style.setProperty('--stagger', String(i));
+            el.classList.add('revealed');
+            _kidsObserver?.unobserve(el);
+          });
+        },
+        { rootMargin: '100px', threshold: 0.01 }
+      );
+      cards.forEach((card, i) => {
+        if (i >= 8) _kidsObserver!.observe(card);
       });
     }
-  };
-  window.addEventListener('scroll', _kidsScrollHandler, { passive: true });
 
-  // ── Apply URL filters + scroll to grid ───
-  const hasURLFilters = params.get('year') || params.get('type') || params.get('q') || params.get('status');
-  if (hasURLFilters) {
-    applyFilters();
-    toolbar.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }
+    // ── Toolbar scroll shadow ────────────────
+    let ticking = false;
+    _kidsScrollHandler = function () {
+      if (!ticking) {
+        ticking = true;
+        requestAnimationFrame(() => {
+          toolbar.classList.toggle('is-scrolled', window.scrollY > 300);
+          ticking = false;
+        });
+      }
+    };
+    window.addEventListener('scroll', _kidsScrollHandler, { passive: true });
+
+    // ── Image shimmer: remove on load ─────────
+    document.querySelectorAll<HTMLImageElement>('.kid-card__img').forEach(img => {
+      if (img.complete) {
+        img.closest('.kid-card__frame')?.classList.add('is-loaded');
+      } else {
+        img.addEventListener('load', () => {
+          img.closest('.kid-card__frame')?.classList.add('is-loaded');
+        }, { once: true });
+      }
+    });
+
+    // ── Apply URL filters + scroll to grid ───
+    const hasURLFilters = params.get('year') || params.get('type') || params.get('q') || params.get('status');
+    if (hasURLFilters) {
+      applyFilters();
+      toolbar.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
 
   } // end initKidsIndex
 
@@ -490,16 +709,14 @@ const gridKids = [...kids];
   document.addEventListener('astro:before-swap', cleanupKidsIndex);
 </script>
 
-<!-- Shared element morph: card image → hero image on profile page -->
+<!-- View Transitions: card morph -->
 <script>
   function initKidTransitions() {
     document.querySelectorAll<HTMLAnchorElement>('.kid-card').forEach(card => {
       card.addEventListener('click', () => {
-        // Clear any previous transition names
         document.querySelectorAll('[style*="view-transition-name"]').forEach(el => {
           (el as HTMLElement).style.viewTransitionName = '';
         });
-        // Assign morph targets to the clicked card
         const img = card.querySelector('.kid-card__img') as HTMLElement | null;
         const name = card.querySelector('.kid-card__name') as HTMLElement | null;
         if (img) img.style.viewTransitionName = 'kid-hero';
@@ -507,170 +724,301 @@ const gridKids = [...kids];
       });
     });
   }
-
   document.addEventListener('astro:page-load', initKidTransitions);
 </script>
 
 <style>
-  /* ─── Section ────────────────────────────── */
-  .kids-section {
-    padding-block: 0 var(--space-4xl);
+  /* ═══════════════════════════════════════════
+     HERO — Face Collage + Text + Stats
+     ═══════════════════════════════════════════ */
+  .kids-hero {
+    background: var(--c-cream);
+    padding: var(--space-3xl) 0 var(--space-xl);
+    text-align: center;
+    overflow: hidden;
   }
 
-  /* ─── Impact Stats Bar ─────────────────── */
-  .impact-bar {
+  .kids-hero__inner {
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding: 0 var(--page-padding);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-xl);
+  }
+
+  .kids-hero__label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--c-text-muted);
+    margin-bottom: 0;
+  }
+
+  .kids-hero__title {
+    color: var(--c-text);
+    font-size: clamp(2rem, 5vw, 3.125rem);
+    font-weight: 400;
+    letter-spacing: -0.025em;
+    line-height: 1.15;
+    max-width: 700px;
+    margin: var(--space-sm) auto 0;
+  }
+
+  .kids-hero__subtitle {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-size: clamp(0.95rem, 1.8vw, 1.065rem);
+    line-height: 1.6;
+    color: var(--c-text-muted);
+    max-width: 500px;
+    margin: 0 auto;
+  }
+
+  /* ── Face Constellation ── */
+  .faces {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    max-width: 480px;
+  }
+
+  .face {
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    overflow: hidden;
+    border: 2.5px solid var(--c-white);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1),
+                box-shadow 0.3s ease;
+    animation: faceIn 0.5s ease both;
+    animation-delay: calc(var(--i) * 60ms);
+  }
+
+  .face:hover {
+    transform: scale(1.15) translateY(-4px);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+    z-index: 2;
+  }
+
+  .face img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  @keyframes faceIn {
+    from { opacity: 0; transform: scale(0.7); }
+    to { opacity: 1; transform: scale(1); }
+  }
+
+  /* ── Hero Stats ── */
+  .hero-stats {
     display: flex;
     justify-content: center;
     gap: var(--space-2xl);
-    padding: var(--space-xl) var(--space-lg);
-    margin-bottom: var(--space-2xl);
-    border-bottom: 1px solid var(--c-border);
+    padding-top: var(--space-md);
+    border-top: 1px solid var(--c-border);
+    width: 100%;
+    max-width: 540px;
   }
 
-  .impact-stat {
+  .hero-stat {
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: 2px;
   }
 
-  .impact-stat__number {
+  .hero-stat__num {
     font-family: var(--font-display);
-    font-size: clamp(1.5rem, 3vw, 2rem);
+    font-size: clamp(1.35rem, 2.5vw, 1.75rem);
     font-weight: 700;
     color: var(--c-dark);
     line-height: 1.1;
   }
 
-  .impact-stat__label {
-    font-size: 0.75rem;
+  .hero-stat__label {
+    font-size: 0.7rem;
     font-weight: 500;
     color: var(--c-text-muted);
     text-transform: uppercase;
     letter-spacing: 0.08em;
   }
 
-  /* ─── Featured Card ────────────────────── */
-  .featured-card {
-    display: grid;
-    grid-template-columns: 1.2fr 1fr;
-    gap: 0;
+  /* ═══════════════════════════════════════════
+     FEATURED — Cinematic Full-Bleed Card
+     ═══════════════════════════════════════════ */
+  .featured-section {
+    padding-bottom: var(--space-lg);
+  }
+
+  .featured-section.is-filtered {
+    display: none;
+  }
+
+  .featured {
+    display: block;
+    position: relative;
     border-radius: var(--border-radius-lg);
     overflow: hidden;
-    background: var(--c-warm-gray);
     text-decoration: none;
-    margin-bottom: var(--space-2xl);
+    aspect-ratio: 21 / 9;
+    min-height: 340px;
     transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1),
                 box-shadow 0.4s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
   @media (hover: hover) {
-    .featured-card:hover {
+    .featured:hover {
       transform: translateY(-4px);
-      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.12);
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
     }
-
-    .featured-card:hover .featured-card__img {
-      transform: scale(1.04);
+    .featured:hover .featured__img {
+      transform: scale(1.03);
     }
-
-    .featured-card:hover .featured-card__cta {
-      gap: 10px;
+    .featured:hover .featured__cta svg {
+      transform: translateX(4px);
     }
   }
 
-  .featured-card.is-filtered {
-    display: none;
+  .featured__media {
+    position: absolute;
+    inset: 0;
   }
 
-  .featured-card__image {
-    aspect-ratio: 3 / 2;
-    overflow: hidden;
-    background: var(--c-warm-gray);
-  }
-
-  .featured-card__img {
+  .featured__img {
     width: 100%;
     height: 100%;
     object-fit: cover;
+    display: block;
     transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
-  .featured-card__content {
+  .featured__gradient {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      to right,
+      rgba(30, 31, 37, 0.85) 0%,
+      rgba(30, 31, 37, 0.6) 40%,
+      transparent 70%
+    );
+  }
+
+  .featured__overlay {
+    position: relative;
+    z-index: 1;
     display: flex;
     flex-direction: column;
     justify-content: center;
-    padding: var(--space-2xl);
     gap: var(--space-sm);
+    padding: var(--space-2xl) var(--space-3xl);
+    height: 100%;
+    max-width: 50%;
   }
 
-  .featured-card__label {
-    font-size: 0.7rem;
+  .featured__label {
+    font-size: 0.65rem;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.1em;
-    color: var(--c-text-muted);
+    letter-spacing: 0.12em;
+    color: var(--c-yellow);
   }
 
-  .featured-card__name {
+  .featured__name {
     font-family: var(--font-display);
-    font-size: clamp(1.5rem, 3vw, 2.25rem);
+    font-size: clamp(1.75rem, 4vw, 2.75rem);
     font-weight: 700;
-    color: var(--c-dark);
-    line-height: 1.2;
+    color: var(--c-white);
+    line-height: 1.15;
+    margin: 0;
   }
 
-  .featured-card__diagnosis {
+  .featured__diagnosis {
     font-size: 0.95rem;
-    color: var(--c-text-muted);
-    line-height: 1.5;
+    color: rgba(255, 255, 255, 0.7);
+    line-height: 1.4;
   }
 
-  .featured-card__tags {
+  .featured__quote {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-size: 0.9rem;
+    color: rgba(255, 255, 255, 0.6);
+    line-height: 1.55;
+    max-width: 400px;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    margin: var(--space-xs) 0;
+  }
+
+  .featured__meta {
     display: flex;
     flex-wrap: wrap;
-    gap: 6px;
+    align-items: center;
+    gap: 8px;
     margin-top: var(--space-xs);
   }
 
-  .featured-card__tag {
-    padding: 4px 12px;
-    background: var(--c-white);
-    border: 1px solid var(--c-border);
-    border-radius: 100px;
-    font-size: 0.72rem;
-    font-weight: 500;
-    color: var(--c-text);
+  .featured__tags {
+    display: flex;
+    gap: 6px;
   }
 
-  .featured-card__badge {
-    display: inline-block;
-    padding: 4px 14px;
+  .featured__tag {
+    padding: 3px 12px;
+    background: rgba(255, 255, 255, 0.12);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 100px;
+    font-size: 0.7rem;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.85);
+  }
+
+  .featured__badge {
+    padding: 3px 12px;
     background: var(--c-yellow);
     color: var(--c-dark);
-    font-size: 0.65rem;
+    font-size: 0.6rem;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.06em;
     border-radius: 100px;
-    width: fit-content;
   }
 
-  .featured-card__cta {
-    font-size: 0.9rem;
-    font-weight: 600;
-    color: var(--c-dark);
-    margin-top: var(--space-sm);
+  .featured__cta {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    transition: gap 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    gap: 8px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--c-white);
+    margin-top: var(--space-sm);
   }
 
-  /* ─── Toolbar ────────────────────────────── */
+  .featured__cta svg {
+    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  /* ═══════════════════════════════════════════
+     GRID SECTION
+     ═══════════════════════════════════════════ */
+  .kids-section {
+    padding-block: 0 var(--space-4xl);
+  }
+
+  /* ── Toolbar ── */
   .toolbar {
     position: sticky;
-    top: var(--header-height, 104px);
+    top: var(--header-height, 84px);
     z-index: 20;
     background: var(--c-cream);
     margin-inline: calc(-1 * var(--space-lg));
@@ -678,7 +1026,7 @@ const gridKids = [...kids];
     margin-bottom: var(--space-xl);
     border-bottom: 1px solid transparent;
     transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
-    scroll-margin-top: var(--header-height, 104px);
+    scroll-margin-top: var(--header-height, 84px);
   }
 
   .toolbar.is-scrolled {
@@ -706,7 +1054,7 @@ const gridKids = [...kids];
     font-weight: 600;
   }
 
-  /* ─── Search Box ─────────────────────────── */
+  /* ── Search Box ── */
   .search-box {
     position: relative;
     flex: 1;
@@ -779,8 +1127,8 @@ const gridKids = [...kids];
     color: var(--c-dark);
   }
 
-  /* ─── Filter Controls ────────────────────── */
-  .toolbar__filters {
+  /* ── Filter Controls (Desktop) ── */
+  .toolbar__filters--desktop {
     display: flex;
     align-items: center;
     gap: var(--space-sm);
@@ -813,7 +1161,38 @@ const gridKids = [...kids];
     box-shadow: 0 0 0 3px var(--c-accent-soft);
   }
 
-  /* ─── Pill Toggle ────────────────────────── */
+  /* ── Mobile filter button ── */
+  .filter-btn-mobile {
+    display: none;
+    align-items: center;
+    gap: 6px;
+    height: 44px;
+    padding: 0 16px;
+    background: var(--c-white);
+    border: 1px solid var(--c-border);
+    border-radius: var(--border-radius);
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+    color: var(--c-text);
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .filter-btn-mobile__count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--c-yellow);
+    color: var(--c-dark);
+    font-size: 0.65rem;
+    font-weight: 700;
+  }
+
+  /* ── Pill Toggle ── */
   .pill-toggle {
     display: inline-flex;
     align-items: center;
@@ -854,7 +1233,7 @@ const gridKids = [...kids];
     background: var(--c-dark);
   }
 
-  /* ─── Clear Button ──────────────────────── */
+  /* ── Clear Button ── */
   .clear-btn {
     background: none;
     border: none;
@@ -878,22 +1257,169 @@ const gridKids = [...kids];
     font-size: 0.85rem;
   }
 
-  /* ─── Kid Grid ──────────────────────────── */
+  /* ═══════════════════════════════════════════
+     BOTTOM SHEET (Mobile Filters)
+     ═══════════════════════════════════════════ */
+  .bottom-sheet {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    pointer-events: none;
+    visibility: hidden;
+  }
+
+  .bottom-sheet.is-open {
+    pointer-events: auto;
+    visibility: visible;
+  }
+
+  .bottom-sheet__backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+  }
+
+  .bottom-sheet.is-open .bottom-sheet__backdrop {
+    opacity: 1;
+  }
+
+  .bottom-sheet__panel {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: var(--c-white);
+    border-radius: 20px 20px 0 0;
+    transform: translateY(100%);
+    transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .bottom-sheet.is-open .bottom-sheet__panel {
+    transform: translateY(0);
+  }
+
+  .bottom-sheet__handle {
+    display: flex;
+    justify-content: center;
+    padding: 12px 0 4px;
+  }
+
+  .bottom-sheet__handle span {
+    width: 36px;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--c-border);
+  }
+
+  .bottom-sheet__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--space-sm) var(--space-lg);
+    border-bottom: 1px solid var(--c-border);
+  }
+
+  .bottom-sheet__title {
+    font-family: var(--font-display);
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--c-dark);
+    margin: 0;
+  }
+
+  .bottom-sheet__close {
+    background: none;
+    border: none;
+    padding: 8px;
+    cursor: pointer;
+    color: var(--c-text-muted);
+    border-radius: 50%;
+    transition: background var(--transition-fast);
+  }
+
+  .bottom-sheet__close:hover {
+    background: var(--c-warm-gray);
+  }
+
+  .bottom-sheet__body {
+    padding: var(--space-lg);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-lg);
+    overflow-y: auto;
+  }
+
+  .sheet-group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+  }
+
+  .sheet-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--c-text-muted);
+  }
+
+  .sheet-select {
+    height: 48px;
+    padding: 0 36px 0 14px;
+    background: var(--c-warm-gray);
+    border: 1px solid var(--c-border);
+    border-radius: var(--border-radius);
+    font-size: 16px;
+    font-weight: 500;
+    color: var(--c-text);
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%236B6C72' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+  }
+
+  .pill-toggle--sheet {
+    width: 100%;
+    justify-content: center;
+    height: 48px;
+  }
+
+  .bottom-sheet__footer {
+    display: flex;
+    gap: var(--space-md);
+    padding: var(--space-lg);
+    border-top: 1px solid var(--c-border);
+  }
+
+  .bottom-sheet__footer .btn {
+    flex: 1;
+    justify-content: center;
+    text-align: center;
+  }
+
+  /* ═══════════════════════════════════════════
+     KID GRID
+     ═══════════════════════════════════════════ */
   .kids-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
     gap: var(--space-lg);
   }
 
-  /* ─── Card ─────────────────────────────── */
+  /* ── Card ── */
   .kid-card {
     display: block;
     text-decoration: none;
     outline-offset: 4px;
     border-radius: var(--border-radius-lg);
     transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1),
-                box-shadow 0.35s cubic-bezier(0.16, 1, 0.3, 1);
-    /* Skip rendering off-screen cards entirely */
+                box-shadow 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+                opacity 0.25s ease;
     content-visibility: auto;
     contain-intrinsic-size: auto 220px auto 340px;
   }
@@ -916,7 +1442,7 @@ const gridKids = [...kids];
     transition-duration: 80ms;
   }
 
-  /* Staggered reveal — cards start visible, only animate below-fold ones */
+  /* Staggered reveal */
   :global(.js-anim) .kid-card:not(.revealed) {
     opacity: 0;
   }
@@ -935,6 +1461,7 @@ const gridKids = [...kids];
     display: none;
   }
 
+  /* ── Card Frame + Shimmer ── */
   .kid-card__frame {
     position: relative;
     border-radius: var(--border-radius-lg);
@@ -943,11 +1470,38 @@ const gridKids = [...kids];
     background: var(--c-warm-gray);
   }
 
+  /* Shimmer placeholder */
+  .kid-card__frame::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      110deg,
+      transparent 30%,
+      rgba(255, 255, 255, 0.4) 50%,
+      transparent 70%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.5s ease-in-out infinite;
+    pointer-events: none;
+    z-index: 1;
+    transition: opacity 0.3s ease;
+  }
+
+  .kid-card__frame.is-loaded::after {
+    opacity: 0;
+    animation: none;
+  }
+
+  @keyframes shimmer {
+    from { background-position: 200% 0; }
+    to { background-position: -200% 0; }
+  }
+
   .kid-card__img {
     width: 100%;
     height: 100%;
     object-fit: cover;
-    object-position: center 20%;
     display: block;
     transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
   }
@@ -968,7 +1522,7 @@ const gridKids = [...kids];
     color: var(--c-text-light);
   }
 
-  /* ─── Hover Overlay (desktop only) ──────── */
+  /* ── Hover Overlay (desktop only) ── */
   .kid-card__hover-overlay {
     position: absolute;
     inset: 0;
@@ -986,6 +1540,7 @@ const gridKids = [...kids];
     padding-bottom: var(--space-xl);
     opacity: 0;
     transition: opacity 0.3s ease;
+    z-index: 2;
   }
 
   @media (hover: hover) {
@@ -1023,7 +1578,7 @@ const gridKids = [...kids];
     transform: translateY(-1px);
   }
 
-  /* ─── Info Below Photo ─────────────────── */
+  /* ── Info Below Photo ── */
   .kid-card__info {
     display: flex;
     align-items: center;
@@ -1066,7 +1621,7 @@ const gridKids = [...kids];
     flex-shrink: 0;
   }
 
-  /* ─── No Results ─────────────────────────── */
+  /* ── No Results ── */
   .no-results[hidden] {
     display: none;
   }
@@ -1093,7 +1648,9 @@ const gridKids = [...kids];
     margin-bottom: var(--space-sm);
   }
 
-  /* ─── Bottom CTA ─────────────────────────── */
+  /* ═══════════════════════════════════════════
+     BOTTOM CTA
+     ═══════════════════════════════════════════ */
   .bottom-cta {
     padding-block: var(--space-4xl);
   }
@@ -1140,105 +1697,125 @@ const gridKids = [...kids];
     border-color: var(--c-white);
   }
 
-  /* ─── Responsive: Large screens ──────────── */
+  /* ═══════════════════════════════════════════
+     RESPONSIVE
+     ═══════════════════════════════════════════ */
+
+  /* Large screens */
   @media (min-width: 1400px) {
     .kids-grid {
       grid-template-columns: repeat(5, 1fr);
     }
   }
 
-  /* ─── Responsive: Tablet ─────────────────── */
+  /* Tablet */
   @media (max-width: 1100px) {
     .kids-grid {
       grid-template-columns: repeat(3, 1fr);
       gap: var(--space-md);
     }
 
-    .featured-card__content {
-      padding: var(--space-xl);
+    .featured__overlay {
+      max-width: 60%;
+      padding: var(--space-xl) var(--space-2xl);
     }
   }
 
-  /* ─── Responsive: Mobile ─────────────────── */
+  /* Mobile */
   @media (max-width: 768px) {
+    .kids-hero {
+      padding: var(--space-2xl) 0 var(--space-lg);
+    }
+
+    .kids-hero__inner {
+      gap: var(--space-lg);
+    }
+
+    .faces {
+      gap: 6px;
+    }
+
+    .face {
+      width: 48px;
+      height: 48px;
+    }
+
+    .hero-stats {
+      gap: var(--space-lg);
+      padding-top: var(--space-sm);
+    }
+
+    .hero-stat__num {
+      font-size: 1.2rem;
+    }
+
+    .hero-stat__label {
+      font-size: 0.6rem;
+    }
+
+    /* Featured card: full-bleed stacked */
+    .featured {
+      aspect-ratio: auto;
+      min-height: 380px;
+    }
+
+    .featured__gradient {
+      background: linear-gradient(
+        to top,
+        rgba(30, 31, 37, 0.9) 0%,
+        rgba(30, 31, 37, 0.5) 50%,
+        transparent 100%
+      );
+    }
+
+    .featured__overlay {
+      max-width: 100%;
+      justify-content: flex-end;
+      padding: var(--space-lg);
+    }
+
+    .featured__name {
+      font-size: 1.75rem;
+    }
+
+    .featured__quote {
+      display: none;
+    }
+
     .kids-section {
       padding-block: 0 var(--space-3xl);
     }
 
-    /* Impact bar */
-    .impact-bar {
-      gap: var(--space-lg);
-      padding: var(--space-md) var(--space-sm);
-      margin-bottom: var(--space-xl);
-    }
-
-    .impact-stat__number {
-      font-size: 1.35rem;
-    }
-
-    .impact-stat__label {
-      font-size: 0.65rem;
-    }
-
-    /* Featured card: stack vertically */
-    .featured-card {
-      grid-template-columns: 1fr;
-      margin-bottom: var(--space-xl);
-    }
-
-    .featured-card__image {
-      aspect-ratio: 16 / 10;
-    }
-
-    .featured-card__content {
-      padding: var(--space-lg);
-    }
-
-    .featured-card__name {
-      font-size: 1.5rem;
-    }
-
-    /* Toolbar — already solid bg for perf */
+    /* Toolbar */
     .toolbar {
-      top: var(--header-height, 88px);
+      top: var(--header-height, 84px);
       margin-inline: calc(-1 * var(--space-lg));
       padding: var(--space-sm) var(--space-lg);
     }
 
     .toolbar__row {
-      flex-direction: column;
-      align-items: stretch;
       gap: var(--space-sm);
     }
 
     .search-box {
       max-width: none;
       min-width: 0;
+      flex: 1;
     }
 
     .search-box__input {
       height: 44px;
       padding: 0 12px 0 38px;
-      font-size: 16px; /* prevent iOS zoom on focus */
+      font-size: 16px;
     }
 
-    .toolbar__filters {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: var(--space-sm);
+    /* Hide desktop filters, show mobile button */
+    .toolbar__filters--desktop {
+      display: none;
     }
 
-    .filter-select {
-      min-width: 0;
-      height: 44px;
-      font-size: 16px; /* prevent iOS zoom on focus */
-      padding: 0 32px 0 12px;
-    }
-
-    .pill-toggle {
-      grid-column: 1 / -1;
-      justify-content: center;
-      height: 44px;
+    .filter-btn-mobile {
+      display: inline-flex;
     }
 
     .toolbar__status {
@@ -1255,7 +1832,7 @@ const gridKids = [...kids];
       border-radius: 12px;
     }
 
-    /* Hide hover overlay on touch, keep for keyboard */
+    /* Hide hover overlay on touch */
     .kid-card__hover-overlay {
       display: none;
     }
@@ -1288,17 +1865,20 @@ const gridKids = [...kids];
   }
 
   @media (max-width: 380px) {
-    .toolbar__filters {
-      grid-template-columns: 1fr;
-    }
-
-    .impact-bar {
+    .hero-stats {
       flex-wrap: wrap;
       gap: var(--space-md);
     }
   }
 
-  /* ─── Reduced Motion ─────────────────────── */
+  /* Hide bottom sheet on desktop */
+  @media (min-width: 769px) {
+    .bottom-sheet {
+      display: none;
+    }
+  }
+
+  /* ── Reduced Motion ── */
   @media (prefers-reduced-motion: reduce) {
     .kid-card,
     :global(.js-anim) .kid-card:not(.revealed),
@@ -1309,9 +1889,18 @@ const gridKids = [...kids];
       transition: none;
     }
 
-    .featured-card,
-    .featured-card__img {
+    .featured,
+    .featured__img {
       transition: none;
+    }
+
+    .face {
+      animation: none;
+    }
+
+    .kid-card__frame::after {
+      animation: none;
+      display: none;
     }
   }
 </style>
