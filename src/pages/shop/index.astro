@@ -472,8 +472,10 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
 </style>
 
 <!-- ══════════════════════════════════════════════════════
-     PRELOAD: fire the Shopify request immediately,
-     before the main script even parses.
+     PRELOAD: fire Shopify request before main script parses.
+     is:inline → re-executes on every visit to this page,
+     including VT soft navigations. Sets window.__shopPreload
+     which the module script consumes via astro:page-load.
      ══════════════════════════════════════════════════════ -->
 <script is:inline>
 window.__shopPreload = fetch('/api/shopify', {
@@ -487,185 +489,415 @@ window.__shopPreload = fetch('/api/shopify', {
 
 <script>
 /**
- * Shop Page Script — View Transitions compatible
+ * Shop Page Script — Astro ClientRouter (View Transitions) compatible
  *
- * Uses astro:page-load + AbortController pattern so DOM refs
- * are always fresh after every client-side navigation.
+ * ARCHITECTURE (follows Astro docs + vtbag best practices):
+ *
+ *  1. This is a bundled module script → executes exactly once, ever.
+ *     It registers document-level listeners that survive all navigations.
+ *
+ *  2. astro:page-load is the SOLE entry point for per-page init.
+ *     It fires on both initial load AND every VT soft navigation.
+ *     Inside it we re-query DOM (refs go stale after swap), bind
+ *     window-level listeners via AbortController, and load data.
+ *
+ *  3. Event delegation on document for clicks/keydowns on dynamic cards.
+ *     These listeners are registered ONCE (outside astro:page-load)
+ *     and survive all navigations. No per-card binding needed.
+ *
+ *  4. AbortController cleans up only per-navigation state: the popstate
+ *     listener on window and the retry button listener.
  */
 
-/* ── Pure helpers (no DOM needed) ── */
-function _fmtPrice(amount, currency) {
+/* ══════════════════════════════════════════════
+   PURE HELPERS — no DOM, no state
+   ══════════════════════════════════════════════ */
+var SHOPIFY_QUERY = 'query AllCollections{collections(first:50){edges{node{id handle title description image{url altText width height}products(first:100,sortKey:BEST_SELLING){edges{node{id handle title description descriptionHtml availableForSale priceRange{minVariantPrice{amount currencyCode}maxVariantPrice{amount currencyCode}}compareAtPriceRange{minVariantPrice{amount currencyCode}}featuredImage{url altText width height}images(first:10){edges{node{url altText width height}}}options{id name values}variants(first:100){edges{node{id title availableForSale price{amount currencyCode}compareAtPrice{amount currencyCode}selectedOptions{name value}image{url altText width height}}}}tags}}}}}}}';
+var STORE_URL = 'https://sunnyandranney.com';
+var SHOP_SVG = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>';
+var PLACEHOLDER = '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:var(--c-text-light);background:var(--c-warm-gray)"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg></div>';
+
+function fmtPrice(amount, currency) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: currency || 'USD' }).format(parseFloat(amount));
 }
-function _esc(str) {
+function esc(str) {
   var d = document.createElement('div');
   d.textContent = str || '';
   return d.innerHTML;
 }
-function _titleCase(str) {
+function titleCase(str) {
   return (str || '').toLowerCase().replace(/(?:^|\s)\S/g, function (a) { return a.toUpperCase(); });
 }
 
-var _SHOP_SVG = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>';
-var _STORE_URL = 'https://sunnyandranney.com';
-var _PLACEHOLDER = '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:var(--c-text-light);background:var(--c-warm-gray)"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg></div>';
-
-var _SHOPIFY_QUERY = 'query AllCollections{collections(first:50){edges{node{id handle title description image{url altText width height}products(first:100,sortKey:BEST_SELLING){edges{node{id handle title description descriptionHtml availableForSale priceRange{minVariantPrice{amount currencyCode}maxVariantPrice{amount currencyCode}}compareAtPriceRange{minVariantPrice{amount currencyCode}}featuredImage{url altText width height}images(first:10){edges{node{url altText width height}}}options{id name values}variants(first:100){edges{node{id title availableForSale price{amount currencyCode}compareAtPrice{amount currencyCode}selectedOptions{name value}image{url altText width height}}}}tags}}}}}}}';
-
-function _collectionCardHTML(c) {
+/* ── HTML builders ── */
+function collectionCardHTML(c) {
   var count = c.products.edges.length;
   var img = c.image;
   if (!img && count > 0) {
     var fp = c.products.edges[0].node;
     img = fp.featuredImage || (fp.images && fp.images.edges[0] && fp.images.edges[0].node);
   }
-  var t = _titleCase(c.title);
-  return '<div class="collection-card" data-collection="' + _esc(c.handle) + '" role="button" tabindex="0" aria-label="Browse ' + _esc(t) + '">' +
+  var t = titleCase(c.title);
+  return '<div class="collection-card" data-collection="' + esc(c.handle) + '" role="button" tabindex="0" aria-label="Browse ' + esc(t) + '">' +
     '<div class="collection-card-photo">' +
-      (img ? '<img src="' + img.url + (img.url.indexOf('?') > -1 ? '&' : '?') + 'width=800" alt="' + _esc(img.altText || t) + '" width="800" height="600" loading="lazy" decoding="async" />' : _PLACEHOLDER) +
-    '</div><div class="collection-card-info"><div class="collection-card-title">' + _esc(t) + '</div>' +
+      (img ? '<img src="' + img.url + (img.url.indexOf('?') > -1 ? '&' : '?') + 'width=800" alt="' + esc(img.altText || t) + '" width="800" height="600" loading="lazy" decoding="async" />' : PLACEHOLDER) +
+    '</div><div class="collection-card-info"><div class="collection-card-title">' + esc(t) + '</div>' +
     '<div class="collection-card-count">' + count + ' item' + (count !== 1 ? 's' : '') + '</div></div></div>';
 }
 
-function _productCardHTML(p) {
+function productCardHTML(p) {
   var img = p.featuredImage || (p.images && p.images.edges[0] && p.images.edges[0].node);
   var price = p.priceRange.minVariantPrice;
   var compare = p.compareAtPriceRange && p.compareAtPriceRange.minVariantPrice;
   var sale = compare && parseFloat(compare.amount) > parseFloat(price.amount);
   var soldOut = !p.availableForSale;
-  return '<div class="product-card" data-handle="' + _esc(p.handle) + '" role="button" tabindex="0" aria-label="View ' + _esc(p.title) + '">' +
+  return '<div class="product-card" data-handle="' + esc(p.handle) + '" role="button" tabindex="0" aria-label="View ' + esc(p.title) + '">' +
     '<div class="product-card-photo">' +
-      (img ? '<img src="' + img.url + '&width=600" alt="' + _esc(img.altText || p.title) + '" width="600" height="600" loading="lazy" decoding="async" />' : _PLACEHOLDER) +
+      (img ? '<img src="' + img.url + '&width=600" alt="' + esc(img.altText || p.title) + '" width="600" height="600" loading="lazy" decoding="async" />' : PLACEHOLDER) +
       (soldOut ? '<span class="product-card-badge product-card-badge--sold-out">Sold Out</span>' : '') +
       (sale && !soldOut ? '<span class="product-card-badge product-card-badge--sale">Sale</span>' : '') +
-    '</div><div class="product-card-info"><div class="product-card-title">' + _esc(p.title) + '</div>' +
-    '<div class="product-card-price"><span class="product-card-amount' + (sale ? ' product-card-amount--sale' : '') + '">' + _fmtPrice(price.amount, price.currencyCode) + '</span>' +
-    (sale ? '<span class="product-card-compare">' + _fmtPrice(compare.amount, compare.currencyCode) + '</span>' : '') +
+    '</div><div class="product-card-info"><div class="product-card-title">' + esc(p.title) + '</div>' +
+    '<div class="product-card-price"><span class="product-card-amount' + (sale ? ' product-card-amount--sale' : '') + '">' + fmtPrice(price.amount, price.currencyCode) + '</span>' +
+    (sale ? '<span class="product-card-compare">' + fmtPrice(compare.amount, compare.currencyCode) + '</span>' : '') +
     '</div></div></div>';
 }
 
-/* ── AbortController for cleanup across VT navigations ── */
-var _shopAC = null;
+/* ══════════════════════════════════════════════
+   SHARED STATE — survives across navigations.
+   Module executes once, so these are singletons.
+   ══════════════════════════════════════════════ */
+var shopState = {
+  productMap: {},
+  collectionsData: [],
+  previousFocus: null,
+  ac: null  // AbortController for per-navigation cleanup
+};
 
-function _initShop() {
+/* ══════════════════════════════════════════════
+   DOCUMENT-LEVEL EVENT DELEGATION
+   Registered once. Survives all VT navigations.
+   Uses closest() to find the triggering element.
+   ══════════════════════════════════════════════ */
+
+/* Collection card clicks (delegation on document) */
+document.addEventListener('click', function (e) {
+  var card = e.target.closest('[data-collection]');
+  if (card && card.closest('#shop-collections')) openCollection(card.dataset.collection);
+});
+document.addEventListener('keydown', function (e) {
+  if (e.key !== 'Enter' && e.key !== ' ') return;
+  var card = e.target.closest('[data-collection]');
+  if (card && card.closest('#shop-collections')) {
+    e.preventDefault();
+    openCollection(card.dataset.collection);
+  }
+});
+
+/* Product card clicks (delegation on document) */
+document.addEventListener('click', function (e) {
+  var card = e.target.closest('[data-handle]');
+  if (card && card.closest('#shop-grid')) openProduct(card.dataset.handle);
+});
+document.addEventListener('keydown', function (e) {
+  if (e.key !== 'Enter' && e.key !== ' ') return;
+  var card = e.target.closest('[data-handle]');
+  if (card && card.closest('#shop-grid')) {
+    e.preventDefault();
+    openProduct(card.dataset.handle);
+  }
+});
+
+/* Modal: Escape to close (delegation on document) */
+document.addEventListener('keydown', function (e) {
+  if (e.key === 'Escape') {
+    var modal = document.getElementById('pdp-modal');
+    if (modal && modal.classList.contains('is-open')) closeModal();
+  }
+});
+
+/* Modal: backdrop + close button (delegation on document) */
+document.addEventListener('click', function (e) {
+  if (e.target.closest('#pdp-modal-close') || e.target.id === 'pdp-backdrop') closeModal();
+});
+
+/* ══════════════════════════════════════════════
+   MODAL — open / close
+   ══════════════════════════════════════════════ */
+function closeModal() {
+  var modal = document.getElementById('pdp-modal');
+  var backdrop = document.getElementById('pdp-backdrop');
+  if (!modal) return;
+  modal.classList.remove('is-open');
+  modal.setAttribute('aria-hidden', 'true');
+  if (backdrop) backdrop.classList.remove('is-open');
+  document.body.style.overflow = '';
+  if (shopState.previousFocus) {
+    shopState.previousFocus.focus();
+    shopState.previousFocus = null;
+  }
+}
+
+/* ══════════════════════════════════════════════
+   SHOW COLLECTIONS VIEW
+   ══════════════════════════════════════════════ */
+function showCollections() {
+  var skeleton = document.getElementById('shop-skeleton');
+  var collectionsGrid = document.getElementById('shop-collections');
+  var grid = document.getElementById('shop-grid');
+  var backBtn = document.getElementById('shop-back');
+  var collTitle = document.getElementById('shop-collection-title');
+
+  var nonEmpty = shopState.collectionsData.filter(function (c) { return c.products.edges.length > 0; });
+  collectionsGrid.innerHTML = nonEmpty.map(collectionCardHTML).join('');
+  /* No per-card binding needed — document-level delegation handles clicks */
+  skeleton.style.display = 'none';
+  grid.style.display = 'none';
+  backBtn.style.display = 'none';
+  collTitle.style.display = 'none';
+  collectionsGrid.style.display = '';
+}
+
+/* ══════════════════════════════════════════════
+   OPEN COLLECTION — show its products
+   ══════════════════════════════════════════════ */
+function openCollection(handle) {
+  var collection = shopState.collectionsData.find(function (c) { return c.handle === handle; });
+  if (!collection) return;
+
+  var collectionsGrid = document.getElementById('shop-collections');
+  var grid = document.getElementById('shop-grid');
+  var backBtn = document.getElementById('shop-back');
+  var collTitle = document.getElementById('shop-collection-title');
+
+  var products = collection.products.edges.map(function (e) { return e.node; });
+  shopState.productMap = {};
+  products.forEach(function (p) { shopState.productMap[p.handle] = p; });
+
+  collectionsGrid.style.display = 'none';
+  backBtn.style.display = '';
+  collTitle.textContent = titleCase(collection.title);
+  collTitle.style.display = '';
+  grid.innerHTML = products.map(productCardHTML).join('');
+  grid.style.display = '';
+  /* No per-card binding — document-level delegation handles clicks */
+
+  backBtn.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  history.pushState({ collection: handle }, '', '#' + handle);
+}
+
+/* ══════════════════════════════════════════════
+   OPEN PRODUCT — instant from in-memory data
+   ══════════════════════════════════════════════ */
+function openProduct(handle) {
+  shopState.previousFocus = document.activeElement;
+  var p = shopState.productMap[handle];
+  if (!p) return;
+
+  var modal = document.getElementById('pdp-modal');
+  var backdrop = document.getElementById('pdp-backdrop');
+  var modalClose = document.getElementById('pdp-modal-close');
+  var modalBody = document.getElementById('pdp-modal-body');
+
+  var images = p.images.edges.map(function (e) { return e.node; });
+  var variants = p.variants.edges.map(function (e) { return e.node; });
+  var firstVariant = variants[0];
+  var hasVariants = variants.length > 1;
+  var price = firstVariant.price;
+  var compareAt = firstVariant.compareAtPrice;
+  var hasDiscount = compareAt && parseFloat(compareAt.amount) > parseFloat(price.amount);
+
+  /* Gallery */
+  var html = '<div class="pdp-gallery"><div class="pdp-main-img">' +
+    (images[0] ? '<img id="pdp-hero" src="' + images[0].url + '&width=900" alt="' + esc(images[0].altText || p.title) + '" />' : '') +
+    '</div>';
+  if (images.length > 1) {
+    html += '<div class="pdp-thumbs">';
+    images.forEach(function (img, i) {
+      html += '<button type="button" class="pdp-thumb' + (i === 0 ? ' is-active' : '') + '" data-idx="' + i + '" data-src="' + img.url + '&width=900" data-alt="' + esc(img.altText || p.title) + '" aria-label="View image ' + (i + 1) + '">' +
+        '<img src="' + img.url + '&width=120" alt="" width="64" height="64" loading="lazy" decoding="async" /></button>';
+    });
+    html += '</div>';
+  }
+  html += '</div>';
+
+  /* Info */
+  html += '<div class="pdp-info"><h2 class="pdp-title">' + esc(p.title) + '</h2>' +
+    '<div class="pdp-price">' +
+      '<span class="pdp-price-amount' + (hasDiscount ? ' has-sale' : '') + '" id="pdp-live-price">' + fmtPrice(price.amount, price.currencyCode) + '</span>' +
+      (hasDiscount
+        ? '<span class="pdp-price-compare" id="pdp-live-compare">' + fmtPrice(compareAt.amount, compareAt.currencyCode) + '</span>'
+        : '<span class="pdp-price-compare" id="pdp-live-compare" style="display:none"></span>') +
+    '</div>';
+
+  if (hasVariants) {
+    p.options.forEach(function (opt) {
+      html += '<div class="pdp-option" data-option-name="' + esc(opt.name) + '"><label class="pdp-option-label">' + esc(opt.name) + '</label><div class="pdp-option-values">';
+      opt.values.forEach(function (v, i) {
+        html += '<button type="button" class="pdp-option-btn' + (i === 0 ? ' is-active' : '') + '" data-opt-name="' + esc(opt.name) + '" data-opt-value="' + esc(v) + '">' + esc(v) + '</button>';
+      });
+      html += '</div></div>';
+    });
+  }
+
+  html += (p.availableForSale
+    ? '<a href="' + STORE_URL + '/products/' + p.handle + '" target="_blank" rel="noopener" class="pdp-atc btn btn-primary" id="pdp-atc-btn">' + SHOP_SVG + ' Buy Now</a>'
+    : '<button type="button" class="pdp-atc btn btn-primary" disabled>Sold Out</button>');
+
+  if (p.descriptionHtml) html += '<div class="pdp-desc">' + p.descriptionHtml + '</div>';
+  html += '<p class="pdp-mission-note">100% of proceeds fund dream room makeovers for kids with special needs.</p></div>';
+
+  modalBody.innerHTML = html;
+
+  modal.classList.add('is-open');
+  modal.setAttribute('aria-hidden', 'false');
+  backdrop.classList.add('is-open');
+  document.body.style.overflow = 'hidden';
+  modalClose.focus();
+
+  /* ── Thumbnail + variant interactions (scoped to modal body, ok to bind directly) ── */
+  var heroImg = document.getElementById('pdp-hero');
+  var atcBtn = document.getElementById('pdp-atc-btn');
+  var priceEl = document.getElementById('pdp-live-price');
+  var compareEl = document.getElementById('pdp-live-compare');
+
+  modalBody.querySelectorAll('.pdp-thumb').forEach(function (thumb) {
+    thumb.addEventListener('click', function () {
+      modalBody.querySelectorAll('.pdp-thumb').forEach(function (t) { t.classList.remove('is-active'); });
+      thumb.classList.add('is-active');
+      if (heroImg) { heroImg.src = thumb.dataset.src; heroImg.alt = thumb.dataset.alt || ''; }
+    });
+  });
+
+  var selected = {};
+  modalBody.querySelectorAll('.pdp-option').forEach(function (g) {
+    var n = g.dataset.optionName;
+    var f = g.querySelector('.pdp-option-btn.is-active');
+    if (f) selected[n] = f.dataset.optValue;
+  });
+
+  modalBody.querySelectorAll('.pdp-option-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      selected[btn.dataset.optName] = btn.dataset.optValue;
+      btn.closest('.pdp-option-values').querySelectorAll('.pdp-option-btn').forEach(function (b) {
+        b.classList.toggle('is-active', b === btn);
+      });
+
+      var match = variants.find(function (v) {
+        return v.selectedOptions.every(function (o) { return selected[o.name] === o.value; });
+      });
+
+      if (match && atcBtn) {
+        if (match.availableForSale) {
+          atcBtn.href = STORE_URL + '/products/' + p.handle + '?variant=' + match.id.replace(/\D/g, '');
+          atcBtn.innerHTML = SHOP_SVG + ' Buy Now';
+          atcBtn.classList.remove('is-disabled');
+          atcBtn.removeAttribute('aria-disabled');
+        } else {
+          atcBtn.removeAttribute('href');
+          atcBtn.innerHTML = 'Sold Out';
+          atcBtn.classList.add('is-disabled');
+          atcBtn.setAttribute('aria-disabled', 'true');
+        }
+
+        if (priceEl) {
+          priceEl.textContent = fmtPrice(match.price.amount, match.price.currencyCode);
+          priceEl.classList.toggle('has-sale', !!(match.compareAtPrice && parseFloat(match.compareAtPrice.amount) > parseFloat(match.price.amount)));
+        }
+        if (compareEl) {
+          if (match.compareAtPrice && parseFloat(match.compareAtPrice.amount) > parseFloat(match.price.amount)) {
+            compareEl.textContent = fmtPrice(match.compareAtPrice.amount, match.compareAtPrice.currencyCode);
+            compareEl.style.display = '';
+          } else {
+            compareEl.style.display = 'none';
+          }
+        }
+        if (match.image && heroImg) {
+          heroImg.src = match.image.url + '&width=900';
+          heroImg.alt = match.image.altText || '';
+        }
+      }
+    });
+  });
+}
+
+/* ══════════════════════════════════════════════
+   astro:page-load — SOLE ENTRY POINT
+   Fires on initial load + every VT soft navigation.
+   Re-queries DOM, sets up per-navigation listeners,
+   loads Shopify data.
+   ══════════════════════════════════════════════ */
+document.addEventListener('astro:page-load', function () {
   if (!window.location.pathname.startsWith('/shop')) return;
 
-  /* Abort previous instance (stale listeners from prior navigation) */
-  if (_shopAC) _shopAC.abort();
-  _shopAC = new AbortController();
-  var sig = _shopAC.signal;
+  /* Abort previous navigation's listeners */
+  if (shopState.ac) shopState.ac.abort();
+  shopState.ac = new AbortController();
+  var sig = shopState.ac.signal;
 
-  /* ── Fresh DOM refs ── */
+  /* Fresh DOM refs (stale after VT swap) */
   var skeleton = document.getElementById('shop-skeleton');
   var collectionsGrid = document.getElementById('shop-collections');
   var grid = document.getElementById('shop-grid');
   var errorEl = document.getElementById('shop-error');
   var retryBtn = document.getElementById('shop-retry');
   var backBtn = document.getElementById('shop-back');
-  var collectionTitle = document.getElementById('shop-collection-title');
-  var modal = document.getElementById('pdp-modal');
-  var modalBackdrop = document.getElementById('pdp-backdrop');
-  var modalClose = document.getElementById('pdp-modal-close');
-  var modalBody = document.getElementById('pdp-modal-body');
+  var collTitle = document.getElementById('shop-collection-title');
 
-  if (!skeleton || !grid) return; // Safety: not on shop page
+  if (!skeleton || !grid) return; // Safety: DOM not ready
 
-  var productMap = {};
-  var collectionsData = [];
-  var previousFocus = null;
+  /* Reset state for fresh navigation */
+  shopState.productMap = {};
+  shopState.collectionsData = [];
 
-  /* ═══════════════════════════════════════
-     SHOW COLLECTIONS VIEW
-     ═══════════════════════════════════════ */
-  function showCollections() {
-    var nonEmpty = collectionsData.filter(function (c) { return c.products.edges.length > 0; });
-    collectionsGrid.innerHTML = nonEmpty.map(_collectionCardHTML).join('');
-    skeleton.style.display = 'none';
-    grid.style.display = 'none';
-    backBtn.style.display = 'none';
-    collectionTitle.style.display = 'none';
-    collectionsGrid.style.display = '';
-
-    collectionsGrid.querySelectorAll('[data-collection]').forEach(function (card) {
-      card.addEventListener('click', function () { openCollection(card.dataset.collection); }, { signal: sig });
-      card.addEventListener('keydown', function (e) {
-        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openCollection(card.dataset.collection); }
-      }, { signal: sig });
-    });
-  }
-
-  /* ═══════════════════════════════════════
-     OPEN COLLECTION — show its products
-     ═══════════════════════════════════════ */
-  function openCollection(handle) {
-    var collection = collectionsData.find(function (c) { return c.handle === handle; });
-    if (!collection) return;
-
-    var products = collection.products.edges.map(function (e) { return e.node; });
-    productMap = {};
-    products.forEach(function (p) { productMap[p.handle] = p; });
-
-    collectionsGrid.style.display = 'none';
-    backBtn.style.display = '';
-    collectionTitle.textContent = _titleCase(collection.title);
-    collectionTitle.style.display = '';
-    grid.innerHTML = products.map(_productCardHTML).join('');
-    grid.style.display = '';
-
-    backBtn.scrollIntoView({ behavior: 'smooth', block: 'start' });
-
-    grid.querySelectorAll('[data-handle]').forEach(function (card) {
-      card.addEventListener('click', function () { openProduct(card.dataset.handle); }, { signal: sig });
-      card.addEventListener('keydown', function (e) {
-        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openProduct(card.dataset.handle); }
-      }, { signal: sig });
-    });
-
-    history.pushState({ collection: handle }, '', '#' + handle);
-  }
-
-  /* ═══════════════════════════════════════
-     BACK TO COLLECTIONS
-     ═══════════════════════════════════════ */
+  /* ── Back button (per-navigation, needs AbortController) ── */
   backBtn.addEventListener('click', function () {
     grid.style.display = 'none';
     showCollections();
     history.pushState(null, '', window.location.pathname);
   }, { signal: sig });
 
+  /* ── Popstate for browser back/forward (per-navigation) ── */
   window.addEventListener('popstate', function () {
     var hash = window.location.hash.replace('#', '');
-    if (hash && collectionsData.length) {
+    if (hash && shopState.collectionsData.length) {
       openCollection(hash);
-    } else if (collectionsData.length) {
+    } else if (shopState.collectionsData.length) {
       grid.style.display = 'none';
       showCollections();
     }
   }, { signal: sig });
 
-  /* ═══════════════════════════════════════
-     LOAD DATA — uses preloaded fetch
-     ═══════════════════════════════════════ */
+  /* ── Retry button ── */
+  if (retryBtn) retryBtn.addEventListener('click', loadProducts, { signal: sig });
+
+  /* ── Load data ── */
   function loadProducts() {
     skeleton.style.display = '';
     collectionsGrid.style.display = 'none';
     grid.style.display = 'none';
     errorEl.style.display = 'none';
     backBtn.style.display = 'none';
-    collectionTitle.style.display = 'none';
+    collTitle.style.display = 'none';
 
-    var dataPromise = window.__shopPreload || fetchProducts();
+    /* Consume the preloaded fetch (set by is:inline script) or fetch fresh */
+    var dataPromise = window.__shopPreload || fetch('/api/shopify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: SHOPIFY_QUERY })
+    }).then(function (r) { return r.json(); });
     window.__shopPreload = null;
 
     dataPromise
       .then(function (json) {
-        if (sig.aborted) return; // Navigated away before response
+        if (sig.aborted) return;
         if (json.errors) throw new Error(json.errors[0].message);
 
         var d = json.data;
-        collectionsData = d.collections ? d.collections.edges.map(function (e) { return e.node; }) : [];
+        shopState.collectionsData = d.collections
+          ? d.collections.edges.map(function (e) { return e.node; })
+          : [];
 
-        if (!collectionsData.length) {
+        if (!shopState.collectionsData.length) {
           skeleton.style.display = 'none';
           errorEl.style.display = 'block';
           errorEl.querySelector('p').textContent = 'No products available right now. Check back soon!';
@@ -674,7 +906,7 @@ function _initShop() {
 
         var hash = window.location.hash.replace('#', '');
         if (hash) {
-          var match = collectionsData.find(function (c) { return c.handle === hash; });
+          var match = shopState.collectionsData.find(function (c) { return c.handle === hash; });
           if (match && match.products.edges.length > 0) {
             openCollection(hash);
             return;
@@ -690,169 +922,6 @@ function _initShop() {
       });
   }
 
-  function fetchProducts() {
-    return fetch('/api/shopify', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query: _SHOPIFY_QUERY })
-    }).then(function (r) { return r.json(); });
-  }
-
-  if (retryBtn) retryBtn.addEventListener('click', loadProducts, { signal: sig });
-
-  /* ═══════════════════════════════════════
-     MODAL — open / close
-     ═══════════════════════════════════════ */
-  function closeModal() {
-    modal.classList.remove('is-open');
-    modal.setAttribute('aria-hidden', 'true');
-    modalBackdrop.classList.remove('is-open');
-    document.body.style.overflow = '';
-    if (previousFocus) { previousFocus.focus(); previousFocus = null; }
-  }
-
-  modalClose.addEventListener('click', closeModal, { signal: sig });
-  modalBackdrop.addEventListener('click', closeModal, { signal: sig });
-  document.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape' && modal.classList.contains('is-open')) closeModal();
-  }, { signal: sig });
-
-  /* ═══════════════════════════════════════
-     OPEN PRODUCT — instant from memory
-     ═══════════════════════════════════════ */
-  function openProduct(handle) {
-    previousFocus = document.activeElement;
-    var p = productMap[handle];
-    if (!p) return;
-
-    var images = p.images.edges.map(function (e) { return e.node; });
-    var variants = p.variants.edges.map(function (e) { return e.node; });
-    var firstVariant = variants[0];
-    var hasVariants = variants.length > 1;
-    var price = firstVariant.price;
-    var compareAt = firstVariant.compareAtPrice;
-    var hasDiscount = compareAt && parseFloat(compareAt.amount) > parseFloat(price.amount);
-
-    /* Gallery */
-    var html = '<div class="pdp-gallery"><div class="pdp-main-img">' +
-      (images[0] ? '<img id="pdp-hero" src="' + images[0].url + '&width=900" alt="' + _esc(images[0].altText || p.title) + '" />' : '') +
-      '</div>';
-
-    if (images.length > 1) {
-      html += '<div class="pdp-thumbs">';
-      images.forEach(function (img, i) {
-        html += '<button type="button" class="pdp-thumb' + (i === 0 ? ' is-active' : '') + '" data-idx="' + i + '" data-src="' + img.url + '&width=900" data-alt="' + _esc(img.altText || p.title) + '" aria-label="View image ' + (i + 1) + '">' +
-          '<img src="' + img.url + '&width=120" alt="" width="64" height="64" loading="lazy" decoding="async" /></button>';
-      });
-      html += '</div>';
-    }
-    html += '</div>';
-
-    /* Info */
-    html += '<div class="pdp-info"><h2 class="pdp-title">' + _esc(p.title) + '</h2>' +
-      '<div class="pdp-price">' +
-        '<span class="pdp-price-amount' + (hasDiscount ? ' has-sale' : '') + '" id="pdp-live-price">' + _fmtPrice(price.amount, price.currencyCode) + '</span>' +
-        (hasDiscount
-          ? '<span class="pdp-price-compare" id="pdp-live-compare">' + _fmtPrice(compareAt.amount, compareAt.currencyCode) + '</span>'
-          : '<span class="pdp-price-compare" id="pdp-live-compare" style="display:none"></span>') +
-      '</div>';
-
-    if (hasVariants) {
-      p.options.forEach(function (opt) {
-        html += '<div class="pdp-option" data-option-name="' + _esc(opt.name) + '"><label class="pdp-option-label">' + _esc(opt.name) + '</label><div class="pdp-option-values">';
-        opt.values.forEach(function (v, i) {
-          html += '<button type="button" class="pdp-option-btn' + (i === 0 ? ' is-active' : '') + '" data-opt-name="' + _esc(opt.name) + '" data-opt-value="' + _esc(v) + '">' + _esc(v) + '</button>';
-        });
-        html += '</div></div>';
-      });
-    }
-
-    html += (p.availableForSale
-      ? '<a href="' + _STORE_URL + '/products/' + p.handle + '" target="_blank" rel="noopener" class="pdp-atc btn btn-primary" id="pdp-atc-btn">' + _SHOP_SVG + ' Buy Now</a>'
-      : '<button type="button" class="pdp-atc btn btn-primary" disabled>Sold Out</button>');
-
-    if (p.descriptionHtml) html += '<div class="pdp-desc">' + p.descriptionHtml + '</div>';
-    html += '<p class="pdp-mission-note">100% of proceeds fund dream room makeovers for kids with special needs.</p></div>';
-
-    modalBody.innerHTML = html;
-
-    modal.classList.add('is-open');
-    modal.setAttribute('aria-hidden', 'false');
-    modalBackdrop.classList.add('is-open');
-    document.body.style.overflow = 'hidden';
-    modalClose.focus();
-
-    /* Bind interactions */
-    var heroImg = document.getElementById('pdp-hero');
-    var atcBtn = document.getElementById('pdp-atc-btn');
-    var priceEl = document.getElementById('pdp-live-price');
-    var compareEl = document.getElementById('pdp-live-compare');
-
-    modalBody.querySelectorAll('.pdp-thumb').forEach(function (thumb) {
-      thumb.addEventListener('click', function () {
-        modalBody.querySelectorAll('.pdp-thumb').forEach(function (t) { t.classList.remove('is-active'); });
-        thumb.classList.add('is-active');
-        if (heroImg) { heroImg.src = thumb.dataset.src; heroImg.alt = thumb.dataset.alt || ''; }
-      });
-    });
-
-    var selected = {};
-    modalBody.querySelectorAll('.pdp-option').forEach(function (g) {
-      var n = g.dataset.optionName;
-      var f = g.querySelector('.pdp-option-btn.is-active');
-      if (f) selected[n] = f.dataset.optValue;
-    });
-
-    modalBody.querySelectorAll('.pdp-option-btn').forEach(function (btn) {
-      btn.addEventListener('click', function () {
-        selected[btn.dataset.optName] = btn.dataset.optValue;
-        btn.closest('.pdp-option-values').querySelectorAll('.pdp-option-btn').forEach(function (b) {
-          b.classList.toggle('is-active', b === btn);
-        });
-
-        var match = variants.find(function (v) {
-          return v.selectedOptions.every(function (o) { return selected[o.name] === o.value; });
-        });
-
-        if (match && atcBtn) {
-          if (match.availableForSale) {
-            atcBtn.href = _STORE_URL + '/products/' + p.handle + '?variant=' + match.id.replace(/\D/g, '');
-            atcBtn.innerHTML = _SHOP_SVG + ' Buy Now';
-            atcBtn.classList.remove('is-disabled');
-            atcBtn.removeAttribute('aria-disabled');
-          } else {
-            atcBtn.removeAttribute('href');
-            atcBtn.innerHTML = 'Sold Out';
-            atcBtn.classList.add('is-disabled');
-            atcBtn.setAttribute('aria-disabled', 'true');
-          }
-
-          if (priceEl) {
-            priceEl.textContent = _fmtPrice(match.price.amount, match.price.currencyCode);
-            priceEl.classList.toggle('has-sale', !!(match.compareAtPrice && parseFloat(match.compareAtPrice.amount) > parseFloat(match.price.amount)));
-          }
-          if (compareEl) {
-            if (match.compareAtPrice && parseFloat(match.compareAtPrice.amount) > parseFloat(match.price.amount)) {
-              compareEl.textContent = _fmtPrice(match.compareAtPrice.amount, match.compareAtPrice.currencyCode);
-              compareEl.style.display = '';
-            } else {
-              compareEl.style.display = 'none';
-            }
-          }
-          if (match.image && heroImg) {
-            heroImg.src = match.image.url + '&width=900';
-            heroImg.alt = match.image.altText || '';
-          }
-        }
-      });
-    });
-  }
-
-  /* ── Go ── */
   loadProducts();
-}
-
-/* Run on first load + every View Transition navigation */
-_initShop();
-document.addEventListener('astro:page-load', _initShop);
+});
 </script>
