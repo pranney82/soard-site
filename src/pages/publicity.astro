@@ -1,8 +1,7 @@
 ---
 /**
  * Publicity Page — Sunshine on a Ranney Day
- * Media coverage, press features, and news highlights
- * Data-driven from src/content/press/ collection
+ * Authority-first design: stats → logos → celebrity supporters → video → featured → archive
  */
 import PageLayout from '../layouts/PageLayout.astro';
 import MediaLogos from '../components/ui/MediaLogos.astro';
@@ -14,22 +13,14 @@ const allPress = await getCollection('press');
 const press = allPress.sort((a, b) => new Date(b.data.date).getTime() - new Date(a.data.date).getTime());
 const featured = press.filter(p => p.data.featured);
 
-// Category labels
-const categoryLabels: Record<string, string> = {
-  'national-tv': 'National TV',
-  'local-tv': 'Local TV',
-  'print': 'Print & News',
-  'magazine': 'Magazine',
-  'entertainment': 'Entertainment',
-};
+/* Group press by year */
+const years = [...new Set(press.map(p => new Date(p.data.date).getFullYear()))].sort((a, b) => b - a);
+const pressByYear: Record<number, typeof press> = {};
+years.forEach(y => { pressByYear[y] = press.filter(p => new Date(p.data.date).getFullYear() === y); });
 
-// Category icon SVGs
-const categoryIcons: Record<string, string> = {
-  'national-tv': '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="15" rx="2"/><polyline points="17 2 12 7 7 2"/></svg>',
-  'local-tv': '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="15" rx="2"/><polyline points="17 2 12 7 7 2"/></svg>',
-  'print': '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 22h16a2 2 0 002-2V4a2 2 0 00-2-2H8a2 2 0 00-2 2v16a2 2 0 01-2 2zm0 0a2 2 0 01-2-2v-9c0-1.1.9-2 2-2h2"/><line x1="10" y1="6" x2="16" y2="6"/><line x1="10" y1="10" x2="16" y2="10"/><line x1="10" y1="14" x2="14" y2="14"/></svg>',
-  'magazine': '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>',
-  'entertainment': '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg>',
+const categoryLabels: Record<string, string> = {
+  'national-tv': 'National TV', 'local-tv': 'Local TV',
+  'print': 'Print & Online', 'magazine': 'Magazine', 'entertainment': 'Entertainment',
 };
 
 function formatDate(dateStr: string): string {
@@ -37,100 +28,174 @@ function formatDate(dateStr: string): string {
   return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 }
 
+/* Celebrity supporters */
+const celebrities = [
+  { name: 'Atlanta Braves', desc: 'Holly & Peter honored as Community Heroes. Players Dansby Swanson, Max Fried, Charlie Culberson & Ender Inciarte surprised them at a makeover with a $5,000 donation.', imageId: 'press-braves-community-heroes', type: 'Community Heroes' },
+  { name: 'Coach Nick Saban', desc: 'University of Alabama Coach Nick Saban surprised makeover recipient and cancer survivor Ally with a meeting with her favorite coach.', imageId: 'press-nick-saban-ally', type: 'Celebrity Surprise' },
+  { name: 'Atlanta Hawks', desc: 'Hall of Famer Dominique Wilkins, Tim Hardaway Jr., Kris Humphries & Malcolm Delaney surprised Kalen with his Hawks-themed dream bedroom.', imageId: 'press-hawks-kalen-wilkins', type: 'Celebrity Surprise' },
+  { name: 'Coach Kirby Smart', desc: 'Honored to be supported by the UGA community as well as their football coach and family.', imageId: 'press-kirby-smart-uga', type: 'Community Partner' },
+  { name: 'Atlanta Falcons', desc: 'Peter & Holly honored as Everyday Heroes by the Atlanta Falcons and cheerleaders.', imageId: 'press-falcons-everyday-heroes', type: 'Everyday Heroes' },
+  { name: "TLC's Say Yes to the Dress", desc: "Lori & Monte, along with their Bridals by Lori team, helped with multiple room makeovers fit for princesses.", imageId: 'press-tlc-lori-monte', type: 'Celebrity Partner' },
+  { name: 'Coy Bowles — Zac Brown Band', desc: "Grammy-winning guitarist Coy Bowles surprised Ruby in her new ballet studio room. Book proceeds benefit SOARD.", imageId: 'press-coy-bowles-ruby', type: 'Celebrity Surprise' },
+  { name: 'Governor Nathan Deal', desc: 'Former Georgia Governor and Mrs. Deal attended the annual Evening of Sunshine Gala at the College Football Hall of Fame.', imageId: 'press-governor-deal-gala', type: 'Evening of Sunshine Gala' },
+];
+
+const totalPress = press.length;
+const tvCount = press.filter(p => p.data.category === 'national-tv' || p.data.category === 'local-tv').length;
+const uniqueOutlets = new Set(press.map(p => p.data.outlet)).size;
 ---
 
 <PageLayout
   title="Publicity & Media Coverage"
-  description="Sunshine on a Ranney Day has been featured on the Today Show, 11Alive, Fox 5 Atlanta, AJC, Atlanta Magazine, and more. Explore our media coverage."
-  heroLabel="Publicity"
-  heroTitle={'Our story, in the <em class="highlight">spotlight</em>.'}
-  heroSubtitle="From the Today Show to Atlanta's top newsrooms, the media has helped us share the stories of the incredible children and families we serve."
+  description="Sunshine on a Ranney Day has been featured on the Today Show, WSB-TV, 11Alive, Fox 5, AJC, K-LOVE, and 80+ media outlets."
+  heroLabel="In the Spotlight"
+  heroTitle={'Our story, told by <em class="highlight">those who know it best</em>.'}
+  heroSubtitle="From the Today Show to Coach Saban, from the Atlanta Braves to K-LOVE — the world is helping us share the mission of building dreams for children with special needs."
 >
 
-  <!-- ══════ AS SEEN ON — LOGO BAR ══════ -->
+  <!-- ══════ IMPACT STATS ══════ -->
+  <section class="stats-bar" aria-label="Media impact">
+    <div class="container">
+      <div class="stats-bar__grid">
+        <div class="stats-bar__item"><span class="stats-bar__num">{totalPress}+</span><span class="stats-bar__label">Media Features</span></div>
+        <div class="stats-bar__item"><span class="stats-bar__num">{uniqueOutlets}+</span><span class="stats-bar__label">Outlets</span></div>
+        <div class="stats-bar__item"><span class="stats-bar__num">{tvCount}</span><span class="stats-bar__label">TV Segments</span></div>
+        <div class="stats-bar__item"><span class="stats-bar__num">2</span><span class="stats-bar__label">National TV</span></div>
+      </div>
+    </div>
+  </section>
+
   <MediaLogos theme="dark" linked={false} />
 
+  <!-- ══════ CELEBRITY SUPPORTERS ══════ -->
+  <section class="celebs" aria-labelledby="celebs-heading">
+    <div class="container">
+      <div class="celebs__header">
+        <span class="sec-label">Notable Supporters</span>
+        <h2 id="celebs-heading" class="sec-title">Championed by <em class="highlight">Atlanta's best</em></h2>
+        <p class="celebs__sub">From coaches and athletes to TV personalities and Georgia's governor, the people who meet our families become our biggest advocates.</p>
+      </div>
+      <div class="celebs__grid">
+        {celebrities.map(c => (
+          <article class="cc">
+            <div class="cc__img-wrap">
+              <img src={`${CF}/${c.imageId}/public`} alt={c.name} class="cc__img" width="600" height="500" loading="lazy" decoding="async" />
+              <div class="cc__overlay"><span class="cc__type">{c.type}</span></div>
+            </div>
+            <div class="cc__body">
+              <h3 class="cc__name">{c.name}</h3>
+              <p class="cc__desc">{c.desc}</p>
+            </div>
+          </article>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════ VIDEO HIGHLIGHTS ══════ -->
+  <section class="videos" aria-labelledby="vid-heading">
+    <div class="container">
+      <div class="videos__header">
+        <span class="sec-label" style="color:var(--c-yellow)">Watch</span>
+        <h2 id="vid-heading" class="sec-title" style="color:white">See the <em class="highlight">moments</em> that matter</h2>
+      </div>
+      <div class="videos__grid">
+        <div class="vc">
+          <div class="vc__wrap">
+            <iframe
+              width="100%" height="100%"
+              src="https://www.youtube.com/embed/Tej9V0MPQbY"
+              title="Today Show — Sunshine on a Ranney Day"
+              frameborder="0"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              allowfullscreen
+              loading="lazy"
+              style="position:absolute;inset:0;"
+            ></iframe>
+          </div>
+          <h3 class="vc__title">NBC Today Show Feature</h3>
+          <p class="vc__desc">Peter & Holly renovate parent sleep rooms at Children's Healthcare of Atlanta as part of NBC's #ShareKindness campaign.</p>
+        </div>
+        <div class="vc">
+          <div class="vc__wrap" style={`background: url('${CF}/press-braves-community-heroes/public') center/cover no-repeat;`}>
+            <a href="https://www.mlb.com/video/2018-community-heroes-week/c-2525462483" target="_blank" rel="noopener noreferrer" class="vc__play" aria-label="Watch on MLB.com">
+              <svg width="68" height="48" viewBox="0 0 68 48"><path d="M66.52 7.74c-.78-2.93-2.49-5.41-5.42-6.19C55.79.13 34 0 34 0S12.21.13 6.9 1.55c-2.93.78-4.63 3.26-5.42 6.19C.06 13.05 0 24 0 24s.06 10.95 1.48 16.26c.78 2.93 2.49 5.41 5.42 6.19C12.21 47.87 34 48 34 48s21.79-.13 27.1-1.55c2.93-.78 4.64-3.26 5.42-6.19C67.94 34.95 68 24 68 24s-.06-10.95-1.48-16.26z" fill="#CE1141"/><path d="M45 24L27 14v20" fill="white"/></svg>
+            </a>
+          </div>
+          <h3 class="vc__title">Atlanta Braves Community Heroes</h3>
+          <p class="vc__desc">Braves players surprise the Ranneys at a makeover and honor them on-field during Community Heroes Week.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <!-- ══════ FEATURED COVERAGE ══════ -->
-  <section class="pub-featured" aria-labelledby="featured-heading">
+  <section class="pub-featured" aria-labelledby="feat-heading">
     <div class="container">
-      <h2 id="featured-heading" class="pub-section-title">Highlighted Coverage</h2>
-      <div class="featured-grid">
+      <span class="sec-label">Featured Stories</span>
+      <h2 id="feat-heading" class="sec-title">Highlighted <em class="highlight">coverage</em></h2>
+      <div class="feat-grid">
         {featured.map(item => (
-          <article class="featured-card">
-            {item.data.image && (
-              <div class="featured-card__img-wrap">
-                <img src={`${item.data.image}/public`} alt={item.data.title} class="featured-card__img" width="1366" height="768" loading="lazy" decoding="async" />
-              </div>
-            )}
-            <div class="featured-card__body">
-            <div class="featured-card__top">
-              <div class="featured-card__badge" set:html={categoryIcons[item.data.category]} />
-              <div class="featured-card__cat">{categoryLabels[item.data.category]}</div>
-            </div>
-            <h3 class="featured-card__title">{item.data.title}</h3>
-            <p class="featured-card__outlet">{item.data.outlet}</p>
-            <p class="featured-card__excerpt">{item.data.excerpt}</p>
-            <div class="featured-card__foot">
-              <time class="featured-card__date" datetime={item.data.date}>{formatDate(item.data.date)}</time>
-              {item.data.url && (
-                <a href={item.data.url} class="featured-card__link" target="_blank" rel="noopener noreferrer">
-                  Read Article
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M7 17L17 7"/><path d="M7 7h10v10"/></svg>
-                </a>
-              )}
-            </div>
-            </div>
-          </article>
-        ))}
-      </div>
-    </div>
-  </section>
-
-  <!-- ══════ ALL COVERAGE ══════ -->
-  <section class="pub-all" aria-labelledby="all-heading">
-    <div class="container">
-      <h2 id="all-heading" class="pub-section-title">All Coverage</h2>
-      <div class="coverage-list">
-        {press.map(item => (
-          <article class="coverage-item">
-            {item.data.image && (
-              <div class="coverage-item__thumb">
-                <img src={`${item.data.image}/nav`} alt="" class="coverage-item__thumb-img" width="240" height="120" loading="lazy" decoding="async" />
-              </div>
-            )}
-            {!item.data.image && (
-              <div class="coverage-item__icon" set:html={categoryIcons[item.data.category]} />
-            )}
-            <div class="coverage-item__content">
-              <div class="coverage-item__meta">
-                <span class="coverage-item__outlet">{item.data.outlet}</span>
-                <span class="coverage-item__sep" aria-hidden="true">&middot;</span>
-                <time class="coverage-item__date" datetime={item.data.date}>{formatDate(item.data.date)}</time>
-                <span class="coverage-item__tag">{categoryLabels[item.data.category]}</span>
-              </div>
-              <h3 class="coverage-item__title">
-                {item.data.url ? (
-                  <a href={item.data.url} target="_blank" rel="noopener noreferrer">{item.data.title}</a>
-                ) : (
-                  <span>{item.data.title}</span>
+          <article class="fc">
+            <div class="fc__body">
+              <span class="fc__cat">{categoryLabels[item.data.category]}</span>
+              <h3 class="fc__title">{item.data.title}</h3>
+              <p class="fc__outlet">{item.data.outlet}</p>
+              <p class="fc__excerpt">{item.data.excerpt}</p>
+              <div class="fc__foot">
+                <time datetime={item.data.date}>{formatDate(item.data.date)}</time>
+                {item.data.url && (
+                  <a href={item.data.url} class="fc__link" target="_blank" rel="noopener noreferrer">
+                    Read <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 17L17 7"/><path d="M7 7h10v10"/></svg>
+                  </a>
                 )}
-              </h3>
-              <p class="coverage-item__excerpt">{item.data.excerpt}</p>
+              </div>
             </div>
-            {item.data.url && (
-              <a href={item.data.url} class="coverage-item__arrow" target="_blank" rel="noopener noreferrer" aria-label={`Read ${item.data.title}`}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M7 17L17 7"/><path d="M7 7h10v10"/></svg>
-              </a>
-            )}
           </article>
         ))}
       </div>
     </div>
   </section>
 
-  <!-- ══════ MEDIA CONTACT CTA ══════ -->
+  <!-- ══════ PRESS ARCHIVE ══════ -->
+  <section class="pub-archive" aria-labelledby="arch-heading">
+    <div class="container">
+      <span class="sec-label">Press Archive</span>
+      <h2 id="arch-heading" class="sec-title">All <em class="highlight">{totalPress} stories</em></h2>
+      {years.map(year => (
+        <div class="yg">
+          <div class="yg__label"><span class="yg__year">{year}</span><span class="yg__ct">{pressByYear[year].length}</span></div>
+          <div class="cl">
+            {pressByYear[year].map(item => (
+              <article class="ci">
+                <div class="ci__content">
+                  <div class="ci__meta">
+                    <span class="ci__outlet">{item.data.outlet}</span>
+                    <span class="ci__sep">&middot;</span>
+                    <time datetime={item.data.date}>{formatDate(item.data.date)}</time>
+                    <span class="ci__tag">{categoryLabels[item.data.category]}</span>
+                  </div>
+                  <h3 class="ci__title">
+                    {item.data.url ? <a href={item.data.url} target="_blank" rel="noopener noreferrer">{item.data.title}</a> : <span>{item.data.title}</span>}
+                  </h3>
+                  <p class="ci__excerpt">{item.data.excerpt}</p>
+                </div>
+                {item.data.url && (
+                  <a href={item.data.url} class="ci__arrow" target="_blank" rel="noopener noreferrer" aria-label={`Read ${item.data.title}`}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 17L17 7"/><path d="M7 7h10v10"/></svg>
+                  </a>
+                )}
+              </article>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  </section>
+
+  <!-- ══════ CTA ══════ -->
   <section class="pub-cta">
-    <div class="container container--narrow">
+    <div class="container" style="max-width:var(--max-width-narrow)">
       <h2>Media Inquiries</h2>
       <p>Interested in covering Sunshine on a Ranney Day? We'd love to connect.</p>
       <div class="pub-cta__actions">
@@ -143,306 +208,102 @@ function formatDate(dateStr: string): string {
 </PageLayout>
 
 <style>
-  /* ══════ SECTION TITLES ══════ */
-  .pub-section-title {
-    font-family: var(--f-display);
-    font-size: clamp(1.5rem, 3vw, 2rem);
-    margin-bottom: var(--space-2xl);
-  }
+  .container { max-width: var(--max-width); margin: 0 auto; padding-inline: var(--page-padding); }
+  .sec-label { display:block; font-size:0.7rem; font-weight:700; text-transform:uppercase; letter-spacing:0.14em; color:var(--c-yellow); margin-bottom:var(--space-sm); }
+  .sec-title { font-family:var(--font-display); font-size:clamp(1.6rem,3.5vw,2.4rem); line-height:1.2; margin-bottom:var(--space-lg); }
 
-  /* ══════ FEATURED CARDS ══════ */
-  .pub-featured {
-    padding: var(--space-4xl) 0;
-    background: var(--c-warm-gray);
-  }
-  .featured-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-    gap: var(--space-xl);
-  }
-  .featured-card {
-    background: var(--c-white);
-    border: 1px solid var(--c-border);
-    border-radius: var(--border-radius-lg);
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-    transition: box-shadow var(--transition-base), transform var(--transition-base);
-  }
-  .featured-card:hover {
-    box-shadow: var(--shadow-lg);
-    transform: translateY(-2px);
-  }
-  .featured-card__img-wrap {
-    aspect-ratio: 16 / 9;
-    overflow: hidden;
-    background: var(--c-warm-gray);
-  }
-  .featured-card__img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    transition: transform 0.4s ease;
-  }
-  .featured-card:hover .featured-card__img {
-    transform: scale(1.03);
-  }
-  .featured-card__body {
-    padding: var(--space-xl);
-    display: flex;
-    flex-direction: column;
-    flex: 1;
-  }
-  .featured-card__top {
-    display: flex;
-    align-items: center;
-    gap: var(--space-sm);
-    margin-bottom: var(--space-md);
-  }
-  .featured-card__badge {
-    width: 36px;
-    height: 36px;
-    background: var(--c-yellow);
-    border-radius: 10px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--c-dark);
-  }
-  .featured-card__cat {
-    font-size: 0.7rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.12em;
-    color: var(--c-text-light);
-  }
-  .featured-card__title {
-    font-family: var(--f-display);
-    font-size: 1.1rem;
-    line-height: 1.4;
-    margin-bottom: var(--space-xs);
-  }
-  .featured-card__outlet {
-    font-size: 0.85rem;
-    font-weight: 600;
-    color: var(--c-text-muted);
-    margin-bottom: var(--space-md);
-  }
-  .featured-card__excerpt {
-    font-size: 0.9rem;
-    line-height: 1.65;
-    color: var(--c-text-muted);
-    flex: 1;
-  }
-  .featured-card__foot {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-top: var(--space-lg);
-    padding-top: var(--space-md);
-    border-top: 1px solid var(--c-border);
-  }
-  .featured-card__date {
-    font-size: 0.8rem;
-    color: var(--c-text-light);
-  }
-  .featured-card__link {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    font-size: 0.85rem;
-    font-weight: 600;
-    color: var(--c-dark);
-    text-decoration: none;
-    transition: color var(--transition-fast);
-  }
-  .featured-card__link:hover { color: var(--c-yellow-hover); }
+  /* Stats */
+  .stats-bar { background:var(--c-dark); padding:var(--space-2xl) 0; }
+  .stats-bar__grid { display:grid; grid-template-columns:repeat(4,1fr); gap:var(--space-xl); text-align:center; }
+  .stats-bar__num { display:block; font-family:var(--font-display); font-size:clamp(2rem,4vw,3rem); font-weight:700; color:var(--c-yellow); line-height:1; }
+  .stats-bar__label { display:block; font-size:0.75rem; font-weight:600; color:rgba(255,255,255,0.55); text-transform:uppercase; letter-spacing:0.1em; margin-top:var(--space-xs); }
 
-  /* ══════ ALL COVERAGE LIST ══════ */
-  .pub-all {
-    padding: var(--space-4xl) 0;
-    background: var(--c-warm-gray);
-  }
-  .coverage-list {
-    display: flex;
-    flex-direction: column;
-    gap: 1px;
-    background: var(--c-border);
-    border-radius: var(--border-radius-lg);
-    overflow: hidden;
-  }
-  .coverage-item {
-    display: flex;
-    align-items: flex-start;
-    gap: var(--space-lg);
-    padding: var(--space-xl);
-    background: var(--c-white);
-    transition: background var(--transition-fast);
-  }
-  .coverage-item:hover { background: var(--c-cream); }
-  .coverage-item__icon {
-    width: 40px;
-    height: 40px;
-    min-width: 40px;
-    background: var(--c-warm-gray);
-    border-radius: 10px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--c-text-muted);
-    margin-top: 2px;
-  }
-  .coverage-item__thumb {
-    width: 80px;
-    height: 56px;
-    min-width: 80px;
-    border-radius: 8px;
-    overflow: hidden;
-    background: var(--c-warm-gray);
-    margin-top: 2px;
-  }
-  .coverage-item__thumb-img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-  }
-  .coverage-item__content { flex: 1; min-width: 0; }
-  .coverage-item__meta {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--space-xs) var(--space-sm);
-    margin-bottom: var(--space-xs);
-  }
-  .coverage-item__outlet {
-    font-size: 0.8rem;
-    font-weight: 700;
-    color: var(--c-text);
-  }
-  .coverage-item__sep {
-    color: var(--c-text-light);
-    font-size: 0.8rem;
-  }
-  .coverage-item__date {
-    font-size: 0.8rem;
-    color: var(--c-text-light);
-  }
-  .coverage-item__tag {
-    font-size: 0.65rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    color: var(--c-text-light);
-    background: var(--c-warm-gray);
-    padding: 2px 8px;
-    border-radius: 4px;
-  }
-  .coverage-item__title {
-    font-family: var(--f-display);
-    font-size: 1.05rem;
-    line-height: 1.4;
-    margin-bottom: var(--space-xs);
-  }
-  .coverage-item__title a {
-    color: var(--c-text);
-    text-decoration: none;
-  }
-  .coverage-item__title a:hover {
-    color: var(--c-dark);
-    text-decoration: underline;
-    text-decoration-color: var(--c-yellow);
-    text-underline-offset: 3px;
-    text-decoration-thickness: 2px;
-  }
-  .coverage-item__excerpt {
-    font-size: 0.875rem;
-    line-height: 1.6;
-    color: var(--c-text-muted);
-  }
-  .coverage-item__arrow {
-    min-width: 40px;
-    height: 40px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--c-text-light);
-    border-radius: 10px;
-    transition: color var(--transition-fast), background var(--transition-fast);
-    margin-top: 2px;
-  }
-  .coverage-item__arrow:hover {
-    color: var(--c-dark);
-    background: var(--c-warm-gray);
-  }
+  /* Celebs */
+  .celebs { padding:var(--space-4xl) 0; }
+  .celebs__header { text-align:center; max-width:640px; margin:0 auto var(--space-3xl); }
+  .celebs__sub { font-size:1.05rem; color:var(--c-text-muted); line-height:1.6; }
+  .celebs__grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:var(--space-xl); }
+  .cc { background:var(--c-white); border:1px solid var(--c-border); border-radius:16px; overflow:hidden; transition:box-shadow 0.3s,transform 0.3s; }
+  .cc:hover { box-shadow:0 12px 40px rgba(0,0,0,0.12); transform:translateY(-3px); }
+  .cc__img-wrap { position:relative; aspect-ratio:6/5; overflow:hidden; background:var(--c-warm-gray); }
+  .cc__img { width:100%; height:100%; object-fit:cover; transition:transform 0.5s; }
+  .cc:hover .cc__img { transform:scale(1.05); }
+  .cc__overlay { position:absolute; bottom:0; left:0; right:0; padding:var(--space-md) var(--space-lg); background:linear-gradient(transparent,rgba(0,0,0,0.7)); }
+  .cc__type { font-size:0.65rem; font-weight:700; text-transform:uppercase; letter-spacing:0.1em; color:var(--c-yellow); }
+  .cc__body { padding:var(--space-lg) var(--space-xl) var(--space-xl); }
+  .cc__name { font-family:var(--font-display); font-size:1.05rem; margin-bottom:var(--space-sm); }
+  .cc__desc { font-size:0.85rem; line-height:1.6; color:var(--c-text-muted); }
 
-  /* ══════ CTA ══════ */
-  .pub-cta {
-    padding: var(--space-4xl) 0;
-    text-align: center;
-  }
-  .pub-cta h2 {
-    font-family: var(--f-display);
-    font-size: clamp(1.5rem, 3vw, 2rem);
-    margin-bottom: var(--space-sm);
-  }
-  .pub-cta p {
-    color: var(--c-text-muted);
-    font-size: 1.05rem;
-    margin-bottom: var(--space-xl);
-  }
-  .pub-cta__actions {
-    display: flex;
-    gap: var(--space-md);
-    justify-content: center;
-    flex-wrap: wrap;
-  }
+  /* Videos */
+  .videos { padding:var(--space-4xl) 0; background:var(--c-dark); color:white; }
+  .videos__header { text-align:center; max-width:640px; margin:0 auto var(--space-3xl); }
+  .videos__grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(420px,1fr)); gap:var(--space-2xl); }
+  .vc__wrap { border-radius:12px; overflow:hidden; aspect-ratio:16/9; margin-bottom:var(--space-lg); background:#000; position:relative; display:flex; align-items:center; justify-content:center; background-size:cover; background-position:center; }
+  .vc__play { display:flex; transition:transform 0.2s; }
+  .vc__play:hover { transform:scale(1.1); }
+  .vc__title { font-family:var(--font-display); font-size:1.1rem; margin-bottom:var(--space-xs); }
+  .vc__desc { font-size:0.875rem; color:rgba(255,255,255,0.6); line-height:1.6; }
 
-  /* ══════ SHARED BUTTON STYLES ══════ */
-  .btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 0.75rem 1.75rem;
-    font-family: var(--f-body);
-    font-size: 0.9rem;
-    font-weight: 600;
-    border-radius: 100px;
-    text-decoration: none;
-    transition: all var(--transition-fast);
-    cursor: pointer;
-    border: 2px solid transparent;
-  }
-  .btn-primary {
-    background: var(--c-yellow);
-    color: var(--c-dark);
-    border-color: var(--c-yellow);
-  }
-  .btn-primary:hover {
-    background: var(--c-yellow-hover);
-    border-color: var(--c-yellow-hover);
-  }
-  .btn-outline {
-    background: transparent;
-    color: var(--c-dark);
-    border-color: var(--c-border);
-  }
-  .btn-outline:hover { border-color: var(--c-dark); }
-  .btn-lg { padding: 0.85rem 2rem; font-size: 0.95rem; }
+  /* Featured */
+  .pub-featured { padding:var(--space-4xl) 0; }
+  .feat-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:var(--space-xl); }
+  .fc { background:var(--c-white); border:1px solid var(--c-border); border-radius:16px; overflow:hidden; display:flex; flex-direction:column; transition:box-shadow 0.3s,transform 0.3s; }
+  .fc:hover { box-shadow:0 8px 30px rgba(0,0,0,0.08); transform:translateY(-2px); }
+  .fc__body { padding:var(--space-xl); display:flex; flex-direction:column; flex:1; }
+  .fc__cat { font-size:0.6rem; font-weight:700; text-transform:uppercase; letter-spacing:0.12em; color:var(--c-yellow); background:rgba(255,218,36,0.12); padding:3px 10px; border-radius:6px; display:inline-block; margin-bottom:var(--space-md); }
+  .fc__title { font-family:var(--font-display); font-size:1rem; line-height:1.4; margin-bottom:var(--space-xs); }
+  .fc__outlet { font-size:0.85rem; font-weight:600; color:var(--c-text-muted); margin-bottom:var(--space-md); }
+  .fc__excerpt { font-size:0.85rem; line-height:1.65; color:var(--c-text-muted); flex:1; }
+  .fc__foot { display:flex; justify-content:space-between; align-items:center; margin-top:var(--space-lg); padding-top:var(--space-md); border-top:1px solid var(--c-border); }
+  .fc__foot time { font-size:0.78rem; color:var(--c-text-light); }
+  .fc__link { display:inline-flex; align-items:center; gap:4px; font-size:0.85rem; font-weight:600; color:var(--c-dark); text-decoration:none; transition:color 0.2s; }
+  .fc__link:hover { color:var(--c-yellow); }
 
-  /* ══════ CONTAINER ══════ */
-  .container {
-    max-width: var(--max-width);
-    margin: 0 auto;
-    padding-inline: var(--page-padding);
-  }
-  .container--narrow { max-width: var(--max-width-narrow); }
+  /* Archive */
+  .pub-archive { padding:var(--space-4xl) 0; background:var(--c-warm-gray); }
+  .yg { margin-bottom:var(--space-2xl); }
+  .yg__label { display:flex; align-items:center; gap:var(--space-md); margin-bottom:var(--space-lg); padding-bottom:var(--space-sm); border-bottom:2px solid var(--c-yellow); }
+  .yg__year { font-family:var(--font-display); font-size:1.3rem; font-weight:700; }
+  .yg__ct { font-size:0.7rem; font-weight:700; color:var(--c-text-light); background:var(--c-white); padding:2px 10px; border-radius:100px; }
+  .cl { display:flex; flex-direction:column; gap:1px; background:var(--c-border); border-radius:12px; overflow:hidden; }
+  .ci { display:flex; align-items:flex-start; gap:var(--space-lg); padding:var(--space-lg) var(--space-xl); background:var(--c-white); transition:background 0.15s; }
+  .ci:hover { background:var(--c-cream); }
+  .ci__content { flex:1; min-width:0; }
+  .ci__meta { display:flex; flex-wrap:wrap; align-items:center; gap:var(--space-xs) var(--space-sm); margin-bottom:var(--space-xs); }
+  .ci__outlet { font-size:0.78rem; font-weight:700; }
+  .ci__sep { color:var(--c-text-light); font-size:0.78rem; }
+  .ci__meta time { font-size:0.78rem; color:var(--c-text-light); }
+  .ci__tag { font-size:0.58rem; font-weight:700; text-transform:uppercase; letter-spacing:0.1em; color:var(--c-text-light); background:var(--c-warm-gray); padding:2px 8px; border-radius:4px; }
+  .ci__title { font-family:var(--font-display); font-size:0.95rem; line-height:1.4; margin-bottom:var(--space-xs); }
+  .ci__title a { color:var(--c-text); text-decoration:none; }
+  .ci__title a:hover { text-decoration:underline; text-decoration-color:var(--c-yellow); text-underline-offset:3px; text-decoration-thickness:2px; }
+  .ci__excerpt { font-size:0.82rem; line-height:1.6; color:var(--c-text-muted); }
+  .ci__arrow { min-width:36px; height:36px; display:flex; align-items:center; justify-content:center; color:var(--c-text-light); border-radius:10px; transition:color 0.15s,background 0.15s; margin-top:2px; }
+  .ci__arrow:hover { color:var(--c-dark); background:var(--c-warm-gray); }
 
-  /* ══════ RESPONSIVE ══════ */
-  @media (max-width: 640px) {
-    .featured-grid { grid-template-columns: 1fr; }
-    .coverage-item { flex-direction: column; gap: var(--space-md); }
-    .coverage-item__icon { display: none; }
-    .coverage-item__thumb { display: none; }
-    .coverage-item__arrow { display: none; }
+  /* CTA */
+  .pub-cta { padding:var(--space-4xl) 0; text-align:center; }
+  .pub-cta h2 { font-family:var(--font-display); font-size:clamp(1.5rem,3vw,2rem); margin-bottom:var(--space-sm); }
+  .pub-cta p { color:var(--c-text-muted); font-size:1.05rem; margin-bottom:var(--space-xl); }
+  .pub-cta__actions { display:flex; gap:var(--space-md); justify-content:center; flex-wrap:wrap; }
+
+  .btn { display:inline-flex; align-items:center; gap:6px; padding:0.75rem 1.75rem; font-family:var(--font-body); font-size:0.9rem; font-weight:600; border-radius:100px; text-decoration:none; transition:all 0.2s; cursor:pointer; border:2px solid transparent; }
+  .btn-primary { background:var(--c-yellow); color:var(--c-dark); border-color:var(--c-yellow); }
+  .btn-primary:hover { background:var(--c-yellow-hover,#e6c100); border-color:var(--c-yellow-hover,#e6c100); }
+  .btn-outline { background:transparent; color:var(--c-dark); border-color:var(--c-border); }
+  .btn-outline:hover { border-color:var(--c-dark); }
+  .btn-lg { padding:0.85rem 2rem; font-size:0.95rem; }
+
+  @media (max-width:768px) {
+    .stats-bar__grid { grid-template-columns:repeat(2,1fr); gap:var(--space-lg); }
+    .celebs__grid { grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); }
+    .videos__grid { grid-template-columns:1fr; }
+    .feat-grid { grid-template-columns:1fr; }
+    .ci { flex-direction:column; gap:var(--space-sm); }
+    .ci__arrow { display:none; }
+  }
+  @media (max-width:480px) {
+    .stats-bar__num { font-size:1.8rem; }
+    .celebs__grid { grid-template-columns:1fr; }
   }
 </style>
