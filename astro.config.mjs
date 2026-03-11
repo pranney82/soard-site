@@ -10,6 +10,6 @@ export default defineConfig({
     defaultStrategy: 'viewport',
   },
   build: {
-    inlineStylesheets: 'auto',
+    inlineStylesheets: 'always',
   },
 });
