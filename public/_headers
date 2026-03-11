@@ -5,7 +5,7 @@
   X-Content-Type-Options: nosniff
   X-Frame-Options: SAMEORIGIN
   Referrer-Policy: strict-origin-when-cross-origin
-  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(self "https://www.zeffy.com")
   Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
   Content-Security-Policy: default-src 'none'; script-src 'self' 'unsafe-inline' https://connect.facebook.net https://challenges.cloudflare.com https://esm.sh https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' https://imagedelivery.net https://i.ytimg.com https://www.facebook.com https://cdn.charitynavigator.org https://widgets.guidestar.org https://videodelivery.net data: blob:; font-src 'self' https://fonts.gstatic.com; frame-src https://www.youtube-nocookie.com https://iframe.videodelivery.net https://www.zeffy.com https://challenges.cloudflare.com; connect-src 'self' https://www.facebook.com https://challenges.cloudflare.com https://api.github.com https://api.cloudflare.com https://api.anthropic.com https://cloudflareinsights.com https://esm.sh; media-src 'self' https://videodelivery.net; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'; worker-src 'self'; manifest-src 'self'
 
