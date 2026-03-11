@@ -1027,7 +1027,7 @@
         year: new Date().getFullYear(), status: 'completed', bio: '',
         quote: '', heroImage: '', photos: [], photoCount: 0,
         videoUrl: '', streamVideoId: '', photographer: '', partnerLogos: [],
-        shortDescription: '', metaDescription: '',
+        shortDescription: '', metaDescription: '', fundraisingUrl: '',
         roomCount: 1, childCount: 1,
       });
       const [uploading, setUploading] = useState({});
@@ -1299,6 +1299,7 @@
             year: data.year ? Number(data.year) : null,
             streamVideoId: data.streamVideoId || null,
             videoUrl: data.videoUrl || null,
+            fundraisingUrl: data.fundraisingUrl || null,
             photos: data.photos.map(({ _tempId, ...p }) => p),
             photoCount: data.photos.length,
           };
@@ -1454,6 +1455,13 @@
             <label class="form-label">Photographer (optional)</label>
             <input class="form-input" value=${data.photographer || ''}
               onInput=${e => updateField('photographer', e.target.value)} />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Zeffy Fundraising Link (optional)</label>
+            <input class="form-input" value=${data.fundraisingUrl || ''}
+              onInput=${e => updateField('fundraisingUrl', e.target.value)}
+              placeholder="https://www.zeffy.com/..." />
+            <small style="color: rgba(0,0,0,0.45); margin-top: 0.25rem; display: block;">Individual fundraising page for this child. Displays a "Help Fund This Room" button on their profile.</small>
           </div>
         </div>
 
