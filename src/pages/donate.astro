@@ -156,9 +156,9 @@ const breadcrumbs = [
         <p class="give-cta-note">You'll be taken to our secure donation page on Zeffy</p>
       </div>
       <div class="give-badges" data-reveal>
-        <span class="give-badge">🔒 Secure & Encrypted</span>
-        <span class="give-badge">🧾 Tax-Deductible</span>
-        <span class="give-badge">💛 Zero Platform Fees</span>
+        <span class="give-badge"><svg class="badge-icon" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="9" width="14" height="9" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M7 9V6a3 3 0 1 1 6 0v3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>Secure & Encrypted</span>
+        <span class="give-badge"><svg class="badge-icon" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="2" width="14" height="16" rx="1.5" stroke="currentColor" stroke-width="1.5"/><path d="M7 6h6M7 9h6M7 12h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>Tax-Deductible</span>
+        <span class="give-badge"><svg class="badge-icon" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="10" cy="10" r="7.25" stroke="currentColor" stroke-width="1.5"/><path d="M10 6v4l2.5 2.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>Zero Platform Fees</span>
       </div>
     </div>
   </section>
@@ -172,19 +172,19 @@ const breadcrumbs = [
       </div>
       <div class="ways-grid">
         <div class="way-card" data-reveal>
-          <span class="way-icon" aria-hidden="true">🛒</span>
+          <span class="way-icon" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M6 8h2l3 12h12l3-9H10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="13" cy="24" r="2" stroke="currentColor" stroke-width="2"/><circle cx="21" cy="24" r="2" stroke="currentColor" stroke-width="2"/></svg></span>
           <h3>Shop Our Stores</h3>
           <p>Every purchase at Sunny & Ranney directly funds room makeovers.</p>
           <a href="https://sunnyandranney.com" target="_blank" rel="noopener noreferrer" class="way-link">Shop Sunny & Ranney →</a>
         </div>
         <div class="way-card" data-reveal data-delay="1">
-          <span class="way-icon" aria-hidden="true">🏗️</span>
+          <span class="way-icon" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M16 4v8M12 8h8M6 16h20v10a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V16Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 16v6M20 16v6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></span>
           <h3>Volunteer or Partner</h3>
           <p>Contractors, designers, and handy helpers — we need your skills to build these rooms.</p>
           <a href="/get-involved" class="way-link">Get Involved →</a>
         </div>
         <div class="way-card" data-reveal data-delay="2">
-          <span class="way-icon" aria-hidden="true">📣</span>
+          <span class="way-icon" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M8 20c-2 0-4-1.5-4-4s2-4 4-4c1-3 4-5 8-5s7 2 8 5c2 0 4 1.5 4 4s-2 4-4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M16 18v8M12 22l4-4 4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
           <h3>Spread the Word</h3>
           <p>Share our mission with friends and family. A single share can connect us to the next partner or donor.</p>
           <a href="/about" class="way-link">Learn Our Story →</a>
@@ -213,8 +213,8 @@ const breadcrumbs = [
           <p>Over {computed.totalKids} children served across the greater Atlanta area since 2012.</p>
         </div>
         <div class="dt-card" data-reveal data-delay="2">
-          <span class="dt-big" aria-hidden="true">📋</span>
-          <span class="dt-label">990 on File</span>
+          <span class="dt-big">990</span>
+          <span class="dt-label">On File</span>
           <p>Our IRS Form 990 tax returns are available for anyone to review, anytime.</p>
         </div>
       </div>
@@ -621,12 +621,20 @@ const breadcrumbs = [
     margin-top: 12px;
   }
   .give-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
     font-size: 13px;
     font-weight: 600;
     color: var(--c-text-muted);
     padding: 8px 16px;
     background: var(--c-warm-gray);
     border-radius: 100px;
+  }
+  .badge-icon {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
   }
 
   /* ══════════════════════════════════════════
@@ -659,7 +667,14 @@ const breadcrumbs = [
     transform: translateY(-6px);
     box-shadow: 0 16px 48px rgba(0,0,0,0.08);
   }
-  .way-icon { font-size: 40px; display: block; margin-bottom: 20px; }
+  .way-icon {
+    display: block;
+    width: 40px;
+    height: 40px;
+    margin: 0 auto 20px;
+    color: var(--c-accent);
+  }
+  .way-icon svg { width: 100%; height: 100%; }
   .way-card h3 { font-size: 20px; margin-bottom: 12px; }
   .way-card p { font-size: 15px; line-height: 1.65; color: var(--c-text-muted); margin-bottom: 20px; }
   .way-link {
