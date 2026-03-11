@@ -118,7 +118,7 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
 
 // ── LCP: Preload featured card image ──
 const featuredImgSrcset = featuredKid?.data.heroImage
-  ? cfCropSrcset(featuredKid.data.heroImage, [640, 960, 1400], 9/21)
+  ? cfCropSrcset(featuredKid.data.heroImage, [640, 720, 960, 1400], 9/21)
   : '';
 const featuredImgSizes = '(max-width: 768px) calc(100vw - 48px), (max-width: 1100px) calc(80vw - 48px), 1200px';
 

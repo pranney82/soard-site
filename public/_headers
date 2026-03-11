@@ -4,7 +4,6 @@
 /*
   X-Content-Type-Options: nosniff
   X-Frame-Options: SAMEORIGIN
-  X-XSS-Protection: 1; mode=block
   Referrer-Policy: strict-origin-when-cross-origin
   Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()
   Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
@@ -36,7 +35,7 @@
 
 ## Cache HTML pages for a short time (Cloudflare will serve stale while revalidating)
 /*.html
-  Cache-Control: public, max-age=300, s-maxage=3600
+  Cache-Control: public, max-age=300, s-maxage=3600, stale-while-revalidate=86400
 
 ## LLM-friendly files
 /llms.txt
