@@ -2671,6 +2671,7 @@
         title: '', slug: '', date: new Date().toISOString().split('T')[0],
         endDate: '', time: '', location: '', address: '',
         description: '', body: '', image: null,
+        streamVideoId: null, videoUrl: null, photos: [],
         ticketUrl: '', ticketPrice: '',
         category: 'other', featured: false, status: 'upcoming', order: 0,
       });
@@ -2846,6 +2847,71 @@
               </div>
             ` : null}
           </div>
+        </div>
+
+        <!-- Video & Photos -->
+        <div class="card" style="margin-bottom: 1rem;">
+          <h3 style="margin-bottom: 1rem;">Video & Photos</h3>
+          <div class="form-row" style="margin-bottom: 1.25rem;">
+            <div class="form-group">
+              <span class="form-label">Cloudflare Stream Video ID</span>
+              <input class="form-input" type="text" value=${data.streamVideoId || ''}
+                onInput=${e => update('streamVideoId', e.target.value || null)} placeholder="abc123def456..." />
+              <span class="form-hint">Stream video ID from Cloudflare. Leave blank for no video.</span>
+            </div>
+            <div class="form-group">
+              <span class="form-label">YouTube URL (fallback)</span>
+              <input class="form-input" type="url" value=${data.videoUrl || ''}
+                onInput=${e => update('videoUrl', e.target.value || null)} placeholder="https://youtube.com/watch?v=..." />
+              <span class="form-hint">Used only if no Stream video ID is set.</span>
+            </div>
+          </div>
+          ${data.streamVideoId ? html`
+            <div style="margin-bottom: 1.25rem; border-radius: 8px; overflow: hidden; max-width: 480px; aspect-ratio: 16/9; background: #000;">
+              <iframe src=${'https://iframe.videodelivery.net/' + data.streamVideoId}
+                style="width: 100%; height: 100%; border: none;" allow="autoplay; fullscreen" allowfullscreen />
+            </div>
+          ` : null}
+
+          <div style="margin-bottom: 0.75rem; display: flex; justify-content: space-between; align-items: center;">
+            <span class="form-label" style="margin: 0;">Event Photos (${(data.photos || []).length})</span>
+            <button class="btn btn-ghost btn-sm" onClick=${() => {
+              update('photos', [...(data.photos || []), { id: '', alt: '' }]);
+            }}>+ Add Photo</button>
+          </div>
+          <span class="form-hint" style="display: block; margin-bottom: 0.75rem;">Cloudflare Image IDs for event gallery. These show on the public events page.</span>
+          ${(data.photos || []).map((photo, idx) => html`
+            <div key=${idx} style="display: flex; gap: 0.75rem; align-items: start; margin-bottom: 0.75rem; padding: 0.75rem; border: 1px solid #E5E4E0; border-radius: 8px;">
+              ${photo.id ? html`
+                <div style="width: 80px; height: 60px; border-radius: 6px; overflow: hidden; flex-shrink: 0;">
+                  <img src=${'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/' + photo.id + '/w=160'}
+                    alt="Preview" style="width: 100%; height: 100%; object-fit: cover;" />
+                </div>
+              ` : null}
+              <div style="flex: 1; display: flex; flex-direction: column; gap: 0.5rem;">
+                <input class="form-input" type="text" value=${photo.id} placeholder="Cloudflare Image ID"
+                  onInput=${e => {
+                    const photos = [...(data.photos || [])];
+                    photos[idx] = { ...photos[idx], id: e.target.value };
+                    update('photos', photos);
+                  }} />
+                <input class="form-input" type="text" value=${photo.alt} placeholder="Alt text (describe the image)"
+                  onInput=${e => {
+                    const photos = [...(data.photos || [])];
+                    photos[idx] = { ...photos[idx], alt: e.target.value };
+                    update('photos', photos);
+                  }} />
+              </div>
+              <button class="btn btn-ghost btn-sm" style="color: #E53E3E; flex-shrink: 0;" onClick=${() => {
+                const photos = [...(data.photos || [])];
+                photos.splice(idx, 1);
+                update('photos', photos);
+              }}>✕</button>
+            </div>
+          `)}
+        </div>
+
+        <div class="card" style="margin-bottom: 1rem;">
           <div class="form-row">
             <div class="form-group">
               <span class="form-label">Display Order</span>

@@ -100,6 +100,12 @@ const events = defineCollection({
     description: z.string(),
     body: z.string().optional(),
     image: z.string().nullable().optional(),
+    streamVideoId: z.string().nullable().optional(),
+    videoUrl: z.string().nullable().optional(),
+    photos: z.array(z.object({
+      id: z.string(),
+      alt: z.string().default(''),
+    })).default([]),
     ticketUrl: z.string().optional(),
     ticketPrice: z.string().optional(),
     category: z.enum(['fundraiser', 'volunteer', 'reveal', 'community', 'other']).default('other'),

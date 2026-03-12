@@ -64,6 +64,14 @@ function formatDay(dateStr: string): string {
   const d = new Date(dateStr + 'T00:00:00');
   return d.getDate().toString();
 }
+
+const CF_IMAGES = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
+const STREAM_DOMAIN = 'customer-cuav5h47lgfe96ql.cloudflarestream.com';
+
+function getYouTubeId(url: string): string | null {
+  const match = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/))([a-zA-Z0-9_-]{11})/);
+  return match ? match[1] : null;
+}
 ---
 
 <BaseLayout
@@ -137,6 +145,69 @@ function formatDay(dateStr: string): string {
                     )}
                   </div>
                   <p class="featured-card__desc">{event.data.description}</p>
+
+                  {/* Video embed */}
+                  {(event.data.streamVideoId || event.data.videoUrl) && (() => {
+                    const streamId = event.data.streamVideoId;
+                    const ytId = event.data.videoUrl ? getYouTubeId(event.data.videoUrl) : null;
+                    return (
+                      <div class="featured-card__video">
+                        {streamId ? (
+                          <div class="ev-video-facade" data-stream-id={streamId} role="button" tabindex="0" aria-label={`Play ${event.data.title} video`}>
+                            <img
+                              src={`https://videodelivery.net/${streamId}/thumbnails/thumbnail.jpg?time=2s&height=400`}
+                              alt={`Video thumbnail for ${event.data.title}`}
+                              loading="lazy" decoding="async" width="640" height="360"
+                              class="ev-video-facade__thumb"
+                            />
+                            <div class="ev-video-facade__play" aria-hidden="true">
+                              <svg width="56" height="40" viewBox="0 0 68 48">
+                                <path d="M66.52 7.74c-.78-2.93-2.49-5.41-5.42-6.19C55.79.13 34 0 34 0S12.21.13 6.9 1.55C3.97 2.33 2.27 4.81 1.48 7.74.06 13.05 0 24 0 24s.06 10.95 1.48 16.26c.78 2.93 2.49 5.41 5.42 6.19C12.21 47.87 34 48 34 48s21.79-.13 27.1-1.55c2.93-.78 4.64-3.26 5.42-6.19C67.94 34.95 68 24 68 24s-.06-10.95-1.48-16.26z" fill="#FFDA24"/>
+                                <path d="M45 24L27 14v20" fill="#373A36"/>
+                              </svg>
+                            </div>
+                          </div>
+                        ) : ytId ? (
+                          <div class="ev-video-facade" data-yt-id={ytId} role="button" tabindex="0" aria-label={`Play ${event.data.title} video`}>
+                            <picture>
+                              <source type="image/webp" srcset={`https://i.ytimg.com/vi_webp/${ytId}/maxresdefault.webp`} />
+                              <img
+                                src={`https://i.ytimg.com/vi/${ytId}/maxresdefault.jpg`}
+                                alt={`Video thumbnail for ${event.data.title}`}
+                                loading="lazy" decoding="async" width="640" height="360"
+                                class="ev-video-facade__thumb"
+                              />
+                            </picture>
+                            <div class="ev-video-facade__play" aria-hidden="true">
+                              <svg width="56" height="40" viewBox="0 0 68 48">
+                                <path d="M66.52 7.74c-.78-2.93-2.49-5.41-5.42-6.19C55.79.13 34 0 34 0S12.21.13 6.9 1.55C3.97 2.33 2.27 4.81 1.48 7.74.06 13.05 0 24 0 24s.06 10.95 1.48 16.26c.78 2.93 2.49 5.41 5.42 6.19C12.21 47.87 34 48 34 48s21.79-.13 27.1-1.55c2.93-.78 4.64-3.26 5.42-6.19C67.94 34.95 68 24 68 24s-.06-10.95-1.48-16.26z" fill="red"/>
+                                <path d="M45 24L27 14v20" fill="#fff"/>
+                              </svg>
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                    );
+                  })()}
+
+                  {/* Photo gallery */}
+                  {event.data.photos && event.data.photos.length > 0 && (
+                    <div class="featured-card__gallery">
+                      {event.data.photos.slice(0, 6).map((photo: { id: string; alt: string }, i: number) => (
+                        <a href={`${CF_IMAGES}/${photo.id}/w=1200`} target="_blank" rel="noopener" class="featured-card__gallery-item">
+                          <img
+                            src={`${CF_IMAGES}/${photo.id}/w=200,h=150,fit=crop`}
+                            alt={photo.alt || `${event.data.title} photo ${i + 1}`}
+                            loading="lazy" decoding="async" width="200" height="150"
+                          />
+                        </a>
+                      ))}
+                      {event.data.photos.length > 6 && (
+                        <div class="featured-card__gallery-more">+{event.data.photos.length - 6} more</div>
+                      )}
+                    </div>
+                  )}
+
                   <div class="featured-card__foot">
                     {event.data.ticketUrl ? (
                       <a href={event.data.ticketUrl} class="btn btn-primary" target="_blank" rel="noopener noreferrer">
@@ -188,6 +259,27 @@ function formatDay(dateStr: string): string {
                     {event.data.time && <span> &middot; {event.data.time}</span>}
                   </p>
                   <p class="ev-item__desc">{event.data.description}</p>
+                  {/* Inline gallery for list items */}
+                  {event.data.photos && event.data.photos.length > 0 && (
+                    <div class="ev-item__gallery">
+                      {event.data.photos.slice(0, 4).map((photo: { id: string; alt: string }, i: number) => (
+                        <a href={`${CF_IMAGES}/${photo.id}/w=1200`} target="_blank" rel="noopener" class="ev-item__gallery-thumb">
+                          <img src={`${CF_IMAGES}/${photo.id}/w=100,h=72,fit=crop`} alt={photo.alt || ''} loading="lazy" width="100" height="72" />
+                        </a>
+                      ))}
+                      {event.data.photos.length > 4 && (
+                        <span class="ev-item__gallery-more">+{event.data.photos.length - 4}</span>
+                      )}
+                    </div>
+                  )}
+                  {(event.data.streamVideoId || event.data.videoUrl) && (
+                    <div class="ev-item__badges">
+                      <span class="ev-item__badge-video">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                        Video
+                      </span>
+                    </div>
+                  )}
                 </div>
                 {event.data.ticketUrl && (
                   <a href={event.data.ticketUrl} class="ev-item__link" target="_blank" rel="noopener noreferrer" aria-label={`Get tickets for ${event.data.title}`}>
@@ -252,6 +344,27 @@ function formatDay(dateStr: string): string {
                   {event.data.location}
                 </p>
                 <p class="ev-item__desc">{event.data.description}</p>
+                {/* Inline gallery for past events */}
+                {event.data.photos && event.data.photos.length > 0 && (
+                  <div class="ev-item__gallery">
+                    {event.data.photos.slice(0, 4).map((photo: { id: string; alt: string }, i: number) => (
+                      <a href={`${CF_IMAGES}/${photo.id}/w=1200`} target="_blank" rel="noopener" class="ev-item__gallery-thumb">
+                        <img src={`${CF_IMAGES}/${photo.id}/w=100,h=72,fit=crop`} alt={photo.alt || ''} loading="lazy" width="100" height="72" />
+                      </a>
+                    ))}
+                    {event.data.photos.length > 4 && (
+                      <span class="ev-item__gallery-more">+{event.data.photos.length - 4}</span>
+                    )}
+                  </div>
+                )}
+                {(event.data.streamVideoId || event.data.videoUrl) && (
+                  <div class="ev-item__badges">
+                    <span class="ev-item__badge-video">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                      Video
+                    </span>
+                  </div>
+                )}
               </div>
             </article>
           ))}
@@ -656,6 +769,131 @@ function formatDay(dateStr: string): string {
     flex-wrap: wrap;
   }
 
+  /* ══════ VIDEO FACADE ══════ */
+  .featured-card__video {
+    margin-top: var(--space-md);
+    margin-bottom: var(--space-md);
+  }
+  .ev-video-facade {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16/9;
+    border-radius: var(--border-radius);
+    overflow: hidden;
+    cursor: pointer;
+    background: #000;
+  }
+  .ev-video-facade__thumb {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    transition: opacity var(--transition-base);
+  }
+  .ev-video-facade:hover .ev-video-facade__thumb {
+    opacity: 0.85;
+  }
+  .ev-video-facade__play {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform var(--transition-base);
+  }
+  .ev-video-facade:hover .ev-video-facade__play {
+    transform: scale(1.08);
+  }
+
+  /* ══════ FEATURED CARD GALLERY ══════ */
+  .featured-card__gallery {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    gap: var(--space-sm);
+    margin-top: var(--space-md);
+    margin-bottom: var(--space-md);
+  }
+  .featured-card__gallery-item {
+    display: block;
+    border-radius: 6px;
+    overflow: hidden;
+    aspect-ratio: 4/3;
+    transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+  }
+  .featured-card__gallery-item:hover {
+    transform: scale(1.04);
+    box-shadow: var(--shadow-md);
+  }
+  .featured-card__gallery-item img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  .featured-card__gallery-more {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--c-warm-gray);
+    border-radius: 6px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--c-text-muted);
+    aspect-ratio: 4/3;
+  }
+
+  /* ══════ LIST ITEM GALLERY ══════ */
+  .ev-item__gallery {
+    display: flex;
+    gap: var(--space-xs);
+    margin-top: var(--space-sm);
+    align-items: center;
+  }
+  .ev-item__gallery-thumb {
+    display: block;
+    width: 56px;
+    height: 40px;
+    border-radius: 4px;
+    overflow: hidden;
+    flex-shrink: 0;
+    transition: transform var(--transition-fast);
+  }
+  .ev-item__gallery-thumb:hover {
+    transform: scale(1.06);
+  }
+  .ev-item__gallery-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  .ev-item__gallery-more {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--c-text-light);
+    padding-left: var(--space-xs);
+  }
+
+  /* ══════ LIST ITEM BADGES ══════ */
+  .ev-item__badges {
+    display: flex;
+    gap: var(--space-sm);
+    margin-top: var(--space-sm);
+  }
+  .ev-item__badge-video {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--c-text-light);
+    background: var(--c-warm-gray);
+    padding: 2px 8px;
+    border-radius: 100px;
+  }
+
   /* ══════ RESPONSIVE ══════ */
   @media (max-width: 640px) {
     .ev-item__date { display: none; }
@@ -667,3 +905,33 @@ function formatDay(dateStr: string): string {
     .featured-card__day { font-size: 1.5rem; }
   }
 </style>
+
+<script>
+  document.addEventListener('astro:page-load', () => {
+    document.querySelectorAll('.ev-video-facade').forEach(el => {
+      const handler = () => {
+        const streamId = el.getAttribute('data-stream-id');
+        const ytId = el.getAttribute('data-yt-id');
+        const iframe = document.createElement('iframe');
+        iframe.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border:none;';
+        iframe.setAttribute('allow', 'autoplay; fullscreen');
+        iframe.setAttribute('allowfullscreen', '');
+        if (streamId) {
+          iframe.src = `https://iframe.videodelivery.net/${streamId}?autoplay=true`;
+        } else if (ytId) {
+          iframe.src = `https://www.youtube-nocookie.com/embed/${ytId}?autoplay=1`;
+        }
+        el.style.position = 'relative';
+        el.innerHTML = '';
+        el.appendChild(iframe);
+        el.removeEventListener('click', handler);
+        el.removeEventListener('keydown', keyHandler);
+        el.removeAttribute('role');
+        el.removeAttribute('tabindex');
+      };
+      const keyHandler = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handler(); } };
+      el.addEventListener('click', handler);
+      el.addEventListener('keydown', keyHandler);
+    });
+  });
+</script>
