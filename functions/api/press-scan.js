@@ -15,8 +15,8 @@ const SEARCH_QUERIES = [
   '"Sunshine on a Ranney Day"',
   '"SOARD" charity',
   '"Peter Ranney" nonprofit',
-  '"Holly Ranney" nonprofit',
-  '"Sunny and Ranney" Roswell',
+  '"Holly Ranney"',
+  '"Sunny and Ranney"',
   '"sunshineonaranneyday"',
 ];
 
