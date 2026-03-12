@@ -1,115 +1,115 @@
 {
-    "name": "Sunshine on a Ranney Day",
-    "shortName": "SOARD",
-    "tagline": "Dreams Built Here",
-    "ein": "45-4773997",
-    "address": {
-        "street": "250 Hembree Park Drive, Suite 106",
-        "city": "Roswell",
-        "state": "GA",
-        "zip": "30076"
+  "name": "Sunshine on a Ranney Day",
+  "shortName": "SOARD",
+  "tagline": "Dreams Built Here",
+  "ein": "45-4773997",
+  "address": {
+    "street": "250 Hembree Park Drive, Suite 106",
+    "city": "Roswell",
+    "state": "GA",
+    "zip": "30076"
+  },
+  "phone": "770.990.2434",
+  "email": "info@soardcharity.com",
+  "social": {
+    "facebook": "https://www.facebook.com/sunshineonaranneyday",
+    "instagram": "https://www.instagram.com/sunshineonaranneyday",
+    "youtube": "https://www.youtube.com/@sunshineonaranneyday",
+    "tiktok": "https://www.tiktok.com/@sunshineonaranneyday"
+  },
+  "homeHero": {
+    "eyebrow": "501(c)(3) Nonprofit · Atlanta, GA · Since 2012",
+    "headlineLine1": "Building <em>dreams</em>,",
+    "headlineLine2": "one room at a time",
+    "lead": "We create life-changing spaces for children with special needs — dream bedrooms, accessible bathrooms, and therapy rooms — all at <strong>no cost to families</strong>.",
+    "cta1Label": "Give Today",
+    "cta1Link": "/donate",
+    "cta2Label": "See Our Work ↓",
+    "cta2Link": "#stories"
+  },
+  "featuredKidSlug": "adrian",
+  "kidShowcase": [
+    {
+      "slug": "liam",
+      "cfId": "kids/liam/hero"
     },
-    "phone": "770.990.2434",
-    "email": "info@soardcharity.com",
-    "social": {
-        "facebook": "https://www.facebook.com/sunshineonaranneyday",
-        "instagram": "https://www.instagram.com/sunshineonaranneyday",
-        "youtube": "https://www.youtube.com/@sunshineonaranneyday",
-        "tiktok": "https://www.tiktok.com/@sunshineonaranneyday"
+    {
+      "slug": "sophia",
+      "cfId": "kids/sophia/hero"
     },
-    "homeHero": {
-        "eyebrow": "501(c)(3) Nonprofit · Atlanta, GA · Since 2012",
-        "headlineLine1": "Building <em>dreams</em>,",
-        "headlineLine2": "one room at a time",
-        "lead": "We create life-changing spaces for children with special needs — dream bedrooms, accessible bathrooms, and therapy rooms — all at <strong>no cost to families</strong>.",
-        "cta1Label": "Give Today",
-        "cta1Link": "/donate",
-        "cta2Label": "See Our Work ↓",
-        "cta2Link": "#stories"
+    {
+      "slug": "jackson",
+      "cfId": "kids/jackson/hero"
     },
-    "featuredKidSlug": "zyah",
-    "kidShowcase": [
-        {
-            "slug": "liam",
-            "cfId": "kids/liam/hero"
-        },
-        {
-            "slug": "sophia",
-            "cfId": "kids/sophia/hero"
-        },
-        {
-            "slug": "jackson",
-            "cfId": "kids/jackson/hero"
-        },
-        {
-            "slug": "griffin",
-            "cfId": "kids/griffin/hero"
-        },
-        {
-            "slug": "madison",
-            "cfId": "kids/madison/hero"
-        },
-        {
-            "slug": "harper",
-            "cfId": "kids/harper/hero"
-        },
-        {
-            "slug": "noah",
-            "cfId": "kids/noah/hero"
-        },
-        {
-            "slug": "summer",
-            "cfId": "kids/summer/hero"
-        }
-    ],
-    "sectionPhotos": {
-        "missionMain": "kids/eli/photo-01",
-        "missionAccent": "kids/georgia/photo-01",
-        "storyPhoto": "kids/zyah/hero",
-        "roomBedroom": "kids/griffin/hero",
-        "roomBath": "kids/zyah/hero",
-        "roomTherapy": "kids/jackson/hero"
+    {
+      "slug": "griffin",
+      "cfId": "kids/griffin/hero"
     },
-    "partnerLogos": [
-        {
-            "id": "partners/gas-south",
-            "name": "Gas South"
-        },
-        {
-            "id": "partners/randall-paulson",
-            "name": "Randall Paulson"
-        },
-        {
-            "id": "partners/kids-r-kids",
-            "name": "Kids R Kids"
-        },
-        {
-            "id": "partners/cambria",
-            "name": "Cambria"
-        },
-        {
-            "id": "partners/mohawk",
-            "name": "Mohawk"
-        },
-        {
-            "id": "partners/jackson-healthcare",
-            "name": "Jackson Healthcare"
-        },
-        {
-            "id": "partners/crosby-design-group",
-            "name": "Crosby Design Group"
-        },
-        {
-            "id": "partners/msi",
-            "name": "MSI"
-        },
-        {
-            "id": "partners/cr-construction",
-            "name": "CR Construction"
-        },
-        {
-            "id": "partners/stag-partners",
-            "name": "Stag Partners"
-        }
-    ]
+    {
+      "slug": "madison",
+      "cfId": "kids/madison/hero"
+    },
+    {
+      "slug": "harper",
+      "cfId": "kids/harper/hero"
+    },
+    {
+      "slug": "noah",
+      "cfId": "kids/noah/hero"
+    },
+    {
+      "slug": "summer",
+      "cfId": "kids/summer/hero"
+    }
+  ],
+  "sectionPhotos": {
+    "missionMain": "kids/eli/photo-01",
+    "missionAccent": "kids/georgia/photo-01",
+    "storyPhoto": "kids/zyah/hero",
+    "roomBedroom": "kids/griffin/hero",
+    "roomBath": "kids/zyah/hero",
+    "roomTherapy": "kids/jackson/hero"
+  },
+  "partnerLogos": [
+    {
+      "id": "partners/gas-south",
+      "name": "Gas South"
+    },
+    {
+      "id": "partners/randall-paulson",
+      "name": "Randall Paulson"
+    },
+    {
+      "id": "partners/kids-r-kids",
+      "name": "Kids R Kids"
+    },
+    {
+      "id": "partners/cambria",
+      "name": "Cambria"
+    },
+    {
+      "id": "partners/mohawk",
+      "name": "Mohawk"
+    },
+    {
+      "id": "partners/jackson-healthcare",
+      "name": "Jackson Healthcare"
+    },
+    {
+      "id": "partners/crosby-design-group",
+      "name": "Crosby Design Group"
+    },
+    {
+      "id": "partners/msi",
+      "name": "MSI"
+    },
+    {
+      "id": "partners/cr-construction",
+      "name": "CR Construction"
+    },
+    {
+      "id": "partners/stag-partners",
+      "name": "Stag Partners"
+    }
+  ]
 }
