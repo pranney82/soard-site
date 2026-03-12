@@ -308,6 +308,7 @@
       margin-bottom: 1rem;
       overflow: hidden;
     }
+    .card:has(.table-wrap) { padding: 0; }
     .card-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
@@ -3371,7 +3372,7 @@
         ${filteredMentions.length > 0 ? html`
           <div class="card">
             <div class="table-wrap"><table>
-              <thead><tr><th>Title</th><th>Source</th><th>Date</th><th>Matched Query</th><th style="width: 140px;"></th></tr></thead>
+              <thead><tr><th>Title</th><th>Source</th><th>Date</th><th>Matched Query</th><th style="width: 190px;"></th></tr></thead>
               <tbody>
                 ${filteredMentions.map(m => html`<tr key=${m.link}>
                   <td>
