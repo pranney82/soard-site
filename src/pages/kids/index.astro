@@ -280,6 +280,7 @@ const featuredQuote = featuredKid?.data.quote
               aria-label="Search kids by name, diagnosis, year, or project type"
               autocomplete="off"
             />
+            <kbd class="search-box__kbd" id="search-kbd" aria-hidden="true">/</kbd>
             <button class="search-box__clear" id="search-clear" type="button" aria-label="Clear search" hidden>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             </button>
@@ -287,6 +288,13 @@ const featuredQuote = featuredKid?.data.quote
 
           <!-- Desktop filters -->
           <div class="toolbar__filters toolbar__filters--desktop">
+            <select id="sort-order" class="filter-select" aria-label="Sort order">
+              <option value="newest">Newest First</option>
+              <option value="oldest">Oldest First</option>
+              <option value="name-az">Name A → Z</option>
+              <option value="name-za">Name Z → A</option>
+            </select>
+
             <select id="filter-year" class="filter-select" aria-label="Filter by year">
               <option value="all">All Years</option>
               {years.map(year => (
@@ -343,6 +351,15 @@ const featuredQuote = featuredKid?.data.quote
             </button>
           </div>
           <div class="bottom-sheet__body">
+            <div class="sheet-group">
+              <label class="sheet-label" for="sheet-sort">Sort By</label>
+              <select id="sheet-sort" class="sheet-select" aria-label="Sort order">
+                <option value="newest">Newest First</option>
+                <option value="oldest">Oldest First</option>
+                <option value="name-az">Name A → Z</option>
+                <option value="name-za">Name Z → A</option>
+              </select>
+            </div>
             <div class="sheet-group">
               <label class="sheet-label" for="sheet-year">Year</label>
               <select id="sheet-year" class="sheet-select" aria-label="Filter by year">
@@ -530,16 +547,95 @@ const featuredQuote = featuredKid?.data.quote
       }).join(', ');
     }
 
+    // ══════════════════════════════════════════
+    // 1. FUZZY SEARCH — bigram similarity
+    // ══════════════════════════════════════════
+    function bigrams(str: string): Set<string> {
+      const s = str.toLowerCase();
+      const bg = new Set<string>();
+      for (let i = 0; i < s.length - 1; i++) bg.add(s.slice(i, i + 2));
+      return bg;
+    }
+
+    function similarity(a: string, b: string): number {
+      if (a === b) return 1;
+      if (a.length < 2 || b.length < 2) return 0;
+      const bgA = bigrams(a);
+      const bgB = bigrams(b);
+      let intersection = 0;
+      bgA.forEach(bg => { if (bgB.has(bg)) intersection++; });
+      return (2 * intersection) / (bgA.size + bgB.size);
+    }
+
+    /** Check if query fuzzy-matches any of the candidate strings.
+     *  Returns match score (0 = no match, 1 = exact). */
+    function fuzzyMatch(query: string, ...candidates: (string | null | undefined)[]): number {
+      const q = query.toLowerCase().trim();
+      if (!q) return 1;
+      // Exact substring match = best score
+      for (const c of candidates) {
+        if (c && c.toLowerCase().includes(q)) return 1;
+      }
+      // Split multi-word queries, test each word
+      const words = q.split(/\s+/).filter(w => w.length > 1);
+      if (words.length === 0) return 0;
+
+      let totalScore = 0;
+      for (const word of words) {
+        let bestWord = 0;
+        for (const c of candidates) {
+          if (!c) continue;
+          // Check each word in the candidate
+          const cWords = c.toLowerCase().split(/[\s,\-\/]+/).filter(w => w.length > 1);
+          for (const cw of cWords) {
+            // Starts-with bonus
+            if (cw.startsWith(word)) { bestWord = Math.max(bestWord, 0.95); continue; }
+            const sim = similarity(word, cw);
+            bestWord = Math.max(bestWord, sim);
+          }
+          // Also check whole candidate
+          if (c.toLowerCase().includes(word)) bestWord = 1;
+        }
+        totalScore += bestWord;
+      }
+      const avgScore = totalScore / words.length;
+      return avgScore >= 0.55 ? avgScore : 0; // threshold for fuzzy match
+    }
+
+    // ══════════════════════════════════════════
+    // 2. SEARCH HIGHLIGHTING
+    // ══════════════════════════════════════════
+    function highlightText(el: HTMLElement, query: string, originalText: string) {
+      if (!query || !originalText) { el.textContent = originalText; return; }
+      const q = query.toLowerCase();
+      const lower = originalText.toLowerCase();
+      const idx = lower.indexOf(q);
+      if (idx === -1) { el.textContent = originalText; return; }
+      // Build highlighted HTML
+      const before = originalText.slice(0, idx);
+      const match = originalText.slice(idx, idx + q.length);
+      const after = originalText.slice(idx + q.length);
+      el.innerHTML = `${escapeHtml(before)}<mark>${escapeHtml(match)}</mark>${escapeHtml(after)}`;
+    }
+
+    function escapeHtml(s: string): string {
+      return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
     // ── State ──
     type KidCard = { slug: string; name: string; year: number | null; diagnosis: string | null; status: string; roomTypes: string[]; heroImage: string | null; };
     let allKidsData: KidCard[] | null = null; // fetched on demand
     let allCardsLoaded = false;
     let statusActive = false;
+    let currentSort = 'newest';
     const BATCH_SIZE = 24;
+    // Track original text for highlighting restore
+    const originalTexts = new WeakMap<HTMLElement, { name: string; diagnosis: string }>();
 
     const searchInput = document.getElementById('kid-search') as HTMLInputElement;
     const yearSelect = document.getElementById('filter-year') as HTMLSelectElement;
     const typeSelect = document.getElementById('filter-type') as HTMLSelectElement;
+    const sortSelect = document.getElementById('sort-order') as HTMLSelectElement;
     const statusBtn = document.getElementById('filter-status') as HTMLButtonElement | null;
     const noResults = document.getElementById('no-results') as HTMLElement;
     const visibleCountEl = document.getElementById('visible-count') as HTMLElement;
@@ -548,6 +644,7 @@ const featuredQuote = featuredKid?.data.quote
     const toolbar = document.getElementById('toolbar') as HTMLElement;
     const featuredCard = document.querySelector('.featured') as HTMLElement | null;
     const searchClear = document.getElementById('search-clear') as HTMLButtonElement;
+    const kbdHint = document.getElementById('search-kbd') as HTMLElement;
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
     const sheet = document.getElementById('bottom-sheet') as HTMLElement;
@@ -555,6 +652,7 @@ const featuredQuote = featuredKid?.data.quote
     const sheetClose = document.getElementById('sheet-close') as HTMLButtonElement;
     const sheetYear = document.getElementById('sheet-year') as HTMLSelectElement;
     const sheetType = document.getElementById('sheet-type') as HTMLSelectElement;
+    const sheetSort = document.getElementById('sheet-sort') as HTMLSelectElement;
     const sheetStatus = document.getElementById('sheet-status') as HTMLButtonElement | null;
     const sheetClear = document.getElementById('sheet-clear') as HTMLButtonElement;
     const sheetApply = document.getElementById('sheet-apply') as HTMLButtonElement;
@@ -567,17 +665,27 @@ const featuredQuote = featuredKid?.data.quote
     const resultLoading = document.getElementById('result-loading') as HTMLElement | null;
     const resultCount = document.getElementById('result-count') as HTMLElement | null;
 
+    // ── Cache original text on initial cards for highlight restore ──
+    function cacheOriginalText(card: HTMLElement) {
+      if (originalTexts.has(card)) return;
+      const nameEl = card.querySelector('.kid-card__name') as HTMLElement | null;
+      const diagEl = card.querySelector('.kid-card__diagnosis') as HTMLElement | null;
+      originalTexts.set(card, {
+        name: nameEl?.textContent || '',
+        diagnosis: diagEl?.textContent || '',
+      });
+    }
+    grid.querySelectorAll<HTMLElement>('.kid-card').forEach(cacheOriginalText);
+
     // ── Fetch full manifest from static JSON (Cloudflare edge-cached) ──
     async function ensureAllData(): Promise<KidCard[]> {
       if (allKidsData) return allKidsData;
-      // Show loading state
       if (resultLoading && resultCount) {
         resultCount.hidden = true;
         resultLoading.hidden = false;
       }
       const res = await fetch('/kids/data.json');
       allKidsData = await res.json();
-      // Hide loading state
       if (resultLoading && resultCount) {
         resultLoading.hidden = true;
         resultCount.hidden = false;
@@ -611,7 +719,8 @@ const featuredQuote = featuredKid?.data.quote
         a.innerHTML = `<div class="kid-card__frame"><div class="kid-card__placeholder" aria-hidden="true"><svg width="48" height="48"><use href="#icon-placeholder"/></svg></div><div class="kid-card__hover-overlay" aria-hidden="true"><span class="kid-card__cta"><span class="kid-card__cta-text">Read their story</span><svg class="kid-card__cta-arrow" width="14" height="14"><use href="#icon-cta-arrow"/></svg></span></div></div><div class="kid-card__info"><span class="kid-card__name">${kid.name}</span>${badgeHtml}</div>${diagHtml}`;
       }
 
-      // Wire shimmer
+      // Cache original text + wire shimmer
+      cacheOriginalText(a);
       const img = a.querySelector<HTMLImageElement>('.kid-card__img');
       if (img) wireShimmer(img);
 
@@ -643,7 +752,6 @@ const featuredQuote = featuredKid?.data.quote
       const currentCount = grid.querySelectorAll('.kid-card').length;
 
       if (!allCardsLoaded) {
-        // Append ALL remaining cards at once (they're lazy-loaded images)
         const remaining = data.slice(currentCount);
         appendCards(remaining);
         allCardsLoaded = true;
@@ -661,15 +769,80 @@ const featuredQuote = featuredKid?.data.quote
     const params = new URLSearchParams(window.location.search);
     if (params.get('year')) yearSelect.value = params.get('year')!;
     if (params.get('type')) typeSelect.value = params.get('type')!;
+    if (params.get('sort') && sortSelect) sortSelect.value = params.get('sort')!;
     if (params.get('q')) {
       searchInput.value = params.get('q')!;
       searchClear.hidden = false;
+      if (kbdHint) kbdHint.classList.add('is-hidden');
     }
     if (params.get('status') === 'in-progress' && statusBtn) {
       statusActive = true;
       statusBtn.classList.add('active');
       statusBtn.setAttribute('aria-pressed', 'true');
     }
+    currentSort = sortSelect?.value || 'newest';
+
+    // ══════════════════════════════════════════
+    // 4. SORT LOGIC
+    // ══════════════════════════════════════════
+    function sortCards() {
+      const cards = Array.from(grid.querySelectorAll<HTMLElement>('.kid-card'));
+      cards.sort((a, b) => {
+        const yearA = parseInt((a.dataset.year || '').replace('year-', '')) || 0;
+        const yearB = parseInt((b.dataset.year || '').replace('year-', '')) || 0;
+        const nameA = a.dataset.name || '';
+        const nameB = b.dataset.name || '';
+        switch (currentSort) {
+          case 'oldest': return yearA - yearB;
+          case 'name-az': return nameA.localeCompare(nameB);
+          case 'name-za': return nameB.localeCompare(nameA);
+          default: return yearB - yearA; // newest
+        }
+      });
+      // Re-append in sorted order (no flicker — same DOM nodes)
+      const frag = document.createDocumentFragment();
+      cards.forEach(c => frag.appendChild(c));
+      grid.appendChild(frag);
+    }
+
+    // ══════════════════════════════════════════
+    // 5. ANIMATED FILTER TRANSITIONS
+    // ══════════════════════════════════════════
+    let hideTimers = new Map<HTMLElement, number>();
+
+    function showCard(card: HTMLElement) {
+      // Cancel any pending hide
+      const timer = hideTimers.get(card);
+      if (timer) { clearTimeout(timer); hideTimers.delete(card); }
+      card.classList.remove('is-hiding');
+      if (card.classList.contains('is-hidden')) {
+        card.classList.remove('is-hidden');
+        if (!reducedMotion) card.classList.add('is-showing');
+      }
+    }
+
+    function hideCard(card: HTMLElement) {
+      if (card.classList.contains('is-hidden')) return;
+      if (reducedMotion) {
+        card.classList.add('is-hidden');
+        return;
+      }
+      card.classList.remove('is-showing');
+      card.classList.add('is-hiding');
+      const timer = window.setTimeout(() => {
+        card.classList.remove('is-hiding');
+        card.classList.add('is-hidden');
+        hideTimers.delete(card);
+      }, 200);
+      hideTimers.set(card, timer);
+    }
+
+    // Clean up animation classes after they finish
+    grid.addEventListener('animationend', (e) => {
+      const card = (e.target as HTMLElement).closest('.kid-card') as HTMLElement | null;
+      if (!card) return;
+      if (card.classList.contains('is-showing')) card.classList.remove('is-showing');
+    }, { signal });
 
     // ── Filtering ──
     async function applyFilters() {
@@ -699,7 +872,7 @@ const featuredQuote = featuredKid?.data.quote
         const fMatchYear = yearFilter === 'all' || fd.year === yearFilter;
         const fMatchType = typeFilter === 'all' || (fd.types ? fd.types.split(' ').includes(typeFilter) : false);
         const fMatchStatus = !statusActive || fd.status === 'in-progress';
-        const fMatchSearch = !query || (fd.name || '').includes(query) || (fd.diagnosis || '').includes(query) || (fd.year || '').replace('year-', '').includes(query) || (fd.types || '').replace(/type-/g, '').replace(/-/g, ' ').includes(query);
+        const fMatchSearch = !query || fuzzyMatch(query, fd.name, fd.diagnosis, (fd.year || '').replace('year-', ''), (fd.types || '').replace(/type-/g, '').replace(/-/g, ' ')) > 0;
         featuredCard.closest('.featured-section')?.classList.toggle('is-filtered', hasFilters && !(fMatchYear && fMatchType && fMatchStatus && fMatchSearch));
       }
 
@@ -710,18 +883,25 @@ const featuredQuote = featuredKid?.data.quote
         const matchesYear = yearFilter === 'all' || year === yearFilter;
         const matchesType = typeFilter === 'all' || (types ? types.split(' ').includes(typeFilter) : false);
         const matchesStatus = !statusActive || status === 'in-progress';
-        // Search across name, diagnosis, year number, and room types
-        const matchesSearch = !query
-          || (name || '').includes(query)
-          || (diagnosis || '').includes(query)
-          || (year || '').replace('year-', '').includes(query)
-          || (types || '').replace(/type-/g, '').replace(/-/g, ' ').includes(query);
+        // Fuzzy search across name, diagnosis, year number, and room types
+        const yearStr = (year || '').replace('year-', '');
+        const typesStr = (types || '').replace(/type-/g, '').replace(/-/g, ' ');
+        const matchScore = fuzzyMatch(query, name, diagnosis, yearStr, typesStr);
 
-        if (matchesYear && matchesType && matchesStatus && matchesSearch) {
-          card.classList.remove('is-hidden');
+        if (matchesYear && matchesType && matchesStatus && matchScore > 0) {
+          showCard(card);
           visibleCount++;
         } else {
-          card.classList.add('is-hidden');
+          hideCard(card);
+        }
+
+        // Search highlighting
+        const orig = originalTexts.get(card);
+        if (orig) {
+          const nameEl = card.querySelector('.kid-card__name') as HTMLElement | null;
+          const diagEl = card.querySelector('.kid-card__diagnosis') as HTMLElement | null;
+          if (nameEl) highlightText(nameEl, query, orig.name);
+          if (diagEl) highlightText(diagEl, query, orig.diagnosis);
         }
       });
 
@@ -745,6 +925,7 @@ const featuredQuote = featuredKid?.data.quote
       typeFilter !== 'all' ? url.searchParams.set('type', typeFilter) : url.searchParams.delete('type');
       query ? url.searchParams.set('q', query) : url.searchParams.delete('q');
       statusActive ? url.searchParams.set('status', 'in-progress') : url.searchParams.delete('status');
+      currentSort !== 'newest' ? url.searchParams.set('sort', currentSort) : url.searchParams.delete('sort');
       history.replaceState(null, '', url.toString());
     }
 
@@ -752,11 +933,23 @@ const featuredQuote = featuredKid?.data.quote
       searchInput.value = '';
       yearSelect.value = 'all';
       typeSelect.value = 'all';
+      if (sortSelect) { sortSelect.value = 'newest'; currentSort = 'newest'; }
       if (statusBtn) {
         statusActive = false;
         statusBtn.classList.remove('active');
         statusBtn.setAttribute('aria-pressed', 'false');
       }
+      // Clear all highlights
+      grid.querySelectorAll<HTMLElement>('.kid-card').forEach(card => {
+        const orig = originalTexts.get(card);
+        if (orig) {
+          const nameEl = card.querySelector('.kid-card__name') as HTMLElement | null;
+          const diagEl = card.querySelector('.kid-card__diagnosis') as HTMLElement | null;
+          if (nameEl) nameEl.textContent = orig.name;
+          if (diagEl) diagEl.textContent = orig.diagnosis;
+        }
+      });
+      sortCards();
       applyFilters();
       searchInput.focus();
     }
@@ -765,14 +958,29 @@ const featuredQuote = featuredKid?.data.quote
     let searchTimer: ReturnType<typeof setTimeout>;
     yearSelect.addEventListener('change', () => applyFilters(), { signal });
     typeSelect.addEventListener('change', () => applyFilters(), { signal });
+    if (sortSelect) {
+      sortSelect.addEventListener('change', () => {
+        currentSort = sortSelect.value;
+        sortCards();
+        applyFilters();
+      }, { signal });
+    }
     searchInput.addEventListener('input', () => {
       clearTimeout(searchTimer);
-      searchTimer = setTimeout(() => applyFilters(), 80);
+      searchTimer = setTimeout(() => applyFilters(), 120);
       searchClear.hidden = !searchInput.value;
+      if (kbdHint) kbdHint.classList.toggle('is-hidden', !!searchInput.value);
+    }, { signal });
+    searchInput.addEventListener('focus', () => {
+      if (kbdHint) kbdHint.classList.add('is-hidden');
+    }, { signal });
+    searchInput.addEventListener('blur', () => {
+      if (kbdHint && !searchInput.value) kbdHint.classList.remove('is-hidden');
     }, { signal });
     searchClear.addEventListener('click', () => {
       searchInput.value = '';
       searchClear.hidden = true;
+      if (kbdHint) kbdHint.classList.remove('is-hidden');
       applyFilters();
       searchInput.focus();
     }, { signal });
@@ -788,11 +996,29 @@ const featuredQuote = featuredKid?.data.quote
       }, { signal });
     }
 
+    // ══════════════════════════════════════════
+    // 3. KEYBOARD SHORTCUT — / to focus search
+    // ══════════════════════════════════════════
+    document.addEventListener('keydown', (e) => {
+      // Don't trigger when typing in inputs/textareas/selects
+      const tag = (e.target as HTMLElement).tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      if ((e.target as HTMLElement).isContentEditable) return;
+
+      if (e.key === '/' || (e.key === 'k' && (e.metaKey || e.ctrlKey))) {
+        e.preventDefault();
+        searchInput.focus();
+        searchInput.select();
+        toolbar.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    }, { signal });
+
     // ── Bottom sheet ──
     let savedScrollY = 0;
     function openSheet() {
       sheetYear.value = yearSelect.value;
       sheetType.value = typeSelect.value;
+      if (sheetSort) sheetSort.value = sortSelect?.value || 'newest';
       if (sheetStatus) {
         sheetStatus.classList.toggle('active', statusActive);
         sheetStatus.setAttribute('aria-pressed', String(statusActive));
@@ -815,6 +1041,9 @@ const featuredQuote = featuredKid?.data.quote
       document.body.style.right = '';
       document.body.style.overflow = '';
       window.scrollTo(0, savedScrollY);
+      // Reset swipe
+      const panel = sheet.querySelector('.bottom-sheet__panel') as HTMLElement;
+      if (panel) { panel.style.transform = ''; panel.style.transition = ''; }
     }
 
     filterBtnMobile?.addEventListener('click', openSheet, { signal });
@@ -829,6 +1058,7 @@ const featuredQuote = featuredKid?.data.quote
     sheetClear?.addEventListener('click', () => {
       sheetYear.value = 'all';
       sheetType.value = 'all';
+      if (sheetSort) sheetSort.value = 'newest';
       if (sheetStatus) {
         sheetStatus.classList.remove('active');
         sheetStatus.setAttribute('aria-pressed', 'false');
@@ -837,6 +1067,11 @@ const featuredQuote = featuredKid?.data.quote
     sheetApply?.addEventListener('click', () => {
       yearSelect.value = sheetYear.value;
       typeSelect.value = sheetType.value;
+      if (sortSelect && sheetSort) {
+        sortSelect.value = sheetSort.value;
+        currentSort = sheetSort.value;
+        sortCards();
+      }
       if (statusBtn && sheetStatus) {
         statusActive = sheetStatus.classList.contains('active');
         statusBtn.classList.toggle('active', statusActive);
@@ -859,6 +1094,61 @@ const featuredQuote = featuredKid?.data.quote
         else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
       }
     }, { signal });
+
+    // ══════════════════════════════════════════
+    // 6. BOTTOM SHEET SWIPE-TO-DISMISS
+    // ══════════════════════════════════════════
+    {
+      const panel = sheet?.querySelector('.bottom-sheet__panel') as HTMLElement;
+      if (panel) {
+        let startY = 0;
+        let currentY = 0;
+        let isDragging = false;
+
+        const handle = panel.querySelector('.bottom-sheet__handle') as HTMLElement;
+        const header = panel.querySelector('.bottom-sheet__header') as HTMLElement;
+        const swipeTargets = [handle, header].filter(Boolean);
+
+        swipeTargets.forEach(target => {
+          target!.addEventListener('touchstart', (e: TouchEvent) => {
+            if (!sheet.classList.contains('is-open')) return;
+            isDragging = true;
+            startY = e.touches[0].clientY;
+            currentY = 0;
+            panel.style.transition = 'none';
+          }, { passive: true, signal });
+        });
+
+        panel.addEventListener('touchmove', (e: TouchEvent) => {
+          if (!isDragging) return;
+          const dy = e.touches[0].clientY - startY;
+          // Only allow downward drag
+          currentY = Math.max(0, dy);
+          panel.style.transform = `translateY(${currentY}px)`;
+          // Fade backdrop proportionally
+          const progress = Math.min(currentY / 300, 1);
+          sheetBackdrop.style.opacity = String(1 - progress * 0.6);
+        }, { passive: true, signal });
+
+        const endSwipe = () => {
+          if (!isDragging) return;
+          isDragging = false;
+          panel.style.transition = '';
+          sheetBackdrop.style.opacity = '';
+
+          if (currentY > 100) {
+            // Dismiss
+            closeSheet();
+          } else {
+            // Snap back
+            panel.style.transform = '';
+          }
+        };
+
+        panel.addEventListener('touchend', endSwipe, { signal });
+        panel.addEventListener('touchcancel', endSwipe, { signal });
+      }
+    }
 
     // ── Staggered reveal ──
     if (!reducedMotion) {
@@ -918,8 +1208,9 @@ const featuredQuote = featuredKid?.data.quote
     grid.querySelectorAll<HTMLImageElement>('.kid-card__img').forEach(wireShimmer);
 
     // ── URL filter restore ──
-    const hasURLFilters = params.get('year') || params.get('type') || params.get('q') || params.get('status');
+    const hasURLFilters = params.get('year') || params.get('type') || params.get('q') || params.get('status') || params.get('sort');
     if (hasURLFilters) {
+      if (currentSort !== 'newest') sortCards();
       applyFilters();
       toolbar.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
@@ -1413,6 +1704,43 @@ const featuredQuote = featuredKid?.data.quote
     color: var(--c-dark);
   }
 
+  /* ── Keyboard Shortcut Hint ── */
+  .search-box__kbd {
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-family: var(--font-body);
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--c-text-light);
+    background: var(--c-warm-gray);
+    border: 1px solid var(--c-border);
+    border-radius: 4px;
+    padding: 2px 7px;
+    line-height: 1.4;
+    pointer-events: none;
+    transition: opacity 0.15s ease;
+  }
+
+  .search-box__kbd.is-hidden {
+    opacity: 0;
+    position: absolute;
+    visibility: hidden;
+    pointer-events: none;
+    transform: translateY(-50%);
+    animation: none;
+  }
+
+  /* ── Search Highlight ── */
+  .kid-card__diagnosis mark,
+  .kid-card__name mark {
+    background: linear-gradient(transparent 20%, rgba(255, 218, 36, 0.5) 20%);
+    color: inherit;
+    border-radius: 2px;
+    padding: 0 1px;
+  }
+
   /* ── Filter Controls (Desktop) ── */
   .toolbar__filters--desktop {
     display: flex;
@@ -1739,7 +2067,30 @@ const featuredQuote = featuredKid?.data.quote
   }
 
   .kid-card.is-hidden {
-    display: none;
+    opacity: 0;
+    transform: scale(0.92);
+    pointer-events: none;
+    position: absolute;
+    visibility: hidden;
+    /* Removed from grid flow but animated out */
+  }
+
+  .kid-card.is-showing {
+    animation: cardShow 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+
+  .kid-card.is-hiding {
+    animation: cardHide 0.2s ease forwards;
+  }
+
+  @keyframes cardShow {
+    from { opacity: 0; transform: scale(0.92); }
+    to { opacity: 1; transform: scale(1); }
+  }
+
+  @keyframes cardHide {
+    from { opacity: 1; transform: scale(1); }
+    to { opacity: 0; transform: scale(0.92); }
   }
 
   /* Load More button */
@@ -2333,6 +2684,18 @@ const featuredQuote = featuredKid?.data.quote
       transform: none;
       animation: none;
       transition: none;
+    }
+
+    .kid-card.is-hiding,
+    .kid-card.is-showing {
+      animation: none;
+    }
+
+    .kid-card.is-hidden {
+      opacity: 0;
+      visibility: hidden;
+      position: absolute;
+      pointer-events: none;
     }
 
     .kid-card__hover-overlay,
