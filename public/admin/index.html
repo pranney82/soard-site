@@ -4958,8 +4958,21 @@
         </div>
 
         <div class="card">
+          <h3 style="margin-bottom: 1rem;">Hero Photo Kid</h3>
+          <p class="text-sm text-muted mb-1">The kid shown in the hero photo at the top of the homepage. Photo auto-pulls from their profile.</p>
+          <div class="form-group">
+            <label class="form-label">Kid</label>
+            <select class="form-input" value=${data.heroKidSlug || data.featuredKidSlug || ''}
+              onChange=${e => updateField('heroKidSlug', e.target.value)}>
+              <option value="">— Select a kid —</option>
+              ${sortedKids.map(k => html`<option value=${k.slug} selected=${k.slug === (data.heroKidSlug || data.featuredKidSlug)}>${k.name}${k.year ? ` (${k.year})` : ''}</option>`)}
+            </select>
+          </div>
+        </div>
+
+        <div class="card">
           <h3 style="margin-bottom: 1rem;">Featured Kid Story</h3>
-          <p class="text-sm text-muted mb-1">The kid slug highlighted in the Featured Story section on the homepage.</p>
+          <p class="text-sm text-muted mb-1">The kid highlighted in the "Featured Story" section further down the homepage. Can be different from the hero photo kid.</p>
           <div class="form-group">
             <label class="form-label">Kid Slug</label>
             <select class="form-input" value=${data.featuredKidSlug || ''}
@@ -5005,7 +5018,6 @@
             ${renderPhotoField('Mission — Main Photo', 'sectionPhotos.missionMain', data.sectionPhotos?.missionMain)}
             ${renderPhotoField('Mission — Accent Photo', 'sectionPhotos.missionAccent', data.sectionPhotos?.missionAccent)}
           </div>
-          ${renderPhotoField('Featured Story Photo', 'sectionPhotos.storyPhoto', data.sectionPhotos?.storyPhoto)}
           <div class="form-row" style="grid-template-columns: 1fr 1fr 1fr;">
             ${renderPhotoField('Room — Bedroom', 'sectionPhotos.roomBedroom', data.sectionPhotos?.roomBedroom)}
             ${renderPhotoField('Room — Bathroom', 'sectionPhotos.roomBath', data.sectionPhotos?.roomBath)}
