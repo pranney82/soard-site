@@ -89,16 +89,11 @@ const breadcrumbs = [
 const INITIAL_BATCH = 24;
 const totalKidsCount = kids.length;
 
-// ── Build-time inline search data (eliminates fetch on first search) ──
-const inlineKidsData = kids.map(kid => ({
-  slug: kid.data.slug,
-  name: kid.data.name,
-  year: kid.data.year || null,
-  diagnosis: kid.data.diagnosis || null,
-  status: kid.data.status || 'completed',
-  roomTypes: kid.data.roomTypes || [],
-  heroImage: kid.data.heroImage || null,
-}));
+// ── LCP preload: first card's hero image ──
+const lcpKid = kids[0];
+const lcpImageUrl = lcpKid?.data.heroImage
+  ? cfUrl(lcpKid.data.heroImage, { w: 340, h: 453, fit: 'cover', gravity: 'face', q: 80 })
+  : null;
 
 // ── Hero face collage: 12 diverse kids across years ──
 const heroFacePool = kids.filter(k => k.data.heroImage?.includes('imagedelivery.net'));
@@ -126,10 +121,10 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
   jsonLd={[itemListSchema, faqSchema]}
   breadcrumbs={breadcrumbs}
 >
-  <!-- Inline search data — zero-fetch, instant availability -->
-  <script is:inline define:vars={{ inlineKidsData }}>
-    window.__KIDS_DATA__ = inlineKidsData;
-  </script>
+  {/* LCP preload — start fetching the first card image before the browser discovers it */}
+  {lcpImageUrl && (
+    <link slot="head" rel="preload" as="image" href={lcpImageUrl} fetchpriority="high" />
+  )}
 
   <!-- ══════ HERO — Face Collage + Headline + Stats ══════ -->
   <section class="kids-hero" aria-label="Meet the Kids">
@@ -150,12 +145,13 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
             aria-label={kid.data.name}
           >
             <img
-              src={cfUrl(kid.data.heroImage, 'w=80,h=80,fit=cover,gravity=face,q=80')}
-              srcset={`${cfUrl(kid.data.heroImage, 'w=80,h=80,fit=cover,gravity=face,q=80')} 1x, ${cfUrl(kid.data.heroImage, 'w=140,h=140,fit=cover,gravity=face,q=80')} 2x`}
+              src={cfUrl(kid.data.heroImage!, { w: 68, h: 68, fit: 'cover', gravity: 'face', q: 80 })}
+              srcset={cfDensitySrcset(kid.data.heroImage!, 68, 68, { fit: 'cover', gravity: 'face', quality: 80 })}
               alt={kid.data.name}
-              width="70"
-              height="70"
-              loading="lazy"
+              width="68"
+              height="68"
+              loading={i < 7 ? 'eager' : 'lazy'}
+              fetchpriority={i < 7 ? 'high' : undefined}
               decoding="async"
             />
           </a>
@@ -206,10 +202,6 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
               class="search-box__input"
               placeholder="Search kids..."
               aria-label="Search kids by name, diagnosis, year, or project type"
-              aria-expanded="false"
-              aria-controls="autocomplete"
-              aria-autocomplete="list"
-              role="combobox"
               autocomplete="off"
             />
             <span class="search-box__count" id="search-count" hidden aria-live="polite"></span>
@@ -217,9 +209,6 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
             <button class="search-box__clear" id="search-clear" type="button" aria-label="Clear search" hidden>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             </button>
-            <!-- Autocomplete dropdown -->
-            <div class="autocomplete" id="autocomplete" hidden role="listbox" aria-label="Search suggestions">
-            </div>
           </div>
 
           <!-- Desktop filters -->
@@ -360,19 +349,20 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
                 <picture>
                   <source
                     media="(max-width: 768px)"
-                    srcset={cfCropSrcset(kid.data.heroImage, [180, 360, 540], 5/4)}
+                    srcset={cfCropSrcset(kid.data.heroImage, [180, 360, 540, 720], 5/4)}
                     sizes="calc(50vw - 24px)"
                   />
                   <img
-                    src={cfUrl(kid.data.heroImage, 'w=340,h=453,fit=cover,gravity=face,q=80')}
+                    src={cfUrl(kid.data.heroImage, { w: 340, h: 453, fit: 'cover', gravity: 'face', q: 80 })}
                     srcset={cfCropSrcset(kid.data.heroImage, [170, 340, 520, 680], 4/3)}
-                    sizes="(max-width: 1100px) calc(33vw - 27px), 260px"
-                    alt={`Photo of ${kid.data.name}${kid.data.diagnosis ? `, diagnosed with ${kid.data.diagnosis}` : ''} — Sunshine on a Ranney Day`}
+                    sizes="(min-width: 1400px) calc(20vw - 24px), (max-width: 1100px) calc(33vw - 27px), 260px"
+                    alt={`Photo of ${kid.data.name}${(kid.data.roomTypes || []).length > 0 ? ` — ${(kid.data.roomTypes || []).join(', ')}` : ''} — Sunshine on a Ranney Day`}
                     class="kid-card__img"
                     width="340"
                     height="453"
-                    loading="lazy"
-                    decoding="async"
+                    loading={i < 8 ? 'eager' : 'lazy'}
+                    fetchpriority={i < 4 ? 'high' : undefined}
+                    decoding={i < 8 ? 'sync' : 'async'}
                   />
                 </picture>
               ) : (
@@ -393,8 +383,8 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
                 <span class="kid-card__badge">In Progress</span>
               )}
             </div>
-            {kid.data.diagnosis && (
-              <span class="kid-card__diagnosis">{kid.data.diagnosis}</span>
+            {(kid.data.roomTypes || []).length > 0 && (
+              <span class="kid-card__diagnosis">{(kid.data.roomTypes || []).join(', ')}</span>
             )}
           </a>
         ))}
@@ -529,22 +519,37 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
     // ══════════════════════════════════════════
     //  MULTI-TERM SEARCH HIGHLIGHTING
     // ══════════════════════════════════════════
-    function highlightText(el: HTMLElement, query: string, originalText: string) {
-      if (!query || !originalText) { el.textContent = originalText; return; }
-      // Split query into individual terms for multi-term highlighting
+    /** Build a highlight regex once per query (called before the card loop). */
+    function buildHighlightRe(query: string): RegExp | null {
+      if (!query) return null;
       const terms = query.toLowerCase().split(/\s+/).filter(t => t.length > 0);
-      if (terms.length === 0) { el.textContent = originalText; return; }
-      // Build a regex that matches any term (longest first to avoid partial overlap)
+      if (terms.length === 0) return null;
       const sorted = [...terms].sort((a, b) => b.length - a.length);
       const escaped = sorted.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-      const re = new RegExp(`(${escaped.join('|')})`, 'gi');
+      return new RegExp(`(${escaped.join('|')})`, 'gi');
+    }
+
+    /** Apply pre-compiled regex to a single element. DOM-based — no innerHTML. */
+    function highlightText(el: HTMLElement, re: RegExp | null, originalText: string) {
+      if (!re || !originalText) { el.textContent = originalText; return; }
       const parts = originalText.split(re);
       if (parts.length === 1) { el.textContent = originalText; return; }
-      el.innerHTML = parts.map(p =>
-        re.test(p) ? `<mark>${escapeHtml(p)}</mark>` : escapeHtml(p)
-      ).join('');
-      // Reset regex lastIndex since we use 'g' flag
+      const frag = document.createDocumentFragment();
+      for (let i = 0; i < parts.length; i++) {
+        const p = parts[i];
+        if (!p) continue;
+        re.lastIndex = 0;
+        if (re.test(p)) {
+          const mark = document.createElement('mark');
+          mark.textContent = p;
+          frag.appendChild(mark);
+        } else {
+          frag.appendChild(document.createTextNode(p));
+        }
+      }
       re.lastIndex = 0;
+      el.textContent = '';
+      el.appendChild(frag);
     }
 
     function escapeHtml(s: string): string {
@@ -552,12 +557,9 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
     }
 
     // ── State ──
-    type KidCard = { slug: string; name: string; year: number | null; diagnosis: string | null; status: string; roomTypes: string[]; heroImage: string | null; };
-    let allKidsData: KidCard[] | null = null;
     let allCardsLoaded = false;
     let statusActive = false;
     let currentSort = 'newest';
-    let isSearching = false;
     const originalTexts = new WeakMap<HTMLElement, { name: string; diagnosis: string }>();
 
     // ── DOM refs ──
@@ -576,7 +578,6 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
     const searchClear = document.getElementById('search-clear') as HTMLButtonElement;
     const searchCountEl = document.getElementById('search-count') as HTMLElement;
     const kbdHint = document.getElementById('search-kbd') as HTMLElement;
-    const autocompleteEl = document.getElementById('autocomplete') as HTMLElement;
     const chipsEl = document.getElementById('filter-chips') as HTMLElement;
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -607,23 +608,10 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
         diagnosis: diagEl?.textContent || '',
       });
     }
-    grid.querySelectorAll<HTMLElement>('.kid-card').forEach(cacheOriginalText);
+    // ── Cached card array — one querySelectorAll, reused everywhere ──
+    let cachedCards = Array.from(grid.querySelectorAll<HTMLElement>('.kid-card'));
+    cachedCards.forEach(cacheOriginalText);
 
-    // ── Inline data — zero fetch, instant availability ──
-    async function ensureAllData(): Promise<KidCard[]> {
-      if (allKidsData) return allKidsData;
-      allKidsData = (window as any).__KIDS_DATA__ || [];
-      buildAutocompleteIndex();
-      return allKidsData!;
-    }
-    // Eagerly hydrate on idle so autocomplete is ready before first keystroke
-    if ('requestIdleCallback' in window) {
-      (window as any).requestIdleCallback(() => ensureAllData());
-    } else {
-      setTimeout(() => ensureAllData(), 100);
-    }
-
-    // ── Astro scope attr — copy from a server-rendered card so scoped CSS applies ──
     // ── Reveal overflow cards (all rendered server-side, hidden beyond initial batch) ──
     function revealAllCards() {
       if (allCardsLoaded) return;
@@ -804,181 +792,6 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
     }, { signal });
 
     // ══════════════════════════════════════════
-    //  AUTOCOMPLETE SEARCH SUGGESTIONS
-    // ══════════════════════════════════════════
-    type ACEntry = { label: string; type: string; count: number; value: string; image?: string; slug?: string };
-    let acIndex: ACEntry[] = [];
-    let acActiveIdx = -1;
-    const CF_BASE_URL = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
-    const RECENT_KEY = 'soard-recent-searches';
-    const MAX_RECENT = 5;
-
-    function getRecentSearches(): string[] {
-      try { return JSON.parse(localStorage.getItem(RECENT_KEY) || '[]').slice(0, MAX_RECENT); }
-      catch { return []; }
-    }
-    function saveRecentSearch(query: string) {
-      const q = query.trim();
-      if (!q || q.length < 2) return;
-      const recent = getRecentSearches().filter(r => r.toLowerCase() !== q.toLowerCase());
-      recent.unshift(q);
-      try { localStorage.setItem(RECENT_KEY, JSON.stringify(recent.slice(0, MAX_RECENT))); } catch {}
-    }
-    function removeRecentSearch(query: string) {
-      const recent = getRecentSearches().filter(r => r !== query);
-      try { localStorage.setItem(RECENT_KEY, JSON.stringify(recent)); } catch {}
-    }
-    function cfThumb(src: string): string {
-      if (!src || !src.includes('imagedelivery.net')) return '';
-      let id = src.replace(`${CF_BASE_URL}/`, '');
-      const lastSlash = id.lastIndexOf('/');
-      if (lastSlash > 0) {
-        const suffix = id.slice(lastSlash + 1);
-        if (['public','nav','footer','og'].includes(suffix) || suffix.includes('=')) id = id.slice(0, lastSlash);
-      }
-      return `${CF_BASE_URL}/${id}/w=56,h=56,fit=cover,gravity=face,q=80`;
-    }
-
-    function buildAutocompleteIndex() {
-      if (!allKidsData || acIndex.length > 0) return;
-      const diagMap = new Map<string, number>();
-      const typeMap = new Map<string, number>();
-      const nameEntries: { name: string; image: string | null; slug: string }[] = [];
-      allKidsData.forEach(kid => {
-        if (kid.diagnosis) {
-          const d = kid.diagnosis;
-          diagMap.set(d, (diagMap.get(d) || 0) + 1);
-        }
-        (kid.roomTypes || []).forEach(t => typeMap.set(t, (typeMap.get(t) || 0) + 1));
-        nameEntries.push({ name: kid.name, image: kid.heroImage, slug: kid.slug });
-      });
-      diagMap.forEach((count, label) => acIndex.push({ label, type: 'diagnosis', count, value: label }));
-      typeMap.forEach((count, label) => acIndex.push({ label, type: 'project', count, value: label }));
-      nameEntries.forEach(({ name, image, slug }) => acIndex.push({ label: name, type: 'name', count: 1, value: name, image: image || undefined, slug }));
-      // Sort by count descending
-      acIndex.sort((a, b) => b.count - a.count);
-    }
-
-    // Build initial index from DOM data attributes if data not yet fetched
-    function buildQuickIndex() {
-      if (acIndex.length > 0) return;
-      const diagMap = new Map<string, number>();
-      const nameList: string[] = [];
-      grid.querySelectorAll<HTMLElement>('.kid-card').forEach(card => {
-        const orig = originalTexts.get(card);
-        if (orig?.diagnosis) diagMap.set(orig.diagnosis, (diagMap.get(orig.diagnosis) || 0) + 1);
-        if (orig?.name) nameList.push(orig.name);
-      });
-      diagMap.forEach((count, label) => acIndex.push({ label, type: 'diagnosis', count, value: label }));
-      nameList.forEach(name => acIndex.push({ label: name, type: 'name', count: 1, value: name }));
-    }
-
-    function showEmptyAutocomplete() {
-      buildQuickIndex();
-      const recent = getRecentSearches();
-      const popular = acIndex.filter(i => i.type === 'diagnosis' && i.count > 1).slice(0, 5);
-      if (recent.length === 0 && popular.length === 0) { hideAutocomplete(); return; }
-
-      acActiveIdx = -1;
-      let html = '';
-      let idx = 0;
-      if (recent.length > 0) {
-        html += `<div class="autocomplete__section" aria-hidden="true">Recent</div>`;
-        recent.forEach(r => {
-          html += `<div class="autocomplete__item autocomplete__item--recent" role="option" data-ac-idx="${idx}" data-ac-value="${escapeHtml(r)}" data-ac-type="recent" id="ac-item-${idx}"><span class="autocomplete__text"><svg class="autocomplete__recent-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg><span class="autocomplete__label">${escapeHtml(r)}</span></span><button class="autocomplete__remove" data-remove-recent="${escapeHtml(r)}" type="button" aria-label="Remove recent search" tabindex="-1"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>`;
-          idx++;
-        });
-      }
-      if (popular.length > 0) {
-        html += `<div class="autocomplete__section" aria-hidden="true">Popular</div>`;
-        popular.forEach(item => {
-          html += `<div class="autocomplete__item" role="option" data-ac-idx="${idx}" data-ac-value="${escapeHtml(item.value)}" data-ac-type="${item.type}" id="ac-item-${idx}"><span class="autocomplete__text"><span class="autocomplete__label">${escapeHtml(item.label)}</span><span class="autocomplete__type">${item.type}</span></span><span class="autocomplete__count">${item.count}</span></div>`;
-          idx++;
-        });
-      }
-
-      autocompleteEl.innerHTML = html;
-      autocompleteEl.hidden = false;
-      searchInput.setAttribute('aria-expanded', 'true');
-      searchInput.setAttribute('aria-activedescendant', '');
-    }
-
-    function showAutocomplete(query: string) {
-      buildQuickIndex();
-      if (!query || query.length < 2) {
-        if (document.activeElement === searchInput) showEmptyAutocomplete();
-        else hideAutocomplete();
-        return;
-      }
-      const q = query.toLowerCase();
-      const matches = acIndex.filter(item => {
-        if (item.label.toLowerCase().includes(q)) return true;
-        return similarity(q, item.label.toLowerCase()) >= 0.5;
-      }).slice(0, 7);
-
-      if (matches.length === 0) { hideAutocomplete(); return; }
-
-      acActiveIdx = -1;
-      let html = '';
-      matches.forEach((item, i) => {
-        const hlLabel = highlightACText(item.label, q);
-        const thumb = item.image ? cfThumb(item.image) : '';
-        const imgHtml = thumb ? `<img class="autocomplete__thumb" src="${thumb}" alt="" width="28" height="28" loading="lazy" />` : '';
-        const linkHtml = item.slug ? `<a href="/kids/${escapeHtml(item.slug)}/" class="autocomplete__link" aria-label="Go to ${escapeHtml(item.label)}" tabindex="-1"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg></a>` : '';
-        html += `<div class="autocomplete__item" role="option" data-ac-idx="${i}" data-ac-value="${escapeHtml(item.value)}" data-ac-type="${item.type}" id="ac-item-${i}"><span class="autocomplete__text">${imgHtml}<span class="autocomplete__label">${hlLabel}</span><span class="autocomplete__type">${item.type}</span></span><span class="autocomplete__meta">${item.type !== 'name' ? `<span class="autocomplete__count">${item.count}</span>` : ''}${linkHtml}</span></div>`;
-      });
-      html += `<div class="autocomplete__footer"><kbd>↑</kbd><kbd>↓</kbd> navigate <kbd>↵</kbd> select <kbd>esc</kbd> close</div>`;
-
-      autocompleteEl.innerHTML = html;
-      autocompleteEl.hidden = false;
-      searchInput.setAttribute('aria-expanded', 'true');
-      searchInput.setAttribute('aria-activedescendant', '');
-    }
-
-    function highlightACText(text: string, query: string): string {
-      const terms = query.split(/\s+/).filter(t => t.length > 0);
-      if (terms.length === 0) return escapeHtml(text);
-      const sorted = [...terms].sort((a, b) => b.length - a.length);
-      const escaped = sorted.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-      const re = new RegExp(`(${escaped.join('|')})`, 'gi');
-      const parts = text.split(re);
-      if (parts.length === 1) return escapeHtml(text);
-      return parts.map(p => re.test(p) ? `<mark>${escapeHtml(p)}</mark>` : escapeHtml(p)).join('');
-    }
-
-    function hideAutocomplete() {
-      autocompleteEl.hidden = true;
-      autocompleteEl.innerHTML = '';
-      acActiveIdx = -1;
-      searchInput.setAttribute('aria-expanded', 'false');
-      searchInput.removeAttribute('aria-activedescendant');
-    }
-
-    function selectAutocompleteItem(idx: number) {
-      const item = autocompleteEl.querySelector(`[data-ac-idx="${idx}"]`) as HTMLElement | null;
-      if (!item) return;
-      searchInput.value = item.dataset.acValue || '';
-      searchClear.hidden = false;
-      if (kbdHint) kbdHint.classList.add('is-hidden');
-      hideAutocomplete();
-      applyFilters();
-    }
-
-    autocompleteEl.addEventListener('click', (e) => {
-      const removeBtn = (e.target as HTMLElement).closest('[data-remove-recent]') as HTMLElement | null;
-      if (removeBtn) {
-        e.stopPropagation();
-        removeRecentSearch(removeBtn.dataset.removeRecent || '');
-        showEmptyAutocomplete();
-        return;
-      }
-      // Direct link arrow navigates to kid profile — let it through
-      if ((e.target as HTMLElement).closest('.autocomplete__link')) return;
-      const item = (e.target as HTMLElement).closest('.autocomplete__item') as HTMLElement | null;
-      if (item) selectAutocompleteItem(parseInt(item.dataset.acIdx || '0'));
-    }, { signal });
-
-    // ══════════════════════════════════════════
     //  ANIMATED FILTER TRANSITIONS
     // ══════════════════════════════════════════
     let hideTimers = new Map<HTMLElement, number>();
@@ -1057,18 +870,19 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
       }
 
       if (query) {
-        // Find the closest fuzzy match from the autocomplete index
-        buildQuickIndex();
+        // Find the closest fuzzy match from card names
         let bestMatch = '';
         let bestScore = 0;
-        acIndex.forEach(item => {
-          const s = similarity(query.toLowerCase(), item.label.toLowerCase());
-          if (s > bestScore && s >= 0.4) { bestScore = s; bestMatch = item.label; }
+        cards.forEach(card => {
+          const name = originalTexts.get(card)?.name || '';
+          if (!name) return;
+          const s = similarity(query.toLowerCase(), name.toLowerCase());
+          if (s > bestScore && s >= 0.4) { bestScore = s; bestMatch = name; }
         });
         if (bestMatch && bestMatch.toLowerCase() !== query.toLowerCase()) {
           suggestions.push({
             label: `"${bestMatch}"`,
-            count: acIndex.find(i => i.label === bestMatch)?.count || 0,
+            count: 1,
             action: () => { searchInput.value = bestMatch; searchClear.hidden = false; applyFilters(); }
           });
         }
@@ -1114,7 +928,7 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
     // ══════════════════════════════════════════
     //  MAIN FILTER LOGIC
     // ══════════════════════════════════════════
-    async function applyFilters() {
+    function applyFilters() {
       const query = searchInput.value.toLowerCase().trim();
       const yearFilter = yearSelect.value;
       const typeFilter = typeSelect.value;
@@ -1123,7 +937,6 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
       // When filtering, reveal all server-rendered cards so filters can match them
       if (hasFilters && !allCardsLoaded) {
         revealAllCards();
-        await ensureAllData(); // still needed for autocomplete index
         if (loadMoreWrap) loadMoreWrap.classList.add('is-hidden');
       }
 
@@ -1261,7 +1074,6 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
           if (diagEl) diagEl.textContent = orig.diagnosis;
         }
       });
-      hideAutocomplete();
       sortCards(false);
       applyFilters();
       searchInput.focus();
@@ -1296,58 +1108,28 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
       }, { signal });
     }
 
-    // Search input: instant autocomplete, debounced single-pass DOM filter + count
+    // Search input: debounced single-pass filter-as-you-type
     searchInput.addEventListener('input', () => {
       clearTimeout(searchTimer);
       const val = searchInput.value;
       searchClear.hidden = !val;
       if (kbdHint) kbdHint.classList.toggle('is-hidden', !!val);
 
-      // Instant: autocomplete only (no card iteration)
-      const trimmed = val.trim();
-      showAutocomplete(trimmed);
-
-      // Debounce the single-pass DOM filter which also updates count
+      // Debounce the single-pass DOM filter
       isSearching = true;
       visibleCountEl.style.opacity = '0.4';
       searchTimer = setTimeout(() => {
         isSearching = false;
         visibleCountEl.style.opacity = '';
         applyFilters();
-        if (trimmed.length >= 2) saveRecentSearch(trimmed);
       }, 80);
-    }, { signal });
-
-    // Autocomplete keyboard navigation
-    searchInput.addEventListener('keydown', (e) => {
-      if (autocompleteEl.hidden) return;
-      const items = autocompleteEl.querySelectorAll<HTMLElement>('.autocomplete__item');
-      if (e.key === 'ArrowDown') {
-        e.preventDefault();
-        acActiveIdx = Math.min(acActiveIdx + 1, items.length - 1);
-        items.forEach((it, i) => it.classList.toggle('is-active', i === acActiveIdx));
-        searchInput.setAttribute('aria-activedescendant', `ac-item-${acActiveIdx}`);
-      } else if (e.key === 'ArrowUp') {
-        e.preventDefault();
-        acActiveIdx = Math.max(acActiveIdx - 1, -1);
-        items.forEach((it, i) => it.classList.toggle('is-active', i === acActiveIdx));
-        searchInput.setAttribute('aria-activedescendant', acActiveIdx >= 0 ? `ac-item-${acActiveIdx}` : '');
-      } else if (e.key === 'Enter' && acActiveIdx >= 0) {
-        e.preventDefault();
-        selectAutocompleteItem(acActiveIdx);
-      } else if (e.key === 'Escape') {
-        hideAutocomplete();
-      }
     }, { signal });
 
     searchInput.addEventListener('focus', () => {
       if (kbdHint) kbdHint.classList.add('is-hidden');
-      showAutocomplete(searchInput.value.trim());
     }, { signal });
     searchInput.addEventListener('blur', () => {
       if (kbdHint && !searchInput.value) kbdHint.classList.remove('is-hidden');
-      // Delay hide so click on item fires first
-      setTimeout(() => hideAutocomplete(), 200);
     }, { signal });
 
     searchClear.addEventListener('click', () => {
@@ -1355,7 +1137,6 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
       searchClear.hidden = true;
       searchCountEl.hidden = true;
       if (kbdHint) kbdHint.classList.remove('is-hidden');
-      hideAutocomplete();
       applyFilters();
       searchInput.focus();
     }, { signal });
@@ -1966,185 +1747,15 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
   }
 
   /* ── Search Highlight ── */
-  .kid-card__diagnosis mark,
+  .kid-card__diagnosis mark {
+    background: linear-gradient(transparent 20%, rgba(255, 218, 36, 0.5) 20%);
+    color: inherit;
+    border-radius: 2px;
+    padding: 0 1px;
+  }
   .kid-card__name mark {
-    background: linear-gradient(transparent 20%, rgba(255, 218, 36, 0.5) 20%);
-    color: inherit;
-    border-radius: 2px;
-    padding: 0 1px;
-  }
-
-  /* ── Autocomplete Dropdown ── */
-  .autocomplete {
-    position: absolute;
-    top: 100%;
-    left: 0;
-    right: 0;
-    margin-top: 4px;
-    background: var(--c-white);
-    border: 1px solid var(--c-border);
-    border-radius: var(--border-radius);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1), 0 2px 8px rgba(0, 0, 0, 0.06);
-    z-index: 50;
-    overflow: hidden;
-    max-height: 280px;
-    overflow-y: auto;
-  }
-
-  .autocomplete[hidden] { display: none; }
-
-  .autocomplete__item {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 10px 14px;
-    cursor: pointer;
-    font-size: 0.85rem;
-    color: var(--c-text);
-    transition: background 0.1s ease;
-    border-bottom: 1px solid var(--c-border);
-    gap: 8px;
-  }
-
-  .autocomplete__item:last-child { border-bottom: none; }
-
-  .autocomplete__item:hover,
-  .autocomplete__item.is-active {
-    background: var(--c-warm-gray);
-  }
-
-  .autocomplete__item.is-active {
-    background: rgba(255, 218, 36, 0.12);
-  }
-
-  .autocomplete__text {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    min-width: 0;
-  }
-
-  .autocomplete__label {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .autocomplete__label mark {
-    background: linear-gradient(transparent 20%, rgba(255, 218, 36, 0.5) 20%);
-    color: inherit;
-    border-radius: 2px;
-    padding: 0 1px;
-  }
-
-  .autocomplete__type {
-    font-size: 0.65rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: var(--c-text-light);
-    flex-shrink: 0;
-    padding: 2px 8px;
-    background: var(--c-warm-gray);
-    border-radius: 100px;
-  }
-
-  .autocomplete__count {
-    font-size: 0.75rem;
-    color: var(--c-text-light);
-    flex-shrink: 0;
-    font-variant-numeric: tabular-nums;
-  }
-
-  .autocomplete__footer {
-    padding: 8px 14px;
-    font-size: 0.72rem;
-    color: var(--c-text-light);
-    text-align: center;
-    border-top: 1px solid var(--c-border);
-    background: var(--c-warm-gray);
-  }
-
-  .autocomplete__footer kbd {
-    font-family: var(--font-body);
-    font-size: 0.65rem;
-    background: var(--c-white);
-    border: 1px solid var(--c-border);
-    border-radius: 3px;
-    padding: 1px 5px;
-    margin: 0 2px;
-  }
-
-  /* ── Autocomplete: section headers ── */
-  .autocomplete__section {
-    padding: 8px 14px 4px;
-    font-size: 0.65rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: var(--c-text-light);
-  }
-
-  /* ── Autocomplete: thumbnails ── */
-  .autocomplete__thumb {
-    width: 28px;
-    height: 28px;
-    border-radius: 50%;
-    object-fit: cover;
-    flex-shrink: 0;
-  }
-
-  /* ── Autocomplete: meta (count + link) ── */
-  .autocomplete__meta {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    flex-shrink: 0;
-  }
-
-  /* ── Autocomplete: direct link arrow ── */
-  .autocomplete__link {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 24px;
-    height: 24px;
-    border-radius: 50%;
-    color: var(--c-text-light);
-    transition: background 0.15s ease, color 0.15s ease;
-  }
-  .autocomplete__link:hover {
-    background: var(--c-warm-gray);
-    color: var(--c-dark);
-  }
-
-  /* ── Autocomplete: recent search items ── */
-  .autocomplete__recent-icon {
-    flex-shrink: 0;
-    color: var(--c-text-light);
-  }
-  .autocomplete__remove {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 24px;
-    height: 24px;
-    border: none;
     background: none;
-    border-radius: 50%;
-    color: var(--c-text-light);
-    cursor: pointer;
-    padding: 0;
-    flex-shrink: 0;
-    opacity: 0;
-    transition: opacity 0.15s ease, background 0.15s ease, color 0.15s ease;
-  }
-  .autocomplete__item--recent:hover .autocomplete__remove {
-    opacity: 1;
-  }
-  .autocomplete__remove:hover {
-    background: var(--c-warm-gray);
-    color: var(--c-dark);
+    color: inherit;
   }
 
   /* ── Search count badge ── */
@@ -2311,7 +1922,7 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
   /* ── Content-Visibility for off-screen cards ── */
   .kid-card {
     content-visibility: auto;
-    contain-intrinsic-size: auto 320px;
+    contain-intrinsic-size: auto 260px auto 400px;
   }
 
   /* ── FLIP transition helper ── */
@@ -2590,12 +2201,9 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
     min-width: 0;
   }
 
-  /* Few results: center cards, limit width */
+  /* Few results: keep standard columns, left-aligned */
   .kids-grid.is-few-results {
-    grid-template-columns: repeat(auto-fit, minmax(200px, 260px));
-    justify-content: center;
-    max-width: 600px;
-    margin-inline: auto;
+    justify-content: start;
   }
 
   /* ── Card ── */
@@ -2603,7 +2211,6 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
     display: block;
     text-decoration: none;
     outline-offset: 4px;
-    border-radius: var(--border-radius-lg);
     transition: opacity 0.25s ease;
     min-width: 0;
   }
@@ -2698,32 +2305,42 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
     background: var(--c-warm-gray);
   }
 
-  /* Shimmer placeholder */
+  /* Shimmer placeholder — uses transform (GPU-composited) instead of background-position */
   .kid-card__frame::after {
     content: '';
     position: absolute;
-    inset: 0;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
     background: linear-gradient(
       110deg,
       transparent 30%,
       rgba(255, 255, 255, 0.4) 50%,
       transparent 70%
     );
-    background-size: 200% 100%;
-    animation: shimmer 1.5s ease-in-out infinite;
     pointer-events: none;
     z-index: 1;
     transition: opacity 0.3s ease;
+    will-change: transform;
+    animation: shimmer 1.5s ease-in-out infinite;
   }
 
   .kid-card__frame.is-loaded::after {
     opacity: 0;
     animation: none;
+    will-change: auto;
+  }
+
+  /* Stop shimmer on hidden/overflow cards to avoid unnecessary paint */
+  .kid-card.is-hidden .kid-card__frame::after,
+  .kid-card.is-overflow .kid-card__frame::after {
+    animation: none;
   }
 
   @keyframes shimmer {
-    from { background-position: 200% 0; }
-    to { background-position: -200% 0; }
+    from { transform: translateX(0); }
+    to { transform: translateX(200%); }
   }
 
   .kid-card__img {
@@ -2871,7 +2488,7 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
 
   .kid-card__diagnosis {
     display: block;
-    padding: 4px 4px 0;
+    padding: 4px 4px 4px;
     font-size: 0.78rem;
     color: var(--c-text-muted);
     line-height: 1.45;
@@ -3098,11 +2715,6 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
     }
     .filter-chips::-webkit-scrollbar { display: none; }
 
-    /* Autocomplete adapts to full width */
-    .autocomplete {
-      max-height: 220px;
-    }
-
     .toolbar__status {
       font-size: 0.75rem;
       margin-top: var(--space-xs);
@@ -3116,8 +2728,7 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
     }
 
     .kids-grid.is-few-results {
-      grid-template-columns: repeat(auto-fit, minmax(150px, 200px));
-      max-width: 440px;
+      grid-template-columns: repeat(2, 1fr);
     }
 
 

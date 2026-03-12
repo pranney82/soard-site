@@ -687,20 +687,28 @@
     .dropzone-text { color: #6B6C72; font-size: 0.9rem; }
     .dropzone-text strong { color: #FFD500; }
 
-    /* ─── Photo Grid ─────────────────────── */
+    /* ─── Photo Grid (drag-to-reorder) ───── */
     .photo-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
       gap: 0.75rem;
       margin-top: 1rem;
     }
+    .photo-grid-item { display: flex; flex-direction: column; }
+    .photo-grid-item[draggable="true"] { cursor: grab; }
+    .photo-grid-item[draggable="true"]:active { cursor: grabbing; }
+    .photo-grid-item.drag-over {
+      outline: 2px dashed #FFD500;
+      outline-offset: 2px;
+      border-radius: 8px;
+    }
+    .photo-grid-item.dragging { opacity: 0.4; }
     .photo-item {
       position: relative;
       aspect-ratio: 4/3;
       border-radius: 8px;
       overflow: hidden;
       background: #E5E4E0;
-      cursor: grab;
     }
     .photo-item img {
       width: 100%; height: 100%;
@@ -798,7 +806,20 @@
     .empty-state-icon { font-size: 3rem; margin-bottom: 0.75rem; color: #9B9CA0; }
     .empty-state-icon svg { width: 48px; height: 48px; }
 
-    /* ─── Back link ──────────────────────── */
+    /* ─── Back link / Breadcrumb ─────────── */
+    .breadcrumb {
+      display: flex; align-items: center; gap: 0.35rem;
+      font-size: 0.85rem; color: #6B6C72;
+      margin-bottom: 1rem;
+    }
+    .breadcrumb button {
+      background: none; border: none; cursor: pointer;
+      color: #6B6C72; font-size: 0.85rem; padding: 0;
+      display: inline-flex; align-items: center; gap: 0.25rem;
+    }
+    .breadcrumb button:hover { color: #FFD500; }
+    .breadcrumb .sep { color: #9B9CA0; font-size: 0.75rem; }
+    .breadcrumb .current { color: #2D2E33; font-weight: 500; }
     .back-link {
       display: inline-flex; align-items: center; gap: 0.35rem;
       font-size: 0.85rem; color: #6B6C72;
@@ -865,6 +886,198 @@
       animation: spin 0.6s linear infinite;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ─── Rich Text Toolbar ────────────── */
+    .rte-wrap { border: 1px solid #E5E4E0; border-radius: 8px; overflow: hidden; transition: border-color 0.15s; }
+    .rte-wrap:focus-within { border-color: #FFD500; box-shadow: 0 0 0 3px rgba(255,213,0,0.15); }
+    .rte-toolbar {
+      display: flex; flex-wrap: wrap; gap: 0.15rem; padding: 0.35rem 0.5rem;
+      background: #F5F4F0; border-bottom: 1px solid #E5E4E0;
+    }
+    .rte-btn {
+      width: 32px; height: 28px; display: flex; align-items: center; justify-content: center;
+      border: none; background: transparent; border-radius: 4px; cursor: pointer;
+      font-size: 0.85rem; font-weight: 600; color: #2D2E33; transition: background 0.1s;
+    }
+    .rte-btn:hover { background: rgba(0,0,0,0.08); }
+    .rte-btn.active { background: #FFD500; }
+    .rte-sep { width: 1px; height: 20px; background: #E5E4E0; margin: 4px 2px; }
+    .rte-body {
+      min-height: 200px; padding: 0.75rem; font-size: 0.95rem; line-height: 1.6;
+      outline: none; background: #fff;
+    }
+    .rte-body p { margin-bottom: 0.5em; }
+    .rte-body h3 { margin-bottom: 0.3em; font-family: 'Libre Baskerville', Georgia, serif; }
+    .rte-body ul, .rte-body ol { margin-left: 1.5em; margin-bottom: 0.5em; }
+    .rte-body blockquote { border-left: 3px solid #FFD500; padding-left: 0.75rem; color: #6B6C72; margin-bottom: 0.5em; }
+    .rte-body a { color: #1a0dab; text-decoration: underline; }
+
+    /* ─── Sortable table headers ──────── */
+    th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
+    th.sortable:hover { color: #2D2E33; }
+    .sort-icon { font-size: 0.7rem; margin-left: 0.25rem; opacity: 0.4; }
+    th.sortable.sorted .sort-icon { opacity: 1; color: #FFD500; }
+
+    /* ─── Bulk actions bar ────────────── */
+    .bulk-bar {
+      display: flex; align-items: center; gap: 0.75rem; padding: 0.6rem 1rem;
+      background: #2D2E33; color: #fff; border-radius: 10px;
+      margin-bottom: 1rem; animation: slideIn 0.2s ease;
+    }
+    .bulk-bar .btn { font-size: 0.82rem; }
+
+    /* ─── Draft status badge ─────────── */
+    .draft-badge {
+      display: inline-flex; align-items: center; gap: 0.3rem;
+      padding: 0.2rem 0.6rem; border-radius: 100px;
+      font-size: 0.75rem; font-weight: 600;
+    }
+    .draft-badge-draft, .draft-badge-published {
+      display: inline-flex; align-items: center; gap: 0.3rem;
+      padding: 0.2rem 0.6rem; border-radius: 100px;
+      font-size: 0.75rem; font-weight: 600;
+    }
+    .draft-badge-draft { background: #FEFCBF; color: #744210; }
+    .draft-badge-published { background: #C6F6D5; color: #22543D; }
+
+    /* ─── Activity log ───────────────── */
+    .activity-item {
+      display: flex; align-items: flex-start; gap: 0.75rem;
+      padding: 0.6rem 0; border-bottom: 1px solid #F5F4F0;
+      font-size: 0.85rem;
+    }
+    .activity-item:last-child { border-bottom: none; }
+    .activity-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      margin-top: 0.35rem; flex-shrink: 0;
+    }
+    .activity-dot-create { background: #38A169; }
+    .activity-dot-update { background: #FFD500; }
+    .activity-dot-delete { background: #E53E3E; }
+
+    /* ─── Form Validation ────────────────── */
+    .form-input.is-invalid, .form-textarea.is-invalid, .form-select.is-invalid {
+      border-color: #E53E3E;
+    }
+    .form-input.is-invalid:focus, .form-textarea.is-invalid:focus, .form-select.is-invalid:focus {
+      border-color: #E53E3E;
+      box-shadow: 0 0 0 3px rgba(229,62,62,0.15);
+    }
+    .form-error {
+      font-size: 0.78rem;
+      color: #E53E3E;
+      margin-top: 0.2rem;
+    }
+    .char-count {
+      font-size: 0.72rem;
+      color: #9B9CA0;
+      text-align: right;
+      margin-top: 0.15rem;
+    }
+    .char-count.over { color: #E53E3E; font-weight: 600; }
+
+    /* ─── Command Palette ──────────────── */
+    .cmd-palette-overlay {
+      position: fixed; inset: 0; z-index: 9999;
+      background: rgba(0,0,0,0.5);
+      display: flex; justify-content: center;
+      padding-top: min(20vh, 140px);
+    }
+    .cmd-palette {
+      width: min(560px, 92vw);
+      max-height: 420px;
+      background: #fff;
+      border-radius: 14px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3), 0 0 0 1px rgba(0,0,0,0.06);
+      display: flex; flex-direction: column;
+      overflow: hidden;
+      align-self: flex-start;
+    }
+    .cmd-palette-input-wrap {
+      display: flex; align-items: center; gap: 0.6rem;
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid var(--border, #E5E4E0);
+    }
+    .cmd-palette-input-wrap svg { width: 18px; height: 18px; stroke: #9B9CA0; flex-shrink: 0; }
+    .cmd-palette-input {
+      flex: 1; border: none; outline: none; font-size: 1rem;
+      background: transparent; color: #2D2E33;
+    }
+    .cmd-palette-input::placeholder { color: #9B9CA0; }
+    .cmd-palette-results {
+      flex: 1; overflow-y: auto; padding: 0.5rem;
+    }
+    .cmd-palette-section {
+      font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em;
+      color: #9B9CA0; padding: 0.4rem 0.6rem 0.25rem; font-weight: 600;
+    }
+    .cmd-palette-item {
+      display: flex; align-items: center; gap: 0.6rem;
+      padding: 0.5rem 0.6rem; border-radius: 8px; cursor: pointer;
+      font-size: 0.9rem; color: #2D2E33; border: none; background: none;
+      width: 100%; text-align: left;
+    }
+    .cmd-palette-item:hover, .cmd-palette-item.active {
+      background: rgba(255,213,0,0.12);
+    }
+    .cmd-palette-item.active { outline: 2px solid #FFD500; }
+    .cmd-palette-item svg { width: 16px; height: 16px; stroke: #6B6C72; flex-shrink: 0; }
+    .cmd-palette-item .cmd-meta {
+      margin-left: auto; font-size: 0.75rem; color: #9B9CA0;
+    }
+    .cmd-palette-footer {
+      display: flex; align-items: center; gap: 1rem; padding: 0.5rem 1rem;
+      border-top: 1px solid var(--border, #E5E4E0); font-size: 0.75rem; color: #9B9CA0;
+    }
+    .cmd-palette-footer kbd {
+      display: inline-flex; align-items: center; justify-content: center;
+      min-width: 22px; height: 20px; padding: 0 4px;
+      background: #F5F4F0; border: 1px solid #E5E4E0; border-radius: 4px;
+      font-size: 0.7rem; font-family: inherit; color: #6B6C72;
+    }
+
+    /* ─── Skeleton Loading ─────────────── */
+    @keyframes shimmer {
+      0% { background-position: -400px 0; }
+      100% { background-position: 400px 0; }
+    }
+    .skeleton {
+      background: linear-gradient(90deg, #eee 25%, #f5f5f5 50%, #eee 75%);
+      background-size: 800px 100%;
+      animation: shimmer 1.5s ease-in-out infinite;
+      border-radius: 8px;
+    }
+    .skeleton-text { height: 14px; margin-bottom: 8px; border-radius: 4px; }
+    .skeleton-text:last-child { width: 60%; }
+    .skeleton-stat { height: 60px; border-radius: 10px; }
+    .skeleton-row { height: 48px; margin-bottom: 4px; border-radius: 6px; }
+    .skeleton-thumb { width: 36px; height: 36px; border-radius: 8px; }
+
+    /* ─── Keyboard Shortcuts Modal ──── */
+    .shortcuts-grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem 2rem;
+    }
+    @media (max-width: 480px) { .shortcuts-grid { grid-template-columns: 1fr; } }
+    .shortcut-item {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0.4rem 0; border-bottom: 1px solid #f0f0f0;
+    }
+    .shortcut-item:last-child { border-bottom: none; }
+    .shortcut-keys { display: flex; gap: 3px; }
+    .shortcut-keys kbd {
+      display: inline-flex; align-items: center; justify-content: center;
+      min-width: 26px; height: 24px; padding: 0 6px;
+      background: #F5F4F0; border: 1px solid #E5E4E0; border-radius: 5px;
+      font-size: 0.75rem; font-family: inherit; color: #2D2E33; font-weight: 500;
+    }
+
+    /* ─── Schedule Publish ──────────── */
+    .schedule-bar {
+      display: flex; align-items: center; gap: 0.75rem;
+      padding: 0.75rem 1rem; background: #F0F4FF; border: 1px solid #BFD4FF;
+      border-radius: 10px; margin-bottom: 1rem; font-size: 0.9rem;
+    }
+    .schedule-bar svg { width: 18px; height: 18px; stroke: #3182CE; flex-shrink: 0; }
 
     /* ─── Utility ─────────────────────────── */
     .text-muted { color: #6B6C72; }
@@ -1017,24 +1230,221 @@
       },
     };
 
+    // ─── Activity Log ──────────────────────
+    const ACTIVITY_KEY = 'soard_activity_log';
+    function logActivity(action, type, name) {
+      try {
+        const log = JSON.parse(localStorage.getItem(ACTIVITY_KEY) || '[]');
+        log.unshift({ action, type, name, ts: Date.now() });
+        // Keep last 50 entries
+        localStorage.setItem(ACTIVITY_KEY, JSON.stringify(log.slice(0, 50)));
+      } catch (e) { /* ignore */ }
+    }
+    function getActivityLog() {
+      try { return JSON.parse(localStorage.getItem(ACTIVITY_KEY) || '[]'); }
+      catch (e) { return []; }
+    }
+
+    function ActivityLog() {
+      const [log, setLog] = useState([]);
+      useEffect(() => {
+        setLog(getActivityLog());
+        const interval = setInterval(() => setLog(getActivityLog()), 5000);
+        return () => clearInterval(interval);
+      }, []);
+
+      const timeAgo = (ts) => {
+        const diff = Date.now() - ts;
+        const mins = Math.floor(diff / 60000);
+        if (mins < 1) return 'just now';
+        if (mins < 60) return mins + 'm ago';
+        const hrs = Math.floor(mins / 60);
+        if (hrs < 24) return hrs + 'h ago';
+        const days = Math.floor(hrs / 24);
+        return days + 'd ago';
+      };
+
+      const actionColor = (action) => {
+        if (action === 'created') return '#38A169';
+        if (action === 'updated' || action === 'published') return '#3182CE';
+        if (action === 'deleted') return '#E53E3E';
+        if (action === 'drafted') return '#D69E2E';
+        return '#718096';
+      };
+
+      if (!log.length) return html`
+        <div class="card" style="text-align: center; color: var(--text-secondary); padding: 2rem;">
+          No activity yet. Changes you make will appear here.
+        </div>
+      `;
+
+      return html`
+        <div class="card" style="padding: 1rem 1.25rem;">
+          <div style="max-height: 400px; overflow-y: auto;">
+            ${log.slice(0, 20).map((entry, i) => html`
+              <div class="activity-item" key=${i}>
+                <div class="activity-dot" style="background: ${actionColor(entry.action)};"></div>
+                <div style="flex: 1; min-width: 0;">
+                  <span style="font-weight: 500; text-transform: capitalize;">${entry.action}</span>
+                  ${' '}
+                  <span style="color: var(--text-secondary);">${entry.type}</span>
+                  ${entry.name ? html` — <strong>${entry.name}</strong>` : ''}
+                </div>
+                <span style="color: var(--text-secondary); font-size: 0.8rem; white-space: nowrap;">${timeAgo(entry.ts)}</span>
+              </div>
+            `)}
+          </div>
+          ${log.length > 20 ? html`<div style="text-align: center; padding-top: 0.5rem; font-size: 0.85rem; color: var(--text-secondary);">+ ${log.length - 20} more</div>` : null}
+        </div>
+      `;
+    }
+
     // ─── Slug Helper ────────────────────────
     function slugify(text) {
       return text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
     }
 
+    // ─── Rich Text Editor ─────────────────────
+    function RichTextEditor({ value, onChange, placeholder, minHeight = 200 }) {
+      const editorRef = useRef();
+      const isUpdating = useRef(false);
+
+      // Init content on mount
+      useEffect(() => {
+        if (editorRef.current && value && !editorRef.current.innerHTML) {
+          editorRef.current.innerHTML = value;
+        }
+      }, []);
+
+      // Sync external value changes (e.g. loading from API)
+      useEffect(() => {
+        if (isUpdating.current) return;
+        if (editorRef.current && value !== undefined) {
+          const current = editorRef.current.innerHTML;
+          // Only update if the external value is substantially different
+          if (current === '' && value) editorRef.current.innerHTML = value;
+        }
+      }, [value]);
+
+      const exec = (cmd, val = null) => {
+        document.execCommand(cmd, false, val);
+        editorRef.current?.focus();
+        handleInput();
+      };
+
+      const handleInput = () => {
+        isUpdating.current = true;
+        onChange(editorRef.current?.innerHTML || '');
+        requestAnimationFrame(() => { isUpdating.current = false; });
+      };
+
+      const handlePaste = (e) => {
+        e.preventDefault();
+        const text = e.clipboardData.getData('text/html') || e.clipboardData.getData('text/plain');
+        // Strip dangerous tags but keep basic formatting
+        const clean = text.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+          .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+          .replace(/\s(style|class|id|on\w+)="[^"]*"/gi, '');
+        document.execCommand('insertHTML', false, clean);
+        handleInput();
+      };
+
+      const insertLink = () => {
+        const url = prompt('Enter URL:');
+        if (url) exec('createLink', url);
+      };
+
+      return html`
+        <div class="rte-wrap">
+          <div class="rte-toolbar">
+            <button type="button" class="rte-btn" onClick=${() => exec('bold')} title="Bold"><b>B</b></button>
+            <button type="button" class="rte-btn" onClick=${() => exec('italic')} title="Italic"><i>I</i></button>
+            <button type="button" class="rte-btn" onClick=${() => exec('underline')} title="Underline"><u>U</u></button>
+            <div class="rte-sep" />
+            <button type="button" class="rte-btn" onClick=${() => exec('formatBlock', '<h3>')} title="Heading">H</button>
+            <button type="button" class="rte-btn" onClick=${() => exec('formatBlock', '<blockquote>')} title="Quote">"</button>
+            <div class="rte-sep" />
+            <button type="button" class="rte-btn" onClick=${() => exec('insertUnorderedList')} title="Bullet list">•</button>
+            <button type="button" class="rte-btn" onClick=${() => exec('insertOrderedList')} title="Numbered list">1.</button>
+            <div class="rte-sep" />
+            <button type="button" class="rte-btn" onClick=${insertLink} title="Insert link">🔗</button>
+            <button type="button" class="rte-btn" onClick=${() => exec('removeFormat')} title="Clear formatting">✕</button>
+          </div>
+          <div class="rte-body" ref=${editorRef}
+            contenteditable="true"
+            style="min-height: ${minHeight}px;"
+            data-placeholder=${placeholder || ''}
+            onInput=${handleInput}
+            onPaste=${handlePaste}
+          />
+        </div>
+      `;
+    }
+
+    // ─── Sortable Table Hook ──────────────────
+    function useSortable(items, defaultKey = null, defaultDir = 'asc') {
+      const [sortKey, setSortKey] = useState(defaultKey);
+      const [sortDir, setSortDir] = useState(defaultDir);
+
+      const toggleSort = (key) => {
+        if (sortKey === key) {
+          setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+        } else {
+          setSortKey(key);
+          setSortDir('asc');
+        }
+      };
+
+      const sorted = useMemo(() => {
+        if (!sortKey) return items;
+        return [...items].sort((a, b) => {
+          let va = a[sortKey], vb = b[sortKey];
+          if (va == null) va = '';
+          if (vb == null) vb = '';
+          if (typeof va === 'number' && typeof vb === 'number') {
+            return sortDir === 'asc' ? va - vb : vb - va;
+          }
+          va = String(va).toLowerCase();
+          vb = String(vb).toLowerCase();
+          if (va < vb) return sortDir === 'asc' ? -1 : 1;
+          if (va > vb) return sortDir === 'asc' ? 1 : -1;
+          return 0;
+        });
+      }, [items, sortKey, sortDir]);
+
+      const SortHeader = ({ field, children }) => html`
+        <th class="sortable ${sortKey === field ? 'sorted' : ''}" onClick=${() => toggleSort(field)}>
+          ${children}
+          <span class="sort-icon">${sortKey === field ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}</span>
+        </th>
+      `;
+
+      return { sorted, sortKey, sortDir, toggleSort, SortHeader };
+    }
+
     // ─── Toast System ───────────────────────
     let toastId = 0;
     function ToastContainer({ toasts }) {
-      return html`<div class="toast-container">
-        ${toasts.map(t => html`<div key=${t.id} class="toast toast-${t.type}">${t.msg}</div>`)}
+      return html`<div class="toast-container" role="status" aria-live="polite" aria-atomic="true">
+        ${toasts.map(t => html`<div key=${t.id} class="toast toast-${t.type}" role="alert">${t.msg}</div>`)}
       </div>`;
     }
 
     // ─── Confirm Modal ──────────────────────
     function ConfirmModal({ title, message, onConfirm, onCancel, danger }) {
-      return html`<div class="modal-overlay" onClick=${onCancel}>
-        <div class="modal" onClick=${e => e.stopPropagation()}>
-          <h3>${title}</h3>
+      // Trap focus and handle Escape key
+      const modalRef = useRef();
+      useEffect(() => {
+        const handler = (e) => { if (e.key === 'Escape') onCancel(); };
+        window.addEventListener('keydown', handler);
+        // Focus the first button
+        modalRef.current?.querySelector('button')?.focus();
+        return () => window.removeEventListener('keydown', handler);
+      }, []);
+
+      return html`<div class="modal-overlay" onClick=${onCancel} role="dialog" aria-modal="true" aria-labelledby="modal-title">
+        <div class="modal" ref=${modalRef} onClick=${e => e.stopPropagation()}>
+          <h3 id="modal-title">${title}</h3>
           <p>${message}</p>
           <div class="modal-buttons">
             <button class="btn btn-ghost" onClick=${onCancel}>Cancel</button>
@@ -1083,7 +1493,7 @@
     }
 
     // ─── Room Type Selector ─────────────────
-    const ROOM_TYPES = ['Dream Bedroom', 'Accessible Bathroom', 'Therapy Room', 'Sensory Room', 'Play Room', 'Other'];
+    const ROOM_TYPES = ['Dream Bedroom', 'Accessible Bathroom', 'Therapy Room', 'Play Room'];
 
     function RoomTypePicker({ value = [], onChange }) {
       const toggle = (type) => {
@@ -1110,12 +1520,36 @@
     // DASHBOARD
     // ═══════════════════════════════════════════
     function Dashboard({ kids, partners, team, events, communityProjects, onNavigate }) {
+      // Compute kids-per-year sparkline data
+      const yearData = useMemo(() => {
+        const counts = {};
+        kids.forEach(k => { if (k.year) counts[k.year] = (counts[k.year] || 0) + 1; });
+        const years = Object.keys(counts).sort();
+        if (years.length < 2) return null;
+        // Cumulative total over years
+        let cumulative = [];
+        let sum = 0;
+        years.forEach(y => { sum += counts[y]; cumulative.push(sum); });
+        return { perYear: years.map(y => counts[y]), cumulative, years };
+      }, [kids]);
+
+      // Compute photos-per-kid distribution
+      const photoData = useMemo(() => {
+        const sorted = kids.map(k => k.photoCount || 0).sort((a, b) => a - b);
+        return sorted.length >= 3 ? sorted : null;
+      }, [kids]);
+
       return html`
         <div class="page-header"><h2>Dashboard</h2></div>
         <div class="stat-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
           <div class="stat-card" style="cursor: pointer;" onClick=${() => onNavigate('kids')}>
-            <div class="stat-number">${kids.length}</div>
-            <div class="stat-label">Kids</div>
+            <div style="display: flex; align-items: flex-end; justify-content: space-between;">
+              <div>
+                <div class="stat-number">${kids.length}</div>
+                <div class="stat-label">Kids</div>
+              </div>
+              ${yearData ? html`<${MiniChart} data=${yearData.cumulative} color="#FFD500" height=${36} width=${80} />` : null}
+            </div>
           </div>
           <div class="stat-card" style="cursor: pointer;" onClick=${() => onNavigate('partners')}>
             <div class="stat-number">${partners.length}</div>
@@ -1126,8 +1560,13 @@
             <div class="stat-label">Team & Board</div>
           </div>
           <div class="stat-card">
-            <div class="stat-number">${kids.filter(k => k.status === 'completed').length}</div>
-            <div class="stat-label">Completed Rooms</div>
+            <div style="display: flex; align-items: flex-end; justify-content: space-between;">
+              <div>
+                <div class="stat-number">${kids.filter(k => k.status === 'completed').length}</div>
+                <div class="stat-label">Completed Rooms</div>
+              </div>
+              ${yearData ? html`<${MiniChart} data=${yearData.perYear} color="#38A169" height=${36} width=${80} />` : null}
+            </div>
           </div>
           <div class="stat-card">
             <div class="stat-number">${kids.filter(k => k.status === 'in-progress').length}</div>
@@ -1142,6 +1581,31 @@
             <div class="stat-label">Community Projects</div>
           </div>
         </div>
+
+        ${yearData ? html`
+          <div class="card" style="margin-bottom: 2rem;">
+            <h3 style="margin-bottom: 1rem;">Growth Over Time</h3>
+            <div style="display: flex; gap: 2rem; flex-wrap: wrap;">
+              <div style="flex: 1; min-width: 200px;">
+                <div style="font-size: 0.8rem; color: #6B6C72; margin-bottom: 0.5rem;">Kids per year</div>
+                <div style="display: flex; align-items: flex-end; gap: 3px; height: 60px;">
+                  ${yearData.years.map((y, i) => {
+                    const max = Math.max(...yearData.perYear);
+                    const h = Math.max(4, (yearData.perYear[i] / max) * 56);
+                    return html`<div key=${y} style="display: flex; flex-direction: column; align-items: center; flex: 1; max-width: 48px;">
+                      <div style="width: 100%; height: ${h}px; background: #FFD500; border-radius: 4px 4px 0 0; min-width: 16px;" title="${y}: ${yearData.perYear[i]} kids"></div>
+                      <div style="font-size: 0.65rem; color: #9B9CA0; margin-top: 2px;">${y.toString().slice(-2)}</div>
+                    </div>`;
+                  })}
+                </div>
+              </div>
+              <div style="flex: 1; min-width: 200px;">
+                <div style="font-size: 0.8rem; color: #6B6C72; margin-bottom: 0.5rem;">Cumulative growth</div>
+                <${MiniChart} data=${yearData.cumulative} color="#FFD500" height=${60} width=${200} />
+              </div>
+            </div>
+          </div>
+        ` : null}
         <div class="card dashboard-recent">
           <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
             <h3>Recent Kids</h3>
@@ -1160,6 +1624,12 @@
             </tbody>
           </table></div>
         </div>
+        <div style="margin-top: 2rem;">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.75rem;">
+            <h3>Recent Activity</h3>
+          </div>
+          <${ActivityLog} />
+        </div>
       `;
     }
 
@@ -1168,6 +1638,7 @@
     // ═══════════════════════════════════════════
     function KidsList({ kids, onEdit, onAdd, onDelete }) {
       const [search, setSearch] = useState('');
+      const [selected, setSelected] = useState(new Set());
       const filtered = useMemo(() => {
         if (!search) return kids;
         const q = search.toLowerCase();
@@ -1177,6 +1648,20 @@
           (k.year + '').includes(q)
         );
       }, [kids, search]);
+
+      const { sorted, SortHeader } = useSortable(filtered, 'year', 'desc');
+
+      const toggleSelect = (slug) => {
+        setSelected(s => { const n = new Set(s); n.has(slug) ? n.delete(slug) : n.add(slug); return n; });
+      };
+      const toggleAll = () => {
+        if (selected.size === sorted.length) setSelected(new Set());
+        else setSelected(new Set(sorted.map(k => k.slug)));
+      };
+      const bulkDelete = () => {
+        sorted.filter(k => selected.has(k.slug)).forEach(k => onDelete(k));
+        setSelected(new Set());
+      };
 
       return html`
         <div class="page-header">
@@ -1190,18 +1675,38 @@
               value=${search} onInput=${e => setSearch(e.target.value)} />
           </div>
         </div>
+        ${selected.size > 0 ? html`
+          <div class="bulk-bar">
+            <span style="font-weight: 600;">${selected.size} selected</span>
+            <button class="btn btn-danger btn-sm" onClick=${bulkDelete}>Delete Selected</button>
+            <button class="btn btn-ghost btn-sm" style="color: #fff; border-color: rgba(255,255,255,0.2);" onClick=${() => setSelected(new Set())}>Clear</button>
+          </div>
+        ` : null}
         <div class="card">
           <div class="table-wrap"><table>
-            <thead><tr><th></th><th>Name</th><th>Age</th><th>Diagnosis</th><th>Year</th><th>Status</th><th>Photos</th><th></th></tr></thead>
+            <thead><tr>
+              <th style="width: 36px;"><input type="checkbox" checked=${selected.size === sorted.length && sorted.length > 0}
+                onChange=${toggleAll} style="width: 16px; height: 16px; accent-color: #FFD500;" /></th>
+              <th></th>
+              <${SortHeader} field="name">Name<//>
+              <${SortHeader} field="age">Age<//>
+              <th>Diagnosis</th>
+              <${SortHeader} field="year">Year<//>
+              <${SortHeader} field="status">Status<//>
+              <${SortHeader} field="photoCount">Photos<//>
+              <th></th>
+            </tr></thead>
             <tbody>
-              ${filtered.length === 0 ? html`<tr><td colspan="8" style="text-align:center; color: #6B6C72;">No kids found</td></tr>` : null}
-              ${filtered.map(k => html`<tr key=${k.slug}>
+              ${sorted.length === 0 ? html`<tr><td colspan="9" style="text-align:center; color: #6B6C72;">No kids found</td></tr>` : null}
+              ${sorted.map(k => html`<tr key=${k.slug} style="${selected.has(k.slug) ? 'background: rgba(255,213,0,0.06);' : ''}">
+                <td><input type="checkbox" checked=${selected.has(k.slug)}
+                  onChange=${() => toggleSelect(k.slug)} style="width: 16px; height: 16px; accent-color: #FFD500;" /></td>
                 <td>${k.heroImage ? html`<img class="td-thumb" src="${k.heroImage}" alt="" />` : html`<div class="td-thumb" />`}</td>
                 <td><strong>${k.name}</strong>${k.featured ? html` <span class="badge" style="background: #FFDA24; color: #373A36; font-size: 0.65rem; padding: 1px 6px; margin-left: 4px;">★</span>` : ''}</td>
                 <td>${k.age || '—'}</td>
                 <td class="text-sm">${(k.diagnosis || '—').slice(0, 50)}${(k.diagnosis || '').length > 50 ? '…' : ''}</td>
                 <td>${k.year || '—'}</td>
-                <td><span class="badge ${k.status === 'completed' ? 'badge-green' : 'badge-yellow'}">${k.status}</span></td>
+                <td><span class="badge ${k.status === 'completed' ? 'badge-green' : 'badge-yellow'}">${k.status}</span>${k.publishStatus === 'draft' ? html` <span class="draft-badge-draft" style="font-size: 0.65rem;">Draft</span>` : ''}</td>
                 <td>${k.photoCount || 0}</td>
                 <td style="white-space: nowrap;">
                   <button class="btn btn-ghost btn-sm" onClick=${() => onEdit(k.slug)}>Edit</button>
@@ -1223,6 +1728,7 @@
       const [deleting, setDeleting] = useState(false);
       const [showDeleteModal, setShowDeleteModal] = useState(false);
       const [dirty, setDirty] = useState(false);
+      const [touched, setTouched] = useState({});
       const [sha, setSha] = useState(null);
       const [data, setData] = useState({
         name: '', slug: '', age: '', diagnosis: '', roomTypes: [],
@@ -1239,6 +1745,7 @@
       const [generatingAlt, setGeneratingAlt] = useState(false);
       const [showCsImagePicker, setShowCsImagePicker] = useState(false);
       const [csImagePickerTarget, setCsImagePickerTarget] = useState(null);
+      const [showPreview, setShowPreview] = useState(false);
       const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
 
       // Generate SEO fields with AI
@@ -1357,8 +1864,38 @@
         return () => window.removeEventListener('beforeunload', handler);
       }, [dirty]);
 
+      // Auto-save to localStorage every 5s when dirty
+      const draftKey = `soard-draft-kid-${slug || 'new'}`;
+      useEffect(() => {
+        if (!dirty) return;
+        const timer = setTimeout(() => {
+          try { localStorage.setItem(draftKey, JSON.stringify(data)); } catch (e) {}
+        }, 5000);
+        return () => clearTimeout(timer);
+      }, [dirty, data]);
+
+      // Recover draft on mount
+      const [hasDraft, setHasDraft] = useState(false);
+      useEffect(() => {
+        if (loading) return;
+        try {
+          const saved = localStorage.getItem(draftKey);
+          if (saved) setHasDraft(true);
+        } catch (e) {}
+      }, [loading]);
+
+      const restoreDraft = () => {
+        try {
+          const saved = JSON.parse(localStorage.getItem(draftKey));
+          if (saved) { setData(saved); setDirty(true); setHasDraft(false); addToast('Draft restored', 'success'); }
+        } catch (e) { addToast('Could not restore draft', 'error'); }
+      };
+      const dismissDraft = () => { localStorage.removeItem(draftKey); setHasDraft(false); };
+      const clearDraft = () => { try { localStorage.removeItem(draftKey); } catch (e) {} };
+
       const safeBack = () => {
         if (dirty && !confirm('You have unsaved changes. Leave without saving?')) return;
+        clearDraft();
         onBack();
       };
 
@@ -1371,6 +1908,7 @@
           );
           if (res.success) {
             addToast(`${data.name} deleted`, 'success');
+            logActivity('deleted', 'kid', data.name);
             setDirty(false);
             onBack();
           } else {
@@ -1413,6 +1951,11 @@
 
       const handlePhotoUpload = async (files) => {
         setDirty(true);
+        // Warn about large files
+        const largeFiles = files.filter(f => f.size > 5 * 1024 * 1024);
+        if (largeFiles.length) {
+          addToast(`${largeFiles.map(f => f.name + ' (' + (f.size / 1024 / 1024).toFixed(1) + 'MB)').join(', ')} — large files may slow upload. Consider under 5MB.`, 'info');
+        }
         for (const file of files) {
           const tempId = Date.now() + '-' + file.name;
           // Add placeholder with local preview
@@ -1462,6 +2005,19 @@
         }));
       };
 
+      // Drag-to-reorder photos
+      const dragIdx = useRef(null);
+      const reorderPhotos = (fromIdx, toIdx) => {
+        if (fromIdx === toIdx) return;
+        setDirty(true);
+        setData(d => {
+          const photos = [...d.photos];
+          const [moved] = photos.splice(fromIdx, 1);
+          photos.splice(toIdx, 0, moved);
+          return { ...d, photos };
+        });
+      };
+
       const setHero = (index) => {
         setDirty(true);
         setData(d => ({ ...d, heroImage: d.photos[index]?.url || '' }));
@@ -1491,7 +2047,8 @@
         addToast('Stream video removed (video still exists in Cloudflare dashboard)', 'info');
       };
 
-      const handleSave = async () => {
+      const handleSave = async (asDraft = false) => {
+        setTouched({ name: true });
         if (!data.name || !data.slug) {
           addToast('Name is required', 'error');
           return;
@@ -1501,6 +2058,7 @@
           // Clean up temp fields before saving
           const saveData = {
             ...data,
+            publishStatus: asDraft ? 'draft' : 'published',
             age: data.age ? Number(data.age) : null,
             year: data.year ? Number(data.year) : null,
             streamVideoId: data.streamVideoId || null,
@@ -1511,14 +2069,17 @@
           };
           const path = `src/content/kids/${data.slug}.json`;
           const content = JSON.stringify(saveData, null, 2);
-          const message = slug
-            ? `Update kid: ${data.name}`
-            : `Add kid: ${data.name}`;
+          const message = asDraft
+            ? `Draft: ${data.name}`
+            : slug ? `Update kid: ${data.name}` : `Add kid: ${data.name}`;
           const res = await api.saveContent(path, content, message, sha || undefined);
           if (res.success) {
             setSha(res.sha);
             setDirty(false);
-            addToast(`${data.name} saved! Site rebuilding...`, 'success');
+            clearDraft();
+            updateField('publishStatus', asDraft ? 'draft' : 'published');
+            addToast(asDraft ? `${data.name} saved as draft` : `${data.name} published! Site rebuilding...`, 'success');
+            logActivity(asDraft ? 'drafted' : (slug ? 'updated' : 'created'), 'kid', data.name);
           } else {
             addToast(`Save failed: ${res.error}`, 'error');
           }
@@ -1559,27 +2120,69 @@
           onConfirm=${handleDelete}
           onCancel=${() => setShowDeleteModal(false)}
         />` : null}
-        <button class="back-link" onClick=${safeBack}>${icons.arrowLeft} Back to Kids</button>
+        ${hasDraft ? html`
+          <div style="display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem 1rem; background: #FEFCF5; border: 1px solid #FFD500; border-radius: 10px; margin-bottom: 1rem;">
+            <span style="font-size: 1.1rem;">${icons.warning}</span>
+            <span style="flex: 1; font-size: 0.9rem;">You have an unsaved draft from a previous session.</span>
+            <button class="btn btn-primary btn-sm" onClick=${restoreDraft}>Restore</button>
+            <button class="btn btn-ghost btn-sm" onClick=${dismissDraft}>Dismiss</button>
+          </div>
+        ` : null}
+        <nav class="breadcrumb" aria-label="Breadcrumb">
+          <button onClick=${safeBack}>Kids</button>
+          <span class="sep">›</span>
+          <span class="current">${slug ? data.name || 'Edit' : 'New Kid'}</span>
+        </nav>
         <div class="page-header">
-          <h2>${slug ? `Edit: ${data.name}` : 'Add New Kid'}</h2>
+          <h2 style="display: flex; align-items: center; gap: 0.5rem;">
+            ${slug ? `Edit: ${data.name}` : 'Add New Kid'}
+            ${slug ? html`<span class=${data.publishStatus === 'draft' ? 'draft-badge-draft' : 'draft-badge-published'}>
+              ${data.publishStatus === 'draft' ? 'Draft' : 'Published'}
+            </span>` : null}
+          </h2>
           <div class="flex gap-1 items-center">
+            ${slug ? html`<button class="btn btn-ghost btn-sm" onClick=${() => setShowPreview(true)}>Preview</button>` : null}
             ${slug ? html`<button class="btn btn-danger btn-sm" onClick=${() => setShowDeleteModal(true)} disabled=${deleting}>
               ${deleting ? html`<span class="spinner" />` : null} Delete
             </button>` : null}
-            <button class="btn btn-primary" onClick=${handleSave} disabled=${saving}>
+            ${slug ? html`<button class="btn btn-ghost btn-sm" onClick=${() => {
+              const dt = prompt('Schedule publish date/time (YYYY-MM-DD HH:MM):', '');
+              if (dt) {
+                const d = new Date(dt);
+                if (isNaN(d.getTime())) { addToast('Invalid date format', 'error'); return; }
+                if (d <= new Date()) { addToast('Scheduled date must be in the future', 'error'); return; }
+                updateField('scheduledPublish', d.toISOString());
+                addToast('Publish scheduled for ' + d.toLocaleString(), 'success');
+              }
+            }}>Schedule</button>` : null}
+            <button class="btn btn-ghost" onClick=${() => handleSave(true)} disabled=${saving}>
+              ${saving ? 'Saving...' : 'Save Draft'}
+            </button>
+            <button class="btn btn-primary" onClick=${() => handleSave(false)} disabled=${saving}>
               ${saving ? html`<span class="spinner" />` : null}
               ${saving ? 'Saving...' : 'Save & Publish'}
             </button>
           </div>
         </div>
 
+        ${data.scheduledPublish ? html`
+          <div class="schedule-bar">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+            <span style="flex: 1;">Scheduled to publish <strong>${new Date(data.scheduledPublish).toLocaleString()}</strong></span>
+            <button class="btn btn-ghost btn-sm" onClick=${() => { updateField('scheduledPublish', null); }}>Cancel Schedule</button>
+          </div>
+        ` : null}
+
         <div class="card">
           <h3 style="margin-bottom: 1rem;">Basic Info</h3>
           <div class="form-row">
             <div class="form-group">
               <label class="form-label">Name *</label>
-              <input class="form-input" value=${data.name}
-                onInput=${e => updateField('name', e.target.value)} placeholder="e.g., Amari" />
+              <input class="form-input ${touched.name && !data.name ? 'is-invalid' : ''}" value=${data.name}
+                onInput=${e => updateField('name', e.target.value)}
+                onBlur=${() => setTouched(t => ({ ...t, name: true }))}
+                placeholder="e.g., Amari" />
+              ${touched.name && !data.name ? html`<div class="form-error">Name is required</div>` : null}
             </div>
             <div class="form-group">
               <label class="form-label">Slug</label>
@@ -1639,9 +2242,10 @@
           <h3 style="margin-bottom: 1rem;">Story</h3>
           <div class="form-group">
             <label class="form-label">Bio</label>
-            <textarea class="form-textarea" style="min-height: 200px;" value=${data.bio || ''}
-              onInput=${e => updateField('bio', e.target.value)}
-              placeholder="Tell this child's story..." />
+            <${RichTextEditor} value=${data.bio || ''}
+              onChange=${v => updateField('bio', v)}
+              placeholder="Tell this child's story..."
+              minHeight=${200} />
           </div>
           <div class="form-group">
             <label class="form-label">Quote (optional)</label>
@@ -1700,14 +2304,20 @@
           ${data.photos.length > 0 ? html`
             <div class="photo-grid">
               ${data.photos.map((photo, i) => html`
-                <div key=${i} style="display: flex; flex-direction: column;">
+                <div key=${photo.url || i} class="photo-grid-item"
+                  draggable=${!uploading[photo._tempId]}
+                  onDragStart=${(e) => { dragIdx.current = i; e.currentTarget.classList.add('dragging'); }}
+                  onDragEnd=${(e) => { dragIdx.current = null; e.currentTarget.classList.remove('dragging'); }}
+                  onDragOver=${(e) => { e.preventDefault(); e.currentTarget.classList.add('drag-over'); }}
+                  onDragLeave=${(e) => { e.currentTarget.classList.remove('drag-over'); }}
+                  onDrop=${(e) => { e.preventDefault(); e.currentTarget.classList.remove('drag-over'); if (dragIdx.current !== null) reorderPhotos(dragIdx.current, i); }}>
                   <div class="photo-item ${photo.url === data.heroImage ? 'is-hero' : ''}">
                     <img src=${photo.url} alt=${photo.alt || ''} loading="lazy" />
                     ${uploading[photo._tempId] ? html`<div class="photo-uploading"><span class="spinner" /></div>` : null}
                     <div class="photo-actions">
                       <button class="photo-btn ${photo.url === data.heroImage ? 'hero-btn' : ''}"
-                        onClick=${() => setHero(i)} title="Set as hero image">${icons.star}</button>
-                      <button class="photo-btn" onClick=${() => removePhoto(i)} title="Remove">${icons.x}</button>
+                        onClick=${(e) => { e.stopPropagation(); setHero(i); }} title="Set as hero image" aria-label="Set as hero image">${icons.star}</button>
+                      <button class="photo-btn" onClick=${(e) => { e.stopPropagation(); removePhoto(i); }} title="Remove" aria-label="Remove photo">${icons.x}</button>
                     </div>
                   </div>
                   <input class="form-input" style="font-size: 0.75rem; padding: 0.3rem 0.4rem; margin-top: 0.25rem; border-radius: 6px;"
@@ -1716,6 +2326,7 @@
                 </div>
               `)}
             </div>
+            <p class="text-sm text-muted mt-1">Drag photos to reorder. First photo is used as default if no hero is set.</p>
           ` : null}
         </div>
 
@@ -1931,9 +2542,76 @@
           </div>
         </div>
 
+        <div class="card">
+          <div class="flex items-center justify-between mb-1">
+            <h3>SEO & Search Preview</h3>
+            <button class="btn btn-ghost btn-sm" onClick=${handleGenerateSeo} disabled=${generatingSeo}>
+              ${generatingSeo ? html`<span class="spinner" />` : icons.sparkle} ${generatingSeo ? 'Generating...' : 'AI Generate'}
+            </button>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Short Description</label>
+            <input class="form-input" value=${data.shortDescription || ''}
+              onInput=${e => updateField('shortDescription', e.target.value)}
+              placeholder="One-line description for cards and listings" />
+            <div class="char-count ${(data.shortDescription || '').length > 160 ? 'over' : ''}">${(data.shortDescription || '').length}/160</div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Meta Description</label>
+            <textarea class="form-textarea" style="min-height: 60px;" value=${data.metaDescription || ''}
+              onInput=${e => updateField('metaDescription', e.target.value)}
+              placeholder="SEO meta description for search engines" />
+            <div class="char-count ${(data.metaDescription || '').length > 160 ? 'over' : ''}">${(data.metaDescription || '').length}/160</div>
+          </div>
+          ${data.name ? html`
+            <div style="margin-top: 0.75rem; padding: 1rem; background: #fff; border: 1px solid #E5E4E0; border-radius: 10px;">
+              <div style="font-size: 0.72rem; color: #202124; font-family: Arial, sans-serif; margin-bottom: 0.2rem;">soard.org › kids › ${data.slug || '...'}</div>
+              <div style="font-size: 1.1rem; color: #1a0dab; font-family: Arial, sans-serif; margin-bottom: 0.25rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${data.name} | Sunshine on a Ranney Day</div>
+              <div style="font-size: 0.82rem; color: #4d5156; font-family: Arial, sans-serif; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">
+                ${data.metaDescription || data.shortDescription || data.bio?.slice(0, 160) || 'No description yet...'}
+              </div>
+            </div>
+          ` : null}
+        </div>
+
+        ${showPreview ? html`
+          <div class="modal-overlay" onClick=${() => setShowPreview(false)}>
+            <div class="modal" style="max-width: 720px; width: 95vw; max-height: 90vh; overflow-y: auto;" onClick=${e => e.stopPropagation()}>
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <h3 style="margin: 0;">Preview: ${data.name}</h3>
+                <button class="btn btn-ghost btn-sm" onClick=${() => setShowPreview(false)}>Close</button>
+              </div>
+              <div style="border: 1px solid var(--border); border-radius: 12px; overflow: hidden;">
+                ${data.photos?.[0] ? html`
+                  <div style="position: relative; padding-top: 56.25%; background: #f0f0f0;">
+                    <img src=${data.photos[0]} alt=${data.name} style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover;" />
+                  </div>
+                ` : html`<div style="padding-top: 56.25%; background: #f5f5f5;"></div>`}
+                <div style="padding: 1.5rem;">
+                  <h2 style="margin: 0 0 0.25rem 0;">${data.name}</h2>
+                  ${data.age ? html`<p style="color: var(--text-secondary); margin: 0 0 0.5rem 0;">Age ${data.age}${data.year ? ` · Class of ${data.year}` : ''}</p>` : null}
+                  ${data.shortDescription ? html`<p style="color: var(--text-secondary); font-style: italic; margin: 0 0 1rem 0;">${data.shortDescription}</p>` : null}
+                  ${data.bio ? html`<div style="line-height: 1.6;" dangerouslySetInnerHTML=${{ __html: data.bio }}></div>` : null}
+                  ${data.photos?.length > 1 ? html`
+                    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 0.5rem; margin-top: 1rem;">
+                      ${data.photos.slice(1).map(p => html`<img src=${p} style="width: 100%; border-radius: 8px; aspect-ratio: 1; object-fit: cover;" />`)}
+                    </div>
+                  ` : null}
+                </div>
+              </div>
+              <div style="margin-top: 1rem; padding: 0.75rem 1rem; background: var(--bg-secondary); border-radius: 8px; font-size: 0.85rem; color: var(--text-secondary);">
+                Status: <strong>${data.publishStatus === 'draft' ? 'Draft — not visible on live site' : 'Published — visible on live site'}</strong>
+              </div>
+            </div>
+          </div>
+        ` : null}
+
         <div class="editor-save-footer">
           <button class="btn btn-ghost" onClick=${safeBack}>Cancel</button>
-          <button class="btn btn-primary" onClick=${handleSave} disabled=${saving}>
+          <button class="btn btn-ghost" onClick=${() => handleSave(true)} disabled=${saving}>
+            ${saving ? 'Saving...' : 'Save Draft'}
+          </button>
+          <button class="btn btn-primary" onClick=${() => handleSave(false)} disabled=${saving}>
             ${saving ? html`<span class="spinner" />` : null}
             ${saving ? 'Saving...' : 'Save & Publish'}
           </button>
@@ -2027,6 +2705,7 @@
           );
           if (res.success) {
             addToast(`${data.name} deleted`, 'success');
+            logActivity('deleted', 'partner', data.name);
             setDirty(false);
             onBack();
           } else {
@@ -2094,6 +2773,7 @@
             setSha(res.sha);
             setDirty(false);
             addToast(`${data.name} saved!`, 'success');
+            logActivity(slug ? 'updated' : 'created', 'partner', data.name);
           } else {
             addToast(`Save failed: ${res.error}`, 'error');
           }
@@ -2113,7 +2793,11 @@
           onConfirm=${handleDelete}
           onCancel=${() => setShowDeleteModal(false)}
         />` : null}
-        <button class="back-link" onClick=${safeBack}>${icons.arrowLeft} Back to Partners</button>
+        <nav class="breadcrumb" aria-label="Breadcrumb">
+          <button onClick=${safeBack}>Partners</button>
+          <span class="sep">›</span>
+          <span class="current">${slug ? data.name || 'Edit' : 'New Partner'}</span>
+        </nav>
         <div class="page-header">
           <h2>${slug ? `Edit: ${data.name}` : 'Add New Partner'}</h2>
           <div class="flex gap-1 items-center">
@@ -2233,6 +2917,7 @@
             setData(newData);
             setDataSha(res.sha || dataSha);
             addToast('Financials saved!', 'success');
+            logActivity('updated', 'financials', '');
           } else {
             addToast('Save failed: ' + (res.error || 'Unknown'), 'error');
           }
@@ -2531,14 +3216,24 @@
     // TEAM LIST
     // ═══════════════════════════════════════════
     function TeamList({ team, onEdit, onAdd, onDelete }) {
-      const teamMembers = team.filter(t => t.group === 'team');
-      const boardMembers = team.filter(t => t.group === 'board');
+      const [search, setSearch] = useState('');
+      const filtered = useMemo(() => {
+        if (!search) return team;
+        const q = search.toLowerCase();
+        return team.filter(t =>
+          t.name.toLowerCase().includes(q) ||
+          (t.title || '').toLowerCase().includes(q) ||
+          (t.organization || '').toLowerCase().includes(q)
+        );
+      }, [team, search]);
+      const teamMembers = filtered.filter(t => t.group === 'team');
+      const boardMembers = filtered.filter(t => t.group === 'board');
 
       const renderTable = (members, label) => html`
         <div class="card" style="margin-bottom: 1rem;">
           <h3 style="margin-bottom: 1rem;">${label} (${members.length})</h3>
           ${members.length === 0 ? html`
-            <p class="text-sm text-muted">No ${label.toLowerCase()} added yet.</p>
+            <p class="text-sm text-muted">No ${label.toLowerCase()} ${search ? 'match your search' : 'added yet'}.</p>
           ` : html`
             <div class="table-wrap"><table>
               <thead><tr><th></th><th>Name</th><th>Title</th><th>Organization</th><th>Order</th><th></th></tr></thead>
@@ -2564,6 +3259,13 @@
         <div class="page-header">
           <h2>Team & Board (${team.length})</h2>
           <button class="btn btn-primary" onClick=${onAdd}>+ Add Member</button>
+        </div>
+        <div class="card" style="margin-bottom: 1rem; padding: 0.75rem 1rem;">
+          <div class="search-bar" style="max-width: 100%;">
+            <span class="search-icon">${icons.search}</span>
+            <input placeholder="Search by name, title, or organization..."
+              value=${search} onInput=${e => setSearch(e.target.value)} />
+          </div>
         </div>
         ${renderTable(teamMembers, 'Team')}
         ${renderTable(boardMembers, 'Board')}
@@ -2607,6 +3309,7 @@
           );
           if (res.success) {
             addToast(`${data.name} deleted`, 'success');
+            logActivity('deleted', 'team member', data.name);
             setDirty(false);
             onBack();
           } else {
@@ -2676,6 +3379,7 @@
             setSha(res.sha);
             setDirty(false);
             addToast(`${data.name} saved!`, 'success');
+            logActivity(slug ? 'updated' : 'created', 'team member', data.name);
           } else {
             addToast(`Save failed: ${res.error}`, 'error');
           }
@@ -2695,7 +3399,11 @@
           onConfirm=${handleDelete}
           onCancel=${() => setShowDeleteModal(false)}
         />` : null}
-        <button class="back-link" onClick=${safeBack}>${icons.arrowLeft} Back to Team</button>
+        <nav class="breadcrumb" aria-label="Breadcrumb">
+          <button onClick=${safeBack}>Team</button>
+          <span class="sep">›</span>
+          <span class="current">${slug ? data.name || 'Edit' : 'New Member'}</span>
+        </nav>
         <div class="page-header">
           <h2>${slug ? `Edit: ${data.name}` : 'Add Team Member'}</h2>
           <div class="flex gap-1 items-center">
@@ -2775,20 +3483,38 @@
     // ARTICLES LIST
     // ═══════════════════════════════════════════
     function ArticlesList({ articles, onEdit, onAdd, onDelete }) {
+      const [search, setSearch] = useState('');
+      const filtered = useMemo(() => {
+        if (!search) return articles;
+        const q = search.toLowerCase();
+        return articles.filter(a =>
+          (a.title || '').toLowerCase().includes(q) ||
+          (a.tag || '').toLowerCase().includes(q) ||
+          (a.slug || '').toLowerCase().includes(q)
+        );
+      }, [articles, search]);
+
       return html`
         <div class="page-header">
           <h2>Resource Articles (${articles.length})</h2>
           <button class="btn btn-primary" onClick=${onAdd}>+ Add Article</button>
         </div>
         <p class="text-sm text-muted" style="margin-bottom: 1rem;">Long-form educational guides that build SEO authority and get cited by AI assistants. These appear at /resources/[slug]/.</p>
+        <div class="card" style="margin-bottom: 1rem; padding: 0.75rem 1rem;">
+          <div class="search-bar" style="max-width: 100%;">
+            <span class="search-icon">${icons.search}</span>
+            <input placeholder="Search by title or tag..."
+              value=${search} onInput=${e => setSearch(e.target.value)} />
+          </div>
+        </div>
         <div class="card">
-          ${articles.length === 0 ? html`
-            <p class="text-sm text-muted">No articles yet. Click "+ Add Article" to create your first resource guide.</p>
+          ${filtered.length === 0 ? html`
+            <p class="text-sm text-muted" style="padding: 1rem;">${search ? 'No articles match your search.' : 'No articles yet. Click "+ Add Article" to create your first resource guide.'}</p>
           ` : html`
             <div class="table-wrap"><table>
               <thead><tr><th>Title</th><th>Tag</th><th>Published</th><th>FAQs</th><th>Order</th><th></th></tr></thead>
               <tbody>
-                ${articles.map(a => html`<tr key=${a.slug}>
+                ${filtered.map(a => html`<tr key=${a.slug}>
                   <td><strong>${a.title}</strong><br/><span class="text-sm text-muted">/resources/${a.slug}/</span></td>
                   <td><span style="background: #FFD500; color: #2D2E33; padding: 0.15rem 0.5rem; border-radius: 100px; font-size: 0.75rem; font-weight: 600;">${a.tag || 'Guide'}</span></td>
                   <td class="text-sm">${a.datePublished || '—'}</td>
@@ -2868,6 +3594,7 @@
             setSha(res.sha);
             setDirty(false);
             addToast(`Article saved & published!`, 'success');
+            logActivity(slug ? 'published' : 'created', 'article', data.title);
           } else {
             addToast(`Save failed: ${res.error}`, 'error');
           }
@@ -2892,13 +3619,15 @@
       if (loading) return html`<div class="card" style="text-align: center; padding: 3rem;"><div class="spinner" style="width: 32px; height: 32px;" /></div>`;
 
       return html`
+        <nav class="breadcrumb" aria-label="Breadcrumb">
+          <button onClick=${onBack}>Articles</button>
+          <span class="sep">›</span>
+          <span class="current">${slug ? data.title || 'Edit' : 'New Article'}</span>
+        </nav>
         <div class="page-header">
-          <div style="display: flex; align-items: center; gap: 0.75rem;">
-            <button class="btn btn-ghost" onClick=${onBack}>${icons.arrowLeft} Back</button>
-            <h2>${slug ? 'Edit Article' : 'New Article'}</h2>
-          </div>
+          <h2>${slug ? 'Edit Article' : 'New Article'}</h2>
           <button class="btn btn-primary" onClick=${handleSave} disabled=${saving}>
-            ${saving ? 'Saving...' : dirty ? '💾 Save & Publish' : 'Save & Publish'}
+            ${saving ? 'Saving...' : dirty ? 'Save & Publish' : 'Save & Publish'}
           </button>
         </div>
 
@@ -3216,6 +3945,7 @@
             setSha(res.sha);
             setDirty(false);
             addToast('Event saved & published!', 'success');
+            logActivity(slug ? 'published' : 'created', 'event', data.title);
           } else {
             addToast(`Save failed: ${res.error}`, 'error');
           }
@@ -3247,13 +3977,15 @@
           }}
           onClose=${() => setShowImagePicker(false)}
         />` : null}
+        <nav class="breadcrumb" aria-label="Breadcrumb">
+          <button onClick=${() => { if (dirty && !confirm('You have unsaved changes. Leave?')) return; onBack(); }}>Events</button>
+          <span class="sep">›</span>
+          <span class="current">${slug ? data.title || 'Edit' : 'New Event'}</span>
+        </nav>
         <div class="page-header">
-          <div style="display: flex; align-items: center; gap: 0.75rem;">
-            <button class="btn btn-ghost" onClick=${() => { if (dirty && !confirm('You have unsaved changes. Leave?')) return; onBack(); }}>${icons.arrowLeft} Back</button>
-            <h2>${slug ? 'Edit Event' : 'New Event'}</h2>
-          </div>
+          <h2>${slug ? 'Edit Event' : 'New Event'}</h2>
           <button class="btn btn-primary" onClick=${handleSave} disabled=${saving}>
-            ${saving ? 'Saving...' : dirty ? '💾 Save & Publish' : 'Save & Publish'}
+            ${saving ? 'Saving...' : 'Save & Publish'}
           </button>
         </div>
 
@@ -3604,6 +4336,7 @@
             setSha(res.sha);
             setDirty(false);
             addToast('Press article saved & published!', 'success');
+            logActivity(slug ? 'published' : 'created', 'press article', data.title);
           } else {
             addToast(`Save failed: ${res.error}`, 'error');
           }
@@ -3626,13 +4359,15 @@
           onSelect=${(id) => { update('image', CF_BASE + '/' + id); setShowImagePicker(false); setDirty(true); }}
           onClose=${() => setShowImagePicker(false)}
         />` : null}
+        <nav class="breadcrumb" aria-label="Breadcrumb">
+          <button onClick=${() => { if (dirty && !confirm('You have unsaved changes. Leave?')) return; onBack(); }}>Press & Media</button>
+          <span class="sep">›</span>
+          <span class="current">${slug ? data.title || 'Edit' : 'New Article'}</span>
+        </nav>
         <div class="page-header">
-          <div style="display: flex; align-items: center; gap: 0.75rem;">
-            <button class="btn btn-ghost" onClick=${() => { if (dirty && !confirm('You have unsaved changes. Leave?')) return; onBack(); }}>${icons.arrowLeft} Back</button>
-            <h2>${slug ? 'Edit Press Article' : 'New Press Article'}</h2>
-          </div>
+          <h2>${slug ? 'Edit Press Article' : 'New Press Article'}</h2>
           <button class="btn btn-primary" onClick=${handleSave} disabled=${saving}>
-            ${saving ? 'Saving...' : dirty ? '💾 Save & Publish' : 'Save & Publish'}
+            ${saving ? 'Saving...' : 'Save & Publish'}
           </button>
         </div>
 
@@ -4052,6 +4787,7 @@
           );
           if (res.success) {
             addToast(`${data.name} deleted`, 'success');
+            logActivity('deleted', 'community project', data.name);
             setDirty(false);
             onBack();
           } else {
@@ -4148,6 +4884,7 @@
             setSha(res.sha);
             setDirty(false);
             addToast('Project saved & published!', 'success');
+            logActivity(slug ? 'published' : 'created', 'community project', data.name);
           } else {
             addToast(`Save failed: ${res.error}`, 'error');
           }
@@ -4168,7 +4905,11 @@
           onConfirm=${handleDelete}
           onCancel=${() => setShowDeleteModal(false)}
         />` : null}
-        <button class="back-link" onClick=${safeBack}>${icons.arrowLeft} Back to Community Projects</button>
+        <nav class="breadcrumb" aria-label="Breadcrumb">
+          <button onClick=${safeBack}>Community Projects</button>
+          <span class="sep">›</span>
+          <span class="current">${slug ? data.name || 'Edit' : 'New Project'}</span>
+        </nav>
         <div class="page-header">
           <h2>${slug ? `Edit: ${data.name}` : 'Add New Community Project'}</h2>
           <div class="flex gap-1 items-center">
@@ -4341,6 +5082,7 @@
           if (res.success) {
             setSha(res.sha);
             addToast('FAQs saved & published!', 'success');
+            logActivity('updated', 'FAQs', '');
           } else {
             addToast(`Failed: ${res.error}`, 'error');
           }
@@ -4978,6 +5720,7 @@
           if (res.success) {
             setSha(res.sha);
             addToast('Settings saved!', 'success');
+            logActivity('updated', 'site settings', '');
           } else {
             addToast(`Failed: ${res.error}`, 'error');
           }
@@ -5361,6 +6104,7 @@
           if (res.success) {
             setSha(res.sha);
             addToast('Our Story page saved!', 'success');
+            logActivity('updated', 'Our Story page', '');
           } else {
             addToast(`Failed: ${res.error}`, 'error');
           }
@@ -5647,6 +6391,7 @@
           if (res.success) {
             setSha(res.sha);
             addToast('Media Kit saved!', 'success');
+            logActivity('updated', 'media kit', '');
           } else {
             addToast(`Failed: ${res.error}`, 'error');
           }
@@ -5958,6 +6703,240 @@
     // ═══════════════════════════════════════════
     // MAIN APP
     // ═══════════════════════════════════════════
+    // ═══════════════════════════════════════════
+    // COMMAND PALETTE (Cmd+K)
+    // ═══════════════════════════════════════════
+    function CommandPalette({ open, onClose, onNavigate, kids, partners, team, articles, events, communityProjects, press }) {
+      const [query, setQuery] = useState('');
+      const [activeIdx, setActiveIdx] = useState(0);
+      const inputRef = useRef();
+
+      useEffect(() => {
+        if (open) { setQuery(''); setActiveIdx(0); setTimeout(() => inputRef.current?.focus(), 50); }
+      }, [open]);
+
+      const allItems = useMemo(() => {
+        const pages = [
+          { type: 'page', label: 'Dashboard', id: 'dashboard', section: 'Pages' },
+          { type: 'page', label: 'Kids', id: 'kids', section: 'Pages' },
+          { type: 'page', label: 'Partners', id: 'partners', section: 'Pages' },
+          { type: 'page', label: 'Team', id: 'team', section: 'Pages' },
+          { type: 'page', label: 'Articles', id: 'articles', section: 'Pages' },
+          { type: 'page', label: 'Events', id: 'events', section: 'Pages' },
+          { type: 'page', label: 'Community Projects', id: 'community', section: 'Pages' },
+          { type: 'page', label: 'Press & Media', id: 'press', section: 'Pages' },
+          { type: 'page', label: 'FAQs', id: 'faq', section: 'Pages' },
+          { type: 'page', label: 'Financials', id: 'financials', section: 'Pages' },
+          { type: 'page', label: 'Site Settings', id: 'settings', section: 'Pages' },
+          { type: 'page', label: 'Our Story', id: 'ourstory', section: 'Pages' },
+          { type: 'page', label: 'Media Kit', id: 'mediakit', section: 'Pages' },
+          { type: 'page', label: 'Press Monitor', id: 'press-monitor', section: 'Pages' },
+          { type: 'page', label: 'Deploys', id: 'deploys', section: 'Pages' },
+        ];
+        const actions = [
+          { type: 'action', label: 'Add New Kid', id: 'kids', slug: '', section: 'Actions' },
+          { type: 'action', label: 'Add New Partner', id: 'partners', slug: '', section: 'Actions' },
+          { type: 'action', label: 'Add New Team Member', id: 'team', slug: '', section: 'Actions' },
+          { type: 'action', label: 'Add New Article', id: 'articles', slug: '', section: 'Actions' },
+          { type: 'action', label: 'Add New Event', id: 'events', slug: '', section: 'Actions' },
+        ];
+        const content = [
+          ...(kids || []).map(k => ({ type: 'content', label: k.name, meta: `Kid · ${k.year || ''}`, id: 'kids', slug: k.slug, section: 'Content' })),
+          ...(partners || []).map(p => ({ type: 'content', label: p.name, meta: `Partner · ${p.tier || ''}`, id: 'partners', slug: p.slug, section: 'Content' })),
+          ...(team || []).map(t => ({ type: 'content', label: t.name, meta: `Team · ${t.title || ''}`, id: 'team', slug: t.slug, section: 'Content' })),
+          ...(articles || []).map(a => ({ type: 'content', label: a.title || a.name, meta: 'Article', id: 'articles', slug: a.slug, section: 'Content' })),
+          ...(events || []).map(e => ({ type: 'content', label: e.title || e.name, meta: `Event · ${e.date || ''}`, id: 'events', slug: e.slug, section: 'Content' })),
+          ...(communityProjects || []).map(c => ({ type: 'content', label: c.name, meta: `Community · ${c.year || ''}`, id: 'community', slug: c.slug, section: 'Content' })),
+          ...(press || []).map(p => ({ type: 'content', label: p.title || p.name, meta: `Press · ${p.outlet || ''}`, id: 'press', slug: p.slug, section: 'Content' })),
+        ];
+        return [...pages, ...actions, ...content];
+      }, [kids, partners, team, articles, events, communityProjects, press]);
+
+      const filtered = useMemo(() => {
+        if (!query) return allItems.slice(0, 20);
+        const q = query.toLowerCase();
+        return allItems.filter(item =>
+          item.label.toLowerCase().includes(q) ||
+          (item.meta || '').toLowerCase().includes(q) ||
+          item.section.toLowerCase().includes(q)
+        ).slice(0, 20);
+      }, [query, allItems]);
+
+      useEffect(() => { setActiveIdx(0); }, [query]);
+
+      const handleSelect = (item) => {
+        if (item.type === 'action') {
+          onNavigate(item.id, '');
+        } else if (item.type === 'content') {
+          onNavigate(item.id, item.slug);
+        } else {
+          onNavigate(item.id);
+        }
+        onClose();
+      };
+
+      const handleKeyDown = (e) => {
+        if (e.key === 'ArrowDown') { e.preventDefault(); setActiveIdx(i => Math.min(i + 1, filtered.length - 1)); }
+        else if (e.key === 'ArrowUp') { e.preventDefault(); setActiveIdx(i => Math.max(i - 1, 0)); }
+        else if (e.key === 'Enter' && filtered[activeIdx]) { handleSelect(filtered[activeIdx]); }
+        else if (e.key === 'Escape') { onClose(); }
+      };
+
+      if (!open) return null;
+
+      // Group by section
+      const grouped = [];
+      let lastSection = null;
+      filtered.forEach((item, i) => {
+        if (item.section !== lastSection) {
+          grouped.push({ type: 'section', label: item.section });
+          lastSection = item.section;
+        }
+        grouped.push({ ...item, flatIdx: i });
+      });
+
+      const typeIcon = (type) => {
+        if (type === 'page') return html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/></svg>`;
+        if (type === 'action') return html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/></svg>`;
+        return html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>`;
+      };
+
+      return html`
+        <div class="cmd-palette-overlay" onClick=${onClose}>
+          <div class="cmd-palette" onClick=${e => e.stopPropagation()}>
+            <div class="cmd-palette-input-wrap">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+              <input ref=${inputRef} class="cmd-palette-input"
+                placeholder="Search pages, content, actions..."
+                value=${query} onInput=${e => setQuery(e.target.value)}
+                onKeyDown=${handleKeyDown} />
+              <kbd style="font-size: 0.7rem; padding: 2px 6px; background: #f0f0f0; border: 1px solid #ddd; border-radius: 4px; color: #999;">esc</kbd>
+            </div>
+            <div class="cmd-palette-results">
+              ${filtered.length === 0 ? html`<div style="padding: 2rem; text-align: center; color: #9B9CA0;">No results for "${query}"</div>` : null}
+              ${grouped.map(item => {
+                if (item.type === 'section') return html`<div class="cmd-palette-section">${item.label}</div>`;
+                return html`<button key=${item.label + item.id}
+                  class="cmd-palette-item ${item.flatIdx === activeIdx ? 'active' : ''}"
+                  onClick=${() => handleSelect(item)}
+                  onMouseEnter=${() => setActiveIdx(item.flatIdx)}>
+                  ${typeIcon(item.type)}
+                  <span>${item.label}</span>
+                  ${item.meta ? html`<span class="cmd-meta">${item.meta}</span>` : null}
+                </button>`;
+              })}
+            </div>
+            <div class="cmd-palette-footer">
+              <span><kbd>↑</kbd><kbd>↓</kbd> navigate</span>
+              <span><kbd>↵</kbd> open</span>
+              <span><kbd>esc</kbd> close</span>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    // ═══════════════════════════════════════════
+    // KEYBOARD SHORTCUTS MODAL
+    // ═══════════════════════════════════════════
+    function KeyboardShortcuts({ open, onClose }) {
+      useEffect(() => {
+        if (!open) return;
+        const handler = (e) => { if (e.key === 'Escape') onClose(); };
+        window.addEventListener('keydown', handler);
+        return () => window.removeEventListener('keydown', handler);
+      }, [open]);
+
+      if (!open) return null;
+
+      const isMac = navigator.platform.includes('Mac');
+      const mod = isMac ? '⌘' : 'Ctrl';
+
+      const shortcuts = [
+        { keys: [mod, 'K'], label: 'Command palette' },
+        { keys: [mod, 'S'], label: 'Save current item' },
+        { keys: ['?'], label: 'Keyboard shortcuts' },
+        { keys: ['Esc'], label: 'Close modal / palette' },
+        { keys: ['↑', '↓'], label: 'Navigate palette results' },
+        { keys: ['Enter'], label: 'Select palette result' },
+        { keys: ['Tab'], label: 'Next form field' },
+        { keys: [mod, 'B'], label: 'Bold (rich text)' },
+        { keys: [mod, 'I'], label: 'Italic (rich text)' },
+        { keys: [mod, 'U'], label: 'Underline (rich text)' },
+      ];
+
+      return html`
+        <div class="modal-overlay" onClick=${onClose}>
+          <div class="modal" style="max-width: 520px;" onClick=${e => e.stopPropagation()}>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+              <h3 style="margin: 0;">Keyboard Shortcuts</h3>
+              <button class="btn btn-ghost btn-sm" onClick=${onClose}>Close</button>
+            </div>
+            <div class="shortcuts-grid">
+              ${shortcuts.map(s => html`
+                <div class="shortcut-item">
+                  <span style="font-size: 0.9rem;">${s.label}</span>
+                  <div class="shortcut-keys">
+                    ${s.keys.map(k => html`<kbd>${k}</kbd>`)}
+                  </div>
+                </div>
+              `)}
+            </div>
+            <div style="margin-top: 1rem; padding-top: 0.75rem; border-top: 1px solid #f0f0f0; font-size: 0.8rem; color: #9B9CA0; text-align: center;">
+              Press <kbd style="display: inline; padding: 1px 5px; background: #f0f0f0; border: 1px solid #ddd; border-radius: 3px; font-size: 0.75rem;">?</kbd> anywhere to show this dialog
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    // ═══════════════════════════════════════════
+    // SKELETON DASHBOARD LOADER
+    // ═══════════════════════════════════════════
+    function SkeletonDashboard() {
+      return html`
+        <div class="page-header"><div class="skeleton" style="width: 140px; height: 28px;"></div></div>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
+          ${Array(7).fill(0).map((_, i) => html`<div key=${i} class="skeleton skeleton-stat"></div>`)}
+        </div>
+        <div class="card">
+          <div class="skeleton" style="width: 120px; height: 20px; margin-bottom: 1rem;"></div>
+          ${Array(5).fill(0).map((_, i) => html`<div key=${i} class="skeleton skeleton-row"></div>`)}
+        </div>
+        <div style="margin-top: 2rem;">
+          <div class="skeleton" style="width: 140px; height: 20px; margin-bottom: 0.75rem;"></div>
+          <div class="card">
+            ${Array(4).fill(0).map((_, i) => html`<div key=${i} class="skeleton skeleton-row"></div>`)}
+          </div>
+        </div>
+      `;
+    }
+
+    // ═══════════════════════════════════════════
+    // MINI SPARKLINE CHART
+    // ═══════════════════════════════════════════
+    function MiniChart({ data, color = '#FFD500', height = 40, width = 120 }) {
+      if (!data || data.length < 2) return null;
+      const max = Math.max(...data);
+      const min = Math.min(...data);
+      const range = max - min || 1;
+      const step = width / (data.length - 1);
+      const points = data.map((v, i) => {
+        const x = i * step;
+        const y = height - ((v - min) / range) * (height - 4) - 2;
+        return `${x},${y}`;
+      }).join(' ');
+      // Area fill
+      const areaPoints = `0,${height} ${points} ${width},${height}`;
+
+      return html`
+        <svg width=${width} height=${height} viewBox="0 0 ${width} ${height}" style="display: block;">
+          <polygon points=${areaPoints} fill=${color} opacity="0.15" />
+          <polyline points=${points} fill="none" stroke=${color} stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+      `;
+    }
+
     function App() {
       const [view, setView] = useState('dashboard');
       const [editSlug, setEditSlug] = useState(null);
@@ -5971,6 +6950,8 @@
       const [press, setPress] = useState([]);
       const [loading, setLoading] = useState(true);
       const [sidebarOpen, setSidebarOpen] = useState(false);
+      const [cmdPaletteOpen, setCmdPaletteOpen] = useState(false);
+      const [shortcutsOpen, setShortcutsOpen] = useState(false);
 
       const addToast = (msg, type = 'info') => {
         const id = ++toastId;
@@ -6042,14 +7023,26 @@
 
       useEffect(() => { loadData(); }, []);
 
-      // Global Cmd/Ctrl+S to trigger save — finds the visible primary save button and clicks it
+      // Global keyboard shortcuts
       useEffect(() => {
         const handler = (e) => {
+          // Cmd/Ctrl+K — command palette
+          if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+            e.preventDefault();
+            setCmdPaletteOpen(o => !o);
+            return;
+          }
+          // Cmd/Ctrl+S — save
           if ((e.metaKey || e.ctrlKey) && e.key === 's') {
             e.preventDefault();
-            // Find the last visible enabled .btn-primary (the save button)
             const btns = document.querySelectorAll('.btn-primary:not(:disabled)');
             if (btns.length) btns[btns.length - 1].click();
+            return;
+          }
+          // ? — keyboard shortcuts (only when not typing in an input)
+          if (e.key === '?' && !['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName) && !e.target.isContentEditable) {
+            e.preventDefault();
+            setShortcutsOpen(o => !o);
           }
         };
         window.addEventListener('keydown', handler);
@@ -6087,6 +7080,7 @@
           );
           if (res.success) {
             addToast(`${item.name} deleted`, 'success');
+            logActivity('deleted', type, item.name);
             loadData();
           } else {
             addToast(`Delete failed: ${res.error}`, 'error');
@@ -6147,10 +7141,7 @@
 
       const renderView = () => {
         if (loading && view === 'dashboard') {
-          return html`<div style="text-align: center; padding: 4rem;">
-            <div class="spinner" style="width: 40px; height: 40px; border-width: 3px;" />
-            <p class="mt-2 text-muted">Loading content from GitHub...</p>
-          </div>`;
+          return html`<${SkeletonDashboard} />`;
         }
 
         switch (view) {
@@ -6223,7 +7214,7 @@
             onConfirm=${handleListDelete}
             onCancel=${() => setDeleteModal(null)}
           />` : null}
-          <button class="hamburger" onClick=${() => setSidebarOpen(!sidebarOpen)}>
+          <button class="hamburger" onClick=${() => setSidebarOpen(!sidebarOpen)} aria-label="${sidebarOpen ? 'Close menu' : 'Open menu'}">
             ${sidebarOpen ? icons.x : icons.menu}
           </button>
           <div class="overlay ${sidebarOpen ? 'open' : ''}" onClick=${() => setSidebarOpen(false)} />
@@ -6233,6 +7224,12 @@
               <img src="https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/brand-logo-admin/w=128,format=auto" alt="" />
               <small>Content Admin</small>
             </div>
+            <button onClick=${() => setCmdPaletteOpen(true)}
+              style="display: flex; align-items: center; gap: 0.5rem; margin: 0 0.75rem 0.5rem; padding: 0.5rem 0.75rem; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; color: rgba(255,255,255,0.5); font-size: 0.85rem; cursor: pointer; transition: all 0.15s;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+              Search...
+              <kbd style="margin-left: auto; font-size: 0.65rem; padding: 1px 5px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; color: rgba(255,255,255,0.4);">${navigator.platform?.includes('Mac') ? '⌘K' : 'Ctrl+K'}</kbd>
+            </button>
             ${navSections.map(section => html`
               ${section.label ? html`<div class="nav-section">${section.label}</div>` : null}
               ${section.items.map(item => html`
@@ -6261,6 +7258,10 @@
           </main>
 
           <${ToastContainer} toasts=${toasts} />
+          <${CommandPalette} open=${cmdPaletteOpen} onClose=${() => setCmdPaletteOpen(false)}
+            onNavigate=${navigate} kids=${kids} partners=${partners} team=${team}
+            articles=${articles} events=${events} communityProjects=${communityProjects} press=${press} />
+          <${KeyboardShortcuts} open=${shortcutsOpen} onClose=${() => setShortcutsOpen(false)} />
         </div>
       `;
     }
