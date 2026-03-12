@@ -49,6 +49,16 @@ export async function onRequestGet(context) {
       }
     }
 
+    // Resolve Google News redirect URLs to real destinations (parallel)
+    await Promise.allSettled(
+      allMentions.map(async (m) => {
+        const resolved = await resolveRedirect(m.link);
+        if (resolved && resolved !== m.link) {
+          m.resolvedUrl = resolved;
+        }
+      })
+    );
+
     // Sort by date descending
     allMentions.sort((a, b) => new Date(b.pubDate) - new Date(a.pubDate));
 
@@ -201,6 +211,21 @@ function cleanGoogleNewsLink(link) {
   // Format: https://news.google.com/rss/articles/... 
   // The actual URL is usually in the link directly for RSS
   return link.trim();
+}
+
+async function resolveRedirect(url) {
+  try {
+    const res = await fetch(url, {
+      method: 'GET',
+      redirect: 'follow',
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; SOARDPressMonitor/1.0)' },
+      signal: AbortSignal.timeout(8000),
+    });
+    // res.url is the final URL after all redirects
+    return res.url || url;
+  } catch {
+    return url;
+  }
 }
 
 function normalizeUrl(url) {

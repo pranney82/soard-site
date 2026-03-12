@@ -4497,13 +4497,16 @@
 
       const filteredMentions = useMemo(() => {
         return mentions.filter(m => {
-          // Filter out already-published entries
-          try {
-            const u = new URL(m.link);
-            const norm = u.hostname.replace(/^www\./, '') + u.pathname.replace(/\/$/, '');
-            if (existingUrls.has(norm)) return false;
-            if (dismissedSet.has(norm)) return false;
-          } catch {}
+          // Filter out already-published entries — check both RSS link and resolved URL
+          const urlsToCheck = [m.link, m.resolvedUrl].filter(Boolean);
+          for (const url of urlsToCheck) {
+            try {
+              const u = new URL(url);
+              const norm = u.hostname.replace(/^www\./, '') + u.pathname.replace(/\/$/, '');
+              if (existingUrls.has(norm)) return false;
+              if (dismissedSet.has(norm)) return false;
+            } catch {}
+          }
           return true;
         });
       }, [mentions, existingUrls, dismissedSet]);
@@ -4529,13 +4532,19 @@
       };
 
       const dismiss = (mention) => {
-        try {
-          const u = new URL(mention.link);
-          const norm = u.hostname.replace(/^www\./, '') + u.pathname.replace(/\/$/, '');
-          const updated = [...dismissed, norm];
+        const urls = [mention.link, mention.resolvedUrl].filter(Boolean);
+        const norms = [];
+        for (const url of urls) {
+          try {
+            const u = new URL(url);
+            norms.push(u.hostname.replace(/^www\./, '') + u.pathname.replace(/\/$/, ''));
+          } catch {}
+        }
+        if (norms.length) {
+          const updated = [...dismissed, ...norms];
           setDismissed(updated);
           localStorage.setItem('soard-press-dismissed', JSON.stringify(updated));
-        } catch {}
+        }
       };
 
       const clearDismissed = () => {
@@ -4556,7 +4565,7 @@
           title: mention.title || '',
           slug,
           date: mention.date || new Date().toISOString().split('T')[0],
-          url: mention.link || '',
+          url: mention.resolvedUrl || mention.link || '',
           excerpt: mention.description || '',
           featured: false,
           order: 99,
@@ -4625,10 +4634,10 @@
               <tbody>
                 ${filteredMentions.map(m => html`<tr key=${m.link}>
                   <td>
-                    <a href=${m.link} target="_blank" rel="noopener" style="color: var(--c-dark); text-decoration: underline; text-underline-offset: 2px;">
+                    <a href=${m.resolvedUrl || m.link} target="_blank" rel="noopener" style="color: var(--c-dark); text-decoration: underline; text-underline-offset: 2px;">
                       ${m.title.length > 70 ? m.title.slice(0, 70) + '…' : m.title}
                     </a>
-                    ${m.description ? html`<br /><span class="text-sm text-muted">${m.description.length > 100 ? m.description.slice(0, 100) + '…' : m.description}</span>` : null}
+                    ${m.resolvedUrl ? html`<br /><span class="text-sm text-muted" style="word-break: break-all;">${(() => { try { const u = new URL(m.resolvedUrl); return u.hostname + u.pathname; } catch { return ''; } })()}</span>` : m.description ? html`<br /><span class="text-sm text-muted">${m.description.length > 100 ? m.description.slice(0, 100) + '…' : m.description}</span>` : null}
                   </td>
                   <td class="text-sm">${m.source || '—'}</td>
                   <td class="text-sm" style="white-space: nowrap;">${m.date || '—'}</td>
