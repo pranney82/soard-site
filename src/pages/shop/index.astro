@@ -106,6 +106,14 @@ function getSecondImage(p: any): string | null {
     </div>
   </section>
 
+  <!-- Sticky mobile search (appears when hero scrolls out) -->
+  <div class="shop-sticky-search" id="shop-sticky-search">
+    <div class="shop-sticky-search-inner">
+      <svg class="shop-sticky-search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input type="search" id="shop-sticky-input" class="shop-sticky-input" placeholder="Search products..." autocomplete="off" />
+    </div>
+  </div>
+
   {hasProducts ? (
     <div class="shop-layout">
       <!-- ══════ SIDEBAR ══════ -->
@@ -148,12 +156,20 @@ function getSecondImage(p: any): string | null {
           <button class="shop-filter-btn" id="shop-filter-btn" aria-label="Open categories">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="8" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg>
           </button>
-          <div class="shop-strip-scroll">
+          <div class="shop-strip-scroll" id="shop-strip-scroll">
             <button class="shop-chip is-active" data-cat="all">All</button>
             {collections.map((c) => (
               <button class="shop-chip" data-cat={c.handle}>{titleCase(c.title)}</button>
             ))}
           </div>
+        </div>
+        <div class="shop-mobile-prices" id="shop-mobile-prices">
+          <button class="shop-price-pill is-active" data-price-range="all">All</button>
+          <button class="shop-price-pill" data-price-range="0-50">&lt;$50</button>
+          <button class="shop-price-pill" data-price-range="50-150">$50–150</button>
+          <button class="shop-price-pill" data-price-range="150-500">$150–500</button>
+          <button class="shop-price-pill" data-price-range="500-1000">$500–1k</button>
+          <button class="shop-price-pill" data-price-range="1000-99999">$1k+</button>
         </div>
 
         <!-- Toolbar -->
@@ -295,13 +311,20 @@ function getSecondImage(p: any): string | null {
     </div>
   )}
 
+  <!-- Back to top -->
+  <button class="shop-btt" id="shop-btt" aria-label="Back to top">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
+  </button>
+
   <!-- ══════ PDP MODAL ══════ -->
   <div class="pdp-backdrop" id="pdp-backdrop" aria-hidden="true"></div>
   <div class="pdp-modal" id="pdp-modal" role="dialog" aria-modal="true" aria-label="Product details" aria-hidden="true">
     <button type="button" class="pdp-close" id="pdp-close" aria-label="Close">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </button>
-    <div class="pdp-body" id="pdp-body"></div>
+    <div class="pdp-body" id="pdp-body">
+      <div class="pdp-swipe-handle" id="pdp-swipe-handle"><div class="pdp-swipe-bar"></div></div>
+    </div>
     <!-- Mobile sticky CTA -->
     <div class="pdp-sticky-cta" id="pdp-sticky-cta">
       <div class="pdp-sticky-price" id="pdp-sticky-price"></div>
@@ -597,6 +620,51 @@ function getSecondImage(p: any): string | null {
     :global(.collection-hero) { animation: none; }
   }
 
+  /* ═══════════════════════════════════════ STICKY MOBILE SEARCH ═══════════════════════════════════════ */
+  .shop-sticky-search {
+    position: sticky; top: 0; z-index: 50; display: none;
+    background: var(--c-cream); padding: 8px var(--page-padding) 8px;
+    border-bottom: 1px solid var(--c-border); transform: translateY(-100%);
+    transition: transform 0.3s cubic-bezier(0.16,1,0.3,1);
+  }
+  :global(.shop-sticky-search.is-visible) { transform: translateY(0); }
+  .shop-sticky-search-inner { position: relative; max-width: 600px; margin: 0 auto; }
+  .shop-sticky-search-icon { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--c-text-light); pointer-events: none; }
+  .shop-sticky-input {
+    width: 100%; padding: 11px 16px 11px 42px; border: 1.5px solid var(--c-border); border-radius: 100px;
+    background: #fff; font-family: var(--font-body); font-size: 14px; color: var(--c-dark); outline: none;
+    transition: border-color 0.2s;
+  }
+  .shop-sticky-input:focus { border-color: var(--c-yellow); box-shadow: 0 0 0 3px rgba(255,218,36,0.12); }
+  .shop-sticky-input::placeholder { color: var(--c-text-light); }
+
+  /* ═══════════════════════════════════════ MOBILE PRICE PILLS ═══════════════════════════════════════ */
+  .shop-mobile-prices { display: none; }
+
+  /* ═══════════════════════════════════════ BACK TO TOP ═══════════════════════════════════════ */
+  .shop-btt {
+    position: fixed; bottom: 24px; right: 20px; z-index: 90;
+    width: 48px; height: 48px; border-radius: 50%; border: none;
+    background: var(--c-dark); color: #fff; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+    opacity: 0; visibility: hidden; transform: translateY(16px);
+    transition: opacity 0.3s, visibility 0.3s, transform 0.3s;
+  }
+  :global(.shop-btt.is-visible) { opacity: 1; visibility: visible; transform: translateY(0); }
+  .shop-btt:hover { background: var(--c-yellow); color: var(--c-dark); }
+
+  /* ═══════════════════════════════════════ PDP SWIPE HANDLE ═══════════════════════════════════════ */
+  :global(.pdp-swipe-handle) {
+    display: none; padding: 12px 0 4px; text-align: center; cursor: grab;
+    position: sticky; top: 0; z-index: 2; background: #fff; border-radius: 20px 20px 0 0;
+  }
+  :global(.pdp-swipe-bar) { width: 36px; height: 4px; border-radius: 2px; background: var(--c-border); margin: 0 auto; }
+
+  /* ═══════════════════════════════════════ VIEWPORT REVEAL ═══════════════════════════════════════ */
+  :global(.product-card.is-deferred) { opacity: 0; animation: none; }
+  :global(.product-card.is-deferred.is-revealed) { animation: fadeSlideUp 0.45s cubic-bezier(0.16,1,0.3,1) both; }
+
   /* ═══════════════════════════════════════ MISSION ═══════════════════════════════════════ */
   .shop-mission { padding: 100px 0; background: var(--c-warm-gray); }
   .shop-mission-inner { max-width: 600px; margin: 0 auto; padding: 0 var(--page-padding); text-align: center; }
@@ -626,10 +694,25 @@ function getSecondImage(p: any): string | null {
 
   /* ═══════════════════════════════════════ RESPONSIVE — MOBILE ═══════════════════════════════════════ */
   @media (max-width: 768px) {
-    .shop-hero { padding: 130px 0 56px; }
-    .shop-hero-sub { margin-bottom: 24px; }
-    .shop-main { padding: 20px 0 60px; }
-    .shop-toolbar { padding: 10px 0; margin-bottom: 16px; top: 64px; }
+    .shop-hero { padding: 110px 0 40px; }
+    .shop-hero h1 { font-size: 26px; margin-bottom: 10px; }
+    .shop-hero-sub { font-size: 14px; margin-bottom: 20px; }
+    .shop-sticky-search { display: block; top: 56px; }
+    .shop-mobile-prices {
+      display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none;
+      -webkit-overflow-scrolling: touch; padding: 0 0 12px; margin-bottom: 8px;
+    }
+    .shop-mobile-prices::-webkit-scrollbar { display: none; }
+    :global(.shop-price-pill) {
+      flex-shrink: 0; padding: 6px 14px; border-radius: 100px;
+      border: 1.5px solid var(--c-border); background: #fff;
+      font-family: var(--font-body); font-size: 12px; color: var(--c-text-muted);
+      cursor: pointer; white-space: nowrap; transition: all 0.2s;
+    }
+    :global(.shop-price-pill:hover) { border-color: var(--c-dark); }
+    :global(.shop-price-pill.is-active) { background: var(--c-yellow); border-color: var(--c-yellow); color: var(--c-dark); font-weight: 600; }
+    .shop-main { padding: 12px 0 60px; }
+    .shop-toolbar { padding: 8px 0; margin-bottom: 12px; top: 100px; }
     .shop-grid-toggle { display: none; }
     .shop-price-toolbar { display: none; }
     .shop-collections-grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
@@ -637,7 +720,7 @@ function getSecondImage(p: any): string | null {
     :global(.collection-card-body) { padding: 12px 14px 16px; }
     :global(.collection-card-title) { font-size: 14px; }
     :global(.collection-card-overlay) { display: none; }
-    :global(.collection-hero) { padding: 16px 18px; margin-bottom: 20px; flex-direction: column; gap: 12px; }
+    :global(.collection-hero) { padding: 16px 18px; margin-bottom: 16px; flex-direction: column; gap: 8px; }
     :global(.collection-hero-title) { font-size: 20px; }
     .shop-products-grid { grid-template-columns: repeat(2, 1fr) !important; gap: 10px; }
     :global(.product-card-img) { aspect-ratio: 3/4; }
@@ -647,11 +730,15 @@ function getSecondImage(p: any): string | null {
     :global(.product-card-price) { font-size: 14px; }
     :global(.product-badge) { padding: 3px 8px; font-size: 10px; top: 8px; left: 8px; }
     .shop-mission { padding: 64px 0; }
+    .shop-btt { bottom: 20px; right: 16px; width: 44px; height: 44px; }
+
+    /* Mobile PDP */
     .pdp-modal { padding: 0; align-items: flex-end; }
     .pdp-body { grid-template-columns: 1fr; border-radius: 20px 20px 0 0; max-height: 94vh; transform: translateY(100%); padding-bottom: 72px; }
     :global(.pdp-modal.is-open .pdp-body) { transform: translateY(0); }
+    :global(.pdp-swipe-handle) { display: block; }
     .pdp-close { top: 12px; right: 12px; width: 40px; height: 40px; }
-    :global(.pdp-gallery) { padding: 16px 16px 8px; }
+    :global(.pdp-gallery) { padding: 4px 16px 8px; }
     :global(.pdp-main-img) { touch-action: pan-y pinch-zoom; cursor: default; }
     :global(.pdp-main-img:hover img) { transform: none; }
     :global(.pdp-info) { padding: 16px 16px 32px; }
@@ -684,6 +771,7 @@ function getCM() { if (!S.colMeta) { try { S.colMeta = JSON.parse(document.getEl
 function setPriceFilter(range) {
   S.priceRange = range;
   document.querySelectorAll('.shop-price-chip').forEach(function(b) { b.classList.toggle('is-active', b.dataset.priceRange === range); });
+  document.querySelectorAll('.shop-price-pill').forEach(function(b) { b.classList.toggle('is-active', b.dataset.priceRange === range); });
   applyFiltersAndPagination();
 }
 
@@ -755,6 +843,7 @@ function setActiveCategory(handle) {
   S.cat = handle;
   S.priceRange = 'all';
   document.querySelectorAll('.shop-price-chip').forEach(function(b) { b.classList.toggle('is-active', b.dataset.priceRange === 'all'); });
+  document.querySelectorAll('.shop-price-pill').forEach(function(b) { b.classList.toggle('is-active', b.dataset.priceRange === 'all'); });
   var cg = document.getElementById('shop-collections');
   var bc = document.getElementById('shop-breadcrumb');
   var hero = document.getElementById('collection-hero');
@@ -1055,23 +1144,24 @@ function closeModal() {
 /* ─── EVENT DELEGATION ─── */
 document.addEventListener('click', function(e) {
   var pr = e.target.closest('[data-price-range]');
-  if (pr) { setPriceFilter(pr.dataset.priceRange); return; }
+  if (pr) { setPriceFilter(pr.dataset.priceRange); /* sync mobile pills too */ document.querySelectorAll('.shop-price-pill').forEach(function(b) { b.classList.toggle('is-active', b.dataset.priceRange === pr.dataset.priceRange); }); return; }
   var catBtn = e.target.closest('[data-cat]');
-  if (catBtn) { setActiveCategory(catBtn.dataset.cat); return; }
+  if (catBtn) { setActiveCategory(catBtn.dataset.cat); autoScrollChip(catBtn.dataset.cat); return; }
   var cc = e.target.closest('[data-collection]');
-  if (cc && cc.closest('#shop-collections')) { setActiveCategory(cc.dataset.collection); return; }
+  if (cc && cc.closest('#shop-collections')) { setActiveCategory(cc.dataset.collection); autoScrollChip(cc.dataset.collection); return; }
   var qv = e.target.closest('.product-card-quickview');
   if (qv) { var card = qv.closest('[data-handle]'); if (card) openProduct(card.dataset.handle); return; }
   var pc = e.target.closest('[data-handle]');
   if (pc && (pc.closest('.shop-products-grid') || pc.closest('.shop-recent-scroll'))) { openProduct(pc.dataset.handle); return; }
   var si = e.target.closest('.search-item');
-  if (si && si.dataset.handle) { openProduct(si.dataset.handle); document.getElementById('shop-search').value = ''; var dd = document.getElementById('shop-search-dropdown'); dd.classList.remove('is-open'); dd.innerHTML = ''; return; }
-  if (!e.target.closest('#shop-search-wrap')) { var dd = document.getElementById('shop-search-dropdown'); if (dd) dd.classList.remove('is-open'); }
+  if (si && si.dataset.handle) { openProduct(si.dataset.handle); document.getElementById('shop-search').value = ''; var ssi = document.getElementById('shop-sticky-input'); if (ssi) ssi.value = ''; var dd = document.getElementById('shop-search-dropdown'); dd.classList.remove('is-open'); dd.innerHTML = ''; return; }
+  if (!e.target.closest('#shop-search-wrap') && !e.target.closest('.shop-sticky-search')) { var dd = document.getElementById('shop-search-dropdown'); if (dd) dd.classList.remove('is-open'); }
   if (e.target.closest('#pdp-close') || e.target.id === 'pdp-backdrop') closeModal();
   if (e.target.closest('#shop-filter-btn')) openSidebar();
   if (e.target.closest('#sidebar-close') || e.target.id === 'sidebar-overlay') closeSidebar();
   var gt = e.target.closest('.shop-grid-toggle button'); if (gt) setGridCols(parseInt(gt.dataset.cols));
   if (e.target.closest('#shop-load-more-btn')) loadMore();
+  if (e.target.closest('#shop-btt')) { window.scrollTo({ top: 0, behavior: 'smooth' }); }
 });
 
 document.addEventListener('keydown', function(e) {
@@ -1092,6 +1182,36 @@ document.addEventListener('keydown', function(e) {
   }
 });
 
+/* ─── AUTO-SCROLL CHIP STRIP ─── */
+function autoScrollChip(handle) {
+  var strip = document.getElementById('shop-strip-scroll');
+  if (!strip) return;
+  var chip = strip.querySelector('.shop-chip[data-cat="' + handle + '"]');
+  if (chip) chip.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+}
+
+/* ─── PDP SWIPE DOWN TO DISMISS ─── */
+function initPdpSwipeDismiss() {
+  var handle = document.getElementById('pdp-swipe-handle');
+  var body = document.getElementById('pdp-body');
+  if (!handle || !body || window.innerWidth > 768) return;
+  var startY = 0; var currentY = 0; var dragging = false;
+  handle.addEventListener('touchstart', function(e) { startY = e.touches[0].clientY; dragging = true; body.style.transition = 'none'; }, { passive: true });
+  handle.addEventListener('touchmove', function(e) {
+    if (!dragging) return;
+    currentY = e.touches[0].clientY - startY;
+    if (currentY < 0) currentY = 0;
+    body.style.transform = 'translateY(' + currentY + 'px)';
+  }, { passive: true });
+  handle.addEventListener('touchend', function() {
+    if (!dragging) return; dragging = false;
+    body.style.transition = '';
+    if (currentY > 100) { closeModal(); }
+    else { body.style.transform = ''; }
+    currentY = 0;
+  });
+}
+
 /* ─── INIT ─── */
 document.addEventListener('astro:page-load', function() {
   if (!window.location.pathname.startsWith('/shop')) return;
@@ -1099,14 +1219,53 @@ document.addEventListener('astro:page-load', function() {
   S.ac = new AbortController(); var sig = S.ac.signal;
   S.productMap = null; S.searchIdx = null; S.colMeta = null;
 
+  /* Hero search */
   var si = document.getElementById('shop-search');
   if (si) si.addEventListener('input', function(e) { clearTimeout(searchTimer); searchTimer = setTimeout(function() { handleSearch(e.target.value); }, 150); }, { signal: sig });
 
+  /* Sticky search mirrors to main search handler */
+  var ssi = document.getElementById('shop-sticky-input');
+  if (ssi) {
+    ssi.addEventListener('focus', function() {
+      /* Scroll to hero search and focus it instead */
+      var heroSearch = document.getElementById('shop-search');
+      if (heroSearch) {
+        heroSearch.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        setTimeout(function() { heroSearch.focus(); }, 400);
+        ssi.blur();
+      }
+    }, { signal: sig });
+  }
+
+  /* Sort */
   var sortEl = document.getElementById('shop-sort');
   if (sortEl) sortEl.addEventListener('change', function(e) { sortProducts(e.target.value); }, { signal: sig });
 
+  /* Popstate */
   window.addEventListener('popstate', function() { var h = window.location.hash.replace('#', ''); setActiveCategory(h || 'all'); }, { signal: sig });
 
+  /* Sticky search bar: show when hero scrolls out */
+  var heroSection = document.querySelector('.shop-hero');
+  var stickySearch = document.getElementById('shop-sticky-search');
+  if (heroSection && stickySearch && window.innerWidth <= 768) {
+    var heroObs = new IntersectionObserver(function(entries) {
+      stickySearch.classList.toggle('is-visible', !entries[0].isIntersecting);
+    }, { threshold: 0 });
+    heroObs.observe(heroSection);
+    sig.addEventListener('abort', function() { heroObs.disconnect(); });
+  }
+
+  /* Back to top button */
+  var btt = document.getElementById('shop-btt');
+  if (btt) {
+    var scrollHandler = function() { btt.classList.toggle('is-visible', window.scrollY > 800); };
+    window.addEventListener('scroll', scrollHandler, { signal: sig, passive: true });
+  }
+
+  /* PDP swipe-down dismiss */
+  initPdpSwipeDismiss();
+
+  /* Init from hash */
   var hash = window.location.hash.replace('#', '');
   if (hash && document.getElementById('products-' + hash)) setActiveCategory(hash);
 
