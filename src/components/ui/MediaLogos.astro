@@ -32,7 +32,7 @@ const logos = [
     {logos.map(logo => href ? (
       <a href={href} class:list={["ml__item", { "ml__item--wide": logo.wide }]} aria-label={`Featured on ${logo.alt}`}>
         <img
-          src={`${CF}/${logo.id}/w=400`}
+          src={`${CF}/${logo.id}/w=160,q=75`}
           alt={logo.alt}
           class="ml__logo"
           loading="lazy"
@@ -44,7 +44,7 @@ const logos = [
     ) : (
       <div class:list={["ml__item", { "ml__item--wide": logo.wide }]}>
         <img
-          src={`${CF}/${logo.id}/w=400`}
+          src={`${CF}/${logo.id}/w=160,q=75`}
           alt={logo.alt}
           class="ml__logo"
           loading="lazy"

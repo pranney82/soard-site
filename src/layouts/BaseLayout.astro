@@ -178,8 +178,7 @@ const structuredData = buildSchemaGraph(...graphSchemas);
   <!-- Preconnect to Cloudflare Images CDN -->
   <link rel="preconnect" href="https://imagedelivery.net" crossorigin />
   <link rel="dns-prefetch" href="https://imagedelivery.net" />
-  <link rel="preconnect" href="https://iframe.videodelivery.net" crossorigin />
-  <link rel="dns-prefetch" href="https://iframe.videodelivery.net" />
+  <!-- videodelivery.net preconnect added per-page where needed via <slot name="head" /> -->
 
   <!-- Preload critical fonts -->
   <link rel="preload" href="/fonts/outfit-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin />
@@ -191,56 +190,56 @@ const structuredData = buildSchemaGraph(...graphSchemas);
       font-family: 'Libre Baskerville';
       font-style: normal;
       font-weight: 400;
-      font-display: swap;
+      font-display: optional;
       src: url('/fonts/libre-baskerville-latin-400-normal.woff2') format('woff2');
     }
     @font-face {
       font-family: 'Libre Baskerville';
       font-style: italic;
       font-weight: 400;
-      font-display: swap;
+      font-display: optional;
       src: url('/fonts/libre-baskerville-latin-400-italic.woff2') format('woff2');
     }
     @font-face {
       font-family: 'Libre Baskerville';
       font-style: normal;
       font-weight: 700;
-      font-display: swap;
+      font-display: optional;
       src: url('/fonts/libre-baskerville-latin-700-normal.woff2') format('woff2');
     }
     @font-face {
       font-family: 'Outfit';
       font-style: normal;
       font-weight: 300;
-      font-display: swap;
+      font-display: optional;
       src: url('/fonts/outfit-latin-300-normal.woff2') format('woff2');
     }
     @font-face {
       font-family: 'Outfit';
       font-style: normal;
       font-weight: 400;
-      font-display: swap;
+      font-display: optional;
       src: url('/fonts/outfit-latin-400-normal.woff2') format('woff2');
     }
     @font-face {
       font-family: 'Outfit';
       font-style: normal;
       font-weight: 500;
-      font-display: swap;
+      font-display: optional;
       src: url('/fonts/outfit-latin-500-normal.woff2') format('woff2');
     }
     @font-face {
       font-family: 'Outfit';
       font-style: normal;
       font-weight: 600;
-      font-display: swap;
+      font-display: optional;
       src: url('/fonts/outfit-latin-600-normal.woff2') format('woff2');
     }
     @font-face {
       font-family: 'Outfit';
       font-style: normal;
       font-weight: 700;
-      font-display: swap;
+      font-display: optional;
       src: url('/fonts/outfit-latin-700-normal.woff2') format('woff2');
     }
   </style>
@@ -251,10 +250,13 @@ const structuredData = buildSchemaGraph(...graphSchemas);
   <!-- JSON-LD: Unified @graph with Organization + WebPage + page-specific schemas -->
   <script type="application/ld+json" set:html={JSON.stringify(structuredData)} />
 
-  <!-- Facebook Pixel (deferred until after page load for speed) -->
+  <!-- Facebook Pixel (deferred until first user interaction for performance) -->
   <script is:inline>
     (function(){
+      var loaded=false;
       function loadFBPixel(){
+        if(loaded)return;loaded=true;
+        ['scroll','click','touchstart','keydown'].forEach(function(e){document.removeEventListener(e,loadFBPixel)});
         !function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?
         n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;
         n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;
@@ -262,8 +264,7 @@ const structuredData = buildSchemaGraph(...graphSchemas);
         document,'script','https://connect.facebook.net/en_US/fbevents.js');
         fbq('init','1325956761183424');fbq('track','PageView');
       }
-      if('requestIdleCallback' in window){requestIdleCallback(loadFBPixel)}
-      else{setTimeout(loadFBPixel,2000)}
+      ['scroll','click','touchstart','keydown'].forEach(function(e){document.addEventListener(e,loadFBPixel,{once:true,passive:true})});
     })();
   </script>
   <noscript>
