@@ -1545,16 +1545,35 @@
     // PARTNERS LIST
     // ═══════════════════════════════════════════
     function PartnersList({ partners, onEdit, onAdd, onDelete }) {
+      const [search, setSearch] = useState('');
+      const filtered = useMemo(() => {
+        if (!search) return partners;
+        const q = search.toLowerCase();
+        return partners.filter(p =>
+          p.name.toLowerCase().includes(q) ||
+          (p.tier || '').toLowerCase().includes(q) ||
+          (p.website || '').toLowerCase().includes(q)
+        );
+      }, [partners, search]);
+
       return html`
         <div class="page-header">
           <h2>Partners (${partners.length})</h2>
           <button class="btn btn-primary" onClick=${onAdd}>+ Add Partner</button>
         </div>
+        <div class="card" style="margin-bottom: 1rem; padding: 0.75rem 1rem;">
+          <div class="search-bar" style="max-width: 100%;">
+            <span class="search-icon">${icons.search}</span>
+            <input placeholder="Search by name, tier, or website..."
+              value=${search} onInput=${e => setSearch(e.target.value)} />
+          </div>
+        </div>
         <div class="card">
           <div class="table-wrap"><table>
             <thead><tr><th></th><th>Name</th><th>Tier</th><th>Featured</th><th></th></tr></thead>
             <tbody>
-              ${partners.map(p => html`<tr key=${p.slug}>
+              ${filtered.length === 0 ? html`<tr><td colspan="5" style="text-align:center; color: #6B6C72;">No partners found</td></tr>` : null}
+              ${filtered.map(p => html`<tr key=${p.slug}>
                 <td>${p.logo ? html`<img class="td-thumb" src="${p.logo}" alt="" style="object-fit: contain; background: #fff;" />` : '—'}</td>
                 <td><strong>${p.name}</strong></td>
                 <td><span class="badge badge-accent">${p.tier}</span></td>
