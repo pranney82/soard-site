@@ -2994,11 +2994,19 @@
       const [saving, setSaving] = useState(false);
       const [sha, setSha] = useState(null);
       const [dirty, setDirty] = useState(false);
-      const [data, setData] = useState({
-        outlet: '', outletLogo: '', category: 'print',
-        title: '', slug: '', date: new Date().toISOString().split('T')[0],
-        url: '', excerpt: '', image: null,
-        featured: false, order: 0,
+      const [data, setData] = useState(() => {
+        // Check for pre-filled data from Press Monitor
+        const prefill = sessionStorage.getItem('press-prefill');
+        if (prefill && !slug) {
+          sessionStorage.removeItem('press-prefill');
+          try { return { ...JSON.parse(prefill) }; } catch {}
+        }
+        return {
+          outlet: '', outletLogo: '', category: 'print',
+          title: '', slug: '', date: new Date().toISOString().split('T')[0],
+          url: '', excerpt: '', image: null,
+          featured: false, order: 0,
+        };
       });
 
       useEffect(() => {
@@ -3177,6 +3185,187 @@
             </div>
           </div>
         </div>
+      `;
+    }
+
+    // ═══════════════════════════════════════════
+    // PRESS MONITOR — Discover new media mentions
+    // ═══════════════════════════════════════════
+    function PressMonitor({ existingPress, addToast, onApprove }) {
+      const [scanning, setScanning] = useState(false);
+      const [mentions, setMentions] = useState([]);
+      const [dismissed, setDismissed] = useState(() => {
+        try { return JSON.parse(localStorage.getItem('soard-press-dismissed') || '[]'); } catch { return []; }
+      });
+      const [lastScan, setLastScan] = useState(() => localStorage.getItem('soard-press-last-scan') || null);
+
+      // Build set of existing press URLs for dedup
+      const existingUrls = useMemo(() => {
+        const urls = new Set();
+        for (const p of existingPress) {
+          if (p.url) {
+            try {
+              const u = new URL(p.url);
+              urls.add(u.hostname.replace(/^www\./, '') + u.pathname.replace(/\/$/, ''));
+            } catch { urls.add(p.url); }
+          }
+        }
+        return urls;
+      }, [existingPress]);
+
+      const dismissedSet = useMemo(() => new Set(dismissed), [dismissed]);
+
+      const filteredMentions = useMemo(() => {
+        return mentions.filter(m => {
+          // Filter out already-published entries
+          try {
+            const u = new URL(m.link);
+            const norm = u.hostname.replace(/^www\./, '') + u.pathname.replace(/\/$/, '');
+            if (existingUrls.has(norm)) return false;
+            if (dismissedSet.has(norm)) return false;
+          } catch {}
+          return true;
+        });
+      }, [mentions, existingUrls, dismissedSet]);
+
+      const doScan = async () => {
+        setScanning(true);
+        try {
+          const res = await fetch('/api/press-scan');
+          const data = await res.json();
+          if (data.success) {
+            setMentions(data.mentions);
+            const now = new Date().toLocaleString();
+            setLastScan(now);
+            localStorage.setItem('soard-press-last-scan', now);
+            addToast(`Found ${data.mentions.length} results, ${filteredMentions.length || '—'} new`, 'success');
+          } else {
+            addToast(`Scan failed: ${data.error}`, 'error');
+          }
+        } catch (err) {
+          addToast(`Scan error: ${err.message}`, 'error');
+        }
+        setScanning(false);
+      };
+
+      const dismiss = (mention) => {
+        try {
+          const u = new URL(mention.link);
+          const norm = u.hostname.replace(/^www\./, '') + u.pathname.replace(/\/$/, '');
+          const updated = [...dismissed, norm];
+          setDismissed(updated);
+          localStorage.setItem('soard-press-dismissed', JSON.stringify(updated));
+        } catch {}
+      };
+
+      const clearDismissed = () => {
+        setDismissed([]);
+        localStorage.removeItem('soard-press-dismissed');
+        addToast('Dismissed list cleared', 'success');
+      };
+
+      const handleApprove = (mention) => {
+        const slug = mention.source
+          ? mention.source.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') + '-' + (mention.date || 'new')
+          : 'press-' + Date.now();
+
+        onApprove({
+          outlet: mention.source || '',
+          outletLogo: mention.source ? mention.source.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') : '',
+          category: 'print',
+          title: mention.title || '',
+          slug,
+          date: mention.date || new Date().toISOString().split('T')[0],
+          url: mention.link || '',
+          excerpt: mention.description || '',
+          featured: false,
+          order: 99,
+        });
+      };
+
+      return html`
+        <div class="page-header">
+          <div>
+            <h2>Press Monitor</h2>
+            <p class="text-sm text-muted" style="margin-top: 0.25rem;">
+              Scans Google News for SOARD media mentions. Approve to create press entries.
+            </p>
+          </div>
+          <div style="display: flex; gap: 0.5rem; align-items: center;">
+            ${dismissed.length > 0 ? html`
+              <button class="btn btn-ghost btn-sm" onClick=${clearDismissed}>
+                Clear ${dismissed.length} dismissed
+              </button>
+            ` : null}
+            <button class="btn btn-primary" onClick=${doScan} disabled=${scanning}>
+              ${scanning ? html`<span class="spinner" style="width:16px;height:16px;border-width:2px;margin-right:0.5rem;" />` : null}
+              ${scanning ? 'Scanning…' : 'Scan for Mentions'}
+            </button>
+          </div>
+        </div>
+
+        ${lastScan ? html`
+          <p class="text-sm text-muted" style="margin-bottom: 1rem;">Last scan: ${lastScan}</p>
+        ` : null}
+
+        <div class="card" style="margin-bottom: 1rem; padding: 1rem;">
+          <p class="text-sm" style="margin: 0; color: #6B6C72;">
+            <strong>Search queries:</strong> "Sunshine on a Ranney Day", "SOARD" charity, "Peter Ranney" nonprofit, "Holly Ranney" nonprofit, "Sunny and Ranney" Roswell
+          </p>
+        </div>
+
+        ${mentions.length > 0 ? html`
+          <div class="card" style="margin-bottom: 0.75rem; padding: 0.75rem 1rem;">
+            <span class="text-sm">
+              <strong>${mentions.length}</strong> total results · 
+              <strong>${filteredMentions.length}</strong> new · 
+              <strong>${mentions.length - filteredMentions.length}</strong> already tracked or dismissed
+            </span>
+          </div>
+        ` : null}
+
+        ${!scanning && mentions.length === 0 ? html`
+          <div class="card" style="padding: 3rem; text-align: center; color: #6B6C72;">
+            <p style="font-size: 2rem; margin-bottom: 0.5rem;">📡</p>
+            <p>Click <strong>Scan for Mentions</strong> to search for new press coverage.</p>
+          </div>
+        ` : null}
+
+        ${scanning ? html`
+          <div class="card" style="padding: 3rem; text-align: center;">
+            <div class="spinner" style="width: 32px; height: 32px; border-width: 3px; margin: 0 auto 1rem;" />
+            <p class="text-muted">Searching Google News RSS feeds…</p>
+          </div>
+        ` : null}
+
+        ${filteredMentions.length > 0 ? html`
+          <div class="card">
+            <div class="table-wrap"><table>
+              <thead><tr><th>Title</th><th>Source</th><th>Date</th><th>Matched Query</th><th style="width: 140px;"></th></tr></thead>
+              <tbody>
+                ${filteredMentions.map(m => html`<tr key=${m.link}>
+                  <td>
+                    <a href=${m.link} target="_blank" rel="noopener" style="color: var(--c-dark); text-decoration: underline; text-underline-offset: 2px;">
+                      ${m.title.length > 70 ? m.title.slice(0, 70) + '…' : m.title}
+                    </a>
+                    ${m.description ? html`<br /><span class="text-sm text-muted">${m.description.length > 100 ? m.description.slice(0, 100) + '…' : m.description}</span>` : null}
+                  </td>
+                  <td class="text-sm">${m.source || '—'}</td>
+                  <td class="text-sm" style="white-space: nowrap;">${m.date || '—'}</td>
+                  <td><span class="badge" style="font-size: 0.7rem;">${m.query.replace(/"/g, '')}</span></td>
+                  <td style="white-space: nowrap;">
+                    <button class="btn btn-primary btn-sm" onClick=${() => handleApprove(m)}>Approve</button>
+                    <button class="btn btn-ghost btn-sm" style="color: #999;" onClick=${() => dismiss(m)}>Dismiss</button>
+                  </td>
+                </tr>`)}
+              </tbody>
+            </table></div>
+          </div>
+        ` : mentions.length > 0 && !scanning ? html`
+          <div class="card" style="padding: 2rem; text-align: center; color: #6B6C72;">
+            <p>All ${mentions.length} results are already tracked or dismissed.</p>
+          </div>
+        ` : null}
       `;
     }
 
@@ -5329,6 +5518,7 @@
         ourstory: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" /><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" /></svg>`,
         mediakit: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" /><path d="M14 2v4a2 2 0 0 0 2 2h4" /><path d="M10 9H8" /><path d="M16 13H8" /><path d="M16 17H8" /></svg>`,
         press: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2" /><path d="M18 14h-8" /><path d="M15 18h-5" /><path d="M10 6h8v4h-8V6Z" /></svg>`,
+        pressMonitor: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M2 12a10 10 0 1 0 10-10" /><path d="M2 16.1A5 5 0 0 1 5.9 20" /><path d="M2 12.05A10 10 0 0 1 9.95 20" /><path d="M2 8.05A15 15 0 0 1 13.95 20" /><circle cx="2" cy="20" r="2" /></svg>`,
       };
 
       const navSections = [
@@ -5344,6 +5534,7 @@
           { id: 'ourstory', icon: icons.ourstory, label: 'Our Story' },
           { id: 'mediakit', icon: icons.mediakit, label: 'Media Kit' },
           { id: 'press', icon: icons.press, label: 'Press & Media' },
+          { id: 'press-monitor', icon: icons.pressMonitor, label: 'Press Monitor' },
           { id: 'community', icon: icons.community, label: 'Community Projects' },
           { id: 'faq', icon: icons.faq, label: 'FAQs' },
           { id: 'financials', icon: icons.financials, label: 'Financials' },
@@ -5400,6 +5591,12 @@
               ? html`<${PressEditor} slug=${editSlug || undefined} onBack=${() => { navigate('press'); loadData(); }} addToast=${addToast} />`
               : html`<${PressList} press=${press} onEdit=${s => navigate('press', s)} onAdd=${() => navigate('press', '')}
                   onDelete=${p => setDeleteModal({ type: 'press article', item: p })} />`;
+          case 'press-monitor':
+            return html`<${PressMonitor} existingPress=${press} addToast=${addToast} onApprove=${(mention) => {
+              // Navigate to press editor with pre-filled data via sessionStorage
+              sessionStorage.setItem('press-prefill', JSON.stringify(mention));
+              navigate('press', '');
+            }} />`;
           case 'applications':
             return html`<${Applications} addToast=${addToast} />`;
           case 'financials':
