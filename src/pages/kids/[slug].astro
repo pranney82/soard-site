@@ -42,6 +42,10 @@ export async function getStaticPaths() {
 
 const { kid, prevKid, nextKid, relatedKids } = Astro.props;
 const photos = kid.photos || [];
+const cs = kid.caseStudy || null;
+const hasTimeline = cs?.timeline && cs.timeline.length > 0;
+const hasChallenges = cs?.challenges && cs.challenges.length > 0;
+const isFeatured = kid.featured && cs;
 
 // ── CF Image helpers ──────────────────────
 import { cfUrl as _cfUrl, cfSrcset as _cfSrcset, cfRaw, CF_BASE } from '../../utils/cf-image';
@@ -297,6 +301,116 @@ const heroSizes = '100vw';
     )}
 
     <!-- ═══ Partner Logos ══════════════════════ -->
+
+    <!-- ═══ Case Study: Design Vision ════════ -->
+    {isFeatured && cs.designVision && (
+      <section class="cs-vision section">
+        <div class="container container--narrow">
+          <span class="cs-label">Featured Project</span>
+          <h2 class="cs-heading">The <em class="highlight">Vision</em></h2>
+          {cs.designTheme && <p class="cs-theme">{cs.designTheme}</p>}
+          <div class="cs-vision__text prose">
+            {cs.designVision.split('\n\n').map(p => <p>{p}</p>)}
+          </div>
+        </div>
+      </section>
+    )}
+
+    <!-- ═══ Case Study: Build Timeline ═══════ -->
+    {isFeatured && hasTimeline && (
+      <section class="cs-timeline section section--cream">
+        <div class="container container--narrow">
+          <h2 class="cs-heading">The <em class="highlight">Build</em></h2>
+          <div class="cs-timeline__track">
+            {cs.timeline.sort((a, b) => a.step - b.step).map((step, i) => (
+              <div class={`cs-step ${i % 2 === 1 ? 'cs-step--alt' : ''}`}>
+                <div class="cs-step__marker">
+                  <span class="cs-step__number">{step.step}</span>
+                  {i < cs.timeline.length - 1 && <div class="cs-step__line" aria-hidden="true" />}
+                </div>
+                <div class="cs-step__content">
+                  <h3 class="cs-step__title">{step.title}</h3>
+                  <p class="cs-step__desc">{step.description}</p>
+                  {step.photo && (
+                    <img
+                      src={cfUrl(step.photo, 'w=800,q=85')}
+                      srcset={cfSrcset(step.photo, [400, 800])}
+                      sizes="(max-width: 768px) 90vw, 600px"
+                      alt={`Step ${step.step}: ${step.title}`}
+                      class="cs-step__photo"
+                      loading="lazy"
+                      decoding="async"
+                      width="800"
+                      height="500"
+                    />
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+    )}
+
+    <!-- ═══ Case Study: Challenges & Solutions ══ -->
+    {isFeatured && hasChallenges && (
+      <section class="cs-challenges section">
+        <div class="container container--narrow">
+          <h2 class="cs-heading">Challenges & <em class="highlight">Solutions</em></h2>
+          <div class="cs-challenges__grid">
+            {cs.challenges.map(item => (
+              <div class="cs-challenge-card">
+                <div class="cs-challenge-card__challenge">
+                  <span class="cs-challenge-card__icon" aria-hidden="true">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                  </span>
+                  <div>
+                    <span class="cs-challenge-card__label">Challenge</span>
+                    <p>{item.challenge}</p>
+                  </div>
+                </div>
+                <div class="cs-challenge-card__solution">
+                  <span class="cs-challenge-card__icon cs-challenge-card__icon--sol" aria-hidden="true">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                  </span>
+                  <div>
+                    <span class="cs-challenge-card__label">Solution</span>
+                    <p>{item.solution}</p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+    )}
+
+    <!-- ═══ Case Study: Family Reaction ═══════ -->
+    {isFeatured && cs.familyReaction && (
+      <section class="cs-reveal section section--cream">
+        <div class="container container--narrow">
+          <h2 class="cs-heading">The <em class="highlight">Reveal</em></h2>
+          {cs.revealPhoto && (
+            <img
+              src={cfUrl(cs.revealPhoto, 'w=1200,q=85')}
+              srcset={cfSrcset(cs.revealPhoto, [600, 1200])}
+              sizes="(max-width: 768px) 90vw, 700px"
+              alt={`${kid.name}'s family reacting to the room reveal`}
+              class="cs-reveal__photo"
+              loading="lazy"
+              decoding="async"
+              width="1200"
+              height="800"
+            />
+          )}
+          <blockquote class="cs-reveal__quote">
+            <p>{cs.familyReaction}</p>
+          </blockquote>
+        </div>
+      </section>
+    )}
+
+    <!-- ═══ Partner Logos (original) ═══════════ -->
     {kid.partnerLogos && kid.partnerLogos.length > 0 && (
       <section class="partners-section section">
         <div class="container">
@@ -1467,6 +1581,265 @@ const heroSizes = '100vw';
 
     .gallery-header {
       flex-direction: column;
+    }
+  }
+
+  /* ═══ Case Study Sections ═══════════════ */
+  .cs-label {
+    display: inline-block;
+    font-family: var(--font-body);
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--c-yellow);
+    background: rgba(255, 218, 36, 0.12);
+    padding: 6px 14px;
+    border-radius: 100px;
+    margin-bottom: var(--space-lg);
+  }
+
+  .cs-heading {
+    font-family: var(--font-display);
+    font-size: clamp(1.75rem, 4vw, 2.5rem);
+    font-weight: 700;
+    color: var(--c-dark);
+    margin-bottom: var(--space-xl);
+    line-height: 1.2;
+  }
+
+  .cs-theme {
+    font-family: var(--font-body);
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--c-text-muted);
+    margin-top: calc(-1 * var(--space-md));
+    margin-bottom: var(--space-xl);
+    letter-spacing: 0.03em;
+  }
+
+  /* ── Vision ─── */
+  .cs-vision {
+    padding-block: var(--space-4xl);
+  }
+
+  .cs-vision__text {
+    font-family: var(--font-display);
+    font-size: 1.15rem;
+    line-height: 1.75;
+    color: var(--c-text);
+  }
+
+  .cs-vision__text p {
+    margin-bottom: var(--space-lg);
+  }
+
+  /* ── Timeline ─── */
+  .cs-timeline {
+    padding-block: var(--space-4xl);
+  }
+
+  .cs-timeline__track {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3xl);
+  }
+
+  .cs-step {
+    display: grid;
+    grid-template-columns: 48px 1fr;
+    gap: var(--space-lg);
+  }
+
+  .cs-step__marker {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .cs-step__number {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: var(--c-yellow);
+    color: var(--c-dark);
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 1.1rem;
+    flex-shrink: 0;
+  }
+
+  .cs-step__line {
+    width: 2px;
+    flex: 1;
+    background: linear-gradient(to bottom, var(--c-yellow), rgba(255, 218, 36, 0.15));
+    margin-top: var(--space-sm);
+    min-height: 40px;
+  }
+
+  .cs-step__content {
+    padding-top: 8px;
+  }
+
+  .cs-step__title {
+    font-family: var(--font-display);
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: var(--c-dark);
+    margin-bottom: var(--space-xs);
+    line-height: 1.3;
+  }
+
+  .cs-step__desc {
+    font-size: 1rem;
+    color: var(--c-text-muted);
+    line-height: 1.65;
+    max-width: 560px;
+  }
+
+  .cs-step__photo {
+    margin-top: var(--space-lg);
+    border-radius: var(--border-radius-lg);
+    width: 100%;
+    max-width: 600px;
+    height: auto;
+    object-fit: cover;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
+  }
+
+  /* ── Challenges ─── */
+  .cs-challenges {
+    padding-block: var(--space-4xl);
+  }
+
+  .cs-challenges__grid {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xl);
+  }
+
+  .cs-challenge-card {
+    border-radius: var(--border-radius-lg);
+    overflow: hidden;
+    box-shadow: 0 2px 16px rgba(0, 0, 0, 0.06);
+  }
+
+  .cs-challenge-card__challenge,
+  .cs-challenge-card__solution {
+    display: flex;
+    gap: var(--space-md);
+    padding: var(--space-lg) var(--space-xl);
+  }
+
+  .cs-challenge-card__challenge {
+    background: var(--c-warm-gray);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+  }
+
+  .cs-challenge-card__solution {
+    background: #fff;
+  }
+
+  .cs-challenge-card__icon {
+    flex-shrink: 0;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: rgba(55, 58, 54, 0.08);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--c-dark);
+    margin-top: 2px;
+  }
+
+  .cs-challenge-card__icon--sol {
+    background: rgba(255, 218, 36, 0.15);
+    color: #8a7300;
+  }
+
+  .cs-challenge-card__label {
+    display: block;
+    font-family: var(--font-body);
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--c-text-muted);
+    margin-bottom: 4px;
+  }
+
+  .cs-challenge-card p {
+    font-size: 0.95rem;
+    line-height: 1.6;
+    color: var(--c-dark);
+  }
+
+  /* ── Reveal ─── */
+  .cs-reveal {
+    padding-block: var(--space-4xl);
+    text-align: center;
+  }
+
+  .cs-reveal__photo {
+    border-radius: var(--border-radius-lg);
+    width: 100%;
+    max-width: 700px;
+    height: auto;
+    object-fit: cover;
+    margin-inline: auto;
+    display: block;
+    margin-bottom: var(--space-xl);
+    box-shadow: 0 8px 40px rgba(0, 0, 0, 0.1);
+  }
+
+  .cs-reveal__quote {
+    max-width: 600px;
+    margin-inline: auto;
+    font-family: var(--font-display);
+    font-style: italic;
+    font-size: clamp(1.1rem, 2.5vw, 1.35rem);
+    line-height: 1.7;
+    color: var(--c-dark);
+    position: relative;
+    padding-top: var(--space-lg);
+  }
+
+  .cs-reveal__quote::before {
+    content: '';
+    display: block;
+    width: 48px;
+    height: 3px;
+    background: var(--c-yellow);
+    margin: 0 auto var(--space-lg);
+    border-radius: 2px;
+  }
+
+  /* ── Case Study Responsive ─── */
+  @media (max-width: 768px) {
+    .cs-step {
+      grid-template-columns: 40px 1fr;
+      gap: var(--space-md);
+    }
+
+    .cs-step__number {
+      width: 40px;
+      height: 40px;
+      font-size: 0.95rem;
+    }
+
+    .cs-challenge-card__challenge,
+    .cs-challenge-card__solution {
+      padding: var(--space-md) var(--space-lg);
+    }
+
+    .cs-challenge-card__icon {
+      width: 32px;
+      height: 32px;
     }
   }
 

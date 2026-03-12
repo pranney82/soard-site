@@ -31,6 +31,23 @@ const kids = defineCollection({
     fundraisingUrl: z.string().nullable().optional(),
     childCount: z.number().default(1),
     roomCount: z.number().default(1),
+    featured: z.boolean().default(false),
+    caseStudy: z.object({
+      designVision: z.string().nullable().optional(),
+      designTheme: z.string().nullable().optional(),
+      timeline: z.array(z.object({
+        step: z.number(),
+        title: z.string(),
+        description: z.string(),
+        photo: z.string().nullable().optional(),
+      })).default([]),
+      challenges: z.array(z.object({
+        challenge: z.string(),
+        solution: z.string(),
+      })).default([]),
+      familyReaction: z.string().nullable().optional(),
+      revealPhoto: z.string().nullable().optional(),
+    }).nullable().optional(),
   }),
 });
 

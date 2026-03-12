@@ -1103,7 +1103,7 @@
               ${filtered.length === 0 ? html`<tr><td colspan="8" style="text-align:center; color: #6B6C72;">No kids found</td></tr>` : null}
               ${filtered.map(k => html`<tr key=${k.slug}>
                 <td>${k.heroImage ? html`<img class="td-thumb" src="${k.heroImage}" alt="" />` : html`<div class="td-thumb" />`}</td>
-                <td><strong>${k.name}</strong></td>
+                <td><strong>${k.name}</strong>${k.featured ? html` <span class="badge" style="background: #FFDA24; color: #373A36; font-size: 0.65rem; padding: 1px 6px; margin-left: 4px;">★</span>` : ''}</td>
                 <td>${k.age || '—'}</td>
                 <td class="text-sm">${(k.diagnosis || '—').slice(0, 50)}${(k.diagnosis || '').length > 50 ? '…' : ''}</td>
                 <td>${k.year || '—'}</td>
@@ -1137,6 +1137,7 @@
         videoUrl: '', streamVideoId: '', photographer: '', partnerLogos: [],
         shortDescription: '', metaDescription: '', fundraisingUrl: '',
         roomCount: 1, childCount: 1,
+        featured: false, caseStudy: null,
       });
       const [uploading, setUploading] = useState({});
       const [videoUploading, setVideoUploading] = useState(false);
@@ -1592,6 +1593,136 @@
                   </div>
                 </div>
               `)}
+            </div>
+          ` : null}
+        </div>
+
+        <div class="card">
+          <div class="flex items-center justify-between mb-1">
+            <h3>Case Study</h3>
+            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.85rem;">
+              <input type="checkbox" checked=${data.featured || false}
+                onChange=${e => updateField('featured', e.target.checked)}
+                style="accent-color: #FFDA24; width: 18px; height: 18px;" />
+              Featured Project
+            </label>
+          </div>
+          <p class="text-sm text-muted mb-1">Mark as featured to show this project on the Featured Projects page with a detailed case study.</p>
+
+          ${data.featured ? html`
+            <div style="margin-top: 1rem; border-top: 1px solid #E5E4E0; padding-top: 1rem;">
+              <div class="form-group">
+                <label class="form-label">Design Theme</label>
+                <input class="form-input" value=${data.caseStudy?.designTheme || ''}
+                  onInput=${e => updateField('caseStudy', { ...(data.caseStudy || {}), designTheme: e.target.value })}
+                  placeholder="e.g., Sports Haven, Underwater Adventure" />
+              </div>
+              <div class="form-group">
+                <label class="form-label">Design Vision</label>
+                <textarea class="form-textarea" style="min-height: 120px;" value=${data.caseStudy?.designVision || ''}
+                  onInput=${e => updateField('caseStudy', { ...(data.caseStudy || {}), designVision: e.target.value })}
+                  placeholder="Describe the design concept and inspiration for this room..." />
+              </div>
+
+              <div style="margin-top: 1.5rem;">
+                <div class="flex items-center justify-between mb-1">
+                  <h4 style="font-size: 0.95rem;">Build Timeline (${(data.caseStudy?.timeline || []).length} steps)</h4>
+                  <button class="btn btn-ghost btn-sm" onClick=${() => {
+                    const cs = data.caseStudy || {};
+                    const timeline = [...(cs.timeline || [])];
+                    timeline.push({ step: timeline.length + 1, title: '', description: '', photo: null });
+                    updateField('caseStudy', { ...cs, timeline });
+                  }}>+ Add Step</button>
+                </div>
+                ${(data.caseStudy?.timeline || []).map((step, i) => html`
+                  <div key=${i} style="background: #FEFCF5; border: 1px solid #E5E4E0; border-radius: 8px; padding: 1rem; margin-bottom: 0.75rem;">
+                    <div class="flex items-center justify-between" style="margin-bottom: 0.5rem;">
+                      <strong style="font-size: 0.85rem;">Step ${step.step}</strong>
+                      <button class="btn btn-ghost btn-sm" style="color: #e53e3e; padding: 0.2rem 0.5rem;" onClick=${() => {
+                        const cs = { ...(data.caseStudy || {}) };
+                        cs.timeline = cs.timeline.filter((_, j) => j !== i).map((s, j) => ({ ...s, step: j + 1 }));
+                        updateField('caseStudy', cs);
+                      }}>✕</button>
+                    </div>
+                    <input class="form-input" style="margin-bottom: 0.5rem; font-size: 0.85rem;" value=${step.title}
+                      onInput=${e => {
+                        const cs = { ...(data.caseStudy || {}) };
+                        cs.timeline = [...cs.timeline];
+                        cs.timeline[i] = { ...cs.timeline[i], title: e.target.value };
+                        updateField('caseStudy', cs);
+                      }} placeholder="Step title, e.g., Consultation & Planning" />
+                    <textarea class="form-input" style="font-size: 0.85rem; min-height: 60px;" value=${step.description}
+                      onInput=${e => {
+                        const cs = { ...(data.caseStudy || {}) };
+                        cs.timeline = [...cs.timeline];
+                        cs.timeline[i] = { ...cs.timeline[i], description: e.target.value };
+                        updateField('caseStudy', cs);
+                      }} placeholder="Describe this step..." />
+                    <div style="margin-top: 0.5rem;">
+                      <input class="form-input" style="font-size: 0.8rem;" value=${step.photo || ''}
+                        onInput=${e => {
+                          const cs = { ...(data.caseStudy || {}) };
+                          cs.timeline = [...cs.timeline];
+                          cs.timeline[i] = { ...cs.timeline[i], photo: e.target.value || null };
+                          updateField('caseStudy', cs);
+                        }} placeholder="Photo URL (Cloudflare Images) — optional" />
+                    </div>
+                  </div>
+                `)}
+              </div>
+
+              <div style="margin-top: 1.5rem;">
+                <div class="flex items-center justify-between mb-1">
+                  <h4 style="font-size: 0.95rem;">Challenges & Solutions (${(data.caseStudy?.challenges || []).length})</h4>
+                  <button class="btn btn-ghost btn-sm" onClick=${() => {
+                    const cs = data.caseStudy || {};
+                    const challenges = [...(cs.challenges || [])];
+                    challenges.push({ challenge: '', solution: '' });
+                    updateField('caseStudy', { ...cs, challenges });
+                  }}>+ Add</button>
+                </div>
+                ${(data.caseStudy?.challenges || []).map((item, i) => html`
+                  <div key=${i} style="background: #FEFCF5; border: 1px solid #E5E4E0; border-radius: 8px; padding: 1rem; margin-bottom: 0.75rem;">
+                    <div class="flex items-center justify-between" style="margin-bottom: 0.5rem;">
+                      <strong style="font-size: 0.85rem;">Challenge ${i + 1}</strong>
+                      <button class="btn btn-ghost btn-sm" style="color: #e53e3e; padding: 0.2rem 0.5rem;" onClick=${() => {
+                        const cs = { ...(data.caseStudy || {}) };
+                        cs.challenges = cs.challenges.filter((_, j) => j !== i);
+                        updateField('caseStudy', cs);
+                      }}>✕</button>
+                    </div>
+                    <input class="form-input" style="margin-bottom: 0.5rem; font-size: 0.85rem;" value=${item.challenge}
+                      onInput=${e => {
+                        const cs = { ...(data.caseStudy || {}) };
+                        cs.challenges = [...cs.challenges];
+                        cs.challenges[i] = { ...cs.challenges[i], challenge: e.target.value };
+                        updateField('caseStudy', cs);
+                      }} placeholder="What was the challenge?" />
+                    <input class="form-input" style="font-size: 0.85rem;" value=${item.solution}
+                      onInput=${e => {
+                        const cs = { ...(data.caseStudy || {}) };
+                        cs.challenges = [...cs.challenges];
+                        cs.challenges[i] = { ...cs.challenges[i], solution: e.target.value };
+                        updateField('caseStudy', cs);
+                      }} placeholder="How did we solve it?" />
+                  </div>
+                `)}
+              </div>
+
+              <div style="margin-top: 1.5rem;">
+                <div class="form-group">
+                  <label class="form-label">Family Reaction / Reveal Quote</label>
+                  <textarea class="form-textarea" style="min-height: 80px;" value=${data.caseStudy?.familyReaction || ''}
+                    onInput=${e => updateField('caseStudy', { ...(data.caseStudy || {}), familyReaction: e.target.value })}
+                    placeholder="What did the family say when they saw the room?" />
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Reveal Photo URL (optional)</label>
+                  <input class="form-input" value=${data.caseStudy?.revealPhoto || ''}
+                    onInput=${e => updateField('caseStudy', { ...(data.caseStudy || {}), revealPhoto: e.target.value || null })}
+                    placeholder="Cloudflare Images URL for the reveal moment" />
+                </div>
+              </div>
             </div>
           ` : null}
         </div>
