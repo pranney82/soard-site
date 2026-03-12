@@ -86,9 +86,6 @@ const breadcrumbs = [
   { name: 'Meet the Kids', url: `${SITE}/kids/` },
 ];
 
-// ── Featured kid = most recent with hero image ──
-const featuredKid = kids.find(k => k.data.heroImage);
-
 // ── All cards rendered server-side; JS just toggles visibility ──
 const INITIAL_BATCH = 24;
 const totalKidsCount = kids.length;
@@ -111,17 +108,6 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
   yi++;
 }
 
-// ── LCP: Preload featured card image ──
-const featuredImgSrcset = featuredKid?.data.heroImage
-  ? cfCropSrcset(featuredKid.data.heroImage, [640, 720, 960, 1400], 9/21)
-  : '';
-const featuredImgSizes = '(max-width: 768px) calc(100vw - 48px), (max-width: 1100px) calc(80vw - 48px), 1200px';
-
-// ── Pull quote from featured kid ──
-const featuredQuote = featuredKid?.data.quote
-  || (featuredKid?.data.bio
-    ? featuredKid.data.bio.split(/[.!]/).filter((s: string) => s.trim().length > 20 && s.trim().length < 120)[0]?.trim()
-    : null);
 ---
 
 <BaseLayout
@@ -130,10 +116,6 @@ const featuredQuote = featuredKid?.data.quote
   jsonLd={[itemListSchema, faqSchema]}
   breadcrumbs={breadcrumbs}
 >
-  <!-- LCP preload: featured card image -->
-  {featuredKid?.data.heroImage && (
-    <link slot="head" rel="preload" as="image" imagesrcset={featuredImgSrcset} imagesizes={featuredImgSizes} fetchpriority="high" />
-  )}
   <!-- Prefetch kid data manifest for instant search/load-more (5KB gzip, edge-cached) -->
   <link slot="head" rel="prefetch" href="/kids/data.json" as="fetch" crossorigin="anonymous" />
 
@@ -197,63 +179,6 @@ const featuredQuote = featuredKid?.data.quote
     </div>
   </section>
 
-  <!-- ══════ FEATURED KID — Cinematic Full-Bleed ══════ -->
-  {featuredKid && (
-    <section class="featured-section">
-      <div class="container container--wide">
-        <a
-          href={`/kids/${featuredKid.data.slug}/`}
-          class="featured"
-          aria-label={`Featured: ${featuredKid.data.name}'s story`}
-          data-year={`year-${featuredKid.data.year}`}
-          data-types={(featuredKid.data.roomTypes || []).map(t => `type-${t.toLowerCase().replace(/\s+/g, '-')}`).join(' ')}
-          data-name={featuredKid.data.name.toLowerCase()}
-          data-diagnosis={(featuredKid.data.diagnosis || '').toLowerCase()}
-          data-status={featuredKid.data.status || 'completed'}
-        >
-          <div class="featured__media">
-            <img
-              src={cfUrl(featuredKid.data.heroImage, 'w=960,h=411,fit=cover,gravity=face,q=82')}
-              srcset={featuredImgSrcset}
-              sizes={featuredImgSizes}
-              alt={`Photo of ${featuredKid.data.name}${featuredKid.data.diagnosis ? ` — ${featuredKid.data.diagnosis}` : ''}`}
-              class="featured__img"
-              width="960"
-              height="411"
-              loading="eager"
-              decoding="async"
-              fetchpriority="high"
-            />
-            <div class="featured__gradient"></div>
-          </div>
-          <div class="featured__overlay">
-            <span class="featured__label">{featuredKid.data.status === 'in-progress' ? 'Currently Building' : 'Latest Story'}</span>
-            <h2 class="featured__name">{featuredKid.data.name}</h2>
-            {featuredKid.data.diagnosis && (
-              <p class="featured__diagnosis">{featuredKid.data.diagnosis}</p>
-            )}
-            {featuredQuote && (
-              <p class="featured__quote">&ldquo;{featuredQuote}&rdquo;</p>
-            )}
-            <div class="featured__meta">
-              {featuredKid.data.roomTypes && featuredKid.data.roomTypes.length > 0 && (
-                <div class="featured__tags">
-                  {featuredKid.data.roomTypes.map(type => (
-                    <span class="featured__tag">{type}</span>
-                  ))}
-                </div>
-              )}
-              {featuredKid.data.status === 'in-progress' && (
-                <span class="featured__badge">In Progress</span>
-              )}
-            </div>
-            <span class="featured__cta">Read their story <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></span>
-          </div>
-        </a>
-      </div>
-    </section>
-  )}
-
   <!-- ══════ GRID SECTION ══════ -->
   <section class="kids-section">
     <div class="container container--wide">
@@ -267,7 +192,7 @@ const featuredQuote = featuredKid?.data.quote
               type="search"
               id="kid-search"
               class="search-box__input"
-              placeholder="Search name, diagnosis, year..."
+              placeholder="Search kids..."
               aria-label="Search kids by name, diagnosis, year, or project type"
               aria-expanded="false"
               aria-controls="autocomplete"
@@ -275,6 +200,7 @@ const featuredQuote = featuredKid?.data.quote
               role="combobox"
               autocomplete="off"
             />
+            <span class="search-box__count" id="search-count" hidden aria-live="polite"></span>
             <kbd class="search-box__kbd" id="search-kbd" aria-hidden="true">/</kbd>
             <button class="search-box__clear" id="search-clear" type="button" aria-label="Clear search" hidden>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -622,8 +548,8 @@ const featuredQuote = featuredKid?.data.quote
     const clearBtn = document.getElementById('clear-filters') as HTMLButtonElement;
     const clearBtnAlt = document.getElementById('clear-filters-alt') as HTMLButtonElement;
     const toolbar = document.getElementById('toolbar') as HTMLElement;
-    const featuredCard = document.querySelector('.featured') as HTMLElement | null;
     const searchClear = document.getElementById('search-clear') as HTMLButtonElement;
+    const searchCountEl = document.getElementById('search-count') as HTMLElement;
     const kbdHint = document.getElementById('search-kbd') as HTMLElement;
     const autocompleteEl = document.getElementById('autocomplete') as HTMLElement;
     const chipsEl = document.getElementById('filter-chips') as HTMLElement;
@@ -815,7 +741,7 @@ const featuredQuote = featuredKid?.data.quote
       const yearFilter = yearSelect.value;
       const typeFilter = typeSelect.value;
       const query = searchInput.value.trim();
-      const hasAny = yearFilter !== 'all' || typeFilter !== 'all' || statusActive || query.length > 0;
+      const hasAny = yearFilter !== 'all' || typeFilter !== 'all' || statusActive;
 
       if (!hasAny) {
         chipsEl.hidden = true;
@@ -824,9 +750,7 @@ const featuredQuote = featuredKid?.data.quote
       }
 
       let html = '';
-      if (query) {
-        html += `<span class="filter-chip"><svg class="filter-chip__icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="7"/><line x1="16" y1="16" x2="21" y2="21"/></svg>"${escapeHtml(query)}"<button class="filter-chip__remove" data-chip="search" aria-label="Remove search filter"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></span>`;
-      }
+      // Search query chip omitted — already visible in the input
       if (yearFilter !== 'all') {
         const label = yearSelect.options[yearSelect.selectedIndex]?.text || yearFilter;
         html += `<span class="filter-chip"><svg class="filter-chip__icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>${escapeHtml(label)}<button class="filter-chip__remove" data-chip="year" aria-label="Remove year filter"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></span>`;
@@ -860,26 +784,55 @@ const featuredQuote = featuredKid?.data.quote
     // ══════════════════════════════════════════
     //  AUTOCOMPLETE SEARCH SUGGESTIONS
     // ══════════════════════════════════════════
-    type ACEntry = { label: string; type: string; count: number; value: string };
+    type ACEntry = { label: string; type: string; count: number; value: string; image?: string; slug?: string };
     let acIndex: ACEntry[] = [];
     let acActiveIdx = -1;
+    const CF_BASE_URL = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
+    const RECENT_KEY = 'soard-recent-searches';
+    const MAX_RECENT = 5;
+
+    function getRecentSearches(): string[] {
+      try { return JSON.parse(localStorage.getItem(RECENT_KEY) || '[]').slice(0, MAX_RECENT); }
+      catch { return []; }
+    }
+    function saveRecentSearch(query: string) {
+      const q = query.trim();
+      if (!q || q.length < 2) return;
+      const recent = getRecentSearches().filter(r => r.toLowerCase() !== q.toLowerCase());
+      recent.unshift(q);
+      try { localStorage.setItem(RECENT_KEY, JSON.stringify(recent.slice(0, MAX_RECENT))); } catch {}
+    }
+    function removeRecentSearch(query: string) {
+      const recent = getRecentSearches().filter(r => r !== query);
+      try { localStorage.setItem(RECENT_KEY, JSON.stringify(recent)); } catch {}
+    }
+    function cfThumb(src: string): string {
+      if (!src || !src.includes('imagedelivery.net')) return '';
+      let id = src.replace(`${CF_BASE_URL}/`, '');
+      const lastSlash = id.lastIndexOf('/');
+      if (lastSlash > 0) {
+        const suffix = id.slice(lastSlash + 1);
+        if (['public','nav','footer','og'].includes(suffix) || suffix.includes('=')) id = id.slice(0, lastSlash);
+      }
+      return `${CF_BASE_URL}/${id}/w=56,h=56,fit=cover,gravity=face,q=80`;
+    }
 
     function buildAutocompleteIndex() {
       if (!allKidsData || acIndex.length > 0) return;
       const diagMap = new Map<string, number>();
       const typeMap = new Map<string, number>();
-      const nameMap = new Map<string, number>();
+      const nameEntries: { name: string; image: string | null; slug: string }[] = [];
       allKidsData.forEach(kid => {
         if (kid.diagnosis) {
           const d = kid.diagnosis;
           diagMap.set(d, (diagMap.get(d) || 0) + 1);
         }
         (kid.roomTypes || []).forEach(t => typeMap.set(t, (typeMap.get(t) || 0) + 1));
-        nameMap.set(kid.name, 1);
+        nameEntries.push({ name: kid.name, image: kid.heroImage, slug: kid.slug });
       });
       diagMap.forEach((count, label) => acIndex.push({ label, type: 'diagnosis', count, value: label }));
       typeMap.forEach((count, label) => acIndex.push({ label, type: 'project', count, value: label }));
-      nameMap.forEach((count, label) => acIndex.push({ label, type: 'name', count, value: label }));
+      nameEntries.forEach(({ name, image, slug }) => acIndex.push({ label: name, type: 'name', count: 1, value: name, image: image || undefined, slug }));
       // Sort by count descending
       acIndex.sort((a, b) => b.count - a.count);
     }
@@ -898,9 +851,43 @@ const featuredQuote = featuredKid?.data.quote
       nameList.forEach(name => acIndex.push({ label: name, type: 'name', count: 1, value: name }));
     }
 
+    function showEmptyAutocomplete() {
+      buildQuickIndex();
+      const recent = getRecentSearches();
+      const popular = acIndex.filter(i => i.type === 'diagnosis' && i.count > 1).slice(0, 5);
+      if (recent.length === 0 && popular.length === 0) { hideAutocomplete(); return; }
+
+      acActiveIdx = -1;
+      let html = '';
+      let idx = 0;
+      if (recent.length > 0) {
+        html += `<div class="autocomplete__section" aria-hidden="true">Recent</div>`;
+        recent.forEach(r => {
+          html += `<div class="autocomplete__item autocomplete__item--recent" role="option" data-ac-idx="${idx}" data-ac-value="${escapeHtml(r)}" data-ac-type="recent" id="ac-item-${idx}"><span class="autocomplete__text"><svg class="autocomplete__recent-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg><span class="autocomplete__label">${escapeHtml(r)}</span></span><button class="autocomplete__remove" data-remove-recent="${escapeHtml(r)}" type="button" aria-label="Remove recent search" tabindex="-1"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>`;
+          idx++;
+        });
+      }
+      if (popular.length > 0) {
+        html += `<div class="autocomplete__section" aria-hidden="true">Popular</div>`;
+        popular.forEach(item => {
+          html += `<div class="autocomplete__item" role="option" data-ac-idx="${idx}" data-ac-value="${escapeHtml(item.value)}" data-ac-type="${item.type}" id="ac-item-${idx}"><span class="autocomplete__text"><span class="autocomplete__label">${escapeHtml(item.label)}</span><span class="autocomplete__type">${item.type}</span></span><span class="autocomplete__count">${item.count}</span></div>`;
+          idx++;
+        });
+      }
+
+      autocompleteEl.innerHTML = html;
+      autocompleteEl.hidden = false;
+      searchInput.setAttribute('aria-expanded', 'true');
+      searchInput.setAttribute('aria-activedescendant', '');
+    }
+
     function showAutocomplete(query: string) {
       buildQuickIndex();
-      if (!query || query.length < 2) { hideAutocomplete(); return; }
+      if (!query || query.length < 2) {
+        if (document.activeElement === searchInput) showEmptyAutocomplete();
+        else hideAutocomplete();
+        return;
+      }
       const q = query.toLowerCase();
       const matches = acIndex.filter(item => {
         if (item.label.toLowerCase().includes(q)) return true;
@@ -913,7 +900,10 @@ const featuredQuote = featuredKid?.data.quote
       let html = '';
       matches.forEach((item, i) => {
         const hlLabel = highlightACText(item.label, q);
-        html += `<div class="autocomplete__item" role="option" data-ac-idx="${i}" data-ac-value="${escapeHtml(item.value)}" data-ac-type="${item.type}" id="ac-item-${i}"><span class="autocomplete__text"><span class="autocomplete__label">${hlLabel}</span><span class="autocomplete__type">${item.type}</span></span><span class="autocomplete__count">${item.count}</span></div>`;
+        const thumb = item.image ? cfThumb(item.image) : '';
+        const imgHtml = thumb ? `<img class="autocomplete__thumb" src="${thumb}" alt="" width="28" height="28" loading="lazy" />` : '';
+        const linkHtml = item.slug ? `<a href="/kids/${escapeHtml(item.slug)}/" class="autocomplete__link" aria-label="Go to ${escapeHtml(item.label)}" tabindex="-1"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg></a>` : '';
+        html += `<div class="autocomplete__item" role="option" data-ac-idx="${i}" data-ac-value="${escapeHtml(item.value)}" data-ac-type="${item.type}" id="ac-item-${i}"><span class="autocomplete__text">${imgHtml}<span class="autocomplete__label">${hlLabel}</span><span class="autocomplete__type">${item.type}</span></span><span class="autocomplete__meta">${item.type !== 'name' ? `<span class="autocomplete__count">${item.count}</span>` : ''}${linkHtml}</span></div>`;
       });
       html += `<div class="autocomplete__footer"><kbd>↑</kbd><kbd>↓</kbd> navigate <kbd>↵</kbd> select <kbd>esc</kbd> close</div>`;
 
@@ -949,6 +939,15 @@ const featuredQuote = featuredKid?.data.quote
     }
 
     autocompleteEl.addEventListener('click', (e) => {
+      const removeBtn = (e.target as HTMLElement).closest('[data-remove-recent]') as HTMLElement | null;
+      if (removeBtn) {
+        e.stopPropagation();
+        removeRecentSearch(removeBtn.dataset.removeRecent || '');
+        showEmptyAutocomplete();
+        return;
+      }
+      // Direct link arrow navigates to kid profile — let it through
+      if ((e.target as HTMLElement).closest('.autocomplete__link')) return;
       const item = (e.target as HTMLElement).closest('.autocomplete__item') as HTMLElement | null;
       if (item) selectAutocompleteItem(parseInt(item.dataset.acIdx || '0'));
     }, { signal });
@@ -1109,16 +1108,6 @@ const featuredQuote = featuredKid?.data.quote
       // Capture positions for FLIP
       const oldPos = capturePositions();
 
-      // Filter featured card
-      if (featuredCard) {
-        const fd = featuredCard.dataset;
-        const fMatchYear = yearFilter === 'all' || fd.year === yearFilter;
-        const fMatchType = typeFilter === 'all' || (fd.types ? fd.types.split(' ').includes(typeFilter) : false);
-        const fMatchStatus = !statusActive || fd.status === 'in-progress';
-        const fMatchSearch = !query || fuzzyMatch(query, fd.name, fd.diagnosis, (fd.year || '').replace('year-', ''), (fd.types || '').replace(/type-/g, '').replace(/-/g, ' ')) > 0;
-        featuredCard.closest('.featured-section')?.classList.toggle('is-filtered', hasFilters && !(fMatchYear && fMatchType && fMatchStatus && fMatchSearch));
-      }
-
       const cards = grid.querySelectorAll<HTMLElement>('.kid-card');
       let visibleCount = 0;
       cards.forEach(card => {
@@ -1152,6 +1141,23 @@ const featuredQuote = featuredKid?.data.quote
       requestAnimationFrame(() => animateFLIP(oldPos));
 
       visibleCountEl.textContent = String(visibleCount);
+      // Update status text to be search-aware
+      if (resultCount) {
+        const totalEl = document.getElementById('total-count');
+        const totalText = totalEl?.textContent || String(grid.querySelectorAll('.kid-card').length);
+        if (query && visibleCount > 0) {
+          resultCount.innerHTML = `<strong>${visibleCount}</strong> ${visibleCount === 1 ? 'result' : 'results'} for \u201c${escapeHtml(query)}\u201d`;
+        } else if (hasFilters && visibleCount > 0) {
+          resultCount.innerHTML = `Showing <strong>${visibleCount}</strong> of ${totalText} kids`;
+        } else if (!hasFilters) {
+          resultCount.innerHTML = `Showing <strong id="visible-count">${visibleCount}</strong> of <span id="total-count">${totalText}</span> kids`;
+        }
+      }
+      // Sync badge with actual filtered count
+      if (query) updateSearchCount(visibleCount);
+      else searchCountEl.hidden = true;
+      // Few results — center the grid
+      grid.classList.toggle('is-few-results', hasFilters && visibleCount > 0 && visibleCount <= 3);
       const showingNoResults = visibleCount === 0 && hasFilters;
       noResults.hidden = !showingNoResults;
       if (showingNoResults) buildSmartEmptyState(query, yearFilter, typeFilter);
@@ -1189,6 +1195,11 @@ const featuredQuote = featuredKid?.data.quote
 
     function clearAll() {
       searchInput.value = '';
+      searchInput.style.paddingRight = '';
+      searchCountEl.hidden = true;
+      searchClear.hidden = true;
+      grid.classList.remove('is-few-results');
+      if (kbdHint) kbdHint.classList.remove('is-hidden');
       yearSelect.value = 'all';
       typeSelect.value = 'all';
       if (sortSelect) { sortSelect.value = 'newest'; currentSort = 'newest'; }
@@ -1213,6 +1224,43 @@ const featuredQuote = featuredKid?.data.quote
     }
 
     // ══════════════════════════════════════════
+    //  INSTANT RESULT COUNT
+    // ══════════════════════════════════════════
+    function computeInstantCount(query: string): number {
+      if (!query) return -1;
+      const cards = grid.querySelectorAll<HTMLElement>('.kid-card');
+      const yearFilter = yearSelect.value;
+      const typeFilter = typeSelect.value;
+      let count = 0;
+      cards.forEach(card => {
+        if (card.classList.contains('is-overflow')) return;
+        const { year, types, name, diagnosis, status } = card.dataset;
+        const matchesYear = yearFilter === 'all' || year === yearFilter;
+        const matchesType = typeFilter === 'all' || (types ? types.split(' ').includes(typeFilter) : false);
+        const matchesStatus = !statusActive || status === 'in-progress';
+        const yearStr = (year || '').replace('year-', '');
+        const typesStr = (types || '').replace(/type-/g, '').replace(/-/g, ' ');
+        if (matchesYear && matchesType && matchesStatus && fuzzyMatch(query, name, diagnosis, yearStr, typesStr) > 0) count++;
+      });
+      return count;
+    }
+
+    function updateSearchCount(count: number) {
+      if (count < 0) {
+        searchCountEl.hidden = true;
+        searchInput.style.paddingRight = '';
+        return;
+      }
+      searchCountEl.textContent = `${count}`;
+      searchCountEl.hidden = false;
+      // Measure badge width and set input padding to avoid text overlap
+      requestAnimationFrame(() => {
+        const badgeW = searchCountEl.offsetWidth;
+        searchInput.style.paddingRight = `${44 + badgeW + 8}px`;
+      });
+    }
+
+    // ══════════════════════════════════════════
     //  EVENT WIRING
     // ══════════════════════════════════════════
     let searchTimer: ReturnType<typeof setTimeout>;
@@ -1226,24 +1274,27 @@ const featuredQuote = featuredKid?.data.quote
       }, { signal });
     }
 
-    // Search input with debounced autocomplete + filter
+    // Search input: instant autocomplete + count badge, debounced DOM filter
     searchInput.addEventListener('input', () => {
       clearTimeout(searchTimer);
       const val = searchInput.value;
       searchClear.hidden = !val;
       if (kbdHint) kbdHint.classList.toggle('is-hidden', !!val);
 
-      // Show autocomplete immediately
-      showAutocomplete(val.trim());
+      // Instant: autocomplete + result count badge
+      const trimmed = val.trim();
+      showAutocomplete(trimmed);
+      updateSearchCount(computeInstantCount(trimmed.toLowerCase()));
 
-      // Debounce actual filter
+      // Debounce DOM filter (80ms for snappy feel)
       isSearching = true;
       visibleCountEl.style.opacity = '0.4';
       searchTimer = setTimeout(() => {
         isSearching = false;
         visibleCountEl.style.opacity = '';
         applyFilters();
-      }, 150);
+        if (trimmed.length >= 2) saveRecentSearch(trimmed);
+      }, 80);
     }, { signal });
 
     // Autocomplete keyboard navigation
@@ -1270,7 +1321,7 @@ const featuredQuote = featuredKid?.data.quote
 
     searchInput.addEventListener('focus', () => {
       if (kbdHint) kbdHint.classList.add('is-hidden');
-      if (searchInput.value.trim().length >= 2) showAutocomplete(searchInput.value.trim());
+      showAutocomplete(searchInput.value.trim());
     }, { signal });
     searchInput.addEventListener('blur', () => {
       if (kbdHint && !searchInput.value) kbdHint.classList.remove('is-hidden');
@@ -1281,6 +1332,7 @@ const featuredQuote = featuredKid?.data.quote
     searchClear.addEventListener('click', () => {
       searchInput.value = '';
       searchClear.hidden = true;
+      searchCountEl.hidden = true;
       if (kbdHint) kbdHint.classList.remove('is-hidden');
       hideAutocomplete();
       applyFilters();
@@ -1715,163 +1767,6 @@ const featuredQuote = featuredKid?.data.quote
   }
 
   /* ═══════════════════════════════════════════
-     FEATURED — Cinematic Full-Bleed Card
-     ═══════════════════════════════════════════ */
-  .featured-section {
-    padding-bottom: var(--space-md);
-  }
-
-  .featured-section.is-filtered {
-    display: none;
-  }
-
-  .featured {
-    display: block;
-    position: relative;
-    border-radius: var(--border-radius-lg);
-    overflow: hidden;
-    text-decoration: none;
-    aspect-ratio: 21 / 9;
-    min-height: 280px;
-    transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1),
-                box-shadow 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-  }
-
-  @media (hover: hover) {
-    .featured:hover {
-      transform: translateY(-4px);
-      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
-    }
-    .featured:hover .featured__img {
-      transform: scale(1.03);
-    }
-    .featured:hover .featured__cta svg {
-      transform: translateX(4px);
-    }
-  }
-
-  .featured__media {
-    position: absolute;
-    inset: 0;
-  }
-
-  .featured__img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    display: block;
-    transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
-  }
-
-  .featured__gradient {
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(
-      to right,
-      rgba(30, 31, 37, 0.85) 0%,
-      rgba(30, 31, 37, 0.6) 40%,
-      transparent 70%
-    );
-  }
-
-  .featured__overlay {
-    position: relative;
-    z-index: 1;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    gap: var(--space-sm);
-    padding: var(--space-2xl) var(--space-3xl);
-    height: 100%;
-    max-width: 50%;
-  }
-
-  .featured__label {
-    font-size: 0.65rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.12em;
-    color: var(--c-yellow);
-  }
-
-  .featured__name {
-    font-family: var(--font-display);
-    font-size: clamp(1.75rem, 4vw, 2.75rem);
-    font-weight: 700;
-    color: var(--c-white);
-    line-height: 1.15;
-    margin: 0;
-  }
-
-  .featured__diagnosis {
-    font-size: 0.95rem;
-    color: rgba(255, 255, 255, 0.7);
-    line-height: 1.4;
-  }
-
-  .featured__quote {
-    font-family: var(--font-display);
-    font-style: italic;
-    font-size: 0.9rem;
-    color: rgba(255, 255, 255, 0.6);
-    line-height: 1.55;
-    max-width: 400px;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-    margin: var(--space-xs) 0;
-  }
-
-  .featured__meta {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 8px;
-    margin-top: var(--space-xs);
-  }
-
-  .featured__tags {
-    display: flex;
-    gap: 6px;
-  }
-
-  .featured__tag {
-    padding: 3px 12px;
-    background: rgba(255, 255, 255, 0.12);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    border-radius: 100px;
-    font-size: 0.7rem;
-    font-weight: 500;
-    color: rgba(255, 255, 255, 0.85);
-  }
-
-  .featured__badge {
-    padding: 3px 12px;
-    background: var(--c-yellow);
-    color: var(--c-dark);
-    font-size: 0.6rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    border-radius: 100px;
-  }
-
-  .featured__cta {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 0.9rem;
-    font-weight: 600;
-    color: var(--c-white);
-    margin-top: var(--space-sm);
-  }
-
-  .featured__cta svg {
-    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-  }
-
-  /* ═══════════════════════════════════════════
      GRID SECTION
      ═══════════════════════════════════════════ */
   .kids-section {
@@ -1968,7 +1863,7 @@ const featuredQuote = featuredKid?.data.quote
     border-radius: var(--border-radius);
     background: var(--c-white);
     color: var(--c-text);
-    transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+    transition: border-color var(--transition-fast), box-shadow var(--transition-fast), padding var(--transition-fast);
   }
 
   .search-box__input::placeholder {
@@ -2158,6 +2053,103 @@ const featuredQuote = featuredKid?.data.quote
     padding: 1px 5px;
     margin: 0 2px;
   }
+
+  /* ── Autocomplete: section headers ── */
+  .autocomplete__section {
+    padding: 8px 14px 4px;
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--c-text-light);
+  }
+
+  /* ── Autocomplete: thumbnails ── */
+  .autocomplete__thumb {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
+  }
+
+  /* ── Autocomplete: meta (count + link) ── */
+  .autocomplete__meta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+
+  /* ── Autocomplete: direct link arrow ── */
+  .autocomplete__link {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    color: var(--c-text-light);
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+  .autocomplete__link:hover {
+    background: var(--c-warm-gray);
+    color: var(--c-dark);
+  }
+
+  /* ── Autocomplete: recent search items ── */
+  .autocomplete__recent-icon {
+    flex-shrink: 0;
+    color: var(--c-text-light);
+  }
+  .autocomplete__remove {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border: none;
+    background: none;
+    border-radius: 50%;
+    color: var(--c-text-light);
+    cursor: pointer;
+    padding: 0;
+    flex-shrink: 0;
+    opacity: 0;
+    transition: opacity 0.15s ease, background 0.15s ease, color 0.15s ease;
+  }
+  .autocomplete__item--recent:hover .autocomplete__remove {
+    opacity: 1;
+  }
+  .autocomplete__remove:hover {
+    background: var(--c-warm-gray);
+    color: var(--c-dark);
+  }
+
+  /* ── Search count badge ── */
+  .search-box__count {
+    position: absolute;
+    right: 44px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 0.7rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--c-dark);
+    background: var(--c-yellow);
+    border-radius: 100px;
+    padding: 2px 9px;
+    line-height: 1.4;
+    pointer-events: none;
+    white-space: nowrap;
+    opacity: 0;
+    animation: countIn 0.15s ease forwards;
+  }
+  @keyframes countIn {
+    from { opacity: 0; transform: translateY(-50%) scale(0.8); }
+    to { opacity: 1; transform: translateY(-50%) scale(1); }
+  }
+  .search-box__count[hidden] { display: none; }
 
   /* ── Filter Chips ── */
   .filter-chips {
@@ -2577,6 +2569,14 @@ const featuredQuote = featuredKid?.data.quote
     min-width: 0;
   }
 
+  /* Few results: center cards, limit width */
+  .kids-grid.is-few-results {
+    grid-template-columns: repeat(auto-fit, minmax(200px, 260px));
+    justify-content: center;
+    max-width: 600px;
+    margin-inline: auto;
+  }
+
   /* ── Card ── */
   .kid-card {
     display: block;
@@ -2968,10 +2968,6 @@ const featuredQuote = featuredKid?.data.quote
       gap: var(--space-md);
     }
 
-    .featured__overlay {
-      max-width: 60%;
-      padding: var(--space-xl) var(--space-2xl);
-    }
   }
 
   /* Mobile */
@@ -3030,63 +3026,6 @@ const featuredQuote = featuredKid?.data.quote
 
     .hero-stat__label {
       font-size: 0.55rem;
-    }
-
-    /* Featured card: tighter, mobile-native aspect ratio */
-    .featured-section {
-      padding-bottom: var(--space-sm);
-    }
-
-    .featured {
-      aspect-ratio: 16 / 9;
-      min-height: 0;
-      border-radius: var(--border-radius);
-    }
-
-    .featured__gradient {
-      background: linear-gradient(
-        to top,
-        rgba(30, 31, 37, 0.92) 0%,
-        rgba(30, 31, 37, 0.55) 55%,
-        transparent 100%
-      );
-    }
-
-    .featured__overlay {
-      max-width: 100%;
-      justify-content: flex-end;
-      padding: var(--space-md);
-      gap: 4px;
-    }
-
-    .featured__label {
-      font-size: 0.6rem;
-    }
-
-    .featured__name {
-      font-size: 1.5rem;
-    }
-
-    .featured__diagnosis {
-      font-size: 0.82rem;
-    }
-
-    .featured__quote {
-      display: none;
-    }
-
-    .featured__meta {
-      margin-top: 2px;
-    }
-
-    .featured__tag {
-      font-size: 0.62rem;
-      padding: 2px 10px;
-    }
-
-    .featured__cta {
-      font-size: 0.82rem;
-      margin-top: 4px;
     }
 
     .kids-section {
@@ -3153,6 +3092,11 @@ const featuredQuote = featuredKid?.data.quote
       grid-template-columns: repeat(2, 1fr);
       gap: var(--space-md) 14px;
       max-width: 100%;
+    }
+
+    .kids-grid.is-few-results {
+      grid-template-columns: repeat(auto-fit, minmax(150px, 200px));
+      max-width: 440px;
     }
 
 
@@ -3275,11 +3219,6 @@ const featuredQuote = featuredKid?.data.quote
 
     .kid-card__hover-overlay,
     .kid-card__cta {
-      transition: none;
-    }
-
-    .featured,
-    .featured__img {
       transition: none;
     }
 

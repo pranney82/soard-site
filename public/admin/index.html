@@ -136,7 +136,23 @@
 
       /* Stat cards */
       .stat-card .stat-number { font-size: 1.75rem; }
-      .stat-grid { grid-template-columns: repeat(2, 1fr) !important; gap: 0.75rem !important; }
+      .stat-grid { grid-template-columns: repeat(2, 1fr) !important; gap: 0.75rem !important; margin-bottom: 1.25rem !important; }
+
+      /* Dashboard Recent Kids — grid layout per row */
+      .dashboard-recent .table-wrap tr {
+        display: grid !important;
+        grid-template-columns: 44px 1fr auto;
+        grid-template-rows: auto auto;
+        gap: 0.15rem 0.6rem;
+        padding: 0.75rem 0 !important;
+        align-items: center;
+      }
+      .dashboard-recent .table-wrap td { padding: 0 !important; border: none !important; }
+      .dashboard-recent .table-wrap td:nth-child(1) { grid-row: 1 / 3; grid-column: 1; } /* thumb */
+      .dashboard-recent .table-wrap td:nth-child(2) { grid-row: 1; grid-column: 2; } /* name */
+      .dashboard-recent .table-wrap td:nth-child(3) { grid-row: 1; grid-column: 3; font-size: 0.8rem; color: #6B6C72; } /* year */
+      .dashboard-recent .table-wrap td:nth-child(4) { grid-row: 2; grid-column: 2 / 4; } /* status */
+      .dashboard-recent .table-wrap td:nth-child(5) { display: none; } /* hide photo count on mobile */
 
       /* Tables — responsive card layout */
       .table-wrap { overflow-x: visible; }
@@ -1051,7 +1067,7 @@
             <div class="stat-label">Community Projects</div>
           </div>
         </div>
-        <div class="card">
+        <div class="card dashboard-recent">
           <h3 style="margin-bottom: 1rem;">Recent Kids</h3>
           <div class="table-wrap"><table>
             <thead><tr><th></th><th>Name</th><th>Year</th><th>Status</th><th>Photos</th></tr></thead>
@@ -1935,7 +1951,7 @@
         setLogoPreview(URL.createObjectURL(file));
         setUploading(true);
         try {
-          const cfId = `partners/${data.slug || slugify(data.name) || 'new'}`;
+          const cfId = `partners/${data.slug || slugify(data.name) || 'new'}/${Date.now()}`;
           const res = await api.uploadImage(file, cfId);
           if (res.success) {
             setData(d => ({ ...d, logo: res.imageUrl }));
@@ -2516,7 +2532,7 @@
         setPhotoPreview(URL.createObjectURL(file));
         setUploading(true);
         try {
-          const cfId = `team/${data.slug || slugify(data.name) || 'new'}`;
+          const cfId = `team/${data.slug || slugify(data.name) || 'new'}/${Date.now()}`;
           const res = await api.uploadImage(file, cfId);
           if (res.success) {
             setData(d => ({ ...d, photo: res.imageUrl }));
