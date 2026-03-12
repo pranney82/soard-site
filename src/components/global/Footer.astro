@@ -70,12 +70,12 @@ const mapsUrl = `https://maps.google.com/?q=${encodeURIComponent(`${address.stre
       <div class="footer-brand">
         <a href="/" class="footer-logo" aria-label="Sunshine on a Ranney Day — Home">
           <img
-              src={cfRaw(FOOTER_LOGO_ID, 'w=280,q=85')}
-              srcset={cfSrcset(FOOTER_LOGO_ID, [140, 280])}
-              sizes="140px"
+              src={cfRaw(FOOTER_LOGO_ID, 'w=400,q=85')}
+              srcset={cfSrcset(FOOTER_LOGO_ID, [200, 400])}
+              sizes="200px"
               alt="Sunshine on a Ranney Day logo"
-              width="140"
-              height="140"
+              width="200"
+              height="200"
               loading="lazy"
             />
         </a>
@@ -420,7 +420,7 @@ const mapsUrl = `https://maps.google.com/?q=${encodeURIComponent(`${address.stre
   .footer-logo:hover { opacity: 0.85; }
   .footer-logo img {
     display: block;
-    width: 140px;
+    width: 200px;
     height: auto;
     object-fit: contain;
   }
@@ -531,11 +531,9 @@ const mapsUrl = `https://maps.google.com/?q=${encodeURIComponent(`${address.stre
   }
   @media (max-width: 640px) {
     .footer-main { padding: 56px 0 40px; }
-    .footer-brand { align-items: center; text-align: center; }
     .footer-logo img { width: 120px; }
     .footer-mission { max-width: 100%; }
-    .footer-social { justify-content: center; }
-    .footer-donate-btn { align-self: center; max-width: 100%; }
+    .footer-donate-btn { max-width: 100%; }
   }
   @media (max-width: 480px) {
     .footer-nav {
