@@ -437,8 +437,8 @@ const mapsUrl = `https://maps.google.com/?q=${encodeURIComponent(`${address.stre
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 40px;
-    height: 40px;
+    width: 44px;
+    height: 44px;
     border-radius: 10px;
     background: rgba(255, 255, 255, 0.06);
     color: rgba(255, 255, 255, 0.6);
@@ -457,6 +457,9 @@ const mapsUrl = `https://maps.google.com/?q=${encodeURIComponent(`${address.stre
     justify-content: center;
     gap: 8px;
     padding: 14px 28px;
+    width: 100%;
+    max-width: 280px;
+    margin-top: 4px;
     background: var(--c-yellow);
     color: var(--c-dark);
     font-family: var(--font-body);
@@ -465,7 +468,6 @@ const mapsUrl = `https://maps.google.com/?q=${encodeURIComponent(`${address.stre
     border-radius: 60px;
     text-decoration: none;
     transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
-    align-self: flex-start;
   }
   .footer-donate-btn:hover {
     background: var(--c-yellow-hover);
@@ -523,12 +525,20 @@ const mapsUrl = `https://maps.google.com/?q=${encodeURIComponent(`${address.stre
       gap: 32px 24px;
     }
   }
+  @media (max-width: 480px) {
+    .footer-nav {
+      grid-template-columns: 1fr 1fr;
+      gap: 28px 20px;
+    }
+    .footer-heading { font-size: 13px; margin-bottom: 12px; }
+    .footer-col a { font-size: 13px; }
+  }
   @media (max-width: 640px) {
     .footer-main { padding: 56px 0 40px; }
     .footer-brand { align-items: center; text-align: center; }
     .footer-mission { max-width: 100%; }
     .footer-social { justify-content: center; }
-    .footer-donate-btn { align-self: center; }
+    .footer-donate-btn { align-self: center; max-width: 100%; }
   }
 
   /* ─── Trust Signals Bar ────────────────── */
@@ -547,7 +557,7 @@ const mapsUrl = `https://maps.google.com/?q=${encodeURIComponent(`${address.stre
   .footer-trust-badges {
     display: flex;
     align-items: center;
-    gap: 28px;
+    gap: 32px 36px;
     flex-wrap: wrap;
   }
   .trust-badge {
@@ -606,7 +616,15 @@ const mapsUrl = `https://maps.google.com/?q=${encodeURIComponent(`${address.stre
       align-items: center;
       text-align: center;
     }
-    .footer-trust-badges { justify-content: center; }
+    .footer-trust-badges {
+      justify-content: center;
+      gap: 24px;
+    }
+    .trust-badge--text {
+      border-left: none;
+      padding-left: 0;
+      align-items: center;
+    }
     .footer-contact {
       flex-direction: column;
       align-items: center;
