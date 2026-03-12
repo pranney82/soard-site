@@ -2777,6 +2777,9 @@
       const [dirty, setDirty] = useState(false);
       const [showImagePicker, setShowImagePicker] = useState(false);
       const [imagePickerTarget, setImagePickerTarget] = useState(null);
+      const [videoUploading, setVideoUploading] = useState(false);
+      const [uploading, setUploading] = useState({});
+      const [imageUploading, setImageUploading] = useState(false);
       const [data, setData] = useState({
         title: '', slug: '', date: new Date().toISOString().split('T')[0],
         endDate: '', time: '', location: '', address: '',
@@ -2817,13 +2820,104 @@
         setDirty(true);
       };
 
+      // ── Event Image Upload ──
+      const handleImageUpload = async (files) => {
+        const file = files[0];
+        if (!file) return;
+        setImageUploading(true);
+        try {
+          const cfId = `events/${data.slug || 'new'}/${Date.now()}-${file.name.replace(/[^a-z0-9.]/gi, '-')}`;
+          const res = await api.uploadImage(file, cfId);
+          if (res.success) {
+            update('image', res.imageId);
+            addToast('Event image uploaded!', 'success');
+          } else {
+            addToast(`Image upload failed: ${res.error}`, 'error');
+          }
+        } catch (err) {
+          addToast(`Upload error: ${err.message}`, 'error');
+        }
+        setImageUploading(false);
+      };
+
+      // ── Video Upload ──
+      const handleVideoUpload = async (files) => {
+        const file = files[0];
+        if (!file) return;
+        setVideoUploading(true);
+        try {
+          const videoName = data.title ? `${data.title} - Event` : file.name;
+          const res = await api.uploadVideo(file, videoName);
+          if (res.success) {
+            update('streamVideoId', res.videoId);
+            addToast('Video uploaded to Stream! It may take a few minutes to process.', 'success');
+          } else {
+            addToast(`Video upload failed: ${res.error}`, 'error');
+          }
+        } catch (err) {
+          addToast(`Video upload error: ${err.message}`, 'error');
+        }
+        setVideoUploading(false);
+      };
+
+      const removeVideo = () => {
+        update('streamVideoId', null);
+        addToast('Video removed (still exists in Cloudflare dashboard)', 'info');
+      };
+
+      // ── Photo Uploads ──
+      const handlePhotoUpload = async (files) => {
+        setDirty(true);
+        for (const file of files) {
+          const tempId = Date.now() + '-' + file.name;
+          const localUrl = URL.createObjectURL(file);
+          setData(d => ({
+            ...d,
+            photos: [...(d.photos || []), { id: localUrl, alt: '', _tempId: tempId }],
+          }));
+          setUploading(u => ({ ...u, [tempId]: true }));
+          try {
+            const cfId = `events/${data.slug || 'new'}/${Date.now()}-${file.name.replace(/[^a-z0-9.]/gi, '-')}`;
+            const res = await api.uploadImage(file, cfId);
+            if (res.success) {
+              setData(d => ({
+                ...d,
+                photos: (d.photos || []).map(p =>
+                  p._tempId === tempId ? { id: res.imageId, alt: '' } : p
+                ),
+              }));
+              addToast(`Uploaded ${file.name}`, 'success');
+            } else {
+              addToast(`Failed: ${res.error}`, 'error');
+              setData(d => ({ ...d, photos: (d.photos || []).filter(p => p._tempId !== tempId) }));
+            }
+          } catch (err) {
+            addToast(`Upload error: ${err.message}`, 'error');
+          }
+          setUploading(u => { const n = { ...u }; delete n[tempId]; return n; });
+        }
+      };
+
+      const removePhoto = (index) => {
+        setDirty(true);
+        setData(d => ({ ...d, photos: (d.photos || []).filter((_, i) => i !== index) }));
+      };
+
       const handleSave = async () => {
         if (!data.title) { addToast('Title is required', 'error'); return; }
         if (!data.slug) data.slug = slugify(data.title);
         setSaving(true);
         try {
+          // Clean temp fields before saving
+          const saveData = {
+            ...data,
+            streamVideoId: data.streamVideoId || null,
+            videoUrl: data.videoUrl || null,
+            image: data.image || null,
+            photos: (data.photos || []).map(({ _tempId, ...p }) => p).filter(p => p.id && !p.id.startsWith('blob:')),
+          };
           const path = `src/content/events/${data.slug}.json`;
-          const content = JSON.stringify(data, null, 2);
+          const content = JSON.stringify(saveData, null, 2);
           const message = slug ? `Update event: ${data.title}` : `Add event: ${data.title}`;
           const res = await api.saveContent(path, content, message, sha || undefined);
           if (res.success) {
@@ -2959,17 +3053,24 @@
             </div>
           </div>
           <div class="form-group" style="margin-bottom: 1.25rem;">
-            <span class="form-label">Event Image (Cloudflare Image ID)</span>
-            <div style="display: flex; gap: 0.5rem;">
-              <input class="form-input" type="text" style="flex: 1;" value=${data.image || ''}
-                onInput=${e => update('image', e.target.value || null)} placeholder="events/spring-gala-abc123" />
-              <button class="btn btn-ghost" type="button" onClick=${() => { setImagePickerTarget('image'); setShowImagePicker(true); }}>Browse</button>
-            </div>
-            <span class="form-hint">Cloudflare Image ID for the event card. Leave blank for no image.</span>
+            <span class="form-label">Event Card Image</span>
             ${data.image ? html`
-              <div style="margin-top: 0.75rem; border-radius: 8px; overflow: hidden; max-width: 400px;">
+              <div style="margin-bottom: 0.75rem; border-radius: 8px; overflow: hidden; max-width: 400px; position: relative;">
                 <img src=${'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/' + data.image + '/w=400'}
-                  alt="Event image preview" style="width: 100%; height: 160px; object-fit: cover; display: block;" />
+                  alt="Event image preview" style="width: 100%; height: 180px; object-fit: cover; display: block;" />
+                <button class="btn btn-ghost btn-sm" style="position: absolute; top: 8px; right: 8px; background: rgba(0,0,0,0.6); color: white; border-radius: 6px; padding: 0.25rem 0.5rem;"
+                  onClick=${() => update('image', null)}>✕ Remove</button>
+              </div>
+            ` : html`
+              <${DropZone} onFiles=${handleImageUpload} multiple=${false} accept="image/*" label="JPG, PNG, WebP — drag or click to upload" />
+              <div style="margin-top: 0.5rem; text-align: center;">
+                <button class="btn btn-ghost btn-sm" type="button" onClick=${() => { setImagePickerTarget('image'); setShowImagePicker(true); }}>Browse Image Library</button>
+              </div>
+            `}
+            ${imageUploading ? html`
+              <div style="display: flex; align-items: center; gap: 0.5rem; margin-top: 0.5rem; padding: 0.5rem 0.75rem; background: rgba(255,218,36,0.12); border-radius: 6px;">
+                <span class="spinner" />
+                <span style="font-size: 0.85rem;">Uploading image...</span>
               </div>
             ` : null}
           </div>
@@ -2977,67 +3078,81 @@
 
         <!-- Video & Photos -->
         <div class="card" style="margin-bottom: 1rem;">
-          <h3 style="margin-bottom: 1rem;">Video & Photos</h3>
-          <div class="form-row" style="margin-bottom: 1.25rem;">
-            <div class="form-group">
-              <span class="form-label">Cloudflare Stream Video ID</span>
-              <input class="form-input" type="text" value=${data.streamVideoId || ''}
-                onInput=${e => update('streamVideoId', e.target.value || null)} placeholder="abc123def456..." />
-              <span class="form-hint">Stream video ID from Cloudflare. Leave blank for no video.</span>
-            </div>
-            <div class="form-group">
-              <span class="form-label">YouTube URL (fallback)</span>
-              <input class="form-input" type="url" value=${data.videoUrl || ''}
-                onInput=${e => update('videoUrl', e.target.value || null)} placeholder="https://youtube.com/watch?v=..." />
-              <span class="form-hint">Used only if no Stream video ID is set.</span>
-            </div>
+          <h3 style="margin-bottom: 1rem;">Video</h3>
+          <div class="form-group" style="margin-bottom: 1.25rem;">
+            <span class="form-label">Event Video</span>
+            ${data.streamVideoId ? html`
+              <div style="margin-bottom: 0.75rem; border-radius: 8px; overflow: hidden; max-width: 480px; aspect-ratio: 16/9; background: #000;">
+                <iframe src=${'https://iframe.videodelivery.net/' + data.streamVideoId}
+                  style="width: 100%; height: 100%; border: none;" allow="autoplay; fullscreen" allowfullscreen />
+              </div>
+              <div style="display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem; background: rgba(255,218,36,0.08); border-radius: 8px; border: 1px solid rgba(255,218,36,0.25);">
+                <div style="flex: 1; min-width: 0;">
+                  <div style="font-weight: 600; font-size: 0.9rem;">Stream video linked</div>
+                  <div style="font-size: 0.8rem; color: rgba(0,0,0,0.45); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${data.streamVideoId}</div>
+                </div>
+                <button class="btn btn-ghost btn-sm" style="font-size: 0.85rem;" onClick=${removeVideo}>Remove</button>
+              </div>
+            ` : html`
+              <${DropZone} onFiles=${handleVideoUpload} multiple=${false} accept="video/*" label="MP4, MOV, WebM — upload event video" />
+            `}
+            ${videoUploading ? html`
+              <div style="display: flex; align-items: center; gap: 0.5rem; margin-top: 0.5rem; padding: 0.5rem 0.75rem; background: rgba(255,218,36,0.12); border-radius: 6px;">
+                <span class="spinner" />
+                <span style="font-size: 0.85rem;">Uploading video to Cloudflare Stream...</span>
+              </div>
+            ` : null}
+            <span class="form-hint" style="display: block; margin-top: 0.5rem;">Uploaded videos play on your site with no ads.</span>
           </div>
-          ${data.streamVideoId ? html`
-            <div style="margin-bottom: 1.25rem; border-radius: 8px; overflow: hidden; max-width: 480px; aspect-ratio: 16/9; background: #000;">
-              <iframe src=${'https://iframe.videodelivery.net/' + data.streamVideoId}
-                style="width: 100%; height: 100%; border: none;" allow="autoplay; fullscreen" allowfullscreen />
+          <div class="form-group" style="margin-bottom: 1.25rem;">
+            <span class="form-label">YouTube URL (fallback)</span>
+            <input class="form-input" type="url" value=${data.videoUrl || ''}
+              onInput=${e => update('videoUrl', e.target.value || null)} placeholder="https://youtube.com/watch?v=..." />
+            <span class="form-hint">Used only if no Stream video is uploaded.</span>
+          </div>
+        </div>
+
+        <div class="card" style="margin-bottom: 1rem;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <h3>Event Photos (${(data.photos || []).length})</h3>
+          </div>
+          <${DropZone} onFiles=${handlePhotoUpload} label="JPG, PNG, WebP — upload event photos" />
+          <div style="margin-top: 0.5rem; text-align: center;">
+            <button class="btn btn-ghost btn-sm" type="button" onClick=${() => {
+              const idx = (data.photos || []).length;
+              update('photos', [...(data.photos || []), { id: '', alt: '' }]);
+              setImagePickerTarget('photo:' + idx);
+              setShowImagePicker(true);
+            }}>Browse Image Library</button>
+          </div>
+          ${(data.photos || []).length > 0 ? html`
+            <div class="photo-grid" style="margin-top: 1rem;">
+              ${(data.photos || []).map((photo, idx) => html`
+                <div key=${idx} style="position: relative; border-radius: 8px; overflow: hidden; aspect-ratio: 4/3; background: #f0f0f0;">
+                  <img src=${photo.id && photo.id.startsWith('blob:') ? photo.id : 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/' + photo.id + '/w=300'}
+                    alt=${photo.alt || ''} style="width: 100%; height: 100%; object-fit: cover; display: block;" loading="lazy" />
+                  ${uploading[photo._tempId] ? html`
+                    <div style="position: absolute; inset: 0; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center;">
+                      <span class="spinner" style="border-color: rgba(255,255,255,0.3); border-top-color: white;" />
+                    </div>
+                  ` : null}
+                  <div style="position: absolute; top: 4px; right: 4px; display: flex; gap: 4px;">
+                    <button class="btn btn-ghost btn-sm" style="background: rgba(0,0,0,0.6); color: white; border-radius: 6px; padding: 0.2rem 0.4rem; font-size: 0.75rem;"
+                      onClick=${() => removePhoto(idx)} title="Remove">✕</button>
+                  </div>
+                  <div style="position: absolute; bottom: 0; left: 0; right: 0; background: rgba(0,0,0,0.5); padding: 4px 8px;">
+                    <input type="text" value=${photo.alt || ''} placeholder="Alt text..."
+                      style="width: 100%; background: transparent; border: none; color: white; font-size: 0.75rem; outline: none;"
+                      onInput=${e => {
+                        const photos = [...(data.photos || [])];
+                        photos[idx] = { ...photos[idx], alt: e.target.value };
+                        update('photos', photos);
+                      }} />
+                  </div>
+                </div>
+              `)}
             </div>
           ` : null}
-
-          <div style="margin-bottom: 0.75rem; display: flex; justify-content: space-between; align-items: center;">
-            <span class="form-label" style="margin: 0;">Event Photos (${(data.photos || []).length})</span>
-            <button class="btn btn-ghost btn-sm" onClick=${() => {
-              update('photos', [...(data.photos || []), { id: '', alt: '' }]);
-            }}>+ Add Photo</button>
-          </div>
-          <span class="form-hint" style="display: block; margin-bottom: 0.75rem;">Cloudflare Image IDs for event gallery. These show on the public events page.</span>
-          ${(data.photos || []).map((photo, idx) => html`
-            <div key=${idx} style="display: flex; gap: 0.75rem; align-items: start; margin-bottom: 0.75rem; padding: 0.75rem; border: 1px solid #E5E4E0; border-radius: 8px;">
-              ${photo.id ? html`
-                <div style="width: 80px; height: 60px; border-radius: 6px; overflow: hidden; flex-shrink: 0;">
-                  <img src=${'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/' + photo.id + '/w=160'}
-                    alt="Preview" style="width: 100%; height: 100%; object-fit: cover;" />
-                </div>
-              ` : null}
-              <div style="flex: 1; display: flex; flex-direction: column; gap: 0.5rem;">
-                <div style="display: flex; gap: 0.5rem;">
-                  <input class="form-input" type="text" style="flex: 1;" value=${photo.id} placeholder="Cloudflare Image ID"
-                    onInput=${e => {
-                      const photos = [...(data.photos || [])];
-                      photos[idx] = { ...photos[idx], id: e.target.value };
-                      update('photos', photos);
-                    }} />
-                  <button class="btn btn-ghost btn-sm" type="button" onClick=${() => { setImagePickerTarget('photo:' + idx); setShowImagePicker(true); }}>Browse</button>
-                </div>
-                <input class="form-input" type="text" value=${photo.alt} placeholder="Alt text (describe the image)"
-                  onInput=${e => {
-                    const photos = [...(data.photos || [])];
-                    photos[idx] = { ...photos[idx], alt: e.target.value };
-                    update('photos', photos);
-                  }} />
-              </div>
-              <button class="btn btn-ghost btn-sm" style="color: #E53E3E; flex-shrink: 0;" onClick=${() => {
-                const photos = [...(data.photos || [])];
-                photos.splice(idx, 1);
-                update('photos', photos);
-              }}>✕</button>
-            </div>
-          `)}
         </div>
 
         <div class="card" style="margin-bottom: 1rem;">
