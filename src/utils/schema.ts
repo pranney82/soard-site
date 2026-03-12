@@ -283,30 +283,6 @@ export function getKidProfileSchema(kid: {
 }
 
 /**
- * ImageGallery schema — rooms/before-after page
- */
-export function getImageGallerySchema(opts: {
-  name: string;
-  url: string;
-  description: string;
-  images: { url: string; caption?: string }[];
-}) {
-  return {
-    "@type": "ImageGallery",
-    "@id": `${opts.url}#gallery`,
-    "name": opts.name,
-    "description": opts.description,
-    "url": opts.url,
-    "about": { "@id": `${SITE_URL}/#organization` },
-    "image": opts.images.map(img => ({
-      "@type": "ImageObject",
-      "url": img.url,
-      ...(img.caption ? { "caption": img.caption } : {})
-    }))
-  };
-}
-
-/**
  * FAQPage schema
  */
 export function getFAQSchema(items: { question: string; answer: string }[]) {
@@ -320,37 +296,6 @@ export function getFAQSchema(items: { question: string; answer: string }[]) {
         "text": item.answer.replace(/<[^>]+>/g, '')
       }
     }))
-  };
-}
-
-/**
- * Event schema
- */
-export function getEventSchema(opts: {
-  name: string;
-  description: string;
-  startDate: string;
-  endDate?: string;
-  url: string;
-  location?: string;
-  image?: string;
-}) {
-  return {
-    "@type": "Event",
-    "name": opts.name,
-    "description": opts.description,
-    "startDate": opts.startDate,
-    ...(opts.endDate ? { "endDate": opts.endDate } : {}),
-    "url": opts.url,
-    "organizer": { "@id": `${SITE_URL}/#organization` },
-    ...(opts.location ? {
-      "location": {
-        "@type": "Place",
-        "name": opts.location
-      }
-    } : {}),
-    ...(opts.image ? { "image": opts.image } : {}),
-    "eventAttendanceMode": "https://schema.org/OfflineEventAttendanceMode"
   };
 }
 
