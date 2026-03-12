@@ -3118,17 +3118,39 @@
     // COMMUNITY PROJECTS LIST
     // ═══════════════════════════════════════════
     function CommunityList({ projects, onEdit, onAdd, onDelete }) {
+      const [search, setSearch] = useState('');
+      const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
+      const filtered = useMemo(() => {
+        if (!search) return projects;
+        const q = search.toLowerCase();
+        return projects.filter(p =>
+          p.name.toLowerCase().includes(q) ||
+          (p.description || '').toLowerCase().includes(q) ||
+          (p.year + '').includes(q)
+        );
+      }, [projects, search]);
+
       return html`
         <div class="page-header">
           <h2>Community Projects (${projects.length})</h2>
           <button class="btn btn-primary" onClick=${onAdd}>+ Add Project</button>
         </div>
+        <div class="card" style="margin-bottom: 1rem; padding: 0.75rem 1rem;">
+          <div class="search-bar" style="max-width: 100%;">
+            <span class="search-icon">${icons.search}</span>
+            <input placeholder="Search by name, description, or year..."
+              value=${search} onInput=${e => setSearch(e.target.value)} />
+          </div>
+        </div>
         <div class="card">
           <div class="table-wrap"><table>
-            <thead><tr><th>Name</th><th>Year</th><th>Impact</th><th>Badge</th><th>Image</th><th>Order</th><th></th></tr></thead>
+            <thead><tr><th></th><th>Name</th><th>Year</th><th>Impact</th><th>Badge</th><th>Photos</th><th>Order</th><th></th></tr></thead>
             <tbody>
-              ${projects.length === 0 ? html`<tr><td colspan="7" style="text-align:center; color: #6B6C72;">No community projects yet</td></tr>` : null}
-              ${projects.map(p => html`<tr key=${p.slug}>
+              ${filtered.length === 0 ? html`<tr><td colspan="8" style="text-align:center; color: #6B6C72;">No community projects found</td></tr>` : null}
+              ${filtered.map(p => html`<tr key=${p.slug}>
+                <td>${p.imageId
+                  ? html`<img class="td-thumb" src="${CF}/${p.imageId}/w=88,h=88,fit=cover" alt="" style="border-radius: 6px;" />`
+                  : html`<div class="td-thumb" style="background: ${p.color}; border-radius: 6px;" />`}</td>
                 <td>
                   <div style="display: flex; align-items: center; gap: 0.5rem;">
                     <span style="width: 12px; height: 12px; border-radius: 50%; background: ${p.color}; flex-shrink: 0;" />
@@ -3137,8 +3159,8 @@
                 </td>
                 <td class="text-sm">${p.year}</td>
                 <td class="text-sm">${p.impact} ${p.impactLabel}</td>
-                <td>${p.badge ? html`<span class="badge badge-accent">${p.badge}</span>` : '—'}</td>
-                <td>${p.imageId ? '✅' : '—'}</td>
+                <td>${p.badge ? html`<span class="badge badge-yellow">${p.badge}</span>` : '—'}</td>
+                <td>${(p.photos || []).length || (p.imageId ? 1 : 0)}</td>
                 <td class="text-sm">${p.order || 0}</td>
                 <td style="white-space: nowrap;">
                   <button class="btn btn-ghost btn-sm" onClick=${() => onEdit(p.slug)}>Edit</button>
@@ -3157,13 +3179,20 @@
     function CommunityEditor({ slug, onBack, addToast }) {
       const [loading, setLoading] = useState(!!slug);
       const [saving, setSaving] = useState(false);
+      const [deleting, setDeleting] = useState(false);
+      const [showDeleteModal, setShowDeleteModal] = useState(false);
       const [sha, setSha] = useState(null);
       const [dirty, setDirty] = useState(false);
+      const [uploading, setUploading] = useState({});
       const [data, setData] = useState({
         name: '', slug: '', impact: '', impactLabel: 'children impacted yearly',
         year: new Date().getFullYear().toString(), description: '',
         color: '#373A36', imageId: '', imageAlt: '', badge: '', order: 0,
+        photos: [], heroImage: '',
       });
+
+      const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
+      const PRESET_COLORS = ['#2E7D32', '#1565C0', '#6A1B9A', '#C62828', '#E65100', '#00838F', '#373A36', '#AD1457'];
 
       useEffect(() => {
         if (!slug) return;
@@ -3172,6 +3201,12 @@
             const res = await api.readContent(`src/content/community/${slug}.json`);
             if (res.success && res.content) {
               const parsed = typeof res.content === 'string' ? JSON.parse(res.content) : res.content;
+              // Migrate: if imageId exists but no photos array, create one
+              if (parsed.imageId && (!parsed.photos || parsed.photos.length === 0)) {
+                parsed.photos = [{ url: `${CF}/${parsed.imageId}/public`, alt: parsed.imageAlt || '', cfImageId: parsed.imageId }];
+                parsed.heroImage = parsed.heroImage || `${CF}/${parsed.imageId}/public`;
+              }
+              if (!parsed.photos) parsed.photos = [];
               setData(parsed);
               setSha(res.sha);
             } else {
@@ -3196,14 +3231,118 @@
         setDirty(true);
       };
 
+      // Warn on browser close/refresh with unsaved changes
+      useEffect(() => {
+        const handler = (e) => { if (dirty) { e.preventDefault(); e.returnValue = ''; } };
+        window.addEventListener('beforeunload', handler);
+        return () => window.removeEventListener('beforeunload', handler);
+      }, [dirty]);
+
+      const safeBack = () => {
+        if (dirty && !confirm('You have unsaved changes. Leave without saving?')) return;
+        onBack();
+      };
+
+      const handleDelete = async () => {
+        if (!slug || !sha) return;
+        setDeleting(true);
+        try {
+          const res = await api.deleteContent(
+            `src/content/community/${slug}.json`, sha, `Delete community project: ${data.name}`
+          );
+          if (res.success) {
+            addToast(`${data.name} deleted`, 'success');
+            setDirty(false);
+            onBack();
+          } else {
+            addToast(`Delete failed: ${res.error}`, 'error');
+          }
+        } catch (err) {
+          addToast(`Delete error: ${err.message}`, 'error');
+        }
+        setDeleting(false);
+        setShowDeleteModal(false);
+      };
+
+      const handlePhotoUpload = async (files) => {
+        setDirty(true);
+        for (const file of files) {
+          const tempId = Date.now() + '-' + file.name;
+          const localUrl = URL.createObjectURL(file);
+          setData(d => ({
+            ...d,
+            photos: [...(d.photos || []), { url: localUrl, alt: '', _tempId: tempId }],
+          }));
+          setUploading(u => ({ ...u, [tempId]: true }));
+
+          try {
+            const cfId = `community/${data.slug || 'new'}/${Date.now()}-${file.name.replace(/[^a-z0-9.]/gi, '-')}`;
+            const res = await api.uploadImage(file, cfId);
+            if (res.success) {
+              setData(d => ({
+                ...d,
+                photos: (d.photos || []).map(p =>
+                  p._tempId === tempId
+                    ? { url: res.imageUrl, alt: '', cfImageId: res.imageId }
+                    : p
+                ),
+                // Auto-set imageId from first upload if not set
+                imageId: d.imageId || res.imageId,
+                heroImage: d.heroImage || res.imageUrl,
+              }));
+              addToast(`Uploaded ${file.name}`, 'success');
+            } else {
+              addToast(`Failed: ${res.error}`, 'error');
+              setData(d => ({
+                ...d,
+                photos: (d.photos || []).filter(p => p._tempId !== tempId),
+              }));
+            }
+          } catch (err) {
+            addToast(`Upload error: ${err.message}`, 'error');
+          }
+          setUploading(u => { const n = { ...u }; delete n[tempId]; return n; });
+        }
+      };
+
+      const removePhoto = (index) => {
+        setDirty(true);
+        setData(d => {
+          const newPhotos = (d.photos || []).filter((_, i) => i !== index);
+          const removedUrl = (d.photos || [])[index]?.url;
+          return {
+            ...d,
+            photos: newPhotos,
+            heroImage: d.heroImage === removedUrl ? (newPhotos[0]?.url || '') : d.heroImage,
+            imageId: newPhotos.length === 0 ? '' : d.imageId,
+          };
+        });
+      };
+
+      const setHero = (index) => {
+        setDirty(true);
+        const photo = (data.photos || [])[index];
+        if (photo) {
+          setData(d => ({
+            ...d,
+            heroImage: photo.url,
+            imageId: photo.cfImageId || d.imageId,
+          }));
+        }
+      };
+
       const handleSave = async () => {
         if (!data.name) { addToast('Name is required', 'error'); return; }
         if (!data.slug) data.slug = slugify(data.name);
         setSaving(true);
         try {
-          const path = `src/content/community/${data.slug}.json`;
-          const content = JSON.stringify(data, null, 2);
-          const message = slug ? `Update community project: ${data.name}` : `Add community project: ${data.name}`;
+          const saveData = {
+            ...data,
+            photos: (data.photos || []).map(({ _tempId, ...p }) => p),
+          };
+          const path = `src/content/community/${saveData.slug}.json`;
+          const content = JSON.stringify(saveData, null, 2);
+          const message = slug ? `Update community project: ${saveData.name}` : `Add community project: ${saveData.name}`;
           const res = await api.saveContent(path, content, message, sha || undefined);
           if (res.success) {
             setSha(res.sha);
@@ -3218,89 +3357,94 @@
         setSaving(false);
       };
 
-      useEffect(() => {
-        const handler = (e) => { if (dirty) { e.preventDefault(); e.returnValue = ''; } };
-        window.addEventListener('beforeunload', handler);
-        return () => window.removeEventListener('beforeunload', handler);
-      }, [dirty]);
-
-      if (loading) return html`<div class="card" style="text-align: center; padding: 3rem;"><div class="spinner" style="width: 32px; height: 32px;" /></div>`;
-
-      const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
-      const PRESET_COLORS = ['#2E7D32', '#1565C0', '#6A1B9A', '#C62828', '#E65100', '#00838F', '#373A36', '#AD1457'];
+      if (loading) return html`<div class="card" style="text-align: center; padding: 3rem;">
+        <div class="spinner" style="width: 32px; height: 32px; border-width: 3px;" /></div>`;
 
       return html`
+        ${showDeleteModal ? html`<${ConfirmModal}
+          title="Delete ${data.name}?"
+          message="This will permanently remove this community project from the site. This cannot be undone."
+          danger=${true}
+          onConfirm=${handleDelete}
+          onCancel=${() => setShowDeleteModal(false)}
+        />` : null}
+        <button class="back-link" onClick=${safeBack}>${icons.arrowLeft} Back to Community Projects</button>
         <div class="page-header">
-          <div style="display: flex; align-items: center; gap: 0.75rem;">
-            <button class="btn btn-ghost" onClick=${() => { if (dirty && !confirm('You have unsaved changes. Leave?')) return; onBack(); }}>← Back</button>
-            <h2>${slug ? 'Edit Project' : 'New Community Project'}</h2>
+          <h2>${slug ? `Edit: ${data.name}` : 'Add New Community Project'}</h2>
+          <div class="flex gap-1 items-center">
+            ${slug ? html`<button class="btn btn-danger btn-sm" onClick=${() => setShowDeleteModal(true)} disabled=${deleting}>
+              ${deleting ? html`<span class="spinner" />` : null} Delete
+            </button>` : null}
+            <button class="btn btn-primary" onClick=${handleSave} disabled=${saving}>
+              ${saving ? html`<span class="spinner" />` : null}
+              ${saving ? 'Saving...' : 'Save & Publish'}
+            </button>
           </div>
-          <button class="btn btn-primary" onClick=${handleSave} disabled=${saving}>
-            ${saving ? 'Saving...' : dirty ? '💾 Save & Publish' : 'Save & Publish'}
-          </button>
         </div>
 
-        <div class="card" style="margin-bottom: 1rem;">
+        <div class="card">
           <h3 style="margin-bottom: 1rem;">Project Details</h3>
-          <div class="form-row" style="margin-bottom: 1.25rem;">
+          <div class="form-row">
             <div class="form-group">
-              <span class="form-label">Organization Name *</span>
+              <label class="form-label">Organization Name *</label>
               <input class="form-input" type="text" value=${data.name}
                 onInput=${e => update('name', e.target.value)} placeholder="Camp Twin Lakes" />
             </div>
             <div class="form-group">
-              <span class="form-label">Slug</span>
+              <label class="form-label">Slug</label>
               <input class="form-input" type="text" value=${data.slug}
-                onInput=${e => update('slug', e.target.value)} placeholder="camp-twin-lakes" />
-              <span class="form-hint">Auto-generated from name</span>
+                onInput=${e => update('slug', e.target.value)} placeholder="camp-twin-lakes"
+                ${slug ? 'disabled' : ''} />
+              <div class="form-hint">URL path: /community/${data.slug || '...'}</div>
             </div>
           </div>
-          <div class="form-row" style="margin-bottom: 1.25rem;">
+          <div class="form-row">
             <div class="form-group">
-              <span class="form-label">Year *</span>
+              <label class="form-label">Year *</label>
               <input class="form-input" type="text" value=${data.year}
                 onInput=${e => update('year', e.target.value)} placeholder="2024" />
             </div>
             <div class="form-group">
-              <span class="form-label">Badge</span>
+              <label class="form-label">Badge</label>
               <input class="form-input" type="text" value=${data.badge || ''}
                 onInput=${e => update('badge', e.target.value)} placeholder="In Progress (leave empty for none)" />
-              <span class="form-hint">Shows a yellow pill on the card, e.g. "In Progress"</span>
+              <div class="form-hint">Shows a yellow pill on the card, e.g. "In Progress"</div>
             </div>
           </div>
-          <div class="form-row" style="margin-bottom: 1.25rem;">
+          <div class="form-row">
             <div class="form-group">
-              <span class="form-label">Impact Number *</span>
+              <label class="form-label">Impact Number *</label>
               <input class="form-input" type="text" value=${data.impact}
                 onInput=${e => update('impact', e.target.value)} placeholder="10,000" />
-              <span class="form-hint">Big number shown on the card, e.g. "4,800"</span>
+              <div class="form-hint">Big number shown on the card, e.g. "4,800"</div>
             </div>
             <div class="form-group">
-              <span class="form-label">Impact Label *</span>
+              <label class="form-label">Impact Label *</label>
               <input class="form-input" type="text" value=${data.impactLabel}
                 onInput=${e => update('impactLabel', e.target.value)} placeholder="children impacted yearly" />
-              <span class="form-hint">Small text below the number</span>
+              <div class="form-hint">Small text below the number</div>
             </div>
           </div>
-          <div class="form-group" style="margin-bottom: 1.25rem;">
-            <span class="form-label">Description *</span>
-            <textarea class="form-textarea" rows="4" value=${data.description}
-              onInput=${e => update('description', e.target.value)}
-              placeholder="Describe the organization and what SOARD's renovation accomplished..." />
-            <span class="form-hint">${(data.description || '').length} characters</span>
+          <div class="form-group">
+            <label class="form-label">Status</label>
+            <select class="form-select" value=${data.status || 'completed'}
+              onChange=${e => update('status', e.target.value)}>
+              <option value="completed">Completed</option>
+              <option value="in-progress">In Progress</option>
+            </select>
           </div>
-          <div class="form-row" style="margin-bottom: 1.25rem;">
+          <div class="form-row">
             <div class="form-group">
-              <span class="form-label">Display Order</span>
+              <label class="form-label">Display Order</label>
               <input class="form-input" type="number" value=${data.order || 0}
                 onInput=${e => update('order', Number(e.target.value))} />
-              <span class="form-hint">Lower numbers appear first</span>
+              <div class="form-hint">Lower numbers appear first</div>
             </div>
             <div class="form-group">
-              <span class="form-label">Card Color</span>
+              <label class="form-label">Card Color</label>
               <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.25rem;">
                 ${PRESET_COLORS.map(c => html`
-                  <button key=${c} onClick=${() => update('color', c)}
+                  <button key=${c} type="button" onClick=${() => update('color', c)}
                     style="width: 32px; height: 32px; border-radius: 6px; background: ${c}; border: 2px solid ${data.color === c ? '#FFD500' : 'transparent'}; cursor: pointer; transition: border-color 0.15s;" />
                 `)}
               </div>
@@ -3310,27 +3454,54 @@
           </div>
         </div>
 
-        <div class="card" style="margin-bottom: 1rem;">
-          <h3 style="margin-bottom: 1rem;">Card Image</h3>
-          <div class="form-row" style="margin-bottom: 1.25rem;">
-            <div class="form-group" style="flex: 2;">
-              <span class="form-label">Cloudflare Image ID</span>
-              <input class="form-input" type="text" value=${data.imageId || ''}
-                onInput=${e => update('imageId', e.target.value)} placeholder="community/drake-house-hero or UUID" />
-              <span class="form-hint">Custom ID or UUID from Cloudflare Images. Leave empty for a color placeholder.</span>
-            </div>
+        <div class="card">
+          <h3 style="margin-bottom: 1rem;">Description</h3>
+          <div class="form-group">
+            <label class="form-label">Project Description *</label>
+            <textarea class="form-textarea" style="min-height: 150px;" value=${data.description}
+              onInput=${e => update('description', e.target.value)}
+              placeholder="Describe the organization and what SOARD's renovation accomplished..." />
+            <div class="form-hint">${(data.description || '').length} characters</div>
           </div>
-          ${data.imageId ? html`
-            <div style="margin-top: 0.5rem; border-radius: 8px; overflow: hidden; max-width: 400px;">
-              <img src="${CF}/${data.imageId}/w=400,q=80" alt=${data.imageAlt || 'Preview'}
-                style="width: 100%; height: 150px; object-fit: cover; display: block;"
-                onError=${e => { e.target.style.display = 'none'; }} />
+          <div class="form-group">
+            <label class="form-label">Image Alt Text</label>
+            <input class="form-input" type="text" value=${data.imageAlt || ''}
+              onInput=${e => update('imageAlt', e.target.value)}
+              placeholder="Describe the hero image for accessibility" />
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="flex items-center justify-between mb-1">
+            <h3>Photos</h3>
+          </div>
+          <p class="text-sm text-muted mb-1">Upload photos, click star to set as hero image for the card.</p>
+          <${DropZone} onFiles=${handlePhotoUpload} label="JPG, PNG, WebP — upload project photos" />
+          ${(data.photos || []).length > 0 ? html`
+            <div class="photo-grid">
+              ${(data.photos || []).map((photo, i) => html`
+                <div key=${i} class="photo-item ${photo.url === data.heroImage ? 'is-hero' : ''}">
+                  <img src=${photo.url} alt=${photo.alt || ''} loading="lazy" />
+                  ${uploading[photo._tempId] ? html`<div class="photo-uploading"><span class="spinner" /></div>` : null}
+                  <div class="photo-actions">
+                    <button class="photo-btn ${photo.url === data.heroImage ? 'hero-btn' : ''}"
+                      onClick=${() => setHero(i)} title="Set as hero image">${icons.star}</button>
+                    <button class="photo-btn" onClick=${() => removePhoto(i)} title="Remove">${icons.x}</button>
+                  </div>
+                </div>
+              `)}
             </div>
-          ` : html`
-            <div style="margin-top: 0.5rem; padding: 1rem; background: ${data.color}22; border-radius: 8px; text-align: center; color: #6B6C72; font-size: 0.85rem; max-width: 400px;">
-              No image — will show color placeholder
+          ` : data.imageId ? html`
+            <div style="margin-top: 1rem;">
+              <p class="text-sm text-muted mb-1">Current image (from Cloudflare Images ID):</p>
+              <div style="border-radius: 8px; overflow: hidden; max-width: 400px;">
+                <img src="${CF}/${data.imageId}/w=400,q=80" alt=${data.imageAlt || 'Preview'}
+                  style="width: 100%; height: 180px; object-fit: cover; display: block;"
+                  onError=${e => { e.target.style.display = 'none'; e.target.nextElementSibling && (e.target.nextElementSibling.style.display = 'block'); }} />
+                <div style="display: none; padding: 1rem; text-align: center; color: #6B6C72; font-size: 0.85rem;">Image not found — upload a new one above</div>
+              </div>
             </div>
-          `}
+          ` : null}
         </div>
       `;
     }
