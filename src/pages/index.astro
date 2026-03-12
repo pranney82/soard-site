@@ -87,9 +87,10 @@ const partnerLogos = siteSettings.partnerLogos || siteSettings.homeLogos || [
 ];
 
 /* ── Hero image URLs (DRY — preload + img must be byte-identical) ── */
-const heroImg560 = `${CF}/${storyPhotoId}/w=560,h=700,fit=cover,q=80`;
-const heroImg800 = `${CF}/${storyPhotoId}/w=800,h=1000,fit=cover,q=80`;
-const heroSrcset = `${heroImg560} 560w, ${heroImg800} 800w`;
+const heroImg400 = `${CF}/${storyPhotoId}/w=400,h=500,fit=cover,q=65`;
+const heroImg560 = `${CF}/${storyPhotoId}/w=560,h=700,fit=cover,q=65`;
+const heroImg800 = `${CF}/${storyPhotoId}/w=800,h=1000,fit=cover,q=65`;
+const heroSrcset = `${heroImg400} 400w, ${heroImg560} 560w, ${heroImg800} 800w`;
 const heroSizes = '(max-width:768px) 85vw, 420px';
 
 import { getWebSiteSchema } from '../utils/schema';
@@ -124,7 +125,7 @@ const jsonLd = getWebSiteSchema();
             sizes={heroSizes}
             alt={`${fd?.name || 'Zyah'}'s room reveal — a life-changing moment`}
             width="800" height="1000"
-            loading="eager" fetchpriority="high"
+            loading="eager" fetchpriority="high" decoding="sync"
           />
           <span class="hero-photo-name">{fd?.name || 'Zyah'}, age {fd?.age || 7}</span>
         </a>
@@ -426,7 +427,7 @@ const jsonLd = getWebSiteSchema();
   .hero-photo-wrap {
     position: relative;
     /* NO opacity:0 — hero image is LCP candidate, must paint on load */
-    animation: heroPhotoIn 0.9s cubic-bezier(0.16, 1, 0.3, 1) both;
+    animation: heroPhotoIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
   }
 
   .hero-photo {

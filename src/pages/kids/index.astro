@@ -186,8 +186,8 @@ const featuredQuote = featuredKid?.data.quote
           </div>
         )}
         <div class="hero-stat">
-          <span class="hero-stat__num">{yearRange}</span>
-          <span class="hero-stat__label">& Counting</span>
+          <span class="hero-stat__num">{new Date().getFullYear() - (years[years.length - 1] || 2012)}</span>
+          <span class="hero-stat__label">Years Strong</span>
         </div>
       </div>
 
@@ -228,7 +228,7 @@ const featuredQuote = featuredKid?.data.quote
             <div class="featured__gradient"></div>
           </div>
           <div class="featured__overlay">
-            <span class="featured__label">Latest Story</span>
+            <span class="featured__label">{featuredKid.data.status === 'in-progress' ? 'Currently Building' : 'Latest Story'}</span>
             <h2 class="featured__name">{featuredKid.data.name}</h2>
             {featuredKid.data.diagnosis && (
               <p class="featured__diagnosis">{featuredKid.data.diagnosis}</p>
@@ -425,7 +425,7 @@ const featuredQuote = featuredKid?.data.quote
                 <picture>
                   <source
                     media="(max-width: 768px)"
-                    srcset={cfCropSrcset(kid.data.heroImage, [180, 360, 540], 1)}
+                    srcset={cfCropSrcset(kid.data.heroImage, [180, 360, 540], 5/4)}
                     sizes="calc(50vw - 24px)"
                   />
                   <img
@@ -709,7 +709,7 @@ const featuredQuote = featuredKid?.data.quote
       const diagHtml = kid.diagnosis ? `<span class="kid-card__diagnosis">${kid.diagnosis}</span>` : '';
 
       if (kid.heroImage) {
-        const mobileSrcset = cfCropSrcset(kid.heroImage, [180, 360, 540], 1);
+        const mobileSrcset = cfCropSrcset(kid.heroImage, [180, 360, 540], 5/4);
         const desktopSrcset = cfCropSrcset(kid.heroImage, [170, 340, 520, 680], 4/3);
         const src = cfUrl(kid.heroImage, 'w=340,h=453,fit=cover,gravity=face,q=80');
         a.innerHTML = `<div class="kid-card__frame"><picture><source media="(max-width: 768px)" srcset="${mobileSrcset}" sizes="calc(50vw - 24px)"><img src="${src}" srcset="${desktopSrcset}" sizes="(max-width: 1100px) calc(33vw - 27px), 260px" alt="Photo of ${kid.name}${diagAttr} — Sunshine on a Ranney Day" class="kid-card__img" width="340" height="453" loading="lazy" decoding="async"></picture><div class="kid-card__hover-overlay" aria-hidden="true"><span class="kid-card__cta"><span class="kid-card__cta-text">Read their story</span><svg class="kid-card__cta-arrow" width="14" height="14"><use href="#icon-cta-arrow"/></svg></span></div></div><div class="kid-card__info"><span class="kid-card__name">${kid.name}</span>${badgeHtml}</div>${diagHtml}`;
@@ -1615,7 +1615,7 @@ const featuredQuote = featuredKid?.data.quote
      ═══════════════════════════════════════════ */
   .kids-hero {
     background: var(--c-cream);
-    padding: var(--space-2xl) 0 var(--space-md);
+    padding: var(--space-xl) 0 var(--space-sm);
     text-align: center;
     overflow: hidden;
   }
@@ -1627,7 +1627,7 @@ const featuredQuote = featuredKid?.data.quote
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: var(--space-md);
+    gap: var(--space-sm);
   }
 
   .kids-hero__label {
@@ -1666,7 +1666,7 @@ const featuredQuote = featuredKid?.data.quote
     align-items: center;
     flex-wrap: wrap;
     max-width: 640px;
-    padding-block: var(--space-sm);
+    padding-block: var(--space-xs);
   }
 
   .face {
@@ -1719,7 +1719,7 @@ const featuredQuote = featuredKid?.data.quote
     display: flex;
     justify-content: center;
     gap: var(--space-2xl);
-    padding-top: var(--space-md);
+    padding-top: var(--space-sm);
     border-top: 1px solid var(--c-border);
     width: 100%;
     max-width: 540px;
@@ -1771,7 +1771,7 @@ const featuredQuote = featuredKid?.data.quote
      FEATURED — Cinematic Full-Bleed Card
      ═══════════════════════════════════════════ */
   .featured-section {
-    padding-bottom: var(--space-lg);
+    padding-bottom: var(--space-md);
   }
 
   .featured-section.is-filtered {
@@ -1785,7 +1785,7 @@ const featuredQuote = featuredKid?.data.quote
     overflow: hidden;
     text-decoration: none;
     aspect-ratio: 21 / 9;
-    min-height: 340px;
+    min-height: 280px;
     transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1),
                 box-shadow 0.4s cubic-bezier(0.16, 1, 0.3, 1);
   }
@@ -2286,8 +2286,8 @@ const featuredQuote = featuredKid?.data.quote
     color: var(--c-dark);
   }
 
-  /* ── Year Badge on Cards ── */
-  .kid-card__year-badge {
+  /* ── Year Badge on Cards (global because JS-injected) ── */
+  :global(.kid-card__year-badge) {
     position: absolute;
     top: 8px;
     left: 8px;
@@ -2308,7 +2308,7 @@ const featuredQuote = featuredKid?.data.quote
     transition: opacity 0.2s ease, transform 0.2s ease;
   }
 
-  .kid-card__year-badge.is-visible {
+  :global(.kid-card__year-badge.is-visible) {
     opacity: 1;
     transform: translateY(0);
   }
@@ -2642,6 +2642,7 @@ const featuredQuote = featuredKid?.data.quote
     display: grid;
     grid-template-columns: repeat(4, 1fr);
     gap: var(--space-lg);
+    min-width: 0;
   }
 
   /* ── Card ── */
@@ -2651,6 +2652,7 @@ const featuredQuote = featuredKid?.data.quote
     outline-offset: 4px;
     border-radius: var(--border-radius-lg);
     transition: opacity 0.25s ease;
+    min-width: 0;
   }
 
   @media (hover: hover) {
@@ -3043,11 +3045,11 @@ const featuredQuote = featuredKid?.data.quote
   /* Mobile */
   @media (max-width: 768px) {
     .kids-hero {
-      padding: var(--space-lg) 0 var(--space-sm);
+      padding: var(--space-md) 0 var(--space-xs);
     }
 
     .kids-hero__inner {
-      gap: var(--space-sm);
+      gap: var(--space-xs);
     }
 
     .kids-hero__title {
@@ -3061,7 +3063,7 @@ const featuredQuote = featuredKid?.data.quote
 
     .faces {
       max-width: 340px;
-      padding-block: var(--space-xs);
+      padding-block: 2px;
       gap: 4px;
       flex-wrap: nowrap;
     }
@@ -3081,22 +3083,21 @@ const featuredQuote = featuredKid?.data.quote
       display: none;
     }
 
-    /* Stats as 2×2 grid for breathing room */
+    /* Stats as compact single row */
     .hero-stats {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: var(--space-sm) var(--space-xl);
-      padding-top: var(--space-sm);
-      max-width: 300px;
-      justify-items: center;
+      display: flex;
+      justify-content: center;
+      gap: var(--space-lg);
+      padding-top: var(--space-xs);
+      max-width: 100%;
     }
 
     .hero-stat__num {
-      font-size: 1.15rem;
+      font-size: 1.05rem;
     }
 
     .hero-stat__label {
-      font-size: 0.6rem;
+      font-size: 0.55rem;
     }
 
     /* Featured card: tighter, mobile-native aspect ratio */
@@ -3105,7 +3106,7 @@ const featuredQuote = featuredKid?.data.quote
     }
 
     .featured {
-      aspect-ratio: 16 / 10;
+      aspect-ratio: 16 / 9;
       min-height: 0;
       border-radius: var(--border-radius);
     }
@@ -3215,16 +3216,17 @@ const featuredQuote = featuredKid?.data.quote
       margin-top: var(--space-xs);
     }
 
-    /* Grid: 2 columns, tight gaps */
+    /* Grid: 2 columns */
     .kids-grid {
       grid-template-columns: repeat(2, 1fr);
-      gap: var(--space-md) 10px;
+      gap: var(--space-md) 14px;
+      max-width: 100%;
     }
 
 
     .kid-card__frame {
       border-radius: 12px;
-      aspect-ratio: 3 / 4;
+      aspect-ratio: 4 / 5;
     }
 
     /* Hide hover overlay on touch */
@@ -3245,8 +3247,9 @@ const featuredQuote = featuredKid?.data.quote
     }
 
     .kid-card__info {
-      padding: 10px 2px 2px;
-      gap: 6px;
+      padding: 8px 2px 2px;
+      gap: 4px;
+      flex-wrap: wrap;
     }
 
     .kid-card__name {
@@ -3264,8 +3267,8 @@ const featuredQuote = featuredKid?.data.quote
     }
 
     .kid-card__badge {
-      font-size: 0.58rem;
-      padding: 2px 8px;
+      font-size: 0.55rem;
+      padding: 2px 7px;
       flex-shrink: 0;
     }
 
@@ -3296,7 +3299,7 @@ const featuredQuote = featuredKid?.data.quote
     }
 
     .kids-grid {
-      gap: var(--space-sm) 8px;
+      gap: var(--space-sm) 10px;
     }
 
     .kid-card__name {
