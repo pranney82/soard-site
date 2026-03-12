@@ -10,7 +10,7 @@ import MediaLogos from '../components/ui/MediaLogos.astro';
 import { getCollection } from 'astro:content';
 import { getSiteStats } from '../utils/stats';
 
-const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
+import { CF_BASE as CF, cfRaw, cfSrcset } from '../utils/cf-image';
 
 /* ── Site settings (all editable from admin) ── */
 import siteSettings from '../content/site/settings.json';

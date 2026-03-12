@@ -35,7 +35,10 @@
  *   - Passive scroll/touch listeners, RAF-debounced scroll
  *   - Morph uses CSS transitions on position/size properties
  */
+import { cfRaw, cfSrcset as _cfSrcset } from '../../utils/cf-image';
 const currentPath = Astro.url.pathname;
+
+const LOGO_ID = 'brand-logo-nav-circle';
 
 interface NavChild {
   label: string;
@@ -119,11 +122,11 @@ function isGroupActive(group: NavGroup) {
 
 <header class="site-header" id="site-header" transition:persist="site-header">
   <div class="header-inner">
-    <!-- Logo — CF Images serves optimal format (AVIF/WebP) via format=auto -->
+    <!-- Logo — imagedelivery.net auto-negotiates AVIF/WebP via Accept header -->
     <a href="/" class="logo" aria-label="Sunshine on a Ranney Day — Home">
         <img
-          src="https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/brand-logo-nav-circle/w=256,format=auto"
-          srcset="https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/brand-logo-nav-circle/w=128,format=auto 128w, https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/brand-logo-nav-circle/w=192,format=auto 192w, https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/brand-logo-nav-circle/w=256,format=auto 256w, https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/brand-logo-nav-circle/w=384,format=auto 384w"
+          src={cfRaw(LOGO_ID, 'w=256,q=85')}
+          srcset={_cfSrcset(LOGO_ID, [128, 192, 256, 384])}
           sizes="(min-width: 1024px) 64px, (min-width: 481px) 52px, 52px"
           alt="Sunshine on a Ranney Day"
           class="logo-img"

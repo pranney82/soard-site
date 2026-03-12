@@ -11,7 +11,7 @@ interface Props {
 }
 
 const { theme = 'dark', linked = true } = Astro.props;
-const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
+import { CF_BASE as CF } from '../../utils/cf-image';
 const href = linked ? '/publicity' : undefined;
 
 const logos = [

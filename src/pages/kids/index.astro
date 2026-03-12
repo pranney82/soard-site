@@ -21,19 +21,11 @@ const hasInProgress = kids.some(k => k.data.status === 'in-progress');
 const totalKids = kids.reduce((sum, k) => sum + (k.data.childCount || 1), 0);
 
 // ── CF Image helpers ──────────────────────
-const CF_BASE = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
-function cfUrl(src: string, opts: string) {
-  if (!src || !src.includes('imagedelivery.net')) return src;
-  const id = src.replace(`${CF_BASE}/`, '').replace('/public', '');
-  return `${CF_BASE}/${id}/${opts}`;
-}
-/** Srcset with proportional height + face-crop at each breakpoint.
- *  hwRatio = height/width (e.g. 4/3 for portrait, 9/21 for cinematic) */
+import { cfRaw, cfSrcset as _cfSrcset, cfId, CF_BASE } from '../../utils/cf-image';
+function cfUrl(src: string, opts: string) { return cfRaw(src, opts); }
+/** Srcset with proportional height + face-crop at each breakpoint. */
 function cfCropSrcset(src: string, widths: number[], hwRatio: number) {
-  return widths.map(w => {
-    const h = Math.round(w * hwRatio);
-    return `${cfUrl(src, `w=${w},h=${h},fit=cover,gravity=face,format=auto,q=80`)} ${w}w`;
-  }).join(', ');
+  return _cfSrcset(src, widths, { fit: 'cover', gravity: 'face', quality: 80, aspectRatio: hwRatio });
 }
 
 // ── Stats ────────────────────────────────
@@ -165,8 +157,8 @@ const featuredQuote = featuredKid?.data.quote
             aria-label={kid.data.name}
           >
             <img
-              src={cfUrl(kid.data.heroImage, 'w=80,h=80,fit=cover,gravity=face,format=auto,q=80')}
-              srcset={`${cfUrl(kid.data.heroImage, 'w=80,h=80,fit=cover,gravity=face,format=auto,q=80')} 1x, ${cfUrl(kid.data.heroImage, 'w=140,h=140,fit=cover,gravity=face,format=auto,q=80')} 2x`}
+              src={cfUrl(kid.data.heroImage, 'w=80,h=80,fit=cover,gravity=face,q=80')}
+              srcset={`${cfUrl(kid.data.heroImage, 'w=80,h=80,fit=cover,gravity=face,q=80')} 1x, ${cfUrl(kid.data.heroImage, 'w=140,h=140,fit=cover,gravity=face,q=80')} 2x`}
               alt={kid.data.name}
               width="70"
               height="70"
@@ -222,7 +214,7 @@ const featuredQuote = featuredKid?.data.quote
         >
           <div class="featured__media">
             <img
-              src={cfUrl(featuredKid.data.heroImage, 'w=960,h=411,fit=cover,gravity=face,format=auto,q=82')}
+              src={cfUrl(featuredKid.data.heroImage, 'w=960,h=411,fit=cover,gravity=face,q=82')}
               srcset={featuredImgSrcset}
               sizes={featuredImgSizes}
               alt={`Photo of ${featuredKid.data.name}${featuredKid.data.diagnosis ? ` — ${featuredKid.data.diagnosis}` : ''}`}
@@ -426,7 +418,7 @@ const featuredQuote = featuredKid?.data.quote
                     sizes="calc(50vw - 24px)"
                   />
                   <img
-                    src={cfUrl(kid.data.heroImage, 'w=340,h=453,fit=cover,gravity=face,format=auto,q=80')}
+                    src={cfUrl(kid.data.heroImage, 'w=340,h=453,fit=cover,gravity=face,q=80')}
                     srcset={cfCropSrcset(kid.data.heroImage, [170, 340, 520, 680], 4/3)}
                     sizes="(max-width: 1100px) calc(33vw - 27px), 260px"
                     alt={`Photo of ${kid.data.name}${kid.data.diagnosis ? `, diagnosed with ${kid.data.diagnosis}` : ''} — Sunshine on a Ranney Day`}
@@ -543,7 +535,7 @@ const featuredQuote = featuredKid?.data.quote
     function cfCropSrcset(src: string, widths: number[], hwRatio: number) {
       return widths.map(w => {
         const h = Math.round(w * hwRatio);
-        return `${cfUrl(src, `w=${w},h=${h},fit=cover,gravity=face,format=auto,q=80`)} ${w}w`;
+        return `${cfUrl(src, `w=${w},h=${h},fit=cover,gravity=face,q=80`)} ${w}w`;
       }).join(', ');
     }
 
@@ -713,7 +705,7 @@ const featuredQuote = featuredKid?.data.quote
       if (kid.heroImage) {
         const mobileSrcset = cfCropSrcset(kid.heroImage, [180, 360, 540], 1);
         const desktopSrcset = cfCropSrcset(kid.heroImage, [170, 340, 520, 680], 4/3);
-        const src = cfUrl(kid.heroImage, 'w=340,h=453,fit=cover,gravity=face,format=auto,q=80');
+        const src = cfUrl(kid.heroImage, 'w=340,h=453,fit=cover,gravity=face,q=80');
         a.innerHTML = `<div class="kid-card__frame"><picture><source media="(max-width: 768px)" srcset="${mobileSrcset}" sizes="calc(50vw - 24px)"><img src="${src}" srcset="${desktopSrcset}" sizes="(max-width: 1100px) calc(33vw - 27px), 260px" alt="Photo of ${kid.name}${diagAttr} — Sunshine on a Ranney Day" class="kid-card__img" width="340" height="453" loading="lazy" decoding="async"></picture><div class="kid-card__hover-overlay" aria-hidden="true"><span class="kid-card__cta"><span class="kid-card__cta-text">Read their story</span><svg class="kid-card__cta-arrow" width="14" height="14"><use href="#icon-cta-arrow"/></svg></span></div></div><div class="kid-card__info"><span class="kid-card__name">${kid.name}</span>${badgeHtml}</div>${diagHtml}`;
       } else {
         a.innerHTML = `<div class="kid-card__frame"><div class="kid-card__placeholder" aria-hidden="true"><svg width="48" height="48"><use href="#icon-placeholder"/></svg></div><div class="kid-card__hover-overlay" aria-hidden="true"><span class="kid-card__cta"><span class="kid-card__cta-text">Read their story</span><svg class="kid-card__cta-arrow" width="14" height="14"><use href="#icon-cta-arrow"/></svg></span></div></div><div class="kid-card__info"><span class="kid-card__name">${kid.name}</span>${badgeHtml}</div>${diagHtml}`;

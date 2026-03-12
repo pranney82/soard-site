@@ -5,6 +5,9 @@
  */
 import PageLayout from '../../layouts/PageLayout.astro';
 import { getCollection } from 'astro:content';
+import { cfUrl, cfDensitySrcset } from '../../utils/cf-image';
+
+const PLACEHOLDER = 'brand-logo-circle-display';
 
 const allTeam = await getCollection('team');
 const teamMembers = allTeam
@@ -39,14 +42,16 @@ const boardMembers = allTeam
             <div class="member-photo">
               {member.data.photo ? (
                 <img
-                  src={member.data.photo}
+                  src={cfUrl(member.data.photo, { w: 180, h: 180, fit: 'cover', gravity: 'face' })}
+                  srcset={cfDensitySrcset(member.data.photo, 180, 180, { fit: 'cover', gravity: 'face' })}
                   alt={`${member.data.name}, ${member.data.title}`}
+                  width="180" height="180"
                   loading="lazy"
                   decoding="async"
                 />
               ) : (
                 <div class="member-photo__placeholder">
-                  <img src="https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/brand-logo-circle-display/w=256,format=auto" alt="" class="placeholder-icon" width="256" height="256" loading="lazy" decoding="async" />
+                  <img src={cfUrl(PLACEHOLDER, { w: 256 })} alt="" class="placeholder-icon" width="256" height="256" loading="lazy" decoding="async" />
                 </div>
               )}
             </div>
@@ -77,14 +82,16 @@ const boardMembers = allTeam
             <div class="board-photo">
               {member.data.photo ? (
                 <img
-                  src={member.data.photo}
+                  src={cfUrl(member.data.photo, { w: 80, h: 80, fit: 'cover', gravity: 'face' })}
+                  srcset={cfDensitySrcset(member.data.photo, 80, 80, { fit: 'cover', gravity: 'face' })}
                   alt={`${member.data.name}, ${member.data.title}`}
+                  width="80" height="80"
                   loading="lazy"
                   decoding="async"
                 />
               ) : (
                 <div class="board-photo__placeholder">
-                  <img src="https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/brand-logo-circle-display/w=256,format=auto" alt="" class="placeholder-icon" width="256" height="256" loading="lazy" decoding="async" />
+                  <img src={cfUrl(PLACEHOLDER, { w: 256 })} alt="" class="placeholder-icon" width="256" height="256" loading="lazy" decoding="async" />
                 </div>
               )}
             </div>

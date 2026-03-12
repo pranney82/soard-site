@@ -16,6 +16,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 import faqData from '../content/site/faq.json';
 import { getDonateSchema } from '../utils/schema';
 import { getSiteStats } from '../utils/stats';
+import { cfRaw, cfSrcset, CF_BASE } from '../utils/cf-image';
 
 const computed = await getSiteStats();
 
@@ -39,12 +40,15 @@ const breadcrumbs = [
   jsonLd={donateJsonLd}
   breadcrumbs={breadcrumbs}
 >
+  <!-- Preload hero LCP image -->
+  <link slot="head" rel="preload" as="image" imagesrcset={cfSrcset('kids/oakley/hero', [640, 1024, 1600])} imagesizes="100vw" fetchpriority="high" />
+
   <!-- ══════ HERO — No data-reveal on hero content (LCP critical) ══════ -->
   <section class="donate-hero">
     <div class="donate-hero-media">
       <img
-        src="https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/oakley/hero/w=1600"
-        srcset="https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/oakley/hero/w=640 640w, https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/oakley/hero/w=1024 1024w, https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/oakley/hero/w=1600 1600w"
+        src={cfRaw('kids/oakley/hero', 'w=1600,q=85')}
+        srcset={cfSrcset('kids/oakley/hero', [640, 1024, 1600])}
         sizes="100vw"
         alt="Oakley smiling in his new dream bedroom built by Sunshine on a Ranney Day"
         width="1024"
@@ -79,8 +83,8 @@ const breadcrumbs = [
       <div class="why-photos" data-reveal>
         <div class="why-photo why-photo--main">
           <img
-            src="https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/amari/hero/w=800"
-            srcset="https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/amari/hero/w=500 500w, https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/amari/hero/w=800 800w"
+            src={cfRaw('kids/amari/hero', 'w=800,q=85')}
+            srcset={cfSrcset('kids/amari/hero', [500, 800])}
             sizes="(max-width:768px) 90vw, 40vw"
             alt="Amari in his new accessible bedroom"
             width="800"

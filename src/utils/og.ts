@@ -12,6 +12,7 @@ import satori from 'satori';
 import sharp from 'sharp';
 import fs from 'node:fs';
 import path from 'node:path';
+import { CF_BASE } from './cf-image';
 
 // ── Brand tokens ──────────────────────────────────
 const YELLOW = '#FFDA24';
@@ -41,7 +42,7 @@ function loadFonts() {
 let logoB64: string | null = null;
 async function getLogo(): Promise<string> {
   if (logoB64) return logoB64;
-  const url = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/brand-logo-nav-circle/w=256';
+  const url = `${CF_BASE}/brand-logo-nav-circle/w=256,q=85`;
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
     if (!res.ok) throw new Error(`CF Images responded ${res.status}`);

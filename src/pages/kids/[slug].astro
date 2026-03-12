@@ -44,14 +44,10 @@ const { kid, prevKid, nextKid, relatedKids } = Astro.props;
 const photos = kid.photos || [];
 
 // ── CF Image helpers ──────────────────────
-const CF_BASE = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
-function cfUrl(src: string, opts: string) {
-  if (!src || !src.includes('imagedelivery.net')) return src;
-  const id = src.replace(`${CF_BASE}/`, '').replace('/public', '');
-  return `${CF_BASE}/${id}/${opts}`;
-}
+import { cfUrl as _cfUrl, cfSrcset as _cfSrcset, cfRaw, CF_BASE } from '../../utils/cf-image';
+function cfUrl(src: string, opts: string) { return cfRaw(src, opts); }
 function cfSrcset(src: string, widths: number[]) {
-  return widths.map(w => `${cfUrl(src, `w=${w},format=auto,q=85`)} ${w}w`).join(', ');
+  return _cfSrcset(src, widths);
 }
 
 // ── YouTube ID extraction ─────────────────
@@ -85,6 +81,10 @@ const metaDesc = kid.metaDescription
   || `Meet ${kid.name}${kid.diagnosis ? `, diagnosed with ${kid.diagnosis}` : ''}. Learn how Sunshine on a Ranney Day transformed their space${kid.roomTypes?.length ? ` with a ${kid.roomTypes.join(' & ')}` : ''}.`;
 
 const dateModified = kid.year ? `${kid.year}-01-01` : undefined;
+
+// ── LCP preload for hero image ────────────
+const heroSrcset = kid.heroImage ? _cfSrcset(kid.heroImage, [640, 1024, 1600, 2400]) : '';
+const heroSizes = '100vw';
 ---
 
 <BaseLayout
@@ -96,6 +96,7 @@ const dateModified = kid.year ? `${kid.year}-01-01` : undefined;
   datePublished={kid.year ? `${kid.year}-01-01` : undefined}
   dateModified={dateModified}
 >
+  {kid.heroImage && <link slot="head" rel="preload" as="image" imagesrcset={heroSrcset} imagesizes={heroSizes} fetchpriority="high" />}
   <article class="kid-profile" itemscope itemtype="https://schema.org/Article">
     <!-- ═══ Hero ═══════════════════════════════ -->
     <section class="hero">

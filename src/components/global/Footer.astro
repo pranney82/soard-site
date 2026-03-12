@@ -14,7 +14,9 @@
  * Performance: SVG social icons inline (no external requests)
  */
 import site from '../../content/site/settings.json';
+import { cfRaw, cfSrcset } from '../../utils/cf-image';
 
+const FOOTER_LOGO_ID = 'brand-logo-dark-bg-tagline-display';
 const year = new Date().getFullYear();
 const { phone, email, address, social } = site;
 const phoneDigits = phone.replace(/\D/g, '');
@@ -68,8 +70,8 @@ const mapsUrl = `https://maps.google.com/?q=${encodeURIComponent(`${address.stre
       <div class="footer-brand">
         <a href="/" class="footer-logo" aria-label="Sunshine on a Ranney Day — Home">
           <img
-              src="https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/brand-logo-dark-bg-tagline-display/w=280,format=auto"
-              srcset="https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/brand-logo-dark-bg-tagline-display/w=140,format=auto 140w, https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/brand-logo-dark-bg-tagline-display/w=280,format=auto 280w"
+              src={cfRaw(FOOTER_LOGO_ID, 'w=280,q=85')}
+              srcset={cfSrcset(FOOTER_LOGO_ID, [140, 280])}
               sizes="140px"
               alt="Sunshine on a Ranney Day logo"
               width="140"

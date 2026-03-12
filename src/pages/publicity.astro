@@ -6,9 +6,8 @@
 import PageLayout from '../layouts/PageLayout.astro';
 import MediaLogos from '../components/ui/MediaLogos.astro';
 import CFImage from '../components/ui/CFImage.astro';
+import { CF_BASE as CF } from '../utils/cf-image';
 import { getCollection } from 'astro:content';
-
-const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
 
 const allPress = await getCollection('press');
 const press = allPress.sort((a, b) => new Date(b.data.date).getTime() - new Date(a.data.date).getTime());

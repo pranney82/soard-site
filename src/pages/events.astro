@@ -65,7 +65,7 @@ function formatDay(dateStr: string): string {
   return d.getDate().toString();
 }
 
-const CF_IMAGES = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
+import { CF_BASE as CF_IMAGES, cfRaw, cfSrcset } from '../utils/cf-image';
 const STREAM_DOMAIN = 'customer-cuav5h47lgfe96ql.cloudflarestream.com';
 
 function getYouTubeId(url: string): string | null {
@@ -102,9 +102,12 @@ function getYouTubeId(url: string): string | null {
                 {event.data.image && (
                   <div class="featured-card__image">
                     <img
-                      src={`https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/${event.data.image}/w=600,h=340,fit=crop`}
+                      src={cfRaw(event.data.image, 'w=600,h=340,fit=crop,q=85')}
+                      srcset={cfSrcset(event.data.image, [400, 600, 800], { fit: 'crop', aspectRatio: 340/600 })}
+                      sizes="(max-width: 768px) 100vw, 600px"
                       alt={event.data.title}
                       loading="lazy"
+                      decoding="async"
                       width="600"
                       height="340"
                     />
@@ -236,7 +239,7 @@ function getYouTubeId(url: string): string | null {
                 {event.data.image ? (
                   <div class="ev-item__thumb">
                     <img
-                      src={`https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/${event.data.image}/w=120,h=80,fit=crop`}
+                      src={cfRaw(event.data.image, 'w=120,h=80,fit=crop,q=80')}
                       alt={event.data.title}
                       loading="lazy"
                       width="120"
@@ -322,7 +325,7 @@ function getYouTubeId(url: string): string | null {
               {event.data.image ? (
                 <div class="ev-item__thumb">
                   <img
-                    src={`https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/${event.data.image}/w=120,h=80,fit=crop`}
+                    src={cfRaw(event.data.image, 'w=120,h=80,fit=crop,q=80')}
                     alt={event.data.title}
                     loading="lazy"
                     width="120"

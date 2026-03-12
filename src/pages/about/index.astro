@@ -14,7 +14,7 @@ import { getWebPageSchema, getBreadcrumbSchema, buildSchemaGraph } from '../../u
 import { getSiteStats } from '../../utils/stats';
 import page from '../../content/site/our-story.json';
 
-const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
+import { CF_BASE as CF } from '../../utils/cf-image';
 
 /* ── Auto-computed stats ── */
 const computed = await getSiteStats();

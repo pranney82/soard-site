@@ -1,17 +1,20 @@
 ---
 /**
- * CFImage.astro
- * Responsive image component for Cloudflare Images.
+ * CFImage.astro — Responsive Cloudflare Images component
  *
- * imagedelivery.net auto-negotiates format (AVIF → WebP → JPEG)
- * via the Accept header — no `f=auto` needed. `f=auto` is only
- * required on `/cdn-cgi/image/` URLs (transform-via-URL on your
- * own domain). A single <img> with srcset is the correct approach;
- * <picture> with explicit format sources is unnecessary.
+ * Single component for all CF Images on the site.
+ * Accepts full URLs or bare image IDs. Generates proper srcset
+ * with width descriptors and Cloudflare Image transforms.
  *
- * Non-CF URLs pass through as plain <img>.
+ * imagedelivery.net auto-negotiates AVIF → WebP → JPEG via Accept header.
+ * format=auto is never appended (only needed on /cdn-cgi/image/ URLs).
+ *
+ * Non-CF URLs pass through as a plain <img>.
  */
+import { cfUrl, cfSrcset, isCF, type TransformOpts, type SrcsetOpts } from '../../utils/cf-image';
+
 interface Props {
+  /** Full CF Images URL or bare image ID (e.g. "kids/amari/hero") */
   src: string;
   alt: string;
   width?: number;
@@ -21,13 +24,17 @@ interface Props {
   fetchpriority?: 'high' | 'low' | 'auto';
   class?: string;
   style?: string;
-  /** Override default responsive widths (px) */
+  /** Responsive widths for srcset (px). Default: [400, 640, 800, 1024, 1600] */
   widths?: number[];
-  /** Quality 1-100 for CF transforms (default 85) */
+  /** Quality 1–100 (default 85) */
   quality?: number;
+  /** Resize fit mode */
+  fit?: TransformOpts['fit'];
+  /** Gravity / focal point */
+  gravity?: TransformOpts['gravity'];
+  /** Aspect ratio (height/width) for proportional cropping at each breakpoint */
+  aspectRatio?: number;
 }
-
-const CF_BASE = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
 
 const {
   src,
@@ -41,46 +48,39 @@ const {
   style = '',
   widths = [400, 640, 800, 1024, 1600],
   quality = 85,
+  fit,
+  gravity,
+  aspectRatio,
 } = Astro.props;
 
-const isCFImage = src.includes('imagedelivery.net');
+const cf = isCF(src);
 
-function getBase(url: string): string {
-  const id = url.replace(`${CF_BASE}/`, '').replace('/public', '').split('/')[0];
-  return `${CF_BASE}/${id}`;
-}
+const srcsetOpts: SrcsetOpts = { quality };
+if (fit) srcsetOpts.fit = fit;
+if (gravity) srcsetOpts.gravity = gravity;
+if (aspectRatio) srcsetOpts.aspectRatio = aspectRatio;
 
-function buildSrcset(): string {
-  const base = getBase(src);
-  return widths.map(w => `${base}/w=${w},q=${quality} ${w}w`).join(', ');
-}
+const resolvedSrcset = cf ? cfSrcset(src, widths, srcsetOpts) : undefined;
 
-function buildSrc(): string {
-  const base = getBase(src);
-  const fallbackW = widths[widths.length - 2] || widths[widths.length - 1];
-  return `${base}/w=${fallbackW},q=${quality}`;
-}
+// Fallback src uses second-to-last width (good balance of quality vs size)
+const fallbackW = widths[widths.length - 2] || widths[widths.length - 1];
+const fallbackOpts: TransformOpts = { w: fallbackW, q: quality };
+if (fit) fallbackOpts.fit = fit;
+if (gravity) fallbackOpts.gravity = gravity;
+if (aspectRatio) fallbackOpts.h = Math.round(fallbackW * aspectRatio);
+const resolvedSrc = cf ? cfUrl(src, fallbackOpts) : src;
 ---
 
 <img
-  src={isCFImage ? buildSrc() : src}
-  srcset={isCFImage ? buildSrcset() : undefined}
+  src={resolvedSrc}
+  srcset={resolvedSrcset}
   alt={alt}
   width={width}
   height={height}
-  sizes={isCFImage ? sizes : undefined}
+  sizes={cf ? sizes : undefined}
   loading={loading}
   decoding="async"
   fetchpriority={fetchpriority}
-  class:list={['cf-image', className]}
+  class:list={[className]}
   style={style}
 />
-
-<style>
-  .cf-image {
-    display: block;
-    max-width: 100%;
-    height: auto;
-    object-fit: cover;
-  }
-</style>
