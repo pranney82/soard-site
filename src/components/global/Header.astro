@@ -629,6 +629,20 @@ document.addEventListener('astro:before-swap', function () {
        where the dark ::view-transition bg peeks through on mobile. */
     view-transition-name: none;
   }
+  /* Bleed strip: covers the 1px gap between the header snapshot and
+     the incoming page during view-transitions on mobile.  The pseudo
+     sits just below the header and paints cream so the dark body bg
+     can never peek through. */
+  .site-header::after {
+    content: '';
+    position: absolute;
+    left: 0; right: 0;
+    bottom: -2px;
+    height: 2px;
+    background: var(--c-cream, #FEFCF5);
+    pointer-events: none;
+    z-index: -1;
+  }
   .site-header.header--scrolled {
     background: rgba(254, 252, 245, 0.97);
     backdrop-filter: blur(20px) saturate(1.2);
