@@ -10,18 +10,51 @@
   <link rel="manifest" href="/site.webmanifest">
   <meta name="theme-color" content="#1A1B1F">
   <style>
+    /* ─── Design Tokens ────────────────── */
+    :root {
+      --color-primary: #FFD500;
+      --color-primary-hover: #E6C000;
+      --color-primary-bg: rgba(255, 213, 0, 0.08);
+      --color-primary-ring: rgba(255, 213, 0, 0.25);
+      --color-danger: #E53E3E;
+      --color-danger-bg: rgba(229, 62, 62, 0.06);
+      --color-success: #38A169;
+      --color-info: #3182CE;
+      --color-warning: #D69E2E;
+      --color-bg: #F5F4F0;
+      --color-bg-card: #fff;
+      --color-bg-secondary: #FAFAF8;
+      --color-text: #2D2E33;
+      --color-text-secondary: #6B6C72;
+      --color-text-muted: #9B9CA0;
+      --color-border: #E5E4E0;
+      --color-sidebar: #1A1B1F;
+      --shadow-sm: 0 1px 3px rgba(0,0,0,0.06);
+      --shadow-md: 0 4px 12px rgba(0,0,0,0.08);
+      --shadow-lg: 0 12px 36px rgba(0,0,0,0.12);
+      --radius-sm: 8px;
+      --radius-md: 12px;
+      --radius-lg: 16px;
+      --focus-ring: 0 0 0 3px var(--color-primary-ring);
+    }
+
     /* ─── Reset & Base ──────────────────── */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     html { font-size: 15px; }
     body {
       font-family: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      background: #F5F4F0;
-      color: #2D2E33;
+      background: var(--color-bg);
+      color: var(--color-text);
       min-height: 100vh;
     }
     a { color: inherit; text-decoration: none; }
     button { cursor: pointer; font-family: inherit; }
+    button:focus-visible { outline: none; box-shadow: var(--focus-ring); border-radius: var(--radius-sm); }
     input, textarea, select { font-family: inherit; font-size: 1rem; }
+
+    /* ─── Page Transitions ─────────────── */
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+    .main > * { animation: fadeIn 0.2s ease-out; }
 
     /* ─── Layout ────────────────────────── */
     .app { display: flex; min-height: 100vh; }
@@ -76,6 +109,7 @@
       border-left: 3px solid transparent;
     }
     .nav-item:hover { color: #fff; background: rgba(255,255,255,0.05); }
+    .nav-item:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--color-primary); }
     .nav-item.active {
       color: #FFD500;
       background: rgba(255, 213, 0, 0.08);
@@ -499,10 +533,11 @@
 
     /* ─── Cards ──────────────────────────── */
     .card {
-      background: #fff;
-      border-radius: 12px;
+      background: var(--color-bg-card);
+      border-radius: var(--radius-md);
       padding: 1.5rem;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+      box-shadow: var(--shadow-sm);
+      border: 1px solid var(--color-border);
       margin-bottom: 1rem;
       overflow: hidden;
     }
@@ -513,17 +548,20 @@
       gap: 1rem;
     }
     .stat-card {
-      background: #fff;
-      border-radius: 12px;
+      background: var(--color-bg-card);
+      border-radius: var(--radius-md);
       padding: 1.25rem;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+      box-shadow: var(--shadow-sm);
+      border: 1px solid var(--color-border);
       text-align: center;
+      transition: box-shadow 0.15s ease, transform 0.15s ease;
     }
+    .stat-card:hover { box-shadow: var(--shadow-md); transform: translateY(-1px); }
     .stat-card .stat-number {
       font-family: 'Libre Baskerville', Georgia, serif;
       font-size: 2.25rem;
       font-weight: 700;
-      color: #FFD500;
+      color: var(--color-primary);
     }
     .stat-card .stat-label {
       font-size: 0.85rem;
@@ -577,8 +615,8 @@
     }
     .form-input:focus, .form-textarea:focus, .form-select:focus {
       outline: none;
-      border-color: #FFD500;
-      box-shadow: 0 0 0 3px rgba(255,213,0,0.15);
+      border-color: var(--color-primary);
+      box-shadow: var(--focus-ring);
     }
     .form-textarea { resize: vertical; min-height: 120px; }
     .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
@@ -746,13 +784,13 @@
     }
     .toast {
       padding: 0.75rem 1.25rem;
-      border-radius: 8px;
+      border-radius: var(--radius-sm);
       font-size: 0.9rem;
       font-weight: 500;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      box-shadow: var(--shadow-md);
       animation: slideIn 0.25s ease;
     }
-    .toast-success { background: #38A169; color: #fff; }
+    .toast-success { background: var(--color-success); color: #fff; }
     .toast-error { background: #E53E3E; color: #fff; }
     .toast-info { background: #2D2E33; color: #fff; }
     @keyframes slideIn {
@@ -769,9 +807,10 @@
       padding: 1rem;
     }
     .modal {
-      background: #fff; border-radius: 16px;
+      background: var(--color-bg-card); border-radius: var(--radius-lg);
       max-width: 500px; width: 100%;
       padding: 1.75rem;
+      box-shadow: var(--shadow-lg);
     }
     .modal h3 { font-family: 'Libre Baskerville', Georgia, serif; margin-bottom: 0.75rem; }
     .modal p { color: #6B6C72; font-size: 0.9rem; margin-bottom: 1.25rem; }
@@ -1071,6 +1110,73 @@
       font-size: 0.75rem; font-family: inherit; color: #2D2E33; font-weight: 500;
     }
 
+    /* ─── Toast with Undo ──────────── */
+    .toast-action {
+      display: inline-flex; align-items: center; gap: 0.5rem;
+    }
+    .toast-undo {
+      background: none; border: 1px solid rgba(255,255,255,0.4);
+      color: #fff; border-radius: 5px; padding: 2px 10px;
+      font-size: 0.8rem; font-weight: 600; cursor: pointer;
+      transition: all 0.15s;
+    }
+    .toast-undo:hover { background: rgba(255,255,255,0.15); border-color: #fff; }
+
+    /* ─── Completeness Ring ─────────── */
+    .completeness-ring {
+      position: relative; display: inline-flex; align-items: center; justify-content: center;
+    }
+    .completeness-ring svg { transform: rotate(-90deg); }
+    .completeness-pct {
+      position: absolute; font-size: 0.6rem; font-weight: 700; color: #2D2E33;
+    }
+
+    /* ─── Responsive Preview ────────── */
+    .preview-device-bar {
+      display: flex; gap: 0.25rem; background: #F5F4F0; border-radius: 8px; padding: 3px;
+    }
+    .preview-device-btn {
+      display: flex; align-items: center; justify-content: center;
+      width: 36px; height: 30px; border: none; background: none;
+      border-radius: 6px; cursor: pointer; color: #6B6C72; transition: all 0.15s;
+    }
+    .preview-device-btn:hover { background: #E5E4E0; }
+    .preview-device-btn.active { background: #fff; color: #2D2E33; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .preview-device-btn svg { width: 18px; height: 18px; }
+    .preview-frame {
+      margin: 0 auto; transition: width 0.3s ease; overflow: hidden;
+      border: 1px solid var(--border, #E5E4E0); border-radius: 12px;
+    }
+
+    /* ─── Autosave Status ──────────── */
+    .save-status {
+      display: flex; align-items: center; gap: 0.4rem;
+      font-size: 0.8rem; color: #9B9CA0;
+    }
+    .save-status-dot {
+      width: 7px; height: 7px; border-radius: 50%;
+    }
+    .save-status-dot.saved { background: #38A169; }
+    .save-status-dot.unsaved { background: #FFD500; }
+    .save-status-dot.saving { background: #3182CE; animation: pulse 1s infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+    /* ─── Favorites ────────────────── */
+    .fav-btn {
+      background: none; border: none; cursor: pointer; padding: 2px;
+      color: #D1D0CC; font-size: 1.1rem; transition: all 0.15s; line-height: 1;
+    }
+    .fav-btn:hover { color: #FFD500; transform: scale(1.15); }
+    .fav-btn.is-fav { color: #FFD500; }
+
+    /* ─── Inline Edit ──────────────── */
+    .inline-edit-input {
+      font-size: inherit; font-weight: inherit; font-family: inherit;
+      border: 1px solid #FFD500; border-radius: 4px; padding: 1px 4px;
+      background: #FFFDF0; outline: none; width: 100%; min-width: 80px;
+      box-shadow: 0 0 0 3px rgba(255,213,0,0.15);
+    }
+
     /* ─── Schedule Publish ──────────── */
     .schedule-bar {
       display: flex; align-items: center; gap: 0.75rem;
@@ -1080,7 +1186,7 @@
     .schedule-bar svg { width: 18px; height: 18px; stroke: #3182CE; flex-shrink: 0; }
 
     /* ─── Utility ─────────────────────────── */
-    .text-muted { color: #6B6C72; }
+    .text-muted { color: var(--color-text-secondary); }
     .text-sm { font-size: 0.85rem; }
     .mt-1 { margin-top: 0.5rem; }
     .mt-2 { margin-top: 1rem; }
@@ -1299,6 +1405,108 @@
       `;
     }
 
+    // ─── Completeness Score ────────────────
+    function getCompleteness(kid) {
+      const fields = [
+        { k: 'name', w: 1 }, { k: 'slug', w: 1 }, { k: 'age', w: 0.5 },
+        { k: 'diagnosis', w: 0.5 }, { k: 'year', w: 0.5 }, { k: 'bio', w: 1 },
+        { k: 'heroImage', w: 1 }, { k: 'shortDescription', w: 0.5 },
+        { k: 'quote', w: 0.5 },
+      ];
+      const photoScore = Math.min((kid.photoCount || 0) / 3, 1); // 3+ photos = full
+      let earned = 0, total = 0;
+      fields.forEach(f => {
+        total += f.w;
+        if (kid[f.k]) earned += f.w;
+      });
+      total += 1; // photo weight
+      earned += photoScore;
+      return Math.round((earned / total) * 100);
+    }
+
+    function CompletenessRing({ pct, size = 28 }) {
+      const r = (size - 4) / 2;
+      const circ = 2 * Math.PI * r;
+      const offset = circ - (pct / 100) * circ;
+      const color = pct >= 80 ? '#38A169' : pct >= 50 ? '#D69E2E' : '#E53E3E';
+      return html`
+        <span class="completeness-ring" title="${pct}% complete">
+          <svg width=${size} height=${size}>
+            <circle cx=${size/2} cy=${size/2} r=${r} fill="none" stroke="#E5E4E0" stroke-width="3" />
+            <circle cx=${size/2} cy=${size/2} r=${r} fill="none" stroke=${color} stroke-width="3"
+              stroke-dasharray=${circ} stroke-dashoffset=${offset} stroke-linecap="round" />
+          </svg>
+          <span class="completeness-pct" style="color: ${color};">${pct}</span>
+        </span>
+      `;
+    }
+
+    // ─── Favorites ──────────────────────────
+    const FAVS_KEY = 'soard_favorites';
+    function getFavorites() {
+      try { return JSON.parse(localStorage.getItem(FAVS_KEY) || '[]'); } catch (e) { return []; }
+    }
+    function toggleFavorite(type, slug) {
+      const favs = getFavorites();
+      const key = `${type}:${slug}`;
+      const idx = favs.indexOf(key);
+      if (idx >= 0) favs.splice(idx, 1); else favs.push(key);
+      localStorage.setItem(FAVS_KEY, JSON.stringify(favs));
+      return favs;
+    }
+    function isFavorite(type, slug) {
+      return getFavorites().includes(`${type}:${slug}`);
+    }
+
+    // ─── Empty State ────────────────────────
+    function EmptyState({ icon, title, description, actionLabel, onAction }) {
+      return html`
+        <div style="display: flex; flex-direction: column; align-items: center; padding: 3rem 1.5rem; text-align: center;">
+          <div style="width: 56px; height: 56px; border-radius: 50%; background: var(--color-primary-bg); display: flex; align-items: center; justify-content: center; margin-bottom: 1rem;">
+            <span style="font-size: 1.5rem; color: var(--color-primary);">${icon || '📋'}</span>
+          </div>
+          <h4 style="margin: 0 0 0.35rem 0; font-size: 1rem; color: var(--color-text);">${title || 'No items yet'}</h4>
+          <p style="margin: 0; font-size: 0.88rem; color: var(--color-text-secondary); max-width: 320px;">${description || 'Get started by creating your first item.'}</p>
+          ${actionLabel ? html`<button class="btn btn-primary btn-sm" style="margin-top: 1rem;" onClick=${onAction}>+ ${actionLabel}</button>` : null}
+        </div>
+      `;
+    }
+
+    // ─── Editor Skeleton ────────────────────
+    function EditorSkeleton() {
+      return html`
+        <div>
+          <div style="display: flex; gap: 0.5rem; margin-bottom: 0.75rem;">
+            <div class="skeleton" style="width: 60px; height: 16px;"></div>
+            <div class="skeleton" style="width: 8px; height: 16px;"></div>
+            <div class="skeleton" style="width: 80px; height: 16px;"></div>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+            <div class="skeleton" style="width: 200px; height: 28px;"></div>
+            <div style="display: flex; gap: 0.5rem;">
+              <div class="skeleton" style="width: 80px; height: 36px; border-radius: 8px;"></div>
+              <div class="skeleton" style="width: 110px; height: 36px; border-radius: 8px;"></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="skeleton" style="width: 100px; height: 20px; margin-bottom: 1rem;"></div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+              <div><div class="skeleton skeleton-text" style="width: 60px; margin-bottom: 0.5rem;"></div><div class="skeleton" style="height: 38px; border-radius: 8px;"></div></div>
+              <div><div class="skeleton skeleton-text" style="width: 40px; margin-bottom: 0.5rem;"></div><div class="skeleton" style="height: 38px; border-radius: 8px;"></div></div>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1rem;">
+              <div><div class="skeleton skeleton-text" style="width: 30px; margin-bottom: 0.5rem;"></div><div class="skeleton" style="height: 38px; border-radius: 8px;"></div></div>
+              <div><div class="skeleton skeleton-text" style="width: 50px; margin-bottom: 0.5rem;"></div><div class="skeleton" style="height: 38px; border-radius: 8px;"></div></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="skeleton" style="width: 80px; height: 20px; margin-bottom: 1rem;"></div>
+            <div class="skeleton" style="height: 160px; border-radius: 8px;"></div>
+          </div>
+        </div>
+      `;
+    }
+
     // ─── Slug Helper ────────────────────────
     function slugify(text) {
       return text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
@@ -1426,7 +1634,12 @@
     let toastId = 0;
     function ToastContainer({ toasts }) {
       return html`<div class="toast-container" role="status" aria-live="polite" aria-atomic="true">
-        ${toasts.map(t => html`<div key=${t.id} class="toast toast-${t.type}" role="alert">${t.msg}</div>`)}
+        ${toasts.map(t => html`<div key=${t.id} class="toast toast-${t.type}" role="alert">
+          ${t.action ? html`<span class="toast-action">
+            <span>${t.msg}</span>
+            <button class="toast-undo" onClick=${t.action.fn}>${t.action.label}</button>
+          </span>` : t.msg}
+        </div>`)}
       </div>`;
     }
 
@@ -1493,7 +1706,7 @@
     }
 
     // ─── Room Type Selector ─────────────────
-    const ROOM_TYPES = ['Dream Bedroom', 'Accessible Bathroom', 'Therapy Room', 'Play Room'];
+    const ROOM_TYPES = ['Dream Bedroom', 'Accessible Bathroom', 'Therapy Room'];
 
     function RoomTypePicker({ value = [], onChange }) {
       const toggle = (type) => {
@@ -1520,6 +1733,20 @@
     // DASHBOARD
     // ═══════════════════════════════════════════
     function Dashboard({ kids, partners, team, events, communityProjects, onNavigate }) {
+      // Pinned / favorite items
+      const pinnedItems = useMemo(() => {
+        const favs = getFavorites();
+        if (!favs.length) return [];
+        return favs.map(key => {
+          const [type, slug] = key.split(':');
+          if (type === 'kid') {
+            const k = kids.find(x => x.slug === slug);
+            return k ? { type: 'kid', label: k.name, slug: k.slug, thumb: k.heroImage, meta: `${k.year || ''} · ${k.status}`, id: 'kids' } : null;
+          }
+          return null;
+        }).filter(Boolean);
+      }, [kids]);
+
       // Compute kids-per-year sparkline data
       const yearData = useMemo(() => {
         const counts = {};
@@ -1541,6 +1768,28 @@
 
       return html`
         <div class="page-header"><h2>Dashboard</h2></div>
+        ${pinnedItems.length > 0 ? html`
+          <div style="margin-bottom: 1.5rem;">
+            <h3 style="font-size: 0.85rem; color: #6B6C72; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.5rem;">
+              ★ Pinned Items
+            </h3>
+            <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+              ${pinnedItems.map(p => html`
+                <button key=${p.slug}
+                  onClick=${() => onNavigate(p.id, p.slug)}
+                  style="display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.75rem; background: #fff; border: 1px solid #E5E4E0; border-radius: 10px; cursor: pointer; transition: all 0.15s; box-shadow: 0 1px 3px rgba(0,0,0,0.04);"
+                  onMouseEnter=${e => e.currentTarget.style.borderColor = '#FFD500'}
+                  onMouseLeave=${e => e.currentTarget.style.borderColor = '#E5E4E0'}>
+                  ${p.thumb ? html`<img src=${p.thumb} style="width: 28px; height: 28px; border-radius: 6px; object-fit: cover;" />` : null}
+                  <div style="text-align: left;">
+                    <div style="font-size: 0.85rem; font-weight: 600; color: #2D2E33;">${p.label}</div>
+                    <div style="font-size: 0.7rem; color: #9B9CA0;">${p.meta}</div>
+                  </div>
+                </button>
+              `)}
+            </div>
+          </div>
+        ` : null}
         <div class="stat-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
           <div class="stat-card" style="cursor: pointer;" onClick=${() => onNavigate('kids')}>
             <div style="display: flex; align-items: flex-end; justify-content: space-between;">
@@ -1636,9 +1885,11 @@
     // ═══════════════════════════════════════════
     // KIDS LIST
     // ═══════════════════════════════════════════
-    function KidsList({ kids, onEdit, onAdd, onDelete }) {
+    function KidsList({ kids, onEdit, onAdd, onDelete, addToast, onReload }) {
       const [search, setSearch] = useState('');
       const [selected, setSelected] = useState(new Set());
+      const [favs, setFavs] = useState(getFavorites());
+      const [inlineEdit, setInlineEdit] = useState(null); // { slug, field, value }
       const filtered = useMemo(() => {
         if (!search) return kids;
         const q = search.toLowerCase();
@@ -1661,6 +1912,32 @@
       const bulkDelete = () => {
         sorted.filter(k => selected.has(k.slug)).forEach(k => onDelete(k));
         setSelected(new Set());
+      };
+
+      const handleToggleFav = (slug) => {
+        const updated = toggleFavorite('kid', slug);
+        setFavs([...updated]);
+      };
+
+      // Inline edit save
+      const saveInlineEdit = async () => {
+        if (!inlineEdit) return;
+        const { slug, field, value } = inlineEdit;
+        try {
+          const fileRes = await api.readContent(`src/content/kids/${slug}.json`);
+          if (!fileRes.success) { addToast?.('Could not load file', 'error'); setInlineEdit(null); return; }
+          const content = typeof fileRes.content === 'string' ? JSON.parse(fileRes.content) : fileRes.content;
+          content[field] = field === 'year' || field === 'age' ? Number(value) || null : value;
+          const res = await api.saveContent(`src/content/kids/${slug}.json`, JSON.stringify(content, null, 2), `Quick edit ${field}: ${content.name}`, fileRes.sha);
+          if (res.success) { addToast?.(`Updated ${field}`, 'success'); logActivity('updated', 'kid', content.name); onReload?.(); }
+          else addToast?.(`Save failed: ${res.error}`, 'error');
+        } catch (e) { addToast?.(`Error: ${e.message}`, 'error'); }
+        setInlineEdit(null);
+      };
+
+      const startInlineEdit = (e, slug, field, value) => {
+        e.stopPropagation();
+        setInlineEdit({ slug, field, value: value || '' });
       };
 
       return html`
@@ -1687,8 +1964,10 @@
             <thead><tr>
               <th style="width: 36px;"><input type="checkbox" checked=${selected.size === sorted.length && sorted.length > 0}
                 onChange=${toggleAll} style="width: 16px; height: 16px; accent-color: #FFD500;" /></th>
+              <th style="width: 28px;"></th>
               <th></th>
               <${SortHeader} field="name">Name<//>
+              <th style="width: 32px;" title="Completeness"></th>
               <${SortHeader} field="age">Age<//>
               <th>Diagnosis</th>
               <${SortHeader} field="year">Year<//>
@@ -1697,22 +1976,51 @@
               <th></th>
             </tr></thead>
             <tbody>
-              ${sorted.length === 0 ? html`<tr><td colspan="9" style="text-align:center; color: #6B6C72;">No kids found</td></tr>` : null}
-              ${sorted.map(k => html`<tr key=${k.slug} style="${selected.has(k.slug) ? 'background: rgba(255,213,0,0.06);' : ''}">
-                <td><input type="checkbox" checked=${selected.has(k.slug)}
-                  onChange=${() => toggleSelect(k.slug)} style="width: 16px; height: 16px; accent-color: #FFD500;" /></td>
-                <td>${k.heroImage ? html`<img class="td-thumb" src="${k.heroImage}" alt="" />` : html`<div class="td-thumb" />`}</td>
-                <td><strong>${k.name}</strong>${k.featured ? html` <span class="badge" style="background: #FFDA24; color: #373A36; font-size: 0.65rem; padding: 1px 6px; margin-left: 4px;">★</span>` : ''}</td>
-                <td>${k.age || '—'}</td>
-                <td class="text-sm">${(k.diagnosis || '—').slice(0, 50)}${(k.diagnosis || '').length > 50 ? '…' : ''}</td>
-                <td>${k.year || '—'}</td>
-                <td><span class="badge ${k.status === 'completed' ? 'badge-green' : 'badge-yellow'}">${k.status}</span>${k.publishStatus === 'draft' ? html` <span class="draft-badge-draft" style="font-size: 0.65rem;">Draft</span>` : ''}</td>
-                <td>${k.photoCount || 0}</td>
-                <td style="white-space: nowrap;">
-                  <button class="btn btn-ghost btn-sm" onClick=${() => onEdit(k.slug)}>Edit</button>
-                  <button class="btn btn-ghost btn-sm" style="color: #E53E3E;" onClick=${(e) => { e.stopPropagation(); onDelete(k); }}>Delete</button>
-                </td>
-              </tr>`)}
+              ${sorted.length === 0 ? html`<tr><td colspan="11"><${EmptyState}
+                icon="👦" title=${search ? 'No kids match your search' : 'No kids yet'}
+                description=${search ? 'Try a different search term.' : 'Add your first kid to get started.'}
+                actionLabel=${search ? null : 'Add Kid'} onAction=${onAdd} /></td></tr>` : null}
+              ${sorted.map(k => {
+                const pct = getCompleteness(k);
+                return html`<tr key=${k.slug} style="${selected.has(k.slug) ? 'background: rgba(255,213,0,0.06);' : ''}">
+                  <td><input type="checkbox" checked=${selected.has(k.slug)}
+                    onChange=${() => toggleSelect(k.slug)} style="width: 16px; height: 16px; accent-color: #FFD500;" /></td>
+                  <td><button class="fav-btn ${favs.includes('kid:' + k.slug) ? 'is-fav' : ''}"
+                    onClick=${(e) => { e.stopPropagation(); handleToggleFav(k.slug); }}
+                    title=${favs.includes('kid:' + k.slug) ? 'Remove from favorites' : 'Add to favorites'}>
+                    ${favs.includes('kid:' + k.slug) ? '★' : '☆'}
+                  </button></td>
+                  <td>${k.heroImage ? html`<img class="td-thumb" src="${k.heroImage}" alt="" />` : html`<div class="td-thumb" />`}</td>
+                  <td>
+                    ${inlineEdit?.slug === k.slug && inlineEdit?.field === 'name'
+                      ? html`<input class="inline-edit-input" value=${inlineEdit.value}
+                          onInput=${e => setInlineEdit({ ...inlineEdit, value: e.target.value })}
+                          onBlur=${saveInlineEdit}
+                          onKeyDown=${e => { if (e.key === 'Enter') saveInlineEdit(); if (e.key === 'Escape') setInlineEdit(null); }}
+                          ref=${el => el && el.focus()} />`
+                      : html`<strong onDblClick=${e => startInlineEdit(e, k.slug, 'name', k.name)} style="cursor: text;" title="Double-click to edit">${k.name}</strong>`}
+                    ${k.featured ? html` <span class="badge" style="background: #FFDA24; color: #373A36; font-size: 0.65rem; padding: 1px 6px; margin-left: 4px;">★</span>` : ''}
+                  </td>
+                  <td><${CompletenessRing} pct=${pct} /></td>
+                  <td>${k.age || '—'}</td>
+                  <td class="text-sm">${(k.diagnosis || '—').slice(0, 50)}${(k.diagnosis || '').length > 50 ? '…' : ''}</td>
+                  <td>
+                    ${inlineEdit?.slug === k.slug && inlineEdit?.field === 'year'
+                      ? html`<input class="inline-edit-input" type="number" value=${inlineEdit.value}
+                          onInput=${e => setInlineEdit({ ...inlineEdit, value: e.target.value })}
+                          onBlur=${saveInlineEdit}
+                          onKeyDown=${e => { if (e.key === 'Enter') saveInlineEdit(); if (e.key === 'Escape') setInlineEdit(null); }}
+                          ref=${el => el && el.focus()} style="width: 70px;" />`
+                      : html`<span onDblClick=${e => startInlineEdit(e, k.slug, 'year', k.year)} style="cursor: text;" title="Double-click to edit">${k.year || '—'}</span>`}
+                  </td>
+                  <td><span class="badge ${k.status === 'completed' ? 'badge-green' : 'badge-yellow'}">${k.status}</span>${k.publishStatus === 'draft' ? html` <span class="draft-badge-draft" style="font-size: 0.65rem;">Draft</span>` : ''}</td>
+                  <td>${k.photoCount || 0}</td>
+                  <td style="white-space: nowrap;">
+                    <button class="btn btn-ghost btn-sm" onClick=${() => onEdit(k.slug)}>Edit</button>
+                    <button class="btn btn-ghost btn-sm" style="color: #E53E3E;" onClick=${(e) => { e.stopPropagation(); onDelete(k); }}>Delete</button>
+                  </td>
+                </tr>`;
+              })}
             </tbody>
           </table></div>
         </div>
@@ -1746,6 +2054,8 @@
       const [showCsImagePicker, setShowCsImagePicker] = useState(false);
       const [csImagePickerTarget, setCsImagePickerTarget] = useState(null);
       const [showPreview, setShowPreview] = useState(false);
+      const [previewDevice, setPreviewDevice] = useState('desktop');
+      const [lastSaved, setLastSaved] = useState(null);
       const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
 
       // Generate SEO fields with AI
@@ -2080,6 +2390,7 @@
             updateField('publishStatus', asDraft ? 'draft' : 'published');
             addToast(asDraft ? `${data.name} saved as draft` : `${data.name} published! Site rebuilding...`, 'success');
             logActivity(asDraft ? 'drafted' : (slug ? 'updated' : 'created'), 'kid', data.name);
+            setLastSaved(new Date());
           } else {
             addToast(`Save failed: ${res.error}`, 'error');
           }
@@ -2089,8 +2400,7 @@
         setSaving(false);
       };
 
-      if (loading) return html`<div class="card" style="text-align: center; padding: 3rem;">
-        <div class="spinner" style="width: 32px; height: 32px; border-width: 3px;" /></div>`;
+      if (loading) return html`<${EditorSkeleton} />`;
 
       return html`
         ${showCsImagePicker ? html`<${ImagePicker}
@@ -2128,11 +2438,25 @@
             <button class="btn btn-ghost btn-sm" onClick=${dismissDraft}>Dismiss</button>
           </div>
         ` : null}
-        <nav class="breadcrumb" aria-label="Breadcrumb">
-          <button onClick=${safeBack}>Kids</button>
-          <span class="sep">›</span>
-          <span class="current">${slug ? data.name || 'Edit' : 'New Kid'}</span>
-        </nav>
+        <div style="display: flex; align-items: center; justify-content: space-between;">
+          <nav class="breadcrumb" aria-label="Breadcrumb">
+            <button onClick=${safeBack}>Kids</button>
+            <span class="sep">›</span>
+            <span class="current">${slug ? data.name || 'Edit' : 'New Kid'}</span>
+          </nav>
+          <div class="save-status">
+            ${saving
+              ? html`<span class="save-status-dot saving"></span> Saving...`
+              : dirty
+                ? html`<span class="save-status-dot unsaved"></span> Unsaved changes`
+                : lastSaved
+                  ? html`<span class="save-status-dot saved"></span> Saved ${lastSaved.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                  : slug
+                    ? html`<span class="save-status-dot saved"></span> All changes saved`
+                    : null
+            }
+          </div>
+        </div>
         <div class="page-header">
           <h2 style="display: flex; align-items: center; gap: 0.5rem;">
             ${slug ? `Edit: ${data.name}` : 'Add New Kid'}
@@ -2576,30 +2900,46 @@
 
         ${showPreview ? html`
           <div class="modal-overlay" onClick=${() => setShowPreview(false)}>
-            <div class="modal" style="max-width: 720px; width: 95vw; max-height: 90vh; overflow-y: auto;" onClick=${e => e.stopPropagation()}>
+            <div class="modal" style="max-width: 860px; width: 95vw; max-height: 90vh; overflow-y: auto;" onClick=${e => e.stopPropagation()}>
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
                 <h3 style="margin: 0;">Preview: ${data.name}</h3>
-                <button class="btn btn-ghost btn-sm" onClick=${() => setShowPreview(false)}>Close</button>
+                <div style="display: flex; align-items: center; gap: 0.75rem;">
+                  <div class="preview-device-bar">
+                    <button class="preview-device-btn ${previewDevice === 'mobile' ? 'active' : ''}"
+                      onClick=${() => setPreviewDevice('mobile')} title="Mobile (375px)">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M12 18h.01"/></svg>
+                    </button>
+                    <button class="preview-device-btn ${previewDevice === 'tablet' ? 'active' : ''}"
+                      onClick=${() => setPreviewDevice('tablet')} title="Tablet (768px)">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M12 18h.01"/></svg>
+                    </button>
+                    <button class="preview-device-btn ${previewDevice === 'desktop' ? 'active' : ''}"
+                      onClick=${() => setPreviewDevice('desktop')} title="Desktop (100%)">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+                    </button>
+                  </div>
+                  <button class="btn btn-ghost btn-sm" onClick=${() => setShowPreview(false)}>Close</button>
+                </div>
               </div>
-              <div style="border: 1px solid var(--border); border-radius: 12px; overflow: hidden;">
+              <div class="preview-frame" style="width: ${previewDevice === 'mobile' ? '375px' : previewDevice === 'tablet' ? '768px' : '100%'}; ${previewDevice !== 'desktop' ? 'box-shadow: 0 4px 24px rgba(0,0,0,0.12);' : ''}">
                 ${data.photos?.[0] ? html`
                   <div style="position: relative; padding-top: 56.25%; background: #f0f0f0;">
                     <img src=${data.photos[0]} alt=${data.name} style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover;" />
                   </div>
                 ` : html`<div style="padding-top: 56.25%; background: #f5f5f5;"></div>`}
-                <div style="padding: 1.5rem;">
-                  <h2 style="margin: 0 0 0.25rem 0;">${data.name}</h2>
-                  ${data.age ? html`<p style="color: var(--text-secondary); margin: 0 0 0.5rem 0;">Age ${data.age}${data.year ? ` · Class of ${data.year}` : ''}</p>` : null}
-                  ${data.shortDescription ? html`<p style="color: var(--text-secondary); font-style: italic; margin: 0 0 1rem 0;">${data.shortDescription}</p>` : null}
+                <div style="padding: ${previewDevice === 'mobile' ? '1rem' : '1.5rem'};">
+                  <h2 style="margin: 0 0 0.25rem 0; font-size: ${previewDevice === 'mobile' ? '1.3rem' : '1.6rem'};">${data.name}</h2>
+                  ${data.age ? html`<p style="color: #6B6C72; margin: 0 0 0.5rem 0;">Age ${data.age}${data.year ? ` · Class of ${data.year}` : ''}</p>` : null}
+                  ${data.shortDescription ? html`<p style="color: #6B6C72; font-style: italic; margin: 0 0 1rem 0;">${data.shortDescription}</p>` : null}
                   ${data.bio ? html`<div style="line-height: 1.6;" dangerouslySetInnerHTML=${{ __html: data.bio }}></div>` : null}
                   ${data.photos?.length > 1 ? html`
-                    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 0.5rem; margin-top: 1rem;">
+                    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(${previewDevice === 'mobile' ? '80px' : '120px'}, 1fr)); gap: 0.5rem; margin-top: 1rem;">
                       ${data.photos.slice(1).map(p => html`<img src=${p} style="width: 100%; border-radius: 8px; aspect-ratio: 1; object-fit: cover;" />`)}
                     </div>
                   ` : null}
                 </div>
               </div>
-              <div style="margin-top: 1rem; padding: 0.75rem 1rem; background: var(--bg-secondary); border-radius: 8px; font-size: 0.85rem; color: var(--text-secondary);">
+              <div style="margin-top: 1rem; padding: 0.75rem 1rem; background: #F5F4F0; border-radius: 8px; font-size: 0.85rem; color: #6B6C72;">
                 Status: <strong>${data.publishStatus === 'draft' ? 'Draft — not visible on live site' : 'Published — visible on live site'}</strong>
               </div>
             </div>
@@ -2650,7 +2990,10 @@
           <div class="table-wrap"><table>
             <thead><tr><th></th><th>Name</th><th>Tier</th><th>Featured</th><th></th></tr></thead>
             <tbody>
-              ${filtered.length === 0 ? html`<tr><td colspan="5" style="text-align:center; color: #6B6C72;">No partners found</td></tr>` : null}
+              ${filtered.length === 0 ? html`<tr><td colspan="5"><${EmptyState}
+                icon="🤝" title=${search ? 'No partners match your search' : 'No partners yet'}
+                description=${search ? 'Try a different search term.' : 'Add your first partner organization.'}
+                actionLabel=${search ? null : 'Add Partner'} onAction=${onAdd} /></td></tr>` : null}
               ${filtered.map(p => html`<tr key=${p.slug}>
                 <td>${p.logo ? html`<img class="td-thumb" src="${p.logo}" alt="" style="object-fit: contain; background: #fff;" />` : '—'}</td>
                 <td><strong>${p.name}</strong></td>
@@ -2783,7 +3126,7 @@
         setSaving(false);
       };
 
-      if (loading) return html`<div class="card" style="text-align: center; padding: 3rem;"><div class="spinner" style="width: 32px; height: 32px;" /></div>`;
+      if (loading) return html`<${EditorSkeleton} />`;
 
       return html`
         ${showDeleteModal ? html`<${ConfirmModal}
@@ -2975,7 +3318,7 @@
       const docsOther = data.documents.filter(d => d.type === 'other').sort((a, b) => b.year - a.year);
       const reports = (data.annualReports || []).sort((a, b) => b.year - a.year);
 
-      if (loading) return html`<div style="text-align:center;padding:4rem;"><span class="spinner" /></div>`;
+      if (loading) return html`<${EditorSkeleton} />`;
 
       return html`
         <div class="page-header">
@@ -3389,7 +3732,7 @@
         setSaving(false);
       };
 
-      if (loading) return html`<div class="card" style="text-align: center; padding: 3rem;"><div class="spinner" style="width: 32px; height: 32px;" /></div>`;
+      if (loading) return html`<${EditorSkeleton} />`;
 
       return html`
         ${showDeleteModal ? html`<${ConfirmModal}
@@ -3616,7 +3959,7 @@
         update('faqs', (data.faqs || []).filter((_, i) => i !== idx));
       };
 
-      if (loading) return html`<div class="card" style="text-align: center; padding: 3rem;"><div class="spinner" style="width: 32px; height: 32px;" /></div>`;
+      if (loading) return html`<${EditorSkeleton} />`;
 
       return html`
         <nav class="breadcrumb" aria-label="Breadcrumb">
@@ -3769,7 +4112,10 @@
           <div class="table-wrap"><table>
             <thead><tr><th>Title</th><th>Date</th><th>Location</th><th>Category</th><th>Status</th><th>Featured</th><th></th></tr></thead>
             <tbody>
-              ${filtered.length === 0 ? html`<tr><td colspan="7" style="text-align:center; color: #6B6C72;">No events found</td></tr>` : null}
+              ${filtered.length === 0 ? html`<tr><td colspan="7"><${EmptyState}
+                icon="📅" title=${search ? 'No events match your search' : 'No events yet'}
+                description=${search ? 'Try a different search term.' : 'Create your first event.'}
+                actionLabel=${search ? null : 'Add Event'} onAction=${onAdd} /></td></tr>` : null}
               ${filtered.map(e => html`<tr key=${e.slug}>
                 <td><strong>${e.title}</strong></td>
                 <td class="text-sm">${e.date || '—'}</td>
@@ -3961,7 +4307,7 @@
         return () => window.removeEventListener('beforeunload', handler);
       }, [dirty]);
 
-      if (loading) return html`<div class="card" style="text-align: center; padding: 3rem;"><div class="spinner" style="width: 32px; height: 32px;" /></div>`;
+      if (loading) return html`<${EditorSkeleton} />`;
 
       return html`
         ${showImagePicker ? html`<${ImagePicker}
@@ -4232,7 +4578,10 @@
           <div class="table-wrap"><table>
             <thead><tr><th>Image</th><th>Title</th><th>Outlet</th><th>Date</th><th>Category</th><th>Featured</th><th></th></tr></thead>
             <tbody>
-              ${filtered.length === 0 ? html`<tr><td colspan="7" style="text-align:center; color: #6B6C72;">No press articles found</td></tr>` : null}
+              ${filtered.length === 0 ? html`<tr><td colspan="7"><${EmptyState}
+                icon="📰" title=${search ? 'No press articles match your search' : 'No press coverage yet'}
+                description=${search ? 'Try a different search term.' : 'Add press mentions or check the Press Monitor.'}
+                actionLabel=${search ? null : 'Add Press Article'} onAction=${onAdd} /></td></tr>` : null}
               ${filtered.map(p => html`<tr key=${p.slug}>
                 <td style="width: 64px; padding: 0.4rem 0.5rem;">
                   ${p.image ? html`<img src=${p.image + '/nav'}
@@ -4352,7 +4701,7 @@
         return () => window.removeEventListener('beforeunload', handler);
       }, [dirty]);
 
-      if (loading) return html`<div class="card" style="text-align: center; padding: 3rem;"><div class="spinner" style="width: 32px; height: 32px;" /></div>`;
+      if (loading) return html`<${EditorSkeleton} />`;
 
       return html`
         ${showImagePicker ? html`<${ImagePicker}
@@ -4690,7 +5039,10 @@
           <div class="table-wrap"><table>
             <thead><tr><th></th><th>Name</th><th>Year</th><th>Impact</th><th>Badge</th><th>Photos</th><th>Order</th><th></th></tr></thead>
             <tbody>
-              ${filtered.length === 0 ? html`<tr><td colspan="8" style="text-align:center; color: #6B6C72;">No community projects found</td></tr>` : null}
+              ${filtered.length === 0 ? html`<tr><td colspan="8"><${EmptyState}
+                icon="🏠" title=${search ? 'No projects match your search' : 'No community projects yet'}
+                description=${search ? 'Try a different search term.' : 'Add your first community project.'}
+                actionLabel=${search ? null : 'Add Project'} onAction=${onAdd} /></td></tr>` : null}
               ${filtered.map(p => html`<tr key=${p.slug}>
                 <td>${p.imageId
                   ? html`<img class="td-thumb" src="${CF}/${p.imageId}/w=88,h=88,fit=cover" alt="" style="border-radius: 6px;" />`
@@ -4903,8 +5255,7 @@
         setSaving(false);
       };
 
-      if (loading) return html`<div class="card" style="text-align: center; padding: 3rem;">
-        <div class="spinner" style="width: 32px; height: 32px; border-width: 3px;" /></div>`;
+      if (loading) return html`<${EditorSkeleton} />`;
 
       return html`
         ${showDeleteModal ? html`<${ConfirmModal}
@@ -5181,7 +5532,7 @@
         });
       };
 
-      if (loading) return html`<div class="card" style="text-align: center; padding: 3rem;"><div class="spinner" style="width: 32px; height: 32px;" /></div>`;
+      if (loading) return html`<${EditorSkeleton} />`;
 
       // ── Edit single FAQ item ──
       if (editItem) {
@@ -5739,7 +6090,7 @@
         setSaving(false);
       };
 
-      if (loading) return html`<div class="card" style="text-align: center; padding: 3rem;"><div class="spinner" style="width: 32px; height: 32px;" /></div>`;
+      if (loading) return html`<${EditorSkeleton} />`;
 
       const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
       const renderPhotoField = (label, fieldPath, currentId) => html`
@@ -6123,7 +6474,7 @@
         setSaving(false);
       };
 
-      if (loading) return html`<div class="card" style="text-align: center; padding: 3rem;"><div class="spinner" style="width: 32px; height: 32px;" /></div>`;
+      if (loading) return html`<${EditorSkeleton} />`;
 
       const renderImageField = (label, fieldPath, currentId) => html`
         <div class="form-group">
@@ -6410,7 +6761,7 @@
         setSaving(false);
       };
 
-      if (loading) return html`<div class="card" style="text-align: center; padding: 3rem;"><div class="spinner" style="width: 32px; height: 32px;" /></div>`;
+      if (loading) return html`<${EditorSkeleton} />`;
 
       return html`
         <div class="page-header">
@@ -6962,10 +7313,10 @@
       const [cmdPaletteOpen, setCmdPaletteOpen] = useState(false);
       const [shortcutsOpen, setShortcutsOpen] = useState(false);
 
-      const addToast = (msg, type = 'info') => {
+      const addToast = (msg, type = 'info', action = null) => {
         const id = ++toastId;
-        setToasts(t => [...t, { id, msg, type }]);
-        setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 4000);
+        setToasts(t => [...t, { id, msg, type, action }]);
+        setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), action ? 8000 : 4000);
       };
 
       // Load all content
@@ -7073,24 +7424,30 @@
         setDeleteLoading(true);
         const { type, item } = deleteModal;
         const dir = type === 'kid' ? 'kids' : type === 'partner' ? 'partners' : type === 'team member' ? 'team' : type === 'article' ? 'articles' : type === 'event' ? 'events' : type === 'community project' ? 'community' : type === 'press article' ? 'press' : 'partners';
+        const filePath = `src/content/${dir}/${item.slug}.json`;
         try {
-          // Get SHA first
-          const fileRes = await api.readContent(`src/content/${dir}/${item.slug}.json`);
+          const fileRes = await api.readContent(filePath);
           if (!fileRes.success) {
             addToast(`Could not find file for ${item.name}`, 'error');
             setDeleteLoading(false);
             setDeleteModal(null);
             return;
           }
-          const res = await api.deleteContent(
-            `src/content/${dir}/${item.slug}.json`,
-            fileRes.sha,
-            `Delete ${type}: ${item.name}`
-          );
+          // Cache content for undo
+          const cachedContent = fileRes.content;
+          const res = await api.deleteContent(filePath, fileRes.sha, `Delete ${type}: ${item.name}`);
           if (res.success) {
-            addToast(`${item.name} deleted`, 'success');
             logActivity('deleted', type, item.name);
             loadData();
+            // Undo action: re-save the file
+            const undoFn = async () => {
+              try {
+                const r = await api.saveContent(filePath, typeof cachedContent === 'string' ? cachedContent : JSON.stringify(cachedContent, null, 2), `Undo delete: ${item.name}`);
+                if (r.success) { addToast(`${item.name} restored!`, 'success'); logActivity('created', type, item.name); loadData(); }
+                else addToast(`Restore failed: ${r.error}`, 'error');
+              } catch (e) { addToast(`Restore error: ${e.message}`, 'error'); }
+            };
+            addToast(`${item.name} deleted`, 'success', { label: 'Undo', fn: undoFn });
           } else {
             addToast(`Delete failed: ${res.error}`, 'error');
           }
@@ -7160,7 +7517,7 @@
             return editSlug !== null
               ? html`<${KidEditor} slug=${editSlug || undefined} onBack=${() => { navigate('kids'); loadData(); }} addToast=${addToast} partners=${partners} />`
               : html`<${KidsList} kids=${kids} onEdit=${s => navigate('kids', s)} onAdd=${() => navigate('kids', '')}
-                  onDelete=${k => setDeleteModal({ type: 'kid', item: k })} />`;
+                  onDelete=${k => setDeleteModal({ type: 'kid', item: k })} addToast=${addToast} onReload=${loadData} />`;
           case 'partners':
             return editSlug !== null
               ? html`<${PartnerEditor} slug=${editSlug || undefined} onBack=${() => { navigate('partners'); loadData(); }} addToast=${addToast} />`

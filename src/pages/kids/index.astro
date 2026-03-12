@@ -615,7 +615,8 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
     // ── Reveal overflow cards (all rendered server-side, hidden beyond initial batch) ──
     function revealAllCards() {
       if (allCardsLoaded) return;
-      grid.querySelectorAll<HTMLElement>('.kid-card.is-overflow').forEach(card => {
+      cachedCards.forEach(card => {
+        if (!card.classList.contains('is-overflow')) return;
         card.classList.remove('is-overflow', 'is-hidden');
         if (!reducedMotion && _kidsObserver) _kidsObserver.observe(card);
         else card.classList.add('revealed');
@@ -630,7 +631,7 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
       revealAllCards();
       updateYearBadges();
       loadMoreWrap.classList.add('is-hidden');
-      visibleCountEl.textContent = String(grid.querySelectorAll('.kid-card').length);
+      visibleCountEl.textContent = String(cachedCards.length);
     }
     if (loadMoreBtn) loadMoreBtn.addEventListener('click', handleLoadMore, { signal });
 
@@ -658,22 +659,24 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
 
     function capturePositions(): Map<HTMLElement, Rect> {
       const map = new Map<HTMLElement, Rect>();
-      grid.querySelectorAll<HTMLElement>('.kid-card:not(.is-hidden)').forEach(card => {
+      for (const card of cachedCards) {
+        if (card.classList.contains('is-hidden')) continue;
         const r = card.getBoundingClientRect();
         map.set(card, { x: r.left, y: r.top, w: r.width, h: r.height });
-      });
+      }
       return map;
     }
 
     function animateFLIP(oldPositions: Map<HTMLElement, Rect>) {
       if (reducedMotion) return;
-      grid.querySelectorAll<HTMLElement>('.kid-card:not(.is-hidden)').forEach(card => {
+      for (const card of cachedCards) {
+        if (card.classList.contains('is-hidden')) continue;
         const oldPos = oldPositions.get(card);
-        if (!oldPos) return;
+        if (!oldPos) continue;
         const newRect = card.getBoundingClientRect();
         const dx = oldPos.x - newRect.left;
         const dy = oldPos.y - newRect.top;
-        if (Math.abs(dx) < 1 && Math.abs(dy) < 1) return;
+        if (Math.abs(dx) < 1 && Math.abs(dy) < 1) continue;
         card.style.transform = `translate(${dx}px, ${dy}px)`;
         card.classList.add('is-flipping');
         requestAnimationFrame(() => {
@@ -681,7 +684,7 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
             card.style.transform = '';
           });
         });
-      });
+      }
     }
 
     // Clean up FLIP class
@@ -697,8 +700,7 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
     // ══════════════════════════════════════════
     function sortCards(animate = true) {
       const oldPos = animate ? capturePositions() : null;
-      const cards = Array.from(grid.querySelectorAll<HTMLElement>('.kid-card'));
-      cards.sort((a, b) => {
+      cachedCards.sort((a, b) => {
         const yearA = parseInt((a.dataset.year || '').replace('year-', '')) || 0;
         const yearB = parseInt((b.dataset.year || '').replace('year-', '')) || 0;
         const nameA = a.dataset.name || '';
@@ -711,7 +713,7 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
         }
       });
       const frag = document.createDocumentFragment();
-      cards.forEach(c => frag.appendChild(c));
+      cachedCards.forEach(c => frag.appendChild(c));
       grid.appendChild(frag);
       if (oldPos) animateFLIP(oldPos);
     }
@@ -721,7 +723,7 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
     // ══════════════════════════════════════════
     function updateYearBadges() {
       const showYear = currentSort === 'newest' || currentSort === 'oldest';
-      grid.querySelectorAll<HTMLElement>('.kid-card').forEach(card => {
+      cachedCards.forEach(card => {
         let badge = card.querySelector('.kid-card__year-badge') as HTMLElement | null;
         if (showYear) {
           const year = (card.dataset.year || '').replace('year-', '');
@@ -828,13 +830,12 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
     //  SMART EMPTY STATE
     // ══════════════════════════════════════════
     function buildSmartEmptyState(query: string, yearFilter: string, typeFilter: string) {
-      const cards = grid.querySelectorAll<HTMLElement>('.kid-card');
       const suggestions: { label: string; count: number; action: () => void }[] = [];
 
       // Test removing each filter to see what would match
       if (yearFilter !== 'all') {
         let countWithoutYear = 0;
-        cards.forEach(card => {
+        cachedCards.forEach(card => {
           const { types, name, diagnosis, status } = card.dataset;
           const matchType = typeFilter === 'all' || (types?.split(' ').includes(typeFilter));
           const matchStatus = !statusActive || status === 'in-progress';
@@ -853,7 +854,7 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
 
       if (typeFilter !== 'all') {
         let countWithoutType = 0;
-        cards.forEach(card => {
+        cachedCards.forEach(card => {
           const { year, name, diagnosis, status } = card.dataset;
           const matchYear = yearFilter === 'all' || year === yearFilter;
           const matchStatus = !statusActive || status === 'in-progress';
@@ -873,7 +874,7 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
         // Find the closest fuzzy match from card names
         let bestMatch = '';
         let bestScore = 0;
-        cards.forEach(card => {
+        cachedCards.forEach(card => {
           const name = originalTexts.get(card)?.name || '';
           if (!name) return;
           const s = similarity(query.toLowerCase(), name.toLowerCase());
@@ -889,7 +890,7 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
 
         // Test with only search
         let countSearchOnly = 0;
-        cards.forEach(card => {
+        cachedCards.forEach(card => {
           const { name, diagnosis } = card.dataset;
           if (fuzzyMatch(query, name, diagnosis) > 0) countSearchOnly++;
         });
@@ -947,11 +948,13 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
       // Capture positions for FLIP
       const oldPos = capturePositions();
 
-      const cards = grid.querySelectorAll<HTMLElement>('.kid-card');
+      // Build highlight regex once for the entire pass (not per-card)
+      const hlRe = buildHighlightRe(query);
+
       let visibleCount = 0;
       const scored: { card: HTMLElement; score: number }[] = [];
 
-      cards.forEach(card => {
+      for (const card of cachedCards) {
         const { year, types, name, diagnosis, status } = card.dataset;
         const matchesYear = yearFilter === 'all' || year === yearFilter;
         const matchesType = typeFilter === 'all' || (types ? types.split(' ').includes(typeFilter) : false);
@@ -968,46 +971,42 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
           hideCard(card);
         }
 
-        // Multi-term search highlighting
+        // Multi-term search highlighting (regex compiled once above)
         const orig = originalTexts.get(card);
         if (orig) {
           const nameEl = card.querySelector('.kid-card__name') as HTMLElement | null;
           const diagEl = card.querySelector('.kid-card__diagnosis') as HTMLElement | null;
-          if (nameEl) highlightText(nameEl, query, orig.name);
-          if (diagEl) highlightText(diagEl, query, orig.diagnosis);
+          if (nameEl) highlightText(nameEl, hlRe, orig.name);
+          if (diagEl) highlightText(diagEl, hlRe, orig.diagnosis);
         }
-      });
+      }
 
       // Relevance-rank: re-sort visible cards by match score when searching
       if (query && scored.length > 1) {
         scored.sort((a, b) => b.score - a.score);
         const frag = document.createDocumentFragment();
-        // Append scored (visible) cards in relevance order
         scored.forEach(({ card }) => frag.appendChild(card));
-        // Append hidden cards after so DOM order is clean
-        cards.forEach(card => {
+        for (const card of cachedCards) {
           if (card.classList.contains('is-hidden') || card.classList.contains('is-hiding')) {
             frag.appendChild(card);
           }
-        });
+        }
         grid.appendChild(frag);
       }
 
       // FLIP animate remaining visible cards into new positions
-      // Use rAF to let hidden cards settle first
       requestAnimationFrame(() => animateFLIP(oldPos));
 
+      // Update status text — use stable DOM references, never recreate #visible-count
+      const totalText = String(cachedCards.length);
       visibleCountEl.textContent = String(visibleCount);
-      // Update status text to be search-aware
       if (resultCount) {
-        const totalEl = document.getElementById('total-count');
-        const totalText = totalEl?.textContent || String(grid.querySelectorAll('.kid-card').length);
         if (query && visibleCount > 0) {
           resultCount.innerHTML = `<strong>${visibleCount}</strong> ${visibleCount === 1 ? 'result' : 'results'} for \u201c${escapeHtml(query)}\u201d`;
         } else if (hasFilters && visibleCount > 0) {
           resultCount.innerHTML = `Showing <strong>${visibleCount}</strong> of ${totalText} kids`;
         } else if (!hasFilters) {
-          resultCount.innerHTML = `Showing <strong id="visible-count">${visibleCount}</strong> of <span id="total-count">${totalText}</span> kids`;
+          resultCount.innerHTML = `Showing <strong>${visibleCount}</strong> of ${totalText} kids`;
         }
       }
       // Sync badge with actual filtered count
@@ -1065,7 +1064,7 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
         statusBtn.classList.remove('active');
         statusBtn.setAttribute('aria-pressed', 'false');
       }
-      grid.querySelectorAll<HTMLElement>('.kid-card').forEach(card => {
+      cachedCards.forEach(card => {
         const orig = originalTexts.get(card);
         if (orig) {
           const nameEl = card.querySelector('.kid-card__name') as HTMLElement | null;
@@ -1116,10 +1115,8 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
       if (kbdHint) kbdHint.classList.toggle('is-hidden', !!val);
 
       // Debounce the single-pass DOM filter
-      isSearching = true;
       visibleCountEl.style.opacity = '0.4';
       searchTimer = setTimeout(() => {
-        isSearching = false;
         visibleCountEl.style.opacity = '';
         applyFilters();
       }, 80);
@@ -1321,7 +1318,7 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
     // ── Staggered reveal ──
     if (!reducedMotion) {
       document.documentElement.classList.add('js-anim');
-      grid.querySelectorAll<HTMLElement>('.kid-card').forEach((card, i) => {
+      cachedCards.forEach((card, i) => {
         if (i < 8) card.classList.add('revealed');
       });
       _kidsObserver = new IntersectionObserver(
@@ -1335,7 +1332,7 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
         },
         { rootMargin: '100px', threshold: 0.01 }
       );
-      grid.querySelectorAll<HTMLElement>('.kid-card').forEach((card, i) => {
+      cachedCards.forEach((card, i) => {
         if (i >= 8) _kidsObserver!.observe(card);
       });
     }
@@ -1746,14 +1743,14 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
     animation: none;
   }
 
-  /* ── Search Highlight ── */
-  .kid-card__diagnosis mark {
+  /* ── Search Highlight (mark elements are JS-injected, needs :global) ── */
+  .kid-card__diagnosis :global(mark) {
     background: linear-gradient(transparent 20%, rgba(255, 218, 36, 0.5) 20%);
     color: inherit;
     border-radius: 2px;
     padding: 0 1px;
   }
-  .kid-card__name mark {
+  .kid-card__name :global(mark) {
     background: none;
     color: inherit;
   }
