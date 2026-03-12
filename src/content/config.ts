@@ -33,20 +33,51 @@ const kids = defineCollection({
     roomCount: z.number().default(1),
     featured: z.boolean().default(false),
     caseStudy: z.object({
-      designVision: z.string().nullable().optional(),
-      designTheme: z.string().nullable().optional(),
-      timeline: z.array(z.object({
-        step: z.number(),
-        title: z.string(),
-        description: z.string(),
-        photo: z.string().nullable().optional(),
+      projectTitle: z.string().nullable().optional(),
+      subtitle: z.string().nullable().optional(),
+      overview: z.string().nullable().optional(),
+      stats: z.array(z.object({
+        label: z.string(),
+        value: z.string(),
       })).default([]),
-      challenges: z.array(z.object({
-        challenge: z.string(),
-        solution: z.string(),
+      challenge: z.object({
+        text: z.string().nullable().optional(),
+        photos: z.array(z.object({
+          url: z.string(),
+          alt: z.string().default(''),
+          caption: z.string().default(''),
+        })).default([]),
+      }).nullable().optional(),
+      design: z.object({
+        text: z.string().nullable().optional(),
+        photos: z.array(z.object({
+          url: z.string(),
+          alt: z.string().default(''),
+          caption: z.string().default(''),
+        })).default([]),
+      }).nullable().optional(),
+      build: z.object({
+        text: z.string().nullable().optional(),
+        photos: z.array(z.object({
+          url: z.string(),
+          alt: z.string().default(''),
+          caption: z.string().default(''),
+        })).default([]),
+      }).nullable().optional(),
+      reveal: z.object({
+        text: z.string().nullable().optional(),
+        quote: z.string().nullable().optional(),
+        photos: z.array(z.object({
+          url: z.string(),
+          alt: z.string().default(''),
+          caption: z.string().default(''),
+        })).default([]),
+      }).nullable().optional(),
+      gallery: z.array(z.object({
+        url: z.string(),
+        alt: z.string().default(''),
+        caption: z.string().default(''),
       })).default([]),
-      familyReaction: z.string().nullable().optional(),
-      revealPhoto: z.string().nullable().optional(),
     }).nullable().optional(),
   }),
 });

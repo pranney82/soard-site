@@ -1,0 +1,788 @@
+---
+/**
+ * rooms/[slug].astro — Magazine-style featured project page
+ *
+ * Editorial layout inspired by Ranney Blair Weidmann's featured projects.
+ * Full-bleed photography, alternating text/photo sections, process documentation.
+ *
+ * Structure:
+ *   Hero → Overview + Stats → The Challenge → The Design → The Build → The Reveal → Gallery → CTA
+ */
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import Button from '../../components/ui/Button.astro';
+import { getCollection } from 'astro:content';
+import { cfRaw, cfSrcset } from '../../utils/cf-image';
+import { getWebPageSchema, getBreadcrumbSchema, buildSchemaGraph } from '../../utils/schema';
+
+export async function getStaticPaths() {
+  const kids = await getCollection('kids');
+  const featured = kids.filter(k => k.data.featured && k.data.caseStudy);
+  return featured.map(entry => ({
+    params: { slug: entry.data.slug },
+    props: { kid: entry.data },
+  }));
+}
+
+const { kid } = Astro.props;
+const cs = kid.caseStudy!;
+
+const SITE = 'https://sunshineonaranneyday.com';
+const title = cs.projectTitle || `${kid.name}'s Room Makeover`;
+const subtitle = cs.subtitle || kid.roomTypes?.join(' & ') || '';
+const metaDesc = cs.overview?.slice(0, 160) || kid.metaDescription || `Go behind the scenes of ${kid.name}'s room makeover by Sunshine on a Ranney Day.`;
+
+const breadcrumbs = [
+  { name: 'Home', url: SITE },
+  { name: 'Featured Projects', url: `${SITE}/rooms/` },
+  { name: title, url: `${SITE}/rooms/${kid.slug}/` },
+];
+
+const heroSrcset = kid.heroImage ? cfSrcset(kid.heroImage, [640, 1024, 1600, 2400]) : '';
+---
+
+<BaseLayout
+  title={title}
+  description={metaDesc}
+  ogType="article"
+  breadcrumbs={breadcrumbs}
+>
+  {kid.heroImage && <link slot="head" rel="preload" as="image" imagesrcset={heroSrcset} imagesizes="100vw" fetchpriority="high" />}
+
+  <article class="fp" itemscope itemtype="https://schema.org/Article">
+    <!-- ═══ Hero ══════════════════════════════════ -->
+    <section class="fp-hero">
+      {kid.heroImage && (
+        <div class="fp-hero__bg">
+          <img
+            src={cfRaw(kid.heroImage, 'w=1600,q=85')}
+            srcset={cfSrcset(kid.heroImage, [640, 1024, 1600, 2400])}
+            sizes="100vw"
+            alt={`${kid.name}'s completed room makeover`}
+            class="fp-hero__img"
+            width="1600" height="900"
+            loading="eager" fetchpriority="high"
+          />
+          <div class="fp-hero__overlay" aria-hidden="true" />
+        </div>
+      )}
+      <div class="fp-hero__content container container--narrow">
+        <a href="/rooms/" class="fp-hero__back">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+          All Projects
+        </a>
+        <span class="fp-hero__label">Featured Project</span>
+        <h1 class="fp-hero__title" itemprop="headline">{title}</h1>
+        {subtitle && <p class="fp-hero__subtitle">{subtitle}</p>}
+      </div>
+    </section>
+
+    <!-- ═══ Overview + Stats ═════════════════════ -->
+    <section class="fp-overview">
+      <div class="container container--narrow">
+        <div class="fp-overview__grid">
+          <div class="fp-overview__text">
+            {cs.overview && cs.overview.split('\n\n').map(p => <p class="fp-overview__para">{p}</p>)}
+            <a href={`/kids/${kid.slug}/`} class="fp-overview__kid-link">
+              Read {kid.name}'s full story
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+            </a>
+          </div>
+          {cs.stats && cs.stats.length > 0 && (
+            <aside class="fp-stats">
+              {cs.stats.map(stat => (
+                <div class="fp-stat">
+                  <span class="fp-stat__label">{stat.label}</span>
+                  <span class="fp-stat__value">{stat.value}</span>
+                </div>
+              ))}
+            </aside>
+          )}
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ The Challenge ════════════════════════ -->
+    {cs.challenge && (cs.challenge.text || cs.challenge.photos?.length > 0) && (
+      <section class="fp-section fp-section--cream">
+        <div class="container">
+          <span class="fp-section__label">The Starting Point</span>
+          <h2 class="fp-section__heading">The <em class="highlight">Challenge</em></h2>
+
+          <div class="fp-editorial fp-editorial--photos-right">
+            {cs.challenge.text && (
+              <div class="fp-editorial__text">
+                {cs.challenge.text.split('\n\n').map(p => <p>{p}</p>)}
+              </div>
+            )}
+            {cs.challenge.photos && cs.challenge.photos.length > 0 && (
+              <div class={`fp-editorial__photos ${cs.challenge.photos.length === 1 ? 'fp-editorial__photos--single' : ''}`}>
+                {cs.challenge.photos.map((photo, i) => (
+                  <figure class="fp-photo">
+                    <img
+                      src={cfRaw(photo.url, 'w=800,q=85')}
+                      srcset={cfSrcset(photo.url, [400, 800])}
+                      sizes="(max-width: 768px) 90vw, 400px"
+                      alt={photo.alt || `Before: ${kid.name}'s room`}
+                      loading="lazy" decoding="async"
+                      width="800" height="600"
+                    />
+                    {photo.caption && <figcaption>{photo.caption}</figcaption>}
+                  </figure>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+    )}
+
+    <!-- ═══ The Design ═══════════════════════════ -->
+    {cs.design && (cs.design.text || cs.design.photos?.length > 0) && (
+      <section class="fp-section">
+        <div class="container">
+          <span class="fp-section__label">Mood Boards, Renderings & Planning</span>
+          <h2 class="fp-section__heading">The <em class="highlight">Design</em></h2>
+
+          <div class="fp-editorial fp-editorial--photos-left">
+            {cs.design.photos && cs.design.photos.length > 0 && (
+              <div class={`fp-editorial__photos ${cs.design.photos.length === 1 ? 'fp-editorial__photos--single' : ''}`}>
+                {cs.design.photos.map((photo, i) => (
+                  <figure class="fp-photo">
+                    <img
+                      src={cfRaw(photo.url, 'w=800,q=85')}
+                      srcset={cfSrcset(photo.url, [400, 800])}
+                      sizes="(max-width: 768px) 90vw, 400px"
+                      alt={photo.alt || `Design process for ${kid.name}'s room`}
+                      loading="lazy" decoding="async"
+                      width="800" height="600"
+                    />
+                    {photo.caption && <figcaption>{photo.caption}</figcaption>}
+                  </figure>
+                ))}
+              </div>
+            )}
+            {cs.design.text && (
+              <div class="fp-editorial__text">
+                {cs.design.text.split('\n\n').map(p => <p>{p}</p>)}
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+    )}
+
+    <!-- ═══ The Build ════════════════════════════ -->
+    {cs.build && (cs.build.text || cs.build.photos?.length > 0) && (
+      <section class="fp-section fp-section--cream">
+        <div class="container">
+          <span class="fp-section__label">Demo, Construction & Installation</span>
+          <h2 class="fp-section__heading">The <em class="highlight">Build</em></h2>
+
+          <div class="fp-editorial fp-editorial--photos-right">
+            {cs.build.text && (
+              <div class="fp-editorial__text">
+                {cs.build.text.split('\n\n').map(p => <p>{p}</p>)}
+              </div>
+            )}
+            {cs.build.photos && cs.build.photos.length > 0 && (
+              <div class={`fp-editorial__photos ${cs.build.photos.length === 1 ? 'fp-editorial__photos--single' : ''}`}>
+                {cs.build.photos.map((photo, i) => (
+                  <figure class="fp-photo">
+                    <img
+                      src={cfRaw(photo.url, 'w=800,q=85')}
+                      srcset={cfSrcset(photo.url, [400, 800])}
+                      sizes="(max-width: 768px) 90vw, 400px"
+                      alt={photo.alt || `Construction progress on ${kid.name}'s room`}
+                      loading="lazy" decoding="async"
+                      width="800" height="600"
+                    />
+                    {photo.caption && <figcaption>{photo.caption}</figcaption>}
+                  </figure>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+    )}
+
+    <!-- ═══ The Reveal ═══════════════════════════ -->
+    {cs.reveal && (cs.reveal.text || cs.reveal.photos?.length > 0 || cs.reveal.quote) && (
+      <section class="fp-section fp-reveal">
+        <div class="container">
+          <span class="fp-section__label">The Moment It All Comes Together</span>
+          <h2 class="fp-section__heading">The <em class="highlight">Reveal</em></h2>
+
+          {cs.reveal.photos && cs.reveal.photos.length > 0 && (
+            <div class="fp-reveal__hero-photo">
+              <img
+                src={cfRaw(cs.reveal.photos[0].url, 'w=1400,q=85')}
+                srcset={cfSrcset(cs.reveal.photos[0].url, [700, 1400])}
+                sizes="(max-width: 768px) 90vw, 900px"
+                alt={cs.reveal.photos[0].alt || `${kid.name}'s completed room`}
+                loading="lazy" decoding="async"
+                width="1400" height="800"
+              />
+              {cs.reveal.photos[0].caption && <figcaption>{cs.reveal.photos[0].caption}</figcaption>}
+            </div>
+          )}
+
+          {cs.reveal.text && (
+            <div class="fp-reveal__text container--narrow" style="margin-inline: auto;">
+              {cs.reveal.text.split('\n\n').map(p => <p>{p}</p>)}
+            </div>
+          )}
+
+          {cs.reveal.quote && (
+            <blockquote class="fp-reveal__quote">
+              <p>{cs.reveal.quote}</p>
+            </blockquote>
+          )}
+
+          {cs.reveal.photos && cs.reveal.photos.length > 1 && (
+            <div class="fp-reveal__grid">
+              {cs.reveal.photos.slice(1).map(photo => (
+                <figure class="fp-photo">
+                  <img
+                    src={cfRaw(photo.url, 'w=700,q=85')}
+                    srcset={cfSrcset(photo.url, [350, 700])}
+                    sizes="(max-width: 768px) 45vw, 350px"
+                    alt={photo.alt || `${kid.name}'s finished room`}
+                    loading="lazy" decoding="async"
+                    width="700" height="500"
+                  />
+                  {photo.caption && <figcaption>{photo.caption}</figcaption>}
+                </figure>
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
+    )}
+
+    <!-- ═══ Full Gallery ═════════════════════════ -->
+    {cs.gallery && cs.gallery.length > 0 && (
+      <section class="fp-section fp-section--cream fp-gallery-section">
+        <div class="container container--wide">
+          <h2 class="fp-section__heading" style="text-align: center;">The Full <em class="highlight">Gallery</em></h2>
+          <div class="fp-gallery">
+            {cs.gallery.map((photo, i) => (
+              <figure class="fp-gallery__item">
+                <img
+                  src={cfRaw(photo.url, 'w=600,q=85')}
+                  srcset={cfSrcset(photo.url, [300, 600])}
+                  sizes="(max-width: 600px) 45vw, (max-width: 1100px) 30vw, 280px"
+                  alt={photo.alt || `${kid.name}'s room photo ${i + 1}`}
+                  loading="lazy" decoding="async"
+                  width="600" height="400"
+                />
+                {photo.caption && <figcaption>{photo.caption}</figcaption>}
+              </figure>
+            ))}
+          </div>
+        </div>
+      </section>
+    )}
+
+    <!-- ═══ Partner Logos ═════════════════════════ -->
+    {kid.partnerLogos && kid.partnerLogos.length > 0 && (
+      <section class="fp-section" style="padding-block: var(--space-3xl);">
+        <div class="container">
+          <h2 class="fp-section__heading" style="text-align: center; margin-bottom: var(--space-lg);">Project Partners</h2>
+          <p style="text-align: center; color: var(--c-text-muted); margin-bottom: var(--space-xl);">This project was made possible by the generous support of these partners.</p>
+          <div class="fp-partners">
+            {kid.partnerLogos.map(logo => (
+              <img
+                src={cfRaw(logo.url, 'w=200,q=85')}
+                alt={logo.name || 'Project partner'}
+                loading="lazy" decoding="async"
+                width="140" height="70"
+                class="fp-partner-logo"
+              />
+            ))}
+          </div>
+        </div>
+      </section>
+    )}
+
+    <!-- ═══ CTA ══════════════════════════════════ -->
+    <section class="fp-cta section--dark">
+      <div class="container container--narrow" style="text-align: center;">
+        <h2 class="fp-cta__title">Help build more rooms like {kid.name}'s</h2>
+        <p class="fp-cta__text">Every donation helps transform a child's living space into a place of comfort, safety, and independence.</p>
+        <div class="fp-cta__buttons">
+          <Button href="/donate/" variant="primary">Donate Now</Button>
+          <Button href="/kids/" variant="outline">Meet More Kids</Button>
+        </div>
+      </div>
+    </section>
+  </article>
+</BaseLayout>
+
+<style>
+  /* ═══════════════════════════════════════════
+     FEATURED PROJECT — MAGAZINE LAYOUT
+     ═══════════════════════════════════════════ */
+
+  /* ── Hero ──────────────────────────────── */
+  .fp-hero {
+    position: relative;
+    min-height: 70vh;
+    min-height: 70dvh;
+    display: flex;
+    align-items: flex-end;
+    overflow: hidden;
+  }
+
+  .fp-hero__bg {
+    position: absolute;
+    inset: 0;
+  }
+
+  .fp-hero__img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .fp-hero__overlay {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      to top,
+      rgba(0, 0, 0, 0.8) 0%,
+      rgba(0, 0, 0, 0.4) 40%,
+      rgba(0, 0, 0, 0.1) 100%
+    );
+  }
+
+  .fp-hero__content {
+    position: relative;
+    z-index: 1;
+    padding-block: var(--space-5xl) var(--space-3xl);
+    color: #fff;
+  }
+
+  .fp-hero__back {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: rgba(255, 255, 255, 0.7);
+    text-decoration: none;
+    font-size: 0.85rem;
+    font-weight: 500;
+    margin-bottom: var(--space-xl);
+    transition: color 0.2s;
+  }
+
+  .fp-hero__back:hover { color: #fff; }
+
+  .fp-hero__label {
+    display: inline-block;
+    font-family: var(--font-body);
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--c-yellow);
+    background: rgba(255, 218, 36, 0.15);
+    padding: 6px 16px;
+    border-radius: 100px;
+    margin-bottom: var(--space-md);
+  }
+
+  .fp-hero__title {
+    font-family: var(--font-display);
+    font-size: clamp(2rem, 5.5vw, 3.5rem);
+    font-weight: 700;
+    line-height: 1.1;
+    color: #fff;
+    max-width: 700px;
+  }
+
+  .fp-hero__subtitle {
+    font-family: var(--font-body);
+    font-size: 1.15rem;
+    color: rgba(255, 255, 255, 0.75);
+    margin-top: var(--space-sm);
+    font-weight: 400;
+  }
+
+  /* ── Overview + Stats ──────────────────── */
+  .fp-overview {
+    padding-block: var(--space-4xl);
+    border-bottom: 1px solid rgba(55, 58, 54, 0.08);
+  }
+
+  .fp-overview__grid {
+    display: grid;
+    grid-template-columns: 1fr 280px;
+    gap: var(--space-3xl);
+    align-items: start;
+  }
+
+  .fp-overview__para {
+    font-family: var(--font-display);
+    font-size: 1.15rem;
+    line-height: 1.75;
+    color: var(--c-text);
+    margin-bottom: var(--space-md);
+  }
+
+  .fp-overview__kid-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: var(--c-dark);
+    text-decoration: none;
+    margin-top: var(--space-sm);
+    transition: gap 0.2s;
+  }
+
+  .fp-overview__kid-link:hover { gap: 10px; }
+
+  .fp-stats {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    border: 1px solid rgba(55, 58, 54, 0.1);
+    border-radius: var(--border-radius-lg);
+    overflow: hidden;
+  }
+
+  .fp-stat {
+    display: flex;
+    flex-direction: column;
+    padding: var(--space-md) var(--space-lg);
+    border-bottom: 1px solid rgba(55, 58, 54, 0.06);
+  }
+
+  .fp-stat:last-child { border-bottom: none; }
+
+  .fp-stat__label {
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--c-text-muted);
+    margin-bottom: 2px;
+  }
+
+  .fp-stat__value {
+    font-family: var(--font-display);
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--c-dark);
+  }
+
+  /* ── Sections ──────────────────────────── */
+  .fp-section {
+    padding-block: var(--space-4xl);
+  }
+
+  .fp-section--cream {
+    background: var(--c-warm-gray);
+  }
+
+  .fp-section__label {
+    display: block;
+    font-family: var(--font-body);
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--c-text-muted);
+    margin-bottom: var(--space-xs);
+  }
+
+  .fp-section__heading {
+    font-family: var(--font-display);
+    font-size: clamp(1.75rem, 4vw, 2.5rem);
+    font-weight: 700;
+    color: var(--c-dark);
+    margin-bottom: var(--space-xl);
+    line-height: 1.15;
+  }
+
+  /* ── Editorial blocks ──────────────────── */
+  .fp-editorial {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-3xl);
+    align-items: start;
+  }
+
+  .fp-editorial--photos-left .fp-editorial__photos { order: -1; }
+
+  .fp-editorial__text {
+    font-size: 1.05rem;
+    line-height: 1.7;
+    color: var(--c-text);
+  }
+
+  .fp-editorial__text p {
+    margin-bottom: var(--space-md);
+  }
+
+  .fp-editorial__photos {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-md);
+  }
+
+  .fp-editorial__photos--single {
+    grid-template-columns: 1fr;
+  }
+
+  .fp-photo img {
+    width: 100%;
+    height: auto;
+    object-fit: cover;
+    border-radius: var(--border-radius-lg);
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
+  }
+
+  .fp-photo figcaption {
+    font-size: 0.78rem;
+    color: var(--c-text-muted);
+    text-align: center;
+    margin-top: var(--space-xs);
+    font-style: italic;
+  }
+
+  /* ── Reveal section ────────────────────── */
+  .fp-reveal {
+    text-align: center;
+  }
+
+  .fp-reveal__hero-photo {
+    max-width: 900px;
+    margin-inline: auto;
+    margin-bottom: var(--space-xl);
+  }
+
+  .fp-reveal__hero-photo img {
+    width: 100%;
+    height: auto;
+    border-radius: var(--border-radius-lg);
+    box-shadow: 0 8px 48px rgba(0, 0, 0, 0.12);
+  }
+
+  .fp-reveal__hero-photo figcaption {
+    font-size: 0.8rem;
+    color: var(--c-text-muted);
+    margin-top: var(--space-sm);
+    font-style: italic;
+  }
+
+  .fp-reveal__text {
+    text-align: left;
+    max-width: 680px;
+    font-size: 1.05rem;
+    line-height: 1.7;
+    color: var(--c-text);
+    margin-bottom: var(--space-xl);
+  }
+
+  .fp-reveal__text p {
+    margin-bottom: var(--space-md);
+  }
+
+  .fp-reveal__quote {
+    max-width: 600px;
+    margin: var(--space-xl) auto;
+    font-family: var(--font-display);
+    font-style: italic;
+    font-size: clamp(1.1rem, 2.5vw, 1.4rem);
+    line-height: 1.65;
+    color: var(--c-dark);
+    position: relative;
+    padding: var(--space-xl) 0;
+  }
+
+  .fp-reveal__quote::before {
+    content: '';
+    display: block;
+    width: 48px;
+    height: 3px;
+    background: var(--c-yellow);
+    margin: 0 auto var(--space-lg);
+    border-radius: 2px;
+  }
+
+  .fp-reveal__grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: var(--space-lg);
+    max-width: 900px;
+    margin: var(--space-xl) auto 0;
+  }
+
+  .fp-reveal__grid .fp-photo img {
+    aspect-ratio: 4 / 3;
+  }
+
+  /* ── Gallery ───────────────────────────── */
+  .fp-gallery {
+    columns: 4;
+    column-gap: var(--space-md);
+  }
+
+  .fp-gallery__item {
+    break-inside: avoid;
+    margin-bottom: var(--space-md);
+  }
+
+  .fp-gallery__item img {
+    width: 100%;
+    height: auto;
+    border-radius: var(--border-radius);
+    display: block;
+  }
+
+  .fp-gallery__item figcaption {
+    font-size: 0.75rem;
+    color: var(--c-text-muted);
+    text-align: center;
+    margin-top: 4px;
+    font-style: italic;
+  }
+
+  /* ── Partners ──────────────────────────── */
+  .fp-partners {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: var(--space-xl);
+    align-items: center;
+  }
+
+  .fp-partner-logo {
+    max-height: 60px;
+    width: auto;
+    object-fit: contain;
+    opacity: 0.7;
+    filter: grayscale(30%);
+    transition: opacity 0.2s, filter 0.2s;
+  }
+
+  .fp-partner-logo:hover {
+    opacity: 1;
+    filter: none;
+  }
+
+  /* ── CTA ────────────────────────────────── */
+  .fp-cta {
+    padding-block: var(--space-4xl);
+  }
+
+  .fp-cta__title {
+    font-family: var(--font-display);
+    font-size: clamp(1.5rem, 3.5vw, 2rem);
+    font-weight: 700;
+    color: #fff;
+    margin-bottom: var(--space-md);
+  }
+
+  .fp-cta__text {
+    color: rgba(255, 255, 255, 0.75);
+    font-size: 1.05rem;
+    line-height: 1.6;
+    max-width: 500px;
+    margin-inline: auto;
+    margin-bottom: var(--space-xl);
+  }
+
+  .fp-cta__buttons {
+    display: flex;
+    gap: var(--space-md);
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  /* ═══ Responsive ═══════════════════════════ */
+  @media (max-width: 1100px) {
+    .fp-gallery { columns: 3; }
+  }
+
+  @media (max-width: 900px) {
+    .fp-overview__grid {
+      grid-template-columns: 1fr;
+      gap: var(--space-xl);
+    }
+
+    .fp-stats {
+      flex-direction: row;
+      flex-wrap: wrap;
+    }
+
+    .fp-stat {
+      flex: 1 1 120px;
+      border-bottom: none;
+      border-right: 1px solid rgba(55, 58, 54, 0.06);
+    }
+
+    .fp-stat:last-child { border-right: none; }
+
+    .fp-editorial {
+      grid-template-columns: 1fr;
+      gap: var(--space-xl);
+    }
+
+    .fp-editorial--photos-left .fp-editorial__photos { order: 0; }
+  }
+
+  @media (max-width: 768px) {
+    .fp-hero {
+      min-height: 50vh;
+      min-height: 50dvh;
+    }
+
+    .fp-hero__content {
+      padding-block: var(--space-4xl) var(--space-xl);
+    }
+
+    .fp-gallery { columns: 2; }
+
+    .fp-reveal__grid {
+      grid-template-columns: 1fr 1fr;
+    }
+
+    .fp-editorial__photos {
+      grid-template-columns: 1fr 1fr;
+    }
+
+    .fp-stats {
+      flex-direction: column;
+    }
+
+    .fp-stat {
+      border-right: none;
+      border-bottom: 1px solid rgba(55, 58, 54, 0.06);
+    }
+  }
+
+  @media (max-width: 480px) {
+    .fp-hero {
+      min-height: 45vh;
+      min-height: 45dvh;
+    }
+
+    .fp-editorial__photos {
+      grid-template-columns: 1fr;
+    }
+
+    .fp-reveal__grid {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .fp-hero__img,
+    .fp-partner-logo {
+      transition: none;
+    }
+  }
+</style>

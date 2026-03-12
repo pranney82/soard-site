@@ -30,7 +30,7 @@ const featured = allKids
             const kid = entry.data;
             const cs = kid.caseStudy;
             return (
-              <a href={`/kids/${kid.slug}/`} class={`featured-card ${i === 0 ? 'featured-card--large' : ''}`}>
+              <a href={`/rooms/${kid.slug}/`} class={`featured-card ${i === 0 ? 'featured-card--large' : ''}`}>
                 <div class="featured-card__frame">
                   <img
                     src={cfRaw(kid.heroImage!, 'w=800,q=85')}
@@ -46,10 +46,10 @@ const featured = allKids
                   <div class="featured-card__gradient" aria-hidden="true" />
                 </div>
                 <div class="featured-card__content">
-                  {cs?.designTheme && (
-                    <span class="featured-card__theme">{cs.designTheme}</span>
+                  {cs?.subtitle && (
+                    <span class="featured-card__theme">{cs.subtitle}</span>
                   )}
-                  <h2 class="featured-card__name">{kid.name}</h2>
+                  <h2 class="featured-card__name">{cs?.projectTitle || kid.name}</h2>
                   <div class="featured-card__meta">
                     {kid.roomTypes && kid.roomTypes.length > 0 && (
                       <span class="featured-card__type">{kid.roomTypes.join(' & ')}</span>
