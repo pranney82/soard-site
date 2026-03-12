@@ -370,9 +370,84 @@
         grid-template-columns: 1fr !important;
       }
 
+      /* ─── Inline multi-column form-row overrides ── */
+      .form-row[style*="grid-template-columns"] {
+        grid-template-columns: 1fr !important;
+      }
+
       /* ─── JotForm iframe ─────────────── */
       .card > iframe[title*="Application"] {
         min-height: 600px !important;
+      }
+
+      /* ─── Fix input min-width overflow at 390px ── */
+      input[style*="min-width"],
+      .form-input[style*="min-width"] {
+        min-width: 0 !important;
+      }
+      /* Image picker search input */
+      .img-picker-toolbar input[style*="min-width"] {
+        min-width: 0 !important;
+        width: 100% !important;
+      }
+
+      /* ─── Fix inline max-width overflow ─────── */
+      img[style*="max-width: 400px"],
+      img[style*="max-width: 480px"],
+      div[style*="max-width: 400px"],
+      div[style*="max-width: 480px"] {
+        max-width: 100% !important;
+      }
+      iframe[style*="max-width"] {
+        max-width: 100% !important;
+      }
+
+      /* ─── Touch targets: inline small buttons ── */
+      /* Photo/gallery delete & browse buttons with tiny padding */
+      .card button[style*="padding: 0.2rem"],
+      .card button[style*="padding:0.2rem"] {
+        min-height: 40px !important;
+        min-width: 40px !important;
+        padding: 0.4rem 0.6rem !important;
+      }
+      /* Partner/chip remove buttons */
+      .chip-remove,
+      button[style*="padding: 0 0.2rem"],
+      button[style*="padding:0 0.2rem"] {
+        min-height: 36px !important;
+        min-width: 36px !important;
+      }
+      /* Photo grid action buttons */
+      .photo-btn {
+        width: 36px !important;
+        height: 36px !important;
+      }
+
+      /* ─── FAQ reorder buttons ──────────────── */
+      button[style*="min-height: auto"],
+      button[style*="min-height:auto"] {
+        min-height: 36px !important;
+        min-width: 36px !important;
+        padding: 0.3rem 0.5rem !important;
+      }
+
+      /* ─── OurStory milestone nav buttons ───── */
+      .card button[style*="padding: 2px"],
+      .card button[style*="padding:2px"] {
+        min-height: 36px !important;
+        min-width: 36px !important;
+        padding: 0.35rem 0.5rem !important;
+        font-size: 0.78rem !important;
+      }
+
+      /* ─── Small font size floor on mobile ──── */
+      [style*="font-size: 0.6rem"],
+      [style*="font-size:0.6rem"] {
+        font-size: 0.72rem !important;
+      }
+      [style*="font-size: 0.7rem"],
+      [style*="font-size:0.7rem"] {
+        font-size: 0.78rem !important;
       }
     }
 
@@ -386,7 +461,7 @@
       .stat-card .stat-number { font-size: 1.5rem; }
       .td-thumb { width: 36px; height: 36px; }
       .photo-grid { grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); }
-      .photo-btn { width: 28px; height: 28px; }
+      .photo-btn { width: 36px !important; height: 36px !important; }
       .form-hint { font-size: 0.75rem; }
       .card { padding: 0.85rem; border-radius: 10px; }
       .dropzone { padding: 1.25rem 0.75rem; }
@@ -1034,19 +1109,19 @@
     // ═══════════════════════════════════════════
     // DASHBOARD
     // ═══════════════════════════════════════════
-    function Dashboard({ kids, partners, team, events, communityProjects }) {
+    function Dashboard({ kids, partners, team, events, communityProjects, onNavigate }) {
       return html`
         <div class="page-header"><h2>Dashboard</h2></div>
         <div class="stat-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
-          <div class="stat-card">
+          <div class="stat-card" style="cursor: pointer;" onClick=${() => onNavigate('kids')}>
             <div class="stat-number">${kids.length}</div>
             <div class="stat-label">Kids</div>
           </div>
-          <div class="stat-card">
+          <div class="stat-card" style="cursor: pointer;" onClick=${() => onNavigate('partners')}>
             <div class="stat-number">${partners.length}</div>
             <div class="stat-label">Partners</div>
           </div>
-          <div class="stat-card">
+          <div class="stat-card" style="cursor: pointer;" onClick=${() => onNavigate('team')}>
             <div class="stat-number">${team.length}</div>
             <div class="stat-label">Team & Board</div>
           </div>
@@ -1058,21 +1133,24 @@
             <div class="stat-number">${kids.filter(k => k.status === 'in-progress').length}</div>
             <div class="stat-label">In Progress</div>
           </div>
-          <div class="stat-card">
+          <div class="stat-card" style="cursor: pointer;" onClick=${() => onNavigate('events')}>
             <div class="stat-number">${(events || []).filter(e => e.status === 'upcoming').length}</div>
             <div class="stat-label">Upcoming Events</div>
           </div>
-          <div class="stat-card">
+          <div class="stat-card" style="cursor: pointer;" onClick=${() => onNavigate('community')}>
             <div class="stat-number">${(communityProjects || []).length}</div>
             <div class="stat-label">Community Projects</div>
           </div>
         </div>
         <div class="card dashboard-recent">
-          <h3 style="margin-bottom: 1rem;">Recent Kids</h3>
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
+            <h3>Recent Kids</h3>
+            <button class="btn btn-ghost btn-sm" onClick=${() => onNavigate('kids')}>View All →</button>
+          </div>
           <div class="table-wrap"><table>
             <thead><tr><th></th><th>Name</th><th>Year</th><th>Status</th><th>Photos</th></tr></thead>
             <tbody>
-              ${kids.slice(0, 10).map(k => html`<tr key=${k.slug}>
+              ${kids.slice(0, 10).map(k => html`<tr key=${k.slug} style="cursor: pointer;" onClick=${() => onNavigate('kids', k.slug)}>
                 <td>${k.heroImage ? html`<img class="td-thumb" src="${k.heroImage}" alt="" />` : '—'}</td>
                 <td><strong>${k.name}</strong></td>
                 <td>${k.year || '—'}</td>
@@ -1159,6 +1237,9 @@
       const [videoUploading, setVideoUploading] = useState(false);
       const [generatingSeo, setGeneratingSeo] = useState(false);
       const [generatingAlt, setGeneratingAlt] = useState(false);
+      const [showCsImagePicker, setShowCsImagePicker] = useState(false);
+      const [csImagePickerTarget, setCsImagePickerTarget] = useState(null);
+      const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
 
       // Generate SEO fields with AI
       const handleGenerateSeo = async () => {
@@ -1451,6 +1532,26 @@
         <div class="spinner" style="width: 32px; height: 32px; border-width: 3px;" /></div>`;
 
       return html`
+        ${showCsImagePicker ? html`<${ImagePicker}
+          onSelect=${(id) => {
+            const url = CF + '/' + id + '/public';
+            if (csImagePickerTarget) {
+              const { section, index, field } = csImagePickerTarget;
+              const cs = { ...(data.caseStudy || {}) };
+              if (section === 'gallery') {
+                cs.gallery = [...(cs.gallery || [])];
+                cs.gallery[index] = { ...cs.gallery[index], [field]: url };
+              } else {
+                cs[section] = { ...(cs[section] || {}) };
+                cs[section].photos = [...(cs[section].photos || [])];
+                cs[section].photos[index] = { ...cs[section].photos[index], [field]: url };
+              }
+              updateField('caseStudy', cs);
+            }
+            setShowCsImagePicker(false);
+          }}
+          onClose=${() => setShowCsImagePicker(false)}
+        />` : null}
         ${showDeleteModal ? html`<${ConfirmModal}
           title="Delete ${data.name}?"
           message="This will permanently remove this kid's profile and all associated data from the site. This cannot be undone."
@@ -1599,14 +1700,19 @@
           ${data.photos.length > 0 ? html`
             <div class="photo-grid">
               ${data.photos.map((photo, i) => html`
-                <div key=${i} class="photo-item ${photo.url === data.heroImage ? 'is-hero' : ''}">
-                  <img src=${photo.url} alt=${photo.alt || ''} loading="lazy" />
-                  ${uploading[photo._tempId] ? html`<div class="photo-uploading"><span class="spinner" /></div>` : null}
-                  <div class="photo-actions">
-                    <button class="photo-btn ${photo.url === data.heroImage ? 'hero-btn' : ''}"
-                      onClick=${() => setHero(i)} title="Set as hero image">${icons.star}</button>
-                    <button class="photo-btn" onClick=${() => removePhoto(i)} title="Remove">${icons.x}</button>
+                <div key=${i} style="display: flex; flex-direction: column;">
+                  <div class="photo-item ${photo.url === data.heroImage ? 'is-hero' : ''}">
+                    <img src=${photo.url} alt=${photo.alt || ''} loading="lazy" />
+                    ${uploading[photo._tempId] ? html`<div class="photo-uploading"><span class="spinner" /></div>` : null}
+                    <div class="photo-actions">
+                      <button class="photo-btn ${photo.url === data.heroImage ? 'hero-btn' : ''}"
+                        onClick=${() => setHero(i)} title="Set as hero image">${icons.star}</button>
+                      <button class="photo-btn" onClick=${() => removePhoto(i)} title="Remove">${icons.x}</button>
+                    </div>
                   </div>
+                  <input class="form-input" style="font-size: 0.75rem; padding: 0.3rem 0.4rem; margin-top: 0.25rem; border-radius: 6px;"
+                    value=${photo.alt || ''} placeholder="Alt text..."
+                    onInput=${e => updatePhotoAlt(i, e.target.value)} />
                 </div>
               `)}
             </div>
@@ -1716,14 +1822,19 @@
                     </div>
                     ${(sec.photos || []).map((photo, i) => html`
                       <div key=${i} style="background: #FEFCF5; border: 1px solid #E5E4E0; border-radius: 6px; padding: 0.5rem; margin-bottom: 0.5rem;">
-                        <div class="flex gap-1 items-center" style="margin-bottom: 0.25rem;">
-                          <input class="form-input" style="flex: 2; font-size: 0.8rem; padding: 0.3rem 0.4rem;" value=${photo.url}
+                        ${photo.url ? html`<img src=${photo.url} alt="" style="width: 100%; height: 60px; object-fit: cover; border-radius: 4px; margin-bottom: 0.35rem;" loading="lazy" />` : null}
+                        <div class="flex gap-1 items-center" style="margin-bottom: 0.25rem; flex-wrap: wrap;">
+                          <input class="form-input" style="flex: 2; min-width: 120px; font-size: 0.8rem; padding: 0.3rem 0.4rem;" value=${photo.url}
                             onInput=${e => {
                               const cs = { ...(data.caseStudy || {}) }; cs[section] = { ...(cs[section] || {}) };
                               cs[section].photos = [...cs[section].photos]; cs[section].photos[i] = { ...cs[section].photos[i], url: e.target.value };
                               updateField('caseStudy', cs);
                             }} placeholder="CF Images URL" />
-                          <input class="form-input" style="flex: 1; font-size: 0.8rem; padding: 0.3rem 0.4rem;" value=${photo.caption}
+                          <button class="btn btn-ghost btn-sm" style="font-size: 0.75rem; padding: 0.2rem 0.5rem;" onClick=${() => {
+                            setCsImagePickerTarget({ section, index: i, field: 'url' });
+                            setShowCsImagePicker(true);
+                          }}>Browse</button>
+                          <input class="form-input" style="flex: 1; min-width: 80px; font-size: 0.8rem; padding: 0.3rem 0.4rem;" value=${photo.caption}
                             onInput=${e => {
                               const cs = { ...(data.caseStudy || {}) }; cs[section] = { ...(cs[section] || {}) };
                               cs[section].photos = [...cs[section].photos]; cs[section].photos[i] = { ...cs[section].photos[i], caption: e.target.value };
@@ -1751,13 +1862,18 @@
                 </div>
                 <p class="text-sm text-muted" style="margin-bottom: 0.5rem;">Additional photos shown in a masonry grid at the bottom of the page.</p>
                 ${(data.caseStudy?.gallery || []).map((photo, i) => html`
-                  <div key=${i} class="flex gap-1 items-center" style="margin-bottom: 0.35rem;">
-                    <input class="form-input" style="flex: 2; font-size: 0.8rem; padding: 0.3rem 0.4rem;" value=${photo.url}
+                  <div key=${i} class="flex gap-1 items-center" style="margin-bottom: 0.35rem; flex-wrap: wrap;">
+                    ${photo.url ? html`<img src=${photo.url} alt="" style="width: 48px; height: 36px; object-fit: cover; border-radius: 4px; flex-shrink: 0;" loading="lazy" />` : null}
+                    <input class="form-input" style="flex: 2; min-width: 120px; font-size: 0.8rem; padding: 0.3rem 0.4rem;" value=${photo.url}
                       onInput=${e => {
                         const cs = { ...(data.caseStudy || {}) }; cs.gallery = [...cs.gallery]; cs.gallery[i] = { ...cs.gallery[i], url: e.target.value };
                         updateField('caseStudy', cs);
                       }} placeholder="CF Images URL" />
-                    <input class="form-input" style="flex: 1; font-size: 0.8rem; padding: 0.3rem 0.4rem;" value=${photo.caption}
+                    <button class="btn btn-ghost btn-sm" style="font-size: 0.75rem; padding: 0.2rem 0.5rem;" onClick=${() => {
+                      setCsImagePickerTarget({ section: 'gallery', index: i, field: 'url' });
+                      setShowCsImagePicker(true);
+                    }}>Browse</button>
+                    <input class="form-input" style="flex: 1; min-width: 80px; font-size: 0.8rem; padding: 0.3rem 0.4rem;" value=${photo.caption}
                       onInput=${e => {
                         const cs = { ...(data.caseStudy || {}) }; cs.gallery = [...cs.gallery]; cs.gallery[i] = { ...cs.gallery[i], caption: e.target.value };
                         updateField('caseStudy', cs);
@@ -5125,6 +5241,13 @@
             </div>
           </div>
         </div>
+
+        <div class="editor-save-footer">
+          <button class="btn btn-primary" onClick=${handleSave} disabled=${saving}>
+            ${saving ? html`<span class="spinner" />` : null}
+            ${saving ? 'Saving...' : 'Save & Publish'}
+          </button>
+        </div>
       `;
     }
 
@@ -5919,6 +6042,20 @@
 
       useEffect(() => { loadData(); }, []);
 
+      // Global Cmd/Ctrl+S to trigger save — finds the visible primary save button and clicks it
+      useEffect(() => {
+        const handler = (e) => {
+          if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+            e.preventDefault();
+            // Find the last visible enabled .btn-primary (the save button)
+            const btns = document.querySelectorAll('.btn-primary:not(:disabled)');
+            if (btns.length) btns[btns.length - 1].click();
+          }
+        };
+        window.addEventListener('keydown', handler);
+        return () => window.removeEventListener('keydown', handler);
+      }, []);
+
       const navigate = (v, slug = null) => {
         setView(v);
         setEditSlug(slug);
@@ -6018,7 +6155,7 @@
 
         switch (view) {
           case 'dashboard':
-            return html`<${Dashboard} kids=${kids} partners=${partners} team=${team} events=${events} communityProjects=${communityProjects} />`;
+            return html`<${Dashboard} kids=${kids} partners=${partners} team=${team} events=${events} communityProjects=${communityProjects} onNavigate=${navigate} />`;
           case 'kids':
             return editSlug !== null
               ? html`<${KidEditor} slug=${editSlug || undefined} onBack=${() => { navigate('kids'); loadData(); }} addToast=${addToast} partners=${partners} />`

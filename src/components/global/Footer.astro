@@ -213,9 +213,7 @@ const mapsUrl = `https://maps.google.com/?q=${encodeURIComponent(`${address.stre
       </p>
       <div class="footer-legal-links">
         <a href="/privacy-policy/">Privacy Policy</a>
-        <span aria-hidden="true">&middot;</span>
         <a href="/terms/">Terms of Use</a>
-        <span aria-hidden="true">&middot;</span>
         <a href="/admin/" class="footer-admin-link">Admin</a>
       </div>
     </div>
@@ -659,11 +657,14 @@ const mapsUrl = `https://maps.google.com/?q=${encodeURIComponent(`${address.stre
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 8px;
+    gap: 16px;
     font-size: 12px;
     color: rgba(255, 255, 255, 0.5);
-    flex-wrap: nowrap;
-    white-space: nowrap;
+  }
+  .footer-legal-links a + a::before {
+    content: '·';
+    margin-right: 16px;
+    color: rgba(255, 255, 255, 0.5);
   }
   .footer-legal-links a {
     color: rgba(255, 255, 255, 0.5);

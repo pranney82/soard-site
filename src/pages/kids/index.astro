@@ -21,8 +21,7 @@ const hasInProgress = kids.some(k => k.data.status === 'in-progress');
 const totalKids = kids.reduce((sum, k) => sum + (k.data.childCount || 1), 0);
 
 // ── CF Image helpers ──────────────────────
-import { cfRaw, cfSrcset as _cfSrcset, cfId, CF_BASE } from '../../utils/cf-image';
-function cfUrl(src: string, opts: string) { return cfRaw(src, opts); }
+import { cfUrl, cfRaw, cfSrcset as _cfSrcset, cfDensitySrcset, cfId, CF_BASE } from '../../utils/cf-image';
 /** Srcset with proportional height + face-crop at each breakpoint. */
 function cfCropSrcset(src: string, widths: number[], hwRatio: number) {
   return _cfSrcset(src, widths, { fit: 'cover', gravity: 'face', quality: 80, aspectRatio: hwRatio });
@@ -54,7 +53,7 @@ const itemListSchema = {
       "position": i + 1,
       "url": `${SITE}/kids/${kid.data.slug}/`,
       "name": kid.data.name,
-      ...(kid.data.heroImage ? { "image": cfUrl(kid.data.heroImage, 'w=600,q=80') } : {}),
+      ...(kid.data.heroImage ? { "image": cfUrl(kid.data.heroImage, { w: 600, q: 80 }) } : {}),
     })),
   },
 };
@@ -90,6 +89,17 @@ const breadcrumbs = [
 const INITIAL_BATCH = 24;
 const totalKidsCount = kids.length;
 
+// ── Build-time inline search data (eliminates fetch on first search) ──
+const inlineKidsData = kids.map(kid => ({
+  slug: kid.data.slug,
+  name: kid.data.name,
+  year: kid.data.year || null,
+  diagnosis: kid.data.diagnosis || null,
+  status: kid.data.status || 'completed',
+  roomTypes: kid.data.roomTypes || [],
+  heroImage: kid.data.heroImage || null,
+}));
+
 // ── Hero face collage: 12 diverse kids across years ──
 const heroFacePool = kids.filter(k => k.data.heroImage?.includes('imagedelivery.net'));
 // Round-robin across years for visual diversity
@@ -116,8 +126,10 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
   jsonLd={[itemListSchema, faqSchema]}
   breadcrumbs={breadcrumbs}
 >
-  <!-- Prefetch kid data manifest for instant search/load-more (5KB gzip, edge-cached) -->
-  <link slot="head" rel="prefetch" href="/kids/data.json" as="fetch" crossorigin="anonymous" />
+  <!-- Inline search data — zero-fetch, instant availability -->
+  <script is:inline define:vars={{ inlineKidsData }}>
+    window.__KIDS_DATA__ = inlineKidsData;
+  </script>
 
   <!-- ══════ HERO — Face Collage + Headline + Stats ══════ -->
   <section class="kids-hero" aria-label="Meet the Kids">
@@ -483,23 +495,30 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
     function fuzzyMatch(query: string, ...candidates: (string | null | undefined)[]): number {
       const q = query.toLowerCase().trim();
       if (!q) return 1;
-      for (const c of candidates) {
-        if (c && c.toLowerCase().includes(q)) return 1;
+      // Exact full-string containment in name (first candidate) gets highest score
+      const nameCandidate = candidates[0];
+      if (nameCandidate && nameCandidate.toLowerCase().includes(q)) return 1.0;
+      // Exact containment in other fields
+      for (let i = 1; i < candidates.length; i++) {
+        if (candidates[i] && candidates[i]!.toLowerCase().includes(q)) return 0.98;
       }
       const words = q.split(/\s+/).filter(w => w.length > 1);
       if (words.length === 0) return 0;
       let totalScore = 0;
       for (const word of words) {
         let bestWord = 0;
-        for (const c of candidates) {
+        for (let ci = 0; ci < candidates.length; ci++) {
+          const c = candidates[ci];
           if (!c) continue;
-          const cWords = c.toLowerCase().split(/[\s,\-\/]+/).filter(w => w.length > 1);
+          const cl = c.toLowerCase();
+          // Exact containment of word — boost name field
+          if (cl.includes(word)) { bestWord = Math.max(bestWord, ci === 0 ? 1.0 : 0.98); continue; }
+          const cWords = cl.split(/[\s,\-\/]+/).filter(w => w.length > 1);
           for (const cw of cWords) {
             if (cw.startsWith(word)) { bestWord = Math.max(bestWord, 0.95); continue; }
             const sim = similarity(word, cw);
             bestWord = Math.max(bestWord, sim);
           }
-          if (c.toLowerCase().includes(word)) bestWord = 1;
         }
         totalScore += bestWord;
       }
@@ -508,18 +527,24 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
     }
 
     // ══════════════════════════════════════════
-    //  SEARCH HIGHLIGHTING
+    //  MULTI-TERM SEARCH HIGHLIGHTING
     // ══════════════════════════════════════════
     function highlightText(el: HTMLElement, query: string, originalText: string) {
       if (!query || !originalText) { el.textContent = originalText; return; }
-      const q = query.toLowerCase();
-      const lower = originalText.toLowerCase();
-      const idx = lower.indexOf(q);
-      if (idx === -1) { el.textContent = originalText; return; }
-      const before = originalText.slice(0, idx);
-      const match = originalText.slice(idx, idx + q.length);
-      const after = originalText.slice(idx + q.length);
-      el.innerHTML = `${escapeHtml(before)}<mark>${escapeHtml(match)}</mark>${escapeHtml(after)}`;
+      // Split query into individual terms for multi-term highlighting
+      const terms = query.toLowerCase().split(/\s+/).filter(t => t.length > 0);
+      if (terms.length === 0) { el.textContent = originalText; return; }
+      // Build a regex that matches any term (longest first to avoid partial overlap)
+      const sorted = [...terms].sort((a, b) => b.length - a.length);
+      const escaped = sorted.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+      const re = new RegExp(`(${escaped.join('|')})`, 'gi');
+      const parts = originalText.split(re);
+      if (parts.length === 1) { el.textContent = originalText; return; }
+      el.innerHTML = parts.map(p =>
+        re.test(p) ? `<mark>${escapeHtml(p)}</mark>` : escapeHtml(p)
+      ).join('');
+      // Reset regex lastIndex since we use 'g' flag
+      re.lastIndex = 0;
     }
 
     function escapeHtml(s: string): string {
@@ -584,21 +609,18 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
     }
     grid.querySelectorAll<HTMLElement>('.kid-card').forEach(cacheOriginalText);
 
-    // ── Fetch full manifest ──
+    // ── Inline data — zero fetch, instant availability ──
     async function ensureAllData(): Promise<KidCard[]> {
       if (allKidsData) return allKidsData;
-      if (resultLoading && resultCount) {
-        resultCount.hidden = true;
-        resultLoading.hidden = false;
-      }
-      const res = await fetch('/kids/data.json');
-      allKidsData = await res.json();
-      if (resultLoading && resultCount) {
-        resultLoading.hidden = true;
-        resultCount.hidden = false;
-      }
+      allKidsData = (window as any).__KIDS_DATA__ || [];
       buildAutocompleteIndex();
       return allKidsData!;
+    }
+    // Eagerly hydrate on idle so autocomplete is ready before first keystroke
+    if ('requestIdleCallback' in window) {
+      (window as any).requestIdleCallback(() => ensureAllData());
+    } else {
+      setTimeout(() => ensureAllData(), 100);
     }
 
     // ── Astro scope attr — copy from a server-rendered card so scoped CSS applies ──
@@ -914,10 +936,14 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
     }
 
     function highlightACText(text: string, query: string): string {
-      const lower = text.toLowerCase();
-      const idx = lower.indexOf(query);
-      if (idx === -1) return escapeHtml(text);
-      return `${escapeHtml(text.slice(0, idx))}<mark>${escapeHtml(text.slice(idx, idx + query.length))}</mark>${escapeHtml(text.slice(idx + query.length))}`;
+      const terms = query.split(/\s+/).filter(t => t.length > 0);
+      if (terms.length === 0) return escapeHtml(text);
+      const sorted = [...terms].sort((a, b) => b.length - a.length);
+      const escaped = sorted.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+      const re = new RegExp(`(${escaped.join('|')})`, 'gi');
+      const parts = text.split(re);
+      if (parts.length === 1) return escapeHtml(text);
+      return parts.map(p => re.test(p) ? `<mark>${escapeHtml(p)}</mark>` : escapeHtml(p)).join('');
     }
 
     function hideAutocomplete() {
@@ -1110,6 +1136,8 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
 
       const cards = grid.querySelectorAll<HTMLElement>('.kid-card');
       let visibleCount = 0;
+      const scored: { card: HTMLElement; score: number }[] = [];
+
       cards.forEach(card => {
         const { year, types, name, diagnosis, status } = card.dataset;
         const matchesYear = yearFilter === 'all' || year === yearFilter;
@@ -1122,11 +1150,12 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
         if (matchesYear && matchesType && matchesStatus && matchScore > 0) {
           showCard(card);
           visibleCount++;
+          if (query) scored.push({ card, score: matchScore });
         } else {
           hideCard(card);
         }
 
-        // Search highlighting
+        // Multi-term search highlighting
         const orig = originalTexts.get(card);
         if (orig) {
           const nameEl = card.querySelector('.kid-card__name') as HTMLElement | null;
@@ -1135,6 +1164,21 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
           if (diagEl) highlightText(diagEl, query, orig.diagnosis);
         }
       });
+
+      // Relevance-rank: re-sort visible cards by match score when searching
+      if (query && scored.length > 1) {
+        scored.sort((a, b) => b.score - a.score);
+        const frag = document.createDocumentFragment();
+        // Append scored (visible) cards in relevance order
+        scored.forEach(({ card }) => frag.appendChild(card));
+        // Append hidden cards after so DOM order is clean
+        cards.forEach(card => {
+          if (card.classList.contains('is-hidden') || card.classList.contains('is-hiding')) {
+            frag.appendChild(card);
+          }
+        });
+        grid.appendChild(frag);
+      }
 
       // FLIP animate remaining visible cards into new positions
       // Use rAF to let hidden cards settle first
@@ -1223,28 +1267,6 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
       searchInput.focus();
     }
 
-    // ══════════════════════════════════════════
-    //  INSTANT RESULT COUNT
-    // ══════════════════════════════════════════
-    function computeInstantCount(query: string): number {
-      if (!query) return -1;
-      const cards = grid.querySelectorAll<HTMLElement>('.kid-card');
-      const yearFilter = yearSelect.value;
-      const typeFilter = typeSelect.value;
-      let count = 0;
-      cards.forEach(card => {
-        if (card.classList.contains('is-overflow')) return;
-        const { year, types, name, diagnosis, status } = card.dataset;
-        const matchesYear = yearFilter === 'all' || year === yearFilter;
-        const matchesType = typeFilter === 'all' || (types ? types.split(' ').includes(typeFilter) : false);
-        const matchesStatus = !statusActive || status === 'in-progress';
-        const yearStr = (year || '').replace('year-', '');
-        const typesStr = (types || '').replace(/type-/g, '').replace(/-/g, ' ');
-        if (matchesYear && matchesType && matchesStatus && fuzzyMatch(query, name, diagnosis, yearStr, typesStr) > 0) count++;
-      });
-      return count;
-    }
-
     function updateSearchCount(count: number) {
       if (count < 0) {
         searchCountEl.hidden = true;
@@ -1274,19 +1296,18 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
       }, { signal });
     }
 
-    // Search input: instant autocomplete + count badge, debounced DOM filter
+    // Search input: instant autocomplete, debounced single-pass DOM filter + count
     searchInput.addEventListener('input', () => {
       clearTimeout(searchTimer);
       const val = searchInput.value;
       searchClear.hidden = !val;
       if (kbdHint) kbdHint.classList.toggle('is-hidden', !!val);
 
-      // Instant: autocomplete + result count badge
+      // Instant: autocomplete only (no card iteration)
       const trimmed = val.trim();
       showAutocomplete(trimmed);
-      updateSearchCount(computeInstantCount(trimmed.toLowerCase()));
 
-      // Debounce DOM filter (80ms for snappy feel)
+      // Debounce the single-pass DOM filter which also updates count
       isSearching = true;
       visibleCountEl.style.opacity = '0.4';
       searchTimer = setTimeout(() => {
