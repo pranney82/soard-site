@@ -3884,11 +3884,30 @@
       `;
     }
 
-    function SiteSettings({ addToast }) {
+    function SiteSettings({ addToast, kids: allKids = [] }) {
       const [loading, setLoading] = useState(true);
       const [saving, setSaving] = useState(false);
       const [sha, setSha] = useState(null);
       const [data, setData] = useState({});
+
+      // Sorted kids for dropdown
+      const sortedKids = useMemo(() =>
+        [...allKids].sort((a, b) => (a.name || '').localeCompare(b.name || '')),
+        [allKids]
+      );
+      const extractCfId = (heroImage) => {
+        if (!heroImage) return '';
+        const m = heroImage.match(/ROYFuPmfN2vPS6mt5sCkZQ\/(.+?)\/[^/]+$/);
+        return m ? m[1] : '';
+      };
+      const handleKidSelect = (index, slug) => {
+        const kid = allKids.find(k => k.slug === slug);
+        setData(d => {
+          const arr = [...(d.kidShowcase || [])];
+          arr[index] = { slug, cfId: kid ? extractCfId(kid.heroImage) : '' };
+          return { ...d, kidShowcase: arr };
+        });
+      };
 
       useEffect(() => {
         (async () => {
@@ -4027,9 +4046,11 @@
           <p class="text-sm text-muted mb-1">The kid slug highlighted in the Featured Story section on the homepage.</p>
           <div class="form-group">
             <label class="form-label">Kid Slug</label>
-            <input class="form-input" value=${data.featuredKidSlug || ''}
-              placeholder="zyah"
-              onInput=${e => updateField('featuredKidSlug', e.target.value)} />
+            <select class="form-input" value=${data.featuredKidSlug || ''}
+              onChange=${e => updateField('featuredKidSlug', e.target.value)}>
+              <option value="">— Select a kid —</option>
+              ${sortedKids.map(k => html`<option value=${k.slug} selected=${k.slug === data.featuredKidSlug}>${k.name}${k.year ? ` (${k.year})` : ''}</option>`)}
+            </select>
           </div>
         </div>
 
@@ -4040,9 +4061,12 @@
             <div class="array-row-item" style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.5rem; padding: 0.5rem; background: rgba(0,0,0,0.02); border-radius: 8px;">
               ${kid.cfId ? html`<img src=${'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/' + kid.cfId + '/w=60,h=60,fit=cover'}
                 alt="" style="width: 36px; height: 36px; border-radius: 6px; object-fit: cover; flex-shrink: 0;" />` : null}
-              <input class="form-input" style="flex: 1" value=${kid.slug || ''} placeholder="Kid slug"
-                onInput=${e => updateArrayItem('kidShowcase', i, 'slug', e.target.value)} />
-              <input class="form-input" style="flex: 2" value=${kid.cfId || ''} placeholder="Cloudflare Image ID"
+              <select class="form-input" style="flex: 1" value=${kid.slug || ''}
+                onChange=${e => handleKidSelect(i, e.target.value)}>
+                <option value="">— Select a kid —</option>
+                ${sortedKids.map(k => html`<option value=${k.slug} selected=${k.slug === kid.slug}>${k.name}${k.year ? ` (${k.year})` : ''}</option>`)}
+              </select>
+              <input class="form-input" style="flex: 2" value=${kid.cfId || ''} placeholder="Cloudflare Image ID (auto-filled)"
                 onInput=${e => updateArrayItem('kidShowcase', i, 'cfId', e.target.value)} />
               <div class="array-row-actions">
                 <button class="btn btn-ghost" style="padding: 0.3rem 0.5rem; font-size: 0.8rem;" disabled=${i === 0}
@@ -5137,7 +5161,7 @@
           case 'deploys':
             return html`<${Deploys} addToast=${addToast} />`;
           case 'settings':
-            return html`<${SiteSettings} addToast=${addToast} />`;
+            return html`<${SiteSettings} addToast=${addToast} kids=${kids} />`;
         }
       };
 
