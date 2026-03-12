@@ -68,10 +68,12 @@ const mapsUrl = `https://maps.google.com/?q=${encodeURIComponent(`${address.stre
       <div class="footer-brand">
         <a href="/" class="footer-logo" aria-label="Sunshine on a Ranney Day — Home">
           <img
-              src="https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/brand-logo-dark-bg-tagline-display/w=360,format=auto"
+              src="https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/brand-logo-dark-bg-tagline-display/w=280,format=auto"
+              srcset="https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/brand-logo-dark-bg-tagline-display/w=140,format=auto 140w, https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/brand-logo-dark-bg-tagline-display/w=280,format=auto 280w"
+              sizes="140px"
               alt="Sunshine on a Ranney Day logo"
-              width="180"
-              height="180"
+              width="140"
+              height="140"
               loading="lazy"
             />
         </a>
@@ -402,7 +404,7 @@ const mapsUrl = `https://maps.google.com/?q=${encodeURIComponent(`${address.stre
   }
   .footer-main-grid {
     display: grid;
-    grid-template-columns: 300px 1fr;
+    grid-template-columns: 260px 1fr;
     gap: 64px;
   }
 
@@ -416,7 +418,7 @@ const mapsUrl = `https://maps.google.com/?q=${encodeURIComponent(`${address.stre
   .footer-logo:hover { opacity: 0.85; }
   .footer-logo img {
     display: block;
-    width: 180px;
+    width: 140px;
     height: auto;
     object-fit: contain;
   }
@@ -425,7 +427,7 @@ const mapsUrl = `https://maps.google.com/?q=${encodeURIComponent(`${address.stre
     font-size: 14px;
     line-height: 1.7;
     color: rgba(255, 255, 255, 0.5);
-    max-width: 280px;
+    max-width: 260px;
   }
 
   /* Social Links */
@@ -458,7 +460,7 @@ const mapsUrl = `https://maps.google.com/?q=${encodeURIComponent(`${address.stre
     gap: 8px;
     padding: 14px 28px;
     width: 100%;
-    max-width: 280px;
+    max-width: 260px;
     margin-top: 4px;
     background: var(--c-yellow);
     color: var(--c-dark);
@@ -525,6 +527,14 @@ const mapsUrl = `https://maps.google.com/?q=${encodeURIComponent(`${address.stre
       gap: 32px 24px;
     }
   }
+  @media (max-width: 640px) {
+    .footer-main { padding: 56px 0 40px; }
+    .footer-brand { align-items: center; text-align: center; }
+    .footer-logo img { width: 120px; }
+    .footer-mission { max-width: 100%; }
+    .footer-social { justify-content: center; }
+    .footer-donate-btn { align-self: center; max-width: 100%; }
+  }
   @media (max-width: 480px) {
     .footer-nav {
       grid-template-columns: 1fr 1fr;
@@ -532,13 +542,6 @@ const mapsUrl = `https://maps.google.com/?q=${encodeURIComponent(`${address.stre
     }
     .footer-heading { font-size: 13px; margin-bottom: 12px; }
     .footer-col a { font-size: 13px; }
-  }
-  @media (max-width: 640px) {
-    .footer-main { padding: 56px 0 40px; }
-    .footer-brand { align-items: center; text-align: center; }
-    .footer-mission { max-width: 100%; }
-    .footer-social { justify-content: center; }
-    .footer-donate-btn { align-self: center; max-width: 100%; }
   }
 
   /* ─── Trust Signals Bar ────────────────── */
