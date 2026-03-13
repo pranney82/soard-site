@@ -557,22 +557,44 @@
     .stat-card {
       background: var(--color-bg-card);
       border-radius: var(--radius-md);
-      padding: 1.25rem;
+      padding: 1.25rem 1.5rem;
       box-shadow: var(--shadow-sm);
       border: 1px solid var(--color-border);
       text-align: center;
-      transition: box-shadow 0.15s ease, transform 0.15s ease;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      position: relative;
+      overflow: hidden;
     }
-    .stat-card:hover { box-shadow: var(--shadow-md); transform: translateY(-1px); }
+    .stat-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: var(--color-border);
+      transition: background 0.2s ease;
+    }
+    .stat-card:hover {
+      box-shadow: var(--shadow-md);
+      transform: translateY(-2px);
+    }
+    .stat-card:hover::before {
+      background: var(--color-primary);
+    }
     .stat-card .stat-number {
       font-family: 'Libre Baskerville', Georgia, serif;
       font-size: 2.25rem;
       font-weight: 700;
       color: var(--color-primary);
+      line-height: 1.1;
     }
     .stat-card .stat-label {
-      font-size: 0.85rem;
+      font-size: 0.78rem;
+      font-weight: 600;
       color: #6B6C72;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
       margin-top: 0.25rem;
     }
 
@@ -1167,6 +1189,185 @@
     .save-status-dot.unsaved { background: #FFD500; }
     .save-status-dot.saving { background: #3182CE; animation: pulse 1s infinite; }
     @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+    /* ─── Premium Charts ────────────── */
+    @keyframes chartBarGrow { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+    @keyframes chartFadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes chartLineDraw { from { stroke-dashoffset: 1000; } to { stroke-dashoffset: 0; } }
+    @keyframes chartDotPop { from { r: 0; opacity: 0; } to { r: 4; opacity: 1; } }
+    @keyframes chartAreaFade { from { opacity: 0; } to { opacity: 1; } }
+
+    .chart-container {
+      position: relative;
+      background: var(--color-bg-card);
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--color-border);
+      padding: 1.75rem;
+      box-shadow: var(--shadow-sm);
+      transition: box-shadow 0.2s ease;
+    }
+    .chart-container:hover { box-shadow: var(--shadow-md); }
+    .chart-title {
+      font-family: 'Libre Baskerville', Georgia, serif;
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: var(--color-text);
+      margin-bottom: 1.5rem;
+    }
+    .chart-subtitle {
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--color-text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 0.75rem;
+    }
+    .chart-panel {
+      flex: 1;
+      min-width: 280px;
+      position: relative;
+    }
+    .chart-bar-group {
+      display: flex;
+      align-items: flex-end;
+      gap: 6px;
+      height: 160px;
+      padding-bottom: 28px;
+      position: relative;
+    }
+    .chart-bar-col {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      flex: 1;
+      max-width: 52px;
+      position: relative;
+      height: 100%;
+      justify-content: flex-end;
+    }
+    .chart-bar {
+      width: 100%;
+      border-radius: 6px 6px 2px 2px;
+      min-width: 20px;
+      transform-origin: bottom;
+      animation: chartBarGrow 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+      cursor: pointer;
+      transition: filter 0.15s ease, box-shadow 0.15s ease;
+      position: relative;
+    }
+    .chart-bar:hover {
+      filter: brightness(1.08);
+      box-shadow: 0 2px 12px rgba(255, 213, 0, 0.4);
+    }
+    .chart-bar-value {
+      font-size: 0.7rem;
+      font-weight: 700;
+      color: var(--color-text);
+      margin-bottom: 4px;
+      opacity: 0;
+      animation: chartFadeUp 0.3s ease both;
+    }
+    .chart-bar-label {
+      font-size: 0.68rem;
+      color: var(--color-text-muted);
+      margin-top: 6px;
+      font-weight: 500;
+    }
+    .chart-gridline {
+      position: absolute;
+      left: 0;
+      right: 0;
+      border-top: 1px dashed var(--color-border);
+      pointer-events: none;
+    }
+    .chart-tooltip {
+      position: absolute;
+      background: var(--color-sidebar);
+      color: #fff;
+      padding: 6px 10px;
+      border-radius: 8px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      pointer-events: none;
+      white-space: nowrap;
+      z-index: 10;
+      opacity: 0;
+      transition: opacity 0.15s ease;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+      transform: translateX(-50%);
+    }
+    .chart-tooltip::after {
+      content: '';
+      position: absolute;
+      top: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+      border: 5px solid transparent;
+      border-top-color: var(--color-sidebar);
+    }
+    .chart-line-svg {
+      display: block;
+      overflow: visible;
+    }
+    .chart-line-path {
+      stroke-dasharray: 1000;
+      animation: chartLineDraw 1.2s cubic-bezier(0.4, 0, 0.2, 1) both;
+    }
+    .chart-line-dot {
+      animation: chartDotPop 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+      cursor: pointer;
+      transition: r 0.15s ease;
+    }
+    .chart-line-dot:hover { r: 6; }
+    .chart-line-area {
+      animation: chartAreaFade 0.8s ease both;
+      animation-delay: 0.4s;
+    }
+    .chart-legend {
+      display: flex;
+      gap: 1.25rem;
+      margin-top: 1rem;
+      padding-top: 0.75rem;
+      border-top: 1px solid var(--color-border);
+    }
+    .chart-legend-item {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 0.75rem;
+      color: var(--color-text-secondary);
+    }
+    .chart-legend-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
+    .chart-stat-highlight {
+      display: flex;
+      align-items: baseline;
+      gap: 0.5rem;
+      margin-bottom: 0.25rem;
+    }
+    .chart-stat-highlight .big {
+      font-family: 'Libre Baskerville', Georgia, serif;
+      font-size: 1.75rem;
+      font-weight: 700;
+      color: var(--color-text);
+    }
+    .chart-stat-highlight .delta {
+      font-size: 0.8rem;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 99px;
+    }
+    .chart-stat-highlight .delta.up {
+      background: rgba(56, 161, 105, 0.1);
+      color: #38A169;
+    }
+    .chart-stat-highlight .delta.down {
+      background: rgba(229, 62, 62, 0.06);
+      color: #E53E3E;
+    }
 
     /* ─── Favorites ────────────────── */
     .fav-btn {
@@ -1797,87 +1998,178 @@
             </div>
           </div>
         ` : null}
-        <div class="stat-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
-          <div class="stat-card" style="cursor: pointer;" onClick=${() => onNavigate('kids')}>
-            <div style="display: flex; align-items: flex-end; justify-content: space-between;">
+        <div class="stat-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
+          <div class="stat-card" style="cursor: pointer; text-align: left;" onClick=${() => onNavigate('kids')}>
+            <div style="display: flex; align-items: flex-start; justify-content: space-between;">
               <div>
+                <div class="stat-label" style="margin-top: 0; margin-bottom: 0.25rem;">Kids</div>
                 <div class="stat-number">${kids.length}</div>
-                <div class="stat-label">Kids</div>
               </div>
-              ${yearData ? html`<${MiniChart} data=${yearData.cumulative} color="#FFD500" height=${36} width=${80} />` : null}
+              ${yearData ? html`<${MiniChart} data=${yearData.cumulative} color="#FFD500" height=${40} width=${90} />` : null}
             </div>
           </div>
-          <div class="stat-card" style="cursor: pointer;" onClick=${() => onNavigate('partners')}>
+          <div class="stat-card" style="cursor: pointer; text-align: left;" onClick=${() => onNavigate('partners')}>
+            <div class="stat-label" style="margin-top: 0; margin-bottom: 0.25rem;">Partners</div>
             <div class="stat-number">${partners.length}</div>
-            <div class="stat-label">Partners</div>
           </div>
-          <div class="stat-card" style="cursor: pointer;" onClick=${() => onNavigate('team')}>
+          <div class="stat-card" style="cursor: pointer; text-align: left;" onClick=${() => onNavigate('team')}>
+            <div class="stat-label" style="margin-top: 0; margin-bottom: 0.25rem;">Team & Board</div>
             <div class="stat-number">${team.length}</div>
-            <div class="stat-label">Team & Board</div>
           </div>
-          <div class="stat-card">
-            <div style="display: flex; align-items: flex-end; justify-content: space-between;">
+          <div class="stat-card" style="text-align: left;">
+            <div style="display: flex; align-items: flex-start; justify-content: space-between;">
               <div>
-                <div class="stat-number">${kids.filter(k => k.status === 'completed').length}</div>
-                <div class="stat-label">Completed Rooms</div>
+                <div class="stat-label" style="margin-top: 0; margin-bottom: 0.25rem;">Completed Rooms</div>
+                <div class="stat-number" style="color: #38A169;">${kids.filter(k => k.status === 'completed').length}</div>
               </div>
-              ${yearData ? html`<${MiniChart} data=${yearData.perYear} color="#38A169" height=${36} width=${80} />` : null}
+              ${yearData ? html`<${MiniChart} data=${yearData.perYear} color="#38A169" height=${40} width=${90} />` : null}
             </div>
           </div>
-          <div class="stat-card">
-            <div class="stat-number">${kids.filter(k => k.status === 'in-progress').length}</div>
-            <div class="stat-label">In Progress</div>
+          <div class="stat-card" style="text-align: left;">
+            <div class="stat-label" style="margin-top: 0; margin-bottom: 0.25rem;">In Progress</div>
+            <div class="stat-number" style="color: #D69E2E;">${kids.filter(k => k.status === 'in-progress').length}</div>
           </div>
-          <div class="stat-card" style="cursor: pointer;" onClick=${() => onNavigate('events')}>
-            <div class="stat-number">${(events || []).filter(e => e.status === 'upcoming').length}</div>
-            <div class="stat-label">Upcoming Events</div>
+          <div class="stat-card" style="cursor: pointer; text-align: left;" onClick=${() => onNavigate('events')}>
+            <div class="stat-label" style="margin-top: 0; margin-bottom: 0.25rem;">Upcoming Events</div>
+            <div class="stat-number" style="color: #3182CE;">${(events || []).filter(e => e.status === 'upcoming').length}</div>
           </div>
-          <div class="stat-card" style="cursor: pointer;" onClick=${() => onNavigate('community')}>
-            <div class="stat-number">${(communityProjects || []).length}</div>
-            <div class="stat-label">Community Projects</div>
+          <div class="stat-card" style="cursor: pointer; text-align: left;" onClick=${() => onNavigate('community')}>
+            <div class="stat-label" style="margin-top: 0; margin-bottom: 0.25rem;">Community Projects</div>
+            <div class="stat-number" style="color: #805AD5;">${(communityProjects || []).length}</div>
           </div>
         </div>
 
         ${yearData ? html`
-          <div class="card" style="margin-bottom: 2rem;">
-            <h3 style="margin-bottom: 1rem;">Growth Over Time</h3>
-            <div style="display: flex; gap: 2rem; flex-wrap: wrap;">
-              <div style="flex: 1; min-width: 200px;">
-                <div style="font-size: 0.8rem; color: #6B6C72; margin-bottom: 0.5rem;">Kids per year</div>
-                <div style="display: flex; align-items: flex-end; gap: 3px; height: 80px;">
+          <div class="chart-container" style="margin-bottom: 2rem;">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.25rem;">
+              <div class="chart-title">Growth Over Time</div>
+              <div style="display: flex; gap: 0.5rem;">
+                ${(() => {
+                  const total = yearData.cumulative[yearData.cumulative.length - 1] || 0;
+                  const prevYear = yearData.perYear[yearData.perYear.length - 2] || 0;
+                  const curYear = yearData.perYear[yearData.perYear.length - 1] || 0;
+                  const delta = prevYear ? Math.round(((curYear - prevYear) / prevYear) * 100) : 0;
+                  return html`
+                    <div class="chart-stat-highlight">
+                      <span class="big">${total}</span>
+                      <span style="font-size: 0.8rem; color: var(--color-text-secondary);">total kids</span>
+                      ${delta !== 0 ? html`<span class="delta ${delta >= 0 ? 'up' : 'down'}">${delta > 0 ? '↑' : '↓'} ${Math.abs(delta)}% YoY</span>` : null}
+                    </div>
+                  `;
+                })()}
+              </div>
+            </div>
+
+            <div style="display: flex; gap: 2.5rem; flex-wrap: wrap; margin-top: 1rem;">
+              <!-- Bar Chart: Kids per Year -->
+              <div class="chart-panel">
+                <div class="chart-subtitle">Kids per year</div>
+                <div class="chart-bar-group">
+                  ${(() => {
+                    const max = Math.max(...yearData.perYear);
+                    const gridLines = [0.25, 0.5, 0.75, 1].map(f => Math.round(max * f));
+                    return gridLines.map(v => {
+                      const bottom = 28 + ((v / max) * 120);
+                      return html`<div class="chart-gridline" style="bottom: ${bottom}px;"></div>`;
+                    });
+                  })()}
                   ${yearData.years.map((y, i) => {
                     const max = Math.max(...yearData.perYear);
-                    const h = Math.max(4, (yearData.perYear[i] / max) * 56);
-                    return html`<div key=${y} style="display: flex; flex-direction: column; align-items: center; flex: 1; max-width: 48px;">
-                      <div style="font-size: 0.65rem; font-weight: 600; color: #2D2E33; margin-bottom: 2px;">${yearData.perYear[i]}</div>
-                      <div style="width: 100%; height: ${h}px; background: #FFD500; border-radius: 4px 4px 0 0; min-width: 16px;" title="${y}: ${yearData.perYear[i]} kids"></div>
-                      <div style="font-size: 0.65rem; color: #9B9CA0; margin-top: 2px;">${y.toString().slice(-2)}</div>
+                    const h = Math.max(6, (yearData.perYear[i] / max) * 120);
+                    const delay = i * 0.04;
+                    return html`<div key=${y} class="chart-bar-col">
+                      <div class="chart-bar-value" style="animation-delay: ${delay + 0.4}s;">${yearData.perYear[i]}</div>
+                      <div class="chart-bar" style="height: ${h}px; background: linear-gradient(to top, #F0C000, #FFD500, #FFE14D); animation-delay: ${delay}s; box-shadow: 0 1px 4px rgba(255,213,0,0.25);" title="${y}: ${yearData.perYear[i]} kids"></div>
+                      <div class="chart-bar-label">'${y.toString().slice(-2)}</div>
                     </div>`;
                   })}
                 </div>
               </div>
-              <div style="flex: 1; min-width: 200px;">
-                <div style="font-size: 0.8rem; color: #6B6C72; margin-bottom: 0.5rem;">Cumulative growth</div>
+
+              <!-- Line Chart: Cumulative Growth -->
+              <div class="chart-panel">
+                <div class="chart-subtitle">Cumulative growth</div>
                 ${(() => {
                   const d = yearData.cumulative;
-                  const w = 200, h = 80, padTop = 14;
+                  const w = 320, h = 140, padTop = 20, padBot = 24, padLeft = 36;
+                  const chartW = w - padLeft;
+                  const chartH = h - padTop - padBot;
                   const max = Math.max(...d);
-                  const min = Math.min(...d);
+                  const min = 0;
                   const range = max - min || 1;
-                  const step = w / (d.length - 1);
-                  const pts = d.map((v, i) => ({ x: i * step, y: padTop + (h - padTop) - ((v - min) / range) * (h - padTop - 4) - 2 }));
-                  const points = pts.map(p => `${p.x},${p.y}`).join(' ');
-                  const areaPoints = `0,${h} ${points} ${w},${h}`;
-                  return html`<svg width=${w} height=${h + 16} viewBox="0 0 ${w} ${h + 16}" style="display: block;">
-                    <polygon points=${areaPoints} fill="#FFD500" opacity="0.15" />
-                    <polyline points=${points} fill="none" stroke="#FFD500" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                  const step = chartW / (d.length - 1);
+                  const pts = d.map((v, i) => ({
+                    x: padLeft + i * step,
+                    y: padTop + chartH - ((v - min) / range) * chartH
+                  }));
+
+                  // Smooth bezier path
+                  const pathD = pts.reduce((acc, p, i) => {
+                    if (i === 0) return 'M ' + p.x + ',' + p.y;
+                    const prev = pts[i - 1];
+                    const cpx = (prev.x + p.x) / 2;
+                    return acc + ' C ' + cpx + ',' + prev.y + ' ' + cpx + ',' + p.y + ' ' + p.x + ',' + p.y;
+                  }, '');
+                  const areaD = pathD + ' L ' + pts[pts.length - 1].x + ',' + (padTop + chartH) + ' L ' + pts[0].x + ',' + (padTop + chartH) + ' Z';
+
+                  // Y-axis gridlines
+                  const gridCount = 4;
+                  const gridLines = Array.from({ length: gridCount + 1 }, (_, i) => {
+                    const val = Math.round((max / gridCount) * i);
+                    const y = padTop + chartH - ((val - min) / range) * chartH;
+                    return { val, y };
+                  });
+
+                  return html`<svg width="100%" height=${h} viewBox="0 0 ${w} ${h}" class="chart-line-svg" preserveAspectRatio="xMidYMid meet">
+                    <defs>
+                      <linearGradient id="cumGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stop-color="#FFD500" stop-opacity="0.25" />
+                        <stop offset="80%" stop-color="#FFD500" stop-opacity="0.03" />
+                        <stop offset="100%" stop-color="#FFD500" stop-opacity="0" />
+                      </linearGradient>
+                      <filter id="glowDot">
+                        <feGaussianBlur stdDeviation="2" result="blur" />
+                        <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+                      </filter>
+                    </defs>
+
+                    <!-- Grid lines -->
+                    ${gridLines.map(g => html`
+                      <line x1=${padLeft} y1=${g.y} x2=${w} y2=${g.y} stroke="#E5E4E0" stroke-width="1" stroke-dasharray="4 3" />
+                      <text x=${padLeft - 6} y=${g.y + 3.5} text-anchor="end" font-size="9" fill="#9B9CA0" font-weight="500">${g.val}</text>
+                    `)}
+
+                    <!-- Area fill -->
+                    <path d=${areaD} fill="url(#cumGrad)" class="chart-line-area" />
+
+                    <!-- Line -->
+                    <path d=${pathD} fill="none" stroke="#FFD500" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="chart-line-path" />
+
+                    <!-- Data points & labels -->
                     ${pts.map((p, i) => html`
-                      <circle cx=${p.x} cy=${p.y} r="3" fill="#FFD500" />
-                      <text x=${p.x} y=${p.y - 6} text-anchor="middle" font-size="9" font-weight="600" fill="#2D2E33">${d[i]}</text>
-                      <text x=${p.x} y=${h + 12} text-anchor="middle" font-size="8" fill="#9B9CA0">${yearData.years[i].toString().slice(-2)}</text>
+                      <circle cx=${p.x} cy=${p.y} r="4" fill="#FFD500" filter="url(#glowDot)" class="chart-line-dot" style="animation-delay: ${0.6 + i * 0.06}s;">
+                        <title>${yearData.years[i]}: ${d[i]} kids</title>
+                      </circle>
+                      <text x=${p.x} y=${p.y - 10} text-anchor="middle" font-size="10" font-weight="700" fill="var(--color-text)" style="opacity: 0; animation: chartFadeUp 0.3s ease ${0.8 + i * 0.06}s both;">${d[i]}</text>
+                      <text x=${p.x} y=${padTop + chartH + 14} text-anchor="middle" font-size="9" fill="#9B9CA0" font-weight="500">'${yearData.years[i].toString().slice(-2)}</text>
                     `)}
                   </svg>`;
                 })()}
+              </div>
+            </div>
+
+            <!-- Legend -->
+            <div class="chart-legend">
+              <div class="chart-legend-item">
+                <div class="chart-legend-dot" style="background: #FFD500;"></div>
+                Kids sponsored
+              </div>
+              <div class="chart-legend-item">
+                <div class="chart-legend-dot" style="background: #38A169;"></div>
+                Rooms completed
+              </div>
+              <div class="chart-legend-item" style="margin-left: auto; font-size: 0.7rem; color: var(--color-text-muted);">
+                Since ${yearData.years[0]}
               </div>
             </div>
           </div>
@@ -7308,18 +7600,31 @@
       const min = Math.min(...data);
       const range = max - min || 1;
       const step = width / (data.length - 1);
-      const points = data.map((v, i) => {
-        const x = i * step;
-        const y = height - ((v - min) / range) * (height - 4) - 2;
-        return `${x},${y}`;
-      }).join(' ');
-      // Area fill
-      const areaPoints = `0,${height} ${points} ${width},${height}`;
+      const pts = data.map((v, i) => ({
+        x: i * step,
+        y: height - ((v - min) / range) * (height - 6) - 3
+      }));
+      // Smooth bezier curve
+      const pathD = pts.reduce((acc, p, i) => {
+        if (i === 0) return `M ${p.x},${p.y}`;
+        const prev = pts[i - 1];
+        const cpx = (prev.x + p.x) / 2;
+        return `${acc} C ${cpx},${prev.y} ${cpx},${p.y} ${p.x},${p.y}`;
+      }, '');
+      const areaD = `${pathD} L ${pts[pts.length - 1].x},${height} L ${pts[0].x},${height} Z`;
+      const gradId = `miniGrad_${color.replace('#', '')}`;
 
       return html`
-        <svg width=${width} height=${height} viewBox="0 0 ${width} ${height}" style="display: block;">
-          <polygon points=${areaPoints} fill=${color} opacity="0.15" />
-          <polyline points=${points} fill="none" stroke=${color} stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+        <svg width=${width} height=${height} viewBox="0 0 ${width} ${height}" style="display: block; overflow: visible;">
+          <defs>
+            <linearGradient id=${gradId} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color=${color} stop-opacity="0.25" />
+              <stop offset="100%" stop-color=${color} stop-opacity="0" />
+            </linearGradient>
+          </defs>
+          <path d=${areaD} fill=${`url(#${gradId})`} />
+          <path d=${pathD} fill="none" stroke=${color} stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+          <circle cx=${pts[pts.length - 1].x} cy=${pts[pts.length - 1].y} r="3" fill=${color} />
         </svg>
       `;
     }

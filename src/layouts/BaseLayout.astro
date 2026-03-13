@@ -181,7 +181,7 @@ const structuredData = buildSchemaGraph(...graphSchemas);
   <!-- videodelivery.net preconnect added per-page where needed via <slot name="head" /> -->
 
   <!-- Preload critical fonts -->
-  <link rel="preload" href="/fonts/outfit-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="/fonts/outfit-latin-variable.woff2" as="font" type="font/woff2" crossorigin />
   <link rel="preload" href="/fonts/libre-baskerville-latin-700-normal.woff2" as="font" type="font/woff2" crossorigin />
 
   <!-- Self-hosted fonts for Lighthouse performance -->
@@ -210,37 +210,9 @@ const structuredData = buildSchemaGraph(...graphSchemas);
     @font-face {
       font-family: 'Outfit';
       font-style: normal;
-      font-weight: 300;
+      font-weight: 100 900;
       font-display: optional;
-      src: url('/fonts/outfit-latin-300-normal.woff2') format('woff2');
-    }
-    @font-face {
-      font-family: 'Outfit';
-      font-style: normal;
-      font-weight: 400;
-      font-display: optional;
-      src: url('/fonts/outfit-latin-400-normal.woff2') format('woff2');
-    }
-    @font-face {
-      font-family: 'Outfit';
-      font-style: normal;
-      font-weight: 500;
-      font-display: optional;
-      src: url('/fonts/outfit-latin-500-normal.woff2') format('woff2');
-    }
-    @font-face {
-      font-family: 'Outfit';
-      font-style: normal;
-      font-weight: 600;
-      font-display: optional;
-      src: url('/fonts/outfit-latin-600-normal.woff2') format('woff2');
-    }
-    @font-face {
-      font-family: 'Outfit';
-      font-style: normal;
-      font-weight: 700;
-      font-display: optional;
-      src: url('/fonts/outfit-latin-700-normal.woff2') format('woff2');
+      src: url('/fonts/outfit-latin-variable.woff2') format('woff2');
     }
   </style>
 

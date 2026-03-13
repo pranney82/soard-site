@@ -218,11 +218,33 @@ const mapsUrl = `https://maps.google.com/?q=${encodeURIComponent(`${address.stre
       </div>
     </div>
   </div>
-  <script is:inline src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
   <script>
     document.addEventListener('astro:page-load', () => {
       const form = document.getElementById('newsletter-form');
       if (!form) return;
+
+      // Lazy-load Turnstile: only fetch the script when the form is
+      // near the viewport or the user interacts with it.
+      let turnstileLoaded = false;
+      function loadTurnstile() {
+        if (turnstileLoaded) return;
+        turnstileLoaded = true;
+        const s = document.createElement('script');
+        s.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js';
+        s.async = true;
+        document.head.appendChild(s);
+      }
+
+      const observer = new IntersectionObserver((entries) => {
+        if (entries[0].isIntersecting) {
+          loadTurnstile();
+          observer.disconnect();
+        }
+      }, { rootMargin: '200px' });
+      observer.observe(form);
+
+      const emailInput = document.getElementById('newsletter-email');
+      if (emailInput) emailInput.addEventListener('focus', loadTurnstile, { once: true });
 
       form.addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -231,6 +253,9 @@ const mapsUrl = `https://maps.google.com/?q=${encodeURIComponent(`${address.stre
         const note = document.getElementById('newsletter-note');
         const email = input.value.trim();
         if (!email) return;
+
+        // Ensure Turnstile is loaded before submitting
+        loadTurnstile();
 
         // Get Turnstile token
         const turnstileInput = form.querySelector('[name="cf-turnstile-response"]');
