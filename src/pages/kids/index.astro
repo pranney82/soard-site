@@ -24,7 +24,7 @@ const totalKids = kids.reduce((sum, k) => sum + (k.data.childCount || 1), 0);
 import { cfUrl, cfRaw, cfSrcset as _cfSrcset, cfDensitySrcset, cfId, CF_BASE } from '../../utils/cf-image';
 /** Srcset with proportional height + face-crop at each breakpoint. */
 function cfCropSrcset(src: string, widths: number[], hwRatio: number) {
-  return _cfSrcset(src, widths, { fit: 'cover', gravity: 'face', quality: 80, aspectRatio: hwRatio });
+  return _cfSrcset(src, widths, { fit: 'cover', gravity: 'face', quality: 70, aspectRatio: hwRatio });
 }
 
 // ── Stats ────────────────────────────────
@@ -85,17 +85,28 @@ const breadcrumbs = [
   { name: 'Meet the Kids', url: `${SITE}/kids/` },
 ];
 
-// ── All cards rendered server-side; JS just toggles visibility ──
+// ── First batch rendered server-side; overflow created client-side from JSON ──
 const INITIAL_BATCH = 24;
 const totalKidsCount = kids.length;
+
+// JSON manifest for overflow cards (created client-side on demand)
+const overflowKids = kids.slice(INITIAL_BATCH).map(kid => ({
+  s: kid.data.slug,
+  n: kid.data.name,
+  i: kid.data.heroImage ? cfId(kid.data.heroImage) : '',
+  y: kid.data.year || 0,
+  t: kid.data.roomTypes || [],
+  d: kid.data.diagnosis || '',
+  st: kid.data.status || 'completed',
+}));
 
 // ── LCP preload: first card's hero image ──
 const lcpKid = kids[0];
 const lcpImageUrl = lcpKid?.data.heroImage
-  ? cfUrl(lcpKid.data.heroImage, { w: 340, h: 453, fit: 'cover', gravity: 'face', q: 80 })
+  ? cfUrl(lcpKid.data.heroImage, { w: 220, h: 293, fit: 'cover', gravity: 'face', q: 70 })
   : null;
 
-// ── Hero face collage: 12 diverse kids across years ──
+// ── Hero face collage: 7 diverse kids across years ──
 const heroFacePool = kids.filter(k => k.data.heroImage?.includes('imagedelivery.net'));
 // Round-robin across years for visual diversity
 const yearGroups: Record<number, typeof heroFacePool> = {};
@@ -106,7 +117,7 @@ heroFacePool.forEach(k => {
 const sortedYears = Object.keys(yearGroups).map(Number).sort((a, b) => b - a);
 const heroFaces: typeof heroFacePool = [];
 let yi = 0;
-while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
+while (heroFaces.length < 7 && yi < sortedYears.length * 3) {
   const bucket = yearGroups[sortedYears[yi % sortedYears.length]];
   const pick = bucket.shift();
   if (pick) heroFaces.push(pick);
@@ -145,13 +156,12 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
             aria-label={kid.data.name}
           >
             <img
-              src={cfUrl(kid.data.heroImage!, { w: 68, h: 68, fit: 'cover', gravity: 'face', q: 80 })}
-              srcset={cfDensitySrcset(kid.data.heroImage!, 68, 68, { fit: 'cover', gravity: 'face', quality: 80 })}
+              src={cfUrl(kid.data.heroImage!, { w: 68, h: 68, fit: 'cover', gravity: 'face', q: 70 })}
+              srcset={cfDensitySrcset(kid.data.heroImage!, 68, 68, { fit: 'cover', gravity: 'face', quality: 70 })}
               alt={kid.data.name}
               width="68"
               height="68"
-              loading={i < 7 ? 'eager' : 'lazy'}
-              fetchpriority={i < 7 ? 'high' : undefined}
+              loading="lazy"
               decoding="async"
             />
           </a>
@@ -334,10 +344,10 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
       <!-- Kid Grid -->
       <h2 class="sr-only">All kid profiles</h2>
       <div class="kids-grid" id="kids-grid">
-        {kids.map((kid, i) => (
+        {kids.slice(0, INITIAL_BATCH).map((kid, i) => (
           <a
             href={`/kids/${kid.data.slug}/`}
-            class={`kid-card${i >= INITIAL_BATCH ? ' is-hidden is-overflow' : ''}`}
+            class="kid-card"
             data-year={`year-${kid.data.year}`}
             data-types={(kid.data.roomTypes || []).map(t => `type-${t.toLowerCase().replace(/\s+/g, '-')}`).join(' ')}
             data-name={kid.data.name.toLowerCase()}
@@ -349,20 +359,20 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
                 <picture>
                   <source
                     media="(max-width: 768px)"
-                    srcset={cfCropSrcset(kid.data.heroImage, [180, 360, 540, 720], 5/4)}
-                    sizes="calc(50vw - 24px)"
+                    srcset={cfCropSrcset(kid.data.heroImage, [160, 320, 480], 5/4)}
+                    sizes="calc(50vw - 31px)"
                   />
                   <img
-                    src={cfUrl(kid.data.heroImage, { w: 340, h: 453, fit: 'cover', gravity: 'face', q: 80 })}
-                    srcset={cfCropSrcset(kid.data.heroImage, [170, 340, 520, 680], 4/3)}
-                    sizes="(min-width: 1400px) calc(20vw - 24px), (max-width: 1100px) calc(33vw - 27px), 260px"
+                    src={cfUrl(kid.data.heroImage, { w: 220, h: 293, fit: 'cover', gravity: 'face', q: 70 })}
+                    srcset={cfCropSrcset(kid.data.heroImage, [170, 260, 340, 520], 4/3)}
+                    sizes="(min-width: 1400px) 240px, (min-width: 1100px) calc(25vw - 30px), calc(33vw - 27px)"
                     alt={`Photo of ${kid.data.name}${(kid.data.roomTypes || []).length > 0 ? ` — ${(kid.data.roomTypes || []).join(', ')}` : ''} — Sunshine on a Ranney Day`}
                     class="kid-card__img"
                     width="340"
                     height="453"
-                    loading={i < 8 ? 'eager' : 'lazy'}
-                    fetchpriority={i < 4 ? 'high' : undefined}
-                    decoding={i < 8 ? 'sync' : 'async'}
+                    loading={i < 4 ? 'eager' : 'lazy'}
+                    fetchpriority={i < 2 ? 'high' : undefined}
+                    decoding={i < 4 ? 'sync' : 'async'}
                   />
                 </picture>
               ) : (
@@ -441,6 +451,9 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
     </p>
   </noscript>
 </BaseLayout>
+
+<!-- Overflow kids data — rendered client-side on demand to reduce initial DOM size -->
+<script type="application/json" id="kids-overflow">{JSON.stringify(overflowKids)}</script>
 
 <!-- ══════ FILTERING + INTERACTIONS ══════ -->
 <script>
@@ -612,16 +625,50 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
     let cachedCards = Array.from(grid.querySelectorAll<HTMLElement>('.kid-card'));
     cachedCards.forEach(cacheOriginalText);
 
-    // ── Reveal overflow cards (all rendered server-side, hidden beyond initial batch) ──
+    // ── Create overflow cards from JSON data island ──
+    const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
+    function cfCard(id: string, w: number, h: number) {
+      return `${CF}/${id}/w=${w},h=${h},fit=cover,gravity=face,q=70`;
+    }
+    function cfSS(id: string, widths: number[], ratio: number) {
+      return widths.map(w => `${cfCard(id, w, Math.round(w * ratio))} ${w}w`).join(', ');
+    }
+    function createCard(kid: { s: string; n: string; i: string; y: number; t: string[]; d: string; st: string }) {
+      const a = document.createElement('a');
+      a.href = `/kids/${kid.s}/`;
+      a.className = 'kid-card';
+      a.dataset.year = `year-${kid.y}`;
+      a.dataset.types = kid.t.map(t => `type-${t.toLowerCase().replace(/\s+/g, '-')}`).join(' ');
+      a.dataset.name = kid.n.toLowerCase();
+      a.dataset.diagnosis = kid.d.toLowerCase();
+      a.dataset.status = kid.st;
+      const roomTypes = kid.t.join(', ');
+      const alt = escapeHtml(`Photo of ${kid.n}${roomTypes ? ` — ${roomTypes}` : ''} — Sunshine on a Ranney Day`);
+      let imgHtml: string;
+      if (kid.i) {
+        imgHtml = `<picture><source media="(max-width:768px)" srcset="${cfSS(kid.i,[160,320,480],5/4)}" sizes="calc(50vw - 31px)"/><img src="${cfCard(kid.i,220,293)}" srcset="${cfSS(kid.i,[170,260,340,520],4/3)}" sizes="(min-width:1400px) 240px,(min-width:1100px) calc(25vw - 30px),calc(33vw - 27px)" alt="${alt}" class="kid-card__img" width="340" height="453" loading="lazy" decoding="async"/></picture>`;
+      } else {
+        imgHtml = `<div class="kid-card__placeholder" aria-hidden="true"><svg width="48" height="48"><use href="#icon-placeholder"/></svg></div>`;
+      }
+      a.innerHTML = `<div class="kid-card__frame">${imgHtml}<div class="kid-card__hover-overlay" aria-hidden="true"><span class="kid-card__cta"><span class="kid-card__cta-text">Read their story</span><svg class="kid-card__cta-arrow" width="14" height="14"><use href="#icon-cta-arrow"/></svg></span></div></div><div class="kid-card__info"><span class="kid-card__name">${escapeHtml(kid.n)}</span>${kid.st === 'in-progress' ? '<span class="kid-card__badge">In Progress</span>' : ''}</div>${roomTypes ? `<span class="kid-card__diagnosis">${escapeHtml(roomTypes)}</span>` : ''}`;
+      return a;
+    }
+
     function revealAllCards() {
       if (allCardsLoaded) return;
-      cachedCards.forEach(card => {
-        if (!card.classList.contains('is-overflow')) return;
-        card.classList.remove('is-overflow', 'is-hidden');
+      const dataEl = document.getElementById('kids-overflow');
+      if (!dataEl?.textContent) { allCardsLoaded = true; return; }
+      const overflow: { s: string; n: string; i: string; y: number; t: string[]; d: string; st: string }[] = JSON.parse(dataEl.textContent);
+      const frag = document.createDocumentFragment();
+      for (const kid of overflow) {
+        const card = createCard(kid);
         if (!reducedMotion && _kidsObserver) _kidsObserver.observe(card);
         else card.classList.add('revealed');
         cacheOriginalText(card);
-      });
+        frag.appendChild(card);
+      }
+      grid.appendChild(frag);
+      cachedCards = Array.from(grid.querySelectorAll<HTMLElement>('.kid-card'));
       allCardsLoaded = true;
     }
 
@@ -1389,19 +1436,21 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
   document.addEventListener('astro:before-swap', cleanupKidsIndex);
 </script>
 
-<!-- View Transitions: card morph -->
+<!-- View Transitions: card morph (event delegation) -->
 <script>
   function initKidTransitions() {
-    document.querySelectorAll<HTMLAnchorElement>('.kid-card').forEach(card => {
-      card.addEventListener('click', () => {
-        document.querySelectorAll('[style*="view-transition-name"]').forEach(el => {
-          (el as HTMLElement).style.viewTransitionName = '';
-        });
-        const img = card.querySelector('.kid-card__img') as HTMLElement | null;
-        const name = card.querySelector('.kid-card__name') as HTMLElement | null;
-        if (img) img.style.viewTransitionName = 'kid-hero';
-        if (name) name.style.viewTransitionName = 'kid-name';
+    const grid = document.getElementById('kids-grid');
+    if (!grid) return;
+    grid.addEventListener('click', (e) => {
+      const card = (e.target as HTMLElement).closest('.kid-card') as HTMLElement | null;
+      if (!card) return;
+      document.querySelectorAll('[style*="view-transition-name"]').forEach(el => {
+        (el as HTMLElement).style.viewTransitionName = '';
       });
+      const img = card.querySelector('.kid-card__img') as HTMLElement | null;
+      const name = card.querySelector('.kid-card__name') as HTMLElement | null;
+      if (img) img.style.viewTransitionName = 'kid-hero';
+      if (name) name.style.viewTransitionName = 'kid-name';
     });
   }
   document.addEventListener('astro:page-load', initKidTransitions);

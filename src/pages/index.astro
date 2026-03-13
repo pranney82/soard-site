@@ -179,10 +179,10 @@ const jsonLd = getWebSiteSchema();
       </div>
       <div class="mission-visual" role="presentation">
         <div class="mission-photo mission-photo--main" data-reveal>
-          <img src={`${CF}/${missionMainId}/w=500,q=65`} srcset={`${CF}/${missionMainId}/w=360,q=65 360w, ${CF}/${missionMainId}/w=500,q=65 500w, ${CF}/${missionMainId}/w=800,q=65 800w`} sizes="(max-width:768px) 90vw, 40vw" alt="A transformed room designed for a child with special needs" width="800" height="600" loading="lazy" decoding="async" />
+          <img src={`${CF}/${missionMainId}/w=500,q=65`} srcset={`${CF}/${missionMainId}/w=360,q=65 360w, ${CF}/${missionMainId}/w=500,q=65 500w, ${CF}/${missionMainId}/w=800,q=65 800w`} sizes="(max-width:768px) 65vw, 30vw" alt="A transformed room designed for a child with special needs" width="800" height="600" loading="lazy" decoding="async" />
         </div>
         <div class="mission-photo mission-photo--accent" data-reveal data-delay="1">
-          <img src={`${CF}/${missionAccentId}/w=400,q=65`} srcset={`${CF}/${missionAccentId}/w=280,q=65 280w, ${CF}/${missionAccentId}/w=400,q=65 400w`} sizes="(max-width:768px) 60vw, 30vw" alt="A happy child in their new dream room" width="600" height="450" loading="lazy" decoding="async" />
+          <img src={`${CF}/${missionAccentId}/w=400,q=65`} srcset={`${CF}/${missionAccentId}/w=280,q=65 280w, ${CF}/${missionAccentId}/w=400,q=65 400w`} sizes="(max-width:768px) 52vw, 24vw" alt="A happy child in their new dream room" width="600" height="450" loading="lazy" decoding="async" />
         </div>
       </div>
     </div>
@@ -425,8 +425,8 @@ const jsonLd = getWebSiteSchema();
     animation: pulseGlow 3s ease-in-out 3s infinite;
   }
   @keyframes pulseGlow {
-    0%, 100% { filter: drop-shadow(0 8px 24px rgba(255, 218, 36, 0.3)); }
-    50% { filter: drop-shadow(0 8px 40px rgba(255, 218, 36, 0.55)); }
+    0%, 100% { box-shadow: 0 8px 24px rgba(255, 218, 36, 0.3); }
+    50% { box-shadow: 0 8px 40px rgba(255, 218, 36, 0.55); }
   }
 
   /* ── Photo column ── */

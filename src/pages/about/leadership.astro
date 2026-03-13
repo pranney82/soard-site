@@ -5,7 +5,7 @@
  */
 import PageLayout from '../../layouts/PageLayout.astro';
 import { getCollection } from 'astro:content';
-import { cfUrl, cfDensitySrcset } from '../../utils/cf-image';
+import { cfUrl, cfDensitySrcset, cfSrcset } from '../../utils/cf-image';
 
 const PLACEHOLDER = 'brand-logo-circle-display';
 
@@ -43,7 +43,8 @@ const boardMembers = allTeam
               {member.data.photo ? (
                 <img
                   src={cfUrl(member.data.photo, { w: 180, h: 180, fit: 'cover', gravity: 'face' })}
-                  srcset={cfDensitySrcset(member.data.photo, 180, 180, { fit: 'cover', gravity: 'face' })}
+                  srcset={cfSrcset(member.data.photo, [130, 180, 260, 360], { fit: 'cover', gravity: 'face', aspectRatio: 1 })}
+                  sizes="(max-width: 600px) 130px, 180px"
                   alt={`${member.data.name}, ${member.data.title}`}
                   width="180" height="180"
                   loading="lazy"
