@@ -224,6 +224,10 @@
         flex-shrink: 0;
         white-space: nowrap !important;
       }
+      /* Hide non-essential columns on mobile */
+      .td-hide-mobile { display: none; }
+      /* Title cell: full width so tag/date/actions flow on next line */
+      .table-wrap td:has(> strong) { flex: 1 1 100%; }
       /* Touch targets for table action buttons */
       .table-wrap .btn-sm { min-height: 36px; min-width: 36px; padding: 0.4rem 0.65rem; }
 
@@ -544,6 +548,7 @@
       overflow: hidden;
     }
     .card:has(.table-wrap) { padding: 0; }
+    .card:has(.table-wrap) > div:first-child { padding: 1.25rem 1.5rem 0; }
     .card-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
@@ -1839,11 +1844,12 @@
             <div style="display: flex; gap: 2rem; flex-wrap: wrap;">
               <div style="flex: 1; min-width: 200px;">
                 <div style="font-size: 0.8rem; color: #6B6C72; margin-bottom: 0.5rem;">Kids per year</div>
-                <div style="display: flex; align-items: flex-end; gap: 3px; height: 60px;">
+                <div style="display: flex; align-items: flex-end; gap: 3px; height: 80px;">
                   ${yearData.years.map((y, i) => {
                     const max = Math.max(...yearData.perYear);
                     const h = Math.max(4, (yearData.perYear[i] / max) * 56);
                     return html`<div key=${y} style="display: flex; flex-direction: column; align-items: center; flex: 1; max-width: 48px;">
+                      <div style="font-size: 0.65rem; font-weight: 600; color: #2D2E33; margin-bottom: 2px;">${yearData.perYear[i]}</div>
                       <div style="width: 100%; height: ${h}px; background: #FFD500; border-radius: 4px 4px 0 0; min-width: 16px;" title="${y}: ${yearData.perYear[i]} kids"></div>
                       <div style="font-size: 0.65rem; color: #9B9CA0; margin-top: 2px;">${y.toString().slice(-2)}</div>
                     </div>`;
@@ -1852,7 +1858,26 @@
               </div>
               <div style="flex: 1; min-width: 200px;">
                 <div style="font-size: 0.8rem; color: #6B6C72; margin-bottom: 0.5rem;">Cumulative growth</div>
-                <${MiniChart} data=${yearData.cumulative} color="#FFD500" height=${60} width=${200} />
+                ${(() => {
+                  const d = yearData.cumulative;
+                  const w = 200, h = 80, padTop = 14;
+                  const max = Math.max(...d);
+                  const min = Math.min(...d);
+                  const range = max - min || 1;
+                  const step = w / (d.length - 1);
+                  const pts = d.map((v, i) => ({ x: i * step, y: padTop + (h - padTop) - ((v - min) / range) * (h - padTop - 4) - 2 }));
+                  const points = pts.map(p => `${p.x},${p.y}`).join(' ');
+                  const areaPoints = `0,${h} ${points} ${w},${h}`;
+                  return html`<svg width=${w} height=${h + 16} viewBox="0 0 ${w} ${h + 16}" style="display: block;">
+                    <polygon points=${areaPoints} fill="#FFD500" opacity="0.15" />
+                    <polyline points=${points} fill="none" stroke="#FFD500" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                    ${pts.map((p, i) => html`
+                      <circle cx=${p.x} cy=${p.y} r="3" fill="#FFD500" />
+                      <text x=${p.x} y=${p.y - 6} text-anchor="middle" font-size="9" font-weight="600" fill="#2D2E33">${d[i]}</text>
+                      <text x=${p.x} y=${h + 12} text-anchor="middle" font-size="8" fill="#9B9CA0">${yearData.years[i].toString().slice(-2)}</text>
+                    `)}
+                  </svg>`;
+                })()}
               </div>
             </div>
           </div>
@@ -3856,15 +3881,15 @@
           ${filtered.length === 0 ? html`
             <p class="text-sm text-muted" style="padding: 1rem;">${search ? 'No articles match your search.' : 'No articles yet. Click "+ Add Article" to create your first resource guide.'}</p>
           ` : html`
-            <div class="table-wrap"><table>
+            <div class="table-wrap table-resources"><table>
               <thead><tr><th>Title</th><th>Tag</th><th>Published</th><th>FAQs</th><th>Order</th><th></th></tr></thead>
               <tbody>
                 ${filtered.map(a => html`<tr key=${a.slug}>
                   <td><strong>${a.title}</strong><br/><span class="text-sm text-muted">/resources/${a.slug}/</span></td>
                   <td><span style="background: #FFD500; color: #2D2E33; padding: 0.15rem 0.5rem; border-radius: 100px; font-size: 0.75rem; font-weight: 600;">${a.tag || 'Guide'}</span></td>
                   <td class="text-sm">${a.datePublished || '—'}</td>
-                  <td>${(a.faqs || []).length}</td>
-                  <td>${a.order || 0}</td>
+                  <td class="td-hide-mobile">${(a.faqs || []).length}</td>
+                  <td class="td-hide-mobile">${a.order || 0}</td>
                   <td style="white-space: nowrap;">
                     <button class="btn btn-ghost btn-sm" onClick=${() => onEdit(a.slug)}>Edit</button>
                     <button class="btn btn-ghost btn-sm" style="color: #E53E3E;" onClick=${(e) => { e.stopPropagation(); onDelete(a); }}>Delete</button>
@@ -7481,6 +7506,8 @@
         mediakit: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" /><path d="M14 2v4a2 2 0 0 0 2 2h4" /><path d="M10 9H8" /><path d="M16 13H8" /><path d="M16 17H8" /></svg>`,
         press: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2" /><path d="M18 14h-8" /><path d="M15 18h-5" /><path d="M10 6h8v4h-8V6Z" /></svg>`,
         pressMonitor: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M2 12a10 10 0 1 0 10-10" /><path d="M2 16.1A5 5 0 0 1 5.9 20" /><path d="M2 12.05A10 10 0 0 1 9.95 20" /><path d="M2 8.05A15 15 0 0 1 13.95 20" /><circle cx="2" cy="20" r="2" /></svg>`,
+        menu: html`<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/></svg>`,
+        x: html`<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>`,
       };
 
       const navSections = [
