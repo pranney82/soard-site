@@ -10,8 +10,8 @@
  *   }
  *
  * Models used:
- *   - Vision (alt text): @cf/google/gemma-7b-it-lora
- *   - Text (SEO): @cf/google/gemma-7b-it-lora
+ *   - Vision (alt text): @cf/llava-hf/llava-1.5-7b-hf
+ *   - Text (SEO): @cf/google/gemma-7b-it
  */
 
 export async function onRequestPost(context) {
@@ -72,7 +72,7 @@ export async function onRequestPost(context) {
             const base64 = btoa(String.fromCharCode(...imgArray));
 
             const visionResult = await ai.run(
-              '@cf/google/gemma-7b-it-lora',
+              '@cf/llava-hf/llava-1.5-7b-hf',
               {
                 messages: [
                   {
@@ -131,7 +131,7 @@ SHORT_DESCRIPTION: [text]
 META_DESCRIPTION: [text]`;
 
       const seoResult = await ai.run(
-        '@cf/google/gemma-7b-it-lora',
+        '@cf/google/gemma-7b-it',
         {
           messages: [
             { role: 'user', content: seoPrompt },
