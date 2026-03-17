@@ -11,6 +11,8 @@ export interface SiteStats {
   totalRooms: number;
   /** Community projects count */
   communityProjects: number;
+  /** Total lives impacted across all community projects (sum of impact fields) */
+  livesImpacted: number;
   /** Years of impact since 2012 */
   years: number;
 }
@@ -25,11 +27,16 @@ export async function getSiteStats(): Promise<SiteStats> {
 
   const totalKids = kids.reduce((sum, k) => sum + (k.data.childCount || 1), 0);
   const totalRooms = kids.reduce((sum, k) => sum + (k.data.roomCount || 1), 0);
+  const livesImpacted = community.reduce((sum, c) => {
+    const num = parseInt(String(c.data.impact).replace(/[^0-9]/g, ''), 10);
+    return sum + (isNaN(num) ? 0 : num);
+  }, 0);
 
   _cached = {
     totalKids,
     totalRooms,
     communityProjects: community.length,
+    livesImpacted,
     years: new Date().getFullYear() - 2012,
   };
 

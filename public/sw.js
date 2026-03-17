@@ -6,7 +6,7 @@
 const CACHE_NAME = 'soard-v2';
 
 const PRECACHE_URLS = [
-  '/fonts/outfit-latin-400-normal.woff2',
+  '/fonts/outfit-latin-variable.woff2',
   '/fonts/libre-baskerville-latin-700-normal.woff2',
 ];
 

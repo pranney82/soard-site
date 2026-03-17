@@ -1,0 +1,29 @@
+UPDATE financials SET url = 'https://files.sunshineonaranneyday.com/financials/2012-501(c)(3)-Ruling-Letter.pdf', source = 'r2' WHERE id = '2012-501(c)(3)-Ruling-Letter';
+UPDATE financials SET url = 'https://files.sunshineonaranneyday.com/financials/2012-990.pdf', source = 'r2' WHERE id = '2012-990';
+UPDATE financials SET url = 'https://files.sunshineonaranneyday.com/financials/2013-990.pdf', source = 'r2' WHERE id = '2013-990';
+UPDATE financials SET url = 'https://files.sunshineonaranneyday.com/financials/2013-Audit.pdf', source = 'r2' WHERE id = '2013-Audit';
+UPDATE financials SET url = 'https://files.sunshineonaranneyday.com/financials/2014-990.pdf', source = 'r2' WHERE id = '2014-990';
+UPDATE financials SET url = 'https://files.sunshineonaranneyday.com/financials/2014-Audit.pdf', source = 'r2' WHERE id = '2014-Audit';
+UPDATE financials SET url = 'https://files.sunshineonaranneyday.com/financials/2015-990.pdf', source = 'r2' WHERE id = '2015-990';
+UPDATE financials SET url = 'https://files.sunshineonaranneyday.com/financials/2015-Audit.pdf', source = 'r2' WHERE id = '2015-Audit';
+UPDATE financials SET url = 'https://files.sunshineonaranneyday.com/financials/2016-990.pdf', source = 'r2' WHERE id = '2016-990';
+UPDATE financials SET url = 'https://files.sunshineonaranneyday.com/financials/2016-Audit.pdf', source = 'r2' WHERE id = '2016-Audit';
+UPDATE financials SET url = 'https://files.sunshineonaranneyday.com/financials/2017-990.pdf', source = 'r2' WHERE id = '2017-990';
+UPDATE financials SET url = 'https://files.sunshineonaranneyday.com/financials/2017-Audit.pdf', source = 'r2' WHERE id = '2017-Audit';
+UPDATE financials SET url = 'https://files.sunshineonaranneyday.com/financials/2018-990.pdf', source = 'r2' WHERE id = '2018-990';
+UPDATE financials SET url = 'https://files.sunshineonaranneyday.com/financials/2018-Audit.pdf', source = 'r2' WHERE id = '2018-Audit';
+UPDATE financials SET url = 'https://files.sunshineonaranneyday.com/financials/2019-990.pdf', source = 'r2' WHERE id = '2019-990';
+UPDATE financials SET url = 'https://files.sunshineonaranneyday.com/financials/2019-Audit.pdf', source = 'r2' WHERE id = '2019-Audit';
+UPDATE financials SET url = 'https://files.sunshineonaranneyday.com/financials/2020-990-Sunshine-on-a-Ranney-DayTax-Return-3.pdf', source = 'r2' WHERE id = '2020-990-Sunshine-on-a-Ranney-DayTax-Return-3';
+UPDATE financials SET url = 'https://files.sunshineonaranneyday.com/financials/2020-Sunshine-Audit-1.pdf', source = 'r2' WHERE id = '2020-Sunshine-Audit-1';
+UPDATE financials SET url = 'https://files.sunshineonaranneyday.com/financials/2021-990-Returns-2.pdf', source = 'r2' WHERE id = '2021-990-Returns-2';
+UPDATE financials SET url = 'https://files.sunshineonaranneyday.com/financials/2021-Audit-1.pdf', source = 'r2' WHERE id = '2021-Audit-1';
+UPDATE financials SET url = 'https://files.sunshineonaranneyday.com/financials/2022-990.pdf', source = 'r2' WHERE id = '2022-990';
+UPDATE financials SET url = 'https://files.sunshineonaranneyday.com/financials/2022_Audit.pdf', source = 'r2' WHERE id = '2022_Audit';
+UPDATE financials SET url = 'https://files.sunshineonaranneyday.com/financials/2023-SOARD-Audit-Final.pdf', source = 'r2' WHERE id = '2023-SOARD-Audit-Final';
+UPDATE financials SET url = 'https://files.sunshineonaranneyday.com/financials/2023_990.pdf', source = 'r2' WHERE id = '2023_990';
+UPDATE financials SET url = 'https://files.sunshineonaranneyday.com/financials/2024-Audit-Final.pdf', source = 'r2' WHERE id = '2024-Audit-Final';
+UPDATE financials SET url = 'https://files.sunshineonaranneyday.com/financials/2024-SOARD-990-Final-1-1.pdf', source = 'r2' WHERE id = '2024-SOARD-990-Final-1-1';
+UPDATE financials SET url = 'https://files.sunshineonaranneyday.com/financials/ga-contractor-license.pdf', source = 'r2' WHERE id = 'ga-contractor-license';
+
+-- Update site_config financials entry separately after verifying URLs

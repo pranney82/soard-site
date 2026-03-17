@@ -1,32 +1,42 @@
 /**
  * POST /api/upload-file
- * Uploads a binary file (like a PDF) to the GitHub repo.
+ * Uploads a binary file (like a PDF) to R2.
  * Expects multipart/form-data with:
  *   - file: the file to upload
- *   - path: destination path in repo (e.g., "public/financials/2024-990.pdf")
- *   - message: commit message
+ *   - path: destination path (e.g., "public/financials/2024-990.pdf")
+ *   - message: description (kept for compatibility)
  *
- * Environment variables needed:
- *   GITHUB_TOKEN
+ * The admin panel handles document metadata (title, year, type) separately
+ * via save-content → site_config.financials. This endpoint only stores the file.
+ *
+ * Env bindings: FILES (R2)
  */
 
-const REPO = 'pranney82/soard';
-const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50 MB max for repo uploads
+const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50 MB
+const R2_DOMAIN = 'https://files.sunshineonaranneyday.com';
 
-const ALLOWED_UPLOAD_PREFIXES = ['src/content/', 'public/financials/'];
+// Map incoming paths to R2 keys
+function pathToR2Key(path) {
+  // "public/financials/2024-990.pdf" → "financials/2024-990.pdf"
+  if (path.startsWith('public/')) {
+    return path.slice('public/'.length);
+  }
+  return path;
+}
+
+const ALLOWED_PREFIXES = ['public/financials/'];
 
 function isPathAllowed(path) {
   if (!path || path.includes('..') || path.includes('//') || path.startsWith('/')) return false;
-  return ALLOWED_UPLOAD_PREFIXES.some(prefix => path.startsWith(prefix));
+  return ALLOWED_PREFIXES.some(prefix => path.startsWith(prefix));
 }
 
 export async function onRequestPost(context) {
   try {
-    const { GITHUB_TOKEN } = context.env;
+    const { FILES } = context.env;
     const formData = await context.request.formData();
     const file = formData.get('file');
     const path = formData.get('path');
-    const message = formData.get('message') || `Upload ${file?.name || 'file'}`;
 
     if (!file || !path) {
       return Response.json(
@@ -49,74 +59,27 @@ export async function onRequestPost(context) {
       );
     }
 
-    // Read file as ArrayBuffer and convert to base64
-    const buffer = await file.arrayBuffer();
-    const bytes = new Uint8Array(buffer);
-    const base64 = btoa(String.fromCharCode(...bytes));
+    const r2Key = pathToR2Key(path);
+    const publicUrl = `${context.env.R2_PUBLIC_DOMAIN || R2_DOMAIN}/${r2Key}`;
 
-    // Check if file already exists (to get SHA for update)
-    let sha = undefined;
-    try {
-      const checkResponse = await fetch(
-        `https://api.github.com/repos/${REPO}/contents/${path}`,
-        {
-          headers: {
-            'Authorization': `Bearer ${GITHUB_TOKEN}`,
-            'Accept': 'application/vnd.github.v3+json',
-            'User-Agent': 'SOARD-Admin',
-          },
-        }
-      );
-      if (checkResponse.ok) {
-        const existing = await checkResponse.json();
-        sha = existing.sha;
-      }
-    } catch (e) {
-      // File doesn't exist, that's fine
-    }
-
-    const body = {
-      message,
-      content: base64,
-    };
-    if (sha) body.sha = sha;
-
-    const response = await fetch(
-      `https://api.github.com/repos/${REPO}/contents/${path}`,
-      {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${GITHUB_TOKEN}`,
-          'Accept': 'application/vnd.github.v3+json',
-          'User-Agent': 'SOARD-Admin',
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(body),
-      }
-    );
-
-    const result = await response.json();
-
-    if (!response.ok) {
-      return Response.json(
-        { success: false, error: result.message || `GitHub error: ${response.status}` },
-        { status: response.status }
-      );
-    }
-
-    return Response.json(
-      {
-        success: true,
-        path: result.content.path,
-        sha: result.content.sha,
-        downloadUrl: result.content.download_url,
+    // Upload to R2 with cache headers for edge performance
+    await FILES.put(r2Key, file.stream(), {
+      httpMetadata: {
+        contentType: file.type || 'application/octet-stream',
+        cacheControl: 'public, max-age=31536000, immutable',
       },
-      {}
-    );
+    });
+
+    return Response.json({
+      success: true,
+      path,
+      sha: r2Key,
+      downloadUrl: publicUrl,
+    });
   } catch (err) {
     console.error("[upload-file]", err);
     return Response.json(
-      { success: false, error: "An unexpected error occurred" },
+      { success: false, error: err.message || "An unexpected error occurred" },
       { status: 500 }
     );
   }

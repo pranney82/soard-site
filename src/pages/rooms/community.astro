@@ -13,6 +13,7 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
 import { getWebPageSchema, getBreadcrumbSchema, buildSchemaGraph } from '../../utils/schema';
 import { getCollection } from 'astro:content';
 import { cfRaw, cfSrcset } from '../../utils/cf-image';
+import { getSiteStats } from '../../utils/stats';
 
 /* ── Hero ── */
 const heroImageId = 'kids/jackson/hero';
@@ -27,7 +28,8 @@ const projects = allProjects
   .map(p => p.data)
   .sort((a, b) => (a.order || 0) - (b.order || 0));
 
-const totalImpact = '17,000+';
+const { livesImpacted } = await getSiteStats();
+const totalImpact = livesImpacted.toLocaleString() + '+';
 
 /* ── Schema ── */
 const pageUrl = 'https://sunshineonaranneyday.com/rooms/community/';
@@ -91,7 +93,7 @@ const jsonLd = buildSchemaGraph(
         <h2 id="intro-heading">When one room isn't enough, we think <em class="highlight">bigger</em>.</h2>
         <p>At Sunshine on a Ranney Day, our mission doesn't stop at the front door. We proudly collaborate with nonprofits, schools, camps, and healthcare facilities to <strong>expand our impact and reach even more children</strong>.</p>
         <p>These large-scale community projects go beyond a single bedroom or bathroom. They transform entire facilities — creating classrooms, therapy spaces, play areas, and gathering rooms that serve hundreds or even thousands of children with special needs every single year.</p>
-        <p>Through these partnerships, our projects have provided over <strong>17,000 children</strong> with spaces where they can learn, grow, and let their imaginations soar.</p>
+        <p>Through these partnerships, our projects have provided over <strong>{totalImpact} children</strong> with spaces where they can learn, grow, and let their imaginations soar.</p>
       </div>
     </div>
   </section>

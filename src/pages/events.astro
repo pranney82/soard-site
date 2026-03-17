@@ -408,7 +408,7 @@ function getYouTubeId(url: string): string | null {
     margin-bottom: var(--space-md);
   }
   .ev-hero__title {
-    font-family: var(--f-display);
+    font-family: var(--font-display);
     font-size: clamp(2rem, 5vw, 3.5rem);
     color: var(--c-text);
     line-height: 1.15;
@@ -430,7 +430,7 @@ function getYouTubeId(url: string): string | null {
 
   /* ══════ SECTION TITLES ══════ */
   .ev-section-title {
-    font-family: var(--f-display);
+    font-family: var(--font-display);
     font-size: clamp(1.5rem, 3vw, 2rem);
     margin-bottom: var(--space-2xl);
   }
@@ -450,14 +450,9 @@ function getYouTubeId(url: string): string | null {
   /* ══════ FEATURED CARDS ══════ */
   .featured-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(min(400px, 100%), 1fr));
     gap: var(--space-xl);
     margin-bottom: var(--space-3xl);
-  }
-  @media (max-width: 480px) {
-    .featured-grid {
-      grid-template-columns: 1fr;
-    }
   }
   .featured-card {
     background: var(--c-white);
@@ -515,7 +510,7 @@ function getYouTubeId(url: string): string | null {
     letter-spacing: 0.1em;
   }
   .featured-card__day {
-    font-family: var(--f-display);
+    font-family: var(--font-display);
     font-size: 2rem;
     font-weight: 700;
     line-height: 1;
@@ -550,7 +545,7 @@ function getYouTubeId(url: string): string | null {
     color: var(--c-text-light);
   }
   .featured-card__title {
-    font-family: var(--f-display);
+    font-family: var(--font-display);
     font-size: 1.2rem;
     line-height: 1.35;
     margin-bottom: var(--space-md);
@@ -620,7 +615,7 @@ function getYouTubeId(url: string): string | null {
   }
   .ev-item__day {
     display: block;
-    font-family: var(--f-display);
+    font-family: var(--font-display);
     font-size: 1.5rem;
     font-weight: 700;
     line-height: 1.1;
@@ -670,7 +665,7 @@ function getYouTubeId(url: string): string | null {
     color: var(--c-text-light);
   }
   .ev-item__title {
-    font-family: var(--f-display);
+    font-family: var(--font-display);
     font-size: 1.05rem;
     line-height: 1.4;
     margin-bottom: var(--space-xs);
@@ -755,7 +750,7 @@ function getYouTubeId(url: string): string | null {
     text-align: center;
   }
   .ev-cta h2 {
-    font-family: var(--f-display);
+    font-family: var(--font-display);
     font-size: clamp(1.5rem, 3vw, 2rem);
     margin-bottom: var(--space-md);
   }

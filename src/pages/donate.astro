@@ -14,11 +14,20 @@
  */
 import BaseLayout from '../layouts/BaseLayout.astro';
 import faqData from '../content/site/faq.json';
+import siteSettings from '../content/site/settings.json';
 import { getDonateSchema } from '../utils/schema';
 import { getSiteStats } from '../utils/stats';
 import { cfRaw, cfSrcset, CF_BASE } from '../utils/cf-image';
 
 const computed = await getSiteStats();
+
+/* ── Donate page photos (from admin settings, with fallbacks) ── */
+const dp = siteSettings.donatePhotos || {};
+const donateHeroPhoto = dp.hero || 'kids/oakley/hero';
+const donateHeroKidName = dp.heroKidName || 'Oakley';
+const donateStoryPhoto = dp.story || 'kids/amari/hero';
+const donateStoryKidName = dp.storyKidName || 'Amari';
+const donateStoryKidSlug = dp.storyKidSlug || 'amari';
 
 const donateFaqs = faqData.items
   .filter(item => {
@@ -41,16 +50,16 @@ const breadcrumbs = [
   breadcrumbs={breadcrumbs}
 >
   <!-- Preload hero LCP image -->
-  <link slot="head" rel="preload" as="image" imagesrcset={cfSrcset('kids/oakley/hero', [640, 1024, 1600])} imagesizes="100vw" fetchpriority="high" />
+  <link slot="head" rel="preload" as="image" imagesrcset={cfSrcset(donateHeroPhoto, [400, 640, 1024, 1600])} imagesizes="100vw" fetchpriority="high" />
 
   <!-- ══════ HERO — No data-reveal on hero content (LCP critical) ══════ -->
   <section class="donate-hero">
     <div class="donate-hero-media">
       <img
-        src={cfRaw('kids/oakley/hero', 'w=1600,q=85')}
-        srcset={cfSrcset('kids/oakley/hero', [640, 1024, 1600])}
+        src={cfRaw(donateHeroPhoto, 'w=1600,q=85')}
+        srcset={cfSrcset(donateHeroPhoto, [400, 640, 1024, 1600])}
         sizes="100vw"
-        alt="Oakley smiling in his new dream bedroom built by Sunshine on a Ranney Day"
+        alt={`${donateHeroKidName} smiling in their new dream bedroom built by Sunshine on a Ranney Day`}
         width="1024"
         height="683"
         fetchpriority="high"
@@ -83,10 +92,10 @@ const breadcrumbs = [
       <div class="why-photos" data-reveal>
         <div class="why-photo why-photo--main">
           <img
-            src={cfRaw('kids/amari/hero', 'w=800,q=85')}
-            srcset={cfSrcset('kids/amari/hero', [500, 800])}
+            src={cfRaw(donateStoryPhoto, 'w=800,q=85')}
+            srcset={cfSrcset(donateStoryPhoto, [500, 800])}
             sizes="(max-width:768px) 90vw, 40vw"
-            alt="Amari in his new accessible bedroom"
+            alt={`${donateStoryKidName} in their new accessible bedroom`}
             width="800"
             height="600"
             loading="lazy"
@@ -100,7 +109,7 @@ const breadcrumbs = [
         <p>Amari is a bright, energetic 10-year-old who loves sports. After a devastating car accident left him with paralysis and the loss of his right leg, his family's home wasn't built for his new reality.</p>
         <p>SOARD transformed Amari's home with a wheelchair-accessible bathroom, widened doorways, and a dream bedroom — giving him back his independence and a space that's truly <em>his</em>.</p>
         <p><strong>This is what your donation builds.</strong> Not just rooms — but independence, dignity, and joy for kids who deserve it most.</p>
-        <a href="/kids/amari" class="btn btn-dark">Read Amari's Full Story →</a>
+        <a href={`/kids/${donateStoryKidSlug}`} class="btn btn-dark">{`Read ${donateStoryKidName}'s Full Story →`}</a>
       </div>
     </div>
   </section>
@@ -987,7 +996,7 @@ const breadcrumbs = [
   }
   .donate-finale-note {
     font-size: 13px;
-    color: rgba(45,46,51,0.72);
+    color: rgba(45,46,51,0.82);
     margin-bottom: 0;
   }
 

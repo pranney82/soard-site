@@ -22,7 +22,7 @@ const cors = {
 };
 
 // Public API routes that don't require authentication
-const PUBLIC_ROUTES = ['/api/shopify', '/api/newsletter'];
+const PUBLIC_ROUTES = ['/api/shopify', '/api/newsletter', '/api/kids.json'];
 
 export async function onRequest(context) {
   // Always allow preflight

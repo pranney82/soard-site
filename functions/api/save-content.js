@@ -1,32 +1,60 @@
 /**
  * POST /api/save-content
- * Creates or updates a file in the GitHub repo.
+ * Creates or updates content in D1.
  * Expects JSON body:
  *   {
  *     path: "src/content/kids/amari.json",
- *     content: "{ ... }",        // file content as string
- *     message: "Update amari",   // commit message
- *     sha: "abc123..."           // required for updates, omit for new files
+ *     content: "{ ... }",        // file content as JSON string
+ *     message: "Update amari",   // kept for admin panel compatibility
+ *     sha: "..."                 // ignored — D1 uses upsert
  *   }
  *
- * Environment variables needed:
- *   GITHUB_TOKEN
+ * Env bindings: DB (D1)
+ * Env vars: CF_PAGES_DEPLOY_HOOK (optional — triggers rebuild after save)
  */
 
-const REPO = 'pranney82/soard';
+const COLLECTION_MAP = {
+  'src/content/kids/': 'kids',
+  'src/content/partners/': 'partners',
+  'src/content/press/': 'press',
+  'src/content/team/': 'team',
+  'src/content/events/': 'events',
+  'src/content/community/': 'community',
+  'src/content/articles/': 'articles',
+};
 
-// Only allow writes to content and financial directories
-const ALLOWED_WRITE_PREFIXES = ['src/content/', 'public/financials/'];
+const SITE_PREFIX = 'src/content/site/';
 
-function isPathAllowed(path) {
-  if (!path || path.includes('..') || path.includes('//') || path.startsWith('/')) return false;
-  return ALLOWED_WRITE_PREFIXES.some(prefix => path.startsWith(prefix));
+const EXTRACTORS = {
+  kids: (d) => [
+    'd.name, d.year ?? null, d.status || "completed", d.featured ? 1 : 0, d.childCount ?? 1, d.roomCount ?? 1',
+    ['name', 'year', 'status', 'featured', 'child_count', 'room_count'],
+    [d.name, d.year ?? null, d.status || 'completed', d.featured ? 1 : 0, d.childCount ?? 1, d.roomCount ?? 1],
+  ],
+  partners: (d) => [null, ['name', 'tier', 'featured'], [d.name, d.tier ?? null, d.featured ? 1 : 0]],
+  press: (d) => [null, ['title', 'date', 'category', 'featured'], [d.title ?? null, d.date ?? null, d.category ?? null, d.featured ? 1 : 0]],
+  team: (d) => [null, ['name', '"group"', 'order_num'], [d.name, d.group ?? null, d.order ?? 0]],
+  events: (d) => [null, ['title', 'date', 'status', 'featured'], [d.title, d.date ?? null, d.status || 'upcoming', d.featured ? 1 : 0]],
+  community: (d) => [null, ['name', 'order_num'], [d.name, d.order ?? 0]],
+  articles: (d) => [null, ['title', 'featured', 'order_num'], [d.title, d.featured ? 1 : 0, d.order ?? 0]],
+};
+
+function parsePath(path) {
+  if (path.startsWith(SITE_PREFIX) && path.endsWith('.json')) {
+    return { type: 'site', key: path.slice(SITE_PREFIX.length, -5) };
+  }
+  for (const [prefix, table] of Object.entries(COLLECTION_MAP)) {
+    if (path.startsWith(prefix) && path.endsWith('.json')) {
+      return { type: 'collection', table, slug: path.slice(prefix.length, -5) };
+    }
+  }
+  return null;
 }
 
 export async function onRequestPost(context) {
   try {
-    const { GITHUB_TOKEN } = context.env;
-    const { path, content, message, sha } = await context.request.json();
+    const { DB } = context.env;
+    const { path, content, message } = await context.request.json();
 
     if (!path || content === undefined || !message) {
       return Response.json(
@@ -35,63 +63,64 @@ export async function onRequestPost(context) {
       );
     }
 
-    if (!isPathAllowed(path)) {
+    const parsed = parsePath(path);
+    if (!parsed) {
       return Response.json(
         { success: false, error: 'Path not allowed' },
         { status: 403 }
       );
     }
 
-    // Encode content to base64 (handle UTF-8)
-    const encoder = new TextEncoder();
-    const bytes = encoder.encode(content);
-    const base64 = btoa(String.fromCharCode(...bytes));
+    const data = typeof content === 'string' ? JSON.parse(content) : content;
+    const jsonStr = JSON.stringify(data);
+    const now = new Date().toISOString();
 
-    const body = {
-      message,
-      content: base64,
-    };
+    if (parsed.type === 'site') {
+      await DB.prepare(
+        'INSERT OR REPLACE INTO site_config (key, data, updated_at) VALUES (?, ?, ?)'
+      ).bind(parsed.key, jsonStr, now).run();
+    } else {
+      const { table, slug } = parsed;
+      const extractor = EXTRACTORS[table];
 
-    // Include SHA if updating an existing file
-    if (sha) {
-      body.sha = sha;
+      if (extractor) {
+        const [, colNames, colValues] = extractor(data);
+        const allCols = ['slug', 'data', 'updated_at', ...colNames];
+        const placeholders = allCols.map(() => '?').join(', ');
+        const allValues = [slug, jsonStr, now, ...colValues];
+
+        await DB.prepare(
+          `INSERT OR REPLACE INTO ${table} (${allCols.join(', ')}) VALUES (${placeholders})`
+        ).bind(...allValues).run();
+      } else {
+        await DB.prepare(
+          `INSERT OR REPLACE INTO ${table} (slug, data, updated_at) VALUES (?, ?, ?)`
+        ).bind(slug, jsonStr, now).run();
+      }
     }
 
-    const response = await fetch(
-      `https://api.github.com/repos/${REPO}/contents/${path}`,
-      {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${GITHUB_TOKEN}`,
-          'Accept': 'application/vnd.github.v3+json',
-          'User-Agent': 'SOARD-Admin',
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(body),
-      }
-    );
+    // Generate a deterministic fake sha for admin panel compatibility
+    const encoder = new TextEncoder();
+    const hashBuffer = await crypto.subtle.digest('SHA-1', encoder.encode(jsonStr));
+    const sha = [...new Uint8Array(hashBuffer)].map(b => b.toString(16).padStart(2, '0')).join('');
 
-    const result = await response.json();
-
-    if (!response.ok) {
-      return Response.json(
-        { success: false, error: result.message || `GitHub error: ${response.status}` },
-        { status: response.status }
+    // Trigger a Pages rebuild so the static site reflects the change
+    const { CF_PAGES_DEPLOY_HOOK } = context.env;
+    if (CF_PAGES_DEPLOY_HOOK) {
+      context.waitUntil(
+        fetch(CF_PAGES_DEPLOY_HOOK, { method: 'POST' }).catch(() => {})
       );
     }
 
-    return Response.json(
-      {
-        success: true,
-        sha: result.content.sha,
-        path: result.content.path,
-      },
-      {}
-    );
+    return Response.json({
+      success: true,
+      sha,
+      path,
+    });
   } catch (err) {
     console.error("[save-content]", err);
     return Response.json(
-      { success: false, error: "An unexpected error occurred" },
+      { success: false, error: err.message || "An unexpected error occurred" },
       { status: 500 }
     );
   }

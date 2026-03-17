@@ -72,12 +72,12 @@ const missionMainId = sp.missionMain || 'kids/eli/photo-01';
 const missionAccentId = sp.missionAccent || 'kids/georgia/photo-01';
 const heroPhotoId = `kids/${heroSlug}/hero`;
 const storyPhotoId = `kids/${featuredSlug}/hero`;
+const processPhotoId = sp.process || `kids/${featuredSlug}/hero`;
 const roomPhotos = {
   bedroom: sp.roomBedroom || 'kids/griffin/hero',
   bath: sp.roomBath || 'kids/zyah/hero',
   therapy: sp.roomTherapy || 'kids/jackson/hero',
 };
-
 /* ── Partner logos (from settings) ── */
 const partnerLogos = siteSettings.partnerLogos || siteSettings.homeLogos || [
   { id: 'partners/gas-south', name: 'Gas South' },
@@ -214,19 +214,27 @@ const jsonLd = getWebSiteSchema();
       </div>
       <a href="/kids" class="kids-strip-all">See all {stats.totalKids}+ kids →</a>
     </div>
-    <ul class="kids-scroll">
-      {kidShowcase.map(kid => (
-        <li class="kid-thumb-item">
-          <a href={`/kids/${kid.slug}`} class="kid-thumb">
-            <div class="kid-thumb-photo">
-              <img src={`${CF}/${kid.cfId}/w=440,h=440,fit=cover,q=65`} alt={`${kid.name}'s room reveal`} width="220" height="220" loading="lazy" decoding="async" />
-            </div>
-            <h3 class="kid-thumb-name">{kid.name}</h3>
-            <p>{kid.roomLabel}{kid.age ? ` · Age ${kid.age}` : ''}</p>
-          </a>
-        </li>
-      ))}
-    </ul>
+    <div class="kids-scroll-wrap">
+      <ul class="kids-scroll">
+        {kidShowcase.map(kid => (
+          <li class="kid-thumb-item">
+            <a href={`/kids/${kid.slug}`} class="kid-thumb">
+              <div class="kid-thumb-photo">
+                <img src={`${CF}/${kid.cfId}/w=440,h=440,fit=cover,q=65`} alt={`${kid.name}'s room reveal`} width="220" height="220" loading="lazy" decoding="async" />
+              </div>
+              <h3 class="kid-thumb-name">{kid.name}</h3>
+              <p>{kid.roomLabel}{kid.age ? ` · Age ${kid.age}` : ''}</p>
+            </a>
+          </li>
+        ))}
+      </ul>
+      <button class="kids-scroll-btn kids-scroll-btn--prev" aria-label="Scroll left" type="button">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+      </button>
+      <button class="kids-scroll-btn kids-scroll-btn--next" aria-label="Scroll right" type="button">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg>
+      </button>
+    </div>
   </section>
 
   <!-- ══════ PROCESS ══════ -->
@@ -236,24 +244,41 @@ const jsonLd = getWebSiteSchema();
         <div class="section-label">The Process</div>
         <h2 id="process-heading">From first call to <em class="highlight">big reveal</em></h2>
       </div>
-      <ol class="timeline" role="list">
-        <li class="timeline-step" data-reveal>
-          <div class="timeline-marker" aria-hidden="true"><span>1</span></div>
-          <div class="timeline-body"><h3>Family Applies</h3><p>A simple application — families tell us about their child, their needs, and their dreams for a new space.</p></div>
-        </li>
-        <li class="timeline-step" data-reveal data-delay="1">
-          <div class="timeline-marker" aria-hidden="true"><span>2</span></div>
-          <div class="timeline-body"><h3>Design & Plan</h3><p>Our designer partners meet the family, learn the child's personality, and create a custom room concept.</p></div>
-        </li>
-        <li class="timeline-step" data-reveal data-delay="2">
-          <div class="timeline-marker" aria-hidden="true"><span>3</span></div>
-          <div class="timeline-body"><h3>Build & Transform</h3><p>Construction partners bring it to life — usually in just a few intense, loving days of work.</p></div>
-        </li>
-        <li class="timeline-step" data-reveal data-delay="3">
-          <div class="timeline-marker" aria-hidden="true"><span>4</span></div>
-          <div class="timeline-body"><h3>The Big Reveal ✨</h3><p>The moment. The child walks in, sees their new room, and everything changes. This is why we do it.</p></div>
-        </li>
-      </ol>
+
+      <div class="process-split">
+        <div class="process-photo" data-reveal>
+          <img src={`${CF}/${processPhotoId}/w=720,h=960,fit=cover,q=70`} alt={`${fd?.name || 'A child'} sees their new room for the first time`} width="720" height="960" loading="lazy" decoding="async" />
+        </div>
+
+        <div class="process-content">
+          <ol class="process-timeline" role="list">
+            <li class="process-step" data-reveal data-delay="1">
+              <span class="process-num" aria-hidden="true">01</span>
+              <h3>Family Applies</h3>
+              <p>Families tell us about their child, their needs, and their dreams for a new space.</p>
+            </li>
+            <li class="process-step" data-reveal data-delay="2">
+              <span class="process-num" aria-hidden="true">02</span>
+              <h3>Design & Plan</h3>
+              <p>Our designer partners create a one-of-a-kind room concept tailored to the child's personality and sensory needs.</p>
+            </li>
+            <li class="process-step" data-reveal data-delay="3">
+              <span class="process-num" aria-hidden="true">03</span>
+              <h3>Build & Transform</h3>
+              <p>Construction partners bring the design to life — usually in just a few intense, loving days of work.</p>
+            </li>
+            <li class="process-step process-step--highlight" data-reveal data-delay="4">
+              <span class="process-num" aria-hidden="true">04</span>
+              <span class="process-badge">The best part</span>
+              <h3>The Big Reveal</h3>
+              <p>The child walks in and sees a room designed just for them. Everything changes in that moment.</p>
+            </li>
+          </ol>
+          <div class="process-cta" data-reveal>
+            <a href="/partners" class="btn btn-primary">Become a Partner →</a>
+          </div>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -326,7 +351,7 @@ const jsonLd = getWebSiteSchema();
   <section class="marquee" aria-label="Our partners">
     <div class="marquee-label">Trusted Partners Who Make It Possible</div>
     <div class="marquee-track" aria-hidden="true">
-      {[...partnerLogos, ...partnerLogos, ...partnerLogos].map(p => (
+      {[...partnerLogos, ...partnerLogos].map(p => (
         <div class="marquee-logo">
           <img src={`${CF}/${p.id}/w=280,h=80,fit=contain`} alt={p.name} width="140" height="40" loading="lazy" decoding="async" />
         </div>
@@ -606,7 +631,8 @@ const jsonLd = getWebSiteSchema();
   .kids-strip-header h2 em { font-style: italic; }
   .kids-strip-all { font-size: 15px; font-weight: 600; color: var(--c-accent); transition: letter-spacing 0.3s ease; white-space: nowrap; }
   .kids-strip-all:hover { letter-spacing: 0.02em; }
-  .kids-scroll { display: flex; gap: 24px; padding: 0 var(--page-padding); overflow-x: auto; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; scrollbar-width: none; list-style: none; margin: 0; }
+  .kids-scroll-wrap { position: relative; }
+  .kids-scroll { display: flex; gap: 24px; padding: 0 var(--page-padding); overflow-x: auto; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; scrollbar-width: none; list-style: none; margin: 0; scroll-behavior: smooth; }
   .kids-scroll::-webkit-scrollbar { display: none; }
   .kid-thumb-item { flex-shrink: 0; width: 220px; scroll-snap-align: start; }
   .kid-thumb { display: block; text-align: center; text-decoration: none; color: inherit; }
@@ -615,22 +641,56 @@ const jsonLd = getWebSiteSchema();
   .kid-thumb:hover .kid-thumb-photo img { transform: scale(1.06); }
   .kid-thumb-name { font-size: 17px; margin-bottom: 2px; }
   .kid-thumb p { font-size: 13px; color: var(--c-text-muted); }
-  @media (max-width: 768px) { .kids-strip { padding: 64px 0 48px; } }
+  .kids-scroll-btn { position: absolute; top: 110px; transform: translateY(-50%); width: 44px; height: 44px; border-radius: 50%; background: var(--c-white); border: 1px solid var(--c-border); color: var(--c-dark); display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.08); transition: all 0.25s ease; z-index: 2; opacity: 0; pointer-events: none; }
+  .kids-scroll-btn.is-active { opacity: 1; pointer-events: auto; }
+  .kids-scroll-btn:hover { background: var(--c-dark); color: var(--c-white); box-shadow: 0 4px 16px rgba(0,0,0,0.15); }
+  .kids-scroll-btn--prev { left: 8px; }
+  .kids-scroll-btn--next { right: 8px; }
+  @media (max-width: 768px) { .kids-strip { padding: 64px 0 48px; } .kids-scroll-btn { display: none; } }
+  @media (hover: none) and (pointer: coarse) { .kids-scroll-btn { display: none; } }
 
   /* ── PROCESS ── */
-  .process { padding: 120px 0; background: var(--c-warm-gray); contain: layout style; }
-  .process-inner { max-width: 720px; margin: 0 auto; padding: 0 var(--page-padding); }
-  .process-header { text-align: center; margin-bottom: 64px; }
-  .process-header .section-label { justify-content: center; }
-  .process-header h2 em { font-style: italic; }
-  .timeline { position: relative; padding-left: 48px; list-style: none; }
-  .timeline::before { content: ''; position: absolute; top: 0; bottom: 0; left: 19px; width: 2px; background: linear-gradient(to bottom, var(--c-yellow), rgba(45,46,51,0.08)); }
-  .timeline-step { position: relative; padding-bottom: 48px; }
-  .timeline-step:last-child { padding-bottom: 0; }
-  .timeline-marker { position: absolute; left: -48px; top: 0; width: 40px; height: 40px; border-radius: 50%; background: var(--c-yellow); display: flex; align-items: center; justify-content: center; font-family: var(--font-display); font-size: 16px; font-weight: 700; color: var(--c-dark); box-shadow: 0 4px 12px var(--c-yellow-glow); }
-  .timeline-body h3 { font-size: 20px; margin-bottom: 6px; }
-  .timeline-body p { font-size: 16px; line-height: 1.7; color: var(--c-text-muted); }
-  @media (max-width: 768px) { .process { padding: 80px 0; } }
+  .process { padding: 120px 0; background: var(--c-dark-deep); contain: layout style; }
+  .process-inner { max-width: var(--max-width-wide); margin: 0 auto; padding: 0 var(--page-padding); }
+  .process-header { text-align: center; margin-bottom: 80px; }
+  .process-header .section-label { justify-content: center; color: var(--c-yellow); }
+  .process-header h2 { color: #fff; }
+  .process-header h2 em { font-style: italic; color: var(--c-yellow); }
+
+  /* Two-column split */
+  .process-split { display: grid; grid-template-columns: 1fr 1.15fr; gap: 64px; align-items: start; }
+
+  /* Photo column */
+  .process-photo { border-radius: 24px; overflow: hidden; position: sticky; top: 100px; }
+  .process-photo img { width: 100%; height: auto; display: block; object-fit: cover; aspect-ratio: 3 / 4; }
+
+  /* Steps column */
+  .process-content { padding-top: 8px; }
+  .process-timeline { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0; }
+
+  /* Each step */
+  .process-step { padding: 32px 0; border-bottom: 1px solid rgba(255,255,255,0.06); }
+  .process-step:first-child { padding-top: 0; }
+  .process-step:last-child { border-bottom: none; }
+  .process-num { display: inline-block; font-family: var(--font-display); font-size: 13px; font-weight: 700; letter-spacing: 0.1em; color: var(--c-dark); background: var(--c-yellow); padding: 4px 12px; border-radius: 6px; margin-bottom: 16px; }
+  .process-step h3 { font-size: 22px; color: #fff; margin-bottom: 8px; line-height: 1.3; }
+  .process-step p { font-size: 15px; line-height: 1.75; color: rgba(255,255,255,0.5); margin: 0; }
+
+  /* Highlight step (The Big Reveal) */
+  .process-step--highlight { background: rgba(255,218,36,0.04); margin: 0 -24px; padding: 32px 24px; border-radius: 16px; border-bottom: none; }
+  .process-badge { display: inline-block; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--c-yellow); margin-bottom: 10px; }
+
+  /* CTA */
+  .process-cta { margin-top: 40px; }
+
+  @media (max-width: 768px) {
+    .process { padding: 80px 0; }
+    .process-header { margin-bottom: 48px; }
+    .process-split { grid-template-columns: 1fr; gap: 40px; }
+    .process-photo { position: static; border-radius: 20px; }
+    .process-photo img { aspect-ratio: 16 / 10; }
+    .process-cta { text-align: center; }
+  }
 
   /* ── ROOMS ── */
   .rooms { padding: 120px 0; background: var(--c-cream); contain: layout style; }
@@ -674,11 +734,11 @@ const jsonLd = getWebSiteSchema();
   /* ── MARQUEE ── */
   .marquee { padding: 48px 0; background: #fff; border-top: 1px solid rgba(45,46,51,0.04); overflow: hidden; contain: layout style; }
   .marquee-label { text-align: center; margin-bottom: 28px; font-size: 12px; font-weight: 700; color: var(--c-text-light); text-transform: uppercase; letter-spacing: 0.14em; }
-  .marquee-track { display: flex; gap: 24px; animation: marquee 50s linear infinite; width: max-content; will-change: transform; }
+  .marquee-track { display: flex; gap: 24px; animation: marquee 35s linear infinite; width: max-content; }
   .marquee-logo { min-width: 160px; height: 56px; border-radius: 12px; background: var(--c-warm-gray); display: flex; align-items: center; justify-content: center; padding: 8px 20px; flex-shrink: 0; }
   .marquee-logo img { max-height: 40px; max-width: 130px; object-fit: contain; filter: grayscale(100%) opacity(0.5); transition: filter 0.3s ease; }
   .marquee-logo:hover img { filter: grayscale(0%) opacity(1); }
-  @keyframes marquee { 0% { transform: translateX(0); } 100% { transform: translateX(-33.333%); } }
+  @keyframes marquee { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
 
   /* ── FINALE ── */
   .finale { padding: 120px 0; background: var(--c-yellow); text-align: center; position: relative; overflow: hidden; contain: layout style; }
@@ -760,6 +820,29 @@ const jsonLd = getWebSiteSchema();
 
   document.addEventListener('astro:page-load', initHomePage);
   document.addEventListener('astro:before-swap', cleanup);
+</script>
+
+<!-- Kids strip scroll arrows (desktop only) -->
+<script>
+  function initKidsScroll() {
+    const scroll = document.querySelector('.kids-scroll') as HTMLElement | null;
+    const prev = document.querySelector('.kids-scroll-btn--prev') as HTMLElement | null;
+    const next = document.querySelector('.kids-scroll-btn--next') as HTMLElement | null;
+    if (!scroll || !prev || !next) return;
+
+    function updateArrows() {
+      const atStart = scroll!.scrollLeft <= 8;
+      const atEnd = scroll!.scrollLeft + scroll!.clientWidth >= scroll!.scrollWidth - 8;
+      prev!.classList.toggle('is-active', !atStart);
+      next!.classList.toggle('is-active', !atEnd);
+    }
+
+    prev.addEventListener('click', () => { scroll.scrollBy({ left: -488, behavior: 'smooth' }); });
+    next.addEventListener('click', () => { scroll.scrollBy({ left: 488, behavior: 'smooth' }); });
+    scroll.addEventListener('scroll', updateArrows, { passive: true });
+    updateArrows();
+  }
+  document.addEventListener('astro:page-load', initKidsScroll);
 </script>
 
 <!-- Shared element morph: kid thumbnail → profile hero -->

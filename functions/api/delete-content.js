@@ -1,72 +1,82 @@
 /**
  * POST /api/delete-content
- * Deletes a file from the GitHub repo.
+ * Deletes content from D1.
  * Expects JSON body:
  *   {
  *     path: "src/content/kids/amari.json",
- *     sha: "abc123...",
- *     message: "Remove amari"
+ *     sha: "...",              // ignored — kept for admin panel compatibility
+ *     message: "Remove amari"  // kept for compatibility
  *   }
  *
- * Environment variables needed:
- *   GITHUB_TOKEN
+ * Env bindings: DB (D1)
+ * Env vars: CF_PAGES_DEPLOY_HOOK (optional — triggers rebuild after delete)
  */
 
-const REPO = 'pranney82/soard';
+const COLLECTION_MAP = {
+  'src/content/kids/': 'kids',
+  'src/content/partners/': 'partners',
+  'src/content/press/': 'press',
+  'src/content/team/': 'team',
+  'src/content/events/': 'events',
+  'src/content/community/': 'community',
+  'src/content/articles/': 'articles',
+};
 
-const ALLOWED_WRITE_PREFIXES = ['src/content/', 'public/financials/'];
+const SITE_PREFIX = 'src/content/site/';
 
-function isPathAllowed(path) {
-  if (!path || path.includes('..') || path.includes('//') || path.startsWith('/')) return false;
-  return ALLOWED_WRITE_PREFIXES.some(prefix => path.startsWith(prefix));
+function parsePath(path) {
+  if (path.startsWith(SITE_PREFIX) && path.endsWith('.json')) {
+    return { type: 'site', key: path.slice(SITE_PREFIX.length, -5) };
+  }
+  for (const [prefix, table] of Object.entries(COLLECTION_MAP)) {
+    if (path.startsWith(prefix) && path.endsWith('.json')) {
+      return { type: 'collection', table, slug: path.slice(prefix.length, -5) };
+    }
+  }
+  return null;
 }
 
 export async function onRequestPost(context) {
   try {
-    const { GITHUB_TOKEN } = context.env;
-    const { path, sha, message } = await context.request.json();
+    const { DB } = context.env;
+    const { path, message } = await context.request.json();
 
-    if (!path || !sha || !message) {
+    if (!path || !message) {
       return Response.json(
-        { success: false, error: 'Missing required fields: path, sha, message' },
+        { success: false, error: 'Missing required fields: path, message' },
         { status: 400 }
       );
     }
 
-    if (!isPathAllowed(path)) {
+    const parsed = parsePath(path);
+    if (!parsed) {
       return Response.json(
         { success: false, error: 'Path not allowed' },
         { status: 403 }
       );
     }
 
-    const response = await fetch(
-      `https://api.github.com/repos/${REPO}/contents/${path}`,
-      {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${GITHUB_TOKEN}`,
-          'Accept': 'application/vnd.github.v3+json',
-          'User-Agent': 'SOARD-Admin',
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ message, sha }),
-      }
-    );
+    if (parsed.type === 'site') {
+      await DB.prepare('DELETE FROM site_config WHERE key = ?')
+        .bind(parsed.key).run();
+    } else {
+      await DB.prepare(`DELETE FROM ${parsed.table} WHERE slug = ?`)
+        .bind(parsed.slug).run();
+    }
 
-    if (!response.ok) {
-      const result = await response.json();
-      return Response.json(
-        { success: false, error: result.message || `GitHub error: ${response.status}` },
-        { status: response.status }
+    // Trigger a Pages rebuild
+    const { CF_PAGES_DEPLOY_HOOK } = context.env;
+    if (CF_PAGES_DEPLOY_HOOK) {
+      context.waitUntil(
+        fetch(CF_PAGES_DEPLOY_HOOK, { method: 'POST' }).catch(() => {})
       );
     }
 
-    return Response.json({ success: true }, {});
+    return Response.json({ success: true });
   } catch (err) {
     console.error("[delete-content]", err);
     return Response.json(
-      { success: false, error: "An unexpected error occurred" },
+      { success: false, error: err.message || "An unexpected error occurred" },
       { status: 500 }
     );
   }

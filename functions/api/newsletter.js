@@ -23,7 +23,16 @@ const cors = {
 
 export async function onRequestPost(context) {
   try {
-    const { email } = await context.request.json();
+    const { email, hp } = await context.request.json();
+
+    // Honeypot: if the hidden field has a value, it's a bot
+    if (hp) {
+      // Silently accept to avoid tipping off the bot
+      return new Response(
+        JSON.stringify({ ok: true }),
+        { status: 200, headers: cors }
+      );
+    }
 
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return new Response(

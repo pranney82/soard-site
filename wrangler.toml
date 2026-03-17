@@ -8,6 +8,18 @@ directory = "./dist"
 [ai]
 binding = "AI"
 
+# D1 database — create with: wrangler d1 create soard-db
+# Then paste the database_id below
+[[d1_databases]]
+binding = "DB"
+database_name = "soard-db"
+database_id = "71ac037d-2682-4336-9cf7-234e97c5b462"
+
+# R2 bucket — create with: wrangler r2 bucket create soard-files
+[[r2_buckets]]
+binding = "FILES"
+bucket_name = "soard-files"
+
 # Shopify Storefront API — set these in the CF Pages dashboard (Settings > Environment Variables)
 # SHOPIFY_STORE_DOMAIN = "your-store.myshopify.com"
 # SHOPIFY_STOREFRONT_TOKEN = "your-storefront-access-token"

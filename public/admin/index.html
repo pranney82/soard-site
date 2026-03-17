@@ -158,6 +158,7 @@
       .hamburger { display: flex; top: max(1rem, env(safe-area-inset-top, 0px)); left: max(1rem, env(safe-area-inset-left, 0px)); }
       .sidebar { transform: translateX(-100%); }
       .sidebar.open { transform: translateX(0); overscroll-behavior: contain; }
+      .sidebar-logo { padding-left: 4rem; }
       .overlay.open { display: block; }
       .main { margin-left: 0; padding: 4rem 1rem 1rem; padding-top: calc(4rem + env(safe-area-inset-top, 0px)); padding-bottom: env(safe-area-inset-bottom, 0px); }
       .card { padding: 1rem; }
@@ -226,6 +227,8 @@
       }
       /* Hide non-essential columns on mobile */
       .td-hide-mobile { display: none; }
+      /* Show subtitle under name on mobile */
+      .team-title-sub { display: block !important; font-size: 0.8rem; margin-top: 0.1rem; }
       /* Title cell: full width so tag/date/actions flow on next line */
       .table-wrap td:has(> strong) { flex: 1 1 100%; }
       /* Touch targets for table action buttons */
@@ -628,6 +631,21 @@
       color: #2D2E33;
       margin-bottom: 0.35rem;
     }
+    /* Photo freshness badges */
+    .freshness-badge {
+      display: inline-block; font-size: 0.7rem; font-weight: 600; padding: 0.15rem 0.5rem;
+      border-radius: 99px; margin-left: 0.5rem; vertical-align: middle; letter-spacing: 0.01em;
+    }
+    .freshness-fresh { background: #C6F6D5; color: #22543D; }
+    .freshness-aging { background: #FEFCBF; color: #744210; }
+    .freshness-stale { background: #FED7D7; color: #9B2C2C; }
+    .freshness-unknown { background: #E2E8F0; color: #4A5568; }
+    .freshness-alert {
+      display: flex; align-items: center; gap: 0.75rem; padding: 0.85rem 1rem;
+      border-radius: var(--radius-sm); margin-bottom: 1rem; font-size: 0.88rem;
+    }
+    .freshness-alert--warn { background: #FFFBEB; border: 1px solid #F6E05E; color: #744210; }
+    .freshness-alert--danger { background: #FFF5F5; border: 1px solid #FEB2B2; color: #9B2C2C; }
     .form-hint {
       font-size: 0.78rem;
       color: #9B9CA0;
@@ -3315,9 +3333,9 @@
                 actionLabel=${search ? null : 'Add Partner'} onAction=${onAdd} /></td></tr>` : null}
               ${filtered.map(p => html`<tr key=${p.slug}>
                 <td>${p.logo ? html`<img class="td-thumb" src="${p.logo}" alt="" style="object-fit: contain; background: #fff;" />` : '—'}</td>
-                <td><strong>${p.name}</strong></td>
-                <td><span class="badge badge-accent">${p.tier}</span></td>
-                <td>${p.featured ? icons.check : '—'}</td>
+                <td><strong>${p.name}</strong><span class="team-title-sub text-sm" style="display: none; color: var(--color-text-secondary);">${p.tier}</span></td>
+                <td class="td-hide-mobile"><span class="badge badge-accent">${p.tier}</span></td>
+                <td class="td-hide-mobile">${p.featured ? icons.check : '—'}</td>
                 <td style="white-space: nowrap;">
                   <button class="btn btn-ghost btn-sm" onClick=${() => onEdit(p.slug)}>Edit</button>
                   <button class="btn btn-ghost btn-sm" style="color: #E53E3E;" onClick=${(e) => { e.stopPropagation(); onDelete(p); }}>Delete</button>
@@ -3591,17 +3609,29 @@
 
       const handleUpload = async (fileList) => {
         setUploading(true);
+        let lastUploaded = null;
         for (const file of fileList) {
           const safeName = file.name.replace(/[^a-z0-9._-]/gi, '-');
           const path = 'public/financials/' + safeName;
           try {
             const res = await api.uploadFile(file, path, 'Upload financial doc: ' + file.name);
-            if (res.success) addToast('Uploaded ' + file.name, 'success');
+            if (res.success) {
+              addToast('Uploaded ' + file.name, 'success');
+              lastUploaded = { name: safeName, downloadUrl: res.downloadUrl || ('https://files.sunshineonaranneyday.com/financials/' + safeName) };
+            }
             else addToast('Failed: ' + res.error, 'error');
           } catch (err) { addToast('Error: ' + err.message, 'error'); }
         }
         setUploading(false);
-        loadAll();
+        await loadAll();
+        // Auto-open the add document form with the uploaded file's URL pre-filled
+        if (lastUploaded && fileList.length === 1) {
+          const cleanName = lastUploaded.name.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ');
+          const yearMatch = lastUploaded.name.match(/\d{4}/);
+          setNewDoc({ title: cleanName, year: parseInt(yearMatch?.[0]) || new Date().getFullYear(), type: '990', url: lastUploaded.downloadUrl, source: 'local' });
+          setTab('documents');
+          setShowAddDoc(true);
+        }
       };
 
       const addDocument = () => {
@@ -3753,9 +3783,9 @@
                 </div>
                 <div class="form-group">
                   <label>URL / Path</label>
-                  <input type="text" placeholder="/financials/filename.pdf or full URL" value=${newDoc.url}
+                  <input type="text" placeholder="Auto-filled from upload, or paste a URL" value=${newDoc.url}
                     onChange=${e => setNewDoc({...newDoc, url: e.target.value, source: e.target.value.startsWith('http') ? 'external' : 'local'})} />
-                  <small class="text-sm text-muted">Use /financials/filename.pdf for uploaded files, or a full URL for external links.</small>
+                  <small class="text-sm text-muted">This is auto-filled when you upload a file. You can also paste an external URL.</small>
                 </div>
                 <div style="display:flex;gap:0.75rem;margin-top:1.25rem;">
                   <button class="btn btn-primary btn-sm" onClick=${addDocument} disabled=${saving}>
@@ -3844,7 +3874,7 @@
         <!-- Upload Tab -->
         ${tab === 'upload' ? html`
           <div class="card">
-            <p class="text-sm text-muted mb-1">Upload PDFs to <code>/financials/</code>. After uploading, add a document entry in the 990s & Audits tab to make it appear on the page.</p>
+            <p class="text-sm text-muted mb-1">Upload a PDF and you'll be prompted to add it to the site. Or use the "Create Entry" button on any previously uploaded file.</p>
             <${DropZone} onFiles=${handleUpload} accept=".pdf,.doc,.docx"
               label="PDF files — 990s, annual reports, audits" />
             ${uploading ? html`<div class="mt-2 text-sm"><span class="spinner" /> Uploading...</div>` : null}
@@ -3863,8 +3893,11 @@
                   ${files.map(f => html`<tr key=${f.name}>
                     <td>${icons.fileText} <strong>${f.name}</strong></td>
                     <td class="text-sm text-muted">${(f.size / 1024).toFixed(0)} KB</td>
-                    <td class="text-sm"><code>/financials/${f.name}</code></td>
-                    <td><a href="/financials/${f.name}" target="_blank" class="btn btn-ghost btn-sm">View ↗</a></td>
+                    <td class="text-sm" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><code>${f.name}</code></td>
+                    <td style="display:flex;gap:0.25rem;">
+                      <a href=${'https://files.sunshineonaranneyday.com/financials/' + f.name} target="_blank" class="btn btn-ghost btn-sm">View ↗</a>
+                      <button class="btn btn-primary btn-sm" onClick=${() => { setNewDoc({title: f.name.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' '), year: parseInt(f.name.match(/\d{4}/)?.[0]) || new Date().getFullYear(), type: '990', url: 'https://files.sunshineonaranneyday.com/financials/' + f.name, source: 'local'}); setTab('documents'); setShowAddDoc(true); }}>+ Create Entry</button>
+                    </td>
                   </tr>`)}
                 </tbody>
               </table></div>
@@ -3902,10 +3935,10 @@
               <tbody>
                 ${members.map(t => html`<tr key=${t.slug}>
                   <td>${t.photo ? html`<img class="td-thumb" src="${t.photo}" alt="" style="border-radius: 50%;" />` : html`<div class="td-thumb" style="border-radius: 50%; background: #E5E4E0; display: flex; align-items: center; justify-content: center; font-size: 1.2rem;">${icons.user}</div>`}</td>
-                  <td><strong>${t.name}</strong></td>
-                  <td class="text-sm">${t.title || '—'}</td>
-                  <td class="text-sm">${t.organization || '—'}</td>
-                  <td>${t.order || 0}</td>
+                  <td><strong>${t.name}</strong><span class="team-title-sub text-sm" style="display: none; color: var(--color-text-secondary);">${t.title || ''}</span></td>
+                  <td class="text-sm td-hide-mobile">${t.title || '—'}</td>
+                  <td class="text-sm td-hide-mobile">${t.organization || '—'}</td>
+                  <td class="td-hide-mobile">${t.order || 0}</td>
                   <td style="white-space: nowrap;">
                     <button class="btn btn-ghost btn-sm" onClick=${() => onEdit(t.slug)}>Edit</button>
                     <button class="btn btn-ghost btn-sm" style="color: #E53E3E;" onClick=${(e) => { e.stopPropagation(); onDelete(t); }}>Delete</button>
@@ -4179,7 +4212,7 @@
                 ${filtered.map(a => html`<tr key=${a.slug}>
                   <td><strong>${a.title}</strong><br/><span class="text-sm text-muted">/resources/${a.slug}/</span></td>
                   <td><span style="background: #FFD500; color: #2D2E33; padding: 0.15rem 0.5rem; border-radius: 100px; font-size: 0.75rem; font-weight: 600;">${a.tag || 'Guide'}</span></td>
-                  <td class="text-sm">${a.datePublished || '—'}</td>
+                  <td class="text-sm td-hide-mobile">${a.datePublished || '—'}</td>
                   <td class="td-hide-mobile">${(a.faqs || []).length}</td>
                   <td class="td-hide-mobile">${a.order || 0}</td>
                   <td style="white-space: nowrap;">
@@ -4436,12 +4469,12 @@
                 description=${search ? 'Try a different search term.' : 'Create your first event.'}
                 actionLabel=${search ? null : 'Add Event'} onAction=${onAdd} /></td></tr>` : null}
               ${filtered.map(e => html`<tr key=${e.slug}>
-                <td><strong>${e.title}</strong></td>
-                <td class="text-sm">${e.date || '—'}</td>
-                <td class="text-sm">${(e.location || '—').slice(0, 30)}${(e.location || '').length > 30 ? '…' : ''}</td>
-                <td><span class="badge badge-accent">${EVENT_CAT_LABELS[e.category] || e.category}</span></td>
+                <td><strong>${e.title}</strong><span class="team-title-sub text-sm" style="display: none; color: var(--color-text-secondary);">${e.date || ''}${e.location ? ` · ${e.location.slice(0, 30)}` : ''}</span></td>
+                <td class="text-sm td-hide-mobile">${e.date || '—'}</td>
+                <td class="text-sm td-hide-mobile">${(e.location || '—').slice(0, 30)}${(e.location || '').length > 30 ? '…' : ''}</td>
+                <td class="td-hide-mobile"><span class="badge badge-accent">${EVENT_CAT_LABELS[e.category] || e.category}</span></td>
                 <td><span class="badge ${e.status === 'upcoming' ? 'badge-green' : e.status === 'cancelled' ? 'badge-red' : 'badge-gray'}">${e.status}</span></td>
-                <td>${e.featured ? icons.star : '—'}</td>
+                <td class="td-hide-mobile">${e.featured ? icons.star : '—'}</td>
                 <td style="white-space: nowrap;">
                   <button class="btn btn-ghost btn-sm" onClick=${() => onEdit(e.slug)}>Edit</button>
                   <button class="btn btn-ghost btn-sm" style="color: #E53E3E;" onClick=${(ev) => { ev.stopPropagation(); onDelete(e); }}>Delete</button>
@@ -4906,11 +4939,11 @@
                   ${p.image ? html`<img src=${p.image + '/nav'}
                     alt="" style="width: 56px; height: 36px; object-fit: cover; border-radius: 4px; display: block;" />` : html`<div style="width: 56px; height: 36px; background: #eee; border-radius: 4px;" />`}
                 </td>
-                <td><strong>${p.title.length > 55 ? p.title.slice(0, 55) + '…' : p.title}</strong></td>
-                <td class="text-sm">${p.outlet}</td>
-                <td class="text-sm">${p.date || '—'}</td>
-                <td><span class="badge badge-accent">${PRESS_CAT_LABELS[p.category] || p.category}</span></td>
-                <td>${p.featured ? icons.star : '—'}</td>
+                <td><strong>${p.title.length > 55 ? p.title.slice(0, 55) + '…' : p.title}</strong><span class="team-title-sub text-sm" style="display: none; color: var(--color-text-secondary);">${p.outlet || ''}${p.date ? ` · ${p.date}` : ''}</span></td>
+                <td class="text-sm td-hide-mobile">${p.outlet}</td>
+                <td class="text-sm td-hide-mobile">${p.date || '—'}</td>
+                <td class="td-hide-mobile"><span class="badge badge-accent">${PRESS_CAT_LABELS[p.category] || p.category}</span></td>
+                <td class="td-hide-mobile">${p.featured ? icons.star : '—'}</td>
                 <td style="white-space: nowrap;">
                   <button class="btn btn-ghost btn-sm" onClick=${() => onEdit(p.slug)}>Edit</button>
                   <button class="btn btn-ghost btn-sm" style="color: #E53E3E;" onClick=${(ev) => { ev.stopPropagation(); onDelete({ ...p, name: p.title }); }}>Delete</button>
@@ -5306,10 +5339,11 @@
                       ${m.title.length > 70 ? m.title.slice(0, 70) + '…' : m.title}
                     </a>
                     ${m.resolvedUrl ? html`<br /><span class="text-sm text-muted" style="word-break: break-all;">${(() => { try { const u = new URL(m.resolvedUrl); return u.hostname + u.pathname; } catch { return ''; } })()}</span>` : m.description ? html`<br /><span class="text-sm text-muted">${m.description.length > 100 ? m.description.slice(0, 100) + '…' : m.description}</span>` : null}
+                    <span class="team-title-sub text-sm" style="display: none; color: var(--color-text-secondary);">${m.source || ''}${m.date ? ` · ${m.date}` : ''}</span>
                   </td>
-                  <td class="text-sm">${m.source || '—'}</td>
-                  <td class="text-sm" style="white-space: nowrap;">${m.date || '—'}</td>
-                  <td><span class="badge" style="font-size: 0.7rem;">${m.query.replace(/"/g, '')}</span></td>
+                  <td class="text-sm td-hide-mobile">${m.source || '—'}</td>
+                  <td class="text-sm td-hide-mobile" style="white-space: nowrap;">${m.date || '—'}</td>
+                  <td class="td-hide-mobile"><span class="badge" style="font-size: 0.7rem;">${m.query.replace(/"/g, '')}</span></td>
                   <td style="white-space: nowrap;">
                     <button class="btn btn-primary btn-sm" onClick=${() => handleApprove(m)}>Approve</button>
                     <button class="btn btn-ghost btn-sm" style="color: #999;" onClick=${() => dismiss(m)}>Dismiss</button>
@@ -5371,12 +5405,13 @@
                     <span style="width: 12px; height: 12px; border-radius: 50%; background: ${p.color}; flex-shrink: 0;" />
                     <strong>${p.name}</strong>
                   </div>
+                  <span class="team-title-sub text-sm" style="display: none; color: var(--color-text-secondary);">${p.year}${p.impact ? ` · ${p.impact} ${p.impactLabel}` : ''}</span>
                 </td>
-                <td class="text-sm">${p.year}</td>
-                <td class="text-sm">${p.impact} ${p.impactLabel}</td>
-                <td>${p.badge ? html`<span class="badge badge-yellow">${p.badge}</span>` : '—'}</td>
-                <td>${(p.photos || []).length || (p.imageId ? 1 : 0)}</td>
-                <td class="text-sm">${p.order || 0}</td>
+                <td class="text-sm td-hide-mobile">${p.year}</td>
+                <td class="text-sm td-hide-mobile">${p.impact} ${p.impactLabel}</td>
+                <td class="td-hide-mobile">${p.badge ? html`<span class="badge badge-yellow">${p.badge}</span>` : '—'}</td>
+                <td class="td-hide-mobile">${(p.photos || []).length || (p.imageId ? 1 : 0)}</td>
+                <td class="text-sm td-hide-mobile">${p.order || 0}</td>
                 <td style="white-space: nowrap;">
                   <button class="btn btn-ghost btn-sm" onClick=${() => onEdit(p.slug)}>Edit</button>
                   <button class="btn btn-ghost btn-sm" style="color: #E53E3E;" onClick=${(ev) => { ev.stopPropagation(); onDelete(p); }}>Delete</button>
@@ -6295,6 +6330,31 @@
       `;
     }
 
+    /* ─── Photo Freshness helpers ──────── */
+    const PHOTO_FRESH_DAYS = 60;   // green
+    const PHOTO_STALE_DAYS = 120;  // yellow → red after this
+
+    function daysSince(iso) {
+      if (!iso) return Infinity;
+      return Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
+    }
+    function freshnessBadge(iso) {
+      const d = daysSince(iso);
+      if (d === Infinity) return html`<span class="freshness-badge freshness-unknown" title="No date recorded">unknown</span>`;
+      const label = d === 0 ? 'today' : d === 1 ? '1 day' : `${d} days`;
+      if (d <= PHOTO_FRESH_DAYS) return html`<span class="freshness-badge freshness-fresh" title="Photo set ${label} ago">${label}</span>`;
+      if (d <= PHOTO_STALE_DAYS) return html`<span class="freshness-badge freshness-aging" title="Consider refreshing — ${label} ago">${label}</span>`;
+      return html`<span class="freshness-badge freshness-stale" title="Photo is stale — ${label} ago">${label} ⚠</span>`;
+    }
+    function photoFreshnessSummary(timestamps) {
+      if (!timestamps || !Object.keys(timestamps).length) return null;
+      const entries = Object.entries(timestamps);
+      const stale = entries.filter(([, v]) => daysSince(v) > PHOTO_STALE_DAYS);
+      const aging = entries.filter(([, v]) => { const d = daysSince(v); return d > PHOTO_FRESH_DAYS && d <= PHOTO_STALE_DAYS; });
+      if (!stale.length && !aging.length) return null;
+      return { stale: stale.length, aging: aging.length };
+    }
+
     function SiteSettings({ addToast, kids: allKids = [], partners: allPartners = [] }) {
       const [loading, setLoading] = useState(true);
       const [saving, setSaving] = useState(false);
@@ -6321,7 +6381,9 @@
         setData(d => {
           const arr = [...(d.kidShowcase || [])];
           arr[index] = { slug, cfId: kid ? extractCfId(kid.heroImage) : '' };
-          return { ...d, kidShowcase: arr };
+          const ts = { ...(d.photoTimestamps || {}) };
+          ts['kidShowcase'] = new Date().toISOString();
+          return { ...d, kidShowcase: arr, photoTimestamps: ts };
         });
       };
       const handlePartnerSelect = (index, slug) => {
@@ -6352,6 +6414,19 @@
         })();
       }, []);
 
+      // Photo fields that should be freshness-tracked
+      const TRACKED_PHOTO_FIELDS = ['heroKidSlug', 'featuredKidSlug',
+        'sectionPhotos.missionMain', 'sectionPhotos.missionAccent', 'sectionPhotos.process',
+        'sectionPhotos.roomBedroom', 'sectionPhotos.roomBath', 'sectionPhotos.roomTherapy',
+        'donatePhotos.hero', 'donatePhotos.story'];
+
+      const stampPhoto = (copy, path) => {
+        if (TRACKED_PHOTO_FIELDS.includes(path)) {
+          if (!copy.photoTimestamps) copy.photoTimestamps = {};
+          copy.photoTimestamps[path] = new Date().toISOString();
+        }
+      };
+
       const updateField = (path, value) => {
         setData(d => {
           const copy = JSON.parse(JSON.stringify(d));
@@ -6362,6 +6437,7 @@
             obj = obj[keys[i]];
           }
           obj[keys[keys.length - 1]] = value;
+          stampPhoto(copy, path);
           return copy;
         });
       };
@@ -6412,9 +6488,12 @@
       if (loading) return html`<${EditorSkeleton} />`;
 
       const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
+      const pts = data.photoTimestamps || {};
+      const fSummary = photoFreshnessSummary(pts);
+
       const renderPhotoField = (label, fieldPath, currentId) => html`
         <div class="form-group">
-          <label class="form-label">${label}</label>
+          <label class="form-label">${label} ${freshnessBadge(pts[fieldPath])}</label>
           ${currentId ? html`
             <div style="margin-bottom: 0.5rem; border-radius: 8px; overflow: hidden; max-height: 100px;">
               <img src="${CF}/${currentId}/w=300" alt="Preview" style="width: 100%; height: 100px; object-fit: cover; display: block;" />
@@ -6439,6 +6518,17 @@
             ${saving ? html`<span class="spinner" />` : null} ${saving ? 'Saving...' : 'Save & Publish'}
           </button>
         </div>
+        ${fSummary?.stale ? html`
+          <div class="freshness-alert freshness-alert--danger">
+            <span style="font-size: 1.3rem;">⚠</span>
+            <span><strong>${fSummary.stale} photo${fSummary.stale > 1 ? 's' : ''}</strong> ha${fSummary.stale > 1 ? 've' : 's'} been the same for over ${PHOTO_STALE_DAYS} days. Consider refreshing to keep the site looking current.</span>
+          </div>
+        ` : fSummary?.aging ? html`
+          <div class="freshness-alert freshness-alert--warn">
+            <span style="font-size: 1.3rem;">🕐</span>
+            <span><strong>${fSummary.aging} photo${fSummary.aging > 1 ? 's' : ''}</strong> ha${fSummary.aging > 1 ? 've' : 's'} been the same for over ${PHOTO_FRESH_DAYS} days. Consider updating soon.</span>
+          </div>
+        ` : null}
         <div class="card">
           <h3 style="margin-bottom: 1rem;">Hero Text & CTAs</h3>
           <p class="text-sm text-muted mb-1">The text content displayed on the homepage hero section.</p>
@@ -6496,7 +6586,7 @@
         </div>
 
         <div class="card">
-          <h3 style="margin-bottom: 1rem;">Hero Photo Kid</h3>
+          <h3 style="margin-bottom: 1rem;">Hero Photo Kid ${freshnessBadge(pts['heroKidSlug'])}</h3>
           <p class="text-sm text-muted mb-1">The kid shown in the hero photo at the top of the homepage. Photo auto-pulls from their profile.</p>
           <div class="form-group">
             <label class="form-label">Kid</label>
@@ -6509,7 +6599,7 @@
         </div>
 
         <div class="card">
-          <h3 style="margin-bottom: 1rem;">Featured Kid Story</h3>
+          <h3 style="margin-bottom: 1rem;">Featured Kid Story ${freshnessBadge(pts['featuredKidSlug'])}</h3>
           <p class="text-sm text-muted mb-1">The kid highlighted in the "Featured Story" section further down the homepage. Can be different from the hero photo kid.</p>
           <div class="form-group">
             <label class="form-label">Kid Slug</label>
@@ -6522,7 +6612,7 @@
         </div>
 
         <div class="card">
-          <h3 style="margin-bottom: 1rem;">Kid Showcase Strip</h3>
+          <h3 style="margin-bottom: 1rem;">Kid Showcase Strip ${freshnessBadge(pts['kidShowcase'])}</h3>
           <p class="text-sm text-muted mb-1">The row of featured kids on the homepage. Names and details are pulled from kid records automatically.</p>
           ${(data.kidShowcase || []).map((kid, i) => html`
             <div class="array-row-item" style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.5rem; padding: 0.5rem; background: rgba(0,0,0,0.02); border-radius: 8px;">
@@ -6556,10 +6646,40 @@
             ${renderPhotoField('Mission — Main Photo', 'sectionPhotos.missionMain', data.sectionPhotos?.missionMain)}
             ${renderPhotoField('Mission — Accent Photo', 'sectionPhotos.missionAccent', data.sectionPhotos?.missionAccent)}
           </div>
+          <div class="form-row">
+            ${renderPhotoField('Process Section Photo', 'sectionPhotos.process', data.sectionPhotos?.process)}
+          </div>
           <div class="form-row" style="grid-template-columns: 1fr 1fr 1fr;">
             ${renderPhotoField('Room — Bedroom', 'sectionPhotos.roomBedroom', data.sectionPhotos?.roomBedroom)}
             ${renderPhotoField('Room — Bathroom', 'sectionPhotos.roomBath', data.sectionPhotos?.roomBath)}
             ${renderPhotoField('Room — Therapy', 'sectionPhotos.roomTherapy', data.sectionPhotos?.roomTherapy)}
+          </div>
+        </div>
+
+        <div class="card">
+          <h3 style="margin-bottom: 1rem;">Donate Page Photos</h3>
+          <p class="text-sm text-muted mb-1">Photos used on the Donate page. Update these regularly to keep the page fresh.</p>
+          <div class="form-row">
+            ${renderPhotoField('Hero Photo', 'donatePhotos.hero', data.donatePhotos?.hero)}
+            ${renderPhotoField('Story Section Photo', 'donatePhotos.story', data.donatePhotos?.story)}
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Hero Kid Name</label>
+              <input class="form-input" value=${data.donatePhotos?.heroKidName || ''}
+                placeholder="Oakley" onInput=${e => updateField('donatePhotos.heroKidName', e.target.value)} />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Story Kid Name</label>
+              <input class="form-input" value=${data.donatePhotos?.storyKidName || ''}
+                placeholder="Amari" onInput=${e => updateField('donatePhotos.storyKidName', e.target.value)} />
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Story Kid Slug</label>
+            <input class="form-input" value=${data.donatePhotos?.storyKidSlug || ''}
+              placeholder="amari" onInput=${e => updateField('donatePhotos.storyKidSlug', e.target.value)} />
+            <p class="text-sm text-muted" style="margin-top: 0.25rem;">Used for the "Read Full Story" link on the donate page.</p>
           </div>
         </div>
 

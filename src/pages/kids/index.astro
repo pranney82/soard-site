@@ -86,7 +86,7 @@ const breadcrumbs = [
 ];
 
 // ── First batch rendered server-side; overflow created client-side from JSON ──
-const INITIAL_BATCH = 24;
+const INITIAL_BATCH = 8;
 const totalKidsCount = kids.length;
 
 // JSON manifest for overflow cards (created client-side on demand)
@@ -100,13 +100,16 @@ const overflowKids = kids.slice(INITIAL_BATCH).map(kid => ({
   st: kid.data.status || 'completed',
 }));
 
-// ── LCP preload: first card's hero image ──
+// ── LCP preload: first card's hero image (must match <picture> srcset exactly) ──
 const lcpKid = kids[0];
-const lcpImageUrl = lcpKid?.data.heroImage
-  ? cfUrl(lcpKid.data.heroImage, { w: 220, h: 293, fit: 'cover', gravity: 'face', q: 70 })
+const lcpSrcsetMobile = lcpKid?.data.heroImage
+  ? cfCropSrcset(lcpKid.data.heroImage, [160, 320, 480], 5/4)
+  : null;
+const lcpSrcsetDesktop = lcpKid?.data.heroImage
+  ? cfCropSrcset(lcpKid.data.heroImage, [170, 260, 340, 520], 4/3)
   : null;
 
-// ── Hero face collage: 7 diverse kids across years ──
+// ── Hero face collage: 12 diverse kids across years ──
 const heroFacePool = kids.filter(k => k.data.heroImage?.includes('imagedelivery.net'));
 // Round-robin across years for visual diversity
 const yearGroups: Record<number, typeof heroFacePool> = {};
@@ -117,7 +120,7 @@ heroFacePool.forEach(k => {
 const sortedYears = Object.keys(yearGroups).map(Number).sort((a, b) => b - a);
 const heroFaces: typeof heroFacePool = [];
 let yi = 0;
-while (heroFaces.length < 7 && yi < sortedYears.length * 3) {
+while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
   const bucket = yearGroups[sortedYears[yi % sortedYears.length]];
   const pick = bucket.shift();
   if (pick) heroFaces.push(pick);
@@ -132,9 +135,18 @@ while (heroFaces.length < 7 && yi < sortedYears.length * 3) {
   jsonLd={[itemListSchema, faqSchema]}
   breadcrumbs={breadcrumbs}
 >
-  {/* LCP preload — start fetching the first card image before the browser discovers it */}
-  {lcpImageUrl && (
-    <link slot="head" rel="preload" as="image" href={lcpImageUrl} fetchpriority="high" />
+  {/* LCP preload — must match the <picture> srcset so the browser reuses the preloaded resource */}
+  {lcpSrcsetMobile && (
+    <link slot="head" rel="preload" as="image" fetchpriority="high"
+      media="(max-width: 768px)"
+      imagesrcset={lcpSrcsetMobile}
+      imagesizes="calc(50vw - 31px)" />
+  )}
+  {lcpSrcsetDesktop && (
+    <link slot="head" rel="preload" as="image" fetchpriority="high"
+      media="(min-width: 769px)"
+      imagesrcset={lcpSrcsetDesktop}
+      imagesizes="(min-width: 1400px) 240px, (min-width: 1100px) calc(25vw - 30px), calc(33vw - 27px)" />
   )}
 
   <!-- ══════ HERO — Face Collage + Headline + Stats ══════ -->
@@ -259,7 +271,7 @@ while (heroFaces.length < 7 && yi < sortedYears.length * 3) {
         </div>
 
         <div class="toolbar__status" aria-live="polite" aria-atomic="true">
-          <span class="result-count" id="result-count">
+          <span class="result-count" id="result-count" hidden>
             Showing <strong id="visible-count">{INITIAL_BATCH}</strong> of <span id="total-count">{totalKidsCount}</span> kids
           </span>
           <span class="result-loading" id="result-loading" hidden>
@@ -450,10 +462,10 @@ while (heroFaces.length < 7 && yi < sortedYears.length * 3) {
       Showing {INITIAL_BATCH} of {totalKidsCount} kids. Enable JavaScript to see all profiles, search, and filter.
     </p>
   </noscript>
-</BaseLayout>
 
-<!-- Overflow kids data — rendered client-side on demand to reduce initial DOM size -->
-<script type="application/json" id="kids-overflow">{JSON.stringify(overflowKids)}</script>
+  <!-- Overflow kids data — rendered client-side on demand to reduce initial DOM size -->
+  <script type="application/json" id="kids-overflow" set:html={JSON.stringify(overflowKids)} />
+</BaseLayout>
 
 <!-- ══════ FILTERING + INTERACTIONS ══════ -->
 <script>
@@ -681,6 +693,17 @@ while (heroFaces.length < 7 && yi < sortedYears.length * 3) {
       visibleCountEl.textContent = String(cachedCards.length);
     }
     if (loadMoreBtn) loadMoreBtn.addEventListener('click', handleLoadMore, { signal });
+
+    // ── Auto-load remaining cards when user scrolls near the load-more button ──
+    if (loadMoreWrap) {
+      const autoLoadObserver = new IntersectionObserver((entries) => {
+        if (entries[0].isIntersecting && !allCardsLoaded) {
+          handleLoadMore();
+          autoLoadObserver.disconnect();
+        }
+      }, { rootMargin: '200px' });
+      autoLoadObserver.observe(loadMoreWrap);
+    }
 
     // ── URL state restore ──
     const params = new URLSearchParams(window.location.search);
@@ -1050,10 +1073,12 @@ while (heroFaces.length < 7 && yi < sortedYears.length * 3) {
       if (resultCount) {
         if (query && visibleCount > 0) {
           resultCount.innerHTML = `<strong>${visibleCount}</strong> ${visibleCount === 1 ? 'result' : 'results'} for \u201c${escapeHtml(query)}\u201d`;
+          resultCount.hidden = false;
         } else if (hasFilters && visibleCount > 0) {
           resultCount.innerHTML = `Showing <strong>${visibleCount}</strong> of ${totalText} kids`;
+          resultCount.hidden = false;
         } else if (!hasFilters) {
-          resultCount.innerHTML = `Showing <strong>${visibleCount}</strong> of ${totalText} kids`;
+          resultCount.hidden = true;
         }
       }
       // Sync badge with actual filtered count
@@ -1793,13 +1818,13 @@ while (heroFaces.length < 7 && yi < sortedYears.length * 3) {
   }
 
   /* ── Search Highlight (mark elements are JS-injected, needs :global) ── */
-  .kid-card__diagnosis :global(mark) {
+  :global(.kid-card__diagnosis mark) {
     background: linear-gradient(transparent 20%, rgba(255, 218, 36, 0.5) 20%);
     color: inherit;
     border-radius: 2px;
     padding: 0 1px;
   }
-  .kid-card__name :global(mark) {
+  :global(.kid-card__name mark) {
     background: none;
     color: inherit;
   }
@@ -1966,13 +1991,13 @@ while (heroFaces.length < 7 && yi < sortedYears.length * 3) {
   }
 
   /* ── Content-Visibility for off-screen cards ── */
-  .kid-card {
+  :global(.kid-card) {
     content-visibility: auto;
     contain-intrinsic-size: auto 260px auto 400px;
   }
 
   /* ── FLIP transition helper ── */
-  .kid-card.is-flipping {
+  :global(.kid-card.is-flipping) {
     transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
     z-index: 1;
   }
@@ -2252,8 +2277,8 @@ while (heroFaces.length < 7 && yi < sortedYears.length * 3) {
     justify-content: start;
   }
 
-  /* ── Card ── */
-  .kid-card {
+  /* ── Card (global: JS creates overflow cards dynamically) ── */
+  :global(.kid-card) {
     display: block;
     text-decoration: none;
     outline-offset: 4px;
@@ -2262,28 +2287,28 @@ while (heroFaces.length < 7 && yi < sortedYears.length * 3) {
   }
 
   @media (hover: hover) {
-    .kid-card:hover {
+    :global(.kid-card:hover) {
       /* No lift — effects stay contained inside the frame */
     }
   }
 
-  .kid-card:focus-visible {
+  :global(.kid-card:focus-visible) {
     outline: 2px solid var(--c-dark);
     outline-offset: 4px;
     border-radius: var(--border-radius-lg);
   }
 
-  .kid-card:active {
+  :global(.kid-card:active) {
     opacity: 0.85;
     transition-duration: 80ms;
   }
 
   /* Staggered reveal */
-  :global(.js-anim) .kid-card:not(.revealed) {
+  :global(.js-anim .kid-card:not(.revealed)) {
     opacity: 0;
   }
 
-  :global(.js-anim) .kid-card.revealed {
+  :global(.js-anim .kid-card.revealed) {
     animation: cardIn 0.3s ease forwards;
     animation-delay: calc(var(--stagger, 0) * 40ms);
   }
@@ -2293,7 +2318,7 @@ while (heroFaces.length < 7 && yi < sortedYears.length * 3) {
     to { opacity: 1; }
   }
 
-  .kid-card.is-hidden {
+  :global(.kid-card.is-hidden) {
     opacity: 0;
     transform: scale(0.92);
     pointer-events: none;
@@ -2302,11 +2327,11 @@ while (heroFaces.length < 7 && yi < sortedYears.length * 3) {
     /* Removed from grid flow but animated out */
   }
 
-  .kid-card.is-showing {
+  :global(.kid-card.is-showing) {
     animation: cardShow 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   }
 
-  .kid-card.is-hiding {
+  :global(.kid-card.is-hiding) {
     animation: cardHide 0.2s ease forwards;
   }
 
@@ -2343,7 +2368,7 @@ while (heroFaces.length < 7 && yi < sortedYears.length * 3) {
   }
 
   /* ── Card Frame + Shimmer ── */
-  .kid-card__frame {
+  :global(.kid-card__frame) {
     position: relative;
     border-radius: var(--border-radius-lg);
     overflow: hidden;
@@ -2352,7 +2377,7 @@ while (heroFaces.length < 7 && yi < sortedYears.length * 3) {
   }
 
   /* Shimmer placeholder — uses transform (GPU-composited) instead of background-position */
-  .kid-card__frame::after {
+  :global(.kid-card__frame::after) {
     content: '';
     position: absolute;
     top: 0;
@@ -2372,15 +2397,15 @@ while (heroFaces.length < 7 && yi < sortedYears.length * 3) {
     animation: shimmer 1.5s ease-in-out infinite;
   }
 
-  .kid-card__frame.is-loaded::after {
+  :global(.kid-card__frame.is-loaded::after) {
     opacity: 0;
     animation: none;
     will-change: auto;
   }
 
   /* Stop shimmer on hidden/overflow cards to avoid unnecessary paint */
-  .kid-card.is-hidden .kid-card__frame::after,
-  .kid-card.is-overflow .kid-card__frame::after {
+  :global(.kid-card.is-hidden .kid-card__frame::after),
+  :global(.kid-card.is-overflow .kid-card__frame::after) {
     animation: none;
   }
 
@@ -2389,7 +2414,7 @@ while (heroFaces.length < 7 && yi < sortedYears.length * 3) {
     to { transform: translateX(200%); }
   }
 
-  .kid-card__img {
+  :global(.kid-card__img) {
     width: 100%;
     height: 100%;
     object-fit: cover;
@@ -2399,13 +2424,13 @@ while (heroFaces.length < 7 && yi < sortedYears.length * 3) {
   }
 
   @media (hover: hover) {
-    .kid-card:hover .kid-card__img {
+    :global(.kid-card:hover .kid-card__img) {
       transform: scale(1.07);
       filter: brightness(1.04) saturate(1.05);
     }
   }
 
-  .kid-card__placeholder {
+  :global(.kid-card__placeholder) {
     width: 100%;
     height: 100%;
     display: flex;
@@ -2416,7 +2441,7 @@ while (heroFaces.length < 7 && yi < sortedYears.length * 3) {
   }
 
   /* ── Hover Overlay (desktop only) ── */
-  .kid-card__hover-overlay {
+  :global(.kid-card__hover-overlay) {
     position: absolute;
     inset: 0;
     background: linear-gradient(
@@ -2432,13 +2457,13 @@ while (heroFaces.length < 7 && yi < sortedYears.length * 3) {
   }
 
   /* Yellow border glow on frame — inset shadow avoids layout shift */
-  .kid-card__frame {
+  :global(.kid-card__frame) {
     box-shadow: inset 0 0 0 0px var(--c-yellow);
     transition: box-shadow 0.35s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
   /* Floating arrow indicator */
-  .kid-card__cta {
+  :global(.kid-card__cta) {
     position: absolute;
     bottom: 12px;
     right: 12px;
@@ -2459,7 +2484,7 @@ while (heroFaces.length < 7 && yi < sortedYears.length * 3) {
     box-shadow: 0 4px 16px rgba(255, 218, 36, 0.3);
   }
 
-  .kid-card__cta-text {
+  :global(.kid-card__cta-text) {
     /* Visually hidden but accessible */
     position: absolute;
     width: 1px;
@@ -2469,49 +2494,49 @@ while (heroFaces.length < 7 && yi < sortedYears.length * 3) {
     white-space: nowrap;
   }
 
-  .kid-card__cta-arrow {
+  :global(.kid-card__cta-arrow) {
     flex-shrink: 0;
     transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
   @media (hover: hover) {
-    .kid-card:hover .kid-card__hover-overlay {
+    :global(.kid-card:hover .kid-card__hover-overlay) {
       opacity: 1;
     }
-    .kid-card:hover .kid-card__frame {
+    :global(.kid-card:hover .kid-card__frame) {
       box-shadow: inset 0 0 0 3px var(--c-yellow);
     }
-    .kid-card:hover .kid-card__cta {
+    :global(.kid-card:hover .kid-card__cta) {
       opacity: 1;
       transform: translate(0, 0) scale(1);
     }
-    .kid-card:hover .kid-card__cta-arrow {
+    :global(.kid-card:hover .kid-card__cta-arrow) {
       transform: translateX(1px);
     }
   }
 
-  .kid-card:focus-visible .kid-card__hover-overlay {
+  :global(.kid-card:focus-visible .kid-card__hover-overlay) {
     opacity: 1;
   }
 
-  .kid-card:focus-visible .kid-card__frame {
+  :global(.kid-card:focus-visible .kid-card__frame) {
     box-shadow: inset 0 0 0 3px var(--c-yellow);
   }
 
-  .kid-card:focus-visible .kid-card__cta {
+  :global(.kid-card:focus-visible .kid-card__cta) {
     opacity: 1;
     transform: translate(0, 0) scale(1);
   }
 
   /* ── Info Below Photo ── */
-  .kid-card__info {
+  :global(.kid-card__info) {
     display: flex;
     align-items: center;
     gap: var(--space-sm);
     padding: 14px 4px 4px;
   }
 
-  .kid-card__name {
+  :global(.kid-card__name) {
     color: var(--c-text);
     font-family: var(--font-display);
     font-size: 1rem;
@@ -2526,13 +2551,13 @@ while (heroFaces.length < 7 && yi < sortedYears.length * 3) {
   }
 
   @media (hover: hover) {
-    .kid-card:hover .kid-card__name {
+    :global(.kid-card:hover .kid-card__name) {
       color: var(--c-dark);
       background-size: 100% 2.5px;
     }
   }
 
-  .kid-card__diagnosis {
+  :global(.kid-card__diagnosis) {
     display: block;
     padding: 4px 4px 4px;
     font-size: 0.78rem;
@@ -2544,7 +2569,7 @@ while (heroFaces.length < 7 && yi < sortedYears.length * 3) {
     overflow: hidden;
   }
 
-  .kid-card__badge {
+  :global(.kid-card__badge) {
     display: inline-block;
     padding: 2px 10px;
     background: var(--c-yellow);
@@ -2778,35 +2803,35 @@ while (heroFaces.length < 7 && yi < sortedYears.length * 3) {
     }
 
 
-    .kid-card__frame {
+    :global(.kid-card__frame) {
       border-radius: 12px;
       aspect-ratio: 4 / 5;
     }
 
     /* Hide hover overlay on touch */
-    .kid-card__hover-overlay {
+    :global(.kid-card__hover-overlay) {
       display: none;
     }
-    .kid-card__cta {
+    :global(.kid-card__cta) {
       display: none;
     }
-    .kid-card:focus-visible .kid-card__hover-overlay {
+    :global(.kid-card:focus-visible .kid-card__hover-overlay) {
       display: block;
       opacity: 1;
     }
-    .kid-card:focus-visible .kid-card__cta {
+    :global(.kid-card:focus-visible .kid-card__cta) {
       display: flex;
       opacity: 1;
       transform: translate(0, 0) scale(1);
     }
 
-    .kid-card__info {
+    :global(.kid-card__info) {
       padding: 8px 2px 2px;
       gap: 4px;
       flex-wrap: wrap;
     }
 
-    .kid-card__name {
+    :global(.kid-card__name) {
       font-size: 0.88rem;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -2814,13 +2839,13 @@ while (heroFaces.length < 7 && yi < sortedYears.length * 3) {
       min-width: 0;
     }
 
-    .kid-card__diagnosis {
+    :global(.kid-card__diagnosis) {
       -webkit-line-clamp: 1;
       font-size: 0.72rem;
       padding: 0 2px;
     }
 
-    .kid-card__badge {
+    :global(.kid-card__badge) {
       font-size: 0.55rem;
       padding: 2px 7px;
       flex-shrink: 0;
@@ -2856,7 +2881,7 @@ while (heroFaces.length < 7 && yi < sortedYears.length * 3) {
       gap: var(--space-sm) 10px;
     }
 
-    .kid-card__name {
+    :global(.kid-card__name) {
       font-size: 0.8rem;
     }
   }
@@ -2870,33 +2895,33 @@ while (heroFaces.length < 7 && yi < sortedYears.length * 3) {
 
   /* ── Reduced Motion ── */
   @media (prefers-reduced-motion: reduce) {
-    .kid-card,
-    :global(.js-anim) .kid-card:not(.revealed),
-    :global(.js-anim) .kid-card.revealed {
+    :global(.kid-card),
+    :global(.js-anim .kid-card:not(.revealed)),
+    :global(.js-anim .kid-card.revealed) {
       opacity: 1;
       transform: none;
       animation: none;
       transition: none;
     }
 
-    .kid-card.is-hiding,
-    .kid-card.is-showing {
+    :global(.kid-card.is-hiding),
+    :global(.kid-card.is-showing) {
       animation: none;
     }
 
-    .kid-card.is-flipping {
+    :global(.kid-card.is-flipping) {
       transition: none;
     }
 
-    .kid-card.is-hidden {
+    :global(.kid-card.is-hidden) {
       opacity: 0;
       visibility: hidden;
       position: absolute;
       pointer-events: none;
     }
 
-    .kid-card__hover-overlay,
-    .kid-card__cta {
+    :global(.kid-card__hover-overlay),
+    :global(.kid-card__cta) {
       transition: none;
     }
 
@@ -2904,7 +2929,7 @@ while (heroFaces.length < 7 && yi < sortedYears.length * 3) {
       animation: none;
     }
 
-    .kid-card__frame::after {
+    :global(.kid-card__frame::after) {
       animation: none;
       display: none;
     }

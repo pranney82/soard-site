@@ -720,7 +720,7 @@ const jsonLd = {
 
   /* ─── Responsive ───────────────────────── */
   @media (max-width: 768px) {
-    .stats-grid { grid-template-columns: repeat(2, 1fr); }
+    .stats-grid { grid-template-columns: repeat(2, 1fr); gap: var(--space-sm); }
     .model-block { flex-direction: column; gap: var(--space-md); padding: var(--space-xl); }
     .model-numbers { flex-direction: column; gap: var(--space-md); }
     .trust-row { gap: var(--space-md); }
@@ -732,7 +732,7 @@ const jsonLd = {
     .doc-card { padding: var(--space-md) var(--space-sm); }
     .doc-card__year { font-size: 1.1rem; }
     .doc-section-header { flex-direction: column; gap: var(--space-md); }
-    .report-grid { grid-template-columns: 1fr 1fr; gap: var(--space-md); }
+    .report-grid { grid-template-columns: repeat(auto-fill, minmax(min(260px, 100%), 1fr)); gap: var(--space-md); }
     .expense-bar__pct { font-size: 1.1rem; }
   }
 </style>

@@ -5,3 +5,16 @@ dist/
 *.log
 .DS_Store
 soard_secrets.txt
+
+# Content is stored in D1 — generated at build time by prebuild.js
+src/content/kids/
+src/content/partners/
+src/content/press/
+src/content/team/
+src/content/events/
+src/content/community/
+src/content/articles/
+src/content/site/
+
+# Financial PDFs are stored in R2
+public/financials/*.pdf
