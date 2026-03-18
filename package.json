@@ -1,7 +1,7 @@
 {
   "name": "soard",
   "version": "1.0.0",
-  "description": "",
+  "description": "SOARD website",
   "type": "module",
   "main": "index.js",
   "scripts": {
