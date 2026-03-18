@@ -45,6 +45,13 @@ if (!ACCOUNT_ID || !API_TOKEN) {
 
 const D1_API = `https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/d1/database/${DB_ID}/query`;
 
+function safeParse(raw) {
+  let parsed = JSON.parse(raw);
+  // Handle double-encoded JSON strings
+  if (typeof parsed === 'string') parsed = JSON.parse(parsed);
+  return parsed;
+}
+
 function ensureDir(dir) {
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
 }
@@ -96,7 +103,7 @@ for (const { table, dir } of collections) {
 
   for (const row of rows) {
     const filePath = join(outDir, `${row.slug}.json`);
-    const data = JSON.parse(row.data);
+    const data = safeParse(row.data);
     writeFileSync(filePath, JSON.stringify(data, null, 2));
     totalFiles++;
   }
@@ -111,7 +118,7 @@ console.log(`  site: ${siteRows.length} config files`);
 
 for (const row of siteRows) {
   const filePath = join(siteDir, `${row.key}.json`);
-  const data = JSON.parse(row.data);
+  const data = safeParse(row.data);
 
   writeFileSync(filePath, JSON.stringify(data, null, 2));
   totalFiles++;
