@@ -46,10 +46,13 @@ if (!ACCOUNT_ID || !API_TOKEN) {
 const D1_API = `https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/d1/database/${DB_ID}/query`;
 
 function safeParse(raw) {
-  let parsed = JSON.parse(raw);
-  // Handle double-encoded JSON strings
-  if (typeof parsed === 'string') parsed = JSON.parse(parsed);
-  return parsed;
+  if (typeof raw === 'object') return raw; // already parsed
+  try {
+    return JSON.parse(raw);
+  } catch {
+    // D1 REST API sometimes returns strings with escaped quotes
+    return JSON.parse(raw.replace(/\\"/g, '"'));
+  }
 }
 
 function ensureDir(dir) {
