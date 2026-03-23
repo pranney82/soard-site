@@ -6343,11 +6343,6 @@
       const [sha, setSha] = useState(null);
       const [data, setData] = useState({});
 
-      // Sorted kids for dropdown
-      const sortedKids = useMemo(() =>
-        [...allKids].sort((a, b) => (a.name || '').localeCompare(b.name || '')),
-        [allKids]
-      );
       // Sorted partners for dropdown
       const sortedPartners = useMemo(() =>
         [...allPartners].sort((a, b) => (a.name || '').localeCompare(b.name || '')),
@@ -6358,16 +6353,6 @@
         const m = url.match(/ROYFuPmfN2vPS6mt5sCkZQ\/(.+?)\/[^/]+$/);
         return m ? m[1] : '';
       };
-      const handleKidSelect = (index, slug) => {
-        const kid = allKids.find(k => k.slug === slug);
-        setData(d => {
-          const arr = [...(d.kidShowcase || [])];
-          arr[index] = { slug, cfId: kid ? extractCfId(kid.heroImage) : '' };
-          const ts = { ...(d.photoTimestamps || {}) };
-          ts['kidShowcase'] = new Date().toISOString();
-          return { ...d, kidShowcase: arr, photoTimestamps: ts };
-        });
-      };
       const handlePartnerSelect = (index, slug) => {
         const partner = allPartners.find(p => p.slug === slug);
         setData(d => {
@@ -6375,14 +6360,6 @@
           arr[index] = { name: partner?.name || '', id: partner ? extractCfId(partner.logo) : '' };
           return { ...d, partnerLogos: arr };
         });
-      };
-
-      // Image picker state
-      const [showImagePicker, setShowImagePicker] = useState(false);
-      const [imagePickerTarget, setImagePickerTarget] = useState(null);
-      const openImagePicker = (target) => {
-        setImagePickerTarget(target);
-        setShowImagePicker(true);
       };
 
       useEffect(() => {
@@ -6396,19 +6373,6 @@
         })();
       }, []);
 
-      // Photo fields that should be freshness-tracked
-      const TRACKED_PHOTO_FIELDS = ['heroKidSlug', 'featuredKidSlug', 'featuredStoryImage',
-        'sectionPhotos.missionMain', 'sectionPhotos.missionAccent', 'sectionPhotos.process',
-        'sectionPhotos.roomBedroom', 'sectionPhotos.roomBath', 'sectionPhotos.roomTherapy',
-        'donatePhotos.hero', 'donatePhotos.story'];
-
-      const stampPhoto = (copy, path) => {
-        if (TRACKED_PHOTO_FIELDS.includes(path)) {
-          if (!copy.photoTimestamps) copy.photoTimestamps = {};
-          copy.photoTimestamps[path] = new Date().toISOString();
-        }
-      };
-
       const updateField = (path, value) => {
         setData(d => {
           const copy = JSON.parse(JSON.stringify(d));
@@ -6419,7 +6383,6 @@
             obj = obj[keys[i]];
           }
           obj[keys[keys.length - 1]] = value;
-          stampPhoto(copy, path);
           return copy;
         });
       };
@@ -6470,47 +6433,14 @@
       if (loading) return html`<${EditorSkeleton} />`;
 
       const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
-      const pts = data.photoTimestamps || {};
-      const fSummary = photoFreshnessSummary(pts);
-
-      const renderPhotoField = (label, fieldPath, currentId) => html`
-        <div class="form-group">
-          <label class="form-label">${label} ${freshnessBadge(pts[fieldPath])}</label>
-          ${currentId ? html`
-            <div style="margin-bottom: 0.5rem; border-radius: 8px; overflow: hidden; max-height: 100px;">
-              <img src="${CF}/${currentId}/w=300" alt="Preview" style="width: 100%; height: 100px; object-fit: cover; display: block;" />
-            </div>
-          ` : null}
-          <div style="display: flex; gap: 0.5rem;">
-            <input class="form-input" style="flex:1; font-size: 0.85rem;" value=${currentId || ''}
-              onInput=${e => updateField(fieldPath, e.target.value)} />
-            <button class="btn btn-ghost" type="button" onClick=${() => openImagePicker(fieldPath)}>Browse</button>
-          </div>
-        </div>
-      `;
 
       return html`
-        ${showImagePicker ? html`<${ImagePicker}
-          onSelect=${(id) => { updateField(imagePickerTarget, id); setShowImagePicker(false); }}
-          onClose=${() => setShowImagePicker(false)}
-        />` : null}
         <div class="page-header">
           <h2>Site Settings</h2>
           <button class="btn btn-primary" onClick=${handleSave} disabled=${saving}>
             ${saving ? html`<span class="spinner" />` : null} ${saving ? 'Saving...' : 'Save & Publish'}
           </button>
         </div>
-        ${fSummary?.stale ? html`
-          <div class="freshness-alert freshness-alert--danger">
-            <span style="font-size: 1.3rem;">⚠</span>
-            <span><strong>${fSummary.stale} photo${fSummary.stale > 1 ? 's' : ''}</strong> ha${fSummary.stale > 1 ? 've' : 's'} been the same for over ${PHOTO_STALE_DAYS} days. Consider refreshing to keep the site looking current.</span>
-          </div>
-        ` : fSummary?.aging ? html`
-          <div class="freshness-alert freshness-alert--warn">
-            <span style="font-size: 1.3rem;">🕐</span>
-            <span><strong>${fSummary.aging} photo${fSummary.aging > 1 ? 's' : ''}</strong> ha${fSummary.aging > 1 ? 've' : 's'} been the same for over ${PHOTO_FRESH_DAYS} days. Consider updating soon.</span>
-          </div>
-        ` : null}
         <div class="card">
           <h3 style="margin-bottom: 1rem;">Hero Text & CTAs</h3>
           <p class="text-sm text-muted mb-1">The text content displayed on the homepage hero section.</p>
@@ -6564,122 +6494,6 @@
               <input class="form-input" value=${data.homeHero?.cta2Link || ''}
                 placeholder="#stories" onInput=${e => updateField('homeHero.cta2Link', e.target.value)} />
             </div>
-          </div>
-        </div>
-
-        <div class="card">
-          <h3 style="margin-bottom: 1rem;">Hero Photo Kid ${freshnessBadge(pts['heroKidSlug'])}</h3>
-          <p class="text-sm text-muted mb-1">The kid shown in the hero photo at the top of the homepage. Photo auto-pulls from their profile.</p>
-          <div class="form-group">
-            <label class="form-label">Kid</label>
-            <select class="form-input" value=${data.heroKidSlug || data.featuredKidSlug || ''}
-              onChange=${e => updateField('heroKidSlug', e.target.value)}>
-              <option value="">— Select a kid —</option>
-              ${sortedKids.map(k => html`<option value=${k.slug} selected=${k.slug === (data.heroKidSlug || data.featuredKidSlug)}>${k.name}${k.year ? ` (${k.year})` : ''}</option>`)}
-            </select>
-          </div>
-        </div>
-
-        <div class="card">
-          <h3 style="margin-bottom: 1rem;">Featured Kid Story ${freshnessBadge(pts['featuredKidSlug'])}</h3>
-          <p class="text-sm text-muted mb-1">The kid highlighted in the "Featured Story" section further down the homepage. Can be different from the hero photo kid.</p>
-          <div class="form-group">
-            <label class="form-label">Kid Slug</label>
-            <select class="form-input" value=${data.featuredKidSlug || ''}
-              onChange=${e => updateField('featuredKidSlug', e.target.value)}>
-              <option value="">— Select a kid —</option>
-              ${sortedKids.map(k => html`<option value=${k.slug} selected=${k.slug === data.featuredKidSlug}>${k.name}${k.year ? ` (${k.year})` : ''}</option>`)}
-            </select>
-          </div>
-          <div class="form-group" style="margin-top: 1rem;">
-            ${renderPhotoField('Featured Story Image', 'featuredStoryImage', data.featuredStoryImage)}
-            <p class="text-sm text-muted" style="margin-top: 0.25rem;">Override the photo shown in the Featured Story section. Leave blank to use the kid's hero photo.</p>
-          </div>
-          <div class="form-group" style="margin-top: 1rem;">
-            <label class="form-label">Headline</label>
-            <input class="form-input" value=${data.featuredStoryHeadline || ''}
-              placeholder="e.g. Zyah's new space gave her independence — and her family peace of mind."
-              onInput=${e => updateField('featuredStoryHeadline', e.target.value)} />
-            <p class="text-sm text-muted" style="margin-top: 0.25rem;">Leave blank to use default. The kid's name is auto-prepended.</p>
-          </div>
-          <div class="form-group" style="margin-top: 0.5rem;">
-            <label class="form-label">Description</label>
-            <textarea class="form-input" rows="3" value=${data.featuredStoryDescription || ''}
-              placeholder="e.g. Zyah, age 7, lives with Spinal Muscular Atrophy. Our team transformed her space into an accessible, joyful haven..."
-              onInput=${e => updateField('featuredStoryDescription', e.target.value)} />
-            <p class="text-sm text-muted" style="margin-top: 0.25rem;">Leave blank to use auto-generated text from the kid's profile.</p>
-          </div>
-        </div>
-
-        <div class="card">
-          <h3 style="margin-bottom: 1rem;">Kid Showcase Strip ${freshnessBadge(pts['kidShowcase'])}</h3>
-          <p class="text-sm text-muted mb-1">The row of featured kids on the homepage. Names and details are pulled from kid records automatically.</p>
-          ${(data.kidShowcase || []).map((kid, i) => html`
-            <div class="array-row-item" style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.5rem; padding: 0.5rem; background: rgba(0,0,0,0.02); border-radius: 8px;">
-              ${kid.cfId ? html`<img src=${'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/' + kid.cfId + '/w=60,h=60,fit=cover'}
-                alt="" style="width: 36px; height: 36px; border-radius: 6px; object-fit: cover; flex-shrink: 0;" />` : null}
-              <select class="form-input" style="flex: 1" value=${kid.slug || ''}
-                onChange=${e => handleKidSelect(i, e.target.value)}>
-                <option value="">— Select a kid —</option>
-                ${sortedKids.map(k => html`<option value=${k.slug} selected=${k.slug === kid.slug}>${k.name}${k.year ? ` (${k.year})` : ''}</option>`)}
-              </select>
-              <input class="form-input" style="flex: 2" value=${kid.cfId || ''} placeholder="Cloudflare Image ID (auto-filled)"
-                onInput=${e => updateArrayItem('kidShowcase', i, 'cfId', e.target.value)} />
-              <div class="array-row-actions">
-                <button class="btn btn-ghost" style="padding: 0.3rem 0.5rem; font-size: 0.8rem;" disabled=${i === 0}
-                  onClick=${() => moveArrayItem('kidShowcase', i, i - 1)}>↑</button>
-                <button class="btn btn-ghost" style="padding: 0.3rem 0.5rem; font-size: 0.8rem;" disabled=${i === (data.kidShowcase || []).length - 1}
-                  onClick=${() => moveArrayItem('kidShowcase', i, i + 1)}>↓</button>
-                <button class="btn btn-ghost" style="padding: 0.3rem 0.5rem; color: #c00;"
-                  onClick=${() => removeFromArray('kidShowcase', i)}>✕</button>
-              </div>
-            </div>
-          `)}
-          <button class="btn btn-ghost" style="margin-top: 0.5rem;"
-            onClick=${() => addToArray('kidShowcase', { slug: '', cfId: '' })}>+ Add Kid</button>
-        </div>
-
-        <div class="card">
-          <h3 style="margin-bottom: 1rem;">Section Photos</h3>
-          <p class="text-sm text-muted mb-1">Cloudflare Image IDs for photos used in homepage sections.</p>
-          <div class="form-row">
-            ${renderPhotoField('Mission — Main Photo', 'sectionPhotos.missionMain', data.sectionPhotos?.missionMain)}
-            ${renderPhotoField('Mission — Accent Photo', 'sectionPhotos.missionAccent', data.sectionPhotos?.missionAccent)}
-          </div>
-          <div class="form-row">
-            ${renderPhotoField('Process Section Photo', 'sectionPhotos.process', data.sectionPhotos?.process)}
-          </div>
-          <div class="form-row" style="grid-template-columns: 1fr 1fr 1fr;">
-            ${renderPhotoField('Room — Bedroom', 'sectionPhotos.roomBedroom', data.sectionPhotos?.roomBedroom)}
-            ${renderPhotoField('Room — Bathroom', 'sectionPhotos.roomBath', data.sectionPhotos?.roomBath)}
-            ${renderPhotoField('Room — Therapy', 'sectionPhotos.roomTherapy', data.sectionPhotos?.roomTherapy)}
-          </div>
-        </div>
-
-        <div class="card">
-          <h3 style="margin-bottom: 1rem;">Donate Page Photos</h3>
-          <p class="text-sm text-muted mb-1">Photos used on the Donate page. Update these regularly to keep the page fresh.</p>
-          <div class="form-row">
-            ${renderPhotoField('Hero Photo', 'donatePhotos.hero', data.donatePhotos?.hero)}
-            ${renderPhotoField('Story Section Photo', 'donatePhotos.story', data.donatePhotos?.story)}
-          </div>
-          <div class="form-row">
-            <div class="form-group">
-              <label class="form-label">Hero Kid Name</label>
-              <input class="form-input" value=${data.donatePhotos?.heroKidName || ''}
-                placeholder="Oakley" onInput=${e => updateField('donatePhotos.heroKidName', e.target.value)} />
-            </div>
-            <div class="form-group">
-              <label class="form-label">Story Kid Name</label>
-              <input class="form-input" value=${data.donatePhotos?.storyKidName || ''}
-                placeholder="Amari" onInput=${e => updateField('donatePhotos.storyKidName', e.target.value)} />
-            </div>
-          </div>
-          <div class="form-group">
-            <label class="form-label">Story Kid Slug</label>
-            <input class="form-input" value=${data.donatePhotos?.storyKidSlug || ''}
-              placeholder="amari" onInput=${e => updateField('donatePhotos.storyKidSlug', e.target.value)} />
-            <p class="text-sm text-muted" style="margin-top: 0.25rem;">Used for the "Read Full Story" link on the donate page.</p>
           </div>
         </div>
 
@@ -6779,6 +6593,297 @@
               <input class="form-input" value=${data.social?.tiktok || ''}
                 onInput=${e => updateField('social.tiktok', e.target.value)} />
             </div>
+          </div>
+        </div>
+
+        <div class="editor-save-footer">
+          <button class="btn btn-primary" onClick=${handleSave} disabled=${saving}>
+            ${saving ? html`<span class="spinner" />` : null}
+            ${saving ? 'Saving...' : 'Save & Publish'}
+          </button>
+        </div>
+      `;
+    }
+
+    // ═══════════════════════════════════════════
+    // KIDS ON SITE — Manage kids across all pages
+    // ═══════════════════════════════════════════
+    function KidsOnSite({ addToast, kids: allKids = [] }) {
+      const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
+      const [loading, setLoading] = useState(true);
+      const [saving, setSaving] = useState(false);
+      const [sha, setSha] = useState(null);
+      const [data, setData] = useState({});
+      const [showImagePicker, setShowImagePicker] = useState(false);
+      const [imagePickerTarget, setImagePickerTarget] = useState(null);
+
+      const sortedKids = useMemo(() =>
+        [...allKids].sort((a, b) => (a.name || '').localeCompare(b.name || '')),
+        [allKids]
+      );
+
+      const extractCfId = (url) => {
+        if (!url) return '';
+        const m = url.match(/ROYFuPmfN2vPS6mt5sCkZQ\/(.+?)\/[^/]+$/);
+        return m ? m[1] : '';
+      };
+
+      useEffect(() => {
+        (async () => {
+          const res = await api.readContent('src/content/site/settings.json');
+          if (res.success) {
+            setData(JSON.parse(res.content));
+            setSha(res.sha);
+          }
+          setLoading(false);
+        })();
+      }, []);
+
+      const TRACKED_PHOTO_FIELDS = ['heroKidSlug', 'featuredKidSlug', 'featuredStoryImage',
+        'sectionPhotos.missionMain', 'sectionPhotos.missionAccent', 'sectionPhotos.process',
+        'sectionPhotos.roomBedroom', 'sectionPhotos.roomBath', 'sectionPhotos.roomTherapy',
+        'donatePhotos.hero', 'donatePhotos.story'];
+
+      const stampPhoto = (copy, path) => {
+        if (TRACKED_PHOTO_FIELDS.includes(path)) {
+          if (!copy.photoTimestamps) copy.photoTimestamps = {};
+          copy.photoTimestamps[path] = new Date().toISOString();
+        }
+      };
+
+      const updateField = (path, value) => {
+        setData(d => {
+          const copy = JSON.parse(JSON.stringify(d));
+          const keys = path.split('.');
+          let obj = copy;
+          for (let i = 0; i < keys.length - 1; i++) {
+            if (!obj[keys[i]] || typeof obj[keys[i]] !== 'object') obj[keys[i]] = {};
+            obj = obj[keys[i]];
+          }
+          obj[keys[keys.length - 1]] = value;
+          stampPhoto(copy, path);
+          return copy;
+        });
+      };
+
+      const handleKidSelect = (index, slug) => {
+        const kid = allKids.find(k => k.slug === slug);
+        setData(d => {
+          const arr = [...(d.kidShowcase || [])];
+          arr[index] = { slug, cfId: kid ? extractCfId(kid.heroImage) : '' };
+          const ts = { ...(d.photoTimestamps || {}) };
+          ts['kidShowcase'] = new Date().toISOString();
+          return { ...d, kidShowcase: arr, photoTimestamps: ts };
+        });
+      };
+
+      const addToArray = (key, item) => {
+        setData(d => ({ ...d, [key]: [...(d[key] || []), item] }));
+      };
+      const removeFromArray = (key, index) => {
+        setData(d => ({ ...d, [key]: (d[key] || []).filter((_, i) => i !== index) }));
+      };
+      const updateArrayItem = (key, index, field, value) => {
+        setData(d => {
+          const arr = [...(d[key] || [])];
+          arr[index] = { ...arr[index], [field]: value };
+          return { ...d, [key]: arr };
+        });
+      };
+      const moveArrayItem = (key, from, to) => {
+        setData(d => {
+          const arr = [...(d[key] || [])];
+          const [item] = arr.splice(from, 1);
+          arr.splice(to, 0, item);
+          return { ...d, [key]: arr };
+        });
+      };
+
+      const openImagePicker = (target) => {
+        setImagePickerTarget(target);
+        setShowImagePicker(true);
+      };
+
+      const handleSave = async () => {
+        setSaving(true);
+        try {
+          const content = JSON.stringify(data, null, 2);
+          const res = await api.saveContent(
+            'src/content/site/settings.json', content,
+            'Update kids on site', sha
+          );
+          if (res.success) {
+            setSha(res.sha);
+            addToast('Kids on Site saved!', 'success');
+            logActivity('updated', 'kids on site', '');
+          } else {
+            addToast(`Failed: ${res.error}`, 'error');
+          }
+        } catch (err) {
+          addToast(`Error: ${err.message}`, 'error');
+        }
+        setSaving(false);
+      };
+
+      if (loading) return html`<${EditorSkeleton} />`;
+
+      const pts = data.photoTimestamps || {};
+      const fSummary = photoFreshnessSummary(pts);
+
+      const renderPhotoField = (label, fieldPath, currentId) => html`
+        <div class="form-group">
+          <label class="form-label">${label} ${freshnessBadge(pts[fieldPath])}</label>
+          ${currentId ? html`
+            <div style="margin-bottom: 0.5rem; border-radius: 8px; overflow: hidden; max-height: 100px;">
+              <img src="${CF}/${currentId}/w=300" alt="Preview" style="width: 100%; height: 100px; object-fit: cover; display: block;" />
+            </div>
+          ` : null}
+          <div style="display: flex; gap: 0.5rem;">
+            <input class="form-input" style="flex:1; font-size: 0.85rem;" value=${currentId || ''}
+              onInput=${e => updateField(fieldPath, e.target.value)} />
+            <button class="btn btn-ghost" type="button" onClick=${() => openImagePicker(fieldPath)}>Browse</button>
+          </div>
+        </div>
+      `;
+
+      return html`
+        ${showImagePicker ? html`<${ImagePicker}
+          onSelect=${(id) => { updateField(imagePickerTarget, id); setShowImagePicker(false); }}
+          onClose=${() => setShowImagePicker(false)}
+        />` : null}
+        <div class="page-header">
+          <h2>Kids on Site</h2>
+          <button class="btn btn-primary" onClick=${handleSave} disabled=${saving}>
+            ${saving ? html`<span class="spinner" />` : null} ${saving ? 'Saving...' : 'Save & Publish'}
+          </button>
+        </div>
+        <p class="text-sm text-muted" style="margin: -0.5rem 0 1.5rem;">Control which kids, photos, and text appear across the entire site — homepage, donate page, and section imagery — all in one place.</p>
+
+        ${fSummary?.stale ? html`
+          <div class="freshness-alert freshness-alert--danger">
+            <span style="font-size: 1.3rem;">⚠</span>
+            <span><strong>${fSummary.stale} photo${fSummary.stale > 1 ? 's' : ''}</strong> ha${fSummary.stale > 1 ? 've' : 's'} been the same for over ${PHOTO_STALE_DAYS} days. Consider refreshing to keep the site looking current.</span>
+          </div>
+        ` : fSummary?.aging ? html`
+          <div class="freshness-alert freshness-alert--warn">
+            <span style="font-size: 1.3rem;">🕐</span>
+            <span><strong>${fSummary.aging} photo${fSummary.aging > 1 ? 's' : ''}</strong> ha${fSummary.aging > 1 ? 've' : 's'} been the same for over ${PHOTO_FRESH_DAYS} days. Consider updating soon.</span>
+          </div>
+        ` : null}
+
+        <div class="card">
+          <h3 style="margin-bottom: 1rem;">Homepage Hero ${freshnessBadge(pts['heroKidSlug'])}</h3>
+          <p class="text-sm text-muted mb-1">The kid shown in the large hero photo at the top of the homepage.</p>
+          <div class="form-group">
+            <label class="form-label">Kid</label>
+            <select class="form-input" value=${data.heroKidSlug || data.featuredKidSlug || ''}
+              onChange=${e => updateField('heroKidSlug', e.target.value)}>
+              <option value="">— Select a kid —</option>
+              ${sortedKids.map(k => html`<option value=${k.slug} selected=${k.slug === (data.heroKidSlug || data.featuredKidSlug)}>${k.name}${k.year ? ` (${k.year})` : ''}</option>`)}
+            </select>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3 style="margin-bottom: 1rem;">Featured Story ${freshnessBadge(pts['featuredKidSlug'])}</h3>
+          <p class="text-sm text-muted mb-1">The kid highlighted in the "Featured Story" section further down the homepage. Can be different from the hero photo kid.</p>
+          <div class="form-group">
+            <label class="form-label">Kid</label>
+            <select class="form-input" value=${data.featuredKidSlug || ''}
+              onChange=${e => updateField('featuredKidSlug', e.target.value)}>
+              <option value="">— Select a kid —</option>
+              ${sortedKids.map(k => html`<option value=${k.slug} selected=${k.slug === data.featuredKidSlug}>${k.name}${k.year ? ` (${k.year})` : ''}</option>`)}
+            </select>
+          </div>
+          <div class="form-group" style="margin-top: 1rem;">
+            ${renderPhotoField('Override Photo', 'featuredStoryImage', data.featuredStoryImage)}
+            <p class="text-sm text-muted" style="margin-top: 0.25rem;">Leave blank to use the kid's hero photo.</p>
+          </div>
+          <div class="form-group" style="margin-top: 1rem;">
+            <label class="form-label">Headline</label>
+            <input class="form-input" value=${data.featuredStoryHeadline || ''}
+              placeholder="e.g. Zyah's new space gave her independence — and her family peace of mind."
+              onInput=${e => updateField('featuredStoryHeadline', e.target.value)} />
+            <p class="text-sm text-muted" style="margin-top: 0.25rem;">Leave blank to auto-generate from the kid's profile.</p>
+          </div>
+          <div class="form-group" style="margin-top: 0.5rem;">
+            <label class="form-label">Description</label>
+            <textarea class="form-input" rows="3" value=${data.featuredStoryDescription || ''}
+              placeholder="e.g. Zyah, age 7, lives with Spinal Muscular Atrophy..."
+              onInput=${e => updateField('featuredStoryDescription', e.target.value)} />
+            <p class="text-sm text-muted" style="margin-top: 0.25rem;">Leave blank to auto-generate from the kid's profile.</p>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3 style="margin-bottom: 1rem;">Kid Showcase Strip ${freshnessBadge(pts['kidShowcase'])}</h3>
+          <p class="text-sm text-muted mb-1">The row of featured kids on the homepage. Names and details are pulled from kid records automatically.</p>
+          ${(data.kidShowcase || []).map((kid, i) => html`
+            <div style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.5rem; padding: 0.5rem; background: rgba(0,0,0,0.02); border-radius: 8px;">
+              ${kid.cfId ? html`<img src=${CF + '/' + kid.cfId + '/w=60,h=60,fit=cover'}
+                alt="" style="width: 36px; height: 36px; border-radius: 6px; object-fit: cover; flex-shrink: 0;" />` : null}
+              <select class="form-input" style="flex: 1" value=${kid.slug || ''}
+                onChange=${e => handleKidSelect(i, e.target.value)}>
+                <option value="">— Select a kid —</option>
+                ${sortedKids.map(k => html`<option value=${k.slug} selected=${k.slug === kid.slug}>${k.name}${k.year ? ` (${k.year})` : ''}</option>`)}
+              </select>
+              <input class="form-input" style="flex: 2" value=${kid.cfId || ''} placeholder="Image ID (auto-filled)"
+                onInput=${e => updateArrayItem('kidShowcase', i, 'cfId', e.target.value)} />
+              <div style="display: flex; gap: 0.25rem;">
+                <button class="btn btn-ghost" style="padding: 0.3rem 0.5rem; font-size: 0.8rem;" disabled=${i === 0}
+                  onClick=${() => moveArrayItem('kidShowcase', i, i - 1)}>↑</button>
+                <button class="btn btn-ghost" style="padding: 0.3rem 0.5rem; font-size: 0.8rem;" disabled=${i === (data.kidShowcase || []).length - 1}
+                  onClick=${() => moveArrayItem('kidShowcase', i, i + 1)}>↓</button>
+                <button class="btn btn-ghost" style="padding: 0.3rem 0.5rem; color: #c00;"
+                  onClick=${() => removeFromArray('kidShowcase', i)}>✕</button>
+              </div>
+            </div>
+          `)}
+          <button class="btn btn-ghost" style="margin-top: 0.5rem;"
+            onClick=${() => addToArray('kidShowcase', { slug: '', cfId: '' })}>+ Add Kid</button>
+        </div>
+
+        <div class="card">
+          <h3 style="margin-bottom: 1rem;">Section Photos</h3>
+          <p class="text-sm text-muted mb-1">Kid photos used throughout homepage sections.</p>
+          <div class="form-row">
+            ${renderPhotoField('Mission — Main Photo', 'sectionPhotos.missionMain', data.sectionPhotos?.missionMain)}
+            ${renderPhotoField('Mission — Accent Photo', 'sectionPhotos.missionAccent', data.sectionPhotos?.missionAccent)}
+          </div>
+          <div class="form-row">
+            ${renderPhotoField('Process Section Photo', 'sectionPhotos.process', data.sectionPhotos?.process)}
+          </div>
+          <div class="form-row" style="grid-template-columns: 1fr 1fr 1fr;">
+            ${renderPhotoField('Room — Bedroom', 'sectionPhotos.roomBedroom', data.sectionPhotos?.roomBedroom)}
+            ${renderPhotoField('Room — Bathroom', 'sectionPhotos.roomBath', data.sectionPhotos?.roomBath)}
+            ${renderPhotoField('Room — Therapy', 'sectionPhotos.roomTherapy', data.sectionPhotos?.roomTherapy)}
+          </div>
+        </div>
+
+        <div class="card">
+          <h3 style="margin-bottom: 1rem;">Donate Page</h3>
+          <p class="text-sm text-muted mb-1">Kids and photos featured on the donate page.</p>
+          <div class="form-row">
+            ${renderPhotoField('Hero Photo', 'donatePhotos.hero', data.donatePhotos?.hero)}
+            ${renderPhotoField('Story Section Photo', 'donatePhotos.story', data.donatePhotos?.story)}
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Hero Kid Name</label>
+              <input class="form-input" value=${data.donatePhotos?.heroKidName || ''}
+                placeholder="Oakley" onInput=${e => updateField('donatePhotos.heroKidName', e.target.value)} />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Story Kid Name</label>
+              <input class="form-input" value=${data.donatePhotos?.storyKidName || ''}
+                placeholder="Amari" onInput=${e => updateField('donatePhotos.storyKidName', e.target.value)} />
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Story Kid Slug</label>
+            <input class="form-input" value=${data.donatePhotos?.storyKidSlug || ''}
+              placeholder="amari" onInput=${e => updateField('donatePhotos.storyKidSlug', e.target.value)} />
+            <p class="text-sm text-muted" style="margin-top: 0.25rem;">Used for the "Read Full Story" link on the donate page.</p>
           </div>
         </div>
 
@@ -7553,6 +7658,7 @@
           { type: 'page', label: 'Press & Media', id: 'press', section: 'Pages' },
           { type: 'page', label: 'FAQs', id: 'faq', section: 'Pages' },
           { type: 'page', label: 'Financials', id: 'financials', section: 'Pages' },
+          { type: 'page', label: 'Kids on Site', id: 'kids-on-site', section: 'Pages' },
           { type: 'page', label: 'Site Settings', id: 'settings', section: 'Pages' },
           { type: 'page', label: 'Our Story', id: 'ourstory', section: 'Pages' },
           { type: 'page', label: 'Media Kit', id: 'mediakit', section: 'Pages' },
@@ -7967,6 +8073,7 @@
         ]},
         { label: 'Website', items: [
           { id: 'kids', icon: icons.kids, label: 'Kids' },
+          { id: 'kids-on-site', icon: icons.kids, label: 'Kids on Site' },
           { id: 'community', icon: icons.community, label: 'Community Projects' },
           { id: 'partners', icon: icons.partners, label: 'Partners' },
           { id: 'team', icon: icons.team, label: 'Team' },
@@ -8041,6 +8148,8 @@
             return html`<${FAQManager} addToast=${addToast} />`;
           case 'deploys':
             return html`<${Deploys} addToast=${addToast} />`;
+          case 'kids-on-site':
+            return html`<${KidsOnSite} addToast=${addToast} kids=${kids} />`;
           case 'settings':
             return html`<${SiteSettings} addToast=${addToast} kids=${kids} partners=${partners} />`;
           default:

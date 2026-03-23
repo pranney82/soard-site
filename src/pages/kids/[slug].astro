@@ -1,11 +1,25 @@
 ---
 /**
- * [slug].astro — Individual kid profile page (Premium)
+ * [slug].astro — Individual kid profile page (Top 1%)
  *
- * PERF: CF Image transforms with srcset/avif/webp, lazy gallery, YouTube facade
+ * Premium editorial storytelling with:
+ *   - LQIP blur-up image placeholders (tiny CF thumbnail → full res)
+ *   - Staggered cascade reveal animations (each element sequences in)
+ *   - CSS-only scroll progress indicator
+ *   - Shimmer loading states on all images
+ *   - Asymmetric hero with portrait + typography (never full-width)
+ *   - Masonry gallery with face-gravity, hover zoom overlay
+ *   - Video facade (CF Stream + YouTube)
+ *   - Fundraising CTA, partner logos, related kids
+ *   - Graceful empty states for minimal-data kids
+ *   - content-visibility: auto for rendering perf
+ *
+ * PERF: CF Images w/ srcset + gravity:face, LQIP blur-up, lazy loading,
+ *       video facade, content-visibility, inline CSS (build config)
  * SEO:  Article + Person schema, breadcrumbs, rich meta, OG image
- * A11Y: Heading hierarchy, ARIA labels, focus trap lightbox, keyboard nav
- * UX:   Full-bleed hero, masonry gallery, lightbox, prev/next nav, share
+ * A11Y: Heading hierarchy, ARIA, focus trap lightbox, keyboard nav,
+ *       prefers-reduced-motion respected
+ * UX:   View Transitions, staggered scroll-reveals, no full-bleed images
  */
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import Button from '../../components/ui/Button.astro';
@@ -16,13 +30,11 @@ export async function getStaticPaths() {
   const kids = await getCollection('kids');
   const sorted = kids.sort((a, b) => (b.data.year || 0) - (a.data.year || 0));
   return sorted.map((kid, i) => {
-    // Find related kids: same room type or same year, excluding self
     const others = sorted.filter((k, j) => j !== i);
     const sameType = others.filter(k =>
       k.data.roomTypes?.some(t => kid.data.roomTypes?.includes(t))
     );
     const sameYear = others.filter(k => k.data.year === kid.data.year);
-    // Prioritize same room type, then same year, then nearest in list
     const related = [...new Set([...sameType, ...sameYear, ...others])]
       .filter(k => k.data.heroImage)
       .slice(0, 4)
@@ -45,10 +57,14 @@ const photos = kid.photos || [];
 const isFeatured = kid.featured && kid.caseStudy;
 
 // ── CF Image helpers ──────────────────────
-import { cfUrl as _cfUrl, cfSrcset as _cfSrcset, cfRaw, CF_BASE } from '../../utils/cf-image';
+import { cfUrl as _cfUrl, cfSrcset as _cfSrcset, cfRaw, CF_BASE, cfId } from '../../utils/cf-image';
 function cfUrl(src: string, opts: string) { return cfRaw(src, opts); }
 function cfSrcset(src: string, widths: number[]) {
   return _cfSrcset(src, widths);
+}
+/** LQIP: Tiny 30px-wide thumbnail for blur-up placeholder */
+function lqip(src: string): string {
+  return cfRaw(src, 'w=30,q=30,blur=20');
 }
 
 // ── YouTube ID extraction ─────────────────
@@ -84,8 +100,30 @@ const metaDesc = kid.metaDescription
 const dateModified = kid.year ? `${kid.year}-01-01` : undefined;
 
 // ── LCP preload for hero image ────────────
-const heroSrcset = kid.heroImage ? _cfSrcset(kid.heroImage, [640, 1024, 1600, 2400]) : '';
-const heroSizes = '100vw';
+const heroSrcset = kid.heroImage ? _cfSrcset(kid.heroImage, [480, 800, 1200], { fit: 'cover', gravity: 'face', aspectRatio: 1.25 }) : '';
+const heroSizes = '(max-width: 600px) 92vw, (max-width: 1100px) 55vw, 520px';
+
+// ── Bio paragraphs + pull quote ───────────
+const bioParas = kid.bio ? kid.bio.split('\n\n').filter(p => p.trim()) : [];
+const introPara = bioParas.length > 0 ? bioParas[0] : '';
+const remainingParas = bioParas.slice(1);
+
+// Smart quote: use kid.quote if distinct, otherwise extract first 2 sentences from bio
+let pullQuote: string | null = null;
+if (kid.quote && kid.quote !== kid.bio && kid.quote !== introPara) {
+  pullQuote = kid.quote;
+} else if (kid.bio && kid.bio.length > 200) {
+  const sentences = kid.bio.match(/[^.!?]+[.!?]+/g);
+  if (sentences && sentences.length >= 2) {
+    pullQuote = sentences.slice(0, 2).join('').trim();
+  }
+}
+
+const galleryPhotos = photos.slice(0, 30);
+
+// ── Minimal data detection ────────────────
+const hasDetails = kid.age || (kid.roomTypes && kid.roomTypes.length > 0) || kid.year;
+const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
 ---
 
 <BaseLayout
@@ -98,84 +136,123 @@ const heroSizes = '100vw';
   dateModified={dateModified}
 >
   {kid.heroImage && <link slot="head" rel="preload" as="image" imagesrcset={heroSrcset} imagesizes={heroSizes} fetchpriority="high" />}
-  <article class="kid-profile" itemscope itemtype="https://schema.org/Article">
-    <!-- ═══ Hero ═══════════════════════════════ -->
-    <section class="hero">
-      {kid.heroImage && (
-        <div class="hero__image">
-          <img
-            src={cfUrl(kid.heroImage, 'w=1600,q=85')}
-            srcset={cfSrcset(kid.heroImage, [640, 1024, 1600, 2400])}
-            sizes="100vw"
-            alt={`Photo of ${kid.name}${kid.diagnosis ? ` — ${kid.diagnosis}` : ''}`}
-            class="hero__img"
-            width="1600"
-            height="900"
-            loading="eager"
-            decoding="async"
-            fetchpriority="high"
-            itemprop="image"
-            transition:name="kid-hero"
-          />
-          <div class="hero__gradient" aria-hidden="true"></div>
-        </div>
-      )}
 
-      <div class="hero__content container container--narrow">
-        <a href="/kids/" class="hero__back" aria-label="Back to all kids">
+  <!-- Scroll progress indicator -->
+  <div class="scroll-progress" aria-hidden="true"></div>
+
+  <article class="kid-profile" itemscope itemtype="https://schema.org/Article">
+    <!-- ═══ Hero: Split Layout ═══════════════ -->
+    <section class="hero">
+      <div class="container">
+        <a href="/kids/" class="hero__back stagger" aria-label="Back to all kids">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
-          All Kids
+          Meet the Kids
         </a>
 
-        <h1 class="hero__name" itemprop="headline" transition:name="kid-name">{kid.name}</h1>
+        <div class="hero__split">
+          {kid.heroImage ? (
+            <div class="hero__portrait stagger" style={`--lqip: url('${lqip(kid.heroImage)}')`}>
+              <img
+                src={cfUrl(kid.heroImage, 'w=800,h=1000,fit=cover,gravity=face,q=85')}
+                srcset={heroSrcset}
+                sizes={heroSizes}
+                alt={`Photo of ${kid.name}${kid.diagnosis ? ` — ${kid.diagnosis}` : ''}`}
+                class="hero__img lqip-img"
+                width="800"
+                height="1000"
+                loading="eager"
+                decoding="async"
+                fetchpriority="high"
+                itemprop="image"
+                transition:name="kid-hero"
+              />
+              {kid.status === 'in-progress' && (
+                <span class="hero__badge">In Progress</span>
+              )}
+            </div>
+          ) : (
+            <div class="hero__portrait hero__portrait--empty stagger">
+              <svg class="hero__placeholder-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                <circle cx="12" cy="7" r="4"/>
+              </svg>
+              <span class="hero__placeholder-text">{kid.name}</span>
+            </div>
+          )}
 
-        <div class="hero__meta">
-          {kid.age && (
-            <span class="meta-pill">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
-              {kid.age} years old
-            </span>
-          )}
-          {kid.diagnosis && (
-            <span class="meta-pill">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
-              {kid.diagnosis}
-            </span>
-          )}
-          {kid.roomTypes && kid.roomTypes.length > 0 && kid.roomTypes.map(type => (
-            <span class="meta-pill meta-pill--project">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-              {type}
-            </span>
-          ))}
-          {kid.year && (
-            <span class="meta-pill meta-pill--year">{kid.year}</span>
-          )}
-          {kid.status === 'in-progress' && (
-            <span class="meta-pill meta-pill--status">In Progress</span>
-          )}
+          <div class="hero__info">
+            <h1 class="hero__name stagger" itemprop="headline" transition:name="kid-name">{kid.name}</h1>
+
+            {kid.diagnosis && (
+              <p class="hero__diagnosis stagger">{kid.diagnosis}</p>
+            )}
+
+            {hasDetails && (
+              <div class="hero__details stagger">
+                {kid.age && (
+                  <div class="detail-chip">
+                    <span class="detail-chip__label">Age</span>
+                    <span class="detail-chip__value">{kid.age}</span>
+                  </div>
+                )}
+                {kid.roomTypes && kid.roomTypes.length > 0 && kid.roomTypes.map(type => (
+                  <div class="detail-chip detail-chip--room">
+                    <span class="detail-chip__label">Room</span>
+                    <span class="detail-chip__value">{type}</span>
+                  </div>
+                ))}
+                {kid.year && (
+                  <div class="detail-chip">
+                    <span class="detail-chip__label">Year</span>
+                    <span class="detail-chip__value">{kid.year}</span>
+                  </div>
+                )}
+                {kid.roomCount && kid.roomCount > 1 && (
+                  <div class="detail-chip">
+                    <span class="detail-chip__label">Rooms</span>
+                    <span class="detail-chip__value">{kid.roomCount}</span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {introPara && (
+              <p class="hero__intro stagger" itemprop="description">{introPara}</p>
+            )}
+
+            <div class="hero__actions stagger">
+              {kid.fundraisingUrl && (
+                <a href={kid.fundraisingUrl} target="_blank" rel="noopener noreferrer" class="hero__donate-btn">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+                  Donate for {kid.name}
+                </a>
+              )}
+              <button class="hero__share-btn" id="share-btn" type="button" aria-label="Share this story">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+                Share
+              </button>
+            </div>
+          </div>
         </div>
-
-        <button class="hero__share" id="share-btn" type="button" aria-label="Share this story">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
-          Share
-        </button>
       </div>
     </section>
 
-    <!-- ═══ Bio ════════════════════════════════ -->
-    {kid.bio && (
-      <section class="bio-section">
+    <!-- ═══ Story Section ════════════════════ -->
+    {remainingParas.length > 0 && (
+      <section class="story">
         <div class="container container--narrow">
-          <div class="bio prose" itemprop="articleBody">
-            {kid.bio.split('\n\n').map(paragraph => (
+          <div class="story__body prose stagger-section" itemprop="articleBody">
+            {remainingParas.map(paragraph => (
               <p>{paragraph}</p>
             ))}
           </div>
 
-          {kid.quote && (
-            <blockquote class="quote">
-              <p>{kid.quote}</p>
+          {pullQuote && (
+            <blockquote class="pullquote stagger-section">
+              <svg class="pullquote__mark" viewBox="0 0 48 48" fill="none" aria-hidden="true">
+                <path d="M14 28c-2.2 0-4-1.8-4-4 0-6.6 5.4-12 12-12v4c-4.4 0-8 3.6-8 8h4c2.2 0 4 1.8 4 4s-1.8 4-4 4h-4zm20 0c-2.2 0-4-1.8-4-4 0-6.6 5.4-12 12-12v4c-4.4 0-8 3.6-8 8h4c2.2 0 4 1.8 4 4s-1.8 4-4 4h-4z" fill="currentColor"/>
+              </svg>
+              <p>{pullQuote}</p>
             </blockquote>
           )}
         </div>
@@ -184,71 +261,69 @@ const heroSizes = '100vw';
 
     <!-- ═══ Fundraising CTA ═══════════════════ -->
     {kid.fundraisingUrl && (
-      <section class="fundraise-section">
+      <section class="fundraise stagger-section">
         <div class="container container--narrow">
-          <div class="fundraise-card">
-            <div class="fundraise-icon" aria-hidden="true">
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+          <div class="fundraise__card">
+            <div class="fundraise__icon" aria-hidden="true">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
             </div>
-            <h2 class="fundraise-title">Help fund {kid.name}'s <em class="highlight">room</em></h2>
-            <p class="fundraise-text">Your donation goes directly toward building {kid.name}'s {kid.roomTypes?.length ? kid.roomTypes.join(' & ').toLowerCase() : 'dream room'}. Zeffy charges zero platform fees — every dollar reaches our mission.</p>
-            <a href={kid.fundraisingUrl} target="_blank" rel="noopener noreferrer" class="fundraise-btn">
-              Donate for {kid.name}
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+            <div class="fundraise__content">
+              <h2 class="fundraise__title">Help fund {kid.name}'s room</h2>
+              <p class="fundraise__text">Your donation goes directly toward building {kid.name}'s {kid.roomTypes?.length ? kid.roomTypes.join(' & ').toLowerCase() : 'dream room'}. Zeffy charges zero platform fees — every dollar reaches our mission.</p>
+            </div>
+            <a href={kid.fundraisingUrl} target="_blank" rel="noopener noreferrer" class="fundraise__btn">
+              Donate Now
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
             </a>
-            <span class="fundraise-badges">
-              <span class="fundraise-badge">🔒 Secure</span>
-              <span class="fundraise-badge">🧾 Tax-Deductible</span>
-              <span class="fundraise-badge">💛 Zero Fees</span>
-            </span>
           </div>
         </div>
       </section>
     )}
 
-    <!-- ═══ Video ══════════════════════════════ -->
+    <!-- ═══ Video ════════════════════════════ -->
     {hasVideo && (
-      <section class="video-section section">
+      <section class="video stagger-section">
         <div class="container container--narrow">
-          <h2 class="section-heading">Watch {kid.name}'s Story</h2>
+          <h2 class="section-label">Watch {kid.name}'s Story</h2>
           {streamId ? (
-            <div class="video-wrap">
+            <div class="video__frame">
               <div class="stream-facade" id="stream-facade" data-id={streamId} role="button" tabindex="0" aria-label={`Play ${kid.name}'s video`}>
                 <img
                   src={`https://videodelivery.net/${streamId}/thumbnails/thumbnail.jpg?time=2s&height=720`}
                   alt={`Video thumbnail for ${kid.name}'s story`}
-                  class="stream-facade__thumb"
+                  class="video__thumb"
                   loading="lazy"
                   decoding="async"
                   width="1280"
                   height="720"
                 />
-                <div class="stream-facade__play" aria-hidden="true">
+                <div class="video__play" aria-hidden="true">
                   <svg width="68" height="48" viewBox="0 0 68 48">
                     <path d="M66.52 7.74c-.78-2.93-2.49-5.41-5.42-6.19C55.79.13 34 0 34 0S12.21.13 6.9 1.55C3.97 2.33 2.27 4.81 1.48 7.74.06 13.05 0 24 0 24s.06 10.95 1.48 16.26c.78 2.93 2.49 5.41 5.42 6.19C12.21 47.87 34 48 34 48s21.79-.13 27.1-1.55c2.93-.78 4.64-3.26 5.42-6.19C67.94 34.95 68 24 68 24s-.06-10.95-1.48-16.26z" fill="#FFDA24"/>
                     <path d="M45 24L27 14v20" fill="#373A36"/>
                   </svg>
                 </div>
               </div>
-
             </div>
           ) : ytId ? (
-            <div class="yt-facade" id="yt-facade" data-id={ytId} role="button" tabindex="0" aria-label={`Play ${kid.name}'s video`}>
-              <picture>
-                <source type="image/webp" srcset={`https://i.ytimg.com/vi_webp/${ytId}/maxresdefault.webp`} />
-                <img
-                  src={`https://i.ytimg.com/vi/${ytId}/maxresdefault.jpg`}
-                  alt={`Video thumbnail for ${kid.name}'s story`}
-                  class="yt-facade__thumb"
-                  loading="lazy"
-                  decoding="async"
-                />
-              </picture>
-              <div class="yt-facade__play" aria-hidden="true">
-                <svg width="68" height="48" viewBox="0 0 68 48">
-                  <path d="M66.52 7.74c-.78-2.93-2.49-5.41-5.42-6.19C55.79.13 34 0 34 0S12.21.13 6.9 1.55C3.97 2.33 2.27 4.81 1.48 7.74.06 13.05 0 24 0 24s.06 10.95 1.48 16.26c.78 2.93 2.49 5.41 5.42 6.19C12.21 47.87 34 48 34 48s21.79-.13 27.1-1.55c2.93-.78 4.64-3.26 5.42-6.19C67.94 34.95 68 24 68 24s-.06-10.95-1.48-16.26z" fill="#FFDA24"/>
-                  <path d="M45 24L27 14v20" fill="#373A36"/>
-                </svg>
+            <div class="video__frame">
+              <div class="yt-facade" id="yt-facade" data-id={ytId} role="button" tabindex="0" aria-label={`Play ${kid.name}'s video`}>
+                <picture>
+                  <source type="image/webp" srcset={`https://i.ytimg.com/vi_webp/${ytId}/maxresdefault.webp`} />
+                  <img
+                    src={`https://i.ytimg.com/vi/${ytId}/maxresdefault.jpg`}
+                    alt={`Video thumbnail for ${kid.name}'s story`}
+                    class="video__thumb"
+                    loading="lazy"
+                    decoding="async"
+                  />
+                </picture>
+                <div class="video__play" aria-hidden="true">
+                  <svg width="68" height="48" viewBox="0 0 68 48">
+                    <path d="M66.52 7.74c-.78-2.93-2.49-5.41-5.42-6.19C55.79.13 34 0 34 0S12.21.13 6.9 1.55C3.97 2.33 2.27 4.81 1.48 7.74.06 13.05 0 24 0 24s.06 10.95 1.48 16.26c.78 2.93 2.49 5.41 5.42 6.19C12.21 47.87 34 48 34 48s21.79-.13 27.1-1.55c2.93-.78 4.64-3.26 5.42-6.19C67.94 34.95 68 24 68 24s-.06-10.95-1.48-16.26z" fill="#FFDA24"/>
+                    <path d="M45 24L27 14v20" fill="#373A36"/>
+                  </svg>
+                </div>
               </div>
             </div>
           ) : null}
@@ -256,40 +331,42 @@ const heroSizes = '100vw';
       </section>
     )}
 
-    <!-- ═══ Photo Gallery ══════════════════════ -->
-    {photos.length > 1 && (
-      <section class="gallery-section section section--cream">
-        <div class="container container--wide">
-          <div class="gallery-header">
-            <h2 class="section-heading">Room Transformation</h2>
+    <!-- ═══ Masonry Photo Gallery ═════════════ -->
+    {galleryPhotos.length > 1 && (
+      <section class="gallery stagger-section">
+        <div class="container">
+          <div class="gallery__header">
+            <h2 class="section-label">Room Transformation</h2>
             {kid.photographer && (
-              <p class="photographer-credit">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
-                Photos by {kid.photographer}
+              <p class="gallery__credit">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                {kid.photographer}
               </p>
             )}
           </div>
-          <div class="masonry-gallery" id="gallery">
-            {photos.slice(0, 30).map((photo, i) => (
+          <div class="masonry" id="gallery">
+            {galleryPhotos.map((photo, i) => (
               <button
-                class="gallery-item"
+                class="masonry__item"
                 data-index={i}
                 data-src={cfUrl(photo.url, 'w=1600,q=85')}
                 data-alt={photo.alt || `${kid.name}'s room transformation photo ${i + 1}`}
-                aria-label={`View photo ${i + 1} of ${Math.min(photos.length, 30)}`}
+                aria-label={`View photo ${i + 1} of ${galleryPhotos.length}`}
                 type="button"
+                style={`--lqip: url('${lqip(photo.url)}')`}
               >
                 <img
                   src={cfUrl(photo.url, 'w=500,q=85')}
-                  srcset={cfSrcset(photo.url, [300, 500])}
+                  srcset={cfSrcset(photo.url, [300, 500, 800])}
                   sizes="(max-width: 600px) 45vw, (max-width: 1100px) 30vw, 280px"
                   alt={photo.alt || `${kid.name}'s room transformation photo ${i + 1}`}
-                  class="gallery-item__img"
-                  loading="lazy"
+                  class="masonry__img lqip-img"
+                  loading={i < 6 ? 'eager' : 'lazy'}
                   decoding="async"
-                  width="500"
-                  height="500"
                 />
+                <div class="masonry__overlay">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+                </div>
               </button>
             ))}
           </div>
@@ -297,15 +374,16 @@ const heroSizes = '100vw';
       </section>
     )}
 
-    <!-- ═══ Featured Project Link ═══════════════ -->
+    <!-- ═══ Featured Project Link ═══════════ -->
     {isFeatured && (
-      <section class="featured-link-section section">
+      <section class="featured-link stagger-section">
         <div class="container container--narrow">
-          <a href={`/rooms/${kid.slug}/`} class="featured-link-card">
-            <span class="featured-link-card__label">Featured Project</span>
-            <h2 class="featured-link-card__title">Go Behind the Build</h2>
-            <p class="featured-link-card__desc">See the full case study — from design concept and mood boards through construction to the big reveal.</p>
-            <span class="featured-link-card__cta">
+          <a href={`/rooms/${kid.slug}/`} class="featured-card">
+            <div class="featured-card__accent" aria-hidden="true"></div>
+            <span class="featured-card__eyebrow">Featured Project</span>
+            <h2 class="featured-card__title">Go Behind the Build</h2>
+            <p class="featured-card__desc">See the full case study — from design concept through construction to the big reveal.</p>
+            <span class="featured-card__cta">
               View Full Project
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
             </span>
@@ -314,15 +392,15 @@ const heroSizes = '100vw';
       </section>
     )}
 
-    <!-- ═══ Partner Logos (original) ═══════════ -->
+    <!-- ═══ Partner Logos ═══════════════════ -->
     {kid.partnerLogos && kid.partnerLogos.length > 0 && (
-      <section class="partners-section section">
+      <section class="partners stagger-section">
         <div class="container">
-          <h2 class="section-heading" style="text-align: center;">Project Partners</h2>
-          <p class="partners-subtitle">This project was made possible by the generous support of these partners.</p>
-          <div class="partners-grid">
+          <h2 class="section-label" style="text-align: center;">Project Partners</h2>
+          <p class="partners__sub">Made possible by the generous support of these partners.</p>
+          <div class="partners__grid">
             {kid.partnerLogos.map(logo => (
-              <div class="partner-logo">
+              <div class="partners__logo">
                 <img
                   src={cfUrl(logo.url, 'w=200,q=85')}
                   alt={logo.name || 'Project partner'}
@@ -338,31 +416,33 @@ const heroSizes = '100vw';
       </section>
     )}
 
-    <!-- ═══ Related Kids ═══════════════════════ -->
+    <!-- ═══ Related Kids ═══════════════════ -->
     {relatedKids && relatedKids.length > 0 && (
-      <section class="related-section section section--cream">
+      <section class="related stagger-section">
         <div class="container">
-          <h2 class="section-heading" style="text-align: center;">More Sunshine Stories</h2>
-          <div class="related-grid">
+          <h2 class="section-label" style="text-align: center;">More Sunshine Stories</h2>
+          <div class="related__grid">
             {relatedKids.map(rk => (
-              <a href={`/kids/${rk.slug}/`} class="related-card">
-                <div class="related-card__frame">
+              <a href={`/kids/${rk.slug}/`} class="related__card">
+                <div class="related__img-wrap" style={`--lqip: url('${lqip(rk.heroImage)}')`}>
                   <img
-                    src={cfUrl(rk.heroImage, 'w=600,q=85')}
-                    srcset={cfSrcset(rk.heroImage, [300, 600])}
+                    src={cfUrl(rk.heroImage, 'w=400,h=500,fit=cover,gravity=face,q=85')}
+                    srcset={_cfSrcset(rk.heroImage, [300, 400], { fit: 'cover', gravity: 'face', aspectRatio: 1.25 })}
                     sizes="(max-width: 600px) 45vw, 220px"
                     alt={`Photo of ${rk.name}`}
-                    class="related-card__img"
+                    class="related__img lqip-img"
                     loading="lazy"
                     decoding="async"
-                    width="300"
-                    height="400"
+                    width="400"
+                    height="500"
                   />
                 </div>
-                <span class="related-card__name">{rk.name}</span>
-                {rk.diagnosis && (
-                  <span class="related-card__diagnosis">{rk.diagnosis}</span>
-                )}
+                <div class="related__meta">
+                  <span class="related__name">{rk.name}</span>
+                  {rk.diagnosis && (
+                    <span class="related__diagnosis">{rk.diagnosis}</span>
+                  )}
+                </div>
               </a>
             ))}
           </div>
@@ -370,7 +450,7 @@ const heroSizes = '100vw';
       </section>
     )}
 
-    <!-- ═══ Prev / Next Navigation ════════════ -->
+    <!-- ═══ Prev / Next Navigation ════════ -->
     <nav class="kid-nav" aria-label="Navigate between kid profiles">
       <div class="container">
         <div class="kid-nav__grid">
@@ -383,8 +463,8 @@ const heroSizes = '100vw';
               </div>
             </a>
           ) : <div />}
-          <a href="/kids/" class="kid-nav__center" aria-label="View all kids">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+          <a href="/kids/" class="kid-nav__all" aria-label="View all kids">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
             All Kids
           </a>
           {nextKid ? (
@@ -400,12 +480,12 @@ const heroSizes = '100vw';
       </div>
     </nav>
 
-    <!-- ═══ CTA ═══════════════════════════════ -->
-    <section class="cta-section section section--dark">
+    <!-- ═══ CTA ═══════════════════════════ -->
+    <section class="cta stagger-section">
       <div class="container container--narrow" style="text-align: center;">
-        <h2 class="cta-section__title">Help kids like {kid.name}</h2>
-        <p class="cta-section__text">Every donation helps transform a child's living space into a place of comfort, safety, and joy.</p>
-        <div class="cta-section__buttons">
+        <h2 class="cta__title">Help kids like {kid.name}</h2>
+        <p class="cta__text">Every donation helps transform a child's living space into a place of comfort, safety, and joy.</p>
+        <div class="cta__buttons">
           <Button href="/donate/" variant="primary">Donate Now</Button>
           <Button href="/about/" variant="outline">About Our Mission</Button>
         </div>
@@ -413,7 +493,7 @@ const heroSizes = '100vw';
     </section>
   </article>
 
-  <!-- ═══ Lightbox ════════════════════════════ -->
+  <!-- ═══ Lightbox ══════════════════════════ -->
   <div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-label="Photo viewer" hidden>
     <div class="lightbox__backdrop" data-close aria-hidden="true"></div>
     <button class="lightbox__close" data-close aria-label="Close photo viewer">
@@ -425,7 +505,7 @@ const heroSizes = '100vw';
     <button class="lightbox__nav lightbox__nav--next" id="lb-next" aria-label="Next photo">
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
     </button>
-    <div class="lightbox__content">
+    <div class="lightbox__stage">
       <img class="lightbox__img" id="lb-img" src="" alt="" tabindex="0" />
       <p class="lightbox__counter" id="lb-counter" aria-live="polite"></p>
     </div>
@@ -435,207 +515,241 @@ const heroSizes = '100vw';
 <!-- ═══ Client-side JS ═══════════════════════ -->
 <script>
   let _kidObserver: IntersectionObserver | null = null;
+  let _staggerObserver: IntersectionObserver | null = null;
 
   function cleanupKidPage() {
     _kidObserver?.disconnect();
     _kidObserver = null;
+    _staggerObserver?.disconnect();
+    _staggerObserver = null;
   }
 
   function initKidPage() {
     cleanupKidPage();
 
-  // ── YouTube facade ──────────────────────
-  const facade = document.getElementById('yt-facade');
-  if (facade) {
-    const activate = () => {
-      const id = facade.dataset.id;
-      const wrapper = document.createElement('div');
-      wrapper.style.cssText = 'position:relative;aspect-ratio:16/9;border-radius:var(--border-radius-lg);overflow:hidden';
-      const iframe = document.createElement('iframe');
-      iframe.src = `https://www.youtube-nocookie.com/embed/${id}?autoplay=1&rel=0`;
-      iframe.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture';
-      iframe.allowFullscreen = true;
-      iframe.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border:0';
-      wrapper.appendChild(iframe);
-      facade.replaceWith(wrapper);
-    };
-    facade.addEventListener('click', activate);
-    facade.addEventListener('keydown', (e: KeyboardEvent) => {
-      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activate(); }
+    // ── LQIP blur-up: fade in images when loaded ──
+    document.querySelectorAll<HTMLImageElement>('.lqip-img').forEach(img => {
+      if (img.complete && img.naturalWidth > 0) {
+        img.classList.add('loaded');
+      } else {
+        img.addEventListener('load', () => img.classList.add('loaded'), { once: true });
+      }
     });
-  }
 
-  // ── Cloudflare Stream facade ────────────
-  const streamFacade = document.getElementById('stream-facade');
-  if (streamFacade) {
-    const activateStream = () => {
-      const id = streamFacade.dataset.id;
-      const wrapper = document.createElement('div');
-      wrapper.style.cssText = 'position:relative;aspect-ratio:16/9;border-radius:var(--border-radius-lg);overflow:hidden';
-      const iframe = document.createElement('iframe');
-      iframe.src = `https://iframe.videodelivery.net/${id}?autoplay=true`;
-      iframe.allow = 'accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture';
-      iframe.allowFullscreen = true;
-      iframe.title = 'Video player';
-      iframe.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border:0';
-      wrapper.appendChild(iframe);
-      streamFacade.replaceWith(wrapper);
-    };
-    streamFacade.addEventListener('click', activateStream);
-    streamFacade.addEventListener('keydown', (e: KeyboardEvent) => {
-      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activateStream(); }
+    // ── Staggered hero reveals ────────────────
+    const heroStaggers = document.querySelectorAll('.hero .stagger');
+    heroStaggers.forEach((el, i) => {
+      const htmlEl = el as HTMLElement;
+      htmlEl.style.setProperty('--stagger-delay', `${i * 80}ms`);
+      // Reveal immediately (hero is above fold)
+      requestAnimationFrame(() => htmlEl.classList.add('stagger--visible'));
     });
-  }
 
-  // ── Lightbox ────────────────────────────
-  const lightbox = document.getElementById('lightbox') as HTMLElement;
-  const lbImg = document.getElementById('lb-img') as HTMLImageElement;
-  const lbCounter = document.getElementById('lb-counter') as HTMLElement;
-  const lbPrev = document.getElementById('lb-prev') as HTMLButtonElement;
-  const lbNext = document.getElementById('lb-next') as HTMLButtonElement;
-  const galleryItems = document.querySelectorAll<HTMLButtonElement>('.gallery-item');
-
-  if (lightbox && galleryItems.length > 0) {
-    let currentIndex = 0;
-    let previousFocus: HTMLElement | null = null;
-    const prefetched = new Set<string>();
-
-    function showPhoto(index: number) {
-      const item = galleryItems[index];
-      if (!item) return;
-      currentIndex = index;
-      lbImg.src = item.dataset.src || '';
-      lbImg.alt = item.dataset.alt || '';
-      lbCounter.textContent = `${index + 1} / ${galleryItems.length}`;
-      lbPrev.style.display = index === 0 ? 'none' : '';
-      lbNext.style.display = index === galleryItems.length - 1 ? 'none' : '';
-      // Preload adjacent images (deduplicated)
-      [index - 1, index + 1].forEach(adj => {
-        const src = galleryItems[adj]?.dataset.src;
-        if (src && !prefetched.has(src)) {
-          prefetched.add(src);
-          const link = document.createElement('link');
-          link.rel = 'prefetch';
-          link.href = src;
-          link.as = 'image';
-          document.head.appendChild(link);
-        }
+    // ── Staggered section reveals ─────────────
+    if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      _staggerObserver = new IntersectionObserver(
+        (entries) => {
+          entries.forEach(entry => {
+            if (entry.isIntersecting) {
+              const section = entry.target as HTMLElement;
+              section.classList.add('stagger-section--visible');
+              _staggerObserver?.unobserve(section);
+            }
+          });
+        },
+        { rootMargin: '40px', threshold: 0.08 }
+      );
+      document.querySelectorAll('.stagger-section').forEach(el => {
+        _staggerObserver!.observe(el);
+      });
+    } else {
+      // Reduced motion: just show everything
+      document.querySelectorAll('.stagger-section').forEach(el => {
+        el.classList.add('stagger-section--visible');
       });
     }
 
-    function openLightbox(index: number) {
-      previousFocus = document.activeElement as HTMLElement;
-      showPhoto(index);
-      lightbox.hidden = false;
-      document.body.style.overflow = 'hidden';
-      lbImg.focus();
-    }
-
-    function closeLightbox() {
-      lightbox.hidden = true;
-      document.body.style.overflow = '';
-      previousFocus?.focus();
-    }
-
-    // Focus trap: keep Tab/Shift+Tab within lightbox (WCAG 2.1 AA)
-    function trapFocus(e: KeyboardEvent) {
-      if (e.key !== 'Tab') return;
-      const focusable = lightbox.querySelectorAll<HTMLElement>(
-        'button:not([style*="display: none"]):not([hidden]), [tabindex="0"]'
-      );
-      const list = Array.from(focusable).filter(el => el.offsetParent !== null);
-      if (list.length === 0) return;
-      const first = list[0];
-      const last = list[list.length - 1];
-      if (e.shiftKey && document.activeElement === first) {
-        e.preventDefault();
-        last.focus();
-      } else if (!e.shiftKey && document.activeElement === last) {
-        e.preventDefault();
-        first.focus();
-      }
-    }
-
-    galleryItems.forEach((item, i) => {
-      item.addEventListener('click', () => openLightbox(i));
-    });
-
-    lbPrev.addEventListener('click', () => showPhoto(currentIndex - 1));
-    lbNext.addEventListener('click', () => showPhoto(currentIndex + 1));
-
-    lightbox.querySelectorAll('[data-close]').forEach(el => {
-      el.addEventListener('click', closeLightbox);
-    });
-
-    lightbox.addEventListener('keydown', (e: KeyboardEvent) => {
-      if (e.key === 'Escape') closeLightbox();
-      if (e.key === 'ArrowLeft' && currentIndex > 0) showPhoto(currentIndex - 1);
-      if (e.key === 'ArrowRight' && currentIndex < galleryItems.length - 1) showPhoto(currentIndex + 1);
-      trapFocus(e);
-    });
-
-    // Touch swipe support for mobile
-    let touchStartX = 0;
-    let touchStartY = 0;
-    lightbox.addEventListener('touchstart', (e: TouchEvent) => {
-      touchStartX = e.changedTouches[0].screenX;
-      touchStartY = e.changedTouches[0].screenY;
-    }, { passive: true });
-
-    lightbox.addEventListener('touchend', (e: TouchEvent) => {
-      const dx = e.changedTouches[0].screenX - touchStartX;
-      const dy = e.changedTouches[0].screenY - touchStartY;
-      // Only horizontal swipes (not vertical scrolls)
-      if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) {
-        if (dx < 0 && currentIndex < galleryItems.length - 1) showPhoto(currentIndex + 1);
-        if (dx > 0 && currentIndex > 0) showPhoto(currentIndex - 1);
-      }
-    }, { passive: true });
-  }
-
-  // ── Share button ───────────────────────
-  const shareBtn = document.getElementById('share-btn');
-  if (shareBtn) {
-    shareBtn.addEventListener('click', async () => {
-      const shareData = {
-        title: document.title,
-        url: window.location.href,
+    // ── Scroll progress bar ───────────────────
+    const progressBar = document.querySelector('.scroll-progress') as HTMLElement;
+    if (progressBar) {
+      const updateProgress = () => {
+        const scrollTop = window.scrollY;
+        const docHeight = document.documentElement.scrollHeight - window.innerHeight;
+        const progress = docHeight > 0 ? Math.min(scrollTop / docHeight, 1) : 0;
+        progressBar.style.transform = `scaleX(${progress})`;
       };
-      try {
-        if (navigator.share) {
-          await navigator.share(shareData);
-        } else {
-          await navigator.clipboard.writeText(shareData.url);
-          shareBtn.classList.add('shared');
-          shareBtn.querySelector('svg')!.style.display = 'none';
-          shareBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg> Copied!';
-          setTimeout(() => {
-            shareBtn.classList.remove('shared');
-            shareBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg> Share';
-          }, 2000);
-        }
-      } catch { /* user cancelled share */ }
-    });
-  }
+      window.addEventListener('scroll', updateProgress, { passive: true });
+      updateProgress();
+    }
 
-  // ── Scroll reveal for sections ──────────
-  if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-    _kidObserver = new IntersectionObserver(
-      (entries) => {
-        entries.forEach(entry => {
-          if (entry.isIntersecting) {
-            (entry.target as HTMLElement).classList.add('revealed');
-            _kidObserver?.unobserve(entry.target);
+    // ── YouTube facade ──────────────────────
+    const facade = document.getElementById('yt-facade');
+    if (facade) {
+      const activate = () => {
+        const id = facade.dataset.id;
+        const wrapper = document.createElement('div');
+        wrapper.style.cssText = 'position:relative;aspect-ratio:16/9;border-radius:var(--border-radius-lg);overflow:hidden';
+        const iframe = document.createElement('iframe');
+        iframe.src = `https://www.youtube-nocookie.com/embed/${id}?autoplay=1&rel=0`;
+        iframe.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture';
+        iframe.allowFullscreen = true;
+        iframe.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border:0';
+        wrapper.appendChild(iframe);
+        facade.replaceWith(wrapper);
+      };
+      facade.addEventListener('click', activate);
+      facade.addEventListener('keydown', (e: KeyboardEvent) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activate(); }
+      });
+    }
+
+    // ── Cloudflare Stream facade ────────────
+    const streamFacade = document.getElementById('stream-facade');
+    if (streamFacade) {
+      const activateStream = () => {
+        const id = streamFacade.dataset.id;
+        const wrapper = document.createElement('div');
+        wrapper.style.cssText = 'position:relative;aspect-ratio:16/9;border-radius:var(--border-radius-lg);overflow:hidden';
+        const iframe = document.createElement('iframe');
+        iframe.src = `https://iframe.videodelivery.net/${id}?autoplay=true`;
+        iframe.allow = 'accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture';
+        iframe.allowFullscreen = true;
+        iframe.title = 'Video player';
+        iframe.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border:0';
+        wrapper.appendChild(iframe);
+        streamFacade.replaceWith(wrapper);
+      };
+      streamFacade.addEventListener('click', activateStream);
+      streamFacade.addEventListener('keydown', (e: KeyboardEvent) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activateStream(); }
+      });
+    }
+
+    // ── Lightbox ────────────────────────────
+    const lightbox = document.getElementById('lightbox') as HTMLElement;
+    const lbImg = document.getElementById('lb-img') as HTMLImageElement;
+    const lbCounter = document.getElementById('lb-counter') as HTMLElement;
+    const lbPrev = document.getElementById('lb-prev') as HTMLButtonElement;
+    const lbNext = document.getElementById('lb-next') as HTMLButtonElement;
+    const galleryItems = document.querySelectorAll<HTMLButtonElement>('.masonry__item');
+
+    if (lightbox && galleryItems.length > 0) {
+      let currentIndex = 0;
+      let previousFocus: HTMLElement | null = null;
+      const prefetched = new Set<string>();
+
+      function showPhoto(index: number) {
+        const item = galleryItems[index];
+        if (!item) return;
+        currentIndex = index;
+        lbImg.src = item.dataset.src || '';
+        lbImg.alt = item.dataset.alt || '';
+        lbCounter.textContent = `${index + 1} / ${galleryItems.length}`;
+        lbPrev.style.display = index === 0 ? 'none' : '';
+        lbNext.style.display = index === galleryItems.length - 1 ? 'none' : '';
+        [index - 1, index + 1].forEach(adj => {
+          const src = galleryItems[adj]?.dataset.src;
+          if (src && !prefetched.has(src)) {
+            prefetched.add(src);
+            const link = document.createElement('link');
+            link.rel = 'prefetch';
+            link.href = src;
+            link.as = 'image';
+            document.head.appendChild(link);
           }
         });
-      },
-      { rootMargin: '40px', threshold: 0.1 }
-    );
-    document.querySelectorAll('.bio-section, .fundraise-section, .gallery-section, .video-section, .partners-section').forEach(el => {
-      el.classList.add('reveal-target');
-      _kidObserver!.observe(el);
-    });
-  }
+      }
+
+      function openLightbox(index: number) {
+        previousFocus = document.activeElement as HTMLElement;
+        showPhoto(index);
+        lightbox.hidden = false;
+        document.body.style.overflow = 'hidden';
+        lbImg.focus();
+      }
+
+      function closeLightbox() {
+        lightbox.hidden = true;
+        document.body.style.overflow = '';
+        previousFocus?.focus();
+      }
+
+      function trapFocus(e: KeyboardEvent) {
+        if (e.key !== 'Tab') return;
+        const focusable = lightbox.querySelectorAll<HTMLElement>(
+          'button:not([style*="display: none"]):not([hidden]), [tabindex="0"]'
+        );
+        const list = Array.from(focusable).filter(el => el.offsetParent !== null);
+        if (list.length === 0) return;
+        const first = list[0];
+        const last = list[list.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
+
+      galleryItems.forEach((item, i) => {
+        item.addEventListener('click', () => openLightbox(i));
+      });
+
+      lbPrev.addEventListener('click', () => showPhoto(currentIndex - 1));
+      lbNext.addEventListener('click', () => showPhoto(currentIndex + 1));
+
+      lightbox.querySelectorAll('[data-close]').forEach(el => {
+        el.addEventListener('click', closeLightbox);
+      });
+
+      lightbox.addEventListener('keydown', (e: KeyboardEvent) => {
+        if (e.key === 'Escape') closeLightbox();
+        if (e.key === 'ArrowLeft' && currentIndex > 0) showPhoto(currentIndex - 1);
+        if (e.key === 'ArrowRight' && currentIndex < galleryItems.length - 1) showPhoto(currentIndex + 1);
+        trapFocus(e);
+      });
+
+      let touchStartX = 0;
+      let touchStartY = 0;
+      lightbox.addEventListener('touchstart', (e: TouchEvent) => {
+        touchStartX = e.changedTouches[0].screenX;
+        touchStartY = e.changedTouches[0].screenY;
+      }, { passive: true });
+
+      lightbox.addEventListener('touchend', (e: TouchEvent) => {
+        const dx = e.changedTouches[0].screenX - touchStartX;
+        const dy = e.changedTouches[0].screenY - touchStartY;
+        if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+          if (dx < 0 && currentIndex < galleryItems.length - 1) showPhoto(currentIndex + 1);
+          if (dx > 0 && currentIndex > 0) showPhoto(currentIndex - 1);
+        }
+      }, { passive: true });
+    }
+
+    // ── Share button ───────────────────────
+    const shareBtn = document.getElementById('share-btn');
+    if (shareBtn) {
+      shareBtn.addEventListener('click', async () => {
+        const shareData = {
+          title: document.title,
+          url: window.location.href,
+        };
+        try {
+          if (navigator.share) {
+            await navigator.share(shareData);
+          } else {
+            await navigator.clipboard.writeText(shareData.url);
+            shareBtn.classList.add('shared');
+            shareBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg> Copied!';
+            setTimeout(() => {
+              shareBtn.classList.remove('shared');
+              shareBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg> Share';
+            }, 2000);
+          }
+        } catch { /* user cancelled share */ }
+      });
+    }
 
   } // end initKidPage
 
@@ -644,374 +758,526 @@ const heroSizes = '100vw';
 </script>
 
 <style>
-  /* ═══ Hero ═════════════════════════════════ */
-  .hero {
-    position: relative;
-    min-height: 60vh;
-    min-height: 60dvh;
-    display: flex;
-    align-items: flex-end;
-    background: var(--c-dark);
-    overflow: hidden;
+  /* ═══════════════════════════════════════════
+     Kid Profile — Top 1% Editorial Layout
+     ═══════════════════════════════════════════ */
+
+  .kid-profile {
+    --profile-radius: 20px;
   }
 
-  .hero__image {
+  /* ═══ Scroll Progress ═════════════════════ */
+  .scroll-progress {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: var(--c-yellow);
+    transform-origin: left;
+    transform: scaleX(0);
+    z-index: 1001;
+    pointer-events: none;
+    will-change: transform;
+  }
+
+  /* ═══ LQIP Blur-Up ═══════════════════════ */
+  .hero__portrait,
+  .masonry__item,
+  .related__img-wrap {
+    background-image: var(--lqip);
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+  }
+
+  .lqip-img {
+    opacity: 0;
+    transition: opacity 0.5s ease;
+  }
+
+  .lqip-img.loaded {
+    opacity: 1;
+  }
+
+  /* ═══ Shimmer Loading State ═══════════════ */
+  @keyframes shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+  }
+
+  .hero__portrait::before,
+  .masonry__item::before,
+  .related__img-wrap::before {
+    content: '';
     position: absolute;
     inset: 0;
-  }
-
-  .hero__img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    object-position: center 30%;
-  }
-
-  .hero__gradient {
-    position: absolute;
-    inset: 0;
+    z-index: 1;
     background: linear-gradient(
-      to top,
-      rgba(30, 31, 37, 0.85) 0%,
-      rgba(30, 31, 37, 0.5) 35%,
-      rgba(30, 31, 37, 0.15) 60%,
+      90deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.3) 50%,
       transparent 100%
     );
+    background-size: 200% 100%;
+    animation: shimmer 1.5s ease-in-out infinite;
+    pointer-events: none;
+    border-radius: inherit;
   }
 
-  .hero__content {
-    position: relative;
-    z-index: 2;
-    padding-block: var(--space-5xl) var(--space-2xl);
-    width: 100%;
+  /* Hide shimmer once image loads */
+  .hero__portrait:has(.loaded)::before,
+  .masonry__item:has(.loaded)::before,
+  .related__img-wrap:has(.loaded)::before {
+    opacity: 0;
+    transition: opacity 0.3s ease;
+  }
+
+  /* ═══ Staggered Reveal — Hero Elements ════ */
+  .stagger {
+    opacity: 0;
+    transform: translateY(16px);
+    transition: opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1),
+                transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+    transition-delay: var(--stagger-delay, 0ms);
+  }
+
+  .stagger--visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  /* ═══ Staggered Reveal — Sections ═════════ */
+  .stagger-section {
+    opacity: 0;
+    transform: translateY(32px);
+    transition: opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1),
+                transform 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .stagger-section--visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  /* ═══ Containers ═══════════════════════════ */
+  .container {
+    max-width: var(--max-width);
+    margin-inline: auto;
+    padding-inline: var(--page-padding);
+  }
+
+  .container--narrow {
+    max-width: var(--max-width-narrow);
+  }
+
+  /* ═══ Section Label ════════════════════════ */
+  .section-label {
+    font-family: var(--font-display);
+    font-size: clamp(1.4rem, 3vw, 1.85rem);
+    color: var(--c-dark);
+    margin-bottom: var(--space-xl);
+    line-height: 1.2;
+  }
+
+  /* ═══ Hero: Split Layout ═══════════════════ */
+  .hero {
+    padding-top: calc(var(--header-height) + var(--space-xl));
+    padding-bottom: var(--space-3xl);
+    background: var(--c-cream);
   }
 
   .hero__back {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    color: rgba(255, 255, 255, 0.8);
-    font-size: 0.85rem;
+    color: var(--c-text-muted);
+    font-size: 0.82rem;
     font-weight: 500;
     text-decoration: none;
-    margin-bottom: var(--space-lg);
+    margin-bottom: var(--space-xl);
     transition: color var(--transition-fast);
   }
 
   .hero__back:hover {
-    color: var(--c-white);
+    color: var(--c-dark);
+  }
+
+  .hero__split {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: clamp(var(--space-xl), 5vw, var(--space-4xl));
+    align-items: center;
+  }
+
+  .hero__portrait {
+    position: relative;
+    border-radius: var(--profile-radius);
+    overflow: hidden;
+    aspect-ratio: 4 / 5;
+    background-color: var(--c-warm-gray);
+    box-shadow:
+      0 4px 6px rgba(0, 0, 0, 0.04),
+      0 12px 40px rgba(0, 0, 0, 0.08),
+      0 -3px 0 var(--c-yellow);
+  }
+
+  .hero__portrait--empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-md);
+    background: linear-gradient(135deg, var(--c-warm-gray) 0%, var(--c-cream) 100%);
+  }
+
+  .hero__placeholder-icon {
+    width: 64px;
+    height: 64px;
+    color: var(--c-border);
+  }
+
+  .hero__placeholder-text {
+    font-family: var(--font-display);
+    font-size: 1.5rem;
+    color: var(--c-text-muted);
+  }
+
+  .hero__img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    position: relative;
+    z-index: 2;
+  }
+
+  .hero__badge {
+    position: absolute;
+    top: var(--space-md);
+    left: var(--space-md);
+    z-index: 3;
+    background: var(--c-yellow);
+    color: var(--c-dark);
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 6px 14px;
+    border-radius: 100px;
+  }
+
+  .hero__info {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
   }
 
   .hero__name {
-    font-size: clamp(2.5rem, 6vw, 4rem);
-    color: var(--c-white);
-    line-height: 1.1;
-    margin-bottom: var(--space-lg);
-    text-shadow: 0 2px 20px rgba(0, 0, 0, 0.3);
-  }
-
-  .hero__meta {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-  }
-
-  .meta-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 0.85rem;
-    font-weight: 500;
-    color: var(--c-white);
-    padding: 6px 14px;
-    background: rgba(255, 255, 255, 0.15);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    border-radius: 100px;
-  }
-
-  .meta-pill--project {
-    background: rgba(255, 218, 36, 0.2);
-    border-color: rgba(255, 218, 36, 0.4);
-    color: var(--c-yellow);
-  }
-
-  .meta-pill--year {
-    background: rgba(255, 255, 255, 0.1);
-    border-color: rgba(255, 255, 255, 0.15);
-    font-weight: 600;
-  }
-
-  /* ═══ Share Button ═══════════════════════ */
-  .hero__share {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    margin-top: var(--space-lg);
-    padding: 8px 18px;
-    background: rgba(255, 255, 255, 0.12);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
-    border: 1px solid rgba(255, 255, 255, 0.25);
-    border-radius: 100px;
-    color: rgba(255, 255, 255, 0.9);
-    font-size: 0.82rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
-  }
-
-  .hero__share:hover {
-    background: rgba(255, 255, 255, 0.2);
-    border-color: rgba(255, 255, 255, 0.5);
-    color: var(--c-white);
-  }
-
-  .hero__share.shared {
-    background: rgba(255, 218, 36, 0.25);
-    border-color: rgba(255, 218, 36, 0.5);
-    color: var(--c-yellow);
-  }
-
-  .meta-pill--status {
-    background: var(--c-yellow);
-    border-color: var(--c-yellow);
-    color: var(--c-dark);
-    font-weight: 700;
-    font-size: 0.7rem;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-  }
-
-  /* ═══ Bio Section ═════════════════════════ */
-  .bio-section {
-    padding-block: var(--space-3xl) var(--space-2xl);
-  }
-
-  .bio {
-    font-size: 1.1rem;
-    line-height: 1.85;
-    max-width: 720px;
-    color: var(--c-text);
-  }
-
-  .bio p + p {
-    margin-top: var(--space-lg);
-  }
-
-  .quote {
-    margin-top: var(--space-2xl);
-    padding: var(--space-xl) var(--space-2xl);
-    background: var(--c-warm-gray);
-    border-left: 4px solid var(--c-yellow);
-    border-radius: var(--border-radius);
     font-family: var(--font-display);
-    font-style: italic;
-    font-size: 1.2rem;
-    line-height: 1.6;
-    color: var(--c-text);
-    max-width: 720px;
-  }
-
-  /* ═══ Section Heading ════════════════════ */
-  .section-heading {
-    font-family: var(--font-display);
-    font-size: clamp(1.5rem, 3vw, 2rem);
-    margin-bottom: var(--space-xl);
+    font-size: clamp(2.8rem, 6vw, 4.5rem);
     color: var(--c-dark);
-  }
-
-  /* ═══ Fundraising CTA ═══════════════════ */
-  .fundraise-section {
-    padding-block: var(--space-2xl);
-  }
-
-  .fundraise-card {
-    text-align: center;
-    background: linear-gradient(135deg, rgba(255,218,36,0.08) 0%, rgba(255,218,36,0.03) 100%);
-    border: 2px solid rgba(255,218,36,0.25);
-    border-radius: var(--border-radius-lg);
-    padding: var(--space-2xl) var(--space-xl);
-  }
-
-  .fundraise-icon {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 56px;
-    height: 56px;
-    border-radius: 50%;
-    background: rgba(255,218,36,0.15);
-    color: var(--c-dark);
-    margin-bottom: var(--space-md);
-  }
-
-  .fundraise-title {
-    font-family: var(--font-display);
-    font-size: clamp(1.3rem, 3vw, 1.75rem);
-    color: var(--c-dark);
+    line-height: 1.05;
+    letter-spacing: -0.02em;
     margin-bottom: var(--space-sm);
   }
 
-  .fundraise-text {
-    font-size: 1rem;
-    line-height: 1.7;
+  .hero__diagnosis {
+    font-size: clamp(1rem, 2vw, 1.2rem);
     color: var(--c-text-muted);
-    max-width: 520px;
-    margin: 0 auto var(--space-lg);
+    font-weight: 400;
+    margin-bottom: var(--space-xl);
+    line-height: 1.4;
   }
 
-  .fundraise-btn {
+  .hero__details {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: var(--space-xl);
+  }
+
+  .detail-chip {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 10px 18px;
+    background: var(--c-white);
+    border: 1px solid var(--c-border);
+    border-radius: 12px;
+    min-width: 72px;
+    transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+  }
+
+  .detail-chip:hover {
+    border-color: var(--c-yellow);
+    box-shadow: 0 0 0 3px var(--c-yellow-soft);
+  }
+
+  .detail-chip--room {
+    border-color: rgba(255, 218, 36, 0.4);
+    background: rgba(255, 218, 36, 0.06);
+  }
+
+  .detail-chip__label {
+    font-size: 0.65rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--c-text-light);
+  }
+
+  .detail-chip__value {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--c-dark);
+    line-height: 1.2;
+  }
+
+  .hero__intro {
+    font-size: 1.05rem;
+    line-height: 1.75;
+    color: var(--c-text);
+    margin-bottom: var(--space-xl);
+    max-width: 480px;
+  }
+
+  .hero__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+  }
+
+  .hero__donate-btn {
     display: inline-flex;
     align-items: center;
-    gap: 0.5rem;
-    padding: 0.85rem 2rem;
+    gap: 8px;
+    padding: 12px 24px;
     background: var(--c-yellow);
     color: var(--c-dark);
     font-weight: 700;
-    font-size: 1rem;
-    border-radius: 50px;
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    font-size: 0.9rem;
+    border-radius: 100px;
     text-decoration: none;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
   }
 
-  .fundraise-btn:hover {
+  .hero__donate-btn:hover {
     transform: translateY(-2px);
-    box-shadow: 0 8px 24px rgba(255,218,36,0.35);
+    box-shadow: 0 8px 24px rgba(255, 218, 36, 0.35);
   }
 
-  .fundraise-badges {
-    display: flex;
-    justify-content: center;
-    flex-wrap: wrap;
-    gap: 0.75rem;
-    margin-top: var(--space-lg);
-  }
-
-  .fundraise-badge {
-    font-size: 0.8rem;
-    font-weight: 500;
-    color: var(--c-text-muted);
-  }
-
-  /* ═══ YouTube Facade ════════════════════ */
-  .video-section {
-    padding-block: var(--space-2xl);
-  }
-
-  .yt-facade {
-    position: relative;
-    aspect-ratio: 16 / 9;
-    border-radius: var(--border-radius-lg);
-    overflow: hidden;
-    cursor: pointer;
-    background: var(--c-dark);
-  }
-
-  .yt-facade__thumb {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    transition: transform 0.3s ease, filter 0.3s ease;
-  }
-
-  .yt-facade:hover .yt-facade__thumb {
-    transform: scale(1.03);
-    filter: brightness(0.85);
-  }
-
-  .yt-facade__play {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    opacity: 0.9;
-    transition: opacity 0.2s ease, transform 0.2s ease;
-    filter: drop-shadow(0 4px 20px rgba(0, 0, 0, 0.4));
-  }
-
-  .yt-facade:hover .yt-facade__play {
-    opacity: 1;
-    transform: translate(-50%, -50%) scale(1.08);
-  }
-
-  /* Stream facade — matches YT facade pattern */
-  .stream-facade {
-    position: relative;
-    aspect-ratio: 16 / 9;
-    border-radius: var(--border-radius-lg);
-    overflow: hidden;
-    cursor: pointer;
-    background: var(--c-dark);
-  }
-
-  .stream-facade__thumb {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    transition: transform 0.3s ease, filter 0.3s ease;
-  }
-
-  .stream-facade:hover .stream-facade__thumb {
-    transform: scale(1.03);
-    filter: brightness(0.85);
-  }
-
-  .stream-facade__play {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    opacity: 0.9;
-    transition: opacity 0.2s ease, transform 0.2s ease;
-    filter: drop-shadow(0 4px 20px rgba(0, 0, 0, 0.4));
-  }
-
-  .stream-facade:hover .stream-facade__play {
-    opacity: 1;
-    transform: translate(-50%, -50%) scale(1.08);
-  }
-
-  /* CF Stream embed */
-  .video-wrap {
-    border-radius: var(--border-radius-lg);
-    overflow: hidden;
-    background: var(--c-dark);
-  }
-
-  .video-iframe {
-    display: block;
-    width: 100%;
-    aspect-ratio: 16 / 9;
-    border: 0;
-  }
-
-  .video-yt-link {
-    text-align: center;
-    margin-top: var(--space-sm);
-    font-size: 0.85rem;
-  }
-
-  .video-yt-link a {
+  .hero__share-btn {
     display: inline-flex;
     align-items: center;
     gap: 6px;
+    padding: 12px 20px;
+    background: transparent;
+    border: 1px solid var(--c-border);
+    border-radius: 100px;
     color: var(--c-text-muted);
-    text-decoration: none;
-    transition: color var(--transition-fast);
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: border-color var(--transition-fast), color var(--transition-fast), background var(--transition-fast);
   }
 
-  .video-yt-link a:hover {
+  .hero__share-btn:hover {
+    border-color: var(--c-dark);
+    color: var(--c-dark);
+    background: var(--c-white);
+  }
+
+  .hero__share-btn.shared {
+    border-color: rgba(255, 218, 36, 0.5);
+    color: var(--c-dark);
+    background: rgba(255, 218, 36, 0.1);
+  }
+
+  /* ═══ Story Section ════════════════════════ */
+  .story {
+    padding-block: var(--space-3xl);
+    background: var(--c-white);
+    content-visibility: auto;
+    contain-intrinsic-size: auto 600px;
+  }
+
+  .story__body {
+    font-size: 1.1rem;
+    line-height: 1.85;
+    color: var(--c-text);
+    max-width: 680px;
+  }
+
+  .story__body p + p {
+    margin-top: var(--space-lg);
+  }
+
+  .story__body p:first-child::first-letter {
+    font-family: var(--font-display);
+    font-size: 3.4em;
+    float: left;
+    line-height: 0.85;
+    margin-right: 8px;
+    margin-top: 4px;
     color: var(--c-dark);
   }
 
-  /* ═══ Gallery (Masonry) ═════════════════ */
-  .gallery-section {
-    padding-block: var(--space-3xl);
+  .pullquote {
+    position: relative;
+    margin-top: var(--space-3xl);
+    padding: var(--space-2xl) var(--space-2xl) var(--space-2xl) var(--space-3xl);
+    background: linear-gradient(135deg, rgba(255, 218, 36, 0.06) 0%, rgba(255, 218, 36, 0.02) 100%);
+    border-left: 4px solid var(--c-yellow);
+    border-radius: 0 var(--border-radius-lg) var(--border-radius-lg) 0;
+    max-width: 680px;
   }
 
-  .gallery-header {
+  .pullquote__mark {
+    position: absolute;
+    top: var(--space-lg);
+    left: var(--space-lg);
+    width: 32px;
+    height: 32px;
+    color: var(--c-yellow);
+    opacity: 0.5;
+  }
+
+  .pullquote p {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-size: 1.15rem;
+    line-height: 1.65;
+    color: var(--c-text);
+  }
+
+  /* ═══ Fundraising CTA ═════════════════════ */
+  .fundraise {
+    padding-block: var(--space-xl);
+  }
+
+  .fundraise__card {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xl);
+    background: linear-gradient(135deg, rgba(255, 218, 36, 0.08) 0%, rgba(255, 218, 36, 0.03) 100%);
+    border: 1.5px solid rgba(255, 218, 36, 0.3);
+    border-radius: var(--profile-radius);
+    padding: var(--space-xl) var(--space-2xl);
+  }
+
+  .fundraise__icon {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 52px;
+    height: 52px;
+    border-radius: 14px;
+    background: rgba(255, 218, 36, 0.15);
+    color: var(--c-dark);
+  }
+
+  .fundraise__content {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .fundraise__title {
+    font-family: var(--font-display);
+    font-size: 1.15rem;
+    color: var(--c-dark);
+    margin-bottom: 4px;
+  }
+
+  .fundraise__text {
+    font-size: 0.9rem;
+    line-height: 1.5;
+    color: var(--c-text-muted);
+  }
+
+  .fundraise__btn {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 22px;
+    background: var(--c-yellow);
+    color: var(--c-dark);
+    font-weight: 700;
+    font-size: 0.88rem;
+    border-radius: 100px;
+    text-decoration: none;
+    white-space: nowrap;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  .fundraise__btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(255, 218, 36, 0.35);
+  }
+
+  /* ═══ Video Section ═══════════════════════ */
+  .video {
+    padding-block: var(--space-2xl);
+    content-visibility: auto;
+    contain-intrinsic-size: auto 500px;
+  }
+
+  .video__frame {
+    border-radius: var(--profile-radius);
+    overflow: hidden;
+    background: var(--c-dark);
+    box-shadow: var(--shadow-lg);
+  }
+
+  .yt-facade,
+  .stream-facade {
+    position: relative;
+    aspect-ratio: 16 / 9;
+    cursor: pointer;
+    background: var(--c-dark);
+  }
+
+  .video__thumb {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), filter 0.4s ease;
+  }
+
+  .yt-facade:hover .video__thumb,
+  .stream-facade:hover .video__thumb {
+    transform: scale(1.03);
+    filter: brightness(0.85);
+  }
+
+  .video__play {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    opacity: 0.9;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+    filter: drop-shadow(0 4px 20px rgba(0, 0, 0, 0.4));
+  }
+
+  .yt-facade:hover .video__play,
+  .stream-facade:hover .video__play {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.08);
+  }
+
+  /* ═══ Masonry Gallery ════════════════════ */
+  .gallery {
+    padding-block: var(--space-3xl);
+    background: var(--c-warm-gray);
+    content-visibility: auto;
+    contain-intrinsic-size: auto 800px;
+  }
+
+  .gallery__header {
     display: flex;
     align-items: baseline;
     justify-content: space-between;
@@ -1020,76 +1286,173 @@ const heroSizes = '100vw';
     margin-bottom: var(--space-xl);
   }
 
-  .gallery-header .section-heading {
+  .gallery__header .section-label {
     margin-bottom: 0;
   }
 
-  .photographer-credit {
+  .gallery__credit {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
+    gap: 5px;
     color: var(--c-text-muted);
-    font-size: 0.85rem;
+    font-size: 0.82rem;
+    font-weight: 400;
   }
 
-  .masonry-gallery {
-    columns: 4 260px;
-    column-gap: var(--space-md);
+  .masonry {
+    columns: 3 280px;
+    column-gap: 12px;
   }
 
-  .gallery-item {
+  .masonry__item {
+    position: relative;
     display: inline-block;
     width: 100%;
     break-inside: avoid;
-    margin-bottom: var(--space-md);
-    border-radius: var(--border-radius);
+    margin-bottom: 12px;
+    border-radius: 14px;
     overflow: hidden;
-    background: var(--c-warm-gray);
+    background-color: var(--c-cream);
     border: none;
     padding: 0;
     cursor: pointer;
-    transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1),
-                box-shadow 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+                box-shadow 0.4s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
-  @media (hover: hover) {
-    .gallery-item:hover {
-      transform: translateY(-4px);
-      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.12);
-    }
-  }
-
-  .gallery-item:focus-visible {
-    outline: 3px solid var(--c-dark);
-    outline-offset: 3px;
-  }
-
-  .gallery-item__img {
+  .masonry__img {
     width: 100%;
     height: auto;
     display: block;
+    position: relative;
+    z-index: 2;
+    transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .masonry__overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    background: rgba(0, 0, 0, 0);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--c-white);
+    opacity: 0;
+    transition: background 0.3s ease, opacity 0.3s ease;
+    pointer-events: none;
   }
 
   @media (hover: hover) {
-    .gallery-item:hover .gallery-item__img {
+    .masonry__item:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 16px 48px rgba(0, 0, 0, 0.12);
+      z-index: 2;
+    }
+
+    .masonry__item:hover .masonry__img {
       transform: scale(1.04);
+    }
+
+    .masonry__item:hover .masonry__overlay {
+      background: rgba(0, 0, 0, 0.2);
+      opacity: 1;
     }
   }
 
-  /* ═══ Partners ═════════════════════════ */
-  .partners-section {
-    padding-block: var(--space-3xl);
+  .masonry__item:focus-visible {
+    outline: 3px solid var(--c-yellow);
+    outline-offset: 3px;
   }
 
-  .partners-subtitle {
+  /* ═══ Featured Link Card ═══════════════════ */
+  .featured-link {
+    padding-block: var(--space-xl);
+  }
+
+  .featured-card {
+    display: block;
+    text-decoration: none;
+    position: relative;
+    overflow: hidden;
+    background: linear-gradient(135deg, var(--c-dark) 0%, #1A1B1F 100%);
+    border-radius: var(--profile-radius);
+    padding: var(--space-2xl);
+    color: #fff;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+  }
+
+  .featured-card__accent {
+    position: absolute;
+    top: -60px;
+    right: -60px;
+    width: 200px;
+    height: 200px;
+    background: radial-gradient(circle, rgba(255, 218, 36, 0.12) 0%, transparent 70%);
+    border-radius: 50%;
+  }
+
+  .featured-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2);
+  }
+
+  .featured-card__eyebrow {
+    display: inline-block;
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--c-yellow);
+    margin-bottom: var(--space-sm);
+  }
+
+  .featured-card__title {
+    font-family: var(--font-display);
+    font-size: 1.4rem;
+    color: #fff;
+    margin-bottom: var(--space-xs);
+  }
+
+  .featured-card__desc {
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 0.92rem;
+    line-height: 1.5;
+    max-width: 480px;
+    margin-bottom: var(--space-md);
+  }
+
+  .featured-card__cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 600;
+    font-size: 0.88rem;
+    color: var(--c-yellow);
+    transition: gap 0.2s;
+  }
+
+  .featured-card:hover .featured-card__cta {
+    gap: 10px;
+  }
+
+  /* ═══ Partners ═════════════════════════════ */
+  .partners {
+    padding-block: var(--space-3xl);
+    background: var(--c-white);
+    content-visibility: auto;
+    contain-intrinsic-size: auto 300px;
+  }
+
+  .partners__sub {
     text-align: center;
     color: var(--c-text-muted);
-    font-size: 0.95rem;
+    font-size: 0.9rem;
     margin-top: calc(-1 * var(--space-md));
     margin-bottom: var(--space-2xl);
   }
 
-  .partners-grid {
+  .partners__grid {
     display: flex;
     flex-wrap: wrap;
     gap: var(--space-xl);
@@ -1097,66 +1460,77 @@ const heroSizes = '100vw';
     align-items: center;
   }
 
-  .partner-logo {
-    width: 130px;
-    opacity: 0.6;
-    transition: opacity var(--transition-base), transform var(--transition-base);
+  .partners__logo {
+    width: 120px;
+    opacity: 0.5;
+    transition: opacity var(--transition-base), filter var(--transition-base), transform var(--transition-base);
     filter: grayscale(100%);
   }
 
-  .partner-logo:hover {
+  .partners__logo:hover {
     opacity: 1;
     filter: grayscale(0%);
-    transform: scale(1.05);
+    transform: scale(1.08);
   }
 
-  .partner-logo img {
+  .partners__logo img {
     width: 100%;
     height: auto;
     object-fit: contain;
   }
 
-  /* ═══ Related Kids ═══════════════════ */
-  .related-section {
+  /* ═══ Related Kids ═════════════════════════ */
+  .related {
     padding-block: var(--space-3xl);
+    background: var(--c-warm-gray);
+    content-visibility: auto;
+    contain-intrinsic-size: auto 500px;
   }
 
-  .related-grid {
+  .related__grid {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
     gap: var(--space-lg);
   }
 
-  .related-card {
+  .related__card {
     text-decoration: none;
-    transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
-  @media (hover: hover) {
-    .related-card:hover {
-      transform: translateY(-6px);
-    }
-    .related-card:hover .related-card__img {
-      transform: scale(1.05);
-    }
-  }
-
-  .related-card__frame {
-    border-radius: var(--border-radius-lg);
+  .related__img-wrap {
+    position: relative;
+    border-radius: var(--profile-radius);
     overflow: hidden;
+    aspect-ratio: 4 / 5;
+    background-color: var(--c-cream);
   }
 
-  .related-card__img {
+  .related__img {
     width: 100%;
     height: 100%;
     object-fit: cover;
     display: block;
+    position: relative;
+    z-index: 2;
     transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
-  .related-card__name {
-    display: block;
+  @media (hover: hover) {
+    .related__card:hover {
+      transform: translateY(-6px);
+    }
+    .related__card:hover .related__img {
+      transform: scale(1.05);
+    }
+  }
+
+  .related__meta {
     padding: 10px 4px 0;
+  }
+
+  .related__name {
+    display: block;
     font-family: var(--font-display);
     font-size: 1rem;
     font-weight: 600;
@@ -1164,15 +1538,15 @@ const heroSizes = '100vw';
     line-height: 1.3;
   }
 
-  .related-card__diagnosis {
+  .related__diagnosis {
     display: block;
-    padding: 0 4px;
     font-size: 0.78rem;
     color: var(--c-text-muted);
     line-height: 1.4;
+    margin-top: 2px;
   }
 
-  /* ═══ Prev/Next Navigation ═════════════ */
+  /* ═══ Prev / Next Nav ═════════════════════ */
   .kid-nav {
     border-top: 1px solid var(--c-border);
     padding-block: var(--space-xl);
@@ -1192,7 +1566,7 @@ const heroSizes = '100vw';
     gap: var(--space-sm);
     text-decoration: none;
     padding: var(--space-md) var(--space-lg);
-    border-radius: var(--border-radius);
+    border-radius: 12px;
     transition: background var(--transition-fast);
   }
 
@@ -1206,7 +1580,7 @@ const heroSizes = '100vw';
 
   .kid-nav__label {
     display: block;
-    font-size: 0.7rem;
+    font-size: 0.68rem;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.08em;
@@ -1216,13 +1590,13 @@ const heroSizes = '100vw';
   .kid-nav__name {
     display: block;
     font-family: var(--font-display);
-    font-size: 1.1rem;
+    font-size: 1.05rem;
     font-weight: 600;
     color: var(--c-dark);
     line-height: 1.3;
   }
 
-  .kid-nav__center {
+  .kid-nav__all {
     display: inline-flex;
     align-items: center;
     gap: 6px;
@@ -1231,29 +1605,30 @@ const heroSizes = '100vw';
     font-weight: 500;
     text-decoration: none;
     padding: var(--space-sm) var(--space-md);
-    border-radius: var(--border-radius);
+    border-radius: 12px;
     transition: color var(--transition-fast), background var(--transition-fast);
   }
 
-  .kid-nav__center:hover {
+  .kid-nav__all:hover {
     color: var(--c-dark);
     background: var(--c-warm-gray);
   }
 
-  /* ═══ CTA Section ══════════════════════ */
-  .cta-section {
+  /* ═══ CTA ══════════════════════════════════ */
+  .cta {
     padding-block: var(--space-4xl);
+    background: var(--c-dark);
   }
 
-  .cta-section__title {
+  .cta__title {
     font-family: var(--font-display);
     font-size: clamp(1.5rem, 3vw, 2.25rem);
     color: var(--c-white);
     margin-bottom: var(--space-md);
   }
 
-  .cta-section__text {
-    color: rgba(255, 255, 255, 0.75);
+  .cta__text {
+    color: rgba(255, 255, 255, 0.7);
     font-size: 1.05rem;
     max-width: 500px;
     margin-inline: auto;
@@ -1261,17 +1636,26 @@ const heroSizes = '100vw';
     line-height: 1.6;
   }
 
-  .cta-section__buttons {
+  .cta__buttons {
     display: flex;
     gap: var(--space-md);
     justify-content: center;
     flex-wrap: wrap;
   }
 
-  /* ═══ Lightbox ═════════════════════════ */
-  .lightbox[hidden] {
-    display: none;
+  .cta__buttons :global(.btn--outline) {
+    color: var(--c-white);
+    box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.4);
   }
+
+  .cta__buttons :global(.btn--outline:hover) {
+    background: rgba(255, 255, 255, 0.12);
+    box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.7);
+    color: var(--c-white);
+  }
+
+  /* ═══ Lightbox ═════════════════════════════ */
+  .lightbox[hidden] { display: none; }
 
   .lightbox {
     position: fixed;
@@ -1286,8 +1670,8 @@ const heroSizes = '100vw';
     position: absolute;
     inset: 0;
     background: rgba(0, 0, 0, 0.92);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
   }
 
   .lightbox__close {
@@ -1308,9 +1692,7 @@ const heroSizes = '100vw';
     transition: background var(--transition-fast);
   }
 
-  .lightbox__close:hover {
-    background: rgba(255, 255, 255, 0.2);
-  }
+  .lightbox__close:hover { background: rgba(255, 255, 255, 0.2); }
 
   .lightbox__nav {
     position: absolute;
@@ -1330,14 +1712,11 @@ const heroSizes = '100vw';
     transition: background var(--transition-fast);
   }
 
-  .lightbox__nav:hover {
-    background: rgba(255, 255, 255, 0.2);
-  }
-
+  .lightbox__nav:hover { background: rgba(255, 255, 255, 0.2); }
   .lightbox__nav--prev { left: var(--space-lg); }
   .lightbox__nav--next { right: var(--space-lg); }
 
-  .lightbox__content {
+  .lightbox__stage {
     position: relative;
     z-index: 5;
     max-width: 90vw;
@@ -1352,229 +1731,153 @@ const heroSizes = '100vw';
     max-width: 100%;
     max-height: 80vh;
     object-fit: contain;
-    border-radius: var(--border-radius);
+    border-radius: 12px;
     outline: none;
   }
 
   .lightbox__counter {
-    color: rgba(255, 255, 255, 0.6);
-    font-size: 0.85rem;
+    color: rgba(255, 255, 255, 0.55);
+    font-size: 0.82rem;
     font-weight: 500;
+    letter-spacing: 0.04em;
   }
 
-  /* ═══ Scroll Reveal — opacity only, no transform to prevent reflow ═══ */
-  .reveal-target {
-    opacity: 0;
-    transition: opacity 0.6s ease;
+  /* ═══ View Transitions ═════════════════════ */
+  ::view-transition-group(kid-hero) {
+    animation-duration: 280ms;
+    animation-timing-function: cubic-bezier(0.25, 0.46, 0.45, 0.94);
   }
 
-  .reveal-target.revealed {
-    opacity: 1;
+  ::view-transition-group(kid-name) {
+    animation-duration: 220ms;
+    animation-timing-function: cubic-bezier(0.25, 0.46, 0.45, 0.94);
   }
 
-  /* ═══ Responsive: Tablet ═══════════════ */
+  /* ═══ Responsive: Tablet ═══════════════════ */
   @media (max-width: 1100px) {
-    .masonry-gallery {
-      columns: 3;
+    .related__grid {
+      grid-template-columns: repeat(4, 1fr);
+      gap: var(--space-md);
     }
   }
 
-  /* ═══ Responsive: Mobile ═══════════════ */
+  /* ═══ Responsive: Mobile ═══════════════════ */
   @media (max-width: 768px) {
     .hero {
-      min-height: 50vh;
-      min-height: 50dvh;
+      padding-top: calc(var(--header-height) + var(--space-md));
+      padding-bottom: var(--space-2xl);
     }
 
-    .hero__content {
-      padding-block: var(--space-4xl) var(--space-xl);
+    .hero__split {
+      grid-template-columns: 1fr;
+      gap: var(--space-xl);
+    }
+
+    .hero__portrait {
+      max-width: 340px;
+      margin-inline: auto;
     }
 
     .hero__name {
-      font-size: clamp(2rem, 8vw, 3rem);
+      font-size: clamp(2.2rem, 10vw, 3.2rem);
     }
 
-    .meta-pill {
-      font-size: 0.78rem;
-      padding: 5px 10px;
+    .hero__intro {
+      font-size: 0.95rem;
     }
 
-    .bio {
-      font-size: 1rem;
-    }
-
-    .quote {
-      padding: var(--space-lg);
-      font-size: 1.05rem;
-    }
-
-    .masonry-gallery {
+    .masonry {
       columns: 2;
-      column-gap: var(--space-sm);
+      column-gap: 8px;
     }
 
-    .gallery-item {
-      margin-bottom: var(--space-sm);
+    .masonry__item {
+      margin-bottom: 8px;
+      border-radius: 10px;
     }
 
-    .related-grid {
+    .related__grid {
       grid-template-columns: repeat(2, 1fr);
       gap: var(--space-md);
     }
 
-    .related-card__name {
-      font-size: 0.85rem;
-    }
-
-    .related-card__diagnosis {
-      font-size: 0.7rem;
-    }
+    .related__name { font-size: 0.88rem; }
+    .related__diagnosis { font-size: 0.72rem; }
+    .related__img-wrap { border-radius: 14px; }
 
     .kid-nav__grid {
       grid-template-columns: 1fr 1fr;
       gap: var(--space-sm);
     }
 
-    .kid-nav__center {
+    .kid-nav__all {
       grid-column: 1 / -1;
       justify-self: center;
       order: -1;
     }
 
-    .kid-nav__link {
-      padding: var(--space-sm);
-    }
+    .kid-nav__link { padding: var(--space-sm); }
+    .kid-nav__name { font-size: 0.92rem; }
 
-    .kid-nav__name {
-      font-size: 0.95rem;
-    }
-
-    /* Lightbox: full screen on mobile */
     .lightbox__nav--prev { left: var(--space-sm); }
     .lightbox__nav--next { right: var(--space-sm); }
     .lightbox__close { top: var(--space-sm); right: var(--space-sm); }
+    .lightbox__nav, .lightbox__close { width: 44px; height: 44px; }
 
-    .lightbox__nav,
-    .lightbox__close {
-      width: 44px;
-      height: 44px;
+    .story__body { font-size: 1rem; }
+
+    .pullquote {
+      padding: var(--space-xl) var(--space-lg) var(--space-xl) var(--space-xl);
+    }
+    .pullquote p { font-size: 1.05rem; }
+
+    .fundraise__card {
+      flex-direction: column;
+      text-align: center;
+      padding: var(--space-xl);
+      gap: var(--space-md);
     }
 
-    .partner-logo {
-      width: 90px;
-    }
-
-    .partners-grid {
-      gap: var(--space-lg);
-    }
-
-    .cta-section {
-      padding-block: var(--space-3xl);
-    }
+    .partners__logo { width: 90px; }
+    .partners__grid { gap: var(--space-lg); }
+    .cta { padding-block: var(--space-3xl); }
   }
 
   @media (max-width: 480px) {
-    .hero {
-      min-height: 45vh;
-      min-height: 45dvh;
-    }
-
-    .hero__meta {
-      gap: 6px;
-    }
-
-    .gallery-header {
-      flex-direction: column;
-    }
+    .hero__details { gap: 8px; }
+    .detail-chip { padding: 8px 14px; }
+    .gallery__header { flex-direction: column; }
+    .hero__portrait { max-width: 280px; }
   }
 
-  /* ═══ Featured Project Link Card ═══════ */
-  .featured-link-section {
-    padding-block: var(--space-xl);
-  }
-
-  .featured-link-card {
-    display: block;
-    text-decoration: none;
-    background: linear-gradient(135deg, var(--c-dark) 0%, #1A1B1F 100%);
-    border-radius: var(--border-radius-lg);
-    padding: var(--space-xl) var(--space-2xl);
-    color: #fff;
-    transition: transform 0.3s ease, box-shadow 0.3s ease;
-    position: relative;
-    overflow: hidden;
-  }
-
-  .featured-link-card::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    right: 0;
-    width: 200px;
-    height: 200px;
-    background: radial-gradient(circle, rgba(255, 218, 36, 0.1) 0%, transparent 70%);
-    border-radius: 50%;
-    transform: translate(40%, -40%);
-  }
-
-  .featured-link-card:hover {
-    transform: translateY(-3px);
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2);
-  }
-
-  .featured-link-card__label {
-    display: inline-block;
-    font-size: 0.7rem;
-    font-weight: 700;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: var(--c-yellow);
-    margin-bottom: var(--space-sm);
-  }
-
-  .featured-link-card__title {
-    font-family: var(--font-display);
-    font-size: 1.5rem;
-    font-weight: 700;
-    color: #fff;
-    margin-bottom: var(--space-xs);
-  }
-
-  .featured-link-card__desc {
-    color: rgba(255, 255, 255, 0.65);
-    font-size: 0.95rem;
-    line-height: 1.5;
-    max-width: 480px;
-    margin-bottom: var(--space-md);
-  }
-
-  .featured-link-card__cta {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-weight: 600;
-    font-size: 0.9rem;
-    color: var(--c-yellow);
-    transition: gap 0.2s;
-  }
-
-  .featured-link-card:hover .featured-link-card__cta {
-    gap: 10px;
-  }
-
-  /* ═══ Reduced Motion ═══════════════════ */
+  /* ═══ Reduced Motion ═══════════════════════ */
   @media (prefers-reduced-motion: reduce) {
-    .reveal-target {
+    .stagger,
+    .stagger-section {
       opacity: 1;
       transform: none;
       transition: none;
     }
 
-    .yt-facade__thumb,
-    .stream-facade__thumb,
-    .gallery-item__img,
-    .gallery-item,
-    .related-card__img {
+    .lqip-img {
+      opacity: 1;
+      transition: none;
+    }
+
+    .scroll-progress { display: none; }
+
+    .hero__portrait::before,
+    .masonry__item::before,
+    .related__img-wrap::before {
+      animation: none;
+      display: none;
+    }
+
+    .video__thumb,
+    .masonry__img,
+    .masonry__item,
+    .related__img,
+    .related__card {
       transition: none;
     }
   }

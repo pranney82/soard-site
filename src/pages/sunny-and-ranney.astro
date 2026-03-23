@@ -12,14 +12,18 @@
 import BaseLayout from '../layouts/BaseLayout.astro';
 import { CF_BASE as CF } from '../utils/cf-image';
 import { getSiteStats } from '../utils/stats';
+import siteSettings from '../content/site/settings.json';
 const s = await getSiteStats();
 
 const store = 'about/sunny-ranney-storefront';
 const logo = 'logo-tagline-cyan-bg';
 const founders = 'about/founders-reunion-2026';
-const room1 = 'kids/griffin/hero';
-const room2 = 'kids/jackson/hero';
-const room3 = 'kids/madison/hero';
+
+const rooms = (siteSettings as any).sunnyAndRanneyRooms || [
+  { cfId: 'kids/griffin/hero', label: 'Dream Bedroom' },
+  { cfId: 'kids/jackson/hero', label: 'Therapy Room' },
+  { cfId: 'kids/madison/hero', label: 'Sensory Space' },
+];
 
 const desc = 'Sunny & Ranney is a nonprofit home furnishings store in Roswell, GA — designer furniture, décor & gifts with 100% of profits building dream rooms for children with special needs.';
 ---
@@ -104,6 +108,53 @@ const desc = 'Sunny & Ranney is a nonprofit home furnishings store in Roswell, G
     </div>
   </section>
 
+  <!-- ═══ WHAT WE CARRY ═══ -->
+  <section class="sr-carry">
+    <div class="sr-container">
+      <div class="sr-carry-top">
+        <div class="sr-carry-header" data-reveal>
+          <span class="sr-label">What We Carry</span>
+          <h2>Designer pieces, all brand-new, all for a cause.</h2>
+          <p>Hand-selected by our design team — beautiful things that look amazing in your home and feel even better knowing their purpose.</p>
+        </div>
+        <div class="sr-carry-categories" data-reveal data-delay="1">
+          <a href="https://sunnyandranney.com" target="_blank" rel="noopener noreferrer" class="sr-cat">
+            <span class="sr-cat-name">Furniture</span>
+            <span class="sr-cat-arrow">→</span>
+          </a>
+          <a href="https://sunnyandranney.com" target="_blank" rel="noopener noreferrer" class="sr-cat">
+            <span class="sr-cat-name">Lighting</span>
+            <span class="sr-cat-arrow">→</span>
+          </a>
+          <a href="https://sunnyandranney.com" target="_blank" rel="noopener noreferrer" class="sr-cat">
+            <span class="sr-cat-name">Wall Art</span>
+            <span class="sr-cat-arrow">→</span>
+          </a>
+          <a href="https://sunnyandranney.com" target="_blank" rel="noopener noreferrer" class="sr-cat">
+            <span class="sr-cat-name">Accents & Décor</span>
+            <span class="sr-cat-arrow">→</span>
+          </a>
+          <a href="https://sunnyandranney.com" target="_blank" rel="noopener noreferrer" class="sr-cat">
+            <span class="sr-cat-name">Gifts</span>
+            <span class="sr-cat-arrow">→</span>
+          </a>
+          <a href="https://sunnyandranney.com" target="_blank" rel="noopener noreferrer" class="sr-cat">
+            <span class="sr-cat-name">Textiles</span>
+            <span class="sr-cat-arrow">→</span>
+          </a>
+        </div>
+      </div>
+      <div class="sr-carry-photos" data-reveal>
+        <figure class="sr-carry-img sr-carry-img--wide">
+          <img src={`${CF}/sunny-ranney-interior/w=900,h=500,fit=cover,q=75`} srcset={`${CF}/sunny-ranney-interior/w=600,h=333,fit=cover,q=70 600w, ${CF}/sunny-ranney-interior/w=900,h=500,fit=cover,q=75 900w`} sizes="(max-width:768px) 90vw, 62%" alt="Inside the Sunny & Ranney showroom" width="900" height="500" loading="lazy" decoding="async" />
+        </figure>
+        <figure class="sr-carry-img sr-carry-img--tall">
+          <img src={`${CF}/showroom-editorial/w=500,h=500,fit=cover,q=75`} srcset={`${CF}/showroom-editorial/w=320,h=320,fit=cover,q=70 320w, ${CF}/showroom-editorial/w=500,h=500,fit=cover,q=75 500w`} sizes="(max-width:768px) 90vw, 34%" alt="Styled showroom vignette" width="500" height="500" loading="lazy" decoding="async" />
+        </figure>
+      </div>
+    </div>
+  </section>
+
   <!-- ═══ IMPACT ═══ -->
   <section class="sr-impact">
     <div class="sr-container">
@@ -118,18 +169,12 @@ const desc = 'Sunny & Ranney is a nonprofit home furnishings store in Roswell, G
         <div class="sr-stat"><span class="sr-stat-val">{s.years}</span><span class="sr-stat-label">years of impact</span></div>
       </div>
       <div class="sr-impact-rooms" data-reveal>
-        <figure class="sr-room-card">
-          <img src={`${CF}/${room1}/w=500,h=400,fit=cover,q=70`} alt="Dream Bedroom" width="500" height="400" loading="lazy" decoding="async" />
-          <figcaption>Dream Bedroom</figcaption>
-        </figure>
-        <figure class="sr-room-card">
-          <img src={`${CF}/${room2}/w=500,h=400,fit=cover,q=70`} alt="Therapy Room" width="500" height="400" loading="lazy" decoding="async" />
-          <figcaption>Therapy Room</figcaption>
-        </figure>
-        <figure class="sr-room-card">
-          <img src={`${CF}/${room3}/w=500,h=400,fit=cover,q=70`} alt="Sensory Space" width="500" height="400" loading="lazy" decoding="async" />
-          <figcaption>Sensory Space</figcaption>
-        </figure>
+        {rooms.map((r: any) => (
+          <figure class="sr-room-card">
+            <img src={`${CF}/${r.cfId}/w=500,h=400,fit=cover,q=70`} alt={r.label} width="500" height="400" loading="lazy" decoding="async" />
+            <figcaption>{r.label}</figcaption>
+          </figure>
+        ))}
       </div>
     </div>
   </section>
@@ -153,16 +198,16 @@ const desc = 'Sunny & Ranney is a nonprofit home furnishings store in Roswell, G
       <div class="sr-visit-inner">
         <div class="sr-visit-gallery" data-reveal>
           <img
-            src={`${CF}/${store}/w=700,h=500,fit=cover,q=75`}
-            srcset={`${CF}/${store}/w=400,h=286,fit=cover,q=70 400w, ${CF}/${store}/w=700,h=500,fit=cover,q=75 700w`}
+            src={`${CF}/sunny-ranney-interior/w=700,h=500,fit=cover,q=75`}
+            srcset={`${CF}/sunny-ranney-interior/w=400,h=286,fit=cover,q=70 400w, ${CF}/sunny-ranney-interior/w=700,h=500,fit=cover,q=75 700w`}
             sizes="(max-width:768px) 90vw, 55%"
-            alt="Sunny & Ranney showroom"
+            alt="Inside the Sunny & Ranney showroom"
             width="700" height="500" loading="lazy" decoding="async"
             class="sr-visit-img-main"
           />
           <img
             src={`${CF}/${store}/w=320,h=320,fit=cover,q=70`}
-            alt="Store details"
+            alt="Sunny & Ranney storefront"
             width="320" height="320" loading="lazy" decoding="async"
             class="sr-visit-img-inset"
           />
@@ -477,6 +522,109 @@ const desc = 'Sunny & Ranney is a nonprofit home furnishings store in Roswell, G
   }
 
   /* ══════════════════════════════
+     WHAT WE CARRY
+     ══════════════════════════════ */
+  .sr-carry {
+    padding: clamp(4rem, 8vh, 7rem) 0;
+    background: var(--sr-warm);
+  }
+
+  .sr-carry-top {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: clamp(40px, 5vw, 80px);
+    align-items: start;
+    margin-bottom: clamp(32px, 4vh, 48px);
+  }
+
+  .sr-carry-header h2 {
+    font-size: clamp(24px, 3vw, 36px);
+    line-height: 1.25;
+    margin-bottom: 16px;
+  }
+
+  .sr-carry-header p {
+    font-size: 16px;
+    line-height: 1.7;
+    color: var(--c-text-muted);
+  }
+
+  .sr-carry-categories {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .sr-cat {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 0;
+    border-bottom: 1px solid var(--c-border);
+    text-decoration: none;
+    color: inherit;
+    transition: padding-left 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .sr-cat:first-child {
+    border-top: 1px solid var(--c-border);
+  }
+
+  .sr-cat:hover {
+    padding-left: 12px;
+  }
+
+  .sr-cat-name {
+    font-family: var(--font-display);
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--c-dark);
+  }
+
+  .sr-cat-arrow {
+    font-size: 16px;
+    color: var(--c-text-light);
+    transition: color 0.2s ease, transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .sr-cat:hover .sr-cat-arrow {
+    color: var(--sr-teal);
+    transform: translateX(4px);
+  }
+
+  /* Photos row */
+  .sr-carry-photos {
+    display: grid;
+    grid-template-columns: 1.8fr 1fr;
+    gap: 20px;
+  }
+
+  .sr-carry-img {
+    margin: 0;
+    border-radius: 12px;
+    overflow: hidden;
+  }
+
+  .sr-carry-img img {
+    width: 100%;
+    height: 100%;
+    display: block;
+    object-fit: cover;
+    transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .sr-carry-img:hover img {
+    transform: scale(1.03);
+  }
+
+  .sr-carry-img--wide img {
+    aspect-ratio: 16 / 9;
+  }
+
+  .sr-carry-img--tall img {
+    aspect-ratio: 1;
+  }
+
+  /* ══════════════════════════════
      IMPACT
      ══════════════════════════════ */
   .sr-impact {
@@ -760,6 +908,15 @@ const desc = 'Sunny & Ranney is a nonprofit home furnishings store in Roswell, G
     .sr-story-inner {
       grid-template-columns: 1fr;
       gap: 32px;
+    }
+
+    .sr-carry-top {
+      grid-template-columns: 1fr;
+      gap: 32px;
+    }
+
+    .sr-carry-photos {
+      grid-template-columns: 1fr;
     }
 
     .sr-impact-stats {
