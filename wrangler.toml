@@ -20,6 +20,24 @@ database_id = "71ac037d-2682-4336-9cf7-234e97c5b462"
 binding = "FILES"
 bucket_name = "soard-files"
 
+# ─── Preview / Staging ─────────────────────────────────────────────
+# To isolate preview deployments (non-production branches) from prod data,
+# create separate D1 + R2 resources and uncomment the section below:
+#
+#   wrangler d1 create soard-db-preview
+#   wrangler d1 execute soard-db-preview --file=scripts/schema.sql
+#   wrangler r2 bucket create soard-files-preview
+#
+# [env.preview]
+# [[env.preview.d1_databases]]
+# binding = "DB"
+# database_name = "soard-db-preview"
+# database_id = "your-preview-d1-id"
+#
+# [[env.preview.r2_buckets]]
+# binding = "FILES"
+# bucket_name = "soard-files-preview"
+
 # Shopify Storefront API — set these in the CF Pages dashboard (Settings > Environment Variables)
 # SHOPIFY_STORE_DOMAIN = "your-store.myshopify.com"
 # SHOPIFY_STOREFRONT_TOKEN = "your-storefront-access-token"

@@ -13,41 +13,9 @@
  * Env bindings: DB (D1), FILES (R2)
  */
 
-const COLLECTION_MAP = {
-  'src/content/kids/': 'kids',
-  'src/content/partners/': 'partners',
-  'src/content/press/': 'press',
-  'src/content/team/': 'team',
-  'src/content/events/': 'events',
-  'src/content/community/': 'community',
-  'src/content/articles/': 'articles',
-};
+import { SITE_PREFIX, NAME_COLUMN, resolveDirToTable } from './_collections.js';
 
-const SITE_PREFIX = 'src/content/site/';
 const MAX_PER_PAGE = 200;
-
-const NAME_COLUMN = {
-  kids: 'name',
-  partners: 'name',
-  press: 'title',
-  team: 'name',
-  events: 'title',
-  community: 'name',
-  articles: 'title',
-};
-
-function resolveDirToTable(dir) {
-  const normalized = dir.endsWith('/') ? dir : dir + '/';
-  for (const [prefix, table] of Object.entries(COLLECTION_MAP)) {
-    if (normalized === prefix || normalized.startsWith(prefix)) {
-      return { table, prefix };
-    }
-  }
-  if (normalized === 'src/content/site/' || normalized.startsWith('src/content/site/')) {
-    return { table: 'site_config', prefix: SITE_PREFIX };
-  }
-  return null;
-}
 
 function isFinancialsDir(dir) {
   const normalized = dir.endsWith('/') ? dir : dir + '/';

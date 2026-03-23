@@ -12,29 +12,7 @@
  * Env vars: CF_PAGES_DEPLOY_HOOK (optional — triggers rebuild after delete)
  */
 
-const COLLECTION_MAP = {
-  'src/content/kids/': 'kids',
-  'src/content/partners/': 'partners',
-  'src/content/press/': 'press',
-  'src/content/team/': 'team',
-  'src/content/events/': 'events',
-  'src/content/community/': 'community',
-  'src/content/articles/': 'articles',
-};
-
-const SITE_PREFIX = 'src/content/site/';
-
-function parsePath(path) {
-  if (path.startsWith(SITE_PREFIX) && path.endsWith('.json')) {
-    return { type: 'site', key: path.slice(SITE_PREFIX.length, -5) };
-  }
-  for (const [prefix, table] of Object.entries(COLLECTION_MAP)) {
-    if (path.startsWith(prefix) && path.endsWith('.json')) {
-      return { type: 'collection', table, slug: path.slice(prefix.length, -5) };
-    }
-  }
-  return null;
-}
+import { parsePath } from './_collections.js';
 
 export async function onRequestPost(context) {
   try {

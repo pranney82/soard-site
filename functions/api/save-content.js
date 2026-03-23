@@ -13,43 +13,7 @@
  * Env vars: CF_PAGES_DEPLOY_HOOK (optional — triggers rebuild after save)
  */
 
-const COLLECTION_MAP = {
-  'src/content/kids/': 'kids',
-  'src/content/partners/': 'partners',
-  'src/content/press/': 'press',
-  'src/content/team/': 'team',
-  'src/content/events/': 'events',
-  'src/content/community/': 'community',
-  'src/content/articles/': 'articles',
-};
-
-const SITE_PREFIX = 'src/content/site/';
-
-const EXTRACTORS = {
-  kids: (d) => [
-    'd.name, d.year ?? null, d.status || "completed", d.featured ? 1 : 0, d.childCount ?? 1, d.roomCount ?? 1',
-    ['name', 'year', 'status', 'featured', 'child_count', 'room_count'],
-    [d.name, d.year ?? null, d.status || 'completed', d.featured ? 1 : 0, d.childCount ?? 1, d.roomCount ?? 1],
-  ],
-  partners: (d) => [null, ['name', 'tier', 'featured'], [d.name, d.tier ?? null, d.featured ? 1 : 0]],
-  press: (d) => [null, ['title', 'date', 'category', 'featured'], [d.title ?? null, d.date ?? null, d.category ?? null, d.featured ? 1 : 0]],
-  team: (d) => [null, ['name', '"group"', 'order_num'], [d.name, d.group ?? null, d.order ?? 0]],
-  events: (d) => [null, ['title', 'date', 'status', 'featured'], [d.title, d.date ?? null, d.status || 'upcoming', d.featured ? 1 : 0]],
-  community: (d) => [null, ['name', 'order_num'], [d.name, d.order ?? 0]],
-  articles: (d) => [null, ['title', 'featured', 'order_num'], [d.title, d.featured ? 1 : 0, d.order ?? 0]],
-};
-
-function parsePath(path) {
-  if (path.startsWith(SITE_PREFIX) && path.endsWith('.json')) {
-    return { type: 'site', key: path.slice(SITE_PREFIX.length, -5) };
-  }
-  for (const [prefix, table] of Object.entries(COLLECTION_MAP)) {
-    if (path.startsWith(prefix) && path.endsWith('.json')) {
-      return { type: 'collection', table, slug: path.slice(prefix.length, -5) };
-    }
-  }
-  return null;
-}
+import { EXTRACTORS, parsePath, generateSha } from './_collections.js';
 
 export async function onRequestPost(context) {
   try {
@@ -84,7 +48,7 @@ export async function onRequestPost(context) {
       const extractor = EXTRACTORS[table];
 
       if (extractor) {
-        const [, colNames, colValues] = extractor(data);
+        const [colNames, colValues] = extractor(data);
         const allCols = ['slug', 'data', 'updated_at', ...colNames];
         const placeholders = allCols.map(() => '?').join(', ');
         const allValues = [slug, jsonStr, now, ...colValues];
@@ -99,10 +63,7 @@ export async function onRequestPost(context) {
       }
     }
 
-    // Generate a deterministic fake sha for admin panel compatibility
-    const encoder = new TextEncoder();
-    const hashBuffer = await crypto.subtle.digest('SHA-1', encoder.encode(jsonStr));
-    const sha = [...new Uint8Array(hashBuffer)].map(b => b.toString(16).padStart(2, '0')).join('');
+    const sha = await generateSha(jsonStr);
 
     // Trigger a Pages rebuild so the static site reflects the change
     const { CF_PAGES_DEPLOY_HOOK } = context.env;

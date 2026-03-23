@@ -8,48 +8,7 @@
  * Env bindings: DB (D1)
  */
 
-const COLLECTION_MAP = {
-  'src/content/kids/': 'kids',
-  'src/content/partners/': 'partners',
-  'src/content/press/': 'press',
-  'src/content/team/': 'team',
-  'src/content/events/': 'events',
-  'src/content/community/': 'community',
-  'src/content/articles/': 'articles',
-};
-
-const SITE_PREFIX = 'src/content/site/';
-
-function resolvePathToQuery(path) {
-  if (path.startsWith(SITE_PREFIX) && path.endsWith('.json')) {
-    return { type: 'site', key: path.slice(SITE_PREFIX.length, -5) };
-  }
-  for (const [prefix, table] of Object.entries(COLLECTION_MAP)) {
-    if (path.startsWith(prefix) && path.endsWith('.json')) {
-      return { type: 'collection', table, slug: path.slice(prefix.length, -5), prefix };
-    }
-  }
-  return null;
-}
-
-function resolveDirToTable(dir) {
-  const normalized = dir.endsWith('/') ? dir : dir + '/';
-  for (const [prefix, table] of Object.entries(COLLECTION_MAP)) {
-    if (normalized === prefix || normalized.startsWith(prefix)) {
-      return { table, prefix };
-    }
-  }
-  if (normalized === 'src/content/site/' || normalized.startsWith('src/content/site/')) {
-    return { table: 'site_config', prefix: SITE_PREFIX };
-  }
-  return null;
-}
-
-async function generateSha(content) {
-  const encoder = new TextEncoder();
-  const hashBuffer = await crypto.subtle.digest('SHA-1', encoder.encode(content));
-  return [...new Uint8Array(hashBuffer)].map(b => b.toString(16).padStart(2, '0')).join('');
-}
+import { SITE_PREFIX, parsePath, resolveDirToTable, generateSha } from './_collections.js';
 
 export async function onRequestGet(context) {
   try {
@@ -60,7 +19,7 @@ export async function onRequestGet(context) {
 
     // Read single file
     if (path) {
-      const resolved = resolvePathToQuery(path);
+      const resolved = parsePath(path);
       if (!resolved) {
         return Response.json({ success: false, error: 'Path not allowed' }, { status: 403 });
       }
