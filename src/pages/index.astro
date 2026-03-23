@@ -362,7 +362,7 @@ const jsonLd = getWebSiteSchema();
   <!-- ══════ FINAL CTA ══════ -->
   <section class="finale" aria-labelledby="cta-heading">
     <div class="finale-inner">
-      <img src={`${CF}/sunny-pig/w=80,h=80,fit=contain`} alt="" class="finale-pig" width="80" height="80" aria-hidden="true" loading="lazy" decoding="async" />
+      <img src={`${CF}/brand-logo-nav-circle/w=120,h=120,fit=contain,format=png`} alt="Sunshine on a Ranney Day" class="finale-icon" width="60" height="60" loading="lazy" decoding="async" />
       <h2 id="cta-heading" data-reveal>A room can change a child's life.<br/><em>You</em> can make it happen.</h2>
       <p data-reveal data-delay="1">Every donation — every dollar — goes directly to building dream spaces for children with special needs in the Atlanta area. No middlemen. No overhead bloat. Just kids, rooms, and community.</p>
       <div class="finale-ctas" data-reveal data-delay="2">
@@ -743,7 +743,7 @@ const jsonLd = getWebSiteSchema();
   /* ── FINALE ── */
   .finale { padding: 120px 0; background: var(--c-yellow); text-align: center; position: relative; overflow: hidden; contain: layout style; }
   .finale-inner { max-width: 640px; margin: 0 auto; padding: 0 var(--page-padding); position: relative; z-index: 2; }
-  .finale-pig { width: 80px; height: auto; margin: 0 auto 24px; opacity: 0.2; }
+  .finale-icon { width: clamp(72px, 9vw, 100px); height: auto; margin: 0 auto clamp(20px, 3vw, 28px); display: block; }
   .finale h2 { font-size: clamp(28px, 4vw, 40px); line-height: 1.25; margin-bottom: 20px; }
   .finale h2 em { font-style: italic; }
   .finale p { font-size: 17px; color: rgba(45,46,51,0.82); line-height: 1.7; margin-bottom: 36px; }

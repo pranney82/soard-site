@@ -11,60 +11,55 @@ interface Props {
 }
 
 const { theme = 'dark', linked = true } = Astro.props;
-import { CF_BASE as CF } from '../../utils/cf-image';
+import { CF_BASE as CF, cfSrcset } from '../../utils/cf-image';
 const href = linked ? '/publicity' : undefined;
 
-const FALLBACK_LOGOS = [
-  { id: 'press-logo-today-show',        alt: 'Today Show',                 wide: false },
-  { id: 'press-logo-11alive',           alt: '11Alive',                    wide: false },
-  { id: 'press-logo-fox5',              alt: 'Fox 5 Atlanta',              wide: false },
-  { id: 'press-logo-wsb-tv',            alt: 'WSB-TV',                     wide: false },
-  { id: 'press-logo-ajc',               alt: 'Atlanta Journal-Constitution', wide: true },
-  { id: 'press-logo-atlanta-magazine',  alt: 'Atlanta Magazine',           wide: false },
-  { id: 'press-logo-styleblueprint',    alt: 'StyleBlueprint',             wide: true },
-  { id: 'press-logo-41nbc',             alt: '41NBC',                      wide: false },
-];
-
-let logos = FALLBACK_LOGOS;
+let logos: Array<{id: string; alt: string}> = [];
 try {
   const media = await import('../../content/site/media.json');
   const data = media.default || media;
-  if (Array.isArray(data.pressLogos) && data.pressLogos.length > 0) {
+  if (Array.isArray(data.pressLogos)) {
     logos = data.pressLogos;
   }
-} catch { /* use fallback */ }
+} catch { /* config missing — render nothing */ }
 ---
 
+{logos.length > 0 && (
 <div class="ml" data-theme={theme}>
   <div class="ml__label">As Featured In</div>
   <div class="ml__row">
     {logos.map(logo => href ? (
-      <a href={href} class:list={["ml__item", { "ml__item--wide": logo.wide }]} aria-label={`Featured on ${logo.alt}`}>
+      <a href={href} class="ml__item" aria-label={`Featured on ${logo.alt}`}>
         <img
           src={`${CF}/${logo.id}/w=160,q=75`}
+          srcset={cfSrcset(logo.id, [120, 160, 240, 320], { quality: 75 })}
+          sizes="160px"
           alt={logo.alt}
           class="ml__logo"
-          loading="lazy"
+          loading="eager"
+          fetchpriority="low"
           decoding="async"
-          width="160"
           height="48"
         />
       </a>
     ) : (
-      <div class:list={["ml__item", { "ml__item--wide": logo.wide }]}>
+      <div class="ml__item">
         <img
           src={`${CF}/${logo.id}/w=160,q=75`}
+          srcset={cfSrcset(logo.id, [120, 160, 240, 320], { quality: 75 })}
+          sizes="160px"
           alt={logo.alt}
           class="ml__logo"
-          loading="lazy"
+          loading="eager"
+          fetchpriority="low"
           decoding="async"
-          width="160"
           height="48"
         />
       </div>
     ))}
   </div>
 </div>
+)}
 
 <style>
   .ml {
@@ -121,7 +116,7 @@ try {
   .ml__logo {
     height: 48px;
     width: auto;
-    aspect-ratio: 200 / 60;
+    max-width: 200px;
     object-fit: contain;
   }
   /* Light theme: invert the dark logos to white */
@@ -129,22 +124,16 @@ try {
     filter: invert(1) brightness(2);
   }
 
-  .ml__item--wide .ml__logo {
-    height: 44px;
-  }
-
   /* ── Tablet ── */
   @media (max-width: 900px) {
     .ml__row { gap: 16px 32px; }
     .ml__logo { height: 40px; }
-    .ml__item--wide .ml__logo { height: 36px; }
     .ml { padding: 40px 0; }
   }
   /* ── Mobile ── */
   @media (max-width: 600px) {
     .ml__row { gap: 12px 24px; }
     .ml__logo { height: 32px; }
-    .ml__item--wide .ml__logo { height: 28px; }
     .ml { padding: 32px 0; }
     .ml__label { margin-bottom: 24px; }
   }

@@ -1,1188 +1,788 @@
 ---
 /**
- * Sunny & Ranney — Store Landing Page
- * Editorial, cinematic landing for the nonprofit home furnishings
- * store. Split hero with overlapping photos, scrolling marquee,
- * dramatic dark sections, testimonial, interactive hover cards.
+ * Sunny & Ranney — Store Landing
  *
- * Matches the homepage's level of craft: staggered entrance
- * animations, parallax, polished responsive breakpoints.
+ * Mirrors sunnyandranney.com's contained layout:
+ *   - Max-width container (1280px), never full-bleed images
+ *   - Rounded corners (12–20px) on all images
+ *   - Teal (#2b7a96) hero section with contained split layout
+ *   - Warm cream/white backgrounds, charcoal dark sections
+ *   - Pill-style CTAs, restrained type
  */
 import BaseLayout from '../layouts/BaseLayout.astro';
 import { CF_BASE as CF } from '../utils/cf-image';
 import { getSiteStats } from '../utils/stats';
+const s = await getSiteStats();
 
-const computed = await getSiteStats();
+const store = 'about/sunny-ranney-storefront';
+const logo = 'logo-tagline-cyan-bg';
+const founders = 'about/founders-reunion-2026';
+const room1 = 'kids/griffin/hero';
+const room2 = 'kids/jackson/hero';
+const room3 = 'kids/madison/hero';
 
-/* ── Image IDs ── */
-const storeId = 'about/sunny-ranney-storefront';
-const logoId = 'partners/sunny-and-ranney';
-
-/* Show what purchases fund — kid room photos */
-const roomRevealId = 'kids/griffin/hero';
-const roomRevealId2 = 'kids/jackson/hero';
-
-/* ── Hero images (preloaded) ── */
-const heroImg600 = `${CF}/${storeId}/w=600,h=750,fit=cover,q=70`;
-const heroImg900 = `${CF}/${storeId}/w=900,h=1125,fit=cover,q=70`;
-const heroSrcset = `${heroImg600} 600w, ${heroImg900} 900w`;
-const heroSizes = '(max-width:768px) 85vw, 420px';
-
-/* ── Schema ── */
-const pageUrl = 'https://sunshineonaranneyday.com/sunny-and-ranney/';
-const pageDesc = 'Sunny & Ranney is a nonprofit home furnishings store in Roswell, GA. Designer furniture, décor & gifts — with 100% of profits funding dream room makeovers for children with special needs.';
-const breadcrumbs = [
-  { name: 'Home', url: 'https://sunshineonaranneyday.com/' },
-  { name: 'Sunny & Ranney', url: pageUrl },
-];
+const desc = 'Sunny & Ranney is a nonprofit home furnishings store in Roswell, GA — designer furniture, décor & gifts with 100% of profits building dream rooms for children with special needs.';
 ---
 
-<BaseLayout
-  title="Sunny & Ranney — Shop for a Cause"
-  description={pageDesc}
-  breadcrumbs={breadcrumbs}
->
-  <link slot="head" rel="preload" as="image" imagesrcset={heroSrcset} imagesizes={heroSizes} fetchpriority="high" />
+<BaseLayout title="Sunny & Ranney" description={desc} breadcrumbs={[{name:'Home',url:'https://sunshineonaranneyday.com/'},{name:'Sunny & Ranney',url:'https://sunshineonaranneyday.com/sunny-and-ranney/'}]}>
 
-  <!-- ══════ HERO — Editorial Split ══════ -->
-  <section class="sr-hero" aria-label="Sunny & Ranney store">
+<div class="sr">
+
+  <!-- ═══ HERO ═══ -->
+  <section class="sr-hero">
     <div class="sr-hero-inner">
       <div class="sr-hero-text">
-        <p class="sr-eyebrow">Nonprofit Home Furnishings · Roswell, GA</p>
-        <h1 class="sr-headline">Sunny <span class="sr-amp">&</span><br>Ranney</h1>
-        <p class="sr-lead">Designer furniture, décor & gifts — with <strong>100% of profits</strong> building dream rooms for children with special needs.</p>
+        <img src={`${CF}/${logo}/w=500,q=90`} alt="Sunny & Ranney" class="sr-hero-logo" width="260" height="70" loading="eager" />
+        <p class="sr-hero-lead">A nonprofit home furnishings store where <strong>100% of profits</strong> build dream rooms for children with special needs.</p>
         <div class="sr-hero-ctas">
-          <a href="/shop/" class="btn btn-primary sr-glow">Shop Now</a>
-          <a href="#visit" class="btn btn-dark">Visit Our Store</a>
+          <a href="https://sunnyandranney.com" target="_blank" rel="noopener noreferrer" class="sr-cta sr-cta--gold">Shop Online</a>
+          <a href="#visit" class="sr-cta sr-cta--glass">Visit Us</a>
+        </div>
+        <div class="sr-hero-trust">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="#FFD400"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+          <span>5.0 on Google · 117 reviews</span>
         </div>
       </div>
-      <div class="sr-hero-photos">
-        <div class="sr-photo-main">
-          <img
-            src={heroImg900}
-            srcset={heroSrcset}
-            sizes={heroSizes}
-            alt="Inside the Sunny & Ranney store — beautifully styled furniture showroom"
-            width="900" height="1125"
-            loading="eager" fetchpriority="high" decoding="sync"
-          />
-        </div>
-        <div class="sr-photo-float sr-photo-float--top">
-          <img
-            src={`${CF}/${roomRevealId}/w=320,h=240,fit=cover,q=65`}
-            alt="A dream bedroom built with store profits"
-            width="320" height="240"
-            loading="eager" decoding="async"
-          />
-          <span class="sr-float-tag">What your purchase builds</span>
-        </div>
-        <div class="sr-photo-float sr-photo-float--bottom">
-          <img
-            src={`${CF}/${roomRevealId2}/w=280,h=210,fit=cover,q=65`}
-            alt="A child's therapy room funded by Sunny & Ranney"
-            width="280" height="210"
-            loading="eager" decoding="async"
-          />
-        </div>
-        <div class="sr-photo-accent" aria-hidden="true"></div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ══════ MARQUEE — 100% of Profits ══════ -->
-  <section class="sr-marquee" aria-label="100% of profits build dream rooms">
-    <div class="sr-marquee-track" aria-hidden="true">
-      {[...Array(8)].map(() => (
-        <span class="sr-marquee-item">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="var(--c-yellow)" aria-hidden="true"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-          100% of Profits Build Dream Rooms
-        </span>
-      ))}
-    </div>
-  </section>
-
-  <!-- ══════ THE PROMISE — Three Pillars ══════ -->
-  <section class="sr-pillars-section" aria-labelledby="sr-pillars-heading">
-    <div class="sr-pillars-inner">
-      <div class="sr-pillars-header" data-reveal>
-        <div class="section-label" style="color:var(--c-yellow)">The Promise</div>
-        <h2 id="sr-pillars-heading">Not just a store.<br>A <em class="highlight">movement</em>.</h2>
-      </div>
-      <div class="sr-pillars">
-        <div class="sr-pillar" data-reveal>
-          <span class="sr-pillar-num" aria-hidden="true">01</span>
-          <h3>Every Dollar Matters</h3>
-          <p>100% of store profits fund custom room makeovers for children with special needs. No admin fees. No overhead. Every purchase is a direct investment in a child's future.</p>
-        </div>
-        <div class="sr-pillar" data-reveal data-delay="1">
-          <span class="sr-pillar-num" aria-hidden="true">02</span>
-          <h3>Designer Quality</h3>
-          <p>All brand-new, hand-selected by our design team. Statement sofas, artisan accents, curated gifts — pieces you'll love in your home, knowing the story behind them.</p>
-        </div>
-        <div class="sr-pillar" data-reveal data-delay="2">
-          <span class="sr-pillar-num" aria-hidden="true">03</span>
-          <h3>Community Hub</h3>
-          <p>More than retail — a gathering place. Visit our Roswell showroom, meet the team, hear the stories. Shopping here connects you to something bigger.</p>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ══════ IMPACT — Dark Dramatic Section ══════ -->
-  <section class="sr-impact" aria-labelledby="sr-impact-heading">
-    <div class="sr-impact-inner">
-      <div class="sr-impact-text" data-reveal>
-        <div class="section-label" style="color:var(--c-yellow); justify-content:center;">The Impact</div>
-        <h2 id="sr-impact-heading">Your home gets a new piece.<br>A child gets a new <em>world</em>.</h2>
-        <p>Since opening in 2020, Sunny & Ranney has helped fund {computed.totalRooms}+ room makeovers — replacing a $470K annual gala with a year-round source of community-powered funding.</p>
-      </div>
-      <div class="sr-impact-stats">
-        <div class="sr-stat" data-reveal>
-          <span class="sr-stat-num">100<span class="sr-stat-pct">%</span></span>
-          <span class="sr-stat-label">Of Profits to Kids</span>
-        </div>
-        <div class="sr-stat-divider" role="presentation"></div>
-        <div class="sr-stat" data-reveal data-delay="1">
-          <span class="sr-stat-num">{computed.totalRooms}+</span>
-          <span class="sr-stat-label">Rooms Built</span>
-        </div>
-        <div class="sr-stat-divider" role="presentation"></div>
-        <div class="sr-stat" data-reveal data-delay="2">
-          <span class="sr-stat-num">{computed.totalKids}+</span>
-          <span class="sr-stat-label">Kids Served</span>
-        </div>
-        <div class="sr-stat-divider" role="presentation"></div>
-        <div class="sr-stat" data-reveal data-delay="3">
-          <span class="sr-stat-num">{computed.years}</span>
-          <span class="sr-stat-label">Years of Impact</span>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ══════ ORIGIN STORY ══════ -->
-  <section class="sr-origin" aria-labelledby="sr-origin-heading">
-    <div class="sr-origin-split">
-      <figure class="sr-origin-photo">
+      <div class="sr-hero-media">
         <img
-          src={`${CF}/${storeId}/w=900,q=70`}
-          srcset={`${CF}/${storeId}/w=600,q=65 600w, ${CF}/${storeId}/w=900,q=70 900w`}
-          sizes="(max-width:768px) 100vw, 55vw"
-          alt="The Sunny & Ranney storefront in Roswell, Georgia"
-          width="900" height="600"
-          loading="lazy" decoding="async"
-          class="sr-origin-img"
-        />
-        <div class="sr-origin-tag">Est. 2020 · Roswell, GA</div>
-      </figure>
-      <div class="sr-origin-content" data-reveal>
-        <div class="section-label">Our Story</div>
-        <span class="sr-origin-type">How It All Started</span>
-        <h2 id="sr-origin-heading">A bold step to sustain the <em>mission</em>.</h2>
-        <p>For years, Sunshine on a Ranney Day relied on a single annual gala to fund its room makeovers. Then came the idea: what if we built something that gave back <em>every single day</em>?</p>
-        <p>In 2020, we opened Sunny & Ranney — a nonprofit home furnishings store where 100% of profits go directly to building dream bedrooms, accessible bathrooms, and therapy spaces for children with special needs.</p>
-        <p>What began as an experiment has become the <strong>heartbeat of the mission</strong> — a place where the community can shop beautiful things and know that every purchase matters.</p>
-        <a href="/about/" class="btn btn-dark">Read Our Full Story →</a>
-      </div>
-    </div>
-  </section>
-
-  <!-- ══════ TESTIMONIAL ══════ -->
-  <section class="sr-testimonial" aria-label="Customer review">
-    <div class="sr-testimonial-inner" data-reveal>
-      <div class="sr-stars" aria-label="5 out of 5 stars">
-        {[...Array(5)].map(() => (
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="var(--c-yellow)"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-        ))}
-      </div>
-      <blockquote class="sr-quote">
-        "I walked in expecting a charity shop. I walked out with the most beautiful console table I've ever owned — and the best feeling about a purchase I've ever had."
-      </blockquote>
-      <cite class="sr-cite">— Verified Customer, Google Reviews</cite>
-    </div>
-  </section>
-
-  <!-- ══════ PRODUCT CATEGORIES ══════ -->
-  <section class="sr-shop" aria-labelledby="sr-shop-heading">
-    <div class="sr-shop-inner">
-      <div class="sr-shop-header" data-reveal>
-        <div class="section-label">What We Carry</div>
-        <h2 id="sr-shop-heading">Beautifully curated. <em class="highlight">Purposefully</em> priced.</h2>
-        <p class="sr-shop-sub">From statement sofas to handpicked accents — every piece brand-new, selected by our design team.</p>
-      </div>
-      <div class="sr-shop-grid">
-        <a href="/shop/" class="sr-shop-tile" data-reveal>
-          <div class="sr-tile-bg" aria-hidden="true">
-            <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="0.5"><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/><path d="M2 10h20l-1.5-4.5A2 2 0 0 0 18.6 4H5.4a2 2 0 0 0-1.9 1.5L2 10z"/><path d="M6 10v6"/><path d="M18 10v6"/></svg>
-          </div>
-          <h3>Furniture</h3>
-          <p>Sofas, chairs, tables & more</p>
-          <span class="sr-tile-arrow">→</span>
-        </a>
-        <a href="/shop/" class="sr-shop-tile" data-reveal data-delay="1">
-          <div class="sr-tile-bg" aria-hidden="true">
-            <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="0.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
-          </div>
-          <h3>Wall Art</h3>
-          <p>Prints, canvases & frames</p>
-          <span class="sr-tile-arrow">→</span>
-        </a>
-        <a href="/shop/" class="sr-shop-tile" data-reveal data-delay="2">
-          <div class="sr-tile-bg" aria-hidden="true">
-            <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="0.5"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/></svg>
-          </div>
-          <h3>Lighting</h3>
-          <p>Lamps, pendants & sconces</p>
-          <span class="sr-tile-arrow">→</span>
-        </a>
-        <a href="/shop/" class="sr-shop-tile" data-reveal data-delay="1">
-          <div class="sr-tile-bg" aria-hidden="true">
-            <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="0.5"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
-          </div>
-          <h3>Accents</h3>
-          <p>Vases, objects & décor</p>
-          <span class="sr-tile-arrow">→</span>
-        </a>
-        <a href="/shop/" class="sr-shop-tile" data-reveal data-delay="2">
-          <div class="sr-tile-bg" aria-hidden="true">
-            <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="0.5"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
-          </div>
-          <h3>Gifts</h3>
-          <p>Candles, books & treasures</p>
-          <span class="sr-tile-arrow">→</span>
-        </a>
-        <a href="/shop/" class="sr-shop-tile" data-reveal data-delay="3">
-          <div class="sr-tile-bg" aria-hidden="true">
-            <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="0.5"><path d="M3 3h18v18H3z"/><path d="M3 9h18"/><path d="M9 3v18"/></svg>
-          </div>
-          <h3>Textiles</h3>
-          <p>Rugs, throws & pillows</p>
-          <span class="sr-tile-arrow">→</span>
-        </a>
-      </div>
-      <div class="sr-shop-cta" data-reveal>
-        <a href="/shop/" class="btn btn-primary sr-glow">Browse All Collections →</a>
-      </div>
-    </div>
-  </section>
-
-  <!-- ══════ VISIT US ══════ -->
-  <section class="sr-visit" id="visit" aria-labelledby="sr-visit-heading">
-    <div class="sr-visit-split">
-      <div class="sr-visit-photo" data-reveal>
-        <img
-          src={`${CF}/${storeId}/w=800,h=600,fit=cover,q=70`}
-          srcset={`${CF}/${storeId}/w=500,h=375,fit=cover,q=65 500w, ${CF}/${storeId}/w=800,h=600,fit=cover,q=70 800w`}
-          sizes="(max-width:768px) 100vw, 50vw"
+          src={`${CF}/${store}/w=800,h=1000,fit=cover,q=75`}
+          srcset={`${CF}/${store}/w=500,h=625,fit=cover,q=70 500w, ${CF}/${store}/w=800,h=1000,fit=cover,q=75 800w`}
+          sizes="(max-width:768px) 85vw, 440px"
           alt="Inside the Sunny & Ranney showroom"
-          width="800" height="600"
-          loading="lazy" decoding="async"
+          width="800" height="1000"
+          loading="eager" fetchpriority="high" decoding="async"
+          class="sr-hero-img"
         />
       </div>
-      <div class="sr-visit-content" data-reveal data-delay="1">
-        <div class="section-label" style="color:var(--c-yellow)">Visit Us</div>
-        <h2 id="sr-visit-heading">Come see what shopping<br>for a cause <em>looks&nbsp;like</em>.</h2>
-        <p>Step inside our Roswell showroom and experience the collection in person. Our team loves sharing the stories of the kids your purchase helps.</p>
-        <div class="sr-visit-grid">
-          <div class="sr-visit-block">
-            <h4>Location</h4>
+    </div>
+  </section>
+
+  <!-- ═══ PROMISE ═══ -->
+  <section class="sr-promise">
+    <div class="sr-container">
+      <div class="sr-promise-grid" data-reveal>
+        <div class="sr-promise-item">
+          <h3>100% of Profits</h3>
+          <p>Every dollar funds dream rooms for children with special needs.</p>
+        </div>
+        <div class="sr-promise-div"></div>
+        <div class="sr-promise-item">
+          <h3>Designer Curated</h3>
+          <p>All brand-new furniture, décor, and gifts — hand-selected by our team.</p>
+        </div>
+        <div class="sr-promise-div"></div>
+        <div class="sr-promise-item">
+          <h3>Shop with Purpose</h3>
+          <p>Every piece you take home helps build a child's dream space.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ OUR STORY ═══ -->
+  <section class="sr-story" aria-labelledby="sr-story-h">
+    <div class="sr-container">
+      <div class="sr-story-inner">
+        <div class="sr-story-text" data-reveal>
+          <span class="sr-label">Our Story</span>
+          <h2 id="sr-story-h">A bold idea to sustain the mission.</h2>
+          <p>In 2020, Peter and Holly Ranney opened Sunny &amp; Ranney in Roswell, Georgia — a real home furnishings store with designer pieces at prices people love. The goal: <em>create a self-sustaining engine for the nonprofit, working alongside generous donors and other fundraisers.</em></p>
+          <p>Every dollar of profit goes directly to building rooms for kids. What started as a bold idea became a powerful complement to the mission — <strong>funding room makeovers every single day.</strong></p>
+          <a href="/about/" class="sr-text-link">Read our full story →</a>
+        </div>
+        <figure class="sr-story-fig" data-reveal data-delay="1">
+          <img
+            src={`${CF}/${founders}/w=600,h=450,fit=cover,gravity=face,q=75`}
+            srcset={`${CF}/${founders}/w=400,h=300,fit=cover,gravity=face,q=70 400w, ${CF}/${founders}/w=600,h=450,fit=cover,gravity=face,q=75 600w`}
+            sizes="(max-width:768px) 90vw, 48%"
+            alt="Peter and Holly Ranney, founders"
+            width="600" height="450" loading="lazy" decoding="async"
+          />
+          <figcaption>Peter & Holly Ranney, founders</figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ IMPACT ═══ -->
+  <section class="sr-impact">
+    <div class="sr-container">
+      <div class="sr-impact-header" data-reveal>
+        <span class="sr-label sr-label--light">The Impact</span>
+        <h2>Your home gets a new piece.<br>A child gets a new <em>world</em>.</h2>
+      </div>
+      <div class="sr-impact-stats" data-reveal>
+        <div class="sr-stat"><span class="sr-stat-val">100%</span><span class="sr-stat-label">of profits to kids</span></div>
+        <div class="sr-stat"><span class="sr-stat-val">{s.totalRooms}+</span><span class="sr-stat-label">rooms built</span></div>
+        <div class="sr-stat"><span class="sr-stat-val">{s.totalKids}+</span><span class="sr-stat-label">children served</span></div>
+        <div class="sr-stat"><span class="sr-stat-val">{s.years}</span><span class="sr-stat-label">years of impact</span></div>
+      </div>
+      <div class="sr-impact-rooms" data-reveal>
+        <figure class="sr-room-card">
+          <img src={`${CF}/${room1}/w=500,h=400,fit=cover,q=70`} alt="Dream Bedroom" width="500" height="400" loading="lazy" decoding="async" />
+          <figcaption>Dream Bedroom</figcaption>
+        </figure>
+        <figure class="sr-room-card">
+          <img src={`${CF}/${room2}/w=500,h=400,fit=cover,q=70`} alt="Therapy Room" width="500" height="400" loading="lazy" decoding="async" />
+          <figcaption>Therapy Room</figcaption>
+        </figure>
+        <figure class="sr-room-card">
+          <img src={`${CF}/${room3}/w=500,h=400,fit=cover,q=70`} alt="Sensory Space" width="500" height="400" loading="lazy" decoding="async" />
+          <figcaption>Sensory Space</figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ TESTIMONIAL ═══ -->
+  <section class="sr-review">
+    <div class="sr-container">
+      <div class="sr-review-inner" data-reveal>
+        <div class="sr-review-stars">
+          {[...Array(5)].map(() => (<svg width="18" height="18" viewBox="0 0 24 24" fill="#FFD400"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>))}
+        </div>
+        <blockquote>"I walked in expecting a charity shop. I walked out with the most beautiful console table I've ever owned — and the best feeling about a purchase I've ever had."</blockquote>
+        <cite>— Verified Customer, Google Reviews</cite>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ VISIT ═══ -->
+  <section class="sr-visit" id="visit">
+    <div class="sr-container">
+      <div class="sr-visit-inner">
+        <div class="sr-visit-gallery" data-reveal>
+          <img
+            src={`${CF}/${store}/w=700,h=500,fit=cover,q=75`}
+            srcset={`${CF}/${store}/w=400,h=286,fit=cover,q=70 400w, ${CF}/${store}/w=700,h=500,fit=cover,q=75 700w`}
+            sizes="(max-width:768px) 90vw, 55%"
+            alt="Sunny & Ranney showroom"
+            width="700" height="500" loading="lazy" decoding="async"
+            class="sr-visit-img-main"
+          />
+          <img
+            src={`${CF}/${store}/w=320,h=320,fit=cover,q=70`}
+            alt="Store details"
+            width="320" height="320" loading="lazy" decoding="async"
+            class="sr-visit-img-inset"
+          />
+        </div>
+        <div class="sr-visit-text" data-reveal data-delay="1">
+          <span class="sr-label sr-label--light">Visit Us</span>
+          <h2>Come see what shopping for a cause looks like.</h2>
+          <address>
             <p>109A Oak Street<br>Roswell, GA 30075</p>
+          </address>
+          <div class="sr-visit-hours">
+            <p>Tue – Thu · 10am – 5pm<br>Fri – Sat · 10am – 6pm</p>
           </div>
-          <div class="sr-visit-block">
-            <h4>Hours</h4>
-            <p>Tue – Thu: 10am – 5pm<br>Fri – Sat: 10am – 6pm</p>
+          <div class="sr-visit-contact">
+            <p><a href="tel:7709902434">770.990.2434</a></p>
           </div>
-          <div class="sr-visit-block">
-            <h4>Contact</h4>
-            <p><a href="tel:7709902434">770.990.2434</a><br><a href="mailto:info@soardcharity.com">info@soardcharity.com</a></p>
+          <div class="sr-visit-ctas">
+            <a href="https://maps.google.com/?q=109A+Oak+Street+Roswell+GA+30075" target="_blank" rel="noopener noreferrer" class="sr-cta sr-cta--dark">Get Directions</a>
+            <a href="https://sunnyandranney.com" target="_blank" rel="noopener noreferrer" class="sr-cta sr-cta--outline">Shop Online</a>
           </div>
         </div>
-        <a href="https://maps.google.com/?q=109A+Oak+Street+Roswell+GA+30075" target="_blank" rel="noopener noreferrer" class="btn btn-dark">Get Directions →</a>
       </div>
     </div>
   </section>
 
-  <!-- ══════ FINALE — Yellow CTA ══════ -->
-  <section class="sr-finale" aria-labelledby="sr-finale-heading">
-    <div class="sr-finale-inner">
-      <img src={`${CF}/sunny-pig/w=80,h=80,fit=contain`} alt="" class="sr-finale-pig" width="80" height="80" aria-hidden="true" loading="lazy" decoding="async" />
-      <h2 id="sr-finale-heading" data-reveal>Every beautiful piece builds<br>a beautiful <em>future</em>.</h2>
-      <p data-reveal data-delay="1">Shop online or visit us in Roswell. Either way, you're changing a child's world.</p>
-      <div class="sr-finale-ctas" data-reveal data-delay="2">
-        <a href="/shop/" class="btn btn-dark btn-lg">Shop Online</a>
-        <a href="/donate/" class="btn sr-btn-outline">Make a Donation</a>
+  <!-- ═══ EMAIL / FINAL CTA ═══ -->
+  <section class="sr-final">
+    <div class="sr-container">
+      <div class="sr-final-card" data-reveal>
+        <h2>Every beautiful piece builds a beautiful future.</h2>
+        <p>Shop online or visit us in Roswell. Every purchase changes a child's world.</p>
+        <div class="sr-final-ctas">
+          <a href="https://sunnyandranney.com" target="_blank" rel="noopener noreferrer" class="sr-cta sr-cta--gold">Shop Sunny & Ranney</a>
+          <a href="/donate/" class="sr-cta sr-cta--outline">Make a Donation</a>
+        </div>
       </div>
     </div>
   </section>
 
+</div>
 </BaseLayout>
 
 <style>
-  /* ═══════════════════════════════════════════
-     Sunny & Ranney — Premium Store Landing
-     ═══════════════════════════════════════════ */
+  /* ─── Store palette ─── */
+  :root {
+    --sr-teal: #2b7a96;
+    --sr-cyan: #4B95B4;
+    --sr-gold: #FFD400;
+    --sr-cream: #FAF7F2;
+    --sr-warm: #FDFCFA;
+    --sr-charcoal: #2C2C2C;
+  }
 
-  /* ── HERO — Editorial Split with Layered Photos ── */
+  .sr { background: var(--sr-cream); }
+
+  .sr-container {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding-inline: clamp(1rem, 4vw, 2.5rem);
+  }
+
+  /* ─── Shared elements ─── */
+  .sr-label {
+    display: block;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--sr-teal);
+    margin-bottom: 16px;
+  }
+
+  .sr-label--light { color: rgba(255, 255, 255, 0.5); }
+
+  .sr-text-link {
+    display: inline-block;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--sr-teal);
+    text-decoration: none;
+    margin-top: 8px;
+    transition: letter-spacing 0.3s ease;
+  }
+
+  .sr-text-link:hover { letter-spacing: 0.03em; }
+
+  /* CTA buttons */
+  .sr-cta {
+    display: inline-flex;
+    align-items: center;
+    padding: 14px 28px;
+    font-size: 14px;
+    font-weight: 600;
+    border-radius: 100px;
+    text-decoration: none;
+    border: none;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .sr-cta--gold {
+    background: var(--sr-gold);
+    color: var(--sr-charcoal);
+  }
+  .sr-cta--gold:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(255, 212, 0, 0.35);
+  }
+
+  .sr-cta--glass {
+    background: rgba(255, 255, 255, 0.12);
+    color: #fff;
+    border: 1.5px solid rgba(255, 255, 255, 0.25);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
+  .sr-cta--glass:hover {
+    background: rgba(255, 255, 255, 0.2);
+    border-color: rgba(255, 255, 255, 0.5);
+    transform: translateY(-2px);
+  }
+
+  .sr-cta--dark {
+    background: var(--sr-charcoal);
+    color: #fff;
+  }
+  .sr-cta--dark:hover {
+    background: #3a3a3a;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+  }
+
+  .sr-cta--outline {
+    background: transparent;
+    color: #fff;
+    border: 1.5px solid rgba(255, 255, 255, 0.3);
+  }
+  .sr-cta--outline:hover {
+    border-color: #fff;
+    transform: translateY(-2px);
+  }
+
+  .sr-cta--outline-dark {
+    background: transparent;
+    color: var(--sr-charcoal);
+    border: 1.5px solid rgba(44, 44, 44, 0.25);
+  }
+  .sr-cta--outline-dark:hover {
+    border-color: var(--sr-charcoal);
+    transform: translateY(-2px);
+  }
+
+  /* ══════════════════════════════
+     HERO
+     ══════════════════════════════ */
   .sr-hero {
-    position: relative;
-    background: var(--c-cream);
-    contain: layout style;
-    padding: clamp(40px, 8vh, 100px) 0 0;
-    overflow: hidden;
+    background: var(--sr-teal);
+    padding: clamp(2rem, 5vh, 3rem) 0 0;
   }
 
   .sr-hero-inner {
-    max-width: var(--max-width-wide);
+    max-width: 1280px;
     margin: 0 auto;
-    padding: 0 var(--page-padding);
+    padding: 0 clamp(1rem, 4vw, 2.5rem);
     display: grid;
     grid-template-columns: 1.1fr 0.9fr;
-    gap: clamp(32px, 5vw, 80px);
-    align-items: center;
-    min-height: clamp(480px, 70vh, 720px);
+    gap: clamp(32px, 5vw, 64px);
+    align-items: end;
   }
 
-  .sr-eyebrow {
-    font-size: 12px;
-    font-weight: 700;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: var(--c-text-light);
+  .sr-hero-text {
+    padding-bottom: clamp(2rem, 5vh, 4rem);
+  }
+
+  .sr-hero-logo {
+    width: clamp(180px, 22vw, 260px);
+    height: auto;
+    margin-bottom: 24px;
+  }
+
+  .sr-hero-lead {
+    font-size: clamp(16px, 1.8vw, 20px);
+    line-height: 1.6;
+    color: rgba(255, 255, 255, 0.85);
+    max-width: 420px;
     margin-bottom: 28px;
-    opacity: 0;
-    animation: srUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.05s both;
   }
 
-  .sr-headline {
-    font-size: clamp(48px, 7vw, 96px);
-    line-height: 0.95;
-    letter-spacing: -0.04em;
-    color: var(--c-dark);
-    margin-bottom: 28px;
-    animation: srSlideUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
-  }
-
-  .sr-amp {
-    font-style: italic;
-    color: var(--c-yellow-hover);
-    font-size: 0.85em;
-  }
-
-  .sr-lead {
-    font-size: clamp(16px, 1.3vw, 19px);
-    line-height: 1.7;
-    color: var(--c-text-muted);
-    max-width: 460px;
-    margin-bottom: 36px;
-    opacity: 0;
-    animation: srUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.15s both;
-  }
-
-  .sr-lead strong {
-    color: var(--c-dark);
+  .sr-hero-lead strong {
+    color: #fff;
     font-weight: 700;
   }
 
   .sr-hero-ctas {
     display: flex;
-    gap: 14px;
-    flex-wrap: wrap;
-    opacity: 0;
-    animation: srUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.25s both;
-  }
-
-  .sr-glow {
-    animation: srPulseGlow 3s ease-in-out 3s infinite;
-  }
-  @keyframes srPulseGlow {
-    0%, 100% { box-shadow: 0 8px 24px rgba(255, 218, 36, 0.3); }
-    50% { box-shadow: 0 8px 40px rgba(255, 218, 36, 0.55); }
-  }
-
-  /* ── Hero photo collage ── */
-  .sr-hero-photos {
-    position: relative;
-    animation: srPhotoIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
-  }
-
-  .sr-photo-main {
-    position: relative;
-    border-radius: 24px;
-    overflow: hidden;
-    aspect-ratio: 4 / 5;
-    box-shadow: 0 32px 80px rgba(0, 0, 0, 0.12), 0 8px 24px rgba(0, 0, 0, 0.06);
-    z-index: 2;
-  }
-  .sr-photo-main img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    display: block;
-    transform: translate3d(0, var(--parallax-y, 0px), 0);
-    transition: transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
-  }
-
-  /* Floating accent photos */
-  .sr-photo-float {
-    position: absolute;
-    border-radius: 16px;
-    overflow: hidden;
-    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.15);
-    z-index: 3;
-    border: 4px solid var(--c-cream);
-  }
-  .sr-photo-float img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    display: block;
-  }
-
-  .sr-photo-float--top {
-    width: 45%;
-    top: -8%;
-    left: -15%;
-    opacity: 0;
-    animation: srFloatIn 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.5s both;
-  }
-
-  .sr-float-tag {
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    padding: 8px 14px;
-    background: rgba(0, 0, 0, 0.55);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    color: var(--c-yellow);
-  }
-
-  .sr-photo-float--bottom {
-    width: 40%;
-    bottom: 8%;
-    right: -12%;
-    opacity: 0;
-    animation: srFloatIn 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.7s both;
-  }
-
-  .sr-photo-accent {
-    position: absolute;
-    bottom: -16px;
-    right: -16px;
-    width: 50%;
-    height: 40%;
-    border-radius: 20px;
-    background: var(--c-yellow);
-    z-index: 1;
-    opacity: 0;
-    animation: srAccentIn 1s cubic-bezier(0.16, 1, 0.3, 1) 0.7s both;
-  }
-
-  /* Animations */
-  @keyframes srUp {
-    from { opacity: 0; transform: translateY(28px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
-  @keyframes srSlideUp {
-    from { transform: translateY(16px); }
-    to { transform: translateY(0); }
-  }
-  @keyframes srPhotoIn {
-    from { transform: translateY(12px) scale(0.98); }
-    to { transform: translateY(0) scale(1); }
-  }
-  @keyframes srAccentIn {
-    from { opacity: 0; transform: translate(12px, 12px); }
-    to { opacity: 1; transform: translate(0, 0); }
-  }
-  @keyframes srFloatIn {
-    from { opacity: 0; transform: translateY(20px) scale(0.92); }
-    to { opacity: 1; transform: translateY(0) scale(1); }
-  }
-
-  /* ── MARQUEE ── */
-  .sr-marquee {
-    background: var(--c-dark-deep);
-    padding: 16px 0;
-    overflow: hidden;
-    contain: layout style;
-  }
-
-  .sr-marquee-track {
-    display: flex;
     gap: 12px;
-    animation: marquee 30s linear infinite;
-    width: max-content;
-  }
-
-  .sr-marquee-item {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    font-size: 13px;
-    font-weight: 700;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: rgba(255, 255, 255, 0.5);
-    white-space: nowrap;
-    padding: 0 16px;
-  }
-
-  /* ── PILLARS ── */
-  .sr-pillars-section {
-    padding: 120px 0;
-    background: var(--c-cream);
-    contain: layout style;
-  }
-
-  .sr-pillars-inner {
-    max-width: var(--max-width);
-    margin: 0 auto;
-    padding: 0 var(--page-padding);
-  }
-
-  .sr-pillars-header {
-    max-width: 500px;
-    margin-bottom: 64px;
-  }
-
-  .sr-pillars-header h2 {
-    font-size: clamp(28px, 4vw, 44px);
-    line-height: 1.15;
-  }
-
-  .sr-pillars {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 32px;
-  }
-
-  .sr-pillar {
-    padding: 40px 36px;
-    border-radius: 20px;
-    background: var(--c-warm-gray);
-    border: 1px solid transparent;
-    transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
-  }
-
-  .sr-pillar:hover {
-    transform: translateY(-8px);
-    box-shadow: 0 24px 56px rgba(0, 0, 0, 0.08);
-    border-color: var(--c-yellow);
-  }
-
-  .sr-pillar-num {
-    display: inline-block;
-    font-family: var(--font-display);
-    font-size: 13px;
-    font-weight: 700;
-    letter-spacing: 0.1em;
-    color: var(--c-dark);
-    background: var(--c-yellow);
-    padding: 4px 12px;
-    border-radius: 6px;
-    margin-bottom: 20px;
-  }
-
-  .sr-pillar h3 {
-    font-size: 22px;
-    margin-bottom: 12px;
-    line-height: 1.3;
-  }
-
-  .sr-pillar p {
-    font-size: 15px;
-    line-height: 1.75;
-    color: var(--c-text-muted);
-  }
-
-  /* ── IMPACT — Dark Section ── */
-  .sr-impact {
-    padding: 120px 0;
-    background: var(--c-dark-deep);
-    contain: layout style;
-  }
-
-  .sr-impact-inner {
-    max-width: var(--max-width);
-    margin: 0 auto;
-    padding: 0 var(--page-padding);
-  }
-
-  .sr-impact-text {
-    text-align: center;
-    max-width: 640px;
-    margin: 0 auto 72px;
-  }
-
-  .sr-impact-text h2 {
-    color: #fff;
-    font-size: clamp(28px, 4vw, 44px);
-    line-height: 1.2;
-    margin-bottom: 20px;
-  }
-
-  .sr-impact-text h2 em {
-    font-style: italic;
-    color: var(--c-yellow);
-  }
-
-  .sr-impact-text p {
-    font-size: 17px;
-    color: rgba(255, 255, 255, 0.5);
-    line-height: 1.7;
-  }
-
-  .sr-impact-stats {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    gap: 48px;
     flex-wrap: wrap;
+    margin-bottom: 24px;
   }
 
-  .sr-stat {
-    text-align: center;
-    min-width: 130px;
-  }
-
-  .sr-stat-num {
-    font-family: var(--font-display);
-    font-size: clamp(36px, 5vw, 52px);
-    font-weight: 700;
-    color: var(--c-yellow);
-    line-height: 1;
-  }
-
-  .sr-stat-pct {
-    font-size: 0.6em;
-  }
-
-  .sr-stat-label {
-    display: block;
-    font-size: 12px;
-    font-weight: 600;
-    color: rgba(255, 255, 255, 0.55);
-    text-transform: uppercase;
-    letter-spacing: 0.12em;
-    margin-top: 8px;
-  }
-
-  .sr-stat-divider {
-    width: 1px;
-    height: 40px;
-    background: rgba(255, 255, 255, 0.08);
-  }
-
-  /* ── ORIGIN STORY — Photo + Content Split ── */
-  .sr-origin {
-    background: var(--c-cream);
-    contain: layout style;
-  }
-
-  .sr-origin-split {
-    display: grid;
-    grid-template-columns: 1.1fr 1fr;
-    min-height: 600px;
-  }
-
-  .sr-origin-photo {
-    position: relative;
-    overflow: hidden;
-    margin: 0;
-  }
-
-  .sr-origin-img {
-    width: 100%;
-    height: 100%;
-    min-height: 400px;
-    object-fit: cover;
-    display: block;
-  }
-
-  .sr-origin-tag {
-    position: absolute;
-    top: 24px;
-    left: 24px;
-    background: var(--c-yellow);
-    color: var(--c-dark);
-    font-size: 12px;
-    font-weight: 700;
-    padding: 6px 16px;
-    border-radius: 50px;
-    letter-spacing: 0.04em;
-    z-index: 1;
-  }
-
-  .sr-origin-content {
-    padding: 72px 64px;
+  .sr-hero-trust {
     display: flex;
-    flex-direction: column;
-    justify-content: center;
-  }
-
-  .sr-origin-type {
-    display: inline-block;
-    font-size: 12px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    color: var(--c-accent);
-    margin-bottom: 20px;
-  }
-
-  .sr-origin-content h2 {
-    font-size: clamp(24px, 3vw, 32px);
-    line-height: 1.3;
-    margin-bottom: 20px;
-  }
-
-  .sr-origin-content h2 em {
-    font-style: italic;
-    background-image: linear-gradient(transparent 52%, var(--c-yellow-soft) 52%);
-    background-repeat: no-repeat;
-    background-size: 100% 100%;
-    padding: 0 0.05em;
-  }
-
-  .sr-origin-content p {
-    font-size: 16px;
-    line-height: 1.75;
-    margin-bottom: 16px;
-    color: var(--c-text-muted);
-  }
-
-  .sr-origin-content p em {
-    font-style: italic;
-    color: var(--c-dark);
-  }
-
-  .sr-origin-content p strong {
-    color: var(--c-dark);
-  }
-
-  .sr-origin-content .btn {
-    align-self: flex-start;
-    margin-top: 12px;
-  }
-
-  /* ── TESTIMONIAL ── */
-  .sr-testimonial {
-    padding: 100px 0;
-    background: var(--c-warm-gray);
-    contain: layout style;
-  }
-
-  .sr-testimonial-inner {
-    max-width: 720px;
-    margin: 0 auto;
-    padding: 0 var(--page-padding);
-    text-align: center;
-  }
-
-  .sr-stars {
-    display: flex;
-    gap: 4px;
-    justify-content: center;
-    margin-bottom: 32px;
-  }
-
-  .sr-quote {
-    font-family: var(--font-display);
-    font-size: clamp(20px, 3vw, 28px);
-    font-weight: 400;
-    font-style: italic;
-    line-height: 1.5;
-    color: var(--c-dark);
-    margin: 0 0 24px;
-  }
-
-  .sr-cite {
-    font-style: normal;
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--c-text-muted);
-    letter-spacing: 0.04em;
-  }
-
-  /* ── SHOP CATEGORIES ── */
-  .sr-shop {
-    padding: 120px 0;
-    background: var(--c-cream);
-    contain: layout style;
-  }
-
-  .sr-shop-inner {
-    max-width: var(--max-width);
-    margin: 0 auto;
-    padding: 0 var(--page-padding);
-  }
-
-  .sr-shop-header {
-    max-width: 520px;
-    margin-bottom: 56px;
-  }
-
-  .sr-shop-header h2 {
-    font-size: clamp(28px, 3.5vw, 40px);
-    margin-bottom: 16px;
-    line-height: 1.25;
-  }
-
-  .sr-shop-sub {
-    font-size: 17px;
-    color: var(--c-text-muted);
-    line-height: 1.7;
-  }
-
-  .sr-shop-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 20px;
-    margin-bottom: 48px;
-  }
-
-  .sr-shop-tile {
-    position: relative;
-    padding: 36px 32px;
-    background: #fff;
-    border-radius: 20px;
-    overflow: hidden;
-    text-decoration: none;
-    color: inherit;
-    border: 1px solid var(--c-border);
-    transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
-  }
-
-  .sr-shop-tile:hover {
-    transform: translateY(-6px);
-    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.08);
-    border-color: var(--c-yellow);
-  }
-
-  .sr-tile-bg {
-    position: absolute;
-    top: -10px;
-    right: -10px;
-    opacity: 0.04;
-    transition: opacity var(--transition-slow);
-  }
-
-  .sr-shop-tile:hover .sr-tile-bg {
-    opacity: 0.08;
-  }
-
-  .sr-shop-tile h3 {
-    font-size: 20px;
-    margin-bottom: 4px;
-    position: relative;
-  }
-
-  .sr-shop-tile p {
-    font-size: 14px;
-    color: var(--c-text-muted);
-    margin-bottom: 16px;
-    position: relative;
-  }
-
-  .sr-tile-arrow {
-    display: inline-flex;
     align-items: center;
-    justify-content: center;
-    width: 36px;
-    height: 36px;
-    background: var(--c-warm-gray);
-    border-radius: 50%;
-    font-size: 16px;
-    font-weight: 600;
-    transition: all var(--transition-base);
-    position: relative;
+    gap: 6px;
+    font-size: 13px;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.55);
   }
 
-  .sr-shop-tile:hover .sr-tile-arrow {
-    background: var(--c-yellow);
-    color: var(--c-dark);
-    transform: translateX(4px);
+  .sr-hero-media {
+    display: flex;
+    justify-content: flex-end;
   }
 
-  .sr-shop-cta {
+  .sr-hero-img {
+    width: 100%;
+    max-width: 440px;
+    height: auto;
+    border-radius: 20px 20px 0 0;
+    display: block;
+    aspect-ratio: 4 / 5;
+    object-fit: cover;
+  }
+
+  /* ══════════════════════════════
+     PROMISE
+     ══════════════════════════════ */
+  .sr-promise {
+    padding: clamp(3rem, 6vh, 5rem) 0;
+    background: var(--sr-warm);
+  }
+
+  .sr-promise-grid {
+    display: flex;
+    align-items: flex-start;
+    gap: 0;
+  }
+
+  .sr-promise-item {
+    flex: 1;
     text-align: center;
+    padding: 0 clamp(16px, 3vw, 32px);
   }
 
-  /* ── VISIT — Photo + Content Split ── */
-  .sr-visit {
-    padding: 120px 0;
-    background: var(--c-warm-gray);
-    contain: layout style;
+  .sr-promise-item h3 {
+    font-size: 16px;
+    margin-bottom: 8px;
   }
 
-  .sr-visit-split {
-    max-width: var(--max-width-wide);
-    margin: 0 auto;
-    padding: 0 var(--page-padding);
+  .sr-promise-item p {
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--c-text-muted);
+  }
+
+  .sr-promise-div {
+    width: 1px;
+    height: 56px;
+    background: var(--c-border);
+    flex-shrink: 0;
+    align-self: center;
+  }
+
+  /* ══════════════════════════════
+     STORY
+     ══════════════════════════════ */
+  .sr-story {
+    padding: clamp(4rem, 8vh, 7rem) 0;
+    background: var(--sr-cream);
+  }
+
+  .sr-story-inner {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 64px;
+    gap: clamp(40px, 5vw, 80px);
     align-items: center;
   }
 
-  .sr-visit-photo {
-    border-radius: 24px;
-    overflow: hidden;
-    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.1);
-  }
-
-  .sr-visit-photo img {
-    width: 100%;
-    height: auto;
-    display: block;
-    aspect-ratio: 4 / 3;
-    object-fit: cover;
-    transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
-  }
-
-  .sr-visit-photo:hover img {
-    transform: scale(1.03);
-  }
-
-  .sr-visit-content h2 {
+  .sr-story-text h2 {
     font-size: clamp(24px, 3vw, 36px);
     line-height: 1.25;
     margin-bottom: 20px;
   }
 
-  .sr-visit-content h2 em {
-    font-style: italic;
-  }
-
-  .sr-visit-content > p {
+  .sr-story-text p {
     font-size: 16px;
     line-height: 1.75;
     color: var(--c-text-muted);
-    margin-bottom: 32px;
+    margin-bottom: 16px;
   }
 
-  .sr-visit-grid {
+  .sr-story-text p em { font-style: italic; color: var(--c-dark); }
+  .sr-story-text p strong { color: var(--c-dark); }
+
+  .sr-story-fig {
+    margin: 0;
+  }
+
+  .sr-story-fig img {
+    width: 100%;
+    height: auto;
+    display: block;
+    border-radius: 12px;
+    aspect-ratio: 4 / 3;
+    object-fit: cover;
+  }
+
+  .sr-story-fig figcaption {
+    margin-top: 12px;
+    font-size: 12px;
+    color: var(--c-text-light);
+  }
+
+  /* ══════════════════════════════
+     IMPACT
+     ══════════════════════════════ */
+  .sr-impact {
+    padding: clamp(4rem, 8vh, 7rem) 0;
+    background: var(--sr-charcoal);
+    color: #fff;
+  }
+
+  .sr-impact-header {
+    text-align: center;
+    max-width: 560px;
+    margin: 0 auto clamp(40px, 6vh, 64px);
+  }
+
+  .sr-impact-header h2 {
+    font-size: clamp(24px, 3.5vw, 40px);
+    color: #fff;
+    line-height: 1.25;
+  }
+
+  .sr-impact-header h2 em {
+    font-style: italic;
+    color: var(--sr-cyan);
+  }
+
+  .sr-impact-stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 24px;
+    margin-bottom: clamp(40px, 6vh, 64px);
+  }
+
+  .sr-stat { text-align: center; }
+
+  .sr-stat-val {
+    display: block;
+    font-family: var(--font-display);
+    font-size: clamp(32px, 5vw, 48px);
+    font-weight: 700;
+    color: var(--sr-gold);
+    line-height: 1;
+  }
+
+  .sr-stat-label {
+    display: block;
+    font-size: 12px;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.45);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-top: 8px;
+  }
+
+  .sr-impact-rooms {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 24px;
-    margin-bottom: 32px;
-    padding-top: 28px;
-    border-top: 1px solid var(--c-border);
+    gap: 20px;
   }
 
-  .sr-visit-block h4 {
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    color: var(--c-text-light);
-    margin-bottom: 8px;
-  }
-
-  .sr-visit-block p {
-    font-size: 15px;
-    line-height: 1.6;
-    color: var(--c-dark);
-  }
-
-  .sr-visit-block a {
-    color: var(--c-dark);
-    text-decoration: underline;
-    text-underline-offset: 3px;
-    text-decoration-thickness: 1px;
-    transition: color var(--transition-fast);
-  }
-
-  .sr-visit-block a:hover {
-    color: var(--c-yellow-hover);
-  }
-
-  /* ── FINALE — Yellow Section ── */
-  .sr-finale {
-    padding: 120px 0;
-    background: var(--c-yellow);
-    text-align: center;
-    position: relative;
+  .sr-room-card {
+    margin: 0;
+    border-radius: 12px;
     overflow: hidden;
-    contain: layout style;
   }
 
-  .sr-finale-inner {
+  .sr-room-card img {
+    width: 100%;
+    height: auto;
+    display: block;
+    aspect-ratio: 5 / 4;
+    object-fit: cover;
+    transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .sr-room-card:hover img {
+    transform: scale(1.04);
+  }
+
+  .sr-room-card figcaption {
+    margin-top: 12px;
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.4);
+    letter-spacing: 0.04em;
+  }
+
+  /* ══════════════════════════════
+     REVIEW
+     ══════════════════════════════ */
+  .sr-review {
+    padding: clamp(4rem, 8vh, 7rem) 0;
+    background: var(--sr-warm);
+  }
+
+  .sr-review-inner {
     max-width: 640px;
     margin: 0 auto;
-    padding: 0 var(--page-padding);
-    position: relative;
-    z-index: 2;
+    text-align: center;
   }
 
-  .sr-finale-pig {
-    width: 80px;
-    height: auto;
-    margin: 0 auto 24px;
-    opacity: 0.2;
-  }
-
-  .sr-finale h2 {
-    font-size: clamp(28px, 4vw, 40px);
-    line-height: 1.25;
-    margin-bottom: 20px;
-  }
-
-  .sr-finale h2 em {
-    font-style: italic;
-  }
-
-  .sr-finale p {
-    font-size: 17px;
-    color: rgba(45, 46, 51, 0.82);
-    line-height: 1.7;
-    margin-bottom: 36px;
-  }
-
-  .sr-finale-ctas {
+  .sr-review-stars {
     display: flex;
-    gap: 14px;
+    gap: 3px;
+    justify-content: center;
+    margin-bottom: 24px;
+  }
+
+  .sr-review-inner blockquote {
+    font-family: var(--font-display);
+    font-size: clamp(18px, 2.5vw, 24px);
+    font-style: italic;
+    font-weight: 400;
+    line-height: 1.5;
+    color: var(--c-dark);
+    margin: 0 0 20px;
+  }
+
+  .sr-review-inner cite {
+    font-style: normal;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--c-text-light);
+  }
+
+  /* ══════════════════════════════
+     VISIT
+     ══════════════════════════════ */
+  .sr-visit {
+    padding: clamp(4rem, 8vh, 7rem) 0;
+    background: var(--sr-charcoal);
+    color: #fff;
+  }
+
+  .sr-visit-inner {
+    display: grid;
+    grid-template-columns: 1.2fr 0.8fr;
+    gap: clamp(40px, 5vw, 72px);
+    align-items: center;
+  }
+
+  .sr-visit-gallery {
+    position: relative;
+  }
+
+  .sr-visit-img-main {
+    width: 100%;
+    height: auto;
+    display: block;
+    border-radius: 12px;
+    aspect-ratio: 7 / 5;
+    object-fit: cover;
+  }
+
+  .sr-visit-img-inset {
+    position: absolute;
+    bottom: -20px;
+    right: -16px;
+    width: 40%;
+    height: auto;
+    border-radius: 12px;
+    aspect-ratio: 1;
+    object-fit: cover;
+    border: 4px solid var(--sr-charcoal);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  }
+
+  .sr-visit-text h2 {
+    font-size: clamp(24px, 3vw, 36px);
+    color: #fff;
+    line-height: 1.25;
+    margin-bottom: 28px;
+  }
+
+  .sr-visit-text address {
+    font-style: normal;
+    margin-bottom: 16px;
+  }
+
+  .sr-visit-text address p,
+  .sr-visit-hours p,
+  .sr-visit-contact p {
+    font-size: 15px;
+    line-height: 1.6;
+    color: rgba(255, 255, 255, 0.65);
+  }
+
+  .sr-visit-hours { margin-bottom: 16px; }
+  .sr-visit-contact { margin-bottom: 28px; }
+
+  .sr-visit-contact a {
+    color: rgba(255, 255, 255, 0.65);
+    text-decoration: none;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+    transition: color 0.2s ease, border-color 0.2s ease;
+  }
+
+  .sr-visit-contact a:hover {
+    color: #fff;
+    border-color: var(--sr-gold);
+  }
+
+  .sr-visit-ctas {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  /* ══════════════════════════════
+     FINAL CTA
+     ══════════════════════════════ */
+  .sr-final {
+    padding: clamp(3rem, 6vh, 5rem) 0;
+    background: var(--sr-charcoal);
+  }
+
+  .sr-final-card {
+    background: linear-gradient(135deg, rgba(75, 149, 180, 0.12), rgba(255, 212, 0, 0.06));
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 16px;
+    padding: clamp(32px, 5vw, 56px);
+    text-align: center;
+  }
+
+  .sr-final-card h2 {
+    font-size: clamp(22px, 3vw, 32px);
+    color: #fff;
+    margin-bottom: 12px;
+  }
+
+  .sr-final-card p {
+    font-size: 15px;
+    color: rgba(255, 255, 255, 0.55);
+    margin-bottom: 28px;
+  }
+
+  .sr-final-ctas {
+    display: flex;
+    gap: 12px;
     justify-content: center;
     flex-wrap: wrap;
   }
 
-  .sr-btn-outline {
-    background: transparent;
-    color: var(--c-dark);
-    border: 2px solid var(--c-dark);
-  }
-
-  .sr-btn-outline:hover {
-    background: var(--c-dark);
-    color: var(--c-yellow);
-    transform: translateY(-3px);
-  }
-
-  .btn-lg {
-    font-size: 17px;
-    padding: 18px 44px;
-  }
-
-  /* ── SCROLL REVEALS ── */
+  /* ══════════════════════════════
+     REVEALS
+     ══════════════════════════════ */
   [data-reveal] {
     opacity: 0;
-    transform: translateY(32px);
-    transition: opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1), transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+    transform: translateY(24px);
+    transition: opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1),
+                transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
   }
   [data-reveal].is-visible { opacity: 1; transform: translateY(0); }
-  [data-delay="1"] { transition-delay: 0.1s; }
-  [data-delay="2"] { transition-delay: 0.2s; }
-  [data-delay="3"] { transition-delay: 0.3s; }
+  [data-delay="1"] { transition-delay: 0.15s; }
+  [data-delay="2"] { transition-delay: 0.3s; }
 
-  /* ── RESPONSIVE ── */
-  @media (max-width: 900px) {
-    .sr-hero { padding-top: clamp(24px, 5vh, 48px); }
+  /* ══════════════════════════════
+     RESPONSIVE
+     ══════════════════════════════ */
+  @media (max-width: 768px) {
     .sr-hero-inner {
       grid-template-columns: 1fr;
-      gap: 40px;
-      min-height: auto;
+      gap: 32px;
     }
-    .sr-headline { font-size: clamp(42px, 10vw, 64px); }
-    .sr-hero-photos { max-width: 400px; margin: 0 auto; }
-    .sr-photo-accent { bottom: -12px; right: -12px; }
-    .sr-photo-float--top { left: -10%; top: -5%; }
-    .sr-photo-float--bottom { right: -8%; }
-  }
 
-  @media (max-width: 768px) {
-    .sr-pillars-section { padding: 80px 0; }
-    .sr-pillars { grid-template-columns: 1fr; }
-    .sr-pillar { padding: 32px 28px; }
+    .sr-hero-media { justify-content: center; }
+    .sr-hero-img {
+      max-width: 340px;
+      border-radius: 16px 16px 0 0;
+    }
 
-    .sr-impact { padding: 80px 0; }
-    .sr-impact-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; }
-    .sr-stat { min-width: 0; }
-    .sr-stat-divider { display: none; }
+    .sr-promise-grid {
+      flex-direction: column;
+      gap: 0;
+    }
+    .sr-promise-div {
+      width: 48px;
+      height: 1px;
+      align-self: center;
+      margin: 20px 0;
+    }
 
-    .sr-origin-split { grid-template-columns: 1fr; }
-    .sr-origin-content { padding: 48px var(--page-padding); }
+    .sr-story-inner {
+      grid-template-columns: 1fr;
+      gap: 32px;
+    }
 
-    .sr-testimonial { padding: 72px 0; }
+    .sr-impact-stats {
+      grid-template-columns: 1fr 1fr;
+    }
 
-    .sr-shop { padding: 80px 0; }
-    .sr-shop-grid { grid-template-columns: 1fr 1fr; }
+    .sr-impact-rooms {
+      grid-template-columns: 1fr;
+      max-width: 400px;
+      margin: 0 auto;
+    }
 
-    .sr-visit { padding: 80px 0; }
-    .sr-visit-split { grid-template-columns: 1fr; gap: 40px; }
-    .sr-visit-grid { grid-template-columns: 1fr; gap: 16px; }
+    .sr-visit-inner {
+      grid-template-columns: 1fr;
+      gap: 32px;
+    }
 
-    .sr-finale { padding: 80px 0; }
-    .sr-finale-ctas .btn { flex: 1; justify-content: center; min-width: 160px; }
-  }
-
-  @media (max-width: 480px) {
-    .sr-headline { font-size: clamp(36px, 9vw, 48px); }
-    .sr-hero-photos { max-width: 320px; }
-    .sr-photo-float--top { width: 40%; left: -5%; }
-    .sr-photo-float--bottom { width: 35%; right: -5%; }
-    .sr-photo-main { border-radius: 18px; }
-    .sr-shop-grid { grid-template-columns: 1fr; }
-    .sr-pillar { padding: 28px 24px; }
+    .sr-visit-img-inset { display: none; }
   }
 
   @media (prefers-reduced-motion: reduce) {
     [data-reveal] { opacity: 1; transform: none; transition: none; }
-    .sr-glow { animation: none; }
-    .sr-marquee-track { animation: none; }
-    .sr-headline, .sr-hero-photos { transform: none; animation: none; }
-    .sr-eyebrow, .sr-lead, .sr-hero-ctas, .sr-photo-accent, .sr-photo-float { opacity: 1; transform: none; animation: none; }
   }
 </style>
 
-<noscript>
-  <style>
-    .sr-headline, .sr-hero-photos { transform: none !important; animation: none !important; }
-    .sr-eyebrow, .sr-lead, .sr-hero-ctas, .sr-photo-accent, .sr-photo-float { opacity: 1 !important; animation: none !important; transform: none !important; }
-  </style>
-</noscript>
-
-<script>
-  /* ── Sunny & Ranney: hero photo parallax ── */
-  let _srScrollHandler: (() => void) | null = null;
-
-  function srCleanup() {
-    if (_srScrollHandler) window.removeEventListener('scroll', _srScrollHandler);
-    _srScrollHandler = null;
-  }
-
-  function initSRPage() {
-    const hero = document.querySelector('.sr-hero') as HTMLElement;
-    if (!hero) return;
-
-    srCleanup();
-
-    if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      const photo = hero.querySelector('.sr-photo-main img') as HTMLElement;
-      if (photo) {
-        const heroH = hero.offsetHeight || window.innerHeight;
-        let ticking = false;
-        _srScrollHandler = function () {
-          if (ticking) return;
-          ticking = true;
-          requestAnimationFrame(() => {
-            const scrollY = window.scrollY;
-            if (scrollY < heroH) {
-              photo.style.setProperty('--parallax-y', `${scrollY * 0.06}px`);
-            }
-            ticking = false;
-          });
-        };
-        window.addEventListener('scroll', _srScrollHandler, { passive: true });
-      }
-    }
-  }
-
-  document.addEventListener('astro:page-load', initSRPage);
-  document.addEventListener('astro:before-swap', srCleanup);
-</script>
+<noscript><style>[data-reveal]{opacity:1!important;transform:none!important}</style></noscript>

@@ -7153,6 +7153,7 @@
       const [saving, setSaving] = useState(false);
       const [showImagePicker, setShowImagePicker] = useState(false);
       const [imagePickerTarget, setImagePickerTarget] = useState(null);
+      const [uploading, setUploading] = useState(null);
 
       useEffect(() => {
         (async () => {
@@ -7302,7 +7303,7 @@
 
         <div class="card">
           <h3 style="margin-bottom: 0.5rem;">"As Featured In" Logos</h3>
-          <p class="text-sm text-muted mb-1">Press outlet logos shown on the homepage and publicity page. Click the thumbnail or "Browse" to pick from your image library.</p>
+          <p class="text-sm text-muted mb-1">Press outlet logos shown on the homepage and publicity page. Click the thumbnail to pick from your image library, or drop a file below to upload.</p>
           ${(data.pressLogos || []).map((logo, i) => html`
             <div style="display: flex; gap: 0.75rem; align-items: center; margin-bottom: 0.5rem; padding: 0.75rem; background: var(--c-surface-alt, #f8f8f6); border-radius: 8px;">
               <span style="color: var(--c-text-muted); font-size: 0.75rem; min-width: 1.5rem; text-align: center;">${i + 1}</span>
@@ -7312,21 +7313,12 @@
                   ? html`<img src=${'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/' + logo.id + '/w=120,q=75'} alt=${logo.alt || ''} style="height: 28px; width: auto; object-fit: contain; opacity: 0.6;" />`
                   : html`<span style="font-size: 0.7rem; color: var(--c-text-muted);">Browse</span>`}
               </button>
-              <div style="flex: 1; display: flex; gap: 0.5rem; align-items: center;">
-                <input class="form-input" placeholder="Alt text (e.g. Fox 5 Atlanta)" value=${logo.alt || ''}
-                  style="flex: 1;" onInput=${e => {
-                    const arr = [...(data.pressLogos || [])];
-                    arr[i] = { ...arr[i], alt: e.target.value };
-                    updateField('pressLogos', arr);
-                  }} />
-                <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.75rem; white-space: nowrap; cursor: pointer;">
-                  <input type="checkbox" checked=${logo.wide || false} onChange=${e => {
-                    const arr = [...(data.pressLogos || [])];
-                    arr[i] = { ...arr[i], wide: e.target.checked };
-                    updateField('pressLogos', arr);
-                  }} /> Wide
-                </label>
-              </div>
+              <input class="form-input" placeholder="Alt text (e.g. Fox 5 Atlanta)" value=${logo.alt || ''}
+                style="flex: 1;" onInput=${e => {
+                  const arr = [...(data.pressLogos || [])];
+                  arr[i] = { ...arr[i], alt: e.target.value };
+                  updateField('pressLogos', arr);
+                }} />
               <div style="display: flex; gap: 0.25rem;">
                 <button class="btn btn-ghost btn-sm" disabled=${i === 0} onClick=${() => {
                   const arr = [...(data.pressLogos || [])];
@@ -7346,13 +7338,41 @@
               </div>
             </div>
           `)}
-          <button class="btn btn-ghost" style="margin-top: 0.5rem;" onClick=${() => {
-            setImagePickerTarget((data.pressLogos || []).length);
-            const arr = [...(data.pressLogos || [])];
-            arr.push({ id: '', alt: '', wide: false });
-            updateField('pressLogos', arr);
-            setShowImagePicker(true);
-          }}>+ Add Logo</button>
+          <div style="display: flex; gap: 0.5rem; margin-top: 0.5rem; align-items: center;">
+            <button class="btn btn-ghost" onClick=${() => {
+              setImagePickerTarget((data.pressLogos || []).length);
+              const arr = [...(data.pressLogos || [])];
+              arr.push({ id: '', alt: '' });
+              updateField('pressLogos', arr);
+              setShowImagePicker(true);
+            }}>+ Pick from Library</button>
+          </div>
+          <div style="margin-top: 0.75rem;">
+            <${DropZone} multiple=${false} accept="image/png, image/svg+xml, image/webp, image/jpeg"
+              label="Drop a press logo here — auto-uploads with press-logo- prefix"
+              onFiles=${async ([file]) => {
+                const baseName = file.name.replace(/\.[^.]+$/, '')
+                  .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+                const cfId = 'press-logo-' + baseName;
+                setUploading(cfId);
+                try {
+                  const res = await api.uploadImage(file, cfId);
+                  if (res.success) {
+                    const arr = [...(data.pressLogos || [])];
+                    const alt = baseName.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                    arr.push({ id: cfId, alt });
+                    updateField('pressLogos', arr);
+                    addToast('Logo uploaded: ' + cfId, 'success');
+                  } else {
+                    addToast('Upload failed: ' + (res.error || 'Unknown error'), 'error');
+                  }
+                } catch (err) {
+                  addToast('Upload error: ' + err.message, 'error');
+                }
+                setUploading(null);
+              }} />
+            ${uploading ? html`<p class="text-sm text-muted" style="margin-top: 0.5rem;">Uploading ${uploading}...</p>` : null}
+          </div>
         </div>
 
         ${showImagePicker ? html`<${ImagePicker}
@@ -7361,7 +7381,6 @@
             const idx = imagePickerTarget;
             if (idx != null && idx < arr.length) {
               arr[idx] = { ...arr[idx], id };
-              // Auto-fill alt from image ID if empty
               if (!arr[idx].alt) {
                 arr[idx].alt = id.replace(/^press-logo-/, '').replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
               }
