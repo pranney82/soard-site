@@ -1,13 +1,12 @@
 /**
- * GET /api/list-images?page=1&search=kids/harper
- * Lists images from Cloudflare Images with pagination and optional search.
+ * GET /api/list-images?per_page=100&continuation_token=...
+ * Lists images from Cloudflare Images v2 API with cursor-based pagination.
  *
  * Query params:
- *   - page: page number (default 1)
- *   - per_page: results per page (default 50, max 100)
- *   - search: optional — filters by image ID prefix (client-side after fetch)
+ *   - per_page: results per page (default 100, max 10000)
+ *   - continuation_token: optional cursor for next page
  *
- * Returns: { success, images: [{ id, variants, uploaded }], totalCount, page, perPage }
+ * Returns: { success, images: [{ id, uploaded, filename, meta }], continuation_token }
  *
  * Environment variables needed:
  *   CF_ACCOUNT_ID, CF_IMAGES_TOKEN
@@ -24,10 +23,13 @@ export async function onRequestGet(context) {
     }
 
     const url = new URL(context.request.url);
-    const page = parseInt(url.searchParams.get('page') || '1', 10);
-    const perPage = Math.min(parseInt(url.searchParams.get('per_page') || '50', 10), 100);
+    const perPage = Math.min(parseInt(url.searchParams.get('per_page') || '100', 10), 10000);
+    const continuationToken = url.searchParams.get('continuation_token') || '';
 
-    const apiUrl = `https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/images/v1?page=${page}&per_page=${perPage}`;
+    let apiUrl = `https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/images/v2?per_page=${perPage}`;
+    if (continuationToken) {
+      apiUrl += `&continuation_token=${encodeURIComponent(continuationToken)}`;
+    }
 
     const response = await fetch(apiUrl, {
       headers: { 'Authorization': `Bearer ${CF_IMAGES_TOKEN}` },
@@ -49,16 +51,11 @@ export async function onRequestGet(context) {
       meta: img.meta || null,
     }));
 
-    return Response.json(
-      {
-        success: true,
-        images,
-        totalCount: result.result_info?.total_count || images.length,
-        page,
-        perPage,
-      },
-      {}
-    );
+    return Response.json({
+      success: true,
+      images,
+      continuation_token: result.result?.continuation_token || null,
+    });
   } catch (err) {
     console.error("[list-images]", err);
     return Response.json(

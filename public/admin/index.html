@@ -26,7 +26,7 @@
       --color-bg-secondary: #FAFAF8;
       --color-text: #2D2E33;
       --color-text-secondary: #6B6C72;
-      --color-text-muted: #9B9CA0;
+      --color-text-muted: #737580;
       --color-border: #E5E4E0;
       --color-sidebar: #1A1B1F;
       --shadow-sm: 0 1px 3px rgba(0,0,0,0.06);
@@ -40,9 +40,9 @@
 
     /* ─── Reset & Base ──────────────────── */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    html { font-size: 15px; }
+    html { font-size: 14px; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
     body {
-      font-family: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
       background: var(--color-bg);
       color: var(--color-text);
       min-height: 100vh;
@@ -92,7 +92,7 @@
       flex-shrink: 0;
     }
     .sidebar-logo small {
-      font-size: 0.65rem;
+      font-size: 0.75rem;
       color: rgba(255,255,255,0.4);
       display: block;
       letter-spacing: 0.04em;
@@ -111,9 +111,9 @@
     .nav-item:hover { color: #fff; background: rgba(255,255,255,0.05); }
     .nav-item:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--color-primary); }
     .nav-item.active {
-      color: #FFD500;
-      background: rgba(255, 213, 0, 0.08);
-      border-left-color: #FFD500;
+      color: var(--color-primary);
+      background: var(--color-primary-bg);
+      border-left-color: var(--color-primary);
     }
     .nav-icon { width: 1.25rem; height: 1.25rem; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
     .nav-icon svg { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
@@ -129,7 +129,7 @@
     .hamburger {
       display: none;
       position: fixed; top: 1rem; left: 1rem; z-index: 200;
-      background: #1A1B1F; color: #FFD500;
+      background: var(--color-sidebar); color: var(--color-primary);
       border: none; border-radius: 10px;
       width: 44px; height: 44px; font-size: 1.4rem;
       align-items: center; justify-content: center;
@@ -172,6 +172,7 @@
       /* Stat cards */
       .stat-card .stat-number { font-size: 1.75rem; }
       .stat-grid { grid-template-columns: repeat(2, 1fr) !important; gap: 0.75rem !important; margin-bottom: 1.25rem !important; }
+      .chart-panel { min-width: 0 !important; width: 100% !important; }
 
       /* Dashboard Recent Kids — grid layout per row */
       .dashboard-recent .table-wrap tr {
@@ -239,6 +240,7 @@
       .form-grid .span-2 { grid-column: 1; }
       .form-input, .form-textarea, .form-select { font-size: 16px; } /* prevents iOS zoom */
       .search-bar { max-width: 100%; }
+      .rte-body { min-height: 120px !important; }
 
       /* Modals */
       .modal-overlay { padding: 0.5rem; padding-bottom: env(safe-area-inset-bottom, 0.5rem); }
@@ -376,13 +378,6 @@
         min-height: 44px;
       }
 
-      /* ─── Applications tab buttons ──── */
-      .page-header > div[style*="display: flex"][style*="gap: 0.5rem"] > .btn {
-        min-width: 0;
-        font-size: 0.85rem;
-        padding: 0.5rem 0.8rem;
-      }
-
       /* ─── Financial tab row ──────────── */
       div[style*="display:flex"][style*="margin-bottom:1.5rem"][style*="flex-wrap:wrap"] .btn {
         flex: 1;
@@ -406,19 +401,9 @@
         padding: 0.4rem 0.5rem !important;
       }
 
-      /* ─── ShopCollections grid ───────── */
-      .card > div[style*="grid-template-columns: repeat(auto-fill, minmax(200px"] {
-        grid-template-columns: 1fr !important;
-      }
-
       /* ─── Inline multi-column form-row overrides ── */
       .form-row[style*="grid-template-columns"] {
         grid-template-columns: 1fr !important;
-      }
-
-      /* ─── JotForm iframe ─────────────── */
-      .card > iframe[title*="Application"] {
-        min-height: 600px !important;
       }
 
       /* ─── Fix input min-width overflow at 390px ── */
@@ -498,6 +483,7 @@
       .page-header { gap: 0.5rem; margin-bottom: 1.25rem; }
       .page-header h2 { font-size: 1.1rem; }
       .page-header .btn { font-size: 0.85rem; flex: 1; justify-content: center; }
+      .stat-grid { grid-template-columns: 1fr !important; }
       .stat-card { padding: 1rem; }
       .stat-card .stat-number { font-size: 1.5rem; }
       .td-thumb { width: 36px; height: 36px; }
@@ -534,8 +520,8 @@
       flex-wrap: wrap; gap: 1rem;
     }
     .page-header h2 {
-      font-family: 'Libre Baskerville', Georgia, serif;
       font-size: 1.5rem;
+      font-weight: 700;
     }
 
     h3 { margin: 0; }
@@ -586,9 +572,8 @@
       background: var(--color-primary);
     }
     .stat-card .stat-number {
-      font-family: 'Libre Baskerville', Georgia, serif;
       font-size: 2.25rem;
-      font-weight: 700;
+      font-weight: 800;
       color: var(--color-primary);
       line-height: 1.1;
     }
@@ -611,14 +596,14 @@
       border: none;
       transition: all 0.15s;
     }
-    .btn-primary { background: #FFD500; color: #2D2E33; }
-    .btn-primary:hover { background: #E6C000; }
-    .btn-secondary { background: #2D2E33; color: #fff; }
+    .btn-primary { background: var(--color-primary); color: var(--color-text); }
+    .btn-primary:hover { background: var(--color-primary-hover); }
+    .btn-secondary { background: var(--color-text); color: #fff; }
     .btn-secondary:hover { background: #3D3E43; }
-    .btn-danger { background: #E53E3E; color: #fff; }
+    .btn-danger { background: var(--color-danger); color: #fff; }
     .btn-danger:hover { background: #C53030; }
-    .btn-ghost { background: transparent; color: #6B6C72; border: 1px solid #E5E4E0; }
-    .btn-ghost:hover { background: #F5F4F0; }
+    .btn-ghost { background: transparent; color: var(--color-text-secondary); border: 1px solid var(--color-border); }
+    .btn-ghost:hover { background: var(--color-bg); }
     .btn-sm { padding: 0.4rem 0.8rem; font-size: 0.8rem; }
     .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
@@ -628,7 +613,7 @@
       display: block;
       font-size: 0.85rem;
       font-weight: 600;
-      color: #2D2E33;
+      color: var(--color-text);
       margin-bottom: 0.35rem;
     }
     /* Photo freshness badges */
@@ -648,15 +633,15 @@
     .freshness-alert--danger { background: #FFF5F5; border: 1px solid #FEB2B2; color: #9B2C2C; }
     .form-hint {
       font-size: 0.78rem;
-      color: #9B9CA0;
+      color: #737580;
       margin-top: 0.2rem;
     }
     .form-input, .form-textarea, .form-select {
       width: 100%;
       padding: 0.6rem 0.75rem;
-      border: 1px solid #E5E4E0;
-      border-radius: 8px;
-      background: #fff;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
+      background: var(--color-bg-card);
       font-size: 0.95rem;
       transition: border-color 0.15s;
     }
@@ -680,7 +665,7 @@
     .form-group input:not(.form-input):not([type="checkbox"]):not([type="radio"]):focus,
     .form-group textarea:not(.form-textarea):focus,
     .form-group select:not(.form-select):focus {
-      outline: none; border-color: #FFD500; box-shadow: 0 0 0 3px rgba(255,213,0,0.15);
+      outline: none; border-color: var(--color-primary); box-shadow: var(--focus-ring);
     }
     .form-grid textarea, .form-group textarea:not(.form-textarea) { resize: vertical; min-height: 80px; }
     .modal-content {
@@ -688,7 +673,7 @@
       max-width: 500px; width: 100%;
       padding: 1.75rem;
     }
-    .modal-content h3 { font-family: 'Libre Baskerville', Georgia, serif; }
+    .modal-content h3 { font-weight: 700; }
     .modal-content .form-group { margin-bottom: 1rem; }
     .modal-content label { display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.35rem; }
     .modal-content input, .modal-content select {
@@ -696,7 +681,7 @@
       border-radius: 8px; background: #fff; font-size: 0.95rem;
     }
     .modal-content input:focus, .modal-content select:focus {
-      outline: none; border-color: #FFD500; box-shadow: 0 0 0 3px rgba(255,213,0,0.15);
+      outline: none; border-color: var(--color-primary); box-shadow: var(--focus-ring);
     }
     @media (max-width: 600px) {
       .form-row { grid-template-columns: 1fr !important; }
@@ -708,14 +693,14 @@
       display: flex; align-items: center; gap: 0.5rem;
       font-size: 0.9rem; cursor: pointer;
     }
-    .checkbox-label input { width: 18px; height: 18px; accent-color: #FFD500; }
+    .checkbox-label input { width: 18px; height: 18px; accent-color: var(--color-primary); }
 
     /* ─── Chips/Tags ─────────────────────── */
     .chip {
       display: inline-flex; align-items: center; gap: 0.3rem;
       padding: 0.25rem 0.65rem;
       background: rgba(45,46,51,0.08);
-      color: #2D2E33;
+      color: var(--color-text);
       border: none;
       border-radius: 100px;
       font-size: 0.78rem;
@@ -723,7 +708,7 @@
     }
     .chip-remove {
       background: none; border: none;
-      color: #2D2E33; font-size: 1rem;
+      color: var(--color-text); font-size: 1rem;
       line-height: 1; cursor: pointer;
       padding: 0 0.1rem;
     }
@@ -736,16 +721,16 @@
       font-size: 0.78rem;
       text-transform: uppercase;
       letter-spacing: 0.04em;
-      color: #6B6C72;
+      color: var(--color-text-secondary);
       padding: 0.75rem;
-      border-bottom: 2px solid #E5E4E0;
+      border-bottom: 2px solid var(--color-border);
     }
     td {
       padding: 0.75rem;
-      border-bottom: 1px solid #F5F4F0;
+      border-bottom: 1px solid var(--color-bg);
       font-size: 0.9rem;
     }
-    tr:hover td { background: #FEFCF5; }
+    tr:hover td { background: var(--color-primary-bg); }
     .td-thumb {
       width: 48px; height: 48px;
       border-radius: 8px;
@@ -755,7 +740,7 @@
 
     /* ─── Drop Zone ──────────────────────── */
     .dropzone {
-      border: 2px dashed #E5E4E0;
+      border: 2px dashed var(--color-border);
       border-radius: 12px;
       padding: 2rem;
       text-align: center;
@@ -764,13 +749,13 @@
       background: #FEFCF5;
     }
     .dropzone:hover, .dropzone.drag-over {
-      border-color: #FFD500;
-      background: rgba(255,213,0,0.05);
+      border-color: var(--color-primary);
+      background: var(--color-primary-bg);
     }
-    .dropzone-icon { font-size: 2rem; margin-bottom: 0.5rem; color: #6B6C72; }
+    .dropzone-icon { font-size: 2rem; margin-bottom: 0.5rem; color: var(--color-text-secondary); }
     .dropzone-icon svg { width: 32px; height: 32px; }
-    .dropzone-text { color: #6B6C72; font-size: 0.9rem; }
-    .dropzone-text strong { color: #FFD500; }
+    .dropzone-text { color: var(--color-text-secondary); font-size: 0.9rem; }
+    .dropzone-text strong { color: var(--color-primary); }
 
     /* ─── Photo Grid (drag-to-reorder) ───── */
     .photo-grid {
@@ -783,7 +768,7 @@
     .photo-grid-item[draggable="true"] { cursor: grab; }
     .photo-grid-item[draggable="true"]:active { cursor: grabbing; }
     .photo-grid-item.drag-over {
-      outline: 2px dashed #FFD500;
+      outline: 2px dashed var(--color-primary);
       outline-offset: 2px;
       border-radius: 8px;
     }
@@ -799,7 +784,7 @@
       width: 100%; height: 100%;
       object-fit: cover;
     }
-    .photo-item.is-hero { outline: 3px solid #FFD500; outline-offset: -3px; }
+    .photo-item.is-hero { outline: 3px solid var(--color-primary); outline-offset: -3px; }
     .photo-actions {
       position: absolute; top: 0.35rem; right: 0.35rem;
       display: flex; gap: 0.25rem;
@@ -815,7 +800,7 @@
       transition: background 0.15s;
     }
     .photo-btn:hover { background: rgba(0,0,0,0.85); }
-    .photo-btn.hero-btn { background: rgba(255,213,0,0.9); color: #2D2E33; }
+    .photo-btn.hero-btn { background: rgba(255,213,0,0.9); color: var(--color-text); }
     .photo-uploading {
       position: absolute; inset: 0;
       background: rgba(0,0,0,0.5);
@@ -838,8 +823,8 @@
       animation: slideIn 0.25s ease;
     }
     .toast-success { background: var(--color-success); color: #fff; }
-    .toast-error { background: #E53E3E; color: #fff; }
-    .toast-info { background: #2D2E33; color: #fff; }
+    .toast-error { background: var(--color-danger); color: #fff; }
+    .toast-info { background: var(--color-text); color: #fff; }
     @keyframes slideIn {
       from { transform: translateY(1rem); opacity: 0; }
       to { transform: translateY(0); opacity: 1; }
@@ -859,8 +844,8 @@
       padding: 1.75rem;
       box-shadow: var(--shadow-lg);
     }
-    .modal h3 { font-family: 'Libre Baskerville', Georgia, serif; margin-bottom: 0.75rem; }
-    .modal p { color: #6B6C72; font-size: 0.9rem; margin-bottom: 1.25rem; }
+    .modal h3 { font-weight: 700; margin-bottom: 0.75rem; }
+    .modal p { color: var(--color-text-secondary); font-size: 0.9rem; margin-bottom: 1.25rem; }
     .modal-buttons { display: flex; gap: 0.75rem; justify-content: flex-end; }
 
     /* ─── Search ──────────────────────────── */
@@ -871,48 +856,48 @@
     .search-bar input {
       width: 100%;
       padding: 0.55rem 0.75rem 0.55rem 2.25rem;
-      border: 1px solid #E5E4E0;
-      border-radius: 8px;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
       font-size: 0.9rem;
-      background: #fff;
+      background: var(--color-bg-card);
     }
-    .search-bar input:focus { outline: none; border-color: #FFD500; }
+    .search-bar input:focus { outline: none; border-color: var(--color-primary); box-shadow: var(--focus-ring); }
     .search-icon {
       position: absolute; left: 0.7rem; top: 50%;
       transform: translateY(-50%);
-      color: #9B9CA0; font-size: 0.9rem;
+      color: #737580; font-size: 0.9rem;
       pointer-events: none;
     }
 
     /* ─── Empty State ────────────────────── */
     .empty-state {
       text-align: center; padding: 3rem 1rem;
-      color: #6B6C72;
+      color: var(--color-text-secondary);
     }
-    .empty-state-icon { font-size: 3rem; margin-bottom: 0.75rem; color: #9B9CA0; }
+    .empty-state-icon { font-size: 3rem; margin-bottom: 0.75rem; color: var(--color-text-muted); }
     .empty-state-icon svg { width: 48px; height: 48px; }
 
     /* ─── Back link / Breadcrumb ─────────── */
     .breadcrumb {
       display: flex; align-items: center; gap: 0.35rem;
-      font-size: 0.85rem; color: #6B6C72;
+      font-size: 0.85rem; color: var(--color-text-secondary);
       margin-bottom: 1rem;
     }
     .breadcrumb button {
       background: none; border: none; cursor: pointer;
-      color: #6B6C72; font-size: 0.85rem; padding: 0;
+      color: var(--color-text-secondary); font-size: 0.85rem; padding: 0;
       display: inline-flex; align-items: center; gap: 0.25rem;
     }
-    .breadcrumb button:hover { color: #FFD500; }
-    .breadcrumb .sep { color: #9B9CA0; font-size: 0.75rem; }
-    .breadcrumb .current { color: #2D2E33; font-weight: 500; }
+    .breadcrumb button:hover { color: var(--color-primary); }
+    .breadcrumb .sep { color: #737580; font-size: 0.75rem; }
+    .breadcrumb .current { color: var(--color-text); font-weight: 500; }
     .back-link {
       display: inline-flex; align-items: center; gap: 0.35rem;
-      font-size: 0.85rem; color: #6B6C72;
+      font-size: 0.85rem; color: var(--color-text-secondary);
       margin-bottom: 1rem; cursor: pointer;
       background: none; border: none;
     }
-    .back-link:hover { color: #2D2E33; }
+    .back-link:hover { color: var(--color-text); }
 
     /* ─── Badge ──────────────────────────── */
     .badge {
@@ -958,7 +943,7 @@
     .deploy-sha:hover { background: rgba(0,0,0,0.1); }
     .deploy-status { flex-shrink: 0; margin-top: 0.1rem; }
     .deploy-link {
-      font-size: 0.78rem; color: #7A00DF; text-decoration: none;
+      font-size: 0.78rem; color: var(--color-info); text-decoration: none;
     }
     .deploy-link:hover { text-decoration: underline; }
 
@@ -967,42 +952,42 @@
       display: inline-block;
       width: 18px; height: 18px;
       border: 2px solid rgba(0,0,0,0.15);
-      border-top-color: #FFD500;
+      border-top-color: var(--color-primary);
       border-radius: 50%;
       animation: spin 0.6s linear infinite;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
 
     /* ─── Rich Text Toolbar ────────────── */
-    .rte-wrap { border: 1px solid #E5E4E0; border-radius: 8px; overflow: hidden; transition: border-color 0.15s; }
-    .rte-wrap:focus-within { border-color: #FFD500; box-shadow: 0 0 0 3px rgba(255,213,0,0.15); }
+    .rte-wrap { border: 1px solid var(--color-border); border-radius: var(--radius-sm); overflow: hidden; transition: border-color 0.15s; }
+    .rte-wrap:focus-within { border-color: var(--color-primary); box-shadow: var(--focus-ring); }
     .rte-toolbar {
       display: flex; flex-wrap: wrap; gap: 0.15rem; padding: 0.35rem 0.5rem;
-      background: #F5F4F0; border-bottom: 1px solid #E5E4E0;
+      background: var(--color-bg); border-bottom: 1px solid var(--color-border);
     }
     .rte-btn {
       width: 32px; height: 28px; display: flex; align-items: center; justify-content: center;
       border: none; background: transparent; border-radius: 4px; cursor: pointer;
-      font-size: 0.85rem; font-weight: 600; color: #2D2E33; transition: background 0.1s;
+      font-size: 0.85rem; font-weight: 600; color: var(--color-text); transition: background 0.1s;
     }
     .rte-btn:hover { background: rgba(0,0,0,0.08); }
-    .rte-btn.active { background: #FFD500; }
-    .rte-sep { width: 1px; height: 20px; background: #E5E4E0; margin: 4px 2px; }
+    .rte-btn.active { background: var(--color-primary); }
+    .rte-sep { width: 1px; height: 20px; background: var(--color-border); margin: 4px 2px; }
     .rte-body {
       min-height: 200px; padding: 0.75rem; font-size: 0.95rem; line-height: 1.6;
-      outline: none; background: #fff;
+      outline: none; background: var(--color-bg-card);
     }
     .rte-body p { margin-bottom: 0.5em; }
-    .rte-body h3 { margin-bottom: 0.3em; font-family: 'Libre Baskerville', Georgia, serif; }
+    .rte-body h3 { margin-bottom: 0.3em; font-weight: 700; }
     .rte-body ul, .rte-body ol { margin-left: 1.5em; margin-bottom: 0.5em; }
-    .rte-body blockquote { border-left: 3px solid #FFD500; padding-left: 0.75rem; color: #6B6C72; margin-bottom: 0.5em; }
+    .rte-body blockquote { border-left: 3px solid var(--color-primary); padding-left: 0.75rem; color: var(--color-text-secondary); margin-bottom: 0.5em; }
     .rte-body a { color: #1a0dab; text-decoration: underline; }
 
     /* ─── Sortable table headers ──────── */
     th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
     th.sortable:hover { color: #2D2E33; }
     .sort-icon { font-size: 0.7rem; margin-left: 0.25rem; opacity: 0.4; }
-    th.sortable.sorted .sort-icon { opacity: 1; color: #FFD500; }
+    th.sortable.sorted .sort-icon { opacity: 1; color: var(--color-primary); }
 
     /* ─── Bulk actions bar ────────────── */
     .bulk-bar {
@@ -1013,12 +998,7 @@
     .bulk-bar .btn { font-size: 0.82rem; }
 
     /* ─── Draft status badge ─────────── */
-    .draft-badge {
-      display: inline-flex; align-items: center; gap: 0.3rem;
-      padding: 0.2rem 0.6rem; border-radius: 100px;
-      font-size: 0.75rem; font-weight: 600;
-    }
-    .draft-badge-draft, .draft-badge-published {
+    .draft-badge, .draft-badge-draft, .draft-badge-published {
       display: inline-flex; align-items: center; gap: 0.3rem;
       padding: 0.2rem 0.6rem; border-radius: 100px;
       font-size: 0.75rem; font-weight: 600;
@@ -1038,12 +1018,12 @@
       margin-top: 0.35rem; flex-shrink: 0;
     }
     .activity-dot-create { background: #38A169; }
-    .activity-dot-update { background: #FFD500; }
+    .activity-dot-update { background: var(--color-primary); }
     .activity-dot-delete { background: #E53E3E; }
 
     /* ─── Form Validation ────────────────── */
     .form-input.is-invalid, .form-textarea.is-invalid, .form-select.is-invalid {
-      border-color: #E53E3E;
+      border-color: var(--color-danger);
     }
     .form-input.is-invalid:focus, .form-textarea.is-invalid:focus, .form-select.is-invalid:focus {
       border-color: #E53E3E;
@@ -1051,16 +1031,16 @@
     }
     .form-error {
       font-size: 0.78rem;
-      color: #E53E3E;
+      color: var(--color-danger);
       margin-top: 0.2rem;
     }
     .char-count {
-      font-size: 0.72rem;
-      color: #9B9CA0;
+      font-size: 0.75rem;
+      color: var(--color-text-muted);
       text-align: right;
       margin-top: 0.15rem;
     }
-    .char-count.over { color: #E53E3E; font-weight: 600; }
+    .char-count.over { color: var(--color-danger); font-weight: 600; }
 
     /* ─── Command Palette ──────────────── */
     .cmd-palette-overlay {
@@ -1084,18 +1064,18 @@
       padding: 0.75rem 1rem;
       border-bottom: 1px solid var(--border, #E5E4E0);
     }
-    .cmd-palette-input-wrap svg { width: 18px; height: 18px; stroke: #9B9CA0; flex-shrink: 0; }
+    .cmd-palette-input-wrap svg { width: 18px; height: 18px; stroke: #737580; flex-shrink: 0; }
     .cmd-palette-input {
       flex: 1; border: none; outline: none; font-size: 1rem;
       background: transparent; color: #2D2E33;
     }
-    .cmd-palette-input::placeholder { color: #9B9CA0; }
+    .cmd-palette-input::placeholder { color: #737580; }
     .cmd-palette-results {
       flex: 1; overflow-y: auto; padding: 0.5rem;
     }
     .cmd-palette-section {
       font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em;
-      color: #9B9CA0; padding: 0.4rem 0.6rem 0.25rem; font-weight: 600;
+      color: #737580; padding: 0.4rem 0.6rem 0.25rem; font-weight: 600;
     }
     .cmd-palette-item {
       display: flex; align-items: center; gap: 0.6rem;
@@ -1104,16 +1084,16 @@
       width: 100%; text-align: left;
     }
     .cmd-palette-item:hover, .cmd-palette-item.active {
-      background: rgba(255,213,0,0.12);
+      background: var(--color-primary-bg);
     }
-    .cmd-palette-item.active { outline: 2px solid #FFD500; }
+    .cmd-palette-item.active { outline: 2px solid var(--color-primary); }
     .cmd-palette-item svg { width: 16px; height: 16px; stroke: #6B6C72; flex-shrink: 0; }
     .cmd-palette-item .cmd-meta {
-      margin-left: auto; font-size: 0.75rem; color: #9B9CA0;
+      margin-left: auto; font-size: 0.75rem; color: #737580;
     }
     .cmd-palette-footer {
       display: flex; align-items: center; gap: 1rem; padding: 0.5rem 1rem;
-      border-top: 1px solid var(--border, #E5E4E0); font-size: 0.75rem; color: #9B9CA0;
+      border-top: 1px solid var(--border, #E5E4E0); font-size: 0.75rem; color: #737580;
     }
     .cmd-palette-footer kbd {
       display: inline-flex; align-items: center; justify-content: center;
@@ -1175,7 +1155,7 @@
     }
     .completeness-ring svg { transform: rotate(-90deg); }
     .completeness-pct {
-      position: absolute; font-size: 0.6rem; font-weight: 700; color: #2D2E33;
+      position: absolute; font-size: 0.7rem; font-weight: 700; color: var(--color-text);
     }
 
     /* ─── Responsive Preview ────────── */
@@ -1198,13 +1178,13 @@
     /* ─── Autosave Status ──────────── */
     .save-status {
       display: flex; align-items: center; gap: 0.4rem;
-      font-size: 0.8rem; color: #9B9CA0;
+      font-size: 0.8rem; color: #737580;
     }
     .save-status-dot {
       width: 7px; height: 7px; border-radius: 50%;
     }
     .save-status-dot.saved { background: #38A169; }
-    .save-status-dot.unsaved { background: #FFD500; }
+    .save-status-dot.unsaved { background: var(--color-primary); }
     .save-status-dot.saving { background: #3182CE; animation: pulse 1s infinite; }
     @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
 
@@ -1226,7 +1206,6 @@
     }
     .chart-container:hover { box-shadow: var(--shadow-md); }
     .chart-title {
-      font-family: 'Libre Baskerville', Georgia, serif;
       font-size: 1.15rem;
       font-weight: 700;
       color: var(--color-text);
@@ -1286,7 +1265,7 @@
       animation: chartFadeUp 0.3s ease both;
     }
     .chart-bar-label {
-      font-size: 0.68rem;
+      font-size: 0.75rem;
       color: var(--color-text-muted);
       margin-top: 6px;
       font-weight: 500;
@@ -1367,9 +1346,8 @@
       margin-bottom: 0.25rem;
     }
     .chart-stat-highlight .big {
-      font-family: 'Libre Baskerville', Georgia, serif;
       font-size: 1.75rem;
-      font-weight: 700;
+      font-weight: 800;
       color: var(--color-text);
     }
     .chart-stat-highlight .delta {
@@ -1392,15 +1370,15 @@
       background: none; border: none; cursor: pointer; padding: 2px;
       color: #D1D0CC; font-size: 1.1rem; transition: all 0.15s; line-height: 1;
     }
-    .fav-btn:hover { color: #FFD500; transform: scale(1.15); }
-    .fav-btn.is-fav { color: #FFD500; }
+    .fav-btn:hover { color: var(--color-primary); transform: scale(1.15); }
+    .fav-btn.is-fav { color: var(--color-primary); }
 
     /* ─── Inline Edit ──────────────── */
     .inline-edit-input {
       font-size: inherit; font-weight: inherit; font-family: inherit;
-      border: 1px solid #FFD500; border-radius: 4px; padding: 1px 4px;
+      border: 1px solid var(--color-primary); border-radius: 4px; padding: 1px 4px;
       background: #FFFDF0; outline: none; width: 100%; min-width: 80px;
-      box-shadow: 0 0 0 3px rgba(255,213,0,0.15);
+      box-shadow: var(--focus-ring);
     }
 
     /* ─── Schedule Publish ──────────── */
@@ -1430,16 +1408,28 @@
     .img-picker-toolbar input { flex: 1; min-width: 200px; }
     .img-picker-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 0.75rem; overflow-y: auto; flex: 1; padding: 0.25rem; }
     .img-picker-thumb { position: relative; aspect-ratio: 1; border-radius: 10px; overflow: hidden; cursor: pointer; border: 3px solid transparent; transition: all 0.15s ease; background: #F5F4F0; }
-    .img-picker-thumb:hover { border-color: #FFD500; transform: translateY(-2px); box-shadow: 0 4px 16px rgba(0,0,0,0.12); }
-    .img-picker-thumb.selected { border-color: #FFD500; box-shadow: 0 0 0 2px #FFD500; }
+    .img-picker-thumb:hover { border-color: var(--color-primary); transform: translateY(-2px); box-shadow: 0 4px 16px rgba(0,0,0,0.12); }
+    .img-picker-thumb.selected { border-color: var(--color-primary); box-shadow: 0 0 0 2px var(--color-primary); }
     .img-picker-thumb img { width: 100%; height: 100%; object-fit: cover; }
-    .img-picker-id { position: absolute; bottom: 0; left: 0; right: 0; background: rgba(0,0,0,0.7); color: #fff; font-size: 0.6rem; padding: 4px 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .img-picker-id { position: absolute; bottom: 0; left: 0; right: 0; background: rgba(0,0,0,0.7); color: #fff; font-size: 0.7rem; padding: 4px 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .img-picker-pager { display: flex; justify-content: center; align-items: center; gap: 0.75rem; padding-top: 1rem; border-top: 1px solid rgba(45,46,51,0.08); margin-top: 0.75rem; }
     .img-picker-empty { text-align: center; padding: 3rem; color: #6B6C72; grid-column: 1 / -1; }
+
+    /* ─── Reduced Motion ──────────────── */
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+
+    /* ─── Body Scroll Lock ────────────── */
+    body.modal-open { overflow: hidden; }
   </style>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Libre+Baskerville:wght@400;700&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 </head>
 <body>
   <div id="app"></div>
@@ -1480,7 +1470,7 @@
     // ─── API Helpers ────────────────────────
     const api = {
       async listContent(dir) {
-        const r = await fetch(`/api/read-content?dir=${encodeURIComponent(dir)}`);
+        const r = await fetch(`/api/list-content?dir=${encodeURIComponent(dir)}`);
         return r.json();
       },
       async bulkListContent(dir) {
@@ -1556,8 +1546,10 @@
         });
         return r.json();
       },
-      async listImages(page = 1, perPage = 50) {
-        const r = await fetch(`/api/list-images?page=${page}&per_page=${perPage}`);
+      async listImages(perPage = 100, continuationToken = '') {
+        let url = `/api/list-images?per_page=${perPage}`;
+        if (continuationToken) url += `&continuation_token=${encodeURIComponent(continuationToken)}`;
+        const r = await fetch(url);
         return r.json();
       },
     };
@@ -1742,6 +1734,9 @@
     function RichTextEditor({ value, onChange, placeholder, minHeight = 200 }) {
       const editorRef = useRef();
       const isUpdating = useRef(false);
+      const [showLinkInput, setShowLinkInput] = useState(false);
+      const [linkUrl, setLinkUrl] = useState('');
+      const linkInputRef = useRef();
 
       // Init content on mount
       useEffect(() => {
@@ -1784,8 +1779,13 @@
       };
 
       const insertLink = () => {
-        const url = prompt('Enter URL:');
-        if (url) exec('createLink', url);
+        setShowLinkInput(true);
+        setLinkUrl('');
+        setTimeout(() => linkInputRef.current?.focus(), 50);
+      };
+      const applyLink = () => {
+        if (linkUrl) { editorRef.current?.focus(); exec('createLink', linkUrl); }
+        setShowLinkInput(false);
       };
 
       return html`
@@ -1803,6 +1803,16 @@
             <div class="rte-sep" />
             <button type="button" class="rte-btn" onClick=${insertLink} title="Insert link">🔗</button>
             <button type="button" class="rte-btn" onClick=${() => exec('removeFormat')} title="Clear formatting">✕</button>
+            ${showLinkInput ? html`
+              <div style="display: flex; align-items: center; gap: 0.35rem; margin-left: 0.25rem;">
+                <input ref=${linkInputRef} type="url" value=${linkUrl} onInput=${e => setLinkUrl(e.target.value)}
+                  onKeyDown=${e => { if (e.key === 'Enter') { e.preventDefault(); applyLink(); } if (e.key === 'Escape') setShowLinkInput(false); }}
+                  placeholder="https://..."
+                  style="width: 180px; padding: 2px 6px; font-size: 0.8rem; border: 1px solid #E5E4E0; border-radius: 4px; height: 26px;" />
+                <button type="button" class="rte-btn" style="width: 26px; height: 26px; font-size: 0.75rem;" onClick=${applyLink} title="Apply">✓</button>
+                <button type="button" class="rte-btn" style="width: 26px; height: 26px; font-size: 0.75rem;" onClick=${() => setShowLinkInput(false)} title="Cancel">✕</button>
+              </div>
+            ` : null}
           </div>
           <div class="rte-body" ref=${editorRef}
             contenteditable="true"
@@ -1870,15 +1880,15 @@
     }
 
     // ─── Confirm Modal ──────────────────────
-    function ConfirmModal({ title, message, onConfirm, onCancel, danger }) {
-      // Trap focus and handle Escape key
+    function ConfirmModal({ title, message, onConfirm, onCancel, danger, loading }) {
+      // Trap focus, handle Escape, lock body scroll
       const modalRef = useRef();
       useEffect(() => {
+        document.body.classList.add('modal-open');
         const handler = (e) => { if (e.key === 'Escape') onCancel(); };
         window.addEventListener('keydown', handler);
-        // Focus the first button
         modalRef.current?.querySelector('button')?.focus();
-        return () => window.removeEventListener('keydown', handler);
+        return () => { window.removeEventListener('keydown', handler); document.body.classList.remove('modal-open'); };
       }, []);
 
       return html`<div class="modal-overlay" onClick=${onCancel} role="dialog" aria-modal="true" aria-labelledby="modal-title">
@@ -1886,9 +1896,9 @@
           <h3 id="modal-title">${title}</h3>
           <p>${message}</p>
           <div class="modal-buttons">
-            <button class="btn btn-ghost" onClick=${onCancel}>Cancel</button>
-            <button class="btn ${danger ? 'btn-danger' : 'btn-primary'}" onClick=${onConfirm}>
-              ${danger ? 'Delete' : 'Confirm'}
+            <button class="btn btn-ghost" onClick=${onCancel} disabled=${loading}>Cancel</button>
+            <button class="btn ${danger ? 'btn-danger' : 'btn-primary'}" onClick=${onConfirm} disabled=${loading}>
+              ${loading ? html`<span class="spinner" /> Deleting...` : danger ? 'Delete' : 'Confirm'}
             </button>
           </div>
         </div>
@@ -2009,7 +2019,7 @@
                   ${p.thumb ? html`<img src=${p.thumb} style="width: 28px; height: 28px; border-radius: 6px; object-fit: cover;" />` : null}
                   <div style="text-align: left;">
                     <div style="font-size: 0.85rem; font-weight: 600; color: #2D2E33;">${p.label}</div>
-                    <div style="font-size: 0.7rem; color: #9B9CA0;">${p.meta}</div>
+                    <div style="font-size: 0.7rem; color: #737580;">${p.meta}</div>
                   </div>
                 </button>
               `)}
@@ -2154,7 +2164,7 @@
                     <!-- Grid lines -->
                     ${gridLines.map(g => html`
                       <line x1=${padLeft} y1=${g.y} x2=${w} y2=${g.y} stroke="#E5E4E0" stroke-width="1" stroke-dasharray="4 3" />
-                      <text x=${padLeft - 6} y=${g.y + 3.5} text-anchor="end" font-size="9" fill="#9B9CA0" font-weight="500">${g.val}</text>
+                      <text x=${padLeft - 6} y=${g.y + 3.5} text-anchor="end" font-size="9" fill="#737580" font-weight="500">${g.val}</text>
                     `)}
 
                     <!-- Area fill -->
@@ -2169,7 +2179,7 @@
                         <title>${yearData.years[i]}: ${d[i]} kids</title>
                       </circle>
                       <text x=${p.x} y=${p.y - 10} text-anchor="middle" font-size="10" font-weight="700" fill="var(--color-text)" style="opacity: 0; animation: chartFadeUp 0.3s ease ${0.8 + i * 0.06}s both;">${d[i]}</text>
-                      <text x=${p.x} y=${padTop + chartH + 14} text-anchor="middle" font-size="9" fill="#9B9CA0" font-weight="500">'${yearData.years[i].toString().slice(-2)}</text>
+                      <text x=${p.x} y=${padTop + chartH + 14} text-anchor="middle" font-size="9" fill="#737580" font-weight="500">'${yearData.years[i].toString().slice(-2)}</text>
                     `)}
                   </svg>`;
                 })()}
@@ -2246,9 +2256,12 @@
         if (selected.size === sorted.length) setSelected(new Set());
         else setSelected(new Set(sorted.map(k => k.slug)));
       };
-      const bulkDelete = () => {
+      const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
+      const bulkDelete = () => setShowBulkDeleteModal(true);
+      const confirmBulkDelete = () => {
         sorted.filter(k => selected.has(k.slug)).forEach(k => onDelete(k));
         setSelected(new Set());
+        setShowBulkDeleteModal(false);
       };
 
       const handleToggleFav = (slug) => {
@@ -2278,6 +2291,13 @@
       };
 
       return html`
+        ${showBulkDeleteModal ? html`<${ConfirmModal}
+          title="Delete ${selected.size} kid${selected.size > 1 ? 's' : ''}?"
+          message="This will permanently remove the selected profiles from the site. This cannot be undone."
+          danger=${true}
+          onConfirm=${confirmBulkDelete}
+          onCancel=${() => setShowBulkDeleteModal(false)}
+        />` : null}
         <div class="page-header">
           <h2>Kids (${kids.length})</h2>
           <button class="btn btn-primary" onClick=${onAdd}>+ Add Kid</button>
@@ -2372,6 +2392,8 @@
       const [saving, setSaving] = useState(false);
       const [deleting, setDeleting] = useState(false);
       const [showDeleteModal, setShowDeleteModal] = useState(false);
+      const [showScheduleModal, setShowScheduleModal] = useState(false);
+      const [scheduleDate, setScheduleDate] = useState('');
       const [dirty, setDirty] = useState(false);
       const [touched, setTouched] = useState({});
       const [sha, setSha] = useState(null);
@@ -2767,6 +2789,29 @@
           onConfirm=${handleDelete}
           onCancel=${() => setShowDeleteModal(false)}
         />` : null}
+        ${showScheduleModal ? html`<div class="modal-overlay" onClick=${() => setShowScheduleModal(false)}>
+          <div class="modal" onClick=${e => e.stopPropagation()} style="max-width: 380px;">
+            <h3 style="margin-bottom: 0.75rem;">Schedule Publish</h3>
+            <p style="margin-bottom: 1rem;">Choose when this profile should go live.</p>
+            <div class="form-group" style="margin-bottom: 1.25rem;">
+              <label class="form-label">Date & Time</label>
+              <input type="datetime-local" class="form-input" value=${scheduleDate}
+                onInput=${e => setScheduleDate(e.target.value)}
+                min=${new Date().toISOString().slice(0, 16)} />
+            </div>
+            <div class="modal-buttons">
+              <button class="btn btn-ghost" onClick=${() => setShowScheduleModal(false)}>Cancel</button>
+              <button class="btn btn-primary" onClick=${() => {
+                const d = new Date(scheduleDate);
+                if (!scheduleDate || isNaN(d.getTime())) { addToast('Please select a valid date', 'error'); return; }
+                if (d <= new Date()) { addToast('Date must be in the future', 'error'); return; }
+                updateField('scheduledPublish', d.toISOString());
+                addToast('Publish scheduled for ' + d.toLocaleString(), 'success');
+                setShowScheduleModal(false);
+              }}>Schedule</button>
+            </div>
+          </div>
+        </div>` : null}
         ${hasDraft ? html`
           <div style="display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem 1rem; background: #FEFCF5; border: 1px solid #FFD500; border-radius: 10px; margin-bottom: 1rem;">
             <span style="font-size: 1.1rem;">${icons.warning}</span>
@@ -2806,16 +2851,7 @@
             ${slug ? html`<button class="btn btn-danger btn-sm" onClick=${() => setShowDeleteModal(true)} disabled=${deleting}>
               ${deleting ? html`<span class="spinner" />` : null} Delete
             </button>` : null}
-            ${slug ? html`<button class="btn btn-ghost btn-sm" onClick=${() => {
-              const dt = prompt('Schedule publish date/time (YYYY-MM-DD HH:MM):', '');
-              if (dt) {
-                const d = new Date(dt);
-                if (isNaN(d.getTime())) { addToast('Invalid date format', 'error'); return; }
-                if (d <= new Date()) { addToast('Scheduled date must be in the future', 'error'); return; }
-                updateField('scheduledPublish', d.toISOString());
-                addToast('Publish scheduled for ' + d.toLocaleString(), 'success');
-              }
-            }}>Schedule</button>` : null}
+            ${slug ? html`<button class="btn btn-ghost btn-sm" onClick=${() => setShowScheduleModal(true)}>Schedule</button>` : null}
             <button class="btn btn-ghost" onClick=${() => handleSave(true)} disabled=${saving}>
               ${saving ? 'Saving...' : 'Save Draft'}
             </button>
@@ -3560,6 +3596,7 @@
       const [saving, setSaving] = useState(false);
       const [tab, setTab] = useState('documents'); // documents | annual-reports | upload
       const [showAddDoc, setShowAddDoc] = useState(false);
+      const [pendingRemove, setPendingRemove] = useState(null); // { type: 'doc'|'report', idx }
       const [showAddReport, setShowAddReport] = useState(false);
       const [newDoc, setNewDoc] = useState({ title: '', year: new Date().getFullYear(), type: '990', url: '', source: 'local' });
       const [newReport, setNewReport] = useState({ title: '', year: new Date().getFullYear(), url: '', coverImage: '', description: '' });
@@ -3643,9 +3680,16 @@
       };
 
       const removeDocument = (idx) => {
-        if (!confirm('Remove this document entry?')) return;
-        const updated = { ...data, documents: data.documents.filter((_, i) => i !== idx) };
-        saveData(updated);
+        setPendingRemove({ type: 'doc', idx });
+      };
+      const confirmRemove = () => {
+        if (!pendingRemove) return;
+        if (pendingRemove.type === 'doc') {
+          saveData({ ...data, documents: data.documents.filter((_, i) => i !== pendingRemove.idx) });
+        } else {
+          saveData({ ...data, annualReports: (data.annualReports || []).filter((_, i) => i !== pendingRemove.idx) });
+        }
+        setPendingRemove(null);
       };
 
       const addReport = () => {
@@ -3657,9 +3701,7 @@
       };
 
       const removeReport = (idx) => {
-        if (!confirm('Remove this annual report?')) return;
-        const updated = { ...data, annualReports: (data.annualReports || []).filter((_, i) => i !== idx) };
-        saveData(updated);
+        setPendingRemove({ type: 'report', idx });
       };
 
       const docs990 = data.documents.filter(d => d.type === '990').sort((a, b) => b.year - a.year);
@@ -3670,6 +3712,13 @@
       if (loading) return html`<${EditorSkeleton} />`;
 
       return html`
+        ${pendingRemove ? html`<${ConfirmModal}
+          title="Remove ${pendingRemove.type === 'doc' ? 'document' : 'annual report'}?"
+          message="This will remove this entry from the financials page. The uploaded file will not be deleted."
+          danger=${true}
+          onConfirm=${confirmRemove}
+          onCancel=${() => setPendingRemove(null)}
+        />` : null}
         <div class="page-header">
           <h2>Financial Documents</h2>
           <p class="text-sm text-muted">Manages the <a href="/about/financials/" target="_blank">/about/financials/</a> page</p>
@@ -6035,43 +6084,39 @@
       const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
       const [allImages, setAllImages] = useState([]);
       const [loading, setLoading] = useState(true);
-      const [progress, setProgress] = useState({ loaded: 0, total: 0 });
+      const [error, setError] = useState(null);
       const [search, setSearch] = useState('');
       const [category, setCategory] = useState('kids');
       const [displayPage, setDisplayPage] = useState(1);
       const THUMBS_PER_PAGE = 60;
 
-      // Load ALL images on mount by paginating through CF API
+      // Lock body scroll while picker is open
+      useEffect(() => {
+        document.body.classList.add('modal-open');
+        return () => document.body.classList.remove('modal-open');
+      }, []);
+
+      // Load ALL images on mount via CF v2 API (up to 10k per request)
       useEffect(() => {
         let cancelled = false;
         (async () => {
           try {
-            // First call: get total count
-            const first = await api.listImages(1, 100);
-            if (!first.success || cancelled) return;
-            const total = first.totalCount || 0;
-            const totalPages = Math.ceil(total / 100);
-            let collected = [...(first.images || [])];
-            setProgress({ loaded: collected.length, total });
-
-            // Fetch remaining pages in batches of 6
-            for (let batch = 1; batch < totalPages; batch += 6) {
-              const promises = [];
-              for (let p = batch + 1; p <= Math.min(batch + 6, totalPages); p++) {
-                promises.push(api.listImages(p, 100));
-              }
-              const results = await Promise.all(promises);
+            let collected = [];
+            let token = '';
+            do {
+              const res = await api.listImages(10000, token);
               if (cancelled) return;
-              for (const res of results) {
-                if (res.success) collected = collected.concat(res.images || []);
+              if (!res.success) {
+                setError(res.error || 'Failed to load images');
+                break;
               }
-              setProgress({ loaded: collected.length, total });
+              collected = collected.concat(res.images || []);
+              token = res.continuation_token || '';
               setAllImages([...collected]);
-            }
-
-            setAllImages(collected);
+            } while (token);
           } catch (err) {
             console.error('Image load error', err);
+            if (!cancelled) setError('Network error loading images');
           }
           if (!cancelled) setLoading(false);
         })();
@@ -6129,7 +6174,7 @@
               placeholder="${category === 'kids' ? 'Search by kid name (e.g. harper, zyah, liam)...' : 'Search by image ID...'}"
               value=${search} onInput=${e => setSearch(e.target.value)} />
             <span class="text-sm text-muted" style="white-space: nowrap;">
-              ${loading ? html`${progress.loaded.toLocaleString()} / ${progress.total.toLocaleString()}` : html`${filtered.length.toLocaleString()} images`}
+              ${loading ? html`${allImages.length.toLocaleString()} loading...` : html`${filtered.length.toLocaleString()} images`}
             </span>
           </div>
 
@@ -6143,10 +6188,15 @@
           ` : null}
 
           <div class="img-picker-grid">
-            ${loading && allImages.length === 0
+            ${error && allImages.length === 0
+              ? html`<div class="img-picker-empty" style="color: #b91c1c;">
+                  <div style="margin-bottom: 0.5rem;">Failed to load images</div>
+                  <div class="text-sm">${error}</div>
+                </div>`
+              : loading && allImages.length === 0
               ? html`<div class="img-picker-empty">
                   <div class="spinner" style="width:32px;height:32px;margin:0 auto 0.75rem;" />
-                  <div>Loading images... ${progress.loaded} of ${progress.total}</div>
+                  <div>Loading images...</div>
                 </div>`
               : pageImages.length === 0
               ? html`<div class="img-picker-empty">No images match "${search || category}". ${loading ? 'Still loading more...' : ''}</div>`
@@ -6262,74 +6312,6 @@
       `;
     }
 
-    function ShopCollections({ selected, onChange }) {
-      const [collections, setCollections] = useState([]);
-      const [loading, setLoading] = useState(true);
-      const [error, setError] = useState(null);
-
-      useEffect(() => {
-        (async () => {
-          try {
-            const res = await fetch('/api/shopify', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                query: 'query{collections(first:50){edges{node{id handle title image{url}products(first:1){edges{node{featuredImage{url}}}}}}}}'
-              })
-            });
-            const json = await res.json();
-            if (json.data?.collections?.edges) {
-              setCollections(json.data.collections.edges.map(e => e.node));
-            }
-          } catch (err) {
-            setError('Could not load Shopify collections');
-          }
-          setLoading(false);
-        })();
-      }, []);
-
-      const toggle = (handle) => {
-        const current = selected || [];
-        if (current.includes(handle)) {
-          onChange(current.filter(h => h !== handle));
-        } else {
-          onChange([...current, handle]);
-        }
-      };
-
-      const isSelected = (handle) => !selected || selected.length === 0 || selected.includes(handle);
-
-      return html`
-        <div class="card">
-          <h3 style="margin-bottom: 0.5rem;">Shop Collections</h3>
-          <p class="text-sm text-muted mb-1">Choose which Shopify collections appear on the shop page. If none are selected, all collections with products will show.</p>
-          ${loading ? html`<div style="padding: 1rem; text-align: center;"><div class="spinner" style="width: 24px; height: 24px;" /></div>` : null}
-          ${error ? html`<p class="text-sm" style="color: #c00;">${error}</p>` : null}
-          ${!loading && !error ? html`
-            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin-top: 1rem;">
-              ${collections.map(c => {
-                const img = c.image?.url || c.products?.edges?.[0]?.node?.featuredImage?.url;
-                const checked = isSelected(c.handle);
-                const productCount = c.products?.edges?.length || 0;
-                return html`
-                  <label style="display: flex; gap: 10px; align-items: center; padding: 10px 12px; border-radius: 10px; border: 2px solid ${selected?.includes(c.handle) ? 'var(--accent)' : 'var(--border)'}; cursor: pointer; transition: all 0.15s ease; background: ${selected?.includes(c.handle) ? 'rgba(255,218,36,0.06)' : 'transparent'};">
-                    <input type="checkbox" checked=${selected?.includes(c.handle)} onChange=${() => toggle(c.handle)}
-                      style="width: 18px; height: 18px; flex-shrink: 0; accent-color: var(--accent);" />
-                    ${img ? html`<img src="${img}&width=80" alt="" style="width: 40px; height: 40px; border-radius: 6px; object-fit: cover; flex-shrink: 0;" />` : null}
-                    <div style="min-width: 0;">
-                      <div style="font-weight: 600; font-size: 0.875rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${c.title}</div>
-                      <div class="text-sm text-muted">${c.handle}</div>
-                    </div>
-                  </label>
-                `;
-              })}
-            </div>
-            <p class="text-sm text-muted" style="margin-top: 0.75rem;">${selected?.length ? selected.length + ' selected' : 'All collections shown (none explicitly selected)'}</p>
-          ` : null}
-        </div>
-      `;
-    }
-
     /* ─── Photo Freshness helpers ──────── */
     const PHOTO_FRESH_DAYS = 60;   // green
     const PHOTO_STALE_DAYS = 120;  // yellow → red after this
@@ -6415,7 +6397,7 @@
       }, []);
 
       // Photo fields that should be freshness-tracked
-      const TRACKED_PHOTO_FIELDS = ['heroKidSlug', 'featuredKidSlug',
+      const TRACKED_PHOTO_FIELDS = ['heroKidSlug', 'featuredKidSlug', 'featuredStoryImage',
         'sectionPhotos.missionMain', 'sectionPhotos.missionAccent', 'sectionPhotos.process',
         'sectionPhotos.roomBedroom', 'sectionPhotos.roomBath', 'sectionPhotos.roomTherapy',
         'donatePhotos.hero', 'donatePhotos.story'];
@@ -6609,6 +6591,24 @@
               ${sortedKids.map(k => html`<option value=${k.slug} selected=${k.slug === data.featuredKidSlug}>${k.name}${k.year ? ` (${k.year})` : ''}</option>`)}
             </select>
           </div>
+          <div class="form-group" style="margin-top: 1rem;">
+            ${renderPhotoField('Featured Story Image', 'featuredStoryImage', data.featuredStoryImage)}
+            <p class="text-sm text-muted" style="margin-top: 0.25rem;">Override the photo shown in the Featured Story section. Leave blank to use the kid's hero photo.</p>
+          </div>
+          <div class="form-group" style="margin-top: 1rem;">
+            <label class="form-label">Headline</label>
+            <input class="form-input" value=${data.featuredStoryHeadline || ''}
+              placeholder="e.g. Zyah's new space gave her independence — and her family peace of mind."
+              onInput=${e => updateField('featuredStoryHeadline', e.target.value)} />
+            <p class="text-sm text-muted" style="margin-top: 0.25rem;">Leave blank to use default. The kid's name is auto-prepended.</p>
+          </div>
+          <div class="form-group" style="margin-top: 0.5rem;">
+            <label class="form-label">Description</label>
+            <textarea class="form-input" rows="3" value=${data.featuredStoryDescription || ''}
+              placeholder="e.g. Zyah, age 7, lives with Spinal Muscular Atrophy. Our team transformed her space into an accessible, joyful haven..."
+              onInput=${e => updateField('featuredStoryDescription', e.target.value)} />
+            <p class="text-sm text-muted" style="margin-top: 0.25rem;">Leave blank to use auto-generated text from the kid's profile.</p>
+          </div>
         </div>
 
         <div class="card">
@@ -6753,8 +6753,6 @@
           </div>
         </div>
         <${NewsletterSettings} listId=${data.newsletter?.listId || ''} onSelect=${(id) => updateField('newsletter.listId', id)} />
-
-        <${ShopCollections} selected=${data.shopCollections || []} onChange=${(val) => updateField('shopCollections', val)} />
 
         <div class="card">
           <h3 style="margin-bottom: 1rem;">Social Links</h3>
@@ -7153,6 +7151,8 @@
       const [sha, setSha] = useState(null);
       const [loading, setLoading] = useState(true);
       const [saving, setSaving] = useState(false);
+      const [showImagePicker, setShowImagePicker] = useState(false);
+      const [imagePickerTarget, setImagePickerTarget] = useState(null);
 
       useEffect(() => {
         (async () => {
@@ -7299,77 +7299,78 @@
             </div>
           </div>
         </div>
-      `;
-    }
 
-    // ═══════════════════════════════════════════
-    // APPLICATIONS (Makeover Intake via JotForm)
-    // ═══════════════════════════════════════════
-    function Applications({ addToast }) {
-      const [tab, setTab] = useState('form');
-      const JOTFORM_ID = ''; // TODO: Add your JotForm form ID here
-
-      const formConfigured = JOTFORM_ID.length > 0;
-
-      return html`
-        <div class="page-header">
-          <h2>Makeover Applications</h2>
-          <div style="display: flex; gap: 0.5rem;">
-            <button class="btn ${tab === 'form' ? 'btn-primary' : 'btn-ghost'}" onClick=${() => setTab('form')}>
-              Application Form
-            </button>
-            <button class="btn ${tab === 'submissions' ? 'btn-primary' : 'btn-ghost'}" onClick=${() => setTab('submissions')}>
-              Submissions
-            </button>
-          </div>
+        <div class="card">
+          <h3 style="margin-bottom: 0.5rem;">"As Featured In" Logos</h3>
+          <p class="text-sm text-muted mb-1">Press outlet logos shown on the homepage and publicity page. Click the thumbnail or "Browse" to pick from your image library.</p>
+          ${(data.pressLogos || []).map((logo, i) => html`
+            <div style="display: flex; gap: 0.75rem; align-items: center; margin-bottom: 0.5rem; padding: 0.75rem; background: var(--c-surface-alt, #f8f8f6); border-radius: 8px;">
+              <span style="color: var(--c-text-muted); font-size: 0.75rem; min-width: 1.5rem; text-align: center;">${i + 1}</span>
+              <button type="button" onClick=${() => { setImagePickerTarget(i); setShowImagePicker(true); }}
+                style="border: 1px dashed var(--c-border, #ddd); border-radius: 6px; padding: 4px 8px; background: #fff; cursor: pointer; min-width: 80px; height: 40px; display: flex; align-items: center; justify-content: center;">
+                ${logo.id
+                  ? html`<img src=${'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/' + logo.id + '/w=120,q=75'} alt=${logo.alt || ''} style="height: 28px; width: auto; object-fit: contain; opacity: 0.6;" />`
+                  : html`<span style="font-size: 0.7rem; color: var(--c-text-muted);">Browse</span>`}
+              </button>
+              <div style="flex: 1; display: flex; gap: 0.5rem; align-items: center;">
+                <input class="form-input" placeholder="Alt text (e.g. Fox 5 Atlanta)" value=${logo.alt || ''}
+                  style="flex: 1;" onInput=${e => {
+                    const arr = [...(data.pressLogos || [])];
+                    arr[i] = { ...arr[i], alt: e.target.value };
+                    updateField('pressLogos', arr);
+                  }} />
+                <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.75rem; white-space: nowrap; cursor: pointer;">
+                  <input type="checkbox" checked=${logo.wide || false} onChange=${e => {
+                    const arr = [...(data.pressLogos || [])];
+                    arr[i] = { ...arr[i], wide: e.target.checked };
+                    updateField('pressLogos', arr);
+                  }} /> Wide
+                </label>
+              </div>
+              <div style="display: flex; gap: 0.25rem;">
+                <button class="btn btn-ghost btn-sm" disabled=${i === 0} onClick=${() => {
+                  const arr = [...(data.pressLogos || [])];
+                  [arr[i - 1], arr[i]] = [arr[i], arr[i - 1]];
+                  updateField('pressLogos', arr);
+                }} title="Move up" style="padding: 0.25rem;">↑</button>
+                <button class="btn btn-ghost btn-sm" disabled=${i === (data.pressLogos || []).length - 1} onClick=${() => {
+                  const arr = [...(data.pressLogos || [])];
+                  [arr[i], arr[i + 1]] = [arr[i + 1], arr[i]];
+                  updateField('pressLogos', arr);
+                }} title="Move down" style="padding: 0.25rem;">↓</button>
+                <button class="btn btn-ghost btn-sm" onClick=${() => {
+                  const arr = [...(data.pressLogos || [])];
+                  arr.splice(i, 1);
+                  updateField('pressLogos', arr);
+                }} title="Remove" style="padding: 0.25rem; color: var(--c-danger, #e53e3e);">×</button>
+              </div>
+            </div>
+          `)}
+          <button class="btn btn-ghost" style="margin-top: 0.5rem;" onClick=${() => {
+            setImagePickerTarget((data.pressLogos || []).length);
+            const arr = [...(data.pressLogos || [])];
+            arr.push({ id: '', alt: '', wide: false });
+            updateField('pressLogos', arr);
+            setShowImagePicker(true);
+          }}>+ Add Logo</button>
         </div>
 
-        ${tab === 'form' ? html`
-          ${formConfigured ? html`
-            <div class="card" style="padding: 0; overflow: hidden; border-radius: 12px;">
-              <iframe
-                src="https://form.jotform.com/${JOTFORM_ID}"
-                style="width: 100%; min-height: 800px; border: none;"
-                title="Makeover Application Form"
-                allow="geolocation; camera"
-              />
-            </div>
-          ` : html`
-            <div class="card" style="text-align: center; padding: 3rem;">
-              <div style="font-size: 2.5rem; margin-bottom: 1rem; opacity: 0.3;">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" style="width: 64px; height: 64px; stroke: currentColor; fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; margin: 0 auto;">
-                  <path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
-                </svg>
-              </div>
-              <h3 style="font-family: 'Libre Baskerville', Georgia, serif; margin-bottom: 0.75rem;">Connect Your JotForm</h3>
-              <p style="color: #6B6C72; max-width: 480px; margin: 0 auto 1.5rem; line-height: 1.6;">
-                To start receiving makeover applications, add your JotForm form ID to the <code style="background: #F5F4F0; padding: 0.15rem 0.4rem; border-radius: 4px; font-size: 0.85rem;">JOTFORM_ID</code> constant in <code style="background: #F5F4F0; padding: 0.15rem 0.4rem; border-radius: 4px; font-size: 0.85rem;">admin/index.html</code>.
-              </p>
-              <div class="card" style="background: #F5F4F0; max-width: 520px; margin: 0 auto; text-align: left; padding: 1.25rem;">
-                <p style="font-size: 0.85rem; font-weight: 600; margin-bottom: 0.75rem;">Setup Steps</p>
-                <ol style="padding-left: 1.25rem; color: #6B6C72; font-size: 0.88rem; line-height: 1.8;">
-                  <li>Create a form on <a href="https://www.jotform.com" target="_blank" style="color: #FFD500; font-weight: 600;">jotform.com</a> for makeover applications</li>
-                  <li>Copy the form ID from the URL (e.g. <code style="background: #fff; padding: 0.1rem 0.3rem; border-radius: 3px; font-size: 0.82rem;">jotform.com/<strong>241234567890</strong></code>)</li>
-                  <li>Set the <code style="background: #fff; padding: 0.1rem 0.3rem; border-radius: 3px; font-size: 0.82rem;">JOTFORM_ID</code> constant in the Applications component</li>
-                  <li>Optionally add your JotForm API key for the Submissions tab</li>
-                </ol>
-              </div>
-            </div>
-          `}
-        ` : html`
-          <div class="card" style="text-align: center; padding: 3rem;">
-            <div style="font-size: 2.5rem; margin-bottom: 1rem; opacity: 0.3;">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" style="width: 64px; height: 64px; stroke: currentColor; fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; margin: 0 auto;">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" /><polyline points="10 9 9 9 8 9" />
-              </svg>
-            </div>
-            <h3 style="font-family: 'Libre Baskerville', Georgia, serif; margin-bottom: 0.75rem;">Submissions Viewer</h3>
-            <p style="color: #6B6C72; max-width: 480px; margin: 0 auto 1rem; line-height: 1.6;">
-              View and manage submitted makeover applications here. This feature requires a JotForm API key to fetch submissions.
-            </p>
-            <p style="color: #9B9CA0; font-size: 0.85rem;">Coming soon — check back after JotForm is configured.</p>
-          </div>
-        `}
+        ${showImagePicker ? html`<${ImagePicker}
+          onSelect=${(id) => {
+            const arr = [...(data.pressLogos || [])];
+            const idx = imagePickerTarget;
+            if (idx != null && idx < arr.length) {
+              arr[idx] = { ...arr[idx], id };
+              // Auto-fill alt from image ID if empty
+              if (!arr[idx].alt) {
+                arr[idx].alt = id.replace(/^press-logo-/, '').replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+              }
+            }
+            updateField('pressLogos', arr);
+            setShowImagePicker(false);
+          }}
+          onClose=${() => setShowImagePicker(false)}
+        />` : null}
       `;
     }
 
@@ -7511,7 +7512,14 @@
       const inputRef = useRef();
 
       useEffect(() => {
-        if (open) { setQuery(''); setActiveIdx(0); setTimeout(() => inputRef.current?.focus(), 50); }
+        if (open) {
+          setQuery(''); setActiveIdx(0);
+          document.body.classList.add('modal-open');
+          setTimeout(() => inputRef.current?.focus(), 50);
+        } else {
+          document.body.classList.remove('modal-open');
+        }
+        return () => document.body.classList.remove('modal-open');
       }, [open]);
 
       const allItems = useMemo(() => {
@@ -7612,7 +7620,7 @@
               <kbd style="font-size: 0.7rem; padding: 2px 6px; background: #f0f0f0; border: 1px solid #ddd; border-radius: 4px; color: #999;">esc</kbd>
             </div>
             <div class="cmd-palette-results">
-              ${filtered.length === 0 ? html`<div style="padding: 2rem; text-align: center; color: #9B9CA0;">No results for "${query}"</div>` : null}
+              ${filtered.length === 0 ? html`<div style="padding: 2rem; text-align: center; color: #737580;">No results for "${query}"</div>` : null}
               ${grouped.map(item => {
                 if (item.type === 'section') return html`<div class="cmd-palette-section">${item.label}</div>`;
                 return html`<button key=${item.label + item.id}
@@ -7681,7 +7689,7 @@
                 </div>
               `)}
             </div>
-            <div style="margin-top: 1rem; padding-top: 0.75rem; border-top: 1px solid #f0f0f0; font-size: 0.8rem; color: #9B9CA0; text-align: center;">
+            <div style="margin-top: 1rem; padding-top: 0.75rem; border-top: 1px solid #f0f0f0; font-size: 0.8rem; color: #737580; text-align: center;">
               Press <kbd style="display: inline; padding: 1px 5px; background: #f0f0f0; border: 1px solid #ddd; border-radius: 3px; font-size: 0.75rem;">?</kbd> anywhere to show this dialog
             </div>
           </div>
@@ -7926,7 +7934,6 @@
         settings: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>`,
         globe: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" /></svg>`,
         github: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22" /></svg>`,
-        applications: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" /></svg>`,
         ourstory: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" /><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" /></svg>`,
         mediakit: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" /><path d="M14 2v4a2 2 0 0 0 2 2h4" /><path d="M10 9H8" /><path d="M16 13H8" /><path d="M16 17H8" /></svg>`,
         press: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2" /><path d="M18 14h-8" /><path d="M15 18h-5" /><path d="M10 6h8v4h-8V6Z" /></svg>`,
@@ -7953,9 +7960,6 @@
           { id: 'faq', icon: icons.faq, label: 'FAQs' },
           { id: 'financials', icon: icons.financials, label: 'Financials' },
           { id: 'settings', icon: icons.settings, label: 'Site Settings' },
-        ]},
-        { label: 'Intake', items: [
-          { id: 'applications', icon: icons.applications, label: 'Applications' },
         ]},
       ];
 
@@ -8008,8 +8012,6 @@
               sessionStorage.setItem('press-prefill', JSON.stringify(mention));
               navigate('press', '');
             }} />`;
-          case 'applications':
-            return html`<${Applications} addToast=${addToast} />`;
           case 'financials':
             return html`<${Financials} addToast=${addToast} />`;
           case 'ourstory':
@@ -8022,6 +8024,8 @@
             return html`<${Deploys} addToast=${addToast} />`;
           case 'settings':
             return html`<${SiteSettings} addToast=${addToast} kids=${kids} partners=${partners} />`;
+          default:
+            return html`<${Dashboard} kids=${kids} partners=${partners} team=${team} events=${events} communityProjects=${communityProjects} onNavigate=${navigate} />`;
         }
       };
 
@@ -8031,8 +8035,9 @@
             title="Delete ${deleteModal.item.name}?"
             message="This will permanently remove this ${deleteModal.type} from the site. This cannot be undone."
             danger=${true}
+            loading=${deleteLoading}
             onConfirm=${handleListDelete}
-            onCancel=${() => setDeleteModal(null)}
+            onCancel=${() => { if (!deleteLoading) setDeleteModal(null); }}
           />` : null}
           <button class="hamburger" onClick=${() => setSidebarOpen(!sidebarOpen)} aria-label="${sidebarOpen ? 'Close menu' : 'Open menu'}">
             ${sidebarOpen ? icons.x : icons.menu}

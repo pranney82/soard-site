@@ -13,8 +13,6 @@
  */
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50 MB
-const R2_DOMAIN = 'https://files.sunshineonaranneyday.com';
-
 // Map incoming paths to R2 keys
 function pathToR2Key(path) {
   // "public/financials/2024-990.pdf" → "financials/2024-990.pdf"
@@ -60,7 +58,8 @@ export async function onRequestPost(context) {
     }
 
     const r2Key = pathToR2Key(path);
-    const publicUrl = `${context.env.R2_PUBLIC_DOMAIN || R2_DOMAIN}/${r2Key}`;
+    const origin = new URL(context.request.url).origin;
+    const publicUrl = `${origin}/files/${r2Key}`;
 
     // Upload to R2 with cache headers for edge performance
     await FILES.put(r2Key, file.stream(), {

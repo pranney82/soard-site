@@ -14,7 +14,7 @@ const { theme = 'dark', linked = true } = Astro.props;
 import { CF_BASE as CF } from '../../utils/cf-image';
 const href = linked ? '/publicity' : undefined;
 
-const logos = [
+const FALLBACK_LOGOS = [
   { id: 'press-logo-today-show',        alt: 'Today Show',                 wide: false },
   { id: 'press-logo-11alive',           alt: '11Alive',                    wide: false },
   { id: 'press-logo-fox5',              alt: 'Fox 5 Atlanta',              wide: false },
@@ -24,6 +24,15 @@ const logos = [
   { id: 'press-logo-styleblueprint',    alt: 'StyleBlueprint',             wide: true },
   { id: 'press-logo-41nbc',             alt: '41NBC',                      wide: false },
 ];
+
+let logos = FALLBACK_LOGOS;
+try {
+  const media = await import('../../content/site/media.json');
+  const data = media.default || media;
+  if (Array.isArray(data.pressLogos) && data.pressLogos.length > 0) {
+    logos = data.pressLogos;
+  }
+} catch { /* use fallback */ }
 ---
 
 <div class="ml" data-theme={theme}>

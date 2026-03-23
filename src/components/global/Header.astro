@@ -85,7 +85,6 @@ const nav: NavGroup[] = [
     label: 'Our Kids',
     children: [
       { label: 'Meet the Kids', href: '/kids/', desc: 'Stories of joy', icon: 'heart' },
-      { label: 'Featured Projects', href: '/rooms/', desc: 'Behind the build', icon: 'sparkles' },
       { label: 'Community Projects', href: '/rooms/community/', desc: 'Beyond bedrooms', icon: 'buildings' },
     ],
   },
@@ -103,11 +102,8 @@ const nav: NavGroup[] = [
       { label: 'Events', href: '/events/', desc: 'Upcoming gatherings', icon: 'calendar' },
       { label: 'Donate', href: '/donate/', desc: 'Change a life today', icon: 'heart' },
       { label: '2026 Application', href: '/apply/', desc: 'Apply for a room', icon: 'clipboard' },
+      { label: 'Sunny & Ranney', href: '/sunny-and-ranney/', desc: 'Shop for a cause', icon: 'store' },
     ],
-  },
-  {
-    label: 'Sunny & Ranney',
-    href: '/shop/',
   },
 ];
 
@@ -443,7 +439,7 @@ document.addEventListener('astro:page-load', function () {
   navItems.forEach(function (item) {
     item.addEventListener('mouseenter', function () {
       cancelClose();
-      // If item has no dropdown (e.g. "Sunny & Ranney"), close all dropdowns instead
+      // If item has no dropdown, close all dropdowns instead
       var hasDropdown = item.querySelector('.dropdown-panel');
       if (hasDropdown) {
         openDD(item);
@@ -478,7 +474,7 @@ document.addEventListener('astro:page-load', function () {
     if (ab) posInd(ab); else indicator.style.opacity = '0';
   }
   navButtons.forEach(function (b) { b.addEventListener('mouseenter', function () { posInd(this); }); });
-  // Also track direct nav links (like "Sunny & Ranney") for the indicator
+  // Also track direct nav links for the indicator
   document.querySelectorAll('.nav-item > a.nav-link').forEach(function (a) {
     a.addEventListener('mouseenter', function () { posInd(this); });
   });

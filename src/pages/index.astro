@@ -71,7 +71,7 @@ const sp = siteSettings.sectionPhotos || {};
 const missionMainId = sp.missionMain || 'kids/eli/photo-01';
 const missionAccentId = sp.missionAccent || 'kids/georgia/photo-01';
 const heroPhotoId = `kids/${heroSlug}/hero`;
-const storyPhotoId = `kids/${featuredSlug}/hero`;
+const storyPhotoId = siteSettings.featuredStoryImage || `kids/${featuredSlug}/hero`;
 const processPhotoId = sp.process || `kids/${featuredSlug}/hero`;
 const roomPhotos = {
   bedroom: sp.roomBedroom || 'kids/griffin/hero',
@@ -161,7 +161,7 @@ const jsonLd = getWebSiteSchema();
       <div class="ribbon-divider" role="presentation"></div>
       <div class="ribbon-stat" data-reveal data-delay="3">
         <span class="ribbon-num">100<span class="ribbon-pct">%</span></span>
-        <span class="ribbon-label">Goes to Kids</span>
+        <span class="ribbon-label">Volunteer Run</span>
       </div>
     </div>
   </section>
@@ -175,7 +175,7 @@ const jsonLd = getWebSiteSchema();
         <div class="section-label">Our Mission</div>
         <h2 id="mission-heading">A bedroom isn't just a room. It's where a child feels <em class="highlight">safe</em>, <em class="highlight">seen</em>, and <em class="highlight">loved</em>.</h2>
         <p class="mission-body">For children with special needs, a thoughtfully designed room changes everything. Sensory-friendly lighting that calms instead of overwhelms. Adaptive furniture that grants independence. Colors and themes chosen by the child — because this space is <em>theirs</em>.</p>
-        <p class="mission-body">Since 2012, we've partnered with designers, contractors, and families across Greater Atlanta to create over {stats.totalRooms} life-changing spaces. Every project is different because every child is different.</p>
+        <p class="mission-body">Since 2012, we've partnered with designers, contractors, and families across Greater Atlanta to create over {stats.totalRooms} life-changing spaces. Every project is unique because every child is unique.</p>
       </div>
       <div class="mission-visual" role="presentation">
         <div class="mission-photo mission-photo--main" data-reveal>
@@ -198,8 +198,8 @@ const jsonLd = getWebSiteSchema();
       <div class="story-content" data-reveal>
         <div class="section-label">Featured Story</div>
         <span class="story-type">{fd?.roomTypes?.[0] || 'Dream Bedroom'}</span>
-        <h2 id="story-heading">{fd?.name || 'Zyah'}'s new space gave her independence — and her family peace of mind.</h2>
-        <p>{fd?.name || 'Zyah'}, age {fd?.age || 7}, lives with {fd?.diagnosis || 'Spinal Muscular Atrophy'}. Our team transformed her space into an accessible, joyful haven — with custom features designed around her unique needs and personality.</p>
+        <h2 id="story-heading">{siteSettings.featuredStoryHeadline || `${fd?.name || 'Zyah'}'s new space gave her independence — and her family peace of mind.`}</h2>
+        <p>{siteSettings.featuredStoryDescription || `${fd?.name || 'Zyah'}, age ${fd?.age || 7}, lives with ${fd?.diagnosis || 'Spinal Muscular Atrophy'}. Our team transformed her space into an accessible, joyful haven — with custom features designed around her unique needs and personality.`}</p>
         <a href={`/kids/${featuredSlug}`} class="btn btn-dark">Read {fd?.name || 'Zyah'}'s Full Story →</a>
       </div>
     </div>
@@ -260,12 +260,12 @@ const jsonLd = getWebSiteSchema();
             <li class="process-step" data-reveal data-delay="2">
               <span class="process-num" aria-hidden="true">02</span>
               <h3>Design & Plan</h3>
-              <p>Our designer partners create a one-of-a-kind room concept tailored to the child's personality and sensory needs.</p>
+              <p>Our designer partners create a one-of-a-kind room concept tailored to the child's personality and needs.</p>
             </li>
             <li class="process-step" data-reveal data-delay="3">
               <span class="process-num" aria-hidden="true">03</span>
               <h3>Build & Transform</h3>
-              <p>Construction partners bring the design to life — usually in just a few intense, loving days of work.</p>
+              <p>Construction partners bring the design to life — a typical project takes about six weeks from start to finish.</p>
             </li>
             <li class="process-step process-step--highlight" data-reveal data-delay="4">
               <span class="process-num" aria-hidden="true">04</span>

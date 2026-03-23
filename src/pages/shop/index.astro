@@ -108,7 +108,7 @@ function getSecondImage(p: any): string | null {
     <div class="shop-hero-inner">
       <div class="section-label" style="color:var(--c-yellow)">Shop & Support</div>
       <h1>Every purchase builds <em>dreams</em></h1>
-      <p class="shop-hero-sub">100% of proceeds go directly to creating life-changing spaces for children with special needs.</p>
+      <p class="shop-hero-sub">Every purchase helps create life-changing spaces for children with special needs.</p>
       {hasProducts && (
         <div class="shop-search" id="shop-search-wrap">
           <svg class="shop-search-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -1121,7 +1121,7 @@ function openProduct(handle) {
     ? '<a href="' + STORE_URL + '/products/' + p.handle + '" target="_blank" rel="noopener" class="pdp-atc btn btn-primary" id="pdp-atc-btn">' + SHOP_SVG + ' Buy Now</a>'
     : '<button type="button" class="pdp-atc btn btn-primary" id="pdp-atc-btn" disabled>Sold Out</button>');
   if (p.descriptionHtml) html += '<div class="pdp-desc">' + p.descriptionHtml + '</div>';
-  html += '<p class="pdp-mission-note"><strong>100% of proceeds</strong> fund dream room makeovers for kids with special needs.</p></div>';
+  html += '<p class="pdp-mission-note">Every purchase helps fund dream room makeovers for kids with special needs.</p></div>';
 
   body.innerHTML = html;
   modal.classList.add('is-open'); modal.setAttribute('aria-hidden', 'false');

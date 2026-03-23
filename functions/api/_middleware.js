@@ -22,7 +22,7 @@ const cors = {
 };
 
 // Public API routes that don't require authentication
-const PUBLIC_ROUTES = ['/api/shopify', '/api/newsletter', '/api/kids.json'];
+const PUBLIC_ROUTES = ['/api/newsletter', '/api/kids.json'];
 
 export async function onRequest(context) {
   // Always allow preflight
@@ -30,7 +30,7 @@ export async function onRequest(context) {
     return context.next();
   }
 
-  // Skip auth for public API routes (e.g. Shopify storefront proxy)
+  // Skip auth for public API routes
   const url = new URL(context.request.url);
   if (PUBLIC_ROUTES.some(route => url.pathname === route)) {
     return context.next();
