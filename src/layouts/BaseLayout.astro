@@ -66,7 +66,14 @@ function computeOgImage(pathname: string): string {
   // Articles: /resources/accessible-home-design/ → /og/resources/accessible-home-design.png
   const artMatch = clean.match(/^\/resources\/([^/]+)$/);
   if (artMatch) return `/og/resources/${artMatch[1]}.png`;
-  
+
+  // Featured rooms: /rooms/amari/ → /og/rooms/amari.png
+  // (skip static sub-pages that have their own entry in [page].png.ts)
+  const roomMatch = clean.match(/^\/rooms\/([^/]+)$/);
+  if (roomMatch && !['before-after', 'community'].includes(roomMatch[1])) {
+    return `/og/rooms/${roomMatch[1]}.png`;
+  }
+
   // Static pages: /donate/ → /og/donate.png, /about/leadership/ → /og/leadership.png
   const segments = clean.split('/').filter(Boolean);
   const lastSegment = segments[segments.length - 1];

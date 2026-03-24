@@ -70,11 +70,6 @@
     "roomBath": "kids/zyah/hero",
     "roomTherapy": "kids/jackson/hero"
   },
-  "sunnyAndRanneyRooms": [
-    { "cfId": "kids/griffin/hero", "label": "Dream Bedroom" },
-    { "cfId": "kids/jackson/hero", "label": "Therapy Room" },
-    { "cfId": "kids/madison/hero", "label": "Sensory Space" }
-  ],
   "partnerLogos": [
     {
       "id": "partners/gas-south",

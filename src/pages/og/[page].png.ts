@@ -28,6 +28,9 @@ const getPages = async () => {
   { slug: 'privacy-policy', title: 'Privacy Policy', subtitle: undefined },
   { slug: 'terms', title: 'Terms of Service', subtitle: undefined },
   { slug: 'branding', title: 'Brand Guidelines', subtitle: 'Sunshine on a Ranney Day brand assets and usage.' },
+  { slug: 'events', title: 'Events', subtitle: 'Fundraisers, tournaments, and community gatherings supporting children with special needs.' },
+  { slug: 'golf', title: 'Sunshine on a Ranney Fairway', subtitle: 'Annual charity golf tournament funding dream room makeovers.' },
+  { slug: 'sunny-and-ranney', title: 'Sunny & Ranney', subtitle: 'Meet the mascots of Sunshine on a Ranney Day.' },
   ];
 };
 

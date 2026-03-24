@@ -57,8 +57,21 @@ function safeParse(raw) {
   try {
     return JSON.parse(raw);
   } catch {
-    // D1 REST API sometimes returns strings with escaped quotes
-    return JSON.parse(raw.replace(/\\"/g, '"'));
+    // D1 REST API has two quirks:
+    // 1. Extra string-escaping (backslash-escaped quotes around the whole value)
+    // 2. Bare control characters inside JSON string values (e.g. literal newlines)
+    // Try unescaping quotes first, then sanitize control characters.
+    let cleaned = raw;
+    // Strip outer escaped-quote layer: {\"key\":\"val\"} → {"key":"val"}
+    if (cleaned.includes('\\"')) {
+      cleaned = cleaned.replace(/\\"/g, '"');
+    }
+    // Escape bare control characters that aren't valid inside JSON strings
+    cleaned = cleaned.replace(/[\x00-\x1F\x7F]/g, (ch) => {
+      const map = { '\n': '\\n', '\r': '\\r', '\t': '\\t' };
+      return map[ch] || '';
+    });
+    return JSON.parse(cleaned);
   }
 }
 

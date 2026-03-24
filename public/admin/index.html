@@ -125,6 +125,44 @@
       padding: 1.25rem 1.25rem 0.4rem;
     }
 
+    /* ─── Hub Tabs ─────────────────────── */
+    .hub-tabs {
+      display: flex;
+      gap: 0;
+      border-bottom: 2px solid var(--color-border);
+      margin-bottom: 1.75rem;
+    }
+    .hub-tab {
+      padding: 0.65rem 1.25rem;
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--color-text-secondary);
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -2px;
+      cursor: pointer;
+      transition: all 0.15s;
+      white-space: nowrap;
+    }
+    .hub-tab:hover {
+      color: var(--color-text);
+      background: var(--color-primary-bg);
+    }
+    .hub-tab.active {
+      color: var(--color-text);
+      border-bottom-color: var(--color-primary);
+    }
+    @media (max-width: 768px) {
+      .hub-tabs {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+      }
+      .hub-tabs::-webkit-scrollbar { display: none; }
+      .hub-tab { padding: 0.55rem 0.9rem; font-size: 0.85rem; }
+    }
+
     /* ─── Mobile hamburger ──────────────── */
     .hamburger {
       display: none;
@@ -537,7 +575,7 @@
       overflow: hidden;
     }
     .card:has(.table-wrap) { padding: 0; }
-    .card:has(.table-wrap) > div:first-child { padding: 1.25rem 1.5rem 0; }
+    .card:has(.table-wrap) > div:first-child { padding: 1.5rem 1.5rem 0.5rem; }
     .card-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
@@ -1977,7 +2015,7 @@
           const [type, slug] = key.split(':');
           if (type === 'kid') {
             const k = kids.find(x => x.slug === slug);
-            return k ? { type: 'kid', label: k.name, slug: k.slug, thumb: k.heroImage, meta: `${k.year || ''} · ${k.status}`, id: 'kids' } : null;
+            return k ? { type: 'kid', label: k.name, slug: k.slug, thumb: k.heroImage, meta: `${k.year || ''} · ${k.status}`, id: 'kids-hub' } : null;
           }
           return null;
         }).filter(Boolean);
@@ -2027,7 +2065,7 @@
           </div>
         ` : null}
         <div class="stat-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
-          <div class="stat-card" style="cursor: pointer; text-align: left;" onClick=${() => onNavigate('kids')}>
+          <div class="stat-card" style="cursor: pointer; text-align: left;" onClick=${() => onNavigate('kids-hub')}>
             <div style="display: flex; align-items: flex-start; justify-content: space-between;">
               <div>
                 <div class="stat-label" style="margin-top: 0; margin-bottom: 0.25rem;">Kids</div>
@@ -2036,11 +2074,11 @@
               ${yearData ? html`<${MiniChart} data=${yearData.cumulative} color="#FFD500" height=${40} width=${90} />` : null}
             </div>
           </div>
-          <div class="stat-card" style="cursor: pointer; text-align: left;" onClick=${() => onNavigate('partners')}>
+          <div class="stat-card" style="cursor: pointer; text-align: left;" onClick=${() => onNavigate('people-hub', null, 'partners')}>
             <div class="stat-label" style="margin-top: 0; margin-bottom: 0.25rem;">Partners</div>
             <div class="stat-number">${partners.length}</div>
           </div>
-          <div class="stat-card" style="cursor: pointer; text-align: left;" onClick=${() => onNavigate('team')}>
+          <div class="stat-card" style="cursor: pointer; text-align: left;" onClick=${() => onNavigate('people-hub', null, 'team')}>
             <div class="stat-label" style="margin-top: 0; margin-bottom: 0.25rem;">Team & Board</div>
             <div class="stat-number">${team.length}</div>
           </div>
@@ -2061,7 +2099,7 @@
             <div class="stat-label" style="margin-top: 0; margin-bottom: 0.25rem;">Upcoming Events</div>
             <div class="stat-number" style="color: #3182CE;">${(events || []).filter(e => e.status === 'upcoming').length}</div>
           </div>
-          <div class="stat-card" style="cursor: pointer; text-align: left;" onClick=${() => onNavigate('community')}>
+          <div class="stat-card" style="cursor: pointer; text-align: left;" onClick=${() => onNavigate('kids-hub')}>
             <div class="stat-label" style="margin-top: 0; margin-bottom: 0.25rem;">Community Projects</div>
             <div class="stat-number" style="color: #805AD5;">${(communityProjects || []).length}</div>
           </div>
@@ -2205,12 +2243,12 @@
         <div class="card dashboard-recent">
           <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
             <h3>Recent Kids</h3>
-            <button class="btn btn-ghost btn-sm" onClick=${() => onNavigate('kids')}>View All →</button>
+            <button class="btn btn-ghost btn-sm" onClick=${() => onNavigate('kids-hub')}>View All →</button>
           </div>
           <div class="table-wrap"><table>
             <thead><tr><th></th><th>Name</th><th>Year</th><th>Status</th><th>Photos</th></tr></thead>
             <tbody>
-              ${kids.slice(0, 10).map(k => html`<tr key=${k.slug} style="cursor: pointer;" onClick=${() => onNavigate('kids', k.slug)}>
+              ${kids.slice(0, 10).map(k => html`<tr key=${k.slug} style="cursor: pointer;" onClick=${() => onNavigate('kids-hub', k.slug)}>
                 <td>${k.heroImage ? html`<img class="td-thumb" src="${k.heroImage}" alt="" />` : '—'}</td>
                 <td><strong>${k.name}</strong></td>
                 <td>${k.year || '—'}</td>
@@ -7649,37 +7687,40 @@
       const allItems = useMemo(() => {
         const pages = [
           { type: 'page', label: 'Dashboard', id: 'dashboard', section: 'Pages' },
-          { type: 'page', label: 'Kids', id: 'kids', section: 'Pages' },
-          { type: 'page', label: 'Partners', id: 'partners', section: 'Pages' },
-          { type: 'page', label: 'Team', id: 'team', section: 'Pages' },
+          { type: 'page', label: 'Kids', id: 'kids-hub', section: 'Pages' },
+          { type: 'page', label: 'Community Projects', id: 'kids-hub', subTab: 'community', section: 'Pages' },
+          { type: 'page', label: 'Partners', id: 'people-hub', subTab: 'partners', section: 'Pages' },
+          { type: 'page', label: 'Team', id: 'people-hub', subTab: 'team', section: 'Pages' },
           { type: 'page', label: 'Articles', id: 'articles', section: 'Pages' },
           { type: 'page', label: 'Events', id: 'events', section: 'Pages' },
-          { type: 'page', label: 'Community Projects', id: 'community', section: 'Pages' },
-          { type: 'page', label: 'Press & Media', id: 'press', section: 'Pages' },
-          { type: 'page', label: 'FAQs', id: 'faq', section: 'Pages' },
-          { type: 'page', label: 'Financials', id: 'financials', section: 'Pages' },
-          { type: 'page', label: 'Kids on Site', id: 'kids-on-site', section: 'Pages' },
-          { type: 'page', label: 'Site Settings', id: 'settings', section: 'Pages' },
-          { type: 'page', label: 'Our Story', id: 'ourstory', section: 'Pages' },
-          { type: 'page', label: 'Media Kit', id: 'mediakit', section: 'Pages' },
-          { type: 'page', label: 'Press Monitor', id: 'press-monitor', section: 'Pages' },
+          { type: 'page', label: 'Press & Media', id: 'press-hub', subTab: 'press', section: 'Pages' },
+          { type: 'page', label: 'Press Monitor', id: 'press-hub', subTab: 'press-monitor', section: 'Pages' },
+          { type: 'page', label: 'Site Config', id: 'site-hub', section: 'Pages' },
+          { type: 'page', label: 'Kids on Site', id: 'site-hub', subTab: 'kids-on-site', section: 'Pages' },
+          { type: 'page', label: 'FAQs', id: 'site-hub', subTab: 'faq', section: 'Pages' },
+          { type: 'page', label: 'Our Story', id: 'site-hub', subTab: 'ourstory', section: 'Pages' },
+          { type: 'page', label: 'Media Kit', id: 'site-hub', subTab: 'mediakit', section: 'Pages' },
+          { type: 'page', label: 'Financials', id: 'site-hub', subTab: 'financials', section: 'Pages' },
+          { type: 'page', label: 'Site Settings', id: 'site-hub', subTab: 'settings', section: 'Pages' },
           { type: 'page', label: 'Deploys', id: 'deploys', section: 'Pages' },
         ];
         const actions = [
-          { type: 'action', label: 'Add New Kid', id: 'kids', slug: '', section: 'Actions' },
-          { type: 'action', label: 'Add New Partner', id: 'partners', slug: '', section: 'Actions' },
-          { type: 'action', label: 'Add New Team Member', id: 'team', slug: '', section: 'Actions' },
+          { type: 'action', label: 'Add New Kid', id: 'kids-hub', slug: '', section: 'Actions' },
+          { type: 'action', label: 'Add New Partner', id: 'people-hub', subTab: 'partners', slug: '', section: 'Actions' },
+          { type: 'action', label: 'Add New Team Member', id: 'people-hub', subTab: 'team', slug: '', section: 'Actions' },
           { type: 'action', label: 'Add New Article', id: 'articles', slug: '', section: 'Actions' },
           { type: 'action', label: 'Add New Event', id: 'events', slug: '', section: 'Actions' },
+          { type: 'action', label: 'Add New Community Project', id: 'kids-hub', subTab: 'community', slug: '', section: 'Actions' },
+          { type: 'action', label: 'Add New Press Article', id: 'press-hub', subTab: 'press', slug: '', section: 'Actions' },
         ];
         const content = [
-          ...(kids || []).map(k => ({ type: 'content', label: k.name, meta: `Kid · ${k.year || ''}`, id: 'kids', slug: k.slug, section: 'Content' })),
-          ...(partners || []).map(p => ({ type: 'content', label: p.name, meta: `Partner · ${p.tier || ''}`, id: 'partners', slug: p.slug, section: 'Content' })),
-          ...(team || []).map(t => ({ type: 'content', label: t.name, meta: `Team · ${t.title || ''}`, id: 'team', slug: t.slug, section: 'Content' })),
+          ...(kids || []).map(k => ({ type: 'content', label: k.name, meta: `Kid · ${k.year || ''}`, id: 'kids-hub', slug: k.slug, section: 'Content' })),
+          ...(partners || []).map(p => ({ type: 'content', label: p.name, meta: `Partner · ${p.tier || ''}`, id: 'people-hub', subTab: 'partners', slug: p.slug, section: 'Content' })),
+          ...(team || []).map(t => ({ type: 'content', label: t.name, meta: `Team · ${t.title || ''}`, id: 'people-hub', subTab: 'team', slug: t.slug, section: 'Content' })),
           ...(articles || []).map(a => ({ type: 'content', label: a.title || a.name, meta: 'Article', id: 'articles', slug: a.slug, section: 'Content' })),
           ...(events || []).map(e => ({ type: 'content', label: e.title || e.name, meta: `Event · ${e.date || ''}`, id: 'events', slug: e.slug, section: 'Content' })),
-          ...(communityProjects || []).map(c => ({ type: 'content', label: c.name, meta: `Community · ${c.year || ''}`, id: 'community', slug: c.slug, section: 'Content' })),
-          ...(press || []).map(p => ({ type: 'content', label: p.title || p.name, meta: `Press · ${p.outlet || ''}`, id: 'press', slug: p.slug, section: 'Content' })),
+          ...(communityProjects || []).map(c => ({ type: 'content', label: c.name, meta: `Community · ${c.year || ''}`, id: 'kids-hub', subTab: 'community', slug: c.slug, section: 'Content' })),
+          ...(press || []).map(p => ({ type: 'content', label: p.title || p.name, meta: `Press · ${p.outlet || ''}`, id: 'press-hub', subTab: 'press', slug: p.slug, section: 'Content' })),
         ];
         return [...pages, ...actions, ...content];
       }, [kids, partners, team, articles, events, communityProjects, press]);
@@ -7698,11 +7739,11 @@
 
       const handleSelect = (item) => {
         if (item.type === 'action') {
-          onNavigate(item.id, '');
+          onNavigate(item.id, '', item.subTab || null);
         } else if (item.type === 'content') {
-          onNavigate(item.id, item.slug);
+          onNavigate(item.id, item.slug, item.subTab || null);
         } else {
-          onNavigate(item.id);
+          onNavigate(item.id, null, item.subTab || null);
         }
         onClose();
       };
@@ -7895,6 +7936,7 @@
       const [press, setPress] = useState([]);
       const [loading, setLoading] = useState(true);
       const [sidebarOpen, setSidebarOpen] = useState(false);
+      const [subTab, setSubTab] = useState(null);
       const [cmdPaletteOpen, setCmdPaletteOpen] = useState(false);
       const [shortcutsOpen, setShortcutsOpen] = useState(false);
 
@@ -7994,9 +8036,10 @@
         return () => window.removeEventListener('keydown', handler);
       }, []);
 
-      const navigate = (v, slug = null) => {
+      const navigate = (v, slug = null, tab = null) => {
         setView(v);
         setEditSlug(slug);
+        setSubTab(tab);
         setSidebarOpen(false);
       };
 
@@ -8071,21 +8114,15 @@
         { label: null, items: [
           { id: 'dashboard', icon: icons.dashboard, label: 'Dashboard' },
         ]},
-        { label: 'Website', items: [
-          { id: 'kids', icon: icons.kids, label: 'Kids' },
-          { id: 'kids-on-site', icon: icons.kids, label: 'Kids on Site' },
-          { id: 'community', icon: icons.community, label: 'Community Projects' },
-          { id: 'partners', icon: icons.partners, label: 'Partners' },
-          { id: 'team', icon: icons.team, label: 'Team' },
+        { label: 'Content', items: [
+          { id: 'kids-hub', icon: icons.kids, label: 'Kids' },
+          { id: 'people-hub', icon: icons.team, label: 'People' },
           { id: 'articles', icon: icons.articles, label: 'Articles' },
           { id: 'events', icon: icons.events, label: 'Events' },
-          { id: 'ourstory', icon: icons.ourstory, label: 'Our Story' },
-          { id: 'mediakit', icon: icons.mediakit, label: 'Media Kit' },
-          { id: 'press', icon: icons.press, label: 'Press & Media' },
-          { id: 'press-monitor', icon: icons.pressMonitor, label: 'Press Monitor' },
-          { id: 'faq', icon: icons.faq, label: 'FAQs' },
-          { id: 'financials', icon: icons.financials, label: 'Financials' },
-          { id: 'settings', icon: icons.settings, label: 'Site Settings' },
+          { id: 'press-hub', icon: icons.press, label: 'Press' },
+        ]},
+        { label: 'Site', items: [
+          { id: 'site-hub', icon: icons.settings, label: 'Site Config' },
         ]},
       ];
 
@@ -8097,21 +8134,54 @@
         switch (view) {
           case 'dashboard':
             return html`<${Dashboard} kids=${kids} partners=${partners} team=${team} events=${events} communityProjects=${communityProjects} onNavigate=${navigate} />`;
-          case 'kids':
-            return editSlug !== null
-              ? html`<${KidEditor} slug=${editSlug || undefined} onBack=${() => { navigate('kids'); loadData(); }} addToast=${addToast} partners=${partners} />`
-              : html`<${KidsList} kids=${kids} onEdit=${s => navigate('kids', s)} onAdd=${() => navigate('kids', '')}
-                  onDelete=${k => setDeleteModal({ type: 'kid', item: k })} addToast=${addToast} onReload=${loadData} />`;
-          case 'partners':
-            return editSlug !== null
-              ? html`<${PartnerEditor} slug=${editSlug || undefined} onBack=${() => { navigate('partners'); loadData(); }} addToast=${addToast} />`
-              : html`<${PartnersList} partners=${partners} onEdit=${s => navigate('partners', s)} onAdd=${() => navigate('partners', '')}
-                  onDelete=${p => setDeleteModal({ type: 'partner', item: p })} />`;
-          case 'team':
-            return editSlug !== null
-              ? html`<${TeamEditor} slug=${editSlug || undefined} onBack=${() => { navigate('team'); loadData(); }} addToast=${addToast} />`
-              : html`<${TeamList} team=${team} onEdit=${s => navigate('team', s)} onAdd=${() => navigate('team', '')}
-                  onDelete=${t => setDeleteModal({ type: 'team member', item: t })} />`;
+
+          // ─── Kids Hub (tabs: Kids | Community Projects) ───
+          case 'kids-hub': {
+            const tab = subTab || 'kids';
+            // If editing, show the appropriate editor
+            if (editSlug !== null) {
+              if (tab === 'community') {
+                return html`<${CommunityEditor} slug=${editSlug || undefined} onBack=${() => { setEditSlug(null); loadData(); }} addToast=${addToast} />`;
+              }
+              return html`<${KidEditor} slug=${editSlug || undefined} onBack=${() => { setEditSlug(null); loadData(); }} addToast=${addToast} partners=${partners} />`;
+            }
+            return html`
+              <div class="hub-tabs">
+                <button class="hub-tab ${tab === 'kids' ? 'active' : ''}" onClick=${() => { setSubTab('kids'); setEditSlug(null); }}>Kids</button>
+                <button class="hub-tab ${tab === 'community' ? 'active' : ''}" onClick=${() => { setSubTab('community'); setEditSlug(null); }}>Community Projects</button>
+              </div>
+              ${tab === 'community'
+                ? html`<${CommunityList} projects=${communityProjects} onEdit=${s => { setSubTab('community'); setEditSlug(s); }} onAdd=${() => { setSubTab('community'); setEditSlug(''); }}
+                    onDelete=${p => setDeleteModal({ type: 'community project', item: p })} />`
+                : html`<${KidsList} kids=${kids} onEdit=${s => { setSubTab('kids'); setEditSlug(s); }} onAdd=${() => { setSubTab('kids'); setEditSlug(''); }}
+                    onDelete=${k => setDeleteModal({ type: 'kid', item: k })} addToast=${addToast} onReload=${loadData} />`
+              }
+            `;
+          }
+
+          // ─── People Hub (tabs: Partners | Team) ───
+          case 'people-hub': {
+            const pTab = subTab || 'partners';
+            if (editSlug !== null) {
+              if (pTab === 'team') {
+                return html`<${TeamEditor} slug=${editSlug || undefined} onBack=${() => { setEditSlug(null); loadData(); }} addToast=${addToast} />`;
+              }
+              return html`<${PartnerEditor} slug=${editSlug || undefined} onBack=${() => { setEditSlug(null); loadData(); }} addToast=${addToast} />`;
+            }
+            return html`
+              <div class="hub-tabs">
+                <button class="hub-tab ${pTab === 'partners' ? 'active' : ''}" onClick=${() => { setSubTab('partners'); setEditSlug(null); }}>Partners</button>
+                <button class="hub-tab ${pTab === 'team' ? 'active' : ''}" onClick=${() => { setSubTab('team'); setEditSlug(null); }}>Team</button>
+              </div>
+              ${pTab === 'team'
+                ? html`<${TeamList} team=${team} onEdit=${s => { setSubTab('team'); setEditSlug(s); }} onAdd=${() => { setSubTab('team'); setEditSlug(''); }}
+                    onDelete=${t => setDeleteModal({ type: 'team member', item: t })} />`
+                : html`<${PartnersList} partners=${partners} onEdit=${s => { setSubTab('partners'); setEditSlug(s); }} onAdd=${() => { setSubTab('partners'); setEditSlug(''); }}
+                    onDelete=${p => setDeleteModal({ type: 'partner', item: p })} />`
+              }
+            `;
+          }
+
           case 'articles':
             return editSlug !== null
               ? html`<${ArticleEditor} slug=${editSlug || undefined} onBack=${() => { navigate('articles'); loadData(); }} addToast=${addToast} />`
@@ -8122,36 +8192,55 @@
               ? html`<${EventEditor} slug=${editSlug || undefined} onBack=${() => { navigate('events'); loadData(); }} addToast=${addToast} />`
               : html`<${EventsList} events=${events} onEdit=${s => navigate('events', s)} onAdd=${() => navigate('events', '')}
                   onDelete=${e => setDeleteModal({ type: 'event', item: { ...e, name: e.title } })} />`;
-          case 'community':
-            return editSlug !== null
-              ? html`<${CommunityEditor} slug=${editSlug || undefined} onBack=${() => { navigate('community'); loadData(); }} addToast=${addToast} />`
-              : html`<${CommunityList} projects=${communityProjects} onEdit=${s => navigate('community', s)} onAdd=${() => navigate('community', '')}
-                  onDelete=${p => setDeleteModal({ type: 'community project', item: p })} />`;
-          case 'press':
-            return editSlug !== null
-              ? html`<${PressEditor} slug=${editSlug || undefined} onBack=${() => { navigate('press'); loadData(); }} addToast=${addToast} />`
-              : html`<${PressList} press=${press} onEdit=${s => navigate('press', s)} onAdd=${() => navigate('press', '')}
-                  onDelete=${p => setDeleteModal({ type: 'press article', item: p })} />`;
-          case 'press-monitor':
-            return html`<${PressMonitor} existingPress=${press} addToast=${addToast} onApprove=${(mention) => {
-              // Navigate to press editor with pre-filled data via sessionStorage
-              sessionStorage.setItem('press-prefill', JSON.stringify(mention));
-              navigate('press', '');
-            }} />`;
-          case 'financials':
-            return html`<${Financials} addToast=${addToast} />`;
-          case 'ourstory':
-            return html`<${OurStory} addToast=${addToast} />`;
-          case 'mediakit':
-            return html`<${MediaKit} addToast=${addToast} />`;
-          case 'faq':
-            return html`<${FAQManager} addToast=${addToast} />`;
+
+          // ─── Press Hub (tabs: Press & Media | Press Monitor) ───
+          case 'press-hub': {
+            const prTab = subTab || 'press';
+            if (editSlug !== null && prTab === 'press') {
+              return html`<${PressEditor} slug=${editSlug || undefined} onBack=${() => { setEditSlug(null); loadData(); }} addToast=${addToast} />`;
+            }
+            return html`
+              <div class="hub-tabs">
+                <button class="hub-tab ${prTab === 'press' ? 'active' : ''}" onClick=${() => { setSubTab('press'); setEditSlug(null); }}>Press & Media</button>
+                <button class="hub-tab ${prTab === 'press-monitor' ? 'active' : ''}" onClick=${() => { setSubTab('press-monitor'); setEditSlug(null); }}>Press Monitor</button>
+              </div>
+              ${prTab === 'press-monitor'
+                ? html`<${PressMonitor} existingPress=${press} addToast=${addToast} onApprove=${(mention) => {
+                    sessionStorage.setItem('press-prefill', JSON.stringify(mention));
+                    setSubTab('press');
+                    setEditSlug('');
+                  }} />`
+                : html`<${PressList} press=${press} onEdit=${s => { setSubTab('press'); setEditSlug(s); }} onAdd=${() => { setSubTab('press'); setEditSlug(''); }}
+                    onDelete=${p => setDeleteModal({ type: 'press article', item: p })} />`
+              }
+            `;
+          }
+
           case 'deploys':
             return html`<${Deploys} addToast=${addToast} />`;
-          case 'kids-on-site':
-            return html`<${KidsOnSite} addToast=${addToast} kids=${kids} />`;
-          case 'settings':
-            return html`<${SiteSettings} addToast=${addToast} kids=${kids} partners=${partners} />`;
+
+          // ─── Site Config Hub (tabs: Kids on Site | FAQs | Our Story | Media Kit | Financials | Settings) ───
+          case 'site-hub': {
+            const sTab = subTab || 'kids-on-site';
+            return html`
+              <div class="hub-tabs">
+                <button class="hub-tab ${sTab === 'kids-on-site' ? 'active' : ''}" onClick=${() => setSubTab('kids-on-site')}>Kids on Site</button>
+                <button class="hub-tab ${sTab === 'faq' ? 'active' : ''}" onClick=${() => setSubTab('faq')}>FAQs</button>
+                <button class="hub-tab ${sTab === 'ourstory' ? 'active' : ''}" onClick=${() => setSubTab('ourstory')}>Our Story</button>
+                <button class="hub-tab ${sTab === 'mediakit' ? 'active' : ''}" onClick=${() => setSubTab('mediakit')}>Media Kit</button>
+                <button class="hub-tab ${sTab === 'financials' ? 'active' : ''}" onClick=${() => setSubTab('financials')}>Financials</button>
+                <button class="hub-tab ${sTab === 'settings' ? 'active' : ''}" onClick=${() => setSubTab('settings')}>Settings</button>
+              </div>
+              ${sTab === 'faq' ? html`<${FAQManager} addToast=${addToast} />`
+                : sTab === 'ourstory' ? html`<${OurStory} addToast=${addToast} />`
+                : sTab === 'mediakit' ? html`<${MediaKit} addToast=${addToast} />`
+                : sTab === 'financials' ? html`<${Financials} addToast=${addToast} />`
+                : sTab === 'settings' ? html`<${SiteSettings} addToast=${addToast} kids=${kids} partners=${partners} />`
+                : html`<${KidsOnSite} addToast=${addToast} kids=${kids} />`
+              }
+            `;
+          }
+
           default:
             return html`<${Dashboard} kids=${kids} partners=${partners} team=${team} events=${events} communityProjects=${communityProjects} onNavigate=${navigate} />`;
         }
