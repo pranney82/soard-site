@@ -582,16 +582,25 @@
       gap: 1rem;
     }
     .stat-card {
+      --card-accent: var(--color-primary);
       background: var(--color-bg-card);
       border-radius: var(--radius-md);
       padding: 1.25rem 1.5rem;
       box-shadow: var(--shadow-sm);
       border: 1px solid var(--color-border);
       text-align: center;
-      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
       position: relative;
       overflow: hidden;
+      animation: cardSlideUp 0.4s cubic-bezier(0.4, 0, 0.2, 1) both;
     }
+    .stat-card:nth-child(1) { animation-delay: 0s; }
+    .stat-card:nth-child(2) { animation-delay: 0.05s; }
+    .stat-card:nth-child(3) { animation-delay: 0.1s; }
+    .stat-card:nth-child(4) { animation-delay: 0.15s; }
+    .stat-card:nth-child(5) { animation-delay: 0.2s; }
+    .stat-card:nth-child(6) { animation-delay: 0.25s; }
+    .stat-card:nth-child(7) { animation-delay: 0.3s; }
     .stat-card::before {
       content: '';
       position: absolute;
@@ -600,20 +609,28 @@
       right: 0;
       height: 3px;
       background: var(--color-border);
-      transition: background 0.2s ease;
+      transition: background 0.25s ease, height 0.25s ease;
     }
     .stat-card:hover {
-      box-shadow: var(--shadow-md);
-      transform: translateY(-2px);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.1);
+      transform: translateY(-3px);
+      border-color: transparent;
     }
     .stat-card:hover::before {
-      background: var(--color-primary);
+      background: var(--card-accent, var(--color-primary));
+      height: 4px;
+    }
+    .stat-card:focus-visible {
+      outline: none;
+      box-shadow: 0 0 0 3px rgba(255, 213, 0, 0.25);
     }
     .stat-card .stat-number {
       font-size: 2.25rem;
       font-weight: 800;
-      color: var(--color-primary);
+      color: var(--card-accent);
       line-height: 1.1;
+      animation: countUp 0.5s cubic-bezier(0.4, 0, 0.2, 1) both;
+      animation-delay: inherit;
     }
     .stat-card .stat-label {
       font-size: 0.78rem;
@@ -1047,13 +1064,23 @@
     /* ─── Activity log ───────────────── */
     .activity-item {
       display: flex; align-items: flex-start; gap: 0.75rem;
-      padding: 0.6rem 0; border-bottom: 1px solid #F5F4F0;
+      padding: 0.6rem 0.5rem; border-bottom: 1px solid #F5F4F0;
       font-size: 0.85rem;
+      border-radius: 6px;
+      margin: 0 -0.5rem;
+      transition: background 0.15s ease;
+      cursor: default;
     }
+    .activity-item:hover { background: var(--color-primary-bg); }
     .activity-item:last-child { border-bottom: none; }
     .activity-dot {
       width: 8px; height: 8px; border-radius: 50%;
       margin-top: 0.35rem; flex-shrink: 0;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .activity-item:hover .activity-dot {
+      transform: scale(1.4);
+      box-shadow: 0 0 0 3px rgba(255,213,0,0.15);
     }
     .activity-dot-create { background: #38A169; }
     .activity-dot-update { background: var(--color-primary); }
@@ -1225,6 +1252,18 @@
     .save-status-dot.unsaved { background: var(--color-primary); }
     .save-status-dot.saving { background: #3182CE; animation: pulse 1s infinite; }
     @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+    @keyframes cardSlideUp {
+      from { opacity: 0; transform: translateY(16px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes heroFadeIn {
+      from { opacity: 0; transform: translateY(-8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes countUp {
+      from { opacity: 0; transform: translateY(10px) scale(0.95); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
 
     /* ─── Premium Charts ────────────── */
     @keyframes chartBarGrow { from { transform: scaleY(0); } to { transform: scaleY(1); } }
@@ -1401,6 +1440,276 @@
     .chart-stat-highlight .delta.down {
       background: rgba(229, 62, 62, 0.06);
       color: #E53E3E;
+    }
+
+    /* ─── Dashboard Hero ────────────────── */
+    .dash-hero {
+      background: linear-gradient(135deg, #1A1B1F 0%, #2D2E33 60%, #1A1B1F 100%);
+      border-radius: var(--radius-lg);
+      padding: 2rem 2.25rem;
+      margin-bottom: 1.75rem;
+      color: #fff;
+      position: relative;
+      overflow: hidden;
+      animation: heroFadeIn 0.5s cubic-bezier(0.4, 0, 0.2, 1) both;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+    }
+    .dash-hero::before {
+      content: '';
+      position: absolute;
+      top: -40%;
+      right: -10%;
+      width: 320px;
+      height: 320px;
+      background: radial-gradient(circle, rgba(255,213,0,0.15) 0%, transparent 70%);
+      pointer-events: none;
+    }
+    .dash-hero::after {
+      content: '';
+      position: absolute;
+      bottom: -30%;
+      left: 10%;
+      width: 200px;
+      height: 200px;
+      background: radial-gradient(circle, rgba(56,161,105,0.08) 0%, transparent 70%);
+      pointer-events: none;
+    }
+    .dash-hero-greeting {
+      font-size: 1.75rem;
+      font-weight: 800;
+      margin-bottom: 0.25rem;
+      letter-spacing: -0.02em;
+    }
+    .dash-hero-greeting span { color: var(--color-primary); }
+    .dash-hero-date {
+      font-size: 0.85rem;
+      color: rgba(255,255,255,0.5);
+      margin-bottom: 1rem;
+    }
+    .dash-hero-summary {
+      display: flex;
+      gap: 2rem;
+      flex-wrap: wrap;
+    }
+    .dash-hero-stat {
+      display: flex;
+      flex-direction: column;
+    }
+    .dash-hero-stat-value {
+      font-size: 1.5rem;
+      font-weight: 800;
+      color: var(--color-primary);
+      line-height: 1.2;
+      animation: countUp 0.6s cubic-bezier(0.4, 0, 0.2, 1) both;
+    }
+    .dash-hero-stat:nth-child(1) .dash-hero-stat-value { animation-delay: 0.2s; }
+    .dash-hero-stat:nth-child(2) .dash-hero-stat-value { animation-delay: 0.3s; }
+    .dash-hero-stat:nth-child(3) .dash-hero-stat-value { animation-delay: 0.4s; }
+    .dash-hero-stat:nth-child(4) .dash-hero-stat-value { animation-delay: 0.5s; }
+    .dash-hero-stat-label {
+      font-size: 0.72rem;
+      color: rgba(255,255,255,0.45);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      font-weight: 600;
+    }
+
+    /* ─── Quick Actions ────────────────── */
+    .quick-actions {
+      display: flex;
+      gap: 0.75rem;
+      margin-bottom: 1.75rem;
+      flex-wrap: wrap;
+      animation: cardSlideUp 0.4s cubic-bezier(0.4, 0, 0.2, 1) 0.1s both;
+    }
+    .quick-action-btn {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.6rem 1rem;
+      background: var(--color-bg-card);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: var(--color-text);
+      cursor: pointer;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      box-shadow: var(--shadow-sm);
+    }
+    .quick-action-btn:hover {
+      border-color: var(--color-primary);
+      box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+      transform: translateY(-2px);
+    }
+    .quick-action-btn:hover .quick-action-icon {
+      transform: scale(1.12);
+    }
+    .quick-action-btn:active {
+      transform: translateY(0);
+      box-shadow: var(--shadow-sm);
+    }
+    .quick-action-btn:focus-visible {
+      outline: none;
+      box-shadow: var(--focus-ring);
+    }
+    .quick-action-btn svg { width: 16px; height: 16px; flex-shrink: 0; }
+    .quick-action-icon {
+      width: 28px;
+      height: 28px;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    /* ─── Enhanced Stat Cards ────────────── */
+    .stat-card-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 0.75rem;
+      flex-shrink: 0;
+      transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.25s ease;
+    }
+    .stat-card:hover .stat-card-icon {
+      transform: scale(1.1) rotate(-3deg);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+    .stat-card-icon svg { width: 20px; height: 20px; }
+    .stat-card-meta {
+      font-size: 0.72rem;
+      color: var(--color-text-muted);
+      margin-top: 0.25rem;
+    }
+
+    /* ─── Needs Attention ────────────────── */
+    .attention-section {
+      margin-bottom: 1.75rem;
+    }
+    .attention-section h3 {
+      font-size: 1rem;
+      font-weight: 700;
+      margin-bottom: 0.75rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .attention-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 0.75rem;
+    }
+    .attention-card {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.85rem 1rem;
+      background: var(--color-bg-card);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      box-shadow: var(--shadow-sm);
+      animation: cardSlideUp 0.4s cubic-bezier(0.4, 0, 0.2, 1) both;
+    }
+    .attention-card:nth-child(1) { animation-delay: 0.1s; }
+    .attention-card:nth-child(2) { animation-delay: 0.15s; }
+    .attention-card:nth-child(3) { animation-delay: 0.2s; }
+    .attention-card:nth-child(4) { animation-delay: 0.25s; }
+    .attention-card:hover {
+      border-color: var(--color-primary);
+      box-shadow: 0 6px 20px rgba(0,0,0,0.08);
+      transform: translateY(-2px);
+    }
+    .attention-card:hover .attention-icon {
+      transform: scale(1.08);
+    }
+    .attention-card:hover .attention-count {
+      transform: scale(1.1);
+      color: var(--color-primary);
+    }
+    .attention-card:focus-visible {
+      outline: none;
+      box-shadow: var(--focus-ring);
+    }
+    .attention-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      font-size: 1.1rem;
+      transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .attention-card-body {
+      flex: 1;
+      min-width: 0;
+    }
+    .attention-card-title {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--color-text);
+    }
+    .attention-card-desc {
+      font-size: 0.75rem;
+      color: var(--color-text-muted);
+    }
+    .attention-count {
+      font-size: 1.1rem;
+      font-weight: 800;
+      color: var(--color-text);
+      flex-shrink: 0;
+      transition: transform 0.2s ease, color 0.2s ease;
+    }
+
+    /* ─── Dashboard Two-Col ────────────── */
+    .dash-bottom-grid {
+      display: grid;
+      grid-template-columns: 1.4fr 1fr;
+      gap: 1.5rem;
+      margin-top: 1.75rem;
+      animation: cardSlideUp 0.5s cubic-bezier(0.4, 0, 0.2, 1) 0.35s both;
+    }
+    @media (max-width: 960px) {
+      .dash-bottom-grid { grid-template-columns: 1fr; }
+    }
+
+    /* ─── Content Health Bar ────────────── */
+    .health-bar-track {
+      width: 100%;
+      height: 8px;
+      background: #EEEEE8;
+      border-radius: 99px;
+      overflow: hidden;
+    }
+    .health-bar-fill {
+      height: 100%;
+      border-radius: 99px;
+      transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    @media (max-width: 768px) {
+      .dash-hero { padding: 1.25rem 1rem; margin-bottom: 1.25rem; }
+      .dash-hero-greeting { font-size: 1.35rem; }
+      .dash-hero-summary { gap: 1.25rem; }
+      .quick-actions { gap: 0.5rem; }
+      .quick-action-btn { padding: 0.5rem 0.75rem; font-size: 0.78rem; }
+      .attention-grid { grid-template-columns: 1fr; }
+      .dash-bottom-grid { grid-template-columns: 1fr; gap: 1rem; }
+    }
+    @media (max-width: 480px) {
+      .dash-hero { padding: 1rem 0.85rem; }
+      .dash-hero-greeting { font-size: 1.15rem; }
+      .dash-hero-stat-value { font-size: 1.2rem; }
+      .quick-action-btn .qa-label { display: none; }
     }
 
     /* ─── Favorites ────────────────── */
@@ -2006,7 +2315,7 @@
     // ═══════════════════════════════════════════
     // DASHBOARD
     // ═══════════════════════════════════════════
-    function Dashboard({ kids, partners, team, events, communityProjects, onNavigate }) {
+    function Dashboard({ kids, partners, team, events, communityProjects, press, articles, onNavigate }) {
       // Pinned / favorite items
       const pinnedItems = useMemo(() => {
         const favs = getFavorites();
@@ -2027,25 +2336,110 @@
         kids.forEach(k => { if (k.year) counts[k.year] = (counts[k.year] || 0) + 1; });
         const years = Object.keys(counts).sort();
         if (years.length < 2) return null;
-        // Cumulative total over years
         let cumulative = [];
         let sum = 0;
         years.forEach(y => { sum += counts[y]; cumulative.push(sum); });
         return { perYear: years.map(y => counts[y]), cumulative, years };
       }, [kids]);
 
-      // Compute photos-per-kid distribution
-      const photoData = useMemo(() => {
-        const sorted = kids.map(k => k.photoCount || 0).sort((a, b) => a - b);
-        return sorted.length >= 3 ? sorted : null;
+      // Time-based greeting
+      const greeting = useMemo(() => {
+        const h = new Date().getHours();
+        if (h < 12) return 'Good morning';
+        if (h < 17) return 'Good afternoon';
+        return 'Good evening';
+      }, []);
+
+      const today = useMemo(() => {
+        return new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+      }, []);
+
+      // Needs attention metrics
+      const attention = useMemo(() => {
+        const noPhoto = kids.filter(k => !k.heroImage);
+        const incomplete = kids.filter(k => {
+          const score = getCompleteness(k);
+          return score < 70;
+        });
+        const inProgress = kids.filter(k => k.status === 'in-progress');
+        const upcomingEvents = (events || []).filter(e => e.status === 'upcoming');
+        return { noPhoto, incomplete, inProgress, upcomingEvents };
+      }, [kids, events]);
+
+      // Content health (average profile completeness)
+      const avgCompleteness = useMemo(() => {
+        if (!kids.length) return 0;
+        const total = kids.reduce((sum, k) => sum + getCompleteness(k), 0);
+        return Math.round(total / kids.length);
       }, [kids]);
 
+      const completedRooms = kids.filter(k => k.status === 'completed').length;
+      const inProgressCount = kids.filter(k => k.status === 'in-progress').length;
+      const upcomingEventsCount = (events || []).filter(e => e.status === 'upcoming').length;
+
       return html`
-        <div class="page-header"><h2>Dashboard</h2></div>
+        <!-- Hero Greeting -->
+        <div class="dash-hero">
+          <div class="dash-hero-greeting">${greeting}, <span>team</span></div>
+          <div class="dash-hero-date">${today}</div>
+          <div class="dash-hero-summary">
+            <div class="dash-hero-stat">
+              <div class="dash-hero-stat-value">${kids.length}</div>
+              <div class="dash-hero-stat-label">Kids Served</div>
+            </div>
+            <div class="dash-hero-stat">
+              <div class="dash-hero-stat-value">${completedRooms}</div>
+              <div class="dash-hero-stat-label">Rooms Done</div>
+            </div>
+            <div class="dash-hero-stat">
+              <div class="dash-hero-stat-value">${partners.length}</div>
+              <div class="dash-hero-stat-label">Partners</div>
+            </div>
+            <div class="dash-hero-stat">
+              <div class="dash-hero-stat-value" style="color: #38A169;">${avgCompleteness}%</div>
+              <div class="dash-hero-stat-label">Profile Health</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="quick-actions">
+          <button class="quick-action-btn" onClick=${() => onNavigate('kids-hub', '')}>
+            <div class="quick-action-icon" style="background: rgba(255,213,0,0.12);">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#D6A800" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            </div>
+            <span class="qa-label">Add Kid</span>
+          </button>
+          <button class="quick-action-btn" onClick=${() => onNavigate('people-hub', '', 'partners')}>
+            <div class="quick-action-icon" style="background: rgba(49,130,206,0.1);">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3182CE" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            </div>
+            <span class="qa-label">Add Partner</span>
+          </button>
+          <button class="quick-action-btn" onClick=${() => onNavigate('events', '')}>
+            <div class="quick-action-icon" style="background: rgba(128,90,213,0.1);">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#805AD5" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            </div>
+            <span class="qa-label">Add Event</span>
+          </button>
+          <button class="quick-action-btn" onClick=${() => onNavigate('press-hub', '')}>
+            <div class="quick-action-icon" style="background: rgba(56,161,105,0.1);">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#38A169" stroke-width="2" stroke-linecap="round"><path d="M4 22h16a2 2 0 002-2V4a2 2 0 00-2-2H8a2 2 0 00-2 2v16a2 2 0 01-2 2zm0 0a2 2 0 01-2-2v-9c0-1.1.9-2 2-2h2"/><line x1="10" y1="6" x2="18" y2="6"/><line x1="10" y1="10" x2="18" y2="10"/><line x1="10" y1="14" x2="14" y2="14"/></svg>
+            </div>
+            <span class="qa-label">Add Press</span>
+          </button>
+          <button class="quick-action-btn" onClick=${() => window.open('/', '_blank')}>
+            <div class="quick-action-icon" style="background: rgba(113,128,150,0.1);">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#718096" stroke-width="2" stroke-linecap="round"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+            </div>
+            <span class="qa-label">View Site</span>
+          </button>
+        </div>
+
         ${pinnedItems.length > 0 ? html`
           <div style="margin-bottom: 1.5rem;">
-            <h3 style="font-size: 0.85rem; color: #6B6C72; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.5rem;">
-              ★ Pinned Items
+            <h3 style="font-size: 0.78rem; color: #6B6C72; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.5rem;">
+              Pinned
             </h3>
             <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
               ${pinnedItems.map(p => html`
@@ -2064,49 +2458,148 @@
             </div>
           </div>
         ` : null}
-        <div class="stat-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
-          <div class="stat-card" style="cursor: pointer; text-align: left;" onClick=${() => onNavigate('kids-hub')}>
+
+        <!-- Stat Cards -->
+        <div class="stat-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 1.75rem;">
+          <div class="stat-card" style="--card-accent: #FFD500; cursor: pointer; text-align: left;" onClick=${() => onNavigate('kids-hub')}>
             <div style="display: flex; align-items: flex-start; justify-content: space-between;">
               <div>
+                <div class="stat-card-icon" style="background: rgba(255,213,0,0.12);">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#D6A800" stroke-width="2" stroke-linecap="round"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                </div>
                 <div class="stat-label" style="margin-top: 0; margin-bottom: 0.25rem;">Kids</div>
                 <div class="stat-number">${kids.length}</div>
               </div>
               ${yearData ? html`<${MiniChart} data=${yearData.cumulative} color="#FFD500" height=${40} width=${90} />` : null}
             </div>
           </div>
-          <div class="stat-card" style="cursor: pointer; text-align: left;" onClick=${() => onNavigate('people-hub', null, 'partners')}>
+          <div class="stat-card" style="--card-accent: #3182CE; cursor: pointer; text-align: left;" onClick=${() => onNavigate('people-hub', null, 'partners')}>
+            <div class="stat-card-icon" style="background: rgba(49,130,206,0.1);">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#3182CE" stroke-width="2" stroke-linecap="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+            </div>
             <div class="stat-label" style="margin-top: 0; margin-bottom: 0.25rem;">Partners</div>
             <div class="stat-number">${partners.length}</div>
           </div>
-          <div class="stat-card" style="cursor: pointer; text-align: left;" onClick=${() => onNavigate('people-hub', null, 'team')}>
+          <div class="stat-card" style="--card-accent: #718096; cursor: pointer; text-align: left;" onClick=${() => onNavigate('people-hub', null, 'team')}>
+            <div class="stat-card-icon" style="background: rgba(113,128,150,0.1);">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#718096" stroke-width="2" stroke-linecap="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+            </div>
             <div class="stat-label" style="margin-top: 0; margin-bottom: 0.25rem;">Team & Board</div>
             <div class="stat-number">${team.length}</div>
           </div>
-          <div class="stat-card" style="text-align: left;">
+          <div class="stat-card" style="--card-accent: #38A169; text-align: left;">
             <div style="display: flex; align-items: flex-start; justify-content: space-between;">
               <div>
-                <div class="stat-label" style="margin-top: 0; margin-bottom: 0.25rem;">Completed Rooms</div>
-                <div class="stat-number" style="color: #38A169;">${kids.filter(k => k.status === 'completed').length}</div>
+                <div class="stat-card-icon" style="background: rgba(56,161,105,0.1);">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#38A169" stroke-width="2" stroke-linecap="round"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                </div>
+                <div class="stat-label" style="margin-top: 0; margin-bottom: 0.25rem;">Completed</div>
+                <div class="stat-number">${completedRooms}</div>
               </div>
               ${yearData ? html`<${MiniChart} data=${yearData.perYear} color="#38A169" height=${40} width=${90} />` : null}
             </div>
           </div>
-          <div class="stat-card" style="text-align: left;">
+          <div class="stat-card" style="--card-accent: #D69E2E; text-align: left;">
+            <div class="stat-card-icon" style="background: rgba(214,158,46,0.1);">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#D69E2E" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            </div>
             <div class="stat-label" style="margin-top: 0; margin-bottom: 0.25rem;">In Progress</div>
-            <div class="stat-number" style="color: #D69E2E;">${kids.filter(k => k.status === 'in-progress').length}</div>
+            <div class="stat-number">${inProgressCount}</div>
           </div>
-          <div class="stat-card" style="cursor: pointer; text-align: left;" onClick=${() => onNavigate('events')}>
+          <div class="stat-card" style="--card-accent: #805AD5; cursor: pointer; text-align: left;" onClick=${() => onNavigate('events')}>
+            <div class="stat-card-icon" style="background: rgba(128,90,213,0.1);">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#805AD5" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            </div>
             <div class="stat-label" style="margin-top: 0; margin-bottom: 0.25rem;">Upcoming Events</div>
-            <div class="stat-number" style="color: #3182CE;">${(events || []).filter(e => e.status === 'upcoming').length}</div>
+            <div class="stat-number">${upcomingEventsCount}</div>
           </div>
-          <div class="stat-card" style="cursor: pointer; text-align: left;" onClick=${() => onNavigate('kids-hub')}>
-            <div class="stat-label" style="margin-top: 0; margin-bottom: 0.25rem;">Community Projects</div>
-            <div class="stat-number" style="color: #805AD5;">${(communityProjects || []).length}</div>
+          <div class="stat-card" style="--card-accent: #E53E3E; cursor: pointer; text-align: left;" onClick=${() => onNavigate('kids-hub', null, 'community')}>
+            <div class="stat-card-icon" style="background: rgba(229,62,62,0.08);">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#E53E3E" stroke-width="2" stroke-linecap="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+            </div>
+            <div class="stat-label" style="margin-top: 0; margin-bottom: 0.25rem;">Community</div>
+            <div class="stat-number">${(communityProjects || []).length}</div>
+          </div>
+        </div>
+
+        <!-- Needs Attention -->
+        ${(attention.noPhoto.length > 0 || attention.incomplete.length > 0 || attention.upcomingEvents.length > 0) ? html`
+          <div class="attention-section">
+            <h3>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#D69E2E" stroke-width="2" stroke-linecap="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+              Needs Attention
+            </h3>
+            <div class="attention-grid">
+              ${attention.noPhoto.length > 0 ? html`
+                <div class="attention-card" onClick=${() => onNavigate('kids-hub')}>
+                  <div class="attention-icon" style="background: rgba(229,62,62,0.08); color: #E53E3E;">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                  </div>
+                  <div class="attention-card-body">
+                    <div class="attention-card-title">Missing Photos</div>
+                    <div class="attention-card-desc">Kids without a hero image</div>
+                  </div>
+                  <div class="attention-count">${attention.noPhoto.length}</div>
+                </div>
+              ` : null}
+              ${attention.incomplete.length > 0 ? html`
+                <div class="attention-card" onClick=${() => onNavigate('kids-hub')}>
+                  <div class="attention-icon" style="background: rgba(214,158,46,0.1); color: #D69E2E;">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+                  </div>
+                  <div class="attention-card-body">
+                    <div class="attention-card-title">Incomplete Profiles</div>
+                    <div class="attention-card-desc">Below 70% completeness</div>
+                  </div>
+                  <div class="attention-count">${attention.incomplete.length}</div>
+                </div>
+              ` : null}
+              ${attention.inProgress.length > 0 ? html`
+                <div class="attention-card" onClick=${() => onNavigate('kids-hub')}>
+                  <div class="attention-icon" style="background: rgba(49,130,206,0.1); color: #3182CE;">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                  </div>
+                  <div class="attention-card-body">
+                    <div class="attention-card-title">Rooms In Progress</div>
+                    <div class="attention-card-desc">Awaiting completion</div>
+                  </div>
+                  <div class="attention-count">${attention.inProgress.length}</div>
+                </div>
+              ` : null}
+              ${attention.upcomingEvents.length > 0 ? html`
+                <div class="attention-card" onClick=${() => onNavigate('events')}>
+                  <div class="attention-icon" style="background: rgba(128,90,213,0.1); color: #805AD5;">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                  </div>
+                  <div class="attention-card-body">
+                    <div class="attention-card-title">Upcoming Events</div>
+                    <div class="attention-card-desc">Events to prepare for</div>
+                  </div>
+                  <div class="attention-count">${attention.upcomingEvents.length}</div>
+                </div>
+              ` : null}
+            </div>
+          </div>
+        ` : null}
+
+        <!-- Content Health Bar -->
+        <div class="card" style="margin-bottom: 1.75rem; padding: 1.25rem 1.5rem;">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;">
+            <div style="font-size: 0.85rem; font-weight: 700;">Profile Completeness</div>
+            <div style="font-size: 0.85rem; font-weight: 700; color: ${avgCompleteness >= 80 ? '#38A169' : avgCompleteness >= 60 ? '#D69E2E' : '#E53E3E'};">${avgCompleteness}%</div>
+          </div>
+          <div class="health-bar-track">
+            <div class="health-bar-fill" style="width: ${avgCompleteness}%; background: ${avgCompleteness >= 80 ? 'linear-gradient(90deg, #38A169, #48BB78)' : avgCompleteness >= 60 ? 'linear-gradient(90deg, #D69E2E, #ECC94B)' : 'linear-gradient(90deg, #E53E3E, #FC8181)'};"></div>
+          </div>
+          <div style="display: flex; justify-content: space-between; margin-top: 0.5rem; font-size: 0.72rem; color: var(--color-text-muted);">
+            <span>${kids.filter(k => getCompleteness(k) >= 90).length} excellent</span>
+            <span>${kids.filter(k => { const s = getCompleteness(k); return s >= 60 && s < 90; }).length} good</span>
+            <span>${kids.filter(k => getCompleteness(k) < 60).length} needs work</span>
           </div>
         </div>
 
         ${yearData ? html`
-          <div class="chart-container" style="margin-bottom: 2rem;">
+          <div class="chart-container" style="margin-bottom: 1.75rem;">
             <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.25rem;">
               <div class="chart-title">Growth Over Time</div>
               <div style="display: flex; gap: 0.5rem;">
@@ -2119,7 +2612,7 @@
                     <div class="chart-stat-highlight">
                       <span class="big">${total}</span>
                       <span style="font-size: 0.8rem; color: var(--color-text-secondary);">total kids</span>
-                      ${delta !== 0 ? html`<span class="delta ${delta >= 0 ? 'up' : 'down'}">${delta > 0 ? '↑' : '↓'} ${Math.abs(delta)}% YoY</span>` : null}
+                      ${delta !== 0 ? html`<span class="delta ${delta >= 0 ? 'up' : 'down'}">${delta > 0 ? '+' : ''}${delta}% YoY</span>` : null}
                     </div>
                   `;
                 })()}
@@ -2240,29 +2733,33 @@
             </div>
           </div>
         ` : null}
-        <div class="card dashboard-recent">
-          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
-            <h3>Recent Kids</h3>
-            <button class="btn btn-ghost btn-sm" onClick=${() => onNavigate('kids-hub')}>View All →</button>
+
+        <!-- Bottom Two-Column: Recent Kids + Activity -->
+        <div class="dash-bottom-grid">
+          <div class="card dashboard-recent">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
+              <h3>Recent Kids</h3>
+              <button class="btn btn-ghost btn-sm" onClick=${() => onNavigate('kids-hub')}>View All →</button>
+            </div>
+            <div class="table-wrap"><table>
+              <thead><tr><th></th><th>Name</th><th>Year</th><th>Status</th><th>Photos</th></tr></thead>
+              <tbody>
+                ${kids.slice(0, 8).map(k => html`<tr key=${k.slug} style="cursor: pointer;" onClick=${() => onNavigate('kids-hub', k.slug)}>
+                  <td>${k.heroImage ? html`<img class="td-thumb" src="${k.heroImage}" alt="" />` : '—'}</td>
+                  <td><strong>${k.name}</strong></td>
+                  <td>${k.year || '—'}</td>
+                  <td><span class="badge ${k.status === 'completed' ? 'badge-green' : 'badge-yellow'}">${k.status}</span></td>
+                  <td>${k.photoCount || 0}</td>
+                </tr>`)}
+              </tbody>
+            </table></div>
           </div>
-          <div class="table-wrap"><table>
-            <thead><tr><th></th><th>Name</th><th>Year</th><th>Status</th><th>Photos</th></tr></thead>
-            <tbody>
-              ${kids.slice(0, 10).map(k => html`<tr key=${k.slug} style="cursor: pointer;" onClick=${() => onNavigate('kids-hub', k.slug)}>
-                <td>${k.heroImage ? html`<img class="td-thumb" src="${k.heroImage}" alt="" />` : '—'}</td>
-                <td><strong>${k.name}</strong></td>
-                <td>${k.year || '—'}</td>
-                <td><span class="badge ${k.status === 'completed' ? 'badge-green' : 'badge-yellow'}">${k.status}</span></td>
-                <td>${k.photoCount || 0}</td>
-              </tr>`)}
-            </tbody>
-          </table></div>
-        </div>
-        <div style="margin-top: 2rem;">
-          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.75rem;">
-            <h3>Recent Activity</h3>
+          <div>
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.75rem;">
+              <h3>Recent Activity</h3>
+            </div>
+            <${ActivityLog} />
           </div>
-          <${ActivityLog} />
         </div>
       `;
     }
@@ -7868,17 +8365,22 @@
     // ═══════════════════════════════════════════
     function SkeletonDashboard() {
       return html`
-        <div class="page-header"><div class="skeleton" style="width: 140px; height: 28px;"></div></div>
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
-          ${Array(7).fill(0).map((_, i) => html`<div key=${i} class="skeleton skeleton-stat"></div>`)}
+        <div class="skeleton" style="width: 100%; height: 140px; border-radius: 16px; margin-bottom: 1.75rem;"></div>
+        <div style="display: flex; gap: 0.75rem; margin-bottom: 1.75rem;">
+          ${Array(5).fill(0).map((_, i) => html`<div key=${i} class="skeleton" style="width: 110px; height: 40px; border-radius: 8px;"></div>`)}
         </div>
-        <div class="card">
-          <div class="skeleton" style="width: 120px; height: 20px; margin-bottom: 1rem;"></div>
-          ${Array(5).fill(0).map((_, i) => html`<div key=${i} class="skeleton skeleton-row"></div>`)}
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 1.75rem;">
+          ${Array(7).fill(0).map((_, i) => html`<div key=${i} class="skeleton skeleton-stat" style="height: 120px;"></div>`)}
         </div>
-        <div style="margin-top: 2rem;">
-          <div class="skeleton" style="width: 140px; height: 20px; margin-bottom: 0.75rem;"></div>
+        <div class="skeleton" style="width: 100%; height: 56px; border-radius: 12px; margin-bottom: 1.75rem;"></div>
+        <div class="skeleton" style="width: 100%; height: 260px; border-radius: 16px; margin-bottom: 1.75rem;"></div>
+        <div class="dash-bottom-grid">
           <div class="card">
+            <div class="skeleton" style="width: 120px; height: 20px; margin-bottom: 1rem;"></div>
+            ${Array(5).fill(0).map((_, i) => html`<div key=${i} class="skeleton skeleton-row"></div>`)}
+          </div>
+          <div class="card">
+            <div class="skeleton" style="width: 140px; height: 20px; margin-bottom: 0.75rem;"></div>
             ${Array(4).fill(0).map((_, i) => html`<div key=${i} class="skeleton skeleton-row"></div>`)}
           </div>
         </div>
@@ -8133,7 +8635,7 @@
 
         switch (view) {
           case 'dashboard':
-            return html`<${Dashboard} kids=${kids} partners=${partners} team=${team} events=${events} communityProjects=${communityProjects} onNavigate=${navigate} />`;
+            return html`<${Dashboard} kids=${kids} partners=${partners} team=${team} events=${events} communityProjects=${communityProjects} press=${press} articles=${articles} onNavigate=${navigate} />`;
 
           // ─── Kids Hub (tabs: Kids | Community Projects) ───
           case 'kids-hub': {
@@ -8242,7 +8744,7 @@
           }
 
           default:
-            return html`<${Dashboard} kids=${kids} partners=${partners} team=${team} events=${events} communityProjects=${communityProjects} onNavigate=${navigate} />`;
+            return html`<${Dashboard} kids=${kids} partners=${partners} team=${team} events=${events} communityProjects=${communityProjects} press=${press} articles=${articles} onNavigate=${navigate} />`;
         }
       };
 
