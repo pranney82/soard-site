@@ -10,7 +10,7 @@
   "status": "completed",
   "bio": "Karter is an energetic and loving five-year-old with autism spectrum disorder and global developmental delays. His curious nature and boundless energy drive him to seek constant sensory input, jumping, climbing, rolling, and looking for pressure or tight spaces to feel regulated. However, his inability to recognize danger makes everyday life a constant challenge for his parents, who must always keep a watchful eye on him to ensure his safety. Simple tasks that many families take for granted such as  cooking a meal or stepping into another room, are stressful and overwhelming.\n\nTo give Karter a place where he can play, learn, and grow safely, Sunshine on a Ranney Day is transforming his home with a custom-built in-home therapy room designed just for him. This space will be a true haven secured with lockable doors to ensure his safety, yet filled with joy and freedom. Outfitted with sensory-rich equipment like swings, climbing structures, and compression tools, the room will allow Karter to release his endless energy, explore without fear, and find the calm his body craves. For his parents, it will bring the gift of peace of mind and the chance to experience moments of rest and joy, knowing their son is finally safe and thriving in a space made just for him",
   "quote": null,
-  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/karter/hero/public",
+  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/karter/photo-12/public",
   "photos": [
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/karter/photo-01/public",
@@ -81,11 +81,27 @@
       "alt": ""
     },
     {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/amari/photo-26/public",
-      "alt": ""
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/karter/1774384957640-Karter-Reveal-People-9.jpg/public",
+      "alt": "",
+      "cfImageId": "kids/karter/1774384957640-Karter-Reveal-People-9.jpg"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/karter/1774384965451-Karter-Reveal-People-13.jpg/public",
+      "alt": "",
+      "cfImageId": "kids/karter/1774384965451-Karter-Reveal-People-13.jpg"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/karter/1774384972619-Karter-Reveal-People-20.jpg/public",
+      "alt": "",
+      "cfImageId": "kids/karter/1774384972619-Karter-Reveal-People-20.jpg"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/karter/1774384981543-Karter-Reveal-41.jpg/public",
+      "alt": "",
+      "cfImageId": "kids/karter/1774384981543-Karter-Reveal-41.jpg"
     }
   ],
-  "photoCount": 18,
+  "photoCount": 21,
   "videoUrl": "https://www.youtube.com/watch?v=zlpzBaEaKl0",
   "photographer": "Niki Murphy",
   "partnerLogos": [
@@ -124,6 +140,10 @@
     },
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/nothing-bundt-cakes/public"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/therapy-gyms/1774382179878/public",
+      "name": "Therapy Gyms"
     }
   ],
   "shortDescription": null,
@@ -131,5 +151,7 @@
   "altTexts": null,
   "jsonLd": null,
   "streamVideoId": "12d2de36ea243c9116894dadad2cd55e",
-  "roomCount": 1
+  "roomCount": 1,
+  "publishStatus": "published",
+  "fundraisingUrl": null
 }

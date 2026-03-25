@@ -1,16 +1,937 @@
 ---
-import PageLayout from '../../layouts/PageLayout.astro';
+/**
+ * Partners Page — Sunshine on a Ranney Day
+ * Premium partner showcase: monetary sponsors, in-kind champions, and full partner grid
+ *
+ * PERF NOTES:
+ * - Hero content has NO data-reveal (LCP critical)
+ * - Partner logos: lazy-loaded with contain for paint optimization
+ * - Scroll reveals staggered for cinematic entrance
+ * - All images via CF Images CDN
+ */
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { getCollection } from 'astro:content';
+import { getSiteStats } from '../../utils/stats';
+import { CF_BASE as CF, cfRaw, cfId } from '../../utils/cf-image';
+import { getWebPageSchema, getBreadcrumbSchema, buildSchemaGraph } from '../../utils/schema';
+
+/* ── Auto-computed stats ── */
+const computed = await getSiteStats();
+
+/* ── All partners from content collection ── */
+const allPartners = await getCollection('partners');
+
+/* ── Schema ── */
+const pageUrl = 'https://sunshineonaranneyday.com/partners/';
+const pageDesc = `Meet the ${allPartners.length}+ partners who donate materials, labor, design, and funding to build life-changing rooms for children with special needs — all at no cost to families.`;
+const breadcrumbs = [
+  { name: 'Home', url: 'https://sunshineonaranneyday.com/' },
+  { name: 'Partners', url: pageUrl },
+];
+const jsonLd = buildSchemaGraph(
+  getWebPageSchema({ url: pageUrl, title: 'Our Partners', description: pageDesc }),
+  getBreadcrumbSchema(breadcrumbs, pageUrl),
+);
+
+/* ── Build a lookup map: slug → partner data ── */
+const partnerMap = new Map(allPartners.map(p => [p.data.slug, p.data]));
+
+/* Helper: find a partner by slug(s) and return { name, logo? } */
+function sponsor(name: string, ...slugs: string[]) {
+  for (const s of slugs) {
+    const p = partnerMap.get(s);
+    if (p) return { name, logo: p.logo };
+  }
+  return { name, logo: null as string | null };
+}
+
+/* ── Monetary Sponsors ($10K+ in 2025) ── */
+const monetarySponsors = [
+  sponsor('Sunshine Society'),
+  sponsor('Kids R Kids', 'kids-r-kids'),
+  sponsor('Helen & Jimmy Carlos'),
+  sponsor('MCN/Babby'),
+  sponsor('Pella/Brian Robbins', 'pella'),
+  sponsor('Myfifident'),
+  sponsor('Van Epps', 'jim-van-epps'),
+  sponsor('JM Wilkerson Construction', 'jm-wilkerson-construction'),
+  sponsor('5 Arrows Farms/Walstads'),
+  sponsor('Constance Moscosco/Alcon Print'),
+  sponsor('Katherine & Max Dean'),
+  sponsor('Lee/Leo/Ducky Geary'),
+  sponsor('Spartan Surfaces'),
+  sponsor('Mohawk', 'mohawk'),
+  sponsor('MSI', 'msi'),
+  sponsor('Shaw Flooring'),
+  sponsor('Morrow Construction'),
+  sponsor('JC Foundation'),
+  sponsor('Beazer Foundation', 'beazer', 'beazer-homes'),
+  sponsor('Scansource Foundation'),
+  sponsor('David, Helen, & Marian Woodward Foundation'),
+  sponsor('ST & Margaret D Harris Foundation'),
+  sponsor('Atlanta Foundation'),
+  sponsor('Jackson Healthcare', 'jackson-healthcare'),
+  sponsor('Georgia Power'),
+  sponsor('Trae Young Family Foundation'),
+  sponsor('STAG Partners', 'stag-partners'),
+  sponsor('Randall-Paulson', 'randall-paulson'),
+  sponsor('Crosby Design Group', 'crosby-design-group'),
+  sponsor('Real Floors Commercial', 'real-floors-commercial'),
+  sponsor('Carlos & Sandy Ramirez'),
+  sponsor('Paul & Adro Nielsen'),
+];
+
+/* ── In-Kind Champions of Sunshine ── */
+const inKindChampions = [
+  sponsor('Randall-Paulson', 'randall-paulson'),
+  sponsor('Crosby Design Group', 'crosby-design-group'),
+  sponsor('Real Floors Commercial', 'real-floors-commercial'),
+  sponsor('Walk Your Plans'),
+  sponsor('Cambria', 'cambria-black'),
+  sponsor('Mohawk', 'mohawk'),
+  sponsor('Construction Resources', 'construction-resources'),
+  sponsor('Top Knobs', 'top-knobs'),
+  sponsor('MSI', 'msi'),
+  sponsor('Randall Brothers', 'randall-brothers'),
+  sponsor('Pella', 'pella'),
+  sponsor('Echols', 'echols'),
+  sponsor('Comfort Research', 'comfort-research'),
+  sponsor('Sherwin Williams', 'sherwin-williams'),
+  sponsor('Nothing Bundt Cake', 'nothing-bundt-cakes'),
+  sponsor('Lee Hainer Construction', 'lee-hainer'),
+  sponsor('Pulley & Associates', 'pulley-and-associates'),
+  sponsor('Artisan Design Group', 'artisan-design-studio'),
+  sponsor('Niki Murphy Photography', 'niki-murphy-photography'),
+  sponsor('iFrame', 'iframe-media'),
+];
+
+/* ── Sort all partners by display order, then alphabetically ── */
+const sortedPartners = [...allPartners].sort((a, b) =>
+  (a.data.order || 0) - (b.data.order || 0) || a.data.name.localeCompare(b.data.name)
+);
+
+/* ── Featured partners with logos for marquee ── */
+const featuredPartners = allPartners.filter(p => p.data.featured);
 ---
 
-<PageLayout
-  title="Our Partners"
-  heroLabel="Partners"
-  heroTitle={'Our <em class="highlight">Partners</em>'}
-  heroSubtitle="We are deeply grateful for the incredible partners who bring our renovations to life"
+<BaseLayout
+  title="Our Partners — Who Makes It Happen"
+  description={pageDesc}
+  jsonLd={jsonLd}
+  breadcrumbs={breadcrumbs}
 >
-  <section class="section">
-    <div class="container container--narrow" style="text-align: center; padding-block: var(--space-4xl);">
-      <p style="color: var(--c-text-muted);">This page is being built. Check back soon!</p>
+
+  <!-- ══════ HERO ══════ -->
+  <section class="partners-hero">
+    <div class="container">
+      <p class="partners-hero__label">Partners</p>
+      <h1 class="partners-hero__title">The people who make <em class="highlight">dreams</em> possible.</h1>
+      <p class="partners-hero__subtitle">Every room we build is a community effort. These incredible partners donate their time, talent, materials, and funding to transform the lives of children with special needs.</p>
+      <div class="partners-hero__rule" aria-hidden="true">
+        <span class="partners-hero__rule-accent"></span>
+      </div>
     </div>
   </section>
-</PageLayout>
+
+  <!-- ══════ IMPACT STATS RIBBON ══════ -->
+  <section class="partners-ribbon" aria-label="Partner impact">
+    <div class="partners-ribbon-inner">
+      <div class="partners-ribbon-stat" data-reveal>
+        <span class="partners-ribbon-num">{allPartners.length}+</span>
+        <span class="partners-ribbon-label">Partners & Sponsors</span>
+      </div>
+      <div class="partners-ribbon-divider" role="presentation"></div>
+      <div class="partners-ribbon-stat" data-reveal data-delay="1">
+        <span class="partners-ribbon-num">{computed.totalRooms}+</span>
+        <span class="partners-ribbon-label">Rooms Built Together</span>
+      </div>
+      <div class="partners-ribbon-divider" role="presentation"></div>
+      <div class="partners-ribbon-stat" data-reveal data-delay="2">
+        <span class="partners-ribbon-num">100<span class="partners-ribbon-pct">%</span></span>
+        <span class="partners-ribbon-label">Volunteer Run</span>
+      </div>
+      <div class="partners-ribbon-divider" role="presentation"></div>
+      <div class="partners-ribbon-stat" data-reveal data-delay="3">
+        <span class="partners-ribbon-num">$0</span>
+        <span class="partners-ribbon-label">Cost to Families</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════ MONETARY SPONSORS — $10K+ ══════ -->
+  <section class="sponsors" id="sponsors" aria-labelledby="sponsors-heading">
+    <div class="sponsors-inner">
+      <div class="sponsors-header" data-reveal>
+        <div class="section-label">2025 Sponsors</div>
+        <h2 id="sponsors-heading">Monetary sponsors who gave <em class="highlight">$10,000+</em> in 2025</h2>
+        <p class="sponsors-subtitle">These extraordinary partners provide the financial foundation that makes our mission possible. Their generosity directly funds life-changing room makeovers for children with special needs.</p>
+      </div>
+      <div class="sponsors-grid" data-reveal data-delay="1">
+        {monetarySponsors.map((s) => (
+          <div class="sponsor-card">
+            {s.logo ? (
+              <div class="sponsor-logo">
+                <img src={cfRaw(s.logo, 'w=240,h=80,fit=contain')} alt={s.name} width="120" height="40" loading="lazy" decoding="async" />
+              </div>
+            ) : (
+              <span class="sponsor-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+              </span>
+            )}
+            <span class="sponsor-name">{s.name}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════ IN-KIND CHAMPIONS ══════ -->
+  <section class="champions" id="champions" aria-labelledby="champions-heading">
+    <div class="champions-inner">
+      <div class="champions-header" data-reveal>
+        <div class="section-label section-label--yellow">In-Kind Partners</div>
+        <h2 id="champions-heading">Champions of <em>Sunshine</em></h2>
+        <p class="champions-subtitle">These partners donate materials, labor, design services, and more. They are the hands and hearts behind every room we build.</p>
+      </div>
+      <div class="champions-grid" data-reveal data-delay="1">
+        {inKindChampions.map((c) => (
+          <div class="champion-card">
+            {c.logo ? (
+              <div class="champion-logo">
+                <img src={cfRaw(c.logo, 'w=240,h=72,fit=contain')} alt={c.name} width="120" height="36" loading="lazy" decoding="async" />
+              </div>
+            ) : (
+              <span class="champion-initial" aria-hidden="true">{c.name.charAt(0)}</span>
+            )}
+            <span class="champion-name">{c.name}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════ PARTNER LOGOS — MARQUEE ══════ -->
+  {featuredPartners.length > 0 && (
+    <section class="partner-marquee" aria-label="Featured partner logos">
+      <div class="partner-marquee-label">Our Partner Network</div>
+      <div class="partner-marquee-track" aria-hidden="true">
+        {[...featuredPartners, ...featuredPartners].map(p => (
+          <div class="partner-marquee-logo">
+            {p.data.website ? (
+              <a href={p.data.website} target="_blank" rel="noopener noreferrer" aria-label={p.data.name}>
+                <img src={cfRaw(p.data.logo, 'w=280,h=80,fit=contain')} alt={p.data.name} width="140" height="40" loading="lazy" decoding="async" />
+              </a>
+            ) : (
+              <img src={cfRaw(p.data.logo, 'w=280,h=80,fit=contain')} alt={p.data.name} width="140" height="40" loading="lazy" decoding="async" />
+            )}
+          </div>
+        ))}
+      </div>
+    </section>
+  )}
+
+  <!-- ══════ ALL PARTNERS GRID ══════ -->
+  <section class="all-partners" id="all" aria-labelledby="all-heading">
+    <div class="all-partners-inner">
+      <div class="all-partners-header" data-reveal>
+        <div class="section-label">All Partners</div>
+        <h2 id="all-heading">Every partner who has helped build <em class="highlight">dreams</em></h2>
+        <p class="all-partners-subtitle">{allPartners.length}+ organizations and individuals who have donated time, materials, or funding to SOARD since 2012.</p>
+      </div>
+      <div class="all-partners-grid" data-reveal data-delay="1">
+        {sortedPartners.map(p => (
+          <div class="ap-card">
+            <div class="ap-logo">
+              <img src={cfRaw(p.data.logo, 'w=200,h=80,fit=contain')} alt={p.data.name} width="100" height="40" loading="lazy" decoding="async" />
+            </div>
+            <span class="ap-name">{p.data.name}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════ BECOME A PARTNER CTA ══════ -->
+  <section class="partners-cta" aria-labelledby="cta-heading">
+    <div class="partners-cta-inner">
+      <div class="partners-cta-content" data-reveal>
+        <div class="section-label section-label--yellow">Get Involved</div>
+        <h2 id="cta-heading">Want to join this incredible community of <em>partners</em>?</h2>
+        <p>Whether you're a contractor, designer, brand, or individual — there's a place for you. Every contribution, big or small, helps build a dream room for a child who needs it most.</p>
+        <div class="partners-cta-btns">
+          <a href="mailto:info@soardcharity.com" class="btn btn-primary btn-glow">Become a Partner →</a>
+          <a href="/donate" class="btn btn-dark">Donate Today →</a>
+        </div>
+        <p class="partners-cta-note">501(c)(3) · EIN 45-4773997 · All donations tax-deductible</p>
+      </div>
+    </div>
+  </section>
+
+</BaseLayout>
+
+<style>
+  /* ══════════════════════════════════════════
+     HERO
+     ══════════════════════════════════════════ */
+  .partners-hero {
+    background: var(--c-cream);
+    padding-block: var(--space-2xl) 0;
+    text-align: center;
+  }
+
+  .partners-hero .container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .partners-hero__label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--c-text-muted);
+    margin-bottom: var(--space-md);
+  }
+
+  .partners-hero__title {
+    color: var(--c-text);
+    font-size: clamp(2rem, 5vw, 3.125rem);
+    font-weight: 400;
+    letter-spacing: -0.025em;
+    line-height: 1.15;
+    max-width: 700px;
+    margin-inline: auto;
+  }
+
+  .partners-hero__title :global(em) {
+    font-style: italic;
+  }
+
+  .partners-hero__subtitle {
+    margin-top: var(--space-sm);
+    font-family: var(--font-display);
+    font-style: italic;
+    font-size: clamp(0.95rem, 1.8vw, 1.065rem);
+    line-height: 1.6;
+    color: var(--c-text-muted);
+    max-width: 600px;
+    margin-inline: auto;
+  }
+
+  .partners-hero__rule {
+    position: relative;
+    height: 2px;
+    background: var(--c-border);
+    margin-top: var(--space-lg);
+    width: 100%;
+  }
+
+  .partners-hero__rule-accent {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    top: -1px;
+    width: 48px;
+    height: 3px;
+    background: var(--c-yellow);
+    border-radius: 1px;
+  }
+
+  .highlight {
+    font-style: italic;
+    background-image: linear-gradient(transparent 55%, var(--c-yellow-soft) 55%);
+    background-repeat: no-repeat;
+    background-size: 100% 100%;
+    padding: 0 0.1em;
+  }
+
+  /* ══════════════════════════════════════════
+     IMPACT RIBBON
+     ══════════════════════════════════════════ */
+  .partners-ribbon {
+    background: var(--c-dark);
+    padding-block: var(--space-xl);
+  }
+
+  .partners-ribbon-inner {
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding-inline: var(--space-lg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2xl);
+    flex-wrap: wrap;
+  }
+
+  .partners-ribbon-stat {
+    text-align: center;
+    min-width: 120px;
+  }
+
+  .partners-ribbon-num {
+    display: block;
+    font-family: var(--font-display);
+    font-size: clamp(1.75rem, 3vw, 2.5rem);
+    font-weight: 700;
+    color: var(--c-white);
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+  }
+
+  .partners-ribbon-pct {
+    font-size: 0.6em;
+    vertical-align: super;
+    opacity: 0.7;
+  }
+
+  .partners-ribbon-label {
+    display: block;
+    font-size: 0.75rem;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.55);
+    margin-top: 6px;
+  }
+
+  .partners-ribbon-divider {
+    width: 1px;
+    height: 40px;
+    background: rgba(255, 255, 255, 0.12);
+  }
+
+  @media (max-width: 600px) {
+    .partners-ribbon-inner {
+      gap: var(--space-lg) var(--space-xl);
+    }
+    .partners-ribbon-divider {
+      display: none;
+    }
+    .partners-ribbon-stat {
+      flex: 0 0 calc(50% - var(--space-lg));
+    }
+  }
+
+  /* ══════════════════════════════════════════
+     SHARED SECTION HELPERS
+     ══════════════════════════════════════════ */
+  .section-label {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--c-accent);
+    margin-bottom: 20px;
+  }
+  .section-label::before {
+    content: '';
+    width: 28px;
+    height: 2px;
+    background: currentColor;
+    flex-shrink: 0;
+  }
+  .section-label--yellow { color: var(--c-yellow); }
+
+  h2 :global(em:not(.highlight)) {
+    font-style: italic;
+    color: var(--c-yellow);
+  }
+
+  /* ══════════════════════════════════════════
+     MONETARY SPONSORS ($10K+)
+     ══════════════════════════════════════════ */
+  .sponsors {
+    background: var(--c-cream);
+    padding-block: var(--space-4xl);
+  }
+
+  .sponsors-inner {
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding-inline: var(--space-lg);
+  }
+
+  .sponsors-header {
+    max-width: 640px;
+    margin-bottom: var(--space-2xl);
+  }
+
+  .sponsors-header h2 {
+    font-size: clamp(1.625rem, 3vw + 0.5rem, 2.5rem);
+    letter-spacing: -0.01em;
+    line-height: 1.2;
+    margin-bottom: var(--space-md);
+  }
+
+  .sponsors-subtitle {
+    font-size: clamp(0.95rem, 1.5vw, 1.065rem);
+    line-height: 1.65;
+    color: var(--c-text-muted);
+  }
+
+  .sponsors-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 12px;
+  }
+
+  .sponsor-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 24px 18px;
+    background: var(--c-white);
+    border: 1px solid var(--c-border);
+    border-radius: var(--border-radius);
+    transition: all var(--transition-base);
+    text-align: center;
+    min-height: 120px;
+  }
+
+  .sponsor-card:hover {
+    border-color: var(--c-yellow);
+    box-shadow: 0 4px 20px rgba(255, 218, 36, 0.12);
+    transform: translateY(-2px);
+  }
+
+  .sponsor-logo {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 48px;
+  }
+
+  .sponsor-logo img {
+    max-height: 48px;
+    width: auto;
+    object-fit: contain;
+  }
+
+  .sponsor-icon {
+    flex-shrink: 0;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--c-yellow);
+  }
+
+  .sponsor-icon svg {
+    width: 22px;
+    height: 22px;
+    fill: var(--c-yellow);
+    stroke: var(--c-yellow);
+    opacity: 0.5;
+  }
+
+  .sponsor-name {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--c-text-muted);
+    line-height: 1.3;
+  }
+
+  @media (max-width: 480px) {
+    .sponsors-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  /* ══════════════════════════════════════════
+     IN-KIND CHAMPIONS
+     ══════════════════════════════════════════ */
+  .champions {
+    background: var(--c-dark);
+    color: var(--c-white);
+    padding-block: var(--space-4xl);
+  }
+
+  .champions-inner {
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding-inline: var(--space-lg);
+  }
+
+  .champions-header {
+    max-width: 640px;
+    margin-bottom: var(--space-2xl);
+  }
+
+  .champions-header h2 {
+    color: var(--c-white);
+    font-size: clamp(1.625rem, 3vw + 0.5rem, 2.5rem);
+    letter-spacing: -0.01em;
+    line-height: 1.2;
+    margin-bottom: var(--space-md);
+  }
+
+  .champions-subtitle {
+    font-size: clamp(0.95rem, 1.5vw, 1.065rem);
+    line-height: 1.65;
+    color: rgba(255, 255, 255, 0.6);
+  }
+
+  .champions-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 10px;
+  }
+
+  .champion-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 22px 16px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: var(--border-radius);
+    transition: all var(--transition-base);
+    text-align: center;
+    min-height: 110px;
+  }
+
+  .champion-card:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: var(--c-yellow);
+    transform: translateY(-2px);
+  }
+
+  .champion-logo {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 40px;
+  }
+
+  .champion-logo img {
+    max-height: 40px;
+    width: auto;
+    object-fit: contain;
+    filter: brightness(0) invert(1);
+    opacity: 0.75;
+    transition: opacity var(--transition-base);
+  }
+
+  .champion-card:hover .champion-logo img {
+    opacity: 1;
+  }
+
+  .champion-initial {
+    flex-shrink: 0;
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-display);
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--c-dark);
+    background: var(--c-yellow);
+    border-radius: 50%;
+    opacity: 0.6;
+  }
+
+  .champion-name {
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.65);
+    line-height: 1.3;
+  }
+
+  @media (max-width: 480px) {
+    .champions-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  /* ══════════════════════════════════════════
+     PARTNER MARQUEE
+     ══════════════════════════════════════════ */
+  .partner-marquee {
+    background: var(--c-warm-gray);
+    padding-block: var(--space-2xl);
+    overflow: hidden;
+  }
+
+  .partner-marquee-label {
+    text-align: center;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--c-text-light);
+    margin-bottom: var(--space-lg);
+  }
+
+  .partner-marquee-track {
+    display: flex;
+    gap: var(--space-2xl);
+    width: max-content;
+    animation: marquee 40s linear infinite;
+  }
+
+  .partner-marquee-logo {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 140px;
+  }
+
+  .partner-marquee-logo img {
+    filter: grayscale(1) opacity(0.5);
+    transition: filter var(--transition-base);
+    object-fit: contain;
+  }
+
+  .partner-marquee-logo:hover img {
+    filter: grayscale(0) opacity(1);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .partner-marquee-track {
+      animation: none;
+      flex-wrap: wrap;
+      justify-content: center;
+      width: auto;
+    }
+  }
+
+  /* ══════════════════════════════════════════
+     ALL PARTNERS GRID
+     ══════════════════════════════════════════ */
+  .all-partners {
+    background: var(--c-cream);
+    padding-block: var(--space-4xl);
+  }
+
+  .all-partners-inner {
+    max-width: var(--max-width-wide);
+    margin: 0 auto;
+    padding-inline: var(--space-lg);
+  }
+
+  .all-partners-header {
+    max-width: 640px;
+    margin-bottom: var(--space-2xl);
+  }
+
+  .all-partners-header h2 {
+    font-size: clamp(1.625rem, 3vw + 0.5rem, 2.5rem);
+    letter-spacing: -0.01em;
+    line-height: 1.2;
+    margin-bottom: var(--space-md);
+  }
+
+  .all-partners-subtitle {
+    font-size: clamp(0.95rem, 1.5vw, 1.065rem);
+    line-height: 1.65;
+    color: var(--c-text-muted);
+  }
+
+  .all-partners-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 10px;
+  }
+
+  .ap-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 20px 16px;
+    background: var(--c-white);
+    border: 1px solid var(--c-border);
+    border-radius: var(--border-radius);
+    text-align: center;
+    transition: all var(--transition-base);
+    min-height: 100px;
+  }
+
+  .ap-card:hover {
+    border-color: var(--c-yellow);
+    box-shadow: 0 4px 16px rgba(255, 218, 36, 0.1);
+    transform: translateY(-2px);
+  }
+
+  .ap-logo {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 40px;
+  }
+
+  .ap-logo img {
+    max-height: 40px;
+    width: auto;
+    object-fit: contain;
+    filter: grayscale(0.3);
+    transition: filter var(--transition-base);
+  }
+
+  .ap-card:hover .ap-logo img {
+    filter: grayscale(0);
+  }
+
+  .ap-name {
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--c-text-muted);
+    line-height: 1.3;
+  }
+
+  @media (max-width: 600px) {
+    .all-partners-grid {
+      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+      gap: 8px;
+    }
+    .ap-card {
+      padding: 14px 10px;
+      min-height: 80px;
+    }
+  }
+
+  /* ══════════════════════════════════════════
+     BECOME A PARTNER CTA
+     ══════════════════════════════════════════ */
+  .partners-cta {
+    background: var(--c-yellow);
+    padding-block: var(--space-4xl);
+  }
+
+  .partners-cta-inner {
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding-inline: var(--space-lg);
+    text-align: center;
+  }
+
+  .partners-cta-content {
+    max-width: 640px;
+    margin: 0 auto;
+  }
+
+  .partners-cta .section-label {
+    justify-content: center;
+    color: var(--c-dark);
+  }
+  .partners-cta .section-label::before {
+    background: var(--c-dark);
+  }
+
+  .partners-cta h2 {
+    font-size: clamp(1.625rem, 3vw + 0.5rem, 2.5rem);
+    letter-spacing: -0.01em;
+    line-height: 1.2;
+    margin-bottom: var(--space-md);
+    color: var(--c-dark);
+  }
+
+  .partners-cta h2 :global(em) {
+    font-style: italic;
+    color: var(--c-dark);
+  }
+
+  .partners-cta p {
+    font-size: clamp(0.95rem, 1.5vw, 1.065rem);
+    line-height: 1.65;
+    color: var(--c-dark);
+    opacity: 0.8;
+  }
+
+  .partners-cta-btns {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    flex-wrap: wrap;
+    margin-top: var(--space-xl);
+  }
+
+  .btn-glow {
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  }
+  .btn-glow:hover {
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.2);
+  }
+
+  .partners-cta .btn-primary {
+    background: var(--c-dark);
+    color: var(--c-white);
+  }
+  .partners-cta .btn-primary:hover {
+    background: var(--c-dark-deep);
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);
+  }
+
+  .partners-cta .btn-dark {
+    background: var(--c-white);
+    color: var(--c-dark);
+  }
+  .partners-cta .btn-dark:hover {
+    background: var(--c-cream);
+  }
+
+  .partners-cta-note {
+    margin-top: var(--space-xl);
+    font-size: 0.8125rem;
+    font-weight: 500;
+    opacity: 0.5 !important;
+    letter-spacing: 0.04em;
+  }
+
+  /* ══════════════════════════════════════════
+     MOBILE REFINEMENTS
+     ══════════════════════════════════════════ */
+  @media (max-width: 768px) {
+    .partners-hero {
+      padding-block: var(--space-xl) 0;
+    }
+
+    .sponsors,
+    .champions,
+    .all-partners,
+    .partners-cta {
+      padding-block: var(--space-2xl);
+    }
+
+    .sponsors-header,
+    .champions-header,
+    .all-partners-header {
+      margin-bottom: var(--space-xl);
+    }
+
+    .partners-cta-btns {
+      flex-direction: column;
+    }
+
+    .partners-cta-btns .btn {
+      width: 100%;
+      justify-content: center;
+    }
+  }
+
+  /* ══════════════════════════════════════════
+     TOUCH DEVICES
+     ══════════════════════════════════════════ */
+  @media (hover: none) and (pointer: coarse) {
+    .sponsor-card:hover,
+    .champion-card:hover,
+    .ap-card:hover {
+      transform: none;
+    }
+  }
+</style>

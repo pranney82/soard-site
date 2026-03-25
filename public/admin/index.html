@@ -1785,6 +1785,7 @@
     import { h, render, Component } from 'https://esm.sh/preact@10.25.4';
     import { useState, useEffect, useCallback, useRef, useMemo } from 'https://esm.sh/preact@10.25.4/hooks';
     import htm from 'https://esm.sh/htm@3.1.1';
+    import * as tus from 'https://esm.sh/tus-js-client@4.3.1';
     const html = htm.bind(h);
 
     // ─── SVG Icons ───────────────────────────
@@ -1878,12 +1879,33 @@
         const r = await fetch('/api/upload-file', { method: 'POST', body: form });
         return r.json();
       },
-      async uploadVideo(file, name) {
-        const form = new FormData();
-        form.append('file', file);
-        if (name) form.append('name', name);
-        const r = await fetch('/api/upload-video', { method: 'POST', body: form });
-        return r.json();
+      async uploadVideo(file, name, { onProgress } = {}) {
+        // Step 1: Get a direct creator upload URL from our backend
+        const r = await fetch('/api/upload-video', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, fileSize: file.size }),
+        });
+        const data = await r.json();
+        if (!data.success) throw new Error(data.error || 'Failed to get upload URL');
+
+        // Step 2: Upload directly to Cloudflare Stream via TUS (resumable)
+        return new Promise((resolve, reject) => {
+          const upload = new tus.Upload(file, {
+            uploadUrl: data.uploadUrl,
+            chunkSize: 50 * 1024 * 1024, // 50 MB chunks
+            retryDelays: [0, 1000, 3000, 5000, 10000],
+            metadata: { filename: file.name, filetype: file.type },
+            onError(err) { reject(err); },
+            onProgress(bytesUploaded, bytesTotal) {
+              if (onProgress) onProgress(Math.round((bytesUploaded / bytesTotal) * 100));
+            },
+            onSuccess() {
+              resolve({ success: true, videoId: data.videoId });
+            },
+          });
+          upload.start();
+        });
       },
       async generate(type, kid) {
         const r = await fetch('/api/generate', {
@@ -2812,7 +2834,7 @@
           const fileRes = await api.readContent(`src/content/kids/${slug}.json`);
           if (!fileRes.success) { addToast?.('Could not load file', 'error'); setInlineEdit(null); return; }
           const content = typeof fileRes.content === 'string' ? JSON.parse(fileRes.content) : fileRes.content;
-          content[field] = field === 'year' || field === 'age' ? Number(value) || null : value;
+          content[field] = field === 'year' ? Number(value) || null : field === 'age' ? (String(value).includes(',') ? String(value).split(',').map(s => Number(s.trim())).filter(n => !isNaN(n) && n > 0) : Number(value) || null) : value;
           const res = await api.saveContent(`src/content/kids/${slug}.json`, JSON.stringify(content, null, 2), `Quick edit ${field}: ${content.name}`, fileRes.sha);
           if (res.success) { addToast?.(`Updated ${field}`, 'success'); logActivity('updated', 'kid', content.name); onReload?.(); }
           else addToast?.(`Save failed: ${res.error}`, 'error');
@@ -2860,7 +2882,7 @@
               <th></th>
               <${SortHeader} field="name">Name<//>
               <th style="width: 32px;" title="Completeness"></th>
-              <${SortHeader} field="age">Age<//>
+              <${SortHeader} field="age">Age(s)<//>
               <th>Diagnosis</th>
               <${SortHeader} field="year">Year<//>
               <${SortHeader} field="status">Status<//>
@@ -2874,8 +2896,8 @@
                 actionLabel=${search ? null : 'Add Kid'} onAction=${onAdd} /></td></tr>` : null}
               ${sorted.map(k => {
                 const pct = getCompleteness(k);
-                return html`<tr key=${k.slug} style="${selected.has(k.slug) ? 'background: rgba(255,213,0,0.06);' : ''}">
-                  <td><input type="checkbox" checked=${selected.has(k.slug)}
+                return html`<tr key=${k.slug} onClick=${() => onEdit(k.slug)} style="cursor: pointer; ${selected.has(k.slug) ? 'background: rgba(255,213,0,0.06);' : ''}">
+                  <td onClick=${e => e.stopPropagation()}><input type="checkbox" checked=${selected.has(k.slug)}
                     onChange=${() => toggleSelect(k.slug)} style="width: 16px; height: 16px; accent-color: #FFD500;" /></td>
                   <td><button class="fav-btn ${favs.includes('kid:' + k.slug) ? 'is-fav' : ''}"
                     onClick=${(e) => { e.stopPropagation(); handleToggleFav(k.slug); }}
@@ -2894,7 +2916,7 @@
                     ${k.featured ? html` <span class="badge" style="background: #FFDA24; color: #373A36; font-size: 0.65rem; padding: 1px 6px; margin-left: 4px;">★</span>` : ''}
                   </td>
                   <td><${CompletenessRing} pct=${pct} /></td>
-                  <td>${k.age || '—'}</td>
+                  <td>${Array.isArray(k.age) ? k.age.join(', ') : (k.age || '—')}</td>
                   <td class="text-sm">${(k.diagnosis || '—').slice(0, 50)}${(k.diagnosis || '').length > 50 ? '…' : ''}</td>
                   <td>
                     ${inlineEdit?.slug === k.slug && inlineEdit?.field === 'year'
@@ -2908,7 +2930,6 @@
                   <td><span class="badge ${k.status === 'completed' ? 'badge-green' : 'badge-yellow'}">${k.status}</span>${k.publishStatus === 'draft' ? html` <span class="draft-badge-draft" style="font-size: 0.65rem;">Draft</span>` : ''}</td>
                   <td>${k.photoCount || 0}</td>
                   <td style="white-space: nowrap;">
-                    <button class="btn btn-ghost btn-sm" onClick=${() => onEdit(k.slug)}>Edit</button>
                     <button class="btn btn-ghost btn-sm" style="color: #E53E3E;" onClick=${(e) => { e.stopPropagation(); onDelete(k); }}>Delete</button>
                   </td>
                 </tr>`;
@@ -2943,6 +2964,7 @@
       });
       const [uploading, setUploading] = useState({});
       const [videoUploading, setVideoUploading] = useState(false);
+      const [videoProgress, setVideoProgress] = useState(0);
       const [generatingSeo, setGeneratingSeo] = useState(false);
       const [generatingAlt, setGeneratingAlt] = useState(false);
       const [showCsImagePicker, setShowCsImagePicker] = useState(false);
@@ -3231,19 +3253,19 @@
         const file = files[0];
         if (!file) return;
         setVideoUploading(true);
+        setVideoProgress(0);
         try {
           const videoName = data.name ? `${data.name} - Room Reveal` : file.name;
-          const res = await api.uploadVideo(file, videoName);
-          if (res.success) {
-            updateField('streamVideoId', res.videoId);
-            addToast('Video uploaded to Stream! It may take a few minutes to process.', 'success');
-          } else {
-            addToast(`Video upload failed: ${res.error}`, 'error');
-          }
+          const res = await api.uploadVideo(file, videoName, {
+            onProgress: (pct) => setVideoProgress(pct),
+          });
+          updateField('streamVideoId', res.videoId);
+          addToast('Video uploaded to Stream! It may take a few minutes to process.', 'success');
         } catch (err) {
-          addToast(`Video upload error: ${err.message}`, 'error');
+          addToast(`Video upload failed: ${err.message}`, 'error');
         }
         setVideoUploading(false);
+        setVideoProgress(0);
       };
 
       const removeVideo = () => {
@@ -3263,7 +3285,7 @@
           const saveData = {
             ...data,
             publishStatus: asDraft ? 'draft' : 'published',
-            age: data.age ? Number(data.age) : null,
+            age: data.age ? (String(data.age).includes(',') ? String(data.age).split(',').map(s => Number(s.trim())).filter(n => !isNaN(n) && n > 0) : Number(data.age) || null) : null,
             year: data.year ? Number(data.year) : null,
             streamVideoId: data.streamVideoId || null,
             videoUrl: data.videoUrl || null,
@@ -3426,9 +3448,9 @@
           </div>
           <div class="form-row">
             <div class="form-group">
-              <label class="form-label">Age</label>
-              <input class="form-input" type="number" value=${data.age || ''}
-                onInput=${e => updateField('age', e.target.value)} placeholder="e.g., 10" />
+              <label class="form-label">Age(s)</label>
+              <input class="form-input" type="text" value=${Array.isArray(data.age) ? data.age.join(', ') : (data.age || '')}
+                onInput=${e => updateField('age', e.target.value)} placeholder="e.g., 10 or 7, 9, 12" />
             </div>
             <div class="form-group">
               <label class="form-label">Year</label>
@@ -3506,9 +3528,19 @@
               <${DropZone} onFiles=${handleVideoUpload} multiple=${false} accept="video/*" label="MP4, MOV, WebM — upload reveal video" />
             `}
             ${videoUploading ? html`
-              <div style="display: flex; align-items: center; gap: 0.5rem; margin-top: 0.5rem; padding: 0.5rem 0.75rem; background: rgba(255,213,0,0.1); border-radius: 6px;">
-                <span class="spinner" />
-                <span style="font-size: 0.85rem;">Uploading video to Cloudflare Stream...</span>
+              <div style="margin-top: 0.5rem; padding: 0.75rem; background: rgba(255,213,0,0.1); border-radius: 8px;">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.4rem;">
+                  <span style="font-size: 0.85rem; font-weight: 600;">
+                    ${videoProgress < 100 ? 'Uploading video...' : 'Finalising...'}
+                  </span>
+                  <span style="font-size: 0.8rem; color: rgba(0,0,0,0.45);">${videoProgress}%</span>
+                </div>
+                <div style="height: 6px; background: rgba(0,0,0,0.08); border-radius: 3px; overflow: hidden;">
+                  <div style="height: 100%; width: ${videoProgress}%; background: var(--color-primary); border-radius: 3px; transition: width 0.3s ease;" />
+                </div>
+                <div style="font-size: 0.75rem; color: rgba(0,0,0,0.35); margin-top: 0.3rem;">
+                  Resumable upload — you can close and re-open without losing progress
+                </div>
               </div>
             ` : null}
             <small style="color: rgba(0,0,0,0.45); margin-top: 0.25rem; display: block;">Uploaded videos play on your site with no ads. Best performance for donors.</small>
@@ -3837,7 +3869,7 @@
                 ` : html`<div style="padding-top: 56.25%; background: #f5f5f5;"></div>`}
                 <div style="padding: ${previewDevice === 'mobile' ? '1rem' : '1.5rem'};">
                   <h2 style="margin: 0 0 0.25rem 0; font-size: ${previewDevice === 'mobile' ? '1.3rem' : '1.6rem'};">${data.name}</h2>
-                  ${data.age ? html`<p style="color: #6B6C72; margin: 0 0 0.5rem 0;">Age ${data.age}${data.year ? ` · Class of ${data.year}` : ''}</p>` : null}
+                  ${data.age ? html`<p style="color: #6B6C72; margin: 0 0 0.5rem 0;">${Array.isArray(data.age) && data.age.length > 1 ? 'Ages' : 'Age'} ${Array.isArray(data.age) ? data.age.join(', ') : data.age}${data.year ? ` · Class of ${data.year}` : ''}</p>` : null}
                   ${data.shortDescription ? html`<p style="color: #6B6C72; font-style: italic; margin: 0 0 1rem 0;">${data.shortDescription}</p>` : null}
                   ${data.bio ? html`<div style="line-height: 1.6;" dangerouslySetInnerHTML=${{ __html: data.bio }}></div>` : null}
                   ${data.photos?.length > 1 ? html`
@@ -3896,9 +3928,9 @@
         </div>
         <div class="card">
           <div class="table-wrap"><table>
-            <thead><tr><th></th><th>Name</th><th>Tier</th><th>Featured</th><th></th></tr></thead>
+            <thead><tr><th></th><th>Name</th><th>Tier</th><th>Featured</th><th>Order</th><th></th></tr></thead>
             <tbody>
-              ${filtered.length === 0 ? html`<tr><td colspan="5"><${EmptyState}
+              ${filtered.length === 0 ? html`<tr><td colspan="6"><${EmptyState}
                 icon="🤝" title=${search ? 'No partners match your search' : 'No partners yet'}
                 description=${search ? 'Try a different search term.' : 'Add your first partner organization.'}
                 actionLabel=${search ? null : 'Add Partner'} onAction=${onAdd} /></td></tr>` : null}
@@ -3907,6 +3939,7 @@
                 <td><strong>${p.name}</strong><span class="team-title-sub text-sm" style="display: none; color: var(--color-text-secondary);">${p.tier}</span></td>
                 <td class="td-hide-mobile"><span class="badge badge-accent">${p.tier}</span></td>
                 <td class="td-hide-mobile">${p.featured ? icons.check : '—'}</td>
+                <td class="td-hide-mobile">${p.order || 0}</td>
                 <td style="white-space: nowrap;">
                   <button class="btn btn-ghost btn-sm" onClick=${() => onEdit(p.slug)}>Edit</button>
                   <button class="btn btn-ghost btn-sm" style="color: #E53E3E;" onClick=${(e) => { e.stopPropagation(); onDelete(p); }}>Delete</button>
@@ -3932,7 +3965,7 @@
       const [uploading, setUploading] = useState(false);
       const [data, setData] = useState({
         name: '', slug: '', logo: '', website: '',
-        tier: 'construction', featured: false,
+        tier: 'construction', featured: false, order: 0,
       });
 
       // Warn on browser close/refresh with unsaved changes
@@ -4096,6 +4129,12 @@
                 Featured partner
               </label>
             </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Display Order</label>
+            <input class="form-input" type="number" value=${data.order || 0}
+              onInput=${e => updateField('order', parseInt(e.target.value) || 0)} />
+            <p class="text-sm text-muted mt-1">Lower numbers appear first. Partners with the same order are sorted alphabetically.</p>
           </div>
         </div>
         <div class="card">
@@ -5075,6 +5114,7 @@
       const [showImagePicker, setShowImagePicker] = useState(false);
       const [imagePickerTarget, setImagePickerTarget] = useState(null);
       const [videoUploading, setVideoUploading] = useState(false);
+      const [videoProgress, setVideoProgress] = useState(0);
       const [uploading, setUploading] = useState({});
       const [imageUploading, setImageUploading] = useState(false);
       const [data, setData] = useState({
@@ -5142,19 +5182,19 @@
         const file = files[0];
         if (!file) return;
         setVideoUploading(true);
+        setVideoProgress(0);
         try {
           const videoName = data.title ? `${data.title} - Event` : file.name;
-          const res = await api.uploadVideo(file, videoName);
-          if (res.success) {
-            update('streamVideoId', res.videoId);
-            addToast('Video uploaded to Stream! It may take a few minutes to process.', 'success');
-          } else {
-            addToast(`Video upload failed: ${res.error}`, 'error');
-          }
+          const res = await api.uploadVideo(file, videoName, {
+            onProgress: (pct) => setVideoProgress(pct),
+          });
+          update('streamVideoId', res.videoId);
+          addToast('Video uploaded to Stream! It may take a few minutes to process.', 'success');
         } catch (err) {
-          addToast(`Video upload error: ${err.message}`, 'error');
+          addToast(`Video upload failed: ${err.message}`, 'error');
         }
         setVideoUploading(false);
+        setVideoProgress(0);
       };
 
       const removeVideo = () => {
@@ -5397,9 +5437,19 @@
               <${DropZone} onFiles=${handleVideoUpload} multiple=${false} accept="video/*" label="MP4, MOV, WebM — upload event video" />
             `}
             ${videoUploading ? html`
-              <div style="display: flex; align-items: center; gap: 0.5rem; margin-top: 0.5rem; padding: 0.5rem 0.75rem; background: rgba(255,218,36,0.12); border-radius: 6px;">
-                <span class="spinner" />
-                <span style="font-size: 0.85rem;">Uploading video to Cloudflare Stream...</span>
+              <div style="margin-top: 0.5rem; padding: 0.75rem; background: rgba(255,218,36,0.1); border-radius: 8px;">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.4rem;">
+                  <span style="font-size: 0.85rem; font-weight: 600;">
+                    ${videoProgress < 100 ? 'Uploading video...' : 'Finalising...'}
+                  </span>
+                  <span style="font-size: 0.8rem; color: rgba(0,0,0,0.45);">${videoProgress}%</span>
+                </div>
+                <div style="height: 6px; background: rgba(0,0,0,0.08); border-radius: 3px; overflow: hidden;">
+                  <div style="height: 100%; width: ${videoProgress}%; background: var(--color-primary); border-radius: 3px; transition: width 0.3s ease;" />
+                </div>
+                <div style="font-size: 0.75rem; color: rgba(0,0,0,0.35); margin-top: 0.3rem;">
+                  Resumable upload — you can close and re-open without losing progress
+                </div>
               </div>
             ` : null}
             <span class="form-hint" style="display: block; margin-top: 0.5rem;">Uploaded videos play on your site with no ads.</span>
@@ -7408,12 +7458,6 @@
                 placeholder="Amari" onInput=${e => updateField('donatePhotos.storyKidName', e.target.value)} />
             </div>
           </div>
-          <div class="form-group">
-            <label class="form-label">Story Kid Slug</label>
-            <input class="form-input" value=${data.donatePhotos?.storyKidSlug || ''}
-              placeholder="amari" onInput=${e => updateField('donatePhotos.storyKidSlug', e.target.value)} />
-            <p class="text-sm text-muted" style="margin-top: 0.25rem;">Used for the "Read Full Story" link on the donate page.</p>
-          </div>
         </div>
 
         <div class="editor-save-footer">
@@ -8459,7 +8503,7 @@
           const partRes = await api.bulkListContent('src/content/partners');
           if (partRes.success) {
             setPartners(partRes.items.map(i => i.content).filter(Boolean)
-              .sort((a, b) => a.name.localeCompare(b.name)));
+              .sort((a, b) => (a.order || 0) - (b.order || 0) || a.name.localeCompare(b.name)));
           }
 
           // Load team (bulk — one API call)
@@ -8507,6 +8551,19 @@
       };
 
       useEffect(() => { loadData(); }, []);
+
+      // Poll the deploy queue so the last edit in a session always gets deployed.
+      // Runs every 30 s while the tab is visible; pauses when hidden to save resources.
+      useEffect(() => {
+        let timer = null;
+        const poll = () => fetch('/api/flush-deploy').catch(() => {});
+        const start = () => { if (!timer) timer = setInterval(poll, 30000); };
+        const stop = () => { clearInterval(timer); timer = null; };
+        const onVis = () => document.hidden ? stop() : start();
+        document.addEventListener('visibilitychange', onVis);
+        start();
+        return () => { stop(); document.removeEventListener('visibilitychange', onVis); };
+      }, []);
 
       // Global keyboard shortcuts
       useEffect(() => {

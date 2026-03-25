@@ -10,11 +10,12 @@
   "status": "in-progress",
   "bio": "Declan, lovingly known as Dex, was adopted at birth by his incredible parents, who learned just two weeks before he was born that he has Down syndrome. Dex also has autism, and as he prepares to enter high school, his parents are focused on helping him build important life skills and grow in independence. One meaningful step in that journey is creating a bedroom of his own, separate from his nine-year-old brother, Gus, where he can develop routines and responsibilities that will serve him well into adulthood.\n\nDex is full of personality and joy. He often wakes up in the middle of the night, ready to play and explore, so a room tailored specifically to his needs will allow him to do so safely, while also giving his family the rest they need. He also has big dreams and proudly says he wants to become a teacher one day. He enjoys practicing lessons in front of the mirror, and his new space will include one where he can continue building confidence, imagination, and communication skills.\n\nThis renovation will provide Dex with more than just a bedroom, it will give him a safe, supportive environment designed to nurture his independence, routines, and dreams.",
   "quote": null,
-  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/dex/hero/public",
+  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/dex/1774378077962-Dex.jpeg/public",
   "photos": [
     {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jackson/photo-01/public",
-      "alt": ""
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/dex/1774378077962-Dex.jpeg/public",
+      "alt": "",
+      "cfImageId": "kids/dex/1774378077962-Dex.jpeg"
     }
   ],
   "photoCount": 1,
@@ -35,5 +36,8 @@
   "metaDescription": null,
   "altTexts": null,
   "jsonLd": null,
-  "roomCount": 1
+  "roomCount": 1,
+  "publishStatus": "published",
+  "streamVideoId": null,
+  "fundraisingUrl": null
 }

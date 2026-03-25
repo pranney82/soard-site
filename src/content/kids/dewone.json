@@ -11,7 +11,7 @@
   "status": "completed",
   "bio": "Dewone was born a healthy and joyful child, but his life took a dramatic turn at a young age when he contracted bacterial meningitis. One day, he was found unresponsive and had been without oxygen for over an hour, resulting in a major stroke. This life-altering event left Dewone non-verbal, living with epilepsy, and unable to care for himself. Though he faces these challenges daily, his spirit remains bright, and he continues to inspire those around him with his resilience and joyful heart.\n\nFor Dewone's single mother, caring for him has been both a profound labor of love and an ongoing challenge. His wheelchair-bound state, his need for constant support with feeding and personal care, and the lack of an accessible bathroom have made daily routines incredibly difficult. Sunshine on a Ranney Day's renovation hopes to transform their lives by creating a home environment that allows for greater accessibility and comfort. A walk-in shower will allow Dewone's mom to bathe him without the physical strain of lifting him, and padded walls will help ensure his safety as he continues to work on maintaining his mobility.\n\nDespite his limitations, Dewone is a beacon of light to everyone he meets. His smiles are contagious, and his affection brings warmth to those around him. He loves playing with light-up toys, tossing balls, and interacting with strings that have objects attached. His love of movement, along with his mother's constant encouragement, helps him maintain as much independence as possible. This renovation will not only improve his quality of life but also open new doors for Dewone to thrive in a space that truly meets his needs.",
   "quote": "\"His love of movement, along with his mother's constant encouragement, helps him maintain as much independence as possible.\"",
-  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/dewone/hero/public",
+  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/dewone/photo-01/public",
   "photos": [
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/dewone/photo-01/public",
@@ -166,5 +166,7 @@
   "altTexts": null,
   "jsonLd": null,
   "streamVideoId": "8d26cf823028a4325e09abad13c5f1b2",
-  "roomCount": 2
+  "roomCount": 2,
+  "publishStatus": "published",
+  "fundraisingUrl": null
 }

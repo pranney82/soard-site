@@ -9,10 +9,11 @@
  *   }
  *
  * Env bindings: DB (D1)
- * Env vars: CF_PAGES_DEPLOY_HOOK (optional — triggers rebuild after delete)
+ * Env vars: CF_PAGES_DEPLOY_HOOK (optional — triggers rebuild after delete, debounced)
  */
 
 import { parsePath } from './_collections.js';
+import { recordAndFlush } from './_deploy-queue.js';
 
 export async function onRequestPost(context) {
   try {
@@ -42,13 +43,9 @@ export async function onRequestPost(context) {
         .bind(parsed.slug).run();
     }
 
-    // Trigger a Pages rebuild
+    // Queue a debounced Pages rebuild (batches rapid edits into one deploy)
     const { CF_PAGES_DEPLOY_HOOK } = context.env;
-    if (CF_PAGES_DEPLOY_HOOK) {
-      context.waitUntil(
-        fetch(CF_PAGES_DEPLOY_HOOK, { method: 'POST' }).catch(() => {})
-      );
-    }
+    await recordAndFlush(DB, CF_PAGES_DEPLOY_HOOK, context);
 
     return Response.json({ success: true });
   } catch (err) {

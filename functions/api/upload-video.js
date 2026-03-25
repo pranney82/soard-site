@@ -1,19 +1,16 @@
 /**
  * POST /api/upload-video
- * Uploads a video to Cloudflare Stream.
- * Expects multipart/form-data with:
- *   - file: the video file (MP4, MOV, MKV, WebM, etc.)
- *   - name: (optional) display name for the video
+ * Creates a Cloudflare Stream direct creator upload URL.
+ * The browser then uploads directly to Stream via TUS protocol —
+ * the video never passes through this function.
  *
- * Returns: { success, videoId, playbackUrl, thumbnailUrl }
+ * Expects JSON body: { name?, fileSize }
+ * Returns: { success, uploadUrl, videoId }
  *
  * Environment variables needed:
  *   CF_ACCOUNT_ID, CF_STREAM_TOKEN
  *
  * Note: CF_STREAM_TOKEN requires Stream:Edit permission.
- * This is separate from CF_IMAGES_TOKEN. Create an API token at:
- * https://dash.cloudflare.com/profile/api-tokens with
- * Account > Cloudflare Stream > Edit permission.
  */
 
 export async function onRequestPost(context) {
@@ -27,83 +24,56 @@ export async function onRequestPost(context) {
       );
     }
 
-    const formData = await context.request.formData();
-    const file = formData.get('file');
-    const name = formData.get('name');
+    const { name, fileSize } = await context.request.json();
 
-    if (!file) {
+    if (!fileSize || fileSize <= 0) {
       return Response.json(
-        { success: false, error: 'No file provided' },
+        { success: false, error: 'fileSize is required' },
         { status: 400 }
       );
     }
 
-    // Validate it's a video file
-    const validTypes = [
-      'video/mp4', 'video/quicktime', 'video/x-matroska',
-      'video/webm', 'video/avi', 'video/x-msvideo', 'video/mpeg',
-    ];
-    if (file.type && !validTypes.includes(file.type)) {
-      return Response.json(
-        { success: false, error: `Invalid file type: ${file.type}. Upload MP4, MOV, WebM, or MKV.` },
-        { status: 400 }
-      );
-    }
-
-    // 200 MB max for video uploads
-    if (file.size > 200 * 1024 * 1024) {
-      return Response.json(
-        { success: false, error: 'Video too large. Maximum size is 200 MB.' },
-        { status: 413 }
-      );
-    }
-
-    // Upload to Cloudflare Stream via direct upload
-    const uploadForm = new FormData();
-    uploadForm.append('file', file);
-    if (name) {
-      uploadForm.append('meta', JSON.stringify({ name }));
-    }
+    // Build TUS Upload-Metadata header (base64-encode each value per spec)
+    const metaParts = [];
+    if (name) metaParts.push(`name ${btoa(name)}`);
 
     const response = await fetch(
-      `https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/stream`,
+      `https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/stream?direct_user=true`,
       {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${CF_STREAM_TOKEN}`,
+          'Tus-Resumable': '1.0.0',
+          'Upload-Length': String(fileSize),
+          ...(metaParts.length > 0 && { 'Upload-Metadata': metaParts.join(',') }),
         },
-        body: uploadForm,
       }
     );
 
-    const result = await response.json();
-
-    if (!result.success) {
+    if (!response.ok) {
+      const text = await response.text();
+      console.error('[upload-video] Stream API error:', response.status, text);
       return Response.json(
-        { success: false, error: result.errors?.[0]?.message || 'Stream upload failed' },
-        { status: 400 }
+        { success: false, error: `Stream API error: ${response.status}` },
+        { status: 502 }
       );
     }
 
-    const videoId = result.result.uid;
-    const playbackUrl = `https://customer-${CF_ACCOUNT_ID}.cloudflarestream.com/${videoId}/iframe`;
-    const thumbnailUrl = `https://customer-${CF_ACCOUNT_ID}.cloudflarestream.com/${videoId}/thumbnails/thumbnail.jpg?width=1280&height=720`;
+    const uploadUrl = response.headers.get('location');
+    const videoId = response.headers.get('stream-media-id');
 
-    return Response.json(
-      {
-        success: true,
-        videoId,
-        playbackUrl,
-        thumbnailUrl,
-        status: result.result.status,
-        duration: result.result.duration,
-      },
-      {}
-    );
+    if (!uploadUrl || !videoId) {
+      return Response.json(
+        { success: false, error: 'Stream API did not return upload URL or video ID' },
+        { status: 502 }
+      );
+    }
+
+    return Response.json({ success: true, uploadUrl, videoId });
   } catch (err) {
-    console.error("[upload-video]", err);
+    console.error('[upload-video]', err);
     return Response.json(
-      { success: false, error: "An unexpected error occurred" },
+      { success: false, error: 'An unexpected error occurred' },
       { status: 500 }
     );
   }

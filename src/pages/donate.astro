@@ -27,7 +27,7 @@ const donateHeroPhoto = dp.hero || 'kids/oakley/hero';
 const donateHeroKidName = dp.heroKidName || 'Oakley';
 const donateStoryPhoto = dp.story || 'kids/amari/hero';
 const donateStoryKidName = dp.storyKidName || 'Amari';
-const donateStoryKidSlug = dp.storyKidSlug || 'amari';
+const donateStoryKidSlug = (dp.storyKidName || 'Amari').toLowerCase().replace(/\s+/g, '-');
 
 const donateFaqs = faqData.items
   .filter(item => {
@@ -244,7 +244,7 @@ const breadcrumbs = [
         <div class="section-label section-label--yellow">Common Questions</div>
         <h2>Everything you need to know before you <em class="highlight">give</em>.</h2>
         <p class="faq-left-body">We believe in radical transparency. If your question isn't answered here, reach out — we'd love to hear from you.</p>
-        <a href="mailto:peter@sunshineonaranneyday.com" class="btn btn-dark">Contact Us →</a>
+        <a href="mailto:info@soardcharity.com" class="btn btn-dark">Contact Us →</a>
       </div>
       <div class="faq-right" data-reveal data-delay="1">
         {donateFaqs.map((item, idx) => (

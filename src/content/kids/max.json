@@ -10,11 +10,12 @@
   "status": "in-progress",
   "bio": "Max was born with a rare genetic mutation that prevents his body from properly clearing cellular waste. Over time, this buildup damages cells throughout his body, especially in the brain, gradually affecting every system. The condition is often referred to as childhood dementia because children lose skills and abilities they once had as the disease progresses.\n\nAs a young child, Max could walk, talk, laugh, and play just like his peers. Today, Max has lost all motor skills and relies entirely on full-time care for every aspect of his daily life. He is dependent on others for mobility, communication, feeding, and comfort. As his condition continues to advance, his family adapts constantly, learning new ways to care for him, keep him comfortable, and preserve his dignity.\n\nThough the disease has changed what Max can physically do, it has not changed the love that surrounds him. His family remains committed to giving him the safest, most supportive environment possible as they navigate the challenges of this devastating diagnosis.",
   "quote": null,
-  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/max/hero/public",
+  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/max/1774379084543-Max.jpeg/public",
   "photos": [
     {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jackson/photo-01/public",
-      "alt": ""
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/max/1774379084543-Max.jpeg/public",
+      "alt": "",
+      "cfImageId": "kids/max/1774379084543-Max.jpeg"
     }
   ],
   "photoCount": 1,
@@ -35,5 +36,8 @@
   "metaDescription": null,
   "altTexts": null,
   "jsonLd": null,
-  "roomCount": 1
+  "roomCount": 1,
+  "publishStatus": "published",
+  "streamVideoId": null,
+  "fundraisingUrl": null
 }

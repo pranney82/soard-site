@@ -86,22 +86,14 @@ const nav: NavGroup[] = [
     children: [
       { label: 'Meet the Kids', href: '/kids/', desc: 'Stories of joy', icon: 'heart' },
       { label: 'Community Projects', href: '/rooms/community/', desc: 'Beyond bedrooms', icon: 'buildings' },
-    ],
-  },
-  {
-    label: 'Our Partners',
-    children: [
-      { label: 'All Partners', href: '/partners/', desc: 'Who makes it happen', icon: 'handshake' },
-      { label: 'Construction', href: '/partners/construction/', desc: 'Builders & contractors', icon: 'hammer' },
-      { label: 'Design', href: '/partners/design/', desc: 'Designers & brands', icon: 'palette' },
+      { label: 'Apply for Makeover', href: '/apply/', desc: 'Apply for a room', icon: 'clipboard' },
     ],
   },
   {
     label: 'Get Involved',
     children: [
       { label: 'Events', href: '/events/', desc: 'Upcoming gatherings', icon: 'calendar' },
-      { label: 'Donate', href: '/donate/', desc: 'Change a life today', icon: 'heart' },
-      { label: '2026 Application', href: '/apply/', desc: 'Apply for a room', icon: 'clipboard' },
+      { label: 'Partners', href: '/partners/', desc: 'Who makes it happen', icon: 'handshake' },
       { label: 'Sunny & Ranney', href: '/sunny-and-ranney/', desc: 'Shop for a cause', icon: 'store' },
     ],
   },
@@ -711,7 +703,10 @@ document.addEventListener('astro:before-swap', function () {
     pointer-events: none;
     transition: opacity 0.15s ease;
   }
-  .nav-item:nth-last-child(-n+2) .dropdown {
+  .nav-item:first-child .dropdown {
+    left: 0; transform: none;
+  }
+  .nav-item:last-child .dropdown {
     left: auto; right: 0; transform: none;
   }
   .dropdown-panel { position: relative; padding: 6px; }

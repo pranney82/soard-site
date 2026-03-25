@@ -6,7 +6,7 @@
   "roomTypes": [
     "Accessible Bathroom"
   ],
-  "year": 2025,
+  "year": 2026,
   "status": "in-progress",
   "bio": "Leland has faced significant medical challenges since before birth. His diagnosis of myelomeningocele, the most severe form of spina bifida, was made at 19 weeks gestation. At 24 weeks gestation, he underwent fetal surgery out of state. Born prematurely at 28 weeks, he spent 72 days in the NICU and was later diagnosed with hydrocephalus, GDD, bilateral paralysis of feet and ankles, and other conditions affecting his mobility and organ function.\n\nAs he grows, he continues to make progress, but daily activities will always be physically demanding. His mobility becomes especially limited when he is unable to wear his AFO braces, which makes bathroom routines much more challenging and increases his need for support. These needs are expected to continue as he gets older, making consistent assistance important for his safety, comfort, and independence.",
   "quote": null,
@@ -33,6 +33,10 @@
       "alt": ""
     },
     {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/leland/photo-11/public",
+      "alt": ""
+    },
+    {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/leland/photo-06/public",
       "alt": ""
     },
@@ -51,25 +55,9 @@
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/leland/photo-10/public",
       "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/leland/photo-11/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/josue/photo-09/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/leland/photo-13/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/leland/photo-14/public",
-      "alt": ""
     }
   ],
-  "photoCount": 14,
+  "photoCount": 11,
   "videoUrl": null,
   "photographer": "Nicole Wood",
   "partnerLogos": [
@@ -80,15 +68,63 @@
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/kids-r-kids/public"
     },
     {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/cr-construction/public"
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/nicole-photography/public"
     },
     {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/nicole-photography/public"
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/myfifident/1774385338564/public",
+      "name": "Myfifident"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/sherwin-williams/public",
+      "name": "Sherwin-Williams"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/randall-brothers/public",
+      "name": "Randall Brothers"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/msi/public",
+      "name": "Msi"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/cambria-black/public",
+      "name": "Cambria"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/pulleyassociates/public",
+      "name": "Pulley & Associates"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/top-knobs/public",
+      "name": "Top Knobs"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/nicole-west-interiors/public",
+      "name": "Nicole West Interiors"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/wyp/public",
+      "name": "WYP Construction"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/therapy-gyms/1774382179878/public",
+      "name": "Therapy Gyms"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/real-floors-commercial/public",
+      "name": "Real Floors Commercial"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/construction-resources/public",
+      "name": "Construction Resources"
     }
   ],
   "shortDescription": null,
   "metaDescription": null,
   "altTexts": null,
   "jsonLd": null,
-  "roomCount": 1
+  "roomCount": 1,
+  "publishStatus": "published",
+  "streamVideoId": null,
+  "fundraisingUrl": null
 }

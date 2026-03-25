@@ -22,7 +22,6 @@ const kids = allKids
 
 const years = [...new Set(kids.map(k => k.data.year).filter(Boolean))].sort((a, b) => b - a);
 const roomTypes = [...new Set(kids.flatMap(k => k.data.roomTypes || []))].sort();
-const hasInProgress = kids.some(k => k.data.status === 'in-progress');
 const totalKids = kids.reduce((sum, k) => sum + (k.data.childCount || 1), 0);
 
 // ── CF Image helpers ──────────────────────
@@ -241,7 +240,6 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
           <!-- Desktop filters -->
           <div class="toolbar__filters toolbar__filters--desktop">
             <select id="sort-order" class="filter-select" aria-label="Sort order">
-              <option value="in-progress">In-Progress</option>
               <option value="newest">Newest First</option>
               <option value="oldest">Oldest First</option>
               <option value="name-az">Name A → Z</option>
@@ -262,12 +260,6 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
               ))}
             </select>
 
-            {hasInProgress && (
-              <button class="pill-toggle" id="filter-status" aria-pressed="false">
-                <span class="pill-toggle__dot" aria-hidden="true"></span>
-                In Progress
-              </button>
-            )}
           </div>
 
           <!-- Mobile filter button -->
@@ -309,7 +301,6 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
             <div class="sheet-group">
               <label class="sheet-label" for="sheet-sort">Sort By</label>
               <select id="sheet-sort" class="sheet-select" aria-label="Sort order">
-                <option value="in-progress">In-Progress</option>
                 <option value="newest">Newest First</option>
                 <option value="oldest">Oldest First</option>
                 <option value="name-az">Name A → Z</option>
@@ -334,14 +325,6 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
                 ))}
               </select>
             </div>
-            {hasInProgress && (
-              <div class="sheet-group">
-                <button class="pill-toggle pill-toggle--sheet" id="sheet-status" aria-pressed="false">
-                  <span class="pill-toggle__dot" aria-hidden="true"></span>
-                  In Progress Only
-                </button>
-              </div>
-            )}
           </div>
           <div class="bottom-sheet__footer">
             <button class="btn btn-dark btn--sm" id="sheet-clear" type="button">Clear All</button>
@@ -591,7 +574,7 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
     // ── State ──
     let allCardsLoaded = false;
     let statusActive = false;
-    let currentSort = 'in-progress';
+    let currentSort = 'newest';
     const originalTexts = new WeakMap<HTMLElement, { name: string; diagnosis: string }>();
 
     // ── DOM refs ──
@@ -687,6 +670,9 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
         frag.appendChild(card);
       }
       grid.appendChild(frag);
+      if (!reducedMotion) {
+        grid.querySelectorAll<HTMLImageElement>('.kid-card__img:not(.is-loaded)').forEach(initImageFade);
+      }
       cachedCards = Array.from(grid.querySelectorAll<HTMLElement>('.kid-card'));
       allCardsLoaded = true;
     }
@@ -727,7 +713,7 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
       statusBtn.classList.add('active');
       statusBtn.setAttribute('aria-pressed', 'true');
     }
-    currentSort = sortSelect?.value || 'in-progress';
+    currentSort = sortSelect?.value || 'newest';
 
     // ══════════════════════════════════════════
     //  FLIP ANIMATION SYSTEM
@@ -778,16 +764,16 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
     function sortCards(animate = true) {
       const oldPos = animate ? capturePositions() : null;
       cachedCards.sort((a, b) => {
+        // Always show in-progress kids first
+        const sA = a.dataset.status === 'in-progress' ? 0 : 1;
+        const sB = b.dataset.status === 'in-progress' ? 0 : 1;
+        if (sA !== sB) return sA - sB;
+
         const yearA = parseInt((a.dataset.year || '').replace('year-', '')) || 0;
         const yearB = parseInt((b.dataset.year || '').replace('year-', '')) || 0;
         const nameA = a.dataset.name || '';
         const nameB = b.dataset.name || '';
         switch (currentSort) {
-          case 'in-progress': {
-            const sA = a.dataset.status === 'in-progress' ? 0 : 1;
-            const sB = b.dataset.status === 'in-progress' ? 0 : 1;
-            return sA !== sB ? sA - sB : yearB - yearA;
-          }
           case 'oldest': return yearA - yearB;
           case 'name-az': return nameA.localeCompare(nameB);
           case 'name-za': return nameB.localeCompare(nameA);
@@ -844,19 +830,23 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
       }
 
       let html = '';
+      let chipCount = 0;
       // Search query chip omitted — already visible in the input
       if (yearFilter !== 'all') {
         const label = yearSelect.options[yearSelect.selectedIndex]?.text || yearFilter;
-        html += `<span class="filter-chip"><svg class="filter-chip__icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>${escapeHtml(label)}<button class="filter-chip__remove" data-chip="year" aria-label="Remove year filter"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></span>`;
+        html += `<span class="filter-chip" role="group" aria-label="Year: ${escapeHtml(label)}"><svg class="filter-chip__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>${escapeHtml(label)}<button class="filter-chip__remove" data-chip="year" aria-label="Remove year filter"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></span>`;
+        chipCount++;
       }
       if (typeFilter !== 'all') {
         const label = typeSelect.options[typeSelect.selectedIndex]?.text || typeFilter;
-        html += `<span class="filter-chip"><svg class="filter-chip__icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>${escapeHtml(label)}<button class="filter-chip__remove" data-chip="type" aria-label="Remove type filter"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></span>`;
+        html += `<span class="filter-chip" role="group" aria-label="Project: ${escapeHtml(label)}"><svg class="filter-chip__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>${escapeHtml(label)}<button class="filter-chip__remove" data-chip="type" aria-label="Remove project filter"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></span>`;
+        chipCount++;
       }
       if (statusActive) {
-        html += `<span class="filter-chip"><span class="pill-toggle__dot" style="width:6px;height:6px;border-radius:50%;background:var(--c-yellow);display:inline-block" aria-hidden="true"></span>In Progress<button class="filter-chip__remove" data-chip="status" aria-label="Remove status filter"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></span>`;
+        html += `<span class="filter-chip" role="group" aria-label="Status: In Progress"><span class="pill-toggle__dot" style="width:6px;height:6px;border-radius:50%;background:var(--c-yellow);display:inline-block" aria-hidden="true"></span>In Progress<button class="filter-chip__remove" data-chip="status" aria-label="Remove status filter"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></span>`;
+        chipCount++;
       }
-      html += `<button class="filter-chips__clear" data-chip="all">Clear all</button>`;
+      html += `<button class="filter-chips__clear" data-chip="all" style="animation-delay:${chipCount * 0.04}s">Clear all</button>`;
 
       chipsEl.innerHTML = html;
       chipsEl.hidden = false;
@@ -1129,7 +1119,7 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
       typeFilter !== 'all' ? url.searchParams.set('type', typeFilter) : url.searchParams.delete('type');
       query ? url.searchParams.set('q', query) : url.searchParams.delete('q');
       statusActive ? url.searchParams.set('status', 'in-progress') : url.searchParams.delete('status');
-      currentSort !== 'in-progress' ? url.searchParams.set('sort', currentSort) : url.searchParams.delete('sort');
+      currentSort !== 'newest' ? url.searchParams.set('sort', currentSort) : url.searchParams.delete('sort');
       history.replaceState(null, '', url.toString());
     }
 
@@ -1142,7 +1132,7 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
       if (kbdHint) kbdHint.classList.remove('is-hidden');
       yearSelect.value = 'all';
       typeSelect.value = 'all';
-      if (sortSelect) { sortSelect.value = 'in-progress'; currentSort = 'in-progress'; }
+      if (sortSelect) { sortSelect.value = 'newest'; currentSort = 'newest'; }
       if (statusBtn) {
         statusActive = false;
         statusBtn.classList.remove('active');
@@ -1255,7 +1245,7 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
     function openSheet() {
       sheetYear.value = yearSelect.value;
       sheetType.value = typeSelect.value;
-      if (sheetSort) sheetSort.value = sortSelect?.value || 'in-progress';
+      if (sheetSort) sheetSort.value = sortSelect?.value || 'newest';
       if (sheetStatus) {
         sheetStatus.classList.toggle('active', statusActive);
         sheetStatus.setAttribute('aria-pressed', String(statusActive));
@@ -1294,7 +1284,7 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
     sheetClear?.addEventListener('click', () => {
       sheetYear.value = 'all';
       sheetType.value = 'all';
-      if (sheetSort) sheetSort.value = 'in-progress';
+      if (sheetSort) sheetSort.value = 'newest';
       if (sheetStatus) {
         sheetStatus.classList.remove('active');
         sheetStatus.setAttribute('aria-pressed', 'false');
@@ -1421,6 +1411,19 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
       });
     }
 
+    // ── Smooth image fade-in on load ──
+    function initImageFade(img: HTMLImageElement) {
+      if (img.complete && img.naturalWidth > 0) {
+        img.classList.add('is-loaded');
+      } else {
+        img.addEventListener('load', () => img.classList.add('is-loaded'), { once: true });
+      }
+    }
+    if (!reducedMotion) {
+      document.documentElement.classList.add('js-img-fade');
+      grid.querySelectorAll<HTMLImageElement>('.kid-card__img').forEach(initImageFade);
+    }
+
     // ── Toolbar scroll shadow ──
     let ticking = false;
     window.addEventListener('scroll', () => {
@@ -1437,7 +1440,7 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
     // ── URL filter restore ──
     const hasURLFilters = params.get('year') || params.get('type') || params.get('q') || params.get('status') || params.get('sort');
     if (hasURLFilters) {
-      if (currentSort !== 'in-progress') sortCards(false);
+      if (currentSort !== 'newest') sortCards(false);
       applyFilters();
       toolbar.scrollIntoView({ behavior: 'smooth', block: 'start' });
     } else {
@@ -1845,77 +1848,116 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
   .search-box__count[hidden] { display: none; }
 
   /* ── Filter Chips ── */
+  @keyframes kidsChipIn {
+    from { opacity: 0; transform: scale(0.94) translateY(3px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
+  }
+
   .filter-chips {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
     padding-bottom: var(--space-md);
   }
 
   .filter-chips[hidden] { display: none; }
 
-  .filter-chip {
+  .filter-chips :global(.filter-chip) {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    padding: 5px 10px 5px 12px;
+    gap: 5px;
+    padding: 5px 10px;
     background: var(--c-warm-gray);
     border: 1px solid var(--c-border);
     border-radius: 100px;
-    font-size: 0.78rem;
+    font-size: 0.74rem;
     font-weight: 500;
     color: var(--c-text);
     white-space: nowrap;
-    transition: background 0.15s ease, border-color 0.15s ease;
+    animation: kidsChipIn 0.25s cubic-bezier(0.22, 1, 0.36, 1) both;
+    transition: border-color 0.15s ease, background 0.15s ease;
   }
 
-  .filter-chip:hover {
+  .filter-chips :global(.filter-chip:nth-child(1)) { animation-delay: 0s; }
+  .filter-chips :global(.filter-chip:nth-child(2)) { animation-delay: 0.04s; }
+  .filter-chips :global(.filter-chip:nth-child(3)) { animation-delay: 0.08s; }
+
+  .filter-chips :global(.filter-chip:hover) {
+    border-color: var(--c-text-muted);
     background: var(--c-border);
   }
 
-  .filter-chip__icon {
+  .filter-chips :global(.filter-chip__icon) {
     flex-shrink: 0;
     color: var(--c-text-light);
+    width: 11px;
+    height: 11px;
   }
 
-  .filter-chip__remove {
+  .filter-chips :global(.filter-chip__remove) {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 18px;
-    height: 18px;
+    width: 0;
+    height: 14px;
     border-radius: 50%;
-    background: none;
+    background: transparent;
     border: none;
     cursor: pointer;
     color: var(--c-text-muted);
     padding: 0;
     flex-shrink: 0;
-    transition: background 0.1s ease, color 0.1s ease;
+    margin-left: 0;
+    opacity: 0;
+    overflow: hidden;
+    transition: width 0.15s ease, opacity 0.15s ease, margin 0.15s ease, background 0.15s ease, color 0.15s ease;
   }
 
-  .filter-chip__remove:hover {
+  .filter-chips :global(.filter-chip:hover .filter-chip__remove) {
+    width: 14px;
+    opacity: 1;
+    margin-left: 2px;
+  }
+
+  .filter-chips :global(.filter-chip__remove:hover) {
     background: var(--c-dark);
     color: var(--c-white);
   }
 
-  .filter-chips__clear {
-    font-size: 0.75rem;
+  .filter-chips :global(.filter-chip__remove svg) {
+    width: 8px;
+    height: 8px;
+    flex-shrink: 0;
+  }
+
+  /* Touch devices: always show remove button */
+  @media (hover: none) {
+    .filter-chips :global(.filter-chip__remove) {
+      width: 14px;
+      opacity: 1;
+      margin-left: 2px;
+    }
+  }
+
+  .filter-chips :global(.filter-chips__clear) {
+    font-size: 0.7rem;
     font-weight: 500;
-    color: var(--c-text-muted);
+    color: var(--c-text-light);
     background: none;
     border: none;
     cursor: pointer;
-    text-decoration: underline;
-    text-underline-offset: 2px;
-    padding: 4px 0;
-    margin-left: 4px;
-    transition: color 0.15s ease;
+    text-decoration: none;
+    padding: 5px 10px;
+    margin-left: 2px;
+    border-radius: 100px;
+    transition: color 0.15s ease, background 0.15s ease;
+    animation: kidsChipIn 0.25s cubic-bezier(0.22, 1, 0.36, 1) both;
   }
 
-  .filter-chips__clear:hover {
-    color: var(--c-dark);
+  .filter-chips :global(.filter-chips__clear:hover) {
+    color: var(--c-text);
+    background: var(--c-border);
   }
 
   /* ── Year Badge on Cards (global because JS-injected) ── */
@@ -2374,6 +2416,18 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
     display: block;
     transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1),
                 filter 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  /* Only hide images when JS is active — progressive enhancement */
+  :global(.js-img-fade .kid-card__img) {
+    opacity: 0;
+    transition: opacity 0.3s ease,
+                transform 0.6s cubic-bezier(0.16, 1, 0.3, 1),
+                filter 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  :global(.js-img-fade .kid-card__img.is-loaded) {
+    opacity: 1;
   }
 
   @media (hover: hover) {

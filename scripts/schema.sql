@@ -107,3 +107,12 @@ CREATE TABLE IF NOT EXISTS financials (
 );
 CREATE INDEX IF NOT EXISTS idx_financials_year ON financials(year);
 CREATE INDEX IF NOT EXISTS idx_financials_type ON financials(type);
+
+-- Deploy queue — singleton row that debounces CF Pages deploy hook calls.
+-- Instead of triggering a rebuild on every save/delete, edits are batched
+-- and the hook fires after 2 min of quiet OR 10 min max wait.
+CREATE TABLE IF NOT EXISTS deploy_queue (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  first_pending_at TEXT NOT NULL,
+  last_edit_at TEXT NOT NULL
+);

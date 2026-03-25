@@ -1,5 +1,5 @@
 {
-  "name": "Junializ",
+  "name": "Junailiz",
   "slug": "junializ",
   "age": 19,
   "diagnosis": "Type III Stroke",
@@ -8,26 +8,14 @@
   ],
   "year": 2026,
   "status": "in-progress",
-  "bio": "Junaliz was born prematurely at 29 weeks in Puerto Rico due to her mother's experience with domestic violence. She faced severe medical challenges, including a Type III stroke and hydrocephalus, requiring lifelong care from her single mother. After Hurricane Maria left them homeless in 2017, Juniliz and her mother were evacuated to Atlanta, where Junaliz's fragile health continues to demand extensive care.\n\nNow battling lupus and fibromyalgia, her mother struggles to manage Junaliz's needs. As both mother and daughter age and their medical conditions progress, caregiving will become increasingly difficult. SOARD aims to reduce future burdens on the mother and daughter by providing a wheelchair-accessible bathroom with a zero-entry shower.",
+  "bio": "Junailiz was born prematurely at 29 weeks in Puerto Rico due to her mother's experience with domestic violence. She faced severe medical challenges, including a Type III stroke and hydrocephalus, requiring lifelong care from her single mother. After Hurricane Maria left them homeless in 2017, Junailiz and her mother were evacuated to Atlanta, where Junailiz's fragile health continues to demand extensive care.\n\nNow battling lupus and fibromyalgia, her mother struggles to manage Junailiz's needs. As both mother and daughter age and their medical conditions progress, caregiving will become increasingly difficult. SOARD aims to reduce future burdens on the mother and daughter by providing a wheelchair-accessible bathroom with a zero-entry shower.",
   "quote": null,
   "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/junializ/hero/public",
-  "photos": [
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/junializ/photo-01/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/josue/photo-09/public",
-      "alt": ""
-    }
-  ],
-  "photoCount": 2,
-  "videoUrl": "https://youtu.be/VbciIUNjSYI?si=Gct2-ahjQ9ZeIkNx",
+  "photos": [],
+  "photoCount": 0,
+  "videoUrl": null,
   "photographer": null,
   "partnerLogos": [
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/gas-south/public"
-    },
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/kids-r-kids/public"
     },
@@ -36,12 +24,42 @@
     },
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/cr-construction/public"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/sherwin-williams/public",
+      "name": "Sherwin-Williams"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/msi/public",
+      "name": "Msi"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/cambria-black/public",
+      "name": "Cambria"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/top-knobs/public",
+      "name": "Top Knobs"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/pulleyassociates/public",
+      "name": "Pulley & Associates"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/real-floors-commercial/public",
+      "name": "Real Floors Commercial"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/wyp/public",
+      "name": "WYP Construction"
     }
   ],
   "shortDescription": null,
   "metaDescription": null,
   "altTexts": null,
   "jsonLd": null,
-  "streamVideoId": "5dc82e32c399eb0980daef7414e2b6b5",
-  "roomCount": 1
+  "streamVideoId": null,
+  "roomCount": 1,
+  "publishStatus": "published",
+  "fundraisingUrl": null
 }

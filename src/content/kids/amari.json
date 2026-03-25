@@ -2,7 +2,7 @@
   "name": "Amari",
   "slug": "amari",
   "age": 10,
-  "diagnosis": "Paralysis from waist down and amputation of leg",
+  "diagnosis": "Paralysis from waist down & Amputee",
   "roomTypes": [
     "Accessible Bathroom",
     "Dream Bedroom"
@@ -11,7 +11,7 @@
   "status": "completed",
   "bio": "Amari is a bright and energetic 10-year-old with a huge love for sports. He enjoys playing flag football, shooting hoops, watching WWE, and hanging out with friends in his neighborhood. His energy is contagious, and his competitive spirit lights up every field and court he's on.\n\nOne morning on the way to school, what started as an ordinary drive turned into a moment that changed everything. A car traveling the wrong way struck Amari and his father head-on. The accident left Amari with serious injuries, including paralysis and the loss of his right leg. Since that day, Amari and his family have been adjusting to a new way of life as he learns to navigate the world in a wheelchair.\n\nSunshine on a Ranney Day is honored to be part of Amari's journey. SOARD will transforming Amari's home into a space that supports his growth and independence, complete with a wheelchair-accessible bathroom, widened doorways, and a dream bedroom. This renovation is more than construction, it's the foundation for Amari's continued growth, independence, and endless possibilities ahead.",
   "quote": null,
-  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/amari/hero/public",
+  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/amari/photo-09/public",
   "photos": [
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/amari/photo-01/public",
@@ -19,10 +19,6 @@
     },
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/amari/photo-02/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/amari/hero/public",
       "alt": ""
     },
     {
@@ -112,23 +108,11 @@
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/amari/photo-24/public",
       "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/amari/photo-25/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/amari/photo-26/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/amari/photo-27/public",
-      "alt": ""
     }
   ],
-  "photoCount": 27,
-  "videoUrl": "https://youtu.be/Vvjc7xA8z_U?si=pttHZJh6tEStKQlX",
-  "photographer": null,
+  "photoCount": 24,
+  "videoUrl": null,
+  "photographer": "Rosalind Williams",
   "partnerLogos": [
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/real-floors-commercial/public"
@@ -189,12 +173,26 @@
     },
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/nothing-bundt-cakes/public"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/therapy-gyms/1774382179878/public",
+      "name": "Therapy Gyms"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/lee-hainer/1774382155560/public",
+      "name": "Lee Hainer"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/trae-young/1774382229000/public",
+      "name": "Trae Young"
     }
   ],
   "shortDescription": null,
   "metaDescription": null,
   "altTexts": null,
   "jsonLd": null,
-  "streamVideoId": "ed3e38538485c7370f7821950ee7950b",
-  "roomCount": 2
+  "streamVideoId": null,
+  "roomCount": 2,
+  "publishStatus": "published",
+  "fundraisingUrl": null
 }

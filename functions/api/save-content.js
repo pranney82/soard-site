@@ -10,10 +10,11 @@
  *   }
  *
  * Env bindings: DB (D1)
- * Env vars: CF_PAGES_DEPLOY_HOOK (optional — triggers rebuild after save)
+ * Env vars: CF_PAGES_DEPLOY_HOOK (optional — triggers rebuild after save, debounced)
  */
 
 import { EXTRACTORS, parsePath, generateSha } from './_collections.js';
+import { recordAndFlush } from './_deploy-queue.js';
 
 export async function onRequestPost(context) {
   try {
@@ -65,13 +66,9 @@ export async function onRequestPost(context) {
 
     const sha = await generateSha(jsonStr);
 
-    // Trigger a Pages rebuild so the static site reflects the change
+    // Queue a debounced Pages rebuild (batches rapid edits into one deploy)
     const { CF_PAGES_DEPLOY_HOOK } = context.env;
-    if (CF_PAGES_DEPLOY_HOOK) {
-      context.waitUntil(
-        fetch(CF_PAGES_DEPLOY_HOOK, { method: 'POST' }).catch(() => {})
-      );
-    }
+    await recordAndFlush(DB, CF_PAGES_DEPLOY_HOOK, context);
 
     return Response.json({
       success: true,

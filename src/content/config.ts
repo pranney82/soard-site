@@ -5,7 +5,7 @@ const kids = defineCollection({
   schema: z.object({
     name: z.string(),
     slug: z.string(),
-    age: z.number().nullable(),
+    age: z.union([z.number(), z.array(z.number())]).nullable(),
     diagnosis: z.string().nullable(),
     roomTypes: z.array(z.string()).nullable(),
     year: z.number().nullable(),
@@ -91,6 +91,7 @@ const partners = defineCollection({
     website: z.string().optional(),
     tier: z.enum(['top', 'construction', 'design', 'community']),
     featured: z.boolean().default(false),
+    order: z.number().default(0),
   }),
 });
 

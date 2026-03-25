@@ -134,8 +134,9 @@ function pill(text: string, bg = YELLOW, fg = DARK) {
 // ═══════════════════════════════════════════════════
 // TEMPLATE: KID PROFILE — Photo hero with overlay
 // ═══════════════════════════════════════════════════
-function kidWithPhoto(name: string, photoB64: string, age?: number | null, diagnosis?: string | null, roomTypes?: string[] | null) {
-  const meta = [age ? `Age ${age}` : null, diagnosis ? truncate(diagnosis, 55) : null].filter(Boolean).join('  ·  ');
+function kidWithPhoto(name: string, photoB64: string, age?: number | number[] | null, diagnosis?: string | null, roomTypes?: string[] | null) {
+  const ageStr = age ? (Array.isArray(age) && age.length > 1 ? `Ages ${age.join(', ')}` : `Age ${Array.isArray(age) ? age[0] : age}`) : null;
+  const meta = [ageStr, diagnosis ? truncate(diagnosis, 55) : null].filter(Boolean).join('  ·  ');
   const rooms = (roomTypes || []).join('  ·  ');
 
   return {
@@ -261,8 +262,9 @@ function kidWithPhoto(name: string, photoB64: string, age?: number | null, diagn
 // ═══════════════════════════════════════════════════
 // TEMPLATE: KID PROFILE — Text fallback (no photo)
 // ═══════════════════════════════════════════════════
-function kidTextOnly(name: string, age?: number | null, diagnosis?: string | null, roomTypes?: string[] | null) {
-  const meta = [age ? `Age ${age}` : null, diagnosis ? truncate(diagnosis, 55) : null].filter(Boolean).join('  ·  ');
+function kidTextOnly(name: string, age?: number | number[] | null, diagnosis?: string | null, roomTypes?: string[] | null) {
+  const ageStr = age ? (Array.isArray(age) && age.length > 1 ? `Ages ${age.join(', ')}` : `Age ${Array.isArray(age) ? age[0] : age}`) : null;
+  const meta = [ageStr, diagnosis ? truncate(diagnosis, 55) : null].filter(Boolean).join('  ·  ');
   const rooms = (roomTypes || []).join('  ·  ');
 
   return {
@@ -483,7 +485,7 @@ export interface OgOptions {
   template: OgTemplate;
   title: string;
   subtitle?: string;
-  age?: number | null;
+  age?: number | number[] | null;
   diagnosis?: string | null;
   roomTypes?: string[] | null;
   heroImage?: string | null;

@@ -183,24 +183,24 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
           <div class="hero__info">
             <h1 class="hero__name stagger" itemprop="headline" transition:name="kid-name">{kid.name}</h1>
 
-            {kid.diagnosis && (
-              <p class="hero__diagnosis stagger">{kid.diagnosis}</p>
+            {kid.roomTypes && kid.roomTypes.length > 0 && (
+              <p class="hero__diagnosis stagger">{kid.roomTypes.join(' & ')}</p>
             )}
 
             {hasDetails && (
               <div class="hero__details stagger">
                 {kid.age && (
                   <div class="detail-chip">
-                    <span class="detail-chip__label">Age</span>
-                    <span class="detail-chip__value">{kid.age}</span>
+                    <span class="detail-chip__label">{Array.isArray(kid.age) && kid.age.length > 1 ? 'Ages' : 'Age'}</span>
+                    <span class="detail-chip__value">{Array.isArray(kid.age) ? kid.age.join(', ') : kid.age}</span>
                   </div>
                 )}
-                {kid.roomTypes && kid.roomTypes.length > 0 && kid.roomTypes.map(type => (
-                  <div class="detail-chip detail-chip--room">
-                    <span class="detail-chip__label">Room</span>
-                    <span class="detail-chip__value">{type}</span>
+                {kid.diagnosis && (
+                  <div class="detail-chip">
+                    <span class="detail-chip__label">Diagnosis</span>
+                    <span class="detail-chip__value">{kid.diagnosis}</span>
                   </div>
-                ))}
+                )}
                 {kid.year && (
                   <div class="detail-chip">
                     <span class="detail-chip__label">Year</span>
@@ -882,7 +882,7 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
 
   /* ═══ Hero: Split Layout ═══════════════════ */
   .hero {
-    padding-top: calc(var(--header-height) + var(--space-xl));
+    padding-top: calc(var(--header-height) + var(--space-sm));
     padding-bottom: var(--space-3xl);
     background: var(--c-cream);
   }

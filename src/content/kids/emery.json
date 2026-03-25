@@ -10,7 +10,7 @@
   "status": "completed",
   "bio": "They call Emery their ray of sunshine. She radiates joy, is extremely determined and spunky, loves music, spinning, and is always up for an adventure. Her favorite outing is going to Home Depot and spending her time in the ceiling fan aisle which is one of her absolute favorite items since birth. A day with Emery is never boring. From her eclectic music taste ranging all the way from \"Carry On My Wayward Son\" by Kansas, The Piano Guys, to Wheels on the Bus, she will keep you on your toes and provide you with loads of laughter.\n\nEmery was born with Rubinstein-Taybi Syndrome, a rare genetic syndrome that affects every process and organ system in the body in different ways, Agenesis of the Corpus Callosum, which means the bridge between the right and left side of the brain is missing, chiari type one, a malformation of the skull that caused the brain to protrude down into the brain stem, severe photophobia, and a tethered spinal cord. All of these diagnoses branch off into more diagnoses that make her a very complex and rare little girl. Their day to day life is filled with medicines, therapies, appointments, medical trips to Cincinnati, and facing the unknown head on. But their days are also filled with deep abounding joy, laughs, family adventures, and fierce love. So many people tell them that Emery is so lucky to have them as parents but they always say that they are the lucky ones to be given such a gift as the privilege to love her.",
   "quote": "\"The way she sparks joy even in the toughest circumstances is one of the many things her family adores about her.\"",
-  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/emery/hero/public",
+  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/emery/photo-17/public",
   "photos": [
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/emery/photo-01/public",
@@ -83,41 +83,9 @@
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/emery/photo-18/public",
       "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/emery/photo-19/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/emery/photo-20/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/emery/photo-21/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/dewone/photo-19/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/emery/photo-24/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/emery/photo-25/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/emery/photo-26/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/emery/photo-27/public",
-      "alt": ""
     }
   ],
-  "photoCount": 30,
+  "photoCount": 18,
   "videoUrl": "https://youtu.be/VbciIUNjSYI?si=0od-Z2UMARsLPXmH",
   "photographer": "Donna Hagin",
   "partnerLogos": [
@@ -162,6 +130,34 @@
     },
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/chick-fil-a/public"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/33n/1774382868685/public",
+      "name": "33N"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/deck-south/1774382841755/public",
+      "name": "Deck South"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/yellawood/1774382917787/public",
+      "name": "Yellawood"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/inlite/1774382946077/public",
+      "name": "InLite"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/rdi/1774382968414/public",
+      "name": "Rdi"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/compton-sales/1774382987378/public",
+      "name": "Compton Sales"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/alpha-omega/1774383072172/public",
+      "name": "Alpha Omega"
     }
   ],
   "shortDescription": null,
@@ -169,5 +165,7 @@
   "altTexts": null,
   "jsonLd": null,
   "streamVideoId": "5dc82e32c399eb0980daef7414e2b6b5",
-  "roomCount": 1
+  "roomCount": 1,
+  "publishStatus": "published",
+  "fundraisingUrl": null
 }

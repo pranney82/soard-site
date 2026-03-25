@@ -133,7 +133,7 @@ const jsonLd = getWebSiteSchema();
             width="800" height="1000"
             loading="eager" fetchpriority="high" decoding="sync"
           />
-          <span class="hero-photo-name">{hd?.name || 'Zyah'}, age {hd?.age || 7}</span>
+          <span class="hero-photo-name">{hd?.name || 'Zyah'}, {Array.isArray(hd?.age) ? `ages ${hd.age.join(', ')}` : `age ${hd?.age || 7}`}</span>
         </a>
         <div class="hero-photo-accent" aria-hidden="true"></div>
       </div>
@@ -199,7 +199,7 @@ const jsonLd = getWebSiteSchema();
         <div class="section-label">Featured Story</div>
         <span class="story-type">{fd?.roomTypes?.[0] || 'Dream Bedroom'}</span>
         <h2 id="story-heading">{siteSettings.featuredStoryHeadline || `${fd?.name || 'Zyah'}'s new space gave her independence — and her family peace of mind.`}</h2>
-        <p>{siteSettings.featuredStoryDescription || `${fd?.name || 'Zyah'}, age ${fd?.age || 7}, lives with ${fd?.diagnosis || 'Spinal Muscular Atrophy'}. Our team transformed her space into an accessible, joyful haven — with custom features designed around her unique needs and personality.`}</p>
+        <p>{siteSettings.featuredStoryDescription || `${fd?.name || 'Zyah'}, ${Array.isArray(fd?.age) ? `ages ${fd.age.join(', ')}` : `age ${fd?.age || 7}`}, lives with ${fd?.diagnosis || 'Spinal Muscular Atrophy'}. Our team transformed her space into an accessible, joyful haven — with custom features designed around her unique needs and personality.`}</p>
         <a href={`/kids/${featuredSlug}`} class="btn btn-dark">Read {fd?.name || 'Zyah'}'s Full Story →</a>
       </div>
     </div>
@@ -223,7 +223,7 @@ const jsonLd = getWebSiteSchema();
                 <img src={`${CF}/${kid.cfId}/w=440,h=440,fit=cover,q=65`} alt={`${kid.name}'s room reveal`} width="220" height="220" loading="lazy" decoding="async" />
               </div>
               <h3 class="kid-thumb-name">{kid.name}</h3>
-              <p>{kid.roomLabel}{kid.age ? ` · Age ${kid.age}` : ''}</p>
+              <p>{kid.roomLabel}{kid.age ? ` · ${Array.isArray(kid.age) && kid.age.length > 1 ? `Ages ${kid.age.join(', ')}` : `Age ${Array.isArray(kid.age) ? kid.age[0] : kid.age}`}` : ''}</p>
             </a>
           </li>
         ))}

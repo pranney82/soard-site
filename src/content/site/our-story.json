@@ -41,43 +41,50 @@
       "year": "2012",
       "title": "The First Room",
       "desc": "Inspired by a church sermon, Peter and Holly Ranney build their first room — a military-themed bedroom for 11-year-old Mathew.",
-      "image": ""
+      "detail": "1 room. 1 family. A mission born.",
+      "image": "aa1d76fb-8aef-46a7-edee-72ad59731e00"
     },
     {
       "year": "2013",
       "title": "Tripp Halstead",
       "desc": "A whole-home makeover for Tripp captures 1.6 million viewers on a WSB-TV livestream, launching SOARD into the national spotlight.",
-      "image": ""
+      "detail": "1.6M viewers tuned in live.",
+      "image": "kids/tripp/hero"
     },
     {
       "year": "2016",
       "title": "The Today Show",
       "desc": "Peter and Holly appear on NBC's Today Show for their renovation of parent sleep rooms at Children's Healthcare of Atlanta.",
-      "image": ""
+      "detail": "National spotlight on NBC.",
+      "image": "about/founders-reunion-2026"
     },
     {
       "year": "2018",
       "title": "Braves Community Heroes",
       "desc": "Holly and Peter are honored as Atlanta Braves Community Heroes at SunTrust Park alongside Dansby Swanson and Freddie Freeman.",
-      "image": ""
+      "detail": "Honored at SunTrust Park.",
+      "image": "press-braves-community-heroes"
+    },
+    {
+      "year": "2019",
+      "title": "100 Rooms",
+      "desc": "SOARD reaches the 100-room milestone with projects for Bennett and Lacy Key — a testament to years of community-driven impact.",
+      "detail": "100 rooms. 100 families changed.",
+      "image": "about/room-reveal-group"
     },
     {
       "year": "2020",
       "title": "Sunny & Ranney Opens",
       "desc": "SOARD opens a nonprofit home furnishings store in Roswell, with 100% of profits funding room makeovers for kids.",
-      "image": ""
+      "detail": "100% of profits fund dream rooms.",
+      "image": "about/sunny-ranney-storefront"
     },
     {
       "year": "2021",
       "title": "Women Making a Mark",
       "desc": "Atlanta Magazine honors Holly as one of their \"Women Making a Mark\" for her impact on the community.",
-      "image": ""
-    },
-    {
-      "year": "2024",
-      "title": "100+ Rooms",
-      "desc": "SOARD crosses the 100-room milestone, having served over 130 children and impacted 17,000+ through community projects.",
-      "image": ""
+      "detail": "Holly honored by Atlanta Magazine.",
+      "image": "about/gracie"
     }
   ],
   "ribbon": [

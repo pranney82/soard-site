@@ -10,50 +10,10 @@
   "status": "completed",
   "bio": "Cayden was born with congenital scoliosis, a condition that has defined his young life with countless challenges. Despite enduring multiple surgeries, including the amputation of one of his legs, Cayden has remained resilient and full of hope. However, during a spinal fusion surgery meant to improve his quality of life, tragedy struck—he suffered a stroke that left him paralyzed from the waist down. Cayden spent 11 long weeks in the hospital, enduring excruciating pain, multiple surgeries, and severe infections.\n\nThrough it all, Cayden has shown remarkable strength and an incredible, selfless spirit. This brave young boy faces unimaginable challenges every day, and his family is now struggling to provide him with the resources he needs to live with dignity and comfort.",
   "quote": "\"He is an amazing, selfless child\"",
-  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/cayden/hero/public",
+  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/cayden/photo-09/public",
   "photos": [
     {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/cayden/photo-01/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/cayden/photo-02/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/cayden/photo-03/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/cayden/photo-04/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/cayden/photo-05/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/cayden/photo-06/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/cayden/photo-07/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/cayden/photo-08/public",
-      "alt": ""
-    },
-    {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/cayden/photo-09/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/cayden/photo-10/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/cayden/photo-11/public",
       "alt": ""
     },
     {
@@ -61,19 +21,39 @@
       "alt": ""
     },
     {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/cayden/photo-13/public",
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/cayden/photo-08/public",
       "alt": ""
     },
     {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/cayden/photo-14/public",
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/cayden/photo-07/public",
       "alt": ""
     },
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/cayden/photo-15/public",
       "alt": ""
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/cayden/photo-13/public",
+      "alt": ""
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/cayden/photo-11/public",
+      "alt": ""
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/cayden/photo-10/public",
+      "alt": ""
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/cayden/photo-03/public",
+      "alt": ""
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/cayden/photo-06/public",
+      "alt": ""
     }
   ],
-  "photoCount": 15,
+  "photoCount": 10,
   "videoUrl": "https://www.youtube.com/watch?v=OBa-SEM0bZA",
   "photographer": "Niki Murphy",
   "partnerLogos": [
@@ -149,5 +129,7 @@
   "altTexts": null,
   "jsonLd": null,
   "streamVideoId": "92828301650e18d2da02346dba65e4f7",
-  "roomCount": 1
+  "roomCount": 1,
+  "publishStatus": "published",
+  "fundraisingUrl": null
 }

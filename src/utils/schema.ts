@@ -193,7 +193,7 @@ export function getKidProfileSchema(kid: {
     "name": kid.name,
     ...(kid.heroImage ? { "image": kid.heroImage } : {}),
   };
-  if (kid.age) person.age = kid.age;
+  if (kid.age) person.age = Array.isArray(kid.age) ? kid.age.join(', ') : kid.age;
   if (kid.diagnosis) {
     person.health = {
       "@type": "MedicalCondition",

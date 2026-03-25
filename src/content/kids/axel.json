@@ -11,9 +11,15 @@
   "status": "in-progress",
   "bio": "Born prematurely at just 28 weeks, Axel was later diagnosed with cerebral palsy with dystonia, a neurological movement disorder that causes painful, involuntary muscle contractions. These constant contractions make controlled movement extremely difficult and impact every aspect of his daily life. Axel lives with ongoing pain, and recently underwent major hip surgery that included the placement of a pump to deliver pain medication directly to the affected area, an important step in helping manage his discomfort. Axel's parents work hard to take care of him, taking opposite shifts in the housekeeping department at Northside hospital, to make sure one is home with Axel at all times.\n\nBecause his bedroom and bathroom are not wheelchair accessible, Axel is unable to move independently within those spaces. As a result, he must sleep in his parents' room, separated from his twin brother, Angelo, something that limits both his independence and their ability to simply be kids together.\n\nDespite these challenges, Axel is a bright and spirited pre-teen. He loves to sing, spin joyfully in his wheelchair, which he skillfully controls with his head, and watch HGTV. (He'll quickly tell you he has strong opinions about good design!)",
   "quote": null,
-  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/axel/hero/public",
-  "photos": [],
-  "photoCount": 0,
+  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/axel/1774377856789-Axel.jpg/public",
+  "photos": [
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/axel/1774377856789-Axel.jpg/public",
+      "alt": "",
+      "cfImageId": "kids/axel/1774377856789-Axel.jpg"
+    }
+  ],
+  "photoCount": 1,
   "videoUrl": null,
   "photographer": null,
   "partnerLogos": [
@@ -34,5 +40,5 @@
   "roomCount": 2,
   "publishStatus": "published",
   "streamVideoId": null,
-  "fundraisingUrl": null
+  "fundraisingUrl": "https://www.zeffy.com/en-US/donation-form/help-build-a-brighter-home"
 }

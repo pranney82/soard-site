@@ -43,33 +43,43 @@
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/josue/photo-08/public",
       "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/josue/photo-09/public",
-      "alt": ""
     }
   ],
-  "photoCount": 9,
-  "videoUrl": "https://youtu.be/VbciIUNjSYI?si=Gct2-ahjQ9ZeIkNx",
+  "photoCount": 8,
+  "videoUrl": null,
   "photographer": null,
   "partnerLogos": [
     {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/gas-south/public"
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/kids-r-kids/public",
+      "name": "Kids R Kids Foundation"
     },
     {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/kids-r-kids/public"
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/artisan-design-studio/public",
+      "name": "Artisan Design Studio"
     },
     {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/jackson-healthcare/public"
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/lead-coverage-logo/public",
+      "name": "Lead Coverage Logo"
     },
     {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/cr-construction/public"
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/top-knobs/public",
+      "name": "Top Knobs"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/sherwin-williams/public",
+      "name": "Sherwin-Williams"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/echols/public",
+      "name": "Echols"
     }
   ],
   "shortDescription": null,
   "metaDescription": null,
   "altTexts": null,
   "jsonLd": null,
-  "streamVideoId": "5dc82e32c399eb0980daef7414e2b6b5",
-  "roomCount": 1
+  "streamVideoId": null,
+  "roomCount": 1,
+  "publishStatus": "published",
+  "fundraisingUrl": null
 }
