@@ -5,8 +5,10 @@
   "status": "completed",
   "bio": "Eleven-year old Mathew was diagnosed with a brain tumor in April 2011. To receive treatments, Mathew and his dad Michael commuted to Atlanta on a weekly basis from their hometown two hours away.  Michael is a doting single father of two. His challenges are not limited to Mathew's cancer. Mathew's 4-year old sister, Lillian, is deaf.  While planning this makeover - our first - we had the privilege of visiting the family in their modest home. We got to know Mathew, his interests, his passions, as well as his needs. We learned he loves to read and is super smart. In fact, he devoured books on sign language in order to teach his dad and grandmother how to sign and communicate better with Lillian. The loving bond amongst them was palpable.  Mathew shared with us that he aspires to join the military; so, we decided to go with a military-themed bedroom. The close proximity to Warner Robins Air Force Base proved extremely helpful in carrying out our plan. In addition to receiving donations of military paraphernalia, we arranged for a private tour of the base and flight in a small plane. Personnel from the base came out to assist with the makeover and were on hand when Mathew arrived home for the reveal. There are no words to describe how moving it was to watch Mathew receive a full salute military welcome!  Repeated stays in the hospital over the next several months were made more tolerable by frequent visits by Peter, Holly, and SOARD volunteers. Visits by Warner Robins soldiers thrilled Mathew to no end! And, over and over we heard him say over and over how much he loved his room! In December, Mathew was well enough to join us for a SOARD fundraiser at Tin Lizzy's in Atlanta. His face lit up when he saw his image and pictures of the reveal on a huge banner displayed at the popular restaurant.  Yes, that is an official flight suit Mathew is wearing complete with wings given to him by a base commander.  August 7, 2013. It saddens us to tell you that our very special Mathew Majka passed away this morning from cancer. I have so many mixed emotions and was waiting to post until I could really take it all in. Mathew is so special to us. He was our very first makeover. Mathew made us realize that Sunshine on a Ranney Day is our calling. This is what we are meant to do. When we saw all the pain and cancer just erase from his mind as he walked into his dream military bunker bedroom....with a face of shock and excitement, words cannot express the emotion. Every time we visited Mathew after his makeover, in the hospital and meeting him for lunches, no matter how he felt, he was always spunky and wanting to chat! I think back at some things that he has said to me and I laugh. He was an incredible kid. The thing that makes me smile during this time is that I think about the impact that all of us had on him. We didn't just give him a room, because of all of you and his community, he had a huge support system. He received tons of birthday cards, get well cards, visits. I want to especially say thank you to our friend Candy and her family and also James and his family who constantly visited and helped him. Mathew passed away in his room peacefully and with his family by his side. please take a second and remember our Mathew by watching this video of his makeover. You can see why we all loved him so much. And please say a prayer for his family. We know he is in peace and in no more pain and he will be watching over all of our other kids. We LOVE you Mathew:)",
   "quote": "Eleven-year old Mathew was diagnosed with a brain tumor in April 2011. To receive treatments, Mathew and his dad Michael commuted to Atlanta on a weekly basis from their hometown two hours away.  Michael is a doting single father of two. His challenges are not limited to Mathew's cancer. Mathew's 4-",
-  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/mathew/hero/public",
-  "roomTypes": [],
+  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/mathew/photo-04/public",
+  "roomTypes": [
+    "Dream Bedroom"
+  ],
   "photos": [
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/mathew/hero/public",
@@ -44,5 +46,10 @@
     "source": "wix-migration",
     "wixNumber": 1
   },
-  "roomCount": 1
+  "roomCount": 1,
+  "publishStatus": "published",
+  "streamVideoId": null,
+  "videoUrl": null,
+  "fundraisingUrl": null,
+  "photoCount": 7
 }

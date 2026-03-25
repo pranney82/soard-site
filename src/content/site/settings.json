@@ -27,35 +27,35 @@
     "cta2Label": "See Our Work ↓",
     "cta2Link": "#stories"
   },
-  "featuredKidSlug": "adrian",
+  "featuredKidSlug": "amari",
   "kidShowcase": [
     {
-      "slug": "liam",
-      "cfId": "kids/liam/hero"
+      "slug": "adrian",
+      "cfId": "kids/adrian/photo-18"
     },
     {
-      "slug": "sophia",
-      "cfId": "kids/sophia/hero"
+      "slug": "harper-2025",
+      "cfId": "kids/harper-2025/photo-11"
     },
     {
-      "slug": "jackson",
-      "cfId": "kids/jackson/hero"
+      "slug": "cayden",
+      "cfId": "kids/cayden/photo-09"
     },
     {
-      "slug": "griffin",
-      "cfId": "kids/griffin/hero"
+      "slug": "summer",
+      "cfId": "kids/summer/hero"
     },
     {
-      "slug": "madison",
-      "cfId": "kids/madison/hero"
+      "slug": "naji",
+      "cfId": "kids/naji/hero"
     },
     {
-      "slug": "harper",
-      "cfId": "kids/harper/hero"
+      "slug": "karter",
+      "cfId": "kids/karter/photo-12"
     },
     {
-      "slug": "noah",
-      "cfId": "kids/noah/hero"
+      "slug": "desmond",
+      "cfId": "kids/desmond/hero"
     },
     {
       "slug": "summer",
@@ -68,7 +68,8 @@
     "storyPhoto": "kids/zyah/hero",
     "roomBedroom": "kids/griffin/hero",
     "roomBath": "kids/zyah/hero",
-    "roomTherapy": "kids/jackson/hero"
+    "roomTherapy": "kids/jackson/hero",
+    "process": "kids/oakley/photo-15"
   },
   "partnerLogos": [
     {
@@ -118,6 +119,9 @@
   },
   "photoTimestamps": {
     "donatePhotos.hero": "2026-03-25T16:42:57.347Z",
-    "donatePhotos.story": "2026-03-25T16:43:08.923Z"
+    "donatePhotos.story": "2026-03-25T16:43:08.923Z",
+    "featuredKidSlug": "2026-03-25T17:24:10.084Z",
+    "kidShowcase": "2026-03-25T17:26:23.958Z",
+    "sectionPhotos.process": "2026-03-25T18:10:19.473Z"
   }
 }

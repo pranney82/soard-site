@@ -13,7 +13,7 @@
  * These are auto-available in Cloudflare Pages builds, or set them in your .env for local dev.
  */
 
-import { writeFileSync, mkdirSync, existsSync, readFileSync } from 'fs';
+import { writeFileSync, mkdirSync, existsSync, readFileSync, readdirSync } from 'fs';
 import { join } from 'path';
 import { fileURLToPath } from 'url';
 import { COLLECTION_MAP } from '../functions/api/_collections.js';
@@ -112,54 +112,93 @@ console.log('Prebuild: fetching content from D1 via REST API...\n');
 // ─── Collection tables (derived from shared _collections.js) ──────
 const collections = Object.values(COLLECTION_MAP).map(table => ({ table, dir: table }));
 
-// Fetch all collections + site config in parallel
-const [collectionResults, siteRows] = await Promise.all([
-  Promise.all(
-    collections.map(async ({ table, dir }) => {
-      const rows = await queryD1(`SELECT slug, data FROM ${table}`);
-      return { table, dir, rows };
-    })
-  ),
-  queryD1('SELECT key, data FROM site_config'),
-]);
+/**
+ * Count existing JSON files in a content directory.
+ * Used to check if stale git files can serve as fallback.
+ */
+function countExistingFiles(dir) {
+  const fullDir = join(CONTENT, dir);
+  if (!existsSync(fullDir)) return 0;
+  return readdirSync(fullDir).filter(f => f.endsWith('.json')).length;
+}
 
 let totalFiles = 0;
+let usedFallback = false;
 
-for (const { dir, rows } of collectionResults) {
-  const outDir = join(CONTENT, dir);
-  ensureDir(outDir);
+try {
+  // Fetch all collections + site config in parallel
+  const [collectionResults, siteRows] = await Promise.all([
+    Promise.all(
+      collections.map(async ({ table, dir }) => {
+        const rows = await queryD1(`SELECT slug, data FROM ${table}`);
+        return { table, dir, rows };
+      })
+    ),
+    queryD1('SELECT key, data FROM site_config'),
+  ]);
 
-  if (rows.length === 0) {
-    console.warn(`  ⚠ ${dir}: 0 items (table may be empty or query failed silently)`);
-  } else {
-    console.log(`  ${dir}: ${rows.length} items`);
+  for (const { dir, rows } of collectionResults) {
+    const outDir = join(CONTENT, dir);
+    ensureDir(outDir);
+
+    if (rows.length === 0) {
+      console.warn(`  ⚠ ${dir}: 0 items (table may be empty or query failed silently)`);
+    } else {
+      console.log(`  ${dir}: ${rows.length} items`);
+    }
+
+    for (const row of rows) {
+      const filePath = join(outDir, `${row.slug}.json`);
+      const data = safeParse(row.data);
+      writeFileSync(filePath, JSON.stringify(data, null, 2) + '\n');
+      totalFiles++;
+    }
   }
 
-  for (const row of rows) {
-    const filePath = join(outDir, `${row.slug}.json`);
+  // ─── Site config ───────────────────────────────────────────────────
+  const siteDir = join(CONTENT, 'site');
+  ensureDir(siteDir);
+  console.log(`  site: ${siteRows.length} config files`);
+
+  for (const row of siteRows) {
+    const filePath = join(siteDir, `${row.key}.json`);
     const data = safeParse(row.data);
     writeFileSync(filePath, JSON.stringify(data, null, 2) + '\n');
     totalFiles++;
   }
+
+  // ─── Validation ────────────────────────────────────────────────────
+  const kidsResult = collectionResults.find(r => r.dir === 'kids');
+  if (kidsResult && kidsResult.rows.length === 0) {
+    console.error('\nFATAL: kids table returned 0 rows — aborting build to prevent empty site.');
+    process.exit(1);
+  }
+
+} catch (err) {
+  // ─── Fallback: use stale JSON files already in git ─────────────────
+  const staleKids = countExistingFiles('kids');
+
+  if (staleKids > 0) {
+    usedFallback = true;
+    console.warn(`\n⚠ D1 UNREACHABLE: ${err.message}`);
+    console.warn(`  Falling back to ${staleKids} existing kid files in git.`);
+    console.warn('  Content may be stale — deploy again once D1 recovers.\n');
+
+    // Count all existing content for the summary
+    for (const { dir } of collections) {
+      totalFiles += countExistingFiles(dir);
+    }
+    const siteDir = join(CONTENT, 'site');
+    if (existsSync(siteDir)) {
+      totalFiles += readdirSync(siteDir).filter(f => f.endsWith('.json')).length;
+    }
+  } else {
+    // No fallback possible — abort
+    console.error(`\nFATAL: D1 unreachable and no existing content files to fall back to.`);
+    console.error(`  Error: ${err.message}`);
+    process.exit(1);
+  }
 }
 
-// ─── Site config ───────────────────────────────────────────────────
-const siteDir = join(CONTENT, 'site');
-ensureDir(siteDir);
-console.log(`  site: ${siteRows.length} config files`);
-
-for (const row of siteRows) {
-  const filePath = join(siteDir, `${row.key}.json`);
-  const data = safeParse(row.data);
-  writeFileSync(filePath, JSON.stringify(data, null, 2) + '\n');
-  totalFiles++;
-}
-
-// ─── Validation ────────────────────────────────────────────────────
-const kidsResult = collectionResults.find(r => r.dir === 'kids');
-if (kidsResult && kidsResult.rows.length === 0) {
-  console.error('\nFATAL: kids table returned 0 rows — aborting build to prevent empty site.');
-  process.exit(1);
-}
-
-console.log(`\nPrebuild complete: ${totalFiles} files written to src/content/\n`);
+const suffix = usedFallback ? ' (stale fallback — D1 was unreachable)' : '';
+console.log(`\nPrebuild complete: ${totalFiles} files in src/content/${suffix}\n`);

@@ -5,11 +5,13 @@
   "status": "completed",
   "bio": "Sunshine on a Ranney Day and Make-A-Wish® Georgia have teamed up to brighten the world of little Miss Tayler.  Tayler’s life is nothing short of a miracle!  At birth, doctors believed she would not survive, but she has made it her mission to prove them wrong.  Tayler’s mom was only eight months pregnant when she was born. Her mom had been in the hospital for a while, but the doctors were not 100% sure what was wrong.  Tayler was delivered through cesarean section and during the delivery, the doctors broke all the bones in her body.  At that time, they diagnosed her with two life threatening medical conditions: Osteogenesis Imperfecta and Hypoplastic Lung Syndrome.  Osteogenesis Imperfecta, also known as brittle bones disease, affects the body’s ability to produce collagen and connective tissue which leads to easily fractured bones, loose joints and reduced muscle tone.  This condition is why all her bones broke during the delivery. The second condition, Hypoplastic Lung Syndrome, caused her lungs to be very small – “pea size” according to her family.  As a result of her underdeveloped lungs, Tayler was placed on a ventilator to help her breathe and the doctors did not think that she would survive for very long.  In fact, they tried to convince her mom and dad to take her off the ventilator, but they refused.  After living in the hospital on the ventilator for eleven months, the doctors were able to perform a tracheostomy for Tayler.  This allowed her to come home for the first time!  Since then, Tayler has lived at home with her conditions and proved the doctors wrong, surpassing all of their expectations.   Tayler spends most days in her room where she can be close to her medical equipment.  She sleeps in a crib and has a nurse with her for at least 12 hours each day. Tayler loves to get outside, but it is hard because she requires extensive medical equipment.  She enjoys spending time with her favorite people and experiencing new things.  Tayler smiles, laughs and giggles when she is happy!  She also loves stickers, books, Cheetos and dum-dum lollipops.  Yummy!  Tayler’s room is a very special place as she spends most of her time there.  Her room is where she enjoys the company of her family and visitors.  She loves lights and is drawn to visual stimuli, therefore renovations will include specialized materials designed to appeal to her senses as she explores her environment.  Please join us for the reveal on March 22, 2014.  Sunshine on a Ranney Day is transforming an extra room that is larger, into Tayler's bedroom so she has more room for all of her medical equipment and room for her and her nurse to play.  Sunshine on a Ranney Day and Make-A-Wish® Georgia aim to transform the lives of children with life threatening medical conditions and make them smile.  It is exciting to partner with this organization to make Tayler’s wishes come true so she can continue to shine and bless the world with her beautiful light.",
   "quote": "Sunshine on a Ranney Day and Make-A-Wish® Georgia have teamed up to brighten the world of little Miss Tayler.  Tayler’s life is nothing short of a miracle!  At birth, doctors believed she would not survive, but she has made it her mission to prove them wrong.  Tayler’s mom was only eight months preg",
-  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/tayler/hero/public",
-  "roomTypes": [],
+  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/tayler/photo-05/public",
+  "roomTypes": [
+    "Dream Bedroom"
+  ],
   "photos": [
     {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/tayler/hero/public",
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/tayler/photo-05/public",
       "alt": "Tayler makeover photo"
     },
     {
@@ -22,10 +24,6 @@
     },
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/tayler/photo-04/public",
-      "alt": "Tayler makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/tayler/photo-05/public",
       "alt": "Tayler makeover photo"
     },
     {
@@ -44,5 +42,10 @@
     "source": "wix-migration",
     "wixNumber": 12
   },
-  "roomCount": 1
+  "roomCount": 1,
+  "photoCount": 6,
+  "publishStatus": "published",
+  "streamVideoId": null,
+  "videoUrl": null,
+  "fundraisingUrl": null
 }

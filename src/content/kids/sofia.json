@@ -6,7 +6,9 @@
   "bio": "Sofia, who is 5 years old has a smile that gives strength to her entire family. Sweet Sofia is the youngest of three children; sister to Adrian 13, and Celina 11.  Sofia was born with congenital health complications but is making progress. Sofia was born with respiratory problems that kept her in NICU for two months and before she was released, her family learned that she was diagnosed with Anemia, Apnea, Pharyngeal Dysphagia and Cranial Nerve Nuclei. Shortly after in her young life, she was diagnosed with Cerebral Palsy and Moebius Syndrome, which is an extremely rare congenital neurological disorder characterized by facial paralysis and inability to move eyes from side to side. She also has kidney failure and hearing loss. Already by age 4, she had 2 surgeries on her hips, including a 3-week hospitalization due to a respiratory infection during the surgery. Despite these congenital complications, Sofia is currently in Pre-K and receives therapy and learning how to communicate with sounds, as well as learning sign language.  Sunshine on a Ranney Day is renovating the master bathroom and making it wheelchair accessible.  Sofia was also sharing a room with her sister.  We are giving her, her own room which was her brother Adrian's.  We are finishing off a garage room to make it into Adrian's bedroom and additional storage space.   SOARD is so grateful to have a partnership with Telemundo Atlanta for this project.  Come join us for a special reveal on Saturday May 2nd at 12pm in Rex, GA!",
   "quote": "Sofia, who is 5 years old has a smile that gives strength to her entire family. Sweet Sofia is the youngest of three children; sister to Adrian 13, and Celina 11.  Sofia was born with congenital health complications but is making progress. Sofia was born with respiratory problems that kept her in NI",
   "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/sofia/hero/public",
-  "roomTypes": [],
+  "roomTypes": [
+    "Dream Bedroom"
+  ],
   "photos": [
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/sofia/hero/public",
@@ -84,5 +86,11 @@
     "source": "wix-migration",
     "wixNumber": 26
   },
-  "roomCount": 1
+  "roomCount": 3,
+  "childCount": 3,
+  "publishStatus": "published",
+  "streamVideoId": null,
+  "videoUrl": null,
+  "fundraisingUrl": null,
+  "photoCount": 17
 }

@@ -3,21 +3,15 @@
   "slug": "braeden",
   "year": 2015,
   "status": "completed",
-  "bio": "We’d like to introduce Princess Peyton.  This precious diva will soon be getting a room makeover fit for royalty.  This project is especially exciting because TLC’s Say Yes to the Dress Atlanta co-stars Lori and Monte will be designing her room!  It is a perfect match as this little princess has a passion for fashion and all things a Ranney Day wants to transform his room into a haven of hope where he can tumble and play safely.  This beautiful six-year old faces many daily challenges. Born with Pitt-Hopkins Syndrome, Epilepsy and Pervasive Developmental Disorder, he endures chronic gastrointestinal pain, seizures and developmental delays in cognition and physical performance.  Braeden has very little awareness of his body and surroundings with no protective instincts.   This along with anomalies of the feet make him prone to falling and difficult to keep safe at home. He is growing rapidly and attending therapy five times per week to achieve his goals. As he excels, he becomes increasingly more mobile.  With the help of a physical therapist and specialized braces with AFOs, he is learning to walk and desires more freedom and independence.   SOARD plans to remodel his room with strategic environmental modifications so he cannot pull on anything that will lead to falls.  In addition, the room will be padded to reduce injuries from loss of balance during exploration and play.  In addition, to help him get around the home independently while remaining safe, rails will be added to the walls leading to the stairs and between the kitchen and living room where he plays with his younger siblings, Molly and Reed.  We will be adding Mohawk SmartStrand carpet to the living room as well to make falls safer and a gate between the living room and kitchen to keep him safe from accidents.  Brae and Molly are really excited because one of their favorite things to do is chase each other around the living room.  This daily ritual of sweet sibling bonding is going to get a whole lot sweeter.  We can’t wait to see them giggle, laugh and dash around the new room together!   The Spirit of life organization was started in memory of our brother, Tommy Meo Jr., who was tragically taken from us at age 12 in September 2000.  Tommy has taught us that a lifetime is not measured by years, but by the amount of lives you have touched within the years you are here. We have dedicated a part of our lives to Tommy and through this, we strive to help others in his name. We want to continue to introduce the world to our brother, and for such beautiful reasons. Each year, after our main Walkathon fundraiser, we select an organization to donate to that we feel Tommy would be proud of. From the minute we found out about SOARD, we knew there couldn’t have been a more perfect match for us! Tommy would be honored to have the opportunity to sponsor a SOARD make- over for Braeden in his name .",
+  "bio": "Born with Pitt-Hopkins Syndrome, Epilepsy and Pervasive Developmental Disorder, he endures chronic gastrointestinal pain, seizures and developmental delays in cognition and physical performance.  Braeden has very little awareness of his body and surroundings with no protective instincts.   This along with anomalies of the feet make him prone to falling and difficult to keep safe at home. He is growing rapidly and attending therapy five times per week to achieve his goals. As he excels, he becomes increasingly more mobile.  With the help of a physical therapist and specialized braces with AFOs, he is learning to walk and desires more freedom and independence.   SOARD plans to remodel his room with strategic environmental modifications so he cannot pull on anything that will lead to falls.  In addition, the room will be padded to reduce injuries from loss of balance during exploration and play.  In addition, to help him get around the home independently while remaining safe, rails will be added to the walls leading to the stairs and between the kitchen and living room where he plays with his younger siblings, Molly and Reed.  We will be adding Mohawk SmartStrand carpet to the living room as well to make falls safer and a gate between the living room and kitchen to keep him safe from accidents.  Brae and Molly are really excited because one of their favorite things to do is chase each other around the living room.  This daily ritual of sweet sibling bonding is going to get a whole lot sweeter.  We can’t wait to see them giggle, laugh and dash around the new room together!   The Spirit of life organization was started in memory of our brother, Tommy Meo Jr., who was tragically taken from us at age 12 in September 2000.  Tommy has taught us that a lifetime is not measured by years, but by the amount of lives you have touched within the years you are here. We have dedicated a part of our lives to Tommy and through this, we strive to help others in his name. We want to continue to introduce the world to our brother, and for such beautiful reasons. Each year, after our main Walkathon fundraiser, we select an organization to donate to that we feel Tommy would be proud of. From the minute we found out about SOARD, we knew there couldn’t have been a more perfect match for us! Tommy would be honored to have the opportunity to sponsor a SOARD make- over for Braeden in his name .",
   "quote": "We’d like to introduce Princess Peyton.  This precious diva will soon be getting a room makeover fit for royalty.  This project is especially exciting because TLC’s Say Yes to the Dress Atlanta co-stars Lori and Monte will be designing her room!  It is a perfect match as this little princess has a p",
-  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/braeden/hero/public",
-  "roomTypes": [],
+  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/braeden/photo-06/public",
+  "roomTypes": [
+    "Dream Bedroom"
+  ],
   "photos": [
     {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/braeden/hero/public",
-      "alt": "Braeden makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/andrew/photo-43/public",
-      "alt": "Braeden makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/abby/photo-48/public",
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/braeden/photo-06/public",
       "alt": "Braeden makeover photo"
     },
     {
@@ -26,10 +20,6 @@
     },
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/braeden/photo-05/public",
-      "alt": "Braeden makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/braeden/photo-06/public",
       "alt": "Braeden makeover photo"
     },
     {
@@ -56,5 +46,10 @@
     "source": "wix-migration",
     "wixNumber": 32
   },
-  "roomCount": 1
+  "roomCount": 1,
+  "photoCount": 7,
+  "publishStatus": "published",
+  "streamVideoId": null,
+  "videoUrl": null,
+  "fundraisingUrl": null
 }

@@ -5,19 +5,13 @@
   "status": "completed",
   "bio": "Anna is an eleven-year old little girl who was born in 2004 after a seemingly normal pregnancy.  She seemed like a normal newborn until she was six weeks old when she started having seizures while she was sleeping.  It was also apparent that she wasn't achieving most of her milestones on time.  Doctors began a round of seemingly endless genetic tests and didn't receive an answer until she was eight months old when she was diagnosed with mitochondrial disease.    Mitochondrial disease is a genetic disorder where the body can't produce enough energy to sustain all of its bodily functions properly.  The disease affects people in different ways and severity depending on where the genetic defect is located. In Anna's case it affects her neurological and muscular development.  She is nonverbal, has low muscular tone, global developmental delays and is dependent on her parents for all of her care.  Her parents also have to be extremely careful when she gets sick because her body takes longer to recover.   Through the years Anna has made great strides with the help of physical therapy, occupational therapy, aquatic therapy and music therapy.  She can play independently with small hand toys and can walk short distances with assistance.  Her seizures are thankfully controlled with medication and her general physical growth has been very good.     Anna has an amazing smile and laugh that lights up the room.  Anna's parents prefer to consider her a happy little girl who just happens to have a genetic disorder and, despite her challenges, it does not define her.   She participates in the Miracle League softball team and attends Alpharetta Elementary School which has an amazing special needs program.  She lives at home with a 7-year old sister and 4-year old brother. Her sister loves cheering on Anna during physical therapy and helps her parents give Anna her medications.   Jason and Gwen handle the challenges of Anna's needs and therapies despite having difficult careers.  Both Jason and Gwen are police officers in the metro Atlanta area and have balanced the needs of their three kids despite unusual schedules and the stressful nature of their jobs.  Jason has been with the City of Dunwoody police department since its inception 6 years ago and also served 10 years with the Cobb County Police Department.  Gwen has been with the City of Marietta police department for 14 years.   The wheelchair accessible bathroom will be a huge help for Anna's parents who struggle because Anna has become to heavy to lift into the bathtub.  ",
   "quote": "Anna is an eleven-year old little girl who was born in 2004 after a seemingly normal pregnancy.  She seemed like a normal newborn until she was six weeks old when she started having seizures while she was sleeping.  It was also apparent that she wasn't achieving most of her milestones on time.  Doct",
-  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/anna/hero/public",
-  "roomTypes": [],
+  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/anna/photo-09/public",
+  "roomTypes": [
+    "Accessible Bathroom"
+  ],
   "photos": [
     {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/anna/hero/public",
-      "alt": "Anna makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/sims/hero/public",
-      "alt": "Anna makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/abby/photo-48/public",
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/anna/photo-09/public",
       "alt": "Anna makeover photo"
     },
     {
@@ -39,10 +33,6 @@
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/anna/photo-08/public",
       "alt": "Anna makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/anna/photo-09/public",
-      "alt": "Anna makeover photo"
     }
   ],
   "age": null,
@@ -52,5 +42,10 @@
     "source": "wix-migration",
     "wixNumber": 34
   },
-  "roomCount": 1
+  "roomCount": 1,
+  "photoCount": 6,
+  "publishStatus": "published",
+  "streamVideoId": null,
+  "videoUrl": null,
+  "fundraisingUrl": null
 }

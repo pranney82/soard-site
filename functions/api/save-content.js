@@ -69,22 +69,20 @@ export async function onRequestPost(context) {
 
     const sha = await generateSha(jsonStr);
 
-    // 2. Commit to GitHub in the background (source of truth — triggers Pages auto-deploy).
-    //    D1 already has the data, so the admin sees an instant save.
-    //    If the GitHub commit fails, it's logged but doesn't block the user.
-    const gitCommit = commitFile(context.env, path, prettyJson + '\n', message)
-      .catch(err => console.error('[save-content] GitHub commit failed:', err.message));
-
-    if (context.waitUntil) {
-      context.waitUntil(gitCommit);
-    } else {
-      await gitCommit;
+    // 2. Commit to GitHub (source of truth). Awaited so we can report status to admin.
+    let gitStatus = 'ok';
+    try {
+      await commitFile(context.env, path, prettyJson + '\n', message);
+    } catch (err) {
+      gitStatus = 'failed';
+      console.error('[save-content] GitHub commit failed:', err.message);
     }
 
     return Response.json({
       success: true,
       sha,
       path,
+      gitCommit: gitStatus,
     });
   } catch (err) {
     console.error("[save-content]", err);

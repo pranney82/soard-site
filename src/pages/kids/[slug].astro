@@ -360,7 +360,7 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
                   sizes="(max-width: 600px) 45vw, (max-width: 1100px) 30vw, 280px"
                   alt={photo.alt || `${kid.name}'s room transformation photo ${i + 1}`}
                   class="masonry__img lqip-img"
-                  loading={i < 6 ? 'eager' : 'lazy'}
+                  loading="lazy"
                   decoding="async"
                 />
                 <div class="masonry__overlay">

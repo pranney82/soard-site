@@ -11,34 +11,45 @@
   "status": "completed",
   "bio": "Adam is a young adult who has defied the odds and turned his challenges into triumphs. Born with Hydrocephalus and cerebral palsy, Adam has never let his wheelchair-bound condition define him. Instead, he has embraced life with an unyielding spirit and an infectious zest.\n\nBilingual and highly active, Adam's accomplishments are as diverse as they are impressive. He is a skilled horseback rider, a tennis player, a swimmer, and even a scuba diver. His determination and discipline have also earned him a green belt in martial arts. Adam's academic journey is equally inspiring. He attended the IDEAL program at Georgia State University, where he successfully earned his degree. Today, he continues to contribute to the university community through his work at the Center for Leadership and Disabilities. \n\nBorn a twin, Adam's radiant personality shines as brightly as the sun he loves so much. His exceptional social skills and his innate ability to uplift everyone around him make him a cherished presence. Adam is truly a blessing to those who know him, and his loved ones eagerly anticipate his continued success and the achievement of his goals.",
   "quote": "\"His exceptional social skills and his innate ability to uplift everyone around him make him a cherished presence.\"",
-  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/adam/hero/public",
+  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/adam/1774459764931-Untitled-design-19.png/public",
   "photos": [
     {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/adam/photo-01/public",
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/adam/1774459764931-Untitled-design-19.png/public",
+      "alt": "",
+      "cfImageId": "kids/adam/1774459764931-Untitled-design-19.png"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/adam/photo-16/public",
       "alt": ""
     },
     {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/adam/photo-02/public",
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/adam/1774459698178-Untitled-design-17.png/public",
+      "alt": "",
+      "cfImageId": "kids/adam/1774459698178-Untitled-design-17.png"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/adam/1774459699679-Untitled-design-18.png/public",
+      "alt": "",
+      "cfImageId": "kids/adam/1774459699679-Untitled-design-18.png"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/adam/photo-18/public",
       "alt": ""
     },
     {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/adam/photo-03/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/adam/photo-04/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/adam/photo-05/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/adam/photo-06/public",
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/adam/photo-17/public",
       "alt": ""
     },
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/adam/photo-07/public",
+      "alt": ""
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/adam/photo-11/public",
+      "alt": ""
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/adam/photo-12/public",
       "alt": ""
     },
     {
@@ -54,14 +65,6 @@
       "alt": ""
     },
     {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/adam/photo-11/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/adam/photo-12/public",
-      "alt": ""
-    },
-    {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/adam/photo-13/public",
       "alt": ""
     },
@@ -74,19 +77,11 @@
       "alt": ""
     },
     {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/adam/photo-16/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/adam/photo-17/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/adam/photo-18/public",
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/adam/photo-01/public",
       "alt": ""
     }
   ],
-  "photoCount": 20,
+  "photoCount": 16,
   "videoUrl": "https://youtu.be/RBb5I_vtWI8",
   "photographer": "Jacey Verhoef",
   "partnerLogos": [
@@ -159,5 +154,7 @@
   "altTexts": null,
   "jsonLd": null,
   "streamVideoId": "109f9deb7317554601f6e945bfb1806b",
-  "roomCount": 2
+  "roomCount": 2,
+  "publishStatus": "published",
+  "fundraisingUrl": null
 }

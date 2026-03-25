@@ -6,7 +6,9 @@
   "bio": "Katie Belle is a beautiful and happy 2 ½ -year old with mitochondrial disease. In addition, Katie Belle has severe global developmental delays and is non-verbal. She does not understand speech except her name and &quot;no&quot;. We do not know how long we have left with her, but we are cherishing every moment.  She currently receives occupational therapy, speech therapy, physical therapy and feeding therapy. Katie loves water, loves to be chased around, and will eat just about anything except eggs. She would play outside forever if she could. She enjoys playing in her sand box and sliding down slides. She loves veggie tales. It is the only thing she will watch. She is beautiful, sweet, loving and happy. This project will include the installation of much needed therapy equipment as well as minor room redecoration. ",
   "quote": "Katie Belle is a beautiful and happy 2 ½ -year old with mitochondrial disease. In addition, Katie Belle has severe global developmental delays and is non-verbal. She does not understand speech except her name and &quot;no&quot;. We do not know how long we have left with her, but we are cherishing ev",
   "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/katie/hero/public",
-  "roomTypes": [],
+  "roomTypes": [
+    "Therapy Room"
+  ],
   "photos": [
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/katie/hero/public",
@@ -40,5 +42,10 @@
     "source": "wix-migration",
     "wixNumber": 9
   },
-  "roomCount": 1
+  "roomCount": 1,
+  "publishStatus": "published",
+  "streamVideoId": null,
+  "videoUrl": null,
+  "fundraisingUrl": null,
+  "photoCount": 6
 }

@@ -1840,7 +1840,9 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ path, content, message, sha }),
         });
-        return r.json();
+        const data = await r.json();
+        if (data.success) localStorage.setItem('soard-pending-deploy', '1');
+        return data;
       },
       async deleteContent(path, sha, message) {
         const r = await fetch('/api/delete-content', {
@@ -1848,7 +1850,9 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ path, sha, message }),
         });
-        return r.json();
+        const data = await r.json();
+        if (data.success) localStorage.setItem('soard-pending-deploy', '1');
+        return data;
       },
       async uploadImage(file, id) {
         const form = new FormData();
@@ -8494,6 +8498,35 @@
       const [subTab, setSubTab] = useState(null);
       const [cmdPaletteOpen, setCmdPaletteOpen] = useState(false);
       const [shortcutsOpen, setShortcutsOpen] = useState(false);
+      const [pendingDeploy, setPendingDeploy] = useState(() => localStorage.getItem('soard-pending-deploy') === '1');
+      const [deploying, setDeploying] = useState(false);
+
+      // Sync pendingDeploy when localStorage changes (from api.saveContent/deleteContent)
+      useEffect(() => {
+        const check = () => setPendingDeploy(localStorage.getItem('soard-pending-deploy') === '1');
+        window.addEventListener('storage', check);
+        // Also poll briefly since storage event doesn't fire in the same tab
+        const id = setInterval(check, 1000);
+        return () => { window.removeEventListener('storage', check); clearInterval(id); };
+      }, []);
+
+      const handleDeploy = async () => {
+        setDeploying(true);
+        try {
+          const r = await fetch('/api/flush-deploy', { method: 'POST' });
+          const data = await r.json();
+          if (data.success) {
+            localStorage.removeItem('soard-pending-deploy');
+            setPendingDeploy(false);
+            addToast('Deploy triggered — site will rebuild shortly', 'success');
+          } else {
+            addToast(`Deploy failed: ${data.error}`, 'error');
+          }
+        } catch (err) {
+          addToast(`Deploy error: ${err.message}`, 'error');
+        }
+        setDeploying(false);
+      };
 
       const addToast = (msg, type = 'info', action = null) => {
         const id = ++toastId;
@@ -8565,8 +8598,8 @@
 
       useEffect(() => { loadData(); }, []);
 
-      // No deploy polling needed — saves commit directly to GitHub,
-      // and Cloudflare Pages auto-deploys on push.
+      // Deploys are triggered manually via "Deploy Now" in the sidebar.
+      // pendingDeploy flag (localStorage) tracks whether undeployed changes exist.
 
       // Global keyboard shortcuts
       useEffect(() => {
@@ -8848,8 +8881,21 @@
               `)}
             `)}
             <div class="nav-section" style="margin-top: auto;">Links & Deploys</div>
+            ${pendingDeploy ? html`
+              <button
+                class="nav-item"
+                onClick=${handleDeploy}
+                disabled=${deploying}
+                style="background: rgba(255, 213, 0, 0.12); color: #FFD500; border-left: 3px solid #FFD500; font-weight: 600;">
+                <span class="nav-icon">${deploying
+                  ? html`<div class="spinner" style="width: 16px; height: 16px; border-width: 2px;" />`
+                  : icons.deploys}</span>
+                ${deploying ? 'Deploying...' : 'Deploy Now'}
+              </button>
+            ` : null}
             <button class="nav-item ${view === 'deploys' ? 'active' : ''}" onClick=${() => navigate('deploys')}>
               <span class="nav-icon">${icons.deploys}</span> Deploys
+              ${pendingDeploy ? html`<span style="margin-left: auto; width: 8px; height: 8px; border-radius: 50%; background: #FFD500; flex-shrink: 0;" />` : null}
             </button>
             <a href="/" class="nav-item" target="_blank">
               <span class="nav-icon">${icons.globe}</span> View Site ↗

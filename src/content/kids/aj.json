@@ -6,7 +6,10 @@
   "bio": "Meet A.J. With a smile that will warm your heart, this young man is happy under almost any circumstance! He and his family have already overcome many challenges; but, will truly benefit from a remodel that will make their day to day routine a lot easier.   A.J. was diagnosed with Cerebral Palsy at an early age. His communication is very limited, but he enjoys listening to music.  His quality of life depends on therapeutic services and medical care including the administration of daily breathing treatments to manage his asthma.  He is unable to walk, stand or sit up on his own and requires significant assistance in every facet of his life.  However, A.J. and his family don’t let these obstacles get in their way!    Although A.J.’s room is average sized, he requires specialized equipment that takes up quite a bit of space, which leaves limited availability to maneuver his wheelchair.  His wheelchair cannot fit into the narrow bathroom and it is difficult for his parents to lift him into the tub comfortably.  Due to his fused spine, great care must be taken when lifting and supporting his fragile, lengthy body onto the toilet or into the tub.  This endeavor has been quite difficult for his adoptive parents Patricia (age 65) and Henry (age 70). Despite how strenuous this level of assistance is on them, they make sure his every need is met and treasure the opportunity to care for him.   Patricia and Henry have fostered ten children over the years and came to love and care for A.J. as an infant. He and his five siblings are the joy of their lives and they continue to dedicate themselves to making him shine and reach his maximum potential.   SOARD has partnered with Dream House for Kids to renovate the family’s home to make it easier to care for A.J. This remodel will provide them with a handicap accessible bathroom, a ramp from the kitchen to the living room to make mobility in this split level home easier, and new flooring in the kitchen and hallway that was damaged by his wheelchair.  In addition, A.J. will get his very own dream bedroom where he can play, listen to his music and smile!   Join us in sharing his special moment at the reveal of his newly remodeled home on February 1, 2014 in College Park, Georgia.",
   "quote": "Meet A.J. With a smile that will warm your heart, this young man is happy under almost any circumstance! He and his family have already overcome many challenges; but, will truly benefit from a remodel that will make their day to day routine a lot easier.   A.J. was diagnosed with Cerebral Palsy at a",
   "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/aj/hero/public",
-  "roomTypes": [],
+  "roomTypes": [
+    "Dream Bedroom",
+    "Accessible Bathroom"
+  ],
   "photos": [
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/aj/hero/public",
@@ -44,5 +47,10 @@
     "source": "wix-migration",
     "wixNumber": 10
   },
-  "roomCount": 1
+  "roomCount": 2,
+  "publishStatus": "published",
+  "streamVideoId": null,
+  "videoUrl": null,
+  "fundraisingUrl": null,
+  "photoCount": 7
 }

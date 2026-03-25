@@ -45,17 +45,16 @@ export async function onRequestPost(context) {
         .bind(parsed.slug).run();
     }
 
-    // 2. Delete from GitHub in the background (source of truth — triggers Pages auto-deploy)
-    const gitDelete = deleteFile(context.env, path, message)
-      .catch(err => console.error('[delete-content] GitHub delete failed:', err.message));
-
-    if (context.waitUntil) {
-      context.waitUntil(gitDelete);
-    } else {
-      await gitDelete;
+    // 2. Delete from GitHub (awaited so we can report status to admin)
+    let gitStatus = 'ok';
+    try {
+      await deleteFile(context.env, path, message);
+    } catch (err) {
+      gitStatus = 'failed';
+      console.error('[delete-content] GitHub delete failed:', err.message);
     }
 
-    return Response.json({ success: true });
+    return Response.json({ success: true, gitCommit: gitStatus });
   } catch (err) {
     console.error("[delete-content]", err);
     return Response.json(

@@ -5,8 +5,11 @@
   "status": "completed",
   "bio": "We are so excited to welcome Emily home! Over the last several weeks, SOARD has worked with a wonderful and generous group of volunteers to renovate the Bowman home to accommodate Emily as she continues to heal from the devastating injuries she suffered in a hit-and-run accident in mid-February. Had we not stepped in to help, the Bowman's would have had to re-locate to another - more wheelchair friendly - home.   Our first task was to make the ground floor completely wheelchair accessible. This included building an entrance ramp to the front of the house. We also converted a small bathroom into a large one that is fully functional and accessible. The downstairs dining room and den were remodeled to serve as comfortable adjoining bedrooms for Emily and her mom. And, as our vision extends beyond the physical aspects of the makeover, we have brought beautiful finishing touches to her living space.  SOARD feels blessed to have worked on this project. We truly appreciate the generous monetary donations, company sponsors, and volunteers that allowed us to do complete our mission. Here's an overview of what this make-over involved and the companies and individuals who assisted. •\tBuilt a wheelchair-accessible ramp to the front of the home with surrounding landscaping by B. Green Landscape Group •\tInstalled an ADA accessible shower on the ground floor with plumbing assistance provided by Mr. Plumber •\tConverted a dining room and a den into accessible and adjoining bedrooms for Emily and her mom with a donated hospital bed which was moved into the home by College Hunks Moving Junk, and additional furniture donated by Woodstock Furniture Outlet •\tReplaced carpet with laminate flooring on main floor",
   "quote": "We are so excited to welcome Emily home! Over the last several weeks, SOARD has worked with a wonderful and generous group of volunteers to renovate the Bowman home to accommodate Emily as she continues to heal from the devastating injuries she suffered in a hit-and-run accident in mid-February. Had",
-  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/emily/hero/public",
-  "roomTypes": [],
+  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/emily/photo-05/public",
+  "roomTypes": [
+    "Accessible Bathroom",
+    "Dream Bedroom"
+  ],
   "photos": [
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/emily/hero/public",
@@ -40,5 +43,10 @@
     "source": "wix-migration",
     "wixNumber": 5
   },
-  "roomCount": 1
+  "roomCount": 2,
+  "publishStatus": "published",
+  "streamVideoId": null,
+  "videoUrl": null,
+  "fundraisingUrl": null,
+  "photoCount": 6
 }

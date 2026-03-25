@@ -5,13 +5,11 @@
   "status": "completed",
   "bio": "One make-over brings smiles to two very special families!   Robert, this charming 9-year old, shares a room with his 6-year old brother, Ben.  Robert hasn’t been able to spend as much time as he’d like playing in his room because he has spent more than 100 days in the hospital over the past few years! SOARD and the Spirit of Life Foundation want to make sure that when he is in his room, he has a blast!  On December 16, 2010 Robert received the devastating diagnosis of high-risk Acute Lymphoblastic Leukemia.  He was a spirited kindergartener with lots of energy who began coming home from school exhausted.  He would fall asleep, wake up to eat dinner and go to bed again.  He then started developing dark circles under his eyes.  His parents thought he must be anemic.  One morning, he woke up with a swollen belly and tiny purple dots covering his chest.  At that point they knew something was wrong.  When they brought him to see his pediatrician; she took some blood and examined him.  She had tears in her eyes when she reported that she suspected this rare Leukemia.  Over the past 3 ½ years Robert has endured over 100 days in the hospital, chemotherapy every single day, a few dozen spinal taps, hair loss and many, many awful side effects.  He has dealt with it all with courage and a fabulous attitude.   His lengthy and agonizing treatment was scheduled to be complete this month, April 2014.  However, in January a routine spinal tap revealed that the cancer had returned.  His new and aggressive treatment consists of regular painful spinal taps as well as high doses of chemotherapy as well as radiation. Although Robert will be spending much of the next year in the hospital, his family is hopeful that the next 2 years of intense treatment will cure his little body and allow him to return to a life without cancer!  Robert has good days and bad days, but as you can see, he is always smiling.  SOARD would like to bring sunshine to his days at home with a very cool room make over.  Robert and his brother love spending time together in their room.  Robert’s favorite things to do include playing video games-especially Minecraft and Mario Brothers, building with Legos and watching the Steelers!  With plans to create an exciting video game center, get him a bigger bed and a desk, the design for his new room is adventurous and fun!  We will have to decide how to incorporate both of their favorite colors: red and blue.  They say that laughter is the best medicine, so our design aims to elicit giggles galore.  We know these boys will enjoy many playful afternoons in their room together-making memories of both sibling rivalry and brotherly love!     This project is made possible by the generous donation of another organization celebrating the love of their brother, Tommy. Tommy’s family wants to bring smiles to Robert’s life by honoring Tommy’s.  See what they wrote when they contacted us about sponsoring this remodel for Robert:  “The Spirit of Life Organization was started in memory of our brother, Tommy Meo Jr., who was tragically taken from us at age 12 in September 2000.  Tommy has taught us that a lifetime is not measured by years, but by the amount of lives you have touched within the years you are here.  We have dedicated a part of our lives to Tommy and through this, we strive to help others in his name.  We want to continue to introduce the world to our brother, and for such beautiful reasons.  Each year, after our main Walkathon fundraiser, we select an organization to donate to that we feel Tommy would be proud of. From the minute we found out about SOARD, we knew there couldn’t have been a more perfect match for us! Tommy would be honored to have the opportunity to sponsor a SOARD make-over for Robert in his name.”  What amazing tribute!  SOARD is proud to partner with The Spirit of Life Foundation to bring smiles and sunshine to the families of both Robert and Tommy!",
   "quote": "One make-over brings smiles to two very special families!   Robert, this charming 9-year old, shares a room with his 6-year old brother, Ben.  Robert hasn’t been able to spend as much time as he’d like playing in his room because he has spent more than 100 days in the hospital over the past few year",
-  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/robert/hero/public",
-  "roomTypes": [],
+  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/robert/photo-03/public",
+  "roomTypes": [
+    "Dream Bedroom"
+  ],
   "photos": [
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/robert/hero/public",
-      "alt": "Robert makeover photo"
-    },
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/robert/photo-02/public",
       "alt": "Robert makeover photo"
@@ -48,5 +46,10 @@
     "source": "wix-migration",
     "wixNumber": 13
   },
-  "roomCount": 1
+  "roomCount": 2,
+  "photoCount": 7,
+  "publishStatus": "published",
+  "streamVideoId": null,
+  "videoUrl": null,
+  "fundraisingUrl": null
 }

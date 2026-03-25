@@ -5,59 +5,18 @@
   "status": "completed",
   "bio": "Our next big project is a remodel for the Sims family.  This tight-knit family is led by Estella Sims, a selfless and compassionate mother of three special needs youth.  Although she is in her sixties with physical ailments of her own, she devotes herself to ensuring that they have all of their needs met and plenty of love!  It was love, generosity and a philanthropic spirit that led her to adopt Antavious, Shanika, Ashley and Terrace.  Their bright eyes and sweet smiles make it evident that they are happy to be part of this forever family.  Shanika reports that she is grateful that Estella chose to be her mother and provide her with such a loving environment and a better life.  When interviewed, she stated, “I love my mom very much for the love and precious things she has given me.  I hope that every child receives the love and support I have received.”  This beautiful sentiment speaks volumes to the values being instilled by Estella. In addition to love, the Sims family unit thrives on the principles of acceptance and appreciation of one another.  Although the challenges they face include blindness, Cerebral Palsy, developmental disabilities, Fetal Alcohol Syndrome and chromosomal abnormalities, their can-do attitude and desire to overcome all obstacles together keeps them strong and triumphant.  These obstacles have become increasingly more difficult to manage as the children have grown. As they grow, so does the need for larger wheelchairs, medical equipment and accessibility.  These needs supersede the size and infrastructure of their small home. Sunshine on a Ranney Day plans to help them out by adding on to their home in order to make space for their medical equipment, make their bathroom wheelchair accessible and add room for a nurse.  This will be the last project of adding onto a home for SOARD. Sunshine on a Ranney Day has been blessed to have Jackson Healthcare help support this makeover financially as well as have their employees help with the renovation!  It brings us joy to be able support Estella and her family! We hope that you will join us at the reveal this winter!",
   "quote": "Our next big project is a remodel for the Sims family.  This tight-knit family is led by Estella Sims, a selfless and compassionate mother of three special needs youth.  Although she is in her sixties with physical ailments of her own, she devotes herself to ensuring that they have all of their need",
-  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/sims/hero/public",
-  "roomTypes": [],
+  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/sims/photo-12/public",
+  "roomTypes": [
+    "Accessible Bathroom",
+    "Dream Bedroom"
+  ],
   "photos": [
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/sims/hero/public",
-      "alt": "Sims makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jack/hero/public",
-      "alt": "Sims makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/angel/photo-56/public",
-      "alt": "Sims makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/breanna/photo-25/public",
-      "alt": "Sims makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/abby/photo-46/public",
-      "alt": "Sims makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/abby/photo-48/public",
-      "alt": "Sims makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/sims/photo-07/public",
-      "alt": "Sims makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/sims/photo-08/public",
-      "alt": "Sims makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/sims/photo-09/public",
-      "alt": "Sims makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/eli/photo-31/public",
-      "alt": "Sims makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/sims/photo-11/public",
-      "alt": "Sims makeover photo"
-    },
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/sims/photo-12/public",
       "alt": "Sims makeover photo"
     },
     {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/sims/photo-13/public",
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/sims/photo-08/public",
       "alt": "Sims makeover photo"
     },
     {
@@ -66,6 +25,10 @@
     },
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/sims/photo-15/public",
+      "alt": "Sims makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/sims/photo-09/public",
       "alt": "Sims makeover photo"
     }
   ],
@@ -76,5 +39,11 @@
     "source": "wix-migration",
     "wixNumber": 30
   },
-  "roomCount": 1
+  "roomCount": 3,
+  "photoCount": 5,
+  "childCount": 2,
+  "publishStatus": "published",
+  "streamVideoId": null,
+  "videoUrl": null,
+  "fundraisingUrl": null
 }
