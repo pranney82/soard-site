@@ -22,7 +22,7 @@ const cors = {
 };
 
 // Public API routes that don't require authentication
-const PUBLIC_ROUTES = ['/api/newsletter', '/api/kids.json'];
+const PUBLIC_ROUTES = ['/api/newsletter', '/api/kids.json', '/api/cc-oauth-start', '/api/cc-oauth-callback'];
 
 export async function onRequest(context) {
   // Always allow preflight
