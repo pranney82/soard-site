@@ -13,7 +13,12 @@ import { getCollection } from 'astro:content';
 
 const allKids = await getCollection('kids');
 const kids = allKids
-  .sort((a, b) => (b.data.year || 0) - (a.data.year || 0));
+  .sort((a, b) => {
+    const sA = a.data.status === 'in-progress' ? 0 : 1;
+    const sB = b.data.status === 'in-progress' ? 0 : 1;
+    if (sA !== sB) return sA - sB;
+    return (b.data.year || 0) - (a.data.year || 0);
+  });
 
 const years = [...new Set(kids.map(k => k.data.year).filter(Boolean))].sort((a, b) => b - a);
 const roomTypes = [...new Set(kids.flatMap(k => k.data.roomTypes || []))].sort();
@@ -236,6 +241,7 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
           <!-- Desktop filters -->
           <div class="toolbar__filters toolbar__filters--desktop">
             <select id="sort-order" class="filter-select" aria-label="Sort order">
+              <option value="in-progress">In-Progress</option>
               <option value="newest">Newest First</option>
               <option value="oldest">Oldest First</option>
               <option value="name-az">Name A → Z</option>
@@ -303,6 +309,7 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
             <div class="sheet-group">
               <label class="sheet-label" for="sheet-sort">Sort By</label>
               <select id="sheet-sort" class="sheet-select" aria-label="Sort order">
+                <option value="in-progress">In-Progress</option>
                 <option value="newest">Newest First</option>
                 <option value="oldest">Oldest First</option>
                 <option value="name-az">Name A → Z</option>
@@ -398,12 +405,12 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
                   <svg class="kid-card__cta-arrow" width="14" height="14"><use href="#icon-cta-arrow"/></svg>
                 </span>
               </div>
-            </div>
-            <div class="kid-card__info">
-              <span class="kid-card__name">{kid.data.name}</span>
               {kid.data.status === 'in-progress' && (
                 <span class="kid-card__badge">In Progress</span>
               )}
+            </div>
+            <div class="kid-card__info">
+              <span class="kid-card__name">{kid.data.name}</span>
             </div>
             {(kid.data.roomTypes || []).length > 0 && (
               <span class="kid-card__diagnosis">{(kid.data.roomTypes || []).join(', ')}</span>
@@ -584,7 +591,7 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
     // ── State ──
     let allCardsLoaded = false;
     let statusActive = false;
-    let currentSort = 'newest';
+    let currentSort = 'in-progress';
     const originalTexts = new WeakMap<HTMLElement, { name: string; diagnosis: string }>();
 
     // ── DOM refs ──
@@ -662,7 +669,7 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
       } else {
         imgHtml = `<div class="kid-card__placeholder" aria-hidden="true"><svg width="48" height="48"><use href="#icon-placeholder"/></svg></div>`;
       }
-      a.innerHTML = `<div class="kid-card__frame">${imgHtml}<div class="kid-card__hover-overlay" aria-hidden="true"><span class="kid-card__cta"><span class="kid-card__cta-text">Read their story</span><svg class="kid-card__cta-arrow" width="14" height="14"><use href="#icon-cta-arrow"/></svg></span></div></div><div class="kid-card__info"><span class="kid-card__name">${escapeHtml(kid.n)}</span>${kid.st === 'in-progress' ? '<span class="kid-card__badge">In Progress</span>' : ''}</div>${roomTypes ? `<span class="kid-card__diagnosis">${escapeHtml(roomTypes)}</span>` : ''}`;
+      a.innerHTML = `<div class="kid-card__frame">${imgHtml}<div class="kid-card__hover-overlay" aria-hidden="true"><span class="kid-card__cta"><span class="kid-card__cta-text">Read their story</span><svg class="kid-card__cta-arrow" width="14" height="14"><use href="#icon-cta-arrow"/></svg></span></div>${kid.st === 'in-progress' ? '<span class="kid-card__badge">In Progress</span>' : ''}</div><div class="kid-card__info"><span class="kid-card__name">${escapeHtml(kid.n)}</span></div>${roomTypes ? `<span class="kid-card__diagnosis">${escapeHtml(roomTypes)}</span>` : ''}`;
       return a;
     }
 
@@ -720,7 +727,7 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
       statusBtn.classList.add('active');
       statusBtn.setAttribute('aria-pressed', 'true');
     }
-    currentSort = sortSelect?.value || 'newest';
+    currentSort = sortSelect?.value || 'in-progress';
 
     // ══════════════════════════════════════════
     //  FLIP ANIMATION SYSTEM
@@ -776,6 +783,11 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
         const nameA = a.dataset.name || '';
         const nameB = b.dataset.name || '';
         switch (currentSort) {
+          case 'in-progress': {
+            const sA = a.dataset.status === 'in-progress' ? 0 : 1;
+            const sB = b.dataset.status === 'in-progress' ? 0 : 1;
+            return sA !== sB ? sA - sB : yearB - yearA;
+          }
           case 'oldest': return yearA - yearB;
           case 'name-az': return nameA.localeCompare(nameB);
           case 'name-za': return nameB.localeCompare(nameA);
@@ -1117,7 +1129,7 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
       typeFilter !== 'all' ? url.searchParams.set('type', typeFilter) : url.searchParams.delete('type');
       query ? url.searchParams.set('q', query) : url.searchParams.delete('q');
       statusActive ? url.searchParams.set('status', 'in-progress') : url.searchParams.delete('status');
-      currentSort !== 'newest' ? url.searchParams.set('sort', currentSort) : url.searchParams.delete('sort');
+      currentSort !== 'in-progress' ? url.searchParams.set('sort', currentSort) : url.searchParams.delete('sort');
       history.replaceState(null, '', url.toString());
     }
 
@@ -1130,7 +1142,7 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
       if (kbdHint) kbdHint.classList.remove('is-hidden');
       yearSelect.value = 'all';
       typeSelect.value = 'all';
-      if (sortSelect) { sortSelect.value = 'newest'; currentSort = 'newest'; }
+      if (sortSelect) { sortSelect.value = 'in-progress'; currentSort = 'in-progress'; }
       if (statusBtn) {
         statusActive = false;
         statusBtn.classList.remove('active');
@@ -1243,7 +1255,7 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
     function openSheet() {
       sheetYear.value = yearSelect.value;
       sheetType.value = typeSelect.value;
-      if (sheetSort) sheetSort.value = sortSelect?.value || 'newest';
+      if (sheetSort) sheetSort.value = sortSelect?.value || 'in-progress';
       if (sheetStatus) {
         sheetStatus.classList.toggle('active', statusActive);
         sheetStatus.setAttribute('aria-pressed', String(statusActive));
@@ -1282,7 +1294,7 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
     sheetClear?.addEventListener('click', () => {
       sheetYear.value = 'all';
       sheetType.value = 'all';
-      if (sheetSort) sheetSort.value = 'newest';
+      if (sheetSort) sheetSort.value = 'in-progress';
       if (sheetStatus) {
         sheetStatus.classList.remove('active');
         sheetStatus.setAttribute('aria-pressed', 'false');
@@ -1425,7 +1437,7 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
     // ── URL filter restore ──
     const hasURLFilters = params.get('year') || params.get('type') || params.get('q') || params.get('status') || params.get('sort');
     if (hasURLFilters) {
-      if (currentSort !== 'newest') sortCards(false);
+      if (currentSort !== 'in-progress') sortCards(false);
       applyFilters();
       toolbar.scrollIntoView({ behavior: 'smooth', block: 'start' });
     } else {
@@ -2511,8 +2523,10 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
   }
 
   :global(.kid-card__badge) {
-    display: inline-block;
-    padding: 2px 10px;
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    padding: 3px 10px;
     background: var(--c-yellow);
     color: var(--c-dark);
     font-size: 0.6rem;
@@ -2521,7 +2535,8 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
     letter-spacing: 0.06em;
     border-radius: 100px;
     white-space: nowrap;
-    flex-shrink: 0;
+    z-index: 2;
+    pointer-events: none;
   }
 
   /* ── No Results ── */
@@ -2789,7 +2804,8 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
     :global(.kid-card__badge) {
       font-size: 0.55rem;
       padding: 2px 7px;
-      flex-shrink: 0;
+      top: 6px;
+      right: 6px;
     }
 
     /* Bottom CTA tighter on mobile */
