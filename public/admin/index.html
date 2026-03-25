@@ -2410,7 +2410,7 @@
             </div>
             <span class="qa-label">Add Kid</span>
           </button>
-          <button class="quick-action-btn" onClick=${() => onNavigate('people-hub', '', 'partners')}>
+          <button class="quick-action-btn" onClick=${() => onNavigate('partners-hub', '')}>
             <div class="quick-action-icon" style="background: rgba(49,130,206,0.1);">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3182CE" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             </div>
@@ -2473,7 +2473,7 @@
               ${yearData ? html`<${MiniChart} data=${yearData.cumulative} color="#FFD500" height=${40} width=${90} />` : null}
             </div>
           </div>
-          <div class="stat-card" style="--card-accent: #3182CE; cursor: pointer; text-align: left;" onClick=${() => onNavigate('people-hub', null, 'partners')}>
+          <div class="stat-card" style="--card-accent: #3182CE; cursor: pointer; text-align: left;" onClick=${() => onNavigate('partners-hub')}>
             <div class="stat-card-icon" style="background: rgba(49,130,206,0.1);">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#3182CE" stroke-width="2" stroke-linecap="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
             </div>
@@ -4494,25 +4494,35 @@
     // ═══════════════════════════════════════════
     // TEAM LIST
     // ═══════════════════════════════════════════
-    function TeamList({ team, onEdit, onAdd, onDelete }) {
+    function TeamList({ team, group, onEdit, onAdd, onDelete }) {
       const [search, setSearch] = useState('');
-      const filtered = useMemo(() => {
-        if (!search) return team;
+      const members = useMemo(() => {
+        const byGroup = team.filter(t => t.group === group);
+        if (!search) return byGroup;
         const q = search.toLowerCase();
-        return team.filter(t =>
+        return byGroup.filter(t =>
           t.name.toLowerCase().includes(q) ||
           (t.title || '').toLowerCase().includes(q) ||
           (t.organization || '').toLowerCase().includes(q)
         );
-      }, [team, search]);
-      const teamMembers = filtered.filter(t => t.group === 'team');
-      const boardMembers = filtered.filter(t => t.group === 'board');
+      }, [team, group, search]);
+      const label = group === 'board' ? 'Board' : 'Team';
 
-      const renderTable = (members, label) => html`
+      return html`
+        <div class="page-header">
+          <h2>${label} (${members.length})</h2>
+          <button class="btn btn-primary" onClick=${onAdd}>+ Add Member</button>
+        </div>
+        <div class="card" style="margin-bottom: 1rem; padding: 0.75rem 1rem;">
+          <div class="search-bar" style="max-width: 100%;">
+            <span class="search-icon">${icons.search}</span>
+            <input placeholder="Search by name, title, or organization..."
+              value=${search} onInput=${e => setSearch(e.target.value)} />
+          </div>
+        </div>
         <div class="card" style="margin-bottom: 1rem;">
-          <h3 style="margin-bottom: 1rem;">${label} (${members.length})</h3>
           ${members.length === 0 ? html`
-            <p class="text-sm text-muted">No ${label.toLowerCase()} ${search ? 'match your search' : 'added yet'}.</p>
+            <p class="text-sm text-muted">No ${label.toLowerCase()} members ${search ? 'match your search' : 'added yet'}.</p>
           ` : html`
             <div class="table-wrap"><table>
               <thead><tr><th></th><th>Name</th><th>Title</th><th>Organization</th><th>Order</th><th></th></tr></thead>
@@ -4533,28 +4543,12 @@
           `}
         </div>
       `;
-
-      return html`
-        <div class="page-header">
-          <h2>Team & Board (${team.length})</h2>
-          <button class="btn btn-primary" onClick=${onAdd}>+ Add Member</button>
-        </div>
-        <div class="card" style="margin-bottom: 1rem; padding: 0.75rem 1rem;">
-          <div class="search-bar" style="max-width: 100%;">
-            <span class="search-icon">${icons.search}</span>
-            <input placeholder="Search by name, title, or organization..."
-              value=${search} onInput=${e => setSearch(e.target.value)} />
-          </div>
-        </div>
-        ${renderTable(teamMembers, 'Team')}
-        ${renderTable(boardMembers, 'Board')}
-      `;
     }
 
     // ═══════════════════════════════════════════
     // TEAM EDITOR
     // ═══════════════════════════════════════════
-    function TeamEditor({ slug, onBack, addToast }) {
+    function TeamEditor({ slug, onBack, addToast, defaultGroup }) {
       const [loading, setLoading] = useState(!!slug);
       const [saving, setSaving] = useState(false);
       const [deleting, setDeleting] = useState(false);
@@ -4565,7 +4559,7 @@
       const [uploading, setUploading] = useState(false);
       const [data, setData] = useState({
         name: '', slug: '', title: '', organization: '',
-        photo: '', group: 'team', order: 0,
+        photo: '', group: defaultGroup || 'team', order: 0,
       });
 
       useEffect(() => {
@@ -8186,7 +8180,8 @@
           { type: 'page', label: 'Dashboard', id: 'dashboard', section: 'Pages' },
           { type: 'page', label: 'Kids', id: 'kids-hub', section: 'Pages' },
           { type: 'page', label: 'Community Projects', id: 'kids-hub', subTab: 'community', section: 'Pages' },
-          { type: 'page', label: 'Partners', id: 'people-hub', subTab: 'partners', section: 'Pages' },
+          { type: 'page', label: 'Partners', id: 'partners-hub', section: 'Pages' },
+          { type: 'page', label: 'Board', id: 'people-hub', subTab: 'board', section: 'Pages' },
           { type: 'page', label: 'Team', id: 'people-hub', subTab: 'team', section: 'Pages' },
           { type: 'page', label: 'Articles', id: 'articles', section: 'Pages' },
           { type: 'page', label: 'Events', id: 'events', section: 'Pages' },
@@ -8203,7 +8198,8 @@
         ];
         const actions = [
           { type: 'action', label: 'Add New Kid', id: 'kids-hub', slug: '', section: 'Actions' },
-          { type: 'action', label: 'Add New Partner', id: 'people-hub', subTab: 'partners', slug: '', section: 'Actions' },
+          { type: 'action', label: 'Add New Partner', id: 'partners-hub', slug: '', section: 'Actions' },
+          { type: 'action', label: 'Add New Board Member', id: 'people-hub', subTab: 'board', slug: '', section: 'Actions' },
           { type: 'action', label: 'Add New Team Member', id: 'people-hub', subTab: 'team', slug: '', section: 'Actions' },
           { type: 'action', label: 'Add New Article', id: 'articles', slug: '', section: 'Actions' },
           { type: 'action', label: 'Add New Event', id: 'events', slug: '', section: 'Actions' },
@@ -8212,8 +8208,8 @@
         ];
         const content = [
           ...(kids || []).map(k => ({ type: 'content', label: k.name, meta: `Kid · ${k.year || ''}`, id: 'kids-hub', slug: k.slug, section: 'Content' })),
-          ...(partners || []).map(p => ({ type: 'content', label: p.name, meta: `Partner · ${p.tier || ''}`, id: 'people-hub', subTab: 'partners', slug: p.slug, section: 'Content' })),
-          ...(team || []).map(t => ({ type: 'content', label: t.name, meta: `Team · ${t.title || ''}`, id: 'people-hub', subTab: 'team', slug: t.slug, section: 'Content' })),
+          ...(partners || []).map(p => ({ type: 'content', label: p.name, meta: `Partner · ${p.tier || ''}`, id: 'partners-hub', slug: p.slug, section: 'Content' })),
+          ...(team || []).map(t => ({ type: 'content', label: t.name, meta: `${t.group === 'board' ? 'Board' : 'Team'} · ${t.title || ''}`, id: 'people-hub', subTab: t.group === 'board' ? 'board' : 'team', slug: t.slug, section: 'Content' })),
           ...(articles || []).map(a => ({ type: 'content', label: a.title || a.name, meta: 'Article', id: 'articles', slug: a.slug, section: 'Content' })),
           ...(events || []).map(e => ({ type: 'content', label: e.title || e.name, meta: `Event · ${e.date || ''}`, id: 'events', slug: e.slug, section: 'Content' })),
           ...(communityProjects || []).map(c => ({ type: 'content', label: c.name, meta: `Community · ${c.year || ''}`, id: 'kids-hub', subTab: 'community', slug: c.slug, section: 'Content' })),
@@ -8619,6 +8615,7 @@
         { label: 'Content', items: [
           { id: 'kids-hub', icon: icons.kids, label: 'Kids' },
           { id: 'people-hub', icon: icons.team, label: 'People' },
+          { id: 'partners-hub', icon: icons.partners, label: 'Partners' },
           { id: 'articles', icon: icons.articles, label: 'Articles' },
           { id: 'events', icon: icons.events, label: 'Events' },
           { id: 'press-hub', icon: icons.press, label: 'Press' },
@@ -8661,28 +8658,33 @@
             `;
           }
 
-          // ─── People Hub (tabs: Partners | Team) ───
+          // ─── People Hub (tabs: Team | Board) ───
           case 'people-hub': {
-            const pTab = subTab || 'partners';
+            const pTab = subTab || 'team';
             if (editSlug !== null) {
-              if (pTab === 'team') {
-                return html`<${TeamEditor} slug=${editSlug || undefined} onBack=${() => { setEditSlug(null); loadData(); }} addToast=${addToast} />`;
-              }
-              return html`<${PartnerEditor} slug=${editSlug || undefined} onBack=${() => { setEditSlug(null); loadData(); }} addToast=${addToast} />`;
+              return html`<${TeamEditor} slug=${editSlug || undefined} onBack=${() => { setEditSlug(null); loadData(); }} addToast=${addToast} defaultGroup=${pTab} />`;
             }
             return html`
               <div class="hub-tabs">
-                <button class="hub-tab ${pTab === 'partners' ? 'active' : ''}" onClick=${() => { setSubTab('partners'); setEditSlug(null); }}>Partners</button>
                 <button class="hub-tab ${pTab === 'team' ? 'active' : ''}" onClick=${() => { setSubTab('team'); setEditSlug(null); }}>Team</button>
+                <button class="hub-tab ${pTab === 'board' ? 'active' : ''}" onClick=${() => { setSubTab('board'); setEditSlug(null); }}>Board</button>
               </div>
-              ${pTab === 'team'
-                ? html`<${TeamList} team=${team} onEdit=${s => { setSubTab('team'); setEditSlug(s); }} onAdd=${() => { setSubTab('team'); setEditSlug(''); }}
+              ${pTab === 'board'
+                ? html`<${TeamList} team=${team} group=${'board'} onEdit=${s => { setSubTab('board'); setEditSlug(s); }} onAdd=${() => { setSubTab('board'); setEditSlug(''); }}
+                    onDelete=${t => setDeleteModal({ type: 'board member', item: t })} />`
+                : html`<${TeamList} team=${team} group=${'team'} onEdit=${s => { setSubTab('team'); setEditSlug(s); }} onAdd=${() => { setSubTab('team'); setEditSlug(''); }}
                     onDelete=${t => setDeleteModal({ type: 'team member', item: t })} />`
-                : html`<${PartnersList} partners=${partners} onEdit=${s => { setSubTab('partners'); setEditSlug(s); }} onAdd=${() => { setSubTab('partners'); setEditSlug(''); }}
-                    onDelete=${p => setDeleteModal({ type: 'partner', item: p })} />`
               }
             `;
           }
+
+          // ─── Partners Hub ───
+          case 'partners-hub':
+            return editSlug !== null
+              ? html`<${PartnerEditor} slug=${editSlug || undefined} onBack=${() => { setEditSlug(null); loadData(); }} addToast=${addToast} />`
+              : html`<${PartnersList} partners=${partners} onEdit=${s => navigate('partners-hub', s)} onAdd=${() => navigate('partners-hub', '')}
+                  onDelete=${p => setDeleteModal({ type: 'partner', item: p })} />`;
+
 
           case 'articles':
             return editSlug !== null

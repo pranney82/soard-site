@@ -3,7 +3,7 @@
  * Meet the Kids — Bespoke hero + premium grid with filtering
  *
  * PERF: gravity=face on CF Images, optimized srcsets, LCP preload,
- *       shimmer placeholders, static JSON manifest for load-more
+ *       static JSON manifest for load-more
  * SEO:  CollectionPage + ItemList + FAQPage schema, breadcrumbs, rich meta
  * A11Y: proper heading hierarchy, ARIA labels, focus management, 44px targets
  * UX:   Face collage hero, cinematic featured card, mobile bottom-sheet filters
@@ -1421,28 +1421,6 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
       }
     }, { passive: true, signal });
 
-    // ── Shimmer ──
-    function wireShimmer(img: HTMLImageElement) {
-      function onLoaded() { img.closest('.kid-card__frame')?.classList.add('is-loaded'); }
-      function onError() {
-        const frame = img.closest('.kid-card__frame');
-        if (frame) {
-          img.remove();
-          frame.classList.add('is-loaded');
-          const ph = document.createElement('div');
-          ph.className = 'kid-card__placeholder';
-          ph.setAttribute('aria-hidden', 'true');
-          ph.innerHTML = '<svg width="48" height="48"><use href="#icon-placeholder"/></svg>';
-          frame.prepend(ph);
-        }
-      }
-      if (img.complete) { img.naturalWidth === 0 ? onError() : onLoaded(); }
-      else {
-        img.addEventListener('load', onLoaded, { once: true });
-        img.addEventListener('error', onError, { once: true });
-      }
-    }
-    grid.querySelectorAll<HTMLImageElement>('.kid-card__img').forEach(wireShimmer);
 
     // ── URL filter restore ──
     const hasURLFilters = params.get('year') || params.get('type') || params.get('q') || params.get('status') || params.get('sort');
@@ -2376,43 +2354,6 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
     background: var(--c-warm-gray);
   }
 
-  /* Shimmer placeholder — uses transform (GPU-composited) instead of background-position */
-  :global(.kid-card__frame::after) {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: -100%;
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(
-      110deg,
-      transparent 30%,
-      rgba(255, 255, 255, 0.4) 50%,
-      transparent 70%
-    );
-    pointer-events: none;
-    z-index: 1;
-    transition: opacity 0.3s ease;
-    will-change: transform;
-    animation: shimmer 1.5s ease-in-out infinite;
-  }
-
-  :global(.kid-card__frame.is-loaded::after) {
-    opacity: 0;
-    animation: none;
-    will-change: auto;
-  }
-
-  /* Stop shimmer on hidden/overflow cards to avoid unnecessary paint */
-  :global(.kid-card.is-hidden .kid-card__frame::after),
-  :global(.kid-card.is-overflow .kid-card__frame::after) {
-    animation: none;
-  }
-
-  @keyframes shimmer {
-    from { transform: translateX(0); }
-    to { transform: translateX(200%); }
-  }
 
   :global(.kid-card__img) {
     width: 100%;
@@ -2929,9 +2870,5 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
       animation: none;
     }
 
-    :global(.kid-card__frame::after) {
-      animation: none;
-      display: none;
-    }
   }
 </style>
