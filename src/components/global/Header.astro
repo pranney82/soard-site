@@ -796,12 +796,6 @@ document.addEventListener('astro:before-swap', function () {
     transition: transform 0.2s cubic-bezier(0.32, 0.72, 0, 1), box-shadow 0.2s ease;
     overflow: hidden; position: relative;
   }
-  .header-cta::after {
-    content: ''; position: absolute; top: 0; left: -100%; width: 200%; height: 100%;
-    background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0) 40%, rgba(255,255,255,0.25) 50%, rgba(255,255,255,0) 60%, transparent 100%);
-    animation: shimmer 4s ease-in-out infinite; pointer-events: none;
-  }
-  @keyframes shimmer { 0%,100% { transform: translateX(-30%); } 50% { transform: translateX(30%); } }
   .header-cta:hover { transform: translateY(-1px) scale(1.03); box-shadow: 0 6px 24px var(--c-yellow-glow); }
   .header-cta:active { transform: translateY(0) scale(0.98); }
   .cta-heart { display: flex; align-items: center; animation: heartbeat 2.5s ease-in-out infinite; }
