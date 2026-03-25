@@ -10,8 +10,8 @@
  * The queue is a singleton row (id = 1) in the deploy_queue table.
  */
 
-const DEBOUNCE_MS = 2 * 60 * 1000;   // 2 minutes of quiet
-const MAX_WAIT_MS = 10 * 60 * 1000;  // 10 minute hard cap
+const DEBOUNCE_MS = 6 * 60 * 60 * 1000;  // 6 hours of quiet
+const MAX_WAIT_MS = 6 * 60 * 60 * 1000;  // 6 hour hard cap
 
 /**
  * Record that a content change happened and check whether a previously
