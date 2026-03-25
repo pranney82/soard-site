@@ -1,19 +1,20 @@
 /**
  * POST /api/delete-content
- * Deletes content from D1.
+ * Deletes content from D1 AND removes the file from GitHub.
  * Expects JSON body:
  *   {
  *     path: "src/content/kids/amari.json",
  *     sha: "...",              // ignored — kept for admin panel compatibility
- *     message: "Remove amari"  // kept for compatibility
+ *     message: "Remove amari"  // used as git commit message
  *   }
  *
  * Env bindings: DB (D1)
- * Env vars: CF_PAGES_DEPLOY_HOOK (optional — triggers rebuild after delete, debounced)
+ * Env vars: GITHUB_TOKEN, GITHUB_REPO (required for git commits)
+ *           GITHUB_BRANCH (optional, default "main")
  */
 
 import { parsePath } from './_collections.js';
-import { recordAndFlush } from './_deploy-queue.js';
+import { deleteFile } from './_github.js';
 
 export async function onRequestPost(context) {
   try {
@@ -35,6 +36,7 @@ export async function onRequestPost(context) {
       );
     }
 
+    // 1. Delete from D1 (read cache)
     if (parsed.type === 'site') {
       await DB.prepare('DELETE FROM site_config WHERE key = ?')
         .bind(parsed.key).run();
@@ -43,9 +45,15 @@ export async function onRequestPost(context) {
         .bind(parsed.slug).run();
     }
 
-    // Queue a debounced Pages rebuild (batches rapid edits into one deploy)
-    const { CF_PAGES_DEPLOY_HOOK } = context.env;
-    await recordAndFlush(DB, CF_PAGES_DEPLOY_HOOK, context);
+    // 2. Delete from GitHub in the background (source of truth — triggers Pages auto-deploy)
+    const gitDelete = deleteFile(context.env, path, message)
+      .catch(err => console.error('[delete-content] GitHub delete failed:', err.message));
+
+    if (context.waitUntil) {
+      context.waitUntil(gitDelete);
+    } else {
+      await gitDelete;
+    }
 
     return Response.json({ success: true });
   } catch (err) {

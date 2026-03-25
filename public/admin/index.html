@@ -2960,6 +2960,7 @@
         videoUrl: '', streamVideoId: '', photographer: '', partnerLogos: [],
         shortDescription: '', metaDescription: '', fundraisingUrl: '',
         roomCount: 1, childCount: 1,
+        bedroomCount: 0, bathroomCount: 0, therapyRoomCount: 0,
         featured: false, caseStudy: null,
       });
       const [uploading, setUploading] = useState({});
@@ -3481,7 +3482,7 @@
               <label class="form-label">Room Count</label>
               <input class="form-input" type="number" min="1" value=${data.roomCount || 1}
                 onInput=${e => updateField('roomCount', parseInt(e.target.value) || 1)} />
-              <div class="form-hint">Number of rooms built for this kid (auto-counted in site stats)</div>
+              <div class="form-hint">Total rooms built for this kid (auto-counted in site stats)</div>
             </div>
             <div class="form-group">
               <label class="form-label">Child Count</label>
@@ -3490,6 +3491,24 @@
               <div class="form-hint">Number of children in this profile (>1 for siblings)</div>
             </div>
           </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Bedrooms</label>
+              <input class="form-input" type="number" min="0" value=${data.bedroomCount || 0}
+                onInput=${e => updateField('bedroomCount', parseInt(e.target.value) || 0)} />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Bathrooms</label>
+              <input class="form-input" type="number" min="0" value=${data.bathroomCount || 0}
+                onInput=${e => updateField('bathroomCount', parseInt(e.target.value) || 0)} />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Therapy Rooms</label>
+              <input class="form-input" type="number" min="0" value=${data.therapyRoomCount || 0}
+                onInput=${e => updateField('therapyRoomCount', parseInt(e.target.value) || 0)} />
+            </div>
+          </div>
+          <div class="form-hint" style="margin-top: -0.5rem;">Breakdown by room type</div>
         </div>
 
         <div class="card">
@@ -8552,18 +8571,8 @@
 
       useEffect(() => { loadData(); }, []);
 
-      // Poll the deploy queue so the last edit in a session always gets deployed.
-      // Runs every 30 s while the tab is visible; pauses when hidden to save resources.
-      useEffect(() => {
-        let timer = null;
-        const poll = () => fetch('/api/flush-deploy').catch(() => {});
-        const start = () => { if (!timer) timer = setInterval(poll, 30000); };
-        const stop = () => { clearInterval(timer); timer = null; };
-        const onVis = () => document.hidden ? stop() : start();
-        document.addEventListener('visibilitychange', onVis);
-        start();
-        return () => { stop(); document.removeEventListener('visibilitychange', onVis); };
-      }, []);
+      // No deploy polling needed — saves commit directly to GitHub,
+      // and Cloudflare Pages auto-deploys on push.
 
       // Global keyboard shortcuts
       useEffect(() => {

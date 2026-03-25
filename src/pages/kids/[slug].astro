@@ -6,7 +6,6 @@
  *   - LQIP blur-up image placeholders (tiny CF thumbnail → full res)
  *   - Staggered cascade reveal animations (each element sequences in)
  *   - CSS-only scroll progress indicator
- *   - Shimmer loading states on all images
  *   - Asymmetric hero with portrait + typography (never full-width)
  *   - Masonry gallery with face-gravity, hover zoom overlay
  *   - Video facade (CF Stream + YouTube)
@@ -781,7 +780,7 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     will-change: transform;
   }
 
-  /* ═══ LQIP Blur-Up ═══════════════════════ */
+  /* ═══ LQIP Blur-Up (dominant-color → blurred thumb → full res) ══ */
   .hero__portrait,
   .masonry__item,
   .related__img-wrap {
@@ -793,44 +792,11 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
 
   .lqip-img {
     opacity: 0;
-    transition: opacity 0.5s ease;
+    transition: opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
   .lqip-img.loaded {
     opacity: 1;
-  }
-
-  /* ═══ Shimmer Loading State ═══════════════ */
-  @keyframes shimmer {
-    0% { background-position: -200% 0; }
-    100% { background-position: 200% 0; }
-  }
-
-  .hero__portrait::before,
-  .masonry__item::before,
-  .related__img-wrap::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    z-index: 1;
-    background: linear-gradient(
-      90deg,
-      transparent 0%,
-      rgba(255, 255, 255, 0.3) 50%,
-      transparent 100%
-    );
-    background-size: 200% 100%;
-    animation: shimmer 1.5s ease-in-out infinite;
-    pointer-events: none;
-    border-radius: inherit;
-  }
-
-  /* Hide shimmer once image loads */
-  .hero__portrait:has(.loaded)::before,
-  .masonry__item:has(.loaded)::before,
-  .related__img-wrap:has(.loaded)::before {
-    opacity: 0;
-    transition: opacity 0.3s ease;
   }
 
   /* ═══ Staggered Reveal — Hero Elements ════ */
@@ -1865,13 +1831,6 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     }
 
     .scroll-progress { display: none; }
-
-    .hero__portrait::before,
-    .masonry__item::before,
-    .related__img-wrap::before {
-      animation: none;
-      display: none;
-    }
 
     .video__thumb,
     .masonry__img,

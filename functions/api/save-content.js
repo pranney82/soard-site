@@ -1,20 +1,21 @@
 /**
  * POST /api/save-content
- * Creates or updates content in D1.
+ * Creates or updates content in D1 AND commits to GitHub.
  * Expects JSON body:
  *   {
  *     path: "src/content/kids/amari.json",
  *     content: "{ ... }",        // file content as JSON string
- *     message: "Update amari",   // kept for admin panel compatibility
+ *     message: "Update amari",   // used as git commit message
  *     sha: "..."                 // ignored — D1 uses upsert
  *   }
  *
  * Env bindings: DB (D1)
- * Env vars: CF_PAGES_DEPLOY_HOOK (optional — triggers rebuild after save, debounced)
+ * Env vars: GITHUB_TOKEN, GITHUB_REPO (required for git commits)
+ *           GITHUB_BRANCH (optional, default "main")
  */
 
 import { EXTRACTORS, parsePath, generateSha } from './_collections.js';
-import { recordAndFlush } from './_deploy-queue.js';
+import { commitFile } from './_github.js';
 
 export async function onRequestPost(context) {
   try {
@@ -38,8 +39,10 @@ export async function onRequestPost(context) {
 
     const data = typeof content === 'string' ? JSON.parse(content) : content;
     const jsonStr = JSON.stringify(data);
+    const prettyJson = JSON.stringify(data, null, 2);
     const now = new Date().toISOString();
 
+    // 1. Write to D1 (fast read cache for admin panel)
     if (parsed.type === 'site') {
       await DB.prepare(
         'INSERT OR REPLACE INTO site_config (key, data, updated_at) VALUES (?, ?, ?)'
@@ -66,9 +69,17 @@ export async function onRequestPost(context) {
 
     const sha = await generateSha(jsonStr);
 
-    // Queue a debounced Pages rebuild (batches rapid edits into one deploy)
-    const { CF_PAGES_DEPLOY_HOOK } = context.env;
-    await recordAndFlush(DB, CF_PAGES_DEPLOY_HOOK, context);
+    // 2. Commit to GitHub in the background (source of truth — triggers Pages auto-deploy).
+    //    D1 already has the data, so the admin sees an instant save.
+    //    If the GitHub commit fails, it's logged but doesn't block the user.
+    const gitCommit = commitFile(context.env, path, prettyJson + '\n', message)
+      .catch(err => console.error('[save-content] GitHub commit failed:', err.message));
+
+    if (context.waitUntil) {
+      context.waitUntil(gitCommit);
+    } else {
+      await gitCommit;
+    }
 
     return Response.json({
       success: true,
