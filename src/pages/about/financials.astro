@@ -6,6 +6,10 @@
  */
 import PageLayout from '../../layouts/PageLayout.astro';
 import financialsData from '../../content/site/financials.json';
+import { getCollection } from 'astro:content';
+
+const allTeam = await getCollection('team');
+const boardMemberCount = allTeam.filter(t => t.data.group === 'board').length;
 
 // Sort documents by year descending
 const docs990 = financialsData.documents
@@ -36,7 +40,7 @@ const snapshot = {
   netAssets: 944625,
   employees: 19,
   volunteers: 1000,
-  boardMembers: 17,
+  boardMembers: boardMemberCount,
   programPct: 81,
   managementPct: 10,
   fundraisingPct: 9,
@@ -151,7 +155,7 @@ const jsonLd = {
           <span class="stat-card__label">Volunteers</span>
         </div>
         <div class="stat-card">
-          <span class="stat-card__number">17</span>
+          <span class="stat-card__number">{boardMemberCount}</span>
           <span class="stat-card__label">Board Members</span>
         </div>
         <div class="stat-card">
@@ -174,23 +178,15 @@ const jsonLd = {
         <div class="model-block__content">
           <h2>Our stores fund our overhead</h2>
           <p>
-            In 2020, SOARD founders Peter and Holly Ranney opened 
-            <a href="https://sunnyandranney.com" target="_blank" rel="noopener noreferrer">Sunny &amp; Ranney</a>, 
-            a designer home furnishings store in Roswell, GA. A second store, 
-            <strong>Partly Sunny</strong>, followed in 2023. Together, the stores cover 
-            <span class="highlight">all operational overhead</span> — rent, utilities, and employee salaries — 
+            In 2020, SOARD founders Peter and Holly Ranney opened
+            <a href="https://sunnyandranney.com" target="_blank" rel="noopener noreferrer">Sunny &amp; Ranney</a>,
+            a designer home furnishings store in Roswell, GA. The goal of the store is to cover
+            <span class="highlight">the majority of overhead</span> — rent, utilities, and employee salaries —
             so that donor dollars go directly to building rooms for kids.
           </p>
-          <div class="model-numbers">
-            <div class="model-stat">
-              <span class="model-stat__number">$1.4M</span>
-              <span class="model-stat__label">Store revenue (2023)</span>
-            </div>
-            <div class="model-stat">
-              <span class="model-stat__number">$1.4M</span>
-              <span class="model-stat__label">Donations &amp; grants (2023)</span>
-            </div>
-          </div>
+          <a href="/sunny-and-ranney/" class="model-store-link">
+            Visit the Store &rarr;
+          </a>
         </div>
       </div>
     </div>
@@ -377,8 +373,8 @@ const jsonLd = {
     min-width: 140px;
   }
   a.trust-badge:hover {
-    transform: translateY(-3px);
-    box-shadow: var(--shadow-md);
+    transform: none;
+    box-shadow: none;
   }
   .trust-badge img {
     width: 88px;
@@ -532,23 +528,21 @@ const jsonLd = {
     line-height: 1.7;
     font-size: 1.02rem;
   }
-  .model-numbers {
-    display: flex;
-    gap: var(--space-2xl);
+  .model-store-link {
+    display: inline-block;
     margin-top: var(--space-xl);
-    padding-top: var(--space-lg);
-    border-top: 1px solid var(--c-border);
-  }
-  .model-stat__number {
-    display: block;
-    font-family: var(--font-display);
-    font-size: 1.5rem;
-    font-weight: 700;
+    padding: var(--space-sm) var(--space-lg);
+    font-weight: 600;
+    font-size: 0.95rem;
     color: var(--c-dark);
+    background: var(--c-yellow);
+    border-radius: var(--border-radius);
+    text-decoration: none;
+    transition: all var(--transition-base);
   }
-  .model-stat__label {
-    font-size: 0.8rem;
-    color: var(--c-text-muted);
+  .model-store-link:hover {
+    opacity: 0.85;
+    transform: translateY(-2px);
   }
 
   /* ─── Section Headers ──────────────────── */
@@ -722,7 +716,6 @@ const jsonLd = {
   @media (max-width: 768px) {
     .stats-grid { grid-template-columns: repeat(2, 1fr); gap: var(--space-sm); }
     .model-block { flex-direction: column; gap: var(--space-md); padding: var(--space-xl); }
-    .model-numbers { flex-direction: column; gap: var(--space-md); }
     .trust-row { gap: var(--space-md); }
     .trust-badge { padding: var(--space-md); min-width: 120px; }
     .trust-badge img { width: 64px; height: 64px; }
