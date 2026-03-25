@@ -10,38 +10,14 @@
   "status": "completed",
   "bio": "Naji is a nineteen-year-old young man, born on April 5, 2004 with a congenital heart defect that necessitated four open heart surgeries. His plans after high school were to pursue college degrees in both finance and law. Unfortunately, his plans were put on hold after sustaining a spinal cord injury in September 2022.\n\nThe injury Naji sustained in September 2022 caused him to become paraplegic. He was hospitalized for several months after his surgery for both recovery and extensive in-patient rehabilitation therapy. The nature of his injury by definition involves an extremely long recovery, including extensive physical and occupational therapy, lots of dedication and hard work to his treatment plan. Other hurdles he is having to navigate in addition to his paralysis are: the management of constant pain, neurogenic bowels, neurogenic bladder, emotional and psychological stress and anxiety.\n\nNaji is an extremely intelligent young man, as well as being very sensitive and caring. He has a unique sense of humor, loves animals and in fact has two dogs and a kitten: Oreo, Tango and Bear. He is dedicated to achieving recovery, going to college and pursuing a career that would allow him to become a productive member of society, and to give back what society has graciously given him.",
   "quote": "\"He is dedicated to ... pursuing a career that would allow him to become a productive member of society - to give back what society has graciously given him.\"",
-  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/naji/hero/public",
+  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/naji/photo-11/public",
   "photos": [
     {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/naji/photo-01/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/naji/photo-02/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/naji/photo-03/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/naji/photo-04/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/naji/photo-05/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/naji/photo-06/public",
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/naji/photo-11/public",
       "alt": ""
     },
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/naji/photo-07/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/naji/photo-08/public",
       "alt": ""
     },
     {
@@ -53,23 +29,30 @@
       "alt": ""
     },
     {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/naji/photo-11/public",
-      "alt": ""
-    },
-    {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/naji/photo-12/public",
       "alt": ""
     },
     {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/naji/photo-13/public",
-      "alt": ""
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/naji/1774457153348-Untitled-design-14.png/public",
+      "alt": "",
+      "cfImageId": "kids/naji/1774457153348-Untitled-design-14.png"
     },
     {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/liam/photo-28/public",
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/naji/1774457190265-Untitled-design-15.png/public",
+      "alt": "",
+      "cfImageId": "kids/naji/1774457190265-Untitled-design-15.png"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/naji/1774457240567-Untitled-design-16.png/public",
+      "alt": "",
+      "cfImageId": "kids/naji/1774457240567-Untitled-design-16.png"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/naji/photo-01/public",
       "alt": ""
     }
   ],
-  "photoCount": 15,
+  "photoCount": 9,
   "videoUrl": "https://youtu.be/mPna7lJi5XI?si=ViAJgRT1CeK_JnOY",
   "photographer": "Niki Murphy",
   "partnerLogos": [
@@ -112,5 +95,7 @@
   "altTexts": null,
   "jsonLd": null,
   "streamVideoId": "82c7236b5824088e5e89adcd6b2854ec",
-  "roomCount": 1
+  "roomCount": 1,
+  "publishStatus": "published",
+  "fundraisingUrl": null
 }

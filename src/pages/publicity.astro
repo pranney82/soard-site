@@ -1,17 +1,20 @@
 ---
 /**
  * Publicity Page — Sunshine on a Ranney Day
- * Top-1% press page: stats → logos → celebrity → video → featured → archive → CTA
+ * Editorial magazine-spread design.
  *
- * Architecture:
+ * Flow: stats ribbon → logos → cinematic video hero → celebrity bento →
+ *       pull quote → featured editorial → filterable archive → CTA
+ *
+ * Techniques from the site's design ceiling:
+ * - LQIP shimmer + blur-up on images (kid detail pattern)
+ * - Editorial asymmetric grids (homepage mission section)
+ * - Inset box-shadow hover (kids listing cards)
+ * - Native <details> for collapsible year groups (donate FAQ pattern)
+ * - Frosted glass overlays (homepage hero label)
+ * - Staggered cascade reveals with cubic-bezier spring
  * - JSON-LD CollectionPage + NewsArticle structured data
- * - OG image for social sharing
- * - Animated stat counters (IntersectionObserver)
- * - Category filter tabs on archive (client JS, no page reload)
- * - Progressive disclosure: archive groups collapse with show-more
  * - YouTube click-to-load facade with preconnect warming
- * - All images via CF Images with proper srcset + sizes
- * - prefers-reduced-motion fully respected
  */
 import PageLayout from '../layouts/PageLayout.astro';
 import MediaLogos from '../components/ui/MediaLogos.astro';
@@ -22,6 +25,8 @@ import { getCollection } from 'astro:content';
 const allPress = await getCollection('press');
 const press = allPress.sort((a, b) => new Date(b.data.date).getTime() - new Date(a.data.date).getTime());
 const featured = press.filter(p => p.data.featured);
+const heroFeatured = featured[0];
+const restFeatured = featured.slice(1);
 
 const years = [...new Set(press.map(p => new Date(p.data.date).getFullYear()))].sort((a, b) => b - a);
 const pressByYear: Record<number, typeof press> = {};
@@ -58,9 +63,12 @@ const celebrities = [
 const totalPress = press.length;
 const tvCount = press.filter(p => p.data.category === 'national-tv' || p.data.category === 'local-tv').length;
 const uniqueOutlets = new Set(press.map(p => p.data.outlet)).size;
-const yearsActive = new Date().getFullYear() - 2012;
 
-/* JSON-LD: CollectionPage with embedded NewsArticle items */
+/* Pull quote — a powerful excerpt to use as an editorial break */
+const pullQuote = "Peter and Holly Ranney were featured on NBC's Today Show for their renovation of the parent sleep rooms at Children's Healthcare of Atlanta, transforming hospital spaces into calming retreats for families of sick children.";
+const pullQuoteSource = "NBC Today Show";
+
+/* JSON-LD */
 const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'CollectionPage',
@@ -102,29 +110,28 @@ const breadcrumbs = [
   breadcrumbs={breadcrumbs}
 >
 
-  <!-- ══════ IMPACT STATS ══════ -->
-  <section class="stats-bar" aria-label="Media impact">
+  <!-- ══════ STATS RIBBON ══════ -->
+  <section class="stats" aria-label="Media impact" data-reveal>
     <div class="container">
-      <div class="stats-bar__grid" data-reveal>
-        <div class="stats-bar__item" data-reveal data-delay="0">
-          <span class="stats-bar__num" data-count-to={totalPress} data-suffix="+">0</span>
-          <span class="stats-bar__label">Media Features</span>
-          <span class="stats-bar__sub">since 2012</span>
+      <div class="stats__inner">
+        <div class="stats__item">
+          <span class="stats__num">{totalPress}+</span>
+          <span class="stats__label">Media Features</span>
         </div>
-        <div class="stats-bar__item" data-reveal data-delay="1">
-          <span class="stats-bar__num" data-count-to={uniqueOutlets} data-suffix="+">0</span>
-          <span class="stats-bar__label">Outlets</span>
-          <span class="stats-bar__sub">local & national</span>
+        <span class="stats__divider" aria-hidden="true"></span>
+        <div class="stats__item">
+          <span class="stats__num">{uniqueOutlets}+</span>
+          <span class="stats__label">Outlets</span>
         </div>
-        <div class="stats-bar__item" data-reveal data-delay="2">
-          <span class="stats-bar__num" data-count-to={tvCount}>0</span>
-          <span class="stats-bar__label">TV Segments</span>
-          <span class="stats-bar__sub">broadcast features</span>
+        <span class="stats__divider" aria-hidden="true"></span>
+        <div class="stats__item">
+          <span class="stats__num">{tvCount}</span>
+          <span class="stats__label">TV Segments</span>
         </div>
-        <div class="stats-bar__item" data-reveal data-delay="3">
-          <span class="stats-bar__num" data-count-to={yearsActive} data-suffix="+">0</span>
-          <span class="stats-bar__label">Years</span>
-          <span class="stats-bar__sub">in the spotlight</span>
+        <span class="stats__divider" aria-hidden="true"></span>
+        <div class="stats__item">
+          <span class="stats__num">2</span>
+          <span class="stats__label">National TV</span>
         </div>
       </div>
     </div>
@@ -132,7 +139,69 @@ const breadcrumbs = [
 
   <MediaLogos theme="dark" linked={false} />
 
-  <!-- ══════ CELEBRITY SUPPORTERS ══════ -->
+  <!-- ══════ CINEMATIC VIDEO HERO ══════ -->
+  <section class="vid-hero" aria-labelledby="vid-hero-title">
+    <div class="vid-hero__cinema" data-reveal>
+      <div class="vid-hero__frame" id="yt-today-show">
+        <img
+          src="https://i.ytimg.com/vi/Tej9V0MPQbY/maxresdefault.jpg"
+          alt="Today Show — Sunshine on a Ranney Day"
+          width="1280" height="720"
+          loading="lazy" decoding="async"
+          class="vid-hero__poster"
+        />
+        <div class="vid-hero__scrim"></div>
+        <button class="vid-hero__play" aria-label="Play Today Show video" data-yt-id="Tej9V0MPQbY">
+          <span class="vid-hero__play-ring">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+          </span>
+        </button>
+        <div class="vid-hero__glass">
+          <span class="vid-hero__badge">NBC Today Show</span>
+          <h2 id="vid-hero-title" class="vid-hero__title">#ShareKindness</h2>
+          <p class="vid-hero__desc">Peter & Holly renovate parent sleep rooms at Children's Healthcare of Atlanta — broadcast nationally on the Today Show.</p>
+        </div>
+      </div>
+    </div>
+    <!-- Secondary video -->
+    <div class="container">
+      <div class="vid-hero__secondary" data-reveal>
+        <div class="vid-hero__secondary-frame">
+          <CFImage
+            src={`${CF}/press-braves-community-heroes/public`}
+            alt="Atlanta Braves Community Heroes"
+            width={960}
+            height={540}
+            sizes="(max-width: 768px) 100vw, 560px"
+            widths={[400, 560, 800]}
+            class="vid-hero__secondary-poster"
+          />
+          <a href="https://www.mlb.com/video/2018-community-heroes-week/c-2525462483" target="_blank" rel="noopener noreferrer" class="vid-hero__secondary-play" aria-label="Watch Braves Community Heroes on MLB.com">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+          </a>
+        </div>
+        <div class="vid-hero__secondary-info">
+          <span class="vid-hero__secondary-badge">MLB.com</span>
+          <h3 class="vid-hero__secondary-title">Atlanta Braves Community Heroes</h3>
+          <p class="vid-hero__secondary-desc">Braves players surprise the Ranneys at a makeover and honor them on-field during Community Heroes Week.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════ PULL QUOTE ══════ -->
+  <section class="pullquote" aria-label="Press quote" data-reveal>
+    <div class="container container--narrow">
+      <blockquote class="pullquote__block">
+        <p class="pullquote__text">{pullQuote}</p>
+        <footer class="pullquote__source">
+          <cite>— {pullQuoteSource}</cite>
+        </footer>
+      </blockquote>
+    </div>
+  </section>
+
+  <!-- ══════ CELEBRITY SUPPORTERS — BENTO GRID ══════ -->
   <section class="celebs" aria-labelledby="celebs-heading">
     <div class="container">
       <div class="celebs__header" data-reveal>
@@ -140,58 +209,32 @@ const breadcrumbs = [
         <h2 id="celebs-heading" class="sec-title">Championed by <em class="highlight">Atlanta's best</em></h2>
         <p class="celebs__sub">From coaches and athletes to TV personalities and Georgia's governor, the people who meet our families become our biggest advocates.</p>
       </div>
-
-      <!-- Marquee row: top 4 in large cards -->
-      <div class="celebs__marquee">
-        {celebrities.slice(0, 4).map((c, i) => (
-          <article class="cc cc--large" data-reveal data-delay={String(i)}>
-            <div class="cc__img-wrap">
+      <div class="bento">
+        {celebrities.map((c, i) => (
+          <article class={`bento__card ${i === 0 ? 'bento__card--hero' : ''}`} data-reveal data-delay={i < 4 ? String(i) : undefined}>
+            <div class="bento__img-wrap">
+              <div class="bento__shimmer" aria-hidden="true"></div>
               <CFImage
                 src={`${CF}/${c.imageId}/public`}
                 alt={c.name}
-                width={640}
-                height={480}
-                sizes="(max-width: 480px) 100vw, (max-width: 768px) 50vw, (max-width: 1200px) 33vw, 280px"
-                widths={[280, 400, 560, 640]}
+                width={i === 0 ? 800 : 500}
+                height={i === 0 ? 600 : 420}
+                sizes={i === 0
+                  ? '(max-width: 480px) 100vw, (max-width: 768px) 100vw, 50vw'
+                  : '(max-width: 480px) 100vw, (max-width: 768px) 50vw, 25vw'}
+                widths={i === 0 ? [400, 600, 800, 1200] : [260, 400, 520]}
                 fit="cover"
                 gravity="face"
-                class="cc__img"
+                class="bento__img"
               />
-              <div class="cc__overlay">
-                <span class="cc__type">{c.type}</span>
+              <div class="bento__gradient"></div>
+              <div class="bento__meta">
+                <span class="bento__type">{c.type}</span>
+                <h3 class="bento__name">{c.name}</h3>
               </div>
             </div>
-            <div class="cc__body">
-              <h3 class="cc__name">{c.name}</h3>
-              <p class="cc__desc">{c.desc}</p>
-            </div>
-          </article>
-        ))}
-      </div>
-
-      <!-- Second row: remaining 4 in compact cards -->
-      <div class="celebs__grid">
-        {celebrities.slice(4).map((c, i) => (
-          <article class="cc" data-reveal data-delay={String(i)}>
-            <div class="cc__img-wrap">
-              <CFImage
-                src={`${CF}/${c.imageId}/public`}
-                alt={c.name}
-                width={600}
-                height={500}
-                sizes="(max-width: 480px) 100vw, (max-width: 768px) 50vw, 260px"
-                widths={[260, 400, 520]}
-                fit="cover"
-                gravity="face"
-                class="cc__img"
-              />
-              <div class="cc__overlay">
-                <span class="cc__type">{c.type}</span>
-              </div>
-            </div>
-            <div class="cc__body">
-              <h3 class="cc__name">{c.name}</h3>
-              <p class="cc__desc">{c.desc}</p>
+            <div class="bento__body">
+              <p class="bento__desc">{c.desc}</p>
             </div>
           </article>
         ))}
@@ -199,68 +242,44 @@ const breadcrumbs = [
     </div>
   </section>
 
-  <!-- ══════ VIDEO HIGHLIGHTS ══════ -->
-  <section class="videos" aria-labelledby="vid-heading">
-    <div class="container">
-      <div class="videos__header" data-reveal>
-        <span class="section-label section-label--on-dark">Watch</span>
-        <h2 id="vid-heading" class="sec-title sec-title--on-dark">See the <em class="highlight">moments</em> that matter</h2>
-      </div>
-      <div class="videos__grid">
-        <!-- Today Show — click-to-load facade -->
-        <div class="vc vc--hero" data-reveal>
-          <div class="vc__wrap" id="yt-today-show">
-            <img
-              src="https://i.ytimg.com/vi/Tej9V0MPQbY/maxresdefault.jpg"
-              alt="Today Show — Sunshine on a Ranney Day"
-              width="1280" height="720"
-              loading="lazy" decoding="async"
-              class="vc__poster"
-            />
-            <button class="vc__play-btn" aria-label="Play Today Show video" data-yt-id="Tej9V0MPQbY">
-              <svg width="68" height="48" viewBox="0 0 68 48"><path d="M66.52 7.74c-.78-2.93-2.49-5.41-5.42-6.19C55.79.13 34 0 34 0S12.21.13 6.9 1.55c-2.93.78-4.63 3.26-5.42 6.19C.06 13.05 0 24 0 24s.06 10.95 1.48 16.26c.78 2.93 2.49 5.41 5.42 6.19C12.21 47.87 34 48 34 48s21.79-.13 27.1-1.55c2.93-.78 4.64-3.26 5.42-6.19C67.94 34.95 68 24 68 24s-.06-10.95-1.48-16.26z" fill="#FFDA24"/><path d="M45 24L27 14v20" fill="#373A36"/></svg>
-            </button>
-          </div>
-          <div class="vc__info">
-            <span class="vc__badge">Featured</span>
-            <h3 class="vc__title">NBC Today Show Feature</h3>
-            <p class="vc__desc">Peter & Holly renovate parent sleep rooms at Children's Healthcare of Atlanta as part of NBC's #ShareKindness campaign.</p>
-          </div>
-        </div>
-        <!-- Braves Community Heroes -->
-        <div class="vc" data-reveal data-delay="1">
-          <div class="vc__wrap">
-            <CFImage
-              src={`${CF}/press-braves-community-heroes/public`}
-              alt="Atlanta Braves Community Heroes — Sunshine on a Ranney Day"
-              width={960}
-              height={540}
-              sizes="(max-width: 768px) 100vw, 480px"
-              widths={[480, 640, 960]}
-              class="vc__poster"
-            />
-            <a href="https://www.mlb.com/video/2018-community-heroes-week/c-2525462483" target="_blank" rel="noopener noreferrer" class="vc__play-btn" aria-label="Watch Braves Community Heroes on MLB.com">
-              <svg width="68" height="48" viewBox="0 0 68 48"><path d="M66.52 7.74c-.78-2.93-2.49-5.41-5.42-6.19C55.79.13 34 0 34 0S12.21.13 6.9 1.55c-2.93.78-4.63 3.26-5.42 6.19C.06 13.05 0 24 0 24s.06 10.95 1.48 16.26c.78 2.93 2.49 5.41 5.42 6.19C12.21 47.87 34 48 34 48s21.79-.13 27.1-1.55c2.93-.78 4.64-3.26 5.42-6.19C67.94 34.95 68 24 68 24s-.06-10.95-1.48-16.26z" fill="#CE1141"/><path d="M45 24L27 14v20" fill="white"/></svg>
-            </a>
-          </div>
-          <div class="vc__info">
-            <h3 class="vc__title">Atlanta Braves Community Heroes</h3>
-            <p class="vc__desc">Braves players surprise the Ranneys at a makeover and honor them on-field during Community Heroes Week.</p>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ══════ FEATURED COVERAGE ══════ -->
+  <!-- ══════ FEATURED COVERAGE — EDITORIAL LAYOUT ══════ -->
   <section class="pub-featured" aria-labelledby="feat-heading">
     <div class="container">
       <div data-reveal>
         <span class="section-label">Featured Stories</span>
         <h2 id="feat-heading" class="sec-title">Highlighted <em class="highlight">coverage</em></h2>
       </div>
+
+      {/* Hero featured card — spans full width */}
+      {heroFeatured && (
+        <article class="feat-hero" data-reveal>
+          <div class="feat-hero__accent" aria-hidden="true"></div>
+          <div class="feat-hero__inner">
+            <div class="feat-hero__content">
+              <span class="feat-hero__cat">{categoryLabels[heroFeatured.data.category]}</span>
+              <h3 class="feat-hero__title">{heroFeatured.data.title}</h3>
+              <p class="feat-hero__outlet">{heroFeatured.data.outlet}</p>
+              <p class="feat-hero__excerpt">{heroFeatured.data.excerpt}</p>
+              <div class="feat-hero__foot">
+                <time datetime={heroFeatured.data.date}>{formatShortDate(heroFeatured.data.date)}</time>
+                {heroFeatured.data.url && (
+                  <a href={heroFeatured.data.url} class="feat-hero__link" target="_blank" rel="noopener noreferrer">
+                    Read the full story
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 17L17 7"/><path d="M7 7h10v10"/></svg>
+                  </a>
+                )}
+              </div>
+            </div>
+            <div class="feat-hero__visual" aria-hidden="true">
+              <span class="feat-hero__quote-mark">&ldquo;</span>
+            </div>
+          </div>
+        </article>
+      )}
+
+      {/* Rest of featured stories in a grid */}
       <div class="feat-grid">
-        {featured.map((item, i) => (
+        {restFeatured.map((item, i) => (
           <article class="fc" data-reveal data-delay={i < 3 ? String(i) : undefined}>
             <div class="fc__accent" aria-hidden="true"></div>
             <div class="fc__body">
@@ -269,15 +288,12 @@ const breadcrumbs = [
                 <time class="fc__date" datetime={item.data.date}>{formatShortDate(item.data.date)}</time>
               </div>
               <h3 class="fc__title">{item.data.title}</h3>
-              <p class="fc__outlet">
-                <svg class="fc__outlet-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
-                {item.data.outlet}
-              </p>
+              <p class="fc__outlet">{item.data.outlet}</p>
               <p class="fc__excerpt">{item.data.excerpt}</p>
               <div class="fc__foot">
                 {item.data.url && (
                   <a href={item.data.url} class="fc__link" target="_blank" rel="noopener noreferrer">
-                    Read article <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 17L17 7"/><path d="M7 7h10v10"/></svg>
+                    Read <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 17L17 7"/><path d="M7 7h10v10"/></svg>
                   </a>
                 )}
               </div>
@@ -288,7 +304,7 @@ const breadcrumbs = [
     </div>
   </section>
 
-  <!-- ══════ PRESS ARCHIVE ══════ -->
+  <!-- ══════ PRESS ARCHIVE — COLLAPSIBLE YEAR GROUPS ══════ -->
   <section class="pub-archive" aria-labelledby="arch-heading" id="archive">
     <div class="container">
       <div class="archive__header" data-reveal>
@@ -296,42 +312,41 @@ const breadcrumbs = [
           <span class="section-label">Press Archive</span>
           <h2 id="arch-heading" class="sec-title">All <em class="highlight">{totalPress} stories</em></h2>
         </div>
-        <!-- Category filter tabs -->
         <nav class="archive__filters" aria-label="Filter press by category">
           {categories.map(cat => (
             <button
-              class={`filter-tab ${cat === 'all' ? 'filter-tab--active' : ''}`}
+              class={`ftab ${cat === 'all' ? 'ftab--active' : ''}`}
               data-filter={cat}
               aria-pressed={cat === 'all' ? 'true' : 'false'}
             >
               {categoryLabels[cat]}
-              <span class="filter-tab__count">
-                {cat === 'all' ? totalPress : press.filter(p => p.data.category === cat).length}
-              </span>
+              <span class="ftab__ct">{cat === 'all' ? totalPress : press.filter(p => p.data.category === cat).length}</span>
             </button>
           ))}
         </nav>
       </div>
 
-      <!-- Filtered results count (live region for a11y) -->
       <p class="archive__results" aria-live="polite" aria-atomic="true"></p>
 
       <div class="archive__body">
-        {years.map(year => (
-          <div class="yg" data-reveal data-year={year}>
-            <div class="yg__label">
+        {years.map((year, yi) => (
+          <details class="yg" data-year={year} open={yi === 0} data-reveal>
+            <summary class="yg__summary">
               <span class="yg__year">{year}</span>
-              <span class="yg__ct">{pressByYear[year].length} stories</span>
-              <div class="yg__line" aria-hidden="true"></div>
-            </div>
+              <span class="yg__ct">{pressByYear[year].length}</span>
+              <span class="yg__line" aria-hidden="true"></span>
+              <span class="yg__chevron" aria-hidden="true">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+              </span>
+            </summary>
             <div class="cl">
               {pressByYear[year].map(item => (
                 <article class="ci" data-category={item.data.category}>
-                  <div class="ci__indicator" aria-hidden="true"></div>
+                  <div class="ci__bar" aria-hidden="true"></div>
                   <div class="ci__content">
                     <div class="ci__meta">
                       <span class="ci__outlet">{item.data.outlet}</span>
-                      <span class="ci__sep" aria-hidden="true">&middot;</span>
+                      <span class="ci__dot" aria-hidden="true"></span>
                       <time datetime={item.data.date}>{formatDate(item.data.date)}</time>
                       <span class="ci__tag">{categoryLabels[item.data.category]}</span>
                     </div>
@@ -342,13 +357,13 @@ const breadcrumbs = [
                   </div>
                   {item.data.url && (
                     <a href={item.data.url} class="ci__arrow" target="_blank" rel="noopener noreferrer" aria-label={`Read: ${item.data.title}`}>
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 17L17 7"/><path d="M7 7h10v10"/></svg>
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 17L17 7"/><path d="M7 7h10v10"/></svg>
                     </a>
                   )}
                 </article>
               ))}
             </div>
-          </div>
+          </details>
         ))}
       </div>
     </div>
@@ -360,8 +375,8 @@ const breadcrumbs = [
       <div class="pub-cta__inner">
         <div class="pub-cta__content">
           <span class="section-label section-label--on-dark">Media</span>
-          <h2 class="pub-cta__title">Tell our story with us</h2>
-          <p class="pub-cta__desc">Interested in covering Sunshine on a Ranney Day? We provide press-ready assets, high-resolution photography, and direct access to founders Peter & Holly Ranney.</p>
+          <h2 class="pub-cta__title">Tell our story <em class="highlight">with us</em></h2>
+          <p class="pub-cta__desc">We provide press-ready assets, high-resolution photography, and direct access to founders Peter & Holly Ranney.</p>
         </div>
         <div class="pub-cta__actions">
           <a href="mailto:info@soardcharity.com?subject=Media%20Inquiry" class="btn btn-primary btn-lg">
@@ -380,39 +395,8 @@ const breadcrumbs = [
 </PageLayout>
 
 <!-- ══════ CLIENT JS ══════ -->
-
-<!-- Counter animation + YouTube facade + Archive filters -->
 <script>
   document.addEventListener('astro:page-load', () => {
-
-    /* ── Animated stat counters ── */
-    const counters = document.querySelectorAll<HTMLElement>('[data-count-to]');
-    if (counters.length) {
-      const counterObserver = new IntersectionObserver((entries) => {
-        entries.forEach(entry => {
-          if (!entry.isIntersecting) return;
-          const el = entry.target as HTMLElement;
-          const target = parseInt(el.dataset.countTo || '0', 10);
-          const suffix = el.dataset.suffix || '';
-          if (!target) return;
-          counterObserver.unobserve(el);
-
-          const duration = 1600;
-          const start = performance.now();
-          const easeOutQuart = (t: number) => 1 - Math.pow(1 - t, 4);
-
-          function tick(now: number) {
-            const elapsed = now - start;
-            const progress = Math.min(elapsed / duration, 1);
-            const value = Math.round(easeOutQuart(progress) * target);
-            el.textContent = value.toLocaleString() + suffix;
-            if (progress < 1) requestAnimationFrame(tick);
-          }
-          requestAnimationFrame(tick);
-        });
-      }, { threshold: 0.3 });
-      counters.forEach(c => counterObserver.observe(c));
-    }
 
     /* ── YouTube click-to-load facade ── */
     let warmed = false;
@@ -426,67 +410,68 @@ const breadcrumbs = [
         document.head.appendChild(link);
       });
     }
-
     document.querySelectorAll<HTMLButtonElement>('[data-yt-id]').forEach(btn => {
       btn.addEventListener('pointerover', warmConnections, { once: true });
       btn.addEventListener('focus', warmConnections, { once: true });
       btn.addEventListener('click', () => {
         const id = btn.dataset.ytId;
-        const wrap = btn.closest('.vc__wrap');
+        const wrap = btn.closest('.vid-hero__frame');
         if (!wrap || !id) return;
         const iframe = document.createElement('iframe');
         iframe.src = `https://www.youtube-nocookie.com/embed/${id}?autoplay=1`;
         iframe.title = btn.getAttribute('aria-label') || '';
         iframe.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture';
         iframe.allowFullscreen = true;
-        iframe.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border:0;';
-        wrap.innerHTML = '';
+        iframe.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border:0;z-index:4;';
         wrap.appendChild(iframe);
+        /* Hide poster + controls but keep frame */
+        wrap.querySelector('.vid-hero__poster')?.remove();
+        wrap.querySelector('.vid-hero__scrim')?.remove();
+        wrap.querySelector('.vid-hero__glass')?.remove();
+        btn.remove();
       });
     });
 
+    /* ── LQIP shimmer removal on image load ── */
+    document.querySelectorAll<HTMLElement>('.bento__img-wrap').forEach(wrap => {
+      const img = wrap.querySelector('img');
+      if (!img) return;
+      const reveal = () => { wrap.classList.add('is-loaded'); };
+      if (img.complete && img.naturalWidth) reveal();
+      else img.addEventListener('load', reveal, { once: true });
+    });
+
     /* ── Archive category filters ── */
-    const tabs = document.querySelectorAll<HTMLButtonElement>('.filter-tab');
-    const archiveItems = document.querySelectorAll<HTMLElement>('.ci[data-category]');
-    const yearGroups = document.querySelectorAll<HTMLElement>('.yg[data-year]');
+    const tabs = document.querySelectorAll<HTMLButtonElement>('.ftab');
+    const items = document.querySelectorAll<HTMLElement>('.ci[data-category]');
+    const groups = document.querySelectorAll<HTMLDetailsElement>('.yg[data-year]');
     const resultsEl = document.querySelector<HTMLElement>('.archive__results');
 
     tabs.forEach(tab => {
       tab.addEventListener('click', () => {
         const cat = tab.dataset.filter || 'all';
-
-        // Update active state
         tabs.forEach(t => {
-          t.classList.remove('filter-tab--active');
+          t.classList.remove('ftab--active');
           t.setAttribute('aria-pressed', 'false');
         });
-        tab.classList.add('filter-tab--active');
+        tab.classList.add('ftab--active');
         tab.setAttribute('aria-pressed', 'true');
 
-        let visibleCount = 0;
-
-        // Filter items
-        archiveItems.forEach(item => {
-          const matches = cat === 'all' || item.dataset.category === cat;
-          item.style.display = matches ? '' : 'none';
-          if (matches) visibleCount++;
+        let count = 0;
+        items.forEach(ci => {
+          const show = cat === 'all' || ci.dataset.category === cat;
+          ci.style.display = show ? '' : 'none';
+          if (show) count++;
         });
 
-        // Hide year groups with no visible items
-        yearGroups.forEach(yg => {
-          const visibleInGroup = yg.querySelectorAll<HTMLElement>('.ci[data-category]');
-          let anyVisible = false;
-          visibleInGroup.forEach(ci => {
-            if (ci.style.display !== 'none') anyVisible = true;
-          });
-          yg.style.display = anyVisible ? '' : 'none';
+        groups.forEach(g => {
+          const visible = Array.from(g.querySelectorAll<HTMLElement>('.ci[data-category]')).some(ci => ci.style.display !== 'none');
+          g.style.display = visible ? '' : 'none';
+          if (visible && cat !== 'all') g.open = true;
         });
 
-        // Update results count
         if (resultsEl) {
-          resultsEl.textContent = cat === 'all'
-            ? ''
-            : `Showing ${visibleCount} ${visibleCount === 1 ? 'story' : 'stories'}`;
+          resultsEl.textContent = cat === 'all' ? '' : `Showing ${count} ${count === 1 ? 'story' : 'stories'}`;
         }
       });
     });
@@ -494,525 +479,532 @@ const breadcrumbs = [
 </script>
 
 <style>
+  /* ══════════════════════════════════
+     FOUNDATIONS
+     ══════════════════════════════════ */
   .container { max-width: var(--max-width); margin: 0 auto; padding-inline: var(--page-padding); }
   .container--narrow { max-width: var(--max-width-narrow); }
 
-  /* ── Section labels (matching site design system) ── */
   .section-label {
-    font-size: 12px;
-    font-weight: 700;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: var(--c-accent, #373A36);
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin-bottom: 20px;
+    font-size: 12px; font-weight: 700; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--c-accent);
+    display: flex; align-items: center; gap: 12px; margin-bottom: 20px;
   }
-  .section-label::before {
-    content: '';
-    width: 28px;
-    height: 2px;
-    background: currentColor;
-    flex-shrink: 0;
-  }
+  .section-label::before { content: ''; width: 28px; height: 2px; background: currentColor; flex-shrink: 0; }
   .section-label--on-dark { color: var(--c-yellow); }
-  .sec-title { font-family: var(--font-display); font-size: clamp(1.6rem, 3.5vw, 2.4rem); line-height: 1.2; margin-bottom: var(--space-lg); color: var(--c-text, #373A36); }
+  .sec-title { font-family: var(--font-display); font-size: clamp(1.6rem, 3.5vw, 2.4rem); line-height: 1.2; margin-bottom: var(--space-lg); color: var(--c-text); }
   .sec-title--on-dark { color: white; }
 
-  /* ── data-reveal scroll animations ── */
-  [data-reveal] { opacity: 0; transform: translateY(24px); transition: opacity 0.7s ease, transform 0.7s ease; }
+  [data-reveal] { opacity: 0; transform: translateY(28px); transition: opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1), transform 0.7s cubic-bezier(0.16, 1, 0.3, 1); }
   [data-reveal].is-visible { opacity: 1; transform: translateY(0); }
   [data-delay="0"] { transition-delay: 0s; }
-  [data-delay="1"] { transition-delay: 0.12s; }
-  [data-delay="2"] { transition-delay: 0.24s; }
-  [data-delay="3"] { transition-delay: 0.36s; }
+  [data-delay="1"] { transition-delay: 0.1s; }
+  [data-delay="2"] { transition-delay: 0.2s; }
+  [data-delay="3"] { transition-delay: 0.3s; }
 
   /* ══════════════════════════════════
-     STATS BAR
+     STATS RIBBON
+     Monumental numbers, no animation.
      ══════════════════════════════════ */
-  .stats-bar {
-    background: var(--c-dark);
-    padding: var(--space-3xl) 0;
-    position: relative;
-    overflow: hidden;
+  .stats { background: var(--c-dark); padding: var(--space-2xl) 0; }
+  .stats__inner {
+    display: flex; align-items: center; justify-content: center;
+    gap: 0; flex-wrap: wrap;
   }
-  .stats-bar::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: radial-gradient(ellipse at 50% 0%, rgba(255, 218, 36, 0.06) 0%, transparent 70%);
+  .stats__item { text-align: center; padding: var(--space-md) var(--space-2xl); }
+  .stats__num {
+    display: block; font-family: var(--font-display);
+    font-size: clamp(2rem, 4vw, 2.8rem); font-weight: 700;
+    color: var(--c-yellow); line-height: 1;
+  }
+  .stats__label {
+    display: block; font-size: 0.72rem; font-weight: 600;
+    color: rgba(255,255,255,0.6); text-transform: uppercase;
+    letter-spacing: 0.1em; margin-top: 6px;
+  }
+  .stats__divider {
+    width: 1px; height: 36px; background: rgba(255,255,255,0.12);
+    flex-shrink: 0;
+  }
+
+  /* ══════════════════════════════════
+     CINEMATIC VIDEO HERO
+     ══════════════════════════════════ */
+  .vid-hero { padding: var(--space-4xl) 0; background: var(--c-dark); }
+  .vid-hero__cinema {
+    max-width: var(--max-width-wide, 1400px);
+    margin: 0 auto var(--space-3xl);
+    padding-inline: var(--page-padding);
+  }
+  .vid-hero__frame {
+    position: relative; aspect-ratio: 21/9;
+    border-radius: 16px; overflow: hidden;
+    background: #000; cursor: pointer;
+  }
+  .vid-hero__poster {
+    width: 100%; height: 100%; object-fit: cover;
+    display: block;
+  }
+  .vid-hero__scrim {
+    position: absolute; inset: 0;
+    background: linear-gradient(
+      180deg,
+      rgba(0,0,0,0) 0%,
+      rgba(0,0,0,0.15) 50%,
+      rgba(0,0,0,0.65) 100%
+    );
     pointer-events: none;
   }
-  .stats-bar__grid {
+  .vid-hero__play {
+    position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    background: none; border: none; cursor: pointer;
+    z-index: 2; padding: 0;
+    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .vid-hero__play:hover { transform: translate(-50%, -50%) scale(1.1); }
+  .vid-hero__play-ring {
+    display: flex; align-items: center; justify-content: center;
+    width: 72px; height: 72px; border-radius: 50%;
+    background: rgba(255, 218, 36, 0.95);
+    color: var(--c-dark);
+    box-shadow: 0 0 0 0 rgba(255, 218, 36, 0.4);
+    animation: ringPulse 2.5s ease-out infinite;
+  }
+  @keyframes ringPulse {
+    0% { box-shadow: 0 0 0 0 rgba(255,218,36,0.4); }
+    70% { box-shadow: 0 0 0 20px rgba(255,218,36,0); }
+    100% { box-shadow: 0 0 0 0 rgba(255,218,36,0); }
+  }
+  .vid-hero__glass {
+    position: absolute; bottom: 0; left: 0; right: 0;
+    padding: var(--space-2xl) var(--space-2xl) var(--space-xl);
+    z-index: 1; pointer-events: none;
+  }
+  .vid-hero__badge {
+    display: inline-block; font-size: 0.6rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.12em;
+    color: var(--c-dark); background: var(--c-yellow);
+    padding: 4px 12px; border-radius: 4px;
+    margin-bottom: var(--space-sm);
+  }
+  .vid-hero__title {
+    font-family: var(--font-display); font-size: clamp(1.4rem, 3vw, 2rem);
+    color: white; margin-bottom: var(--space-xs); line-height: 1.2;
+  }
+  .vid-hero__desc {
+    font-size: 0.9rem; color: rgba(255,255,255,0.8);
+    line-height: 1.6; max-width: 560px;
+  }
+
+  /* Secondary video — editorial split */
+  .vid-hero__secondary {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: var(--space-xl);
-    text-align: center;
-    position: relative;
+    grid-template-columns: minmax(0, 400px) 1fr;
+    gap: var(--space-2xl); align-items: center;
   }
-  .stats-bar__item {
-    position: relative;
-    padding: var(--space-lg) 0;
+  .vid-hero__secondary-frame {
+    position: relative; aspect-ratio: 16/9;
+    border-radius: 12px; overflow: hidden; background: #000;
   }
-  .stats-bar__item:not(:last-child)::after {
-    content: '';
-    position: absolute;
-    right: 0;
-    top: 20%;
-    height: 60%;
-    width: 1px;
-    background: rgba(255, 255, 255, 0.1);
+  .vid-hero__secondary-poster :global(img) { width: 100%; height: 100%; object-fit: cover; }
+  .vid-hero__secondary-play {
+    position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 48px; height: 48px; border-radius: 50%;
+    background: rgba(206, 17, 65, 0.9);
+    color: white; display: flex; align-items: center; justify-content: center;
+    transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), background 0.2s;
+    text-decoration: none;
   }
-  .stats-bar__num {
-    display: block;
-    font-family: var(--font-display);
-    font-size: clamp(2.2rem, 4.5vw, 3.2rem);
-    font-weight: 700;
-    color: var(--c-yellow);
-    line-height: 1;
-    min-height: 1.2em;
+  .vid-hero__secondary-play:hover { transform: translate(-50%, -50%) scale(1.1); background: #CE1141; }
+  .vid-hero__secondary-badge {
+    font-size: 0.6rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.1em; color: rgba(255,255,255,0.5);
+    margin-bottom: var(--space-xs); display: block;
   }
-  .stats-bar__label {
-    display: block;
-    font-size: 0.78rem;
-    font-weight: 600;
-    color: rgba(255, 255, 255, 0.85);
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    margin-top: var(--space-sm);
+  .vid-hero__secondary-title {
+    font-family: var(--font-display); font-size: 1.1rem;
+    color: white; margin-bottom: var(--space-xs);
   }
-  .stats-bar__sub {
-    display: block;
-    font-size: 0.7rem;
-    color: rgba(255, 255, 255, 0.4);
-    margin-top: 4px;
+  .vid-hero__secondary-desc {
+    font-size: 0.85rem; color: rgba(255,255,255,0.65);
+    line-height: 1.6;
   }
 
   /* ══════════════════════════════════
-     CELEBRITIES
+     PULL QUOTE
      ══════════════════════════════════ */
-  .celebs { padding: var(--space-4xl) 0; background: var(--c-cream); }
+  .pullquote {
+    padding: var(--space-4xl) 0;
+    background: var(--c-cream);
+    position: relative;
+  }
+  .pullquote__block {
+    text-align: center;
+    position: relative;
+    padding: var(--space-2xl) 0;
+  }
+  .pullquote__block::before {
+    content: '\201C';
+    display: block;
+    font-family: var(--font-display);
+    font-size: clamp(4rem, 8vw, 6rem);
+    line-height: 0.6;
+    color: var(--c-yellow);
+    margin-bottom: var(--space-md);
+  }
+  .pullquote__text {
+    font-family: var(--font-display);
+    font-size: clamp(1.05rem, 2.2vw, 1.35rem);
+    line-height: 1.7;
+    color: var(--c-text);
+    font-style: italic;
+  }
+  .pullquote__source {
+    margin-top: var(--space-lg);
+  }
+  .pullquote__source cite {
+    font-family: var(--font-body);
+    font-size: 0.82rem;
+    font-style: normal;
+    font-weight: 600;
+    color: var(--c-text-muted);
+    letter-spacing: 0.04em;
+  }
+
+  /* ══════════════════════════════════
+     CELEBRITIES — BENTO GRID
+     ══════════════════════════════════ */
+  .celebs { padding: var(--space-4xl) 0; }
   .celebs__header { text-align: center; max-width: 640px; margin: 0 auto var(--space-3xl); }
   .celebs__header .section-label { justify-content: center; }
   .celebs__sub { font-size: 1.05rem; color: var(--c-text-muted); line-height: 1.65; }
 
-  .celebs__marquee {
+  .bento {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
-    gap: var(--space-xl);
-    margin-bottom: var(--space-xl);
+    grid-auto-rows: auto;
+    gap: var(--space-lg);
   }
-  .celebs__grid {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: var(--space-xl);
+  .bento__card--hero {
+    grid-column: span 2;
+    grid-row: span 2;
   }
-
-  .cc {
+  .bento__card {
     background: var(--c-white);
-    border: 1px solid var(--c-border);
     border-radius: var(--border-radius-lg, 16px);
     overflow: hidden;
-    transition: box-shadow 0.35s cubic-bezier(0.16, 1, 0.3, 1), transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: box-shadow 0.4s cubic-bezier(0.16, 1, 0.3, 1), transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    box-shadow: var(--shadow-sm, 0 1px 3px rgba(0,0,0,0.08));
   }
-  .cc:hover {
-    box-shadow: var(--shadow-lg, 0 8px 30px rgba(0,0,0,0.12));
+  .bento__card:hover {
+    box-shadow: 0 12px 40px rgba(0,0,0,0.12);
     transform: translateY(-4px);
   }
-  .cc__img-wrap {
-    position: relative;
-    aspect-ratio: 6/5;
-    overflow: hidden;
+
+  .bento__img-wrap {
+    position: relative; overflow: hidden;
     background: var(--c-warm-gray);
   }
-  .cc__img-wrap :global(img) {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
+  .bento__card--hero .bento__img-wrap { aspect-ratio: 4/3; }
+  .bento__card:not(.bento__card--hero) .bento__img-wrap { aspect-ratio: 5/4; }
+
+  /* LQIP shimmer (kid detail page pattern) */
+  .bento__shimmer {
+    position: absolute; inset: 0; z-index: 1;
+    background: linear-gradient(
+      110deg,
+      var(--c-warm-gray) 30%,
+      rgba(255,255,255,0.4) 50%,
+      var(--c-warm-gray) 70%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.5s ease-in-out infinite;
+  }
+  @keyframes shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
+  .bento__img-wrap.is-loaded .bento__shimmer { opacity: 0; transition: opacity 0.5s ease; }
+
+  .bento__img-wrap :global(img) {
+    width: 100%; height: 100%; object-fit: cover;
+    position: relative; z-index: 2;
     transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
   }
-  .cc:hover .cc__img-wrap :global(img) { transform: scale(1.06); }
-  .cc__overlay {
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    padding: var(--space-lg) var(--space-lg) var(--space-md);
-    background: linear-gradient(transparent, rgba(0, 0, 0, 0.75));
-    pointer-events: none;
-  }
-  .cc__type {
-    font-size: 0.6rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.12em;
-    color: var(--c-yellow);
-    background: rgba(0, 0, 0, 0.3);
-    padding: 3px 10px;
-    border-radius: 4px;
-    backdrop-filter: blur(4px);
-  }
-  .cc__body { padding: var(--space-lg) var(--space-xl) var(--space-xl); }
-  .cc__name { font-family: var(--font-display); font-size: 1rem; margin-bottom: var(--space-sm); color: var(--c-text); }
-  .cc__desc { font-size: 0.82rem; line-height: 1.65; color: var(--c-text-muted); }
+  .bento__card:hover .bento__img-wrap :global(img) { transform: scale(1.05); }
 
-  /* ══════════════════════════════════
-     VIDEOS
-     ══════════════════════════════════ */
-  .videos {
-    padding: var(--space-4xl) 0;
-    background: var(--c-dark);
-    color: white;
-    position: relative;
-    overflow: hidden;
-  }
-  .videos::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: radial-gradient(ellipse at 30% 100%, rgba(255, 218, 36, 0.04) 0%, transparent 60%);
+  .bento__gradient {
+    position: absolute; inset: 0; z-index: 3;
+    background: linear-gradient(0deg, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.1) 50%, transparent 100%);
     pointer-events: none;
   }
-  .videos__header { text-align: center; max-width: 640px; margin: 0 auto var(--space-3xl); position: relative; }
-  .videos__header .section-label { justify-content: center; }
-  .videos__grid {
-    display: grid;
-    grid-template-columns: 1.2fr 1fr;
-    gap: var(--space-2xl);
-    align-items: start;
-    position: relative;
+  .bento__meta {
+    position: absolute; bottom: 0; left: 0; right: 0;
+    padding: var(--space-lg); z-index: 4;
   }
-  .vc__wrap {
-    border-radius: 12px;
-    overflow: hidden;
-    aspect-ratio: 16/9;
-    margin-bottom: var(--space-lg);
-    background: #000;
-    position: relative;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
+  .bento__type {
+    display: inline-block; font-size: 0.55rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.12em;
+    color: var(--c-yellow);
+    margin-bottom: 4px;
   }
-  .vc__poster { width: 100%; height: 100%; object-fit: cover; }
-  .vc__wrap :global(img) { width: 100%; height: 100%; object-fit: cover; }
-  .vc__play-btn {
-    position: absolute;
-    background: none;
-    border: none;
-    cursor: pointer;
-    padding: 0;
-    transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-    z-index: 1;
-    filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.3));
+  .bento__name {
+    font-family: var(--font-display);
+    font-size: 1rem; color: white; line-height: 1.3;
   }
-  .vc__play-btn:hover { transform: scale(1.12); }
-  .vc__info { position: relative; }
-  .vc__badge {
-    display: inline-block;
-    font-size: 0.6rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    color: var(--c-dark);
-    background: var(--c-yellow);
-    padding: 3px 10px;
-    border-radius: 4px;
-    margin-bottom: var(--space-sm);
-  }
-  .vc__title { font-family: var(--font-display); font-size: 1.1rem; margin-bottom: var(--space-xs); }
-  .vc__desc { font-size: 0.85rem; color: rgba(255, 255, 255, 0.8); line-height: 1.65; }
+  .bento__card--hero .bento__name { font-size: clamp(1.1rem, 2vw, 1.4rem); }
+  .bento__body { padding: var(--space-md) var(--space-lg) var(--space-lg); }
+  .bento__desc { font-size: 0.8rem; line-height: 1.65; color: var(--c-text-muted); }
+  .bento__card--hero .bento__desc { font-size: 0.85rem; }
 
   /* ══════════════════════════════════
      FEATURED COVERAGE
      ══════════════════════════════════ */
-  .pub-featured { padding: var(--space-4xl) 0; background: var(--c-white); }
-  .feat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: var(--space-xl); }
-  .fc {
+  .pub-featured { padding: var(--space-4xl) 0; background: var(--c-warm-gray); }
+
+  /* Hero featured card */
+  .feat-hero {
     background: var(--c-white);
-    border: 1px solid var(--c-border);
     border-radius: var(--border-radius-lg, 16px);
     overflow: hidden;
-    display: flex;
-    flex-direction: column;
+    margin-bottom: var(--space-2xl);
+    box-shadow: var(--shadow-md, 0 4px 12px rgba(0,0,0,0.1));
+    transition: box-shadow 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .feat-hero:hover { box-shadow: var(--shadow-lg, 0 8px 30px rgba(0,0,0,0.12)); }
+  .feat-hero__accent { height: 4px; background: linear-gradient(90deg, var(--c-yellow), rgba(255,218,36,0.2) 80%); }
+  .feat-hero__inner {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: var(--space-2xl);
+    padding: var(--space-2xl) var(--space-2xl);
+    align-items: start;
+  }
+  .feat-hero__cat {
+    display: inline-block; font-size: 0.6rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.12em;
+    color: var(--c-dark); background: rgba(255,218,36,0.2);
+    padding: 4px 14px; border-radius: 100px;
+    margin-bottom: var(--space-md);
+  }
+  .feat-hero__title {
+    font-family: var(--font-display);
+    font-size: clamp(1.15rem, 2.5vw, 1.5rem);
+    line-height: 1.3; margin-bottom: var(--space-sm);
+    color: var(--c-text);
+  }
+  .feat-hero__outlet {
+    font-size: 0.85rem; font-weight: 600;
+    color: var(--c-text-muted); margin-bottom: var(--space-md);
+  }
+  .feat-hero__excerpt {
+    font-size: 0.88rem; line-height: 1.75;
+    color: var(--c-text-muted); max-width: 600px;
+  }
+  .feat-hero__foot {
+    display: flex; align-items: center; gap: var(--space-xl);
+    margin-top: var(--space-xl); padding-top: var(--space-lg);
+    border-top: 1px solid var(--c-border);
+  }
+  .feat-hero__foot time { font-size: 0.78rem; color: var(--c-text-light); }
+  .feat-hero__link {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 0.85rem; font-weight: 600;
+    color: var(--c-dark); text-decoration: none;
+    transition: color 0.2s, gap 0.2s;
+  }
+  .feat-hero__link:hover { color: var(--c-yellow-hover, #E6C400); gap: 8px; }
+  .feat-hero__visual {
+    display: flex; align-items: flex-start;
+  }
+  .feat-hero__quote-mark {
+    font-family: var(--font-display);
+    font-size: clamp(5rem, 10vw, 8rem);
+    line-height: 0.7; color: rgba(255, 218, 36, 0.15);
+    user-select: none;
+  }
+
+  /* Grid of remaining featured */
+  .feat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: var(--space-lg); }
+  .fc {
+    background: var(--c-white); border-radius: var(--border-radius-lg, 16px);
+    overflow: hidden; display: flex; flex-direction: column;
     transition: box-shadow 0.35s cubic-bezier(0.16, 1, 0.3, 1), transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
-    position: relative;
   }
-  .fc:hover {
-    box-shadow: var(--shadow-lg, 0 8px 30px rgba(0,0,0,0.12));
-    transform: translateY(-3px);
-  }
-  .fc__accent {
-    height: 3px;
-    background: linear-gradient(90deg, var(--c-yellow) 0%, rgba(255, 218, 36, 0.3) 100%);
-  }
+  .fc:hover { box-shadow: var(--shadow-md, 0 4px 12px rgba(0,0,0,0.1)); transform: translateY(-3px); }
+  .fc__accent { height: 3px; background: linear-gradient(90deg, var(--c-yellow) 0%, rgba(255,218,36,0.15) 100%); }
   .fc__body { padding: var(--space-xl); display: flex; flex-direction: column; flex: 1; }
   .fc__top { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-md); }
   .fc__cat {
-    font-size: 0.6rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.12em;
-    color: var(--c-dark);
-    background: rgba(255, 218, 36, 0.2);
-    padding: 4px 12px;
-    border-radius: 100px;
+    font-size: 0.58rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.12em; color: var(--c-dark);
+    background: rgba(255,218,36,0.2); padding: 3px 10px; border-radius: 100px;
   }
   .fc__date { font-size: 0.72rem; color: var(--c-text-light); }
-  .fc__title { font-family: var(--font-display); font-size: 1rem; line-height: 1.4; margin-bottom: var(--space-sm); color: var(--c-text); }
-  .fc__outlet {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 0.82rem;
-    font-weight: 600;
-    color: var(--c-text-muted);
-    margin-bottom: var(--space-md);
-  }
-  .fc__outlet-icon { opacity: 0.5; flex-shrink: 0; }
-  .fc__excerpt { font-size: 0.82rem; line-height: 1.7; color: var(--c-text-muted); flex: 1; }
-  .fc__foot {
-    margin-top: var(--space-lg);
-    padding-top: var(--space-md);
-    border-top: 1px solid var(--c-border);
-  }
+  .fc__title { font-family: var(--font-display); font-size: 0.95rem; line-height: 1.4; margin-bottom: var(--space-xs); color: var(--c-text); }
+  .fc__outlet { font-size: 0.82rem; font-weight: 600; color: var(--c-text-muted); margin-bottom: var(--space-md); }
+  .fc__excerpt { font-size: 0.8rem; line-height: 1.7; color: var(--c-text-muted); flex: 1; }
+  .fc__foot { margin-top: var(--space-lg); padding-top: var(--space-md); border-top: 1px solid var(--c-border); }
   .fc__link {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 0.82rem;
-    font-weight: 600;
-    color: var(--c-dark);
-    text-decoration: none;
-    transition: color 0.2s, gap 0.2s;
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 0.82rem; font-weight: 600;
+    color: var(--c-dark); text-decoration: none; transition: color 0.2s, gap 0.2s;
   }
-  .fc__link:hover { color: var(--c-yellow-hover, #E6C400); gap: 8px; }
+  .fc__link:hover { color: var(--c-yellow-hover, #E6C400); gap: 7px; }
 
   /* ══════════════════════════════════
      PRESS ARCHIVE
      ══════════════════════════════════ */
-  .pub-archive { padding: var(--space-4xl) 0; background: var(--c-warm-gray); }
-
+  .pub-archive { padding: var(--space-4xl) 0; background: var(--c-cream); }
   .archive__header {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: flex-end;
-    justify-content: space-between;
-    gap: var(--space-lg);
-    margin-bottom: var(--space-2xl);
+    display: flex; flex-wrap: wrap;
+    align-items: flex-end; justify-content: space-between;
+    gap: var(--space-lg); margin-bottom: var(--space-xl);
   }
   .archive__header-text .sec-title { margin-bottom: 0; }
 
-  /* Filter tabs */
-  .archive__filters {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
+  .archive__filters { display: flex; flex-wrap: wrap; gap: 6px; }
+  .ftab {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 7px 14px;
+    font-family: var(--font-body); font-size: 0.75rem; font-weight: 600;
+    color: var(--c-text-muted); background: var(--c-white);
+    border: 1px solid var(--c-border); border-radius: 100px;
+    cursor: pointer; transition: all 0.2s; white-space: nowrap;
   }
-  .filter-tab {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 8px 16px;
-    font-family: var(--font-body);
-    font-size: 0.78rem;
-    font-weight: 600;
-    color: var(--c-text-muted);
-    background: var(--c-white);
-    border: 1px solid var(--c-border);
-    border-radius: 100px;
-    cursor: pointer;
-    transition: all 0.2s;
-    white-space: nowrap;
-  }
-  .filter-tab:hover { border-color: var(--c-dark); color: var(--c-dark); }
-  .filter-tab--active {
-    background: var(--c-dark);
-    border-color: var(--c-dark);
-    color: white;
-  }
-  .filter-tab--active:hover { background: var(--c-dark); color: white; }
-  .filter-tab__count {
-    font-size: 0.65rem;
-    font-weight: 700;
-    opacity: 0.6;
-  }
-  .filter-tab--active .filter-tab__count {
-    color: var(--c-yellow);
-    opacity: 1;
-  }
+  .ftab:hover { border-color: var(--c-dark); color: var(--c-dark); }
+  .ftab--active { background: var(--c-dark); border-color: var(--c-dark); color: white; }
+  .ftab--active:hover { background: var(--c-dark); color: white; }
+  .ftab__ct { font-size: 0.6rem; font-weight: 700; opacity: 0.5; }
+  .ftab--active .ftab__ct { color: var(--c-yellow); opacity: 1; }
+  .archive__results { font-size: 0.82rem; color: var(--c-text-muted); min-height: 1.2em; margin-bottom: var(--space-md); }
 
-  .archive__results {
-    font-size: 0.82rem;
-    color: var(--c-text-muted);
-    min-height: 1.2em;
-    margin-bottom: var(--space-lg);
+  /* Collapsible year groups (native <details>, donate FAQ pattern) */
+  .yg { margin-bottom: var(--space-lg); }
+  .yg__summary {
+    display: flex; align-items: center; gap: var(--space-sm);
+    cursor: pointer; padding: var(--space-sm) 0;
+    list-style: none;
   }
-
-  .yg { margin-bottom: var(--space-2xl); }
-  .yg__label {
-    display: flex;
-    align-items: center;
-    gap: var(--space-md);
-    margin-bottom: var(--space-lg);
+  .yg__summary::-webkit-details-marker { display: none; }
+  .yg__summary::marker { display: none; content: ''; }
+  .yg__year {
+    font-family: var(--font-display); font-size: 1.2rem;
+    font-weight: 700; color: var(--c-text); flex-shrink: 0;
   }
-  .yg__year { font-family: var(--font-display); font-size: 1.3rem; font-weight: 700; color: var(--c-text); flex-shrink: 0; }
-  .yg__ct { font-size: 0.72rem; font-weight: 600; color: var(--c-text-muted); flex-shrink: 0; }
+  .yg__ct {
+    font-size: 0.65rem; font-weight: 700; color: var(--c-text-light);
+    background: var(--c-warm-gray); padding: 2px 8px;
+    border-radius: 100px; flex-shrink: 0;
+  }
   .yg__line { flex: 1; height: 1px; background: var(--c-border); }
+  .yg__chevron {
+    flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+    width: 28px; height: 28px; border-radius: 8px;
+    color: var(--c-text-light);
+    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), color 0.2s;
+  }
+  .yg[open] .yg__chevron { transform: rotate(180deg); color: var(--c-yellow-hover, #E6C400); }
+  .yg__summary:hover .yg__chevron { color: var(--c-dark); }
 
-  .cl { display: flex; flex-direction: column; gap: 1px; background: var(--c-border); border-radius: 12px; overflow: hidden; }
+  .cl {
+    display: flex; flex-direction: column; gap: 1px;
+    background: var(--c-border); border-radius: 12px;
+    overflow: hidden; margin-top: var(--space-md);
+  }
   .ci {
-    display: flex;
-    align-items: flex-start;
-    gap: var(--space-lg);
+    display: flex; align-items: flex-start; gap: var(--space-lg);
     padding: var(--space-lg) var(--space-xl);
-    background: var(--c-white);
-    transition: background 0.2s;
+    background: var(--c-white); transition: background 0.2s;
     position: relative;
   }
-  .ci:hover { background: var(--c-cream); }
-  .ci__indicator {
-    position: absolute;
-    left: 0;
-    top: 0;
-    bottom: 0;
-    width: 3px;
-    background: var(--c-yellow);
-    opacity: 0;
-    transition: opacity 0.2s;
+  .ci:hover { background: rgba(255, 218, 36, 0.04); }
+  .ci__bar {
+    position: absolute; left: 0; top: 0; bottom: 0;
+    width: 3px; background: var(--c-yellow);
+    transform: scaleY(0); transform-origin: center;
+    transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
   }
-  .ci:hover .ci__indicator { opacity: 1; }
+  .ci:hover .ci__bar { transform: scaleY(1); }
   .ci__content { flex: 1; min-width: 0; }
-  .ci__meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-xs) var(--space-sm); margin-bottom: var(--space-xs); }
+  .ci__meta {
+    display: flex; flex-wrap: wrap; align-items: center;
+    gap: var(--space-xs) var(--space-sm); margin-bottom: var(--space-xs);
+  }
   .ci__outlet { font-size: 0.78rem; font-weight: 700; color: var(--c-text); }
-  .ci__sep { color: var(--c-text-light); font-size: 0.78rem; }
+  .ci__dot { width: 3px; height: 3px; border-radius: 50%; background: var(--c-text-light); }
   .ci__meta time { font-size: 0.78rem; color: var(--c-text-muted); }
   .ci__tag {
-    font-size: 0.55rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    color: var(--c-text-muted);
-    background: var(--c-warm-gray);
-    padding: 2px 8px;
-    border-radius: 4px;
+    font-size: 0.55rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.1em; color: var(--c-text-muted);
+    background: var(--c-warm-gray); padding: 2px 8px; border-radius: 4px;
   }
   .ci__title { font-family: var(--font-display); font-size: 0.92rem; line-height: 1.4; margin-bottom: var(--space-xs); }
   .ci__title a { color: var(--c-text); text-decoration: none; }
   .ci__title a:hover {
-    text-decoration: underline;
-    text-decoration-color: var(--c-yellow);
-    text-underline-offset: 3px;
-    text-decoration-thickness: 2px;
+    text-decoration: underline; text-decoration-color: var(--c-yellow);
+    text-underline-offset: 3px; text-decoration-thickness: 2px;
   }
   .ci__excerpt { font-size: 0.8rem; line-height: 1.65; color: var(--c-text-muted); }
   .ci__arrow {
-    min-width: 40px;
-    height: 40px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--c-text-light);
-    border-radius: 10px;
-    transition: color 0.2s, background 0.2s;
-    margin-top: 2px;
-    flex-shrink: 0;
+    min-width: 38px; height: 38px; display: flex;
+    align-items: center; justify-content: center;
+    color: var(--c-text-light); border-radius: 10px;
+    transition: color 0.2s, background 0.2s; margin-top: 2px; flex-shrink: 0;
   }
-  .ci__arrow:hover { color: var(--c-dark); background: rgba(255, 218, 36, 0.15); }
+  .ci__arrow:hover { color: var(--c-dark); background: rgba(255,218,36,0.12); }
 
   /* ══════════════════════════════════
      CTA
      ══════════════════════════════════ */
   .pub-cta {
-    padding: var(--space-4xl) 0;
-    background: var(--c-dark);
-    color: white;
-    position: relative;
-    overflow: hidden;
+    padding: var(--space-4xl) 0; background: var(--c-dark); color: white;
+    position: relative; overflow: hidden;
   }
   .pub-cta::before {
-    content: '';
-    position: absolute;
-    top: -50%;
-    right: -20%;
-    width: 60%;
-    height: 200%;
-    background: radial-gradient(ellipse, rgba(255, 218, 36, 0.06) 0%, transparent 70%);
+    content: ''; position: absolute;
+    top: -50%; right: -20%; width: 60%; height: 200%;
+    background: radial-gradient(ellipse, rgba(255,218,36,0.05) 0%, transparent 70%);
     pointer-events: none;
   }
   .pub-cta__inner {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-3xl);
-    max-width: var(--max-width);
-    position: relative;
+    display: flex; align-items: center; justify-content: space-between;
+    gap: var(--space-3xl); position: relative;
   }
-  .pub-cta__content { max-width: 560px; }
+  .pub-cta__content { max-width: 540px; }
   .pub-cta__title {
     font-family: var(--font-display);
-    font-size: clamp(1.6rem, 3vw, 2.2rem);
-    margin-bottom: var(--space-md);
-    line-height: 1.2;
+    font-size: clamp(1.5rem, 3vw, 2.1rem);
+    margin-bottom: var(--space-md); line-height: 1.2;
   }
-  .pub-cta__desc {
-    font-size: 0.95rem;
-    line-height: 1.7;
-    color: rgba(255, 255, 255, 0.75);
-  }
-  .pub-cta__actions {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-md);
-    flex-shrink: 0;
-  }
+  .pub-cta__desc { font-size: 0.92rem; line-height: 1.7; color: rgba(255,255,255,0.65); }
+  .pub-cta__actions { display: flex; flex-direction: column; gap: var(--space-md); flex-shrink: 0; }
 
   .btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
+    display: inline-flex; align-items: center; gap: 8px;
     padding: 0.75rem 1.75rem;
-    font-family: var(--font-body);
-    font-size: 0.88rem;
-    font-weight: 600;
-    border-radius: 100px;
-    text-decoration: none;
+    font-family: var(--font-body); font-size: 0.88rem; font-weight: 600;
+    border-radius: 100px; text-decoration: none;
     transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
-    cursor: pointer;
-    border: 2px solid transparent;
-    white-space: nowrap;
+    cursor: pointer; border: 2px solid transparent; white-space: nowrap;
   }
-  .btn-primary {
-    background: var(--c-yellow);
-    color: var(--c-dark);
-    border-color: var(--c-yellow);
-  }
-  .btn-primary:hover {
-    background: var(--c-yellow-hover, #e6c100);
-    border-color: var(--c-yellow-hover, #e6c100);
-    box-shadow: 0 4px 20px rgba(255, 218, 36, 0.3);
-    transform: translateY(-1px);
-  }
-  .btn-outline-light {
-    background: transparent;
-    color: white;
-    border-color: rgba(255, 255, 255, 0.25);
-  }
-  .btn-outline-light:hover {
-    border-color: rgba(255, 255, 255, 0.6);
-    background: rgba(255, 255, 255, 0.05);
-  }
+  .btn-primary { background: var(--c-yellow); color: var(--c-dark); border-color: var(--c-yellow); }
+  .btn-primary:hover { background: var(--c-yellow-hover, #e6c100); border-color: var(--c-yellow-hover, #e6c100); box-shadow: 0 4px 20px rgba(255,218,36,0.25); }
+  .btn-outline-light { background: transparent; color: white; border-color: rgba(255,255,255,0.2); }
+  .btn-outline-light:hover { border-color: rgba(255,255,255,0.5); background: rgba(255,255,255,0.04); }
   .btn-lg { padding: 0.85rem 2rem; font-size: 0.92rem; }
 
   /* ══════════════════════════════════
      RESPONSIVE
      ══════════════════════════════════ */
   @media (max-width: 1024px) {
-    .celebs__marquee { grid-template-columns: repeat(2, 1fr); }
-    .celebs__grid { grid-template-columns: repeat(2, 1fr); }
-    .videos__grid { grid-template-columns: 1fr; }
+    .bento { grid-template-columns: repeat(2, 1fr); }
+    .bento__card--hero { grid-column: span 2; grid-row: span 1; }
+    .bento__card--hero .bento__img-wrap { aspect-ratio: 21/9; }
+    .vid-hero__frame { aspect-ratio: 16/9; }
+    .vid-hero__secondary { grid-template-columns: 1fr; }
     .pub-cta__inner { flex-direction: column; text-align: center; align-items: center; }
     .pub-cta__content { max-width: 100%; }
     .pub-cta__actions { flex-direction: row; flex-wrap: wrap; justify-content: center; }
@@ -1020,23 +1012,36 @@ const breadcrumbs = [
   }
 
   @media (max-width: 768px) {
-    .stats-bar__grid { grid-template-columns: repeat(2, 1fr); gap: var(--space-lg); }
-    .stats-bar__item:nth-child(2)::after { display: none; }
-    .celebs__marquee { grid-template-columns: repeat(2, 1fr); gap: var(--space-md); }
-    .celebs__grid { grid-template-columns: repeat(2, 1fr); gap: var(--space-md); }
+    .stats__inner { flex-wrap: wrap; }
+    .stats__item { padding: var(--space-sm) var(--space-lg); }
+    .stats__divider:nth-of-type(2) { display: none; }
+    .bento { grid-template-columns: repeat(2, 1fr); gap: var(--space-md); }
+    .bento__card--hero { grid-column: span 2; }
+    .feat-hero__inner { grid-template-columns: 1fr; }
+    .feat-hero__visual { display: none; }
     .feat-grid { grid-template-columns: 1fr; }
     .archive__header { flex-direction: column; align-items: flex-start; }
-    .archive__filters { width: 100%; overflow-x: auto; flex-wrap: nowrap; -webkit-overflow-scrolling: touch; scrollbar-width: none; padding-bottom: 4px; }
+    .archive__filters {
+      width: 100%; overflow-x: auto; flex-wrap: nowrap;
+      -webkit-overflow-scrolling: touch; scrollbar-width: none;
+      padding-bottom: 4px;
+    }
     .archive__filters::-webkit-scrollbar { display: none; }
     .ci { flex-direction: column; gap: var(--space-sm); }
     .ci__arrow { display: none; }
+    .vid-hero__glass { padding: var(--space-lg); }
+    .vid-hero__desc { font-size: 0.82rem; }
   }
 
   @media (max-width: 480px) {
-    .stats-bar__num { font-size: 1.8rem; }
-    .stats-bar__item:not(:last-child)::after { display: none; }
-    .celebs__marquee { grid-template-columns: 1fr; }
-    .celebs__grid { grid-template-columns: 1fr; }
+    .stats__divider { display: none; }
+    .stats__inner { justify-content: space-between; gap: 0; }
+    .stats__item { flex: 1 1 45%; padding: var(--space-sm) var(--space-md); }
+    .stats__num { font-size: 1.7rem; }
+    .bento { grid-template-columns: 1fr; }
+    .bento__card--hero { grid-column: span 1; grid-row: span 1; }
+    .bento__card--hero .bento__img-wrap { aspect-ratio: 4/3; }
+    .vid-hero__frame { aspect-ratio: 16/9; border-radius: 10px; }
     .pub-cta__actions { flex-direction: column; width: 100%; }
     .pub-cta__actions .btn { justify-content: center; }
   }
@@ -1046,23 +1051,28 @@ const breadcrumbs = [
      ══════════════════════════════════ */
   @media (prefers-reduced-motion: reduce) {
     [data-reveal] { opacity: 1; transform: none; transition: none; }
-    .cc:hover { transform: none; }
-    .cc:hover .cc__img-wrap :global(img) { transform: none; }
+    .bento__card:hover { transform: none; }
+    .bento__card:hover .bento__img-wrap :global(img) { transform: none; }
     .fc:hover { transform: none; }
-    .vc__play-btn:hover { transform: none; }
+    .vid-hero__play:hover { transform: translate(-50%, -50%); }
+    .vid-hero__play-ring { animation: none; }
+    .bento__shimmer { animation: none; }
+    .ci__bar { transition: none; }
     .btn-primary:hover { transform: none; }
-    [data-count-to] { transition: none; }
   }
 
   /* ══════════════════════════════════
-     FOCUS VISIBLE (a11y)
+     FOCUS VISIBLE
      ══════════════════════════════════ */
-  .filter-tab:focus-visible,
+  .ftab:focus-visible,
   .btn:focus-visible,
   .fc__link:focus-visible,
+  .feat-hero__link:focus-visible,
   .ci__title a:focus-visible,
   .ci__arrow:focus-visible,
-  .vc__play-btn:focus-visible {
+  .vid-hero__play:focus-visible,
+  .vid-hero__secondary-play:focus-visible,
+  .yg__summary:focus-visible {
     outline: 3px solid var(--c-yellow);
     outline-offset: 2px;
   }
