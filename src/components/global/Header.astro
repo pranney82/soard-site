@@ -587,11 +587,12 @@ document.addEventListener('astro:page-load', function () {
 
   window.matchMedia('(min-width: 1024px)').addEventListener('change', function (e) { if (e.matches && mobileOpen) mCloseMenu(); }, { signal: sig });
 
-  if (mPanel) {
-    mPanel.querySelectorAll('a').forEach(function (a) {
-      a.addEventListener('click', function () { mHideInstant(); });
-    });
-  }
+  /* Close mobile menu on any link click (header CTA, panel links, logo, etc.) */
+  document.addEventListener('click', function (e) {
+    if (!mobileOpen) return;
+    var link = e.target.closest('a');
+    if (link) mHideInstant();
+  }, { signal: sig });
 });
 
 /* Force-clean menu state before View Transition swaps the DOM.
