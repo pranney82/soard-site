@@ -2,6 +2,8 @@
   "name": "Echols",
   "slug": "echols",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/echols/public",
-  "tier": "construction",
-  "featured": true
+  "level": "builder",
+  "category": "build",
+  "featured": true,
+  "order": 0
 }

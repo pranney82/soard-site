@@ -10,8 +10,9 @@
  *   1. CC_LIST_ID env var (override)
  *   2. newsletter.listId from site settings (set via admin panel)
  *
- * Request body: { "email": "user@example.com" }
- * Response:     { "ok": true } or { "ok": false, "error": "..." }
+ * Accepts both JSON (JS-enhanced) and form-encoded (no-JS fallback) POSTs.
+ * JSON:  { "email": "user@example.com" }  →  { "ok": true/false }
+ * Form:  standard form POST  →  302 redirect back with ?subscribed=1 or ?newsletter_error=...
  */
 
 import { getCCAccessToken, clearCCTokenCache, CCAuthError } from './_cc-auth.js';
@@ -21,24 +22,57 @@ const cors = {
   'Content-Type': 'application/json',
 };
 
-export async function onRequestPost(context) {
+function jsonOk(data, status = 200) {
+  return new Response(JSON.stringify(data), { status, headers: cors });
+}
+
+function redirect(baseUrl, path, params) {
+  const url = new URL(path, baseUrl);
+  for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
+  url.hash = 'newsletter-form';
+  return Response.redirect(url.toString(), 302);
+}
+
+function safeRedirectPath(referer, requestUrl) {
   try {
-    const { email, hp } = await context.request.json();
+    const ref = new URL(referer);
+    const req = new URL(requestUrl);
+    // Only allow same-origin redirects to prevent open redirect
+    if (ref.origin === req.origin) return ref.pathname;
+  } catch { /* invalid URL, fall through */ }
+  return '/';
+}
+
+export async function onRequestPost(context) {
+  const contentType = context.request.headers.get('Content-Type') || '';
+  const isFormPost = !contentType.includes('application/json');
+  const redirectPath = safeRedirectPath(
+    context.request.headers.get('Referer') || '',
+    context.request.url
+  );
+  const origin = new URL(context.request.url).origin;
+
+  try {
+    let email, hp;
+
+    if (contentType.includes('application/json')) {
+      ({ email, hp } = await context.request.json());
+    } else {
+      const form = await context.request.formData();
+      email = form.get('email');
+      hp = form.get('website');
+    }
 
     // Honeypot: if the hidden field has a value, it's a bot
     if (hp) {
       // Silently accept to avoid tipping off the bot
-      return new Response(
-        JSON.stringify({ ok: true }),
-        { status: 200, headers: cors }
-      );
+      if (isFormPost) return redirect(origin, redirectPath, { subscribed: '1' });
+      return jsonOk({ ok: true });
     }
 
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      return new Response(
-        JSON.stringify({ ok: false, error: 'Please enter a valid email address.' }),
-        { status: 400, headers: cors }
-      );
+      if (isFormPost) return redirect(origin, redirectPath, { newsletter_error: 'invalid_email' });
+      return jsonOk({ ok: false, error: 'Please enter a valid email address.' }, 400);
     }
 
     let token;
@@ -47,10 +81,8 @@ export async function onRequestPost(context) {
     } catch (err) {
       if (err instanceof CCAuthError) {
         console.error(err.message);
-        return new Response(
-          JSON.stringify({ ok: false, error: 'Newsletter signup is not configured yet. Please try again later.' }),
-          { status: 503, headers: cors }
-        );
+        if (isFormPost) return redirect(origin, redirectPath, { newsletter_error: 'not_configured' });
+        return jsonOk({ ok: false, error: 'Newsletter signup is not configured yet. Please try again later.' }, 503);
       }
       throw err;
     }
@@ -73,10 +105,8 @@ export async function onRequestPost(context) {
 
     if (!listId) {
       console.error('No CC_LIST_ID env var or newsletter.listId in settings');
-      return new Response(
-        JSON.stringify({ ok: false, error: 'Newsletter signup is not configured yet. Please try again later.' }),
-        { status: 503, headers: cors }
-      );
+      if (isFormPost) return redirect(origin, redirectPath, { newsletter_error: 'not_configured' });
+      return jsonOk({ ok: false, error: 'Newsletter signup is not configured yet. Please try again later.' }, 503);
     }
 
     let res = await fetch('https://api.cc.email/v3/contacts/sign_up_form', {
@@ -110,30 +140,22 @@ export async function onRequestPost(context) {
 
     if (res.ok || res.status === 409) {
       // 409 = already subscribed, still a success from the user's perspective
-      return new Response(
-        JSON.stringify({ ok: true }),
-        { status: 200, headers: cors }
-      );
+      if (isFormPost) return redirect(origin, redirectPath, { subscribed: '1' });
+      return jsonOk({ ok: true });
     }
 
     const errBody = await res.text();
     console.error(`CC API error ${res.status}: ${errBody}`);
-    return new Response(
-      JSON.stringify({ ok: false, error: 'Something went wrong. Please try again.' }),
-      { status: 502, headers: cors }
-    );
+    if (isFormPost) return redirect(origin, redirectPath, { newsletter_error: 'server' });
+    return jsonOk({ ok: false, error: 'Something went wrong. Please try again.' }, 502);
   } catch (err) {
     if (err instanceof CCAuthError) {
-      return new Response(
-        JSON.stringify({ ok: false, error: 'Newsletter signup is not configured yet. Please try again later.' }),
-        { status: 503, headers: cors }
-      );
+      if (isFormPost) return redirect(origin, redirectPath, { newsletter_error: 'not_configured' });
+      return jsonOk({ ok: false, error: 'Newsletter signup is not configured yet. Please try again later.' }, 503);
     }
     console.error('Newsletter handler error:', err);
-    return new Response(
-      JSON.stringify({ ok: false, error: 'Something went wrong. Please try again.' }),
-      { status: 500, headers: cors }
-    );
+    if (isFormPost) return redirect(origin, redirectPath, { newsletter_error: 'server' });
+    return jsonOk({ ok: false, error: 'Something went wrong. Please try again.' }, 500);
   }
 }
 

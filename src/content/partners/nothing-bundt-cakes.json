@@ -2,6 +2,8 @@
   "name": "Nothing Bundt Cakes",
   "slug": "nothing-bundt-cakes",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/nothing-bundt-cakes/public",
-  "tier": "community",
-  "featured": true
+  "level": "builder",
+  "category": "community",
+  "featured": true,
+  "order": 0
 }

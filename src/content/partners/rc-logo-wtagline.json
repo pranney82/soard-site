@@ -2,6 +2,8 @@
   "name": "Rc Logo Wtagline",
   "slug": "rc-logo-wtagline",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/rc/public",
-  "tier": "construction",
-  "featured": false
+  "level": "friend",
+  "category": "build",
+  "featured": false,
+  "order": 0
 }

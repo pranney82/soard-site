@@ -5,8 +5,9 @@
  * remaining events in polished cards + past events timeline.
  */
 import BaseLayout from '../../layouts/BaseLayout.astro';
+import EventCard from '../../components/events/EventCard.astro';
 import { getCollection } from 'astro:content';
-import { CF_BASE as CF_IMAGES, cfRaw, cfSrcset } from '../../utils/cf-image';
+import { cfRaw, cfSrcset, cfLqip } from '../../utils/cf-image';
 
 const allEvents = await getCollection('events');
 const today = new Date().toISOString().split('T')[0];
@@ -30,9 +31,23 @@ const past = events
 const featured = upcoming.filter(e => e.data.featured);
 const regular = upcoming.filter(e => !e.data.featured);
 
-const detailPages: Record<string, string> = {
+/** Hand-crafted detail pages override the dynamic [slug].astro route */
+const manualPages: Record<string, string> = {
   'sunshine-on-a-ranney-fairway-2026': '/events/golf/',
 };
+
+/** Auto-detect events with body/photos that get dynamic detail pages */
+const detailPages: Record<string, string> = { ...manualPages };
+for (const e of allEvents) {
+  if (!detailPages[e.data.slug] && (e.data.body || e.data.photos.length > 0)) {
+    detailPages[e.data.slug] = `/events/${e.data.slug}/`;
+  }
+}
+
+/** Flagship = first featured event that has a detail page */
+const flagshipSlug = Object.keys(detailPages).find(slug =>
+  featured.some(e => e.data.slug === slug),
+);
 
 const catLabel: Record<string, string> = {
   fundraiser: 'Fundraiser', volunteer: 'Volunteer',
@@ -43,41 +58,21 @@ const catColor: Record<string, string> = {
   reveal: '#6a3de8', community: '#1976d2', other: '#5A5B61',
 };
 
-// Category-specific gradient "hero" backgrounds for cards
-const catGradient: Record<string, string> = {
-  fundraiser: 'linear-gradient(135deg, #7a5a00 0%, #b8860b 40%, #d4a017 80%, #e6b422 100%)',
-  volunteer:  'linear-gradient(135deg, #1a472a 0%, #2e7d32 40%, #388e3c 70%, #43a047 100%)',
-  reveal:     'linear-gradient(135deg, #2d1b69 0%, #4a2d8a 40%, #6a3de8 70%, #7c4dff 100%)',
-  community:  'linear-gradient(135deg, #0d3b66 0%, #1565c0 40%, #1976d2 70%, #2196f3 100%)',
-  other:      'linear-gradient(135deg, #2c2c2c 0%, #4a4a4a 40%, #5A5B61 70%, #6D6E74 100%)',
-};
-
-// Category SVG icons (large, for card headers)
-const catIcon: Record<string, string> = {
-  fundraiser: '<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>',
-  volunteer:  '<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m15 12-8.5 8.5c-.83.83-2.17.83-3 0a2.12 2.12 0 0 1 0-3L12 9"/><path d="M17.64 15 22 10.64"/><path d="m20.91 11.7-1.25-1.25c-.6-.6-.93-1.4-.93-2.25v-.86L16.01 4.6a5.56 5.56 0 0 0-3.94-1.64H9l.92.82A6.18 6.18 0 0 1 12 8.4v1.56l2 2h2.47l2.26 1.91"/></svg>',
-  reveal:     '<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.912 5.813a2 2 0 0 0 1.275 1.275L21 12l-5.813 1.912a2 2 0 0 0-1.275 1.275L12 21l-1.912-5.813a2 2 0 0 0-1.275-1.275L3 12l5.813-1.912a2 2 0 0 0 1.275-1.275L12 3z"/></svg>',
-  community:  '<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
-  other:      '<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>',
-};
-
 function fmtDate(d: string) {
   return new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
 }
 function fmtWeekday(d: string) {
   return new Date(d + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long' });
 }
-function fmtMonth(d: string) {
-  return new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short' }).toUpperCase();
-}
-function fmtDay(d: string) {
-  return new Date(d + 'T00:00:00').getDate().toString();
-}
 
-// Pull golf tournament out as flagship
-const golfEvent = featured.find(e => e.data.slug === 'sunshine-on-a-ranney-fairway-2026');
-const otherFeatured = featured.filter(e => e.data.slug !== 'sunshine-on-a-ranney-fairway-2026');
+// Pull flagship event out of the upcoming grid
+const flagshipEvent = flagshipSlug ? featured.find(e => e.data.slug === flagshipSlug) : undefined;
+const otherFeatured = featured.filter(e => e.data.slug !== flagshipSlug);
 const allOther = [...otherFeatured, ...regular];
+
+/* ── LCP preload — flagship card logo (must be byte-identical to <img>) ── */
+const flagshipLogoSrcset = cfSrcset('golf-logo-dark', [280, 400]);
+const flagshipLogoSizes = '(max-width: 767px) 160px, 280px';
 ---
 
 <BaseLayout
@@ -85,19 +80,25 @@ const allOther = [...otherFeatured, ...regular];
   description="Upcoming events from Sunshine on a Ranney Day — galas, volunteer build days, room reveals, and community gatherings in the greater Atlanta area."
   breadcrumbs={[{ name: 'Events', url: '/events/' }]}
 >
+  {/* Preload flagship LCP image — imagesrcset/imagesizes must match the <img> */}
+  {flagshipEvent && (
+    <link slot="head" rel="preload" as="image" imagesrcset={flagshipLogoSrcset} imagesizes={flagshipLogoSizes} fetchpriority="high" />
+  )}
 
-  <!-- ═══ HERO (always shown) ═══ -->
-  <section class="ev-hero">
-    <div class="ev-hero__bg" aria-hidden="true"></div>
-    <div class="container ev-hero__inner">
-      <span class="ev-hero__eyebrow" data-reveal>Events</span>
-      <h1 class="ev-hero__title" data-reveal data-delay="1">Come be a part of<br><em class="ev-hl">something&nbsp;big</em>.</h1>
-      <p class="ev-hero__sub" data-reveal data-delay="2">From fundraising galas to hands-on build days, there are so many ways to get involved and help us create dream rooms for incredible kids.</p>
+  <!-- ═══ HERO (matches site-wide PageLayout pattern) ═══ -->
+  <section class="page-hero">
+    <div class="container">
+      <p class="page-hero__label">Events</p>
+      <h1 class="page-hero__title">Come Be a Part of <em class="highlight">Something&nbsp;Big</em></h1>
+      <p class="page-hero__subtitle">From fundraising galas to hands-on build days, there are so many ways to get involved</p>
+      <div class="page-hero__rule" aria-hidden="true">
+        <span class="page-hero__rule-accent"></span>
+      </div>
     </div>
   </section>
 
   <!-- ═══ FEATURED NEXT EVENT (golf spotlight) ═══ -->
-  {golfEvent && (
+  {flagshipEvent && (
     <section class="ev-next">
       <div class="container">
         <div class="ev-next__card" data-reveal>
@@ -107,35 +108,36 @@ const allOther = [...otherFeatured, ...regular];
           </div>
           <div class="ev-next__body">
             <span class="ev-next__eyebrow">Next Event</span>
-            <h2 class="ev-next__title">{golfEvent.data.title}</h2>
-            <p class="ev-next__desc">{golfEvent.data.description}</p>
+            <h2 class="ev-next__title" transition:name="event-title">{flagshipEvent.data.title}</h2>
+            <p class="ev-next__desc">{flagshipEvent.data.description}</p>
             <div class="ev-next__details">
               <div class="ev-next__detail">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-                <time datetime={golfEvent.data.date}>{fmtWeekday(golfEvent.data.date)}, {fmtDate(golfEvent.data.date)}</time>
+                <time datetime={flagshipEvent.data.date}>{fmtWeekday(flagshipEvent.data.date)}, {fmtDate(flagshipEvent.data.date)}</time>
               </div>
               <div class="ev-next__detail">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-                {golfEvent.data.location}
+                {flagshipEvent.data.location}
               </div>
-              {golfEvent.data.time && (
+              {flagshipEvent.data.time && (
                 <div class="ev-next__detail">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                  {golfEvent.data.time}
+                  {flagshipEvent.data.time}
                 </div>
               )}
             </div>
-            <a href="/events/golf/" class="ev-btn ev-btn--gold ev-btn--lg">
+            <a href={detailPages[flagshipEvent.data.slug]} class="ev-btn ev-btn--gold ev-btn--lg">
               View Details &amp; Register
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg>
             </a>
           </div>
           <div class="ev-next__visual">
             <img
-              src="https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/golf-logo-light/w=400,q=85,format=auto"
-              srcset="https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/golf-logo-light/w=280,q=80,format=auto 280w, https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/golf-logo-light/w=400,q=85,format=auto 400w"
-              sizes="(max-width: 767px) 160px, 280px"
+              src={cfRaw('golf-logo-dark', 'w=400,q=85')}
+              srcset={flagshipLogoSrcset}
+              sizes={flagshipLogoSizes}
               alt="Sunshine on a Ranney Fairway"
+              transition:name="event-hero"
               width="400" height="400"
               loading="eager" decoding="async"
               class="ev-next__logo"
@@ -151,68 +153,25 @@ const allOther = [...otherFeatured, ...regular];
     <section class="ev-upcoming" id="upcoming">
       <div class="container">
         <div class="ev-upcoming__header" data-reveal>
-          <h2 class="ev-heading">{golfEvent ? 'More Events' : 'Upcoming Events'}</h2>
-          <p class="ev-heading__sub">{allOther.length} event{allOther.length !== 1 ? 's' : ''} coming up</p>
+          <p class="ev-section-label">What's Coming Up</p>
+          <h2 class="ev-section-heading">More Ways to <em class="highlight">Get Involved</em></h2>
         </div>
 
         <div class="ev-grid">
-          {allOther.map((event, i) => {
-            const detailUrl = detailPages[event.data.slug];
-            return (
-              <article class="ev-card" data-reveal data-delay={String(Math.min(i, 3))}>
-                {/* Gradient hero header */}
-                <div class="ev-card__hero" style={`background: ${catGradient[event.data.category]}`}>
-                  <div class="ev-card__hero-pattern" aria-hidden="true"></div>
-                  <div class="ev-card__hero-glow" aria-hidden="true"></div>
-                  <div class="ev-card__hero-icon" set:html={catIcon[event.data.category]} />
-                  <div class="ev-card__hero-date">
-                    <time datetime={event.data.date}>
-                      <span class="ev-card__hero-month">{fmtMonth(event.data.date)}</span>
-                      <span class="ev-card__hero-day">{fmtDay(event.data.date)}</span>
-                    </time>
-                  </div>
-                  <div class="ev-card__hero-cat">{catLabel[event.data.category]}</div>
-                </div>
-                <div class="ev-card__inner">
-                  <h3 class="ev-card__title">{event.data.title}</h3>
-                  <div class="ev-card__meta">
-                    <span class="ev-card__meta-item">
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-                      <time datetime={event.data.date}>{fmtWeekday(event.data.date)}, {fmtDate(event.data.date)}</time>
-                    </span>
-                    {event.data.time && (
-                      <span class="ev-card__meta-item">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                        {event.data.time}
-                      </span>
-                    )}
-                    <span class="ev-card__meta-item">
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-                      {event.data.location}
-                    </span>
-                  </div>
-                  <p class="ev-card__desc">{event.data.description}</p>
-                  <div class="ev-card__foot">
-                    {detailUrl ? (
-                      <a href={detailUrl} class="ev-card__cta">View Details <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg></a>
-                    ) : event.data.ticketUrl ? (
-                      <a href={event.data.ticketUrl} class="ev-card__cta" target="_blank" rel="noopener noreferrer">Get Tickets <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 17L17 7"/><path d="M7 7h10v10"/></svg></a>
-                    ) : (
-                      <span class="ev-card__soon">Details coming soon</span>
-                    )}
-                    {event.data.ticketPrice && <span class="ev-card__price">{event.data.ticketPrice}</span>}
-                  </div>
-                </div>
-              </article>
-            );
-          })}
+          {allOther.map((event, i) => (
+            <EventCard
+              event={event.data}
+              detailUrl={detailPages[event.data.slug]}
+              index={i}
+            />
+          ))}
         </div>
       </div>
     </section>
   )}
 
   <!-- ═══ EMPTY ═══ -->
-  {upcoming.length === 0 && !golfEvent && (
+  {upcoming.length === 0 && !flagshipEvent && (
     <section class="ev-empty" id="upcoming">
       <div class="container">
         <div class="ev-empty__box" data-reveal>
@@ -228,7 +187,10 @@ const allOther = [...otherFeatured, ...regular];
   {past.length > 0 && (
     <section class="ev-past" id="past">
       <div class="container">
-        <h2 class="ev-heading ev-heading--light" data-reveal>Past Events</h2>
+        <div class="ev-past__header" data-reveal>
+          <p class="ev-section-label">Looking Back</p>
+          <h2 class="ev-section-heading">Where We've <em class="highlight">Been</em></h2>
+        </div>
         <div class="ev-tl">
           {past.map((event, i) => (
             <article class="ev-tl__item" data-reveal data-delay={String(Math.min(i, 3))}>
@@ -254,13 +216,26 @@ const allOther = [...otherFeatured, ...regular];
   <!-- ═══ CTA ═══ -->
   <section class="ev-cta">
     <div class="container">
-      <div class="ev-cta__card" data-reveal>
-        <span class="ev-cta__eyebrow">Get Involved</span>
-        <h2>Want to host an event?</h2>
-        <p>Partner with us to organize a fundraiser, volunteer day, or community event that supports children with special needs.</p>
-        <div class="ev-cta__actions">
-          <a href="mailto:info@soardcharity.com?subject=Event%20Partnership" class="ev-btn ev-btn--gold ev-btn--lg">Contact Us</a>
-          <a href="/donate/" class="ev-btn ev-btn--outline">Donate Instead</a>
+      <div class="ev-cta__inner" data-reveal>
+        <p class="ev-section-label">Get Involved</p>
+        <h2 class="ev-section-heading">There's a Place for <em class="highlight">You</em></h2>
+        <div class="ev-cta__grid">
+          <a href="mailto:info@soardcharity.com?subject=Event%20Partnership" class="ev-cta__option">
+            <div class="ev-cta__icon" aria-hidden="true">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            </div>
+            <h3>Host an Event</h3>
+            <p>Partner with us to organize a fundraiser, volunteer day, or community event.</p>
+            <span class="ev-cta__link">Get in Touch <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg></span>
+          </a>
+          <a href="/donate/" class="ev-cta__option">
+            <div class="ev-cta__icon" aria-hidden="true">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+            </div>
+            <h3>Donate Directly</h3>
+            <p>100% of donations go toward building dream rooms for children with special needs.</p>
+            <span class="ev-cta__link">Give Today <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg></span>
+          </a>
         </div>
       </div>
     </div>
@@ -291,13 +266,6 @@ const allOther = [...otherFeatured, ...regular];
     [data-reveal] { transition: none; opacity: 1; transform: none; }
   }
 
-  /* ─── Highlight ─── */
-  .ev-hl {
-    font-style: normal;
-    background-image: linear-gradient(transparent 52%, var(--c-yellow-soft) 52%);
-    padding: 0 0.1em;
-  }
-
   /* ─── Buttons ─── */
   .ev-btn {
     display: inline-flex;
@@ -322,73 +290,70 @@ const allOther = [...otherFeatured, ...regular];
     transform: translateY(-2px);
     box-shadow: 0 6px 24px var(--c-yellow-glow);
   }
-  .ev-btn--outline {
-    background: transparent;
-    color: rgba(255, 255, 255, 0.85);
-    border-color: rgba(255, 255, 255, 0.25);
-  }
-  .ev-btn--outline:hover {
-    background: rgba(255, 255, 255, 0.08);
-    border-color: rgba(255, 255, 255, 0.5);
-  }
   .ev-btn--lg { padding: 0.85rem 2.2rem; font-size: 0.95rem; }
 
-  /* ═══ HERO ═══ */
-  .ev-hero {
-    position: relative;
-    padding: var(--space-5xl) 0 var(--space-3xl);
-    overflow: hidden;
-  }
-  .ev-hero__bg {
-    position: absolute;
-    inset: 0;
-    background: var(--c-dark-deep);
-  }
-  .ev-hero__bg::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background:
-      radial-gradient(ellipse 60% 50% at 12% 85%, var(--c-yellow-glow) 0%, transparent 55%),
-      radial-gradient(ellipse 40% 40% at 90% 15%, rgba(255, 255, 255, 0.035) 0%, transparent 50%);
-  }
-  .ev-hero__inner {
-    position: relative;
-    z-index: 1;
+  /* ═══ HERO (matches site-wide PageLayout pattern) ═══ */
+  .page-hero {
+    background: var(--c-cream);
+    padding-block: var(--space-2xl) 0;
     text-align: center;
-    max-width: 700px;
-    margin: 0 auto;
   }
-  .ev-hero__eyebrow {
-    display: block;
-    font-size: 0.72rem;
-    font-weight: 700;
+  .page-hero .container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .page-hero__label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.12em;
     text-transform: uppercase;
-    letter-spacing: 0.22em;
-    color: var(--c-yellow);
+    color: var(--c-text-muted);
     margin-bottom: var(--space-md);
   }
-  .ev-hero__title {
-    font-family: var(--font-display);
-    font-size: clamp(2.2rem, 5.5vw, 3.8rem);
-    color: #fff;
-    line-height: 1.1;
-    letter-spacing: -0.01em;
-    text-wrap: balance;
-    margin-bottom: var(--space-lg);
+  .page-hero__title {
+    color: var(--c-text);
+    font-size: clamp(2rem, 5vw, 3.125rem);
+    font-weight: 400;
+    letter-spacing: -0.025em;
+    line-height: 1.15;
+    max-width: 700px;
+    margin-inline: auto;
   }
-  .ev-hero__sub {
-    font-size: clamp(0.95rem, 1.4vw, 1.1rem);
-    color: rgba(255, 255, 255, 0.7);
-    line-height: 1.75;
-    text-wrap: pretty;
-    max-width: 580px;
-    margin: 0 auto;
+  .page-hero__subtitle {
+    margin-top: var(--space-sm);
+    font-family: var(--font-display);
+    font-style: italic;
+    font-size: clamp(0.95rem, 1.8vw, 1.065rem);
+    line-height: 1.6;
+    color: var(--c-text-muted);
+    max-width: 500px;
+    margin-inline: auto;
+  }
+  .page-hero__rule {
+    position: relative;
+    height: 2px;
+    background: var(--c-border);
+    margin-top: var(--space-lg);
+    width: 100%;
+  }
+  .page-hero__rule-accent {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    top: -1px;
+    width: 48px;
+    height: 3px;
+    background: var(--c-yellow);
+    border-radius: 1px;
+  }
+  @media (max-width: 768px) {
+    .page-hero { padding-block: var(--space-xl) 0; }
   }
 
-  /* ═══ FEATURED NEXT EVENT CARD ═══ */
+  /* ═══ FEATURED NEXT EVENT CARD (cream — flows from hero) ═══ */
   .ev-next {
-    padding: var(--space-4xl) 0;
+    padding: var(--space-2xl) 0 var(--space-4xl);
     background: var(--c-cream);
   }
   .ev-next__card {
@@ -504,35 +469,33 @@ const allOther = [...otherFeatured, ...regular];
     50% { transform: translateY(-10px); }
   }
 
-  /* ═══ SECTION HEADING ═══ */
-  .ev-heading {
+  /* ═══ SECTION LABELS (matches donate/home pattern) ═══ */
+  .ev-section-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--c-text-muted);
+    margin-bottom: var(--space-sm);
+  }
+  .ev-section-heading {
     font-family: var(--font-display);
-    font-size: clamp(1.4rem, 3vw, 1.9rem);
+    font-size: clamp(1.6rem, 4vw, 2.4rem);
+    font-weight: 400;
     color: var(--c-dark);
+    letter-spacing: -0.02em;
+    line-height: 1.15;
+    text-wrap: balance;
   }
-  .ev-heading::after {
-    content: '';
-    display: block;
-    width: 48px;
-    height: 3px;
-    background: var(--c-yellow);
-    margin-top: var(--space-sm);
-    border-radius: 2px;
-  }
-  .ev-heading--light { color: var(--c-dark); }
-  .ev-heading__sub {
-    font-size: 0.85rem;
-    color: var(--c-text-light);
-    margin-top: var(--space-xs);
-  }
-  .ev-upcoming__header {
+  .ev-upcoming__header,
+  .ev-past__header {
     margin-bottom: var(--space-2xl);
   }
 
-  /* ═══ UPCOMING ═══ */
+  /* ═══ UPCOMING (white background — breaks from cream hero) ═══ */
   .ev-upcoming {
     padding: var(--space-4xl) 0;
-    background: var(--c-cream);
+    background: var(--c-white);
   }
   .ev-grid {
     display: grid;
@@ -546,170 +509,7 @@ const allOther = [...otherFeatured, ...regular];
     .ev-grid { grid-template-columns: repeat(3, 1fr); }
   }
 
-  /* ─── Event Cards ─── */
-  .ev-card {
-    position: relative;
-    background: var(--c-white);
-    border: 1px solid var(--c-border);
-    border-radius: var(--border-radius-lg);
-    overflow: hidden;
-    transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1),
-                box-shadow 0.35s cubic-bezier(0.16, 1, 0.3, 1);
-  }
-  .ev-card:hover {
-    transform: translateY(-6px);
-    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.12);
-  }
-
-  /* ─ Card hero header ─ */
-  .ev-card__hero {
-    position: relative;
-    height: 140px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    overflow: hidden;
-  }
-  .ev-card__hero-pattern {
-    position: absolute;
-    inset: 0;
-    opacity: 0.04;
-    background-image: radial-gradient(circle, #fff 1px, transparent 1px);
-    background-size: 24px 24px;
-  }
-  .ev-card__hero-glow {
-    position: absolute;
-    inset: 0;
-    background:
-      radial-gradient(ellipse 60% 60% at 20% 80%, rgba(255, 255, 255, 0.12) 0%, transparent 55%),
-      radial-gradient(ellipse 40% 40% at 85% 15%, rgba(255, 255, 255, 0.06) 0%, transparent 50%);
-  }
-  .ev-card__hero-icon {
-    color: rgba(255, 255, 255, 0.2);
-    z-index: 1;
-    transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1),
-                color 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-  }
-  .ev-card:hover .ev-card__hero-icon {
-    transform: scale(1.15);
-    color: rgba(255, 255, 255, 0.3);
-  }
-  .ev-card__hero-date {
-    position: absolute;
-    top: var(--space-md);
-    left: var(--space-md);
-    background: rgba(0, 0, 0, 0.25);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
-    border-radius: 10px;
-    padding: var(--space-xs) var(--space-sm);
-    text-align: center;
-    min-width: 48px;
-    z-index: 1;
-  }
-  .ev-card__hero-month {
-    display: block;
-    font-size: 0.55rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: rgba(255, 255, 255, 0.7);
-  }
-  .ev-card__hero-day {
-    display: block;
-    font-family: var(--font-display);
-    font-size: 1.4rem;
-    font-weight: 700;
-    line-height: 1;
-    color: #fff;
-  }
-  .ev-card__hero-cat {
-    position: absolute;
-    bottom: var(--space-md);
-    left: var(--space-md);
-    font-size: 0.6rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    color: rgba(255, 255, 255, 0.85);
-    background: rgba(0, 0, 0, 0.2);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
-    padding: 0.2rem 0.6rem;
-    border-radius: 100px;
-    z-index: 1;
-  }
-
-  .ev-card__inner {
-    padding: var(--space-lg);
-    display: flex;
-    flex-direction: column;
-    flex: 1;
-  }
-  .ev-card__title {
-    font-family: var(--font-display);
-    font-size: 1.1rem;
-    line-height: 1.3;
-    color: var(--c-dark);
-    margin-bottom: var(--space-md);
-  }
-  .ev-card__meta {
-    display: flex;
-    flex-direction: column;
-    gap: 0.3rem;
-    margin-bottom: var(--space-md);
-  }
-  .ev-card__meta-item {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    font-size: 0.8rem;
-    color: var(--c-text-muted);
-  }
-  .ev-card__meta-item svg {
-    flex-shrink: 0;
-    color: var(--c-text-light);
-  }
-  .ev-card__desc {
-    font-size: 0.85rem;
-    line-height: 1.65;
-    color: var(--c-text-muted);
-    display: -webkit-box;
-    -webkit-line-clamp: 3;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-    flex: 1;
-  }
-  .ev-card__foot {
-    display: flex;
-    align-items: center;
-    gap: var(--space-md);
-    flex-wrap: wrap;
-    margin-top: var(--space-lg);
-    padding-top: var(--space-md);
-    border-top: 1px solid var(--c-border);
-  }
-  .ev-card__cta {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    font-size: 0.82rem;
-    font-weight: 600;
-    color: var(--c-dark);
-    text-decoration: none;
-    transition: gap 0.2s ease, color 0.2s ease;
-  }
-  .ev-card__cta:hover { gap: 8px; color: var(--c-yellow-hover); }
-  .ev-card__soon {
-    font-size: 0.82rem;
-    color: var(--c-text-light);
-    font-style: italic;
-  }
-  .ev-card__price {
-    font-size: 0.78rem;
-    color: var(--c-text-light);
-    margin-left: auto;
-  }
+  /* Event card styles live in EventCard.astro */
 
   /* ═══ EMPTY ═══ */
   .ev-empty { padding: var(--space-5xl) 0; }
@@ -815,67 +615,83 @@ const allOther = [...otherFeatured, ...regular];
   }
 
   @media (max-width: 640px) {
-    .ev-tl { padding-left: 20px; }
-    .ev-tl__marker { left: -20px; }
+    .ev-tl { padding-left: 24px; }
+    .ev-tl__marker { left: -24px; }
     .ev-tl__dot { width: 10px; height: 10px; }
     .ev-tl__card { padding: var(--space-md); }
+    /* Ensure min touch target 44px on CTAs */
+    .ev-btn { min-height: 44px; }
+    .ev-cta__option { padding: var(--space-lg); }
   }
 
-  /* ═══ CTA ═══ */
+  /* ═══ CTA (cream background — two-option cards) ═══ */
   .ev-cta {
-    padding: var(--space-3xl) 0 var(--space-4xl);
+    padding: var(--space-4xl) 0;
+    background: var(--c-cream);
   }
-  .ev-cta__card {
+  .ev-cta__inner {
     text-align: center;
-    padding: var(--space-3xl) var(--space-xl);
-    background: var(--c-dark-deep);
-    border-radius: var(--border-radius-lg);
-    max-width: 720px;
+    max-width: 800px;
     margin: 0 auto;
-    position: relative;
-    overflow: hidden;
   }
-  .ev-cta__card::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background:
-      radial-gradient(ellipse 50% 50% at 10% 90%, var(--c-yellow-glow) 0%, transparent 50%),
-      radial-gradient(ellipse 40% 40% at 90% 10%, rgba(255, 255, 255, 0.03) 0%, transparent 50%);
-    pointer-events: none;
+  .ev-cta__grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: var(--space-lg);
+    margin-top: var(--space-2xl);
+    text-align: left;
   }
-  .ev-cta__eyebrow {
-    display: inline-block;
-    font-size: 0.65rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.2em;
-    color: var(--c-yellow);
-    margin-bottom: var(--space-sm);
-    position: relative;
+  @media (min-width: 640px) {
+    .ev-cta__grid { grid-template-columns: repeat(2, 1fr); }
   }
-  .ev-cta__card h2 {
-    font-family: var(--font-display);
-    color: #fff;
-    font-size: clamp(1.5rem, 3vw, 2.2rem);
-    text-wrap: balance;
-    margin-bottom: var(--space-md);
-    position: relative;
-  }
-  .ev-cta__card p {
-    color: rgba(255, 255, 255, 0.6);
-    max-width: 480px;
-    margin: 0 auto var(--space-xl);
-    line-height: 1.7;
-    font-size: 0.95rem;
-    text-wrap: pretty;
-    position: relative;
-  }
-  .ev-cta__actions {
+  .ev-cta__option {
     display: flex;
-    gap: var(--space-md);
-    justify-content: center;
-    flex-wrap: wrap;
-    position: relative;
+    flex-direction: column;
+    padding: var(--space-xl);
+    background: var(--c-white);
+    border: 1px solid var(--c-border);
+    border-radius: var(--border-radius-lg);
+    text-decoration: none;
+    color: inherit;
+    transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+                box-shadow 0.35s cubic-bezier(0.16, 1, 0.3, 1);
   }
+  .ev-cta__option:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-lg);
+  }
+  .ev-cta__icon {
+    width: 52px;
+    height: 52px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--c-accent-soft);
+    color: var(--c-dark);
+    border-radius: 50%;
+    margin-bottom: var(--space-md);
+  }
+  .ev-cta__option h3 {
+    font-family: var(--font-display);
+    font-size: 1.15rem;
+    color: var(--c-dark);
+    margin-bottom: var(--space-sm);
+  }
+  .ev-cta__option p {
+    font-size: 0.88rem;
+    color: var(--c-text-muted);
+    line-height: 1.65;
+    flex: 1;
+  }
+  .ev-cta__link {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--c-dark);
+    margin-top: var(--space-md);
+    transition: gap 0.2s ease, color 0.2s ease;
+  }
+  .ev-cta__option:hover .ev-cta__link { gap: 8px; color: var(--c-yellow-hover); }
 </style>

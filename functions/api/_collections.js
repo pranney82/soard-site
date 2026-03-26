@@ -33,8 +33,8 @@ export const EXTRACTORS = {
     [d.name, d.year ?? null, d.status || 'completed', d.featured ? 1 : 0, d.childCount ?? 1, d.roomCount ?? 1],
   ],
   partners: (d) => [
-    ['name', 'tier', 'featured'],
-    [d.name, d.tier ?? null, d.featured ? 1 : 0],
+    ['name', 'level', 'category', 'featured'],
+    [d.name, d.level ?? null, d.category ?? null, d.featured ? 1 : 0],
   ],
   press: (d) => [
     ['title', 'date', 'category', 'featured'],

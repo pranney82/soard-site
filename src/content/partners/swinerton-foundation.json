@@ -2,6 +2,8 @@
   "name": "Swinerton Foundation",
   "slug": "swinerton-foundation",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/swinerton-foundation/public",
-  "tier": "community",
-  "featured": false
+  "level": "friend",
+  "category": "community",
+  "featured": false,
+  "order": 0
 }

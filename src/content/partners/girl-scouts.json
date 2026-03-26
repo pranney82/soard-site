@@ -2,6 +2,8 @@
   "name": "Girl Scouts",
   "slug": "girl-scouts",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/girl-scouts/public",
-  "tier": "construction",
-  "featured": false
+  "level": "friend",
+  "category": "build",
+  "featured": false,
+  "order": 0
 }

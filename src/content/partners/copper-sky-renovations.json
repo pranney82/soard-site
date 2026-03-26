@@ -2,6 +2,8 @@
   "name": "Copper Sky Renovations",
   "slug": "copper-sky-renovations",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/copper-sky-renovations/public",
-  "tier": "construction",
-  "featured": false
+  "level": "friend",
+  "category": "build",
+  "featured": false,
+  "order": 0
 }

@@ -18,6 +18,7 @@ import { ClientRouter } from 'astro:transitions';
 import Header from '../components/global/Header.astro';
 import Footer from '../components/global/Footer.astro';
 import ScrollReveal from '../components/ui/ScrollReveal.astro';
+import LqipReveal from '../components/ui/LqipReveal.astro';
 import { getOrgSchema, getWebPageSchema, getBreadcrumbSchema, buildSchemaGraph } from '../utils/schema';
 import '../styles/global.css';
 
@@ -261,6 +262,7 @@ const structuredData = buildSchemaGraph(...graphSchemas);
   </main>
   <Footer />
   <ScrollReveal />
+  <LqipReveal />
   <!-- Register service worker for repeat visitor speed -->
   <script is:inline>
     if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js',{scope:'/'}).catch(function(){})}

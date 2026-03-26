@@ -2,6 +2,8 @@
   "name": "Castan And Lecca",
   "slug": "castan-and-lecca",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/castan-and-lecca/public",
-  "tier": "construction",
-  "featured": false
+  "level": "friend",
+  "category": "build",
+  "featured": false,
+  "order": 0
 }

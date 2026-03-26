@@ -2,6 +2,8 @@
   "name": "Byrdfeeders Logo",
   "slug": "byrdfeeders-logo",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/byrd-feeders/public",
-  "tier": "construction",
-  "featured": false
+  "level": "friend",
+  "category": "build",
+  "featured": false,
+  "order": 0
 }

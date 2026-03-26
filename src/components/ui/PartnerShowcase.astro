@@ -1,0 +1,221 @@
+---
+/**
+ * PartnerShowcase.astro
+ * Editorial partner section — logo + name grid.
+ *
+ * Partner names below each logo normalize visual weight across
+ * inconsistent source images. CSS Grid ensures uniform cells.
+ * Zero JS. Scoped styles. CF density srcset at display size.
+ */
+import { CF_BASE as CF, cfDensitySrcset } from '../../utils/cf-image';
+
+interface Logo {
+  id: string;
+  name: string;
+}
+
+interface Props {
+  logos: Logo[];
+  totalPartners: number;
+}
+
+const { logos, totalPartners } = Astro.props;
+const featured = logos.slice(0, 6);
+---
+
+<section class="ps" aria-labelledby="ps-heading">
+  <div class="ps__inner">
+    <div class="ps__header" data-reveal>
+      <div class="ps__label">Our Partners</div>
+      <h2 id="ps-heading" class="ps__title">We don't build alone.</h2>
+      <p class="ps__body">
+        Every dream room starts with a team. {totalPartners}+ partners across
+        Greater Atlanta bring the time, talent, and materials that make it all possible.
+      </p>
+    </div>
+
+    <div class="ps__grid" data-reveal data-delay="1" role="list" aria-label="Featured partners">
+      {featured.map(p => (
+        <a class="ps__cell" href="/partners" role="listitem">
+          <div class="ps__logo-frame">
+            <img
+              src={`${CF}/${p.id}/w=140,h=80,fit=contain,q=80`}
+              srcset={cfDensitySrcset(p.id, 140, 80, { quality: 80, fit: 'contain' })}
+              alt=""
+              width="140"
+              height="80"
+              loading="lazy"
+              decoding="async"
+            />
+          </div>
+          <span class="ps__name">{p.name}</span>
+        </a>
+      ))}
+    </div>
+
+    <div class="ps__footer" data-reveal data-delay="2">
+      <a href="/partners" class="ps__link">
+        Meet all {totalPartners}+ partners
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <path d="M3.5 8h9M8.5 4l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </a>
+    </div>
+  </div>
+</section>
+
+<style>
+  .ps {
+    padding: clamp(72px, 9vw, 112px) 0;
+    background: var(--c-cream, #FEFCF5);
+    border-top: 1px solid var(--c-border, #E5E4E0);
+    contain: layout style;
+  }
+
+  .ps__inner {
+    max-width: var(--max-width, 1200px);
+    margin: 0 auto;
+    padding: 0 var(--page-padding, clamp(1rem, 4vw, 2rem));
+    text-align: center;
+  }
+
+  .ps__label {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+    color: var(--c-text-light, #6D6E74);
+    margin-bottom: 20px;
+  }
+
+  .ps__title {
+    font-family: var(--font-display, 'Libre Baskerville', Georgia, serif);
+    font-size: clamp(28px, 4vw, 44px);
+    font-weight: 700;
+    line-height: 1.2;
+    color: var(--c-dark, #373A36);
+    margin-bottom: 20px;
+    letter-spacing: -0.02em;
+  }
+
+  .ps__body {
+    font-size: clamp(16px, 1.3vw, 18px);
+    line-height: 1.7;
+    color: var(--c-text-muted, #5A5B61);
+    max-width: 540px;
+    margin: 0 auto;
+  }
+
+  /*
+   * 6-column grid — uniform cells normalize inconsistent logos.
+   * Each cell: logo (centered via object-fit) + name (consistent anchor).
+   */
+  .ps__grid {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: clamp(16px, 2.5vw, 28px);
+    margin: clamp(48px, 6vw, 72px) auto 0;
+    max-width: 960px;
+  }
+
+  .ps__cell {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    padding: 20px 12px;
+    border-radius: 16px;
+    text-decoration: none;
+    transition: background 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .ps__cell:hover {
+    background: var(--c-warm-gray, #F5F4F0);
+  }
+
+  /* Fixed-size frame — every logo gets the same box */
+  .ps__logo-frame {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 56px;
+  }
+
+  .ps__logo-frame img {
+    display: block;
+    max-width: 100%;
+    max-height: 100%;
+    width: auto;
+    height: auto;
+    object-fit: contain;
+    opacity: 0.6;
+    filter: grayscale(1);
+    transition: opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+                filter 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .ps__cell:hover .ps__logo-frame img {
+    opacity: 0.85;
+    filter: grayscale(0);
+  }
+
+  /* Name — the visual anchor that normalizes weight */
+  .ps__name {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--c-text-light, #6D6E74);
+    line-height: 1.3;
+    transition: color 0.3s ease;
+  }
+
+  .ps__cell:hover .ps__name {
+    color: var(--c-dark, #373A36);
+  }
+
+  /* ── Footer link ── */
+  .ps__footer {
+    margin-top: clamp(36px, 4.5vw, 52px);
+  }
+
+  .ps__link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--c-text-light, #6D6E74);
+    text-decoration: none;
+    letter-spacing: 0.02em;
+    transition: color 0.3s ease, gap 0.3s ease;
+  }
+
+  .ps__link:hover {
+    color: var(--c-dark, #373A36);
+    gap: 10px;
+  }
+
+  .ps__link svg {
+    transition: transform 0.3s ease;
+  }
+
+  .ps__link:hover svg {
+    transform: translateX(2px);
+  }
+
+  /* ── Tablet ── */
+  @media (max-width: 840px) {
+    .ps__grid { grid-template-columns: repeat(3, 1fr); max-width: 480px; }
+  }
+
+  /* ── Mobile ── */
+  @media (max-width: 480px) {
+    .ps { padding: 56px 0; }
+    .ps__grid { grid-template-columns: repeat(2, 1fr); max-width: 320px; gap: 12px; }
+    .ps__cell { padding: 16px 8px; }
+    .ps__logo-frame { height: 44px; }
+    .ps__name { font-size: 10px; }
+  }
+</style>

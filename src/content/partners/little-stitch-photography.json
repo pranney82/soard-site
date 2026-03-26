@@ -2,6 +2,8 @@
   "name": "Little Stitch Photography",
   "slug": "little-stitch-photography",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/little-stitch-photography/public",
-  "tier": "community",
-  "featured": false
+  "level": "friend",
+  "category": "community",
+  "featured": false,
+  "order": 0
 }

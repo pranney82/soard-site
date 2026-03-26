@@ -2,6 +2,8 @@
   "name": "Sims Patrick Studio",
   "slug": "sims-patrick-studio",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/sims-patrick-studio/public",
-  "tier": "design",
-  "featured": false
+  "level": "friend",
+  "category": "design",
+  "featured": false,
+  "order": 0
 }

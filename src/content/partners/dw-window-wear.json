@@ -2,6 +2,8 @@
   "name": "Dw Window Wear",
   "slug": "dw-window-wear",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/dw-window-wear/public",
-  "tier": "construction",
-  "featured": false
+  "level": "friend",
+  "category": "build",
+  "featured": false,
+  "order": 0
 }

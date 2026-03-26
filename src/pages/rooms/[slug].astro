@@ -790,7 +790,8 @@ const heroSrcset = kid.heroImage ? cfSrcset(kid.heroImage, [640, 1024, 1600, 240
     .fp-partner-logo {
       transition: none;
     }
-    .lqip-img { transition: none; }
+    .lqip-img:not(.lqip-pending) { transition: none; }
+    .lqip-img.lqip-pending { opacity: initial; }
   }
 
   /* ── LQIP blur-up placeholders ── */
@@ -801,18 +802,11 @@ const heroSrcset = kid.heroImage ? cfSrcset(kid.heroImage, [640, 1024, 1600, 240
     background-size: cover;
     background-position: center;
   }
-  .lqip-img {
+  .lqip-img.lqip-pending {
     opacity: 0;
-    transition: opacity 0.4s ease;
   }
-  .lqip-img.loaded {
-    opacity: 1;
+  .lqip-img:not(.lqip-pending) {
+    transition: opacity 0.4s ease;
   }
 </style>
 
-<script is:inline>
-document.querySelectorAll('.lqip-img').forEach(function(img) {
-  if (img.complete && img.naturalWidth > 0) { img.classList.add('loaded'); return; }
-  img.addEventListener('load', function() { img.classList.add('loaded'); }, { once: true });
-});
-</script>

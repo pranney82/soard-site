@@ -1,0 +1,244 @@
+---
+/**
+ * PartnerMarquee.astro
+ *
+ * SSR two sets → CSS translateX(-50%) instant scroll → JS pixel-exact
+ * refinement. IntersectionObserver pauses GPU off-screen. CF density
+ * srcset at exact display size.
+ */
+import { CF_BASE as CF, cfDensitySrcset } from '../../utils/cf-image';
+
+interface Logo {
+  id: string;
+  name: string;
+}
+
+interface Props {
+  logos: Logo[];
+  label?: string;
+  speed?: number;
+}
+
+const {
+  logos,
+  label = 'Our Partners',
+  speed = 30,
+} = Astro.props;
+---
+
+{logos.length > 0 && (
+<section class="pm" aria-label="Our partners" data-speed={speed}>
+  <p class="pm__label">{label}</p>
+  <div class="pm__mask">
+    <div class="pm__track">
+      <div class="pm__set">
+        {logos.map(p => (
+          <a class="pm__logo" href="/partners" tabindex="-1">
+            <img
+              src={`${CF}/${p.id}/w=200,h=60,fit=contain,q=80`}
+              srcset={cfDensitySrcset(p.id, 200, 60, { quality: 80, fit: 'contain' })}
+              alt={p.name}
+              width="200"
+              height="60"
+              loading="eager"
+              fetchpriority="low"
+              decoding="async"
+            />
+          </a>
+        ))}
+      </div>
+      <div class="pm__set" aria-hidden="true">
+        {logos.map(p => (
+          <a class="pm__logo" href="/partners" tabindex="-1" aria-hidden="true">
+            <img
+              src={`${CF}/${p.id}/w=200,h=60,fit=contain,q=80`}
+              srcset={cfDensitySrcset(p.id, 200, 60, { quality: 80, fit: 'contain' })}
+              alt=""
+              width="200"
+              height="60"
+              loading="eager"
+              fetchpriority="low"
+              decoding="async"
+            />
+          </a>
+        ))}
+      </div>
+    </div>
+  </div>
+
+  <div class="pm__static" role="list" aria-label="Partner logos">
+    {logos.map(p => (
+      <a class="pm__static-logo" href="/partners" role="listitem">
+        <img
+          src={`${CF}/${p.id}/w=200,h=60,fit=contain,q=80`}
+          srcset={cfDensitySrcset(p.id, 200, 60, { quality: 80, fit: 'contain' })}
+          alt={p.name}
+          width="200"
+          height="60"
+          loading="lazy"
+          decoding="async"
+        />
+      </a>
+    ))}
+  </div>
+</section>
+)}
+
+<style is:global>
+  .pm {
+    padding: clamp(64px, 8vw, 96px) 0;
+    background: var(--c-cream, #FEFCF5);
+    border-top: 1px solid var(--c-border, #E5E4E0);
+    overflow: hidden;
+    contain: layout style;
+  }
+
+  .pm__label {
+    text-align: center;
+    margin: 0 0 clamp(36px, 4.5vw, 52px);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--c-text-light, #6D6E74);
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    font-family: var(--font-body, 'Outfit', sans-serif);
+  }
+
+  .pm__mask {
+    overflow: hidden;
+    -webkit-mask-image: linear-gradient(90deg, transparent, #000 10%, #000 90%, transparent);
+    mask-image: linear-gradient(90deg, transparent, #000 10%, #000 90%, transparent);
+  }
+
+  .pm__track {
+    display: flex;
+    width: max-content;
+    will-change: transform;
+    animation: pm-slide 50s linear infinite;
+  }
+
+  @keyframes pm-slide {
+    to { transform: translateX(-50%); }
+  }
+
+  .pm__mask:hover .pm__track,
+  .pm__mask:focus-within .pm__track {
+    animation-play-state: paused;
+  }
+
+  .pm__set {
+    display: flex;
+    align-items: center;
+    gap: clamp(48px, 6vw, 72px);
+    padding-right: clamp(48px, 6vw, 72px);
+    flex-shrink: 0;
+  }
+
+  .pm__logo {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 150px;
+    height: 48px;
+    text-decoration: none;
+  }
+
+  .pm__logo img {
+    height: 36px;
+    width: auto;
+    max-width: 150px;
+    object-fit: contain;
+    opacity: 0.5;
+    filter: grayscale(1);
+    transition: opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1),
+                filter 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .pm__logo:hover img {
+    opacity: 0.75;
+    filter: grayscale(0);
+  }
+
+  /* ── Static fallback ── */
+  .pm__static {
+    display: none;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    gap: 28px clamp(40px, 6vw, 64px);
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 0 var(--page-padding, 1.5rem);
+  }
+
+  .pm__static-logo {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-decoration: none;
+  }
+
+  .pm__static-logo img {
+    height: 26px;
+    width: auto;
+    max-width: 140px;
+    object-fit: contain;
+    opacity: 0.45;
+    filter: grayscale(1);
+    transition: opacity 0.4s ease, filter 0.4s ease;
+  }
+
+  .pm__static-logo:hover img {
+    opacity: 0.7;
+    filter: grayscale(0);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .pm__mask { display: none; }
+    .pm__static { display: flex; }
+  }
+
+  @media (max-width: 768px) {
+    .pm { padding: 48px 0; }
+    .pm__logo { width: 130px; height: 40px; }
+    .pm__logo img { height: 28px; max-width: 130px; }
+    .pm__set { gap: 36px; padding-right: 36px; }
+    .pm__label { margin-bottom: 28px; }
+  }
+</style>
+
+<script>
+  function initMarquee() {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+    document.querySelectorAll<HTMLElement>('.pm').forEach(section => {
+      const track = section.querySelector<HTMLElement>('.pm__track');
+      const firstSet = section.querySelector<HTMLElement>('.pm__set');
+      if (!track || !firstSet || track.dataset.pmInit === '1') return;
+      track.dataset.pmInit = '1';
+
+      const speed = Number(section.dataset.speed) || 30;
+      const setWidth = firstSet.offsetWidth;
+      if (setWidth < 1) return;
+
+      const dur = setWidth / speed;
+      const id = `pm${Math.random().toString(36).slice(2, 6)}`;
+      const s = document.createElement('style');
+      s.textContent = `@keyframes ${id}{to{transform:translateX(-${setWidth}px)}}`;
+      document.head.appendChild(s);
+      track.style.animation = `${id} ${dur}s linear infinite`;
+
+      new IntersectionObserver(([e]) => {
+        track.style.animationPlayState = e.isIntersecting ? 'running' : 'paused';
+      }, { threshold: 0 }).observe(section);
+    });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initMarquee);
+  } else {
+    requestAnimationFrame(initMarquee);
+  }
+  document.addEventListener('astro:page-load', initMarquee);
+</script>

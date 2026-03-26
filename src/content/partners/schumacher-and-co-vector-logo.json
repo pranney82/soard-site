@@ -2,6 +2,8 @@
   "name": "Schumacher And Co Vector Logo",
   "slug": "schumacher-and-co-vector-logo",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/schumacher-and-co-vector-logo/public",
-  "tier": "construction",
-  "featured": false
+  "level": "friend",
+  "category": "build",
+  "featured": false,
+  "order": 0
 }

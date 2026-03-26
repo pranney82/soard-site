@@ -2,6 +2,8 @@
   "name": "Atlanta Kitchen",
   "slug": "atlanta-kitchen",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/atlanta-kitchen/public",
-  "tier": "construction",
-  "featured": false
+  "level": "friend",
+  "category": "build",
+  "featured": false,
+  "order": 0
 }

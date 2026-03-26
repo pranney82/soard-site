@@ -2,6 +2,8 @@
   "name": "Louver Boss Logo 940 X 940 Px",
   "slug": "louver-boss-logo-940-x-940-px",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/louver-boss/public",
-  "tier": "construction",
-  "featured": false
+  "level": "friend",
+  "category": "build",
+  "featured": false,
+  "order": 0
 }

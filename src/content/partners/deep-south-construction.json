@@ -2,6 +2,8 @@
   "name": "Deep South Construction",
   "slug": "deep-south-construction",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/deep-south-construction/public",
-  "tier": "construction",
-  "featured": false
+  "level": "friend",
+  "category": "build",
+  "featured": false,
+  "order": 0
 }

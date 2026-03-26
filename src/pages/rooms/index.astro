@@ -94,13 +94,6 @@ const featured = allKids
   </section>
 </PageLayout>
 
-<script is:inline>
-document.querySelectorAll('.lqip-img').forEach(function(img) {
-  if (img.complete && img.naturalWidth > 0) { img.classList.add('loaded'); return; }
-  img.addEventListener('load', function() { img.classList.add('loaded'); }, { once: true });
-});
-</script>
-
 <style>
   /* ═══ Featured Grid ═══════════════════════ */
   .featured-section {
@@ -145,12 +138,11 @@ document.querySelectorAll('.lqip-img').forEach(function(img) {
   }
 
   /* ── LQIP blur-up placeholders ── */
-  .lqip-img {
+  .lqip-img.lqip-pending {
     opacity: 0;
-    transition: opacity 0.4s ease;
   }
-  .lqip-img.loaded {
-    opacity: 1;
+  .lqip-img:not(.lqip-pending) {
+    transition: opacity 0.4s ease;
   }
 
   .featured-card__img {
@@ -299,5 +291,7 @@ document.querySelectorAll('.lqip-img').forEach(function(img) {
     .featured-card__img {
       transition: none;
     }
+    .lqip-img:not(.lqip-pending) { transition: none; }
+    .lqip-img.lqip-pending { opacity: initial; }
   }
 </style>

@@ -2,6 +2,8 @@
   "name": "Locum Tenens",
   "slug": "locum-tenens",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/locum-tenens/public",
-  "tier": "construction",
-  "featured": false
+  "level": "friend",
+  "category": "build",
+  "featured": false,
+  "order": 0
 }

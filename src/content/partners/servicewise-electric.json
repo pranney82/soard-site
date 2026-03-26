@@ -2,7 +2,9 @@
   "name": "ServiceWise Electric",
   "slug": "servicewise-electric",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/servicewise-electric/public",
-  "tier": "construction",
+  "website": "https://servicewiseelectrical.com",
+  "level": "champion",
+  "category": "build",
   "featured": true,
-  "website": "https://servicewiseelectrical.com"
+  "order": 0
 }

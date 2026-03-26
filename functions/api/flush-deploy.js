@@ -6,6 +6,8 @@
  * Env vars: CF_PAGES_DEPLOY_HOOK (CF Pages deploy hook URL)
  */
 
+import { logAudit } from './_audit.js';
+
 export async function onRequestPost(context) {
   try {
     const hook = context.env.CF_PAGES_DEPLOY_HOOK;
@@ -26,7 +28,20 @@ export async function onRequestPost(context) {
       );
     }
 
-    console.log('[flush-deploy] Deploy triggered successfully');
+    // Log who triggered the deploy
+    const userEmail = context.data?.userEmail;
+    await logAudit(context.env.DB, {
+      userEmail,
+      action: 'deployed',
+      entityType: 'site',
+      entitySlug: null,
+      entityName: 'Production Deploy',
+      changes: null,
+      path: '/api/flush-deploy',
+      gitStatus: null,
+    });
+
+    console.log(`[flush-deploy] Deploy triggered by ${userEmail || 'unknown'}`);
     return Response.json({ success: true, message: 'Deploy triggered' });
   } catch (err) {
     console.error('[flush-deploy]', err);

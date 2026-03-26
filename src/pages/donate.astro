@@ -195,7 +195,7 @@ const breadcrumbs = [
           <span class="way-icon" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M16 4v8M12 8h8M6 16h20v10a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V16Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 16v6M20 16v6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></span>
           <h3>Volunteer or Partner</h3>
           <p>Contractors, designers, and handy helpers — we need your skills to build these rooms.</p>
-          <a href="/get-involved" class="way-link">Get Involved →</a>
+          <a href="/partners/" class="way-link">Get Involved →</a>
         </div>
         <div class="way-card" data-reveal data-delay="2">
           <span class="way-icon" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M8 20c-2 0-4-1.5-4-4s2-4 4-4c1-3 4-5 8-5s7 2 8 5c2 0 4 1.5 4 4s-2 4-4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M16 18v8M12 22l4-4 4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
@@ -296,12 +296,6 @@ const breadcrumbs = [
     </div>
   </div>
 
-  <script is:inline>
-  document.querySelectorAll('.lqip-img').forEach(function(img) {
-    if (img.complete && img.naturalWidth > 0) { img.classList.add('loaded'); return; }
-    img.addEventListener('load', function() { img.classList.add('loaded'); }, { once: true });
-  });
-  </script>
 
 </BaseLayout>
 
@@ -1250,12 +1244,11 @@ const breadcrumbs = [
     background-size: cover;
     background-position: center;
   }
-  .lqip-img {
+  .lqip-img.lqip-pending {
     opacity: 0;
-    transition: opacity 0.4s ease;
   }
-  .lqip-img.loaded {
-    opacity: 1;
+  .lqip-img:not(.lqip-pending) {
+    transition: opacity 0.4s ease;
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -1265,7 +1258,8 @@ const breadcrumbs = [
     .tier-card:hover, .way-card:hover, .dt-card:hover { transform: none; }
     .give-proof-dot { animation: none; }
     .zeffy-modal, .zeffy-modal-container { transition: none; }
-    .lqip-img { opacity: 1; transition: none; }
+    .lqip-img:not(.lqip-pending) { transition: none; }
+    .lqip-img.lqip-pending { opacity: initial; }
   }
 </style>
 

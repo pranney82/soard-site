@@ -89,9 +89,11 @@ const partners = defineCollection({
     slug: z.string(),
     logo: z.string(),
     website: z.string().optional(),
-    tier: z.enum(['top', 'construction', 'design', 'community']),
+    level: z.enum(['signature', 'champion', 'builder', 'friend']),
+    category: z.enum(['build', 'design', 'funding', 'community']),
     featured: z.boolean().default(false),
     order: z.number().default(0),
+    tagline: z.string().optional(),
   }),
 });
 

@@ -2,6 +2,8 @@
   "name": "Donors",
   "slug": "donors",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/donors/public",
-  "tier": "community",
-  "featured": false
+  "level": "friend",
+  "category": "community",
+  "featured": false,
+  "order": 0
 }

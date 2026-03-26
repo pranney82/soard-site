@@ -2,6 +2,8 @@
   "name": "Putnam County Middle School Band",
   "slug": "putnam-county-middle-school-band",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/putnam-county-middle-school-band/public",
-  "tier": "construction",
-  "featured": false
+  "level": "friend",
+  "category": "build",
+  "featured": false,
+  "order": 0
 }

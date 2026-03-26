@@ -2,6 +2,8 @@
   "name": "Jacey Verhoef",
   "slug": "jacey-verhoef",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/jacey-verhoef/public",
-  "tier": "construction",
-  "featured": false
+  "level": "friend",
+  "category": "build",
+  "featured": false,
+  "order": 0
 }

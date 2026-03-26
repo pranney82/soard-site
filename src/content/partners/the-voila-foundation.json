@@ -2,6 +2,8 @@
   "name": "The Voila Foundation",
   "slug": "the-voila-foundation",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/the-voila-foundation/public",
-  "tier": "community",
-  "featured": false
+  "level": "friend",
+  "category": "community",
+  "featured": false,
+  "order": 0
 }

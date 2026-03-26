@@ -2,6 +2,8 @@
   "name": "Stars And Strikes",
   "slug": "stars-and-strikes",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/stars-and-strikes/public",
-  "tier": "construction",
-  "featured": false
+  "level": "friend",
+  "category": "build",
+  "featured": false,
+  "order": 0
 }

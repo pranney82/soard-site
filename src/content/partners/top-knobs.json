@@ -2,6 +2,8 @@
   "name": "Top Knobs",
   "slug": "top-knobs",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/top-knobs/public",
-  "tier": "construction",
-  "featured": true
+  "level": "builder",
+  "category": "build",
+  "featured": true,
+  "order": 0
 }

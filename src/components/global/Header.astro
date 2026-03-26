@@ -654,12 +654,12 @@ document.addEventListener('astro:before-swap', function () {
   .logo:hover { opacity: 0.88; }
   .logo-img {
     width: auto;
-    max-height: 100px;
+    max-height: 96px;
     object-fit: contain;
-    transform: translateY(calc((100px - var(--header-height)) / 6));
+    transform: translateY(calc((96px - var(--header-height)) / 6));
   }
-  @media (min-width: 481px) { .logo-img { max-height: 100px; transform: translateY(calc((100px - var(--header-height)) / 6)); } }
-  @media (min-width: 1024px) { .logo-img { max-height: 120px; transform: translateY(calc((120px - var(--header-height)) / 6)); } }
+  @media (min-width: 481px) { .logo-img { max-height: 96px; transform: translateY(calc((96px - var(--header-height)) / 6)); } }
+  @media (min-width: 1024px) { .logo-img { max-height: 115px; transform: translateY(calc((115px - var(--header-height)) / 6)); } }
 
   .desktop-nav { display: none; position: relative; }
   @media (min-width: 1024px) { .desktop-nav { display: flex; align-items: center; } }
@@ -670,7 +670,9 @@ document.addEventListener('astro:before-swap', function () {
   .nav-link {
     display: flex; align-items: center; gap: 4px;
     padding: 0.5rem 1.125rem;
-    font-family: var(--font-body); font-size: 1rem; font-weight: 500;
+    font-family: var(--font-body);
+    font-size: 1.125rem;
+    font-weight: 500;
     color: rgba(55, 58, 54, 0.82);
     background: none; border: none; cursor: pointer;
     border-radius: 8px; white-space: nowrap;
@@ -785,7 +787,7 @@ document.addEventListener('astro:before-swap', function () {
     background: rgba(255, 218, 36, 0.12); color: var(--c-yellow-hover); transform: scale(1.06);
   }
   .dd-body { display: flex; flex-direction: column; gap: 1px; }
-  .dd-label { font-size: 0.875rem; font-weight: 500; color: var(--c-dark); display: flex; align-items: center; gap: 4px; }
+  .dd-label { font-size: 0.9375rem; font-weight: 500; color: var(--c-dark); display: flex; align-items: center; gap: 4px; }
   .dd-desc { font-size: 0.75rem; color: rgba(0, 0, 0, 0.55); }
   .dd-ext { opacity: 0.55; }
 

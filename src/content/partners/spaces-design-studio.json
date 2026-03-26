@@ -2,6 +2,8 @@
   "name": "Spaces Design Studio",
   "slug": "spaces-design-studio",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/spaces-design-studio/public",
-  "tier": "design",
-  "featured": false
+  "level": "friend",
+  "category": "design",
+  "featured": false,
+  "order": 0
 }

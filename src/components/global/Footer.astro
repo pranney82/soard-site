@@ -33,7 +33,7 @@ const mapsUrl = `https://maps.google.com/?q=${encodeURIComponent(`${address.stre
         <h2><span class="highlight">Brighten your inbox</span> with a little Sunshine.</h2>
         <p>Room reveals, impact stories, and upcoming events — delivered monthly.</p>
       </div>
-      <form class="newsletter-form" id="newsletter-form">
+      <form class="newsletter-form" id="newsletter-form" action="/api/newsletter" method="POST">
         <div class="newsletter-fields">
           <input
             type="email"
@@ -153,12 +153,12 @@ const mapsUrl = `https://maps.google.com/?q=${encodeURIComponent(`${address.stre
         <a href="https://www.charitynavigator.org/ein/454773997"
            target="_blank" rel="noopener noreferrer" class="trust-badge" aria-label="View our Charity Navigator profile">
           <img
-            src="https://cdn.charitynavigator.org/img/badges/three-star.svg"
+            src="/charity-navigator-3-star.svg"
             alt="Charity Navigator 3-Star Rating"
             width="64"
             height="64"
             loading="lazy"
-            onerror="this.parentElement.style.display='none'"
+            onerror="this.src='https://www.charitynavigator.org/images/unified_stars_dashboard_graphics/three_star.svg';this.onerror=()=>{this.parentElement.style.display='none'}"
           />
         </a>
         <a href="https://www.guidestar.org/profile/shared/2954b510-8c76-42e4-b589-7e826ca2cc47"
@@ -219,12 +219,37 @@ const mapsUrl = `https://maps.google.com/?q=${encodeURIComponent(`${address.stre
     document.addEventListener('astro:page-load', () => {
       const form = document.getElementById('newsletter-form');
       if (!form) return;
+      const note = document.getElementById('newsletter-note');
+      const btn = document.getElementById('newsletter-btn');
+      const input = document.getElementById('newsletter-email');
 
+      // ── No-JS fallback: read query params from form redirect ──
+      const params = new URLSearchParams(window.location.search);
+      if (params.has('subscribed')) {
+        btn.classList.add('is-done');
+        note.textContent = "You're in! Welcome to the Sunshine family.";
+        note.classList.add('newsletter-note--success');
+        // Clean URL without reloading
+        history.replaceState(null, '', window.location.pathname + window.location.hash);
+      } else if (params.has('newsletter_error')) {
+        const err = params.get('newsletter_error');
+        const messages = {
+          invalid_email: 'Please enter a valid email address.',
+          not_configured: 'Newsletter signup is temporarily unavailable. Please try again later.',
+          server: 'Something went wrong. Please try again.',
+        };
+        note.textContent = messages[err] || messages.server;
+        note.classList.add('newsletter-note--error');
+        history.replaceState(null, '', window.location.pathname + window.location.hash);
+      }
+
+      function resetNote() {
+        note.classList.remove('newsletter-note--success', 'newsletter-note--error');
+      }
+
+      // ── JS-enhanced submit (prevents full page reload) ──
       form.addEventListener('submit', async (e) => {
         e.preventDefault();
-        const btn = document.getElementById('newsletter-btn');
-        const input = document.getElementById('newsletter-email');
-        const note = document.getElementById('newsletter-note');
         const email = input.value.trim();
         if (!email) return;
 
@@ -233,6 +258,8 @@ const mapsUrl = `https://maps.google.com/?q=${encodeURIComponent(`${address.stre
         const hp = honeypot ? honeypot.value : '';
 
         // Sending state
+        resetNote();
+        btn.classList.remove('is-done');
         btn.classList.add('is-sending');
         btn.disabled = true;
         input.disabled = true;
@@ -496,14 +523,14 @@ const mapsUrl = `https://maps.google.com/?q=${encodeURIComponent(`${address.stre
     font-size: 14px;
     color: rgba(255, 255, 255, 0.55);
     text-decoration: none;
-    transition: color var(--transition-fast), padding-left var(--transition-fast);
+    transition: color var(--transition-fast), transform var(--transition-fast);
     display: inline-flex;
     align-items: center;
     gap: 4px;
   }
   .footer-col a:hover {
     color: var(--c-yellow);
-    padding-left: 4px;
+    transform: translateX(4px);
   }
   .external-icon {
     font-size: 11px;

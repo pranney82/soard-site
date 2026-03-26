@@ -2,6 +2,8 @@
   "name": "Iwpf Logo",
   "slug": "iwpf-logo",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/iwpf-logo/public",
-  "tier": "construction",
-  "featured": false
+  "level": "friend",
+  "category": "build",
+  "featured": false,
+  "order": 0
 }

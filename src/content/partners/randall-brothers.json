@@ -2,7 +2,9 @@
   "name": "Randall Brothers",
   "slug": "randall-brothers",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/randall-brothers/public",
-  "tier": "construction",
+  "website": "https://www.randallbrothers.com/atlanta.html",
+  "level": "builder",
+  "category": "build",
   "featured": true,
-  "website": "https://www.randallbrothers.com/atlanta.html"
+  "order": 0
 }

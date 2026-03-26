@@ -2,7 +2,9 @@
   "name": "Crosby Design Group",
   "slug": "crosby-design-group",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/crosby-design-group/public",
-  "tier": "design",
+  "website": "https://crosbydesigngroup.com",
+  "level": "champion",
+  "category": "funding",
   "featured": true,
-  "website": "https://crosbydesigngroup.com"
+  "order": 0
 }

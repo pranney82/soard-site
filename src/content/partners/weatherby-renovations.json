@@ -2,6 +2,8 @@
   "name": "Weatherby Renovations",
   "slug": "weatherby-renovations",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/weatherby-renovations/public",
-  "tier": "construction",
-  "featured": false
+  "level": "friend",
+  "category": "build",
+  "featured": false,
+  "order": 0
 }

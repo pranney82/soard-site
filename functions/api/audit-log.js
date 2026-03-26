@@ -6,7 +6,7 @@
  *   limit    — max entries to return (default 50, max 200)
  *   offset   — skip N entries for pagination (default 0)
  *   user     — filter by user email (exact match)
- *   action   — filter by action type (created, updated, deleted, drafted, published)
+ *   action   — filter by action type (created, updated, deleted, drafted, published, deployed)
  *   type     — filter by entity type (kids, partners, team, etc.)
  *   search   — search entity name (LIKE %search%)
  *   from     — ISO date string, entries after this date

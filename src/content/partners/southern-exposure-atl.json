@@ -2,6 +2,8 @@
   "name": "Southern Exposure Atl",
   "slug": "southern-exposure-atl",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/southern-exposure-atl/public",
-  "tier": "construction",
-  "featured": false
+  "level": "friend",
+  "category": "build",
+  "featured": false,
+  "order": 0
 }

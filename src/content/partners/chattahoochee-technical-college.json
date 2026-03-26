@@ -2,6 +2,8 @@
   "name": "Chattahoochee Technical College",
   "slug": "chattahoochee-technical-college",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/chattahoochee-technical-college/public",
-  "tier": "construction",
-  "featured": false
+  "level": "friend",
+  "category": "build",
+  "featured": false,
+  "order": 0
 }

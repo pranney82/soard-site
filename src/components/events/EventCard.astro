@@ -1,0 +1,331 @@
+---
+/**
+ * EventCard.astro — Reusable event card with category-driven visuals
+ *
+ * Supports two modes:
+ *   1. Image header — event.image is set → CF Image with LQIP + gradient overlay
+ *   2. Gradient header — no image → category gradient + icon pattern
+ *
+ * Used on events/index.astro and anywhere event cards are shown.
+ */
+import { cfRaw, cfSrcset, cfLqip } from '../../utils/cf-image';
+
+interface Props {
+  event: {
+    title: string;
+    slug: string;
+    date: string;
+    time?: string;
+    location: string;
+    description: string;
+    image?: string | null;
+    ticketUrl?: string;
+    ticketPrice?: string;
+    category: string;
+  };
+  detailUrl?: string;
+  index?: number;
+}
+
+const { event, detailUrl, index = 0 } = Astro.props;
+
+const catLabel: Record<string, string> = {
+  fundraiser: 'Fundraiser', volunteer: 'Volunteer',
+  reveal: 'Room Reveal', community: 'Community', other: 'Event',
+};
+
+const catGradient: Record<string, string> = {
+  fundraiser: 'linear-gradient(135deg, #7a5a00 0%, #b8860b 40%, #d4a017 80%, #e6b422 100%)',
+  volunteer:  'linear-gradient(135deg, #1a472a 0%, #2e7d32 40%, #388e3c 70%, #43a047 100%)',
+  reveal:     'linear-gradient(135deg, #2d1b69 0%, #4a2d8a 40%, #6a3de8 70%, #7c4dff 100%)',
+  community:  'linear-gradient(135deg, #0d3b66 0%, #1565c0 40%, #1976d2 70%, #2196f3 100%)',
+  other:      'linear-gradient(135deg, #2c2c2c 0%, #4a4a4a 40%, #5A5B61 70%, #6D6E74 100%)',
+};
+
+const catIcon: Record<string, string> = {
+  fundraiser: '<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>',
+  volunteer:  '<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m15 12-8.5 8.5c-.83.83-2.17.83-3 0a2.12 2.12 0 0 1 0-3L12 9"/><path d="M17.64 15 22 10.64"/><path d="m20.91 11.7-1.25-1.25c-.6-.6-.93-1.4-.93-2.25v-.86L16.01 4.6a5.56 5.56 0 0 0-3.94-1.64H9l.92.82A6.18 6.18 0 0 1 12 8.4v1.56l2 2h2.47l2.26 1.91"/></svg>',
+  reveal:     '<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.912 5.813a2 2 0 0 0 1.275 1.275L21 12l-5.813 1.912a2 2 0 0 0-1.275 1.275L12 21l-1.912-5.813a2 2 0 0 0-1.275-1.275L3 12l5.813-1.912a2 2 0 0 0 1.275-1.275L12 3z"/></svg>',
+  community:  '<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
+  other:      '<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>',
+};
+
+function fmtDate(d: string) {
+  return new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+}
+function fmtWeekday(d: string) {
+  return new Date(d + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long' });
+}
+function fmtMonth(d: string) {
+  return new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short' }).toUpperCase();
+}
+function fmtDay(d: string) {
+  return new Date(d + 'T00:00:00').getDate().toString();
+}
+---
+
+<article class="ev-card" data-reveal data-delay={String(Math.min(index, 3))}>
+  {/* Card header: event image with gradient overlay, or gradient-only fallback */}
+  <div
+    class={`ev-card__hero ${event.image ? 'ev-card__hero--img' : ''}`}
+    style={event.image
+      ? `background-image:url('${cfLqip(event.image)}')`
+      : `background: ${catGradient[event.category]}`}
+  >
+    {event.image ? (
+      <img
+        src={cfRaw(event.image, 'w=600,h=340,fit=cover,q=80')}
+        srcset={cfSrcset(event.image, [400, 600], { fit: 'cover', aspectRatio: 340/600 })}
+        sizes="(max-width: 639px) 100vw, (max-width: 959px) 50vw, 33vw"
+        alt={event.title}
+        class="ev-card__hero-img lqip-img"
+        width="600" height="340"
+        loading="lazy" decoding="async"
+      />
+    ) : (
+      <Fragment>
+        <div class="ev-card__hero-pattern" aria-hidden="true"></div>
+        <div class="ev-card__hero-glow" aria-hidden="true"></div>
+        <div class="ev-card__hero-icon" set:html={catIcon[event.category]} />
+      </Fragment>
+    )}
+    <div class="ev-card__hero-date">
+      <time datetime={event.date}>
+        <span class="ev-card__hero-month">{fmtMonth(event.date)}</span>
+        <span class="ev-card__hero-day">{fmtDay(event.date)}</span>
+      </time>
+    </div>
+    <div class="ev-card__hero-cat">{catLabel[event.category]}</div>
+  </div>
+  <div class="ev-card__inner">
+    <h3 class="ev-card__title">{event.title}</h3>
+    <div class="ev-card__meta">
+      <span class="ev-card__meta-item">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        <time datetime={event.date}>{fmtWeekday(event.date)}, {fmtDate(event.date)}</time>
+      </span>
+      {event.time && (
+        <span class="ev-card__meta-item">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          {event.time}
+        </span>
+      )}
+      <span class="ev-card__meta-item">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+        {event.location}
+      </span>
+    </div>
+    <p class="ev-card__desc">{event.description}</p>
+    <div class="ev-card__foot">
+      {detailUrl ? (
+        <a href={detailUrl} class="ev-card__cta">View Details <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg></a>
+      ) : event.ticketUrl ? (
+        <a href={event.ticketUrl} class="ev-card__cta" target="_blank" rel="noopener noreferrer">Get Tickets <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 17L17 7"/><path d="M7 7h10v10"/></svg></a>
+      ) : (
+        <span class="ev-card__soon">Details coming soon</span>
+      )}
+      {event.ticketPrice && <span class="ev-card__price">{event.ticketPrice}</span>}
+    </div>
+  </div>
+</article>
+
+<style>
+  .ev-card {
+    position: relative;
+    background: var(--c-white);
+    border: 1px solid var(--c-border);
+    border-radius: var(--border-radius-lg);
+    overflow: hidden;
+    contain: layout style;
+    transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+                box-shadow 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .ev-card:hover {
+    transform: translateY(-6px);
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.12);
+  }
+
+  /* ─ Card hero header ─ */
+  .ev-card__hero {
+    position: relative;
+    height: 140px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+  .ev-card__hero-pattern {
+    position: absolute;
+    inset: 0;
+    opacity: 0.04;
+    background-image: radial-gradient(circle, #fff 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+  .ev-card__hero-glow {
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(ellipse 60% 60% at 20% 80%, rgba(255, 255, 255, 0.12) 0%, transparent 55%),
+      radial-gradient(ellipse 40% 40% at 85% 15%, rgba(255, 255, 255, 0.06) 0%, transparent 50%);
+  }
+  .ev-card__hero-icon {
+    color: rgba(255, 255, 255, 0.2);
+    z-index: 1;
+    transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+                color 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .ev-card:hover .ev-card__hero-icon {
+    transform: scale(1.15);
+    color: rgba(255, 255, 255, 0.3);
+  }
+  .ev-card__hero-date {
+    position: absolute;
+    top: var(--space-md);
+    left: var(--space-md);
+    background: rgba(0, 0, 0, 0.25);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border-radius: 10px;
+    padding: var(--space-xs) var(--space-sm);
+    text-align: center;
+    min-width: 48px;
+    z-index: 1;
+  }
+  .ev-card__hero-month {
+    display: block;
+    font-size: 0.55rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: rgba(255, 255, 255, 0.7);
+  }
+  .ev-card__hero-day {
+    display: block;
+    font-family: var(--font-display);
+    font-size: 1.4rem;
+    font-weight: 700;
+    line-height: 1;
+    color: #fff;
+  }
+  .ev-card__hero-cat {
+    position: absolute;
+    bottom: var(--space-md);
+    left: var(--space-md);
+    font-size: 0.6rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: rgba(255, 255, 255, 0.85);
+    background: rgba(0, 0, 0, 0.2);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    padding: 0.2rem 0.6rem;
+    border-radius: 100px;
+    z-index: 1;
+  }
+
+  /* Image-backed card hero */
+  .ev-card__hero--img {
+    background-size: cover;
+    background-position: center;
+  }
+  .ev-card__hero-img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .ev-card__hero-img.lqip-pending { opacity: 0; }
+  .ev-card__hero-img.loaded { opacity: 1; transition: opacity 0.4s ease; }
+  .ev-card__hero--img::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(to top, rgba(0,0,0,0.5) 0%, rgba(0,0,0,0.1) 50%, transparent 100%);
+    z-index: 0;
+    pointer-events: none;
+  }
+  .ev-card__hero--img .ev-card__hero-date,
+  .ev-card__hero--img .ev-card__hero-cat { z-index: 1; }
+
+  .ev-card__inner {
+    padding: var(--space-lg);
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+  }
+  .ev-card__title {
+    font-family: var(--font-display);
+    font-size: 1.1rem;
+    line-height: 1.3;
+    color: var(--c-dark);
+    margin-bottom: var(--space-md);
+  }
+  .ev-card__meta {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    margin-bottom: var(--space-md);
+  }
+  .ev-card__meta-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.8rem;
+    color: var(--c-text-muted);
+  }
+  .ev-card__meta-item svg {
+    flex-shrink: 0;
+    color: var(--c-text-light);
+  }
+  .ev-card__desc {
+    font-size: 0.85rem;
+    line-height: 1.65;
+    color: var(--c-text-muted);
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    flex: 1;
+  }
+  .ev-card__foot {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    flex-wrap: wrap;
+    margin-top: var(--space-lg);
+    padding-top: var(--space-md);
+    border-top: 1px solid var(--c-border);
+  }
+  .ev-card__cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--c-dark);
+    text-decoration: none;
+    transition: gap 0.2s ease, color 0.2s ease;
+  }
+  .ev-card__cta:hover { gap: 8px; color: var(--c-yellow-hover); }
+  .ev-card__soon {
+    font-size: 0.82rem;
+    color: var(--c-text-light);
+    font-style: italic;
+  }
+  .ev-card__price {
+    font-size: 0.78rem;
+    color: var(--c-text-light);
+    margin-left: auto;
+  }
+
+  @media (max-width: 640px) {
+    .ev-card__cta { min-height: 44px; display: inline-flex; align-items: center; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .ev-card { transition: none; }
+    .ev-card__hero-icon { transition: none; }
+  }
+</style>

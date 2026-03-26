@@ -2,6 +2,8 @@
   "name": "Georgia Interior Painting",
   "slug": "georgia-interior-painting",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/georgia-interior-painting/public",
-  "tier": "design",
-  "featured": false
+  "level": "friend",
+  "category": "design",
+  "featured": false,
+  "order": 0
 }

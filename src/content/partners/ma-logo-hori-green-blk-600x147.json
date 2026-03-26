@@ -2,6 +2,8 @@
   "name": "Ma Logo Hori Green Blk 600X147",
   "slug": "ma-logo-hori-green-blk-600x147",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/ma-logo-hori-green-blk/public",
-  "tier": "construction",
-  "featured": false
+  "level": "friend",
+  "category": "build",
+  "featured": false,
+  "order": 0
 }

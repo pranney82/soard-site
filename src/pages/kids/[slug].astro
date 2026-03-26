@@ -580,15 +580,6 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
   function initKidPage() {
     cleanupKidPage();
 
-    // ── LQIP blur-up: fade in images when loaded ──
-    document.querySelectorAll<HTMLImageElement>('.lqip-img').forEach(img => {
-      if (img.complete && img.naturalWidth > 0) {
-        img.classList.add('loaded');
-      } else {
-        img.addEventListener('load', () => img.classList.add('loaded'), { once: true });
-      }
-    });
-
     // ── Staggered hero reveals ────────────────
     const heroStaggers = document.querySelectorAll('.hero .stagger');
     heroStaggers.forEach((el, i) => {
@@ -846,13 +837,11 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     background-repeat: no-repeat;
   }
 
-  .lqip-img {
+  .lqip-img.lqip-pending {
     opacity: 0;
-    transition: opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1);
   }
-
-  .lqip-img.loaded {
-    opacity: 1;
+  .lqip-img:not(.lqip-pending) {
+    transition: opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
   /* ═══ Staggered Reveal — Hero Elements ════ */
@@ -1950,9 +1939,11 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
       transition: none;
     }
 
-    .lqip-img {
-      opacity: 1;
+    .lqip-img:not(.lqip-pending) {
       transition: none;
+    }
+    .lqip-img.lqip-pending {
+      opacity: initial;
     }
 
     .scroll-progress { display: none; }

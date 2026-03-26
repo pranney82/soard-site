@@ -2,6 +2,8 @@
   "name": "Kohler Corp 2008 08 25 Blk",
   "slug": "kohler-corp-2008-08-25-blk",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/kohler/public",
-  "tier": "construction",
-  "featured": false
+  "level": "friend",
+  "category": "build",
+  "featured": false,
+  "order": 0
 }

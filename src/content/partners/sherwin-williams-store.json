@@ -2,6 +2,8 @@
   "name": "Sherwin Williams Store",
   "slug": "sherwin-williams-store",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/sherwin-williams-store-2210/public",
-  "tier": "construction",
-  "featured": false
+  "level": "friend",
+  "category": "build",
+  "featured": false,
+  "order": 0
 }

@@ -2,6 +2,8 @@
   "name": "Tender Care Beds",
   "slug": "tender-care-beds",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/tender-care-beds/public",
-  "tier": "construction",
-  "featured": false
+  "level": "friend",
+  "category": "build",
+  "featured": false,
+  "order": 0
 }

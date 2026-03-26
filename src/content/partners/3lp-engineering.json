@@ -2,6 +2,8 @@
   "name": "3Lp Engineering",
   "slug": "3lp-engineering",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/3lp-engineering/public",
-  "tier": "construction",
-  "featured": false
+  "level": "friend",
+  "category": "build",
+  "featured": false,
+  "order": 0
 }

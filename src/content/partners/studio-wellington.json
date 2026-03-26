@@ -2,6 +2,8 @@
   "name": "Studio Wellington",
   "slug": "studio-wellington",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/studio-wellington/public",
-  "tier": "design",
-  "featured": false
+  "level": "friend",
+  "category": "design",
+  "featured": false,
+  "order": 0
 }

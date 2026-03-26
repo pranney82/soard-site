@@ -2,6 +2,8 @@
   "name": "Nicole West Interiors",
   "slug": "nicole-west-interiors",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/nicole-west-interiors/public",
-  "tier": "design",
-  "featured": false
+  "level": "friend",
+  "category": "design",
+  "featured": false,
+  "order": 0
 }

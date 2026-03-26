@@ -2,6 +2,8 @@
   "name": "Finlistics Solutions",
   "slug": "finlistics-solutions",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/finlistics-2024/public",
-  "tier": "construction",
-  "featured": false
+  "level": "friend",
+  "category": "build",
+  "featured": false,
+  "order": 0
 }

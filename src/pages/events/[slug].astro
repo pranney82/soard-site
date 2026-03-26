@@ -1,0 +1,465 @@
+---
+/**
+ * [slug].astro — Dynamic event detail page
+ *
+ * Generates static pages for events that have `body` content or photos.
+ * Hand-crafted pages (golf.astro) take priority via Astro's routing —
+ * this route only fires for slugs without a dedicated file.
+ *
+ * PERF: CF Images w/ srcset, LQIP blur-up, preload LCP, inline CSS
+ * SEO:  Event schema, breadcrumbs, OG image
+ * A11Y: Heading hierarchy, ARIA, prefers-reduced-motion
+ */
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { getCollection } from 'astro:content';
+import { cfRaw, cfSrcset, cfLqip } from '../../utils/cf-image';
+
+export async function getStaticPaths() {
+  const events = await getCollection('events');
+  // Only generate pages for events with body content or photos
+  return events
+    .filter(e => e.data.body || e.data.photos.length > 0)
+    .map(e => ({
+      params: { slug: e.data.slug },
+      props: { event: e },
+    }));
+}
+
+const { event } = Astro.props;
+const ev = event.data;
+
+const catLabel: Record<string, string> = {
+  fundraiser: 'Fundraiser', volunteer: 'Volunteer',
+  reveal: 'Room Reveal', community: 'Community', other: 'Event',
+};
+
+function fmtDate(d: string) {
+  return new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+}
+function fmtWeekday(d: string) {
+  return new Date(d + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long' });
+}
+
+/* ── LCP preload (if event has an image) ── */
+const heroSrcset = ev.image ? cfSrcset(ev.image, [600, 900, 1200], { fit: 'cover' }) : '';
+const heroSizes = '(max-width: 768px) 100vw, 560px';
+
+/* ── JSON-LD ── */
+const eventJsonLd = {
+  "@type": "Event",
+  "@id": `https://sunshineonaranneyday.com/events/${ev.slug}/#event`,
+  "name": ev.title,
+  "description": ev.description,
+  "startDate": ev.date,
+  ...(ev.endDate && { "endDate": ev.endDate }),
+  "eventAttendanceMode": "https://schema.org/OfflineEventAttendanceMode",
+  "eventStatus": "https://schema.org/EventScheduled",
+  "location": {
+    "@type": "Place",
+    "name": ev.location,
+    ...(ev.address && { "address": { "@type": "PostalAddress", "streetAddress": ev.address } }),
+  },
+  "organizer": { "@id": "https://sunshineonaranneyday.com/#organization" },
+  ...(ev.image && { "image": cfRaw(ev.image, 'w=1200,q=85') }),
+  ...(ev.ticketUrl && {
+    "offers": {
+      "@type": "Offer",
+      "url": ev.ticketUrl,
+      "availability": "https://schema.org/InStock",
+    },
+  }),
+};
+---
+
+<BaseLayout
+  title={`${ev.title} — Sunshine on a Ranney Day`}
+  description={ev.description}
+  ogImage={ev.image ? cfRaw(ev.image, 'w=1200,h=630,fit=cover,q=85') : undefined}
+  jsonLd={eventJsonLd}
+  breadcrumbs={[
+    { name: 'Events', url: '/events/' },
+    { name: ev.title, url: `/events/${ev.slug}/` },
+  ]}
+>
+  {ev.image && (
+    <link slot="head" rel="preload" as="image" imagesrcset={heroSrcset} imagesizes={heroSizes} fetchpriority="high" />
+  )}
+
+  <!-- ═══ HERO ═══ -->
+  <section class="ev-hero">
+    <div class="ev-hero__bg" aria-hidden="true"></div>
+    <div class="container ev-hero__inner">
+      <div class="ev-hero__text">
+        <span class="ev-hero__eyebrow" data-reveal>{catLabel[ev.category] || 'Event'}</span>
+        <h1 class="ev-hero__title" data-reveal transition:name="event-title">{ev.title}</h1>
+        <div class="ev-hero__meta" data-reveal>
+          <span class="ev-hero__meta-item">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            <time datetime={ev.date}>{fmtWeekday(ev.date)}, {fmtDate(ev.date)}</time>
+          </span>
+          {ev.time && (
+            <span class="ev-hero__meta-item">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              {ev.time}
+            </span>
+          )}
+          <span class="ev-hero__meta-item">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+            {ev.location}
+          </span>
+        </div>
+        <p class="ev-hero__desc" data-reveal>{ev.description}</p>
+        {ev.ticketUrl && (
+          <div class="ev-hero__actions" data-reveal>
+            <a href={ev.ticketUrl} class="ev-btn ev-btn--gold" target="_blank" rel="noopener noreferrer">
+              {ev.ticketPrice ? `Get Tickets — ${ev.ticketPrice}` : 'Get Tickets'}
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M7 17L17 7"/><path d="M7 7h10v10"/></svg>
+            </a>
+          </div>
+        )}
+      </div>
+      {ev.image && (
+        <div class="ev-hero__visual" style={`background-image:url('${cfLqip(ev.image)}')`}>
+          <img
+            src={cfRaw(ev.image, 'w=900,fit=cover,q=85')}
+            srcset={heroSrcset}
+            sizes={heroSizes}
+            alt={ev.title}
+            class="ev-hero__img lqip-img"
+            width="900" height="600"
+            loading="eager" decoding="async" fetchpriority="high"
+            transition:name="event-hero"
+          />
+        </div>
+      )}
+    </div>
+  </section>
+
+  <!-- ═══ BODY ═══ -->
+  {ev.body && (
+    <section class="ev-body">
+      <div class="container">
+        <div class="ev-body__content" data-reveal set:html={ev.body} />
+      </div>
+    </section>
+  )}
+
+  <!-- ═══ PHOTO GALLERY ═══ -->
+  {ev.photos.length > 0 && (
+    <section class="ev-gallery" id="photos">
+      <div class="container">
+        <h2 class="ev-gallery__heading" data-reveal>Photos</h2>
+        <div class="ev-gallery__grid">
+          {ev.photos.map((photo, i) => (
+            <div
+              class="ev-gallery__item"
+              data-reveal
+              data-delay={String(Math.min(i, 3))}
+              style={`background-image:url('${cfLqip(photo.id)}')`}
+            >
+              <img
+                src={cfRaw(photo.id, 'w=600,fit=cover,q=80')}
+                srcset={cfSrcset(photo.id, [400, 600, 900], { fit: 'cover' })}
+                sizes="(max-width: 639px) 100vw, (max-width: 959px) 50vw, 33vw"
+                alt={photo.alt || ev.title}
+                class="ev-gallery__img lqip-img"
+                loading="lazy" decoding="async"
+                width="600" height="400"
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  )}
+
+  <!-- ═══ CTA ═══ -->
+  <section class="ev-cta">
+    <div class="container">
+      <div class="ev-cta__card" data-reveal>
+        <h2>Want to Get Involved?</h2>
+        <p>Partner with us to support children with special needs through events, volunteer work, and donations.</p>
+        <div class="ev-cta__actions">
+          <a href="/events/" class="ev-btn ev-btn--gold">All Events</a>
+          <a href="/donate/" class="ev-btn ev-btn--outline">Donate</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</BaseLayout>
+
+<style>
+  [id] { scroll-margin-top: calc(var(--header-height, 84px) + 1.5rem); }
+
+  /* ─── Reveal ─── */
+  [data-reveal] {
+    opacity: 0;
+    transform: translateY(28px);
+    transition: opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1),
+                transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  [data-reveal].is-visible { opacity: 1; transform: translateY(0); }
+  [data-delay="1"] { transition-delay: 0.1s; }
+  [data-delay="2"] { transition-delay: 0.2s; }
+  [data-delay="3"] { transition-delay: 0.3s; }
+  @media (prefers-reduced-motion: reduce) {
+    [data-reveal] { transition: none; opacity: 1; transform: none; }
+  }
+
+  /* ─── Buttons ─── */
+  .ev-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0.75rem 1.6rem;
+    border-radius: 100px;
+    font-size: 0.88rem;
+    font-weight: 600;
+    text-decoration: none;
+    border: 1.5px solid transparent;
+    cursor: pointer;
+    transition: background 200ms, color 200ms, transform 200ms, box-shadow 200ms;
+  }
+  .ev-btn:active { transform: scale(0.97); }
+  .ev-btn--gold {
+    background: var(--c-yellow);
+    color: var(--c-dark);
+    border-color: var(--c-yellow);
+  }
+  .ev-btn--gold:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 24px var(--c-yellow-glow);
+  }
+  .ev-btn--outline {
+    background: transparent;
+    color: rgba(255, 255, 255, 0.85);
+    border-color: rgba(255, 255, 255, 0.25);
+  }
+  .ev-btn--outline:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.5);
+  }
+
+  /* ═══ HERO ═══ */
+  .ev-hero {
+    position: relative;
+    padding: var(--space-5xl) 0 var(--space-3xl);
+    overflow: hidden;
+  }
+  .ev-hero__bg {
+    position: absolute;
+    inset: 0;
+    background: var(--c-dark-deep);
+  }
+  .ev-hero__bg::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(ellipse 60% 50% at 12% 85%, var(--c-yellow-glow) 0%, transparent 55%),
+      radial-gradient(ellipse 40% 40% at 90% 15%, rgba(255, 255, 255, 0.035) 0%, transparent 50%);
+  }
+  .ev-hero__inner {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: var(--space-2xl);
+    align-items: center;
+  }
+  @media (min-width: 768px) {
+    .ev-hero__inner { grid-template-columns: 1fr 1fr; }
+  }
+  .ev-hero__eyebrow {
+    display: block;
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.22em;
+    color: var(--c-yellow);
+    margin-bottom: var(--space-sm);
+  }
+  .ev-hero__title {
+    font-family: var(--font-display);
+    font-size: clamp(2rem, 5vw, 3.2rem);
+    color: #fff;
+    line-height: 1.1;
+    text-wrap: balance;
+    margin-bottom: var(--space-md);
+  }
+  .ev-hero__meta {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+    margin-bottom: var(--space-lg);
+  }
+  .ev-hero__meta-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.88rem;
+    color: rgba(255, 255, 255, 0.85);
+  }
+  .ev-hero__meta-item svg {
+    color: var(--c-yellow);
+    flex-shrink: 0;
+  }
+  .ev-hero__desc {
+    font-size: clamp(0.92rem, 1.3vw, 1.05rem);
+    color: rgba(255, 255, 255, 0.7);
+    line-height: 1.75;
+    text-wrap: pretty;
+    max-width: 56ch;
+    margin-bottom: var(--space-xl);
+  }
+  .ev-hero__actions {
+    display: flex;
+    gap: var(--space-md);
+    flex-wrap: wrap;
+  }
+
+  /* Hero image (editorial split — NOT full-width) */
+  .ev-hero__visual {
+    border-radius: var(--border-radius-lg);
+    overflow: hidden;
+    background-size: cover;
+    background-position: center;
+    aspect-ratio: 3 / 2;
+    max-width: 560px;
+  }
+  .ev-hero__img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  .ev-hero__img.lqip-pending { opacity: 0; }
+  .ev-hero__img.loaded { opacity: 1; transition: opacity 0.4s ease; }
+
+  /* ═══ BODY ═══ */
+  .ev-body {
+    padding: var(--space-3xl) 0;
+    background: var(--c-cream);
+  }
+  .ev-body__content {
+    max-width: var(--max-width-narrow);
+    margin: 0 auto;
+    font-size: 1rem;
+    line-height: 1.8;
+    color: var(--c-text);
+  }
+  .ev-body__content :global(h2) {
+    font-family: var(--font-display);
+    font-size: 1.5rem;
+    margin: var(--space-2xl) 0 var(--space-md);
+  }
+  .ev-body__content :global(p + p) {
+    margin-top: var(--space-md);
+  }
+
+  /* ═══ GALLERY ═══ */
+  .ev-gallery {
+    padding: var(--space-3xl) 0;
+  }
+  .ev-gallery__heading {
+    font-family: var(--font-display);
+    font-size: clamp(1.4rem, 3vw, 1.9rem);
+    color: var(--c-dark);
+    margin-bottom: var(--space-2xl);
+  }
+  .ev-gallery__heading::after {
+    content: '';
+    display: block;
+    width: 48px;
+    height: 3px;
+    background: var(--c-yellow);
+    margin-top: var(--space-sm);
+    border-radius: 2px;
+  }
+  .ev-gallery__grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: var(--space-md);
+  }
+  @media (min-width: 640px) {
+    .ev-gallery__grid { grid-template-columns: repeat(2, 1fr); }
+  }
+  @media (min-width: 960px) {
+    .ev-gallery__grid { grid-template-columns: repeat(3, 1fr); }
+  }
+  .ev-gallery__item {
+    border-radius: var(--border-radius-lg);
+    overflow: hidden;
+    aspect-ratio: 3 / 2;
+    background-size: cover;
+    background-position: center;
+  }
+  .ev-gallery__img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .ev-gallery__item:hover .ev-gallery__img {
+    transform: scale(1.04);
+  }
+  .ev-gallery__img.lqip-pending { opacity: 0; }
+  .ev-gallery__img.loaded { opacity: 1; transition: opacity 0.4s ease; }
+
+  /* ═══ CTA ═══ */
+  .ev-cta {
+    padding: var(--space-3xl) 0 var(--space-4xl);
+  }
+  .ev-cta__card {
+    text-align: center;
+    padding: var(--space-3xl) var(--space-xl);
+    background: var(--c-dark-deep);
+    border-radius: var(--border-radius-lg);
+    max-width: 720px;
+    margin: 0 auto;
+    position: relative;
+    overflow: hidden;
+  }
+  .ev-cta__card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(ellipse 50% 50% at 10% 90%, var(--c-yellow-glow) 0%, transparent 50%),
+      radial-gradient(ellipse 40% 40% at 90% 10%, rgba(255, 255, 255, 0.03) 0%, transparent 50%);
+    pointer-events: none;
+  }
+  .ev-cta__card h2 {
+    font-family: var(--font-display);
+    color: #fff;
+    font-size: clamp(1.5rem, 3vw, 2.2rem);
+    text-wrap: balance;
+    margin-bottom: var(--space-md);
+    position: relative;
+  }
+  .ev-cta__card p {
+    color: rgba(255, 255, 255, 0.6);
+    max-width: 480px;
+    margin: 0 auto var(--space-xl);
+    line-height: 1.7;
+    font-size: 0.95rem;
+    text-wrap: pretty;
+    position: relative;
+  }
+  .ev-cta__actions {
+    display: flex;
+    gap: var(--space-md);
+    justify-content: center;
+    flex-wrap: wrap;
+    position: relative;
+  }
+
+  /* ─── Mobile ─── */
+  @media (max-width: 640px) {
+    .ev-hero { padding: var(--space-4xl) 0 var(--space-2xl); }
+    .ev-btn { min-height: 44px; }
+    .ev-cta__card { padding: var(--space-2xl) var(--space-md); }
+  }
+</style>

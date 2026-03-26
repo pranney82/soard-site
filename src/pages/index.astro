@@ -7,6 +7,7 @@
  */
 import BaseLayout from '../layouts/BaseLayout.astro';
 import MediaLogos from '../components/ui/MediaLogos.astro';
+import PartnerShowcase from '../components/ui/PartnerShowcase.astro';
 import { getCollection } from 'astro:content';
 import { getSiteStats } from '../utils/stats';
 
@@ -78,7 +79,10 @@ const roomPhotos = {
   bath: sp.roomBath || 'kids/zyah/hero',
   therapy: sp.roomTherapy || 'kids/jackson/hero',
 };
-/* ── Partner logos (from settings) ── */
+/* ── Partners (dynamic count from collection + featured logos from settings) ── */
+const partnerCollection = await getCollection('partners');
+const totalPartners = partnerCollection.length;
+
 const partnerLogos = siteSettings.partnerLogos || siteSettings.homeLogos || [
   { id: 'partners/gas-south', name: 'Gas South' },
   { id: 'partners/randall-paulson', name: 'Randall Paulson' },
@@ -242,7 +246,7 @@ const jsonLd = getWebSiteSchema();
 
       <div class="process-split">
         <div class="process-photo" data-reveal style={`background-image:url('${cfLqip(processPhotoId)}')`}>
-          <img src={`${CF}/${processPhotoId}/w=720,h=960,fit=cover,q=70`} alt={`${fd?.name || 'A child'} sees their new room for the first time`} width="720" height="960" loading="lazy" decoding="async" class="lqip-img" />
+          <img src={`${CF}/${processPhotoId}/w=960,fit=scale-down,gravity=face,q=70`} alt={`${fd?.name || 'A child'} sees their new room for the first time`} width="960" loading="lazy" decoding="async" class="lqip-img" />
         </div>
 
         <div class="process-content">
@@ -342,17 +346,8 @@ const jsonLd = getWebSiteSchema();
     </div>
   </section>
 
-  <!-- ══════ PARTNERS MARQUEE ══════ -->
-  <section class="marquee" aria-label="Our partners">
-    <div class="marquee-label">Trusted Partners Who Make It Possible</div>
-    <div class="marquee-track" aria-hidden="true">
-      {[...partnerLogos, ...partnerLogos].map(p => (
-        <div class="marquee-logo">
-          <img src={`${CF}/${p.id}/w=280,h=80,fit=contain`} alt={p.name} width="140" height="40" loading="lazy" decoding="async" />
-        </div>
-      ))}
-    </div>
-  </section>
+  <!-- ══════ PARTNERS ══════ -->
+  <PartnerShowcase logos={partnerLogos} totalPartners={totalPartners} />
 
   <!-- ══════ FINAL CTA ══════ -->
   <section class="finale" aria-labelledby="cta-heading">
@@ -362,7 +357,7 @@ const jsonLd = getWebSiteSchema();
       <p data-reveal data-delay="1">Every donation — every dollar — goes directly to building dream spaces for children with special needs in the Atlanta area. No middlemen. No overhead bloat. Just kids, rooms, and community.</p>
       <div class="finale-ctas" data-reveal data-delay="2">
         <a href="/donate" class="btn btn-dark btn-lg">Donate Today</a>
-        <a href="/get-involved/partner" class="btn btn-outline-dark">Become a Partner</a>
+        <a href="/partners/" class="btn btn-outline-dark">Become a Partner</a>
       </div>
       <p class="finale-note" data-reveal data-delay="3">All donations tax-deductible · 501(c)(3) · EIN 45-4773997</p>
     </div>
@@ -380,12 +375,11 @@ const jsonLd = getWebSiteSchema();
     background-size: cover;
     background-position: center;
   }
-  .lqip-img {
+  .lqip-img.lqip-pending {
     opacity: 0;
-    transition: opacity 0.4s ease;
   }
-  .lqip-img.loaded {
-    opacity: 1;
+  .lqip-img:not(.lqip-pending) {
+    transition: opacity 0.4s ease;
   }
 
   /* ══════ HERO — Editorial ══════ */
@@ -674,7 +668,7 @@ const jsonLd = getWebSiteSchema();
 
   /* Photo column */
   .process-photo { border-radius: 24px; overflow: hidden; position: sticky; top: 100px; }
-  .process-photo img { width: 100%; height: auto; display: block; object-fit: cover; aspect-ratio: 3 / 4; }
+  .process-photo img { width: 100%; height: auto; display: block; object-fit: cover; aspect-ratio: 3 / 4; object-position: 60% center; }
 
   /* Steps column */
   .process-content { padding-top: 8px; }
@@ -743,14 +737,6 @@ const jsonLd = getWebSiteSchema();
   .trust-cta { text-align: center; }
   @media (max-width: 768px) { .trust { padding: 80px 0; } .trust-grid { grid-template-columns: 1fr; } }
 
-  /* ── MARQUEE ── */
-  .marquee { padding: 48px 0; background: #fff; border-top: 1px solid rgba(45,46,51,0.04); overflow: hidden; contain: layout style; }
-  .marquee-label { text-align: center; margin-bottom: 28px; font-size: 12px; font-weight: 700; color: var(--c-text-light); text-transform: uppercase; letter-spacing: 0.14em; }
-  .marquee-track { display: flex; gap: 24px; animation: marquee 35s linear infinite; width: max-content; }
-  .marquee-logo { min-width: 160px; height: 56px; border-radius: 12px; background: var(--c-warm-gray); display: flex; align-items: center; justify-content: center; padding: 8px 20px; flex-shrink: 0; }
-  .marquee-logo img { max-height: 40px; max-width: 130px; object-fit: contain; filter: grayscale(100%) opacity(0.5); transition: filter 0.3s ease; }
-  .marquee-logo:hover img { filter: grayscale(0%) opacity(1); }
-  @keyframes marquee { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
 
   /* ── FINALE ── */
   .finale { padding: 120px 0; background: var(--c-yellow); text-align: center; position: relative; overflow: hidden; contain: layout style; }
@@ -777,19 +763,14 @@ const jsonLd = getWebSiteSchema();
   @media (prefers-reduced-motion: reduce) {
     [data-reveal] { opacity: 1; transform: none; transition: none; }
     .btn-hero-glow { animation: none; }
-    .marquee-track { animation: none; }
+
     .hero-headline, .hero-photo-wrap { transform: none; animation: none; }
     .hero-eyebrow, .hero-sub, .hero-ctas, .hero-photo-accent { opacity: 1; transform: none; animation: none; }
+    .lqip-img:not(.lqip-pending) { transition: none; }
+    .lqip-img.lqip-pending { opacity: initial; }
   }
 </style>
 
-<!-- LQIP blur-up: fade in lazy images once loaded -->
-<script is:inline>
-document.querySelectorAll('.lqip-img').forEach(function(img) {
-  if (img.complete && img.naturalWidth > 0) { img.classList.add('loaded'); return; }
-  img.addEventListener('load', function() { img.classList.add('loaded'); }, { once: true });
-});
-</script>
 
 <!-- Hero-specific no-JS fallback (data-reveal handled by ScrollReveal in BaseLayout) -->
 <noscript>

@@ -18,16 +18,18 @@ CREATE INDEX IF NOT EXISTS idx_kids_featured ON kids(featured);
 CREATE INDEX IF NOT EXISTS idx_kids_status ON kids(status);
 CREATE INDEX IF NOT EXISTS idx_kids_name ON kids(name);
 
--- Partners (370+ rows)
+-- Partners (387+ rows)
 CREATE TABLE IF NOT EXISTS partners (
   slug TEXT PRIMARY KEY,
   name TEXT NOT NULL,
-  tier TEXT,
+  level TEXT,
+  category TEXT,
   featured INTEGER DEFAULT 0,
   data TEXT NOT NULL,
   updated_at TEXT DEFAULT (datetime('now'))
 );
-CREATE INDEX IF NOT EXISTS idx_partners_tier ON partners(tier);
+CREATE INDEX IF NOT EXISTS idx_partners_level ON partners(level);
+CREATE INDEX IF NOT EXISTS idx_partners_category ON partners(category);
 CREATE INDEX IF NOT EXISTS idx_partners_featured ON partners(featured);
 CREATE INDEX IF NOT EXISTS idx_partners_name ON partners(name);
 
@@ -124,3 +126,4 @@ CREATE TABLE IF NOT EXISTS audit_log (
 CREATE INDEX IF NOT EXISTS idx_audit_ts ON audit_log(created_at);
 CREATE INDEX IF NOT EXISTS idx_audit_user ON audit_log(user_email);
 CREATE INDEX IF NOT EXISTS idx_audit_entity ON audit_log(entity_type, entity_slug);
+CREATE INDEX IF NOT EXISTS idx_audit_action_ts ON audit_log(action, created_at);

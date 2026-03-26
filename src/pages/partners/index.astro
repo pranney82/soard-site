@@ -1,25 +1,57 @@
 ---
 /**
  * Partners Page — Sunshine on a Ranney Day
- * Premium partner showcase: monetary sponsors, in-kind champions, and full partner grid
+ * Best-in-class partner showcase with tiered levels + category filtering
+ *
+ * ARCHITECTURE:
+ * - Levels: signature → champion → builder → friend (prestige hierarchy)
+ * - Categories: build, design, funding, community (filterable)
+ * - All data-driven from content collection (no hardcoded lists)
+ * - Client-side filter tabs with zero framework JS
  *
  * PERF NOTES:
- * - Hero content has NO data-reveal (LCP critical)
- * - Partner logos: lazy-loaded with contain for paint optimization
- * - Scroll reveals staggered for cinematic entrance
+ * - Hero has NO data-reveal (LCP critical)
+ * - Partner logos: lazy-loaded, density srcset at display size
+ * - content-visibility: auto on friend grid (387+ cards)
+ * - contain: content on all grids for layout perf
  * - All images via CF Images CDN
  */
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import { getCollection } from 'astro:content';
-import { getSiteStats } from '../../utils/stats';
-import { CF_BASE as CF, cfRaw, cfId } from '../../utils/cf-image';
+import { cfRaw, cfId, cfDensitySrcset, cfSrcset, cfLqip } from '../../utils/cf-image';
 import { getWebPageSchema, getBreadcrumbSchema, buildSchemaGraph } from '../../utils/schema';
 
-/* ── Auto-computed stats ── */
-const computed = await getSiteStats();
+/* ── Site settings (editable from admin) ── */
+import siteSettings from '../../content/site/settings.json';
+
+/* ── Impact Moment (admin-editable via site settings) ── */
+const impactQuote = siteSettings.partnerQuote || "Seeing the look on a child\u2019s face when they walk into their new room \u2014 that\u2019s why we show up every build day.";
+const impactCiteName = siteSettings.partnerQuoteName || 'Lee Hainer';
+const impactCiteOrg = siteSettings.partnerQuoteOrg || 'Lee Hainer Construction';
+const impactPhoto = siteSettings.partnerPhoto || 'kids/oakley/photo-15';
 
 /* ── All partners from content collection ── */
 const allPartners = await getCollection('partners');
+
+/* ── Sort by order, then alphabetically ── */
+const sorted = [...allPartners].sort((a, b) =>
+  (a.data.order || 0) - (b.data.order || 0) || a.data.name.localeCompare(b.data.name)
+);
+
+/* ── Level groups ── */
+const signature = sorted.filter(p => p.data.level === 'signature');
+const champions = sorted.filter(p => p.data.level === 'champion');
+const builders  = sorted.filter(p => p.data.level === 'builder');
+const friends   = sorted.filter(p => p.data.level === 'friend');
+
+/* ── Category counts (for filter tab labels) ── */
+const catCounts = {
+  all: allPartners.length,
+  build: allPartners.filter(p => p.data.category === 'build').length,
+  design: allPartners.filter(p => p.data.category === 'design').length,
+  funding: allPartners.filter(p => p.data.category === 'funding').length,
+  community: allPartners.filter(p => p.data.category === 'community').length,
+};
 
 /* ── Schema ── */
 const pageUrl = 'https://sunshineonaranneyday.com/partners/';
@@ -32,86 +64,6 @@ const jsonLd = buildSchemaGraph(
   getWebPageSchema({ url: pageUrl, title: 'Our Partners', description: pageDesc }),
   getBreadcrumbSchema(breadcrumbs, pageUrl),
 );
-
-/* ── Build a lookup map: slug → partner data ── */
-const partnerMap = new Map(allPartners.map(p => [p.data.slug, p.data]));
-
-/* Helper: find a partner by slug(s) and return { name, logo? } */
-function sponsor(name: string, ...slugs: string[]) {
-  for (const s of slugs) {
-    const p = partnerMap.get(s);
-    if (p) return { name, logo: p.logo };
-  }
-  return { name, logo: null as string | null };
-}
-
-/* ── Monetary Sponsors ($10K+ in 2025) ── */
-const monetarySponsors = [
-  sponsor('Sunshine Society'),
-  sponsor('Kids R Kids', 'kids-r-kids'),
-  sponsor('Helen & Jimmy Carlos'),
-  sponsor('MCN/Babby'),
-  sponsor('Pella/Brian Robbins', 'pella'),
-  sponsor('Myfifident'),
-  sponsor('Van Epps', 'jim-van-epps'),
-  sponsor('JM Wilkerson Construction', 'jm-wilkerson-construction'),
-  sponsor('5 Arrows Farms/Walstads'),
-  sponsor('Constance Moscosco/Alcon Print'),
-  sponsor('Katherine & Max Dean'),
-  sponsor('Lee/Leo/Ducky Geary'),
-  sponsor('Spartan Surfaces'),
-  sponsor('Mohawk', 'mohawk'),
-  sponsor('MSI', 'msi'),
-  sponsor('Shaw Flooring'),
-  sponsor('Morrow Construction'),
-  sponsor('JC Foundation'),
-  sponsor('Beazer Foundation', 'beazer', 'beazer-homes'),
-  sponsor('Scansource Foundation'),
-  sponsor('David, Helen, & Marian Woodward Foundation'),
-  sponsor('ST & Margaret D Harris Foundation'),
-  sponsor('Atlanta Foundation'),
-  sponsor('Jackson Healthcare', 'jackson-healthcare'),
-  sponsor('Georgia Power'),
-  sponsor('Trae Young Family Foundation'),
-  sponsor('STAG Partners', 'stag-partners'),
-  sponsor('Randall-Paulson', 'randall-paulson'),
-  sponsor('Crosby Design Group', 'crosby-design-group'),
-  sponsor('Real Floors Commercial', 'real-floors-commercial'),
-  sponsor('Carlos & Sandy Ramirez'),
-  sponsor('Paul & Adro Nielsen'),
-];
-
-/* ── In-Kind Champions of Sunshine ── */
-const inKindChampions = [
-  sponsor('Randall-Paulson', 'randall-paulson'),
-  sponsor('Crosby Design Group', 'crosby-design-group'),
-  sponsor('Real Floors Commercial', 'real-floors-commercial'),
-  sponsor('Walk Your Plans'),
-  sponsor('Cambria', 'cambria-black'),
-  sponsor('Mohawk', 'mohawk'),
-  sponsor('Construction Resources', 'construction-resources'),
-  sponsor('Top Knobs', 'top-knobs'),
-  sponsor('MSI', 'msi'),
-  sponsor('Randall Brothers', 'randall-brothers'),
-  sponsor('Pella', 'pella'),
-  sponsor('Echols', 'echols'),
-  sponsor('Comfort Research', 'comfort-research'),
-  sponsor('Sherwin Williams', 'sherwin-williams'),
-  sponsor('Nothing Bundt Cake', 'nothing-bundt-cakes'),
-  sponsor('Lee Hainer Construction', 'lee-hainer'),
-  sponsor('Pulley & Associates', 'pulley-and-associates'),
-  sponsor('Artisan Design Group', 'artisan-design-studio'),
-  sponsor('Niki Murphy Photography', 'niki-murphy-photography'),
-  sponsor('iFrame', 'iframe-media'),
-];
-
-/* ── Sort all partners by display order, then alphabetically ── */
-const sortedPartners = [...allPartners].sort((a, b) =>
-  (a.data.order || 0) - (b.data.order || 0) || a.data.name.localeCompare(b.data.name)
-);
-
-/* ── Featured partners with logos for marquee ── */
-const featuredPartners = allPartners.filter(p => p.data.featured);
 ---
 
 <BaseLayout
@@ -127,142 +79,328 @@ const featuredPartners = allPartners.filter(p => p.data.featured);
       <p class="partners-hero__label">Partners</p>
       <h1 class="partners-hero__title">The people who make <em class="highlight">dreams</em> possible.</h1>
       <p class="partners-hero__subtitle">Every room we build is a community effort. These incredible partners donate their time, talent, materials, and funding to transform the lives of children with special needs.</p>
+      <a href="#all" class="partners-hero__cta">View all {allPartners.length}+ partners &darr;</a>
       <div class="partners-hero__rule" aria-hidden="true">
         <span class="partners-hero__rule-accent"></span>
       </div>
     </div>
   </section>
 
-  <!-- ══════ IMPACT STATS RIBBON ══════ -->
-  <section class="partners-ribbon" aria-label="Partner impact">
-    <div class="partners-ribbon-inner">
-      <div class="partners-ribbon-stat" data-reveal>
-        <span class="partners-ribbon-num">{allPartners.length}+</span>
-        <span class="partners-ribbon-label">Partners & Sponsors</span>
-      </div>
-      <div class="partners-ribbon-divider" role="presentation"></div>
-      <div class="partners-ribbon-stat" data-reveal data-delay="1">
-        <span class="partners-ribbon-num">{computed.totalRooms}+</span>
-        <span class="partners-ribbon-label">Rooms Built Together</span>
-      </div>
-      <div class="partners-ribbon-divider" role="presentation"></div>
-      <div class="partners-ribbon-stat" data-reveal data-delay="2">
-        <span class="partners-ribbon-num">$0</span>
-        <span class="partners-ribbon-label">Cost to Families</span>
-      </div>
-    </div>
-  </section>
-
-  <!-- ══════ MONETARY SPONSORS — $10K+ ══════ -->
-  <section class="sponsors" id="sponsors" aria-labelledby="sponsors-heading">
-    <div class="sponsors-inner">
-      <div class="sponsors-header" data-reveal>
-        <div class="section-label">2025 Sponsors</div>
-        <h2 id="sponsors-heading">Monetary sponsors who gave <em class="highlight">$10,000+</em> in 2025</h2>
-        <p class="sponsors-subtitle">These extraordinary partners provide the financial foundation that makes our mission possible. Their generosity directly funds life-changing room makeovers for children with special needs.</p>
-      </div>
-      <div class="sponsors-grid" data-reveal data-delay="1">
-        {monetarySponsors.map((s) => (
-          <div class="sponsor-card">
-            {s.logo ? (
-              <div class="sponsor-logo">
-                <img src={cfRaw(s.logo, 'w=240,h=80,fit=contain')} alt={s.name} width="120" height="40" loading="lazy" decoding="async" />
+  <!-- ══════ SIGNATURE PARTNERS ══════ -->
+  {signature.length > 0 && (
+    <section class="sig" id="signature" aria-labelledby="sig-heading">
+      <div class="sig-inner">
+        <div class="sig-header" data-reveal>
+          <div class="section-label section-label--yellow">Signature Partners</div>
+          <h2 id="sig-heading">The partners who <em>define</em> our mission</h2>
+          <p class="sig-subtitle">These extraordinary organizations are the backbone of every build season — contributing at the highest level to make dream rooms possible.</p>
+        </div>
+        <div class="sig-grid" data-reveal data-delay="1">
+          {signature.map(p => (
+            <div class="sig-card">
+              <div class="sig-card__logo">
+                <img
+                  src={cfRaw(p.data.logo, 'w=320,h=100,fit=contain,q=85')}
+                  srcset={cfDensitySrcset(cfId(p.data.logo), 160, 50, { quality: 85, fit: 'contain' })}
+                  alt={p.data.name}
+                  width="160" height="50"
+                  loading="lazy" decoding="async"
+                />
               </div>
-            ) : (
-              <span class="sponsor-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
-              </span>
-            )}
-            <span class="sponsor-name">{s.name}</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  </section>
-
-  <!-- ══════ IN-KIND CHAMPIONS ══════ -->
-  <section class="champions" id="champions" aria-labelledby="champions-heading">
-    <div class="champions-inner">
-      <div class="champions-header" data-reveal>
-        <div class="section-label section-label--yellow">In-Kind Partners</div>
-        <h2 id="champions-heading">Champions of <em>Sunshine</em></h2>
-        <p class="champions-subtitle">These partners donate materials, labor, design services, and more. They are the hands and hearts behind every room we build.</p>
-      </div>
-      <div class="champions-grid" data-reveal data-delay="1">
-        {inKindChampions.map((c) => (
-          <div class="champion-card">
-            {c.logo ? (
-              <div class="champion-logo">
-                <img src={cfRaw(c.logo, 'w=240,h=72,fit=contain')} alt={c.name} width="120" height="36" loading="lazy" decoding="async" />
+              <div class="sig-card__info">
+                <h3 class="sig-card__name">{p.data.name}</h3>
+                {p.data.tagline && <p class="sig-card__tagline">{p.data.tagline}</p>}
               </div>
-            ) : (
-              <span class="champion-initial" aria-hidden="true">{c.name.charAt(0)}</span>
-            )}
-            <span class="champion-name">{c.name}</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  </section>
-
-  <!-- ══════ PARTNER LOGOS — MARQUEE ══════ -->
-  {featuredPartners.length > 0 && (
-    <section class="partner-marquee" aria-label="Featured partner logos">
-      <div class="partner-marquee-label">Our Partner Network</div>
-      <div class="partner-marquee-track" aria-hidden="true">
-        {[...featuredPartners, ...featuredPartners].map(p => (
-          <div class="partner-marquee-logo">
-            {p.data.website ? (
-              <a href={p.data.website} target="_blank" rel="noopener noreferrer" aria-label={p.data.name}>
-                <img src={cfRaw(p.data.logo, 'w=280,h=80,fit=contain')} alt={p.data.name} width="140" height="40" loading="lazy" decoding="async" />
-              </a>
-            ) : (
-              <img src={cfRaw(p.data.logo, 'w=280,h=80,fit=contain')} alt={p.data.name} width="140" height="40" loading="lazy" decoding="async" />
-            )}
-          </div>
-        ))}
+              {p.data.website && (
+                <a href={p.data.website} target="_blank" rel="noopener noreferrer" class="sig-card__link" aria-label={`Visit ${p.data.name} website`}>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                </a>
+              )}
+            </div>
+          ))}
+        </div>
       </div>
     </section>
   )}
 
-  <!-- ══════ ALL PARTNERS GRID ══════ -->
-  <section class="all-partners" id="all" aria-labelledby="all-heading">
-    <div class="all-partners-inner">
-      <div class="all-partners-header" data-reveal>
-        <div class="section-label">All Partners</div>
-        <h2 id="all-heading">Every partner who has helped build <em class="highlight">dreams</em></h2>
-        <p class="all-partners-subtitle">{allPartners.length}+ organizations and individuals who have donated time, materials, or funding to SOARD since 2012.</p>
+  <!-- ══════ IMPACT MOMENT ══════ -->
+  <section class="impact" aria-label="Partner impact">
+    <div class="impact-inner">
+      <div class="impact-photo" data-reveal>
+        <div class="impact-frame" style={`background-image:url('${cfLqip(impactPhoto)}')`}>
+          <img
+            class="impact-img lqip-img"
+            src={cfRaw(impactPhoto, 'w=640,h=480,fit=cover,gravity=auto,q=80')}
+            srcset={cfSrcset(impactPhoto, [400, 560, 640], { fit: 'cover', gravity: 'auto', aspectRatio: 0.75, quality: 80 })}
+            sizes="(max-width: 768px) 100vw, 50vw"
+            alt="Volunteers and partners working together on a SOARD room build day"
+            width="640" height="480"
+            loading="lazy" decoding="async"
+          />
+        </div>
       </div>
-      <div class="all-partners-grid" data-reveal data-delay="1">
-        {sortedPartners.map(p => (
-          <div class="ap-card">
-            <div class="ap-logo">
-              <img src={cfRaw(p.data.logo, 'w=200,h=80,fit=contain')} alt={p.data.name} width="100" height="40" loading="lazy" decoding="async" />
-            </div>
-            <span class="ap-name">{p.data.name}</span>
-          </div>
-        ))}
+      <div class="impact-content" data-reveal data-delay="1">
+        <div class="section-label section-label--yellow">Why We Partner</div>
+        <blockquote class="impact-quote">
+          <p>&ldquo;{impactQuote}&rdquo;</p>
+          <footer>
+            <cite>{impactCiteName}</cite>
+            <span>{impactCiteOrg}</span>
+          </footer>
+        </blockquote>
       </div>
     </div>
   </section>
 
-  <!-- ══════ BECOME A PARTNER CTA ══════ -->
+  <!-- ══════ CHAMPION PARTNERS ══════ -->
+  {champions.length > 0 && (
+    <section class="champ" id="champions" aria-labelledby="champ-heading">
+      <div class="champ-inner">
+        <div class="champ-header" data-reveal>
+          <div class="section-label">Champion Partners</div>
+          <h2 id="champ-heading">Champions of <em class="highlight">Sunshine</em></h2>
+          <p class="champ-subtitle">Major sponsors, top contributors, and featured partners who make an outsized impact on our mission through funding, materials, and expertise.</p>
+        </div>
+        <div class="champ-grid" data-reveal data-delay="1">
+          {champions.map(p => {
+            const hasLink = !!p.data.website;
+            const Tag = hasLink ? 'a' : 'div';
+            return (
+              <Tag
+                class:list={['champ-card', { 'champ-card--linked': hasLink }]}
+                {...(hasLink ? { href: p.data.website, target: '_blank', rel: 'noopener noreferrer' } : {})}
+              >
+                <div class="champ-card__logo">
+                  <img
+                    src={cfRaw(p.data.logo, 'w=240,h=72,fit=contain,q=80')}
+                    srcset={cfDensitySrcset(cfId(p.data.logo), 120, 36, { quality: 80, fit: 'contain' })}
+                    alt={p.data.name}
+                    width="120" height="36"
+                    loading="lazy" decoding="async"
+                  />
+                </div>
+                <span class="champ-card__name">{p.data.name}</span>
+                {hasLink && (
+                  <svg class="champ-card__ext" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                )}
+              </Tag>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+  )}
+
+  <!-- ══════ BUILDER PARTNERS ══════ -->
+  {builders.length > 0 && (
+    <section class="build" id="builders" aria-labelledby="build-heading">
+      <div class="build-inner">
+        <div class="build-header" data-reveal>
+          <div class="section-label section-label--yellow">Builder Partners</div>
+          <h2 id="build-heading">The hands & hearts behind every <em>room</em></h2>
+          <p class="build-subtitle">These partners donate materials, labor, and services on a regular basis. They are the hands and hearts behind every room we build.</p>
+        </div>
+        <div class="build-grid" data-reveal data-delay="1">
+          {builders.map(p => {
+            const hasLink = !!p.data.website;
+            const Tag = hasLink ? 'a' : 'div';
+            return (
+              <Tag
+                class:list={['build-card', { 'build-card--linked': hasLink }]}
+                {...(hasLink ? { href: p.data.website, target: '_blank', rel: 'noopener noreferrer' } : {})}
+              >
+                <div class="build-card__logo">
+                  <img
+                    src={cfRaw(p.data.logo, 'w=200,h=64,fit=contain,q=80')}
+                    srcset={cfDensitySrcset(cfId(p.data.logo), 100, 32, { quality: 80, fit: 'contain' })}
+                    alt={p.data.name}
+                    width="100" height="32"
+                    loading="lazy" decoding="async"
+                  />
+                </div>
+                <span class="build-card__name">{p.data.name}</span>
+              </Tag>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+  )}
+
+  <!-- ══════ ALL PARTNERS — FILTERABLE ══════ -->
+  <section class="all" id="all" aria-labelledby="all-heading">
+    <div class="all-inner">
+      <div class="all-header" data-reveal>
+        <div class="section-label">All Partners</div>
+        <h2 id="all-heading">Every partner who has helped build <em class="highlight">dreams</em></h2>
+        <p class="all-subtitle">{allPartners.length}+ organizations and individuals who have donated time, materials, or funding to SOARD since 2012.</p>
+      </div>
+
+      <!-- Filter tabs -->
+      <div class="filter-tabs" role="tablist" aria-label="Filter partners by category" data-reveal data-delay="1">
+        <button class="filter-tab is-active" role="tab" aria-selected="true" data-cat="all">
+          All <span class="filter-tab__count">{catCounts.all}</span>
+        </button>
+        <button class="filter-tab" role="tab" aria-selected="false" data-cat="build">
+          Build <span class="filter-tab__count">{catCounts.build}</span>
+        </button>
+        <button class="filter-tab" role="tab" aria-selected="false" data-cat="design">
+          Design <span class="filter-tab__count">{catCounts.design}</span>
+        </button>
+        <button class="filter-tab" role="tab" aria-selected="false" data-cat="funding">
+          Funding <span class="filter-tab__count">{catCounts.funding}</span>
+        </button>
+        <button class="filter-tab" role="tab" aria-selected="false" data-cat="community">
+          Community <span class="filter-tab__count">{catCounts.community}</span>
+        </button>
+      </div>
+
+      <p class="filter-count" aria-live="polite" style="display:none;"></p>
+
+      <div class="all-grid" role="tabpanel" aria-label="Filtered partners" data-reveal data-delay="2">
+        {sorted.map(p => {
+          const hasLink = !!p.data.website;
+          const Tag = hasLink ? 'a' : 'div';
+          return (
+            <Tag
+              class:list={['ap-card', { 'ap-card--linked': hasLink }]}
+              data-category={p.data.category}
+              {...(hasLink ? { href: p.data.website, target: '_blank', rel: 'noopener noreferrer' } : {})}
+            >
+              <div class="ap-card__logo">
+                <img
+                  src={cfRaw(p.data.logo, 'w=180,h=64,fit=contain,q=75')}
+                  srcset={cfDensitySrcset(cfId(p.data.logo), 90, 32, { quality: 75, fit: 'contain' })}
+                  alt={p.data.name}
+                  width="90" height="32"
+                  loading="lazy" decoding="async"
+                />
+              </div>
+              <span class="ap-card__name">{p.data.name}</span>
+            </Tag>
+          );
+        })}
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════ WAYS TO PARTNER ══════ -->
+  <section class="ways" id="ways" aria-labelledby="ways-heading">
+    <div class="ways-inner">
+      <div class="ways-header" data-reveal>
+        <div class="section-label section-label--yellow">Get Involved</div>
+        <h2 id="ways-heading">Ways to <em>partner</em> with us</h2>
+        <p class="ways-subtitle">Whether you're a contractor, designer, brand, or individual — there's a place for you.</p>
+      </div>
+      <div class="ways-grid" data-reveal data-delay="1">
+        <div class="way-card">
+          <div class="way-card__icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 20h20"/><path d="M5 20V10l7-6 7 6v10"/><path d="M9 20v-6h6v6"/></svg>
+          </div>
+          <h3 class="way-card__title">Donate Materials</h3>
+          <p class="way-card__desc">Flooring, paint, furniture, windows, countertops — every material makes a room possible.</p>
+        </div>
+        <div class="way-card">
+          <div class="way-card__icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+          </div>
+          <h3 class="way-card__title">Volunteer Your Skills</h3>
+          <p class="way-card__desc">Construction, design, photography, media — bring your expertise to a build day.</p>
+        </div>
+        <div class="way-card">
+          <div class="way-card__icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+          </div>
+          <h3 class="way-card__title">Sponsor a Room</h3>
+          <p class="way-card__desc">A gift of $10,000+ funds a complete room build for a child with special needs.</p>
+        </div>
+        <div class="way-card">
+          <div class="way-card__icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          </div>
+          <h3 class="way-card__title">Corporate Partnership</h3>
+          <p class="way-card__desc">Year-round programs for companies who want to make a lasting, visible impact.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════ CTA ══════ -->
   <section class="partners-cta" aria-labelledby="cta-heading">
     <div class="partners-cta-inner">
       <div class="partners-cta-content" data-reveal>
-        <div class="section-label section-label--yellow">Get Involved</div>
-        <h2 id="cta-heading">Want to join this incredible community of <em>partners</em>?</h2>
-        <p>Whether you're a contractor, designer, brand, or individual — there's a place for you. Every contribution, big or small, helps build a dream room for a child who needs it most.</p>
+        <div class="section-label section-label--dark">Join Us</div>
+        <h2 id="cta-heading">Join {allPartners.length}+ partners building <em>dreams</em></h2>
+        <p>Every contribution, big or small, helps build a dream room for a child who needs it most.</p>
         <div class="partners-cta-btns">
-          <a href="mailto:info@soardcharity.com" class="btn btn-primary btn-glow">Become a Partner →</a>
-          <a href="/donate" class="btn btn-dark">Donate Today →</a>
+          <a href="mailto:info@soardcharity.com" class="btn btn-primary btn-cta">Become a Partner &rarr;</a>
+          <a href="/donate" class="btn btn-dark">Donate Today &rarr;</a>
         </div>
-        <p class="partners-cta-note">501(c)(3) · EIN 45-4773997 · All donations tax-deductible</p>
+        <p class="partners-cta-note">501(c)(3) &middot; EIN 45-4773997 &middot; All donations tax-deductible</p>
       </div>
     </div>
   </section>
 
 </BaseLayout>
+
+<!-- ══════ CLIENT-SIDE FILTER ══════ -->
+<script>
+  function initPartnerFilters() {
+    const tabs = document.querySelectorAll<HTMLButtonElement>('.filter-tab');
+    const cards = document.querySelectorAll<HTMLElement>('.ap-card');
+    const counter = document.querySelector<HTMLElement>('.filter-count');
+    if (!tabs.length || !cards.length) return;
+
+    function applyFilter(cat: string) {
+      // Update active tab
+      tabs.forEach(t => {
+        t.classList.toggle('is-active', t.dataset.cat === cat);
+        t.setAttribute('aria-selected', String(t.dataset.cat === cat));
+      });
+
+      // Filter cards with fade
+      let visible = 0;
+      cards.forEach(card => {
+        const show = cat === 'all' || card.dataset.category === cat;
+        if (show) {
+          card.style.display = '';
+          card.style.opacity = '1';
+          visible++;
+        } else {
+          card.style.opacity = '0';
+          card.style.display = 'none';
+        }
+      });
+
+      // Update counter
+      if (counter) {
+        const label = cat === 'all' ? 'all' : cat;
+        counter.textContent = `Showing ${visible} ${label} partner${visible !== 1 ? 's' : ''}`;
+        counter.style.display = cat === 'all' ? 'none' : '';
+      }
+
+      // Update URL hash for deep-linking
+      const hash = cat === 'all' ? '#all' : `#all:${cat}`;
+      history.replaceState(null, '', hash);
+    }
+
+    // Tab click
+    tabs.forEach(tab => {
+      tab.addEventListener('click', () => applyFilter(tab.dataset.cat!));
+    });
+
+    // Restore from URL hash on load
+    const hash = location.hash;
+    if (hash.startsWith('#all:')) {
+      const cat = hash.slice(5);
+      if (['build', 'design', 'funding', 'community'].includes(cat)) {
+        applyFilter(cat);
+      }
+    }
+  }
+
+  document.addEventListener('astro:page-load', initPartnerFilters);
+</script>
 
 <style>
   /* ══════════════════════════════════════════
@@ -314,6 +452,20 @@ const featuredPartners = allPartners.filter(p => p.data.featured);
     margin-inline: auto;
   }
 
+  .partners-hero__cta {
+    display: inline-block;
+    margin-top: var(--space-lg);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--c-text-muted);
+    letter-spacing: 0.02em;
+    transition: color var(--transition-fast);
+  }
+
+  .partners-hero__cta:hover {
+    color: var(--c-text);
+  }
+
   .partners-hero__rule {
     position: relative;
     height: 2px;
@@ -333,104 +485,11 @@ const featuredPartners = allPartners.filter(p => p.data.featured);
     border-radius: 1px;
   }
 
-  .highlight {
-    font-style: italic;
-    background-image: linear-gradient(transparent 55%, var(--c-yellow-soft) 55%);
-    background-repeat: no-repeat;
-    background-size: 100% 100%;
-    padding: 0 0.1em;
-  }
-
   /* ══════════════════════════════════════════
-     IMPACT RIBBON
+     PAGE-SPECIFIC OVERRIDES
      ══════════════════════════════════════════ */
-  .partners-ribbon {
-    background: var(--c-dark);
-    padding-block: var(--space-xl);
-  }
-
-  .partners-ribbon-inner {
-    max-width: var(--max-width);
-    margin: 0 auto;
-    padding-inline: var(--space-lg);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: var(--space-2xl);
-    flex-wrap: wrap;
-  }
-
-  .partners-ribbon-stat {
-    text-align: center;
-    min-width: 120px;
-  }
-
-  .partners-ribbon-num {
-    display: block;
-    font-family: var(--font-display);
-    font-size: clamp(1.75rem, 3vw, 2.5rem);
-    font-weight: 700;
-    color: var(--c-white);
-    line-height: 1.1;
-    letter-spacing: -0.02em;
-  }
-
-  .partners-ribbon-pct {
-    font-size: 0.6em;
-    vertical-align: super;
-    opacity: 0.7;
-  }
-
-  .partners-ribbon-label {
-    display: block;
-    font-size: 0.75rem;
-    font-weight: 500;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    color: rgba(255, 255, 255, 0.55);
-    margin-top: 6px;
-  }
-
-  .partners-ribbon-divider {
-    width: 1px;
-    height: 40px;
-    background: rgba(255, 255, 255, 0.12);
-  }
-
-  @media (max-width: 600px) {
-    .partners-ribbon-inner {
-      gap: var(--space-lg) var(--space-xl);
-    }
-    .partners-ribbon-divider {
-      display: none;
-    }
-    .partners-ribbon-stat {
-      flex: 0 0 calc(50% - var(--space-lg));
-    }
-  }
-
-  /* ══════════════════════════════════════════
-     SHARED SECTION HELPERS
-     ══════════════════════════════════════════ */
-  .section-label {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    font-size: 12px;
-    font-weight: 700;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: var(--c-accent);
-    margin-bottom: 20px;
-  }
-  .section-label::before {
-    content: '';
-    width: 28px;
-    height: 2px;
-    background: currentColor;
-    flex-shrink: 0;
-  }
-  .section-label--yellow { color: var(--c-yellow); }
+  .section-label--dark { color: var(--c-dark); }
+  .section-label--dark::before { background: var(--c-dark); }
 
   h2 :global(em:not(.highlight)) {
     font-style: italic;
@@ -438,44 +497,267 @@ const featuredPartners = allPartners.filter(p => p.data.featured);
   }
 
   /* ══════════════════════════════════════════
-     MONETARY SPONSORS ($10K+)
+     SIGNATURE PARTNERS (3–5 spotlight cards)
      ══════════════════════════════════════════ */
-  .sponsors {
-    background: var(--c-cream);
+  .sig {
+    background: var(--c-dark);
+    color: var(--c-white);
     padding-block: var(--space-4xl);
   }
 
-  .sponsors-inner {
+  .sig-inner {
     max-width: var(--max-width);
     margin: 0 auto;
     padding-inline: var(--space-lg);
   }
 
-  .sponsors-header {
+  .sig-header {
     max-width: 640px;
     margin-bottom: var(--space-2xl);
   }
 
-  .sponsors-header h2 {
+  .sig-header h2 {
+    color: var(--c-white);
     font-size: clamp(1.625rem, 3vw + 0.5rem, 2.5rem);
     letter-spacing: -0.01em;
     line-height: 1.2;
     margin-bottom: var(--space-md);
   }
 
-  .sponsors-subtitle {
+  .sig-subtitle {
+    font-size: clamp(0.95rem, 1.5vw, 1.065rem);
+    line-height: 1.65;
+    color: rgba(255, 255, 255, 0.6);
+  }
+
+  .sig-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 16px;
+    contain: content;
+  }
+
+  .sig-card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    padding: 36px 28px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: var(--border-radius-lg);
+    text-align: center;
+    transition: all var(--transition-base);
+  }
+
+  .sig-card:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: var(--c-yellow);
+    transform: translateY(-3px);
+    box-shadow: 0 8px 30px rgba(255, 218, 36, 0.1);
+  }
+
+  .sig-card__logo {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 56px;
+  }
+
+  .sig-card__logo img {
+    max-height: 56px;
+    width: auto;
+    object-fit: contain;
+    filter: brightness(0) invert(1);
+    opacity: 0.85;
+    transition: opacity var(--transition-base);
+  }
+
+  .sig-card:hover .sig-card__logo img {
+    opacity: 1;
+  }
+
+  .sig-card__name {
+    font-family: var(--font-display);
+    font-size: 1.125rem;
+    font-weight: 700;
+    color: var(--c-white);
+  }
+
+  .sig-card__tagline {
+    font-size: 0.875rem;
+    line-height: 1.5;
+    color: rgba(255, 255, 255, 0.5);
+    margin-top: -8px;
+  }
+
+  .sig-card__link {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    color: rgba(255, 255, 255, 0.3);
+    transition: all var(--transition-base);
+  }
+
+  .sig-card__link:hover {
+    color: var(--c-yellow);
+    background: rgba(255, 255, 255, 0.08);
+  }
+
+  .sig-card__link svg {
+    width: 15px;
+    height: 15px;
+  }
+
+  @media (max-width: 480px) {
+    .sig-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  /* ══════════════════════════════════════════
+     IMPACT MOMENT — editorial split
+     ══════════════════════════════════════════ */
+  .impact {
+    background: var(--c-warm-gray);
+    padding-block: var(--space-4xl);
+  }
+
+  .impact-inner {
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding-inline: var(--space-lg);
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-2xl);
+    align-items: center;
+  }
+
+  .impact-frame {
+    position: relative;
+    border-radius: var(--border-radius-lg);
+    overflow: hidden;
+    aspect-ratio: 4 / 3;
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+  }
+
+  .impact-img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .impact-img.lqip-pending {
+    opacity: 0;
+  }
+
+  .impact-img:not(.lqip-pending) {
+    transition: opacity 0.6s ease;
+  }
+
+  .impact-content {
+    max-width: 480px;
+  }
+
+  .impact-quote {
+    margin: 0;
+  }
+
+  .impact-quote p {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-size: clamp(1.125rem, 2.2vw, 1.375rem);
+    line-height: 1.55;
+    color: var(--c-text);
+    letter-spacing: -0.01em;
+  }
+
+  .impact-quote footer {
+    margin-top: var(--space-lg);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .impact-quote cite {
+    font-family: var(--font-body);
+    font-style: normal;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--c-dark);
+    letter-spacing: 0.02em;
+  }
+
+  .impact-quote footer span {
+    font-size: 0.8125rem;
+    color: var(--c-text-muted);
+  }
+
+  @media (max-width: 768px) {
+    .impact {
+      padding-block: var(--space-2xl);
+    }
+    .impact-inner {
+      grid-template-columns: 1fr;
+      gap: var(--space-xl);
+    }
+    .impact-frame {
+      aspect-ratio: 16 / 10;
+    }
+  }
+
+  /* ══════════════════════════════════════════
+     CHAMPION PARTNERS (medium logo grid)
+     ══════════════════════════════════════════ */
+  .champ {
+    background: var(--c-cream);
+    padding-block: var(--space-4xl);
+  }
+
+  .champ-inner {
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding-inline: var(--space-lg);
+  }
+
+  .champ-header {
+    max-width: 640px;
+    margin-bottom: var(--space-2xl);
+  }
+
+  .champ-header h2 {
+    font-size: clamp(1.625rem, 3vw + 0.5rem, 2.5rem);
+    letter-spacing: -0.01em;
+    line-height: 1.2;
+    margin-bottom: var(--space-md);
+  }
+
+  .champ-subtitle {
     font-size: clamp(0.95rem, 1.5vw, 1.065rem);
     line-height: 1.65;
     color: var(--c-text-muted);
   }
 
-  .sponsors-grid {
+  .champ-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
     gap: 12px;
+    contain: content;
   }
 
-  .sponsor-card {
+  .champ-card {
+    position: relative;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -485,82 +767,83 @@ const featuredPartners = allPartners.filter(p => p.data.featured);
     background: var(--c-white);
     border: 1px solid var(--c-border);
     border-radius: var(--border-radius);
-    transition: all var(--transition-base);
     text-align: center;
     min-height: 120px;
+    text-decoration: none;
+    transition: all var(--transition-base);
   }
 
-  .sponsor-card:hover {
+  .champ-card--linked:hover {
     border-color: var(--c-yellow);
     box-shadow: 0 4px 20px rgba(255, 218, 36, 0.12);
     transform: translateY(-2px);
   }
 
-  .sponsor-logo {
+  .champ-card__logo {
     display: flex;
     align-items: center;
     justify-content: center;
-    height: 48px;
+    height: 44px;
   }
 
-  .sponsor-logo img {
-    max-height: 48px;
+  .champ-card__logo img {
+    max-height: 44px;
     width: auto;
     object-fit: contain;
   }
 
-  .sponsor-icon {
-    flex-shrink: 0;
-    width: 40px;
-    height: 40px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--c-yellow);
-  }
-
-  .sponsor-icon svg {
-    width: 22px;
-    height: 22px;
-    fill: var(--c-yellow);
-    stroke: var(--c-yellow);
-    opacity: 0.5;
-  }
-
-  .sponsor-name {
+  .champ-card__name {
     font-size: 0.8125rem;
     font-weight: 600;
     color: var(--c-text-muted);
     line-height: 1.3;
   }
 
+  .champ-card__ext {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    width: 14px;
+    height: 14px;
+    color: var(--c-border);
+    transition: color var(--transition-base);
+  }
+
+  .champ-card--linked:hover .champ-card__ext {
+    color: var(--c-yellow);
+  }
+
   @media (max-width: 480px) {
-    .sponsors-grid {
-      grid-template-columns: 1fr;
+    .champ-grid {
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    }
+    .champ-card {
+      min-height: 100px;
+      padding: 18px 14px;
     }
   }
 
   /* ══════════════════════════════════════════
-     IN-KIND CHAMPIONS
+     BUILDER PARTNERS (smaller logo grid)
      ══════════════════════════════════════════ */
-  .champions {
+  .build {
     background: var(--c-dark);
     color: var(--c-white);
     padding-block: var(--space-4xl);
   }
 
-  .champions-inner {
+  .build-inner {
     max-width: var(--max-width);
     margin: 0 auto;
     padding-inline: var(--space-lg);
   }
 
-  .champions-header {
+  .build-header {
     max-width: 640px;
     margin-bottom: var(--space-2xl);
   }
 
-  .champions-header h2 {
+  .build-header h2 {
     color: var(--c-white);
     font-size: clamp(1.625rem, 3vw + 0.5rem, 2.5rem);
     letter-spacing: -0.01em;
@@ -568,48 +851,50 @@ const featuredPartners = allPartners.filter(p => p.data.featured);
     margin-bottom: var(--space-md);
   }
 
-  .champions-subtitle {
+  .build-subtitle {
     font-size: clamp(0.95rem, 1.5vw, 1.065rem);
     line-height: 1.65;
     color: rgba(255, 255, 255, 0.6);
   }
 
-  .champions-grid {
+  .build-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
     gap: 10px;
+    contain: content;
   }
 
-  .champion-card {
+  .build-card {
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 10px;
-    padding: 22px 16px;
-    background: rgba(255, 255, 255, 0.04);
+    gap: 8px;
+    padding: 20px 14px;
+    background: rgba(255, 255, 255, 0.05);
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: var(--border-radius);
-    transition: all var(--transition-base);
     text-align: center;
-    min-height: 110px;
+    min-height: 100px;
+    text-decoration: none;
+    transition: all var(--transition-base);
   }
 
-  .champion-card:hover {
+  .build-card--linked:hover {
     background: rgba(255, 255, 255, 0.08);
     border-color: var(--c-yellow);
     transform: translateY(-2px);
   }
 
-  .champion-logo {
+  .build-card__logo {
     display: flex;
     align-items: center;
     justify-content: center;
-    height: 40px;
+    height: 36px;
   }
 
-  .champion-logo img {
-    max-height: 40px;
+  .build-card__logo img {
+    max-height: 36px;
     width: auto;
     object-fit: contain;
     filter: brightness(0) invert(1);
@@ -617,27 +902,11 @@ const featuredPartners = allPartners.filter(p => p.data.featured);
     transition: opacity var(--transition-base);
   }
 
-  .champion-card:hover .champion-logo img {
+  .build-card:hover .build-card__logo img {
     opacity: 1;
   }
 
-  .champion-initial {
-    flex-shrink: 0;
-    width: 36px;
-    height: 36px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-family: var(--font-display);
-    font-size: 1rem;
-    font-weight: 700;
-    color: var(--c-dark);
-    background: var(--c-yellow);
-    border-radius: 50%;
-    opacity: 0.6;
-  }
-
-  .champion-name {
+  .build-card__name {
     font-size: 0.8125rem;
     font-weight: 500;
     color: rgba(255, 255, 255, 0.65);
@@ -645,100 +914,124 @@ const featuredPartners = allPartners.filter(p => p.data.featured);
   }
 
   @media (max-width: 480px) {
-    .champions-grid {
-      grid-template-columns: 1fr;
+    .build-grid {
+      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    }
+    .build-card {
+      min-height: 80px;
+      padding: 14px 10px;
     }
   }
 
   /* ══════════════════════════════════════════
-     PARTNER MARQUEE
+     ALL PARTNERS — FILTERABLE GRID
      ══════════════════════════════════════════ */
-  .partner-marquee {
-    background: var(--c-warm-gray);
-    padding-block: var(--space-2xl);
-    overflow: hidden;
-  }
-
-  .partner-marquee-label {
-    text-align: center;
-    font-size: 12px;
-    font-weight: 700;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: var(--c-text-light);
-    margin-bottom: var(--space-lg);
-  }
-
-  .partner-marquee-track {
-    display: flex;
-    gap: var(--space-2xl);
-    width: max-content;
-    animation: marquee 40s linear infinite;
-  }
-
-  .partner-marquee-logo {
-    flex-shrink: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 140px;
-  }
-
-  .partner-marquee-logo img {
-    filter: grayscale(1) opacity(0.5);
-    transition: filter var(--transition-base);
-    object-fit: contain;
-  }
-
-  .partner-marquee-logo:hover img {
-    filter: grayscale(0) opacity(1);
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .partner-marquee-track {
-      animation: none;
-      flex-wrap: wrap;
-      justify-content: center;
-      width: auto;
-    }
-  }
-
-  /* ══════════════════════════════════════════
-     ALL PARTNERS GRID
-     ══════════════════════════════════════════ */
-  .all-partners {
+  .all {
     background: var(--c-cream);
     padding-block: var(--space-4xl);
   }
 
-  .all-partners-inner {
+  .all-inner {
     max-width: var(--max-width-wide);
     margin: 0 auto;
     padding-inline: var(--space-lg);
   }
 
-  .all-partners-header {
+  .all-header {
     max-width: 640px;
-    margin-bottom: var(--space-2xl);
+    margin-bottom: var(--space-xl);
   }
 
-  .all-partners-header h2 {
+  .all-header h2 {
     font-size: clamp(1.625rem, 3vw + 0.5rem, 2.5rem);
     letter-spacing: -0.01em;
     line-height: 1.2;
     margin-bottom: var(--space-md);
   }
 
-  .all-partners-subtitle {
+  .all-subtitle {
     font-size: clamp(0.95rem, 1.5vw, 1.065rem);
     line-height: 1.65;
     color: var(--c-text-muted);
   }
 
-  .all-partners-grid {
+  /* ── Filter Tabs ── */
+  .filter-tabs {
+    position: relative;
+    display: flex;
+    gap: 6px;
+    margin-bottom: var(--space-lg);
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    padding-bottom: 4px;
+    -webkit-mask-image: linear-gradient(90deg, #000 90%, transparent);
+    mask-image: linear-gradient(90deg, #000 90%, transparent);
+  }
+  .filter-tabs::-webkit-scrollbar { display: none; }
+
+  @media (min-width: 601px) {
+    .filter-tabs {
+      -webkit-mask-image: none;
+      mask-image: none;
+    }
+  }
+
+  .filter-count {
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--c-text-muted);
+    margin-bottom: var(--space-md);
+  }
+
+  .filter-tab {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    font-family: var(--font-body);
+    color: var(--c-text-muted);
+    background: transparent;
+    border: 1px solid var(--c-border);
+    border-radius: 100px;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    white-space: nowrap;
+  }
+
+  .filter-tab:hover {
+    border-color: var(--c-text-muted);
+    color: var(--c-text);
+  }
+
+  .filter-tab.is-active {
+    background: var(--c-dark);
+    color: var(--c-white);
+    border-color: var(--c-dark);
+  }
+
+  .filter-tab__count {
+    font-size: 0.6875rem;
+    font-weight: 500;
+    opacity: 0.6;
+  }
+
+  .filter-tab.is-active .filter-tab__count {
+    opacity: 0.5;
+  }
+
+  /* ── Grid ── */
+  .all-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-    gap: 10px;
+    grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+    gap: 8px;
+    contain: content;
+    content-visibility: auto;
+    contain-intrinsic-size: auto 5000px;
   }
 
   .ap-card {
@@ -746,61 +1039,162 @@ const featuredPartners = allPartners.filter(p => p.data.featured);
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 10px;
-    padding: 20px 16px;
+    gap: 8px;
+    padding: 18px 12px;
     background: var(--c-white);
     border: 1px solid var(--c-border);
     border-radius: var(--border-radius);
     text-align: center;
-    transition: all var(--transition-base);
-    min-height: 100px;
+    min-height: 90px;
+    text-decoration: none;
+    transition: border-color var(--transition-fast), opacity 0.2s ease;
   }
 
-  .ap-card:hover {
+  .ap-card--linked:hover {
     border-color: var(--c-yellow);
-    box-shadow: 0 4px 16px rgba(255, 218, 36, 0.1);
-    transform: translateY(-2px);
+    box-shadow: 0 2px 12px rgba(255, 218, 36, 0.08);
   }
 
-  .ap-logo {
+  .ap-card__logo {
     display: flex;
     align-items: center;
     justify-content: center;
-    height: 40px;
+    height: 32px;
   }
 
-  .ap-logo img {
-    max-height: 40px;
+  .ap-card__logo img {
+    max-height: 32px;
     width: auto;
     object-fit: contain;
     filter: grayscale(0.3);
     transition: filter var(--transition-base);
   }
 
-  .ap-card:hover .ap-logo img {
+  .ap-card--linked:hover .ap-card__logo img {
     filter: grayscale(0);
   }
 
-  .ap-name {
-    font-size: 0.8125rem;
+  .ap-card__name {
+    font-size: 0.75rem;
     font-weight: 500;
     color: var(--c-text-muted);
     line-height: 1.3;
   }
 
   @media (max-width: 600px) {
-    .all-partners-grid {
+    .all-grid {
       grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-      gap: 8px;
+      gap: 6px;
     }
     .ap-card {
-      padding: 14px 10px;
-      min-height: 80px;
+      padding: 14px 8px;
+      min-height: 76px;
     }
   }
 
   /* ══════════════════════════════════════════
-     BECOME A PARTNER CTA
+     WAYS TO PARTNER
+     ══════════════════════════════════════════ */
+  .ways {
+    background: var(--c-dark);
+    color: var(--c-white);
+    padding-block: var(--space-4xl);
+  }
+
+  .ways-inner {
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding-inline: var(--space-lg);
+  }
+
+  .ways-header {
+    max-width: 640px;
+    margin-bottom: var(--space-2xl);
+  }
+
+  .ways-header h2 {
+    color: var(--c-white);
+    font-size: clamp(1.625rem, 3vw + 0.5rem, 2.5rem);
+    letter-spacing: -0.01em;
+    line-height: 1.2;
+    margin-bottom: var(--space-md);
+  }
+
+  .ways-subtitle {
+    font-size: clamp(0.95rem, 1.5vw, 1.065rem);
+    line-height: 1.65;
+    color: rgba(255, 255, 255, 0.6);
+  }
+
+  .ways-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 16px;
+  }
+
+  .way-card {
+    padding: 28px 24px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: var(--border-radius-lg);
+    transition: all var(--transition-base);
+  }
+
+  .way-card:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: var(--c-yellow);
+    transform: translateY(-2px);
+  }
+
+  .way-card__icon {
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--c-yellow);
+    border-radius: 10px;
+    margin-bottom: 16px;
+  }
+
+  .way-card__icon svg {
+    width: 20px;
+    height: 20px;
+    color: var(--c-dark);
+  }
+
+  .way-card__title {
+    font-family: var(--font-body);
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--c-white);
+    margin-bottom: 8px;
+  }
+
+  .way-card__desc {
+    font-size: 0.875rem;
+    line-height: 1.6;
+    color: rgba(255, 255, 255, 0.55);
+  }
+
+  @media (max-width: 480px) {
+    .ways-grid {
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .way-card {
+      padding: 20px 16px;
+    }
+  }
+
+  @media (max-width: 340px) {
+    .ways-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  /* ══════════════════════════════════════════
+     CTA
      ══════════════════════════════════════════ */
   .partners-cta {
     background: var(--c-yellow);
@@ -817,14 +1211,6 @@ const featuredPartners = allPartners.filter(p => p.data.featured);
   .partners-cta-content {
     max-width: 640px;
     margin: 0 auto;
-  }
-
-  .partners-cta .section-label {
-    justify-content: center;
-    color: var(--c-dark);
-  }
-  .partners-cta .section-label::before {
-    background: var(--c-dark);
   }
 
   .partners-cta h2 {
@@ -856,10 +1242,10 @@ const featuredPartners = allPartners.filter(p => p.data.featured);
     margin-top: var(--space-xl);
   }
 
-  .btn-glow {
+  .btn-cta {
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
   }
-  .btn-glow:hover {
+  .btn-cta:hover {
     box-shadow: 0 8px 30px rgba(0, 0, 0, 0.2);
   }
 
@@ -889,23 +1275,27 @@ const featuredPartners = allPartners.filter(p => p.data.featured);
   }
 
   /* ══════════════════════════════════════════
-     MOBILE REFINEMENTS
+     MOBILE
      ══════════════════════════════════════════ */
   @media (max-width: 768px) {
     .partners-hero {
       padding-block: var(--space-xl) 0;
     }
 
-    .sponsors,
-    .champions,
-    .all-partners,
+    .sig,
+    .champ,
+    .build,
+    .all,
+    .ways,
     .partners-cta {
       padding-block: var(--space-2xl);
     }
 
-    .sponsors-header,
-    .champions-header,
-    .all-partners-header {
+    .sig-header,
+    .champ-header,
+    .build-header,
+    .all-header,
+    .ways-header {
       margin-bottom: var(--space-xl);
     }
 
@@ -923,9 +1313,10 @@ const featuredPartners = allPartners.filter(p => p.data.featured);
      TOUCH DEVICES
      ══════════════════════════════════════════ */
   @media (hover: none) and (pointer: coarse) {
-    .sponsor-card:hover,
-    .champion-card:hover,
-    .ap-card:hover {
+    .sig-card:hover,
+    .champ-card--linked:hover,
+    .build-card--linked:hover,
+    .way-card:hover {
       transform: none;
     }
   }

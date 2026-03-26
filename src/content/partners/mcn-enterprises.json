@@ -2,6 +2,8 @@
   "name": "Mcn Enterprises",
   "slug": "mcn-enterprises",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/mcn-enterprises/public",
-  "tier": "construction",
-  "featured": false
+  "level": "champion",
+  "category": "funding",
+  "featured": false,
+  "order": 0
 }

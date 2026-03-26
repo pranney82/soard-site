@@ -4,6 +4,39 @@
  * Ported from sunnyandranney.com/events/ and adapted for SOARD design system
  */
 import BaseLayout from '../../layouts/BaseLayout.astro';
+import { cfRaw, cfSrcset, cfLqip } from '../../utils/cf-image';
+
+/* ── Sponsorship tiers (data-driven) ── */
+interface Tier {
+  name: string;
+  price: string;
+  detail?: string;
+  perk?: string;
+  badge?: string;
+  badgeStyle?: 'gold' | 'green';
+  highlight?: 'featured' | 'popular';
+}
+
+const mainTiers: Tier[] = [
+  { name: 'Presenting Sponsor', price: '$20,000', detail: '2 Foursomes (8 Golfers)', perk: 'Oakley sunglasses + Footjoy shoes per player, video interview, logo on all signage & social media', badge: 'Top Sponsor', badgeStyle: 'gold', highlight: 'featured' },
+  { name: 'Titanium Sponsor',   price: '$15,000', detail: '2 Foursomes (8 Golfers)', perk: 'Oakley sunglasses or Footjoy shoes, video interview, logo placement' },
+  { name: 'Diamond Sponsor',    price: '$10,000', detail: '1 Foursome (4 Golfers)',  perk: 'Video interview, logo on social media & signage' },
+  { name: 'Platinum Sponsor',   price: '$7,500',  detail: '1 Foursome (4 Golfers)',  perk: 'Signage, multiple social media posts' },
+  { name: 'Gold Sponsor',       price: '$5,000',  detail: '1 Foursome (4 Golfers)',  perk: 'Signage, social media posts' },
+  { name: 'Foursome',           price: '$1,500',  detail: '4 Golfers',               perk: 'Lunch & beverages included', badge: 'Most Popular', badgeStyle: 'green', highlight: 'popular' },
+];
+
+const addOnTiers: Tier[] = [
+  { name: 'Lunch Sponsor',    price: '$2,500' },
+  { name: 'Putting Contest',   price: '$2,500' },
+  { name: 'Beverage Cart',     price: '$2,000' },
+  { name: 'Bloody Mary Bar',   price: '$2,000' },
+  { name: 'Banquet Bar',       price: '$2,000' },
+  { name: 'Raffle Sponsor',    price: '$2,000' },
+  { name: 'Banquet Sponsor',   price: '$1,500' },
+  { name: 'Closest to the Pin', price: '$1,500' },
+  { name: 'Hole Sponsor',      price: '$1,000' },
+];
 
 const eventJsonLd = {
   "@type": "Event",
@@ -58,18 +91,24 @@ const eventJsonLd = {
     },
   ],
 };
+
+/* ── LCP preload — hero logo (must be byte-identical to <img>) ── */
+const heroLogoSrcset = cfSrcset('golf-logo-dark', [280, 400]);
+const heroLogoSizes = '(max-width: 767px) 200px, 320px';
 ---
 
 <BaseLayout
   title="Sunshine on a Ranney Fairway 2026 — Charity Golf Tournament"
   description="Join us for Sunshine on a Ranney Fairway 2026 — a charity golf tournament where every swing supports life-changing room makeovers for children with special needs."
-  ogImage="https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/golf-logo-light/og"
+  ogImage={cfRaw('golf-logo-light', 'w=1200,h=630,fit=contain,q=85')}
   jsonLd={eventJsonLd}
   breadcrumbs={[
     { name: 'Events', url: '/events/' },
     { name: 'Golf Tournament', url: '/events/golf/' },
   ]}
 >
+  <!-- Preload hero LCP image — imagesrcset/imagesizes must match the <img> -->
+  <link slot="head" rel="preload" as="image" imagesrcset={heroLogoSrcset} imagesizes={heroLogoSizes} fetchpriority="high" />
 
   <!-- ═══ HERO ═══ -->
   <section class="ev-hero">
@@ -79,7 +118,7 @@ const eventJsonLd = {
     <div class="container ev-hero__inner">
       <div class="ev-hero__content">
         <span class="ev-hero__eyebrow" data-reveal>Charity Golf Tournament</span>
-        <h1 class="ev-hero__title" data-reveal>
+        <h1 class="ev-hero__title" data-reveal transition:name="event-title">
           Sunshine on a<br/>Ranney <span class="ev-hero__accent">Fairway</span>
         </h1>
         <p class="ev-hero__subtitle" data-reveal>
@@ -95,9 +134,9 @@ const eventJsonLd = {
       </div>
       <div class="ev-hero__visual" data-reveal>
         <img
-          src="https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/golf-logo-dark/w=400,q=85,format=auto"
-          srcset="https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/golf-logo-dark/w=280,q=80,format=auto 280w, https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/golf-logo-dark/w=400,q=85,format=auto 400w"
-          sizes="(max-width: 767px) 200px, 320px"
+          src={cfRaw('golf-logo-dark', 'w=400,q=85')}
+          srcset={heroLogoSrcset}
+          sizes={heroLogoSizes}
           alt="Sunshine on a Ranney Fairway Golf Tournament logo"
           class="ev-hero__logo"
           width="400"
@@ -105,6 +144,7 @@ const eventJsonLd = {
           loading="eager"
           decoding="async"
           fetchpriority="high"
+          transition:name="event-hero"
         />
       </div>
     </div>
@@ -155,13 +195,13 @@ const eventJsonLd = {
   <!-- ═══ DEDICATED TO ═══ -->
   <section class="ev-chair">
     <div class="container ev-chair__inner" data-reveal>
-      <div class="ev-chair__photo-wrap">
+      <div class="ev-chair__photo-wrap" style={`background-image:url('${cfLqip('golf-brent-aronson')}')`}>
         <img
-          src="https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/golf-brent-aronson/w=500,q=80,format=auto"
-          srcset="https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/golf-brent-aronson/w=340,q=75,format=auto 340w, https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/golf-brent-aronson/w=500,q=80,format=auto 500w"
+          src={cfRaw('golf-brent-aronson', 'w=500,q=80')}
+          srcset={cfSrcset('golf-brent-aronson', [340, 500], { fit: 'cover', gravity: 'face' })}
           sizes="(max-width: 639px) 220px, 260px"
           alt="Brent Aronson"
-          class="ev-chair__photo"
+          class="ev-chair__photo lqip-img"
           width="500"
           height="500"
           loading="lazy"
@@ -214,91 +254,34 @@ const eventJsonLd = {
       <h2 class="ev-tickets__heading" data-reveal>Sponsorships &amp; Tickets</h2>
       <p class="ev-tickets__sub" data-reveal>Browse sponsorship packages and foursomes, then register on Zeffy to complete your purchase.</p>
 
-      <!-- Sponsor tiers -->
+      <!-- Sponsor tiers (data-driven) -->
       <div class="ev-tiers" data-reveal>
-        <div class="ev-tier ev-tier--featured">
-          <span class="ev-tier__badge ev-tier__badge--gold">Top Sponsor</span>
-          <h3 class="ev-tier__name">Presenting Sponsor</h3>
-          <span class="ev-tier__price">$20,000</span>
-          <span class="ev-tier__detail">2 Foursomes (8 Golfers)</span>
-          <span class="ev-tier__perk">Oakley sunglasses + Footjoy shoes per player, video interview, logo on all signage &amp; social media</span>
-        </div>
-        <div class="ev-tier">
-          <h3 class="ev-tier__name">Titanium Sponsor</h3>
-          <span class="ev-tier__price">$15,000</span>
-          <span class="ev-tier__detail">2 Foursomes (8 Golfers)</span>
-          <span class="ev-tier__perk">Oakley sunglasses or Footjoy shoes, video interview, logo placement</span>
-        </div>
-        <div class="ev-tier">
-          <h3 class="ev-tier__name">Diamond Sponsor</h3>
-          <span class="ev-tier__price">$10,000</span>
-          <span class="ev-tier__detail">1 Foursome (4 Golfers)</span>
-          <span class="ev-tier__perk">Video interview, logo on social media &amp; signage</span>
-        </div>
-        <div class="ev-tier">
-          <h3 class="ev-tier__name">Platinum Sponsor</h3>
-          <span class="ev-tier__price">$7,500</span>
-          <span class="ev-tier__detail">1 Foursome (4 Golfers)</span>
-          <span class="ev-tier__perk">Signage, multiple social media posts</span>
-        </div>
-        <div class="ev-tier">
-          <h3 class="ev-tier__name">Gold Sponsor</h3>
-          <span class="ev-tier__price">$5,000</span>
-          <span class="ev-tier__detail">1 Foursome (4 Golfers)</span>
-          <span class="ev-tier__perk">Signage, social media posts</span>
-        </div>
-        <div class="ev-tier ev-tier--popular">
-          <span class="ev-tier__badge">Most Popular</span>
-          <h3 class="ev-tier__name">Foursome</h3>
-          <span class="ev-tier__price">$1,500</span>
-          <span class="ev-tier__detail">4 Golfers</span>
-          <span class="ev-tier__perk">Lunch &amp; beverages included</span>
-        </div>
+        {mainTiers.map(tier => (
+          <div class={`ev-tier ${tier.highlight === 'featured' ? 'ev-tier--featured' : tier.highlight === 'popular' ? 'ev-tier--popular' : ''}`}>
+            {tier.badge && (
+              <span class={`ev-tier__badge ${tier.badgeStyle === 'gold' ? 'ev-tier__badge--gold' : ''}`}>{tier.badge}</span>
+            )}
+            <h3 class="ev-tier__name">{tier.name}</h3>
+            <span class="ev-tier__price">{tier.price}</span>
+            {tier.detail && <span class="ev-tier__detail">{tier.detail}</span>}
+            {tier.perk && <span class="ev-tier__perk">{tier.perk}</span>}
+          </div>
+        ))}
       </div>
 
-      <!-- Additional sponsorships -->
+      <!-- Additional sponsorships (data-driven) -->
       <details class="ev-more" data-reveal>
         <summary class="ev-more__toggle">
           <span>Additional Sponsorships</span>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
         </summary>
         <div class="ev-more__grid">
-          <div class="ev-tier ev-tier--sm">
-            <h3 class="ev-tier__name">Lunch Sponsor</h3>
-            <span class="ev-tier__price">$2,500</span>
-          </div>
-          <div class="ev-tier ev-tier--sm">
-            <h3 class="ev-tier__name">Putting Contest</h3>
-            <span class="ev-tier__price">$2,500</span>
-          </div>
-          <div class="ev-tier ev-tier--sm">
-            <h3 class="ev-tier__name">Beverage Cart</h3>
-            <span class="ev-tier__price">$2,000</span>
-          </div>
-          <div class="ev-tier ev-tier--sm">
-            <h3 class="ev-tier__name">Bloody Mary Bar</h3>
-            <span class="ev-tier__price">$2,000</span>
-          </div>
-          <div class="ev-tier ev-tier--sm">
-            <h3 class="ev-tier__name">Banquet Bar</h3>
-            <span class="ev-tier__price">$2,000</span>
-          </div>
-          <div class="ev-tier ev-tier--sm">
-            <h3 class="ev-tier__name">Raffle Sponsor</h3>
-            <span class="ev-tier__price">$2,000</span>
-          </div>
-          <div class="ev-tier ev-tier--sm">
-            <h3 class="ev-tier__name">Banquet Sponsor</h3>
-            <span class="ev-tier__price">$1,500</span>
-          </div>
-          <div class="ev-tier ev-tier--sm">
-            <h3 class="ev-tier__name">Closest to the Pin</h3>
-            <span class="ev-tier__price">$1,500</span>
-          </div>
-          <div class="ev-tier ev-tier--sm">
-            <h3 class="ev-tier__name">Hole Sponsor</h3>
-            <span class="ev-tier__price">$1,000</span>
-          </div>
+          {addOnTiers.map(tier => (
+            <div class="ev-tier ev-tier--sm">
+              <h3 class="ev-tier__name">{tier.name}</h3>
+              <span class="ev-tier__price">{tier.price}</span>
+            </div>
+          ))}
         </div>
       </details>
 
@@ -346,8 +329,9 @@ const eventJsonLd = {
   /* ─── Reveal animation (uses global ScrollReveal via data-reveal) ───── */
   [data-reveal] {
     opacity: 0;
-    transform: translateY(20px);
-    transition: opacity 0.6s ease, transform 0.6s ease;
+    transform: translateY(28px);
+    transition: opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1),
+                transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
   }
   [data-reveal].is-visible {
     opacity: 1;
@@ -360,16 +344,15 @@ const eventJsonLd = {
     align-items: center;
     gap: 8px;
     padding: 0.75rem 1.6rem;
-    border-radius: var(--border-radius);
+    border-radius: 100px;
     font-size: 0.88rem;
     font-weight: 600;
     text-decoration: none;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    transition: all 200ms ease;
     border: 1.5px solid transparent;
     cursor: pointer;
+    transition: background 200ms, color 200ms, transform 200ms, box-shadow 200ms;
   }
+  .ev-btn:active { transform: scale(0.97); }
   .ev-btn--hero {
     padding: 0.85rem 2rem;
     font-size: 0.92rem;
@@ -381,7 +364,7 @@ const eventJsonLd = {
   }
   .ev-btn--gold:hover {
     transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(255, 218, 36, 0.35);
+    box-shadow: 0 6px 24px var(--c-yellow-glow);
   }
   .ev-btn--outline-white {
     background: transparent;
@@ -629,19 +612,34 @@ const eventJsonLd = {
   .ev-chair__photo-wrap {
     display: flex;
     justify-content: center;
+    background-size: cover;
+    background-position: center;
+    border-radius: 50%;
+    width: 220px;
+    height: 220px;
+    margin: 0 auto;
+    border: 4px solid var(--c-border);
+    box-shadow: var(--shadow-lg);
+    overflow: hidden;
   }
 
   .ev-chair__photo {
-    width: 220px;
-    height: 220px;
+    width: 100%;
+    height: 100%;
     border-radius: 50%;
     object-fit: cover;
-    border: 4px solid var(--c-border);
-    box-shadow: var(--shadow-lg);
+  }
+
+  .ev-chair__photo.lqip-pending {
+    opacity: 0;
+  }
+  .ev-chair__photo.loaded {
+    opacity: 1;
+    transition: opacity 0.4s ease;
   }
 
   @media (min-width: 640px) {
-    .ev-chair__photo { width: 260px; height: 260px; }
+    .ev-chair__photo-wrap { width: 260px; height: 260px; margin: 0; }
   }
 
   .ev-chair__text {
@@ -1004,10 +1002,19 @@ const eventJsonLd = {
     flex-wrap: wrap;
   }
 
+  /* ─── Mobile polish ───────────────────────────────────────── */
+  @media (max-width: 640px) {
+    .ev-btn { min-height: 44px; }
+    .ev-hero { min-height: auto; padding: var(--space-4xl) 0 calc(var(--space-3xl) + 40px); }
+    .ev-chair__text { padding: 0 var(--space-sm); }
+    .ev-cta__card { padding: var(--space-2xl) var(--space-md); }
+  }
+
   /* ─── Reduced motion ────────────────────────────────────────── */
   @media (prefers-reduced-motion: reduce) {
     [data-reveal] { transition: none; opacity: 1; transform: none; }
     .ev-details__card, .ev-tier { transition: none; }
+    .ev-chair__photo.lqip-pending { opacity: 1; }
   }
 </style>
 

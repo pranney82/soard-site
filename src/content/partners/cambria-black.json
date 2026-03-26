@@ -2,6 +2,8 @@
   "name": "Cambria",
   "slug": "cambria-black",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/cambria-black/public",
-  "tier": "construction",
-  "featured": false
+  "level": "builder",
+  "category": "build",
+  "featured": false,
+  "order": 0
 }

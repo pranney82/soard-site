@@ -2,6 +2,8 @@
   "name": "Designing Women Shelley Herod",
   "slug": "designing-women-shelley-herod",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/designing-women-shelley-herod/public",
-  "tier": "design",
-  "featured": false
+  "level": "friend",
+  "category": "design",
+  "featured": false,
+  "order": 0
 }

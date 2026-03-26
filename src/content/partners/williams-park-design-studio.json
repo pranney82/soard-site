@@ -2,6 +2,8 @@
   "name": "Williams Park Design Studio",
   "slug": "williams-park-design-studio",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/williams-park-design-studio/public",
-  "tier": "design",
-  "featured": false
+  "level": "friend",
+  "category": "design",
+  "featured": false,
+  "order": 0
 }

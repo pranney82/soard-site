@@ -2,6 +2,8 @@
   "name": "Hales Photo",
   "slug": "hales-photo",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/hales-photo/public",
-  "tier": "community",
-  "featured": false
+  "level": "friend",
+  "category": "community",
+  "featured": false,
+  "order": 0
 }

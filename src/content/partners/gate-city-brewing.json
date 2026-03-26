@@ -2,6 +2,8 @@
   "name": "Gate City Brewing",
   "slug": "gate-city-brewing",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/gate-city-brewing/public",
-  "tier": "construction",
-  "featured": false
+  "level": "friend",
+  "category": "build",
+  "featured": false,
+  "order": 0
 }

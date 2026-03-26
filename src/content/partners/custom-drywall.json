@@ -2,6 +2,8 @@
   "name": "Custom Drywall",
   "slug": "custom-drywall",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/custom-drywall/public",
-  "tier": "construction",
-  "featured": false
+  "level": "friend",
+  "category": "build",
+  "featured": false,
+  "order": 0
 }
