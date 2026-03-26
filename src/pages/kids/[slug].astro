@@ -107,18 +107,35 @@ const bioParas = kid.bio ? kid.bio.split('\n\n').filter(p => p.trim()) : [];
 const introPara = bioParas.length > 0 ? bioParas[0] : '';
 const remainingParas = bioParas.slice(1);
 
-// Smart quote: use kid.quote if distinct, otherwise extract first 2 sentences from bio
+// Only use explicit quote from CMS — no auto-extraction from bio
 let pullQuote: string | null = null;
 if (kid.quote && kid.quote !== kid.bio && kid.quote !== introPara) {
   pullQuote = kid.quote;
-} else if (kid.bio && kid.bio.length > 200) {
-  const sentences = kid.bio.match(/[^.!?]+[.!?]+/g);
-  if (sentences && sentences.length >= 2) {
-    pullQuote = sentences.slice(0, 2).join('').trim();
-  }
 }
 
 const galleryPhotos = photos.slice(0, 30);
+
+// ── Hero: art-directed mobile crop ───────
+const heroMobileSrcset = kid.heroImage ? _cfSrcset(kid.heroImage, [320, 480], { fit: 'cover', gravity: 'face', aspectRatio: 1 }) : '';
+const heroMobileSizes = '(max-width: 480px) 280px, 340px';
+
+// ── Narrative: scroll-linked story ───────
+const useNarrative = remainingParas.length >= 2 && galleryPhotos.length >= 3;
+let narrativePairs: Array<{ text: string; photo: typeof photos[0] }> = [];
+let overflowParas: string[] = remainingParas;
+
+if (useNarrative) {
+  const pairCount = Math.min(remainingParas.length, 4, Math.floor(galleryPhotos.length / 2));
+  const step = galleryPhotos.length / pairCount;
+  for (let i = 0; i < pairCount; i++) {
+    const photoIdx = Math.min(Math.floor(i * step), galleryPhotos.length - 1);
+    narrativePairs.push({
+      text: remainingParas[i],
+      photo: galleryPhotos[photoIdx],
+    });
+  }
+  overflowParas = remainingParas.slice(pairCount);
+}
 
 // ── Minimal data detection ────────────────
 const hasDetails = kid.age || (kid.roomTypes && kid.roomTypes.length > 0) || kid.year;
@@ -134,7 +151,8 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
   datePublished={kid.year ? `${kid.year}-01-01` : undefined}
   dateModified={dateModified}
 >
-  {kid.heroImage && <link slot="head" rel="preload" as="image" imagesrcset={heroSrcset} imagesizes={heroSizes} fetchpriority="high" />}
+  {kid.heroImage && <link slot="head" rel="preload" as="image" imagesrcset={heroMobileSrcset} imagesizes={heroMobileSizes} fetchpriority="high" media="(max-width: 768px)" />}
+  {kid.heroImage && <link slot="head" rel="preload" as="image" imagesrcset={heroSrcset} imagesizes={heroSizes} fetchpriority="high" media="(min-width: 769px)" />}
 
   <!-- Scroll progress indicator -->
   <div class="scroll-progress" aria-hidden="true"></div>
@@ -151,20 +169,27 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
         <div class="hero__split">
           {kid.heroImage ? (
             <div class="hero__portrait stagger" style={`--lqip: url('${lqip(kid.heroImage)}')`}>
-              <img
-                src={cfUrl(kid.heroImage, 'w=800,h=1000,fit=cover,gravity=face,q=85')}
-                srcset={heroSrcset}
-                sizes={heroSizes}
-                alt={`Photo of ${kid.name}${kid.diagnosis ? ` — ${kid.diagnosis}` : ''}`}
-                class="hero__img lqip-img"
-                width="800"
-                height="1000"
-                loading="eager"
-                decoding="async"
-                fetchpriority="high"
-                itemprop="image"
-                transition:name="kid-hero"
-              />
+              <picture>
+                <source
+                  media="(max-width: 768px)"
+                  srcset={heroMobileSrcset}
+                  sizes={heroMobileSizes}
+                />
+                <img
+                  src={cfUrl(kid.heroImage, 'w=800,h=1000,fit=cover,gravity=face,q=85')}
+                  srcset={heroSrcset}
+                  sizes={heroSizes}
+                  alt={`Photo of ${kid.name}${kid.diagnosis ? ` — ${kid.diagnosis}` : ''}`}
+                  class="hero__img lqip-img"
+                  width="800"
+                  height="1000"
+                  loading="eager"
+                  decoding="async"
+                  fetchpriority="high"
+                  itemprop="image"
+                  transition:name="kid-hero"
+                />
+              </picture>
               {kid.status === 'in-progress' && (
                 <span class="hero__badge">In Progress</span>
               )}
@@ -236,15 +261,43 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
       </div>
     </section>
 
-    <!-- ═══ Story Section ════════════════════ -->
-    {remainingParas.length > 0 && (
+    <!-- ═══ Narrative: Scroll-Linked Story ════ -->
+    {narrativePairs.length > 0 && (
+      <section class="narrative">
+        <div class="container">
+          {narrativePairs.map((pair, i) => (
+            <div class={`narrative__block ${i % 2 === 0 ? 'narrative__block--img-right' : 'narrative__block--img-left'} stagger-section`}>
+              <div class="narrative__text">
+                <div class={`narrative__text-inner prose ${i === 0 ? 'prose--dropcap' : ''}`} set:html={`<p>${pair.text}</p>`} />
+              </div>
+              <div class="narrative__media" style={`--lqip: url('${lqip(pair.photo.url)}')`}>
+                <img
+                  src={_cfUrl(pair.photo.url, { w: 600, q: 85 })}
+                  srcset={_cfSrcset(pair.photo.url, [400, 600, 900])}
+                  sizes="(max-width: 768px) 92vw, 45vw"
+                  alt={pair.photo.alt || `${kid.name}'s room`}
+                  class="narrative__img lqip-img"
+                  loading="lazy"
+                  decoding="async"
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+    )}
+
+    <!-- ═══ Story Section (overflow + quote) ═══ -->
+    {(overflowParas.length > 0 || pullQuote) && (
       <section class="story">
         <div class="container container--narrow">
-          <div class="story__body prose stagger-section" itemprop="articleBody">
-            {remainingParas.map(paragraph => (
-              <p>{paragraph}</p>
-            ))}
-          </div>
+          {overflowParas.length > 0 && (
+            <div class={`story__body prose stagger-section ${narrativePairs.length === 0 ? 'prose--dropcap' : ''}`} itemprop="articleBody">
+              {overflowParas.map(paragraph => (
+                <p>{paragraph}</p>
+              ))}
+            </div>
+          )}
 
           {pullQuote && (
             <blockquote class="pullquote stagger-section">
@@ -349,6 +402,7 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
                 class="masonry__item"
                 data-index={i}
                 data-src={cfUrl(photo.url, 'w=1600,q=85')}
+                data-srcset={_cfSrcset(photo.url, [800, 1200, 1600, 2400])}
                 data-alt={photo.alt || `${kid.name}'s room transformation photo ${i + 1}`}
                 aria-label={`View photo ${i + 1} of ${galleryPhotos.length}`}
                 type="button"
@@ -642,6 +696,8 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
         if (!item) return;
         currentIndex = index;
         lbImg.src = item.dataset.src || '';
+        lbImg.srcset = item.dataset.srcset || '';
+        lbImg.sizes = '90vw';
         lbImg.alt = item.dataset.alt || '';
         lbCounter.textContent = `${index + 1} / ${galleryItems.length}`;
         lbPrev.style.display = index === 0 ? 'none' : '';
@@ -848,7 +904,7 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
 
   /* ═══ Hero: Split Layout ═══════════════════ */
   .hero {
-    padding-top: calc(var(--header-height) + var(--space-sm));
+    padding-top: var(--space-lg);
     padding-bottom: var(--space-3xl);
     background: var(--c-cream);
   }
@@ -857,16 +913,21 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    color: var(--c-text-muted);
+    color: var(--c-dark);
     font-size: 0.82rem;
-    font-weight: 500;
+    font-weight: 600;
     text-decoration: none;
     margin-bottom: var(--space-xl);
-    transition: color var(--transition-fast);
+    padding: 0.45rem 1rem 0.45rem 0.75rem;
+    background: var(--c-white);
+    border: 1px solid var(--c-border);
+    border-radius: 999px;
+    transition: background var(--transition-fast), box-shadow var(--transition-fast);
   }
 
   .hero__back:hover {
-    color: var(--c-dark);
+    background: var(--c-cream-dark, #f3efe6);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
   }
 
   .hero__split {
@@ -1080,7 +1141,7 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     margin-top: var(--space-lg);
   }
 
-  .story__body p:first-child::first-letter {
+  .prose--dropcap p:first-child::first-letter {
     font-family: var(--font-display);
     font-size: 3.4em;
     float: left;
@@ -1116,6 +1177,52 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     font-size: 1.15rem;
     line-height: 1.65;
     color: var(--c-text);
+  }
+
+  /* ═══ Narrative: Scroll-Linked Story ═════ */
+  .narrative {
+    padding-block: var(--space-3xl);
+    background: var(--c-white);
+  }
+
+  .narrative__block {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: clamp(var(--space-xl), 5vw, var(--space-4xl));
+    align-items: center;
+    margin-bottom: var(--space-3xl);
+  }
+
+  .narrative__block:last-child {
+    margin-bottom: 0;
+  }
+
+  .narrative__block--img-left .narrative__media {
+    order: -1;
+  }
+
+  .narrative__text-inner {
+    font-size: 1.1rem;
+    line-height: 1.85;
+    color: var(--c-text);
+  }
+
+  .narrative__media {
+    border-radius: var(--profile-radius);
+    overflow: hidden;
+    background-image: var(--lqip);
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    box-shadow:
+      0 4px 6px rgba(0, 0, 0, 0.04),
+      0 12px 40px rgba(0, 0, 0, 0.08);
+  }
+
+  .narrative__img {
+    width: 100%;
+    height: auto;
+    display: block;
   }
 
   /* ═══ Fundraising CTA ═════════════════════ */
@@ -1730,18 +1837,23 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
   /* ═══ Responsive: Mobile ═══════════════════ */
   @media (max-width: 768px) {
     .hero {
-      padding-top: calc(var(--header-height) + var(--space-md));
-      padding-bottom: var(--space-2xl);
+      padding-top: var(--space-md);
+      padding-bottom: var(--space-xl);
+    }
+
+    .hero__back {
+      margin-bottom: var(--space-md);
     }
 
     .hero__split {
       grid-template-columns: 1fr;
-      gap: var(--space-xl);
+      gap: var(--space-lg);
     }
 
     .hero__portrait {
       max-width: 340px;
       margin-inline: auto;
+      aspect-ratio: 1 / 1;
     }
 
     .hero__name {
@@ -1750,6 +1862,19 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
 
     .hero__intro {
       font-size: 0.95rem;
+    }
+
+    .narrative__block {
+      grid-template-columns: 1fr;
+      gap: var(--space-lg);
+    }
+
+    .narrative__media {
+      order: -1;
+    }
+
+    .narrative__text-inner {
+      font-size: 1rem;
     }
 
     .masonry {
@@ -1836,7 +1961,8 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     .masonry__img,
     .masonry__item,
     .related__img,
-    .related__card {
+    .related__card,
+    .narrative__img {
       transition: none;
     }
   }

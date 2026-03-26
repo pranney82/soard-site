@@ -123,6 +123,18 @@ export function cfSrcset(src: string, widths: number[], opts?: SrcsetOpts): stri
  *   cfDensitySrcset("kids/amari/hero", 80, 80, { fit: 'cover', gravity: 'face' })
  *   → ".../w=80,h=80,... 1x, .../w=160,h=160,... 2x"
  */
+/**
+ * LQIP blur-up placeholder URL — tiny 30px-wide image with server-side blur.
+ * Use as CSS background-image on the image wrapper for instant blurred preview.
+ *
+ *   cfLqip("kids/amari/hero") → "https://imagedelivery.net/.../w=30,q=30,blur=20"
+ */
+export function cfLqip(src: string): string {
+  const id = cfId(src);
+  if (!id) return '';
+  return `${CF_BASE}/${id}/w=30,q=30,blur=20`;
+}
+
 export function cfDensitySrcset(
   src: string,
   w: number,

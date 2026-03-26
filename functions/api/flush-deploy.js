@@ -3,15 +3,15 @@
  * Triggers a CF Pages deploy via the deploy hook.
  * Called by the admin "Deploy Now" button.
  *
- * Env vars: CF_DEPLOY_HOOK (CF Pages deploy hook URL)
+ * Env vars: CF_PAGES_DEPLOY_HOOK (CF Pages deploy hook URL)
  */
 
 export async function onRequestPost(context) {
   try {
-    const hook = context.env.CF_DEPLOY_HOOK;
+    const hook = context.env.CF_PAGES_DEPLOY_HOOK;
     if (!hook) {
       return Response.json(
-        { success: false, error: 'Deploy hook not configured — set CF_DEPLOY_HOOK env var' },
+        { success: false, error: 'Deploy hook not configured — set CF_PAGES_DEPLOY_HOOK env var' },
         { status: 503 }
       );
     }

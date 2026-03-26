@@ -16,10 +16,12 @@
 
 import { EXTRACTORS, parsePath, generateSha } from './_collections.js';
 import { commitFile } from './_github.js';
+import { logAudit, diffJson, getEntityName } from './_audit.js';
 
 export async function onRequestPost(context) {
   try {
     const { DB } = context.env;
+    const userEmail = context.data?.userEmail || 'unknown';
     const { path, content, message } = await context.request.json();
 
     if (!path || content === undefined || !message) {
@@ -41,6 +43,19 @@ export async function onRequestPost(context) {
     const jsonStr = JSON.stringify(data);
     const prettyJson = JSON.stringify(data, null, 2);
     const now = new Date().toISOString();
+
+    // 0. Read old value for diffing
+    let oldData = null;
+    let isCreate = true;
+    try {
+      if (parsed.type === 'site') {
+        const row = await DB.prepare('SELECT data FROM site_config WHERE key = ?').bind(parsed.key).first();
+        if (row) { oldData = JSON.parse(row.data); isCreate = false; }
+      } else {
+        const row = await DB.prepare(`SELECT data FROM ${parsed.table} WHERE slug = ?`).bind(parsed.slug).first();
+        if (row) { oldData = JSON.parse(row.data); isCreate = false; }
+      }
+    } catch (e) { /* first save — no old data */ }
 
     // 1. Write to D1 (fast read cache for admin panel)
     if (parsed.type === 'site') {
@@ -77,6 +92,22 @@ export async function onRequestPost(context) {
       gitStatus = 'failed';
       console.error('[save-content] GitHub commit failed:', err.message);
     }
+
+    // 3. Audit log
+    const entityType = parsed.type === 'site' ? parsed.key : parsed.table;
+    const entitySlug = parsed.type === 'site' ? parsed.key : parsed.slug;
+    const action = isCreate ? 'created' : (data.publishStatus === 'draft' ? 'drafted' : 'updated');
+
+    await logAudit(DB, {
+      userEmail,
+      action,
+      entityType,
+      entitySlug,
+      entityName: getEntityName(data, entityType),
+      changes: isCreate ? null : diffJson(oldData, data),
+      path,
+      gitStatus,
+    });
 
     return Response.json({
       success: true,

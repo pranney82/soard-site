@@ -107,3 +107,20 @@ CREATE TABLE IF NOT EXISTS financials (
 );
 CREATE INDEX IF NOT EXISTS idx_financials_year ON financials(year);
 CREATE INDEX IF NOT EXISTS idx_financials_type ON financials(type);
+
+-- Audit log (immutable, server-side activity trail)
+CREATE TABLE IF NOT EXISTS audit_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_email TEXT NOT NULL,
+  action TEXT NOT NULL,         -- created, updated, deleted, drafted, published, uploaded
+  entity_type TEXT NOT NULL,    -- kid, partner, team, article, event, press, community, financials, settings, etc.
+  entity_slug TEXT,             -- slug or key of the entity
+  entity_name TEXT,             -- human-readable name at time of action
+  changes TEXT,                 -- JSON: [{ field, from, to }] for updates; full snapshot for create/delete
+  path TEXT,                    -- file path that was modified
+  git_status TEXT,              -- ok or failed
+  created_at TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_audit_ts ON audit_log(created_at);
+CREATE INDEX IF NOT EXISTS idx_audit_user ON audit_log(user_email);
+CREATE INDEX IF NOT EXISTS idx_audit_entity ON audit_log(entity_type, entity_slug);

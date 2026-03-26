@@ -17,7 +17,7 @@ import faqData from '../content/site/faq.json';
 import siteSettings from '../content/site/settings.json';
 import { getDonateSchema } from '../utils/schema';
 import { getSiteStats } from '../utils/stats';
-import { cfRaw, cfSrcset, CF_BASE } from '../utils/cf-image';
+import { cfRaw, cfSrcset, CF_BASE, cfLqip } from '../utils/cf-image';
 
 const computed = await getSiteStats();
 
@@ -54,7 +54,7 @@ const breadcrumbs = [
 
   <!-- ══════ HERO — No data-reveal on hero content (LCP critical) ══════ -->
   <section class="donate-hero">
-    <div class="donate-hero-media">
+    <div class="donate-hero-media donate-hero-frame" style={`background-image:url('${cfLqip(donateHeroPhoto)}')`}>
       <img
         src={cfRaw(donateHeroPhoto, 'w=1600,q=85')}
         srcset={cfSrcset(donateHeroPhoto, [400, 640, 1024, 1600])}
@@ -90,7 +90,7 @@ const breadcrumbs = [
   <section class="why" id="why">
     <div class="why-inner">
       <div class="why-photos" data-reveal>
-        <div class="why-photo why-photo--main">
+        <div class="why-photo why-photo--main" style={`background-image:url('${cfLqip(donateStoryPhoto)}')`}>
           <img
             src={cfRaw(donateStoryPhoto, 'w=800,q=85')}
             srcset={cfSrcset(donateStoryPhoto, [500, 800])}
@@ -100,6 +100,7 @@ const breadcrumbs = [
             height="600"
             loading="lazy"
             decoding="async"
+            class="lqip-img"
           />
         </div>
       </div>
@@ -294,6 +295,13 @@ const breadcrumbs = [
       <iframe id="zeffy-iframe" title="Donation form powered by Zeffy" allowpaymentrequest></iframe>
     </div>
   </div>
+
+  <script is:inline>
+  document.querySelectorAll('.lqip-img').forEach(function(img) {
+    if (img.complete && img.naturalWidth > 0) { img.classList.add('loaded'); return; }
+    img.addEventListener('load', function() { img.classList.add('loaded'); }, { once: true });
+  });
+  </script>
 
 </BaseLayout>
 
@@ -1236,6 +1244,20 @@ const breadcrumbs = [
     .btn-lg { font-size: 15px; padding: 16px 32px; }
   }
 
+  /* ── LQIP blur-up placeholders ── */
+  .why-photo,
+  .donate-hero-frame {
+    background-size: cover;
+    background-position: center;
+  }
+  .lqip-img {
+    opacity: 0;
+    transition: opacity 0.4s ease;
+  }
+  .lqip-img.loaded {
+    opacity: 1;
+  }
+
   @media (prefers-reduced-motion: reduce) {
     [data-reveal] { opacity: 1; transform: none; transition: none; }
     .btn-glow::after { animation: none; display: none; }
@@ -1243,6 +1265,7 @@ const breadcrumbs = [
     .tier-card:hover, .way-card:hover, .dt-card:hover { transform: none; }
     .give-proof-dot { animation: none; }
     .zeffy-modal, .zeffy-modal-container { transition: none; }
+    .lqip-img { opacity: 1; transition: none; }
   }
 </style>
 

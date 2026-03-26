@@ -53,14 +53,19 @@ export async function onRequest(context) {
     );
   }
 
+  let payload;
   try {
-    await verifyJwt(jwt, CF_ACCESS_TEAM_DOMAIN, CF_ACCESS_AUD);
+    payload = await verifyJwt(jwt, CF_ACCESS_TEAM_DOMAIN, CF_ACCESS_AUD);
   } catch (err) {
     return Response.json(
       { success: false, error: `Unauthorized — ${err.message}` },
       { status: 403, headers: cors }
     );
   }
+
+  // Pass authenticated user email to downstream handlers
+  context.data = context.data || {};
+  context.data.userEmail = payload.email || payload.sub || 'unknown';
 
   return context.next();
 }

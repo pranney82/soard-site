@@ -1,16 +1,1029 @@
 ---
-import PageLayout from '../layouts/PageLayout.astro';
+/**
+ * Apply for Makeover — Donor-centric page showcasing the application
+ * process, selection criteria, and makeover journey.
+ * Year-agnostic design with configurable application status from admin.
+ */
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { getSiteStats } from '../utils/stats';
+import { cfRaw, cfSrcset, CF_BASE as CF } from '../utils/cf-image';
+import siteSettings from '../content/site/settings.json';
+
+const stats = await getSiteStats();
+
+/* ── Application status (controlled from admin) ── */
+const app = siteSettings.application;
+const isOpen = app.open === true;
+const appYear = app.year || '2026';
+const appFormUrl = app.formUrl || '';
+const closedMessage = app.closedMessage || `The ${appYear} application period is currently closed.`;
+const ap = siteSettings.applyPhotos;
+const heroPhoto = ap.hero || 'kids/griffin/hero';
+const storyPhoto = ap.story || 'kids/eli/photo-01';
+const selectionPhoto = ap.selection || 'kids/georgia/photo-01';
+const processPhoto = siteSettings.sectionPhotos?.process || 'kids/oakley/photo-15';
+
+const breadcrumbs = [
+  { name: 'Home', url: 'https://sunshineonaranneyday.com/' },
+  { name: 'Apply', url: 'https://sunshineonaranneyday.com/apply/' },
+];
 ---
 
-<PageLayout
-  title="Application"
-  heroLabel="Get Involved"
-  heroTitle={'2026 <em class="highlight">Application</em>'}
-  heroSubtitle="Our application is currently closed"
+<BaseLayout
+  title="Apply for a Makeover — Sunshine on a Ranney Day"
+  description="Learn how families apply for a life-changing room makeover for their child with special needs. See our process from application to the big reveal — all at no cost to families."
+  breadcrumbs={breadcrumbs}
 >
-  <section class="section">
-    <div class="container container--narrow" style="text-align: center; padding-block: var(--space-4xl);">
-      <p style="color: var(--c-text-muted);">This page is being built. Check back soon!</p>
+
+  <!-- ══════ EDITORIAL HERO ══════ -->
+  <section class="apply-hero">
+    <div class="apply-hero-inner">
+      <div class="apply-hero-text">
+        <p class="apply-hero-label">For Families</p>
+        <h1>We build rooms that change <em>everything</em>.</h1>
+        <p class="apply-hero-sub">Dream bedrooms, accessible bathrooms, and therapy rooms for children with special needs — designed with love, built by community, and <strong>always free</strong>.</p>
+        <div class="apply-hero-ctas">
+          <a href="#how-it-works" class="btn btn-primary">See How It Works →</a>
+          <a href="/kids" class="btn btn-outline-dark">Meet the Kids</a>
+        </div>
+      </div>
+      <div class="apply-hero-photos">
+        <div class="apply-hero-photo apply-hero-photo--main">
+          <img
+            src={cfRaw(heroPhoto, 'w=640,h=480,fit=cover,gravity=face,q=80')}
+            srcset={cfSrcset(heroPhoto, [400, 640], { fit: 'cover', gravity: 'face', aspectRatio: 0.75 })}
+            sizes="(max-width: 768px) 85vw, 360px"
+            alt="A child seeing their newly transformed dream room for the first time"
+            width="640"
+            height="480"
+            fetchpriority="high"
+            loading="eager"
+            decoding="async"
+          />
+        </div>
+        <div class="apply-hero-photo apply-hero-photo--accent">
+          <img
+            src={cfRaw(storyPhoto, 'w=400,h=500,fit=cover,gravity=face,q=75')}
+            srcset={cfSrcset(storyPhoto, [300, 400], { fit: 'cover', gravity: 'face', aspectRatio: 1.25 })}
+            sizes="(max-width: 768px) 0px, 220px"
+            alt="A child enjoying their new room"
+            width="400"
+            height="500"
+            loading="lazy"
+            decoding="async"
+          />
+        </div>
+      </div>
+    </div>
+    <div class="apply-hero-rule" aria-hidden="true">
+      <span class="apply-hero-rule-accent"></span>
     </div>
   </section>
-</PageLayout>
+
+  <!-- ══════ APPLICATION STATUS BANNER ══════ -->
+  <div class={`status-banner ${isOpen ? 'status-banner--open' : ''}`}>
+    <div class="status-inner">
+      <div class={`status-dot ${isOpen ? 'status-dot--open' : ''}`} aria-hidden="true"></div>
+      <div class="status-text">
+        <p class="status-headline">{isOpen ? `The ${appYear} application is now open!` : closedMessage}</p>
+        <p class="status-sub">{isOpen ? "We're accepting applications for room makeovers. If you have a child with special needs in the greater Atlanta area, we'd love to hear from you." : 'We announce new openings on social media. Follow us to be the first to know.'}</p>
+      </div>
+      {isOpen ? (
+        appFormUrl && <a href={appFormUrl} target="_blank" rel="noopener noreferrer" class="btn btn-primary">Apply Now →</a>
+      ) : (
+        <div class="status-socials">
+          <a href={siteSettings.social.instagram} target="_blank" rel="noopener noreferrer" class="status-social" aria-label="Follow us on Instagram">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg>
+          </a>
+          <a href={siteSettings.social.facebook} target="_blank" rel="noopener noreferrer" class="status-social" aria-label="Follow us on Facebook">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/></svg>
+          </a>
+        </div>
+      )}
+    </div>
+  </div>
+
+  <!-- ══════ WHO WE SERVE ══════ -->
+  <section class="serve">
+    <div class="serve-inner">
+      <div class="serve-header" data-reveal>
+        <div class="section-label">Who We Serve</div>
+        <h2>Built for kids who need it <em class="highlight">most</em></h2>
+        <p class="serve-lead">We serve children throughout greater Atlanta who face daily challenges most of us never think about — a bedroom that doesn't accommodate a wheelchair, a bathroom that's dangerous to navigate, a space that overwhelms instead of comforts.</p>
+      </div>
+      <div class="serve-grid">
+        <div class="serve-card" data-reveal>
+          <span class="serve-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          </span>
+          <h3>Children with special needs</h3>
+          <p>Physical disabilities, autism, sensory processing disorders, chronic illness, and more. If your child's space isn't serving them, we want to hear from you.</p>
+        </div>
+        <div class="serve-card" data-reveal data-delay="1">
+          <span class="serve-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+          </span>
+          <h3>Greater Atlanta area</h3>
+          <p>Families in the metro Atlanta region and surrounding communities. Our volunteer network of designers and builders work right here in your backyard.</p>
+        </div>
+        <div class="serve-card" data-reveal data-delay="2">
+          <span class="serve-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+          </span>
+          <h3>Always free</h3>
+          <p>Families never pay a cent. Every makeover is fully funded by our community of donors and partners who believe every child deserves better.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════ HOW IT WORKS ══════ -->
+  <section class="journey" id="how-it-works">
+    <div class="journey-inner">
+      <div class="journey-left" data-reveal>
+        <div class="section-label">How It Works</div>
+        <h2>From application to <em class="highlight">big reveal</em></h2>
+        <p class="journey-lead">Every makeover follows the same thoughtful process — designed to create a truly life-changing experience.</p>
+        <div class="journey-photo">
+          <img
+            src={cfRaw(processPhoto, 'w=600,h=800,fit=cover,gravity=face,q=80')}
+            srcset={cfSrcset(processPhoto, [400, 600], { fit: 'cover', gravity: 'face', aspectRatio: 1.33 })}
+            sizes="(max-width: 960px) 85vw, 340px"
+            alt="A child's reaction during their big room reveal moment"
+            width="600"
+            height="800"
+            loading="lazy"
+            decoding="async"
+          />
+        </div>
+      </div>
+      <div class="journey-right">
+        <ol class="journey-steps">
+          <li class="journey-step" data-reveal>
+            <div class="step-marker">
+              <span class="step-num" aria-hidden="true">01</span>
+              <span class="step-line" aria-hidden="true"></span>
+            </div>
+            <div class="step-body">
+              <h3>Family Applies</h3>
+              <p>A parent or caregiver tells us about their child — their diagnosis, personality, dreams, and the challenges their current space presents. Applications are reviewed annually during our open enrollment period.</p>
+            </div>
+          </li>
+          <li class="journey-step" data-reveal data-delay="1">
+            <div class="step-marker">
+              <span class="step-num" aria-hidden="true">02</span>
+              <span class="step-line" aria-hidden="true"></span>
+            </div>
+            <div class="step-body">
+              <h3>We Select & Meet</h3>
+              <p>Our team reviews every application, considering the child's needs, family circumstances, and potential impact. Selected families receive a home visit where we assess the space and get to know the child.</p>
+            </div>
+          </li>
+          <li class="journey-step" data-reveal data-delay="2">
+            <div class="step-marker">
+              <span class="step-num" aria-hidden="true">03</span>
+              <span class="step-line" aria-hidden="true"></span>
+            </div>
+            <div class="step-body">
+              <h3>Design & Plan</h3>
+              <p>Volunteer design partners create a one-of-a-kind concept tailored entirely to the child — their favorite colors, characters, hobbies, and therapeutic needs. Every detail matters.</p>
+            </div>
+          </li>
+          <li class="journey-step" data-reveal data-delay="3">
+            <div class="step-marker">
+              <span class="step-num" aria-hidden="true">04</span>
+              <span class="step-line" aria-hidden="true"></span>
+            </div>
+            <div class="step-body">
+              <h3>Build & Transform</h3>
+              <p>Construction partners bring the design to life. A typical project takes about six weeks from demolition to completion. The family steps away, and when they return — everything has changed.</p>
+            </div>
+          </li>
+          <li class="journey-step journey-step--highlight" data-reveal data-delay="4">
+            <div class="step-marker">
+              <span class="step-num step-num--highlight" aria-hidden="true">05</span>
+            </div>
+            <div class="step-body">
+              <span class="step-badge">The best part</span>
+              <h3>The Big Reveal</h3>
+              <p>The child walks through the door and sees a room designed just for them. That look on their face — that moment — is what every donor, volunteer, and partner works toward.</p>
+            </div>
+          </li>
+        </ol>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════ SELECTION CRITERIA ══════ -->
+  <section class="selection">
+    <div class="selection-inner">
+      <div class="selection-photo" data-reveal>
+        <img
+          src={cfRaw(selectionPhoto, 'w=640,h=800,fit=cover,gravity=face,q=80')}
+          srcset={cfSrcset(selectionPhoto, [400, 640], { fit: 'cover', gravity: 'face', aspectRatio: 1.25 })}
+          sizes="(max-width: 768px) 85vw, 400px"
+          alt="A child being surprised with their new room"
+          width="640"
+          height="800"
+          loading="lazy"
+          decoding="async"
+        />
+      </div>
+      <div class="selection-text" data-reveal data-delay="1">
+        <div class="section-label">Our Approach</div>
+        <h2>How we choose the kids we <em class="highlight">serve</em></h2>
+        <p>Every application matters. When selecting families, we look at the whole picture — not just the diagnosis, but the way a new space could change a child's daily life.</p>
+        <ul class="selection-list">
+          <li>
+            <strong>Medical need & daily impact</strong>
+            <span>How does the current space affect the child's safety, independence, or quality of life?</span>
+          </li>
+          <li>
+            <strong>Financial circumstances</strong>
+            <span>We prioritize families who couldn't otherwise afford these modifications.</span>
+          </li>
+          <li>
+            <strong>Potential for transformation</strong>
+            <span>Will a new space meaningfully change how the child lives, plays, or heals?</span>
+          </li>
+          <li>
+            <strong>Scope & feasibility</strong>
+            <span>Can we build the space the child needs within the home's existing footprint?</span>
+          </li>
+        </ul>
+        <p class="selection-note">We wish we could help every child who applies. As our community of donors and partners grows, so does the number of kids we can serve.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════ IMPACT — Dark ══════ -->
+  <section class="impact-section">
+    <div class="impact-inner">
+      <div class="impact-header" data-reveal>
+        <div class="section-label section-label--yellow">Since 2012</div>
+        <h2>Built by community. <em>Powered by love.</em></h2>
+      </div>
+      <div class="impact-grid">
+        <div class="impact-card" data-reveal>
+          <span class="impact-num">{stats.totalKids}+</span>
+          <span class="impact-label">Children Served</span>
+        </div>
+        <div class="impact-card" data-reveal data-delay="1">
+          <span class="impact-num">{stats.totalRooms}+</span>
+          <span class="impact-label">Rooms Built</span>
+        </div>
+        <div class="impact-card" data-reveal data-delay="2">
+          <span class="impact-num">{stats.years}</span>
+          <span class="impact-label">Years of Impact</span>
+        </div>
+        <div class="impact-card" data-reveal data-delay="3">
+          <span class="impact-num">$0</span>
+          <span class="impact-label">Cost to Families</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════ WHAT WE BUILD ══════ -->
+  <section class="build-section">
+    <div class="build-inner">
+      <div class="build-header" data-reveal>
+        <div class="section-label">What We Build</div>
+        <h2>Three types of spaces, one <em class="highlight">purpose</em></h2>
+      </div>
+      <div class="build-grid">
+        <a href="/kids" class="build-tile" data-reveal>
+          <span class="build-tile-tag">Most Popular</span>
+          <h3>Dream Bedrooms</h3>
+          <p>Personalized sanctuaries designed around a child's interests, needs, and personality — where they can escape, imagine, and be themselves.</p>
+          <span class="build-tile-link">See bedrooms →</span>
+        </a>
+        <a href="/kids" class="build-tile" data-reveal data-delay="1">
+          <span class="build-tile-tag">Life-Changing</span>
+          <h3>Accessible Bathrooms</h3>
+          <p>Roll-in showers, grab bars, and lowered vanities — giving children independence and giving families relief from daily struggles.</p>
+          <span class="build-tile-link">See bathrooms →</span>
+        </a>
+        <a href="/kids" class="build-tile" data-reveal data-delay="2">
+          <span class="build-tile-tag">Therapeutic</span>
+          <h3>Therapy Rooms</h3>
+          <p>Calming retreats with dimmable lights, swings, crash pads, and textured walls — spaces where children decompress and develop.</p>
+          <span class="build-tile-link">See therapy rooms →</span>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════ DONOR CTA — Yellow Finale ══════ -->
+  <section class="finale">
+    <div class="finale-inner">
+      <h2 data-reveal>You can help build the next<br/>child's <em>dream room</em>.</h2>
+      <p data-reveal data-delay="1">Every room is funded entirely by donors and partners. No government grants. No corporate overhead. Just people who believe every kid deserves better.</p>
+      <div class="finale-ctas" data-reveal data-delay="2">
+        <a href="/donate" class="btn btn-dark btn-lg">Donate Today →</a>
+        <a href="/partners" class="btn btn-outline-dark">Become a Partner</a>
+      </div>
+      <p class="finale-note" data-reveal data-delay="3">501(c)(3) · EIN 45-4773997 · 100% of donations fund rooms</p>
+    </div>
+  </section>
+
+</BaseLayout>
+
+<style>
+  /* ══════════════════════════════════════════
+     SHARED
+     ══════════════════════════════════════════ */
+  .section-label {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--c-accent);
+    margin-bottom: 16px;
+  }
+  .section-label--yellow { color: var(--c-yellow); }
+  .highlight {
+    font-style: italic;
+    background-image: linear-gradient(transparent 55%, var(--c-yellow-soft) 55%);
+  }
+  h2 em:not(.highlight) { font-style: italic; color: var(--c-yellow); }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    font-family: var(--font-body);
+    font-weight: 600;
+    font-size: 15px;
+    padding: 14px 32px;
+    border: none;
+    border-radius: 100px;
+    cursor: pointer;
+    text-decoration: none;
+    transition: transform var(--transition-base), box-shadow var(--transition-base), background var(--transition-base), color var(--transition-base);
+    min-height: 48px;
+  }
+  .btn:hover { transform: translateY(-2px); }
+  .btn:active { transform: translateY(0); }
+  .btn-lg { font-size: 17px; padding: 18px 44px; }
+  .btn-primary { background: var(--c-yellow); color: var(--c-dark); }
+  .btn-primary:hover { box-shadow: 0 8px 24px rgba(255,218,36,0.3); }
+  .btn-dark { background: var(--c-dark); color: #fff; }
+  .btn-dark:hover { box-shadow: 0 8px 24px rgba(0,0,0,0.2); }
+  .btn-outline-dark {
+    background: transparent;
+    color: var(--c-dark);
+    border: 2px solid var(--c-dark);
+  }
+  .btn-outline-dark:hover { background: var(--c-dark); color: var(--c-yellow); }
+
+  /* ══════════════════════════════════════════
+     HERO — Editorial split (no full-width image)
+     ══════════════════════════════════════════ */
+  .apply-hero {
+    background: var(--c-cream);
+    padding: var(--space-3xl) 0 0;
+  }
+  .apply-hero-inner {
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding: 0 var(--space-xl);
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 48px;
+    align-items: center;
+  }
+  .apply-hero-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--c-text-muted);
+    margin-bottom: var(--space-md);
+  }
+  .apply-hero-text h1 {
+    font-size: clamp(2rem, 4.5vw, 3.25rem);
+    letter-spacing: -0.025em;
+    line-height: 1.1;
+    color: var(--c-text);
+    margin-bottom: 20px;
+  }
+  .apply-hero-text h1 em {
+    font-style: italic;
+    background-image: linear-gradient(transparent 55%, var(--c-yellow-soft) 55%);
+  }
+  .apply-hero-sub {
+    font-size: clamp(15px, 1.5vw, 17px);
+    color: var(--c-text-muted);
+    line-height: 1.65;
+    margin-bottom: 32px;
+    max-width: 480px;
+  }
+  .apply-hero-ctas {
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+  }
+  .apply-hero-photos {
+    display: grid;
+    grid-template-columns: 1fr 0.55fr;
+    gap: 16px;
+    align-items: end;
+  }
+  .apply-hero-photo {
+    border-radius: 16px;
+    overflow: hidden;
+  }
+  .apply-hero-photo img {
+    width: 100%;
+    height: auto;
+    display: block;
+  }
+  .apply-hero-photo--accent {
+    margin-bottom: 32px;
+  }
+  .apply-hero-rule {
+    position: relative;
+    height: 2px;
+    background: var(--c-border, #e5e4e0);
+    margin-top: var(--space-2xl);
+    max-width: var(--max-width);
+    margin-left: auto;
+    margin-right: auto;
+  }
+  .apply-hero-rule-accent {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    top: -1px;
+    width: 48px;
+    height: 3px;
+    background: var(--c-yellow);
+    border-radius: 1px;
+  }
+
+  /* ══════════════════════════════════════════
+     STATUS BANNER
+     ══════════════════════════════════════════ */
+  .status-banner {
+    background: var(--c-warm-gray);
+    border-bottom: 1px solid var(--c-border, #e5e4e0);
+  }
+  .status-inner {
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding: 20px var(--space-xl);
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  .status-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--c-text-muted);
+    flex-shrink: 0;
+    opacity: 0.5;
+  }
+  .status-dot--open {
+    background: #38A169;
+    opacity: 1;
+    box-shadow: 0 0 0 4px rgba(56,161,105,0.2);
+  }
+  .status-text { flex: 1; min-width: 0; }
+  .status-headline {
+    font-weight: 700;
+    font-size: 14px;
+    color: var(--c-text);
+  }
+  .status-sub {
+    font-size: 13px;
+    color: var(--c-text-muted);
+    line-height: 1.5;
+    margin-top: 2px;
+  }
+  .status-banner--open {
+    background: rgba(56,161,105,0.06);
+    border-bottom-color: rgba(56,161,105,0.15);
+  }
+  .status-socials {
+    display: flex;
+    gap: 10px;
+    flex-shrink: 0;
+  }
+  .status-social {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: var(--c-dark);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform var(--transition-fast), background var(--transition-fast);
+  }
+  .status-social:hover {
+    transform: translateY(-2px);
+    background: var(--c-yellow);
+  }
+  .status-social svg {
+    width: 16px;
+    height: 16px;
+    stroke: #fff;
+  }
+  .status-social:hover svg {
+    stroke: var(--c-dark);
+  }
+
+  /* ══════════════════════════════════════════
+     WHO WE SERVE
+     ══════════════════════════════════════════ */
+  .serve {
+    padding: var(--space-4xl) 0;
+    background: var(--c-cream);
+  }
+  .serve-inner {
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding: 0 var(--space-xl);
+  }
+  .serve-header {
+    text-align: center;
+    margin-bottom: 48px;
+  }
+  .serve-header h2 {
+    font-size: clamp(1.625rem, 3vw + 0.5rem, 2.5rem);
+    letter-spacing: -0.02em;
+    line-height: 1.15;
+    margin-bottom: 16px;
+  }
+  .serve-lead {
+    font-size: 16px;
+    color: var(--c-text-muted);
+    line-height: 1.65;
+    max-width: 600px;
+    margin: 0 auto;
+  }
+  .serve-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 24px;
+  }
+  .serve-card {
+    background: #fff;
+    border-radius: 16px;
+    padding: 36px 28px;
+    border: 1px solid var(--c-border, #e5e4e0);
+    transition: transform var(--transition-base), box-shadow var(--transition-base);
+  }
+  .serve-card:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-lg);
+  }
+  .serve-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 48px;
+    background: rgba(255,218,36,0.12);
+    border-radius: 14px;
+    margin-bottom: 20px;
+  }
+  .serve-icon svg {
+    width: 24px;
+    height: 24px;
+    stroke: var(--c-dark);
+  }
+  .serve-card h3 {
+    font-size: 17px;
+    font-weight: 700;
+    margin-bottom: 10px;
+  }
+  .serve-card p {
+    font-size: 14px;
+    line-height: 1.65;
+    color: var(--c-text-muted);
+  }
+
+  /* ══════════════════════════════════════════
+     HOW IT WORKS — Split layout
+     ══════════════════════════════════════════ */
+  .journey {
+    background: var(--c-warm-gray);
+    padding: var(--space-4xl) 0;
+  }
+  .journey-inner {
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding: 0 var(--space-xl);
+    display: grid;
+    grid-template-columns: 1fr 1.1fr;
+    gap: 64px;
+    align-items: start;
+  }
+  .journey-left h2 {
+    font-size: clamp(1.625rem, 3vw + 0.5rem, 2.5rem);
+    letter-spacing: -0.02em;
+    line-height: 1.15;
+    margin-bottom: 16px;
+  }
+  .journey-lead {
+    font-size: 16px;
+    color: var(--c-text-muted);
+    line-height: 1.65;
+    margin-bottom: 32px;
+  }
+  .journey-photo {
+    border-radius: 16px;
+    overflow: hidden;
+  }
+  .journey-photo img {
+    width: 100%;
+    height: auto;
+    display: block;
+    border-radius: 16px;
+  }
+  .journey-steps {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .journey-step {
+    display: flex;
+    gap: 24px;
+  }
+  .step-marker {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    flex-shrink: 0;
+    width: 44px;
+  }
+  .step-num {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: var(--c-dark);
+    color: var(--c-yellow);
+    font-family: var(--font-body);
+    font-weight: 700;
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    position: relative;
+    z-index: 2;
+  }
+  .step-num--highlight {
+    background: var(--c-yellow);
+    color: var(--c-dark);
+    box-shadow: 0 0 0 4px rgba(255,218,36,0.2);
+  }
+  .step-line {
+    width: 2px;
+    flex: 1;
+    background: var(--c-border, #e5e4e0);
+    min-height: 20px;
+  }
+  .step-body {
+    padding-bottom: 36px;
+    flex: 1;
+  }
+  .journey-step:last-child .step-body {
+    padding-bottom: 0;
+  }
+  .step-body h3 {
+    font-size: 18px;
+    font-weight: 700;
+    margin-bottom: 6px;
+    color: var(--c-text);
+    padding-top: 9px;
+  }
+  .step-body p {
+    font-size: 14px;
+    line-height: 1.65;
+    color: var(--c-text-muted);
+  }
+  .step-badge {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: #fff;
+    background: var(--c-dark);
+    padding: 4px 12px;
+    border-radius: 100px;
+    margin-bottom: 6px;
+  }
+
+  /* ══════════════════════════════════════════
+     SELECTION
+     ══════════════════════════════════════════ */
+  .selection {
+    padding: var(--space-4xl) 0;
+    background: var(--c-cream);
+  }
+  .selection-inner {
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding: 0 var(--space-xl);
+    display: grid;
+    grid-template-columns: 0.85fr 1fr;
+    gap: 64px;
+    align-items: center;
+  }
+  .selection-photo {
+    border-radius: 16px;
+    overflow: hidden;
+  }
+  .selection-photo img {
+    width: 100%;
+    height: auto;
+    display: block;
+    border-radius: 16px;
+  }
+  .selection-text h2 {
+    font-size: clamp(1.625rem, 3vw + 0.5rem, 2.5rem);
+    letter-spacing: -0.02em;
+    line-height: 1.15;
+    margin-bottom: 16px;
+  }
+  .selection-text > p {
+    font-size: 15px;
+    line-height: 1.65;
+    color: var(--c-text-muted);
+    margin-bottom: 24px;
+  }
+  .selection-list {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+  .selection-list li {
+    padding-left: 24px;
+    position: relative;
+  }
+  .selection-list li::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 7px;
+    width: 10px;
+    height: 10px;
+    background: var(--c-yellow);
+    border-radius: 50%;
+  }
+  .selection-list li strong {
+    display: block;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--c-text);
+    margin-bottom: 2px;
+  }
+  .selection-list li span {
+    font-size: 13px;
+    color: var(--c-text-muted);
+    line-height: 1.5;
+  }
+  .selection-note {
+    font-size: 14px;
+    color: var(--c-text-muted);
+    font-style: italic;
+    line-height: 1.6;
+  }
+
+  /* ══════════════════════════════════════════
+     IMPACT — Dark
+     ══════════════════════════════════════════ */
+  .impact-section {
+    background: var(--c-dark);
+    color: #fff;
+    padding: var(--space-3xl) 0;
+  }
+  .impact-inner {
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding: 0 var(--space-xl);
+    text-align: center;
+  }
+  .impact-header {
+    margin-bottom: 40px;
+  }
+  .impact-header h2 {
+    font-size: clamp(1.625rem, 3vw + 0.5rem, 2.5rem);
+    letter-spacing: -0.02em;
+    line-height: 1.15;
+  }
+  .impact-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 24px;
+  }
+  .impact-card {
+    padding: 28px 16px;
+    background: rgba(255,255,255,0.04);
+    border-radius: 14px;
+    border: 1px solid rgba(255,255,255,0.07);
+  }
+  .impact-num {
+    display: block;
+    font-family: var(--font-display);
+    font-size: clamp(1.75rem, 3.5vw, 2.75rem);
+    font-weight: 400;
+    color: var(--c-yellow);
+    line-height: 1;
+    margin-bottom: 6px;
+  }
+  .impact-label {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: rgba(255,255,255,0.45);
+  }
+
+  /* ══════════════════════════════════════════
+     WHAT WE BUILD
+     ══════════════════════════════════════════ */
+  .build-section {
+    padding: var(--space-4xl) 0;
+    background: var(--c-warm-gray);
+  }
+  .build-inner {
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding: 0 var(--space-xl);
+  }
+  .build-header {
+    text-align: center;
+    margin-bottom: 40px;
+  }
+  .build-header h2 {
+    font-size: clamp(1.625rem, 3vw + 0.5rem, 2.5rem);
+    letter-spacing: -0.02em;
+    line-height: 1.15;
+  }
+  .build-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 24px;
+  }
+  .build-tile {
+    background: #fff;
+    border-radius: 16px;
+    padding: 36px 28px;
+    border: 1px solid var(--c-border, #e5e4e0);
+    text-decoration: none;
+    color: inherit;
+    display: flex;
+    flex-direction: column;
+    transition: transform var(--transition-base), box-shadow var(--transition-base);
+  }
+  .build-tile:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-lg);
+  }
+  .build-tile-tag {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--c-yellow);
+    background: rgba(255,218,36,0.1);
+    padding: 4px 10px;
+    border-radius: 100px;
+    align-self: flex-start;
+    margin-bottom: 16px;
+  }
+  .build-tile h3 {
+    font-size: 18px;
+    font-weight: 700;
+    margin-bottom: 10px;
+  }
+  .build-tile p {
+    font-size: 14px;
+    line-height: 1.65;
+    color: var(--c-text-muted);
+    flex: 1;
+  }
+  .build-tile-link {
+    margin-top: 16px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--c-dark);
+    transition: color var(--transition-fast);
+  }
+  .build-tile:hover .build-tile-link {
+    color: var(--c-yellow-hover);
+  }
+
+  /* ══════════════════════════════════════════
+     FINALE — Yellow CTA
+     ══════════════════════════════════════════ */
+  .finale {
+    background: var(--c-yellow);
+    padding: var(--space-4xl) 0;
+    text-align: center;
+  }
+  .finale-inner {
+    max-width: var(--max-width-narrow);
+    margin: 0 auto;
+    padding: 0 var(--space-xl);
+  }
+  .finale h2 {
+    font-size: clamp(1.75rem, 4vw, 2.75rem);
+    letter-spacing: -0.02em;
+    line-height: 1.15;
+    color: var(--c-dark);
+    margin-bottom: 16px;
+  }
+  .finale h2 em { font-style: italic; }
+  .finale > p {
+    font-size: 16px;
+    line-height: 1.65;
+    color: var(--c-dark);
+    opacity: 0.7;
+    max-width: 520px;
+    margin: 0 auto 32px;
+  }
+  .finale-ctas {
+    display: flex;
+    gap: 14px;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-bottom: 24px;
+  }
+  .finale-note {
+    font-size: 13px;
+    color: var(--c-dark);
+    opacity: 0.45;
+    letter-spacing: 0.02em;
+  }
+
+  /* ══════════════════════════════════════════
+     RESPONSIVE
+     ══════════════════════════════════════════ */
+  @media (max-width: 960px) {
+    .apply-hero-inner {
+      grid-template-columns: 1fr;
+      gap: 32px;
+      text-align: center;
+    }
+    .apply-hero-sub { margin-inline: auto; }
+    .apply-hero-ctas { justify-content: center; }
+    .apply-hero-photos {
+      max-width: 480px;
+      margin: 0 auto;
+    }
+
+    .journey-inner {
+      grid-template-columns: 1fr;
+      gap: 40px;
+    }
+    .journey-photo { max-width: 400px; }
+
+    .selection-inner {
+      grid-template-columns: 1fr;
+      gap: 32px;
+    }
+  }
+
+  @media (max-width: 768px) {
+    .apply-hero { padding-top: var(--space-2xl); }
+    .apply-hero-photo--accent { display: none; }
+    .apply-hero-photos { grid-template-columns: 1fr; }
+
+    .status-inner {
+      flex-direction: column;
+      text-align: center;
+      gap: 12px;
+      padding: 16px var(--space-lg);
+    }
+    .status-socials { justify-content: center; }
+
+    .serve-grid { grid-template-columns: 1fr; }
+
+    .journey-step { gap: 16px; }
+    .step-marker { width: 36px; }
+    .step-num { width: 36px; height: 36px; font-size: 11px; }
+    .step-body h3 { font-size: 16px; padding-top: 6px; }
+
+    .impact-grid {
+      grid-template-columns: repeat(2, 1fr);
+      gap: 14px;
+    }
+    .impact-card { padding: 20px 12px; }
+
+    .build-grid { grid-template-columns: 1fr; }
+
+    .finale-ctas { flex-direction: column; align-items: center; }
+  }
+</style>

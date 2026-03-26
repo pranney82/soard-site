@@ -11,7 +11,7 @@
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import Button from '../../components/ui/Button.astro';
 import { getCollection } from 'astro:content';
-import { cfRaw, cfSrcset } from '../../utils/cf-image';
+import { cfRaw, cfSrcset, cfLqip } from '../../utils/cf-image';
 import { getWebPageSchema, getBreadcrumbSchema, buildSchemaGraph } from '../../utils/schema';
 
 export async function getStaticPaths() {
@@ -52,7 +52,7 @@ const heroSrcset = kid.heroImage ? cfSrcset(kid.heroImage, [640, 1024, 1600, 240
     <!-- ═══ Hero ══════════════════════════════════ -->
     <section class="fp-hero">
       {kid.heroImage && (
-        <div class="fp-hero__bg">
+        <div class="fp-hero__bg" style={`background-image:url('${cfLqip(kid.heroImage)}')`}>
           <img
             src={cfRaw(kid.heroImage, 'w=1600,q=85')}
             srcset={cfSrcset(kid.heroImage, [640, 1024, 1600, 2400])}
@@ -117,12 +117,13 @@ const heroSrcset = kid.heroImage ? cfSrcset(kid.heroImage, [640, 1024, 1600, 240
             {cs.challenge.photos && cs.challenge.photos.length > 0 && (
               <div class={`fp-editorial__photos ${cs.challenge.photos.length === 1 ? 'fp-editorial__photos--single' : ''}`}>
                 {cs.challenge.photos.map((photo, i) => (
-                  <figure class="fp-photo">
+                  <figure class="fp-photo" style={`background-image:url('${cfLqip(photo.url)}')`}>
                     <img
                       src={cfRaw(photo.url, 'w=800,q=85')}
                       srcset={cfSrcset(photo.url, [400, 800])}
                       sizes="(max-width: 768px) 90vw, 400px"
                       alt={photo.alt || `Before: ${kid.name}'s room`}
+                      class="lqip-img"
                       loading="lazy" decoding="async"
                       width="800" height="600"
                     />
@@ -147,12 +148,13 @@ const heroSrcset = kid.heroImage ? cfSrcset(kid.heroImage, [640, 1024, 1600, 240
             {cs.design.photos && cs.design.photos.length > 0 && (
               <div class={`fp-editorial__photos ${cs.design.photos.length === 1 ? 'fp-editorial__photos--single' : ''}`}>
                 {cs.design.photos.map((photo, i) => (
-                  <figure class="fp-photo">
+                  <figure class="fp-photo" style={`background-image:url('${cfLqip(photo.url)}')`}>
                     <img
                       src={cfRaw(photo.url, 'w=800,q=85')}
                       srcset={cfSrcset(photo.url, [400, 800])}
                       sizes="(max-width: 768px) 90vw, 400px"
                       alt={photo.alt || `Design process for ${kid.name}'s room`}
+                      class="lqip-img"
                       loading="lazy" decoding="async"
                       width="800" height="600"
                     />
@@ -187,12 +189,13 @@ const heroSrcset = kid.heroImage ? cfSrcset(kid.heroImage, [640, 1024, 1600, 240
             {cs.build.photos && cs.build.photos.length > 0 && (
               <div class={`fp-editorial__photos ${cs.build.photos.length === 1 ? 'fp-editorial__photos--single' : ''}`}>
                 {cs.build.photos.map((photo, i) => (
-                  <figure class="fp-photo">
+                  <figure class="fp-photo" style={`background-image:url('${cfLqip(photo.url)}')`}>
                     <img
                       src={cfRaw(photo.url, 'w=800,q=85')}
                       srcset={cfSrcset(photo.url, [400, 800])}
                       sizes="(max-width: 768px) 90vw, 400px"
                       alt={photo.alt || `Construction progress on ${kid.name}'s room`}
+                      class="lqip-img"
                       loading="lazy" decoding="async"
                       width="800" height="600"
                     />
@@ -214,12 +217,13 @@ const heroSrcset = kid.heroImage ? cfSrcset(kid.heroImage, [640, 1024, 1600, 240
           <h2 class="fp-section__heading">The <em class="highlight">Reveal</em></h2>
 
           {cs.reveal.photos && cs.reveal.photos.length > 0 && (
-            <div class="fp-reveal__hero-photo">
+            <div class="fp-reveal__hero-photo" style={`background-image:url('${cfLqip(cs.reveal.photos[0].url)}')`}>
               <img
                 src={cfRaw(cs.reveal.photos[0].url, 'w=1400,q=85')}
                 srcset={cfSrcset(cs.reveal.photos[0].url, [700, 1400])}
                 sizes="(max-width: 768px) 90vw, 900px"
                 alt={cs.reveal.photos[0].alt || `${kid.name}'s completed room`}
+                class="lqip-img"
                 loading="lazy" decoding="async"
                 width="1400" height="800"
               />
@@ -242,12 +246,13 @@ const heroSrcset = kid.heroImage ? cfSrcset(kid.heroImage, [640, 1024, 1600, 240
           {cs.reveal.photos && cs.reveal.photos.length > 1 && (
             <div class="fp-reveal__grid">
               {cs.reveal.photos.slice(1).map(photo => (
-                <figure class="fp-photo">
+                <figure class="fp-photo" style={`background-image:url('${cfLqip(photo.url)}')`}>
                   <img
                     src={cfRaw(photo.url, 'w=700,q=85')}
                     srcset={cfSrcset(photo.url, [350, 700])}
                     sizes="(max-width: 768px) 45vw, 350px"
                     alt={photo.alt || `${kid.name}'s finished room`}
+                    class="lqip-img"
                     loading="lazy" decoding="async"
                     width="700" height="500"
                   />
@@ -267,12 +272,13 @@ const heroSrcset = kid.heroImage ? cfSrcset(kid.heroImage, [640, 1024, 1600, 240
           <h2 class="fp-section__heading" style="text-align: center;">The Full <em class="highlight">Gallery</em></h2>
           <div class="fp-gallery">
             {cs.gallery.map((photo, i) => (
-              <figure class="fp-gallery__item">
+              <figure class="fp-gallery__item" style={`background-image:url('${cfLqip(photo.url)}')`}>
                 <img
                   src={cfRaw(photo.url, 'w=600,q=85')}
                   srcset={cfSrcset(photo.url, [300, 600])}
                   sizes="(max-width: 600px) 45vw, (max-width: 1100px) 30vw, 280px"
                   alt={photo.alt || `${kid.name}'s room photo ${i + 1}`}
+                  class="lqip-img"
                   loading="lazy" decoding="async"
                   width="600" height="400"
                 />
@@ -784,5 +790,29 @@ const heroSrcset = kid.heroImage ? cfSrcset(kid.heroImage, [640, 1024, 1600, 240
     .fp-partner-logo {
       transition: none;
     }
+    .lqip-img { transition: none; }
+  }
+
+  /* ── LQIP blur-up placeholders ── */
+  .fp-hero__bg,
+  .fp-photo,
+  .fp-reveal__hero-photo,
+  .fp-gallery__item {
+    background-size: cover;
+    background-position: center;
+  }
+  .lqip-img {
+    opacity: 0;
+    transition: opacity 0.4s ease;
+  }
+  .lqip-img.loaded {
+    opacity: 1;
   }
 </style>
+
+<script is:inline>
+document.querySelectorAll('.lqip-img').forEach(function(img) {
+  if (img.complete && img.naturalWidth > 0) { img.classList.add('loaded'); return; }
+  img.addEventListener('load', function() { img.classList.add('loaded'); }, { once: true });
+});
+</script>

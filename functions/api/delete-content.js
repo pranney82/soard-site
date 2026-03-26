@@ -15,10 +15,12 @@
 
 import { parsePath } from './_collections.js';
 import { deleteFile } from './_github.js';
+import { logAudit, getEntityName } from './_audit.js';
 
 export async function onRequestPost(context) {
   try {
     const { DB } = context.env;
+    const userEmail = context.data?.userEmail || 'unknown';
     const { path, message } = await context.request.json();
 
     if (!path || !message) {
@@ -35,6 +37,19 @@ export async function onRequestPost(context) {
         { status: 403 }
       );
     }
+
+    // 0. Read old value before deleting (for audit trail)
+    let oldData = null;
+    let entityName = null;
+    try {
+      if (parsed.type === 'site') {
+        const row = await DB.prepare('SELECT data FROM site_config WHERE key = ?').bind(parsed.key).first();
+        if (row) { oldData = JSON.parse(row.data); entityName = getEntityName(oldData); }
+      } else {
+        const row = await DB.prepare(`SELECT data FROM ${parsed.table} WHERE slug = ?`).bind(parsed.slug).first();
+        if (row) { oldData = JSON.parse(row.data); entityName = getEntityName(oldData); }
+      }
+    } catch (e) { /* ok */ }
 
     // 1. Delete from D1 (read cache)
     if (parsed.type === 'site') {
@@ -53,6 +68,21 @@ export async function onRequestPost(context) {
       gitStatus = 'failed';
       console.error('[delete-content] GitHub delete failed:', err.message);
     }
+
+    // 3. Audit log
+    const entityType = parsed.type === 'site' ? parsed.key : parsed.table;
+    const entitySlug = parsed.type === 'site' ? parsed.key : parsed.slug;
+
+    await logAudit(DB, {
+      userEmail,
+      action: 'deleted',
+      entityType,
+      entitySlug,
+      entityName,
+      changes: null,
+      path,
+      gitStatus,
+    });
 
     return Response.json({ success: true, gitCommit: gitStatus });
   } catch (err) {

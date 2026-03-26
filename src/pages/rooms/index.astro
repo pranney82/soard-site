@@ -8,7 +8,7 @@
 import PageLayout from '../../layouts/PageLayout.astro';
 import Button from '../../components/ui/Button.astro';
 import { getCollection } from 'astro:content';
-import { cfRaw, cfSrcset } from '../../utils/cf-image';
+import { cfRaw, cfSrcset, cfLqip } from '../../utils/cf-image';
 
 const allKids = await getCollection('kids');
 const featured = allKids
@@ -31,13 +31,13 @@ const featured = allKids
             const cs = kid.caseStudy;
             return (
               <a href={`/rooms/${kid.slug}/`} class={`featured-card ${i === 0 ? 'featured-card--large' : ''}`}>
-                <div class="featured-card__frame">
+                <div class="featured-card__frame" style={`background-image:url('${cfLqip(kid.heroImage!)}')`}>
                   <img
                     src={cfRaw(kid.heroImage!, 'w=800,q=85')}
                     srcset={cfSrcset(kid.heroImage!, [400, 800, 1200])}
                     sizes={i === 0 ? '(max-width: 768px) 90vw, 60vw' : '(max-width: 768px) 90vw, 30vw'}
                     alt={`${kid.name}'s room makeover`}
-                    class="featured-card__img"
+                    class="featured-card__img lqip-img"
                     loading={i === 0 ? 'eager' : 'lazy'}
                     decoding="async"
                     width="800"
@@ -94,6 +94,13 @@ const featured = allKids
   </section>
 </PageLayout>
 
+<script is:inline>
+document.querySelectorAll('.lqip-img').forEach(function(img) {
+  if (img.complete && img.naturalWidth > 0) { img.classList.add('loaded'); return; }
+  img.addEventListener('load', function() { img.classList.add('loaded'); }, { once: true });
+});
+</script>
+
 <style>
   /* ═══ Featured Grid ═══════════════════════ */
   .featured-section {
@@ -133,6 +140,17 @@ const featured = allKids
   .featured-card__frame {
     position: absolute;
     inset: 0;
+    background-size: cover;
+    background-position: center;
+  }
+
+  /* ── LQIP blur-up placeholders ── */
+  .lqip-img {
+    opacity: 0;
+    transition: opacity 0.4s ease;
+  }
+  .lqip-img.loaded {
+    opacity: 1;
   }
 
   .featured-card__img {

@@ -295,7 +295,7 @@
       .img-picker-toolbar { flex-direction: column; gap: 0.5rem; }
       .img-picker-toolbar input { min-width: 0; width: 100%; flex: none; }
       .img-picker-toolbar .btn { width: 100%; justify-content: center; min-height: 44px; }
-      .img-picker-grid { grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); }
+      .img-picker-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
       .img-picker-pager .btn { min-height: 44px; min-width: 44px; }
 
       /* Deploy items */
@@ -1250,10 +1250,6 @@
       from { opacity: 0; transform: translateY(16px); }
       to { opacity: 1; transform: translateY(0); }
     }
-    @keyframes heroFadeIn {
-      from { opacity: 0; transform: translateY(-8px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
     @keyframes countUp {
       from { opacity: 0; transform: translateY(10px) scale(0.95); }
       to { opacity: 1; transform: translateY(0) scale(1); }
@@ -1436,77 +1432,6 @@
       color: #E53E3E;
     }
 
-    /* ─── Dashboard Hero ────────────────── */
-    .dash-hero {
-      background: linear-gradient(135deg, #1A1B1F 0%, #2D2E33 60%, #1A1B1F 100%);
-      border-radius: var(--radius-lg);
-      padding: 2rem 2.25rem;
-      margin-bottom: 1.75rem;
-      color: #fff;
-      position: relative;
-      overflow: hidden;
-      animation: heroFadeIn 0.5s cubic-bezier(0.4, 0, 0.2, 1) both;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.15);
-    }
-    .dash-hero::before {
-      content: '';
-      position: absolute;
-      top: -40%;
-      right: -10%;
-      width: 320px;
-      height: 320px;
-      background: radial-gradient(circle, rgba(255,213,0,0.15) 0%, transparent 70%);
-      pointer-events: none;
-    }
-    .dash-hero::after {
-      content: '';
-      position: absolute;
-      bottom: -30%;
-      left: 10%;
-      width: 200px;
-      height: 200px;
-      background: radial-gradient(circle, rgba(56,161,105,0.08) 0%, transparent 70%);
-      pointer-events: none;
-    }
-    .dash-hero-greeting {
-      font-size: 1.75rem;
-      font-weight: 800;
-      margin-bottom: 0.25rem;
-      letter-spacing: -0.02em;
-    }
-    .dash-hero-greeting span { color: var(--color-primary); }
-    .dash-hero-date {
-      font-size: 0.85rem;
-      color: rgba(255,255,255,0.5);
-      margin-bottom: 1rem;
-    }
-    .dash-hero-summary {
-      display: flex;
-      gap: 2rem;
-      flex-wrap: wrap;
-    }
-    .dash-hero-stat {
-      display: flex;
-      flex-direction: column;
-    }
-    .dash-hero-stat-value {
-      font-size: 1.5rem;
-      font-weight: 800;
-      color: var(--color-primary);
-      line-height: 1.2;
-      animation: countUp 0.6s cubic-bezier(0.4, 0, 0.2, 1) both;
-    }
-    .dash-hero-stat:nth-child(1) .dash-hero-stat-value { animation-delay: 0.2s; }
-    .dash-hero-stat:nth-child(2) .dash-hero-stat-value { animation-delay: 0.3s; }
-    .dash-hero-stat:nth-child(3) .dash-hero-stat-value { animation-delay: 0.4s; }
-    .dash-hero-stat:nth-child(4) .dash-hero-stat-value { animation-delay: 0.5s; }
-    .dash-hero-stat-label {
-      font-size: 0.72rem;
-      color: rgba(255,255,255,0.45);
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      font-weight: 600;
-    }
 
     /* ─── Quick Actions ────────────────── */
     .quick-actions {
@@ -1691,18 +1616,12 @@
     }
 
     @media (max-width: 768px) {
-      .dash-hero { padding: 1.25rem 1rem; margin-bottom: 1.25rem; }
-      .dash-hero-greeting { font-size: 1.35rem; }
-      .dash-hero-summary { gap: 1.25rem; }
       .quick-actions { gap: 0.5rem; }
       .quick-action-btn { padding: 0.5rem 0.75rem; font-size: 0.78rem; }
       .attention-grid { grid-template-columns: 1fr; }
       .dash-bottom-grid { grid-template-columns: 1fr; gap: 1rem; }
     }
     @media (max-width: 480px) {
-      .dash-hero { padding: 1rem 0.85rem; }
-      .dash-hero-greeting { font-size: 1.15rem; }
-      .dash-hero-stat-value { font-size: 1.2rem; }
       .quick-action-btn .qa-label { display: none; }
     }
 
@@ -1747,7 +1666,7 @@
     .img-picker-modal { max-width: 900px; width: 95vw; max-height: 85vh; display: flex; flex-direction: column; }
     .img-picker-toolbar { display: flex; gap: 0.75rem; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; }
     .img-picker-toolbar input { flex: 1; min-width: 200px; }
-    .img-picker-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 0.75rem; overflow-y: auto; flex: 1; padding: 0.25rem; }
+    .img-picker-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0.75rem; overflow-y: auto; flex: 1; padding: 0.25rem; }
     .img-picker-thumb { position: relative; aspect-ratio: 1; border-radius: 10px; overflow: hidden; cursor: pointer; border: 3px solid transparent; transition: all 0.15s ease; background: #F5F4F0; }
     .img-picker-thumb:hover { border-color: var(--color-primary); transform: translateY(-2px); box-shadow: 0 4px 16px rgba(0,0,0,0.12); }
     .img-picker-thumb.selected { border-color: var(--color-primary); box-shadow: 0 0 0 2px var(--color-primary); }
@@ -1921,47 +1840,57 @@
       },
     };
 
-    // ─── Activity Log ──────────────────────
-    const ACTIVITY_KEY = 'soard_activity_log';
-    function logActivity(action, type, name) {
-      try {
-        const log = JSON.parse(localStorage.getItem(ACTIVITY_KEY) || '[]');
-        log.unshift({ action, type, name, ts: Date.now() });
-        // Keep last 50 entries
-        localStorage.setItem(ACTIVITY_KEY, JSON.stringify(log.slice(0, 50)));
-      } catch (e) { /* ignore */ }
-    }
-    function getActivityLog() {
-      try { return JSON.parse(localStorage.getItem(ACTIVITY_KEY) || '[]'); }
-      catch (e) { return []; }
+    // ─── Activity Log (server-backed) ──────────────────────
+    // Legacy logActivity kept for backward compat — now a no-op since server handles it
+    function logActivity() {}
+
+    const AUDIT_ACTION_COLORS = {
+      created: '#38A169',
+      updated: '#3182CE',
+      published: '#3182CE',
+      deleted: '#E53E3E',
+      drafted: '#D69E2E',
+      uploaded: '#805AD5',
+    };
+
+    function auditTimeAgo(isoStr) {
+      const diff = Date.now() - new Date(isoStr + 'Z').getTime();
+      const mins = Math.floor(diff / 60000);
+      if (mins < 1) return 'just now';
+      if (mins < 60) return mins + 'm ago';
+      const hrs = Math.floor(mins / 60);
+      if (hrs < 24) return hrs + 'h ago';
+      const days = Math.floor(hrs / 24);
+      if (days < 30) return days + 'd ago';
+      return new Date(isoStr + 'Z').toLocaleDateString();
     }
 
-    function ActivityLog() {
+    function userInitials(email) {
+      if (!email || email === 'unknown') return '?';
+      const name = email.split('@')[0];
+      const parts = name.split(/[._-]/);
+      if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+      return name.slice(0, 2).toUpperCase();
+    }
+
+    /** Mini activity feed for the dashboard — shows latest 15 from server */
+    function ActivityLog({ onViewAll }) {
       const [log, setLog] = useState([]);
+      const [loading, setLoading] = useState(true);
+
       useEffect(() => {
-        setLog(getActivityLog());
-        const interval = setInterval(() => setLog(getActivityLog()), 5000);
-        return () => clearInterval(interval);
+        fetch('/api/audit-log?limit=15')
+          .then(r => r.json())
+          .then(data => { if (data.success) setLog(data.entries); })
+          .catch(() => {})
+          .finally(() => setLoading(false));
       }, []);
 
-      const timeAgo = (ts) => {
-        const diff = Date.now() - ts;
-        const mins = Math.floor(diff / 60000);
-        if (mins < 1) return 'just now';
-        if (mins < 60) return mins + 'm ago';
-        const hrs = Math.floor(mins / 60);
-        if (hrs < 24) return hrs + 'h ago';
-        const days = Math.floor(hrs / 24);
-        return days + 'd ago';
-      };
-
-      const actionColor = (action) => {
-        if (action === 'created') return '#38A169';
-        if (action === 'updated' || action === 'published') return '#3182CE';
-        if (action === 'deleted') return '#E53E3E';
-        if (action === 'drafted') return '#D69E2E';
-        return '#718096';
-      };
+      if (loading) return html`
+        <div class="card" style="text-align: center; color: var(--text-secondary); padding: 2rem;">
+          Loading activity...
+        </div>
+      `;
 
       if (!log.length) return html`
         <div class="card" style="text-align: center; color: var(--text-secondary); padding: 2rem;">
@@ -1972,20 +1901,212 @@
       return html`
         <div class="card" style="padding: 1rem 1.25rem;">
           <div style="max-height: 400px; overflow-y: auto;">
-            ${log.slice(0, 20).map((entry, i) => html`
-              <div class="activity-item" key=${i}>
-                <div class="activity-dot" style="background: ${actionColor(entry.action)};"></div>
+            ${log.map((entry, i) => html`
+              <div class="activity-item" key=${entry.id || i}>
+                <div class="activity-dot" style="background: ${AUDIT_ACTION_COLORS[entry.action] || '#718096'};"></div>
                 <div style="flex: 1; min-width: 0;">
-                  <span style="font-weight: 500; text-transform: capitalize;">${entry.action}</span>
-                  ${' '}
-                  <span style="color: var(--text-secondary);">${entry.type}</span>
-                  ${entry.name ? html` — <strong>${entry.name}</strong>` : ''}
+                  <div>
+                    <span style="font-weight: 500; text-transform: capitalize;">${entry.action}</span>
+                    ${' '}
+                    <span style="color: var(--text-secondary);">${entry.entity_type}</span>
+                    ${entry.entity_name ? html` — <strong>${entry.entity_name}</strong>` : ''}
+                  </div>
+                  <div style="font-size: 0.78rem; color: var(--text-secondary); margin-top: 2px;">
+                    ${entry.user_email && entry.user_email !== 'unknown'
+                      ? html`<span style="font-weight: 500;">${entry.user_email.split('@')[0]}</span> · `
+                      : ''}${auditTimeAgo(entry.created_at)}${entry.changes ? html` · <span style="color: #805AD5;">${entry.changes.length} field${entry.changes.length !== 1 ? 's' : ''}</span>` : ''}
+                  </div>
                 </div>
-                <span style="color: var(--text-secondary); font-size: 0.8rem; white-space: nowrap;">${timeAgo(entry.ts)}</span>
               </div>
             `)}
           </div>
-          ${log.length > 20 ? html`<div style="text-align: center; padding-top: 0.5rem; font-size: 0.85rem; color: var(--text-secondary);">+ ${log.length - 20} more</div>` : null}
+          ${onViewAll ? html`
+            <div style="text-align: center; padding-top: 0.75rem; border-top: 1px solid #F5F4F0; margin-top: 0.5rem;">
+              <button onClick=${onViewAll} class="btn btn-ghost" style="font-size: 0.85rem;">View Full Audit Log</button>
+            </div>
+          ` : null}
+        </div>
+      `;
+    }
+
+    // ─── Full Audit Log Page ──────────────────────
+    function AuditLogPage({ addToast }) {
+      const [entries, setEntries] = useState([]);
+      const [total, setTotal] = useState(0);
+      const [loading, setLoading] = useState(true);
+      const [offset, setOffset] = useState(0);
+      const [expanded, setExpanded] = useState(null);
+      const limit = 30;
+
+      // Filters
+      const [filterAction, setFilterAction] = useState('');
+      const [filterType, setFilterType] = useState('');
+      const [filterUser, setFilterUser] = useState('');
+      const [filterSearch, setFilterSearch] = useState('');
+
+      const loadEntries = useCallback(async (newOffset = 0) => {
+        setLoading(true);
+        try {
+          const params = new URLSearchParams({ limit: String(limit), offset: String(newOffset) });
+          if (filterAction) params.set('action', filterAction);
+          if (filterType) params.set('type', filterType);
+          if (filterUser) params.set('user', filterUser);
+          if (filterSearch) params.set('search', filterSearch);
+          const res = await fetch('/api/audit-log?' + params.toString());
+          const data = await res.json();
+          if (data.success) {
+            setEntries(data.entries);
+            setTotal(data.total);
+            setOffset(newOffset);
+          }
+        } catch (e) {
+          addToast?.('Failed to load audit log', 'error');
+        }
+        setLoading(false);
+      }, [filterAction, filterType, filterUser, filterSearch]);
+
+      useEffect(() => { loadEntries(0); }, [loadEntries]);
+
+      const totalPages = Math.ceil(total / limit);
+      const currentPage = Math.floor(offset / limit) + 1;
+
+      // Collect unique users and types for filter dropdowns
+      const uniqueUsers = [...new Set(entries.map(e => e.user_email).filter(Boolean))];
+
+      const entityTypes = ['kids', 'partners', 'team', 'articles', 'events', 'press', 'community', 'financials', 'settings', 'faq', 'our-story', 'media', 'kids-on-site'];
+
+      return html`
+        <div>
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;">
+            <div>
+              <h2 style="margin: 0;">Audit Log</h2>
+              <p class="text-sm text-muted" style="margin: 0.25rem 0 0;">Server-side record of every content change — who, what, when, and exactly what changed.</p>
+            </div>
+            <div style="font-size: 0.85rem; color: var(--text-secondary);">${total} total entries</div>
+          </div>
+
+          <!-- Filters -->
+          <div class="card" style="padding: 1rem 1.25rem; margin-bottom: 1rem; display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center;">
+            <input class="form-input" style="flex: 1; min-width: 180px; max-width: 260px;" type="text"
+              placeholder="Search by name..."
+              value=${filterSearch}
+              onInput=${e => setFilterSearch(e.target.value)} />
+            <select class="form-select" style="min-width: 130px;"
+              value=${filterAction} onChange=${e => setFilterAction(e.target.value)}>
+              <option value="">All actions</option>
+              <option value="created">Created</option>
+              <option value="updated">Updated</option>
+              <option value="deleted">Deleted</option>
+              <option value="drafted">Drafted</option>
+              <option value="published">Published</option>
+              <option value="uploaded">Uploaded</option>
+            </select>
+            <select class="form-select" style="min-width: 130px;"
+              value=${filterType} onChange=${e => setFilterType(e.target.value)}>
+              <option value="">All types</option>
+              ${entityTypes.map(t => html`<option value=${t}>${t}</option>`)}
+            </select>
+            ${(filterAction || filterType || filterSearch || filterUser) ? html`
+              <button class="btn btn-ghost" style="font-size: 0.85rem;"
+                onClick=${() => { setFilterAction(''); setFilterType(''); setFilterSearch(''); setFilterUser(''); }}>
+                Clear filters
+              </button>
+            ` : null}
+          </div>
+
+          <!-- Entries -->
+          <div class="card" style="padding: 0;">
+            ${loading ? html`
+              <div style="text-align: center; padding: 3rem; color: var(--text-secondary);">Loading...</div>
+            ` : entries.length === 0 ? html`
+              <div style="text-align: center; padding: 3rem; color: var(--text-secondary);">No entries match your filters.</div>
+            ` : html`
+              <table class="data-table" style="margin: 0;">
+                <thead>
+                  <tr>
+                    <th style="width: 44px;"></th>
+                    <th>Action</th>
+                    <th>Type</th>
+                    <th>Name</th>
+                    <th>User</th>
+                    <th>Changes</th>
+                    <th>When</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${entries.map((entry, i) => html`
+                    <tr key=${entry.id} style="cursor: ${entry.changes ? 'pointer' : 'default'};"
+                        onClick=${() => entry.changes && setExpanded(expanded === entry.id ? null : entry.id)}>
+                      <td style="text-align: center;">
+                        <div style="width: 28px; height: 28px; border-radius: 50%; background: ${AUDIT_ACTION_COLORS[entry.action] || '#718096'}15;
+                          display: flex; align-items: center; justify-content: center;">
+                          <div style="width: 8px; height: 8px; border-radius: 50%; background: ${AUDIT_ACTION_COLORS[entry.action] || '#718096'};"></div>
+                        </div>
+                      </td>
+                      <td>
+                        <span style="font-weight: 600; text-transform: capitalize; color: ${AUDIT_ACTION_COLORS[entry.action] || '#718096'};">
+                          ${entry.action}
+                        </span>
+                      </td>
+                      <td><span style="text-transform: capitalize;">${entry.entity_type}</span></td>
+                      <td><strong>${entry.entity_name || '—'}</strong></td>
+                      <td>
+                        <span title=${entry.user_email} style="display: inline-flex; align-items: center; gap: 0.4rem;">
+                          <span style="width: 24px; height: 24px; border-radius: 50%; background: #E5E4E0; display: inline-flex; align-items: center; justify-content: center; font-size: 0.65rem; font-weight: 700; color: #6B6C72; flex-shrink: 0;">
+                            ${userInitials(entry.user_email)}
+                          </span>
+                          <span style="font-size: 0.85rem;">${entry.user_email !== 'unknown' ? entry.user_email.split('@')[0] : '—'}</span>
+                        </span>
+                      </td>
+                      <td>
+                        ${entry.changes
+                          ? html`<span style="background: #805AD515; color: #805AD5; padding: 2px 8px; border-radius: 10px; font-size: 0.8rem; font-weight: 500;">
+                              ${entry.changes.length} field${entry.changes.length !== 1 ? 's' : ''}
+                            </span>`
+                          : html`<span style="color: var(--text-secondary); font-size: 0.85rem;">—</span>`
+                        }
+                      </td>
+                      <td style="white-space: nowrap; font-size: 0.85rem; color: var(--text-secondary);">
+                        <span title=${entry.created_at}>${auditTimeAgo(entry.created_at)}</span>
+                      </td>
+                    </tr>
+                    ${expanded === entry.id && entry.changes ? html`
+                      <tr key=${entry.id + '-diff'}>
+                        <td colspan="7" style="padding: 0; background: #FAFAF8;">
+                          <div style="padding: 1rem 1.5rem;">
+                            <div style="font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.5px;">Field Changes</div>
+                            <div style="display: grid; grid-template-columns: minmax(100px, auto) 1fr 1fr; gap: 0; border: 1px solid #E5E4E0; border-radius: 8px; overflow: hidden; font-size: 0.85rem;">
+                              <div style="padding: 0.5rem 0.75rem; background: #F5F4F0; font-weight: 600; border-bottom: 1px solid #E5E4E0;">Field</div>
+                              <div style="padding: 0.5rem 0.75rem; background: #F5F4F0; font-weight: 600; border-bottom: 1px solid #E5E4E0;">Before</div>
+                              <div style="padding: 0.5rem 0.75rem; background: #F5F4F0; font-weight: 600; border-bottom: 1px solid #E5E4E0;">After</div>
+                              ${entry.changes.map((c, ci) => html`
+                                <div style="padding: 0.5rem 0.75rem; font-weight: 500; ${ci < entry.changes.length - 1 ? 'border-bottom: 1px solid #F5F4F0;' : ''}">${c.field}</div>
+                                <div style="padding: 0.5rem 0.75rem; color: #E53E3E; word-break: break-word; ${ci < entry.changes.length - 1 ? 'border-bottom: 1px solid #F5F4F0;' : ''}">${c.from ?? html`<span style="color: var(--text-secondary); font-style: italic;">empty</span>`}</div>
+                                <div style="padding: 0.5rem 0.75rem; color: #38A169; word-break: break-word; ${ci < entry.changes.length - 1 ? 'border-bottom: 1px solid #F5F4F0;' : ''}">${c.to ?? html`<span style="color: var(--text-secondary); font-style: italic;">empty</span>`}</div>
+                              `)}
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    ` : null}
+                  `)}
+                </tbody>
+              </table>
+            `}
+          </div>
+
+          <!-- Pagination -->
+          ${totalPages > 1 ? html`
+            <div style="display: flex; align-items: center; justify-content: center; gap: 1rem; margin-top: 1rem;">
+              <button class="btn btn-ghost" disabled=${currentPage <= 1} onClick=${() => loadEntries(offset - limit)}>
+                Previous
+              </button>
+              <span style="font-size: 0.85rem; color: var(--text-secondary);">Page ${currentPage} of ${totalPages}</span>
+              <button class="btn btn-ghost" disabled=${currentPage >= totalPages} onClick=${() => loadEntries(offset + limit)}>
+                Next
+              </button>
+            </div>
+          ` : null}
         </div>
       `;
     }
@@ -2362,17 +2483,6 @@
         return { perYear: years.map(y => counts[y]), cumulative, years };
       }, [kids]);
 
-      // Time-based greeting
-      const greeting = useMemo(() => {
-        const h = new Date().getHours();
-        if (h < 12) return 'Good morning';
-        if (h < 17) return 'Good afternoon';
-        return 'Good evening';
-      }, []);
-
-      const today = useMemo(() => {
-        return new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
-      }, []);
 
       // Needs attention metrics
       const attention = useMemo(() => {
@@ -2398,29 +2508,6 @@
       const upcomingEventsCount = (events || []).filter(e => e.status === 'upcoming').length;
 
       return html`
-        <!-- Hero Greeting -->
-        <div class="dash-hero">
-          <div class="dash-hero-greeting">${greeting}, <span>team</span></div>
-          <div class="dash-hero-date">${today}</div>
-          <div class="dash-hero-summary">
-            <div class="dash-hero-stat">
-              <div class="dash-hero-stat-value">${kids.length}</div>
-              <div class="dash-hero-stat-label">Kids Served</div>
-            </div>
-            <div class="dash-hero-stat">
-              <div class="dash-hero-stat-value">${completedRooms}</div>
-              <div class="dash-hero-stat-label">Rooms Done</div>
-            </div>
-            <div class="dash-hero-stat">
-              <div class="dash-hero-stat-value">${partners.length}</div>
-              <div class="dash-hero-stat-label">Partners</div>
-            </div>
-            <div class="dash-hero-stat">
-              <div class="dash-hero-stat-value" style="color: #38A169;">${avgCompleteness}%</div>
-              <div class="dash-hero-stat-label">Profile Health</div>
-            </div>
-          </div>
-        </div>
 
         <!-- Quick Actions -->
         <div class="quick-actions">
@@ -2507,7 +2594,7 @@
             <div class="stat-label" style="margin-top: 0; margin-bottom: 0.25rem;">Team & Board</div>
             <div class="stat-number">${team.length}</div>
           </div>
-          <div class="stat-card" style="--card-accent: #38A169; text-align: left;">
+          <div class="stat-card" style="--card-accent: #38A169; cursor: pointer; text-align: left;" onClick=${() => onNavigate('kids-hub', null, 'kids', 'completed')}>
             <div style="display: flex; align-items: flex-start; justify-content: space-between;">
               <div>
                 <div class="stat-card-icon" style="background: rgba(56,161,105,0.1);">
@@ -2519,14 +2606,14 @@
               ${yearData ? html`<${MiniChart} data=${yearData.perYear} color="#38A169" height=${40} width=${90} />` : null}
             </div>
           </div>
-          <div class="stat-card" style="--card-accent: #D69E2E; text-align: left;">
+          <div class="stat-card" style="--card-accent: #D69E2E; cursor: pointer; text-align: left;" onClick=${() => onNavigate('kids-hub', null, 'kids', 'in-progress')}>
             <div class="stat-card-icon" style="background: rgba(214,158,46,0.1);">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#D69E2E" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
             </div>
             <div class="stat-label" style="margin-top: 0; margin-bottom: 0.25rem;">In Progress</div>
             <div class="stat-number">${inProgressCount}</div>
           </div>
-          <div class="stat-card" style="--card-accent: #805AD5; cursor: pointer; text-align: left;" onClick=${() => onNavigate('events')}>
+          <div class="stat-card" style="--card-accent: #805AD5; cursor: pointer; text-align: left;" onClick=${() => onNavigate('events', null, null, 'upcoming')}>
             <div class="stat-card-icon" style="background: rgba(128,90,213,0.1);">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#805AD5" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
             </div>
@@ -2551,7 +2638,7 @@
             </h3>
             <div class="attention-grid">
               ${attention.noPhoto.length > 0 ? html`
-                <div class="attention-card" onClick=${() => onNavigate('kids-hub')}>
+                <div class="attention-card" onClick=${() => onNavigate('kids-hub', null, 'kids', 'missing-photos')}>
                   <div class="attention-icon" style="background: rgba(229,62,62,0.08); color: #E53E3E;">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
                   </div>
@@ -2563,7 +2650,7 @@
                 </div>
               ` : null}
               ${attention.incomplete.length > 0 ? html`
-                <div class="attention-card" onClick=${() => onNavigate('kids-hub')}>
+                <div class="attention-card" onClick=${() => onNavigate('kids-hub', null, 'kids', 'incomplete')}>
                   <div class="attention-icon" style="background: rgba(214,158,46,0.1); color: #D69E2E;">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
                   </div>
@@ -2575,7 +2662,7 @@
                 </div>
               ` : null}
               ${attention.inProgress.length > 0 ? html`
-                <div class="attention-card" onClick=${() => onNavigate('kids-hub')}>
+                <div class="attention-card" onClick=${() => onNavigate('kids-hub', null, 'kids', 'in-progress')}>
                   <div class="attention-icon" style="background: rgba(49,130,206,0.1); color: #3182CE;">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                   </div>
@@ -2587,7 +2674,7 @@
                 </div>
               ` : null}
               ${attention.upcomingEvents.length > 0 ? html`
-                <div class="attention-card" onClick=${() => onNavigate('events')}>
+                <div class="attention-card" onClick=${() => onNavigate('events', null, null, 'upcoming')}>
                   <div class="attention-icon" style="background: rgba(128,90,213,0.1); color: #805AD5;">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
                   </div>
@@ -2778,7 +2865,7 @@
             <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.75rem;">
               <h3>Recent Activity</h3>
             </div>
-            <${ActivityLog} />
+            <${ActivityLog} onViewAll=${() => onNavigate?.('audit-log')} />
           </div>
         </div>
       `;
@@ -2787,20 +2874,42 @@
     // ═══════════════════════════════════════════
     // KIDS LIST
     // ═══════════════════════════════════════════
-    function KidsList({ kids, onEdit, onAdd, onDelete, addToast, onReload }) {
+    function KidsList({ kids, onEdit, onAdd, onDelete, addToast, onReload, dashboardFilter, onClearFilter }) {
       const [search, setSearch] = useState('');
+      const [statusFilter, setStatusFilter] = useState('all');
       const [selected, setSelected] = useState(new Set());
       const [favs, setFavs] = useState(getFavorites());
       const [inlineEdit, setInlineEdit] = useState(null); // { slug, field, value }
       const filtered = useMemo(() => {
-        if (!search) return kids;
-        const q = search.toLowerCase();
-        return kids.filter(k =>
-          k.name.toLowerCase().includes(q) ||
-          (k.diagnosis || '').toLowerCase().includes(q) ||
-          (k.year + '').includes(q)
-        );
-      }, [kids, search]);
+        let result = kids;
+        // Apply dashboard filter first
+        if (dashboardFilter === 'missing-photos') {
+          result = result.filter(k => !k.heroImage);
+        } else if (dashboardFilter === 'incomplete') {
+          result = result.filter(k => {
+            const s = getCompleteness(k);
+            return s < 70;
+          });
+        } else if (dashboardFilter === 'in-progress') {
+          result = result.filter(k => k.status === 'in-progress');
+        } else if (dashboardFilter === 'completed') {
+          result = result.filter(k => k.status === 'completed');
+        }
+        // Apply status filter
+        if (statusFilter !== 'all') {
+          result = result.filter(k => k.status === statusFilter);
+        }
+        // Then apply search
+        if (search) {
+          const q = search.toLowerCase();
+          result = result.filter(k =>
+            k.name.toLowerCase().includes(q) ||
+            (k.diagnosis || '').toLowerCase().includes(q) ||
+            (k.year + '').includes(q)
+          );
+        }
+        return result;
+      }, [kids, search, dashboardFilter, statusFilter]);
 
       const { sorted, SortHeader } = useSortable(filtered, 'year', 'desc');
 
@@ -2858,10 +2967,29 @@
           <button class="btn btn-primary" onClick=${onAdd}>+ Add Kid</button>
         </div>
         <div class="card" style="margin-bottom: 1rem; padding: 0.75rem 1rem;">
-          <div class="search-bar" style="max-width: 100%;">
-            <span class="search-icon">${icons.search}</span>
-            <input placeholder="Search by name, diagnosis, or year..."
-              value=${search} onInput=${e => setSearch(e.target.value)} />
+          <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+            <div class="search-bar" style="flex: 1; min-width: 200px;">
+              <span class="search-icon">${icons.search}</span>
+              <input placeholder="Search by name, diagnosis, or year..."
+                value=${search} onInput=${e => setSearch(e.target.value)} />
+            </div>
+            <select value=${statusFilter} onChange=${e => setStatusFilter(e.target.value)}
+              style="padding: 0.45rem 0.75rem; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-bg-card); font-size: 0.85rem; color: var(--color-text); cursor: pointer; ${statusFilter !== 'all' ? 'border-color: var(--color-primary); background: var(--color-primary-bg);' : ''}">
+              <option value="all">All Statuses</option>
+              <option value="completed">Completed</option>
+              <option value="in-progress">In Progress</option>
+            </select>
+            ${dashboardFilter ? html`
+              <button onClick=${onClearFilter} style="display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.35rem 0.75rem; background: var(--color-primary-bg); border: 1px solid var(--color-primary); border-radius: 20px; font-size: 0.8rem; font-weight: 600; color: var(--color-text); cursor: pointer; white-space: nowrap;">
+                ${{
+                  'missing-photos': 'Missing Photos',
+                  'incomplete': 'Incomplete Profiles',
+                  'in-progress': 'In Progress',
+                  'completed': 'Completed',
+                }[dashboardFilter]} (${filtered.length})
+                <span style="font-size: 1rem; line-height: 1;">×</span>
+              </button>
+            ` : null}
           </div>
         </div>
         ${selected.size > 0 ? html`
@@ -5070,17 +5198,23 @@
     const PRESS_CATEGORIES = ['national-tv', 'local-tv', 'print', 'magazine', 'entertainment'];
     const PRESS_CAT_LABELS = { 'national-tv': 'National TV', 'local-tv': 'Local TV', 'print': 'Print & News', 'magazine': 'Magazine', 'entertainment': 'Entertainment' };
 
-    function EventsList({ events, onEdit, onAdd, onDelete }) {
+    function EventsList({ events, onEdit, onAdd, onDelete, dashboardFilter, onClearFilter }) {
       const [search, setSearch] = useState('');
       const filtered = useMemo(() => {
-        if (!search) return events;
-        const q = search.toLowerCase();
-        return events.filter(e =>
-          e.title.toLowerCase().includes(q) ||
-          (e.location || '').toLowerCase().includes(q) ||
-          (e.category || '').toLowerCase().includes(q)
-        );
-      }, [events, search]);
+        let result = events;
+        if (dashboardFilter === 'upcoming') {
+          result = result.filter(e => e.status === 'upcoming');
+        }
+        if (search) {
+          const q = search.toLowerCase();
+          result = result.filter(e =>
+            e.title.toLowerCase().includes(q) ||
+            (e.location || '').toLowerCase().includes(q) ||
+            (e.category || '').toLowerCase().includes(q)
+          );
+        }
+        return result;
+      }, [events, search, dashboardFilter]);
 
       return html`
         <div class="page-header">
@@ -5088,10 +5222,18 @@
           <button class="btn btn-primary" onClick=${onAdd}>+ Add Event</button>
         </div>
         <div class="card" style="margin-bottom: 1rem; padding: 0.75rem 1rem;">
-          <div class="search-bar" style="max-width: 100%;">
-            <span class="search-icon">${icons.search}</span>
-            <input placeholder="Search by title, location, or category..."
-              value=${search} onInput=${e => setSearch(e.target.value)} />
+          <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+            <div class="search-bar" style="flex: 1; min-width: 200px;">
+              <span class="search-icon">${icons.search}</span>
+              <input placeholder="Search by title, location, or category..."
+                value=${search} onInput=${e => setSearch(e.target.value)} />
+            </div>
+            ${dashboardFilter ? html`
+              <button onClick=${onClearFilter} style="display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.35rem 0.75rem; background: var(--color-primary-bg); border: 1px solid var(--color-primary); border-radius: 20px; font-size: 0.8rem; font-weight: 600; color: var(--color-text); cursor: pointer; white-space: nowrap;">
+                ${{ 'upcoming': 'Upcoming Events' }[dashboardFilter]} (${filtered.length})
+                <span style="font-size: 1rem; line-height: 1;">×</span>
+              </button>
+            ` : null}
           </div>
         </div>
         <div class="card">
@@ -6799,7 +6941,7 @@
               : pageImages.map(img => html`
                 <div key=${img.id} class="img-picker-thumb" title=${img.id}
                   onClick=${() => { onSelect(img.id); onClose(); }}>
-                  <img src="${CF}/${img.id}/w=280,h=280,fit=cover" alt="" loading="lazy" />
+                  <img src="${CF}/${img.id}/w=400,h=400,fit=cover" alt="" loading="lazy" />
                   <div class="img-picker-id">${img.id.startsWith('kids/') ? img.id.replace('kids/', '') : img.id}</div>
                 </div>
               `)
@@ -7189,6 +7331,47 @@
               <input class="form-input" value=${data.social?.tiktok || ''}
                 onInput=${e => updateField('social.tiktok', e.target.value)} />
             </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3 style="margin-bottom: 0.5rem;">Makeover Application</h3>
+          <p class="text-sm text-muted mb-1">Control the application status shown on the <a href="/apply" target="_blank" style="color: var(--color-primary); text-decoration: underline;">Apply page</a>. When open, families can access the application form.</p>
+          <div style="display: flex; align-items: center; gap: 1rem; margin: 1rem 0;">
+            <label style="display: flex; align-items: center; gap: 0.6rem; cursor: pointer; user-select: none;">
+              <span style="position: relative; width: 44px; height: 24px; display: inline-block;">
+                <input type="checkbox" role="switch" aria-label="Toggle application open or closed" aria-checked=${data.application?.open || false}
+                  checked=${data.application?.open || false}
+                  onChange=${e => updateField('application.open', e.target.checked)}
+                  style="position: absolute; opacity: 0; width: 100%; height: 100%; cursor: pointer; margin: 0; z-index: 1;" />
+                <span style="position: absolute; inset: 0; border-radius: 12px; transition: background 0.2s; background: ${data.application?.open ? '#38A169' : '#ccc'};">
+                  <span style="position: absolute; top: 2px; left: ${data.application?.open ? '22px' : '2px'}; width: 20px; height: 20px; background: #fff; border-radius: 50%; transition: left 0.2s; box-shadow: 0 1px 3px rgba(0,0,0,0.15);"></span>
+                </span>
+              </span>
+              <span style="font-weight: 600; color: ${data.application?.open ? '#38A169' : 'var(--color-text-secondary)'};">
+                ${data.application?.open ? 'Applications Open' : 'Applications Closed'}
+              </span>
+            </label>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Application Year</label>
+              <input class="form-input" value=${data.application?.year || ''}
+                placeholder="2027"
+                onInput=${e => updateField('application.year', e.target.value)} />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Application Form URL</label>
+              <input class="form-input" value=${data.application?.formUrl || ''}
+                placeholder="https://forms.google.com/..."
+                onInput=${e => updateField('application.formUrl', e.target.value)} />
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Closed Message</label>
+            <input class="form-input" value=${data.application?.closedMessage || ''}
+              placeholder="The 2026 application period is currently closed."
+              onInput=${e => updateField('application.closedMessage', e.target.value)} />
           </div>
         </div>
 
@@ -8627,10 +8810,12 @@
         return () => window.removeEventListener('keydown', handler);
       }, []);
 
-      const navigate = (v, slug = null, tab = null) => {
+      const [dashboardFilter, setDashboardFilter] = useState(null);
+      const navigate = (v, slug = null, tab = null, filter = null) => {
         setView(v);
         setEditSlug(slug);
         setSubTab(tab);
+        setDashboardFilter(filter);
         setSidebarOpen(false);
       };
 
@@ -8696,6 +8881,7 @@
         ourstory: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" /><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" /></svg>`,
         mediakit: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" /><path d="M14 2v4a2 2 0 0 0 2 2h4" /><path d="M10 9H8" /><path d="M16 13H8" /><path d="M16 17H8" /></svg>`,
         press: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2" /><path d="M18 14h-8" /><path d="M15 18h-5" /><path d="M10 6h8v4h-8V6Z" /></svg>`,
+        auditLog: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>`,
         pressMonitor: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M2 12a10 10 0 1 0 10-10" /><path d="M2 16.1A5 5 0 0 1 5.9 20" /><path d="M2 12.05A10 10 0 0 1 9.95 20" /><path d="M2 8.05A15 15 0 0 1 13.95 20" /><circle cx="2" cy="20" r="2" /></svg>`,
         menu: html`<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/></svg>`,
         x: html`<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>`,
@@ -8715,6 +8901,7 @@
         ]},
         { label: 'Site', items: [
           { id: 'site-hub', icon: icons.settings, label: 'Site Config' },
+          { id: 'audit-log', icon: icons.auditLog, label: 'Audit Log' },
         ]},
       ];
 
@@ -8746,7 +8933,8 @@
                 ? html`<${CommunityList} projects=${communityProjects} onEdit=${s => { setSubTab('community'); setEditSlug(s); }} onAdd=${() => { setSubTab('community'); setEditSlug(''); }}
                     onDelete=${p => setDeleteModal({ type: 'community project', item: p })} />`
                 : html`<${KidsList} kids=${kids} onEdit=${s => { setSubTab('kids'); setEditSlug(s); }} onAdd=${() => { setSubTab('kids'); setEditSlug(''); }}
-                    onDelete=${k => setDeleteModal({ type: 'kid', item: k })} addToast=${addToast} onReload=${loadData} />`
+                    onDelete=${k => setDeleteModal({ type: 'kid', item: k })} addToast=${addToast} onReload=${loadData}
+                    dashboardFilter=${dashboardFilter} onClearFilter=${() => setDashboardFilter(null)} />`
               }
             `;
           }
@@ -8788,7 +8976,8 @@
             return editSlug !== null
               ? html`<${EventEditor} slug=${editSlug || undefined} onBack=${() => { navigate('events'); loadData(); }} addToast=${addToast} />`
               : html`<${EventsList} events=${events} onEdit=${s => navigate('events', s)} onAdd=${() => navigate('events', '')}
-                  onDelete=${e => setDeleteModal({ type: 'event', item: { ...e, name: e.title } })} />`;
+                  onDelete=${e => setDeleteModal({ type: 'event', item: { ...e, name: e.title } })}
+                  dashboardFilter=${dashboardFilter} onClearFilter=${() => setDashboardFilter(null)} />`;
 
           // ─── Press Hub (tabs: Press & Media | Press Monitor) ───
           case 'press-hub': {
@@ -8812,6 +9001,9 @@
               }
             `;
           }
+
+          case 'audit-log':
+            return html`<${AuditLogPage} addToast=${addToast} />`;
 
           case 'deploys':
             return html`<${Deploys} addToast=${addToast} />`;
