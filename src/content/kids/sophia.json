@@ -10,7 +10,7 @@
   "status": "completed",
   "bio": "Diagnosed with Cystic Fibrosis at the age of four, she has faced her trials with the strength and courage of a superhero.",
   "quote": "Diagnosed with Cystic Fibrosis at the age of four, she has faced her trials with the strength and courage of a superhero.",
-  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/sophia/hero/public",
+  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/sophia/photo-27/public",
   "photos": [
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/sophia/photo-01/public",
@@ -129,51 +129,7 @@
       "alt": ""
     },
     {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/alejandro/photo-19/public",
-      "alt": "Sophia makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/zoe/hero/public",
-      "alt": "Sophia makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jack/hero/public",
-      "alt": "Sophia makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/abby/photo-50/public",
-      "alt": "Sophia makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/sophia/photo-34/public",
-      "alt": "Sophia makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/sophia/photo-35/public",
-      "alt": "Sophia makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/sophia/photo-36/public",
-      "alt": "Sophia makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/samantha/photo-43/public",
-      "alt": "Sophia makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/sophia/photo-38/public",
-      "alt": "Sophia makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/sophia/photo-39/public",
-      "alt": "Sophia makeover photo"
-    },
-    {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/sophia/photo-40/public",
-      "alt": "Sophia makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/sophia/photo-41/public",
       "alt": "Sophia makeover photo"
     },
     {
@@ -181,15 +137,11 @@
       "alt": "Sophia makeover photo"
     },
     {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/anderson/photo-16/public",
-      "alt": "Sophia makeover photo"
-    },
-    {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/sophia/photo-44/public",
       "alt": "Sophia makeover photo"
     }
   ],
-  "photoCount": 29,
+  "photoCount": 32,
   "videoUrl": "https://youtu.be/LEMvNAg6kmw",
   "photographer": "Niki Murphy Photography",
   "partnerLogos": [
@@ -238,5 +190,7 @@
     "cfHeroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/d1d3bf66-268a-4192-166d-8647f6885c00/full"
   },
   "streamVideoId": "d800525606792b7fae3e837f9888197f",
-  "roomCount": 1
+  "roomCount": 1,
+  "publishStatus": "published",
+  "fundraisingUrl": null
 }

@@ -17,6 +17,7 @@ import { writeFileSync, mkdirSync, existsSync, readFileSync, readdirSync } from 
 import { join } from 'path';
 import { fileURLToPath } from 'url';
 import { COLLECTION_MAP } from '../functions/api/_collections.js';
+import { SETTINGS_DEFAULTS } from './settings-defaults.js';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 const ROOT = join(__dirname, '..');
@@ -77,6 +78,25 @@ function safeParse(raw) {
 
 function ensureDir(dir) {
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+}
+
+/**
+ * Deep-merge `source` into `target`.  Arrays and primitives from source
+ * overwrite; plain objects recurse.  Returns a new object — no mutation.
+ */
+function deepMerge(target, source) {
+  const out = { ...target };
+  for (const key of Object.keys(source)) {
+    const sv = source[key];
+    const tv = target[key];
+    if (sv !== null && typeof sv === 'object' && !Array.isArray(sv) &&
+        tv !== null && typeof tv === 'object' && !Array.isArray(tv)) {
+      out[key] = deepMerge(tv, sv);
+    } else {
+      out[key] = sv;
+    }
+  }
+  return out;
 }
 
 async function queryD1(sql, attempt = 1) {
@@ -162,7 +182,11 @@ try {
 
   for (const row of siteRows) {
     const filePath = join(siteDir, `${row.key}.json`);
-    const data = safeParse(row.data);
+    let data = safeParse(row.data);
+    // Guarantee every expected field exists — D1 may lag behind code changes
+    if (row.key === 'settings') {
+      data = deepMerge(SETTINGS_DEFAULTS, data);
+    }
     writeFileSync(filePath, JSON.stringify(data, null, 2) + '\n');
     totalFiles++;
   }

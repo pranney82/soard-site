@@ -5,63 +5,18 @@
   "status": "completed",
   "bio": "Monica was your typical 6-year old who loved to color and dance! She loves princesses and loved to play princess with her 9-year old sister. Monica and her sister have a magical bond like no other, they were destined to be best friends. They love to be together so much they chose to share a bedroom even though there are plenty rooms in the home for each girl to have their own.  On Tuesday morning, March 29th, the Lunn Family’s lives were changed forever.  Mom, Melina and Monica were involved in a tragic car accident in front of their school.  Monica spent the first 3 weeks in PICU at Egleston.  While there, it was determined that she broke her neck, causing her to become a quadriplegic and requiring the need to be on a respirator in order to breathe.  She survived her first surgery where a rib was fused to her C1 and C2 to provide stability and prevent further damage.  Several days later she survived another surgery as she was given a trach and put on a feeding tube.  One week ago, Monica was moved to Children’s/Scottish Rite.  She is able to talk and eat.  She participates in a rigorous schedule of Physical Therapy, Occupational Therapy, and Speech.  It is estimated she will be discharged near the end of May or beginning of June.  The next stage will be participating in daily out-patient therapy.  Through it all, Monica remains strong and happy.  Monica is a fighter and a survivor! Sunshine stepped in and gave Monica and her family reassurance they will be able to take care of her in an environment that is safe for both Monica and her parents. Monica's parents gave up their bathroom and bedroom which is on the first floor of the home for their daughter. These two rooms Sunshine transformed, fit for a princess!",
   "quote": "Monica was your typical 6-year old who loved to color and dance! She loves princesses and loved to play princess with her 9-year old sister. Monica and her sister have a magical bond like no other, they were destined to be best friends. They love to be together so much they chose to share a bedroom ",
-  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/monica/hero/public",
-  "roomTypes": [],
+  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/monica/photo-12/public",
+  "roomTypes": [
+    "Accessible Bathroom",
+    "Dream Bedroom"
+  ],
   "photos": [
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/monica/hero/public",
-      "alt": "Monica makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/christian-v/photo-29/public",
-      "alt": "Monica makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/kalen/hero/public",
-      "alt": "Monica makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/amir/photo-33/public",
-      "alt": "Monica makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/caroline/photo-03/public",
-      "alt": "Monica makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/anna/hero/public",
-      "alt": "Monica makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/alejandro/photo-21/public",
-      "alt": "Monica makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/bobby/hero/public",
-      "alt": "Monica makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/caroline/photo-07/public",
-      "alt": "Monica makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/andrew/photo-43/public",
-      "alt": "Monica makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/abby/photo-48/public",
-      "alt": "Monica makeover photo"
-    },
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/monica/photo-12/public",
       "alt": "Monica makeover photo"
     },
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/monica/photo-13/public",
-      "alt": "Monica makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/monica/photo-14/public",
       "alt": "Monica makeover photo"
     },
     {
@@ -73,19 +28,7 @@
       "alt": "Monica makeover photo"
     },
     {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/monica/photo-17/public",
-      "alt": "Monica makeover photo"
-    },
-    {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/monica/photo-18/public",
-      "alt": "Monica makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/eli/photo-31/public",
-      "alt": "Monica makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/monica/photo-20/public",
       "alt": "Monica makeover photo"
     },
     {
@@ -100,5 +43,10 @@
     "source": "wix-migration",
     "wixNumber": 45
   },
-  "roomCount": 1
+  "roomCount": 2,
+  "photoCount": 6,
+  "publishStatus": "published",
+  "streamVideoId": null,
+  "videoUrl": null,
+  "fundraisingUrl": null
 }

@@ -5,51 +5,21 @@
   "status": "completed",
   "bio": "This alluring, spirited teenager is Vanessa.  Vanessa was born in Boston while her family was visiting from Haiti.  From the very start, her parents knew that she was special.  She was born with sickle cell anemia, also known as sickle cell disease.  This disease is characterized by abnormal hemoglobin in the red blood cells.  The lack of hemoglobin and oxygen in the blood causes chronic widespread pain and fatigue.  This condition can be exacerbated to crisis level and can be brought on by illness, temperature changes, stress, dehydration and being at high altitudes.  The trauma of chronic pain and anemia can lead to significant organ damage and become life threatening. In Vanessa’s case, sickle cell anemia robbed her of energy and stamina.  This led to difficulty participating in and enjoying everyday activities that most kids delight in daily, like swimming at the pool, playing at the park and trick or treating. Watching her endure such excruciating pain and unable to experience a jovial childhood was heart wrenching. When Vanessa turned 7 her crises became more serious and life threatening.  With hopes of a brighter future, her family moved to the United States so that she could receive advanced medical care.  Soon after that an unexpected miracle changed her fate forever.  Her angelic baby sister, Sarah, was born sickle cell free and was also a perfect match for Vanessa’s bone marrow.  Sarah’s healthy birth allowed for the bone marrow transplant needed to give Vanessa a healthy future. The process was long, recovery was hard, but the results were phenomenal and well worth the wait.    Today, Vanessa is healthy and has a beautiful future ahead of her. She is a selfless happy teenager full of hopes and dreams and is living pain free. Vanessa has a creative soul and is brilliantly talented.  She has a passion for fashion, loves designing, sewing, and arts and crafts. Like most teens, she loves having her friends over to experiment with make-up and glamorous hairstyles. Sunshine on a Ranney Day partnered with Make-A-Wish Georgia to give Vanessa a dream room makeover where she, Sarah and her friends can cherish the magnificent joys of youth together.  ",
   "quote": "This alluring, spirited teenager is Vanessa.  Vanessa was born in Boston while her family was visiting from Haiti.  From the very start, her parents knew that she was special.  She was born with sickle cell anemia, also known as sickle cell disease.  This disease is characterized by abnormal hemoglo",
-  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/vanessa/hero/public",
-  "roomTypes": [],
+  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/vanessa/photo-10/public",
+  "roomTypes": [
+    "Dream Bedroom"
+  ],
   "photos": [
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/vanessa/hero/public",
-      "alt": "Vanessa makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/sims/hero/public",
-      "alt": "Vanessa makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/andrew/photo-42/public",
-      "alt": "Vanessa makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jack/hero/public",
-      "alt": "Vanessa makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/caliyah/photo-29/public",
-      "alt": "Vanessa makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/andrew/photo-43/public",
-      "alt": "Vanessa makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/abby/photo-48/public",
-      "alt": "Vanessa makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/vanessa/photo-08/public",
-      "alt": "Vanessa makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/vanessa/photo-09/public",
-      "alt": "Vanessa makeover photo"
-    },
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/vanessa/photo-10/public",
       "alt": "Vanessa makeover photo"
     },
     {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/vanessa/photo-11/public",
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/vanessa/photo-14/public",
+      "alt": "Vanessa makeover photo"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/vanessa/photo-08/public",
       "alt": "Vanessa makeover photo"
     },
     {
@@ -58,10 +28,6 @@
     },
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/vanessa/photo-13/public",
-      "alt": "Vanessa makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/vanessa/photo-14/public",
       "alt": "Vanessa makeover photo"
     }
   ],
@@ -72,5 +38,10 @@
     "source": "wix-migration",
     "wixNumber": 66
   },
-  "roomCount": 1
+  "roomCount": 1,
+  "photoCount": 5,
+  "publishStatus": "published",
+  "streamVideoId": null,
+  "videoUrl": null,
+  "fundraisingUrl": null
 }

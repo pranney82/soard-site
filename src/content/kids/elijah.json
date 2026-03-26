@@ -5,27 +5,17 @@
   "status": "completed",
   "bio": "This handsome little miracle is Elijah.  He is vibrant, sporty and smart.  He aspires to be a veterinarian which spawned from the love of his furry friends-huggable cats that he totes around his home.  As an infant, Elijah was meeting his milestones and becoming an active toddler, walking all over the house and keeping his parents on their toes.  However, at 21 months, he began experiencing fevers and stopped walking.  Several tests lead to the dreadful discovery that he had a mass on his kidney and the final diagnosis was a Stage IV Neuroblastoma.  This aggressive cancer is documented to have only a 20% survival rate, which is a heartbreaking realization. Elijah has endured six rounds of chemotherapy, a severe surgery to remove the primary tumor and his kidney that was completely damaged, two stem cell transplants, twelve rounds of radiation, and five rounds of antibody therapy with Accutane. After Elijah completed frontline therapy, he underwent a two-year trial of DFMO in an effort to keep him in remission. He is currently in remission and the joy of this miraculous outcome is resounding. Elijah is full of life and love, and is most fond of video games, superheroes and his little sister.  SOARD transformed his bedroom into a vibrant gaming oasis with colors as bright and outgoing as he is. This exciting project brought him luminous smiles!",
   "quote": "This handsome little miracle is Elijah.  He is vibrant, sporty and smart.  He aspires to be a veterinarian which spawned from the love of his furry friends-huggable cats that he totes around his home.  As an infant, Elijah was meeting his milestones and becoming an active toddler, walking all over t",
-  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/summit-counseling-center/hero/public",
-  "roomTypes": [],
+  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/elijah/photo-10/public",
+  "roomTypes": [
+    "Dream Bedroom"
+  ],
   "photos": [
     {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/summit-counseling-center/hero/public",
-      "alt": "Elijah makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jack/hero/public",
-      "alt": "Elijah makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/abby/photo-48/public",
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/elijah/photo-10/public",
       "alt": "Elijah makeover photo"
     },
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/elijah/photo-04/public",
-      "alt": "Elijah makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/callie/photo-30/public",
       "alt": "Elijah makeover photo"
     },
     {
@@ -45,10 +35,6 @@
       "alt": "Elijah makeover photo"
     },
     {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/elijah/photo-10/public",
-      "alt": "Elijah makeover photo"
-    },
-    {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/elijah/photo-11/public",
       "alt": "Elijah makeover photo"
     }
@@ -60,5 +46,10 @@
     "source": "wix-migration",
     "wixNumber": 39
   },
-  "roomCount": 1
+  "roomCount": 1,
+  "photoCount": 7,
+  "publishStatus": "published",
+  "streamVideoId": null,
+  "videoUrl": null,
+  "fundraisingUrl": null
 }

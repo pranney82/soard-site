@@ -5,23 +5,13 @@
   "status": "completed",
   "bio": "Meet Jack.  Jack is mature beyond his years with an amazing drive to have a positive impact on his community and the world at large.  With a cheerful and content disposition, he faces daily challenges that would bring the strongest of us to despair, but he keeps on keeping on with a smile and vigorous endurance.  This remarkable 10-year old was just 2 years old when he was diagnosed with an incurable genetic disorder called Neurofibromatosis (NF).  The disorder occurs in approximately 1:3,000 births and happens either through inheritance or through a random genetic mutation.  Jack’s case was the latter in that there is no NF present in his family. NF can manifest itself in countless ways and vary from person to person.  It does not discriminate on age, gender, race or socio-economic status.  It mainly causes tumors to grow ANYWHERE on the body that has a nerve ending.  These tumors, while usually benign can be problematic because of their location in the body and/or size.  Since there is no effective treatment, invasive surgery or chemotherapy are the only options to try to reduce or remove the tumors. Jack currently experiences reduced muscle tone and mild learning difficulties due to NF. Jack also has a neurofibroma (tumor) in his left orbital area causing pressure on his eye.  He had surgery to reduce the tumor when he was just 6 years old.  Due to the location they were not able to remove the tumor in its entirety but did reduce the size.  However, a potential issue with NF is that the tumor could actually grow back larger but we have not seen that yet.  In 2013, after a routine MRI, it was discovered that Jack had a glioma (tumor) on his brainstem and immediately began a course of chemotherapy to reduce or remove the tumor.  He battled 52 agonizing weekly chemotherapy treatments and while the glioma was reduced a bit in size it remains in his brain.   In October 2015, he endured brain surgery to create more space at the base of his skull as he had accumulated a buildup of cerebral fluid caused by the glioma which led to the development of a syrinx on his spinal column.  Without timely intervention, this would cause Jack to lose feeling and function in his extremities.  The effects of the surgery are being monitored and his condition is frequently reassessed. Although challenges are faced daily, Jack braves them eloquently. Rather than lying down, he lives passionately and actively fights to find a cure for this devastating disease. He co-founded CureNFwithJack about 6 years ago to raise money for research and awareness about Neurofibromatosis.  After actively fundraising for the past 4 years he has gained thousands of followers on social media (Facebook, Twitter, Instagram) and has selflessly raised over 1 million dollars for research to cure NF.  SOARD provided Jack with a room makeover as extraordinary as he is.  Although he is a radiant ray of sunshine bringing wonder to all who meet him, this room shined bright when he walked in!  You can learn more about Jack at www.curenfwithjack.com and watch a short film about his journey http://curenfwithjack.com/content/jacks-journey.",
   "quote": "Meet Jack.  Jack is mature beyond his years with an amazing drive to have a positive impact on his community and the world at large.  With a cheerful and content disposition, he faces daily challenges that would bring the strongest of us to despair, but he keeps on keeping on with a smile and vigoro",
-  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jack/hero/public",
-  "roomTypes": [],
+  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jack/photo-03/public",
+  "roomTypes": [
+    "Dream Bedroom"
+  ],
   "photos": [
     {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jack/hero/public",
-      "alt": "Jack makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/abby/photo-48/public",
-      "alt": "Jack makeover photo"
-    },
-    {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jack/photo-03/public",
-      "alt": "Jack makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/choa/photo-09/public",
       "alt": "Jack makeover photo"
     },
     {
@@ -33,18 +23,6 @@
       "alt": "Jack makeover photo"
     },
     {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/eli/photo-21/public",
-      "alt": "Jack makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jack/photo-08/public",
-      "alt": "Jack makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jack/photo-09/public",
-      "alt": "Jack makeover photo"
-    },
-    {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jack/photo-10/public",
       "alt": "Jack makeover photo"
     },
@@ -53,27 +31,7 @@
       "alt": "Jack makeover photo"
     },
     {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jack/photo-12/public",
-      "alt": "Jack makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jack/photo-13/public",
-      "alt": "Jack makeover photo"
-    },
-    {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jack/photo-14/public",
-      "alt": "Jack makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jack/photo-15/public",
-      "alt": "Jack makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jack/photo-16/public",
-      "alt": "Jack makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jack/photo-17/public",
       "alt": "Jack makeover photo"
     }
   ],
@@ -84,5 +42,10 @@
     "source": "wix-migration",
     "wixNumber": 38
   },
-  "roomCount": 1
+  "roomCount": 1,
+  "photoCount": 6,
+  "publishStatus": "published",
+  "streamVideoId": null,
+  "videoUrl": null,
+  "fundraisingUrl": null
 }

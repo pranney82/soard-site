@@ -24,7 +24,7 @@
     "heading": "A sermon, a calling, and a room that changed <em class=\"highlight\">everything</em>.",
     "paragraphs": [
       "In 2012, inspired by a church sermon, Peter and Holly Ranney felt a deep calling to use their God-given talents to serve others. With a vision rooted in love, purpose, and creativity, <strong>Sunshine on a Ranney Day</strong> was born — founded on the belief that every child deserves a space that reflects their personality, brings them joy, and supports their unique needs.",
-      "The very first makeover was for 11-year-old Mathew, who dreamed of having a military-themed bunker bedroom where he could feel safe and at peace. That room became more than just a space — it became a sanctuary.",
+      "The very first makeover was for 11-year-old Mathew, who dreamed of spending his final days in a military-themed bunker bedroom. That room became more than just a space — it became a sanctuary. His story profoundly moved the Ranneys and solidified the impact that a thoughtfully designed room could have on a child's life and family.",
       "It was the beginning of something much bigger."
     ]
   },
@@ -41,13 +41,13 @@
       "year": "2012",
       "title": "The First Room",
       "desc": "Inspired by a church sermon, Peter and Holly Ranney build their first room — a military-themed bedroom for 11-year-old Mathew.",
-      "image": ""
+      "image": "kids/mathew/1774472780548-mathew-first-room.JPG"
     },
     {
       "year": "2013",
       "title": "Tripp Halstead",
       "desc": "A whole-home makeover for Tripp captures 1.6 million viewers on a WSB-TV livestream, launching SOARD into the national spotlight.",
-      "image": ""
+      "image": "kids/tripp/photo-04"
     },
     {
       "year": "2016",
@@ -62,12 +62,6 @@
       "image": ""
     },
     {
-      "year": "2019",
-      "title": "100+ Rooms",
-      "desc": "With Bennet and Lacy's rooms, SOARD crosses the 100-room milestone, having served over 130 children and impacted 17,000+ through community projects.",
-      "image": ""
-    },
-    {
       "year": "2020",
       "title": "Sunny & Ranney Opens",
       "desc": "SOARD opens a nonprofit home furnishings store in Roswell, with 100% of profits funding room makeovers for kids.",
@@ -78,6 +72,12 @@
       "title": "Women Making a Mark",
       "desc": "Atlanta Magazine honors Holly as one of their \"Women Making a Mark\" for her impact on the community.",
       "image": ""
+    },
+    {
+      "year": "2019",
+      "title": "100+ Rooms",
+      "desc": "SOARD crosses the 100-room milestone, having served over 130 children and impacted 17,000+ through community projects.",
+      "image": "kids/bennett-and-lacey/photo-55"
     }
   ],
   "ribbon": [

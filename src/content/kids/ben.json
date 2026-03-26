@@ -197,5 +197,7 @@
   "altTexts": null,
   "jsonLd": null,
   "streamVideoId": "ae74451b60a54d7428ed5fbbb62e9ad5",
-  "roomCount": 2
+  "roomCount": 2,
+  "publishStatus": "published",
+  "fundraisingUrl": null
 }

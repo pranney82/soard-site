@@ -10,7 +10,7 @@
   "status": "completed",
   "bio": "Before he was born, Preston was diagnosed with Polymicroygria, a genetic disorder, causing seizures, delayed speech and muscle weakness.",
   "quote": "Before he was born, Preston was diagnosed with Polymicroygria, a genetic disorder, causing seizures, delayed speech and muscle weakness.",
-  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/preston/hero/public",
+  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/preston/photo-21/public",
   "photos": [
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/preston/photo-01/public",
@@ -115,62 +115,6 @@
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/preston/photo-26/public",
       "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/alejandro/photo-19/public",
-      "alt": "Preston makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jack/hero/public",
-      "alt": "Preston makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/abby/photo-50/public",
-      "alt": "Preston makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/preston/photo-30/public",
-      "alt": "Preston makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/preston/photo-31/public",
-      "alt": "Preston makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/andrew/photo-47/public",
-      "alt": "Preston makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/preston/photo-33/public",
-      "alt": "Preston makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/preston/photo-34/public",
-      "alt": "Preston makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/preston/photo-35/public",
-      "alt": "Preston makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/preston/photo-36/public",
-      "alt": "Preston makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/preston/photo-37/public",
-      "alt": "Preston makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/preston/photo-38/public",
-      "alt": "Preston makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/preston/photo-39/public",
-      "alt": "Preston makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/matthew-2024/photo-46/public",
-      "alt": "Preston makeover photo"
     }
   ],
   "photoCount": 26,
@@ -219,5 +163,7 @@
     "cfHeroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/d1d3bf66-268a-4192-166d-8647f6885c00/full"
   },
   "streamVideoId": "5761822471fe541b91a053d02ce757a5",
-  "roomCount": 1
+  "roomCount": 1,
+  "publishStatus": "published",
+  "fundraisingUrl": null
 }

@@ -10,7 +10,7 @@
   "status": "completed",
   "bio": "At fifteen months of age, Abby was diagnosed with a congenital neurological brain defect called Partial Agenesis of the Corpus Callosum. This defect impedes the left and right hemispheres of the brain from connecting properly and results in significant developmental delays or disabilities.",
   "quote": "At fifteen months of age, Abby was diagnosed with a congenital neurological brain defect called Partial Agenesis of the Corpus Callosum. This defect impedes the left and right hemispheres of the brain from connecting properly and results in significant developmental delays or disabilities.",
-  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/abby/hero/public",
+  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/abby/photo-29/public",
   "photos": [
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/abby/photo-01/public",
@@ -153,79 +153,11 @@
       "alt": ""
     },
     {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/abby/photo-36/public",
-      "alt": "Abby makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/abby/photo-37/public",
-      "alt": "Abby makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/abby/photo-38/public",
-      "alt": "Abby makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/abby/photo-39/public",
-      "alt": "Abby makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/abby/photo-40/public",
-      "alt": "Abby makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/abby/photo-41/public",
-      "alt": "Abby makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/abby/photo-42/public",
-      "alt": "Abby makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/zoe/hero/public",
-      "alt": "Abby makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/abby/photo-44/public",
-      "alt": "Abby makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jack/hero/public",
-      "alt": "Abby makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/abby/photo-46/public",
-      "alt": "Abby makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/abby/photo-47/public",
-      "alt": "Abby makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/abby/photo-48/public",
-      "alt": "Abby makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/abby/photo-49/public",
-      "alt": "Abby makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/abby/photo-50/public",
-      "alt": "Abby makeover photo"
-    },
-    {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/abby/photo-51/public",
       "alt": "Abby makeover photo"
     },
     {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/abby/photo-52/public",
-      "alt": "Abby makeover photo"
-    },
-    {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/abby/photo-53/public",
-      "alt": "Abby makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/abby/photo-54/public",
       "alt": "Abby makeover photo"
     },
     {
@@ -239,17 +171,9 @@
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/abby/photo-57/public",
       "alt": "Abby makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/abby/photo-58/public",
-      "alt": "Abby makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/abby/photo-59/public",
-      "alt": "Abby makeover photo"
     }
   ],
-  "photoCount": 35,
+  "photoCount": 40,
   "videoUrl": "https://youtu.be/5zq5qw6K5B4",
   "photographer": "Niki Murphy Photography",
   "partnerLogos": [
@@ -322,5 +246,7 @@
     "cfHeroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/6669dc3d-794b-443e-29fd-1cd9070dac00/full"
   },
   "streamVideoId": "ec9e273d0382e96e3b9468f9865df335",
-  "roomCount": 1
+  "roomCount": 1,
+  "publishStatus": "published",
+  "fundraisingUrl": null
 }

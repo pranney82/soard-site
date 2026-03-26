@@ -11,8 +11,12 @@
   "status": "completed",
   "bio": "Dylan is a handsome little man full of life and smiles that are contagious!  He is smart, caring and an inspiring musician.  Not only does he love listening to music of many genres, but he is also learning to play the guitar and the piano!  Although he is nonverbal and learning to communicate through sign language, his message and passion shine through his mesmerizing melodies and sweet smile!\n\nDylan was acutely ill during infancy experiencing recurrent respiratory infections and cardiac arrest.  After several trying months of lengthy medical tests and an MRI, Dylan was diagnosed with MECP2 Duplication Syndrome and cortical visual impairment.\n\nMECP2 Duplication Syndrome is a rare genetic neurodevelopmental disorder characterized by a wide variety of symptoms including low muscle tone, potentially severe intellectual disability, feeding difficulties, recurrent respiratory infections that trigger febrile seizures, poor or absent speech and progressive muscular spasticity. Individuals with this syndrome may also lose previously acquired skills or developmental regression.  This rare syndrome is only documented in 120 individuals to date.\n\nDylan is a trooper who endures illness, daily doses of multiple medications and several therapies with good spirits and endless smiles.  Within his normal routine, Dylan sees fifteen specialists to manage his healthcare and developmental needs. His home contains numerous pieces of medical equipment and therapeutic devices that assist him in his activities of daily living.  The need for this equipment is critical and takes up a substantial amount of space.  As he continues to grow and develop so will his needs.\n\nSunshine on a Ranney day is planning individualized renovations that will make it easier to manage his care, encourage independence and help him flourish. Sunshine will provide a wheelchair accessible bathroom for ease of bathing and safety and since his passion is music, we will create a euphonious environment blending the harmony of music and function.",
   "quote": "\"Although he is nonverbal and learning to communicate through sign language, his message and passion shine through his mesmerizing melodies and sweet smile!\"",
-  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/dylan/hero/public",
+  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/dylan/photo-22/public",
   "photos": [
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/dylan/photo-22/public",
+      "alt": ""
+    },
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/dylan/photo-01/public",
       "alt": ""
@@ -98,10 +102,6 @@
       "alt": ""
     },
     {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/dylan/photo-22/public",
-      "alt": ""
-    },
-    {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/dylan/photo-23/public",
       "alt": ""
     },
@@ -178,5 +178,7 @@
   "altTexts": null,
   "jsonLd": null,
   "streamVideoId": "a0d1b403168820e380d87969eb32cbaa",
-  "roomCount": 2
+  "roomCount": 2,
+  "publishStatus": "published",
+  "fundraisingUrl": null
 }

@@ -10,7 +10,7 @@
   "status": "completed",
   "bio": "He has now endured 38 months of treacherous treatment that is never easy for a child to endure. Chemotherapy, blood work, spinal taps and never-ending physician visits.",
   "quote": "He has now endured 38 months of treacherous treatment that is never easy for a child to endure. Chemotherapy, blood work, spinal taps and never-ending physician visits.",
-  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/bristol/hero/public",
+  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/bristol/photo-22/public",
   "photos": [
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/bristol/photo-01/public",
@@ -103,86 +103,6 @@
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/bristol/photo-23/public",
       "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/abby/photo-40/public",
-      "alt": "Bristol makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/robert/hero/public",
-      "alt": "Bristol makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jack/hero/public",
-      "alt": "Bristol makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/breanna/photo-25/public",
-      "alt": "Bristol makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/abby/photo-46/public",
-      "alt": "Bristol makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/abby/photo-47/public",
-      "alt": "Bristol makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/bristol/photo-30/public",
-      "alt": "Bristol makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/abby/photo-49/public",
-      "alt": "Bristol makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/bristol/photo-32/public",
-      "alt": "Bristol makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/bristol/photo-33/public",
-      "alt": "Bristol makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/bristol/photo-34/public",
-      "alt": "Bristol makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/bristol/photo-35/public",
-      "alt": "Bristol makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/bristol/photo-36/public",
-      "alt": "Bristol makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/bristol/photo-37/public",
-      "alt": "Bristol makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/bristol/photo-38/public",
-      "alt": "Bristol makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/bristol/photo-39/public",
-      "alt": "Bristol makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/anderson/photo-16/public",
-      "alt": "Bristol makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/bristol/photo-41/public",
-      "alt": "Bristol makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/bristol/photo-42/public",
-      "alt": "Bristol makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/bristol/photo-43/public",
-      "alt": "Bristol makeover photo"
     }
   ],
   "photoCount": 23,
@@ -242,5 +162,8 @@
     "needsReview": [],
     "cfHeroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/65a82718-7622-4889-94b1-4935a40c2d00/full"
   },
-  "roomCount": 1
+  "roomCount": 1,
+  "publishStatus": "published",
+  "streamVideoId": null,
+  "fundraisingUrl": null
 }

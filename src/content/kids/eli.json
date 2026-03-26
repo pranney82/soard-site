@@ -4,7 +4,8 @@
   "age": 9,
   "diagnosis": "Neuro-Degenerative Disease",
   "roomTypes": [
-    "Concrete Carport"
+    "Concrete Carport",
+    "Therapy Room"
   ],
   "year": 2019,
   "status": "completed",
@@ -47,162 +48,6 @@
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/eli/photo-09/public",
       "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/summit-counseling-center/hero/public",
-      "alt": "Eli makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/abby/photo-39/public",
-      "alt": "Eli makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/kalen/hero/public",
-      "alt": "Eli makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/amir/photo-33/public",
-      "alt": "Eli makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/sims/hero/public",
-      "alt": "Eli makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/bobby/hero/public",
-      "alt": "Eli makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/zoe/hero/public",
-      "alt": "Eli makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/andrew/photo-42/public",
-      "alt": "Eli makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jack/hero/public",
-      "alt": "Eli makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/abby/photo-46/public",
-      "alt": "Eli makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/abby/photo-48/public",
-      "alt": "Eli makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/eli/photo-21/public",
-      "alt": "Eli makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/eli/photo-22/public",
-      "alt": "Eli makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/eli/photo-23/public",
-      "alt": "Eli makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/eli/photo-24/public",
-      "alt": "Eli makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/ayden/photo-15/public",
-      "alt": "Eli makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/angel/photo-61/public",
-      "alt": "Eli makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/camp-twin-lakes/photo-16/public",
-      "alt": "Eli makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/eli/photo-28/public",
-      "alt": "Eli makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/eli/photo-29/public",
-      "alt": "Eli makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/eli/photo-30/public",
-      "alt": "Eli makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/eli/photo-31/public",
-      "alt": "Eli makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/eli/photo-32/public",
-      "alt": "Eli makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/eli/photo-33/public",
-      "alt": "Eli makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/eli/photo-34/public",
-      "alt": "Eli makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/eli/photo-35/public",
-      "alt": "Eli makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/eli/photo-36/public",
-      "alt": "Eli makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/caleb/photo-35/public",
-      "alt": "Eli makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/abby/photo-40/public",
-      "alt": "Eli makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/ayden/photo-03/public",
-      "alt": "Eli makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/angel/photo-56/public",
-      "alt": "Eli makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/breanna/photo-25/public",
-      "alt": "Eli makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/eli/photo-42/public",
-      "alt": "Eli makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/eli/photo-43/public",
-      "alt": "Eli makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/eli/photo-44/public",
-      "alt": "Eli makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/eli/photo-45/public",
-      "alt": "Eli makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/eli/photo-46/public",
-      "alt": "Eli makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/eli/photo-47/public",
-      "alt": "Eli makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/eli/photo-48/public",
-      "alt": "Eli makeover photo"
     }
   ],
   "photoCount": 9,
@@ -244,5 +89,8 @@
     "needsReview": [],
     "cfHeroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/cc94e825-34a5-4bfa-d3f7-065bb1ab7200/full"
   },
-  "roomCount": 1
+  "roomCount": 1,
+  "publishStatus": "published",
+  "streamVideoId": null,
+  "fundraisingUrl": null
 }

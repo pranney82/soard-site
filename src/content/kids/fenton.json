@@ -10,7 +10,7 @@
   "status": "completed",
   "bio": "Fenton is currently one of only four cases of Modern Day Polio in Georgia and one of roughly 300 nationwide.\n\nFenton's spine was infused with inflammation that quickly destroyed tissue including the nerve conduits leading to his extremities. He is scheduled to receive an innovative new surgical procedure called nerve transfers and is hopeful that the results will be positive; and, he will be able to breathe without a ventilator. Fenton's daily routine is built upon an intensive therapy schedule. With therapeutic electrical stimulation and consistent movement, children like Fenton show strengthening and meaningful muscle improvements over time. Intensive therapy treatments are important for Fenton to achieve maximum potential. Fenton is a resilient trooper and a complete ray of light. He provides hope in the face of fear and replaces sadness with smiles. Sunshine on a Ranney Day hopes to bring endless smiles to Fenton and his family though this exciting venture! We'd love to see you at the big reveal!",
   "quote": "Fenton is currently one of only four cases of Modern Day Polio in Georgia and one of roughly 300 nationwide.",
-  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/fenton/hero/public",
+  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/fenton/photo-42/public",
   "photos": [
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/fenton/photo-01/public",
@@ -121,50 +121,6 @@
       "alt": ""
     },
     {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/bennett-and-lacey/photo-34/public",
-      "alt": "Fenton makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/alejandro/photo-19/public",
-      "alt": "Fenton makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/amir/photo-33/public",
-      "alt": "Fenton makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/zoe/hero/public",
-      "alt": "Fenton makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jack/hero/public",
-      "alt": "Fenton makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/alejandro/photo-23/public",
-      "alt": "Fenton makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/abby/photo-46/public",
-      "alt": "Fenton makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/abby/photo-47/public",
-      "alt": "Fenton makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/abby/photo-50/public",
-      "alt": "Fenton makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/fenton/photo-37/public",
-      "alt": "Fenton makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/fenton/photo-38/public",
-      "alt": "Fenton makeover photo"
-    },
-    {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/fenton/photo-39/public",
       "alt": "Fenton makeover photo"
     },
@@ -183,13 +139,9 @@
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/fenton/photo-43/public",
       "alt": "Fenton makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/fenton/photo-44/public",
-      "alt": "Fenton makeover photo"
     }
   ],
-  "photoCount": 27,
+  "photoCount": 32,
   "videoUrl": "https://youtu.be/CUVizDaau3g",
   "photographer": "Niki Murphy Photography",
   "partnerLogos": [
@@ -244,5 +196,7 @@
     "cfHeroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/b2d26427-df22-4d77-15fc-38b53c9a2500/full"
   },
   "streamVideoId": "e45dd42060a3a49ab8320ed8cba7267d",
-  "roomCount": 1
+  "roomCount": 1,
+  "publishStatus": "published",
+  "fundraisingUrl": null
 }

@@ -10,7 +10,7 @@
   "status": "completed",
   "bio": "Sunshine on a Ranney Day gave her the glamorous bedroom makeover of her dreams! It promises to be as beautiful as she is!\n\nShe missed her preschool graduation ceremony since she was hospitalized, but the school and hospital joined forces to bring a special graduation ceremony of her own right to her room. Being able to enjoy the rite of passage of graduating preschool really lifted her spirits. Although Caliyah is making great progress, she has a long road of recovery ahead of her. Her scars are still healing and she is not able to go in direct sunlight. Sunshine on a Ranney Day gave her the glamorous bedroom makeover of her dreams! It promises to be as beautiful as she is!",
   "quote": "Sunshine on a Ranney Day gave her the glamorous bedroom makeover of her dreams! It promises to be as beautiful as she is!",
-  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/caliyah/hero/public",
+  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/caliyah/photo-23/public",
   "photos": [
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/caliyah/photo-01/public",
@@ -105,55 +105,7 @@
       "alt": ""
     },
     {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/abby/photo-38/public",
-      "alt": "Caliyah makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/abby/photo-40/public",
-      "alt": "Caliyah makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/abby/photo-42/public",
-      "alt": "Caliyah makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/zoe/hero/public",
-      "alt": "Caliyah makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jack/hero/public",
-      "alt": "Caliyah makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/caliyah/photo-29/public",
-      "alt": "Caliyah makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/abby/photo-48/public",
-      "alt": "Caliyah makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/abby/photo-49/public",
-      "alt": "Caliyah makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/abby/photo-50/public",
-      "alt": "Caliyah makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/caliyah/photo-33/public",
-      "alt": "Caliyah makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/caliyah/photo-34/public",
-      "alt": "Caliyah makeover photo"
-    },
-    {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/caliyah/photo-35/public",
-      "alt": "Caliyah makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/caliyah/photo-36/public",
       "alt": "Caliyah makeover photo"
     },
     {
@@ -169,7 +121,7 @@
       "alt": "Caliyah makeover photo"
     }
   ],
-  "photoCount": 23,
+  "photoCount": 27,
   "videoUrl": "https://youtu.be/3vyeoFzZYGo",
   "photographer": "Niki Murphy Photography",
   "partnerLogos": [
@@ -221,5 +173,7 @@
     "cfHeroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/b90ad1b0-3459-4032-0695-e6990c270a00/full"
   },
   "streamVideoId": "cbc66e4f4447e5a91e705cd6b03c52e7",
-  "roomCount": 1
+  "roomCount": 1,
+  "publishStatus": "published",
+  "fundraisingUrl": null
 }

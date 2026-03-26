@@ -5,23 +5,13 @@
   "status": "completed",
   "bio": "For those of you who have followed Sunshine on a Ranney Day for a while, you may remember this beautiful little lady, Briana! She is one strong girl, who has made miraculous gains since we last featured her in 2013.  Briana was four years old when a tragic accident left her in critical condition with paralysis. Doctors believed that she would never walk again. She was relying on machine to keep her alive; left limp with serious injuries to her brain and spinal cord.   The accident was heartbreaking for all involved. Briana was riding in her family's car when it was hit head-on by teenagers driving their father's Corvette. Both teens were killed instantly.    Briana's therapy and recovery have been long and challenging, but she has made incredible progress. Her family and therapists have continued to work diligently, toward her goals, never losing hope. They have faith that she will defy all odds and indeed will walk again.  Back in 2013, SOARD was able to help Briana and her family by transforming their garage into a dreamy bedroom with a fully accessible bathroom and wheelchair ramp.  Briana has soared since then, attaining many milestones and regaining strength, including feeling in her feet-a hopeful sign that she will soon be walking again. Unfortunately, The Hudson's lost their home to an aggressive fire. The flames destroyed it along with Briana's wheelchair and therapy equipment.  Although another devastating loss, Briana and her family survived.  Another miracle!  Due to the support of our donors and business partners, SOARD is was blessed to be able to step in again providing her with another beautiful dream room in her newly rebuilt home.  It was an amazing feeling getting her back in her own room, and back to working toward her goals! Her dreams are soon to come into fruition as she is sure to exceed the doctors' expectations. ",
   "quote": "For those of you who have followed Sunshine on a Ranney Day for a while, you may remember this beautiful little lady, Briana! She is one strong girl, who has made miraculous gains since we last featured her in 2013.  Briana was four years old when a tragic accident left her in critical condition wit",
-  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/zoe/hero/public",
-  "roomTypes": [],
+  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/briana-2016/photo-11/public",
+  "roomTypes": [
+    "Dream Bedroom"
+  ],
   "photos": [
     {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/zoe/hero/public",
-      "alt": "Briana makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jack/hero/public",
-      "alt": "Briana makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/andrew/photo-43/public",
-      "alt": "Briana makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/briana-2016/photo-04/public",
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/briana-2016/photo-11/public",
       "alt": "Briana makeover photo"
     },
     {
@@ -37,19 +27,7 @@
       "alt": "Briana makeover photo"
     },
     {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/briana-2016/photo-08/public",
-      "alt": "Briana makeover photo"
-    },
-    {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/briana-2016/photo-09/public",
-      "alt": "Briana makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/briana-2016/photo-10/public",
-      "alt": "Briana makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/briana-2016/photo-11/public",
       "alt": "Briana makeover photo"
     }
   ],
@@ -60,5 +38,10 @@
     "source": "wix-migration",
     "wixNumber": 49
   },
-  "roomCount": 1
+  "roomCount": 1,
+  "photoCount": 5,
+  "publishStatus": "published",
+  "streamVideoId": null,
+  "videoUrl": null,
+  "fundraisingUrl": null
 }

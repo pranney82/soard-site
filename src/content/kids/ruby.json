@@ -5,25 +5,11 @@
   "status": "completed",
   "bio": "This precious gem is Ruby!  Her gorgeous smile is contagious and feeds the soul of all those lucky enough to see it.  Sunshine on a Ranney Day and Make-a-Wish teamed up to ensure that those smiles spread like wildfire by making one of her heart’s deepest desires come true. In 2015, she was diagnosed with embryonal rhabdomyosarcoma, which is a form of soft tissue cancer.  Although, she remains strong and irrepressible, the chemotherapy and proton radiation therapy she undergoes is quite treacherous. Though always positive, the hardest part of treatment for Ruby is all the activities she has had to miss. The physical pain can be quickly forgotten, but the disappointments are harder to endure. Ruby has a burning passion for dancing and a fervent social conscious.  Her dreams include a future in which world peace, a cure for cancer and universal happiness exists.  Her personal aspirations are to have a family, open her own dance studio, to perform on Broadway and to travel the world.  The joint mission of SOARD and Make-a-Wish partnership transformed her basement into her very own dance studio so she can pursue her lifelong goals.  Ruby was walking on sunshine, dancing across the dance floor and glowing with incessant smiles once seeing her new therapy room!",
   "quote": "This precious gem is Ruby!  Her gorgeous smile is contagious and feeds the soul of all those lucky enough to see it.  Sunshine on a Ranney Day and Make-a-Wish teamed up to ensure that those smiles spread like wildfire by making one of her heart’s deepest desires come true. In 2015, she was diagnosed",
-  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/tayler/hero/public",
-  "roomTypes": [],
+  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/ruby/photo-09/public",
+  "roomTypes": [
+    "Therapy Room"
+  ],
   "photos": [
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/tayler/hero/public",
-      "alt": "Ruby makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/amir/photo-33/public",
-      "alt": "Ruby makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/andrew/photo-42/public",
-      "alt": "Ruby makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/abby/photo-48/public",
-      "alt": "Ruby makeover photo"
-    },
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/ruby/photo-05/public",
       "alt": "Ruby makeover photo"
@@ -47,18 +33,6 @@
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/ruby/photo-10/public",
       "alt": "Ruby makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/eli/photo-31/public",
-      "alt": "Ruby makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/mary-elizabeth/photo-10/public",
-      "alt": "Ruby makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/ruby/photo-13/public",
-      "alt": "Ruby makeover photo"
     }
   ],
   "age": null,
@@ -68,5 +42,10 @@
     "source": "wix-migration",
     "wixNumber": 41
   },
-  "roomCount": 1
+  "roomCount": 1,
+  "photoCount": 6,
+  "publishStatus": "published",
+  "streamVideoId": null,
+  "videoUrl": null,
+  "fundraisingUrl": null
 }

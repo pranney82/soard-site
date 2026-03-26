@@ -28,6 +28,7 @@
     "cta2Link": "#stories"
   },
   "featuredKidSlug": "amari",
+  "heroKidSlug": "",
   "kidShowcase": [
     {
       "slug": "adrian",
@@ -115,7 +116,9 @@
   ],
   "donatePhotos": {
     "hero": "kids/oakley/hero",
-    "story": "kids/amari/hero"
+    "heroKidName": "Oakley",
+    "story": "kids/amari/hero",
+    "storyKidName": "Amari"
   },
   "application": {
     "open": false,
@@ -128,6 +131,10 @@
     "story": "kids/eli/photo-01",
     "selection": "kids/georgia/photo-01"
   },
+  "newsletter": {
+    "listId": ""
+  },
+  "sunnyAndRanneyRooms": [],
   "photoTimestamps": {
     "donatePhotos.hero": "2026-03-25T16:42:57.347Z",
     "donatePhotos.story": "2026-03-25T16:43:08.923Z",

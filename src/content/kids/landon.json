@@ -10,7 +10,7 @@
   "status": "completed",
   "bio": "He had a successful heart transplant at 6 months old. Then, a year later, suffered from bacterial meningitis which left him with brain damage.",
   "quote": "He had a successful heart transplant at 6 months old. Then, a year later, suffered from bacterial meningitis which left him with brain damage.",
-  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/landon/hero/public",
+  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/landon/photo-18/public",
   "photos": [
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/landon/photo-01/public",
@@ -93,50 +93,6 @@
       "alt": "Landon makeover photo"
     },
     {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/ta-and-alissa/hero/public",
-      "alt": "Landon makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/alejandro/photo-19/public",
-      "alt": "Landon makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/tayler/hero/public",
-      "alt": "Landon makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/sims/hero/public",
-      "alt": "Landon makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/zoe/hero/public",
-      "alt": "Landon makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/alejandro/photo-23/public",
-      "alt": "Landon makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/abby/photo-49/public",
-      "alt": "Landon makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/abby/photo-50/public",
-      "alt": "Landon makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/landon/photo-29/public",
-      "alt": "Landon makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/landon/photo-30/public",
-      "alt": "Landon makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/landon/photo-31/public",
-      "alt": "Landon makeover photo"
-    },
-    {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/landon/photo-32/public",
       "alt": "Landon makeover photo"
     },
@@ -147,13 +103,9 @@
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/landon/photo-34/public",
       "alt": "Landon makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/landon/photo-35/public",
-      "alt": "Landon makeover photo"
     }
   ],
-  "photoCount": 19,
+  "photoCount": 23,
   "videoUrl": "https://youtu.be/Emm8-2GNKJ8",
   "photographer": "Niki Murphy Photography",
   "partnerLogos": [
@@ -205,5 +157,7 @@
     "cfHeroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/86606434-ab7c-44cd-f574-1466026e7900/full"
   },
   "streamVideoId": "5761822471fe541b91a053d02ce757a5",
-  "roomCount": 1
+  "roomCount": 1,
+  "publishStatus": "published",
+  "fundraisingUrl": null
 }
