@@ -38,7 +38,7 @@
 import { cfRaw, cfSrcset as _cfSrcset } from '../../utils/cf-image';
 const currentPath = Astro.url.pathname;
 
-const LOGO_ID = 'brand-logo-nav-circle';
+const LOGO_ID = 'brand-logo-light-bg-display';
 
 interface NavChild {
   label: string;
@@ -114,12 +114,11 @@ function isGroupActive(group: NavGroup) {
     <!-- Logo — imagedelivery.net auto-negotiates AVIF/WebP via Accept header -->
     <a href="/" class="logo" aria-label="Sunshine on a Ranney Day — Home">
         <img
-          src={cfRaw(LOGO_ID, 'w=256,q=85')}
-          srcset={_cfSrcset(LOGO_ID, [128, 192, 256, 384])}
-          sizes="(min-width: 1024px) 64px, (min-width: 481px) 52px, 52px"
+          src={cfRaw(LOGO_ID, 'w=512,q=85')}
+          srcset={_cfSrcset(LOGO_ID, [256, 384, 512, 768])}
+          sizes="(min-width: 1024px) 140px, 120px"
           alt="Sunshine on a Ranney Day"
           class="logo-img"
-          width="256" height="256"
           loading="eager" fetchpriority="high"
         />
     </a>
@@ -613,6 +612,7 @@ document.addEventListener('astro:before-swap', function () {
     transition: background 0.3s ease, box-shadow 0.3s ease;
     isolation: isolate;
     transform: translateZ(0);
+    overflow: visible;
     /* Keep header inside the root view-transition snapshot —
        a separate group would create a compositing boundary
        where the dark ::view-transition bg peeks through on mobile. */
@@ -642,22 +642,24 @@ document.addEventListener('astro:before-swap', function () {
     display: flex; align-items: center; justify-content: space-between;
     height: 100%; padding-inline: var(--space-lg);
     max-width: var(--max-width-wide); margin-inline: auto;
+    overflow: visible;
   }
 
   .logo {
     display: flex; align-items: center;
     flex-shrink: 0; text-decoration: none;
     transition: opacity 0.2s ease;
-    height: 100%; padding-block: 2px;
+    position: relative; z-index: 1001;
   }
   .logo:hover { opacity: 0.88; }
   .logo-img {
-    height: 100%; width: auto;
-    max-height: 52px;
+    width: auto;
+    max-height: 100px;
     object-fit: contain;
+    transform: translateY(calc((100px - var(--header-height)) / 6));
   }
-  @media (min-width: 481px) { .logo-img { max-height: 52px; } }
-  @media (min-width: 1024px) { .logo-img { max-height: 64px; } }
+  @media (min-width: 481px) { .logo-img { max-height: 100px; transform: translateY(calc((100px - var(--header-height)) / 6)); } }
+  @media (min-width: 1024px) { .logo-img { max-height: 120px; transform: translateY(calc((120px - var(--header-height)) / 6)); } }
 
   .desktop-nav { display: none; position: relative; }
   @media (min-width: 1024px) { .desktop-nav { display: flex; align-items: center; } }
