@@ -27,24 +27,9 @@ const docsOther = financialsData.documents
 const annualReports = (financialsData.annualReports || [])
   .sort((a, b) => b.year - a.year);
 
-// 2023 990 data (most recent with full-year comparable data)
-const snapshot = {
-  year: 2023,
-  totalRevenue: 2785033,
-  totalExpenses: 2500902,
-  programExpenses: 2032175,
-  managementExpenses: 248271,
-  fundraisingExpenses: 220456,
-  contributions: 1386004,
-  storeRevenue: 1399005,
-  netAssets: 944625,
-  employees: 19,
-  volunteers: 1000,
-  boardMembers: boardMemberCount,
-  programPct: 81,
-  managementPct: 10,
-  fundraisingPct: 9,
-};
+// Financial snapshot — editable from admin panel
+import snapshotData from '../../content/site/financial-snapshot.json';
+const snapshot = { ...snapshotData, boardMembers: boardMemberCount };
 
 // JSON-LD
 const jsonLd = {
@@ -92,6 +77,16 @@ const jsonLd = {
           />
           <span class="trust-badge__label">Candid</span>
           <span class="trust-badge__detail">Platinum Transparency 2026</span>
+        </a>
+        <a href="https://www.charitynavigator.org/ein/454773997"
+           target="_blank" rel="noopener noreferrer" class="trust-badge" aria-label="View our Charity Navigator profile">
+          <img
+            src="/charity-navigator-3-star.svg"
+            alt="Charity Navigator 3-Star Rating"
+            width="88" height="88" loading="eager"
+          />
+          <span class="trust-badge__label">Charity Navigator</span>
+          <span class="trust-badge__detail">3-Star Rating</span>
         </a>
         <div class="trust-badge trust-badge--info">
           <div class="trust-badge__ein">
@@ -147,11 +142,11 @@ const jsonLd = {
 
       <div class="stats-grid">
         <div class="stat-card">
-          <span class="stat-card__number">$2.8M</span>
+          <span class="stat-card__number">${(snapshot.totalRevenue / 1000000).toFixed(1)}M</span>
           <span class="stat-card__label">Total Revenue</span>
         </div>
         <div class="stat-card">
-          <span class="stat-card__number">1,000+</span>
+          <span class="stat-card__number">{snapshot.volunteers}+</span>
           <span class="stat-card__label">Volunteers</span>
         </div>
         <div class="stat-card">
@@ -159,7 +154,7 @@ const jsonLd = {
           <span class="stat-card__label">Board Members</span>
         </div>
         <div class="stat-card">
-          <span class="stat-card__number">$945K</span>
+          <span class="stat-card__number">${(snapshot.netAssets / 1000).toFixed(0)}K</span>
           <span class="stat-card__label">Net Assets</span>
         </div>
       </div>

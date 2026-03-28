@@ -1,14 +1,24 @@
-# Sunshine on a Ranney Day
+import type { APIRoute } from 'astro';
+import { getSiteStats } from '../utils/stats';
+
+export const GET: APIRoute = async () => {
+  const s = await getSiteStats();
+
+  const roomTypeLines = Object.entries(s.roomsByType)
+    .sort(([, a], [, b]) => b - a)
+    .map(([type, count]) => `- ${count}+ ${type.toLowerCase()}s built`);
+
+  const body = `# Sunshine on a Ranney Day
 
 > 501(c)(3) nonprofit creating life-changing home makeovers for children with special needs and life-altering illnesses in the greater Atlanta area. We design and build custom dream bedrooms, wheelchair-accessible bathrooms, and in-home therapy rooms — all at no cost to families. EIN: 45-4773997. Operating since 2012. Based in Roswell, Georgia.
 
 We are a nonprofit that partners with professional designers, contractors, and suppliers to transform the homes of children facing serious medical challenges. Our work gives families functional, beautiful spaces that support their child's independence, therapy, and joy.
 
 ## Key Facts
-- 203+ children served since 2012
-- 269+ rooms completed (bedrooms, bathrooms, therapy rooms)
-- 45+ therapy rooms built
-- 17,000+ children impacted through community projects
+- ${s.totalKids}+ children served since 2012
+- ${s.totalRooms}+ rooms completed (bedrooms, bathrooms, therapy rooms)
+${roomTypeLines.join('\n')}
+- ${s.livesImpacted.toLocaleString()}+ children impacted through community projects
 - Donated materials and labor from professional partners
 
 ## Programs
@@ -51,3 +61,9 @@ We are a nonprofit that partners with professional designers, contractors, and s
 
 ## Optional
 - [Full LLM context](https://sunshineonaranneyday.com/llms-full.txt): Comprehensive version with program details, kid profiles, and partner information
+`;
+
+  return new Response(body, {
+    headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+  });
+};

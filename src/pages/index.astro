@@ -11,10 +11,11 @@ import PartnerShowcase from '../components/ui/PartnerShowcase.astro';
 import { getCollection } from 'astro:content';
 import { getSiteStats } from '../utils/stats';
 
-import { CF_BASE as CF, cfRaw, cfSrcset, cfLqip } from '../utils/cf-image';
+import { CF_BASE as CF, cfId as extractCfId, cfRaw, cfSrcset, cfLqip } from '../utils/cf-image';
 
 /* ── Site settings (all editable from admin) ── */
 import siteSettings from '../content/site/settings.json';
+import financialSnapshot from '../content/site/financial-snapshot.json';
 
 /* ── Auto-computed stats from content collections ── */
 const computed = await getSiteStats();
@@ -59,8 +60,10 @@ const kidShowcaseData = siteSettings.kidShowcase || [
 ];
 const kidShowcase = kidShowcaseData.map(item => {
   const kid = allKids.find(k => k.id === item.slug);
+  const heroId = kid?.data?.heroImage ? extractCfId(kid.data.heroImage) : null;
   return {
     ...item,
+    cfId: heroId || item.cfId || `kids/${item.slug}/hero`,
     name: kid?.data?.name || item.slug,
     age: kid?.data?.age,
     roomLabel: kid?.data?.roomTypes?.[0] || 'Dream Bedroom',
@@ -71,7 +74,7 @@ const kidShowcase = kidShowcaseData.map(item => {
 const sp = siteSettings.sectionPhotos || {};
 const missionMainId = sp.missionMain || 'kids/eli/photo-01';
 const missionAccentId = sp.missionAccent || 'kids/georgia/photo-01';
-const heroPhotoId = `kids/${heroSlug}/hero`;
+const heroPhotoId = siteSettings.heroKidPhotoId || `kids/${heroSlug}/hero`;
 const storyPhotoId = siteSettings.featuredStoryImage || `kids/${featuredSlug}/hero`;
 const processPhotoId = sp.process || `kids/${featuredSlug}/hero`;
 const roomPhotos = {
@@ -330,7 +333,7 @@ const jsonLd = getWebSiteSchema();
       </div>
       <div class="trust-grid">
         <div class="trust-card" data-reveal>
-          <div class="trust-card-top"><span class="trust-big">87%</span><span class="trust-card-label">Program Services</span></div>
+          <div class="trust-card-top"><span class="trust-big">{financialSnapshot.programPct}%</span><span class="trust-card-label">Program Services</span></div>
           <p>The vast majority of every dollar funds room materials, labor, and design for children's spaces.</p>
         </div>
         <div class="trust-card" data-reveal data-delay="1">

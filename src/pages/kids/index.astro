@@ -10,6 +10,7 @@
  */
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import { getCollection } from 'astro:content';
+import { getSiteStats } from '../../utils/stats';
 
 const allKids = await getCollection('kids');
 const kids = allKids
@@ -34,14 +35,14 @@ function cfCropSrcset(src: string, widths: number[], hwRatio: number) {
 }
 
 // ── Stats ────────────────────────────────
-const completedCount = kids.filter(k => k.data.status === 'completed').length;
+const siteStats = await getSiteStats();
 const inProgressCount = kids.filter(k => k.data.status === 'in-progress').length;
 const startYear = years.length > 0 ? years[years.length - 1] : '';
 const yearRange = startYear ? `Since ${startYear}` : '';
 
 // ── SEO ──────────────────────────────────
 const SITE = 'https://sunshineonaranneyday.com';
-const pageDescription = `Meet ${totalKids} children whose lives were transformed by Sunshine on a Ranney Day — dream bedrooms, accessible bathrooms, therapy rooms, and more. ${completedCount} projects completed${inProgressCount > 0 ? `, ${inProgressCount} in progress` : ''}.`;
+const pageDescription = `Meet ${totalKids} children whose lives were transformed by Sunshine on a Ranney Day — dream bedrooms, accessible bathrooms, therapy rooms, and more. ${siteStats.totalRooms} rooms built${inProgressCount > 0 ? `, ${inProgressCount} in progress` : ''}.`;
 
 const itemListSchema = {
   "@type": "CollectionPage",
@@ -72,7 +73,7 @@ const faqSchema = {
       "name": "What does Sunshine on a Ranney Day do for children?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": `Sunshine on a Ranney Day transforms the living spaces of children with serious illnesses or disabilities. We've completed ${completedCount} projects${inProgressCount > 0 ? ` with ${inProgressCount} currently in progress` : ''}, creating dream bedrooms, accessible bathrooms, and therapy rooms tailored to each child's specific needs.`
+        "text": `Sunshine on a Ranney Day transforms the living spaces of children with serious illnesses or disabilities. We've built ${siteStats.totalRooms} rooms${inProgressCount > 0 ? ` with ${inProgressCount} currently in progress` : ''}, creating dream bedrooms, accessible bathrooms, and therapy rooms tailored to each child's specific needs.`
       }
     },
     {
@@ -194,7 +195,7 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
           <span class="hero-stat__label">Kids Helped</span>
         </div>
         <div class="hero-stat">
-          <span class="hero-stat__num">{completedCount}</span>
+          <span class="hero-stat__num">{siteStats.totalRooms}</span>
           <span class="hero-stat__label">Rooms Built</span>
         </div>
         {inProgressCount > 0 && (
@@ -1464,24 +1465,57 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
   document.addEventListener('astro:before-swap', cleanupKidsIndex);
 </script>
 
-<!-- View Transitions: card morph (event delegation) -->
+<!-- View Transitions: card ↔ hero morph (forward + back) -->
 <script>
   function initKidTransitions() {
     const grid = document.getElementById('kids-grid');
     if (!grid) return;
+
+    // Forward: index → profile — morph clicked card's frame + name
     grid.addEventListener('click', (e) => {
       const card = (e.target as HTMLElement).closest('.kid-card') as HTMLElement | null;
       if (!card) return;
+      // Clear any previous transition names
       document.querySelectorAll('[style*="view-transition-name"]').forEach(el => {
         (el as HTMLElement).style.viewTransitionName = '';
       });
-      const img = card.querySelector('.kid-card__img') as HTMLElement | null;
+      const frame = card.querySelector('.kid-card__frame') as HTMLElement | null;
       const name = card.querySelector('.kid-card__name') as HTMLElement | null;
-      if (img) img.style.viewTransitionName = 'kid-hero';
+      if (frame) {
+        frame.style.viewTransitionName = 'kid-hero';
+        // Reset ALL hover artifacts before the snapshot is captured —
+        // otherwise the yellow glow, overlay, and image scale persist in the morph
+        frame.style.boxShadow = 'none';
+        const overlay = frame.querySelector('.kid-card__hover-overlay') as HTMLElement | null;
+        if (overlay) overlay.style.opacity = '0';
+        const cta = frame.querySelector('.kid-card__cta') as HTMLElement | null;
+        if (cta) cta.style.opacity = '0';
+        const img = frame.querySelector('.kid-card__img') as HTMLElement | null;
+        if (img) { img.style.transform = 'none'; img.style.filter = 'none'; }
+      }
       if (name) name.style.viewTransitionName = 'kid-name';
     });
   }
+
+  // Back: profile → index — find the matching card in the incoming DOM
+  function setupBackTransition(e: any) {
+    const fromPath = window.location.pathname;
+    const slugMatch = fromPath.match(/^\/kids\/([^/]+)\/?$/);
+    if (!slugMatch) return;
+    const newDoc = e.newDocument as Document;
+    // Verify the incoming page is the kids index
+    if (!newDoc.getElementById('kids-grid')) return;
+    const slug = slugMatch[1];
+    const card = newDoc.querySelector(`a.kid-card[href="/kids/${slug}/"]`) as HTMLElement | null;
+    if (!card) return;
+    const frame = card.querySelector('.kid-card__frame') as HTMLElement | null;
+    const name = card.querySelector('.kid-card__name') as HTMLElement | null;
+    if (frame) frame.style.viewTransitionName = 'kid-hero';
+    if (name) name.style.viewTransitionName = 'kid-name';
+  }
+
   document.addEventListener('astro:page-load', initKidTransitions);
+  document.addEventListener('astro:before-swap', setupBackTransition);
 </script>
 
 <style>

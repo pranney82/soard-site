@@ -5,6 +5,10 @@
  * Include once in BaseLayout. Images are visible by default.
  * JS opts into the blur→sharp fade only for images it can manage.
  * Uses astro:page-load for View Transition compatibility.
+ *
+ * On SPA nav, cached images are already visible in the view transition
+ * snapshot — img.complete is true, so we mark them loaded instantly
+ * (no fade, no flash). Only non-cached images get the blur-up fade.
  */
 ---
 
@@ -15,14 +19,13 @@
         img.classList.add('loaded');
         return;
       }
-      // Not yet loaded — opt into the fade
+      // Not yet loaded — opt into the blur→sharp fade
       img.classList.add('lqip-pending');
       img.addEventListener('load', () => {
         img.classList.remove('lqip-pending');
         img.classList.add('loaded');
       }, { once: true });
       img.addEventListener('error', () => {
-        // Keep lqip-pending (LQIP blur is the fallback), mark loaded to skip future runs
         img.classList.add('loaded');
       }, { once: true });
     });

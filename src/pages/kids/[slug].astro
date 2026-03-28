@@ -57,13 +57,18 @@ const isFeatured = kid.featured && kid.caseStudy;
 
 // ── CF Image helpers ──────────────────────
 import { cfUrl as _cfUrl, cfSrcset as _cfSrcset, cfRaw, CF_BASE, cfId } from '../../utils/cf-image';
+import lqipManifest from '../../data/lqip-kids.json';
+const _lqipMap: Record<string, string> = lqipManifest;
+
 function cfUrl(src: string, opts: string) { return cfRaw(src, opts); }
 function cfSrcset(src: string, widths: number[]) {
   return _cfSrcset(src, widths);
 }
-/** LQIP: Tiny 30px-wide thumbnail for blur-up placeholder */
+/** LQIP: Inline base64 from build-time manifest (zero HTTP requests).
+ *  Falls back to CF URL only if the image isn't in the manifest. */
 function lqip(src: string): string {
-  return cfRaw(src, 'w=30,q=30,blur=20');
+  const id = cfId(src);
+  return _lqipMap[id] || cfRaw(src, 'w=30,q=30,blur=20');
 }
 
 // ── YouTube ID extraction ─────────────────
@@ -99,8 +104,8 @@ const metaDesc = kid.metaDescription
 const dateModified = kid.year ? `${kid.year}-01-01` : undefined;
 
 // ── LCP preload for hero image ────────────
-const heroSrcset = kid.heroImage ? _cfSrcset(kid.heroImage, [480, 800, 1200], { fit: 'cover', gravity: 'face', aspectRatio: 1.25 }) : '';
-const heroSizes = '(max-width: 600px) 92vw, (max-width: 1100px) 55vw, 520px';
+const heroSrcset = kid.heroImage ? _cfSrcset(kid.heroImage, [480, 800, 1200], { fit: 'cover', gravity: 'face', aspectRatio: 4/3 }) : '';
+const heroSizes = '(max-width: 1100px) 50vw, 520px';
 
 // ── Bio paragraphs + pull quote ───────────
 const bioParas = kid.bio ? kid.bio.split('\n\n').filter(p => p.trim()) : [];
@@ -116,8 +121,8 @@ if (kid.quote && kid.quote !== kid.bio && kid.quote !== introPara) {
 const galleryPhotos = photos.slice(0, 30);
 
 // ── Hero: art-directed mobile crop ───────
-const heroMobileSrcset = kid.heroImage ? _cfSrcset(kid.heroImage, [320, 480], { fit: 'cover', gravity: 'face', aspectRatio: 1 }) : '';
-const heroMobileSizes = '(max-width: 480px) 280px, 340px';
+const heroMobileSrcset = kid.heroImage ? _cfSrcset(kid.heroImage, [320, 480], { fit: 'cover', gravity: 'face', aspectRatio: 4/3 }) : '';
+const heroMobileSizes = '(max-width: 480px) 280px, 300px';
 
 // ── Narrative: scroll-linked story ───────
 const useNarrative = remainingParas.length >= 2 && galleryPhotos.length >= 3;
@@ -168,26 +173,27 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
 
         <div class="hero__split">
           {kid.heroImage ? (
-            <div class="hero__portrait stagger" style={`--lqip: url('${lqip(kid.heroImage)}')`}>
+            <div class="hero__portrait" style={`--lqip: url('${lqip(kid.heroImage)}')`} transition:name="kid-hero">
               <picture>
                 <source
                   media="(max-width: 768px)"
                   srcset={heroMobileSrcset}
                   sizes={heroMobileSizes}
+                  width="300"
+                  height="400"
                 />
                 <img
-                  src={cfUrl(kid.heroImage, 'w=800,h=1000,fit=cover,gravity=face,q=85')}
+                  src={cfUrl(kid.heroImage, 'w=600,h=800,fit=cover,gravity=face,q=85')}
                   srcset={heroSrcset}
                   sizes={heroSizes}
                   alt={`Photo of ${kid.name}${kid.diagnosis ? ` — ${kid.diagnosis}` : ''}`}
                   class="hero__img lqip-img"
-                  width="800"
-                  height="1000"
+                  width="600"
+                  height="800"
                   loading="eager"
                   decoding="async"
                   fetchpriority="high"
                   itemprop="image"
-                  transition:name="kid-hero"
                 />
               </picture>
               {kid.status === 'in-progress' && (
@@ -195,7 +201,7 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
               )}
             </div>
           ) : (
-            <div class="hero__portrait hero__portrait--empty stagger">
+            <div class="hero__portrait hero__portrait--empty">
               <svg class="hero__placeholder-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
                 <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
                 <circle cx="12" cy="7" r="4"/>
@@ -205,7 +211,7 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
           )}
 
           <div class="hero__info">
-            <h1 class="hero__name stagger" itemprop="headline" transition:name="kid-name">{kid.name}</h1>
+            <h1 class="hero__name" itemprop="headline" transition:name="kid-name">{kid.name}</h1>
 
             {kid.roomTypes && kid.roomTypes.length > 0 && (
               <p class="hero__diagnosis stagger">{kid.roomTypes.join(' & ')}</p>
@@ -581,11 +587,13 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     cleanupKidPage();
 
     // ── Staggered hero reveals ────────────────
+    // astro:page-load fires AFTER the view transition morph finishes,
+    // so no artificial delay needed — just cascade immediately.
+
     const heroStaggers = document.querySelectorAll('.hero .stagger');
     heroStaggers.forEach((el, i) => {
       const htmlEl = el as HTMLElement;
-      htmlEl.style.setProperty('--stagger-delay', `${i * 80}ms`);
-      // Reveal immediately (hero is above fold)
+      htmlEl.style.setProperty('--stagger-delay', `${i * 50}ms`);
       requestAnimationFrame(() => htmlEl.classList.add('stagger--visible'));
     });
 
@@ -847,9 +855,9 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
   /* ═══ Staggered Reveal — Hero Elements ════ */
   .stagger {
     opacity: 0;
-    transform: translateY(16px);
-    transition: opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1),
-                transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+    transform: translateY(12px);
+    transition: opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+                transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
     transition-delay: var(--stagger-delay, 0ms);
   }
 
@@ -930,13 +938,14 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     position: relative;
     border-radius: var(--profile-radius);
     overflow: hidden;
-    aspect-ratio: 4 / 5;
+    aspect-ratio: 3 / 4;
     background-color: var(--c-warm-gray);
     box-shadow:
       0 4px 6px rgba(0, 0, 0, 0.04),
       0 12px 40px rgba(0, 0, 0, 0.08),
       0 -3px 0 var(--c-yellow);
   }
+
 
   .hero__portrait--empty {
     display: flex;
@@ -970,8 +979,8 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
 
   .hero__badge {
     position: absolute;
-    top: var(--space-md);
-    left: var(--space-md);
+    top: 10px;
+    right: 10px;
     z-index: 3;
     background: var(--c-yellow);
     color: var(--c-dark);
@@ -1840,9 +1849,9 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     }
 
     .hero__portrait {
-      max-width: 340px;
+      max-width: 300px;
       margin-inline: auto;
-      aspect-ratio: 1 / 1;
+      aspect-ratio: 3 / 4;
     }
 
     .hero__name {
@@ -1927,7 +1936,7 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     .hero__details { gap: 8px; }
     .detail-chip { padding: 8px 14px; }
     .gallery__header { flex-direction: column; }
-    .hero__portrait { max-width: 280px; }
+    .hero__portrait { max-width: 260px; }
   }
 
   /* ═══ Reduced Motion ═══════════════════════ */

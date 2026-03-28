@@ -9,6 +9,9 @@ import PageLayout from '../../layouts/PageLayout.astro';
 import Button from '../../components/ui/Button.astro';
 import { getCollection } from 'astro:content';
 import { cfRaw, cfSrcset, cfLqip } from '../../utils/cf-image';
+import { getSiteStats } from '../../utils/stats';
+
+const stats = await getSiteStats();
 
 const allKids = await getCollection('kids');
 const featured = allKids
@@ -85,7 +88,7 @@ const featured = allKids
   <section class="section section--dark browse-cta">
     <div class="container container--narrow" style="text-align: center;">
       <h2 class="browse-cta__title">Every child has a story</h2>
-      <p class="browse-cta__text">We've served over 132 children since 2012. Browse all their profiles and see how each room was uniquely designed for them.</p>
+      <p class="browse-cta__text">We've served over {stats.totalKids} children across {stats.years} years. Browse all their profiles and see how each room was uniquely designed for them.</p>
       <div style="display: flex; gap: var(--space-md); justify-content: center; flex-wrap: wrap; margin-top: var(--space-xl);">
         <Button href="/kids/" variant="primary">Meet All the Kids</Button>
         <Button href="/donate/" variant="outline">Support a Build</Button>

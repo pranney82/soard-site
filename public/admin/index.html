@@ -4116,14 +4116,13 @@
                 icon="🤝" title=${search ? 'No partners match your search' : 'No partners yet'}
                 description=${search ? 'Try a different search term.' : 'Add your first partner organization.'}
                 actionLabel=${search ? null : 'Add Partner'} onAction=${onAdd} /></td></tr>` : null}
-              ${filtered.map(p => html`<tr key=${p.slug}>
+              ${filtered.map(p => html`<tr key=${p.slug} onClick=${() => onEdit(p.slug)} style="cursor: pointer;">
                 <td>${p.logo ? html`<img class="td-thumb" src="${p.logo}" alt="" style="object-fit: contain; background: #fff;" />` : '—'}</td>
                 <td><strong>${p.name}</strong></td>
                 <td class="td-hide-mobile"><span class="badge badge-accent">${p.level}</span></td>
                 <td class="td-hide-mobile"><span class="badge">${p.category}</span></td>
                 <td class="td-hide-mobile">${p.featured ? icons.check : '—'}</td>
                 <td style="white-space: nowrap;">
-                  <button class="btn btn-ghost btn-sm" onClick=${() => onEdit(p.slug)}>Edit</button>
                   <button class="btn btn-ghost btn-sm" style="color: #E53E3E;" onClick=${(e) => { e.stopPropagation(); onDelete(p); }}>Delete</button>
                 </td>
               </tr>`)}
@@ -4359,7 +4358,185 @@
     }
 
     // ═══════════════════════════════════════════
-    // FINANCIALS
+    // FINANCIAL SNAPSHOT (homepage + financials page data)
+    // ═══════════════════════════════════════════
+    function FinancialSnapshot({ addToast }) {
+      const defaults = {
+        year: 2024, totalRevenue: 0, totalExpenses: 0,
+        programExpenses: 0, managementExpenses: 0, fundraisingExpenses: 0,
+        contributions: 0, storeRevenue: 0, netAssets: 0,
+        employees: 0, volunteers: 0,
+        programPct: 0, managementPct: 0, fundraisingPct: 0,
+      };
+      const [data, setData] = useState(defaults);
+      const [sha, setSha] = useState(null);
+      const [loading, setLoading] = useState(true);
+      const [saving, setSaving] = useState(false);
+
+      useEffect(() => {
+        (async () => {
+          try {
+            const res = await api.readContent('src/content/site/financial-snapshot.json');
+            if (res.success) {
+              setData({ ...defaults, ...JSON.parse(res.content) });
+              setSha(res.sha);
+            }
+          } catch {}
+          setLoading(false);
+        })();
+      }, []);
+
+      const update = (field, value) => {
+        setData(d => ({ ...d, [field]: value }));
+      };
+
+      const updateNum = (field, value) => {
+        const n = value === '' ? 0 : Number(value);
+        if (!isNaN(n)) update(field, n);
+      };
+
+      const recalcPcts = (prog, mgmt, fund) => {
+        const total = prog + mgmt + fund;
+        if (total === 0) return;
+        setData(d => ({
+          ...d,
+          programExpenses: prog, managementExpenses: mgmt, fundraisingExpenses: fund,
+          totalExpenses: total,
+          programPct: Math.round((prog / total) * 100),
+          managementPct: Math.round((mgmt / total) * 100),
+          fundraisingPct: Math.round((fund / total) * 100),
+        }));
+      };
+
+      const handleSave = async () => {
+        setSaving(true);
+        try {
+          const res = await api.saveContent(
+            'src/content/site/financial-snapshot.json',
+            JSON.stringify(data, null, 2),
+            'Update financial snapshot data',
+            sha || undefined
+          );
+          if (res.success) {
+            setSha(res.sha);
+            addToast('Financial snapshot saved!', 'success');
+            logActivity('updated', 'financials', 'financial snapshot');
+          } else {
+            addToast('Save failed: ' + (res.error || 'Unknown'), 'error');
+          }
+        } catch (err) {
+          addToast('Error: ' + err.message, 'error');
+        }
+        setSaving(false);
+      };
+
+      if (loading) return html`<div style="text-align:center;padding:3rem"><span class="spinner" /></div>`;
+
+      const fmt = (n) => n ? '$' + n.toLocaleString() : '$0';
+
+      return html`
+        <div class="page-header">
+          <div>
+            <h2 style="margin:0">Financial Snapshot</h2>
+            <p style="margin:4px 0 0;color:var(--muted);font-size:14px">
+              Data shown on the homepage "open book" section and the financials page. Update when new 990 / audit is filed.
+            </p>
+          </div>
+          <button class="btn btn-primary" onClick=${handleSave} disabled=${saving}>
+            ${saving ? html`<span class="spinner" />` : null}
+            ${saving ? 'Saving...' : 'Save & Publish'}
+          </button>
+        </div>
+
+        <div class="card" style="margin-bottom:1.5rem">
+          <h3 style="margin:0 0 1rem">Reporting Year</h3>
+          <div class="form-group">
+            <label class="form-label">Year (e.g. 2024 = FY2024 990 data)</label>
+            <input class="form-input" type="number" style="max-width:120px"
+              value=${data.year} onInput=${e => updateNum('year', e.target.value)} />
+          </div>
+        </div>
+
+        <div class="card" style="margin-bottom:1.5rem">
+          <h3 style="margin:0 0 1rem">Expense Breakdown <span style="font-weight:400;color:var(--muted);font-size:13px">(from Part IX of 990)</span></h3>
+          <p style="color:var(--muted);font-size:13px;margin:0 0 1rem">Enter dollar amounts — percentages auto-calculate.</p>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem">
+            <div class="form-group">
+              <label class="form-label">Program Expenses</label>
+              <input class="form-input" type="number" value=${data.programExpenses}
+                onInput=${e => recalcPcts(Number(e.target.value) || 0, data.managementExpenses, data.fundraisingExpenses)} />
+              <span style="font-size:12px;color:var(--muted)">${data.programPct}%</span>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Management & General</label>
+              <input class="form-input" type="number" value=${data.managementExpenses}
+                onInput=${e => recalcPcts(data.programExpenses, Number(e.target.value) || 0, data.fundraisingExpenses)} />
+              <span style="font-size:12px;color:var(--muted)">${data.managementPct}%</span>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Fundraising</label>
+              <input class="form-input" type="number" value=${data.fundraisingExpenses}
+                onInput=${e => recalcPcts(data.programExpenses, data.managementExpenses, Number(e.target.value) || 0)} />
+              <span style="font-size:12px;color:var(--muted)">${data.fundraisingPct}%</span>
+            </div>
+          </div>
+          <div class="form-group" style="margin-top:0.5rem">
+            <label class="form-label">Total Expenses (auto-calculated)</label>
+            <input class="form-input" type="text" disabled value=${fmt(data.totalExpenses)} style="max-width:200px;background:var(--bg-alt)" />
+          </div>
+        </div>
+
+        <div class="card" style="margin-bottom:1.5rem">
+          <h3 style="margin:0 0 1rem">Revenue & Assets</h3>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+            <div class="form-group">
+              <label class="form-label">Total Revenue</label>
+              <input class="form-input" type="number" value=${data.totalRevenue}
+                onInput=${e => updateNum('totalRevenue', e.target.value)} />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Contributions & Grants</label>
+              <input class="form-input" type="number" value=${data.contributions}
+                onInput=${e => updateNum('contributions', e.target.value)} />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Store Revenue (net)</label>
+              <input class="form-input" type="number" value=${data.storeRevenue}
+                onInput=${e => updateNum('storeRevenue', e.target.value)} />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Net Assets (end of year)</label>
+              <input class="form-input" type="number" value=${data.netAssets}
+                onInput=${e => updateNum('netAssets', e.target.value)} />
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3 style="margin:0 0 1rem">Organization Stats</h3>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;max-width:400px">
+            <div class="form-group">
+              <label class="form-label">Employees</label>
+              <input class="form-input" type="number" value=${data.employees}
+                onInput=${e => updateNum('employees', e.target.value)} />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Volunteers</label>
+              <input class="form-input" type="number" value=${data.volunteers}
+                onInput=${e => updateNum('volunteers', e.target.value)} />
+            </div>
+          </div>
+        </div>
+
+        <div style="margin-top:1.5rem;padding:1rem;background:var(--bg-alt);border-radius:8px;font-size:13px;color:var(--muted)">
+          <strong>Preview:</strong> Homepage will show "${data.programPct}% Program Services".
+          Financials page will show FY${data.year} data with ${fmt(data.totalRevenue)} revenue, ${fmt(data.netAssets)} net assets.
+        </div>
+      `;
+    }
+
+    // ═══════════════════════════════════════════
+    // FINANCIALS (Documents)
     // ═══════════════════════════════════════════
     function Financials({ addToast }) {
       const [files, setFiles] = useState([]);
@@ -5299,7 +5476,7 @@
                 icon="📅" title=${search ? 'No events match your search' : 'No events yet'}
                 description=${search ? 'Try a different search term.' : 'Create your first event.'}
                 actionLabel=${search ? null : 'Add Event'} onAction=${onAdd} /></td></tr>` : null}
-              ${filtered.map(e => html`<tr key=${e.slug}>
+              ${filtered.map(e => html`<tr key=${e.slug} onClick=${() => onEdit(e.slug)} style="cursor: pointer;">
                 <td><strong>${e.title}</strong><span class="team-title-sub text-sm" style="display: none; color: var(--color-text-secondary);">${e.date || ''}${e.location ? ` · ${e.location.slice(0, 30)}` : ''}</span></td>
                 <td class="text-sm td-hide-mobile">${e.date || '—'}</td>
                 <td class="text-sm td-hide-mobile">${(e.location || '—').slice(0, 30)}${(e.location || '').length > 30 ? '…' : ''}</td>
@@ -5307,7 +5484,6 @@
                 <td><span class="badge ${e.status === 'upcoming' ? 'badge-green' : e.status === 'cancelled' ? 'badge-red' : 'badge-gray'}">${e.status}</span></td>
                 <td class="td-hide-mobile">${e.featured ? icons.star : '—'}</td>
                 <td style="white-space: nowrap;">
-                  <button class="btn btn-ghost btn-sm" onClick=${() => onEdit(e.slug)}>Edit</button>
                   <button class="btn btn-ghost btn-sm" style="color: #E53E3E;" onClick=${(ev) => { ev.stopPropagation(); onDelete(e); }}>Delete</button>
                 </td>
               </tr>`)}
@@ -7473,7 +7649,7 @@
         })();
       }, []);
 
-      const TRACKED_PHOTO_FIELDS = ['heroKidSlug', 'featuredKidSlug', 'featuredStoryImage',
+      const TRACKED_PHOTO_FIELDS = ['heroKidSlug', 'heroKidPhotoId', 'featuredKidSlug', 'featuredStoryImage',
         'sectionPhotos.missionMain', 'sectionPhotos.missionAccent', 'sectionPhotos.process',
         'sectionPhotos.roomBedroom', 'sectionPhotos.roomBath', 'sectionPhotos.roomTherapy',
         'donatePhotos.hero', 'donatePhotos.story'];
@@ -7613,17 +7789,45 @@
             <div style="display: flex; gap: 0.75rem; align-items: center;">
               ${(() => {
                 const sel = sortedKids.find(k => k.slug === (data.heroKidSlug || data.featuredKidSlug));
-                const cid = sel ? extractCfId(sel.heroImage) : '';
+                const cid = data.heroKidPhotoId || (sel ? extractCfId(sel.heroImage) : '');
                 return cid ? html`<img src=${CF + '/' + cid + '/w=120,h=120,fit=cover'}
                   alt="" style="width: 56px; height: 56px; border-radius: 8px; object-fit: cover; flex-shrink: 0; border: 1px solid var(--color-border);" />` : null;
               })()}
               <select class="form-input" style="flex: 1" value=${data.heroKidSlug || data.featuredKidSlug || ''}
-                onChange=${e => updateField('heroKidSlug', e.target.value)}>
+                onChange=${e => { updateField('heroKidSlug', e.target.value); updateField('heroKidPhotoId', ''); }}>
                 <option value="">— Select a kid —</option>
                 ${sortedKids.map(k => html`<option value=${k.slug} selected=${k.slug === (data.heroKidSlug || data.featuredKidSlug)}>${k.name}${k.year ? ` (${k.year})` : ''}</option>`)}
               </select>
             </div>
           </div>
+          ${(() => {
+            const sel = sortedKids.find(k => k.slug === (data.heroKidSlug || data.featuredKidSlug));
+            if (!sel) return null;
+            const allPhotos = [
+              { id: extractCfId(sel.heroImage), label: 'Hero' },
+              ...(sel.photos || []).map((p, i) => ({ id: extractCfId(p.url), label: `Photo ${i + 1}` })),
+            ].filter(p => p.id);
+            if (!allPhotos.length) return null;
+            const currentId = data.heroKidPhotoId || extractCfId(sel.heroImage);
+            return html`
+              <div class="form-group" style="margin-top: 1rem;">
+                <label class="form-label">Choose Photo</label>
+                <div style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
+                  ${allPhotos.map(p => html`
+                    <button type="button" onClick=${() => {
+                      const val = p.label === 'Hero' ? '' : p.id;
+                      updateField('heroKidPhotoId', val);
+                    }}
+                      style="padding: 0; border: 3px solid ${(currentId === p.id) ? 'var(--color-primary, #2563eb)' : 'transparent'}; border-radius: 10px; overflow: hidden; cursor: pointer; background: none; position: relative; width: 80px; height: 80px; flex-shrink: 0;">
+                      <img src=${CF + '/' + p.id + '/w=160,h=160,fit=cover'} alt=${p.label}
+                        style="width: 100%; height: 100%; object-fit: cover; display: block;" />
+                      ${(currentId === p.id) ? html`<span style="position: absolute; top: 2px; right: 2px; background: var(--color-primary, #2563eb); color: #fff; border-radius: 50%; width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; font-size: 11px;">✓</span>` : null}
+                    </button>
+                  `)}
+                </div>
+              </div>
+            `;
+          })()}
         </div>
 
         <div class="card">
@@ -7661,6 +7865,7 @@
                 <label class="form-label">Headline</label>
                 <input class="form-input" value=${data.featuredStoryHeadline || ''}
                   placeholder=${autoHeadline}
+                  onFocus=${e => { if (!e.target.value) { e.target.value = autoHeadline; updateField('featuredStoryHeadline', autoHeadline); } }}
                   onInput=${e => updateField('featuredStoryHeadline', e.target.value)} />
                 <p class="text-sm text-muted" style="margin-top: 0.25rem;">Leave blank to use: "${autoHeadline}"</p>
               </div>
@@ -7668,8 +7873,8 @@
                 <label class="form-label">Description</label>
                 <textarea class="form-input" rows="3" value=${data.featuredStoryDescription || ''}
                   placeholder=${autoDesc}
+                  onFocus=${e => { if (!e.target.value) { e.target.value = autoDesc; updateField('featuredStoryDescription', autoDesc); } }}
                   onInput=${e => updateField('featuredStoryDescription', e.target.value)} />
-                <p class="text-sm text-muted" style="margin-top: 0.25rem;">Leave blank to use: "${autoDesc}"</p>
               </div>
             `;
           })()}
@@ -9281,12 +9486,14 @@
                 <button class="hub-tab ${sTab === 'faq' ? 'active' : ''}" onClick=${() => setSubTab('faq')}>FAQs</button>
                 <button class="hub-tab ${sTab === 'ourstory' ? 'active' : ''}" onClick=${() => setSubTab('ourstory')}>Our Story</button>
                 <button class="hub-tab ${sTab === 'mediakit' ? 'active' : ''}" onClick=${() => setSubTab('mediakit')}>Media Kit</button>
+                <button class="hub-tab ${sTab === 'snapshot' ? 'active' : ''}" onClick=${() => setSubTab('snapshot')}>Financial Snapshot</button>
                 <button class="hub-tab ${sTab === 'financials' ? 'active' : ''}" onClick=${() => setSubTab('financials')}>Financials</button>
                 <button class="hub-tab ${sTab === 'settings' ? 'active' : ''}" onClick=${() => setSubTab('settings')}>Settings</button>
               </div>
               ${sTab === 'faq' ? html`<${FAQManager} addToast=${addToast} />`
                 : sTab === 'ourstory' ? html`<${OurStory} addToast=${addToast} />`
                 : sTab === 'mediakit' ? html`<${MediaKit} addToast=${addToast} />`
+                : sTab === 'snapshot' ? html`<${FinancialSnapshot} addToast=${addToast} />`
                 : sTab === 'financials' ? html`<${Financials} addToast=${addToast} />`
                 : sTab === 'settings' ? html`<${SiteSettings} addToast=${addToast} kids=${kids} partners=${partners} />`
                 : html`<${KidsOnSite} addToast=${addToast} kids=${kids} />`

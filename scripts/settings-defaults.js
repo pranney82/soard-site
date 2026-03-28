@@ -48,6 +48,7 @@ export const SETTINGS_DEFAULTS = {
   /* ── Featured / Showcase ── */
   featuredKidSlug: 'zyah',
   heroKidSlug: '',
+  heroKidPhotoId: '',
   kidShowcase: [],
 
   /* ── Section Photos ── */

@@ -103,19 +103,26 @@ html {
   animation: 90ms cubic-bezier(0, 0, 0.2, 1) both vt-fade-in;
 }
 
-/* Shared element morph for kid hero images — the View Transitions
-   API auto-interpolates position, size, and border-radius */
+/* Shared element morph for kid card ↔ hero portrait.
+   The API auto-interpolates position, size, and border-radius.
+   Transition is on the *container* (card frame / hero portrait)
+   so rounded corners morph smoothly with the element. */
 ::view-transition-group(kid-hero) {
-  animation-duration: 250ms;
+  animation-duration: 220ms;
   animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  overflow: hidden;
+}
+::view-transition-old(kid-hero),
+::view-transition-new(kid-hero) {
+  object-fit: cover;
+  overflow: hidden;
+  mix-blend-mode: normal;
 }
 ::view-transition-old(kid-hero) {
-  animation: 120ms cubic-bezier(0.4, 0, 1, 1) both vt-fade-out;
-  object-fit: cover;
+  animation: 100ms cubic-bezier(0.4, 0, 1, 1) both vt-fade-out;
 }
 ::view-transition-new(kid-hero) {
-  animation: 180ms cubic-bezier(0, 0, 0.2, 1) 60ms both vt-fade-in;
-  object-fit: cover;
+  animation: 140ms cubic-bezier(0, 0, 0.2, 1) 60ms both vt-fade-in;
 }
 
 /* Kid name morph between card label and hero heading */
@@ -124,10 +131,10 @@ html {
   animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
 }
 ::view-transition-old(kid-name) {
-  animation: 100ms ease both vt-fade-out;
+  animation: 80ms ease both vt-fade-out;
 }
 ::view-transition-new(kid-name) {
-  animation: 150ms ease 50ms both vt-fade-in;
+  animation: 120ms ease 60ms both vt-fade-in;
 }
 
 /* Prevent snapshot isolation from clipping morphing elements */
