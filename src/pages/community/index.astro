@@ -35,7 +35,7 @@ const galleryPhotos = [
 ];
 
 /* ── Spotlight photo ── */
-const spotlightPhoto = 'kids/camp-twin-lakes/hero';
+const spotlightPhoto = 'community/the-drake-house/after-01';
 
 /* ── Schema ── */
 const pageUrl = 'https://sunshineonaranneyday.com/community/';
@@ -132,41 +132,63 @@ const jsonLd = buildSchemaGraph(
     </div>
 
     <div class="cp-projects-grid">
-      {projects.map((project, i) => (
-        <article class="cp-card" data-reveal data-delay={String(i % 2)}>
-          {project.imageId ? (
-            <div class="cp-card-photo" style={`background-image:url(${cfLqip(project.imageId)})`}>
-              <CFImage
-                src={project.imageId}
-                alt={project.imageAlt || `${project.name} project by SOARD`}
-                width={600} height={400}
-                sizes="(max-width:768px) 90vw, 45vw"
-                widths={[300, 400, 600]}
-                loading="lazy"
-                fit="cover"
-                class="lqip-img"
-              />
-            </div>
-          ) : (
-            <div class="cp-card-color" style={`background: ${project.color};`}>
-              <span class="cp-card-color-num">{project.impact}</span>
-              <span class="cp-card-color-label">{project.impactLabel}</span>
-            </div>
-          )}
-          {project.badge && <span class="cp-card-badge">{project.badge}</span>}
-          <div class="cp-card-body">
-            <span class="cp-card-year">{project.year}</span>
-            <h3 class="cp-card-name">{project.name}</h3>
-            {project.imageId && (
-              <div class="cp-card-impact">
-                <span class="cp-card-num">{project.impact}</span>
-                <span class="cp-card-label">{project.impactLabel}</span>
+      {projects.map((project, i) => {
+        const hasDetail = !!project.story;
+        const detailHref = `/community/${project.slug}/`;
+        const hasPhoto = project.imageId || project.heroImage;
+        return (
+          <article class="cp-card" data-reveal data-delay={String(i % 2)}>
+            {hasDetail ? <a href={detailHref} class="cp-card-link" aria-label={`View ${project.name} project details`}></a> : null}
+            {project.imageId ? (
+              <div class="cp-card-photo" style={`background-image:url(${cfLqip(project.imageId)})`}>
+                <CFImage
+                  src={project.imageId}
+                  alt={project.imageAlt || `${project.name} project by SOARD`}
+                  width={600} height={400}
+                  sizes="(max-width:768px) 90vw, 45vw"
+                  widths={[300, 400, 600]}
+                  loading="lazy"
+                  fit="cover"
+                  class="lqip-img"
+                />
+              </div>
+            ) : project.heroImage ? (
+              <div class="cp-card-photo">
+                <CFImage
+                  src={project.heroImage}
+                  alt={project.imageAlt || `${project.name} project by SOARD`}
+                  width={600} height={400}
+                  sizes="(max-width:768px) 90vw, 45vw"
+                  widths={[300, 400, 600]}
+                  loading="lazy"
+                  fit="cover"
+                  class="cp-card-hero-img"
+                />
+              </div>
+            ) : (
+              <div class="cp-card-color" style={`background: ${project.color};`}>
+                <span class="cp-card-color-num">{project.impact}</span>
+                <span class="cp-card-color-label">{project.impactLabel}</span>
               </div>
             )}
-            <p class="cp-card-desc">{project.description}</p>
-          </div>
-        </article>
-      ))}
+            {project.badge && <span class="cp-card-badge">{project.badge}</span>}
+            <div class="cp-card-body">
+              <span class="cp-card-year">{project.year}</span>
+              <h3 class="cp-card-name">{project.name}</h3>
+              {hasPhoto && (
+                <div class="cp-card-impact">
+                  <span class="cp-card-num">{project.impact}</span>
+                  <span class="cp-card-label">{project.impactLabel}</span>
+                </div>
+              )}
+              <p class="cp-card-desc">{project.description}</p>
+              {hasDetail && (
+                <span class="cp-card-read-more">View Project →</span>
+              )}
+            </div>
+          </article>
+        );
+      })}
     </div>
   </section>
 
@@ -174,23 +196,25 @@ const jsonLd = buildSchemaGraph(
   <section class="cp-spotlight" aria-labelledby="spotlight-heading">
     <div class="cp-spotlight-inner">
       <div class="cp-spotlight-visual" data-reveal>
-        <div class="cp-spotlight-frame" style={`background-image:url(${cfLqip(spotlightPhoto)})`}>
+        <a href="/community/the-drake-house/" class="cp-spotlight-frame">
           <CFImage
             src={spotlightPhoto}
-            alt="Camp Twin Lakes facility renovated by SOARD"
+            alt="The Drake House headquarters renovated by SOARD"
             width={800} height={600}
             sizes="(max-width:768px) 90vw, 45vw"
             widths={[400, 600, 800]}
             loading="lazy"
-            class="lqip-img"
+            fit="cover"
+            class="cp-spotlight-img"
           />
-        </div>
+        </a>
       </div>
       <div class="cp-spotlight-text" data-reveal data-delay="1">
         <div class="section-label">2022 Spotlight</div>
         <h2 id="spotlight-heading">Transforming The Drake House for families <em class="highlight">starting over</em>.</h2>
         <p>The Drake House provides housing and education for single mothers and their children experiencing homelessness. Over 40% of Atlanta's homeless population are women and children.</p>
         <p>SOARD renovated their headquarters — classrooms, activity spaces, a community kitchen, and teen gathering rooms — creating an environment where families can recover, learn, and rebuild with dignity.</p>
+        <a href="/community/the-drake-house/" class="cp-spotlight-link">View Full Project →</a>
       </div>
     </div>
   </section>
@@ -508,6 +532,39 @@ const jsonLd = buildSchemaGraph(
     box-shadow: 0 24px 56px rgba(0, 0, 0, 0.1);
   }
 
+  /* Clickable overlay for cards with detail pages */
+  .cp-card-link {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    cursor: pointer;
+  }
+
+  .cp-card-photo :global(.cp-card-hero-img) {
+    width: 100%;
+    aspect-ratio: 3 / 2;
+    object-fit: cover;
+    display: block;
+    transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .cp-card:hover .cp-card-photo :global(.cp-card-hero-img) {
+    transform: scale(1.05);
+  }
+
+  .cp-card-read-more {
+    display: inline-block;
+    margin-top: var(--space-md);
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--c-purple);
+    transition: color var(--transition-fast);
+  }
+
+  .cp-card:hover .cp-card-read-more {
+    color: var(--c-dark);
+  }
+
   /* Photo cards */
   .cp-card-photo {
     overflow: hidden;
@@ -718,12 +775,11 @@ const jsonLd = buildSchemaGraph(
   }
 
   .cp-spotlight-frame {
+    display: block;
     border-radius: var(--border-radius-lg);
     overflow: hidden;
     box-shadow: 0 24px 64px rgba(0, 0, 0, 0.1), 0 6px 20px rgba(0, 0, 0, 0.05);
-    background-size: cover;
-    background-position: center;
-    background-repeat: no-repeat;
+    text-decoration: none;
   }
 
   .cp-spotlight-frame :global(img) {
@@ -735,6 +791,20 @@ const jsonLd = buildSchemaGraph(
 
   .cp-spotlight-frame:hover :global(img) {
     transform: scale(1.03);
+  }
+
+  .cp-spotlight-link {
+    display: inline-block;
+    margin-top: var(--space-lg);
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--c-purple);
+    text-decoration: none;
+    transition: color var(--transition-fast);
+  }
+
+  .cp-spotlight-link:hover {
+    color: var(--c-dark);
   }
 
   @media (max-width: 768px) {

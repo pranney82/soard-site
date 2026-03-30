@@ -204,6 +204,28 @@ const community = defineCollection({
     imageAlt: z.string().optional(),
     badge: z.string().optional(),
     order: z.number().default(0),
+    /* ── Detail page fields (optional — omit for summary-only entries) ── */
+    founded: z.string().optional(),
+    story: z.string().optional(),
+    quote: z.string().nullable().optional(),
+    heroImage: z.string().nullable().optional(),
+    metaDescription: z.string().optional(),
+    beforePhotos: z.array(z.object({
+      url: z.string(),
+      alt: z.string().default(''),
+    })).default([]),
+    afterPhotos: z.array(z.object({
+      url: z.string(),
+      alt: z.string().default(''),
+    })).default([]),
+    photos: z.array(z.object({
+      url: z.string(),
+      alt: z.string().default(''),
+    })).default([]),
+    partnerLogos: z.array(z.object({
+      url: z.string(),
+      name: z.string().default(''),
+    })).default([]),
   }),
 });
 
