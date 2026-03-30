@@ -2,8 +2,9 @@
   "name": "Birchfield Photography",
   "slug": "birchfield-photography",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/birchfield-photography/public",
-  "level": "friend",
-  "category": "community",
+  "tier": "community",
   "featured": false,
-  "order": 0
+  "website": "https://www.facebook.com/birchfieldphotographyco",
+  "level": "friend",
+  "category": "community"
 }

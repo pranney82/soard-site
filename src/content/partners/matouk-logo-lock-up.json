@@ -1,9 +1,9 @@
 {
-  "name": "Matouk Logo Lock Up",
+  "name": "Matouk Fine Linens",
   "slug": "matouk-logo-lock-up",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/matouk/public",
-  "level": "friend",
-  "category": "build",
+  "tier": "construction",
   "featured": false,
-  "order": 0
+  "website": "https://www.matouk.com",
+  "level": "friend"
 }

@@ -2,8 +2,8 @@
   "name": "Forsyth Rotary",
   "slug": "forsyth-rotary",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/forsyth-rotary/public",
-  "level": "friend",
-  "category": "build",
+  "tier": "construction",
   "featured": false,
-  "order": 0
+  "level": "friend",
+  "category": "funding"
 }

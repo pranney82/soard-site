@@ -1,9 +1,10 @@
 {
   "name": "Locum Tenens",
   "slug": "locum-tenens",
-  "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/locum-tenens/public",
-  "level": "friend",
-  "category": "build",
+  "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/locum-tenens/1774878292836/public",
+  "tier": "construction",
   "featured": false,
-  "order": 0
+  "website": "https://www.locumtenens.com",
+  "level": "friend",
+  "category": "funding"
 }

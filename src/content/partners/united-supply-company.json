@@ -2,8 +2,6 @@
   "name": "United Supply Company",
   "slug": "united-supply-company",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/united-supply-company/public",
-  "level": "friend",
-  "category": "build",
-  "featured": false,
-  "order": 0
+  "tier": "construction",
+  "featured": false
 }

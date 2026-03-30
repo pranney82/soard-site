@@ -2,9 +2,7 @@
   "name": "Reynard Custom Homes",
   "slug": "reynard-custom-homes",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/reynard-custom-homes/public",
-  "website": "https://www.reynarddesign.com",
-  "level": "champion",
-  "category": "design",
+  "tier": "design",
   "featured": true,
-  "order": 0
+  "website": "https://www.reynarddesign.com"
 }

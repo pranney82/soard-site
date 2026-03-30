@@ -7,9 +7,9 @@
   "quote": "We hope this amazing 16-year old will be pleasantly surprised at the reveal of his new room - an awesome hang out fit for a hip teen and his friends!  Charlie is quite charming, and handsome too.  Friends and family describe him as a sweet son, brother, Godson and pal.  He is funny, loves board game",
   "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/charlie/photo-06/public",
   "roomTypes": [
-    "Dream Bedroom",
     "Accessible Bathroom",
-    "Therapy Room"
+    "Therapy Room",
+    "Dream Bedroom"
   ],
   "photos": [
     {
@@ -33,8 +33,8 @@
       "alt": "Charlie makeover photo"
     }
   ],
-  "age": null,
-  "diagnosis": null,
+  "age": 16,
+  "diagnosis": "Duchenne Muscular Dystrophy",
   "_migration": {
     "cfHeroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/520c76a8-45e3-4d22-b8e6-51bbc72c0100/full",
     "source": "wix-migration",
@@ -45,5 +45,8 @@
   "publishStatus": "published",
   "streamVideoId": null,
   "videoUrl": null,
-  "fundraisingUrl": null
+  "fundraisingUrl": null,
+  "bathroomCount": 1,
+  "therapyRoomCount": 1,
+  "bedroomCount": 1
 }

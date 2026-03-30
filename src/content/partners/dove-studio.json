@@ -2,8 +2,8 @@
   "name": "Dove Studio",
   "slug": "dove-studio",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/dove-studio/public",
-  "level": "friend",
-  "category": "design",
+  "tier": "design",
   "featured": false,
-  "order": 0
+  "website": "https://www.dovestudio.com",
+  "level": "friend"
 }

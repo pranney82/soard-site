@@ -2,8 +2,7 @@
   "name": "Niki Murphy Photography",
   "slug": "niki-murphy-photography",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/niki-murphy-photography/public",
-  "level": "builder",
-  "category": "community",
+  "tier": "community",
   "featured": true,
-  "order": 0
+  "level": "champion"
 }

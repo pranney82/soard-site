@@ -11,7 +11,7 @@
   "status": "completed",
   "bio": "\"An accessible bathroom will alleviate the fear of injury and help the family achieve their goal of facilitating as much independence as possible.\"\n\nAlex has grown into his adult body and his emerging maturity has him striving for independence when it comes to bathroom use and personal hygiene. Not only is Alex's bathroom not conducive to his caring for himself; but, it also is not at all accessible for caregivers to assist. The toilet grab bar is jerry-rigged between the toilet and tub and often comes loose, posing one of many safety issues in his bathroom. A small wall sink was put in to allow the wheelchair to fit, but when Alex leans on it to reach for faucets, it is a great concern that it will pull off the wall.\n\nAlex does not consider personal hygiene a chore; he is eager to take care of himself and takes great pride in his appearance and independence. An accessible bathroom will alleviate the fear of injury and help the family achieve their goal of facilitating as much independence as possible. Everyone looks forward to when Alex can look in his own mirror and give a little nod of self-approval for a job well done.",
   "quote": "\"An accessible bathroom will alleviate the fear of injury and help the family achieve their goal of facilitating as much independence as possible.\"",
-  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/alex/hero/public",
+  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/alex/photo-11/public",
   "photos": [
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/alex/photo-01/public",
@@ -60,17 +60,9 @@
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/alex/photo-12/public",
       "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/alex/photo-13/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/alex/photo-14/public",
-      "alt": ""
     }
   ],
-  "photoCount": 15,
+  "photoCount": 12,
   "videoUrl": "https://youtu.be/XFBiP9H2Zj4",
   "photographer": null,
   "partnerLogos": [
@@ -134,5 +126,9 @@
   "altTexts": null,
   "jsonLd": null,
   "streamVideoId": "b9af5cfb5f44ccd766bea7f7dc0cf9bb",
-  "roomCount": 2
+  "roomCount": 2,
+  "bedroomCount": 1,
+  "bathroomCount": 1,
+  "publishStatus": "published",
+  "fundraisingUrl": null
 }

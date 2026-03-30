@@ -1,255 +1,37 @@
 {
   "name": "Peyton",
   "slug": "peyton",
-  "age": 7,
-  "diagnosis": "Cerebral Palsy, Hydrocephalus, Epilepsy",
+  "age": 4,
+  "diagnosis": "Leukemia",
   "roomTypes": [
-    "Accessible Bathroom",
     "Dream Bedroom"
   ],
-  "year": 2023,
+  "year": 2015,
   "status": "completed",
-  "bio": "In 2015, Crystal gave birth to twins Peyton and Taylor at 26 weeks. Both only weighed a little over a pound a piece! Taylor had a brain bleed and Peyton suffered bilateral brain bleeds grade 3 and 4. After both came down with hydrocephalus, the girls got a VP shunt to help drain extra cerebrospinal fluid from the brain. All of this resulted in 3 months in the NICU! For the first year of their lives afterward, all seemed normal until they noticed Peyton was ignoring her right hand. They soon began early interventions and before long Peyton was diagnosed with cerebral palsy, affecting the right side of her body. She worked super hard in therapies and was able to take her first steps at 3 years old! Since then, Peyton began having seizures and now has the diagnosis of focal epilepsy as well.\n\nDespite everything she has gone through, she is the sweetest, happiest girl! In June of 2022 she underwent a surgery called selective dorsal rhizotomy at Children's Healthcare of Atlanta. This surgery was intended to relieve some of her symptoms of cerebral palsy and hopefully help her stay mobile and gain more skills. Peyton spent 30 days in the rehab facility at the hospital, working through intensive physical therapy. Even though this surgery requires a lot out of Peyton for the first year post-op, she has stayed so joyful and determined! Her hard work of relearning how to walk again paid off when she took her first independent steps again a week before Halloween. She attends intensive physical therapy 5 days a week and is making great strides towards a full recovery! \\u201cShe is truly my hero,\\u201d - Peyton's mom, Crystal.",
-  "quote": "\"Despite everything she has gone through, she is the sweetest, happiest girl!\"",
-  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/peyton/hero/public",
+  "bio": "We’d like to introduce Princess Peyton. This precious diva will soon be getting a room makeover fit for royalty. This project is especially exciting because TLC’s Say Yes to the Dress Atlanta co-stars Lori and Monte will be designing her room! It is a perfect match as this little princess has a passion for fashion and all things glamorous. Sunshine on a Ranney Day is delighted to be able to partner with them to make this girl’s dreams come true! Peyton was born on April 20, 2011. She came into this world a fighter. After a long labor she was delivered via emergency Caesarian section and the cord was wrapped around her neck 3 times. This led to irregular breathing and aspirated fluids. Peyton spent the first 12-hours of her life in the NICU, which was quite frightening. Soon she was home developing a magnetic personality with enchanting beauty. As a budding tot, Peyton was blessed with two little brothers, Parker and Caleb. While her youngest brother was still in the hospital, a family member was taking care of Peyton and Parker. When Peyton came home, she seemed a little different. Filled with awe and love, she was tender and nurturing to her baby brother, but still seemed unlike herself. Her parents attributed the change to the stress of having a new baby in the home. Within a few days, she had a bruised and swollen ankle. X-rays showed that nothing was broken, but they put a cast on to help heal what they thought was, a “bruised bone”. She began running low-grade fevers on and off over the next couple days and she had what looked like blood blisters on the inside of her cheek and tongue. Five days later she woke up looking pale yellow, was running another fever, still not walking at all with her cast, lethargic and not eating. A visit to the pediatrician lead to an earth-shattering diagnosis, Acute Lymphoblastic Leukemia (ALL). This rare and significant type of Leukemia is one that requires a valiant battle to defeat. Peyton began her surreal journey toward healing in March 2014 and has two more years of treatment to endure. Despite the pain and suffering she experiences, she is a noble princess on a mission to eradicate this disease and gracefully persevere. We hope you will join us in celebrating her dazzling disposition and alluring charm as we reveal her royal fortress in October. We can’t wait to see her sparkling smile light up the room!",
+  "quote": "",
+  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/peyton/1774551146864-DSC-0034.jpg/public",
   "photos": [
     {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/peyton/photo-01/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/peyton/photo-02/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/peyton/photo-03/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/peyton/photo-04/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/peyton/photo-05/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/peyton/photo-06/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/peyton/photo-07/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/peyton/photo-08/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/peyton/photo-09/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/peyton/photo-10/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/peyton/photo-11/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/peyton/photo-12/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/peyton/photo-13/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/peyton/photo-14/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/peyton/photo-15/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/peyton/photo-16/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/peyton/photo-17/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/peyton/photo-18/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/peyton/photo-19/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/peyton/photo-20/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/peyton/photo-21/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/peyton/photo-22/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/peyton/photo-23/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/peyton/photo-24/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/peyton/photo-25/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/peyton/photo-26/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/oakley/photo-32/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jack/hero/public",
-      "alt": "Peyton makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/abby/photo-46/public",
-      "alt": "Peyton makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/abby/photo-48/public",
-      "alt": "Peyton makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/peyton/photo-31/public",
-      "alt": "Peyton makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/peyton/photo-32/public",
-      "alt": "Peyton makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/peyton/photo-33/public",
-      "alt": "Peyton makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/peyton/photo-34/public",
-      "alt": "Peyton makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/peyton/photo-35/public",
-      "alt": "Peyton makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/ally/photo-36/public",
-      "alt": "Peyton makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/peyton/photo-37/public",
-      "alt": "Peyton makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/peyton/photo-38/public",
-      "alt": "Peyton makeover photo"
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/peyton/1774551146864-DSC-0034.jpg/public",
+      "alt": "",
+      "cfImageId": "kids/peyton/1774551146864-DSC-0034.jpg"
     }
   ],
-  "photoCount": 27,
-  "videoUrl": "https://www.youtube.com/watch?v=xH844d_yuLA",
-  "photographer": "Carrie Birchfield",
-  "partnerLogos": [
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/cobb-emc-foundation/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/artisan-design-studio/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/randall-brothers/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/cambria/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/cr-construction-v2/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/builders-cabinet-company/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/delta-faucet/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/pulleyassociates/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/american-signature-furniture/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/traditions-in-tile/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/schluter-systems/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/cowan-supply/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/tko-plumbing/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/servicewise-electric/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/bin-there-dump-that/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/birchfield-photography/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/nothing-bundt-cakes/public"
-    }
-  ],
-  "shortDescription": null,
-  "metaDescription": null,
-  "altTexts": null,
-  "jsonLd": null,
-  "_migration": {
-    "scrapedAt": "2026-03-06T13:32:09.487Z",
-    "source": "wordpress-xml-export",
-    "wpPostDate": "2022-12-08 21:47:32",
-    "wpCategories": [
-      "Artisan Design Studio",
-      "Bin There Dump That Atlanta",
-      "Cambria",
-      "Construction Resources",
-      "Meet the Kids",
-      "Pulley and Associates",
-      "Randall Brothers",
-      "ServiceWise Electric",
-      "TKO Plumbing Services"
-    ],
-    "wpTags": [
-      "2023",
-      "Accessible Bathroom",
-      "Dream Bedroom"
-    ],
-    "thumbnailId": 5477,
-    "needsReview": [],
-    "cfHeroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/c12d1c5a-919e-4acc-39c4-169dcd03e500/full"
-  },
-  "streamVideoId": "aaa30ec9651627da6dc8a309f13d5b07",
-  "roomCount": 2
+  "photoCount": 1,
+  "videoUrl": null,
+  "streamVideoId": null,
+  "photographer": "",
+  "partnerLogos": [],
+  "shortDescription": "",
+  "metaDescription": "",
+  "fundraisingUrl": null,
+  "roomCount": 1,
+  "childCount": 1,
+  "bedroomCount": 1,
+  "bathroomCount": 0,
+  "therapyRoomCount": 0,
+  "featured": false,
+  "caseStudy": null,
+  "publishStatus": "published"
 }

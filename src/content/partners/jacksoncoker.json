@@ -1,9 +1,10 @@
 {
-  "name": "Jacksoncoker",
+  "name": "Jackson & Coker ",
   "slug": "jacksoncoker",
-  "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/jacksoncoker/public",
-  "level": "friend",
-  "category": "build",
+  "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/jacksoncoker/1774639930493/public",
+  "tier": "construction",
   "featured": false,
-  "order": 0
+  "website": "https://jacksoncoker.com",
+  "level": "friend",
+  "category": "funding"
 }

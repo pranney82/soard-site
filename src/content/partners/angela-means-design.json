@@ -2,8 +2,9 @@
   "name": "Angela Means Design",
   "slug": "angela-means-design",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/angela-means-design/public",
+  "tier": "design",
+  "featured": false,
   "level": "friend",
   "category": "design",
-  "featured": false,
-  "order": 0
+  "website": "https://meanscarney.com"
 }

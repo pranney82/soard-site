@@ -2,8 +2,9 @@
   "name": "Carmen Mari Photography",
   "slug": "carmen-mari-photography",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/carmen-mari-photography/public",
+  "tier": "community",
+  "featured": false,
   "level": "friend",
   "category": "community",
-  "featured": false,
-  "order": 0
+  "website": "https://carmenmariphotography.wordpress.com"
 }

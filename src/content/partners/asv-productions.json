@@ -2,8 +2,9 @@
   "name": "ASV Productions",
   "slug": "asv-productions",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/asv-productions/public",
-  "level": "friend",
-  "category": "community",
+  "tier": "community",
   "featured": false,
-  "order": 0
+  "website": "https://www.asv.com",
+  "level": "friend",
+  "category": "community"
 }

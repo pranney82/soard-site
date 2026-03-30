@@ -11,7 +11,7 @@
   "status": "completed",
   "bio": "Marie is a determined, funny 17 yr old with a spinal cord injury. This self-proclaimed night owl loves to dance, cuddle with her orange eyed cat and plays on many wheelchair sports teams, including basketball for Blaze sports and wheelchair tennis. Marie has been active in the Atlanta disability community since the age of 2. Marie has served as a mentor to other disabled children at Georgia disability camps, volunteers at the local children's hospital and works in a pediatrician's office part-time. She is currently studying children's healthcare in college. This rising high school senior excels in math, language arts and science. Marie is a fabulous athlete. She plays basketball for Blaze sports all girls/women team and wheelchair tennis. \n\nWhen Marie graduates high school in late 2024, she hopes to move into a duplex her mother purchased nearby. Michele, Marie's mom, will be renting out the other side of the duplex to Alondra and her family. This means that Marie can live independently, while also having the security of others closeby. The venture will tremendously help her gain the necessary independence that all young adults long for. Without the remodel, Marie cannot reach the next milestone in her life: learning how to live on her own with just a little help. The duplex needs improvements to make it accessible for both of the girls' independent living, and that is where Sunshine on a Ranney Day comes in! Both sides of the duplex will receive renovations that will make it possible for both girls to grow towards independence in their daily activities.\n\nIn her current living situation, Alondra has to be carried through the home by her parents because the hallways aren't wide enough for her wheelchair. This keeps her from being independent, but with an accessible space she can do most things on her own. For seven years, Alondra has lived in a home inaccessible to her needs. She has had many back surgeries and is in physical therapy to learn how to manage life in a power wheelchair. She plans on living with her parents for many years to come, so a home that is accessible to her will be life-changing. Alondra is applying to a technical school to be a medical assistant. Her favorite color is burgundy, and she loves lively Spanish music.",
   "quote": "\"Marie & Alondra will be neighbors; living in the same duplex and equally working towards more independent living.\"",
-  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/marie-and-alondra/hero/public",
+  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/marie-and-alondra/photo-01/public",
   "photos": [
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/marie-and-alondra/photo-01/public",
@@ -176,17 +176,9 @@
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/marie-and-alondra/photo-41/public",
       "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/marie-and-alondra/photo-42/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/oakley/photo-32/public",
-      "alt": ""
     }
   ],
-  "photoCount": 43,
+  "photoCount": 41,
   "videoUrl": "https://youtu.be/olvXXPzagNo?si=MR-KkCy4xQYUi3W0",
   "photographer": null,
   "partnerLogos": [
@@ -275,5 +267,9 @@
   "jsonLd": null,
   "streamVideoId": "1deb7de021d09061e2374c20bb6d7cc5",
   "childCount": 2,
-  "roomCount": 2
+  "roomCount": 4,
+  "bedroomCount": 2,
+  "bathroomCount": 2,
+  "publishStatus": "published",
+  "fundraisingUrl": null
 }

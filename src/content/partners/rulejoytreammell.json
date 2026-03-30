@@ -2,8 +2,6 @@
   "name": "Rulejoytreammell",
   "slug": "rulejoytreammell",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/rulejoytreammell/public",
-  "level": "friend",
-  "category": "build",
-  "featured": false,
-  "order": 0
+  "tier": "construction",
+  "featured": false
 }

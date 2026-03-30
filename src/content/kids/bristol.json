@@ -165,5 +165,6 @@
   "roomCount": 1,
   "publishStatus": "published",
   "streamVideoId": null,
-  "fundraisingUrl": null
+  "fundraisingUrl": null,
+  "bedroomCount": 1
 }

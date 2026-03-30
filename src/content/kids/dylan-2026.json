@@ -56,5 +56,6 @@
   "roomCount": 1,
   "publishStatus": "published",
   "streamVideoId": null,
-  "fundraisingUrl": null
+  "fundraisingUrl": null,
+  "therapyRoomCount": 1
 }

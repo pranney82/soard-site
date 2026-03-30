@@ -2,8 +2,8 @@
   "name": "Face To Face Design",
   "slug": "face-to-face-design",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/face-to-face-design/public",
-  "level": "friend",
-  "category": "design",
+  "tier": "design",
   "featured": false,
-  "order": 0
+  "level": "friend",
+  "category": "design"
 }

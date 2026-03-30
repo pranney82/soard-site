@@ -2,8 +2,6 @@
   "name": "Tafollas Concrete",
   "slug": "tafollas-concrete",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/tafollas-concrete/public",
-  "level": "friend",
-  "category": "build",
-  "featured": false,
-  "order": 0
+  "tier": "construction",
+  "featured": false
 }

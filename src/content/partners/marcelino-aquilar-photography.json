@@ -2,8 +2,6 @@
   "name": "Marcelino Aquilar Photography",
   "slug": "marcelino-aquilar-photography",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/marcelino-aquilar-photography/public",
-  "level": "friend",
-  "category": "community",
-  "featured": false,
-  "order": 0
+  "tier": "community",
+  "featured": false
 }

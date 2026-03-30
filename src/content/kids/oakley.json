@@ -11,7 +11,7 @@
   "status": "completed",
   "bio": "Oakley was born in China in March of 2014. She was found in a baby box, and taken to the orphanage. Oakley has Spina bifida, and this is likely the reason her biological parents were unable to care for her as best as she needed. Her medical file looked really complex and scary, but the moment her family saw her picture, none of it mattered, whatever it looked like. They began the process to adopt Oakley when she was about a year and a half old, and finalized the process just before she turned two. \n\nBecause of her Spina bifida, Oakley is paralyzed mid thigh down. She was also born with hydrocephalus and tethered cord syndrome that required surgery on her spine. Oakley uses a wheelchair but when she is at home, she likes to be out of her chair more than when she is at other places, so she will scoot around using her arms. She has some seriously strong arms! She can show you how to do a pull up or two under the table! And there is really nothing she can't figure out a way to make work where she needs to. \n\nOakley is the happiest, most joyful, hilarious child you will ever meet. She has no cognitive delays, and her sense of humor is on point. She is sharp. So smart. Her family likes to say she is 8 going on 22. She seriously runs the ship. She keeps everyone in the house in order, and I am pretty sure she does the same at school. She is a social butterfly, and every kid loves her. You would never know in her tiny little life that she had ever dealt with anything. She's the one who reminds her family to be grateful, to not forget what they have, and to find the joy even where it seems it shouldn't be.\n\nFor her, a wheelchair accessible bathroom or a ramp will mean the world. Currently, they carry her in and out of the house to and from the van when they leave and come home. A new bathroom ahead of beginning her new bowel management process will be such a sweet step towards making her more independent and giving her somewhere private that she would actually enjoy being in during this process every night. She is also starting to get heavier as she is getting older, so this makeover will make the bathroom process much easier for her family, as well. But she finds such joy in such little things, this would truly make her world. She longs to be independent, but never complains about not feeling completely so. She is truly sunshine on a rainy day. She radiates joy like no other child. Her laughter is infectious. Her knock knock jokes are no joke. They're the real deal. She is peace, and love. The no nonsense, no fuss attitude she has is contagious, and it changes everybody else's environment. Her family is so much better because she is here.",
   "quote": "\"You would never know in her tiny little life that she had ever dealt with anything.\"",
-  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/oakley/hero/public",
+  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/oakley/photo-14/public",
   "photos": [
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/oakley/photo-01/public",
@@ -136,13 +136,9 @@
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/oakley/photo-31/public",
       "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/oakley/photo-32/public",
-      "alt": ""
     }
   ],
-  "photoCount": 32,
+  "photoCount": 31,
   "videoUrl": "https://youtu.be/CkFcOBVnP5I",
   "photographer": "Hales Photo",
   "partnerLogos": [
@@ -209,5 +205,9 @@
   "altTexts": null,
   "jsonLd": null,
   "streamVideoId": "d8fd4b5ef3d73d83668d87980668b70a",
-  "roomCount": 2
+  "roomCount": 1,
+  "bedroomCount": 0,
+  "bathroomCount": 1,
+  "publishStatus": "published",
+  "fundraisingUrl": null
 }

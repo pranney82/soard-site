@@ -59,25 +59,25 @@
       "year": "2018",
       "title": "Braves Community Heroes",
       "desc": "Holly and Peter are honored as Atlanta Braves Community Heroes at SunTrust Park alongside Dansby Swanson and Freddie Freeman.",
-      "image": ""
-    },
-    {
-      "year": "2020",
-      "title": "Sunny & Ranney Opens",
-      "desc": "SOARD opens a nonprofit home furnishings store in Roswell, with 100% of profits funding room makeovers for kids.",
-      "image": ""
-    },
-    {
-      "year": "2021",
-      "title": "Women Making a Mark",
-      "desc": "Atlanta Magazine honors Holly as one of their \"Women Making a Mark\" for her impact on the community.",
-      "image": ""
+      "image": "press-braves-community-heroes"
     },
     {
       "year": "2019",
       "title": "100+ Rooms",
       "desc": "SOARD crosses the 100-room milestone, having served over 130 children and impacted 17,000+ through community projects.",
       "image": "kids/bennett-and-lacey/photo-55"
+    },
+    {
+      "year": "2020",
+      "title": "Sunny & Ranney Opens",
+      "desc": "SOARD opens a nonprofit home furnishings store in Roswell, with 100% of profits funding room makeovers for kids.",
+      "image": "about/sunny-ranney-storefront"
+    },
+    {
+      "year": "2021",
+      "title": "Women Making a Mark",
+      "desc": "Atlanta Magazine honors Holly as one of their \"Women Making a Mark\" for her impact on the community.",
+      "image": ""
     }
   ],
   "ribbon": [

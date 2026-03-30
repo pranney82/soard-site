@@ -2,8 +2,9 @@
   "name": "Dental Now",
   "slug": "dental-now",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/dental-now/public",
-  "level": "friend",
-  "category": "build",
+  "tier": "construction",
   "featured": false,
-  "order": 0
+  "website": "https://dentalnow14.com",
+  "level": "friend",
+  "category": "funding"
 }

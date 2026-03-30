@@ -2,8 +2,6 @@
   "name": "Vivid South",
   "slug": "vivid-south",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/vivid-south/public",
-  "level": "friend",
-  "category": "build",
-  "featured": false,
-  "order": 0
+  "tier": "construction",
+  "featured": false
 }

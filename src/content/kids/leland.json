@@ -62,9 +62,6 @@
   "photographer": "Nicole Wood",
   "partnerLogos": [
     {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/gas-south/public"
-    },
-    {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/kids-r-kids/public"
     },
     {
@@ -99,10 +96,6 @@
       "name": "Top Knobs"
     },
     {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/nicole-west-interiors/public",
-      "name": "Nicole West Interiors"
-    },
-    {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/wyp/public",
       "name": "WYP Construction"
     },
@@ -117,6 +110,10 @@
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/construction-resources/public",
       "name": "Construction Resources"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/bell/1774386082723/public",
+      "name": "Bell"
     }
   ],
   "shortDescription": null,
@@ -126,5 +123,6 @@
   "roomCount": 1,
   "publishStatus": "published",
   "streamVideoId": null,
-  "fundraisingUrl": null
+  "fundraisingUrl": null,
+  "bathroomCount": 1
 }

@@ -4,7 +4,7 @@
   "year": 2015,
   "status": "completed",
   "bio": "This handsome young man is 14-year old Bobby Hill.  He is very social and like most boys his age, loves playing sports!  This sports fanatic is also a math whiz and loves being part of the action at school.  However, last March a life changing event has kept him from doing what he loves.   Bobby was born with Spina Bifida and Hydrocephalous.  He has had over twenty surgeries with eight of those completed by the time he was two years old.  He has always been in a manual wheelchair until this year when he had to get a motorized chair with special seating due to his physical decline. Despite his disabilities, he and his family have strived to enjoy the most enriching and normal life possible.  Last March, he underwent neurosurgery and shortly after developed significant respiratory distress.  He suffered anoxic brain injury that originally left him so weak he had to relearn how to move his arms and legs.  He still can't swallow safely or protect his airway so he has a tracheostomy.  He is currently receiving speech-language pathology services to help him regain use of his facial muscles and tongue.  Bobby now requires nursing services throughout the day and 24-hour care and supervision as he can't be left alone at all.  He has also endured several falls, since he thinks he can still do everything he used to be able to.     Prior to March 2014, Bobby was extremely active.  He misses rock climbing, sled ice hockey, swimming, going to the beach and having campfires by his tree house.  He also misses riding his pony named Chocolate Chips every Saturday at the Therapeutic Riding Center.     Although his road to recovery has been long and challenging, he keeps charging on in therapy with hopes of a solid recovery and returning to many of his favorite activities. Sunshine on a Ranney Day wants to help him in his journey with renovations that will make the daily routine easier for him and his family.  We are going to widen their doorways and install new flooring to make it easier for him to use his motorized wheelchair throughout the home.  In addition, we will renovate two bedrooms to create a therapy suite large enough for all of his equipment with seating room for guests and a room with a sleeper sofa where one parent can rest while they take care of him.  We hope you will join us in supporting him at the big reveal in Eatonton, GA at 5pm on Friday April 3rd!",
-  "quote": "This handsome young man is 14-year old Bobby Hill.  He is very social and like most boys his age, loves playing sports!  This sports fanatic is also a math whiz and loves being part of the action at school.  However, last March a life changing event has kept him from doing what he loves.   Bobby was",
+  "quote": "",
   "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/bobby/photo-12/public",
   "roomTypes": [
     "Therapy Room"
@@ -31,8 +31,8 @@
       "alt": "Bobby makeover photo"
     }
   ],
-  "age": null,
-  "diagnosis": null,
+  "age": 14,
+  "diagnosis": "Spina Bifida and Hydrocephalous",
   "_migration": {
     "cfHeroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/9bef27d9-3c95-4c26-00a3-30c70d577c00/full",
     "source": "wix-migration",
@@ -43,5 +43,6 @@
   "publishStatus": "published",
   "streamVideoId": null,
   "videoUrl": null,
-  "fundraisingUrl": null
+  "fundraisingUrl": null,
+  "therapyRoomCount": 1
 }

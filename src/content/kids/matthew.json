@@ -1,154 +1,37 @@
 {
   "name": "Matthew",
   "slug": "matthew",
-  "age": 7,
-  "diagnosis": "Epilepsy, Autism",
+  "age": 16,
+  "diagnosis": "Cancerous Tumor in Jaw",
   "roomTypes": [
-    "Therapy Room"
+    "Dream Bedroom"
   ],
-  "year": 2019,
+  "year": 2017,
   "status": "completed",
-  "bio": "He stopped responding to his name, stopped making eye contact, started flapping his hands, and started babbling rather than using the words he had previously spoken on a regular basis.\n\nHe stopped responding to his name, stopped making eye contact, started flapping his hands, and started babbling rather than using the words he had previously spoken on a regular basis. Words like \\u201cmama\\u201d and \\u201cdadda\\u201d simply disappeared from his vocabulary. Matthew underwent extensive testing from a psychologist who spend a great deal of time assessing his skills and behaviors. At the conclusion of the assessment, they were told that Matthew had Autism. This diagnosis was unexpected and heartbreaking. After speaking with his pediatrician, they decided that the first step in getting Matthew the help he needed was to get him enrolled into the Babies Can't Wait early intervention program. He was only in the program for roughly 6 months until he turned 3. He then continued services with the county public school system along with private speech, occupational and physical therapy. Now, after four years of weekly private speech, occupational, physical and ABA therapy Matthew is demonstrating significant gains. Matthew's communication has increased tremendously. The ABA (Applied Behavioral Analysis) therapy helps teach him self-help skills, such as potty training and play skills. Matthew is starting to play more with friends, make eye contact and is talking more. Every single day is a new day and every milestone is big. The small victories add together to make big changes leading to a bright future for Matthew. Sunshine on a Ranney Day is excited to be planning a brilliant dream therapy room to help Matthew enjoy a place where he continue to thrive while in the comfort of his own home! Please join us in making this project come to fruition!",
-  "quote": "He stopped responding to his name, stopped making eye contact, started flapping his hands, and started babbling rather than using the words he had previously spoken on a regular basis.",
-  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/matthew/photo-25/public",
+  "bio": "Sunshine on a Ranney Day strives to restore hope to the lives of children and families who are experiencing serious illnesses. This stunning young fellow is a 16-year old high school sophomore with a passion for basketball, his family and his friends. Matthew plays for the Etowah High School Basketball team and is a member of a distinguished leadership club known as Flight Club. He is well respected and humble with the goal of increasing awareness and prevention of childhood cancer. Matthew recently endured an 18-hour surgery to remove a cancerous tumor from his jaw. This painstaking surgery, performed by a team of surgeons, repaired his jaw with a section of his fibula and required a ten-day hospital stay. The journey towards the devastating diagnosis of this malignant mass began after his mom noticed that he had a swollen jaw following a basketball game. At the time, nothing significant was found; physicians thought it was a swollen gland. It was only when a routine dental x-ray revealed a tooth growing in his jaw that doctors became suspicious. A follow up visit to an oral surgeon lead to the discovery that the tooth was embedded in a mass within his jaw and had to be extracted. His six-month recovery period will include on-going physical therapy and speech therapy. He is currently required to eat a modified soft diet and consume alkaline water. These services and his medical expenses are adding up and he requires around the clock care from his mother who is taking a leave of absence to help him recover. Matthew’s mother is a single mom and has exhausted her resources at this time. Sunshine on a Ranney Day created an inspiring and stimulating bedroom showcasing his favorite things which have a positive impact on his recovery. Renovation, rest, and remission are just what the doctor ordered, and he got just that!",
+  "quote": "",
+  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/matthew/1774553239279-Untitled-design-29.png/public",
   "photos": [
     {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/matthew/photo-01/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/matthew/photo-02/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/matthew/photo-03/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/matthew/photo-04/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/matthew/photo-05/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/matthew/photo-06/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/matthew/photo-07/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/matthew/photo-08/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/matthew/photo-09/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/matthew/photo-10/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/matthew/photo-11/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/matthew/photo-12/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/matthew/photo-13/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/matthew/photo-14/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/matthew/photo-15/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/matthew/photo-16/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/matthew/photo-17/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/matthew/photo-18/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/matthew/photo-19/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/matthew/photo-20/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/matthew/photo-21/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/matthew/photo-22/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/matthew/photo-23/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/matthew/photo-24/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/matthew/photo-25/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/matthew/photo-26/public",
-      "alt": ""
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/matthew/1774553239279-Untitled-design-29.png/public",
+      "alt": "",
+      "cfImageId": "kids/matthew/1774553239279-Untitled-design-29.png"
     }
   ],
-  "photoCount": 26,
-  "videoUrl": "https://youtu.be/e2wdruke-ag",
-  "photographer": "Studio79",
-  "partnerLogos": [
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/kids-r-kids/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/jackson-healthcare/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/wall-nut-custom-wall-murals/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/swinerton/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/nothing-bundt-cakes/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/crosby-design-group/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/studio-79-photography/public"
-    }
-  ],
-  "shortDescription": null,
-  "metaDescription": null,
-  "altTexts": null,
-  "jsonLd": null,
-  "streamVideoId": "dac4333db02ec1f67f33fbb41cdeb4d1",
+  "photoCount": 1,
+  "videoUrl": null,
+  "streamVideoId": null,
+  "photographer": "",
+  "partnerLogos": [],
+  "shortDescription": "",
+  "metaDescription": "",
+  "fundraisingUrl": null,
   "roomCount": 1,
-  "publishStatus": "published",
-  "fundraisingUrl": null
+  "childCount": 1,
+  "bedroomCount": 0,
+  "bathroomCount": 0,
+  "therapyRoomCount": 0,
+  "featured": false,
+  "caseStudy": null,
+  "publishStatus": "published"
 }

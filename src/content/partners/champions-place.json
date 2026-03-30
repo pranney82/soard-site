@@ -2,8 +2,9 @@
   "name": "Champions Place",
   "slug": "champions-place",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/champions-place/public",
-  "level": "friend",
-  "category": "build",
-  "featured": false,
-  "order": 0
+  "tier": "construction",
+  "featured": true,
+  "category": "community",
+  "website": "https://www.championscommunityfoundation.org/champions-place",
+  "level": "builder"
 }

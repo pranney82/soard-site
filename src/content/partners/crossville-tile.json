@@ -2,8 +2,8 @@
   "name": "Crossville Tile",
   "slug": "crossville-tile",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/crossville-tile/public",
-  "level": "friend",
-  "category": "build",
+  "tier": "construction",
   "featured": false,
-  "order": 0
+  "website": "https://www.crossville.com",
+  "level": "friend"
 }

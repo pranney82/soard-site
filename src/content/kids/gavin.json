@@ -4,7 +4,7 @@
   "year": 2013,
   "status": "completed",
   "bio": "Meet 4 year old Gavin Self.  An episode in November 2010 proved a startling and life changing event for Gavin, as well as his parents and sister. As she did every evening, Gavin's mom went into his room to kiss him goodnight and found him sitting straight up in bed shaking all over. It looked as if he was convulsing. He was initially diagnosed with a seizure disorder and put on anti-seizure medication. After a year punctuated with doctor's appointments, spinal taps, MRI, CT scans and finally a muscle biopsy, Gavin was diagnosed with Mitochondrial Disease and severe Ataxia.  Mitochondrial Disease is progressive and Gavin struggles with it daily. A brave fighter, he currently goes to occupational, physical and speech therapy 4-5 days a week and takes half a dozen different medications. His ataxia does subside while he sleeps, but occasional gross muscle spasms during the night have caused his parents to take turns sleeping with him.   The Makeover  Sunshine on a Ranney Day came to the rescue and gave Gavin his very own baseball bedroom with custom made safe bed so he does not have to sleep in his parents’ room anymore.  We also made over his sister Addison's room, and finished off their basement to create a space where Gavin can do his therapy, his dad can watch football, and his mom and sister can do crafts.  We wanted to give them a space where Gavin was safe, they could all be together and still have their own space.",
-  "quote": "Meet 4 year old Gavin Self.  An episode in November 2010 proved a startling and life changing event for Gavin, as well as his parents and sister. As she did every evening, Gavin's mom went into his room to kiss him goodnight and found him sitting straight up in bed shaking all over. It looked as if ",
+  "quote": "",
   "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/gavin/photo-03/public",
   "roomTypes": [
     "Dream Bedroom",
@@ -40,8 +40,8 @@
       "alt": "Gavin makeover photo"
     }
   ],
-  "age": null,
-  "diagnosis": null,
+  "age": 4,
+  "diagnosis": "Mitochondrial Disease, Severe Ataxia",
   "_migration": {
     "cfHeroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/361fea98-cdab-4f0d-3c68-c0e653d58600/full",
     "source": "wix-migration",
@@ -52,5 +52,7 @@
   "streamVideoId": null,
   "videoUrl": null,
   "fundraisingUrl": null,
-  "photoCount": 7
+  "photoCount": 7,
+  "therapyRoomCount": 1,
+  "bedroomCount": 2
 }

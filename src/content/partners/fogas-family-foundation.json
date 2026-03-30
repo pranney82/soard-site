@@ -2,8 +2,8 @@
   "name": "Fogas Family Foundation",
   "slug": "fogas-family-foundation",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/fogas-family-foundation/public",
-  "level": "friend",
-  "category": "community",
+  "tier": "community",
   "featured": false,
-  "order": 0
+  "level": "friend",
+  "category": "funding"
 }

@@ -4,7 +4,7 @@
   "year": 2013,
   "status": "completed",
   "bio": "Briana Hudson was riding in her family's car when it was hit head-on by teenagers driving their father's Corvette. Both teens were killed. Briana was 4 years old at the time.   Her heart stopped at one point and she received serious injuries to her brain and spinal cord.   Her mother, Denise Robins Hudson, says it was difficult to see her daughter in the ICU. &quot;She was hooked up to all the machines and just lying there,&quot; Robins Hudson said. Doctors said the once active little girl would probably never be able to walk. Briana's grandmother said the family vowed to do all they could. &quot;It was like, 'Oh no. She's going to walk again. We have faith,'&quot; Margie Robins said. They had to dig deep to hold on to that faith. Briana's condition was critical. &quot;Briana couldn't even hold her head up. She was just very limp,&quot; Robins Hudson said. From Children's Healthcare of Atlanta, she traveled to a rehab hospital in Maryland.   Briana's family and therapists have never given up, and they said neither has Briana. &quot;Just seeing Briana say, 'God is making me well,'&quot; is a blessing.   Briana was sleeping in her parents room which was the only bedroom on the main floor.  Sunshine on a Ranney Day went in and renovated their garage into Briana's very own dream bedroom on the main level; and, also gave her a handicap accessible bathroom and wheelchair ramp.     Special THANKS to Sgt. Buddy Mays who was our special project manager.  Buddy was riding in the gunners’ turret of an armored Humvee, returning from a mission September 1, 2005, in Mahmuiyah, Iraq that traveled over a drain culvert when an IED detonated throwing him 40 feet in the air. Two members from his unit were killed from the explosion, two others seriously injured and Buddy Mays suffered severe spinal cord injuries that left him a paraplegic.  Buddy has been a huge mentor to Briana since her accident and a major part of how we were able to do so much for her:) God Bless America!",
-  "quote": "Briana Hudson was riding in her family's car when it was hit head-on by teenagers driving their father's Corvette. Both teens were killed. Briana was 4 years old at the time.   Her heart stopped at one point and she received serious injuries to her brain and spinal cord.   Her mother, Denise Robins ",
+  "quote": "",
   "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/briana/photo-03/public",
   "roomTypes": [
     "Dream Bedroom",
@@ -40,8 +40,8 @@
       "alt": "Briana makeover photo"
     }
   ],
-  "age": null,
-  "diagnosis": null,
+  "age": 6,
+  "diagnosis": "Brain Injury & Paralysis",
   "_migration": {
     "cfHeroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/063564a5-13d2-4b9e-54d0-e6120db96000/full",
     "source": "wix-migration",
@@ -52,5 +52,7 @@
   "streamVideoId": null,
   "videoUrl": null,
   "fundraisingUrl": null,
-  "photoCount": 7
+  "photoCount": 7,
+  "bedroomCount": 1,
+  "bathroomCount": 1
 }

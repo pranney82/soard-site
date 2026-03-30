@@ -2,8 +2,8 @@
   "name": "Hughes Carpet Cleaning",
   "slug": "hughes-carpet-cleaning",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/hughes-carpet-cleaning/public",
-  "level": "friend",
-  "category": "build",
+  "tier": "construction",
   "featured": false,
-  "order": 0
+  "website": "https://hughesdry.com",
+  "level": "friend"
 }

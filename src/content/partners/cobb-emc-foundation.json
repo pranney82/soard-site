@@ -2,8 +2,9 @@
   "name": "Cobb EMC Foundation",
   "slug": "cobb-emc-foundation",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/cobb-emc-foundation/public",
-  "level": "friend",
-  "category": "community",
+  "tier": "community",
   "featured": false,
-  "order": 0
+  "level": "friend",
+  "category": "funding",
+  "website": "https://www.cobbemc.com/cobb-emc-foundation"
 }

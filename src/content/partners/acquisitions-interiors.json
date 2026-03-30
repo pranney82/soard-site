@@ -2,8 +2,8 @@
   "name": "Acquisitions Interiors",
   "slug": "acquisitions-interiors",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/acquisitions-interiors/public",
-  "level": "friend",
-  "category": "design",
+  "tier": "design",
   "featured": false,
-  "order": 0
+  "website": "https://acquisitionsinteriors.com",
+  "level": "friend"
 }

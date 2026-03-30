@@ -2,8 +2,8 @@
   "name": "Kristi Weaver Photography",
   "slug": "kristi-weaver-photography",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/kristi-weaver-photography/public",
-  "level": "friend",
-  "category": "community",
+  "tier": "community",
   "featured": false,
-  "order": 0
+  "level": "friend",
+  "category": "community"
 }

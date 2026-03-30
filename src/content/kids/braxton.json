@@ -5,13 +5,14 @@
   "diagnosis": "Spina Bifida Lipomyelomeningocele",
   "roomTypes": [
     "Accessible Bathroom",
-    "Dream Bedroom"
+    "Dream Bedroom",
+    "Therapy Room"
   ],
   "year": 2022,
   "status": "completed",
   "bio": "Braxton is 13 years old and the oldest of 3, he's a big brother to Wyatt and Landry.  On most days, you can find him playing basketball in the driveway, gaming on the Xbox, or begging his mom to take him to the Lego store.  Braxton was born with Spina Bifida/Lipomyelomeningocele and has endured over 14 surgeries to date at Children's Healthcare of Atlanta.  Braxton attends Veritas Classical Schools which is a home school hybrid.  This allows Braxton's schedule to be more flexible when medical appointments, therapies, and surgeries arise.  Although ambulatory, Braxton's mobility has lessened over the years and he's relying more on his wheelchair and other assistive devices to accomplish daily activities.\n\nBraxton sometimes struggles physically since he is unable to run and walk like most kids his age but that has not slowed him down!  Braxton is the athlete of his family, playing both wheelchair basketball and competing in adaptive track and field for BlazeSports.  He would actually like to participate in ALL adaptive sports, but he would need his own chauffer.  On the basketball court, #5 plays with his whole heart and fierce determination!  Braxton recently made the Prep All-Tournament Team at the NWBA Nationals in 2022.  He hopes to play wheelchair basketball at the collegiate level as well as dreams to make Team USA one day.   On the track, he is a lover of field events and broke the national record for shotput in 2019.  Braxton is also an avid member of Scouts in Troop 1459 and is on track to earn his Eagle Scout Ranking in the future. He recently went on a 4-day adventure to Cumberland Island where he was able to hike over 20 miles with his troop in his Grit Freedom Chair.   Braxton is also a LEGO MANIAC and has thousands and thousands in his room!  He is very creative and has an 8-foot table housing a giant city that he has designed and continuously recreates all himself. He is an amazing artist as well and loves to veg out and play video games with his brother and friends. Braxton is active in his church youth group at North Point Community Church and is surrounded by amazing leaders and friends.  \n\nBraxton's family calls him Braxton the Brave as he inspires his family everyday through the path that God has laid out before him.  Braxton and his family are so excited about his bedroom and bathroom accessible makeover.  Gaining that extra independence will be a game changer as well as make each day brighter!",
   "quote": "\"He is very creative and has an 8-foot table housing a giant city that he has designed and continuously recreates all himself.\"",
-  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/braxton/hero/public",
+  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/braxton/photo-18/public",
   "photos": [
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/braxton/photo-01/public",
@@ -96,13 +97,9 @@
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/braxton/photo-21/public",
       "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/oakley/photo-32/public",
-      "alt": ""
     }
   ],
-  "photoCount": 22,
+  "photoCount": 21,
   "videoUrl": "https://www.youtube.com/watch?v=6MBQRphzkrw",
   "photographer": "Niki Murphy Photography",
   "partnerLogos": [
@@ -172,5 +169,10 @@
   "altTexts": null,
   "jsonLd": null,
   "streamVideoId": "405144da9b63ad493bcc613036ae0e4a",
-  "roomCount": 2
+  "roomCount": 3,
+  "bedroomCount": 1,
+  "therapyRoomCount": 1,
+  "bathroomCount": 1,
+  "publishStatus": "published",
+  "fundraisingUrl": null
 }

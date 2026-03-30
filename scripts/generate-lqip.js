@@ -13,6 +13,7 @@
 import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { fileURLToPath } from 'url';
+import { cfId, CF_BASE } from './cf-image-shared.js';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 const ROOT = join(__dirname, '..');
@@ -20,29 +21,9 @@ const KIDS_DIR = join(ROOT, 'src', 'content', 'kids');
 const OUT_DIR = join(ROOT, 'src', 'data');
 const OUT_FILE = join(OUT_DIR, 'lqip-kids.json');
 
-const CF_HASH = 'ROYFuPmfN2vPS6mt5sCkZQ';
-const CF_BASE = `https://imagedelivery.net/${CF_HASH}`;
-
 // Tiny placeholder dimensions — 20px wide is ~100-300 bytes
 const LQIP_WIDTH = 20;
 const LQIP_QUALITY = 15;
-
-/**
- * Extract bare image ID from a full CF Images URL.
- */
-function cfId(src) {
-  if (!src || !src.includes('imagedelivery.net')) return src || '';
-  const NAMED = new Set(['public', 'nav', 'footer', 'og']);
-  let id = src.replace(`${CF_BASE}/`, '');
-  const lastSlash = id.lastIndexOf('/');
-  if (lastSlash > 0) {
-    const suffix = id.slice(lastSlash + 1);
-    if (NAMED.has(suffix) || suffix.includes('=')) {
-      id = id.slice(0, lastSlash);
-    }
-  }
-  return id;
-}
 
 async function fetchLqip(imageId) {
   const url = `${CF_BASE}/${imageId}/w=${LQIP_WIDTH},q=${LQIP_QUALITY},fit=cover,gravity=face`;

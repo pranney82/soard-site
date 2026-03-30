@@ -6,7 +6,10 @@
   "bio": "A new heart and a new room!  Gorgeous Grace Cantrell brings sunshine and joy to all those around her and we hope to return the favor!  Shortly after Grace turned 3, she became very ill. After being rushed to the hospital, the family was blindsided with a horrible diagnosis.  Physicians determined that she had a very rare type of heart failure-restrictive cardiomyopathy. This disease is so rare only one or two people in the state of Georgia are diagnosed with it each year.  Not only did her parents get the news that their precious little girl was born with this rare disease, but also that her only option for survival was a heart transplant.  On April 11, 2014, Grace was placed on a donor list.  She had become every ill and weak, but with hope and faith by their side, the family waited for good news to come every day. Little did the Cantrell family know that Grace would come to endure the longest heart transplant wait ever on a 1A status at Egleston, 292 days.  Little Grace spent Easter, July 4th, Halloween, Thanksgiving and Christmas without ever leaving the hospital. However, faith and hope paid off when Grace received her new heart on her 4th birthday, January 5th, 2015! After singing Happy Birthday to Grace, she was wheeled back to the operating room. The next time that mom and dad saw her, she was a four-year-old with a brand new heart.  Not only was she the longest wait, but she was also the first heart transplant of 2015, and it was a birthday heart.  Some unknown little boy or girl became a hero and saved Grace's life.  Grace no longer has restrictive cardiomyopathy and her new heart has improved her quality of life and prognosis.  However, with the heart transplant comes a difficult road. The average life span of a donor heart is roughly 10-15 years. This prognosis suggests that Grace and her family may have limited time with each other; but, are looking forward to cherishing every moment.  Grace’s challenges will also include a daily regimen of powerful medications that cause the immune system to be compromised.  It is also likely that she will have to have additional transplant surgeries of the heart or kidneys. To protect the immune system, the transplant team urges parents to minimize exposing recipients to the public for the first year.  It is crucial for her to refrain from attending school or church during Flu season and those who love her will need to blow her kisses from afar to avoid spreading airborne illnesses.  It is also likely that she will have to have additional transplant surgeries of the heart or kidneys.   The long year at the hospital as a three-year-old put Grace far behind other children her age. The therapists have diagnosed her with sensory processing disorder. Grace will need physical and occupational therapy at least 5 times a week.  SOARD plans to give Grace and her 19-month old little sister Juliette a Shabby Chic bedroom makeover! In addition, we plan to transform a room in her basement into a classroom and another room into a therapy suite so she can have all her educational and therapeutic needs in the comfort of her home.  For now, Grace and Juliette will both be home-schooled; and, the clinicians will provide her with in home therapy so this makeover will help the family tremendously.  Grace's future is getting brighter and she has a lot of sunshine to look forward to! Please join us in spreading the sunshine as we will have her reveal at 6pm on Tuesday April 14!",
   "quote": "A new heart and a new room!  Gorgeous Grace Cantrell brings sunshine and joy to all those around her and we hope to return the favor!  Shortly after Grace turned 3, she became very ill. After being rushed to the hospital, the family was blindsided with a horrible diagnosis.  Physicians determined th",
   "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/grace/photo-10/public",
-  "roomTypes": [],
+  "roomTypes": [
+    "Dream Bedroom",
+    "Therapy Room"
+  ],
   "photos": [
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/grace/photo-10/public",
@@ -29,8 +32,8 @@
       "alt": "Grace makeover photo"
     }
   ],
-  "age": null,
-  "diagnosis": null,
+  "age": 4,
+  "diagnosis": "Heart Failure-Restrictive Cardiomyopathy",
   "_migration": {
     "cfHeroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/520c76a8-45e3-4d22-b8e6-51bbc72c0100/full",
     "source": "wix-migration",
@@ -41,5 +44,8 @@
   "publishStatus": "published",
   "streamVideoId": null,
   "videoUrl": null,
-  "fundraisingUrl": null
+  "fundraisingUrl": null,
+  "therapyRoomCount": 2,
+  "childCount": 2,
+  "bedroomCount": 1
 }

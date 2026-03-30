@@ -2,8 +2,8 @@
   "name": "Decorated Designs",
   "slug": "decorated-designs",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/decorated-designs/public",
-  "level": "friend",
-  "category": "design",
+  "tier": "design",
   "featured": false,
-  "order": 0
+  "level": "friend",
+  "category": "design"
 }

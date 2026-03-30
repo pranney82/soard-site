@@ -4,7 +4,7 @@
   "year": 2014,
   "status": "completed",
   "bio": "We love making dreams come true and cannot wait to transform Nathan’s basement into an amazing theatre room!  He truly needs a special place where he can play his favorite video games and enjoy time with family and friends while maintaining his health.  Cystic Fibrosis has forced Nathan to be a very brave young man.  From the time he was an infant he has shown incredible strength while receiving many unpleasant procedures. After 14 years of battling this life-threatening disease, he is more concerned with caring for his family than the painful and daunting treatments he endures. When he and his mom walk into the hospital for an admission, he will ask &quot;Mom, are YOU going to be okay?'' What a loving heart and maturity far beyond his years!  Cystic fibrosis (CF) is a life-threatening genetic disease that primarily affects the respiratory and digestive systems.  Many have described CF like having a cold every day of the year. This includes constant coughing, sinus issues and chronic stomach pain.  Nathan’s family began the long hard fight against Cystic Fibrosis in 1993 when his older sister, Courtney, was diagnosed. Upon Nathan's arrival into the world in November of 1999, he was immediately tested for CF as it is well documented as a genetic disease. Although the family and physician hoped he would not have to face the same battles his sister Courtney did, test results revealed the heartbreaking reality that he too had Cystic Fibrosis.  This diagnosis has led to 14 years of a plethora of daily medications, chest physical therapy, wearing specialized decongestion vests for hours and repeated long hospital stays.     Unfortunately, after experiencing the loss of his beloved sister, Nathan has learned to understand the gravity of this dreadful disease and approaches all of the hardships it brings him with a strong fight to stay healthy and keep his family strong.  On a recent camping trip with family and friends, everyone excitedly rushed outdoors first thing in the morning to enjoy the day.  Before joining in the activities, Nathan had to spend an hour doing his breathing treatments with chest physical therapy and said, &quot;I wish I didn't have to do all these treatments, but I know I wouldn't be alive without them.&quot;  Despite these trials, he does not let anything slow him down.  Thankfully, CF has not robbed him of the one thing he loves most-playing soccer!  However, the complications of CF limit his ability to remain outside and participate in extensive activity.  When Nathan is not being a super star out on the fields, he loves being at home with family or friends watching movies or playing video games.  SOARD is thrilled to have the opportunity to once again partner with Make-A-Wish® Georgia for this project!  Nathan is looking forward to being able to have a blast in his new Theatre Room for years to come!  Join us for the upcoming “kick off “ in helping Nathan reach all of his goals-on and off the field!   Who can resist the urge to help this handsome, brave young man? What a cutie!  His reveal will be on Saturday August 9 in Canton, GA!",
-  "quote": "We love making dreams come true and cannot wait to transform Nathan’s basement into an amazing theatre room!  He truly needs a special place where he can play his favorite video games and enjoy time with family and friends while maintaining his health.  Cystic Fibrosis has forced Nathan to be a very",
+  "quote": "",
   "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/nathan/photo-09/public",
   "roomTypes": [
     "Therapy Room"
@@ -43,8 +43,8 @@
       "alt": "Nathan makeover photo"
     }
   ],
-  "age": null,
-  "diagnosis": null,
+  "age": 14,
+  "diagnosis": "Cystic Fibrosis",
   "_migration": {
     "cfHeroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/d02b92ba-53b9-4f96-fac7-00ebd2cdc000/full",
     "source": "wix-migration",
@@ -55,5 +55,6 @@
   "publishStatus": "published",
   "streamVideoId": null,
   "videoUrl": null,
-  "fundraisingUrl": null
+  "fundraisingUrl": null,
+  "therapyRoomCount": 1
 }

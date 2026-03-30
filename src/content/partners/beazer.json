@@ -1,9 +1,10 @@
 {
-  "name": "Beazer",
+  "name": "Beazer Homes",
   "slug": "beazer",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/beazer/public",
-  "level": "champion",
+  "tier": "construction",
+  "featured": true,
+  "website": "https://www.beazer.com",
   "category": "funding",
-  "featured": false,
-  "order": 0
+  "level": "champion"
 }

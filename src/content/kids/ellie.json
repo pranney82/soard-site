@@ -11,7 +11,7 @@
   "status": "completed",
   "bio": "Ellie is a sweet and funny five-year-old with an infectious smile. Ellie was born with Down Syndrome and a heart defect. She had her first open heart surgery at four-months-old and due to medical complications, spent almost five months in the hospital. During our time at CHOA Egleston, we stayed in the newly renovated parent sleep wing provided by Sunshine on a Ranney Day. We spent some of Ellie's sickest nights there. The rooms were charming and cheerful and allowed us to truly rest and be ready to take care of Ellie in the mornings.\n\nBy the time she was two-and-a-half years old, Ellie endured five open-heart surgeries. She has a mechanical heart valve which has significantly improved her heart function. As she gets older, she will outgrow her valve and need additional open-heart surgeries. She has spent nearly 250 days in the hospital and is the bravest girl we know.\n\nEllie attends many therapies to help her achieve independence and gain strength. Even though it often takes her longer to acquire skills others take for granted, she works hard and never gives up. She is learning how to stand and walk and is getting very close to achieving these milestones.\n\nEllie enjoys spending time with her family. She loves listening to music, especially Baby Shark, and gives the tightest, biggest hugs. Ellie's favorite person in the world is her 8-year-old sister, Evelyn. Evelyn is Ellie's biggest cheerleader. Evelyn loves to set up learning stations for Ellie, reads books to her, and encourages her to walk. They enjoy having sleepovers and playing together.\n\nWe are so excited for Ellie to get a home makeover therapy room! Having access to this\nequipment in our home will help Ellie practice and get stronger so that she can become more independent. We believe Ellie has great potential to achieve her dreams and this is just the beginning for her. Thank you, Sunshine on a Ranney Day for making this possible.",
   "quote": "\"Even though it often takes her longer to acquire skills others take for granted, she works hard and never gives up.\"",
-  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/ellie/hero/public",
+  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/ellie/photo-13/public",
   "photos": [
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/ellie/photo-01/public",
@@ -102,5 +102,9 @@
   "altTexts": null,
   "jsonLd": null,
   "streamVideoId": "cdeecbddfeed35dec79942a3489f9a25",
-  "roomCount": 2
+  "roomCount": 2,
+  "bedroomCount": 1,
+  "therapyRoomCount": 1,
+  "publishStatus": "published",
+  "fundraisingUrl": null
 }

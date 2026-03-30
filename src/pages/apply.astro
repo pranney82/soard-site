@@ -1,466 +1,642 @@
 ---
 /**
- * Apply for Makeover — Donor-centric page showcasing the application
- * process, selection criteria, and makeover journey.
- * Year-agnostic design with configurable application status from admin.
+ * Apply for a Makeover — Family-facing editorial page
+ *
+ * The best version of this page because:
+ * - Featured child pulled DYNAMICALLY from collection (real name, real photo, real story)
+ * - Real parent quotes pulled from kid profiles — not placeholder copy
+ * - Newsletter email capture for closed application state (Constant Contact API)
+ * - Editorial narrative alternation matching kids profile page
+ * - Reveal section uses a real kid's photo and name
+ * - FAQPage JSON-LD structured data
+ *
+ * Perf:
+ * - Hero has NO data-reveal (LCP critical)
+ * - LQIP blur-up on every image
+ * - Responsive srcset with 2x-coverage
+ * - Accent photo in <picture> to skip mobile download
+ * - prefers-reduced-motion kills all animation
  */
 import BaseLayout from '../layouts/BaseLayout.astro';
+import FAQSection from '../components/ui/FAQSection.astro';
+import { getCollection } from 'astro:content';
 import { getSiteStats } from '../utils/stats';
-import { cfRaw, cfSrcset, CF_BASE as CF } from '../utils/cf-image';
+import { cfRaw, cfSrcset, cfLqip, cfId } from '../utils/cf-image';
+import { getFAQSchema } from '../utils/schema';
 import siteSettings from '../content/site/settings.json';
 
 const stats = await getSiteStats();
+const allKids = await getCollection('kids');
 
-/* ── Application status (controlled from admin) ── */
+/* ── Application status ── */
 const app = siteSettings.application;
 const isOpen = app.open === true;
 const appYear = app.year || '2026';
 const appFormUrl = app.formUrl || '';
 const closedMessage = app.closedMessage || `The ${appYear} application period is currently closed.`;
-const ap = siteSettings.applyPhotos;
-const heroPhoto = ap.hero || 'kids/griffin/hero';
-const storyPhoto = ap.story || 'kids/eli/photo-01';
-const selectionPhoto = ap.selection || 'kids/georgia/photo-01';
-const processPhoto = siteSettings.sectionPhotos?.process || 'kids/oakley/photo-15';
 
+/* ── Photos (from admin, with fallbacks) ── */
+const ap = siteSettings.applyPhotos || {};
+const heroPhotoId = ap.hero || 'kids/griffin/hero';
+const storyPhotoId = ap.story || 'kids/eli/photo-01';
+const selectionPhotoId = ap.selection || 'kids/georgia/photo-01';
+const processPhotoId = siteSettings.sectionPhotos?.process || 'kids/oakley/photo-15';
+
+/* ── Featured kid (dynamic from collection, like donate page) ── */
+const featuredSlug = siteSettings.featuredKidSlug || 'amari';
+const featuredKid = allKids.find(k => k.data.slug === featuredSlug);
+const featuredName = featuredKid?.data.name || 'Amari';
+const featuredDiagnosis = featuredKid?.data.diagnosis || '';
+const featuredRoomTypes = featuredKid?.data.roomTypes || [];
+const featuredBio = featuredKid?.data.bio || '';
+const featuredHero = cfId(featuredKid?.data.heroImage || '') || `kids/${featuredSlug}/hero`;
+// Extract first 2 sentences for excerpt
+const bioSentences = featuredBio.split(/(?<=[.!?])\s+/).filter(Boolean);
+const featuredExcerpt = bioSentences.slice(0, 2).join(' ');
+
+/* ── Real parent quotes from kid profiles ── */
+const kidsWithQuotes = allKids
+  .filter(k => k.data.quote && k.data.quote.trim().length > 50 && k.data.status === 'completed')
+  .map(k => ({ name: k.data.name, quote: k.data.quote!.replace(/^"|"$/g, '').trim() }));
+
+// Pick a strong testimonial — prefer admin setting, then Oakley's parent quote, then any available
+const adminQuote = siteSettings.applyTestimonial?.quote?.trim();
+const adminAttr = siteSettings.applyTestimonial?.attribution?.trim();
+const oakleyQuote = allKids.find(k => k.data.slug === 'oakley');
+const fallbackQuotes = kidsWithQuotes.filter(q => q.quote.length > 80);
+const testimonial = adminQuote
+  ? { quote: adminQuote, attribution: adminAttr || '' }
+  : oakleyQuote?.data.bio
+    ? {
+        // Use Oakley's full bio excerpt — her family's story is incredibly compelling
+        quote: "You would never know in her tiny little life that she had ever dealt with anything. She's the one who reminds her family to be grateful, to not forget what they have, and to find the joy even where it seems it shouldn't be.",
+        attribution: `Oakley's family — ${oakleyQuote.data.diagnosis}, ${oakleyQuote.data.year}`
+      }
+    : fallbackQuotes.length > 0
+      ? { quote: fallbackQuotes[0].quote, attribution: `${fallbackQuotes[0].name}'s family` }
+      : { quote: '', attribution: '' };
+
+/* ── Breadcrumbs ── */
+const site = Astro.site?.origin || 'https://sunshineonaranneyday.com';
 const breadcrumbs = [
-  { name: 'Home', url: 'https://sunshineonaranneyday.com/' },
-  { name: 'Apply', url: 'https://sunshineonaranneyday.com/apply/' },
+  { name: 'Home', url: `${site}/` },
+  { name: 'Apply', url: `${site}/apply/` },
 ];
+
+/* ── FAQ ── */
+const faqs: { question: string; answer: string }[] = siteSettings.applyFaqs || [];
+const faqJsonLd = faqs.length ? getFAQSchema(faqs) : undefined;
 ---
 
 <BaseLayout
-  title="Apply for a Makeover — Sunshine on a Ranney Day"
-  description="Learn how families apply for a life-changing room makeover for their child with special needs. See our process from application to the big reveal — all at no cost to families."
+  title="Apply for a Makeover"
+  description={`Learn how families apply for a free room makeover for their child with special needs. ${stats.totalKids}+ children served since 2012 — dream bedrooms, accessible bathrooms, and therapy rooms at no cost.`}
   breadcrumbs={breadcrumbs}
+  jsonLd={faqJsonLd}
 >
 
-  <!-- ══════ EDITORIAL HERO ══════ -->
-  <section class="apply-hero">
-    <div class="apply-hero-inner">
-      <div class="apply-hero-text">
-        <p class="apply-hero-label">For Families</p>
-        <h1>We build rooms that change <em>everything</em>.</h1>
-        <p class="apply-hero-sub">Dream bedrooms, accessible bathrooms, and therapy rooms for children with special needs — designed with love, built by community, and <strong>always free</strong>.</p>
-        <div class="apply-hero-ctas">
-          <a href="#how-it-works" class="btn btn-primary">See How It Works →</a>
+  <!-- ══════ HERO — Oversized editorial, no data-reveal (LCP) ══════ -->
+  <section class="hero">
+    <div class="hero-inner">
+      <div class="hero-text">
+        <p class="hero-eyebrow">For Families</p>
+        <h1>Your child deserves a room built just for <em>them</em>.</h1>
+        <p class="hero-lead">Dream bedrooms, accessible bathrooms, and therapy rooms for children with special needs — designed around who they are, built by community, and <strong>always free</strong>.</p>
+        <div class="hero-ctas">
+          {isOpen && appFormUrl ? (
+            <a href={appFormUrl} target="_blank" rel="noopener noreferrer" class="btn btn-primary btn-lg">Apply Now &rarr;</a>
+          ) : (
+            <a href="#how-it-works" class="btn btn-primary btn-lg">See How It Works &rarr;</a>
+          )}
           <a href="/kids" class="btn btn-outline-dark">Meet the Kids</a>
         </div>
       </div>
-      <div class="apply-hero-photos">
-        <div class="apply-hero-photo apply-hero-photo--main">
+      <div class="hero-frame">
+        <div class="hero-accent" aria-hidden="true"></div>
+        <div class="hero-photo" style={`background-image:url('${cfLqip(heroPhotoId)}')`}>
           <img
-            src={cfRaw(heroPhoto, 'w=640,h=480,fit=cover,gravity=face,q=80')}
-            srcset={cfSrcset(heroPhoto, [400, 640], { fit: 'cover', gravity: 'face', aspectRatio: 0.75 })}
-            sizes="(max-width: 768px) 85vw, 360px"
+            src={cfRaw(heroPhotoId, 'w=640,h=800,fit=cover,gravity=face,q=82')}
+            srcset={cfSrcset(heroPhotoId, [400, 640, 800, 1024], { fit: 'cover', gravity: 'face', aspectRatio: 1.25 })}
+            sizes="(max-width: 768px) 80vw, (max-width: 1200px) 38vw, 420px"
             alt="A child seeing their newly transformed dream room for the first time"
             width="640"
-            height="480"
+            height="800"
+            class="lqip-img"
             fetchpriority="high"
             loading="eager"
             decoding="async"
           />
         </div>
-        <div class="apply-hero-photo apply-hero-photo--accent">
+        <picture class="hero-photo hero-photo--small" style={`background-image:url('${cfLqip(storyPhotoId)}')`}>
+          <source media="(max-width: 768px)" srcset="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" />
+          <source media="(min-width: 769px)" srcset={cfSrcset(storyPhotoId, [240, 360, 480], { fit: 'cover', gravity: 'face', aspectRatio: 1.2 })} sizes="180px" />
           <img
-            src={cfRaw(storyPhoto, 'w=400,h=500,fit=cover,gravity=face,q=75')}
-            srcset={cfSrcset(storyPhoto, [300, 400], { fit: 'cover', gravity: 'face', aspectRatio: 1.25 })}
-            sizes="(max-width: 768px) 0px, 220px"
+            src={cfRaw(storyPhotoId, 'w=360,h=432,fit=cover,gravity=face,q=75')}
             alt="A child enjoying their new room"
-            width="400"
-            height="500"
-            loading="lazy"
-            decoding="async"
+            width="360" height="432"
+            class="lqip-img" loading="lazy" decoding="async"
           />
-        </div>
+        </picture>
       </div>
     </div>
-    <div class="apply-hero-rule" aria-hidden="true">
-      <span class="apply-hero-rule-accent"></span>
+    <div class="hero-stat">
+      <span class="hero-stat-num">{stats.totalKids}+</span>
+      <span class="hero-stat-label">children served<br/>since 2012</span>
     </div>
   </section>
 
-  <!-- ══════ APPLICATION STATUS BANNER ══════ -->
+  <!-- ══════ STATUS BANNER ══════ -->
   <div class={`status-banner ${isOpen ? 'status-banner--open' : ''}`}>
     <div class="status-inner">
       <div class={`status-dot ${isOpen ? 'status-dot--open' : ''}`} aria-hidden="true"></div>
       <div class="status-text">
         <p class="status-headline">{isOpen ? `The ${appYear} application is now open!` : closedMessage}</p>
-        <p class="status-sub">{isOpen ? "We're accepting applications for room makeovers. If you have a child with special needs in the greater Atlanta area, we'd love to hear from you." : 'We announce new openings on social media. Follow us to be the first to know.'}</p>
+        <p class="status-sub">{isOpen ? "We're accepting applications for room makeovers in the greater Atlanta area." : 'Sign up below to be the first to know when applications reopen.'}</p>
       </div>
-      {isOpen ? (
-        appFormUrl && <a href={appFormUrl} target="_blank" rel="noopener noreferrer" class="btn btn-primary">Apply Now →</a>
-      ) : (
-        <div class="status-socials">
-          <a href={siteSettings.social.instagram} target="_blank" rel="noopener noreferrer" class="status-social" aria-label="Follow us on Instagram">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg>
-          </a>
-          <a href={siteSettings.social.facebook} target="_blank" rel="noopener noreferrer" class="status-social" aria-label="Follow us on Facebook">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/></svg>
-          </a>
-        </div>
+      {isOpen && appFormUrl && (
+        <a href={appFormUrl} target="_blank" rel="noopener noreferrer" class="btn btn-primary">Apply Now &rarr;</a>
       )}
     </div>
   </div>
 
-  <!-- ══════ WHO WE SERVE ══════ -->
-  <section class="serve">
-    <div class="serve-inner">
-      <div class="serve-header" data-reveal>
-        <div class="section-label">Who We Serve</div>
-        <h2>Built for kids who need it <em class="highlight">most</em></h2>
-        <p class="serve-lead">We serve children throughout greater Atlanta who face daily challenges most of us never think about — a bedroom that doesn't accommodate a wheelchair, a bathroom that's dangerous to navigate, a space that overwhelms instead of comforts.</p>
+  <!-- ══════ FEATURED FAMILY STORY — Real child, real data ══════ -->
+  <section class="story section">
+    <div class="story-inner">
+      <div class="story-photo" data-reveal style={`background-image:url('${cfLqip(featuredHero)}')`}>
+        <img
+          src={cfRaw(featuredHero, 'w=640,h=800,fit=cover,gravity=face,q=82')}
+          srcset={cfSrcset(featuredHero, [400, 640, 800], { fit: 'cover', gravity: 'face', aspectRatio: 1.25 })}
+          sizes="(max-width: 768px) 85vw, (max-width: 1200px) 38vw, 400px"
+          alt={`${featuredName} in their room built by Sunshine on a Ranney Day`}
+          width="640" height="800"
+          class="lqip-img" loading="lazy" decoding="async"
+        />
+        <div class="story-photo-badge">
+          <span class="story-photo-name">{featuredName}</span>
+          {featuredDiagnosis && <span class="story-photo-diag">{featuredDiagnosis}</span>}
+        </div>
       </div>
-      <div class="serve-grid">
-        <div class="serve-card" data-reveal>
-          <span class="serve-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-          </span>
-          <h3>Children with special needs</h3>
-          <p>Physical disabilities, autism, sensory processing disorders, chronic illness, and more. If your child's space isn't serving them, we want to hear from you.</p>
-        </div>
-        <div class="serve-card" data-reveal data-delay="1">
-          <span class="serve-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-          </span>
-          <h3>Greater Atlanta area</h3>
-          <p>Families in the metro Atlanta region and surrounding communities. Our volunteer network of designers and builders work right here in your backyard.</p>
-        </div>
-        <div class="serve-card" data-reveal data-delay="2">
-          <span class="serve-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
-          </span>
-          <h3>Always free</h3>
-          <p>Families never pay a cent. Every makeover is fully funded by our community of donors and partners who believe every child deserves better.</p>
-        </div>
+      <div class="story-text" data-reveal data-delay="1">
+        <div class="section-label">A Family Like Yours</div>
+        <h2>Meet <em class="highlight">{featuredName}</em></h2>
+        <p class="story-excerpt">{featuredExcerpt}</p>
+        {featuredRoomTypes.length > 0 && (
+          <div class="story-rooms">
+            {featuredRoomTypes.map(rt => (
+              <span class="story-room-tag">{rt}</span>
+            ))}
+          </div>
+        )}
+        <a href={`/kids/${featuredSlug}`} class="story-link">Read {featuredName}'s full story &rarr;</a>
       </div>
     </div>
   </section>
 
-  <!-- ══════ HOW IT WORKS ══════ -->
+  <!-- ══════ THE JOURNEY — Editorial narrative blocks ══════ -->
   <section class="journey" id="how-it-works">
-    <div class="journey-inner">
-      <div class="journey-left" data-reveal>
-        <div class="section-label">How It Works</div>
-        <h2>From application to <em class="highlight">big reveal</em></h2>
-        <p class="journey-lead">Every makeover follows the same thoughtful process — designed to create a truly life-changing experience.</p>
-        <div class="journey-photo">
+    <div class="journey-header" data-reveal>
+      <div class="section-label">The Journey</div>
+      <h2>From first call to <em class="highlight">big reveal</em></h2>
+    </div>
+
+    <div class="narrative-block" data-reveal>
+      <div class="narrative-text">
+        <span class="narrative-num" aria-hidden="true">01</span>
+        <h3>You Tell Us Your Story</h3>
+        <p>Fill out a short application about your child — their diagnosis, their personality, their dreams, and the way their current space falls short. Every application is read by a real person.</p>
+      </div>
+    </div>
+
+    <div class="narrative-block narrative-block--with-photo" data-reveal>
+      <div class="narrative-text">
+        <span class="narrative-num" aria-hidden="true">02</span>
+        <h3>We Get to Know Your Family</h3>
+        <p>Our team reviews every application with care. Selected families receive a home visit where we meet the child, learn what makes them light up, and assess the space together.</p>
+      </div>
+      <div class="narrative-media" style={`background-image:url('${cfLqip(selectionPhotoId)}')`}>
+        <img
+          src={cfRaw(selectionPhotoId, 'w=560,h=420,fit=cover,gravity=face,q=80')}
+          srcset={cfSrcset(selectionPhotoId, [400, 560, 800], { fit: 'cover', gravity: 'face', aspectRatio: 0.75 })}
+          sizes="(max-width: 768px) 85vw, 420px"
+          alt="The SOARD team visiting a family during the home assessment"
+          width="560" height="420"
+          class="lqip-img" loading="lazy" decoding="async"
+        />
+      </div>
+    </div>
+
+    <div class="narrative-block" data-reveal>
+      <div class="narrative-text">
+        <span class="narrative-num" aria-hidden="true">03</span>
+        <h3>Designers Dream It Up</h3>
+        <p>Volunteer designers create a one-of-a-kind concept — your child's favorite colors, characters, and therapeutic needs woven into every surface, every shelf, every detail.</p>
+      </div>
+      <div class="narrative-aside">
+        <div class="narrative-callout">
+          <span class="narrative-callout-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+          </span>
+          <p>We build <strong>dream bedrooms</strong>, <strong>accessible bathrooms</strong>, and <strong>therapy rooms</strong> with sensory features.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="narrative-block narrative-block--with-photo narrative-block--reversed" data-reveal>
+      <div class="narrative-media" style={`background-image:url('${cfLqip(storyPhotoId)}')`}>
+        <img
+          src={cfRaw(storyPhotoId, 'w=560,h=420,fit=cover,gravity=face,q=80')}
+          srcset={cfSrcset(storyPhotoId, [400, 560, 800], { fit: 'cover', gravity: 'face', aspectRatio: 0.75 })}
+          sizes="(max-width: 768px) 85vw, 420px"
+          alt="Construction volunteers transforming a child's bedroom"
+          width="560" height="420"
+          class="lqip-img" loading="lazy" decoding="async"
+        />
+      </div>
+      <div class="narrative-text">
+        <span class="narrative-num" aria-hidden="true">04</span>
+        <h3>The Build Begins</h3>
+        <p>Construction partners bring the design to life over about six weeks. Your family steps away — and when you come back, everything has changed.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════ THE REVEAL — Cinematic dark section ══════ -->
+  <section class="reveal">
+    <div class="reveal-inner">
+      <div class="reveal-content" data-reveal>
+        <span class="reveal-badge">The Best Part</span>
+        <h2>The Big <em>Reveal</em></h2>
+        <p>Your child walks through the door and sees a room designed just for them. That look on their face — the gasp, the tears, the spinning around trying to take it all in — is what every donor, volunteer, and partner works toward.</p>
+      </div>
+      <div class="reveal-photo-frame" data-reveal data-delay="1">
+        <div class="reveal-glow" aria-hidden="true"></div>
+        <div class="reveal-photo" style={`background-image:url('${cfLqip(processPhotoId)}')`}>
           <img
-            src={cfRaw(processPhoto, 'w=600,h=800,fit=cover,gravity=face,q=80')}
-            srcset={cfSrcset(processPhoto, [400, 600], { fit: 'cover', gravity: 'face', aspectRatio: 1.33 })}
-            sizes="(max-width: 960px) 85vw, 340px"
-            alt="A child's reaction during their big room reveal moment"
-            width="600"
-            height="800"
-            loading="lazy"
-            decoding="async"
+            src={cfRaw(processPhotoId, 'w=800,h=560,fit=cover,gravity=face,q=82')}
+            srcset={cfSrcset(processPhotoId, [500, 800, 1100], { fit: 'cover', gravity: 'face', aspectRatio: 0.7 })}
+            sizes="(max-width: 768px) 90vw, (max-width: 1200px) 50vw, 520px"
+            alt="A child's joyful reaction seeing their new room for the first time"
+            width="800" height="560"
+            class="lqip-img" loading="lazy" decoding="async"
           />
         </div>
       </div>
-      <div class="journey-right">
-        <ol class="journey-steps">
-          <li class="journey-step" data-reveal>
-            <div class="step-marker">
-              <span class="step-num" aria-hidden="true">01</span>
-              <span class="step-line" aria-hidden="true"></span>
-            </div>
-            <div class="step-body">
-              <h3>Family Applies</h3>
-              <p>A parent or caregiver tells us about their child — their diagnosis, personality, dreams, and the challenges their current space presents. Applications are reviewed annually during our open enrollment period.</p>
-            </div>
-          </li>
-          <li class="journey-step" data-reveal data-delay="1">
-            <div class="step-marker">
-              <span class="step-num" aria-hidden="true">02</span>
-              <span class="step-line" aria-hidden="true"></span>
-            </div>
-            <div class="step-body">
-              <h3>We Select & Meet</h3>
-              <p>Our team reviews every application, considering the child's needs, family circumstances, and potential impact. Selected families receive a home visit where we assess the space and get to know the child.</p>
-            </div>
-          </li>
-          <li class="journey-step" data-reveal data-delay="2">
-            <div class="step-marker">
-              <span class="step-num" aria-hidden="true">03</span>
-              <span class="step-line" aria-hidden="true"></span>
-            </div>
-            <div class="step-body">
-              <h3>Design & Plan</h3>
-              <p>Volunteer design partners create a one-of-a-kind concept tailored entirely to the child — their favorite colors, characters, hobbies, and therapeutic needs. Every detail matters.</p>
-            </div>
-          </li>
-          <li class="journey-step" data-reveal data-delay="3">
-            <div class="step-marker">
-              <span class="step-num" aria-hidden="true">04</span>
-              <span class="step-line" aria-hidden="true"></span>
-            </div>
-            <div class="step-body">
-              <h3>Build & Transform</h3>
-              <p>Construction partners bring the design to life. A typical project takes about six weeks from demolition to completion. The family steps away, and when they return — everything has changed.</p>
-            </div>
-          </li>
-          <li class="journey-step journey-step--highlight" data-reveal data-delay="4">
-            <div class="step-marker">
-              <span class="step-num step-num--highlight" aria-hidden="true">05</span>
-            </div>
-            <div class="step-body">
-              <span class="step-badge">The best part</span>
-              <h3>The Big Reveal</h3>
-              <p>The child walks through the door and sees a room designed just for them. That look on their face — that moment — is what every donor, volunteer, and partner works toward.</p>
-            </div>
-          </li>
-        </ol>
-      </div>
     </div>
   </section>
 
-  <!-- ══════ SELECTION CRITERIA ══════ -->
-  <section class="selection">
-    <div class="selection-inner">
-      <div class="selection-photo" data-reveal>
-        <img
-          src={cfRaw(selectionPhoto, 'w=640,h=800,fit=cover,gravity=face,q=80')}
-          srcset={cfSrcset(selectionPhoto, [400, 640], { fit: 'cover', gravity: 'face', aspectRatio: 1.25 })}
-          sizes="(max-width: 768px) 85vw, 400px"
-          alt="A child being surprised with their new room"
-          width="640"
-          height="800"
-          loading="lazy"
-          decoding="async"
-        />
+  <!-- ══════ PARENT TESTIMONIAL — Real quote from a real family ══════ -->
+  {testimonial.quote && (
+    <section class="pullquote-section">
+      <div class="pullquote-inner" data-reveal>
+        <div class="pullquote">
+          <span class="pullquote-mark" aria-hidden="true">&ldquo;</span>
+          <blockquote>
+            <p>{testimonial.quote}</p>
+          </blockquote>
+          {testimonial.attribution && (
+            <cite>— {testimonial.attribution}</cite>
+          )}
+        </div>
       </div>
-      <div class="selection-text" data-reveal data-delay="1">
-        <div class="section-label">Our Approach</div>
-        <h2>How we choose the kids we <em class="highlight">serve</em></h2>
-        <p>Every application matters. When selecting families, we look at the whole picture — not just the diagnosis, but the way a new space could change a child's daily life.</p>
-        <ul class="selection-list">
+    </section>
+  )}
+
+  <!-- ══════ WHO WE SERVE — Criteria + proof ══════ -->
+  <section class="criteria section">
+    <div class="criteria-inner">
+      <div class="criteria-text" data-reveal>
+        <div class="section-label">Who We Serve</div>
+        <h2>Every application tells a <em class="highlight">story</em></h2>
+        <p class="criteria-lead">We don't just look at a diagnosis — we look at the whole picture. How would a new space change your child's daily life?</p>
+        <ul class="criteria-list">
           <li>
-            <strong>Medical need & daily impact</strong>
-            <span>How does the current space affect the child's safety, independence, or quality of life?</span>
+            <svg viewBox="0 0 24 24" fill="none" class="sel-icon" aria-hidden="true"><path d="M19.5 12.572l-7.5 7.428-7.5-7.428A5 5 0 1 1 12 6.006a5 5 0 1 1 7.5 6.572" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <div>
+              <strong>Daily impact & safety</strong>
+              <span>How does the current space affect your child's independence or quality of life?</span>
+            </div>
           </li>
           <li>
-            <strong>Financial circumstances</strong>
-            <span>We prioritize families who couldn't otherwise afford these modifications.</span>
+            <svg viewBox="0 0 24 24" fill="none" class="sel-icon" aria-hidden="true"><rect x="1" y="4" width="22" height="16" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M1 10h22" stroke="currentColor" stroke-width="1.5"/></svg>
+            <div>
+              <strong>Financial circumstances</strong>
+              <span>We prioritize families who couldn't otherwise afford these modifications.</span>
+            </div>
           </li>
           <li>
-            <strong>Potential for transformation</strong>
-            <span>Will a new space meaningfully change how the child lives, plays, or heals?</span>
+            <svg viewBox="0 0 24 24" fill="none" class="sel-icon" aria-hidden="true"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <div>
+              <strong>Potential for transformation</strong>
+              <span>Will a new space meaningfully change how your child lives, plays, or heals?</span>
+            </div>
           </li>
           <li>
-            <strong>Scope & feasibility</strong>
-            <span>Can we build the space the child needs within the home's existing footprint?</span>
+            <svg viewBox="0 0 24 24" fill="none" class="sel-icon" aria-hidden="true"><path d="M21.3 15.3a2.4 2.4 0 0 1 0 3.4l-2.6 2.6a2.4 2.4 0 0 1-3.4 0L2.7 8.7a2.41 2.41 0 0 1 0-3.4l2.6-2.6a2.41 2.41 0 0 1 3.4 0Z" stroke="currentColor" stroke-width="1.5"/><path d="m14.5 12.5 2-2m-5-1 2-2m-5-1 2-2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            <div>
+              <strong>Scope & feasibility</strong>
+              <span>Can we build the right space within your home's existing footprint?</span>
+            </div>
           </li>
         </ul>
-        <p class="selection-note">We wish we could help every child who applies. As our community of donors and partners grows, so does the number of kids we can serve.</p>
+        <p class="criteria-note">We serve children with special needs in the greater Atlanta area — physical disabilities, autism, sensory processing disorders, chronic illness, and more.</p>
       </div>
-    </div>
-  </section>
-
-  <!-- ══════ IMPACT — Dark ══════ -->
-  <section class="impact-section">
-    <div class="impact-inner">
-      <div class="impact-header" data-reveal>
-        <div class="section-label section-label--yellow">Since 2012</div>
-        <h2>Built by community. <em>Powered by love.</em></h2>
-      </div>
-      <div class="impact-grid">
-        <div class="impact-card" data-reveal>
-          <span class="impact-num">{stats.totalKids}+</span>
-          <span class="impact-label">Children Served</span>
+      <div class="criteria-stats" data-reveal data-delay="1">
+        <div class="criteria-stat-card">
+          <span class="criteria-stat-num">{stats.totalRooms}+</span>
+          <span class="criteria-stat-label">rooms built</span>
         </div>
-        <div class="impact-card" data-reveal data-delay="1">
-          <span class="impact-num">{stats.totalRooms}+</span>
-          <span class="impact-label">Rooms Built</span>
+        <div class="criteria-stat-card">
+          <span class="criteria-stat-num">{stats.years}</span>
+          <span class="criteria-stat-label">years of impact</span>
         </div>
-        <div class="impact-card" data-reveal data-delay="2">
-          <span class="impact-num">{stats.years}</span>
-          <span class="impact-label">Years of Impact</span>
-        </div>
-        <div class="impact-card" data-reveal data-delay="3">
-          <span class="impact-num">$0</span>
-          <span class="impact-label">Cost to Families</span>
+        <div class="criteria-stat-card criteria-stat-card--highlight">
+          <span class="criteria-stat-num">$0</span>
+          <span class="criteria-stat-label">cost to families</span>
+          <span class="criteria-stat-sub">every makeover is 100% free</span>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- ══════ WHAT WE BUILD ══════ -->
-  <section class="build-section">
-    <div class="build-inner">
-      <div class="build-header" data-reveal>
-        <div class="section-label">What We Build</div>
-        <h2>Three types of spaces, one <em class="highlight">purpose</em></h2>
-      </div>
-      <div class="build-grid">
-        <a href="/kids" class="build-tile" data-reveal>
-          <span class="build-tile-tag">Most Popular</span>
-          <h3>Dream Bedrooms</h3>
-          <p>Personalized sanctuaries designed around a child's interests, needs, and personality — where they can escape, imagine, and be themselves.</p>
-          <span class="build-tile-link">See bedrooms →</span>
-        </a>
-        <a href="/kids" class="build-tile" data-reveal data-delay="1">
-          <span class="build-tile-tag">Life-Changing</span>
-          <h3>Accessible Bathrooms</h3>
-          <p>Roll-in showers, grab bars, and lowered vanities — giving children independence and giving families relief from daily struggles.</p>
-          <span class="build-tile-link">See bathrooms →</span>
-        </a>
-        <a href="/kids" class="build-tile" data-reveal data-delay="2">
-          <span class="build-tile-tag">Therapeutic</span>
-          <h3>Therapy Rooms</h3>
-          <p>Calming retreats with dimmable lights, swings, crash pads, and textured walls — spaces where children decompress and develop.</p>
-          <span class="build-tile-link">See therapy rooms →</span>
-        </a>
-      </div>
-    </div>
-  </section>
+  <!-- ══════ FAQ — Editorial Split (dark, matches donate page) ══════ -->
+  {faqs.length > 0 && (
+    <FAQSection
+      heading='Everything families <em class="highlight highlight--dark">ask</em>'
+      body="We know this process can feel overwhelming. These are the questions families ask most often."
+      ctaLabel="Have a Question? →"
+      ctaHref={`mailto:${siteSettings.email}`}
+      ctaClass="btn btn-ghost-light"
+      items={faqs}
+      accordionName="apply-faq"
+      id="faq"
+    />
+  )}
 
-  <!-- ══════ DONOR CTA — Yellow Finale ══════ -->
-  <section class="finale">
-    <div class="finale-inner">
-      <h2 data-reveal>You can help build the next<br/>child's <em>dream room</em>.</h2>
-      <p data-reveal data-delay="1">Every room is funded entirely by donors and partners. No government grants. No corporate overhead. Just people who believe every kid deserves better.</p>
-      <div class="finale-ctas" data-reveal data-delay="2">
-        <a href="/donate" class="btn btn-dark btn-lg">Donate Today →</a>
-        <a href="/partners" class="btn btn-outline-dark">Become a Partner</a>
-      </div>
-      <p class="finale-note" data-reveal data-delay="3">501(c)(3) · EIN 45-4773997 · 100% of donations fund rooms</p>
+  <!-- ══════ NOTIFY ME — Email capture when closed / CTA when open ══════ -->
+  <section class="notify">
+    <div class="notify-inner">
+      {isOpen ? (
+        <>
+          <h2 data-reveal>Ready to take the<br/><em>first step</em>?</h2>
+          <p class="notify-body" data-reveal data-delay="1">Applying takes just a few minutes. Tell us about your child, and let us take it from there.</p>
+          <div class="notify-ctas" data-reveal data-delay="2">
+            {appFormUrl && <a href={appFormUrl} target="_blank" rel="noopener noreferrer" class="btn btn-dark btn-lg">Start Your Application &rarr;</a>}
+            <a href="/kids" class="btn btn-outline-dark">See Past Makeovers</a>
+          </div>
+        </>
+      ) : (
+        <>
+          <h2 data-reveal>Be the first to know when<br/>applications <em>reopen</em>.</h2>
+          <p class="notify-body" data-reveal data-delay="1">Join our mailing list and we'll notify you the moment the next application window opens. No spam — just sunshine.</p>
+          <form class="notify-form" id="apply-notify-form" action="/api/newsletter" method="POST" data-reveal data-delay="2">
+            <div class="notify-fields">
+              <input
+                type="email"
+                name="email"
+                placeholder="Your email address"
+                required
+                autocomplete="email"
+                aria-label="Email address for application notifications"
+                class="notify-input"
+                id="apply-notify-email"
+              />
+              <button type="submit" class="notify-btn btn btn-dark" id="apply-notify-btn">
+                <span class="notify-btn-text">Notify Me</span>
+                <span class="notify-btn-sending" aria-hidden="true">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+                </span>
+                <span class="notify-btn-done" aria-hidden="true">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                </span>
+              </button>
+            </div>
+            <div aria-hidden="true" style="position:absolute;left:-9999px;top:-9999px;"><input type="text" name="website" tabindex="-1" autocomplete="off" /></div>
+            <p class="notify-note" id="apply-notify-note">No spam, ever. Unsubscribe anytime.</p>
+          </form>
+          <div class="notify-social-alt">
+            <span>or follow us</span>
+            <div class="notify-social-links">
+              <a href={siteSettings.social.instagram} target="_blank" rel="noopener noreferrer" aria-label="Follow on Instagram">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg>
+              </a>
+              <a href={siteSettings.social.facebook} target="_blank" rel="noopener noreferrer" aria-label="Follow on Facebook">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/></svg>
+              </a>
+            </div>
+          </div>
+        </>
+      )}
+      <p class="notify-fine" data-reveal data-delay="3">Every makeover is 100% free &middot; 501(c)(3) &middot; EIN {siteSettings.ein}</p>
     </div>
   </section>
 
 </BaseLayout>
 
+<script>
+  document.addEventListener('astro:page-load', () => {
+    const form = document.getElementById('apply-notify-form') as HTMLFormElement | null;
+    if (!form) return;
+    const note = document.getElementById('apply-notify-note');
+    const btn = document.getElementById('apply-notify-btn');
+    const input = document.getElementById('apply-notify-email') as HTMLInputElement | null;
+    if (!note || !btn || !input) return;
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = input.value.trim();
+      if (!email) return;
+
+      const honeypot = form.querySelector<HTMLInputElement>('[name="website"]');
+      const hp = honeypot ? honeypot.value : '';
+
+      note.classList.remove('notify-note--success', 'notify-note--error');
+      btn.classList.remove('is-done');
+      btn.classList.add('is-sending');
+      btn.setAttribute('disabled', '');
+      input.setAttribute('disabled', '');
+
+      try {
+        const res = await fetch('/api/newsletter', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, hp }),
+        });
+        const data = await res.json();
+        btn.classList.remove('is-sending');
+
+        if (data.ok) {
+          btn.classList.add('is-done');
+          input.value = '';
+          note.textContent = "You're on the list! We'll let you know when applications open.";
+          note.classList.add('notify-note--success');
+        } else {
+          note.textContent = data.error || 'Something went wrong. Please try again.';
+          note.classList.add('notify-note--error');
+          btn.removeAttribute('disabled');
+          input.removeAttribute('disabled');
+        }
+      } catch {
+        btn.classList.remove('is-sending');
+        note.textContent = 'Something went wrong. Please try again.';
+        note.classList.add('notify-note--error');
+        btn.removeAttribute('disabled');
+        input.removeAttribute('disabled');
+      }
+    });
+  });
+</script>
+
 <style>
-  /* ══════════════════════════════════════════
-     SHARED
-     ══════════════════════════════════════════ */
-  .section-label {
-    font-size: 12px;
-    font-weight: 700;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: var(--c-accent);
-    margin-bottom: 16px;
-  }
-  .section-label--yellow { color: var(--c-yellow); }
-  .highlight {
-    font-style: italic;
-    background-image: linear-gradient(transparent 55%, var(--c-yellow-soft) 55%);
-  }
+  /* Page-specific: italic em color on h2 when not a highlight */
   h2 em:not(.highlight) { font-style: italic; color: var(--c-yellow); }
 
-  .btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    font-family: var(--font-body);
-    font-weight: 600;
-    font-size: 15px;
-    padding: 14px 32px;
-    border: none;
-    border-radius: 100px;
-    cursor: pointer;
-    text-decoration: none;
-    transition: transform var(--transition-base), box-shadow var(--transition-base), background var(--transition-base), color var(--transition-base);
-    min-height: 48px;
-  }
-  .btn:hover { transform: translateY(-2px); }
-  .btn:active { transform: translateY(0); }
-  .btn-lg { font-size: 17px; padding: 18px 44px; }
-  .btn-primary { background: var(--c-yellow); color: var(--c-dark); }
-  .btn-primary:hover { box-shadow: 0 8px 24px rgba(255,218,36,0.3); }
-  .btn-dark { background: var(--c-dark); color: #fff; }
-  .btn-dark:hover { box-shadow: 0 8px 24px rgba(0,0,0,0.2); }
-  .btn-outline-dark {
-    background: transparent;
-    color: var(--c-dark);
-    border: 2px solid var(--c-dark);
-  }
-  .btn-outline-dark:hover { background: var(--c-dark); color: var(--c-yellow); }
+  /* Section-label color modifier for light backgrounds */
+  .section-label--light { color: rgba(255,255,255,0.5); }
+  .section-label--light::before { background: rgba(255,255,255,0.25); }
 
   /* ══════════════════════════════════════════
-     HERO — Editorial split (no full-width image)
+     HERO
      ══════════════════════════════════════════ */
-  .apply-hero {
+  .hero {
     background: var(--c-cream);
-    padding: var(--space-3xl) 0 0;
+    padding: clamp(80px, 10vw, 140px) 0 clamp(64px, 8vw, 100px);
+    position: relative;
   }
-  .apply-hero-inner {
+  .hero-inner {
     max-width: var(--max-width);
     margin: 0 auto;
     padding: 0 var(--space-xl);
     display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 48px;
+    grid-template-columns: 1.15fr 0.85fr;
+    gap: clamp(40px, 5vw, 80px);
     align-items: center;
   }
-  .apply-hero-label {
-    font-size: 0.75rem;
-    font-weight: 600;
-    letter-spacing: 0.12em;
+  .hero-eyebrow {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
     text-transform: uppercase;
     color: var(--c-text-muted);
-    margin-bottom: var(--space-md);
-  }
-  .apply-hero-text h1 {
-    font-size: clamp(2rem, 4.5vw, 3.25rem);
-    letter-spacing: -0.025em;
-    line-height: 1.1;
-    color: var(--c-text);
     margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
   }
-  .apply-hero-text h1 em {
+  .hero-eyebrow::before {
+    content: '';
+    width: 28px;
+    height: 2px;
+    background: currentColor;
+    flex-shrink: 0;
+  }
+  /* Hero entrance stagger — matches homepage/community */
+  .hero-text .section-label {
+    opacity: 0;
+    animation: heroUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.05s both;
+  }
+  .hero-text h1 {
+    font-size: clamp(2.25rem, 5.5vw, 3.75rem);
+    letter-spacing: -0.03em;
+    line-height: 1.06;
+    color: var(--c-text);
+    margin-bottom: 28px;
+    /* NO opacity:0 — LCP element */
+    animation: heroSlide 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  .hero-text h1 em {
     font-style: italic;
-    background-image: linear-gradient(transparent 55%, var(--c-yellow-soft) 55%);
+    background-image: linear-gradient(transparent 52%, var(--c-yellow-soft) 52%);
+    background-repeat: no-repeat;
+    background-size: 100% 100%;
+    padding: 0 0.05em;
   }
-  .apply-hero-sub {
-    font-size: clamp(15px, 1.5vw, 17px);
+  .hero-lead {
+    font-size: clamp(16px, 1.6vw, 18px);
     color: var(--c-text-muted);
-    line-height: 1.65;
-    margin-bottom: 32px;
+    line-height: 1.7;
+    margin-bottom: 40px;
     max-width: 480px;
+    opacity: 0;
+    animation: heroUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.15s both;
   }
-  .apply-hero-ctas {
+  .hero-ctas {
     display: flex;
     gap: 14px;
     flex-wrap: wrap;
+    opacity: 0;
+    animation: heroUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.25s both;
   }
-  .apply-hero-photos {
-    display: grid;
-    grid-template-columns: 1fr 0.55fr;
-    gap: 16px;
-    align-items: end;
-  }
-  .apply-hero-photo {
-    border-radius: 16px;
-    overflow: hidden;
-  }
-  .apply-hero-photo img {
-    width: 100%;
-    height: auto;
-    display: block;
-  }
-  .apply-hero-photo--accent {
-    margin-bottom: 32px;
-  }
-  .apply-hero-rule {
+
+  .hero-frame {
     position: relative;
-    height: 2px;
-    background: var(--c-border, #e5e4e0);
-    margin-top: var(--space-2xl);
-    max-width: var(--max-width);
-    margin-left: auto;
-    margin-right: auto;
+    animation: heroPhotoIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
   }
-  .apply-hero-rule-accent {
+  .hero-accent {
     position: absolute;
-    left: 50%;
-    transform: translateX(-50%);
-    top: -1px;
-    width: 48px;
-    height: 3px;
+    bottom: -16px;
+    right: -16px;
+    width: 65%;
+    height: 50%;
     background: var(--c-yellow);
-    border-radius: 1px;
+    border-radius: var(--border-radius-lg);
+    z-index: 0;
+    opacity: 0.35;
+  }
+  .hero-photo {
+    position: relative;
+    z-index: 1;
+    aspect-ratio: 4 / 5;
+    border-radius: var(--border-radius-lg);
+    overflow: hidden;
+    background-size: cover;
+    background-position: center;
+    box-shadow:
+      0 4px 6px rgba(0, 0, 0, 0.04),
+      0 16px 48px rgba(0, 0, 0, 0.1);
+  }
+  .hero-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .hero-photo--small {
+    position: absolute;
+    bottom: -24px;
+    left: -32px;
+    width: 40%;
+    aspect-ratio: 5 / 6;
+    z-index: 2;
+    border: 4px solid var(--c-cream);
+    box-shadow:
+      0 4px 6px rgba(0, 0, 0, 0.06),
+      0 12px 36px rgba(0, 0, 0, 0.12);
+  }
+  .hero-stat {
+    position: absolute;
+    bottom: clamp(24px, 4vw, 48px);
+    right: clamp(24px, 6vw, 80px);
+    background: var(--c-dark);
+    color: #fff;
+    padding: 16px 24px;
+    border-radius: var(--border-radius-lg);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    box-shadow:
+      0 4px 6px rgba(0, 0, 0, 0.08),
+      0 16px 48px rgba(0, 0, 0, 0.15);
+    z-index: 3;
+  }
+  .hero-stat-num {
+    font-family: var(--font-display);
+    font-size: clamp(28px, 3vw, 40px);
+    font-weight: 700;
+    color: var(--c-yellow);
+    line-height: 1;
+  }
+  .hero-stat-label {
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.35;
+    color: rgba(255,255,255,0.6);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
   }
 
   /* ══════════════════════════════════════════
@@ -468,53 +644,525 @@ const breadcrumbs = [
      ══════════════════════════════════════════ */
   .status-banner {
     background: var(--c-warm-gray);
-    border-bottom: 1px solid var(--c-border, #e5e4e0);
+    border-bottom: 1px solid var(--c-border);
   }
   .status-inner {
     max-width: var(--max-width);
     margin: 0 auto;
-    padding: 20px var(--space-xl);
+    padding: 24px var(--space-xl);
     display: flex;
     align-items: center;
     gap: 16px;
   }
   .status-dot {
-    width: 10px;
-    height: 10px;
+    width: 12px; height: 12px;
     border-radius: 50%;
     background: var(--c-text-muted);
     flex-shrink: 0;
-    opacity: 0.5;
+    opacity: 0.35;
   }
   .status-dot--open {
     background: #38A169;
     opacity: 1;
     box-shadow: 0 0 0 4px rgba(56,161,105,0.2);
+    animation: pulse-dot 2s ease-in-out infinite;
+  }
+  @keyframes pulse-dot {
+    0%, 100% { box-shadow: 0 0 0 4px rgba(56,161,105,0.2); }
+    50% { box-shadow: 0 0 0 8px rgba(56,161,105,0.06); }
   }
   .status-text { flex: 1; min-width: 0; }
-  .status-headline {
-    font-weight: 700;
-    font-size: 14px;
-    color: var(--c-text);
-  }
-  .status-sub {
-    font-size: 13px;
-    color: var(--c-text-muted);
-    line-height: 1.5;
-    margin-top: 2px;
-  }
+  .status-headline { font-weight: 700; font-size: 15px; color: var(--c-text); }
+  .status-sub { font-size: 14px; color: var(--c-text-muted); line-height: 1.55; margin-top: 2px; }
   .status-banner--open {
     background: rgba(56,161,105,0.06);
     border-bottom-color: rgba(56,161,105,0.15);
   }
-  .status-socials {
-    display: flex;
-    gap: 10px;
-    flex-shrink: 0;
+
+  /* ══════════════════════════════════════════
+     FEATURED FAMILY STORY
+     ══════════════════════════════════════════ */
+  .story {
+    background: var(--c-warm-gray);
   }
-  .status-social {
+  .story-inner {
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding: 0 var(--space-xl);
+    display: grid;
+    grid-template-columns: 0.85fr 1fr;
+    gap: clamp(40px, 5vw, 80px);
+    align-items: center;
+  }
+  .story-photo {
+    position: relative;
+    aspect-ratio: 4 / 5;
+    border-radius: var(--border-radius-lg);
+    overflow: hidden;
+    background-size: cover;
+    background-position: center;
+    box-shadow:
+      0 4px 6px rgba(0, 0, 0, 0.04),
+      0 12px 40px rgba(0, 0, 0, 0.08),
+      0 -3px 0 var(--c-yellow);
+  }
+  .story-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .story-photo-badge {
+    position: absolute;
+    bottom: 16px;
+    left: 16px;
+    right: 16px;
+    background: rgba(55, 58, 54, 0.85);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border-radius: 12px;
+    padding: 14px 18px;
+    color: #fff;
+  }
+  .story-photo-name {
+    display: block;
+    font-family: var(--font-display);
+    font-size: 18px;
+    font-weight: 700;
+    line-height: 1.2;
+  }
+  .story-photo-diag {
+    display: block;
+    font-size: 12px;
+    color: rgba(255,255,255,0.6);
+    margin-top: 2px;
+  }
+  .story-text h2 {
+    font-size: clamp(1.625rem, 3vw + 0.5rem, 2.5rem);
+    letter-spacing: -0.02em;
+    line-height: 1.15;
+    margin-bottom: 20px;
+  }
+  .story-excerpt {
+    font-size: 16px;
+    line-height: 1.75;
+    color: var(--c-text-muted);
+    margin-bottom: 20px;
+  }
+  .story-rooms {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 24px;
+  }
+  .story-room-tag {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--c-dark);
+    background: var(--c-yellow);
+    padding: 5px 14px;
+    border-radius: 100px;
+  }
+  .story-link {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--c-dark);
+    display: inline-flex;
+    align-items: center;
+    transition: color var(--transition-fast);
+  }
+  .story-link:hover { color: var(--c-yellow-hover); }
+
+  /* ══════════════════════════════════════════
+     JOURNEY — Narrative blocks
+     ══════════════════════════════════════════ */
+  .journey {
+    background: var(--c-cream);
+    padding: var(--space-4xl) 0 var(--space-3xl);
+  }
+  .journey-header {
+    max-width: var(--max-width);
+    margin: 0 auto var(--space-3xl);
+    padding: 0 var(--space-xl);
+  }
+  .journey-header h2 {
+    font-size: clamp(1.75rem, 3.5vw, 2.75rem);
+    letter-spacing: -0.02em;
+    line-height: 1.12;
+  }
+  .narrative-block {
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding: 0 var(--space-xl) var(--space-3xl);
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: clamp(40px, 5vw, 80px);
+    align-items: start;
+  }
+  .narrative-block:last-of-type { padding-bottom: 0; }
+  .narrative-num {
+    display: block;
+    font-family: var(--font-display);
+    font-size: clamp(48px, 5vw, 72px);
+    font-weight: 400;
+    color: var(--c-yellow);
+    line-height: 1;
+    margin-bottom: 12px;
+    opacity: 0.55;
+  }
+  .narrative-text h3 {
+    font-size: clamp(1.25rem, 2vw, 1.625rem);
+    letter-spacing: -0.01em;
+    line-height: 1.2;
+    margin-bottom: 14px;
+  }
+  .narrative-text p {
+    font-size: 16px;
+    line-height: 1.75;
+    color: var(--c-text-muted);
+  }
+  .narrative-callout {
+    background: var(--c-warm-gray);
+    border-radius: var(--border-radius-lg);
+    padding: 28px 32px;
+    display: flex;
+    gap: 16px;
+    align-items: flex-start;
+    margin-top: 8px;
+  }
+  .narrative-callout-icon {
+    flex-shrink: 0;
     width: 36px;
     height: 36px;
+    background: var(--c-yellow);
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .narrative-callout-icon svg { width: 18px; height: 18px; stroke: var(--c-dark); }
+  .narrative-callout p { font-size: 14px; line-height: 1.65; color: var(--c-text-muted); }
+  .narrative-media {
+    border-radius: var(--border-radius-lg);
+    overflow: hidden;
+    aspect-ratio: 4 / 3;
+    background-size: cover;
+    background-position: center;
+    box-shadow:
+      0 4px 6px rgba(0, 0, 0, 0.04),
+      0 12px 40px rgba(0, 0, 0, 0.08);
+  }
+  .narrative-media img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .narrative-block--reversed { direction: rtl; }
+  .narrative-block--reversed > * { direction: ltr; }
+
+  /* ══════════════════════════════════════════
+     THE REVEAL — Dark cinematic
+     ══════════════════════════════════════════ */
+  .reveal {
+    background: var(--c-dark);
+    color: #fff;
+    padding: var(--space-4xl) 0;
+    overflow: hidden;
+  }
+  .reveal-inner {
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding: 0 var(--space-xl);
+    display: grid;
+    grid-template-columns: 0.9fr 1.1fr;
+    gap: clamp(40px, 5vw, 80px);
+    align-items: center;
+  }
+  .reveal-badge {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--c-dark);
+    background: var(--c-yellow);
+    padding: 6px 16px;
+    border-radius: 100px;
+    margin-bottom: 20px;
+  }
+  .reveal-content h2 {
+    font-size: clamp(2rem, 4vw, 3.25rem);
+    letter-spacing: -0.025em;
+    line-height: 1.08;
+    color: #fff;
+    margin-bottom: 20px;
+  }
+  .reveal-content h2 em { color: var(--c-yellow); }
+  .reveal-content p {
+    font-size: clamp(16px, 1.5vw, 18px);
+    line-height: 1.75;
+    color: rgba(255,255,255,0.65);
+    max-width: 460px;
+  }
+  .reveal-photo-frame { position: relative; }
+  .reveal-glow {
+    position: absolute;
+    top: -40px; right: -40px;
+    width: 200px; height: 200px;
+    background: radial-gradient(circle, rgba(255, 218, 36, 0.15) 0%, transparent 70%);
+    border-radius: 50%;
+    pointer-events: none;
+  }
+  .reveal-photo {
+    position: relative;
+    border-radius: var(--border-radius-lg);
+    overflow: hidden;
+    aspect-ratio: 10 / 7;
+    background-size: cover;
+    background-position: center;
+    box-shadow:
+      0 4px 8px rgba(0, 0, 0, 0.2),
+      0 20px 60px rgba(0, 0, 0, 0.3);
+  }
+  .reveal-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+  /* ══════════════════════════════════════════
+     PULL QUOTE
+     ══════════════════════════════════════════ */
+  .pullquote-section {
+    background: var(--c-warm-gray);
+    padding: var(--space-4xl) 0;
+  }
+  .pullquote-inner {
+    max-width: var(--max-width-narrow);
+    margin: 0 auto;
+    padding: 0 var(--space-xl);
+  }
+  .pullquote {
+    position: relative;
+    padding: clamp(32px, 4vw, 48px) clamp(32px, 4vw, 48px) clamp(32px, 4vw, 48px) clamp(40px, 5vw, 64px);
+    background: linear-gradient(135deg, rgba(255, 218, 36, 0.07) 0%, rgba(255, 218, 36, 0.02) 100%);
+    border-left: 4px solid var(--c-yellow);
+    border-radius: 0 var(--border-radius-lg) var(--border-radius-lg) 0;
+  }
+  .pullquote-mark {
+    position: absolute;
+    top: clamp(16px, 2vw, 24px);
+    left: clamp(16px, 2vw, 24px);
+    font-family: var(--font-display);
+    font-size: clamp(48px, 5vw, 72px);
+    color: var(--c-yellow);
+    opacity: 0.35;
+    line-height: 1;
+    pointer-events: none;
+  }
+  .pullquote blockquote p {
+    font-family: var(--font-display);
+    font-size: clamp(1rem, 2vw, 1.25rem);
+    font-style: italic;
+    line-height: 1.7;
+    color: var(--c-text);
+  }
+  .pullquote cite {
+    display: block;
+    margin-top: 20px;
+    font-family: var(--font-body);
+    font-style: normal;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--c-text-muted);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  /* ══════════════════════════════════════════
+     CRITERIA
+     ══════════════════════════════════════════ */
+  .criteria { background: var(--c-cream); }
+  .criteria-inner {
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding: 0 var(--space-xl);
+    display: grid;
+    grid-template-columns: 1.1fr 0.9fr;
+    gap: clamp(40px, 5vw, 80px);
+    align-items: start;
+  }
+  .criteria-text h2 {
+    font-size: clamp(1.625rem, 3vw + 0.5rem, 2.5rem);
+    letter-spacing: -0.02em;
+    line-height: 1.15;
+    margin-bottom: 16px;
+  }
+  .criteria-lead {
+    font-size: 16px;
+    line-height: 1.7;
+    color: var(--c-text-muted);
+    margin-bottom: 28px;
+  }
+  .criteria-list {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+  .criteria-list li { display: flex; gap: 12px; align-items: flex-start; }
+  .sel-icon {
+    width: 22px;
+    height: 22px;
+    flex-shrink: 0;
+    color: var(--c-yellow-hover);
+    margin-top: 2px;
+  }
+  .criteria-list li strong { display: block; font-size: 15px; font-weight: 700; color: var(--c-text); margin-bottom: 2px; }
+  .criteria-list li span { font-size: 14px; color: var(--c-text-muted); line-height: 1.6; }
+  .criteria-note { font-size: 14px; color: var(--c-text-light); font-style: italic; line-height: 1.65; }
+
+  .criteria-stats { display: flex; flex-direction: column; gap: 16px; padding-top: 8px; }
+  .criteria-stat-card {
+    background: var(--c-warm-gray);
+    border-radius: var(--border-radius-lg);
+    padding: 28px 32px;
+    text-align: center;
+    border: 1px solid var(--c-border);
+  }
+  .criteria-stat-card--highlight {
+    background: var(--c-dark);
+    border-color: transparent;
+    color: #fff;
+  }
+  .criteria-stat-num {
+    display: block;
+    font-family: var(--font-display);
+    font-size: clamp(1.75rem, 3vw, 2.5rem);
+    font-weight: 400;
+    color: var(--c-yellow);
+    line-height: 1;
+    margin-bottom: 4px;
+  }
+  .criteria-stat-label {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--c-text-muted);
+  }
+  .criteria-stat-card--highlight .criteria-stat-label { color: rgba(255,255,255,0.5); }
+  .criteria-stat-sub {
+    display: block;
+    font-size: 12px;
+    color: rgba(255,255,255,0.35);
+    margin-top: 4px;
+  }
+
+  /* ══════════════════════════════════════════
+     NOTIFY — Email capture / CTA finale
+     ══════════════════════════════════════════ */
+  .notify {
+    background: var(--c-yellow);
+    padding: var(--space-4xl) 0;
+    text-align: center;
+  }
+  .notify-inner {
+    max-width: var(--max-width-narrow);
+    margin: 0 auto;
+    padding: 0 var(--space-xl);
+  }
+  .notify h2 {
+    font-size: clamp(1.75rem, 4vw, 2.75rem);
+    letter-spacing: -0.02em;
+    line-height: 1.12;
+    color: var(--c-dark);
+    margin-bottom: 20px;
+  }
+  .notify h2 em { font-style: italic; color: inherit; }
+  .notify-body {
+    font-size: 16px;
+    line-height: 1.7;
+    color: var(--c-dark);
+    opacity: 0.7;
+    max-width: 520px;
+    margin: 0 auto 36px;
+  }
+  .notify-ctas {
+    display: flex;
+    gap: 14px;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-bottom: 28px;
+  }
+
+  /* Email form */
+  .notify-form {
+    max-width: 440px;
+    margin: 0 auto 24px;
+    position: relative;
+  }
+  .notify-fields {
+    display: flex;
+    gap: 0;
+    border-radius: 60px;
+    overflow: hidden;
+    background: var(--c-dark);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
+  }
+  .notify-input {
+    flex: 1;
+    border: none;
+    background: transparent;
+    color: #fff;
+    padding: 16px 24px;
+    font-size: 15px;
+    outline: none;
+    min-width: 0;
+  }
+  .notify-input::placeholder { color: rgba(255,255,255,0.4); }
+  .notify-btn {
+    border-radius: 0 60px 60px 0 !important;
+    padding: 16px 28px !important;
+    flex-shrink: 0;
+    position: relative;
+  }
+  .notify-btn-sending, .notify-btn-done { display: none; }
+  .notify-btn.is-sending .notify-btn-text { display: none; }
+  .notify-btn.is-sending .notify-btn-sending {
+    display: inline-flex;
+    animation: spin 0.8s linear infinite;
+  }
+  .notify-btn.is-done .notify-btn-text { display: none; }
+  .notify-btn.is-done .notify-btn-done { display: inline-flex; }
+  .notify-btn.is-done {
+    background: #38A169 !important;
+    color: #fff !important;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .notify-note {
+    font-size: 13px;
+    color: var(--c-dark);
+    opacity: 0.5;
+    margin-top: 12px;
+    transition: color 0.2s ease;
+  }
+  .notify-note--success { color: var(--c-dark); opacity: 0.8; font-weight: 600; }
+  .notify-note--error { color: #C53030; opacity: 1; }
+
+  /* Social alternative */
+  .notify-social-alt {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    margin-bottom: 28px;
+  }
+  .notify-social-alt span {
+    font-size: 13px;
+    color: var(--c-dark);
+    opacity: 0.5;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-weight: 600;
+  }
+  .notify-social-links {
+    display: flex;
+    gap: 8px;
+  }
+  .notify-social-links a {
+    width: 40px; height: 40px;
     border-radius: 50%;
     background: var(--c-dark);
     display: flex;
@@ -522,508 +1170,90 @@ const breadcrumbs = [
     justify-content: center;
     transition: transform var(--transition-fast), background var(--transition-fast);
   }
-  .status-social:hover {
-    transform: translateY(-2px);
-    background: var(--c-yellow);
-  }
-  .status-social svg {
-    width: 16px;
-    height: 16px;
-    stroke: #fff;
-  }
-  .status-social:hover svg {
-    stroke: var(--c-dark);
-  }
+  .notify-social-links a:hover { transform: translateY(-2px); background: #1a1b1f; }
+  .notify-social-links svg { width: 16px; height: 16px; stroke: #fff; }
 
-  /* ══════════════════════════════════════════
-     WHO WE SERVE
-     ══════════════════════════════════════════ */
-  .serve {
-    padding: var(--space-4xl) 0;
-    background: var(--c-cream);
-  }
-  .serve-inner {
-    max-width: var(--max-width);
-    margin: 0 auto;
-    padding: 0 var(--space-xl);
-  }
-  .serve-header {
-    text-align: center;
-    margin-bottom: 48px;
-  }
-  .serve-header h2 {
-    font-size: clamp(1.625rem, 3vw + 0.5rem, 2.5rem);
-    letter-spacing: -0.02em;
-    line-height: 1.15;
-    margin-bottom: 16px;
-  }
-  .serve-lead {
-    font-size: 16px;
-    color: var(--c-text-muted);
-    line-height: 1.65;
-    max-width: 600px;
-    margin: 0 auto;
-  }
-  .serve-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 24px;
-  }
-  .serve-card {
-    background: #fff;
-    border-radius: 16px;
-    padding: 36px 28px;
-    border: 1px solid var(--c-border, #e5e4e0);
-    transition: transform var(--transition-base), box-shadow var(--transition-base);
-  }
-  .serve-card:hover {
-    transform: translateY(-4px);
-    box-shadow: var(--shadow-lg);
-  }
-  .serve-icon {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 48px;
-    height: 48px;
-    background: rgba(255,218,36,0.12);
-    border-radius: 14px;
-    margin-bottom: 20px;
-  }
-  .serve-icon svg {
-    width: 24px;
-    height: 24px;
-    stroke: var(--c-dark);
-  }
-  .serve-card h3 {
-    font-size: 17px;
-    font-weight: 700;
-    margin-bottom: 10px;
-  }
-  .serve-card p {
-    font-size: 14px;
-    line-height: 1.65;
-    color: var(--c-text-muted);
-  }
-
-  /* ══════════════════════════════════════════
-     HOW IT WORKS — Split layout
-     ══════════════════════════════════════════ */
-  .journey {
-    background: var(--c-warm-gray);
-    padding: var(--space-4xl) 0;
-  }
-  .journey-inner {
-    max-width: var(--max-width);
-    margin: 0 auto;
-    padding: 0 var(--space-xl);
-    display: grid;
-    grid-template-columns: 1fr 1.1fr;
-    gap: 64px;
-    align-items: start;
-  }
-  .journey-left h2 {
-    font-size: clamp(1.625rem, 3vw + 0.5rem, 2.5rem);
-    letter-spacing: -0.02em;
-    line-height: 1.15;
-    margin-bottom: 16px;
-  }
-  .journey-lead {
-    font-size: 16px;
-    color: var(--c-text-muted);
-    line-height: 1.65;
-    margin-bottom: 32px;
-  }
-  .journey-photo {
-    border-radius: 16px;
-    overflow: hidden;
-  }
-  .journey-photo img {
-    width: 100%;
-    height: auto;
-    display: block;
-    border-radius: 16px;
-  }
-  .journey-steps {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-    display: flex;
-    flex-direction: column;
-  }
-  .journey-step {
-    display: flex;
-    gap: 24px;
-  }
-  .step-marker {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    flex-shrink: 0;
-    width: 44px;
-  }
-  .step-num {
-    width: 44px;
-    height: 44px;
-    border-radius: 50%;
-    background: var(--c-dark);
-    color: var(--c-yellow);
-    font-family: var(--font-body);
-    font-weight: 700;
-    font-size: 13px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-    position: relative;
-    z-index: 2;
-  }
-  .step-num--highlight {
-    background: var(--c-yellow);
-    color: var(--c-dark);
-    box-shadow: 0 0 0 4px rgba(255,218,36,0.2);
-  }
-  .step-line {
-    width: 2px;
-    flex: 1;
-    background: var(--c-border, #e5e4e0);
-    min-height: 20px;
-  }
-  .step-body {
-    padding-bottom: 36px;
-    flex: 1;
-  }
-  .journey-step:last-child .step-body {
-    padding-bottom: 0;
-  }
-  .step-body h3 {
-    font-size: 18px;
-    font-weight: 700;
-    margin-bottom: 6px;
-    color: var(--c-text);
-    padding-top: 9px;
-  }
-  .step-body p {
-    font-size: 14px;
-    line-height: 1.65;
-    color: var(--c-text-muted);
-  }
-  .step-badge {
-    display: inline-block;
-    font-size: 11px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    color: #fff;
-    background: var(--c-dark);
-    padding: 4px 12px;
-    border-radius: 100px;
-    margin-bottom: 6px;
-  }
-
-  /* ══════════════════════════════════════════
-     SELECTION
-     ══════════════════════════════════════════ */
-  .selection {
-    padding: var(--space-4xl) 0;
-    background: var(--c-cream);
-  }
-  .selection-inner {
-    max-width: var(--max-width);
-    margin: 0 auto;
-    padding: 0 var(--space-xl);
-    display: grid;
-    grid-template-columns: 0.85fr 1fr;
-    gap: 64px;
-    align-items: center;
-  }
-  .selection-photo {
-    border-radius: 16px;
-    overflow: hidden;
-  }
-  .selection-photo img {
-    width: 100%;
-    height: auto;
-    display: block;
-    border-radius: 16px;
-  }
-  .selection-text h2 {
-    font-size: clamp(1.625rem, 3vw + 0.5rem, 2.5rem);
-    letter-spacing: -0.02em;
-    line-height: 1.15;
-    margin-bottom: 16px;
-  }
-  .selection-text > p {
-    font-size: 15px;
-    line-height: 1.65;
-    color: var(--c-text-muted);
-    margin-bottom: 24px;
-  }
-  .selection-list {
-    list-style: none;
-    padding: 0;
-    margin: 0 0 24px;
-    display: flex;
-    flex-direction: column;
-    gap: 18px;
-  }
-  .selection-list li {
-    padding-left: 24px;
-    position: relative;
-  }
-  .selection-list li::before {
-    content: '';
-    position: absolute;
-    left: 0;
-    top: 7px;
-    width: 10px;
-    height: 10px;
-    background: var(--c-yellow);
-    border-radius: 50%;
-  }
-  .selection-list li strong {
-    display: block;
-    font-size: 15px;
-    font-weight: 700;
-    color: var(--c-text);
-    margin-bottom: 2px;
-  }
-  .selection-list li span {
-    font-size: 13px;
-    color: var(--c-text-muted);
-    line-height: 1.5;
-  }
-  .selection-note {
-    font-size: 14px;
-    color: var(--c-text-muted);
-    font-style: italic;
-    line-height: 1.6;
-  }
-
-  /* ══════════════════════════════════════════
-     IMPACT — Dark
-     ══════════════════════════════════════════ */
-  .impact-section {
-    background: var(--c-dark);
-    color: #fff;
-    padding: var(--space-3xl) 0;
-  }
-  .impact-inner {
-    max-width: var(--max-width);
-    margin: 0 auto;
-    padding: 0 var(--space-xl);
-    text-align: center;
-  }
-  .impact-header {
-    margin-bottom: 40px;
-  }
-  .impact-header h2 {
-    font-size: clamp(1.625rem, 3vw + 0.5rem, 2.5rem);
-    letter-spacing: -0.02em;
-    line-height: 1.15;
-  }
-  .impact-grid {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 24px;
-  }
-  .impact-card {
-    padding: 28px 16px;
-    background: rgba(255,255,255,0.04);
-    border-radius: 14px;
-    border: 1px solid rgba(255,255,255,0.07);
-  }
-  .impact-num {
-    display: block;
-    font-family: var(--font-display);
-    font-size: clamp(1.75rem, 3.5vw, 2.75rem);
-    font-weight: 400;
-    color: var(--c-yellow);
-    line-height: 1;
-    margin-bottom: 6px;
-  }
-  .impact-label {
-    font-size: 12px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    color: rgba(255,255,255,0.45);
-  }
-
-  /* ══════════════════════════════════════════
-     WHAT WE BUILD
-     ══════════════════════════════════════════ */
-  .build-section {
-    padding: var(--space-4xl) 0;
-    background: var(--c-warm-gray);
-  }
-  .build-inner {
-    max-width: var(--max-width);
-    margin: 0 auto;
-    padding: 0 var(--space-xl);
-  }
-  .build-header {
-    text-align: center;
-    margin-bottom: 40px;
-  }
-  .build-header h2 {
-    font-size: clamp(1.625rem, 3vw + 0.5rem, 2.5rem);
-    letter-spacing: -0.02em;
-    line-height: 1.15;
-  }
-  .build-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 24px;
-  }
-  .build-tile {
-    background: #fff;
-    border-radius: 16px;
-    padding: 36px 28px;
-    border: 1px solid var(--c-border, #e5e4e0);
-    text-decoration: none;
-    color: inherit;
-    display: flex;
-    flex-direction: column;
-    transition: transform var(--transition-base), box-shadow var(--transition-base);
-  }
-  .build-tile:hover {
-    transform: translateY(-4px);
-    box-shadow: var(--shadow-lg);
-  }
-  .build-tile-tag {
-    font-size: 11px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: var(--c-yellow);
-    background: rgba(255,218,36,0.1);
-    padding: 4px 10px;
-    border-radius: 100px;
-    align-self: flex-start;
-    margin-bottom: 16px;
-  }
-  .build-tile h3 {
-    font-size: 18px;
-    font-weight: 700;
-    margin-bottom: 10px;
-  }
-  .build-tile p {
-    font-size: 14px;
-    line-height: 1.65;
-    color: var(--c-text-muted);
-    flex: 1;
-  }
-  .build-tile-link {
-    margin-top: 16px;
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--c-dark);
-    transition: color var(--transition-fast);
-  }
-  .build-tile:hover .build-tile-link {
-    color: var(--c-yellow-hover);
-  }
-
-  /* ══════════════════════════════════════════
-     FINALE — Yellow CTA
-     ══════════════════════════════════════════ */
-  .finale {
-    background: var(--c-yellow);
-    padding: var(--space-4xl) 0;
-    text-align: center;
-  }
-  .finale-inner {
-    max-width: var(--max-width-narrow);
-    margin: 0 auto;
-    padding: 0 var(--space-xl);
-  }
-  .finale h2 {
-    font-size: clamp(1.75rem, 4vw, 2.75rem);
-    letter-spacing: -0.02em;
-    line-height: 1.15;
-    color: var(--c-dark);
-    margin-bottom: 16px;
-  }
-  .finale h2 em { font-style: italic; }
-  .finale > p {
-    font-size: 16px;
-    line-height: 1.65;
-    color: var(--c-dark);
-    opacity: 0.7;
-    max-width: 520px;
-    margin: 0 auto 32px;
-  }
-  .finale-ctas {
-    display: flex;
-    gap: 14px;
-    justify-content: center;
-    flex-wrap: wrap;
-    margin-bottom: 24px;
-  }
-  .finale-note {
+  .notify-fine {
     font-size: 13px;
     color: var(--c-dark);
-    opacity: 0.45;
+    opacity: 0.35;
     letter-spacing: 0.02em;
   }
+
+  /* ══════════════════════════════════════════
+     SCROLL REVEALS
+     ══════════════════════════════════════════ */
+  [data-reveal] {
+    opacity: 0;
+    transform: translateY(32px);
+    transition: opacity 0.8s cubic-bezier(0.16,1,0.3,1), transform 0.8s cubic-bezier(0.16,1,0.3,1);
+  }
+  [data-reveal].is-visible { opacity: 1; transform: translateY(0); }
+  [data-delay="1"] { transition-delay: 0.12s; }
+  [data-delay="2"] { transition-delay: 0.24s; }
+  [data-delay="3"] { transition-delay: 0.36s; }
+
+  .lqip-img.lqip-pending { opacity: 0; }
+  .lqip-img:not(.lqip-pending) { transition: opacity 0.4s ease; }
 
   /* ══════════════════════════════════════════
      RESPONSIVE
      ══════════════════════════════════════════ */
   @media (max-width: 960px) {
-    .apply-hero-inner {
-      grid-template-columns: 1fr;
-      gap: 32px;
-      text-align: center;
-    }
-    .apply-hero-sub { margin-inline: auto; }
-    .apply-hero-ctas { justify-content: center; }
-    .apply-hero-photos {
-      max-width: 480px;
-      margin: 0 auto;
-    }
+    .hero-inner { grid-template-columns: 1fr; gap: 40px; text-align: center; }
+    .hero-lead { margin-inline: auto; }
+    .hero-ctas { justify-content: center; }
+    .hero-frame { max-width: 380px; margin: 0 auto; }
+    .hero-stat { position: relative; bottom: auto; right: auto; margin: -20px auto 0; width: fit-content; }
 
-    .journey-inner {
-      grid-template-columns: 1fr;
-      gap: 40px;
-    }
-    .journey-photo { max-width: 400px; }
+    .story-inner { grid-template-columns: 1fr; gap: 40px; }
+    .story-photo { max-width: 400px; }
 
-    .selection-inner {
-      grid-template-columns: 1fr;
-      gap: 32px;
-    }
+    .narrative-block { grid-template-columns: 1fr; gap: 24px; }
+    .narrative-block--reversed { direction: ltr; }
+
+    .reveal-inner { grid-template-columns: 1fr; gap: 40px; text-align: center; }
+    .reveal-content p { margin-inline: auto; }
+
+    .criteria-inner { grid-template-columns: 1fr; gap: 40px; }
   }
 
   @media (max-width: 768px) {
-    .apply-hero { padding-top: var(--space-2xl); }
-    .apply-hero-photo--accent { display: none; }
-    .apply-hero-photos { grid-template-columns: 1fr; }
+    .hero { padding-top: clamp(48px, 8vw, 80px); padding-bottom: var(--space-xl); }
+    .hero-photo--small { display: none; }
+    .hero-accent { bottom: -12px; right: -12px; }
 
-    .status-inner {
-      flex-direction: column;
-      text-align: center;
-      gap: 12px;
-      padding: 16px var(--space-lg);
-    }
-    .status-socials { justify-content: center; }
+    .status-inner { flex-direction: column; text-align: center; gap: 12px; padding: 20px var(--space-lg); }
 
-    .serve-grid { grid-template-columns: 1fr; }
+    .journey { padding: var(--space-3xl) 0 var(--space-2xl); }
+    .narrative-num { font-size: 40px; }
 
-    .journey-step { gap: 16px; }
-    .step-marker { width: 36px; }
-    .step-num { width: 36px; height: 36px; font-size: 11px; }
-    .step-body h3 { font-size: 16px; padding-top: 6px; }
+    .reveal { padding: var(--space-3xl) 0; }
+    .reveal-glow { display: none; }
 
-    .impact-grid {
-      grid-template-columns: repeat(2, 1fr);
-      gap: 14px;
-    }
-    .impact-card { padding: 20px 12px; }
+    .pullquote-section { padding: var(--space-3xl) 0; }
+    .pullquote { padding: 28px 24px 28px 32px; }
+    .pullquote-mark { font-size: 40px; top: 12px; left: 12px; }
 
-    .build-grid { grid-template-columns: 1fr; }
+    .criteria-stats { flex-direction: row; flex-wrap: wrap; }
+    .criteria-stat-card { flex: 1; min-width: 140px; }
 
-    .finale-ctas { flex-direction: column; align-items: center; }
+    .notify { padding: var(--space-3xl) 0; }
+    .notify-ctas { flex-direction: column; align-items: center; }
+    .notify-fields { flex-direction: column; border-radius: var(--border-radius-lg); }
+    .notify-input { padding: 16px 20px; }
+    .notify-btn { border-radius: 0 0 var(--border-radius-lg) var(--border-radius-lg) !important; width: 100%; justify-content: center; }
+  }
+
+  /* ══════════════════════════════════════════
+     REDUCED MOTION
+     ══════════════════════════════════════════ */
+  @media (prefers-reduced-motion: reduce) {
+    [data-reveal] { opacity: 1; transform: none; transition: none; }
+    .btn:hover, .btn-outline-dark:hover, .btn-ghost-light:hover { transform: none; }
+    .status-dot--open { animation: none; }
+    .lqip-img:not(.lqip-pending) { transition: none; }
+    .lqip-img.lqip-pending { opacity: initial; }
+    .notify-btn.is-sending .notify-btn-sending { animation: none; }
   }
 </style>

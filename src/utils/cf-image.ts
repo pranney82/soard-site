@@ -37,9 +37,12 @@ export function cfId(src: string): string {
   return id;
 }
 
-/** Check whether a src string points to Cloudflare Images */
+/** Check whether a src string points to Cloudflare Images (full URL or bare image ID) */
 export function isCF(src: string): boolean {
-  return !!src && src.includes('imagedelivery.net');
+  if (!src) return false;
+  if (src.includes('imagedelivery.net')) return true;
+  // Bare image IDs (e.g. "kids/amari/hero") — not an absolute URL or site-relative path
+  return !src.startsWith('http') && !src.startsWith('/') && !src.startsWith('data:');
 }
 
 export interface TransformOpts {

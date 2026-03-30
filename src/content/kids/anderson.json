@@ -27,8 +27,8 @@
       "alt": "Anderson makeover photo"
     }
   ],
-  "age": null,
-  "diagnosis": null,
+  "age": 13,
+  "diagnosis": "Down Syndrome",
   "_migration": {
     "cfHeroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/a5511122-64e3-482a-a5bf-867f374e5500/full",
     "source": "wix-migration",
@@ -39,5 +39,6 @@
   "publishStatus": "published",
   "streamVideoId": null,
   "videoUrl": null,
-  "fundraisingUrl": null
+  "fundraisingUrl": null,
+  "bedroomCount": 1
 }

@@ -2,8 +2,9 @@
   "name": "Duett Design",
   "slug": "duett-design",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/duett-design/public",
-  "level": "friend",
-  "category": "design",
+  "tier": "design",
   "featured": false,
-  "order": 0
+  "website": "https://www.duett.design",
+  "level": "friend",
+  "category": "design"
 }

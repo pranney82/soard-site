@@ -2,8 +2,6 @@
   "name": "Sunny  Ranney",
   "slug": "sunny-ranney",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/sunny-and-ranney/public",
-  "level": "friend",
-  "category": "build",
-  "featured": false,
-  "order": 0
+  "tier": "construction",
+  "featured": false
 }

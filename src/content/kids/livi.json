@@ -4,7 +4,7 @@
   "year": 2014,
   "status": "completed",
   "bio": "Olivia, &quot;Livi&quot; was born a happy, healthy baby full of joy and love.  Such a doll, with pinchable cheeks and sparkling baby blue eyes.  She grew to be a spirited and lively preschooler.  In May of 2013 she began complaining of hip pain and developed a limp.  After her 5-year-old check-up, doctors determined that the cause of her pain was Acute Lymphoblastic Leukemia.  Acute lymphoblastic leukemia (ALL) is an acute form of leukemia, or cancer of the white blood cells, characterized by the overproduction of cancerous, immature white blood cells—known as lymphoblasts.  This cancer significantly affects bone marrow and other essential organs leading to symptoms such as fever, increased risk of infection, shortness of breath, chest pain, cough, vomiting, anemia, bleeding, headaches and fatigue. Livi has not let this diagnosis and all that comes with it diminish her cheerful nature. She is still full of life, incredibly animated and has a giving heart!  Livi loves helping others and has made it her mission to let the world know just how important it is to find a cure for pediatric cancer. Aside from being an advocate, Livi is an enthusiastic first grader who loves doing art projects-especially those including pink and purple sparkles! In her free time, she loves playing with her older brother Chandler, American Dolls and her Labradoodle puppy Grace. Her love for animals has sparked her aspiration to become a veterinarian someday!  Right now, she just wants to enjoy a room full of American Dolls and share her story with as many people as she can.  If she could meet some famous people along the way, she’d love that too! SOARD and The Grainger Foundation are teaming up to help make Livi’s Wish come true.  We will be rolling out the red carpet for this young celeb September 20th as we reveal her glam room makeover American Doll style!  Won’t you join us in helping make her dreams come true?  We know you can’t resist that precious face and you are yearning to know more about Livi, so check out her Facebook page and help share her story Livi's Wish.",
-  "quote": "Olivia, &quot;Livi&quot; was born a happy, healthy baby full of joy and love.  Such a doll, with pinchable cheeks and sparkling baby blue eyes.  She grew to be a spirited and lively preschooler.  In May of 2013 she began complaining of hip pain and developed a limp.  After her 5-year-old check-up, d",
+  "quote": "",
   "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/livi/hero/public",
   "roomTypes": [
     "Dream Bedroom"
@@ -39,8 +39,8 @@
       "alt": "Livi makeover photo"
     }
   ],
-  "age": null,
-  "diagnosis": null,
+  "age": 5,
+  "diagnosis": "Acute Lymphoblastic Leukemia",
   "_migration": {
     "cfHeroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/e5807a18-bab8-4eff-aedf-d7b452ec4800/full",
     "source": "wix-migration",
@@ -51,5 +51,6 @@
   "publishStatus": "published",
   "streamVideoId": null,
   "videoUrl": null,
-  "fundraisingUrl": null
+  "fundraisingUrl": null,
+  "bedroomCount": 1
 }

@@ -39,8 +39,8 @@
       "alt": "Jessie makeover photo"
     }
   ],
-  "age": null,
-  "diagnosis": null,
+  "age": 13,
+  "diagnosis": "Severe Motion Disorder",
   "_migration": {
     "cfHeroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/d02b92ba-53b9-4f96-fac7-00ebd2cdc000/full",
     "source": "wix-migration",
@@ -51,5 +51,6 @@
   "publishStatus": "published",
   "streamVideoId": null,
   "videoUrl": null,
-  "fundraisingUrl": null
+  "fundraisingUrl": null,
+  "bedroomCount": 1
 }

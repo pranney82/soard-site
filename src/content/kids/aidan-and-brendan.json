@@ -10,7 +10,7 @@
   "status": "completed",
   "bio": "\"Born at 28 weeks, the twins have differing degrees of Autism.\"\n\nIn addition to school and therapy, the boys enjoy traditional favorite past times. Aidan loves Pokemon, Toystory, and Minecraft. He loves learning about the weather; but, he finds great comfort in his favorite weighted blanket when thunderstorms roll around. Like so many teen boys, Brendan is a UGA fan, \"Go Dawgs!\" and loves to play golf. You can also find him enjoying the perennial favorites, Wheel of Fortune and Jeopardy, on evening TV. Both boys share in the excitement of Christmas as we all know Santa knows no age.\n\nA dream bedroom makeover will maximize the space and make it comfortable for young men -- Sunshine On A Ranney Day's specialty.",
   "quote": "\"Born at 28 weeks, the twins have differing degrees of Autism.\"",
-  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/aidan-and-brendan/hero/public",
+  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/aidan-and-brendan/photo-05/public",
   "photos": [
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/aidan-and-brendan/photo-01/public",
@@ -85,5 +85,8 @@
   "jsonLd": null,
   "streamVideoId": "18fab7bbf2869fd41817bf81157d48e2",
   "childCount": 2,
-  "roomCount": 1
+  "roomCount": 1,
+  "bedroomCount": 1,
+  "publishStatus": "published",
+  "fundraisingUrl": null
 }

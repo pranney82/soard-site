@@ -9,9 +9,9 @@
   ],
   "year": 2022,
   "status": "completed",
-  "bio": "Brianna \\u201cBreezy\\u201d was born on June 4, 2004.  During birth, Breezy experienced complications causing brain damage and she received a later diagnosis of cerebral palsy and epilepsy.  Breezy continues to defy odds; the doctors did not expect Breezy to live to see her first Christmas and now she is 17 years old!  Breezy has a love for music and being outdoors. She comes from a musically talented family and attends a church that has many different types of instruments.  Breezy enjoys attention and interaction with people from reading a book to simply holding hands.\n\nBreezy is nonverbal and wheelchair dependent.  Breezy has faced so many challenges throughout her 17 years of life and proves what love, prayer, and faith can do.  Breezy lights up a room with her beautiful blue eyes and contagious smile.  She continues to amaze and capture the hearts of her family, friends, church family, and community.  \n\nBreezy is fully dependent on her family to take care of her everyday needs and an accessible bathroom and bedroom renovation will make life easier for the whole family.",
+  "bio": "Brianna was born on June 4, 2004.  During birth, Breezy experienced complications causing brain damage and she received a later diagnosis of cerebral palsy and epilepsy.  Breezy continues to defy odds; the doctors did not expect Breezy to live to see her first Christmas and now she is 17 years old!  Breezy has a love for music and being outdoors. She comes from a musically talented family and attends a church that has many different types of instruments.  Breezy enjoys attention and interaction with people from reading a book to simply holding hands.\n\nBreezy is nonverbal and wheelchair dependent.  Breezy has faced so many challenges throughout her 17 years of life and proves what love, prayer, and faith can do.  Breezy lights up a room with her beautiful blue eyes and contagious smile.  She continues to amaze and capture the hearts of her family, friends, church family, and community.  \n\nBreezy is fully dependent on her family to take care of her everyday needs and an accessible bathroom and bedroom renovation will make life easier for the whole family.",
   "quote": "\"Breezy lights up a room with her beautiful blue eyes and contagious smile.\"",
-  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/brianna/hero/public",
+  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/brianna/photo-10/public",
   "photos": [
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/brianna/photo-01/public",
@@ -80,17 +80,9 @@
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/brianna/photo-17/public",
       "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/brianna/photo-18/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/brianna/photo-19/public",
-      "alt": ""
     }
   ],
-  "photoCount": 19,
+  "photoCount": 17,
   "videoUrl": "https://youtu.be/igxJLJJY70E",
   "photographer": "Niki Murphy Photography",
   "partnerLogos": [
@@ -157,5 +149,9 @@
   "altTexts": null,
   "jsonLd": null,
   "streamVideoId": "9275600ee6e60fdbdcdafd1133bf4e1e",
-  "roomCount": 2
+  "roomCount": 2,
+  "bedroomCount": 1,
+  "bathroomCount": 1,
+  "publishStatus": "published",
+  "fundraisingUrl": null
 }

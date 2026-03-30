@@ -2,8 +2,8 @@
   "name": "Friends And Family Of Lainey Barfield",
   "slug": "friends-and-family-of-lainey-barfield",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/friends-and-family-of-lainey-barfield/public",
-  "level": "friend",
-  "category": "build",
+  "tier": "construction",
   "featured": false,
-  "order": 0
+  "level": "friend",
+  "category": "funding"
 }

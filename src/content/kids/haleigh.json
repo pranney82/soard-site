@@ -27,8 +27,8 @@
       "alt": "Haleigh makeover photo"
     }
   ],
-  "age": null,
-  "diagnosis": null,
+  "age": 7,
+  "diagnosis": "Cerebral Palsy",
   "_migration": {
     "cfHeroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/557be3e1-5fc3-4302-e5f8-ee43db474300/full",
     "source": "wix-migration",
@@ -39,5 +39,6 @@
   "publishStatus": "published",
   "streamVideoId": null,
   "videoUrl": null,
-  "fundraisingUrl": null
+  "fundraisingUrl": null,
+  "bedroomCount": 1
 }

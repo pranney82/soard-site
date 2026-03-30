@@ -2,8 +2,8 @@
   "name": "Emser Tile",
   "slug": "emser-tile",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/emser-tile/public",
-  "level": "friend",
-  "category": "build",
+  "tier": "construction",
   "featured": false,
-  "order": 0
+  "website": "https://www.emser.com",
+  "level": "friend"
 }

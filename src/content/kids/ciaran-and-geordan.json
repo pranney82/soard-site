@@ -11,7 +11,7 @@
   "status": "completed",
   "bio": "Ciaran and Geordan were both born with major disabilities. 19 year old Ciaran is totally blind and significantly autistic. On top of that, he has a tic disorder (tourette syndrome) and an immune system disorder. He has no sense of safety and will wake up throughout the night and bang on walls, doors, windows, and even his bed - waking up his brother. \n\nGeordan is 16 and was also born blind. He was also diagnosed with pretty severe non-verbal autism. Geordan also has no concept of safety, making the level of care required for the two boys quite extensive. With their mom's recent cancer diagnosis, both parents work tirelessly to care for the boys and give them the fullest life they can.\n\nCiaran and Geordan are highly anxious and noise sensitive, so therapy items like swings, trampolines and instruments are very calming to them. They are both passionate about music and have an acute sense of hearing for pitch and tone due to their blindness. Both boys are unique and talented in their own ways, something that is so evident in their passions and skills! The space that Sunshine on a Ranney Day is providing for them will be life-changing in regards to their independence and individual needs.",
   "quote": "\"They are both passionate about music and have an acute sense of hearing for pitch and tone due to their blindness.\"",
-  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/ciaran-and-geordan/hero/public",
+  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/ciaran-and-geordan/photo-26/public",
   "photos": [
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/ciaran-and-geordan/photo-01/public",
@@ -166,5 +166,9 @@
   "jsonLd": null,
   "streamVideoId": "7f0a2a4cf48e4455304cec03d9044bd0",
   "childCount": 2,
-  "roomCount": 2
+  "roomCount": 2,
+  "bedroomCount": 1,
+  "therapyRoomCount": 1,
+  "publishStatus": "published",
+  "fundraisingUrl": null
 }

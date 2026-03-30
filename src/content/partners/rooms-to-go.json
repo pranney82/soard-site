@@ -2,8 +2,6 @@
   "name": "Rooms To Go",
   "slug": "rooms-to-go",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/rooms-to-go/public",
-  "level": "champion",
-  "category": "build",
-  "featured": true,
-  "order": 0
+  "tier": "construction",
+  "featured": true
 }

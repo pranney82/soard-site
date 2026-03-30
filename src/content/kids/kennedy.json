@@ -11,7 +11,7 @@
   "status": "completed",
   "bio": "Regardless of what she encounters, she always has a smile on her face.\n\nShe now is able to tolerate more weight and less painful movements where those are concerned. Kennedy scored above average on her school testing and will be going to middle school next year. There are many things that you and I take for granted that she is not able to do for herself\\u2026feed herself, use the restroom herself, or wash herself. These are just a few of the basic care needs that require assistance. \n\nShe could let things like this get her down but she doesn't. She is an amazing young lady! She wants to be an interior designer when she grows up. She loves watching HGTV, and Love IT or List IT is her favorite with Hometown being a close second. She has even come up with using her initials as the name of her business \\u201cKJH Interior Designs\\u201d.",
   "quote": "Regardless of what she encounters, she always has a smile on her face.",
-  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/kennedy/hero/public",
+  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/kennedy/photo-04/public",
   "photos": [
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/kennedy/photo-01/public",
@@ -58,7 +58,7 @@
       "alt": ""
     }
   ],
-  "photoCount": 12,
+  "photoCount": 11,
   "videoUrl": "https://youtu.be/DexBIq29dx8",
   "photographer": "Vicki Alsup Photography",
   "partnerLogos": [
@@ -128,5 +128,9 @@
   "altTexts": null,
   "jsonLd": null,
   "streamVideoId": "b4bca132ee5175ace0732311508ecf2d",
-  "roomCount": 2
+  "roomCount": 2,
+  "bedroomCount": 1,
+  "bathroomCount": 1,
+  "publishStatus": "published",
+  "fundraisingUrl": null
 }

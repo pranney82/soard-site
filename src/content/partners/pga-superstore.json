@@ -2,8 +2,6 @@
   "name": "Pga Superstore",
   "slug": "pga-superstore",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/pga-superstore/public",
-  "level": "friend",
-  "category": "build",
-  "featured": false,
-  "order": 0
+  "tier": "construction",
+  "featured": false
 }

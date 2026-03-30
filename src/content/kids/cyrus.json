@@ -10,7 +10,7 @@
   "status": "completed",
   "bio": "Cyrus does not place limitations on himself.  Cyrus was not supposed to live but he continues to defy expectations.  Cyrus is non-verbal but that does not stop him from expressing himself.  He is active and strong and is an expert countertop and furniture climber.",
   "quote": null,
-  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/cyrus/hero/public",
+  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/cyrus/photo-10/public",
   "photos": [
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/cyrus/photo-01/public",
@@ -63,13 +63,9 @@
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/cyrus/photo-13/public",
       "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/cyrus/photo-14/public",
-      "alt": ""
     }
   ],
-  "photoCount": 14,
+  "photoCount": 13,
   "videoUrl": "https://youtu.be/Rm1ktXIb9kQ",
   "photographer": "Pear Tree Photography",
   "partnerLogos": [
@@ -124,5 +120,8 @@
   "altTexts": null,
   "jsonLd": null,
   "streamVideoId": "352590908685d06344f7ca4f190b21ab",
-  "roomCount": 1
+  "roomCount": 1,
+  "bathroomCount": 1,
+  "publishStatus": "published",
+  "fundraisingUrl": null
 }

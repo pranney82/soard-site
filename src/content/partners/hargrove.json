@@ -1,9 +1,10 @@
 {
-  "name": "Hargrove",
+  "name": "Hargrove Foundation",
   "slug": "hargrove",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/hargrove/public",
-  "level": "friend",
-  "category": "build",
+  "tier": "construction",
   "featured": false,
-  "order": 0
+  "level": "friend",
+  "category": "funding",
+  "website": "https://hargrovefoundation.org"
 }

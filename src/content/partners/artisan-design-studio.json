@@ -2,9 +2,9 @@
   "name": "Artisan Design Studio",
   "slug": "artisan-design-studio",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/artisan-design-studio/public",
-  "website": "https://www.artisan-studio.com",
-  "level": "builder",
-  "category": "design",
+  "tier": "design",
   "featured": true,
-  "order": 0
+  "website": "https://www.artisan-studio.com",
+  "category": "design",
+  "level": "champion"
 }

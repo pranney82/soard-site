@@ -1,9 +1,10 @@
 {
   "name": "American Girl",
   "slug": "american-girl",
-  "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/american-girl/public",
-  "level": "friend",
-  "category": "build",
+  "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/american-girl/1774626181443/public",
+  "tier": "construction",
   "featured": false,
-  "order": 0
+  "website": "https://www.americangirl.com",
+  "level": "friend",
+  "category": "build"
 }

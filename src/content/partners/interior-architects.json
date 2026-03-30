@@ -2,8 +2,8 @@
   "name": "Interior Architects",
   "slug": "interior-architects",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/interior-architects/public",
-  "level": "friend",
-  "category": "design",
+  "tier": "design",
   "featured": false,
-  "order": 0
+  "level": "friend",
+  "category": "design"
 }

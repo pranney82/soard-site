@@ -11,7 +11,7 @@
   "status": "completed",
   "bio": "Ellie was a perfectly healthy baby during prenatal check ups and Jenn (Ellie's momma) had a wonderful pregnancy. However, the last two minutes of labor changed everything. She swallowed Meconium, got stuck in the birth canal, and had the umbilical cord wrapped around her neck. She was blue and limp when she arrived. It took two minutes to revive her and just in that amount of time, she lost oxygen to her brain causing injury to her cerebellum, which controls fine motor skills and balance. Since Ellie's birth, her family has been learning and handling challenge after challenge.\n\nDue to her developmental delay and strange movement disorder (later diagnosed as dystonia) her Neurologist conducted a genetic test for Pontocerebellar Hypoplasia type 2A. Soon after her first birthday in April 2019, they received the positive results. This means both parents passed the gene to Ellie causing her cerebellum and half of her brain stem to stop growing in the womb. So now, on top of her birth injury, she also has this genetic mutation.  It's such a rare disease that doctors really don't know a prognosis and only about 100 people have been documented having this gene. Some children pass away during childhood years, however, some have lived well into her twenties. \n\nWhat we DO know is Ellie is the happiest baby in the world! It's hard to believe the first year of her life they tried just about everything to make her smile or laugh but now it's effortless! She is the silliest girl and keeps everyone laughing. She loves any and all music, including the jams on Cocomelon and when her Daddy plays guitar for her! Even though she is technically \\u201cnon-verbal\\u201d she definitely communicates in her own little language and is such a social butterfly. Water is at the top of her favorites because it gives her freedom and some independence. When in her special float, she is able to move freely by herself and is not dependent on help.",
   "quote": "\"It's hard to believe the first year of her life they tried just about everything to make her smile or laugh but now it's effortless!\"",
-  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/ellie-2023/hero/public",
+  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/ellie-2023/photo-14/public",
   "photos": [
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/ellie-2023/photo-01/public",
@@ -132,17 +132,9 @@
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/ellie-2023/photo-30/public",
       "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/oakley/photo-32/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/ellie-2023/photo-32/public",
-      "alt": ""
     }
   ],
-  "photoCount": 32,
+  "photoCount": 30,
   "videoUrl": "https://youtu.be/7E8N4aUmd7s",
   "photographer": "Christina Elmore Photography",
   "partnerLogos": [
@@ -209,5 +201,9 @@
   "altTexts": null,
   "jsonLd": null,
   "streamVideoId": "c26bb772d74d42f27d090291528b7456",
-  "roomCount": 2
+  "roomCount": 2,
+  "bedroomCount": 1,
+  "bathroomCount": 1,
+  "publishStatus": "published",
+  "fundraisingUrl": null
 }

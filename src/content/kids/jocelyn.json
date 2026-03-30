@@ -160,5 +160,6 @@
   "streamVideoId": "5492827ec79685665ee03e7f8116feab",
   "roomCount": 1,
   "publishStatus": "published",
-  "fundraisingUrl": null
+  "fundraisingUrl": null,
+  "bedroomCount": 1
 }

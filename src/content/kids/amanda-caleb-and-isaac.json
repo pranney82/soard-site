@@ -1,8 +1,10 @@
 {
   "name": "Amanda, Caleb & Isaac",
   "slug": "amanda-caleb-and-isaac",
-  "age": 10,
-  "diagnosis": "Amanda",
+  "age": [
+    19
+  ],
+  "diagnosis": "Spina Bifida, Paralysis, Congenital CMV, Pallister Killian Syndrome",
   "roomTypes": [
     "Accessible Bathroom",
     "Therapy Room"
@@ -11,7 +13,7 @@
   "status": "completed",
   "bio": "Amanda, Caleb & Isaac come from a family of eight! Sunshine on a Ranney Day's plans to create an accessible bathroom and therapy room for them will impact all three in different and wonderful ways.\n\nAmanda is 19 years old and was born in China. She was born with spina bifida which causes her to be paralyzed from the waist down. She has been with her family since she was 13 years old and is such a joy! She uses a wheelchair and other medical equipment and has had many major surgeries since she's been home. Amanda loves reading, anime, art and is very talented with drawing. She is also very excited to start her first job soon. A handicap accessible bathroom will be such a blessing to her!\n\nCaleb is 10 years old and was born with congenital CMV and calcifications on his brain. He was adopted at 4 weeks old and he is such a cutie pie. He has severe autism and loves to quote books, movies and especially nursery rhymes. Singing, swinging and swimming are his very favorite activities. Everyone who meets Caleb falls in love with him. He is funny, sweet and silly. He will enjoy a new playroom/therapy room so very much.\n\nIsaac is 10 and was born with Pallister Killian Syndrome which is a rare genetic disorder that affects the 12th chromosome. He was adopted at 5 months old when he was discharged from the NICU. He is blind, deaf and intellectually he is still their baby. He is an absolute JOY to his family. Isaac's smile can melt a heart of stone! His laughter echoes through their home reminding his family that there is joy all around us if we just open the eyes of our hearts to see it! He loves swinging, lights, vibrating toys, and being held and tickled. He also utilizes a wheelchair and because of his size, an accessible shower is going to be the most amazing gift to him and to his parents. He will also love and enjoy the new therapy room!",
   "quote": "\"Sunshine on a Ranney Day's plans to create an accessible bathroom and therapy room for them will impact all three in different and wonderful ways.\"",
-  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/amanda-caleb-and-isaac/hero/public",
+  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/amanda-caleb-and-isaac/photo-23/public",
   "photos": [
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/amanda-caleb-and-isaac/photo-01/public",
@@ -132,13 +134,9 @@
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/amanda-caleb-and-isaac/photo-30/public",
       "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/amanda-caleb-and-isaac/photo-31/public",
-      "alt": ""
     }
   ],
-  "photoCount": 32,
+  "photoCount": 30,
   "videoUrl": "https://youtu.be/_-SW7Or3PEk",
   "photographer": "Shana Darnell",
   "partnerLogos": [
@@ -215,5 +213,9 @@
   "jsonLd": null,
   "streamVideoId": "c2a965f98ac4ce8132812662f190205a",
   "childCount": 3,
-  "roomCount": 2
+  "roomCount": 2,
+  "therapyRoomCount": 1,
+  "bathroomCount": 1,
+  "publishStatus": "published",
+  "fundraisingUrl": null
 }

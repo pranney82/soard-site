@@ -2,8 +2,6 @@
   "name": "Telemundo Atlanta",
   "slug": "telemundo-atlanta",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/telemundo-atlanta/public",
-  "level": "friend",
-  "category": "build",
-  "featured": false,
-  "order": 0
+  "tier": "construction",
+  "featured": false
 }

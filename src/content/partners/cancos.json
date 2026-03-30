@@ -1,9 +1,9 @@
 {
-  "name": "Cancos",
+  "name": "Cancos Tile",
   "slug": "cancos",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/cancos/public",
-  "level": "friend",
-  "category": "build",
+  "tier": "construction",
   "featured": false,
-  "order": 0
+  "level": "friend",
+  "website": "https://cancostileandstone.com"
 }

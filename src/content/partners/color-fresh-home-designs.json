@@ -2,8 +2,9 @@
   "name": "Color Fresh Home Designs",
   "slug": "color-fresh-home-designs",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/color-fresh-home-designs/public",
-  "level": "friend",
-  "category": "design",
+  "tier": "design",
   "featured": false,
-  "order": 0
+  "website": "https://www.colorfreshhd.com",
+  "level": "friend",
+  "category": "design"
 }

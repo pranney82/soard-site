@@ -28,13 +28,41 @@ import { getKidProfileSchema } from '../../utils/schema';
 export async function getStaticPaths() {
   const kids = await getCollection('kids');
   const sorted = kids.sort((a, b) => (b.data.year || 0) - (a.data.year || 0));
+  // Seeded shuffle — deterministic per slug so builds produce identical HTML
+  // when content hasn't changed (preserves CF edge cache for 187+ pages)
+  const seedHash = (str: string) => {
+    let h = 0;
+    for (let i = 0; i < str.length; i++) {
+      h = ((h << 5) - h + str.charCodeAt(i)) | 0;
+    }
+    return h;
+  };
+  const seededShuffle = (arr: typeof kids, seed: string) => {
+    const a = [...arr];
+    let s = seedHash(seed);
+    for (let j = a.length - 1; j > 0; j--) {
+      s = (s * 1664525 + 1013904223) | 0;
+      const r = ((s >>> 0) % (j + 1));
+      [a[j], a[r]] = [a[r], a[j]];
+    }
+    return a;
+  };
   return sorted.map((kid, i) => {
     const others = sorted.filter((k, j) => j !== i);
     const sameType = others.filter(k =>
       k.data.roomTypes?.some(t => kid.data.roomTypes?.includes(t))
     );
     const sameYear = others.filter(k => k.data.year === kid.data.year);
-    const related = [...new Set([...sameType, ...sameYear, ...others])]
+    // Deduplicate by slug, preserving priority order (sameType > sameYear > others)
+    const seen = new Set();
+    const slug = kid.data.slug;
+    const deduped = [...seededShuffle(sameType, slug), ...seededShuffle(sameYear, slug + ':year'), ...seededShuffle(others, slug + ':all')]
+      .filter(k => {
+        if (seen.has(k.data.slug)) return false;
+        seen.add(k.data.slug);
+        return true;
+      });
+    const related = deduped
       .filter(k => k.data.heroImage)
       .slice(0, 4)
       .map(k => ({ name: k.data.name, slug: k.data.slug, heroImage: k.data.heroImage, diagnosis: k.data.diagnosis }));
@@ -167,7 +195,7 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     <section class="hero">
       <div class="container">
         <a href="/kids/" class="hero__back stagger" aria-label="Back to all kids">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
           Meet the Kids
         </a>
 
@@ -253,7 +281,7 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
             <div class="hero__actions stagger">
               {kid.fundraisingUrl && (
                 <a href={kid.fundraisingUrl} target="_blank" rel="noopener noreferrer" class="hero__donate-btn">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 9.5a5.5 5.5 0 0 1 9.591-3.676.56.56 0 0 0 .818 0A5.49 5.49 0 0 1 22 9.5c0 2.29-1.5 4-3 5.5l-5.492 5.313a2 2 0 0 1-3 .019L5 15c-1.5-1.5-3-3.2-3-5.5"/></svg>
                   Donate for {kid.name}
                 </a>
               )}
@@ -323,7 +351,7 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
         <div class="container container--narrow">
           <div class="fundraise__card">
             <div class="fundraise__icon" aria-hidden="true">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9.5a5.5 5.5 0 0 1 9.591-3.676.56.56 0 0 0 .818 0A5.49 5.49 0 0 1 22 9.5c0 2.29-1.5 4-3 5.5l-5.492 5.313a2 2 0 0 1-3 .019L5 15c-1.5-1.5-3-3.2-3-5.5"/></svg>
             </div>
             <div class="fundraise__content">
               <h2 class="fundraise__title">Help fund {kid.name}'s room</h2>
@@ -331,7 +359,7 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
             </div>
             <a href={kid.fundraisingUrl} target="_blank" rel="noopener noreferrer" class="fundraise__btn">
               Donate Now
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
             </a>
           </div>
         </div>
@@ -397,7 +425,7 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
             <h2 class="section-label">Room Transformation</h2>
             {kid.photographer && (
               <p class="gallery__credit">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13.997 4a2 2 0 0 1 1.76 1.05l.486.9A2 2 0 0 0 18.003 7H20a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h1.997a2 2 0 0 0 1.759-1.048l.489-.904A2 2 0 0 1 10.004 4z"/><circle cx="12" cy="13" r="3"/></svg>
                 {kid.photographer}
               </p>
             )}
@@ -424,7 +452,7 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
                   decoding="async"
                 />
                 <div class="masonry__overlay">
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
                 </div>
               </button>
             ))}
@@ -444,7 +472,7 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
             <p class="featured-card__desc">See the full case study — from design concept through construction to the big reveal.</p>
             <span class="featured-card__cta">
               View Full Project
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
             </span>
           </a>
         </div>
@@ -515,7 +543,7 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
         <div class="kid-nav__grid">
           {prevKid ? (
             <a href={`/kids/${prevKid.slug}/`} class="kid-nav__link kid-nav__link--prev">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
               <div class="kid-nav__text">
                 <span class="kid-nav__label">Previous</span>
                 <span class="kid-nav__name">{prevKid.name}</span>
@@ -523,7 +551,7 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
             </a>
           ) : <div />}
           <a href="/kids/" class="kid-nav__all" aria-label="View all kids">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 12h18"/><path d="M12 3v18"/></svg>
             All Kids
           </a>
           {nextKid ? (
@@ -532,7 +560,7 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
                 <span class="kid-nav__label">Next</span>
                 <span class="kid-nav__name">{nextKid.name}</span>
               </div>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
             </a>
           ) : <div />}
         </div>
@@ -556,13 +584,13 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
   <div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-label="Photo viewer" hidden>
     <div class="lightbox__backdrop" data-close aria-hidden="true"></div>
     <button class="lightbox__close" data-close aria-label="Close photo viewer">
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
     </button>
     <button class="lightbox__nav lightbox__nav--prev" id="lb-prev" aria-label="Previous photo">
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
     </button>
     <button class="lightbox__nav lightbox__nav--next" id="lb-next" aria-label="Next photo">
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
     </button>
     <div class="lightbox__stage">
       <img class="lightbox__img" id="lb-img" src="" alt="" tabindex="0" />
@@ -795,7 +823,7 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
           } else {
             await navigator.clipboard.writeText(shareData.url);
             shareBtn.classList.add('shared');
-            shareBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg> Copied!';
+            shareBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg> Copied!';
             setTimeout(() => {
               shareBtn.classList.remove('shared');
               shareBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg> Share';

@@ -26,34 +26,36 @@ export const NAME_COLUMN = {
   articles: 'title',
 };
 
-/** Indexed column extractors for INSERT OR REPLACE */
+/** Indexed column extractors for INSERT OR REPLACE.
+ *  All column names are double-quoted to prevent SQLite keyword collisions
+ *  (e.g. "group", "order", "date", "status" are all reserved words). */
 export const EXTRACTORS = {
   kids: (d) => [
-    ['name', 'year', 'status', 'featured', 'child_count', 'room_count'],
+    ['"name"', '"year"', '"status"', '"featured"', '"child_count"', '"room_count"'],
     [d.name, d.year ?? null, d.status || 'completed', d.featured ? 1 : 0, d.childCount ?? 1, d.roomCount ?? 1],
   ],
   partners: (d) => [
-    ['name', 'level', 'category', 'featured'],
-    [d.name, d.level ?? null, d.category ?? null, d.featured ? 1 : 0],
+    ['"name"', '"level"', '"category"', '"featured"'],
+    [d.name, d.level ?? null, Array.isArray(d.category) ? d.category.join(',') : (d.category ?? null), d.featured ? 1 : 0],
   ],
   press: (d) => [
-    ['title', 'date', 'category', 'featured'],
+    ['"title"', '"date"', '"category"', '"featured"'],
     [d.title ?? null, d.date ?? null, d.category ?? null, d.featured ? 1 : 0],
   ],
   team: (d) => [
-    ['name', '"group"', 'order_num'],
+    ['"name"', '"group"', '"order_num"'],
     [d.name, d.group ?? null, d.order ?? 0],
   ],
   events: (d) => [
-    ['title', 'date', 'status', 'featured'],
+    ['"title"', '"date"', '"status"', '"featured"'],
     [d.title, d.date ?? null, d.status || 'upcoming', d.featured ? 1 : 0],
   ],
   community: (d) => [
-    ['name', 'order_num'],
+    ['"name"', '"order_num"'],
     [d.name, d.order ?? 0],
   ],
   articles: (d) => [
-    ['title', 'featured', 'order_num'],
+    ['"title"', '"featured"', '"order_num"'],
     [d.title, d.featured ? 1 : 0, d.order ?? 0],
   ],
 };

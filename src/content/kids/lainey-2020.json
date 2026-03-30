@@ -11,7 +11,7 @@
   "status": "completed",
   "bio": "We are proud to introduce you to Lainey. This beautiful princess is thirteen years old and is a devoted daddy's girl. Her biggest fans are her two big brothers and her dog Buddy. She recently became aware that Sunshine on A Ranney Day will be renovating her home and she is absolutely thrilled! Sunshine on A Ranney Day is planning a spectacular dream make over for her and is looking forward to breaking ground on this project.\n\nLainey is the baby of the family and was born with Spina Bifida. She resided in the NICU at Children's Hospital of Atlanta at Scottish Rite for 27 days. While there, she endured multiple medical procedures and three distinct surgeries. Since that time, the number of surgeries she has undergone has risen to twenty-seven. Despite the fact that surgery is a major event and most people never endure more than one, Lainey withstands them like a champ. She is exceptionally brave and extraordinarily cheerful. In addition to a vast number of surgeries, she also has a VP shunt, a spinal shunt, a neurogenic bladder, scoliosis, and is wheelchair dependent. She relies on others to meet all of her needs throughout the day.\n\nCurrently, Lainey has growing rods, also known as Harrington Rods, that were surgically implanted along her spinal column to correct scoliosis and they are lengthened every six months. This procedure is excruciatingly painful, but she faces these procedures with positivity and poise.\n\nLainey is a 7th grader at McClure Middle School and wholeheartedly loves her teachers, friends and the school community. She has an amazing memory and is obsessed with learning people's names and the names of their dogs and children. She participates in aquatic therapy at Kool Kidz as well as occupational therapy and at McKenna Farms. For fun, she likes playing on her iPad, swimming and the beach. Lainey loves all things Disney and princesses. She is using her experience to inspire others and make a difference in the world by serving as a miracle child for UGA Miracle and loves raising funds for Children's Hospital of Atlanta.",
   "quote": "Lainey is the baby of the family and was born with Spina Bifida. She resided in the NICU at Children's Hospital of Atlanta at Scottish Rite for 27 days.",
-  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/lainey-2020/hero/public",
+  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/lainey-2020/photo-01/public",
   "photos": [
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/lainey-2020/photo-01/public",
@@ -166,5 +166,10 @@
   "metaDescription": null,
   "altTexts": null,
   "jsonLd": null,
-  "roomCount": 2
+  "roomCount": 2,
+  "bedroomCount": 1,
+  "bathroomCount": 1,
+  "publishStatus": "published",
+  "streamVideoId": null,
+  "fundraisingUrl": null
 }

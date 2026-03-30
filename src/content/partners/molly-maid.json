@@ -1,9 +1,9 @@
 {
   "name": "Molly Maid",
   "slug": "molly-maid",
-  "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/molly-maid/public",
-  "level": "friend",
-  "category": "build",
+  "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/molly-maid/1774879213276/public",
+  "tier": "construction",
   "featured": false,
-  "order": 0
+  "level": "friend",
+  "website": "https://www.mollymaid.com"
 }

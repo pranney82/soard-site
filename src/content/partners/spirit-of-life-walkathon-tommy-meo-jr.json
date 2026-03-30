@@ -2,8 +2,6 @@
   "name": "Spirit Of Life Walkathon Tommy Meo Jr",
   "slug": "spirit-of-life-walkathon-tommy-meo-jr",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/spirit-of-life-walkathon-tommy-meo-jr/public",
-  "level": "friend",
-  "category": "build",
-  "featured": false,
-  "order": 0
+  "tier": "construction",
+  "featured": false
 }

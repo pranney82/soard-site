@@ -9,9 +9,9 @@
   ],
   "year": 2023,
   "status": "completed",
-  "bio": "Anthony Jr. was born on December 15, 2005. He has cerebral palsy and epilepsy caused by brain-damaged experienced during a complicated and difficult birth.  Anthony is non-verbal and wheelchair-dependent.  He is a vibrant child and loves his family.  Anthony enjoys music which is no surprise since he comes from a musical family.  \n\nDespite all of Anthony Jr.'s challenges he can communicate and enjoys a good laugh.  He shows a love for life and what it means to fully live in the moment.  Anthony Jr.'s love for life also keeps his entire family going.\n\nLyric, younger brother to Anthony Jr., was born on December 11, 2015. Lyric was diagnosed with autism in 2017.  He is an extremely intelligent little boy and continues to amaze everyone with what he knows.  He enjoys music just like his older brother, Anthony Jr.  Lyric also enjoys being outdoors and interacting with people.  \n\nLyric faces challenges every day and he works really hard to do his best. He is always the energy in the room that encourages others to be ok in moments of darkness. He is such a loving little boy just like Anthony Jr.  Lyric tries his hardest to help his big brother.  He watches others take care of Anthony Jr. and attempts to mimic their actions. \n\nLyric is truly what helps Anthony Jr. continue to smile! Lyric and Anthony Jr. represent brotherly love like no others!",
+  "bio": "Anthony Jr. was born on December 15, 2005. He has cerebral palsy and epilepsy caused by brain-damaged experienced during a complicated and difficult birth.  Anthony is non-verbal and wheelchair-dependent.  He is a vibrant child and loves his family.  Anthony enjoys music which is no surprise since he comes from a musical family.  \n\nDespite all of Anthony Jr.'s challenges he can communicate and enjoys a good laugh.  He shows a love for life and what it means to fully live in the moment.  Anthony Jr.'s love for life also keeps his entire family going.\n\nLyric, younger brother to Anthony Jr., was born on December 11, 2015. Lyric was diagnosed with autism in 2017.  He is an extremely intelligent little boy and continues to amaze everyone with what he knows.  He enjoys music just like his older brother, Anthony Jr. &amp; Lyric also enjoys being outdoors and interacting with people.  \n\nLyric faces challenges every day and he works really hard to do his best. He is always the energy in the room that encourages others to be ok in moments of darkness. He is such a loving little boy just like Anthony Jr., Lyric tries his hardest to help his big brother.  He watches others take care of Anthony Jr. and attempts to mimic their actions. \n\nLyric is truly what helps Anthony Jr. continue to smile! Lyric and Anthony Jr. represent brotherly love like no others!",
   "quote": "\"He is always the energy in the room that encourages others to be ok in moments of darkness.\"",
-  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/anthony-jr-and-lyric/hero/public",
+  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/anthony-jr-and-lyric/photo-06/public",
   "photos": [
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/anthony-jr-and-lyric/photo-01/public",
@@ -54,10 +54,6 @@
       "alt": ""
     },
     {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/anthony-jr-and-lyric/photo-11/public",
-      "alt": ""
-    },
-    {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/anthony-jr-and-lyric/photo-12/public",
       "alt": ""
     },
@@ -84,13 +80,9 @@
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/anthony-jr-and-lyric/photo-18/public",
       "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/oakley/photo-32/public",
-      "alt": ""
     }
   ],
-  "photoCount": 19,
+  "photoCount": 17,
   "videoUrl": "https://youtu.be/FmTEF15Yx7E",
   "photographer": "Vicki Alsup Photography",
   "partnerLogos": [
@@ -161,5 +153,9 @@
   "jsonLd": null,
   "streamVideoId": "d737b7b77be749b9d6dda90363d74363",
   "childCount": 2,
-  "roomCount": 2
+  "roomCount": 2,
+  "bedroomCount": 1,
+  "bathroomCount": 1,
+  "publishStatus": "published",
+  "fundraisingUrl": null
 }

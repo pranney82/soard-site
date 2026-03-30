@@ -11,7 +11,7 @@
   "status": "completed",
   "bio": "MarQuis and his twin brother were born without any complications.  When MarQuis was around 10 months old, he was sick with a typical virus and woke up the next day a completely different child.  The initial thought was that MarQuis had a seizure until he had another episode.  MarQuis and his family traveled to multiple cities for an official diagnosis and finally at the age of 2 after a muscle biopsy MarQuis was diagnosed with mitochondrial disorder.  In 2005 MarQuis had an episode that the doctors did not think he would survive but God had other plans.  Fortunately, that was the final episode.\n\nMarQuis is permanently disabled and needs assistance with all daily needs.  MarQuis has a love for life and speaks his own language to communicate his needs.  His house is currently not accessible which is very challenging for his family and caregivers.  MarQuis and his family are so excited for MarQuis to have a space that is truly his own and reflective of his personality!",
   "quote": "\"MarQuis has a love for life and speaks his own language to communicate his needs.\"",
-  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/marquis/hero/public",
+  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/marquis/photo-06/public",
   "photos": [
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/marquis/photo-01/public",
@@ -80,13 +80,9 @@
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/marquis/photo-17/public",
       "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/alex/photo-14/public",
-      "alt": ""
     }
   ],
-  "photoCount": 18,
+  "photoCount": 17,
   "videoUrl": "https://www.youtube.com/watch?v=yIY_T5WRt-Y",
   "photographer": "Jennifer Boxley Photography",
   "partnerLogos": [
@@ -162,5 +158,9 @@
   "altTexts": null,
   "jsonLd": null,
   "streamVideoId": "6e3b57003f6008dbe00aa0288caf4190",
-  "roomCount": 2
+  "roomCount": 2,
+  "bedroomCount": 1,
+  "bathroomCount": 1,
+  "publishStatus": "published",
+  "fundraisingUrl": null
 }

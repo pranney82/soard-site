@@ -31,8 +31,8 @@
       "alt": "Briana makeover photo"
     }
   ],
-  "age": null,
-  "diagnosis": null,
+  "age": 7,
+  "diagnosis": "Paralysis",
   "_migration": {
     "cfHeroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/ccf79ea1-73b1-4aae-74b7-d03f7c565800/full",
     "source": "wix-migration",
@@ -43,5 +43,6 @@
   "publishStatus": "published",
   "streamVideoId": null,
   "videoUrl": null,
-  "fundraisingUrl": null
+  "fundraisingUrl": null,
+  "bedroomCount": 1
 }

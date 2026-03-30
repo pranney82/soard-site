@@ -9,7 +9,7 @@
     "state": "GA",
     "zip": "30076"
   },
-  "phone": "770.990.2434",
+  "phone": "(770) 990-2434",
   "email": "info@soardcharity.com",
   "social": {
     "facebook": "https://www.facebook.com/sunshineonaranneyday",
@@ -28,7 +28,8 @@
     "cta2Link": "#stories"
   },
   "featuredKidSlug": "amari",
-  "heroKidSlug": "",
+  "heroKidSlug": "adrian",
+  "heroKidPhotoId": "",
   "kidShowcase": [
     {
       "slug": "adrian",
@@ -64,8 +65,8 @@
     }
   ],
   "sectionPhotos": {
-    "missionMain": "kids/eli/photo-01",
-    "missionAccent": "kids/georgia/photo-01",
+    "missionMain": "kids/glenn/1774461115320-Untitled-design-22.png",
+    "missionAccent": "kids/summer/1774457765477-Summer-35.jpg",
     "storyPhoto": "kids/zyah/hero",
     "roomBedroom": "kids/griffin/hero",
     "roomBath": "kids/zyah/hero",
@@ -78,8 +79,8 @@
       "name": "Gas South"
     },
     {
-      "id": "partners/randall-paulson",
-      "name": "Randall Paulson"
+      "name": "Randall Paulson Architects",
+      "id": "partners/randall-paulson"
     },
     {
       "name": "Kids R Kids Foundation",
@@ -140,6 +141,9 @@
     "donatePhotos.story": "2026-03-25T16:43:08.923Z",
     "featuredKidSlug": "2026-03-25T17:24:10.084Z",
     "kidShowcase": "2026-03-25T17:26:23.958Z",
-    "sectionPhotos.process": "2026-03-25T18:10:19.473Z"
+    "sectionPhotos.process": "2026-03-25T18:10:19.473Z",
+    "sectionPhotos.missionMain": "2026-03-26T01:33:00.467Z",
+    "sectionPhotos.missionAccent": "2026-03-26T01:33:07.602Z",
+    "heroKidSlug": "2026-03-26T01:49:31.703Z"
   }
 }

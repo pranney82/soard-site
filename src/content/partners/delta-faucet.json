@@ -2,8 +2,8 @@
   "name": "Delta Faucet",
   "slug": "delta-faucet",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/delta-faucet/public",
-  "level": "champion",
-  "category": "build",
-  "featured": true,
-  "order": 0
+  "tier": "construction",
+  "featured": false,
+  "level": "friend",
+  "website": "https://www.deltafaucet.com"
 }

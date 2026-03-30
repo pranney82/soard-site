@@ -2,8 +2,8 @@
   "name": "Jackson Healthcare",
   "slug": "jackson-healthcare",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/jackson-healthcare/public",
-  "level": "champion",
-  "category": "funding",
+  "tier": "community",
   "featured": true,
-  "order": 0
+  "category": "funding",
+  "level": "champion"
 }

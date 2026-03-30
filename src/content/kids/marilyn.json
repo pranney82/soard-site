@@ -5,13 +5,14 @@
   "diagnosis": "Morquio syndrome",
   "roomTypes": [
     "Chair Lift",
-    "Dream Bedroom"
+    "Dream Bedroom",
+    "Accessible Bathroom"
   ],
   "year": 2024,
   "status": "completed",
   "bio": "Marilyn is a smart, beautiful, and outgoing 20-year-old girl who loves BTS, shopping, boba, makeup and hanging out with friends and family!\n\nShe was born with Mucopolysaccharidosis (MPS) IV, a rare disease in which the body is missing or does not have enough of an enzyme needed to break down long chains of sugar molecules. Because of MPS she is unable to walk or grow and uses an electric wheelchair. Marilyn wears glasses and hearing aids and has had multiple surgeries to help with her health and mobility.\n\nIn her current room situation, her wheelchair is not able to be brought into the house. She would love to have her wheelchair inside the house so that she is not limited to just being in her room. This room makeover will bring her so much happiness and give her the independence of not needing help from her parents and siblings. Sunshine on a Ranney Day is beyond thrilled to be able to offer wheelchair access into her home and a bedroom of her dreams!",
   "quote": "\"This room makeover will bring her so much happiness and give her the independence of not needing help from her parents and siblings.\"",
-  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/marilyn/hero/public",
+  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/marilyn/photo-22/public",
   "photos": [
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/marilyn/photo-01/public",
@@ -158,5 +159,9 @@
   "altTexts": null,
   "jsonLd": null,
   "streamVideoId": "d7b3f02d123ec68bc496b29e69c4d696",
-  "roomCount": 2
+  "roomCount": 1,
+  "bedroomCount": 1,
+  "bathroomCount": 0,
+  "publishStatus": "published",
+  "fundraisingUrl": null
 }

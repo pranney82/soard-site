@@ -2,9 +2,7 @@
   "name": "Seabrook Design Co",
   "slug": "seabrook-design-co",
   "logo": "",
-  "website": "https://www.seabrookdesignco.com",
-  "level": "champion",
-  "category": "design",
+  "tier": "design",
   "featured": true,
-  "order": 0
+  "website": "https://www.seabrookdesignco.com"
 }

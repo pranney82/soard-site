@@ -1,9 +1,10 @@
 {
-  "name": "Dcrgbstr Logo",
+  "name": "Delta Community Credit Union",
   "slug": "dcrgbstr-logo",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/dcrgbstr/public",
-  "level": "friend",
-  "category": "build",
+  "tier": "construction",
   "featured": false,
-  "order": 0
+  "level": "friend",
+  "category": "funding",
+  "website": "https://www.deltacommunitycu.com"
 }

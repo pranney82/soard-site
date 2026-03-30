@@ -2,8 +2,6 @@
   "name": "Rosalind Williams Photography",
   "slug": "rosalind-williams-photography",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/rosalind-williams-photography/public",
-  "level": "friend",
-  "category": "community",
-  "featured": false,
-  "order": 0
+  "tier": "community",
+  "featured": false
 }

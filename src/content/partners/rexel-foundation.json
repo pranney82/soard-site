@@ -2,8 +2,6 @@
   "name": "Rexel Foundation",
   "slug": "rexel-foundation",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/rexel-foundation/public",
-  "level": "friend",
-  "category": "community",
-  "featured": false,
-  "order": 0
+  "tier": "community",
+  "featured": false
 }

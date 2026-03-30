@@ -1,9 +1,9 @@
 {
   "name": "Firefly Forts",
   "slug": "firefly-forts",
-  "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/firefly-forts/public",
-  "level": "friend",
-  "category": "build",
+  "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/firefly-forts/1774631179702/public",
+  "tier": "construction",
   "featured": false,
-  "order": 0
+  "website": "https://www.fireflyforts.com",
+  "level": "friend"
 }

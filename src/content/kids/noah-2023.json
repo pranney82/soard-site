@@ -11,7 +11,7 @@
   "status": "completed",
   "bio": "Noah was born at 32 weeks with no complications. He was a healthy active kid until 6 yrs old when he had his first seizure episode in the summer of 2018. Doctors couldn't figure out why Noah was having seizures 10 times a day until an amazing doctor at Children's Healthcare of Atlanta figured out what was wrong with him. In the spring of 2019, Noah was diagnosed with Rasmussen Encephalitis. In late fall of 2019, he had his first brain surgery (Right Hemispherectomy) and his last seizure.\n\nToday, Noah is now physically disabled on the left side of his body and needs help with day-to-day needs. Noah has always had an open mind with the outcome of his surgery. He remains strong and motivated to regain some of his independence while playing sports with Gwinnett Heat in Gwinnett County. He has physical/occupational therapy 2 times a week, Botox every 4-6 months, and is doing amazing with his long recovery. Noah is super excited to have a space he can call his own where he can move around freely and independently.",
   "quote": "\"Noah has always had an open mind with the outcome of his surgery.\"",
-  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/noah-2023/hero/public",
+  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/noah-2023/photo-25/public",
   "photos": [
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/noah-2023/photo-01/public",
@@ -132,13 +132,9 @@
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/noah-2023/photo-30/public",
       "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/brianna/photo-18/public",
-      "alt": ""
     }
   ],
-  "photoCount": 31,
+  "photoCount": 30,
   "videoUrl": "https://youtu.be/hGfZspWzzF0",
   "photographer": "Niki Murphy Photography",
   "partnerLogos": [
@@ -217,5 +213,9 @@
   "altTexts": null,
   "jsonLd": null,
   "streamVideoId": "9644062a62b642d9bf277592e0873493",
-  "roomCount": 2
+  "roomCount": 2,
+  "bedroomCount": 1,
+  "bathroomCount": 1,
+  "publishStatus": "published",
+  "fundraisingUrl": null
 }

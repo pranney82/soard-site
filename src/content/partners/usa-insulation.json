@@ -2,8 +2,6 @@
   "name": "Usa Insulation",
   "slug": "usa-insulation",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/usa-insulation/public",
-  "level": "friend",
-  "category": "build",
-  "featured": false,
-  "order": 0
+  "tier": "construction",
+  "featured": false
 }

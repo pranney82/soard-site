@@ -2,8 +2,9 @@
   "name": "Make A Wish Georgia",
   "slug": "make-a-wish-georgia",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/make-a-wish-georgia/public",
-  "level": "friend",
-  "category": "build",
+  "tier": "construction",
   "featured": false,
-  "order": 0
+  "level": "friend",
+  "category": "community",
+  "website": "https://wish.org/georgia"
 }

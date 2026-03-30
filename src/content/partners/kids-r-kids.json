@@ -2,8 +2,8 @@
   "name": "Kids R Kids Foundation",
   "slug": "kids-r-kids",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/kids-r-kids/public",
-  "level": "champion",
-  "category": "funding",
+  "tier": "community",
   "featured": true,
-  "order": 0
+  "website": "https://kidsrkids.com",
+  "category": "funding"
 }

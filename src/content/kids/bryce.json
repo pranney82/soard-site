@@ -11,7 +11,7 @@
   "status": "completed",
   "bio": "Bryce is a vibrant and remarkable 5 year old boy who lights up the room. Bryce was born at 27 weeks and spent 2 months in the NICU . As an infant, he was diagnosed with Cerebral Palsy. Most of the time, he utilizes a walker and crutches to get around but recently received a wheelchair for long distances. His diagnosis does not deter him from his eagerness to explore and become independent.  He was destined to stand out in the most amazing way while warming the hearts of everyone who crosses his path. His great sense of humor and clever personality is loved and embraced by so many.\n\nHe attends kindergarten at Still Elementary with his 10 year old sister, London. His family feels so fortunate to have such a strong network of individuals who genuinely care about his mental and physical well-being. Bryce is the nucleus of their village that keeps everyone connected and in high spirits. \n\nBryce enjoys drawing and telling elaborate stories with fantasy and supernatural themes. He can spend hours creating intricate designs with magnetic blocks and participates in the Horizon Baseball League for children with special needs. We have no doubt that Bryce's compassionate spirit, inquisitive mind and strong determination will go a long way!",
   "quote": "\"Bryce is the nucleus of their village that keeps everyone connected and in high spirits.\"",
-  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/bryce/hero/public",
+  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/bryce/photo-22/public",
   "photos": [
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/bryce/photo-01/public",
@@ -200,5 +200,9 @@
   "altTexts": null,
   "jsonLd": null,
   "streamVideoId": "3cb1c822b1c7222f6d3ef6331f354233",
-  "roomCount": 2
+  "roomCount": 2,
+  "bedroomCount": 1,
+  "bathroomCount": 1,
+  "publishStatus": "published",
+  "fundraisingUrl": null
 }

@@ -10,7 +10,7 @@
   "status": "completed",
   "bio": "Osayi is a vibrant ball of energy who greets each day with enthusiasm and curiosity! He's up early in the morning and often takes his time winding down at night. With a passion for climbing, jumping, and cars, this spirited little boy is always on the go!\n\nNavigating speech therapy, occupational therapy, and chiropractic visits, Osayi is in need of a special sensory room where he can safely release his energy and explore the world around him. His mom dreams of a contained space where he can play freely, without the worry of him running off.\n\nIncorporating light therapy and decompression seats will help Osayi find calm during his busy days. His mom lovingly calls him her \\u201cgenius boy,\\u201d as he has a remarkable knack for numbers and letters that continues to amaze her. Through Sunshine on a Ranney Day, Osayi is on the path to having the perfect therapy room tailored just for him. Join us in celebrating his journey and helping him shine even brighter!",
   "quote": "\"His mom lovingly calls him her \\u201cgenius boy,\\u201d as he has a remarkable knack for numbers and letters that continues to amaze her.\"",
-  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/osayi/hero/public",
+  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/osayi/photo-04/public",
   "photos": [
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/osayi/photo-01/public",
@@ -103,13 +103,9 @@
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/osayi/photo-23/public",
       "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/oakley/photo-32/public",
-      "alt": ""
     }
   ],
-  "photoCount": 24,
+  "photoCount": 23,
   "videoUrl": "https://youtu.be/e5aP_glP2_Q?si=0nrowwY9lMHXOEB9",
   "photographer": "Rosalind Williams",
   "partnerLogos": [
@@ -170,5 +166,8 @@
   "altTexts": null,
   "jsonLd": null,
   "streamVideoId": "f34c5416772ac7d53e858c38912b026d",
-  "roomCount": 1
+  "roomCount": 1,
+  "therapyRoomCount": 1,
+  "publishStatus": "published",
+  "fundraisingUrl": null
 }

@@ -1,9 +1,9 @@
 {
-  "name": "Mitchell Gold Bob Williams",
+  "name": "Mitchell Gold & Bob Williams",
   "slug": "mitchell-gold-bob-williams",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/mitchell-gold-bob-williams/public",
-  "level": "friend",
-  "category": "build",
+  "tier": "construction",
   "featured": false,
-  "order": 0
+  "website": "https://mgbw.com",
+  "level": "friend"
 }

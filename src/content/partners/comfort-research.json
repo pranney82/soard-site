@@ -2,8 +2,8 @@
   "name": "Comfort Research",
   "slug": "comfort-research",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/comfort-research/public",
-  "level": "builder",
-  "category": "build",
+  "tier": "construction",
   "featured": false,
-  "order": 0
+  "website": "https://comfortresearch.com",
+  "level": "builder"
 }

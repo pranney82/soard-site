@@ -35,8 +35,8 @@
       "alt": "Derek makeover photo"
     }
   ],
-  "age": null,
-  "diagnosis": null,
+  "age": 16,
+  "diagnosis": "Spina Bifida and Hydrocephalus",
   "_migration": {
     "cfHeroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/bfce39e9-d0ab-4ba4-160b-dfe733fa9600/full",
     "source": "wix-migration",
@@ -47,5 +47,6 @@
   "publishStatus": "published",
   "streamVideoId": null,
   "videoUrl": null,
-  "fundraisingUrl": null
+  "fundraisingUrl": null,
+  "bedroomCount": 1
 }

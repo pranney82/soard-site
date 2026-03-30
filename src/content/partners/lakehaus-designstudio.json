@@ -1,9 +1,10 @@
 {
-  "name": "Lakehaus Designstudio",
+  "name": "Lake Haus Designs",
   "slug": "lakehaus-designstudio",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/lakehaus-designstudio/public",
-  "level": "friend",
-  "category": "design",
+  "tier": "design",
   "featured": false,
-  "order": 0
+  "level": "friend",
+  "website": "https://www.lakehausdesigns.com",
+  "category": "community"
 }

@@ -1,199 +1,38 @@
 {
   "name": "Adrian",
   "slug": "adrian",
-  "age": 19,
-  "diagnosis": "Cerebral Palsy",
+  "age": 8,
+  "diagnosis": "Cerebral Palsy, Mitochondrial Disease",
   "roomTypes": [
-    "Accessible Bathroom",
-    "Dream Bedroom"
+    "Dream Bedroom",
+    "Accessible Bathroom"
   ],
-  "year": 2025,
+  "year": 2014,
   "status": "completed",
-  "bio": "Adrian's story is one of perseverance, love, and joy in the face of incredible challenges. Born prematurely at just 27 weeks during Hurricane Katrina, doctors said Adrian wouldn't survive an hour. He was a triplet, and heartbreakingly, his siblings passed away. Adrian fought through those early days on the strongest ventilator available, and though doctors said he would never speak, today he talks nonstop, often singing his favorite tunes from Taylor Swift, church choirs, or asking Alexa to call his grandmother in Puerto Rico.\n\nAdrian is 19 years old now, full of personality and light. He adores zebras, trains, graduations, sushi, and Chips Ahoy cookies. He paints beautiful pictures and thrives in environments filled with music, art, and excitement. His mom, a dedicated Spanish and cooking teacher at a middle school in Roswell, lovingly calls him her \"little miracle.\"\n\nAdrian requires total physical care, and their current bathroom setup is both unsafe and exhausting. Mom can only bathe Adrian twice a week because of how difficult and physically taxing it is. She has to place one foot inside the bathtub, straddle the side, and use a cup to rinse him, balancing her own weight while lifting her 80+ lb son, who is the same height as her. When he's done, she wraps him in a sweatshirt, because he's too slippery for a towel, and carries him to a massage table in her bedroom to diaper and dress him. There's no changing table in the bathroom, and his bed in the bedroom doubles as one for everything else.\n\nAdrian has non-traceable seizures and can be unsteady. In the shower, he sometimes throws his head back, making a typical setup dangerous. He needs room to maneuver a shower chair safely and could benefit from features like a centrally located showerhead, more space, and a higher bed with safety rails to keep him secure.\n\nHe's proud of his independence and wants to wash his own hands, so a wheelchair-accessible sink would be a gift of dignity. Though only Mom uses the toilet, Adrian wants his space to be functional, beautiful, and most of all, a place that doesn't cause his mommy pain. As he said sweetly during our visit,&nbsp;<div><br></div><div>Despite everything, Adrian is vibrant and full of life. He's already planning a party to celebrate the reveal. His eyes light up when he talks about his favorite colors, music, or calling Grandma on Alexa. He's talkative, imaginative, and dreams big—just like any other child.</div>",
-  "quote": "I want a new shower so Mommy doesn't have to step over the side.",
-  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/adrian/photo-18/public",
+  "bio": "This sweet and big fighter was born as a happy healthy baby. At 7 months his parents noticed he stopped moving. After many Doctor’s visits, Adrian was diagnosed with Cerebral Palsy. At the age of 4, he was diagnosed with Mitochondrial disease. Mito affects every single organ in the body and is not able to process food and turn it into energy, this causes severe difficulty to sustain life and support growth. At 5 years old he had brain surgery and remained in the hospital for 3 weeks, unfortunately, due to an allergic reaction to the anesthesia, he had to stay 2 more weeks. There were no major changes to his condition after the procedure. In addition to the Cerebral Palsy and Mitochondrial disease, Adrian was diagnosed with Seizure Disorder. By the age of 6 he was having 250 seizures a day, doctors decided to help Adrian to decrease the amount of seizures with a second surgery inserting a device under his skin on the chest wall that will provide Adrian with a therapy called: VNS/Vagus Nerve Stimulation to decrease the amount of seizures he was having daily. Adrian is not able to move any part of his body and head, he is not able to communicate at all and depends on a daily basis on the care of his parents and doctors. Currently Adrian receives Occupation Therapy, breathing treatment and is under several medications to help him remain in a “stable” condition. This amazing boy lives with his parents and 3 brothers. Adrian’s severe condition has created a powerful and strong bond among the family; the family is always looking for alternatives to make sure he has a more comfortable and joyful life. Due to the very reduced space they have at home, Adrian sleeps in his parents bedroom in a crib next to mom. Despite all the restricted space and Adrian’s medical conditions, they all remain positive and hopeful. Sunshine on a Ranney Day and Telemundo Atlanta are happy to create a space for Adrian where he can sleep more comfortably, have a handicap bathroom, a ramp and will help transform the room in the basement for one of his brothers that is giving up his room for Adrian.",
+  "quote": "",
+  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/adrian/1774550984307-photo-4.JPG/public",
   "photos": [
     {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/adrian/photo-18/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/adrian/1774454540229-Adrian-SRD--33.jpg/public",
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/adrian/1774550984307-photo-4.JPG/public",
       "alt": "",
-      "cfImageId": "kids/adrian/1774454540229-Adrian-SRD--33.jpg"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/adrian/photo-23/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/adrian/1774454538805-Adrian-SRD--30.jpg/public",
-      "alt": "",
-      "cfImageId": "kids/adrian/1774454538805-Adrian-SRD--30.jpg"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/adrian/photo-19/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/adrian/photo-17/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/adrian/1774454544254-Adrian-SRD--36.jpg/public",
-      "alt": "",
-      "cfImageId": "kids/adrian/1774454544254-Adrian-SRD--36.jpg"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/adrian/1774454542471-Adrian-SRD--35.jpg/public",
-      "alt": "",
-      "cfImageId": "kids/adrian/1774454542471-Adrian-SRD--35.jpg"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/adrian/photo-20/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/adrian/photo-21/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/adrian/1774454534696-Adrian-SRD--25.jpg/public",
-      "alt": "",
-      "cfImageId": "kids/adrian/1774454534696-Adrian-SRD--25.jpg"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/adrian/1774454536082-Adrian-SRD--27.jpg/public",
-      "alt": "",
-      "cfImageId": "kids/adrian/1774454536082-Adrian-SRD--27.jpg"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/adrian/photo-24/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/adrian/photo-22/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/adrian/1774454546783-Adrian-SRD--60.jpg/public",
-      "alt": "",
-      "cfImageId": "kids/adrian/1774454546783-Adrian-SRD--60.jpg"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/adrian/photo-11/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/adrian/photo-12/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/adrian/photo-14/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/adrian/photo-15/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/adrian/photo-16/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/adrian/photo-08/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/adrian/1774454545402-Adrian-SRD--47.jpg/public",
-      "alt": "",
-      "cfImageId": "kids/adrian/1774454545402-Adrian-SRD--47.jpg"
+      "cfImageId": "kids/adrian/1774550984307-photo-4.JPG"
     }
   ],
-  "photoCount": 22,
+  "photoCount": 1,
   "videoUrl": null,
-  "photographer": "Camen Mari",
-  "partnerLogos": [
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/donors/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/roswell-womens-club/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/gas-south/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/kids-r-kids/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/real-floors-commercial/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/msi/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/randall-brothers/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/top-knobs/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/pulley-and-associates/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/sherwin-williams/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/servicewise-electric/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/tko-plumbing/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/fle/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/carmen-mari-photography/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/iframe-media/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/spirit-of-life-walkathon-tommy-meo-jr/public",
-      "name": "Spirit Of Life Walkathon Tommy Meo Jr"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/wyp/public",
-      "name": "WYP Construction"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/pella/1774379889033/public",
-      "name": "Pella"
-    }
-  ],
-  "shortDescription": null,
-  "metaDescription": null,
-  "altTexts": null,
-  "jsonLd": null,
-  "_migration": {
-    "scrapedAt": "2026-03-06T13:32:09.502Z",
-    "source": "wordpress-xml-export",
-    "wpPostDate": "2025-04-23 14:36:34",
-    "wpCategories": [
-      "Meet the Kids"
-    ],
-    "wpTags": [
-      "2025",
-      "Accessible Bathroom",
-      "Dream Bedroom"
-    ],
-    "thumbnailId": 9991,
-    "needsReview": [],
-    "cfHeroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/8a9f9788-c262-41bd-e81d-9d29acccd100/full"
-  },
   "streamVideoId": null,
+  "photographer": "",
+  "partnerLogos": [],
+  "shortDescription": "",
+  "metaDescription": "",
+  "fundraisingUrl": null,
   "roomCount": 2,
-  "publishStatus": "published",
-  "fundraisingUrl": null
+  "childCount": 1,
+  "bedroomCount": 1,
+  "bathroomCount": 1,
+  "therapyRoomCount": 0,
+  "featured": false,
+  "caseStudy": null,
+  "publishStatus": "published"
 }

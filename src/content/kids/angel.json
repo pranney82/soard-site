@@ -1,215 +1,38 @@
 {
   "name": "Angel",
   "slug": "angel",
-  "age": 15,
-  "diagnosis": "Schizencephaly, a form of cerebral palsy",
+  "age": 17,
+  "diagnosis": "Cerebral Palsy",
   "roomTypes": [
     "Accessible Bathroom",
     "Dream Bedroom"
   ],
-  "year": 2018,
+  "year": 2015,
   "status": "completed",
-  "bio": "This beautiful young lady is Angel.  Angel is a vibrant eighth grader who is always smiling and is quite the social butterfly.  Those who know her well say she has never met a stranger and loves socializing at school and in the community.  \n\nThis cheerful fifteen-year old is the middle child to two other siblings, her older sister    Brianna (19) and her younger brother Eddie (12).  Brianna and Eddie play a very big part in Angel's life as they help her parents meet her every need.  Angel reciprocated the love, supporting her older sister in cheerleading and her brother through both football and baseball seasons.\n\nAngel was born with Schizencephaly, which is a rare congenital brain malformation in which abnormal clefts form in the cerebral hemisphere.  Schizencephaly is categorized as a developmental birth defect affecting the left hemisphere of the brain leading to impairment of speech, mobility and development.  Angel is partially paralyzed on her left side.  She is wheelchair bound and needs full assistance to participate in activities of daily living such as getting dressed, bathing and transitioning from the chair to the bed.  the demands of caring for her become more and more physically challenging as she grows and taking care of her requires all hands on deck.  Her family considers it a privilege to care for her and enjoy seeing the dazzling smiles she gives them in return.",
-  "quote": "\"Angel is a vibrant eighth grader who is always smiling and is quite the social butterfly.\"",
-  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/angel/photo-23/public",
+  "bio": "Sunshine on a Ranney Day is proud to announce the launch of our Giving Campaign for this year’s Gala! This year’s campaign is near and dear to our hearts and honors an extraordinary family! The McLeroy’s are a military family with an amazing father-daughter duo who together, overcome the challenges of disability every day. Jeffrey B. McLeroy, Senior proudly joined the United States Army in 1996 with the support of his family. Already a father and husband to a pregnant wife, he set out to serve his country and build a legacy for his beloved family. He enlisted as an Infantry Airborne soldier and soon found that his passion for serving was strong; once he got started there was no looking back. His career as a soldier lead him through thirteen years of dedicated service to American families, but this service did not come without a cost. After two tours in Iraq and many dangerous jumps, Jeffrey returned home to his family as a disabled Veteran. Jeffrey’s daughter, Angel, was born two years after he enlisted. She came into this world with a bang. She was born three months premature and spent her first few weeks in the neonatal unit. When Angel finally came home, she was accompanied by not only loving parents, but also a ventilator and heart monitor. Throughout her first year, her parents realized that she was not developing at the same rate her older siblings had and they knew something was different. After consulting with a top developmental specialist, they learned that Angel had Cerebral Palsy. This is when her journey toward exceeding expectations began. She was enrolled in Easter Seals to receive developmental services and therapy to enhance her skills and development. When it was time for elementary school, her parents found a specialized school designed to help children just like her. Determined do everything in their power to ensure a brighter future for her, they moved from Columbus to Fayetteville so she could attend the Joseph Sams School. Over the past ten years at this school, Angel has received therapy and educational support services that have helped her excel. She has blossomed into an amazing young woman with a sweet smile and loving heart. Together, she and her father have fought the many battles that come with disability and together they conquer them every day. As Angel grows, it becomes increasingly more difficult to lift her and to encourage independent mobility throughout the home, which is not wheelchair accessible. Her current bedroom is on the second floor and her bathroom is not large enough for her wheelchair, therefore they must carry her from the hallway and place her in the shower. Sunshine is privileged to have the opportunity to honor this family with a renovation that will improve Angel’s quality of life and reduce some of the physical strain her parents endure while meeting her needs. We will be renovating the family’ garage so they can move her to the first floor, with her very own bedroom and accessible bathroom. We will break ground on this project in October, with the big reveal scheduled for Veteran’s Day, November 11, 2015. To be able to give back to a family who has sacrificed and endured so much is truly an honor and privilege. We hope you will join us in supporting this Veteran and his beautiful daughter!",
+  "quote": "",
+  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/angel/1774551314872-DSC-0520.jpg/public",
   "photos": [
     {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/angel/photo-01/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/angel/photo-02/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/angel/photo-03/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/angel/photo-04/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/angel/photo-05/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/angel/photo-06/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/angel/photo-07/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/angel/photo-08/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/angel/photo-09/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/angel/photo-10/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/angel/photo-11/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/angel/photo-12/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/angel/photo-13/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/angel/photo-14/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/angel/photo-15/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/angel/photo-16/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/angel/photo-17/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/angel/photo-18/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/angel/photo-19/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/angel/photo-20/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/angel/photo-21/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/angel/photo-22/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/angel/photo-23/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/angel/photo-24/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/angel/photo-25/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/angel/photo-26/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/angel/photo-27/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/angel/photo-28/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/angel/photo-29/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/angel/photo-30/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/angel/photo-31/public",
-      "alt": ""
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/angel/1774551314872-DSC-0520.jpg/public",
+      "alt": "",
+      "cfImageId": "kids/angel/1774551314872-DSC-0520.jpg"
     }
   ],
-  "photoCount": 31,
-  "videoUrl": "https://youtu.be/sSlS_nIUoBg",
-  "photographer": "Dinah Sutton Photography",
-  "partnerLogos": [
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/cambria/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/cr-construction/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/dove-studio/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/mohawk/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/real-floors-commercial-2/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/kids-r-kids/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/reliable-heating-and-air/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/sugar-hill-outdoors/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/dei/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/jackson-healthcare/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/rooms-to-go/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/dinah-sutton-photography/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/interceramic/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/stag-partners/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/nothing-bundt-cakes/public"
-    }
-  ],
-  "shortDescription": null,
-  "metaDescription": null,
-  "altTexts": null,
-  "jsonLd": null,
-  "_migration": {
-    "scrapedAt": "2026-03-06T13:32:09.416Z",
-    "source": "wordpress-xml-export",
-    "wpPostDate": "2018-05-13 17:29:19",
-    "wpCategories": [
-      "Meet the Kids"
-    ],
-    "wpTags": [
-      "2018",
-      "Accessible Bathroom",
-      "Dream Bedroom"
-    ],
-    "thumbnailId": 7235,
-    "needsReview": [],
-    "cfHeroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/69a269e0-9112-4ca5-a482-d8ebdab2aa00/full"
-  },
-  "streamVideoId": "ae74451b60a54d7428ed5fbbb62e9ad5",
-  "roomCount": 2,
-  "publishStatus": "published",
-  "fundraisingUrl": null
+  "photoCount": 1,
+  "videoUrl": null,
+  "streamVideoId": null,
+  "photographer": "",
+  "partnerLogos": [],
+  "shortDescription": "",
+  "metaDescription": "",
+  "fundraisingUrl": null,
+  "roomCount": 1,
+  "childCount": 1,
+  "bedroomCount": 1,
+  "bathroomCount": 1,
+  "therapyRoomCount": 0,
+  "featured": false,
+  "caseStudy": null,
+  "publishStatus": "published"
 }

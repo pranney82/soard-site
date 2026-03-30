@@ -6,7 +6,10 @@
   "bio": "This mild mannered, adorable 11-year old is Isra.  Izzy is his nickname and he is the baby of the family. Izzy is a fun-loving little boy who loves Mickey Mouse Clubhouse, going to school, and a good therapy session. He receives physical, occupational, speech and vision therapies.   Izzy is very social and loves interaction.  He was diagnosed with Cerebral Palsy after a difficult birth when, for an extended time, he went without oxygen. The doctors didn’t believe that he would make it through the night, but he proved them wrong.  Eleven years later, Izzy is still fighting.  He has determined his own path and continues to climb that mountain every day. Izzy has extensive medical needs and it hasn’t always been an easy road.  He spent two long weeks in the NICU where he endured numerous medical evaluations, MRIs, blood tests, incubators and being on a ventilator.  When he came home, he suffered from seizures.  He is a quadriplegic and is fully dependent on others to meet his needs.  His entire family teams up to care for him, including his two adult siblings.  Although it is challenging, they consider it a blessing and Izzy has taught them a new degree of love.  His hugs, kisses, and countless smiles make it easy to treasure life’s simple pleasures as they watch him achieve his goals.    Izzy recently moved to a new home with plenty of green space.  He loves to feed the chickens and water the plants in the garden.  Since he has shared a room with his mom since birth and has a plethora of medical equipment, and his current bathroom is very small, Sunshine along with an awesome designer created a fabulous room tailored just for him and a bathroom he can get around in!  Sunshine on a Ranney Day knows these two rooms will bring him many more sunny days where he can bask in the glory of thriving in his very own dream room and wheelchair accessible bathroom. ",
   "quote": "This mild mannered, adorable 11-year old is Isra.  Izzy is his nickname and he is the baby of the family. Izzy is a fun-loving little boy who loves Mickey Mouse Clubhouse, going to school, and a good therapy session. He receives physical, occupational, speech and vision therapies.   Izzy is very soc",
   "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/isra/photo-23/public",
-  "roomTypes": [],
+  "roomTypes": [
+    "Dream Bedroom",
+    "Accessible Bathroom"
+  ],
   "photos": [
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/isra/photo-23/public",
@@ -37,17 +40,19 @@
       "alt": "Isra makeover photo"
     }
   ],
-  "age": null,
-  "diagnosis": null,
+  "age": 11,
+  "diagnosis": "Cerebral Palsy",
   "_migration": {
     "cfHeroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/9d3b0563-5c22-4389-8822-c8d9055eac00/full",
     "source": "wix-migration",
     "wixNumber": 71
   },
-  "roomCount": 1,
+  "roomCount": 2,
   "photoCount": 7,
   "publishStatus": "published",
   "streamVideoId": null,
   "videoUrl": null,
-  "fundraisingUrl": null
+  "fundraisingUrl": null,
+  "bedroomCount": 1,
+  "bathroomCount": 1
 }

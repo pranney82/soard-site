@@ -2,8 +2,6 @@
   "name": "Means And Carney",
   "slug": "means-and-carney",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/means-and-carney/public",
-  "level": "friend",
-  "category": "build",
-  "featured": false,
-  "order": 0
+  "tier": "construction",
+  "featured": false
 }

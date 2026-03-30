@@ -2,8 +2,6 @@
   "name": "PMC Building Materials",
   "slug": "pmc-building-materials",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/pmc-building-materials/public",
-  "level": "friend",
-  "category": "build",
-  "featured": false,
-  "order": 0
+  "tier": "construction",
+  "featured": false
 }

@@ -24,14 +24,56 @@ const cors = {
 // Public API routes that don't require authentication
 const PUBLIC_ROUTES = ['/api/newsletter', '/api/kids.json', '/api/cc-oauth-start', '/api/cc-oauth-callback'];
 
+// ─── Rate Limiting (in-memory, per-isolate) ─────────────────────────
+// Limits POST /api/newsletter to 5 requests per IP per 60 seconds.
+// Resets when the Workers isolate recycles — good enough for spam prevention.
+const RATE_LIMIT_WINDOW_MS = 60 * 1000;
+const RATE_LIMIT_MAX = 5;
+const RATE_LIMITED_ROUTES = new Set(['/api/newsletter']);
+const _rateLimitMap = new Map(); // ip → { count, resetAt }
+let _lastPrune = 0;
+const PRUNE_INTERVAL_MS = 5 * 60 * 1000; // prune stale entries every 5 min
+
+function isRateLimited(ip) {
+  const now = Date.now();
+
+  // Periodically prune expired entries so the Map doesn't grow unbounded
+  if (now - _lastPrune > PRUNE_INTERVAL_MS) {
+    _lastPrune = now;
+    for (const [key, val] of _rateLimitMap) {
+      if (now > val.resetAt) _rateLimitMap.delete(key);
+    }
+  }
+
+  const entry = _rateLimitMap.get(ip);
+  if (!entry || now > entry.resetAt) {
+    _rateLimitMap.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
+    return false;
+  }
+  entry.count++;
+  return entry.count > RATE_LIMIT_MAX;
+}
+
 export async function onRequest(context) {
   // Always allow preflight
   if (context.request.method === 'OPTIONS') {
     return context.next();
   }
 
-  // Skip auth for public API routes
   const url = new URL(context.request.url);
+
+  // Rate limit abuse-prone public endpoints
+  if (RATE_LIMITED_ROUTES.has(url.pathname) && context.request.method === 'POST') {
+    const ip = context.request.headers.get('CF-Connecting-IP') || 'unknown';
+    if (isRateLimited(ip)) {
+      return Response.json(
+        { ok: false, error: 'Too many requests. Please try again later.' },
+        { status: 429, headers: { ...cors, 'Retry-After': '60' } }
+      );
+    }
+  }
+
+  // Skip auth for public API routes
   if (PUBLIC_ROUTES.some(route => url.pathname === route)) {
     return context.next();
   }

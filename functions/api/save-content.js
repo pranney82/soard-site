@@ -68,7 +68,7 @@ export async function onRequestPost(context) {
 
       if (extractor) {
         const [colNames, colValues] = extractor(data);
-        const allCols = ['slug', 'data', 'updated_at', ...colNames];
+        const allCols = ['"slug"', '"data"', '"updated_at"', ...colNames];
         const placeholders = allCols.map(() => '?').join(', ');
         const allValues = [slug, jsonStr, now, ...colValues];
 

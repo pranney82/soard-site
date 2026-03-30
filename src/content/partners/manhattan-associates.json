@@ -2,8 +2,9 @@
   "name": "Manhattan Associates",
   "slug": "manhattan-associates",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/manhattan-associates/public",
-  "level": "friend",
-  "category": "build",
+  "tier": "construction",
   "featured": false,
-  "order": 0
+  "website": "https://www.manh.com/?_gl=1*65mpzm*_up*MQ..*_gs*MQ..*_ga*MTkxNjYxNTcyNC4xNzc0ODc4NzE0*_ga_D46R5555EK*czE3NzQ4Nzg3MTMkbzEkZzAkdDE3NzQ4Nzg3MTMkajYwJGwwJGgzMTYyNTQ4NTc.&gclid=CjwKCAjwvqjOBhAGEiwAngeQnZfazZ24fxE8UJfOEewwGK9jTNrlZl9xAa7a9Eq5YOiME2DZeEWFpRoCIp8QAvD_BwE&gbraid=0AAAAADrVyRmCM0QLK7xk1d1aNPXPp_VjM",
+  "level": "friend",
+  "category": "funding"
 }

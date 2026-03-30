@@ -2,8 +2,9 @@
   "name": "Bridals By Lori",
   "slug": "bridals-by-lori",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/bridals-by-lori/public",
-  "level": "friend",
-  "category": "build",
+  "tier": "construction",
   "featured": false,
-  "order": 0
+  "website": "https://bridalsbylori.com",
+  "level": "friend",
+  "category": "community"
 }

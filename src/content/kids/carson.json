@@ -10,7 +10,7 @@
   "status": "completed",
   "bio": "Having been diagnosed with sensory processing disorder, SPD at age three, and recently diagnosed with Autism, Carson is a sensory seeker who likes to move all of the time.\n\nAs Carson gets older, it will be even more important to have a safe space of his own, including appropriate sensory stimulation.  A custom sensory room from Sunshine on a Ranney Day will give Carson what he needs to be and grow happier and healthier. Together with his family, he will better enjoy their three cats, bearded dragon, and beta fish and will have spent some energy so he can sit down and watch Shark Week like other kids his age.",
   "quote": "Having been diagnosed with sensory processing disorder, SPD at age three, and recently diagnosed with Autism, Carson is a sensory seeker who likes to move all of the time.",
-  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/carson/hero/public",
+  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/carson/photo-11/public",
   "photos": [
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/carson/photo-01/public",
@@ -123,90 +123,6 @@
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/carson/photo-28/public",
       "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/abby/photo-41/public",
-      "alt": "Carson makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/grace/hero/public",
-      "alt": "Carson makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/carson/photo-31/public",
-      "alt": "Carson makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/andrew/photo-42/public",
-      "alt": "Carson makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/alejandro/photo-23/public",
-      "alt": "Carson makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/abby/photo-46/public",
-      "alt": "Carson makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/abby/photo-47/public",
-      "alt": "Carson makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/abby/photo-49/public",
-      "alt": "Carson makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/alejandro/photo-26/public",
-      "alt": "Carson makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/andrew/photo-47/public",
-      "alt": "Carson makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/carson/photo-39/public",
-      "alt": "Carson makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/carson/photo-40/public",
-      "alt": "Carson makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/carson/photo-41/public",
-      "alt": "Carson makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/carson/photo-42/public",
-      "alt": "Carson makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/carson/photo-43/public",
-      "alt": "Carson makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/carson/photo-44/public",
-      "alt": "Carson makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/carson/photo-45/public",
-      "alt": "Carson makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/amir/photo-49/public",
-      "alt": "Carson makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/carson/photo-47/public",
-      "alt": "Carson makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/carson/photo-48/public",
-      "alt": "Carson makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/carson/photo-49/public",
-      "alt": "Carson makeover photo"
     }
   ],
   "photoCount": 28,
@@ -278,5 +194,8 @@
     "cfHeroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/531584fe-9419-45f7-4d22-4b07aac84100/full"
   },
   "streamVideoId": "4647ae14f6475a66a2c22a4686692ead",
-  "roomCount": 1
+  "roomCount": 1,
+  "therapyRoomCount": 1,
+  "publishStatus": "published",
+  "fundraisingUrl": null
 }

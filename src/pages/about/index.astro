@@ -216,78 +216,8 @@ const jsonLd = buildSchemaGraph(
 </PageLayout>
 
 <style>
-  /* ══════════════════════════════════════════
-     SHARED
-     ══════════════════════════════════════════ */
-  .section-label {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    font-size: 12px;
-    font-weight: 700;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: var(--c-accent);
-    margin-bottom: 20px;
-  }
-  .section-label::before {
-    content: '';
-    width: 28px;
-    height: 2px;
-    background: currentColor;
-    flex-shrink: 0;
-  }
-  .section-label--yellow { color: var(--c-yellow); }
-  .highlight {
-    font-style: italic;
-    background-image: linear-gradient(transparent 55%, var(--c-yellow-soft) 55%);
-    padding: 0 0.1em;
-  }
+  /* ─── Page-specific overrides ──────────── */
   h2 em:not(.highlight) { font-style: italic; color: var(--c-yellow); }
-
-  .btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    padding: 14px 32px;
-    font-family: var(--font-body);
-    font-size: 15px;
-    font-weight: 600;
-    border-radius: 60px;
-    border: none;
-    cursor: pointer;
-    text-decoration: none;
-    transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
-    white-space: nowrap;
-  }
-  .btn:hover { transform: translateY(-3px); }
-  .btn-dark {
-    background: var(--c-dark);
-    color: var(--c-white);
-  }
-  .btn-dark:hover {
-    background: #3a3b40;
-    box-shadow: 0 8px 24px rgba(45, 46, 51, 0.3);
-  }
-  .btn-outline {
-    background: transparent;
-    color: var(--c-dark);
-    border: 2px solid var(--c-border);
-  }
-  .btn-outline:hover {
-    border-color: var(--c-dark);
-    box-shadow: 0 4px 16px rgba(0,0,0,0.08);
-  }
-  .btn-outline-dark {
-    background: transparent;
-    color: var(--c-dark);
-    border: 2px solid var(--c-dark);
-  }
-  .btn-outline-dark:hover {
-    background: var(--c-dark);
-    color: var(--c-white);
-  }
-  .btn-lg { padding: 16px 40px; font-size: 16px; }
 
   /* ══════════════════════════════════════════
      FOUNDERS — Split layout

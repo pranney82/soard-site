@@ -225,7 +225,7 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
       <div class="toolbar" id="toolbar">
         <div class="toolbar__row">
           <div class="search-box">
-            <svg class="search-box__icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <svg class="search-box__icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.34-4.34"/></svg>
             <input
               type="search"
               id="kid-search"
@@ -237,7 +237,7 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
             <span class="search-box__count" id="search-count" hidden aria-live="polite"></span>
             <kbd class="search-box__kbd" id="search-kbd" aria-hidden="true">/</kbd>
             <button class="search-box__clear" id="search-clear" type="button" aria-label="Clear search" hidden>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
             </button>
           </div>
 
@@ -277,7 +277,7 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
             Showing <strong id="visible-count">{INITIAL_BATCH}</strong> of <span id="total-count">{totalKidsCount}</span> kids
           </span>
           <span class="result-loading" id="result-loading" hidden>
-            <svg class="result-loading__spinner" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+            <svg class="result-loading__spinner" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M12 2v4"/><path d="m16.2 7.8 2.9-2.9"/><path d="M18 12h4"/><path d="m16.2 16.2 2.9 2.9"/><path d="M12 18v4"/><path d="m4.9 19.1 2.9-2.9"/><path d="M2 12h4"/><path d="m4.9 4.9 2.9 2.9"/></svg>
             Loading all kids...
           </span>
           <button class="clear-btn" id="clear-filters" hidden aria-label="Clear all filters">
@@ -298,7 +298,7 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
           <div class="bottom-sheet__header">
             <h3 class="bottom-sheet__title">Filters</h3>
             <button class="bottom-sheet__close" id="sheet-close" type="button" aria-label="Close filters">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
             </button>
           </div>
           <div class="bottom-sheet__body">
@@ -340,7 +340,7 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
       <!-- SVG sprite for repeated icons (avoids 187 inline copies) -->
       <svg xmlns="http://www.w3.org/2000/svg" style="display:none">
         <symbol id="icon-cta-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-          <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
+          <path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>
         </symbol>
         <symbol id="icon-placeholder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3">
           <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
@@ -420,7 +420,7 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
 
       <!-- No results -->
       <div class="no-results" id="no-results" hidden>
-        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="8" x2="14" y2="14"/><line x1="14" y1="8" x2="8" y2="14"/></svg>
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.34-4.34"/><path d="M8 8 14 14"/><path d="m14 8-6 6"/></svg>
         <p class="no-results__title">No kids found</p>
         <p class="no-results__hint" id="no-results-hint">Try a different search term or adjust your filters.</p>
         <div class="no-results__suggestions" id="no-results-suggestions"></div>
@@ -839,16 +839,16 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
       // Search query chip omitted — already visible in the input
       if (yearFilter !== 'all') {
         const label = yearSelect.options[yearSelect.selectedIndex]?.text || yearFilter;
-        html += `<span class="filter-chip" role="group" aria-label="Year: ${escapeHtml(label)}"><svg class="filter-chip__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>${escapeHtml(label)}<button class="filter-chip__remove" data-chip="year" aria-label="Remove year filter"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></span>`;
+        html += `<span class="filter-chip" role="group" aria-label="Year: ${escapeHtml(label)}"><svg class="filter-chip__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>${escapeHtml(label)}<button class="filter-chip__remove" data-chip="year" aria-label="Remove year filter"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></span>`;
         chipCount++;
       }
       if (typeFilter !== 'all') {
         const label = typeSelect.options[typeSelect.selectedIndex]?.text || typeFilter;
-        html += `<span class="filter-chip" role="group" aria-label="Project: ${escapeHtml(label)}"><svg class="filter-chip__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>${escapeHtml(label)}<button class="filter-chip__remove" data-chip="type" aria-label="Remove project filter"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></span>`;
+        html += `<span class="filter-chip" role="group" aria-label="Project: ${escapeHtml(label)}"><svg class="filter-chip__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>${escapeHtml(label)}<button class="filter-chip__remove" data-chip="type" aria-label="Remove project filter"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></span>`;
         chipCount++;
       }
       if (statusActive) {
-        html += `<span class="filter-chip" role="group" aria-label="Status: In Progress"><span class="pill-toggle__dot" style="width:6px;height:6px;border-radius:50%;background:var(--c-yellow);display:inline-block" aria-hidden="true"></span>In Progress<button class="filter-chip__remove" data-chip="status" aria-label="Remove status filter"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></span>`;
+        html += `<span class="filter-chip" role="group" aria-label="Status: In Progress"><span class="pill-toggle__dot" style="width:6px;height:6px;border-radius:50%;background:var(--c-yellow);display:inline-block" aria-hidden="true"></span>In Progress<button class="filter-chip__remove" data-chip="status" aria-label="Remove status filter"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></span>`;
         chipCount++;
       }
       html += `<button class="filter-chips__clear" data-chip="all" style="animation-delay:${chipCount * 0.04}s">Clear all</button>`;

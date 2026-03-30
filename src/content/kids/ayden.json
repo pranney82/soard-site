@@ -4,7 +4,7 @@
   "year": 2017,
   "status": "completed",
   "bio": "Sunshine on a Ranney Day is over the moon to be able to partner with Telemundo Atlanta for the 4th year to bring a very special boy a spectacular makeover!  This handsome ten-year old with the contagious, radiant smile is Ayden.  At birth he was a tiny bundle of joy who was developing as expected until April 22, 2007.  He was just five months old when he suffered an anoxic brain injury during a seizure in the early morning.  Ayden was transported to the hospital where he spent the next month.  This event changed his fate and his future.  Ayden was placed in an induced coma to decrease the constant seizure activity in his brain.  Due to the tragic neurological damage, he was left with permanent deficits including loss of all of his motor skills, cortical visual impairment and decreased muscle tone.  Despite this devastating experience and his physical limitations, he continues to inspire others and bring joy to this world.  Ayden has delightful spirit and he is enthusiastic when he is around others. He shows his happiness by laughing and making cheerful vocalizations.  Anyone who encounters him is affected by his beautiful light and cannot resist smiling back!  What a treasure. Ayden LOVES the ocean.  His family has taken him to Florida twice to swim with the Dolphins and it's one of his favorite things to do.  The magic of the experience is uplifting and blissful. To accommodate Ayden’s growing needs and make caring for him easier, he received a dream bedroom and wheelchair accessible bathroom.  The design incorporated the things he loves most and spread a little sunshine throughout his home.  ",
-  "quote": "Sunshine on a Ranney Day is over the moon to be able to partner with Telemundo Atlanta for the 4th year to bring a very special boy a spectacular makeover!  This handsome ten-year old with the contagious, radiant smile is Ayden.  At birth he was a tiny bundle of joy who was developing as expected un",
+  "quote": "",
   "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/ayden/photo-25/public",
   "roomTypes": [
     "Dream Bedroom",
@@ -28,8 +28,8 @@
       "alt": "Ayden makeover photo"
     }
   ],
-  "age": null,
-  "diagnosis": null,
+  "age": 10,
+  "diagnosis": "Anoxic Brain Injury",
   "_migration": {
     "cfHeroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/bfce39e9-d0ab-4ba4-160b-dfe733fa9600/full",
     "source": "wix-migration",
@@ -40,5 +40,7 @@
   "publishStatus": "published",
   "streamVideoId": null,
   "videoUrl": null,
-  "fundraisingUrl": null
+  "fundraisingUrl": null,
+  "bedroomCount": 1,
+  "bathroomCount": 1
 }

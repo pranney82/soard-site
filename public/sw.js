@@ -4,6 +4,8 @@
  * Network-first for HTML pages (fresh content, offline fallback).
  */
 const CACHE_NAME = 'soard-v2';
+const IMAGE_CACHE_NAME = 'soard-images-v1';
+const IMAGE_CACHE_MAX_ENTRIES = 300;
 
 const PRECACHE_URLS = [
   '/fonts/outfit-latin-variable.woff2',
@@ -20,9 +22,10 @@ self.addEventListener('install', (event) => {
 
 // Activate: clean up old caches
 self.addEventListener('activate', (event) => {
+  const keep = new Set([CACHE_NAME, IMAGE_CACHE_NAME]);
   event.waitUntil(
     caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
+      Promise.all(keys.filter((k) => !keep.has(k)).map((k) => caches.delete(k)))
     )
   );
   self.clients.claim();
@@ -41,12 +44,17 @@ self.addEventListener('fetch', (event) => {
 
   if (!isSameOrigin && !isCFImage) return;
 
-  // Fonts & images: cache-first (immutable assets)
+  // CF Images: separate cache with eviction limit
+  if (isCFImage) {
+    event.respondWith(cacheFirstWithLimit(request, IMAGE_CACHE_NAME, IMAGE_CACHE_MAX_ENTRIES));
+    return;
+  }
+
+  // Fonts & local images: cache-first (immutable assets)
   if (
     url.pathname.startsWith('/fonts/') ||
     url.pathname.startsWith('/images/') ||
-    url.pathname.match(/\.(woff2|png|jpg|jpeg|webp|avif|svg|ico)$/) ||
-    isCFImage
+    url.pathname.match(/\.(woff2|png|jpg|jpeg|webp|avif|svg|ico)$/)
   ) {
     event.respondWith(cacheFirst(request));
     return;
@@ -74,6 +82,27 @@ async function cacheFirst(request) {
     if (response.ok) {
       const cache = await caches.open(CACHE_NAME);
       cache.put(request, response.clone());
+    }
+    return response;
+  } catch {
+    return new Response('', { status: 408 });
+  }
+}
+
+async function cacheFirstWithLimit(request, cacheName, maxEntries) {
+  const cache = await caches.open(cacheName);
+  const cached = await cache.match(request);
+  if (cached) return cached;
+
+  try {
+    const response = await fetch(request);
+    if (response.ok) {
+      cache.put(request, response.clone());
+      // Evict an entry when over limit to cap cache size
+      const keys = await cache.keys();
+      if (keys.length > maxEntries) {
+        await cache.delete(keys[0]); // first key — insertion-order in all browsers
+      }
     }
     return response;
   } catch {

@@ -2,8 +2,9 @@
   "name": "Divine Designs",
   "slug": "divine-designs",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/divine-designs/public",
-  "level": "friend",
-  "category": "design",
+  "tier": "design",
   "featured": false,
-  "order": 0
+  "website": "https://www.denisedevigne.com",
+  "level": "friend",
+  "category": "design"
 }

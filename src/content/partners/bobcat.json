@@ -2,8 +2,8 @@
   "name": "Bobcat",
   "slug": "bobcat",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/bobcat/public",
-  "level": "friend",
-  "category": "build",
+  "tier": "construction",
   "featured": false,
-  "order": 0
+  "website": "https://bobcatofatlanta.com/?gad_source=1&gad_campaignid=23047813094&gbraid=0AAAABAqshhEt-UyIVCgl3ZPAJSQoKdn4P&gclid=Cj0KCQjw1ZjOBhCmARIsADDuFTDMdW2N_r0CDjpV5aYmlG1zVgR4Stmkzu7bJwidcfVMGjRRfc4WR7oaAnlWEALw_wcB",
+  "level": "friend"
 }

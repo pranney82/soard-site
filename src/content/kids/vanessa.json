@@ -31,8 +31,8 @@
       "alt": "Vanessa makeover photo"
     }
   ],
-  "age": null,
-  "diagnosis": null,
+  "age": 15,
+  "diagnosis": "Sickle Cell Anemia",
   "_migration": {
     "cfHeroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/1f805f2b-01b3-45fd-7103-d3a52adfe600/full",
     "source": "wix-migration",
@@ -43,5 +43,6 @@
   "publishStatus": "published",
   "streamVideoId": null,
   "videoUrl": null,
-  "fundraisingUrl": null
+  "fundraisingUrl": null,
+  "bedroomCount": 1
 }

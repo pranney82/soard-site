@@ -2,8 +2,7 @@
   "name": "Builders Cabinet Company",
   "slug": "builders-cabinet-company",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/builders-cabinet-company/public",
-  "level": "champion",
-  "category": "build",
-  "featured": true,
-  "order": 0
+  "tier": "construction",
+  "featured": false,
+  "level": "friend"
 }

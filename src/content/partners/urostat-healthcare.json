@@ -2,8 +2,6 @@
   "name": "Urostat Healthcare",
   "slug": "urostat-healthcare",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/urostat-healthcare/public",
-  "level": "friend",
-  "category": "community",
-  "featured": false,
-  "order": 0
+  "tier": "community",
+  "featured": false
 }

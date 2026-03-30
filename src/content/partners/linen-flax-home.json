@@ -1,9 +1,10 @@
 {
-  "name": "Linen  Flax Home",
+  "name": "Linen & Flax Home",
   "slug": "linen-flax-home",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/linen-flax-home/public",
-  "level": "friend",
-  "category": "build",
+  "tier": "construction",
   "featured": false,
-  "order": 0
+  "website": "https://www.linenandflax.com",
+  "level": "friend",
+  "category": "design"
 }

@@ -2,8 +2,8 @@
   "name": "iFrame Media",
   "slug": "iframe-media",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/iframe-media/public",
-  "level": "builder",
-  "category": "community",
+  "tier": "community",
   "featured": true,
-  "order": 0
+  "level": "champion",
+  "category": "community"
 }

@@ -2,8 +2,6 @@
   "name": "Wall Nut Custom Wall Murals",
   "slug": "wall-nut-custom-wall-murals",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/wall-nut-custom-wall-murals/public",
-  "level": "friend",
-  "category": "build",
-  "featured": false,
-  "order": 0
+  "tier": "construction",
+  "featured": false
 }

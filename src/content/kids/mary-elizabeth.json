@@ -39,8 +39,8 @@
       "alt": "Mary Elizabeth makeover photo"
     }
   ],
-  "age": null,
-  "diagnosis": null,
+  "age": 11,
+  "diagnosis": "Acute Myeloid Leukemia ",
   "_migration": {
     "cfHeroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/b66eeb02-d89b-4664-1b68-c7e69b36d800/full",
     "source": "wix-migration",
@@ -51,5 +51,8 @@
   "publishStatus": "published",
   "streamVideoId": null,
   "videoUrl": null,
-  "fundraisingUrl": null
+  "fundraisingUrl": null,
+  "bedroomCount": 1,
+  "childCount": 3,
+  "therapyRoomCount": 1
 }

@@ -1,179 +1,37 @@
 {
   "name": "Jacob",
   "slug": "jacob",
-  "age": 9,
-  "diagnosis": "Autism, PDD-NOS, Sensory Integration Disorder, Anxiety, Developmental Delays",
+  "age": 18,
+  "diagnosis": "Downs Syndrome, Autism",
   "roomTypes": [
-    "Therapy Room"
+    "Dream Bedroom"
   ],
-  "year": 2017,
+  "year": 2019,
   "status": "completed",
-  "bio": "Jacob is a ray of sunshine who gives amazing hugs and kisses!  Jacob is an energetic, bright boy who loves tractors, trains, and trucks.  Jacob was gifted to his parents through the joy of adoption.   What a wonderful surprise and blessing.  His parents traveled far from Georgia to Wyoming to meet him and take him back home to his forever home. \n\nJacob was a wonderful baby.  He didn't cry much, never took a pacifier and ate very well.  He was developing as expected and then one day things just changed\\u2026no more hugs, he refused food, and he didn't talk. He experienced a regression of skills.  Jacob's pediatrician told his parents he was just slow as little boys often are and that they should not worry.  They knew something was different and to ensure the best for him, they were certain that they needed to seek the help of another physician.  A new pediatrician agreed and worked toward finding out why he was regressing.  Jacob was diagnosed with Autism, PDD-NOS, Sensory Integration Disorder, Anxiety and developmental delays.  He was enrolled in school and therapy to help meet his developmental milestones.  He has received occupational and speech therapy since he was 3.\n\nAt nine, Jacob has come a long way and is developing his own personality! He is funny, likes to be silly, enjoys being squeezed with deep sensory input and loves time with family.  He especially loves playing with his cousins!  His favorite places to go include McDonald's, Wendy's, Great American Cookie and going to the TA truck stop to watch the trucks come through.  \n\nHe loves his therapists and teachers and learns a lot from them.  However, he inspires and teaches those around him something new every day!  SOARD plans to give Jacob a dream therapy room and include items that provide sensory input as well as a few of his favorite things throughout the specially designed d\\u00e9cor.",
-  "quote": "\"Jacob inspires and teaches those around him something new every day!\"",
-  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jacob/photo-19/public",
+  "bio": "We’d like to introduce you to Jacob. This handsome and ambitious young man will be getting a spectacular bedroom makeover from Sunshine on a Ranney Day. Although Jacob has endured many challenges in his short nineteen years, he hasn’t let them thwart his energetic and loving spirit! Despite having Down Syndrome, undergoing over 100 surgical procedures and surviving Acute Lymphoblastic Leukemia, he has accomplished a plethora of high honors in advocacy for children’s healthcare, educational reform and in several sports through the Special Olympics. He has won three gold medals; one for the 50 M Dash, one in Softball and one for the 50 M walk! With his mom by his side, Jacob has been involved in media awareness events with CBS, CNN, Fox and The Associate Press. He is also involved in many organizations including Rally Foundation for Childhood Cancer Research, the National Down Syndrome Congress, the Down Syndrome Association of Atlanta, North Metro Miracle League, Georgia Autism Society, Autism Speaks, Sibley Heart Center, Make-a-Wish Foundation and Camp Sunshine. The list goes on as he has dedicated his life to reaching his ultimate dream: that society will see him for his abilities and not his disabilities. This is his dream, not only for himself, but for all children. He does not let disability, illness, chemotherapy or anything else get in the way. Although he completed 3.5 years of chemotherapy, he has 4.5 more years of monitoring before he can be considered cured from cancer. It will not stop him from achieving his goals and working hard to make a difference. Jacob is adventurous and spirited, enjoying the wonders of teenage living including listening to music, going on roller coasters, attending sporting events and attending Prom at Night to Shine. He loves reading, playing the bells and xylophone, hanging out with his friends, dancing in his tuxedo and playing baseball. We love his smile and warm heart. Nothing will give us greater pleasure than spreading a little sunshine through a dream makeover especially for him!<br>",
+  "quote": "",
+  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jacob/1774553880571-Untitled-design-30.png/public",
   "photos": [
     {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jacob/photo-19/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jacob/photo-05/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jacob/photo-08/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jacob/photo-09/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jacob/photo-10/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jacob/photo-11/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jacob/photo-12/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jacob/photo-13/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jacob/photo-14/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jacob/photo-15/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jacob/photo-16/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jacob/photo-17/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jacob/photo-18/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jacob/photo-20/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jacob/photo-21/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jacob/photo-22/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jacob/photo-23/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jacob/photo-24/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jacob/photo-25/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jacob/photo-26/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jacob/photo-27/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jacob/photo-28/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jacob/photo-29/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jacob/photo-30/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jacob/photo-31/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jacob/photo-32/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jacob/photo-33/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jacob/photo-41/public",
-      "alt": "Jacob makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jacob/photo-42/public",
-      "alt": "Jacob makeover photo"
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jacob/1774553880571-Untitled-design-30.png/public",
+      "alt": "",
+      "cfImageId": "kids/jacob/1774553880571-Untitled-design-30.png"
     }
   ],
-  "photoCount": 29,
-  "videoUrl": "https://www.youtube.com/watch?v=cNj8nQrV3II",
-  "photographer": "Niki Murphy Photography",
-  "partnerLogos": [
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/niki-murphy-photography/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/mohawk/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/a-color-affair/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/dinah-sutton-photography/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/reliable-heating-and-air/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/lucy-the-lap-dog/public"
-    }
-  ],
-  "shortDescription": null,
-  "metaDescription": null,
-  "altTexts": null,
-  "jsonLd": null,
-  "_migration": {
-    "scrapedAt": "2026-03-06T13:32:09.402Z",
-    "source": "wordpress-xml-export",
-    "wpPostDate": "2017-08-21 22:56:41",
-    "wpCategories": [
-      "Meet the Kids",
-      "Mohawk"
-    ],
-    "wpTags": [
-      "2017",
-      "Therapy Room"
-    ],
-    "thumbnailId": 8498,
-    "needsReview": [],
-    "cfHeroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/d1d3bf66-268a-4192-166d-8647f6885c00/full"
-  },
-  "streamVideoId": "cccb6f4de1c340b619e33898918f246c",
+  "photoCount": 1,
+  "videoUrl": null,
+  "streamVideoId": null,
+  "photographer": "",
+  "partnerLogos": [],
+  "shortDescription": "",
+  "metaDescription": "",
+  "fundraisingUrl": null,
   "roomCount": 1,
-  "publishStatus": "published",
-  "fundraisingUrl": null
+  "childCount": 1,
+  "bedroomCount": 1,
+  "bathroomCount": 0,
+  "therapyRoomCount": 0,
+  "featured": false,
+  "caseStudy": null,
+  "publishStatus": "published"
 }

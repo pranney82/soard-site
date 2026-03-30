@@ -115,9 +115,6 @@
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/jackson-healthcare/public"
     },
     {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/lead-coverage-logo/public"
-    },
-    {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/kirby-smart-family-foundation/public"
     },
     {
@@ -172,6 +169,14 @@
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/pella/1774379889033/public",
       "name": "Pella"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/speedway-charities/1774458593799/public",
+      "name": "Speedway Charities"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/lead-coverage-logo/public",
+      "name": "Lead Coverage Logo"
     }
   ],
   "shortDescription": null,
@@ -181,5 +186,7 @@
   "streamVideoId": "77b29dd7fd2b6f1f5d519e0e115ef7fa",
   "roomCount": 2,
   "publishStatus": "published",
-  "fundraisingUrl": null
+  "fundraisingUrl": null,
+  "bedroomCount": 1,
+  "bathroomCount": 1
 }

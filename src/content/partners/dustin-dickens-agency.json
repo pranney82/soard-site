@@ -2,8 +2,8 @@
   "name": "Dustin Dickens Agency",
   "slug": "dustin-dickens-agency",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/dustin-dickens-agency/public",
-  "level": "friend",
-  "category": "build",
+  "tier": "construction",
   "featured": false,
-  "order": 0
+  "level": "friend",
+  "category": "community"
 }

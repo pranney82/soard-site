@@ -10,7 +10,7 @@
   "status": "completed",
   "bio": "\"Brylee loves animals and wants to be a veterinarian when she grows up.\"\n\nBrylee is now 10 years old and has had multiple surgeries and visits to the hospital. Brylee is a fighter!  Brylee can drive her wheelchair around the house.  She loves playing with her cousins and friends along with trips to the playground.  Brylee loves animals and wants to be a veterinarian when she grows up.  Brylee and her family are so excited about her accessible bathroom!",
   "quote": "\"Brylee loves animals and wants to be a veterinarian when she grows up.\"",
-  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/brylee/hero/public",
+  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/brylee/photo-02/public",
   "photos": [
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/brylee/photo-01/public",
@@ -57,7 +57,7 @@
       "alt": ""
     }
   ],
-  "photoCount": 12,
+  "photoCount": 11,
   "videoUrl": "https://youtu.be/SIb-7xTdRNY",
   "photographer": "Kristi Weaver Photography",
   "partnerLogos": [
@@ -118,5 +118,8 @@
   "altTexts": null,
   "jsonLd": null,
   "streamVideoId": "9f4853f6c80215478869e8adf5ea1f8a",
-  "roomCount": 1
+  "roomCount": 1,
+  "bathroomCount": 1,
+  "publishStatus": "published",
+  "fundraisingUrl": null
 }

@@ -11,7 +11,7 @@
   "status": "completed",
   "bio": "Liam is a funny and artistic 16-year-old living with Duchenne Muscular Dystrophy. DMD is a fatal, genetic disorder marked by progressive muscle loss due to missing exons within his DNA that produces a necessary protein. He began using a wheelchair for long distances when he was eight and lost the ability to stand and walk at 12. Showering and other activities of daily living are very difficult for him now.\n\nHe is an epic gamer. His gaming PC allows him to interact with friends and family, near and far, within a level virtual playing field. A typical weekend will find him and his siblings in one game room at their stations off on an epic adventure together! Liam also uses creativity to explore his thoughts and feelings. He will often say \\u201cCan I have my art stuff?\\u201d so he can draw while he watches his favorite YouTubers, Ten Hundred, Jazza, and Ace of Clay. He has multiple shelves holding dozens of sketchbooks.\n\nOne of the greatest challenges caused by DMD is that his bathroom is difficult to navigate. Liam used to love taking long, hot showers to relieve the stresses of his day and the ache in his weakened muscles. When he lost the ability to stand, he lost the ability to shower comfortably. What was once a joy has become painful, both physically and emotionally. Sunshine on a Ranney Day is looking forward to creating a space that will bring back some of that relief while showering, as well as tailoring it to Liam specifically!",
   "quote": "\"A typical weekend will find him and his siblings in one game room at their stations off on an epic adventure together!\"",
-  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/liam/hero/public",
+  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/liam/photo-25/public",
   "photos": [
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/liam/photo-01/public",
@@ -116,17 +116,9 @@
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/liam/photo-26/public",
       "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/brianna/photo-18/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/liam/photo-28/public",
-      "alt": ""
     }
   ],
-  "photoCount": 30,
+  "photoCount": 26,
   "videoUrl": "https://youtu.be/9nR328Fj--s",
   "photographer": "Kelley Wenzel",
   "partnerLogos": [
@@ -211,5 +203,9 @@
   "altTexts": null,
   "jsonLd": null,
   "streamVideoId": "9eb6c9b45453e367f9b2e68e980b5277",
-  "roomCount": 2
+  "roomCount": 2,
+  "bedroomCount": 1,
+  "bathroomCount": 1,
+  "publishStatus": "published",
+  "fundraisingUrl": null
 }

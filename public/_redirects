@@ -137,7 +137,8 @@
 /leadership/  /about/leadership/  301
 /what-we-do/  /rooms/  301
 /meet-the-kids/  /kids/  301
-/community-projects/  /rooms/community/  301
+/community-projects/  /community/  301
+/rooms/community/     /community/  301
 /get-involved/  /partners/  301
 /construction-partners/  /partners/construction/  301
 /featured-designers/  /partners/design/  301

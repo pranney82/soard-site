@@ -2,8 +2,9 @@
   "name": "Itl Photography",
   "slug": "itl-photography",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/itl-photography/public",
-  "level": "friend",
-  "category": "community",
+  "tier": "community",
   "featured": false,
-  "order": 0
+  "website": "",
+  "level": "friend",
+  "category": "community"
 }

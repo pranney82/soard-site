@@ -4,7 +4,7 @@
   "year": 2014,
   "status": "completed",
   "bio": "Great news!  This beautiful family is getting a beautiful home remodel!  Tashawn “Ta” and his sister Alissa are flipping with excitement.  Aren’t they precious?  With the help of Sunshine on a Ranney Day and The Atlanta Swim Academy, this sensational project will be making its splash of a debut May 3rd as it kicks off with a Charity Swim-a-Thon organized and implemented by the children of the Swim Academy.  These thoughtful young athletes have come together to help SOARD raise money to make this remodel possible.  Ta and Alissa will be cheering them on as they swim lap after lap in their honor. Participants will help the SOARD team design dream rooms for Ta and Alissa.  Since they are both passionate about swimming, the team has plenty of inspiration already.  The reveal for the project is set for June 21st and our volunteers are ready to dive in.  Ta and Alissa are a dynamic duo.  They were brought to their parents as foster children from different families and were later adopted.  Their mom, Ali, is a social worker and is passionate about making children’s dreams come true.  She and her husband were happy to be able to do just that for Ta and Alissa.  It is clear that this family was destined to be together.  You can’t look at these gorgeous family photos without seeing the LOVE they have for one another!  Ta is an outgoing and independent eight year old young man who does not let his disability get in the way of achieving his goals!  Born at only 27 weeks gestational age, Ta weighed only a little over a pound and was diagnosed with Cerebral Palsy and a seizure disorder at an early age. He takes medications to control his seizures and asthma symptoms. Despite the challenges of his physical disability, he is eager to learn and strives to be as independent as he can be.  He is excelling at school and beginning to read.  He even represented his class in the school geography bee this year! Ta propels his manual wheelchair everywhere, plays wheelchair sports and loves swimming.  Not only is he a champion in the pool, but also on land.  He has begun to walk with a walker, but the carpeting in his home makes it difficult to get around as fast and easily as he’d like to. Alissa, this adorable three year old doll with radiant curls, was born at 26 weeks gestational age.  She was only 9.84 inches long at birth and spent the first two months of her life in the NICU.  Alissa has severe acid reflux disease and digestive disorders.  She has a g-tube that is used for supplemental nutrition, fluids and medications.  Alissa struggles with asthma and chronic illness as well.  Her immune system is limited, therefore she gets sick very often.  Despite weekly medical appointments and battling chronic illness, Alissa is thriving developmentally. Her speech and language has exploded and she is an extremely adventurous child.  Alissa loves to play at the park, run, jump and climb on everything.  She is also a swim enthusiast like her brother!  Her larger than life personality and strong will have helped her excel in every aspect of her life.  Aside from remodeling both of the children’s rooms, SOARD will be removing the carpet and replacing it with laminate flooring so Ta can be mobile throughout his whole home.  We will also be expanding his second story bathroom and adding a roll-in shower so he can be more independent.  Additionally, renovation plans include an electric chairlift leading from the garage to the main living areas and second floor so he can independently travel throughout his home.  The remodel will surely include exciting areas for Alissa to tumble and explore as well! Of course no kid room makeover is complete without our inspirational kids chairs, made in USA and available for purchase online.  This unique partnership between the children of The Atlanta Swim Academy and SOARD is one to be treasured.  What is more heartwarming than children helping children? Whether you are a zealous swimmer, enjoy an occasional dip in the pool, love swimming against the tide or venturing beyond the shoreline, please join us in supporting and cheering on Ta and his team!  For more information on how you can help, please contact us at info@sunshineonaranneyday.com or click the link below to learn how to get involved in the Swim-A-Thon at The Atlanta Swim Academy. Special THANKS to Emily Main with Here on Earth Photography for giving this family a very special family photo shoot!  We know these families do not take much time out for themselves, so this was our treat!",
-  "quote": "Great news!  This beautiful family is getting a beautiful home remodel!  Tashawn “Ta” and his sister Alissa are flipping with excitement.  Aren’t they precious?  With the help of Sunshine on a Ranney Day and The Atlanta Swim Academy, this sensational project will be making its splash of a debut May ",
+  "quote": "",
   "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/ta-and-alissa/photo-18/public",
   "roomTypes": [
     "Dream Bedroom",
@@ -36,8 +36,11 @@
       "alt": "Ta & Alissa makeover photo"
     }
   ],
-  "age": null,
-  "diagnosis": null,
+  "age": [
+    8,
+    3
+  ],
+  "diagnosis": "Cerebral Palsy, Immune Deficiencies",
   "_migration": {
     "cfHeroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/6b7f10a1-2cc7-43e5-206d-8b87fc093800/full",
     "source": "wix-migration",
@@ -49,5 +52,7 @@
   "publishStatus": "published",
   "streamVideoId": null,
   "videoUrl": null,
-  "fundraisingUrl": null
+  "fundraisingUrl": null,
+  "bedroomCount": 2,
+  "bathroomCount": 1
 }

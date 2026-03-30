@@ -2,8 +2,9 @@
   "name": "Angie Browning Photography",
   "slug": "angie-browning-photography",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/angie-browning-photography/public",
-  "level": "friend",
-  "category": "community",
+  "tier": "community",
   "featured": false,
-  "order": 0
+  "website": "https://www.angiebrowningphotography.com/#top",
+  "level": "friend",
+  "category": "community"
 }

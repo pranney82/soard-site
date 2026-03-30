@@ -228,10 +228,15 @@ h4, .h4 {
 
 /* ─── Signature Yellow Highlight ────────── */
 .highlight {
+  font-style: italic;
   background-image: linear-gradient(transparent 55%, var(--c-yellow-soft) 55%);
   background-repeat: no-repeat;
   background-size: 100% 100%;
   padding: 0 0.1em;
+}
+.highlight-dark {
+  font-style: italic;
+  background-image: linear-gradient(transparent 55%, rgba(255, 218, 36, 0.3) 55%);
 }
 
 /* ─── Layout Utilities ──────────────────── */
@@ -394,30 +399,37 @@ h4, .h4 {
   background: currentColor;
   flex-shrink: 0;
 }
+.section-label--yellow { color: var(--c-yellow); }
+.section-label--yellow::before { background: var(--c-yellow); }
+.section-label--light { color: rgba(255, 255, 255, 0.5); }
+.section-label--light::before { background: rgba(255, 255, 255, 0.25); }
 
 /* ─── Global Button Styles ─────────────── */
 .btn {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
   padding: 14px 32px;
   font-family: var(--font-body);
   font-size: 15px;
   font-weight: 600;
-  border-radius: 60px;
+  border-radius: 100px;
   border: none;
   cursor: pointer;
   text-decoration: none;
-  transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+              box-shadow 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+              background 0.25s ease, color 0.25s ease;
   white-space: nowrap;
+  min-height: 48px;
 }
+.btn:hover { transform: translateY(-2px); }
 .btn-primary {
   background: var(--c-yellow);
   color: var(--c-dark);
 }
 .btn-primary:hover {
-  background: var(--c-yellow-hover);
-  transform: translateY(-3px);
   box-shadow: 0 8px 24px var(--c-yellow-glow);
 }
 .btn-dark {
@@ -425,9 +437,176 @@ h4, .h4 {
   color: var(--c-white);
 }
 .btn-dark:hover {
-  background: #3a3b40;
-  transform: translateY(-3px);
-  box-shadow: 0 8px 24px rgba(45, 46, 51, 0.3);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+}
+.btn-lg { font-size: 17px; padding: 18px 44px; }
+.btn-xl { font-size: 18px; padding: 20px 52px; }
+.btn-outline-dark {
+  background: transparent;
+  color: var(--c-dark);
+  border: 2px solid var(--c-dark);
+}
+.btn-outline-dark:hover {
+  background: var(--c-dark);
+  color: var(--c-yellow);
+}
+.btn-ghost-light {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  border: 1.5px solid rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+.btn-ghost-light:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.4);
+}
+
+/* ─── Hero Entrance Animations ─────────── */
+/* Shared across all editorial hero sections.
+   Pattern: label 0.05s → headline (no opacity:0 for LCP) → lead 0.15s → CTAs 0.25s → photo */
+@keyframes heroUp {
+  from { opacity: 0; transform: translateY(28px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes heroSlide {
+  from { transform: translateY(16px); }
+  to { transform: translateY(0); }
+}
+@keyframes heroPhotoIn {
+  from { transform: translateY(12px) scale(0.98); }
+  to { transform: translateY(0) scale(1); }
+}
+@keyframes heroAccentIn {
+  from { opacity: 0; transform: translate(12px, 12px); }
+  to { opacity: 1; transform: translate(0, 0); }
+}
+/* CTA pulse glow — draws attention to primary action */
+@keyframes pulseGlow {
+  0%, 100% { box-shadow: 0 8px 24px rgba(255, 218, 36, 0.3); }
+  50% { box-shadow: 0 8px 40px rgba(255, 218, 36, 0.55); }
+}
+.btn-hero-glow {
+  animation: pulseGlow 3s ease-in-out 3s infinite;
+}
+
+/* ─── Legal Pages (Privacy, Terms) ─────── */
+.legal-page {
+  padding-block: var(--space-4xl);
+  font-size: 16px;
+  line-height: 1.8;
+  color: var(--c-text);
+}
+
+.legal-updated {
+  font-size: 14px;
+  color: var(--c-text-muted);
+  margin-bottom: var(--space-2xl);
+  padding-bottom: var(--space-lg);
+  border-bottom: 1px solid var(--c-border);
+}
+
+.legal-page h2 {
+  font-family: var(--font-display);
+  font-size: clamp(1.15rem, 2vw, 1.35rem);
+  margin-top: var(--space-3xl);
+  margin-bottom: var(--space-md);
+  color: var(--c-dark);
+}
+
+.legal-page h3 {
+  font-family: var(--font-body);
+  font-size: 1rem;
+  font-weight: 600;
+  margin-top: var(--space-xl);
+  margin-bottom: var(--space-sm);
+  color: var(--c-dark);
+}
+
+.legal-page p {
+  margin-bottom: var(--space-md);
+}
+
+.legal-page ul {
+  margin-bottom: var(--space-md);
+  padding-left: var(--space-xl);
+}
+
+.legal-page li {
+  margin-bottom: var(--space-sm);
+}
+
+.legal-page a {
+  color: var(--c-dark);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  transition: color var(--transition-fast);
+}
+
+.legal-page a:hover {
+  color: var(--c-yellow-hover);
+}
+
+/* Editorial section numbers — matches Ways-to-Give pattern */
+.legal-num {
+  display: block;
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--c-border);
+  line-height: 1;
+  margin-bottom: 4px;
+  letter-spacing: -0.02em;
+}
+
+/* Table of contents */
+.legal-toc {
+  margin-bottom: var(--space-3xl);
+  padding: var(--space-lg) var(--space-xl);
+  background: var(--c-warm-gray);
+  border-radius: var(--border-radius);
+}
+.legal-toc ol {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 8px 24px;
+  padding: 0;
+  margin: 0;
+  counter-reset: toc;
+}
+.legal-toc li {
+  counter-increment: toc;
+  margin: 0;
+}
+.legal-toc a {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--c-text-muted);
+  text-decoration: none;
+  transition: color var(--transition-fast);
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.legal-toc a::before {
+  content: counter(toc, decimal-leading-zero);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--c-border);
+  flex-shrink: 0;
+}
+.legal-toc a:hover {
+  color: var(--c-dark);
+}
+
+.legal-contact {
+  font-style: normal;
+  background: var(--c-warm-gray);
+  padding: var(--space-xl);
+  border-radius: var(--border-radius);
+  margin-top: var(--space-md);
+  line-height: 2;
 }
 
 /* ─── Prefers Reduced Motion ───────────── */

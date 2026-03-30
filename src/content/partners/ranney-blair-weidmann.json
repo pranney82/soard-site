@@ -2,9 +2,7 @@
   "name": "Ranney Blair Weidmann",
   "slug": "ranney-blair-weidmann",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/ranney-blair-weidmann/public",
-  "website": "https://www.ranneyblair.com",
-  "level": "champion",
-  "category": "design",
+  "tier": "design",
   "featured": true,
-  "order": 0
+  "website": "https://www.ranneyblair.com"
 }

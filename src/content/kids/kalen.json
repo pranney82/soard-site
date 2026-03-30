@@ -4,7 +4,7 @@
   "year": 2016,
   "status": "completed",
   "bio": "Kalen is an incredibly resilient, vivacious teenager who shoots for the stars regardless of the obstacles he faces.  His love for life, for basketball and for his friends is inspiring and warms the heart of those around him.  This Junior Hawk just turned sixteen and we want to help bring him a basket full of smiles while celebrating his triumphs as well as his birthday.  Kalen was born a handsome and perfect baby boy who was developing typically into a spunky and fun spirited young man at age seven.  On Friday, February 22, 2008, everything changed.  Kalen was in a serious car accident on the way to watch a basketball game with his sister.  Kalen sustained perilous injuries and he instantly became paralyzed. He had suffered a Chance Fracture at T12-L2.  The devastating news was hard to handle and waiting three days for his surgery was torturous.  Not only was he paralyzed from the legs down, but he also developed bed sores that developed into a permanent Keloidal scar.  Kalen was released from the hospital on April 8, 2008.  Upon release, he went to intensive rehabilitation for more than three weeks.  Kalen along with his strength and resiliency was extraordinary.  He recovered and adjusted to his new life extremely well.  After the accident, Kalen’s biggest fear was how he would be perceived of or treated at school.  To his surprise, there was an outpouring of concern, acceptance and love for him from his friends. It was incredibly moving and uplifting.  He still has the support of those same friends eight years later. They help him move throughout the school in his wheelchair, help him get his lunch, hold an umbrella over him when it rains and advocate for him when others do not accept him unconditionally.  Their acceptance, support and steadfast loyalty as friends has helped him bounce back.  He has learned to be adventurous and try new things such as sleep away camp and that having a disability does not define him.  Although he does not have the use of his legs, he can achieve all his goals.  He is very independent, but his paralysis creates challenges in independence, especially since his home is not modified to meet his needs. Sunshine on a Ranney Day provided a dream wheelchair accessible bathroom and bedroom so he can meet all of his needs and be more independent in the home environment.  His makeover was sure a slam dunk! ",
-  "quote": "Kalen is an incredibly resilient, vivacious teenager who shoots for the stars regardless of the obstacles he faces.  His love for life, for basketball and for his friends is inspiring and warms the heart of those around him.  This Junior Hawk just turned sixteen and we want to help bring him a baske",
+  "quote": "",
   "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/kalen/photo-19/public",
   "roomTypes": [
     "Dream Bedroom",
@@ -40,8 +40,8 @@
       "alt": "Kalen makeover photo"
     }
   ],
-  "age": null,
-  "diagnosis": null,
+  "age": 16,
+  "diagnosis": "Paralysis ",
   "_migration": {
     "cfHeroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/bfce39e9-d0ab-4ba4-160b-dfe733fa9600/full",
     "source": "wix-migration",
@@ -52,5 +52,7 @@
   "publishStatus": "published",
   "streamVideoId": null,
   "videoUrl": null,
-  "fundraisingUrl": null
+  "fundraisingUrl": null,
+  "bedroomCount": 1,
+  "therapyRoomCount": 1
 }

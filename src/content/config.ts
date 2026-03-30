@@ -90,7 +90,10 @@ const partners = defineCollection({
     logo: z.string(),
     website: z.string().optional(),
     level: z.enum(['signature', 'champion', 'builder', 'friend']).default('friend'),
-    category: z.enum(['build', 'design', 'funding', 'community']).default('build'),
+    category: z.preprocess(
+      (v) => Array.isArray(v) ? v : [v ?? 'build'],
+      z.array(z.enum(['build', 'design', 'funding', 'community'])),
+    ).default(['build']),
     featured: z.boolean().default(false),
     order: z.number().default(0),
     tagline: z.string().optional(),
@@ -182,6 +185,11 @@ const press = defineCollection({
   }),
 });
 
+const site = defineCollection({
+  type: 'data',
+  schema: z.record(z.any()),
+});
+
 const community = defineCollection({
   type: 'data',
   schema: z.object({
@@ -199,4 +207,4 @@ const community = defineCollection({
   }),
 });
 
-export const collections = { kids, partners, team, articles, press, events, community };
+export const collections = { kids, partners, team, articles, press, events, community, site };

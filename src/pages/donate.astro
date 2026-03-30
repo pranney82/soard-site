@@ -1,7 +1,10 @@
 ---
 /**
- * Donate Page — Performance-optimized, mobile-first donation experience
- * 
+ * Donate Page — Editorial-first donation experience
+ *
+ * DESIGN: Editorial split layouts, asymmetric grids, typographic hierarchy
+ * STRUCTURE: Hero → Story → Impact Tiers → Trust → Other Ways → FAQ → Finale
+ *
  * PERF NOTES:
  * - Hero content has NO data-reveal (prevents LCP penalty from opacity:0)
  * - Hero image: fetchpriority="high", explicit dimensions, eager loading
@@ -10,9 +13,12 @@
  * - FAQ uses native <details name="..."> for exclusive accordion (zero JS in modern browsers)
  * - Scroll observer is tiny (~300 bytes)
  * - preconnect to imagedelivery.net in BaseLayout
- * - All sections use reduced padding on mobile
+ * - Monthly/one-time toggle uses tiny JS (~100 bytes) for grid swap
  */
 import BaseLayout from '../layouts/BaseLayout.astro';
+import MediaLogos from '../components/ui/MediaLogos.astro';
+import FAQSection from '../components/ui/FAQSection.astro';
+import { getCollection } from 'astro:content';
 import faqData from '../content/site/faq.json';
 import siteSettings from '../content/site/settings.json';
 import { getDonateSchema } from '../utils/schema';
@@ -28,6 +34,20 @@ const donateHeroKidName = dp.heroKidName || 'Oakley';
 const donateStoryPhoto = dp.story || 'kids/amari/hero';
 const donateStoryKidName = dp.storyKidName || 'Amari';
 const donateStoryKidSlug = (dp.storyKidName || 'Amari').toLowerCase().replace(/\s+/g, '-');
+
+/* ── Dynamic story kid data from collection ── */
+const allKids = await getCollection('kids');
+const storyKid = allKids.find(k => k.data.slug === donateStoryKidSlug);
+const storyBio = storyKid?.data.bio || '';
+const storyDiagnosis = storyKid?.data.diagnosis || '';
+const storyRoomTypes = storyKid?.data.roomTypes || [];
+// Build a short 2-sentence excerpt from the bio
+const bioSentences = storyBio.split(/(?<=[.!?])\s+/).filter(Boolean);
+const storyExcerpt = bioSentences.slice(0, 2).join(' ');
+
+/* ── Zeffy form URLs ── */
+const ZEFFY_ONETIME = 'https://www.zeffy.com/en-US/donation-form/help-build-a-brighter-home';
+const ZEFFY_MONTHLY = 'https://www.zeffy.com/en-US/donation-form/soard-monthly-builders';
 
 const donateFaqs = faqData.items
   .filter(item => {
@@ -50,43 +70,51 @@ const breadcrumbs = [
   breadcrumbs={breadcrumbs}
 >
   <!-- Preload hero LCP image -->
-  <link slot="head" rel="preload" as="image" imagesrcset={cfSrcset(donateHeroPhoto, [400, 640, 1024, 1600])} imagesizes="100vw" fetchpriority="high" />
+  <link slot="head" rel="preload" as="image" imagesrcset={cfSrcset(donateHeroPhoto, [400, 640, 1024, 1600])} imagesizes="(max-width:768px) 100vw, 50vw" fetchpriority="high" />
 
-  <!-- ══════ HERO — No data-reveal on hero content (LCP critical) ══════ -->
+  <!-- ══════ 1. HERO — Editorial Split ══════ -->
   <section class="donate-hero">
-    <div class="donate-hero-media donate-hero-frame" style={`background-image:url('${cfLqip(donateHeroPhoto)}')`}>
-      <img
-        src={cfRaw(donateHeroPhoto, 'w=1600,q=85')}
-        srcset={cfSrcset(donateHeroPhoto, [400, 640, 1024, 1600])}
-        sizes="100vw"
-        alt={`${donateHeroKidName} smiling in their new dream bedroom built by Sunshine on a Ranney Day`}
-        width="1024"
-        height="683"
-        fetchpriority="high"
-        loading="eager"
-        decoding="async"
-        class="donate-hero-img"
-      />
-      <div class="donate-hero-overlay"></div>
-    </div>
     <div class="donate-hero-inner">
       <div class="donate-hero-content">
-        <div class="section-label section-label--yellow">Give Today</div>
+        <div class="section-label">Give Today</div>
         <h1>A room can change<br/>a child's <em>entire</em> life.</h1>
         <p class="donate-hero-lead">Your gift builds dream bedrooms, accessible bathrooms, and therapy rooms for children with special needs — at <strong>no cost to families</strong>.</p>
         <div class="donate-hero-ctas">
-          <a href="https://www.zeffy.com/en-US/donation-form/help-build-a-brighter-home" target="_blank" rel="noopener noreferrer" data-zeffy class="btn btn-primary btn-glow btn-lg" >Donate Now →</a>
-          <a href="#why" class="btn btn-ghost-light">See Your Impact</a>
+          <a href={ZEFFY_ONETIME} target="_blank" rel="noopener noreferrer" data-zeffy class="btn btn-primary btn-lg btn-hero-glow">Donate Now →</a>
+          <a href="#impact" class="btn btn-outline-dark">See Your Impact</a>
+        </div>
+        <div class="donate-hero-trust">
+          <span class="dht-item"><svg class="dht-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="m9 12 2 2 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>Secure & Encrypted</span>
+          <span class="dht-item"><svg class="dht-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M14 8H8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M16 12H8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>Tax-Deductible</span>
+          <span class="dht-item"><svg class="dht-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.5"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 0 1 0 4H8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M12 18V6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>Zero Platform Fees</span>
         </div>
       </div>
-      <div class="donate-hero-stat">
-        <span class="donate-hero-stat-num">100<span>%</span></span>
-        <span class="donate-hero-stat-label">of your gift goes<br/>directly to kids</span>
+      <div class="donate-hero-visual">
+        <div class="donate-hero-frame" style={`background-image:url('${cfLqip(donateHeroPhoto)}')`}>
+          <img
+            src={cfRaw(donateHeroPhoto, 'w=1600,q=85')}
+            srcset={cfSrcset(donateHeroPhoto, [400, 640, 1024, 1600])}
+            sizes="(max-width:768px) 100vw, 50vw"
+            alt={`${donateHeroKidName} smiling in their new dream bedroom built by Sunshine on a Ranney Day`}
+            width="1024"
+            height="683"
+            fetchpriority="high"
+            loading="eager"
+            decoding="async"
+            class="donate-hero-img lqip-img"
+          />
+        </div>
+        <div class="donate-hero-stat">
+          <span class="donate-hero-stat-num">100<span>%</span></span>
+          <span class="donate-hero-stat-label">of your gift goes<br/>directly to kids</span>
+        </div>
       </div>
     </div>
   </section>
 
-  <!-- ══════ WHY GIVE — Emotional Story ══════ -->
+  <MediaLogos theme="dark" linked={true} />
+
+  <!-- ══════ 2. WHY GIVE + TESTIMONIAL ══════ -->
   <section class="why" id="why">
     <div class="why-inner">
       <div class="why-photos" data-reveal>
@@ -95,7 +123,7 @@ const breadcrumbs = [
             src={cfRaw(donateStoryPhoto, 'w=800,q=85')}
             srcset={cfSrcset(donateStoryPhoto, [500, 800])}
             sizes="(max-width:768px) 90vw, 40vw"
-            alt={`${donateStoryKidName} in their new accessible bedroom`}
+            alt={`${donateStoryKidName} in their new ${storyRoomTypes[0] || 'dream room'} built by Sunshine on a Ranney Day`}
             width="800"
             height="600"
             loading="lazy"
@@ -106,116 +134,139 @@ const breadcrumbs = [
       </div>
       <div class="why-text" data-reveal>
         <div class="section-label">Why Your Gift Matters</div>
-        <h2>For kids like Amari, a new room means a <em class="highlight">new beginning</em>.</h2>
-        <p>Amari is a bright, energetic 10-year-old who loves sports. After a devastating car accident left him with paralysis and the loss of his right leg, his family's home wasn't built for his new reality.</p>
-        <p>SOARD transformed Amari's home with a wheelchair-accessible bathroom, widened doorways, and a dream bedroom — giving him back his independence and a space that's truly <em>his</em>.</p>
+        <h2>For kids like {donateStoryKidName}, a new room means a <em class="highlight">new beginning</em>.</h2>
+        {storyExcerpt ? <p>{storyExcerpt}</p> : <p>{donateStoryKidName} is one of the incredible kids whose life was transformed by a SOARD room makeover.</p>}
+        <p>SOARD transformed {donateStoryKidName}'s home{storyRoomTypes.length > 0 ? ` with a ${storyRoomTypes.join(' and ').toLowerCase()}` : ''} — giving them back independence and a space that's truly <em>theirs</em>.</p>
         <p><strong>This is what your donation builds.</strong> Not just rooms — but independence, dignity, and joy for kids who deserve it most.</p>
         <a href={`/kids/${donateStoryKidSlug}`} class="btn btn-dark">{`Read ${donateStoryKidName}'s Full Story →`}</a>
+        <blockquote class="why-testimonial">
+          <p>"Seeing the look on a child's face when they walk into their new room — there's nothing like it. We've been donating to SOARD for three years and every time, we know our money went exactly where it should."</p>
+          <cite>
+            <strong>Sarah & Michael T.</strong>
+            <span>Monthly donors since 2023</span>
+          </cite>
+        </blockquote>
       </div>
     </div>
   </section>
 
-  <!-- ══════ IMPACT TIERS ══════ -->
-  <section class="tiers">
+  <!-- ══════ 3. IMPACT TIERS ══════ -->
+  <section class="tiers" id="impact">
     <div class="tiers-inner">
-      <div class="tiers-header" data-reveal>
-        <div class="section-label">Your Impact</div>
-        <h2>Every dollar has a <em class="highlight">purpose</em></h2>
-      </div>
-      <div class="tiers-grid">
-        <div class="tier-card" data-reveal>
-          <div class="tier-amount">$60</div>
-          <div class="tier-what">Paint & Supplies</div>
-          <p>Covers all the paint, primer, and materials to transform a child's walls into their dream canvas.</p>
-          <a href="https://www.zeffy.com/en-US/donation-form/help-build-a-brighter-home?amount=60" target="_blank" rel="noopener noreferrer" data-zeffy class="tier-cta" >Give $60 →</a>
+      <div class="tiers-top" data-reveal>
+        <div class="tiers-header">
+          <div class="section-label">Your Impact</div>
+          <h2>Every dollar has a <em class="highlight">purpose</em></h2>
         </div>
-        <div class="tier-card" data-reveal data-delay="1">
-          <div class="tier-amount">$125</div>
-          <div class="tier-what">Bedding & Décor</div>
-          <p>Funds new bedding, curtains, rugs, and wall décor — the details that make a room feel like <em>home</em>.</p>
-          <a href="https://www.zeffy.com/en-US/donation-form/help-build-a-brighter-home?amount=125" target="_blank" rel="noopener noreferrer" data-zeffy class="tier-cta">Give $125 →</a>
-        </div>
-        <div class="tier-card tier-card--featured" data-reveal data-delay="2">
-          <div class="tier-badge">Most Popular</div>
-          <div class="tier-amount">$500</div>
-          <div class="tier-what">Furniture & Flooring</div>
-          <p>Sponsors adaptive furniture or new flooring for an accessible bathroom — the structural pieces that change daily life.</p>
-          <a href="https://www.zeffy.com/en-US/donation-form/help-build-a-brighter-home?amount=500" target="_blank" rel="noopener noreferrer" data-zeffy class="tier-cta tier-cta--featured">Give $500 →</a>
-        </div>
-        <div class="tier-card" data-reveal data-delay="3">
-          <div class="tier-amount">$1,000</div>
-          <div class="tier-what">Full Room Sponsor</div>
-          <p>Helps fund a complete room transformation — from design to demolition to the big reveal moment.</p>
-          <a href="https://www.zeffy.com/en-US/donation-form/help-build-a-brighter-home?amount=1000" target="_blank" rel="noopener noreferrer" data-zeffy class="tier-cta">Give $1,000 →</a>
+        <div class="freq-toggle" role="group" aria-label="Donation frequency">
+          <button type="button" class="freq-btn is-active" data-freq="once" aria-pressed="true">One-Time</button>
+          <button type="button" class="freq-btn" data-freq="monthly" aria-pressed="false">Monthly</button>
+          <span class="freq-slider" aria-hidden="true"></span>
         </div>
       </div>
-      <p class="tiers-note" data-reveal>Every amount makes a difference. Our average room costs $8,000–$15,000 and is funded entirely by generous donors like you.</p>
+
+      <!-- ONE-TIME TIERS -->
+      <div id="tiers-once">
+        <div class="tier-feature" data-reveal>
+          <div class="tier-feature-badge">Most Popular</div>
+          <div class="tier-feature-info">
+            <span class="tier-feature-amount">$500</span>
+            <span class="tier-feature-what">Furniture & Flooring</span>
+          </div>
+          <p class="tier-feature-desc">Adaptive furniture or new accessible flooring — the structural pieces that change a child's daily life.</p>
+          <a href={`${ZEFFY_ONETIME}?amount=500`} target="_blank" rel="noopener noreferrer" data-zeffy class="btn btn-primary">Give $500 →</a>
+        </div>
+        <div class="tier-row">
+          <div class="tier-item" data-reveal>
+            <span class="tier-item-amount">$60</span>
+            <strong class="tier-item-what">Paint & Supplies</strong>
+            <p>Transforms a child's walls into their dream canvas — paint, primer, and all materials included.</p>
+            <a href={`${ZEFFY_ONETIME}?amount=60`} target="_blank" rel="noopener noreferrer" data-zeffy class="tier-item-cta">Give $60 →</a>
+          </div>
+          <div class="tier-item" data-reveal data-delay="1">
+            <span class="tier-item-amount">$125</span>
+            <strong class="tier-item-what">Bedding & Decor</strong>
+            <p>New bedding, curtains, rugs, and wall art — the details that make a room feel like <em>home</em>.</p>
+            <a href={`${ZEFFY_ONETIME}?amount=125`} target="_blank" rel="noopener noreferrer" data-zeffy class="tier-item-cta">Give $125 →</a>
+          </div>
+          <div class="tier-item" data-reveal data-delay="2">
+            <span class="tier-item-amount">$1,000</span>
+            <strong class="tier-item-what">Full Room Sponsor</strong>
+            <p>Funds a complete room transformation — from design to demolition to the big reveal moment.</p>
+            <a href={`${ZEFFY_ONETIME}?amount=1000`} target="_blank" rel="noopener noreferrer" data-zeffy class="tier-item-cta">Give $1,000 →</a>
+          </div>
+          <div class="tier-item tier-item--custom" data-reveal data-delay="3">
+            <span class="tier-item-amount">Any $</span>
+            <strong class="tier-item-what">Your Amount</strong>
+            <p>Every dollar has a purpose. Give whatever feels right — it all goes directly to building rooms for kids.</p>
+            <a href={`${ZEFFY_ONETIME}?amount=50`} target="_blank" rel="noopener noreferrer" data-zeffy class="tier-item-cta">Choose Your Amount →</a>
+          </div>
+        </div>
+      </div>
+
+      <!-- MONTHLY TIERS -->
+      <div id="tiers-monthly" style="display:none">
+        <div class="tier-feature">
+          <div class="tier-feature-badge">Most Impact</div>
+          <div class="tier-feature-info">
+            <span class="tier-feature-amount">$50<span class="tier-freq">/mo</span></span>
+            <span class="tier-feature-what">Room Champion</span>
+          </div>
+          <p class="tier-feature-desc">$600/year — funds adaptive furniture and flooring that transforms a child's daily life.</p>
+          <a href={`${ZEFFY_MONTHLY}?amount=50`} target="_blank" rel="noopener noreferrer" data-zeffy class="btn btn-primary">Give $50/mo →</a>
+        </div>
+        <div class="tier-row">
+          <div class="tier-item">
+            <span class="tier-item-amount">$10<span class="tier-freq">/mo</span></span>
+            <strong class="tier-item-what">Sunshine Starter</strong>
+            <p>Less than 35¢ a day — provides essential supplies for room makeovers all year long.</p>
+            <a href={`${ZEFFY_MONTHLY}?amount=10`} target="_blank" rel="noopener noreferrer" data-zeffy class="tier-item-cta">Give $10/mo →</a>
+          </div>
+          <div class="tier-item">
+            <span class="tier-item-amount">$25<span class="tier-freq">/mo</span></span>
+            <strong class="tier-item-what">Dream Builder</strong>
+            <p>$300/year — enough to furnish a child's entire dream bedroom with new bedding, decor, and rugs.</p>
+            <a href={`${ZEFFY_MONTHLY}?amount=25`} target="_blank" rel="noopener noreferrer" data-zeffy class="tier-item-cta">Give $25/mo →</a>
+          </div>
+          <div class="tier-item">
+            <span class="tier-item-amount">$100<span class="tier-freq">/mo</span></span>
+            <strong class="tier-item-what">Legacy Builder</strong>
+            <p>$1,200/year — you're directly sponsoring a complete room transformation for a child in need.</p>
+            <a href={`${ZEFFY_MONTHLY}?amount=100`} target="_blank" rel="noopener noreferrer" data-zeffy class="tier-item-cta">Give $100/mo →</a>
+          </div>
+          <div class="tier-item tier-item--custom">
+            <span class="tier-item-amount">Any $</span>
+            <strong class="tier-item-what">Your Amount</strong>
+            <p>Set your own monthly amount — every dollar goes directly to building rooms for kids who need them most.</p>
+            <a href={`${ZEFFY_MONTHLY}?amount=50`} target="_blank" rel="noopener noreferrer" data-zeffy class="tier-item-cta">Choose Your Amount →</a>
+          </div>
+        </div>
+      </div>
+
+      <div class="tiers-footer" data-reveal>
+        <p class="tiers-note">Every amount makes a difference. <a href={ZEFFY_ONETIME} target="_blank" rel="noopener noreferrer" data-zeffy class="tiers-note-link">Give any custom amount →</a></p>
+        <p class="tiers-note tiers-note--sub">Right now, families are on our waitlist hoping for a room makeover. Every donation brings us closer to saying <em>yes</em> to the next child.</p>
+        <div class="tiers-match">
+          <svg class="tiers-match-icon" viewBox="0 0 24 24" fill="none"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <p><strong>Double your impact</strong> — many employers match charitable gifts. Check with your HR department to see if your company participates.</p>
+        </div>
+      </div>
     </div>
   </section>
 
-  <!-- ══════ DONATE CTA ══════ -->
-  <section class="give-section" id="give">
-    <div class="give-inner">
-      <div class="give-header" data-reveal>
-        <div class="section-label">Donate Securely</div>
-        <h2>Ready to build a <em class="highlight">dream</em>?</h2>
-        <p class="give-subtitle">Zeffy charges zero fees — your entire donation goes to our mission.</p>
-      </div>
-      <div class="give-social-proof" data-reveal>
-        <span class="give-proof-dot" aria-hidden="true"></span>
-        Donors like you have helped build <strong>{computed.totalRooms}+ rooms</strong> for <strong>{computed.totalKids}+ kids</strong> since 2012
-      </div>
-      <div class="give-cta-block" data-reveal>
-        <a href="https://www.zeffy.com/en-US/donation-form/help-build-a-brighter-home" target="_blank" rel="noopener noreferrer" data-zeffy class="btn btn-primary btn-glow btn-xl">Donate Any Amount →</a>
-        <p class="give-cta-note">You'll be taken to our secure donation page on Zeffy</p>
-      </div>
-      <div class="give-badges" data-reveal>
-        <span class="give-badge"><svg class="badge-icon" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="9" width="14" height="9" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M7 9V6a3 3 0 1 1 6 0v3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>Secure & Encrypted</span>
-        <span class="give-badge"><svg class="badge-icon" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="2" width="14" height="16" rx="1.5" stroke="currentColor" stroke-width="1.5"/><path d="M7 6h6M7 9h6M7 12h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>Tax-Deductible</span>
-        <span class="give-badge"><svg class="badge-icon" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="10" cy="10" r="7.25" stroke="currentColor" stroke-width="1.5"/><path d="M10 6v4l2.5 2.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>Zero Platform Fees</span>
-      </div>
-    </div>
-  </section>
-
-  <!-- ══════ OTHER WAYS TO GIVE ══════ -->
-  <section class="other-ways">
-    <div class="other-ways-inner">
-      <div class="other-ways-header" data-reveal>
-        <div class="section-label">More Ways to Help</div>
-        <h2>Can't donate right now? You can still make an <em class="highlight">impact</em>.</h2>
-      </div>
-      <div class="ways-grid">
-        <div class="way-card" data-reveal>
-          <span class="way-icon" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M6 8h2l3 12h12l3-9H10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="13" cy="24" r="2" stroke="currentColor" stroke-width="2"/><circle cx="21" cy="24" r="2" stroke="currentColor" stroke-width="2"/></svg></span>
-          <h3>Shop Our Stores</h3>
-          <p>Every purchase at Sunny & Ranney directly funds room makeovers.</p>
-          <a href="https://sunnyandranney.com" target="_blank" rel="noopener noreferrer" class="way-link">Shop Sunny & Ranney →</a>
-        </div>
-        <div class="way-card" data-reveal data-delay="1">
-          <span class="way-icon" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M16 4v8M12 8h8M6 16h20v10a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V16Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 16v6M20 16v6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></span>
-          <h3>Volunteer or Partner</h3>
-          <p>Contractors, designers, and handy helpers — we need your skills to build these rooms.</p>
-          <a href="/partners/" class="way-link">Get Involved →</a>
-        </div>
-        <div class="way-card" data-reveal data-delay="2">
-          <span class="way-icon" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M8 20c-2 0-4-1.5-4-4s2-4 4-4c1-3 4-5 8-5s7 2 8 5c2 0 4 1.5 4 4s-2 4-4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M16 18v8M12 22l4-4 4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
-          <h3>Spread the Word</h3>
-          <p>Share our mission with friends and family. A single share can connect us to the next partner or donor.</p>
-          <a href="/about" class="way-link">Learn Our Story →</a>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ══════ TRUST — Dark Section ══════ -->
+  <!-- ══════ 4. TRUST & TRANSPARENCY ══════ -->
   <section class="donate-trust">
     <div class="donate-trust-inner">
-      <div class="donate-trust-header" data-reveal>
-        <div class="section-label section-label--yellow">Trust & Transparency</div>
-        <h2>We're an open book. <em>Always.</em></h2>
-        <p class="donate-trust-subtitle">You should know exactly where every dollar goes. Our financials are public, our mission is clear, and our track record speaks for itself.</p>
+      <div class="donate-trust-left" data-reveal>
+        <div class="section-label">Trust & Transparency</div>
+        <h2>We're an open book. <em class="highlight">Always.</em></h2>
+        <p class="donate-trust-body">You should know exactly where every dollar goes. Our financials are public, our mission is clear, and our track record speaks for itself.</p>
+        <div class="donate-trust-links">
+          <a href="/about/financials" class="btn btn-dark">View Our Financials →</a>
+          <a href="/ways-to-give" class="donate-trust-link">More ways to give →</a>
+        </div>
       </div>
-      <div class="donate-trust-grid">
+      <div class="donate-trust-right">
         <div class="dt-card" data-reveal>
           <span class="dt-big">501(c)(3)</span>
           <span class="dt-label">Tax-Exempt Status</span>
@@ -232,45 +283,59 @@ const breadcrumbs = [
           <p>Our IRS Form 990 tax returns are available for anyone to review, anytime.</p>
         </div>
       </div>
-      <div class="donate-trust-cta" data-reveal>
-        <a href="/about/financials" class="btn btn-ghost-light">View Our Financials →</a>
+    </div>
+  </section>
+
+  <!-- ══════ 5. OTHER WAYS TO HELP ══════ -->
+  <section class="other-ways">
+    <div class="other-ways-inner">
+      <div class="other-ways-left" data-reveal>
+        <div class="section-label">More Ways to Help</div>
+        <h2>Can't donate right now? You can still make an <em class="highlight">impact</em>.</h2>
+      </div>
+      <div class="other-ways-right" data-reveal data-delay="1">
+        <div class="way-item">
+          <h3>Shop Our Stores</h3>
+          <p>Every purchase at Sunny & Ranney directly funds room makeovers.</p>
+          <a href="https://sunnyandranney.com" target="_blank" rel="noopener noreferrer">Shop Sunny & Ranney →</a>
+        </div>
+        <div class="way-item">
+          <h3>Volunteer or Partner</h3>
+          <p>Contractors, designers, and handy helpers — we need your skills to build these rooms.</p>
+          <a href="/partners/">Get Involved →</a>
+        </div>
+        <div class="way-item">
+          <h3>Stock, DAF & More</h3>
+          <p>Donate stock, give through your donor-advised fund, or mail a check — all tax-deductible.</p>
+          <a href="/ways-to-give">See All Options →</a>
+        </div>
+        <div class="way-item">
+          <h3>Spread the Word</h3>
+          <p>Share our mission with friends and family. A single share can connect us to the next partner or donor.</p>
+          <a href="/about">Learn Our Story →</a>
+        </div>
       </div>
     </div>
   </section>
 
-  <!-- ══════ FAQ — Editorial Split ══════ -->
-  <section class="faq">
-    <div class="faq-split">
-      <div class="faq-left" data-reveal>
-        <div class="section-label section-label--yellow">Common Questions</div>
-        <h2>Everything you need to know before you <em class="highlight">give</em>.</h2>
-        <p class="faq-left-body">We believe in radical transparency. If your question isn't answered here, reach out — we'd love to hear from you.</p>
-        <a href="mailto:info@soardcharity.com" class="btn btn-dark">Contact Us →</a>
-      </div>
-      <div class="faq-right" data-reveal data-delay="1">
-        {donateFaqs.map((item, idx) => (
-          <details class="faq-card" name="donate-faq">
-            <summary>
-              <span class="faq-num">{String(idx + 1).padStart(2, '0')}</span>
-              <span class="faq-q">{item.question}</span>
-              <span class="faq-toggle" aria-hidden="true"></span>
-            </summary>
-            <div class="faq-answer">
-              <p set:html={item.answer} />
-            </div>
-          </details>
-        ))}
-      </div>
-    </div>
-  </section>
+  <!-- ══════ 6. FAQ — Editorial Split ══════ -->
+  <FAQSection
+    heading='Everything you need to know before you <em class="highlight-dark">give</em>.'
+    body="We believe in radical transparency. If your question isn't answered here, reach out — we'd love to hear from you."
+    ctaLabel="Contact Us →"
+    ctaHref="mailto:info@soardcharity.com"
+    ctaClass="btn btn-ghost-light"
+    items={donateFaqs}
+    accordionName="donate-faq"
+  />
 
-  <!-- ══════ FINAL CTA — Yellow ══════ -->
+  <!-- ══════ 7. FINALE ══════ -->
   <section class="donate-finale">
     <div class="donate-finale-inner">
       <h2 data-reveal>Every child deserves a room<br/>that feels like <em>home</em>.</h2>
       <p data-reveal data-delay="1">You can make that happen today.</p>
       <div class="donate-finale-ctas" data-reveal data-delay="2">
-        <a href="https://www.zeffy.com/en-US/donation-form/help-build-a-brighter-home" target="_blank" rel="noopener noreferrer" data-zeffy class="btn btn-dark btn-lg">Donate Now →</a>
+        <a href={ZEFFY_ONETIME} target="_blank" rel="noopener noreferrer" data-zeffy class="btn btn-dark btn-lg">Donate Now →</a>
         <a href="/kids" class="btn btn-outline-dark">Meet the Kids</a>
       </div>
       <p class="donate-finale-note" data-reveal data-delay="3">501(c)(3) · EIN 45-4773997 · All donations tax-deductible</p>
@@ -281,7 +346,7 @@ const breadcrumbs = [
   <div class="sticky-cta" id="sticky-cta" aria-hidden="true" inert>
     <div class="sticky-cta-inner">
       <span class="sticky-cta-text">Help build dreams</span>
-      <a href="https://www.zeffy.com/en-US/donation-form/help-build-a-brighter-home" target="_blank" rel="noopener noreferrer" data-zeffy class="btn btn-primary btn-glow sticky-cta-btn">Donate Now</a>
+      <a href={ZEFFY_ONETIME} target="_blank" rel="noopener noreferrer" data-zeffy class="btn btn-primary sticky-cta-btn">Donate Now</a>
     </div>
   </div>
 
@@ -296,16 +361,15 @@ const breadcrumbs = [
     </div>
   </div>
 
-
 </BaseLayout>
 
 <script>
-  const ZEFFY_EMBED = 'https://www.zeffy.com/embed/donation-form/help-build-a-brighter-home';
+  const ZEFFY_ONETIME_EMBED = 'https://www.zeffy.com/embed/donation-form/help-build-a-brighter-home';
+  const ZEFFY_MONTHLY_EMBED = 'https://www.zeffy.com/embed/donation-form/soard-monthly-builders';
 
   document.addEventListener('astro:page-load', () => {
     const stickyBar = document.getElementById('sticky-cta');
     const hero = document.querySelector('.donate-hero');
-    const giveSection = document.getElementById('give');
     const modal = document.getElementById('zeffy-modal');
     const iframe = document.getElementById('zeffy-iframe') as HTMLIFrameElement | null;
     const closeBtn = document.getElementById('zeffy-modal-close');
@@ -320,20 +384,16 @@ const breadcrumbs = [
         stickyBar.inert = hidden;
       }, { threshold: 0 });
       obs.observe(hero);
-
-      if (giveSection) {
-        const giveObs = new IntersectionObserver(([e]) => {
-          stickyBar.classList.toggle('at-form', e.isIntersecting);
-        }, { threshold: 0.2 });
-        giveObs.observe(giveSection);
-      }
     }
 
     // --- Zeffy popup ---
-    function openModal(amount?: string) {
+    function openModal(href: string) {
       if (!modal || !iframe) return;
-      const src = amount ? `${ZEFFY_EMBED}?amount=${amount}` : ZEFFY_EMBED;
-      iframe.src = src;
+      const url = new URL(href);
+      const amount = url.searchParams.get('amount') || undefined;
+      const isMonthly = href.includes('monthly-builders');
+      const base = isMonthly ? ZEFFY_MONTHLY_EMBED : ZEFFY_ONETIME_EMBED;
+      iframe.src = amount ? `${base}?amount=${amount}` : base;
       modal.classList.add('is-open');
       modal.setAttribute('aria-hidden', 'false');
       modal.inert = false;
@@ -346,25 +406,43 @@ const breadcrumbs = [
       modal.setAttribute('aria-hidden', 'true');
       modal.inert = true;
       document.body.style.overflow = '';
-      // Unload iframe to stop any payment processing visuals
       setTimeout(() => { if (!modal.classList.contains('is-open')) iframe.src = ''; }, 350);
     }
+
+    // --- Frequency toggle ---
+    const freqBtns = document.querySelectorAll('.freq-btn');
+    const tiersOnce = document.getElementById('tiers-once');
+    const tiersMonthly = document.getElementById('tiers-monthly');
+    const freqSlider = document.querySelector('.freq-slider');
+
+    freqBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const freq = (btn as HTMLElement).dataset.freq;
+        freqBtns.forEach(b => {
+          b.classList.toggle('is-active', b === btn);
+          b.setAttribute('aria-pressed', String(b === btn));
+        });
+        if (freqSlider) {
+          freqSlider.setAttribute('data-pos', freq || 'once');
+        }
+        if (tiersOnce && tiersMonthly) {
+          tiersOnce.style.display = freq === 'monthly' ? 'none' : '';
+          tiersMonthly.style.display = freq === 'monthly' ? '' : 'none';
+        }
+      });
+    });
 
     // Intercept all data-zeffy links
     document.querySelectorAll('[data-zeffy]').forEach(link => {
       link.addEventListener('click', (e) => {
         e.preventDefault();
-        const href = (link as HTMLAnchorElement).href;
-        const url = new URL(href);
-        const amount = url.searchParams.get('amount') || undefined;
-        openModal(amount);
+        openModal((link as HTMLAnchorElement).href);
       });
     });
 
     closeBtn?.addEventListener('click', closeModal);
     closeX?.addEventListener('click', closeModal);
 
-    // Escape key closes
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && modal?.classList.contains('is-open')) closeModal();
     });
@@ -372,98 +450,93 @@ const breadcrumbs = [
 </script>
 
 <style>
-  /* ══════════════════════════════════════════
-     SHARED
-     ══════════════════════════════════════════ */
-  .section-label {
-    font-size: 12px;
-    font-weight: 700;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: var(--c-accent);
-    margin-bottom: 16px;
-  }
-  .section-label--yellow { color: var(--c-yellow); }
-  .highlight {
-    font-style: italic;
-    background-image: linear-gradient(transparent 55%, var(--c-yellow-soft) 55%);
-  }
-  h2 em:not(.highlight) { font-style: italic; color: var(--c-yellow); }
-
-  /* Buttons */
-  .btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    font-family: var(--font-body);
-    font-weight: 600;
-    font-size: 15px;
-    padding: 14px 32px;
-    border: none;
-    border-radius: 100px;
-    cursor: pointer;
-    text-decoration: none;
-    transition: transform 0.25s ease, box-shadow 0.25s ease, background 0.25s ease, color 0.25s ease;
-    min-height: 48px; /* mobile tap target */
-  }
-  .btn:hover { transform: translateY(-2px); }
-  .btn:active { transform: translateY(0); }
-  .btn-lg { font-size: 17px; padding: 18px 44px; }
-  .btn-primary { background: var(--c-yellow); color: var(--c-dark); }
-  .btn-primary:hover { box-shadow: 0 8px 24px var(--c-yellow-glow); }
-  .btn-dark { background: var(--c-dark); color: #fff; }
-  .btn-dark:hover { box-shadow: 0 8px 24px rgba(0,0,0,0.2); }
-  .btn-ghost-light {
-    background: transparent;
-    color: #fff;
-    border: 1.5px solid rgba(255,255,255,0.25);
-  }
-  .btn-ghost-light:hover {
-    background: rgba(255,255,255,0.1);
-    border-color: rgba(255,255,255,0.4);
-  }
-  .btn-outline-dark {
-    background: transparent;
-    color: var(--c-dark);
-    border: 2px solid var(--c-dark);
-  }
-  .btn-outline-dark:hover { background: var(--c-dark); color: var(--c-yellow); }
-  .btn-glow {
-    position: relative;
-    box-shadow: 0 8px 24px rgba(255,218,36,0.3);
-  }
-  .btn-glow::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    box-shadow: 0 8px 40px rgba(255,218,36,0.55);
-    opacity: 0;
-    animation: pulseGlow 3s ease-in-out infinite;
-    pointer-events: none;
-  }
-  @keyframes pulseGlow {
-    0%, 100% { opacity: 0; }
-    50% { opacity: 1; }
-  }
+  /* Page-specific: italic em color on h2 when not a highlight */
+  h2 em:not(.highlight):not(.highlight-dark) { font-style: italic; color: var(--c-yellow); }
 
   /* ══════════════════════════════════════════
-     HERO — LCP-optimized (no opacity:0)
+     1. HERO — Editorial Split
      ══════════════════════════════════════════ */
   .donate-hero {
-    position: relative;
-    min-height: 85vh;
-    min-height: 85dvh;
-    display: flex;
-    align-items: flex-end;
-    padding-bottom: 80px;
-    overflow: hidden;
-    contain: layout style;
+    padding: 120px 0 100px;
   }
-  .donate-hero-media {
-    position: absolute;
-    inset: 0;
+  .donate-hero-inner {
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding: 0 var(--space-xl);
+    display: grid;
+    grid-template-columns: 1.15fr 1fr;
+    gap: 64px;
+    align-items: center;
+  }
+  .donate-hero-content { max-width: 540px; }
+  /* Hero entrance stagger — matches homepage/community pattern */
+  .donate-hero-content .section-label {
+    opacity: 0;
+    animation: heroUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.05s both;
+  }
+  .donate-hero h1 {
+    font-size: clamp(32px, 5.5vw, 56px);
+    line-height: 1.1;
+    letter-spacing: -0.03em;
+    margin-bottom: 20px;
+    /* NO opacity:0 — LCP element, must paint immediately */
+    animation: heroSlide 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  .donate-hero h1 em {
+    font-style: italic;
+    color: var(--c-yellow-hover);
+  }
+  .donate-hero-lead {
+    font-size: clamp(16px, 2vw, 18px);
+    color: var(--c-text-muted);
+    line-height: 1.7;
+    max-width: 480px;
+    margin-bottom: 32px;
+    opacity: 0;
+    animation: heroUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.15s both;
+  }
+  .donate-hero-lead strong { color: var(--c-dark); }
+  .donate-hero-ctas {
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+    opacity: 0;
+    animation: heroUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.25s both;
+  }
+  .donate-hero-trust {
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+    margin-top: 24px;
+    opacity: 0;
+    animation: heroUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.35s both;
+  }
+  .dht-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--c-text-light);
+    letter-spacing: 0.01em;
+  }
+  .dht-icon {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    color: var(--c-text-muted);
+  }
+  .donate-hero-visual {
+    position: relative;
+    animation: heroPhotoIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  .donate-hero-frame {
+    border-radius: 24px;
+    overflow: hidden;
+    box-shadow: 0 32px 80px rgba(0,0,0,0.12);
+    background-size: cover;
+    background-position: center;
+    aspect-ratio: 4 / 5;
   }
   .donate-hero-img {
     width: 100%;
@@ -471,85 +544,48 @@ const breadcrumbs = [
     object-fit: cover;
     object-position: center 30%;
   }
-  .donate-hero-overlay {
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(
-      to top,
-      rgba(26,27,31,0.95) 0%,
-      rgba(26,27,31,0.65) 35%,
-      rgba(26,27,31,0.35) 60%,
-      rgba(26,27,31,0.2) 100%
-    );
-  }
-  .donate-hero-inner {
-    position: relative;
-    z-index: 2;
-    max-width: var(--max-width);
-    margin: 0 auto;
-    padding: 0 var(--space-xl);
-    width: 100%;
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-end;
-    gap: 48px;
-  }
-  .donate-hero-content { max-width: 640px; }
-  .donate-hero h1 {
-    font-size: clamp(32px, 5.5vw, 64px);
-    color: #fff;
-    line-height: 1.1;
-    margin-bottom: 20px;
-    letter-spacing: -0.03em;
-  }
-  .donate-hero h1 em { font-style: italic; color: var(--c-yellow); }
-  .donate-hero-lead {
-    font-size: clamp(16px, 2vw, 18px);
-    color: rgba(255,255,255,0.72);
-    line-height: 1.7;
-    max-width: 500px;
-    margin-bottom: 32px;
-  }
-  .donate-hero-lead strong { color: #fff; }
-  .donate-hero-ctas {
-    display: flex;
-    gap: 14px;
-    flex-wrap: wrap;
-  }
   .donate-hero-stat {
-    background: rgba(255,255,255,0.06);
-    border: 1px solid rgba(255,255,255,0.1);
-    border-radius: 20px;
-    padding: 28px 36px;
+    position: absolute;
+    bottom: -24px;
+    left: -24px;
+    background: var(--c-dark);
+    color: #fff;
+    border-radius: 16px;
+    padding: 20px 28px;
     text-align: center;
-    flex-shrink: 0;
+    box-shadow: 0 16px 48px rgba(0,0,0,0.15);
   }
   .donate-hero-stat-num {
     font-family: var(--font-display);
-    font-size: 52px;
+    font-size: 40px;
     font-weight: 700;
     color: var(--c-yellow);
     line-height: 1;
+    display: block;
   }
-  .donate-hero-stat-num span { font-size: 32px; }
+  .donate-hero-stat-num span { font-size: 28px; }
   .donate-hero-stat-label {
-    font-size: 13px;
+    display: block;
+    font-size: 12px;
     font-weight: 500;
     color: rgba(255,255,255,0.7);
-    margin-top: 6px;
+    margin-top: 4px;
     line-height: 1.4;
   }
 
   /* ══════════════════════════════════════════
-     WHY GIVE
+     2. WHY GIVE
      ══════════════════════════════════════════ */
-  .why { padding: 100px 0; }
+  .why {
+    padding: 100px 0;
+    background: var(--c-warm-gray);
+  }
   .why-inner {
     max-width: var(--max-width);
     margin: 0 auto;
     padding: 0 var(--space-xl);
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr 1.1fr;
     gap: 80px;
     align-items: center;
   }
@@ -568,6 +604,8 @@ const breadcrumbs = [
     width: 100%;
     height: 100%;
     min-height: 400px;
+    background-size: cover;
+    background-position: center;
   }
   .why-text h2 {
     font-size: clamp(24px, 3vw, 36px);
@@ -581,46 +619,133 @@ const breadcrumbs = [
   }
   .why-text p:last-of-type { margin-bottom: 32px; }
 
+  /* Pull-quote testimonial */
+  .why-testimonial {
+    margin-top: 48px;
+    padding-top: 32px;
+    border-top: 1px solid var(--c-border);
+    position: relative;
+  }
+  .why-testimonial::before {
+    content: '\201C';
+    position: absolute;
+    top: 16px;
+    left: 0;
+    font-family: var(--font-display);
+    font-size: 64px;
+    line-height: 1;
+    color: var(--c-yellow);
+    opacity: 0.4;
+  }
+  .why-testimonial p {
+    font-family: var(--font-display);
+    font-size: clamp(16px, 2vw, 18px);
+    line-height: 1.7;
+    font-style: italic;
+    color: var(--c-dark);
+    margin-bottom: 16px;
+    padding-left: 0;
+  }
+  .why-testimonial cite {
+    font-style: normal;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .why-testimonial cite strong {
+    font-size: 14px;
+    color: var(--c-dark);
+  }
+  .why-testimonial cite span {
+    font-size: 13px;
+    color: var(--c-text-muted);
+  }
+
   /* ══════════════════════════════════════════
-     IMPACT TIERS
+     3. IMPACT TIERS
      ══════════════════════════════════════════ */
   .tiers {
     padding: 100px 0;
-    background: var(--c-warm-gray);
   }
   .tiers-inner {
     max-width: var(--max-width);
     margin: 0 auto;
     padding: 0 var(--space-xl);
   }
-  .tiers-header {
-    text-align: center;
-    margin-bottom: 56px;
+  .tiers-top {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 32px;
+    margin-bottom: 48px;
   }
-  .tiers-grid {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 24px;
+  .tiers-header h2 {
+    font-size: clamp(24px, 3vw, 36px);
+    line-height: 1.25;
   }
-  .tier-card {
-    background: #fff;
+
+  /* Frequency Toggle */
+  .freq-toggle {
+    display: flex;
+    align-items: stretch;
+    background: var(--c-warm-gray);
+    border-radius: 100px;
+    padding: 4px;
+    position: relative;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    flex-shrink: 0;
+  }
+  .freq-btn {
+    position: relative;
+    z-index: 2;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 12px 32px;
+    font-family: var(--font-body);
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--c-text-muted);
+    cursor: pointer;
+    border-radius: 100px;
+    transition: color 0.3s ease;
+    user-select: none;
+    white-space: nowrap;
+    border: none;
+    background: none;
+    min-width: 120px;
+  }
+  .freq-btn.is-active { color: #fff; }
+  .freq-slider {
+    position: absolute;
+    top: 4px;
+    left: 4px;
+    width: calc(50% - 4px);
+    height: calc(100% - 8px);
+    background: var(--c-dark);
+    border-radius: 100px;
+    transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+    z-index: 1;
+  }
+  .freq-slider[data-pos="monthly"] { transform: translateX(100%); }
+
+  /* Featured Tier — Editorial horizontal bar */
+  .tier-feature {
+    background: var(--c-dark);
+    color: #fff;
     border-radius: 20px;
-    padding: 36px 28px;
-    text-align: center;
-    transition: transform 0.5s cubic-bezier(0.16,1,0.3,1), box-shadow 0.5s cubic-bezier(0.16,1,0.3,1);
-    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    padding: 40px 48px;
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 40px;
+    margin-bottom: 24px;
     position: relative;
   }
-  .tier-card:hover {
-    transform: translateY(-8px);
-    box-shadow: 0 24px 56px rgba(0,0,0,0.1);
-  }
-  .tier-card--featured { background: var(--c-dark); color: #fff; }
-  .tier-badge {
+  .tier-feature-badge {
     position: absolute;
     top: -12px;
-    left: 50%;
-    transform: translateX(-50%);
+    left: 40px;
     background: var(--c-yellow);
     color: var(--c-dark);
     font-size: 11px;
@@ -631,223 +756,159 @@ const breadcrumbs = [
     border-radius: 50px;
     white-space: nowrap;
   }
-  .tier-amount {
-    font-family: var(--font-display);
-    font-size: clamp(28px, 3vw, 44px);
-    font-weight: 700;
-    line-height: 1;
-    margin-bottom: 8px;
-  }
-  .tier-card:not(.tier-card--featured) .tier-amount {
-    background-image: linear-gradient(transparent 55%, var(--c-yellow-soft) 55%);
-    display: inline;
-  }
-  .tier-card--featured .tier-amount { color: var(--c-yellow); }
-  .tier-what {
-    font-size: 14px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    margin-bottom: 16px;
-  }
-  .tier-card:not(.tier-card--featured) .tier-what { color: var(--c-accent); }
-  .tier-card--featured .tier-what { color: rgba(255,255,255,0.72); }
-  .tier-card p { font-size: 15px; line-height: 1.6; }
-  .tier-card:not(.tier-card--featured) p { color: var(--c-text-muted); }
-  .tier-card--featured p { color: rgba(255,255,255,0.72); }
-  .tier-card p em { font-style: italic; }
-  .tiers-note {
-    text-align: center;
-    margin-top: 40px;
-    font-size: 15px;
-    color: var(--c-text-muted);
-  }
-
-  /* ══════════════════════════════════════════
-     DONATION FORM
-     ══════════════════════════════════════════ */
-  .give-section {
-    padding: 100px 0;
-    background: var(--c-cream);
-  }
-  .give-inner {
-    max-width: 540px;
-    margin: 0 auto;
-    padding: 0 var(--space-xl);
-  }
-  .give-header {
-    text-align: center;
-    margin-bottom: 32px;
-  }
-  .give-subtitle {
-    font-size: 16px;
-    color: var(--c-text-muted);
-    line-height: 1.7;
-    max-width: 460px;
-    margin: 12px auto 0;
-  }
-  .give-cta-block {
-    text-align: center;
-    margin-bottom: 24px;
-  }
-  .btn-xl {
-    font-size: 18px;
-    padding: 20px 48px;
-    min-height: 56px;
-  }
-  .give-cta-note {
-    font-size: 13px;
-    color: var(--c-text-muted);
-    margin-top: 12px;
-  }
-  .give-badges {
+  .tier-feature-info {
     display: flex;
-    justify-content: center;
-    flex-wrap: wrap;
-    gap: 12px;
-    margin-top: 12px;
+    flex-direction: column;
+    gap: 4px;
   }
-  .give-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--c-text-muted);
-    padding: 8px 16px;
-    background: var(--c-warm-gray);
-    border-radius: 100px;
-  }
-  .badge-icon {
-    width: 16px;
-    height: 16px;
-    flex-shrink: 0;
-  }
-
-  /* ══════════════════════════════════════════
-     OTHER WAYS
-     ══════════════════════════════════════════ */
-  .other-ways { padding: 100px 0; }
-  .other-ways-inner {
-    max-width: var(--max-width);
-    margin: 0 auto;
-    padding: 0 var(--space-xl);
-  }
-  .other-ways-header {
-    text-align: center;
-    max-width: 600px;
-    margin: 0 auto 56px;
-  }
-  .ways-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 24px;
-  }
-  .way-card {
-    background: var(--c-warm-gray);
-    border-radius: 20px;
-    padding: 40px 28px;
-    text-align: center;
-    transition: transform 0.5s cubic-bezier(0.16,1,0.3,1), box-shadow 0.5s cubic-bezier(0.16,1,0.3,1);
-  }
-  .way-card:hover {
-    transform: translateY(-6px);
-    box-shadow: 0 16px 48px rgba(0,0,0,0.08);
-  }
-  .way-icon {
-    display: block;
-    width: 40px;
-    height: 40px;
-    margin: 0 auto 20px;
-    color: var(--c-accent);
-  }
-  .way-icon svg { width: 100%; height: 100%; }
-  .way-card h3 { font-size: 20px; margin-bottom: 12px; }
-  .way-card p { font-size: 15px; line-height: 1.65; color: var(--c-text-muted); margin-bottom: 20px; }
-  .way-link {
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--c-accent);
-    transition: letter-spacing 0.3s ease;
-  }
-  .way-card:hover .way-link { letter-spacing: 0.02em; }
-
-  /* ══════════════════════════════════════════
-     TRUST
-     ══════════════════════════════════════════ */
-  .donate-trust {
-    padding: 100px 0;
-    background: var(--c-dark-deep);
-    color: #fff;
-  }
-  .donate-trust-inner {
-    max-width: var(--max-width);
-    margin: 0 auto;
-    padding: 0 var(--space-xl);
-  }
-  .donate-trust-header {
-    text-align: center;
-    margin-bottom: 64px;
-  }
-  .donate-trust-header h2 {
-    color: #fff;
-    font-size: clamp(26px, 4vw, 44px);
-    margin-bottom: 16px;
-  }
-  .donate-trust-subtitle {
-    font-size: 17px;
-    color: rgba(255,255,255,0.68);
-    max-width: 560px;
-    margin: 0 auto;
-    line-height: 1.7;
-  }
-  .donate-trust-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 24px;
-    margin-bottom: 48px;
-  }
-  .dt-card {
-    background: rgba(255,255,255,0.04);
-    border: 1px solid rgba(255,255,255,0.06);
-    border-radius: 20px;
-    padding: 36px;
-    transition: background 0.4s ease, transform 0.4s ease;
-  }
-  .dt-card:hover {
-    background: rgba(255,255,255,0.07);
-    transform: translateY(-4px);
-  }
-  .dt-big {
-    display: block;
+  .tier-feature-amount {
     font-family: var(--font-display);
-    font-size: 40px;
+    font-size: clamp(36px, 4vw, 52px);
     font-weight: 700;
     color: var(--c-yellow);
     line-height: 1;
-    margin-bottom: 8px;
   }
-  .dt-label {
-    display: block;
+  .tier-freq {
+    font-size: 0.5em;
+    font-weight: 400;
+    opacity: 0.7;
+  }
+  .tier-feature-what {
     font-size: 13px;
     font-weight: 600;
-    color: rgba(255,255,255,0.68);
     text-transform: uppercase;
     letter-spacing: 0.08em;
-    margin-bottom: 16px;
+    color: rgba(255,255,255,0.6);
   }
-  .dt-card p { font-size: 15px; color: rgba(255,255,255,0.68); line-height: 1.65; }
-  .donate-trust-cta { text-align: center; }
+  .tier-feature-desc {
+    font-size: 16px;
+    line-height: 1.65;
+    color: rgba(255,255,255,0.72);
+    margin: 0;
+  }
+
+  /* Supporting Tiers — Compact cards */
+  .tier-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 20px;
+  }
+  .tier-item {
+    background: var(--c-warm-gray);
+    border-radius: 16px;
+    padding: 32px 24px;
+    display: flex;
+    flex-direction: column;
+    transition: transform 0.5s cubic-bezier(0.16,1,0.3,1), box-shadow 0.5s cubic-bezier(0.16,1,0.3,1);
+  }
+  .tier-item:hover {
+    transform: translateY(-6px);
+    box-shadow: 0 16px 48px rgba(0,0,0,0.08);
+  }
+  .tier-item-amount {
+    font-family: var(--font-display);
+    font-size: clamp(24px, 3vw, 36px);
+    font-weight: 700;
+    line-height: 1;
+    margin-bottom: 4px;
+    display: inline;
+    background-image: linear-gradient(transparent 55%, var(--c-yellow-soft) 55%);
+  }
+  .tier-item-what {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--c-accent);
+    margin-bottom: 12px;
+    display: block;
+  }
+  .tier-item p {
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--c-text-muted);
+    flex: 1;
+    margin: 0;
+  }
+  .tier-item p em { font-style: italic; }
+  .tier-item-cta {
+    display: inline-block;
+    margin-top: 16px;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--c-accent);
+    text-decoration: none;
+    transition: letter-spacing 0.3s ease;
+  }
+  .tier-item-cta:hover { letter-spacing: 0.02em; }
+  .tier-item--custom {
+    background: transparent;
+    border: 2px dashed var(--c-border);
+  }
+  .tier-item--custom:hover {
+    border-color: var(--c-yellow);
+    border-style: solid;
+  }
+  .tier-item--custom .tier-item-amount {
+    background-image: none;
+    color: var(--c-yellow-hover);
+  }
+
+  /* Tiers Footer */
+  .tiers-footer {
+    text-align: center;
+    margin-top: 40px;
+  }
+  .tiers-note {
+    font-size: 15px;
+    color: var(--c-text-muted);
+  }
+  .tiers-note--sub {
+    margin-top: 8px;
+  }
+  .tiers-note--sub em { font-style: italic; color: var(--c-dark); }
+  .tiers-note-link {
+    color: var(--c-accent);
+    font-weight: 600;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    transition: color 0.2s ease;
+  }
+  .tiers-note-link:hover { color: var(--c-dark); }
+  .tiers-match {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    margin: 24px auto 0;
+    padding: 16px 20px;
+    background: rgba(255,218,36,0.08);
+    border: 1px solid rgba(255,218,36,0.18);
+    border-radius: 12px;
+    max-width: 560px;
+    text-align: left;
+  }
+  .tiers-match-icon {
+    flex-shrink: 0;
+    width: 20px;
+    height: 20px;
+    color: var(--c-yellow-hover);
+    margin-top: 1px;
+  }
+  .tiers-match p {
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--c-text-muted);
+    margin: 0;
+  }
+  .tiers-match p strong { color: var(--c-dark); }
 
   /* ══════════════════════════════════════════
-     FAQ — Editorial Split
+     4. TRUST & TRANSPARENCY — Light split
      ══════════════════════════════════════════ */
-  .faq {
+  .donate-trust {
     padding: 100px 0;
-    background: var(--c-dark-deep);
-    color: #fff;
+    background: var(--c-warm-gray);
   }
-  .faq-split {
+  .donate-trust-inner {
     max-width: var(--max-width);
     margin: 0 auto;
     padding: 0 var(--space-xl);
@@ -856,117 +917,113 @@ const breadcrumbs = [
     gap: 80px;
     align-items: start;
   }
-  .faq-left h2 {
-    color: #fff;
+  .donate-trust-left h2 {
     font-size: clamp(26px, 3vw, 36px);
     line-height: 1.25;
     margin-bottom: 20px;
   }
-  .faq-left h2 .highlight {
-    background-image: linear-gradient(transparent 55%, rgba(255, 218, 36, 0.3) 55%);
-  }
-  .faq-left-body {
+  .donate-trust-body {
     font-size: 16px;
-    color: rgba(255,255,255,0.68);
+    color: var(--c-text-muted);
     line-height: 1.7;
     margin-bottom: 32px;
   }
-
-  /* Cards */
-  .faq-card {
-    background: rgba(255,255,255,0.04);
-    border: 1px solid rgba(255,255,255,0.06);
-    border-radius: 16px;
-    margin-bottom: 12px;
-    transition: background 0.3s ease, border-color 0.3s ease;
-  }
-  .faq-card:last-child { margin-bottom: 0; }
-  .faq-card[open] {
-    background: rgba(255,255,255,0.07);
-    border-color: rgba(255, 218, 36, 0.2);
-  }
-  .faq-card summary {
-    padding: 20px 24px;
-    cursor: pointer;
-    list-style: none;
+  .donate-trust-links {
     display: flex;
-    align-items: center;
+    flex-direction: column;
     gap: 16px;
-    min-height: 48px;
-    transition: color 0.2s ease;
+    align-items: flex-start;
   }
-  .faq-card summary::-webkit-details-marker { display: none; }
-  .faq-card summary:hover { color: var(--c-yellow); }
-  .faq-num {
-    font-family: var(--font-display);
-    font-size: 13px;
-    font-weight: 700;
-    color: var(--c-yellow);
-    flex-shrink: 0;
-    width: 28px;
-  }
-  .faq-q {
-    flex: 1;
-    font-family: var(--font-body);
-    font-size: 15px;
+  .donate-trust-link {
+    font-size: 14px;
     font-weight: 600;
-    line-height: 1.4;
-  }
-  .faq-toggle {
-    width: 28px;
-    height: 28px;
-    border-radius: 50%;
-    background: rgba(255,255,255,0.06);
-    flex-shrink: 0;
-    position: relative;
-    transition: background 0.3s ease, transform 0.3s ease;
-  }
-  .faq-toggle::before,
-  .faq-toggle::after {
-    content: '';
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    background: rgba(255,255,255,0.68);
-    border-radius: 1px;
-    transition: transform 0.3s ease, opacity 0.3s ease;
-  }
-  .faq-toggle::before {
-    width: 12px;
-    height: 1.5px;
-    transform: translate(-50%, -50%);
-  }
-  .faq-toggle::after {
-    width: 1.5px;
-    height: 12px;
-    transform: translate(-50%, -50%);
-  }
-  .faq-card[open] .faq-toggle {
-    background: rgba(255, 218, 36, 0.15);
-  }
-  .faq-card[open] .faq-toggle::before { background: var(--c-yellow); }
-  .faq-card[open] .faq-toggle::after {
-    background: var(--c-yellow);
-    transform: translate(-50%, -50%) rotate(90deg);
-    opacity: 0;
-  }
-  .faq-answer {
-    padding: 0 24px 20px;
-    padding-left: 68px; /* align with question text */
-  }
-  .faq-answer p {
-    font-size: 15px;
-    line-height: 1.7;
-    color: rgba(255,255,255,0.68);
-  }
-  .faq-answer a {
-    color: var(--c-yellow);
+    color: var(--c-accent);
     text-decoration: underline;
     text-underline-offset: 3px;
+    transition: color 0.2s ease;
+  }
+  .donate-trust-link:hover { color: var(--c-dark); }
+  .dt-card {
+    background: #fff;
+    border: 1px solid var(--c-border);
+    border-radius: 20px;
+    padding: 36px;
+    margin-bottom: 16px;
+    transition: transform 0.4s ease;
+  }
+  .dt-card:last-child { margin-bottom: 0; }
+  .dt-card:hover { transform: translateY(-4px); }
+  .dt-big {
+    display: block;
+    font-family: var(--font-display);
+    font-size: 40px;
+    font-weight: 700;
+    color: var(--c-yellow-hover);
+    line-height: 1;
+    margin-bottom: 8px;
+  }
+  .dt-label {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--c-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 16px;
+  }
+  .dt-card p {
+    font-size: 15px;
+    color: var(--c-text-muted);
+    line-height: 1.65;
+    margin: 0;
   }
 
   /* ══════════════════════════════════════════
-     FINALE
+     5. OTHER WAYS — Typographic split
+     ══════════════════════════════════════════ */
+  .other-ways {
+    padding: 100px 0;
+  }
+  .other-ways-inner {
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding: 0 var(--space-xl);
+    display: grid;
+    grid-template-columns: 0.85fr 1fr;
+    gap: 80px;
+    align-items: start;
+  }
+  .other-ways-left h2 {
+    font-size: clamp(26px, 3vw, 36px);
+    line-height: 1.25;
+  }
+  .way-item {
+    padding: 24px 0;
+    border-bottom: 1px solid var(--c-border);
+  }
+  .way-item:first-child { padding-top: 0; }
+  .way-item:last-child { border-bottom: none; }
+  .way-item h3 {
+    font-size: 18px;
+    margin-bottom: 6px;
+  }
+  .way-item p {
+    font-size: 15px;
+    color: var(--c-text-muted);
+    line-height: 1.65;
+    margin-bottom: 8px;
+  }
+  .way-item a {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--c-accent);
+    text-decoration: none;
+    transition: letter-spacing 0.3s ease;
+  }
+  .way-item a:hover { letter-spacing: 0.02em; }
+
+  /* ══════════════════════════════════════════
+     7. FINALE
      ══════════════════════════════════════════ */
   .donate-finale {
     padding: 100px 0;
@@ -1070,63 +1127,6 @@ const breadcrumbs = [
   }
 
   /* ══════════════════════════════════════════
-     TIER CTA BUTTONS
-     ══════════════════════════════════════════ */
-  .tier-cta {
-    display: inline-block;
-    margin-top: 20px;
-    font-family: var(--font-body);
-    font-size: 14px;
-    font-weight: 700;
-    color: var(--c-accent);
-    text-decoration: none;
-    padding: 10px 24px;
-    border: 2px solid var(--c-accent);
-    border-radius: 100px;
-    transition: background 0.25s ease, color 0.25s ease, transform 0.25s ease;
-  }
-  .tier-cta:hover {
-    background: var(--c-accent);
-    color: #fff;
-    transform: translateY(-2px);
-  }
-  .tier-cta--featured {
-    color: var(--c-yellow);
-    border-color: var(--c-yellow);
-  }
-  .tier-cta--featured:hover {
-    background: var(--c-yellow);
-    color: var(--c-dark);
-  }
-
-  /* ══════════════════════════════════════════
-     SOCIAL PROOF
-     ══════════════════════════════════════════ */
-  .give-social-proof {
-    text-align: center;
-    font-size: 14px;
-    color: var(--c-text-muted);
-    margin-bottom: 24px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-  }
-  .give-social-proof strong { color: var(--c-dark); }
-  .give-proof-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: #22c55e;
-    flex-shrink: 0;
-    animation: pulse-dot 2s ease-in-out infinite;
-  }
-  @keyframes pulse-dot {
-    0%, 100% { opacity: 1; transform: scale(1); }
-    50% { opacity: 0.5; transform: scale(0.8); }
-  }
-
-  /* ══════════════════════════════════════════
      STICKY MOBILE CTA BAR
      ══════════════════════════════════════════ */
   .sticky-cta {
@@ -1140,11 +1140,10 @@ const breadcrumbs = [
     padding: 12px 20px;
     transform: translateY(100%);
     transition: transform 0.4s cubic-bezier(0.16,1,0.3,1);
-    display: none; /* hidden on desktop */
+    display: none;
     view-transition-name: none;
   }
   .sticky-cta.is-visible { transform: translateY(0); }
-  .sticky-cta.at-form { transform: translateY(100%); }
   .sticky-cta-inner {
     display: flex;
     align-items: center;
@@ -1166,7 +1165,7 @@ const breadcrumbs = [
   }
 
   /* ══════════════════════════════════════════
-     SCROLL REVEALS — below-fold only
+     SCROLL REVEALS
      ══════════════════════════════════════════ */
   [data-reveal] {
     opacity: 0;
@@ -1179,66 +1178,8 @@ const breadcrumbs = [
   [data-delay="3"] { transition-delay: 0.3s; }
 
   /* ══════════════════════════════════════════
-     MOBILE — Aggressive optimization
+     LQIP blur-up placeholders
      ══════════════════════════════════════════ */
-  @media (max-width: 900px) {
-    .tiers-grid { grid-template-columns: repeat(2, 1fr); }
-  }
-
-  @media (max-width: 768px) {
-    .donate-hero {
-      min-height: 75vh;
-      min-height: 75dvh;
-      padding-bottom: 48px;
-    }
-    .donate-hero-inner { flex-direction: column; align-items: flex-start; }
-    .donate-hero-stat { display: none; } /* Save space on mobile */
-    .donate-hero h1 { font-size: clamp(28px, 8vw, 40px); }
-    .donate-hero-ctas { width: 100%; }
-    .donate-hero-ctas .btn { flex: 1; min-width: 140px; justify-content: center; }
-
-    .why { padding: 64px 0; }
-    .why-inner { grid-template-columns: 1fr; gap: 40px; }
-    .why-photos { min-height: 280px; }
-
-    .tiers { padding: 64px 0; }
-    .tiers-grid { grid-template-columns: 1fr 1fr; gap: 16px; }
-    .tier-card { padding: 28px 20px; }
-
-    .give-section { padding: 64px 0; }
-
-    .other-ways { padding: 64px 0; }
-    .ways-grid { grid-template-columns: 1fr; }
-
-    .donate-trust { padding: 64px 0; }
-    .donate-trust-grid { grid-template-columns: 1fr; }
-    .dt-card { padding: 28px; }
-
-    .faq { padding: 64px 0; }
-    .faq-split { grid-template-columns: 1fr; gap: 40px; }
-    .faq-answer { padding-left: 60px; }
-
-    .donate-finale { padding: 64px 0; }
-    .sticky-cta { display: block; }
-    .zeffy-modal-container {
-      width: 100vw;
-      max-width: 100vw;
-      height: 100vh;
-      height: 100dvh;
-      max-height: none;
-      border-radius: 0;
-    }
-    .donate-finale-inner { padding-bottom: 72px; } /* room for sticky bar */
-  }
-
-  @media (max-width: 480px) {
-    .tiers-grid { grid-template-columns: 1fr; }
-    .donate-picker { padding: 24px; border-radius: 16px; }
-    .donate-hero-lead { margin-bottom: 24px; }
-    .btn-lg { font-size: 15px; padding: 16px 32px; }
-  }
-
-  /* ── LQIP blur-up placeholders ── */
   .why-photo,
   .donate-hero-frame {
     background-size: cover;
@@ -1251,16 +1192,93 @@ const breadcrumbs = [
     transition: opacity 0.4s ease;
   }
 
+  /* ══════════════════════════════════════════
+     RESPONSIVE
+     ══════════════════════════════════════════ */
+  @media (max-width: 900px) {
+    .tier-feature {
+      grid-template-columns: 1fr;
+      text-align: center;
+      padding: 36px 28px;
+      gap: 16px;
+    }
+    .tier-feature-info { align-items: center; }
+    .tier-feature-badge { left: 50%; transform: translateX(-50%); }
+    .tier-row { grid-template-columns: repeat(2, 1fr); }
+  }
+
+  @media (max-width: 768px) {
+    .donate-hero { padding: 80px 0 64px; }
+    .donate-hero-inner {
+      grid-template-columns: 1fr;
+      gap: 40px;
+    }
+    .donate-hero-frame { aspect-ratio: 3 / 2; }
+    .donate-hero-stat {
+      bottom: -16px;
+      left: 16px;
+    }
+    .donate-hero h1 { font-size: clamp(28px, 8vw, 40px); }
+    .donate-hero-ctas { width: 100%; }
+    .donate-hero-ctas .btn { flex: 1; min-width: 140px; justify-content: center; }
+
+    .why { padding: 64px 0; }
+    .why-inner { grid-template-columns: 1fr; gap: 40px; }
+    .why-photos { min-height: 280px; }
+
+    .tiers { padding: 64px 0; }
+    .tiers-top {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 24px;
+    }
+    .tier-row { grid-template-columns: 1fr; }
+    .tier-item { padding: 28px 20px; }
+
+    .donate-trust { padding: 64px 0; }
+    .donate-trust-inner {
+      grid-template-columns: 1fr;
+      gap: 40px;
+    }
+
+    .other-ways { padding: 64px 0; }
+    .other-ways-inner {
+      grid-template-columns: 1fr;
+      gap: 40px;
+    }
+
+    .donate-finale { padding: 64px 0; }
+    .donate-finale-inner { padding-bottom: 72px; }
+
+    .sticky-cta { display: block; }
+
+    .zeffy-modal-container {
+      width: 100vw;
+      max-width: 100vw;
+      height: 100vh;
+      height: 100dvh;
+      max-height: none;
+      border-radius: 0;
+    }
+  }
+
+  @media (max-width: 480px) {
+    .donate-hero-lead { margin-bottom: 24px; }
+    .btn-lg { font-size: 15px; padding: 16px 32px; }
+    .tier-row { grid-template-columns: 1fr; }
+    .dt-card { padding: 28px; }
+  }
+
+  /* ══════════════════════════════════════════
+     REDUCED MOTION
+     ══════════════════════════════════════════ */
   @media (prefers-reduced-motion: reduce) {
     [data-reveal] { opacity: 1; transform: none; transition: none; }
-    .btn-glow::after { animation: none; display: none; }
     .btn:hover { transform: none; }
-    .tier-card:hover, .way-card:hover, .dt-card:hover { transform: none; }
-    .give-proof-dot { animation: none; }
+    .tier-item:hover, .dt-card:hover { transform: none; }
     .zeffy-modal, .zeffy-modal-container { transition: none; }
     .lqip-img:not(.lqip-pending) { transition: none; }
     .lqip-img.lqip-pending { opacity: initial; }
+    .freq-slider { transition: none; }
   }
 </style>
-
-

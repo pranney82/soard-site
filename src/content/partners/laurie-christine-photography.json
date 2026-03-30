@@ -2,8 +2,8 @@
   "name": "Laurie Christine Photography",
   "slug": "laurie-christine-photography",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/laurie-christine-photography/public",
-  "level": "friend",
-  "category": "community",
+  "tier": "community",
   "featured": false,
-  "order": 0
+  "level": "friend",
+  "category": "community"
 }

@@ -33,7 +33,7 @@ export const GET: APIRoute = async () => {
   // Build partners list
   const partnerList = [...partners]
     .sort((a, b) => a.data.name.localeCompare(b.data.name))
-    .map((p) => `- ${p.data.name} (${p.data.category})`);
+    .map((p) => `- ${p.data.name} (${p.data.category.join(', ')})`);
 
   // Build community projects list
   const communityList = community
@@ -111,7 +111,7 @@ ${kidsList.join('\n')}
 - [Meet the Kids](https://sunshineonaranneyday.com/kids/): All ${s.totalKids}+ kid profiles
 - [Featured Rooms](https://sunshineonaranneyday.com/rooms/): Room gallery
 - [Before & After](https://sunshineonaranneyday.com/rooms/before-after/): Photo comparisons
-- [Community Projects](https://sunshineonaranneyday.com/rooms/community/): School/facility projects
+- [Community Projects](https://sunshineonaranneyday.com/community/): School/facility projects
 - [Partners](https://sunshineonaranneyday.com/partners/): Supporting organizations
 - [Donate](https://sunshineonaranneyday.com/donate/): Tax-deductible giving
 - [Apply](https://sunshineonaranneyday.com/apply/): Family application

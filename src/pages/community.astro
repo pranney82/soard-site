@@ -1,0 +1,853 @@
+---
+/**
+ * Community Projects — Sunshine on a Ranney Day
+ * Large-scale renovations at schools, camps, and nonprofits
+ * serving children with special needs.
+ *
+ * PERF NOTES:
+ * - Editorial split hero (no full-bleed image)
+ * - Hero image: fetchpriority="high", eager loading, LQIP blur-up
+ * - All below-fold images: loading="lazy" with LQIP
+ * - CFImage component for responsive srcsets
+ * - data-reveal on below-fold elements
+ */
+import BaseLayout from '../layouts/BaseLayout.astro';
+import CFImage from '../components/ui/CFImage.astro';
+import { getWebPageSchema, getBreadcrumbSchema, buildSchemaGraph } from '../utils/schema';
+import { getCollection } from 'astro:content';
+import { cfRaw, cfSrcset, cfLqip } from '../utils/cf-image';
+import { getSiteStats } from '../utils/stats';
+
+/* ── Community Projects from content collection ── */
+const allProjects = await getCollection('community');
+const projects = allProjects
+  .map(p => p.data)
+  .sort((a, b) => parseInt(a.year) - parseInt(b.year));
+
+const { livesImpacted } = await getSiteStats();
+const totalImpact = livesImpacted.toLocaleString() + '+';
+
+/* ── Gallery photos — the 3 projects with images ── */
+const galleryPhotos = [
+  { id: 'kids/camp-twin-lakes/hero', alt: 'Camp Twin Lakes renovation by SOARD' },
+  { id: 'kids/summit-counseling-center/hero', alt: 'Summit Counseling Center renovation' },
+  { id: 'kids/murphy-harpst/hero', alt: 'Murphy-Harpst Children\'s Center renovation' },
+];
+
+/* ── Spotlight photo ── */
+const spotlightPhoto = 'kids/camp-twin-lakes/hero';
+
+/* ── Schema ── */
+const pageUrl = 'https://sunshineonaranneyday.com/community/';
+const breadcrumbs = [
+  { name: 'Home', url: 'https://sunshineonaranneyday.com/' },
+  { name: 'Rooms', url: 'https://sunshineonaranneyday.com/rooms/' },
+  { name: 'Community Projects', url: pageUrl },
+];
+const jsonLd = buildSchemaGraph(
+  getWebPageSchema({
+    url: pageUrl,
+    title: 'Community Projects',
+    description: 'Sunshine on a Ranney Day partners with nonprofits, schools, and camps to complete large-scale renovation projects that impact thousands of children with special needs each year.',
+  }),
+  getBreadcrumbSchema(breadcrumbs, pageUrl),
+);
+---
+
+<BaseLayout
+  title="Community Projects — Large-Scale Renovations"
+  description="Sunshine on a Ranney Day partners with nonprofits, schools, and camps to complete large-scale renovation projects that impact thousands of children with special needs each year."
+  jsonLd={jsonLd}
+  breadcrumbs={breadcrumbs}
+>
+
+  <!-- Noscript: ensure all content visible if JS is blocked -->
+  <!-- ══════ HERO — Typographic Opening ══════ -->
+  <section class="cp-hero" aria-label="Community Projects">
+    <div class="cp-hero-inner">
+      <div class="section-label cp-hero-label">Community Projects</div>
+      <h1 class="cp-hero-num" aria-label={`${totalImpact} children reached`}>{totalImpact}</h1>
+      <p class="cp-hero-context">children reached through community partnerships</p>
+      <div class="cp-hero-divider" aria-hidden="true"></div>
+      <div class="cp-hero-bottom">
+        <p class="cp-hero-lead">When one room isn't enough, we think bigger. We partner with schools, camps, and nonprofits to transform entire facilities — classrooms, therapy rooms, and gathering spaces that serve thousands of children every year.</p>
+        <div class="cp-hero-ctas">
+          <a href="#projects" class="btn btn-primary">See Our Partners</a>
+          <a href="/donate" class="btn btn-dark">Donate Today</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════ PHOTO GALLERY — Editorial Strip ══════ -->
+  <section class="cp-gallery" aria-label="Community project photos">
+    <div class="cp-gallery-inner">
+      {galleryPhotos.map((photo, i) => (
+        <div class="cp-gallery-photo" data-reveal data-delay={String(i)} style={`background-image:url(${cfLqip(photo.id)})`}>
+          <CFImage
+            src={photo.id}
+            alt={photo.alt}
+            width={600} height={450}
+            sizes="(max-width:768px) 85vw, 33vw"
+            widths={[300, 400, 600]}
+            loading="eager"
+            fit="cover"
+            class="lqip-img"
+          />
+        </div>
+      ))}
+    </div>
+  </section>
+
+  <!-- ══════ IMPACT RIBBON ══════ -->
+  <section class="cp-ribbon" aria-label="Community project impact">
+    <div class="cp-ribbon-inner">
+      <div class="cp-ribbon-stat" data-reveal>
+        <span class="cp-ribbon-num">{projects.length}</span>
+        <span class="cp-ribbon-label">Major<br/>Partners</span>
+      </div>
+      <div class="cp-ribbon-divider" role="presentation"></div>
+      <div class="cp-ribbon-stat" data-reveal data-delay="1">
+        <span class="cp-ribbon-num">10+</span>
+        <span class="cp-ribbon-label">Years of<br/>Impact</span>
+      </div>
+      <div class="cp-ribbon-divider" role="presentation"></div>
+      <div class="cp-ribbon-stat" data-reveal data-delay="2">
+        <span class="cp-ribbon-num">100<span class="cp-ribbon-pct">%</span></span>
+        <span class="cp-ribbon-label">Volunteer<br/>Driven</span>
+      </div>
+      <div class="cp-ribbon-divider" role="presentation"></div>
+      <div class="cp-ribbon-stat" data-reveal data-delay="3">
+        <span class="cp-ribbon-num">$0</span>
+        <span class="cp-ribbon-label">Cost to<br/>Organizations</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════ PROJECTS ══════ -->
+  <section class="cp-projects" id="projects" aria-labelledby="projects-heading">
+    <div class="cp-projects-header" data-reveal>
+      <div class="section-label">Our Partners</div>
+      <h2 id="projects-heading">Organizations we've <em class="highlight">transformed</em>.</h2>
+    </div>
+
+    <div class="cp-projects-grid">
+      {projects.map((project, i) => (
+        <article class="cp-card" data-reveal data-delay={String(i % 2)}>
+          {project.imageId ? (
+            <div class="cp-card-photo" style={`background-image:url(${cfLqip(project.imageId)})`}>
+              <CFImage
+                src={project.imageId}
+                alt={project.imageAlt || `${project.name} project by SOARD`}
+                width={600} height={400}
+                sizes="(max-width:768px) 90vw, 45vw"
+                widths={[300, 400, 600]}
+                loading="lazy"
+                fit="cover"
+                class="lqip-img"
+              />
+            </div>
+          ) : (
+            <div class="cp-card-color" style={`background: ${project.color};`}>
+              <span class="cp-card-color-num">{project.impact}</span>
+              <span class="cp-card-color-label">{project.impactLabel}</span>
+            </div>
+          )}
+          {project.badge && <span class="cp-card-badge">{project.badge}</span>}
+          <div class="cp-card-body">
+            <span class="cp-card-year">{project.year}</span>
+            <h3 class="cp-card-name">{project.name}</h3>
+            {project.imageId && (
+              <div class="cp-card-impact">
+                <span class="cp-card-num">{project.impact}</span>
+                <span class="cp-card-label">{project.impactLabel}</span>
+              </div>
+            )}
+            <p class="cp-card-desc">{project.description}</p>
+          </div>
+        </article>
+      ))}
+    </div>
+  </section>
+
+  <!-- ══════ SPOTLIGHT ══════ -->
+  <section class="cp-spotlight" aria-labelledby="spotlight-heading">
+    <div class="cp-spotlight-inner">
+      <div class="cp-spotlight-visual" data-reveal>
+        <div class="cp-spotlight-frame" style={`background-image:url(${cfLqip(spotlightPhoto)})`}>
+          <CFImage
+            src={spotlightPhoto}
+            alt="Camp Twin Lakes facility renovated by SOARD"
+            width={800} height={600}
+            sizes="(max-width:768px) 90vw, 45vw"
+            widths={[400, 600, 800]}
+            loading="lazy"
+            class="lqip-img"
+          />
+        </div>
+      </div>
+      <div class="cp-spotlight-text" data-reveal data-delay="1">
+        <div class="section-label">2022 Spotlight</div>
+        <h2 id="spotlight-heading">Transforming The Drake House for families <em class="highlight">starting over</em>.</h2>
+        <p>The Drake House provides housing and education for single mothers and their children experiencing homelessness. Over 40% of Atlanta's homeless population are women and children.</p>
+        <p>SOARD renovated their headquarters — classrooms, activity spaces, a community kitchen, and teen gathering rooms — creating an environment where families can recover, learn, and rebuild with dignity.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════ QUOTE ══════ -->
+  <section class="cp-quote" aria-label="Quote">
+    <div class="cp-quote-inner" data-reveal>
+      <blockquote>
+        <p>"These large-scale community projects have helped <em>thousands</em> of families in their most stressful time."</p>
+        <footer>
+          <strong>Peter Ranney</strong>, Co-Founder
+        </footer>
+      </blockquote>
+    </div>
+  </section>
+
+  <!-- ══════ FINAL CTA ══════ -->
+  <section class="cp-finale">
+    <div class="cp-finale-inner">
+      <h2 data-reveal>Help us build the <em>next</em> community project.</h2>
+      <p data-reveal data-delay="1">Every donation funds large-scale renovations at schools, camps, and nonprofits across greater Atlanta.</p>
+      <div class="cp-finale-ctas" data-reveal data-delay="2">
+        <a href="/donate" class="btn btn-dark btn-lg">Donate Today</a>
+        <a href="/kids" class="btn cp-btn-outline-dark">Meet the Kids</a>
+      </div>
+      <p class="cp-finale-note" data-reveal data-delay="3">501(c)(3) · EIN 45-4773997 · All donations tax-deductible</p>
+    </div>
+  </section>
+
+</BaseLayout>
+
+<style>
+  /* ── LQIP blur-up ── */
+  .lqip-img.lqip-pending { opacity: 0; }
+  .lqip-img:not(.lqip-pending) { transition: opacity 0.4s ease; }
+
+  /* ══════════════════════════════════════════
+     HERO — Typographic Opening
+     ══════════════════════════════════════════ */
+  .cp-hero {
+    background: var(--c-cream);
+    padding: clamp(48px, 10vh, 120px) 0 clamp(40px, 6vh, 72px);
+    overflow: hidden;
+  }
+
+  .cp-hero-inner {
+    max-width: 1000px;
+    margin: 0 auto;
+    padding: 0 var(--page-padding, clamp(1rem, 4vw, 2rem));
+  }
+
+  .cp-hero-label {
+    opacity: 0;
+    animation: cpFadeUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.05s both;
+  }
+
+  /* The number IS the hero */
+  .cp-hero-num {
+    font-family: var(--font-display);
+    font-size: clamp(80px, 16vw, 180px);
+    font-weight: 700;
+    line-height: 0.85;
+    letter-spacing: -0.04em;
+    color: var(--c-dark);
+    margin: var(--space-lg) 0 var(--space-md);
+    /* LCP — no opacity:0 */
+    animation: cpSlide 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  .cp-hero-context {
+    font-size: clamp(14px, 1.5vw, 18px);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--c-text-light);
+    opacity: 0;
+    animation: cpFadeUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.15s both;
+  }
+
+  .cp-hero-divider {
+    width: 48px;
+    height: 3px;
+    background: var(--c-yellow);
+    border-radius: 2px;
+    margin: var(--space-2xl) 0;
+    opacity: 0;
+    animation: cpFadeUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.25s both;
+  }
+
+  .cp-hero-bottom {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: var(--space-2xl);
+    align-items: end;
+    opacity: 0;
+    animation: cpFadeUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.3s both;
+  }
+
+  .cp-hero-lead {
+    max-width: 560px;
+    font-size: clamp(15px, 1.2vw, 17px);
+    line-height: 1.7;
+    color: var(--c-text-muted);
+  }
+
+  .cp-hero-ctas {
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+    flex-shrink: 0;
+  }
+
+  @keyframes cpFadeUp {
+    from { opacity: 0; transform: translateY(24px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes cpSlide {
+    from { transform: translateY(20px); }
+    to { transform: translateY(0); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .cp-hero-label, .cp-hero-context, .cp-hero-divider,
+    .cp-hero-bottom { opacity: 1; transform: none; animation: none; }
+  }
+
+  @media (max-width: 768px) {
+    .cp-hero { padding: clamp(32px, 6vh, 64px) 0 clamp(24px, 4vh, 48px); }
+    .cp-hero-num { font-size: clamp(64px, 18vw, 120px); }
+    .cp-hero-bottom {
+      grid-template-columns: 1fr;
+      gap: var(--space-xl);
+    }
+  }
+
+  @media (max-width: 480px) {
+    .cp-hero-num { font-size: clamp(52px, 16vw, 80px); }
+    .cp-hero-lead { font-size: 15px; }
+    .cp-hero-ctas .btn { padding: 12px 26px; font-size: 14px; }
+  }
+
+  /* ══════════════════════════════════════════
+     GALLERY — Three-photo editorial strip
+     ══════════════════════════════════════════ */
+  .cp-gallery {
+    background: var(--c-cream);
+    padding-bottom: clamp(40px, 6vh, 72px);
+  }
+
+  .cp-gallery-inner {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 var(--page-padding, clamp(1rem, 4vw, 2rem));
+    display: grid;
+    grid-template-columns: 1.2fr 0.9fr 0.9fr;
+    gap: var(--space-md);
+  }
+
+  .cp-gallery-photo {
+    border-radius: var(--border-radius-lg);
+    overflow: hidden;
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+  }
+
+  .cp-gallery-photo:first-child {
+    aspect-ratio: 4 / 3;
+  }
+
+  .cp-gallery-photo:nth-child(2),
+  .cp-gallery-photo:nth-child(3) {
+    aspect-ratio: 1 / 1;
+  }
+
+  .cp-gallery-photo :global(img) {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    transition: transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .cp-gallery-photo:hover :global(img) {
+    transform: scale(1.04);
+  }
+
+  @media (max-width: 768px) {
+    .cp-gallery-inner {
+      grid-template-columns: 1fr 1fr;
+      gap: var(--space-sm);
+    }
+    .cp-gallery-photo:first-child {
+      grid-column: 1 / -1;
+      aspect-ratio: 16 / 9;
+    }
+    .cp-gallery-photo:nth-child(2),
+    .cp-gallery-photo:nth-child(3) {
+      aspect-ratio: 4 / 3;
+    }
+  }
+
+  /* ══════════════════════════════════════════
+     IMPACT RIBBON
+     ══════════════════════════════════════════ */
+  .cp-ribbon {
+    background: var(--c-dark);
+    padding-block: clamp(40px, 6vh, 72px);
+  }
+
+  .cp-ribbon-inner {
+    max-width: 1000px;
+    margin-inline: auto;
+    padding-inline: var(--space-lg);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--space-xl);
+  }
+
+  .cp-ribbon-stat {
+    text-align: center;
+    flex: 1;
+  }
+
+  .cp-ribbon-num {
+    display: block;
+    font-family: var(--font-display);
+    font-size: clamp(2.25rem, 4.5vw, 3.25rem);
+    font-weight: 700;
+    color: var(--c-yellow);
+    line-height: 1;
+    letter-spacing: -0.02em;
+  }
+
+  .cp-ribbon-pct {
+    font-size: 0.55em;
+    vertical-align: super;
+  }
+
+  .cp-ribbon-label {
+    display: block;
+    margin-top: var(--space-sm);
+    font-size: 0.7rem;
+    color: rgba(255, 255, 255, 0.85);
+    letter-spacing: 0.06em;
+    line-height: 1.4;
+    text-transform: uppercase;
+    font-weight: 600;
+  }
+
+  .cp-ribbon-divider {
+    width: 1px;
+    height: var(--space-3xl);
+    background: rgba(255, 255, 255, 0.12);
+    flex-shrink: 0;
+  }
+
+  @media (max-width: 600px) {
+    .cp-ribbon { padding-block: var(--space-2xl); }
+    .cp-ribbon-inner {
+      flex-wrap: wrap;
+      gap: var(--space-xl) var(--space-md);
+    }
+    .cp-ribbon-stat { flex: 0 0 calc(50% - var(--space-md)); }
+    .cp-ribbon-divider { display: none; }
+  }
+
+  /* ══════════════════════════════════════════
+     PROJECTS — 2-column editorial grid
+     ══════════════════════════════════════════ */
+  .cp-projects {
+    padding-block: var(--space-5xl);
+    background: var(--c-warm-gray);
+    scroll-margin-top: var(--header-height);
+  }
+
+  .cp-projects-header {
+    max-width: 1200px;
+    margin-inline: auto;
+    padding-inline: var(--page-padding, clamp(1rem, 4vw, 2rem));
+    margin-bottom: var(--space-3xl);
+  }
+
+  .cp-projects-header h2 {
+    font-size: clamp(1.5rem, 3vw, 2.25rem);
+    line-height: 1.2;
+    letter-spacing: -0.01em;
+  }
+
+  .cp-projects-header h2 em { font-style: normal; }
+
+  .cp-projects-grid {
+    max-width: 1200px;
+    margin-inline: auto;
+    padding-inline: var(--page-padding, clamp(1rem, 4vw, 2rem));
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-xl);
+  }
+
+  .cp-card {
+    position: relative;
+    background: var(--c-white);
+    border-radius: 20px;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+    display: flex;
+    flex-direction: column;
+    transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .cp-card:hover {
+    transform: translateY(-8px);
+    box-shadow: 0 24px 56px rgba(0, 0, 0, 0.1);
+  }
+
+  /* Photo cards */
+  .cp-card-photo {
+    overflow: hidden;
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+  }
+
+  .cp-card-photo :global(img) {
+    width: 100%;
+    aspect-ratio: 3 / 2;
+    object-fit: cover;
+    display: block;
+    transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .cp-card:hover .cp-card-photo :global(img) {
+    transform: scale(1.05);
+  }
+
+  /* Color block cards (no photo) — the color IS the visual */
+  .cp-card-color {
+    aspect-ratio: 3 / 2;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: var(--space-xl);
+  }
+
+  .cp-card-color-num {
+    font-family: var(--font-display);
+    font-size: clamp(2.5rem, 5vw, 3.5rem);
+    font-weight: 700;
+    color: rgba(255, 255, 255, 0.95);
+    line-height: 1;
+    letter-spacing: -0.02em;
+  }
+
+  .cp-card-color-label {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: rgba(255, 255, 255, 0.7);
+  }
+
+  .cp-card-badge {
+    position: absolute;
+    top: var(--space-md);
+    right: var(--space-md);
+    padding: 3px 12px;
+    background: var(--c-yellow);
+    color: var(--c-dark);
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border-radius: 100px;
+    z-index: 2;
+  }
+
+  .cp-card-body {
+    padding: var(--space-xl) var(--space-xl) var(--space-2xl);
+    flex: 1;
+  }
+
+  .cp-card-year {
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: var(--c-text-light);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  .cp-card-name {
+    font-family: var(--font-display);
+    font-size: clamp(1.1rem, 1.5vw, 1.3rem);
+    color: var(--c-dark);
+    line-height: 1.3;
+    margin: var(--space-xs) 0 var(--space-sm);
+  }
+
+  .cp-card-impact {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-sm);
+    margin-bottom: var(--space-sm);
+  }
+
+  .cp-card-num {
+    font-family: var(--font-display);
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--c-dark);
+    line-height: 1;
+  }
+
+  .cp-card-label {
+    font-size: 0.65rem;
+    font-weight: 600;
+    color: var(--c-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .cp-card-desc {
+    font-size: 0.85rem;
+    line-height: 1.65;
+    color: var(--c-text-muted);
+  }
+
+  @media (max-width: 768px) {
+    .cp-projects { padding-block: var(--space-3xl); }
+    .cp-projects-grid {
+      grid-template-columns: 1fr;
+      gap: var(--space-lg);
+    }
+  }
+
+  /* ══════════════════════════════════════════
+     QUOTE BREAK
+     ══════════════════════════════════════════ */
+  .cp-quote {
+    padding-block: var(--space-5xl);
+    background: var(--c-cream);
+  }
+
+  .cp-quote-inner {
+    max-width: 720px;
+    margin-inline: auto;
+    padding-inline: var(--space-lg);
+  }
+
+  .cp-quote blockquote {
+    margin: 0;
+    border-left: 4px solid var(--c-yellow);
+    padding-left: var(--space-xl);
+  }
+
+  .cp-quote blockquote p {
+    font-family: var(--font-display);
+    font-size: clamp(1.25rem, 2.5vw, 1.75rem);
+    line-height: 1.5;
+    color: var(--c-dark);
+    font-style: italic;
+    letter-spacing: -0.01em;
+  }
+
+  .cp-quote blockquote em {
+    font-style: italic;
+    background-image: linear-gradient(transparent 55%, var(--c-yellow-soft) 55%);
+  }
+
+  .cp-quote blockquote footer {
+    margin-top: var(--space-lg);
+    font-family: var(--font-body);
+    font-size: 0.9rem;
+    font-style: normal;
+    color: var(--c-text-muted);
+    letter-spacing: 0.02em;
+  }
+
+  .cp-quote blockquote footer strong {
+    color: var(--c-dark);
+  }
+
+  /* ══════════════════════════════════════════
+     SPOTLIGHT — Drake House
+     ══════════════════════════════════════════ */
+  .cp-spotlight {
+    padding-block: var(--space-5xl);
+  }
+
+  .cp-spotlight-inner {
+    max-width: 1200px;
+    margin-inline: auto;
+    padding-inline: var(--space-lg);
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: clamp(40px, 6vw, 80px);
+    align-items: center;
+  }
+
+  .cp-spotlight-text .section-label {
+    margin-bottom: var(--space-md);
+  }
+
+  .cp-spotlight-text h2 {
+    font-size: clamp(1.5rem, 3vw, 2.25rem);
+    line-height: 1.2;
+    margin-bottom: var(--space-lg);
+  }
+
+  .cp-spotlight-text h2 em { font-style: normal; }
+
+  .cp-spotlight-text p {
+    margin-top: var(--space-md);
+    line-height: 1.7;
+    color: var(--c-text);
+    font-size: 0.95rem;
+  }
+
+  .cp-spotlight-text p:first-of-type {
+    font-size: 1.05rem;
+    color: var(--c-text);
+  }
+
+  .cp-spotlight-frame {
+    border-radius: var(--border-radius-lg);
+    overflow: hidden;
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.1), 0 6px 20px rgba(0, 0, 0, 0.05);
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+  }
+
+  .cp-spotlight-frame :global(img) {
+    width: 100%;
+    height: auto;
+    display: block;
+    transition: transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .cp-spotlight-frame:hover :global(img) {
+    transform: scale(1.03);
+  }
+
+  @media (max-width: 768px) {
+    .cp-spotlight { padding-block: var(--space-3xl); }
+    .cp-spotlight-inner {
+      grid-template-columns: 1fr;
+      gap: var(--space-2xl);
+    }
+  }
+
+  /* ══════════════════════════════════════════
+     FINAL CTA
+     ══════════════════════════════════════════ */
+  .cp-finale {
+    background: var(--c-yellow);
+    padding-block: clamp(64px, 10vh, 120px);
+    text-align: center;
+  }
+
+  .cp-finale-inner {
+    max-width: 640px;
+    margin-inline: auto;
+    padding-inline: var(--space-lg);
+  }
+
+  .cp-finale h2 {
+    font-size: clamp(1.75rem, 4vw, 2.75rem);
+    color: var(--c-dark);
+    letter-spacing: -0.02em;
+    line-height: 1.15;
+  }
+
+  .cp-finale h2 em { font-style: italic; }
+
+  .cp-finale > p,
+  .cp-finale-inner > p:not(.cp-finale-note) {
+    font-size: 1.05rem;
+    color: rgba(45, 46, 51, 0.75);
+    margin-top: var(--space-lg);
+    line-height: 1.65;
+  }
+
+  .cp-finale-ctas {
+    margin-top: var(--space-2xl);
+    display: flex;
+    gap: var(--space-md);
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  .btn-lg { padding: 16px 40px; font-size: 16px; }
+
+  .cp-btn-outline-dark {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 14px 32px;
+    font-family: var(--font-body);
+    font-size: 15px;
+    font-weight: 600;
+    border-radius: 60px;
+    cursor: pointer;
+    text-decoration: none;
+    transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+    white-space: nowrap;
+    background: transparent;
+    color: var(--c-dark);
+    border: 2px solid var(--c-dark);
+  }
+
+  .cp-btn-outline-dark:hover {
+    background: var(--c-dark);
+    color: var(--c-white);
+  }
+
+  .cp-finale-note {
+    margin-top: var(--space-2xl);
+    font-size: 0.85rem;
+    color: rgba(45, 46, 51, 0.65);
+    letter-spacing: 0.02em;
+  }
+
+  @media (max-width: 768px) {
+    .cp-finale { padding-block: var(--space-3xl); }
+  }
+
+  /* ══════════════════════════════════════════
+     SCROLL REVEALS
+     ══════════════════════════════════════════ */
+  [data-reveal] {
+    opacity: 0;
+    transform: translateY(24px);
+    transition: opacity 0.7s ease, transform 0.7s ease;
+  }
+  [data-reveal].is-visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  [data-delay="1"] { transition-delay: 0.12s; }
+  [data-delay="2"] { transition-delay: 0.24s; }
+  [data-delay="3"] { transition-delay: 0.36s; }
+
+  @media (prefers-reduced-motion: reduce) {
+    [data-reveal] { opacity: 1; transform: none; transition: none; }
+    .cp-gallery-photo :global(img),
+    .cp-card,
+    .cp-card-photo :global(img),
+    .cp-spotlight-frame :global(img) {
+      transition: none;
+    }
+    .cp-gallery-photo:hover :global(img),
+    .cp-card:hover,
+    .cp-card:hover .cp-card-photo :global(img),
+    .cp-spotlight-frame:hover :global(img) { transform: none; }
+  }
+</style>

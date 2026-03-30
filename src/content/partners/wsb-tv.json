@@ -2,8 +2,6 @@
   "name": "Wsb Tv",
   "slug": "wsb-tv",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/wsb-tv/public",
-  "level": "friend",
-  "category": "build",
-  "featured": false,
-  "order": 0
+  "tier": "construction",
+  "featured": false
 }

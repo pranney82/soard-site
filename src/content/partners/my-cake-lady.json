@@ -2,8 +2,6 @@
   "name": "My Cake Lady",
   "slug": "my-cake-lady",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/my-cake-lady/public",
-  "level": "friend",
-  "category": "build",
-  "featured": false,
-  "order": 0
+  "tier": "construction",
+  "featured": false
 }

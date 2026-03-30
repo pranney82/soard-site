@@ -53,7 +53,6 @@
 | **Admin** | Custom CMS | OAuth-authenticated panel with Claude-powered content tooling |
 | **SEO** | JSON-LD + Dynamic OG | Structured data on every page, generated OG images via Satori |
 | **Font** | Outfit Variable + Libre Baskerville | Self-hosted, subset, WOFF |
-| **Shop** | Shopify Storefront API | Build-time product catalog (optional) |
 
 ## Quick Start
 
@@ -75,10 +74,6 @@ Create a `.env` file:
 CLOUDFLARE_ACCOUNT_ID=your-account-id
 CLOUDFLARE_API_TOKEN=your-api-token       # needs D1:Read permission
 CLOUDFLARE_D1_ID=your-d1-database-id
-
-# Optional — Shopify integration
-SHOPIFY_STORE_DOMAIN=your-store.myshopify.com
-SHOPIFY_STOREFRONT_TOKEN=your-storefront-token
 ```
 
 ### Run
@@ -145,7 +140,6 @@ soard-site-main/
 │   │
 │   ├── layouts/                # BaseLayout, PageLayout
 │   ├── utils/                  # cf-image, og, schema (JSON-LD), stats
-│   ├── lib/                    # Shopify Storefront API client
 │   ├── styles/                 # global.css (design tokens, resets)
 │   └── fonts/                  # Outfit Variable, Libre Baskerville (WOFF)
 │

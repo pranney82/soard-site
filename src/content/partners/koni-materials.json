@@ -2,8 +2,8 @@
   "name": "Koni Materials",
   "slug": "koni-materials",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/koni-materials/public",
-  "level": "friend",
-  "category": "build",
+  "tier": "construction",
   "featured": false,
-  "order": 0
+  "website": "https://konimaterials.com",
+  "level": "friend"
 }

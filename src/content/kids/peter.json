@@ -40,5 +40,7 @@
   "roomCount": 2,
   "publishStatus": "published",
   "streamVideoId": null,
-  "fundraisingUrl": null
+  "fundraisingUrl": null,
+  "bedroomCount": 1,
+  "bathroomCount": 1
 }

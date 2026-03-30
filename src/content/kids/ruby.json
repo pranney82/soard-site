@@ -4,7 +4,7 @@
   "year": 2016,
   "status": "completed",
   "bio": "This precious gem is Ruby!  Her gorgeous smile is contagious and feeds the soul of all those lucky enough to see it.  Sunshine on a Ranney Day and Make-a-Wish teamed up to ensure that those smiles spread like wildfire by making one of her heart’s deepest desires come true. In 2015, she was diagnosed with embryonal rhabdomyosarcoma, which is a form of soft tissue cancer.  Although, she remains strong and irrepressible, the chemotherapy and proton radiation therapy she undergoes is quite treacherous. Though always positive, the hardest part of treatment for Ruby is all the activities she has had to miss. The physical pain can be quickly forgotten, but the disappointments are harder to endure. Ruby has a burning passion for dancing and a fervent social conscious.  Her dreams include a future in which world peace, a cure for cancer and universal happiness exists.  Her personal aspirations are to have a family, open her own dance studio, to perform on Broadway and to travel the world.  The joint mission of SOARD and Make-a-Wish partnership transformed her basement into her very own dance studio so she can pursue her lifelong goals.  Ruby was walking on sunshine, dancing across the dance floor and glowing with incessant smiles once seeing her new therapy room!",
-  "quote": "This precious gem is Ruby!  Her gorgeous smile is contagious and feeds the soul of all those lucky enough to see it.  Sunshine on a Ranney Day and Make-a-Wish teamed up to ensure that those smiles spread like wildfire by making one of her heart’s deepest desires come true. In 2015, she was diagnosed",
+  "quote": "",
   "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/ruby/photo-09/public",
   "roomTypes": [
     "Therapy Room"
@@ -35,8 +35,8 @@
       "alt": "Ruby makeover photo"
     }
   ],
-  "age": null,
-  "diagnosis": null,
+  "age": 11,
+  "diagnosis": "Embryonal Rhabdomyosarcoma",
   "_migration": {
     "cfHeroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/0fadbe5f-1179-4301-22b6-6f04f117b500/full",
     "source": "wix-migration",
@@ -47,5 +47,6 @@
   "publishStatus": "published",
   "streamVideoId": null,
   "videoUrl": null,
-  "fundraisingUrl": null
+  "fundraisingUrl": null,
+  "therapyRoomCount": 1
 }

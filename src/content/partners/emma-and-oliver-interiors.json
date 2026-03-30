@@ -2,8 +2,8 @@
   "name": "Emma And Oliver Interiors",
   "slug": "emma-and-oliver-interiors",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/emma-and-oliver-interiors/public",
-  "level": "friend",
-  "category": "design",
+  "tier": "design",
   "featured": false,
-  "order": 0
+  "level": "friend",
+  "category": "design"
 }

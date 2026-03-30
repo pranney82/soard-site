@@ -1,300 +1,38 @@
 {
   "name": "Jason",
   "slug": "jason",
-  "age": 19,
-  "diagnosis": "Cerebral Palsy & Dystonia",
+  "age": null,
+  "diagnosis": "Ehlers-Danlos Syndrome",
   "roomTypes": [
-    "Accessible Bathroom",
-    "Dream Bedroom"
+    "Dream Bedroom",
+    "Accessible Bathroom"
   ],
-  "year": 2023,
+  "year": 2016,
   "status": "completed",
-  "bio": "Jason recently completed his freshman year at University of West Georgia! He was born a preemie weighing 2lb 9oz, spent 86 days in the NICU and by age one he was diagnosed with Cerebral Palsy and Dystonia. Today, Jason is wheelchair bound and uses a power wheelchair like a boss! He is completely dependent on someone to assist him with everyday life. Since he is not able to use his arms, he must be fed, but can clearly tell you that the food is too hot, salty or disgusting. So from the neck up Jason is a \"typical\" 17-year-old!\n\nFor Jason to take a shower, his family needs to undress him in his room and carry him through most of the house to reach the bathroom. Once in the bathroom, he uses a tub chair to shower. However, when Jason goes to camp and respite, he has a lot more independence and ability to do normal things like showering and using the restroom because of the accessibility of the bathrooms there. Because of this, he loves when he goes to camp - so we can't wait to help him have the same feeling about his own space in his house! \n\nAside from going to camp, Jason loves going to the movies with friends and family to watch Marvel movies - of which he is an avid fan! He also loves anything Anime and frequently reads Fan Fiction Anime. His favorite places to visit are New Orleans and DC, but he has dreams of going to New York City! At home, Jason's younger sister, Junia, frequently keeps him entertained with all kinds of shenanigans.",
-  "quote": "\"...from the neck up Jason is a 'typical' 17-year-old!\"",
-  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jason/hero/public",
+  "bio": "We’d like you to meet Jason. With his angelic nature and steadfast strength, he faces all of life’s challenges with a joyful disposition! SOARD provided a wheelchair accessible bathroom for this handsome fellow. Jason was born very small and very fragile. He was not eating or sleeping and became very jaundiced. He struggled tremendously to thrive and develop, but he was a fighter and kept surpassing everyone’s expectations. The first year of his life was spent in and out of the hospital being fed by tubes and put under bilirubin lights. After a year of medical intervention and tests, he received a long list of diagnoses to explain why he was experiencing atypical symptoms. His diagnoses include Ehlers-Danlos Syndrome, Koolen-DaVries Syndrome, Immunodeficiency, Chromosome 17 deletion, Mitral Valve Regurgitation, Crohn's Disease, Failure to Thrive with a feeding tube, and Juvenile Rheumatoid Arthritis. Though he has endured surgeries, experiences developmental delays and has significant medical needs, he never lets anything bring him down. He embraces the on-going services of specialists who work with him to achieve his goals including a Hospital Homebound Teacher, Occupational Therapist, Physical Therapist and Speech Therapist. He is working to improve his communication, mobility and activities of daily living including dressing and eating. Jason is exuberant, loving and incessantly optimistic. He deeply adores his older sister, younger brother and his Greyhound Habano. Jason's family was a perfect addition to the SOARD family!",
+  "quote": "",
+  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jason/1774551781327-SOARDJason-130.jpg/public",
   "photos": [
     {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jason/photo-01/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jason/photo-02/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jason/photo-03/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jason/photo-04/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jason/photo-05/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jason/photo-06/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jason/photo-07/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jason/photo-08/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jason/photo-09/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jason/photo-10/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jason/photo-11/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jason/photo-12/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jason/photo-13/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jason/photo-14/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jason/photo-15/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jason/photo-16/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jason/photo-17/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jason/photo-18/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jason/photo-19/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jason/photo-20/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jason/photo-21/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jason/photo-22/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jason/photo-23/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jason/photo-24/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jason/photo-25/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jason/photo-26/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/oakley/photo-32/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/kalen/hero/public",
-      "alt": "Jason makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/sims/hero/public",
-      "alt": "Jason makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/bobby/photo-04/public",
-      "alt": "Jason makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jason/photo-31/public",
-      "alt": "Jason makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jason/photo-32/public",
-      "alt": "Jason makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jason/photo-33/public",
-      "alt": "Jason makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jason/photo-34/public",
-      "alt": "Jason makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jason/photo-35/public",
-      "alt": "Jason makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jason/photo-36/public",
-      "alt": "Jason makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jason/photo-37/public",
-      "alt": "Jason makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jason/photo-38/public",
-      "alt": "Jason makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/bobby/photo-13/public",
-      "alt": "Jason makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jason/photo-40/public",
-      "alt": "Jason makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jason/photo-41/public",
-      "alt": "Jason makeover photo"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/bobby/photo-14/public",
-      "alt": "Jason makeover photo"
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/jason/1774551781327-SOARDJason-130.jpg/public",
+      "alt": "",
+      "cfImageId": "kids/jason/1774551781327-SOARDJason-130.jpg"
     }
   ],
-  "photoCount": 27,
-  "videoUrl": "https://www.youtube.com/watch?v=KH1YhTZThYw",
-  "photographer": "Niki Murphy Photography",
-  "partnerLogos": [
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/donors/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/jackson-healthcare/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/kids-r-kids/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/cobb-emc-foundation/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/randall-paulson/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/real-floors-commercial/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/mohawk/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/randall-brothers/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/pls-carpentry/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/servicewise-electric/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/american-signature-furniture/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/comfort-research/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/cambria/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/cr-construction-v2/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/echols/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/traditions-in-tile/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/schluter-systems/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/top-knobs/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/builders-cabinet-company/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/delta-faucet/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/pulleyassociates/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/tko-plumbing-2023/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/bin-there-dump-that/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/niki-murphy-photography/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/iframe-media/public"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/nothing-bundt-cakes/public"
-    }
-  ],
-  "shortDescription": null,
-  "metaDescription": null,
-  "altTexts": null,
-  "jsonLd": null,
-  "_migration": {
-    "scrapedAt": "2026-03-06T13:32:09.483Z",
-    "source": "wordpress-xml-export",
-    "wpPostDate": "2022-12-08 16:38:37",
-    "wpCategories": [
-      "Bin There Dump That Atlanta",
-      "Cambria",
-      "Construction Resources",
-      "Meet the Kids",
-      "Mohawk",
-      "Pulley and Associates",
-      "Randall Brothers",
-      "Randall Paulson Architects",
-      "Real Floors Commercial",
-      "ServiceWise Electric",
-      "TKO Plumbing Services"
-    ],
-    "wpTags": [
-      "2023",
-      "Accessible Bathroom",
-      "Dream Bedroom"
-    ],
-    "thumbnailId": 5713,
-    "needsReview": [],
-    "cfHeroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/bfce39e9-d0ab-4ba4-160b-dfe733fa9600/full"
-  },
-  "streamVideoId": "75598680b771324a28dd1ec997fec3e5",
-  "roomCount": 2
+  "photoCount": 1,
+  "videoUrl": null,
+  "streamVideoId": null,
+  "photographer": "",
+  "partnerLogos": [],
+  "shortDescription": "",
+  "metaDescription": "",
+  "fundraisingUrl": null,
+  "roomCount": 2,
+  "childCount": 1,
+  "bedroomCount": 1,
+  "bathroomCount": 1,
+  "therapyRoomCount": 0,
+  "featured": false,
+  "caseStudy": null,
+  "publishStatus": "published"
 }

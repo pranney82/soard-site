@@ -11,7 +11,7 @@
   "status": "completed",
   "bio": "Celia and her twin sister were adopted from China at the age of 26 months. Celia and her twin are currently thirteen years old and the youngest of six kids.  During adoption, it was thought that Celia had cerebral palsy (CP) but after extensive testing, Celia likely has a mitochondrial disorder, which is neuro-degenerative, called Leigh's disease or a Leigh-like syndrome.\n\nCelia cannot walk unassisted, use her hands purposefully, or eat by mouth.  Celia has endured many surgeries and hospitalizations and unfortunately had a setback in 2020 during a procedure that was supposed to help improve her dystonia (painful involuntary muscle contractures).  Celia lost the ability to speak, process information, sleep, and most devastatingly her sweet spunky personality.  In 2021 the procedure was reversed and hopefully with the love and support of Celia's family, their faith in God, and extensive therapies she can regain what was lost. \n\nCelia's family wishes everyone had a Celia in their lives.  She's joyful, happy, has an amazing smile, and loves her family.  She even has a superpower; Celia can use her toes to type and play games on her iPad!  Celia has good days and bad days, she struggles with strength, stamina, communication, and mental cognition but through it all, she is the brightest of lights and a gift to all that know her.  Celia truly is God's precious blessing!",
   "quote": "\"She even has a superpower; Celia can use her toes to type and play games on her iPad!\"",
-  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/celia/hero/public",
+  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/celia/photo-12/public",
   "photos": [
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/celia/photo-01/public",
@@ -146,5 +146,9 @@
   "altTexts": null,
   "jsonLd": null,
   "streamVideoId": "d84df0179f454e686e86bc609a886f58",
-  "roomCount": 2
+  "roomCount": 2,
+  "bedroomCount": 1,
+  "bathroomCount": 1,
+  "publishStatus": "published",
+  "fundraisingUrl": null
 }

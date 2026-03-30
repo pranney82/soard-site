@@ -2,8 +2,9 @@
   "name": "Anna Gamble Photography",
   "slug": "anna-gamble-photography",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/anna-gamble-photography/public",
+  "tier": "community",
+  "featured": false,
   "level": "friend",
   "category": "community",
-  "featured": false,
-  "order": 0
+  "website": "https://gamblephotography.mypixieset.com"
 }

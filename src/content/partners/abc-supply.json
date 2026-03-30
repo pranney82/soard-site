@@ -1,9 +1,9 @@
 {
-  "name": "Abc Supply",
+  "name": "ABC Supply Co. ",
   "slug": "abc-supply",
-  "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/abc-supply/public",
-  "level": "friend",
-  "category": "build",
+  "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/abc-supply/1774625252793/public",
+  "tier": "construction",
   "featured": false,
-  "order": 0
+  "website": "https://www.abcsupply.com",
+  "level": "friend"
 }

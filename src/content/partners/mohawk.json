@@ -2,9 +2,7 @@
   "name": "Mohawk",
   "slug": "mohawk",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/mohawk/public",
-  "website": "https://www.mohawkflooring.com",
-  "level": "champion",
-  "category": "funding",
+  "tier": "construction",
   "featured": true,
-  "order": 0
+  "website": "https://www.mohawkflooring.com"
 }

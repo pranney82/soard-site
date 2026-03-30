@@ -2,8 +2,8 @@
   "name": "Legacy Lighting",
   "slug": "legacy-lighting",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/legacy-lighting/public",
-  "level": "friend",
-  "category": "build",
+  "tier": "construction",
   "featured": false,
-  "order": 0
+  "level": "builder",
+  "website": "https://legacylighting.com"
 }

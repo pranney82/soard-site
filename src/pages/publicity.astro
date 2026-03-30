@@ -208,10 +208,10 @@ const breadcrumbs = [{ name: 'Home', url: '/' }, { name: 'Publicity', url: '/pub
         ))}
       </ul>
       <button class="celebs__btn celebs__btn--prev" aria-label="Scroll left" type="button">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 18l-6-6 6-6"/></svg>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m15 18-6-6 6-6"/></svg>
       </button>
       <button class="celebs__btn celebs__btn--next" aria-label="Scroll right" type="button">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m9 18 6-6-6-6"/></svg>
       </button>
     </div>
   </section>
@@ -246,7 +246,7 @@ const breadcrumbs = [{ name: 'Home', url: '/' }, { name: 'Publicity', url: '/pub
               <p class="feat__hero-excerpt">{heroFeatured.data.excerpt}</p>
               {heroFeatured.data.url && (
                 <a href={heroFeatured.data.url} class="feat__hero-link" target="_blank" rel="noopener noreferrer">
-                  Read the full story <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 17L17 7"/><path d="M7 7h10v10"/></svg>
+                  Read the full story <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 7h10v10"/><path d="M7 17 17 7"/></svg>
                 </a>
               )}
             </div>
@@ -271,7 +271,7 @@ const breadcrumbs = [{ name: 'Home', url: '/' }, { name: 'Publicity', url: '/pub
               <p class="fc__excerpt">{item.data.excerpt}</p>
               {item.data.url && (
                 <a href={item.data.url} class="fc__link" target="_blank" rel="noopener noreferrer">
-                  Read <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 17L17 7"/><path d="M7 7h10v10"/></svg>
+                  Read <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 7h10v10"/><path d="M7 17 17 7"/></svg>
                 </a>
               )}
             </div>
@@ -306,7 +306,7 @@ const breadcrumbs = [{ name: 'Home', url: '/' }, { name: 'Publicity', url: '/pub
               <span class="yg__year">{year}</span>
               <span class="yg__ct">{pressByYear[year].length}</span>
               <span class="yg__line" aria-hidden="true"></span>
-              <span class="yg__chev" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg></span>
+              <span class="yg__chev" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m6 9 6 6 6-6"/></svg></span>
             </summary>
             <div class="cl">
               {pressByYear[year].map(item => (
@@ -326,7 +326,7 @@ const breadcrumbs = [{ name: 'Home', url: '/' }, { name: 'Publicity', url: '/pub
                   </div>
                   {item.data.url && (
                     <a href={item.data.url} class="ci__arrow" target="_blank" rel="noopener noreferrer" aria-label={`Read: ${item.data.title}`}>
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 17L17 7"/><path d="M7 7h10v10"/></svg>
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 7h10v10"/><path d="M7 17 17 7"/></svg>
                     </a>
                   )}
                 </article>
@@ -429,8 +429,6 @@ const breadcrumbs = [{ name: 'Home', url: '/' }, { name: 'Publicity', url: '/pub
      ══════════════════════ */
   .container { max-width: var(--max-width); margin: 0 auto; padding-inline: var(--page-padding); }
   .container--narrow { max-width: var(--max-width-narrow); }
-  .section-label { font-size: 12px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--c-accent); display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
-  .section-label::before { content:''; width: 28px; height: 2px; background: currentColor; flex-shrink: 0; }
   .section-label--on-dark { color: var(--c-yellow); }
   .sec-title { font-family: var(--font-display); font-size: clamp(1.6rem,3.5vw,2.4rem); line-height: 1.2; margin-bottom: var(--space-lg); color: var(--c-text); }
   [data-reveal] { opacity:0; transform: translateY(28px); transition: opacity 0.7s cubic-bezier(0.16,1,0.3,1), transform 0.7s cubic-bezier(0.16,1,0.3,1); }
@@ -649,14 +647,8 @@ const breadcrumbs = [{ name: 'Home', url: '/' }, { name: 'Publicity', url: '/pub
   .cta__content h2 em { font-style: italic; }
   .cta__content p { font-size: 16px; line-height: 1.8; color: rgba(255,255,255,0.5); margin-bottom: 32px; }
   .cta__actions { display: flex; gap: var(--space-md); flex-wrap: wrap; }
-  .btn { display: inline-flex; align-items: center; gap: 8px; padding: 14px 28px; font-family: var(--font-body); font-size: 15px; font-weight: 600; border-radius: 100px; text-decoration: none; transition: all 0.35s cubic-bezier(0.16,1,0.3,1); cursor: pointer; border: 2px solid transparent; white-space: nowrap; }
-  .btn-primary { background: var(--c-yellow); color: var(--c-dark); border-color: var(--c-yellow); }
-  .btn-primary:hover { background: var(--c-yellow-hover,#e6c100); border-color: var(--c-yellow-hover,#e6c100); box-shadow: 0 4px 20px rgba(255,218,36,0.25); }
-  .btn-dark { background: var(--c-dark); color: white; border-color: var(--c-dark); }
-  .btn-dark:hover { background: #2a2d28; border-color: #2a2d28; }
   .btn-outline-light { background: transparent; color: white; border-color: rgba(255,255,255,0.2); }
   .btn-outline-light:hover { border-color: rgba(255,255,255,0.5); background: rgba(255,255,255,0.04); }
-  .btn-lg { padding: 16px 32px; font-size: 16px; }
 
   /* ══════════════════════
      RESPONSIVE

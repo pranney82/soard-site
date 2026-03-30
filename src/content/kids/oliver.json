@@ -4,7 +4,7 @@
   "year": 2015,
   "status": "completed",
   "bio": "We’d like to introduce sweet Oliver.  This little pumpkin is not only adorable, but also loving and snuggly! His favorite thing in the world is a bear hug from daddy. His second favorite is Mickey Mouse.  Oliver was born with two rare genetic conditions Phelan-McDermid Syndrome (22q13 deletion) and a partial Trisomy 9 (9q34 duplication).  He is one of only two children in the world with this extremely rare combination of genetic disorders and is one of the 1,100 known worldwide cases of Phelan-McDermid Syndrome. Consequently, Oliver has severe physical, developmental and cognitive delays.  In his short three years, Oliver has already endured 14 surgeries and frequent hospitalizations.  The hospital has become a second home for him and his family.   Complications of his condition include Cerebral Palsy and Epilepsy, as well as deficits of the cardiac, neurological, intestinal and renal systems leading to extreme chronic pain. He receives his nutrition intravenously and is incredibly susceptible to infection. As a result of being so medically fragile, he is unable to go to school or therapy outside of the home.  He is currently non-ambulatory and non-verbal and receives extensive in home therapies to facilitate improved muscle control, cognition and communication. Unfortunately, his disorders are progressive; and, it is expected that his medical and physical conditions will become more severe.  Therapy is critical to enhancing his development and physical growth.  At his age, there is a short window of opportunity to employ a variety of exercises to improve his core strength and gross motor strength to keep up with his physical growth. If adequate development of the musculoskeletal system does not occur during this crucial period, his muscles will not be able to adapt to the physical changes his body goes through as he grows.  Adequate muscle development is critical in supporting his body’s physical growth as well as in supporting the function of his kidneys and intestines.  Despite his physical limitations and chronic pain, Oliver is a joy!  His eyes light up when you interact with him and it is clear that he is full of passion for life. With bright smiles, he expresses his desire to grow and learn even during tough times.  His perseverance and cheerful demeanor are inspiring.  Sunshine on a Ranney wants to see more of those sweet smiles and plans to redesign his home to accommodate his changing needs. This project will include remodeling of the floor and bathroom to become wheelchair accessible, a room make-over and transforming the family dining room into a therapy suite so he can get all of the interventions he needs at home!  ",
-  "quote": "We’d like to introduce sweet Oliver.  This little pumpkin is not only adorable, but also loving and snuggly! His favorite thing in the world is a bear hug from daddy. His second favorite is Mickey Mouse.  Oliver was born with two rare genetic conditions Phelan-McDermid Syndrome (22q13 deletion) and ",
+  "quote": "",
   "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/oliver/photo-13/public",
   "roomTypes": [
     "Dream Bedroom",
@@ -33,8 +33,8 @@
       "alt": "Oliver makeover photo"
     }
   ],
-  "age": null,
-  "diagnosis": null,
+  "age": 3,
+  "diagnosis": " Phelan-McDermid Syndrome (22q13 deletion), partial Trisomy 9 (9q34 duplication)",
   "_migration": {
     "cfHeroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/d02b92ba-53b9-4f96-fac7-00ebd2cdc000/full",
     "source": "wix-migration",
@@ -45,5 +45,8 @@
   "publishStatus": "published",
   "streamVideoId": null,
   "videoUrl": null,
-  "fundraisingUrl": null
+  "fundraisingUrl": null,
+  "bedroomCount": 1,
+  "bathroomCount": 1,
+  "therapyRoomCount": 1
 }

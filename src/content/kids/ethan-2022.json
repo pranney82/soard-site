@@ -11,7 +11,7 @@
   "status": "completed",
   "bio": "Ethan spent the first seven years of his life without an official diagnosis other than a general diagnosis of mentally disabled.  That changed when Ethan was seven and experienced a seizure where he ultimately ended up at Children's Healthcare of Atlanta (CHOA).  Fortunately for Ethan, the neurologist at CHOA specialized in what would eventually become Ethan's diagnosis, Mecp2 Duplication Syndrome or M2DS.  M2DS is a rare genetic condition causing many issues such as severe intellectual disabilities, impaired motor function, spasticity, speech, gastrointestinal, and respiratory issues.\n\nEthan is able to enjoy life in general; he is still mobile and eats soft foods by mouth.  He has had setbacks over the years but he continuously proves how strong he is time and time again.  Ethan's mobility has declined over the past few years due to severe seizures.  Ethan's Sunshine makeover includes a wheelchair-accessible bathroom and wheelchair ramp going into his house to make daily life a little easier for everyone.",
   "quote": "Quote about Ethan",
-  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/ethan-2022/hero/public",
+  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/ethan-2022/photo-12/public",
   "photos": [
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/ethan-2022/photo-01/public",
@@ -130,5 +130,8 @@
   "altTexts": null,
   "jsonLd": null,
   "streamVideoId": "c971aa52ed481cb58808085fa8a1bbe8",
-  "roomCount": 2
+  "roomCount": 1,
+  "bathroomCount": 1,
+  "publishStatus": "published",
+  "fundraisingUrl": null
 }

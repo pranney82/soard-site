@@ -2,8 +2,8 @@
   "name": "Giovannis Tile Design",
   "slug": "giovannis-tile-design",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/giovannis-tile-design/public",
-  "level": "friend",
-  "category": "design",
+  "tier": "design",
   "featured": false,
-  "order": 0
+  "website": "https://giovannistile.com",
+  "level": "friend"
 }

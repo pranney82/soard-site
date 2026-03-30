@@ -1,9 +1,10 @@
 {
-  "name": "Jc Final",
+  "name": "Jenny Crawford Design",
   "slug": "jc-final",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/jc-logo-final/public",
-  "level": "friend",
-  "category": "build",
+  "tier": "construction",
   "featured": false,
-  "order": 0
+  "website": "https://www.jennycrawforddesign.com",
+  "level": "friend",
+  "category": "design"
 }

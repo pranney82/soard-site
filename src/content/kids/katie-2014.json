@@ -4,7 +4,7 @@
   "year": 2014,
   "status": "completed",
   "bio": "This little pumpkin is Katie Adams.  Katie is not only a beautiful ray of sunshine, but also a fighter! Back in February Katie had a fever for 3 days and significant pain in her neck. The pediatrician was initially concerned that she had meningitis, but a myriad of tests including a CT Scan led to the conclusion that she had a more serious condition-a brain tumor.  This diagnosis seemed to make the world stop spinning for Katie’s family.  A neurologist explained that there was a lot of pressure on her brain and they had to do a minor surgery to relieve it.  This surgery was successful; and, they performed an MRI to monitor the results.  At this time, they found out that Katie not only had a brain tumor, but she actually had four of them.  One of the tumors was on her brain stem making it very dangerous.  This news was heartbreaking and terrifying. The day after they discovered the four tumors, Katie endured emergency brain surgery that lasted 8 dreadful hours.  They removed the tumor on her brainstem and expected Katie to be completely unconscious for the next 24-48 hours.  The surgery was successful and she pulled through with a light hearted spirit. When her surgery was complete the doctors came into the waiting room with gigantic smiles on their faces and said, &quot;She's awake, smiling, and talking...She's a FIGHTER!&quot;  They couldn’t believe it. This little angel hasn’t stopped fighting since! She has since endured five grueling cycles of chemo therapy.  This journey has included month long hospital stays, dehydration and typhlitis which is a side effect of the chemo which caused the lining of her stomach to tear.  As a result, doctors have had to insert a gastrointestinal tube to help keep her fed and healthy. Katie is currently preparing to begin her sixth and final cycle of chemotherapy.  The doctors are anticipating that she will continue this battle and successfully beat cancer! We are all cheering her on and praying that this final treatment will eradicate all of the tumors for good! Katie has kept a positive mind set and spirit throughout this entire journey.  She has fought each battle with a smile and has not let cancer slow her down! She is still the same loveable, sweet, energetic girl! Sunshine on a Ranney Day wants to brighten her world with a make-over that is as amazing as she is!  We will be replacing all of the flooring in her home to help reduce allergens and create a colorfully sparkling room that she will love to play and laugh in for years to come!  We can waiting to see her face light up as we reveal her new room on October 4th in Winder, GA.",
-  "quote": "This little pumpkin is Katie Adams.  Katie is not only a beautiful ray of sunshine, but also a fighter! Back in February Katie had a fever for 3 days and significant pain in her neck. The pediatrician was initially concerned that she had meningitis, but a myriad of tests including a CT Scan led to t",
+  "quote": "",
   "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/katie-2014/photo-02/public",
   "roomTypes": [
     "Dream Bedroom"
@@ -35,8 +35,8 @@
       "alt": "Katie makeover photo"
     }
   ],
-  "age": null,
-  "diagnosis": null,
+  "age": 4,
+  "diagnosis": "Brain Tumors",
   "_migration": {
     "cfHeroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/693623d4-af79-4f73-8dc5-430e5fa4ed00/full",
     "source": "wix-migration",
@@ -47,5 +47,6 @@
   "publishStatus": "published",
   "streamVideoId": null,
   "videoUrl": null,
-  "fundraisingUrl": null
+  "fundraisingUrl": null,
+  "bedroomCount": 1
 }

@@ -4146,7 +4146,7 @@
       const [uploading, setUploading] = useState(false);
       const [data, setData] = useState({
         name: '', slug: '', logo: '', website: '',
-        level: 'friend', category: 'build', featured: false, order: 0, tagline: '',
+        level: 'friend', category: ['build'], featured: false, order: 0, tagline: '',
       });
 
       // Warn on browser close/refresh with unsaved changes
@@ -4188,9 +4188,16 @@
         (async () => {
           const res = await api.readContent(`src/content/partners/${slug}.json`);
           if (res.success) {
-            setData(JSON.parse(res.content));
+            const parsed = JSON.parse(res.content);
+            // Normalize category to array for multi-select
+            if (parsed.category && !Array.isArray(parsed.category)) {
+              parsed.category = [parsed.category];
+            } else if (!parsed.category) {
+              parsed.category = ['build'];
+            }
+            setData(parsed);
             setSha(res.sha);
-            setLogoPreview(JSON.parse(res.content).logo);
+            setLogoPreview(parsed.logo);
           }
           setLoading(false);
         })();
@@ -4305,14 +4312,20 @@
               <p class="text-sm text-muted mt-1">Signature = top 3–5 spotlight partners. Champion = $10K+ or major contributors. Builder = regular in-kind. Friend = everyone else.</p>
             </div>
             <div class="form-group">
-              <label class="form-label">Category</label>
-              <select class="form-select" value=${data.category}
-                onChange=${e => updateField('category', e.target.value)}>
-                <option value="build">Build</option>
-                <option value="design">Design</option>
-                <option value="funding">Funding</option>
-                <option value="community">Community</option>
-              </select>
+              <label class="form-label">Categories</label>
+              <div style="display: flex; flex-wrap: wrap; gap: 0.5rem 1rem;">
+                ${['build', 'design', 'funding', 'community'].map(cat => html`
+                  <label class="checkbox-label" key=${cat}>
+                    <input type="checkbox" checked=${(data.category || []).includes(cat)}
+                      onChange=${e => {
+                        const cur = data.category || [];
+                        const next = e.target.checked ? [...cur, cat] : cur.filter(c => c !== cat);
+                        updateField('category', next.length ? next : ['build']);
+                      }} />
+                    ${cat.charAt(0).toUpperCase() + cat.slice(1)}
+                  </label>
+                `)}
+              </div>
             </div>
           </div>
           <div class="form-row">
@@ -7606,6 +7619,62 @@
           </div>
         </div>
 
+        <div class="card">
+          <h3 style="margin-bottom: 0.5rem;">Apply Page — Family Testimonial</h3>
+          <p class="text-sm text-muted mb-1">Optional quote from a real family displayed on the Apply page. Leave blank to hide the testimonial section.</p>
+          <div class="form-group">
+            <label class="form-label">Quote</label>
+            <textarea class="form-input" rows="3" value=${data.applyTestimonial?.quote || ''}
+              placeholder="When we walked through the door, our son just froze..."
+              onInput=${e => updateField('applyTestimonial.quote', e.target.value)}></textarea>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Attribution</label>
+            <input class="form-input" value=${data.applyTestimonial?.attribution || ''}
+              placeholder="The Johnson Family"
+              onInput=${e => updateField('applyTestimonial.attribution', e.target.value)} />
+          </div>
+        </div>
+
+        <div class="card">
+          <h3 style="margin-bottom: 0.5rem;">Apply Page — FAQs</h3>
+          <p class="text-sm text-muted mb-1">Questions & answers shown on the Apply page. Also powers Google FAQ rich results. Remove all to hide the section.</p>
+          ${(data.applyFaqs || []).map((faq, i) => html`
+            <div style="border: 1px solid var(--color-border); border-radius: 8px; padding: 1rem; margin-bottom: 0.75rem; position: relative;">
+              <div style="display: flex; justify-content: space-between; align-items: start; gap: 0.5rem;">
+                <span style="font-size: 0.75rem; font-weight: 700; color: var(--color-text-secondary); min-width: 24px;">Q${i + 1}</span>
+                <button class="btn btn-sm" style="color: #e53e3e; border-color: #e53e3e; padding: 2px 8px; font-size: 0.75rem;" onClick=${() => {
+                  const updated = [...(data.applyFaqs || [])];
+                  updated.splice(i, 1);
+                  updateField('applyFaqs', updated);
+                }}>Remove</button>
+              </div>
+              <div class="form-group" style="margin-top: 0.5rem;">
+                <label class="form-label">Question</label>
+                <input class="form-input" value=${faq.question || ''}
+                  onInput=${e => {
+                    const updated = [...(data.applyFaqs || [])];
+                    updated[i] = { ...updated[i], question: e.target.value };
+                    updateField('applyFaqs', updated);
+                  }} />
+              </div>
+              <div class="form-group">
+                <label class="form-label">Answer</label>
+                <textarea class="form-input" rows="2" value=${faq.answer || ''}
+                  onInput=${e => {
+                    const updated = [...(data.applyFaqs || [])];
+                    updated[i] = { ...updated[i], answer: e.target.value };
+                    updateField('applyFaqs', updated);
+                  }}></textarea>
+              </div>
+            </div>
+          `)}
+          <button class="btn btn-sm" style="margin-top: 0.25rem;" onClick=${() => {
+            const updated = [...(data.applyFaqs || []), { question: '', answer: '' }];
+            updateField('applyFaqs', updated);
+          }}>+ Add Question</button>
+        </div>
+
         <div class="editor-save-footer">
           <button class="btn btn-primary" onClick=${handleSave} disabled=${saving}>
             ${saving ? html`<span class="spinner" />` : null}
@@ -7803,10 +7872,11 @@
           ${(() => {
             const sel = sortedKids.find(k => k.slug === (data.heroKidSlug || data.featuredKidSlug));
             if (!sel) return null;
+            const seen = new Set();
             const allPhotos = [
               { id: extractCfId(sel.heroImage), label: 'Hero' },
               ...(sel.photos || []).map((p, i) => ({ id: extractCfId(p.url), label: `Photo ${i + 1}` })),
-            ].filter(p => p.id);
+            ].filter(p => p.id && !seen.has(p.id) && seen.add(p.id));
             if (!allPhotos.length) return null;
             const currentId = data.heroKidPhotoId || extractCfId(sel.heroImage);
             return html`
@@ -7838,21 +7908,46 @@
             <div style="display: flex; gap: 0.75rem; align-items: center;">
               ${(() => {
                 const sel = sortedKids.find(k => k.slug === data.featuredKidSlug);
-                const cid = sel ? extractCfId(sel.heroImage) : '';
+                const cid = data.featuredStoryImage || (sel ? extractCfId(sel.heroImage) : '');
                 return cid ? html`<img src=${CF + '/' + cid + '/w=120,h=120,fit=cover'}
                   alt="" style="width: 56px; height: 56px; border-radius: 8px; object-fit: cover; flex-shrink: 0; border: 1px solid var(--color-border);" />` : null;
               })()}
               <select class="form-input" style="flex: 1" value=${data.featuredKidSlug || ''}
-                onChange=${e => updateField('featuredKidSlug', e.target.value)}>
+                onChange=${e => { updateField('featuredKidSlug', e.target.value); updateField('featuredStoryImage', ''); }}>
                 <option value="">— Select a kid —</option>
                 ${sortedKids.map(k => html`<option value=${k.slug} selected=${k.slug === data.featuredKidSlug}>${k.name}${k.year ? ` (${k.year})` : ''}</option>`)}
               </select>
             </div>
           </div>
-          <div class="form-group" style="margin-top: 1rem;">
-            ${renderPhotoField('Override Photo', 'featuredStoryImage', data.featuredStoryImage)}
-            <p class="text-sm text-muted" style="margin-top: 0.25rem;">Leave blank to use the kid's hero photo.</p>
-          </div>
+          ${(() => {
+            const sel = sortedKids.find(k => k.slug === data.featuredKidSlug);
+            if (!sel) return null;
+            const seen = new Set();
+            const allPhotos = [
+              { id: extractCfId(sel.heroImage), label: 'Hero' },
+              ...(sel.photos || []).map((p, i) => ({ id: extractCfId(p.url), label: `Photo ${i + 1}` })),
+            ].filter(p => p.id && !seen.has(p.id) && seen.add(p.id));
+            if (!allPhotos.length) return null;
+            const currentId = data.featuredStoryImage || extractCfId(sel.heroImage);
+            return html`
+              <div class="form-group" style="margin-top: 1rem;">
+                <label class="form-label">Choose Photo</label>
+                <div style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
+                  ${allPhotos.map(p => html`
+                    <button type="button" onClick=${() => {
+                      const val = p.label === 'Hero' ? '' : p.id;
+                      updateField('featuredStoryImage', val);
+                    }}
+                      style="padding: 0; border: 3px solid ${(currentId === p.id) ? 'var(--color-primary, #2563eb)' : 'transparent'}; border-radius: 10px; overflow: hidden; cursor: pointer; background: none; position: relative; width: 80px; height: 80px; flex-shrink: 0;">
+                      <img src=${CF + '/' + p.id + '/w=160,h=160,fit=cover'} alt=${p.label}
+                        style="width: 100%; height: 100%; object-fit: cover; display: block;" />
+                      ${(currentId === p.id) ? html`<span style="position: absolute; top: 2px; right: 2px; background: var(--color-primary, #2563eb); color: #fff; border-radius: 50%; width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; font-size: 11px;">✓</span>` : null}
+                    </button>
+                  `)}
+                </div>
+              </div>
+            `;
+          })()}
           ${(() => {
             const fk = sortedKids.find(k => k.slug === data.featuredKidSlug);
             const fName = fk?.name || 'Zyah';
@@ -9336,7 +9431,7 @@
       const icons = {
         dashboard: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></svg>`,
         kids: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4" /><path d="M6 21v-2a6 6 0 0 1 12 0v2" /></svg>`,
-        partners: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M6 20v-2a4 4 0 0 1 4-4h.5" /><circle cx="10" cy="8" r="3" /><path d="M19 14v-1a2 2 0 0 0-2-2h-1" /><path d="M15 6a3 3 0 1 1 0 6" /><path d="M16 20l2 2 4-4" /></svg>`,
+        partners: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m11 17 2 2a1 1 0 1 0 3-3" /><path d="m14 14 2.5 2.5a1 1 0 1 0 3-3l-3.88-3.88a3 3 0 0 0-4.24 0l-.88.88a1 1 0 1 1-3-3l2.81-2.81a5.79 5.79 0 0 1 7.06-.87l.47.28a2 2 0 0 0 1.42.25L21 4" /><path d="m21 3 1 11h-2" /><path d="M3 3 2 14l6.5 6.5a1 1 0 1 0 3-3" /><path d="M3 4h8" /></svg>`,
         team: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="9" cy="7" r="3" /><path d="M3 21v-1a5 5 0 0 1 10 0v1" /><circle cx="18" cy="9" r="2.5" /><path d="M15 21v-1a3.5 3.5 0 0 1 7 0v1" /></svg>`,
         articles: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 4h16v16H4z" /><path d="M8 8h8M8 12h8M8 16h5" /></svg>`,
         events: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" /></svg>`,

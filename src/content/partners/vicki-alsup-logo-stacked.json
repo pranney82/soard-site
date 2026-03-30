@@ -2,8 +2,6 @@
   "name": "Vicki Alsup Logo Stacked",
   "slug": "vicki-alsup-logo-stacked",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/vicki-alsup/public",
-  "level": "friend",
-  "category": "build",
-  "featured": false,
-  "order": 0
+  "tier": "construction",
+  "featured": false
 }

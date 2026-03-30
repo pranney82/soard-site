@@ -2,8 +2,6 @@
   "name": "Sweet Mayberrys",
   "slug": "sweet-mayberrys",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/sweet-mayberrys/public",
-  "level": "friend",
-  "category": "build",
-  "featured": false,
-  "order": 0
+  "tier": "construction",
+  "featured": false
 }

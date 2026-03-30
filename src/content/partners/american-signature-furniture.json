@@ -2,8 +2,7 @@
   "name": "American Signature Furniture",
   "slug": "american-signature-furniture",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/american-signature-furniture/public",
-  "level": "champion",
-  "category": "build",
-  "featured": true,
-  "order": 0
+  "tier": "construction",
+  "featured": false,
+  "level": "friend"
 }

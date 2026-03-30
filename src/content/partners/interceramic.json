@@ -2,8 +2,8 @@
   "name": "Interceramic",
   "slug": "interceramic",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/interceramic/public",
-  "level": "champion",
-  "category": "build",
+  "tier": "construction",
   "featured": true,
-  "order": 0
+  "level": "friend",
+  "website": "https://interceramicusa.com"
 }

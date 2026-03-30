@@ -1,0 +1,187 @@
+---
+interface Props {
+  sectionLabel?: string;
+  heading: string;
+  body: string;
+  ctaLabel?: string;
+  ctaHref?: string;
+  ctaClass?: string;
+  items: Array<{ question: string; answer: string }>;
+  accordionName?: string;
+  theme?: 'light' | 'dark';
+  id?: string;
+}
+
+const {
+  sectionLabel = 'Common Questions',
+  heading,
+  body,
+  ctaLabel,
+  ctaHref,
+  ctaClass = 'btn btn-ghost-light',
+  items,
+  accordionName = 'faq',
+  theme = 'dark',
+  id,
+} = Astro.props;
+---
+
+<section class="faq" id={id}>
+  <div class="faq-split">
+    <div class="faq-left" data-reveal>
+      <div class="section-label section-label--yellow">{sectionLabel}</div>
+      <h2 set:html={heading} />
+      <p class="faq-left-body">{body}</p>
+      {ctaLabel && ctaHref && (
+        <a href={ctaHref} class={ctaClass}>{ctaLabel}</a>
+      )}
+    </div>
+    <div class="faq-right" data-reveal data-delay="1">
+      {items.map((item, idx) => (
+        <details class="faq-card" name={accordionName}>
+          <summary>
+            <span class="faq-num">{String(idx + 1).padStart(2, '0')}</span>
+            <span class="faq-q">{item.question}</span>
+            <span class="faq-toggle" aria-hidden="true"></span>
+          </summary>
+          <div class="faq-answer">
+            <p set:html={item.answer} />
+          </div>
+        </details>
+      ))}
+    </div>
+  </div>
+</section>
+
+<style>
+  .faq {
+    padding: 100px 0;
+    background: var(--c-dark-deep);
+    color: #fff;
+  }
+  .faq-split {
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding: 0 var(--space-xl);
+    display: grid;
+    grid-template-columns: 0.85fr 1fr;
+    gap: 80px;
+    align-items: start;
+  }
+  .faq-left h2 {
+    color: #fff;
+    font-size: clamp(26px, 3vw, 36px);
+    line-height: 1.25;
+    margin-bottom: 20px;
+  }
+  .faq-left-body {
+    font-size: 16px;
+    color: rgba(255,255,255,0.68);
+    line-height: 1.7;
+    margin-bottom: 32px;
+  }
+  .faq-card {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: var(--border-radius-lg);
+    margin-bottom: 12px;
+    transition: background 0.3s ease, border-color 0.3s ease;
+  }
+  .faq-card:last-child { margin-bottom: 0; }
+  .faq-card[open] {
+    background: rgba(255,255,255,0.07);
+    border-color: rgba(255, 218, 36, 0.2);
+  }
+  .faq-card summary {
+    padding: 20px 24px;
+    cursor: pointer;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    min-height: 48px;
+    transition: color 0.2s ease;
+  }
+  .faq-card summary::-webkit-details-marker { display: none; }
+  .faq-card summary::marker { display: none; content: ''; }
+  .faq-card summary:hover { color: var(--c-yellow); }
+  .faq-num {
+    font-family: var(--font-display);
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--c-yellow);
+    flex-shrink: 0;
+    width: 28px;
+  }
+  .faq-q {
+    flex: 1;
+    font-family: var(--font-body);
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 1.4;
+  }
+  .faq-toggle {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.06);
+    flex-shrink: 0;
+    position: relative;
+    transition: background 0.3s ease, transform 0.3s ease;
+  }
+  .faq-toggle::before,
+  .faq-toggle::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    background: rgba(255,255,255,0.68);
+    border-radius: 1px;
+    transition: transform 0.3s ease, opacity 0.3s ease, background 0.3s ease;
+  }
+  .faq-toggle::before {
+    width: 12px;
+    height: 1.5px;
+    transform: translate(-50%, -50%);
+  }
+  .faq-toggle::after {
+    width: 1.5px;
+    height: 12px;
+    transform: translate(-50%, -50%);
+  }
+  .faq-card[open] .faq-toggle {
+    background: rgba(255, 218, 36, 0.15);
+  }
+  .faq-card[open] .faq-toggle::before { background: var(--c-yellow); }
+  .faq-card[open] .faq-toggle::after {
+    background: var(--c-yellow);
+    transform: translate(-50%, -50%) rotate(90deg);
+    opacity: 0;
+  }
+  .faq-answer {
+    padding: 0 24px 20px;
+    padding-left: 68px;
+  }
+  .faq-answer p {
+    font-size: 15px;
+    line-height: 1.7;
+    color: rgba(255,255,255,0.68);
+    margin: 0;
+  }
+  .faq-answer :global(a) {
+    color: var(--c-yellow);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+
+  @media (max-width: 768px) {
+    .faq { padding: 64px 0; }
+    .faq-split { grid-template-columns: 1fr; gap: 40px; }
+    .faq-answer { padding-left: 48px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .faq-toggle::before, .faq-toggle::after { transition: none; }
+    .faq-card { transition: none; }
+  }
+</style>

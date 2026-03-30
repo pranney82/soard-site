@@ -40,5 +40,7 @@
   "roomCount": 2,
   "publishStatus": "published",
   "streamVideoId": null,
-  "fundraisingUrl": "https://www.zeffy.com/en-US/donation-form/help-build-a-brighter-home"
+  "fundraisingUrl": "https://www.zeffy.com/en-US/donation-form/help-build-a-brighter-home",
+  "bedroomCount": 1,
+  "bathroomCount": 1
 }

@@ -2,8 +2,8 @@
   "name": "Means & Carney Interiors",
   "slug": "means-and-carney-interiors",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/means-and-carney-interiors/public",
-  "level": "champion",
-  "category": "design",
+  "tier": "design",
   "featured": true,
-  "order": 0
+  "level": "friend",
+  "website": "https://meanscarney.com"
 }

@@ -2,8 +2,9 @@
   "name": "101 Mobility",
   "slug": "101-mobility",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/101-mobility/public",
-  "level": "friend",
-  "category": "build",
+  "tier": "construction",
   "featured": false,
-  "order": 0
+  "level": "friend",
+  "category": "community",
+  "website": "https://www.101mobility.com"
 }

@@ -37,7 +37,3 @@ bucket_name = "soard-files"
 # [[env.preview.r2_buckets]]
 # binding = "FILES"
 # bucket_name = "soard-files-preview"
-
-# Shopify Storefront API — set these in the CF Pages dashboard (Settings > Environment Variables)
-# SHOPIFY_STORE_DOMAIN = "your-store.myshopify.com"
-# SHOPIFY_STOREFRONT_TOKEN = "your-storefront-access-token"

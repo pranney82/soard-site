@@ -2,9 +2,8 @@
   "name": "Construction Resources",
   "slug": "construction-resources",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/construction-resources/public",
-  "website": "https://www.constructionresourcesusa.com",
-  "level": "builder",
-  "category": "build",
+  "tier": "construction",
   "featured": true,
-  "order": 0
+  "website": "https://www.constructionresourcesusa.com",
+  "level": "champion"
 }

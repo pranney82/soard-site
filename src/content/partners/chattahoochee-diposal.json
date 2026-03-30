@@ -1,9 +1,9 @@
 {
-  "name": "Chattahoochee Diposal",
+  "name": "Chattahoochee Disposal Services",
   "slug": "chattahoochee-diposal",
-  "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/chattahoochee-diposal/public",
-  "level": "friend",
-  "category": "build",
+  "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/chattahoochee-diposal/1774628360927/public",
+  "tier": "construction",
   "featured": false,
-  "order": 0
+  "website": "https://www.chatdisposal.com",
+  "level": "friend"
 }

@@ -2,8 +2,8 @@
   "name": "Estafeta",
   "slug": "estafeta",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/estafeta/public",
-  "level": "friend",
-  "category": "build",
+  "tier": "construction",
   "featured": false,
-  "order": 0
+  "level": "friend",
+  "category": "community"
 }

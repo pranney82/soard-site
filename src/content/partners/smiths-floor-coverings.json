@@ -2,8 +2,6 @@
   "name": "Smiths Floor Coverings",
   "slug": "smiths-floor-coverings",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/smiths-floor-coverings/public",
-  "level": "friend",
-  "category": "build",
-  "featured": false,
-  "order": 0
+  "tier": "construction",
+  "featured": false
 }

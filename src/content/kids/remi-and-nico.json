@@ -1,7 +1,7 @@
 {
   "name": "Remi & Nico",
   "slug": "remi-and-nico",
-  "age": 14,
+  "age": null,
   "diagnosis": "Rare genetic disease",
   "roomTypes": [
     "Accessible Bathroom"
@@ -43,5 +43,6 @@
   "roomCount": 1,
   "publishStatus": "published",
   "streamVideoId": null,
-  "fundraisingUrl": null
+  "fundraisingUrl": null,
+  "bathroomCount": 1
 }

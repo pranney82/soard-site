@@ -2,8 +2,8 @@
   "name": "Cardinal Construction",
   "slug": "cardinal-construction",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/cardinal-construction/public",
-  "level": "friend",
-  "category": "build",
+  "tier": "construction",
   "featured": false,
-  "order": 0
+  "website": "https://www.cardinalteam.org",
+  "level": "friend"
 }

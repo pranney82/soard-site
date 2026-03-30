@@ -278,7 +278,7 @@
       "alt": "Kyle makeover photo"
     }
   ],
-  "photoCount": 36,
+  "photoCount": 66,
   "videoUrl": "https://youtu.be/sSlS_nIUoBg",
   "photographer": "Nicole Photography",
   "partnerLogos": [
@@ -378,5 +378,9 @@
     "cfHeroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/e6f15ebf-8b45-4f75-8eee-5cf3ae8e8f00/full"
   },
   "streamVideoId": "ae74451b60a54d7428ed5fbbb62e9ad5",
-  "roomCount": 2
+  "roomCount": 2,
+  "bedroomCount": 1,
+  "bathroomCount": 1,
+  "publishStatus": "published",
+  "fundraisingUrl": null
 }

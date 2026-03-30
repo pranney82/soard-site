@@ -1,9 +1,10 @@
 {
-  "name": "Kfc Foundation",
+  "name": "KFC Foundation",
   "slug": "kfc-foundation",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/kfc-foundation/public",
-  "level": "friend",
-  "category": "community",
+  "tier": "community",
   "featured": false,
-  "order": 0
+  "level": "friend",
+  "category": "funding",
+  "website": "https://kfcfoundation.org/wishes/"
 }

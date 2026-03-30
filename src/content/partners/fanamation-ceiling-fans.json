@@ -2,8 +2,8 @@
   "name": "Fanamation Ceiling Fans",
   "slug": "fanamation-ceiling-fans",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/fanamation-ceiling-fans/public",
-  "level": "friend",
-  "category": "build",
+  "tier": "construction",
   "featured": false,
-  "order": 0
+  "website": "https://fanimation.com",
+  "level": "friend"
 }

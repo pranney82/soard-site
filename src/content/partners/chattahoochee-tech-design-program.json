@@ -2,9 +2,9 @@
   "name": "Chattahoochee Tech Design Program",
   "slug": "chattahoochee-tech-design-program",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/chattahoochee-tech/public",
-  "website": "https://www.chattahoocheetech.edu/interiors",
-  "level": "champion",
-  "category": "design",
+  "tier": "design",
   "featured": true,
-  "order": 0
+  "website": "https://www.chattahoocheetech.edu/interiors",
+  "category": "design",
+  "level": "builder"
 }

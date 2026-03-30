@@ -4,7 +4,7 @@
   "year": 2014,
   "status": "completed",
   "bio": "These two cuties are Hannah and Austin, a unique brother and sister duo who are about to get a dual make over!  Hannah is clever and witty and generally carries this radiant smile with her wherever she goes.  She loves animals (especially horses), swimming and of course, like most preteens, spends most of her time with her friends and on her smart phone!  Austin is energetic, compassionate and rocks an incredible sense of humor.  He loves adventures, playing baseball and has an adorable gecko named Spot.  He is all boy!  Both Hannah and Austin were born healthy, beautiful babies meeting all their early milestones as expected.  Hannah’s preschool director first noticed that there was something wrong with Hannah’s leg just before her fifth birthday.  Unfortunately, her pediatrician did not notice anything that he thought warranted further assessment and he dismissed the family’s concerns.   In kindergarten, a second teacher brought similar concerns to Hannah’s mother and suggested that the school’s physical therapist assess her gait.  The physical therapist noted signs of a neurological impairment and urged the family to take Hannah to a neurologist.  After a long and frustrating year of seeking help from different pediatricians and neurologists to determine what was happening to Hannah, a diagnosis was made.  The family consulted a new pediatrician who believed Hannah had a rare genetic disorder called Friedreich’s Ataxia which affects the neuromuscular system. She recommended a new neurologist who was able to complete genetic testing and confirmed that the pediatrician was correct.  Friedreich’s Ataxia (FA) is a rare, genetic, neurodegenerative, multi-system, life-altering disorder.  Onset of symptoms is usually between the ages of 5 and 15.  The earlier the onset typically means a more aggressive disease path.  Symptoms of FA include: •\tmuscle weakness and loss of coordination in the arms and legs requiring wheelchair utilization •\tvision &amp; hearing impairments •\tslurred speech •\tdiabetes •\taggressive scoliosis that often requires spinal fusion •\tlife-threatening heart disease called hypertrophic cardiomyopathy This devastating diagnosis came with the news that there was no treatment, cure, or pill to make things better.  What the family thought was a simple loss of balance turned into the ominous prognosis that things would only get worse for Hannah and that she would eventually lose her abilities and independence.  Since this heartbreaking discovery in 2009, FA has robbed Hannah of her ability to walk independently, decreased her ability to stand and her scoliosis has become so severe that she wears a back brace. Although the disease is genetic, Austin was asymptomatic at the time Hannah was diagnosed and therefore the neurologist suggested that the family delay any testing.  Austin continued to develop as expected and began soccer in 2012. Though the family prayed that lightning wouldn’t strike twice, his parents became fearful as they watched him struggle to manage his feet on the soccer field.  It was torture for them to watch as he demonstrated a change in neurological function and a skipping gait they recognized all too well.  Their suspicion was confirmed shortly after. Although there is only a 25% chance that either child would develop FA, the painful reality proved that both children would have to endure the effects of this horrific disease. Their home is in need of modifications to accommodate the changes they are experiencing now as well as those they will experience in the future.  This includes making the home wheelchair accessible with appropriate hard flooring, widening the hallways and adding a ramp.  Sunshine on a Ranney Day hopes that making their whole house more accessible will allow them to enjoy their home as a cheerful retreat where Hannah can giggle with her friends and Austin can make them all laugh hysterically with his jokes. Please join us for their special reveal on November 1st in Cumming, GA.….. Let’s bring them some sunshine and remind them that everything will be ok!",
-  "quote": "These two cuties are Hannah and Austin, a unique brother and sister duo who are about to get a dual make over!  Hannah is clever and witty and generally carries this radiant smile with her wherever she goes.  She loves animals (especially horses), swimming and of course, like most preteens, spends m",
+  "quote": "",
   "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/hannah-and-austin/photo-04/public",
   "roomTypes": [
     "Dream Bedroom",
@@ -40,8 +40,11 @@
       "alt": "Hannah & Austin makeover photo"
     }
   ],
-  "age": null,
-  "diagnosis": null,
+  "age": [
+    10,
+    13
+  ],
+  "diagnosis": "Friedreich’s Ataxia",
   "_migration": {
     "cfHeroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/a61d1dbc-75f9-46c4-8b35-bdca2c949700/full",
     "source": "wix-migration",
@@ -53,5 +56,7 @@
   "publishStatus": "published",
   "streamVideoId": null,
   "videoUrl": null,
-  "fundraisingUrl": null
+  "fundraisingUrl": null,
+  "bedroomCount": 2,
+  "bathroomCount": 1
 }

@@ -2,8 +2,6 @@
   "name": "Reliable Heating & Air",
   "slug": "reliable-heating-and-air",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/reliable-heating-and-air/public",
-  "level": "champion",
-  "category": "build",
-  "featured": true,
-  "order": 0
+  "tier": "construction",
+  "featured": true
 }

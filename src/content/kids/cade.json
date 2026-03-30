@@ -11,7 +11,7 @@
   "status": "completed",
   "bio": "Cade graduated highschool in May of 2020. In January of 2021, he was a passenger during a motor vehicle accident and was ejected from the vehicle. Miraculously, he survived. He spent 5 days in a local ICU and was transferred to Shepherds Spinal Center in Atlanta where he spent one week in ICU followed by 9 weeks of inpatient rehab for a spinal cord injury. He was given the diagnosis of C4 incomplete (when damage is dealt about mid-way down the cervical spinal cord), spent 6 weeks on a vent, and is now in a power wheelchair to get around day to day.\n\nCade is making progress towards being functional, but right now still requires around the clock care for someone to bathe him, feed him, etc.. even scratch his \\u201citches\\u201d! His parents were able to remodel their bathroom so that he can shower there, but his current room is tough for him to get around in and he can't get in his bathroom. He plans on going to college online at Georgia Highlands for the fall of 2022. While there, he will be studying Psychology and Computer Animation, perfectly in line with his interests of Anime, Star Wars and cars. The world is blessed to still have Cade in it and we are so excited to help make modifications that will allow him to be more independent!",
   "quote": "\"Miraculously, he survived.\"",
-  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/cade/hero/public",
+  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/cade/photo-13/public",
   "photos": [
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/cade/photo-01/public",
@@ -174,5 +174,9 @@
   "altTexts": null,
   "jsonLd": null,
   "streamVideoId": "34d5cad06e7eb1a6318e3251155f0044",
-  "roomCount": 2
+  "roomCount": 2,
+  "bedroomCount": 1,
+  "bathroomCount": 1,
+  "publishStatus": "published",
+  "fundraisingUrl": null
 }

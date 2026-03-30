@@ -1,9 +1,10 @@
 {
-  "name": "Jacey Verhoef",
+  "name": "Jacey Verhoef Photography",
   "slug": "jacey-verhoef",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/jacey-verhoef/public",
-  "level": "friend",
-  "category": "build",
+  "tier": "construction",
   "featured": false,
-  "order": 0
+  "website": "https://jverhoefphotography.com",
+  "level": "friend",
+  "category": "community"
 }

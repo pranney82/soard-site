@@ -2,8 +2,6 @@
   "name": "PLS Carpentry",
   "slug": "pls-carpentry",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/pls-carpentry/public",
-  "level": "friend",
-  "category": "build",
-  "featured": false,
-  "order": 0
+  "tier": "construction",
+  "featured": false
 }

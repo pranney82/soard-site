@@ -4,7 +4,7 @@
   "year": 2016,
   "status": "completed",
   "bio": "This precious flower is Grace Elizabeth.  Grace is kindhearted, spirited and cherished by her adoring family.  With those precious dimples, sparkling blue eyes and angelic smile, who could resist loving on her? Grace is 11 years old and in 5th grade.  She absolutely loves school and is Spongebob’s biggest fan!  Grace has a diagnosis of Rett Syndrome which is a rare genetic neurological and developmental disorder that affects the way the brain communicates messages to the body.  This primarily affects the use of the hands, verbal communication, and mobility as well as causes significant seizures.  This syndrome occurs almost exclusively in girls. Like most infants born with Rett Syndrome, Grace seemed to be developing normally at first, but after ten months began to lose some of the skills she previously learned, she had low overall muscle tone and wasn’t sitting up or crawling.  Soon after being diagnosed with Rett just after her second birthday, she presented with stereotypical symptoms such as hand wringing, hyperventilating, stomach problems, seizures and apnea. In order to keep Grace healthy and advance her development she receives fluids and medication through a G-tube and is treated by a variety of specialists including speech-language pathologists, occupational therapists, physical therapists, cardiologists, orthopedists, neurologists, gastroenterologists, and pulmonologists. With a steadfast desire to reach the sky and her family’s support, Grace continues to blossom.  As she grows, so do her needs.  To help her manage her budding needs and empower her, Sunshine on a Ranney Day renovated her room and bathroom for increased accessibility and quality of living.  We enjoy watching her flourish with radiant smiles. You can read more about Grace’s story at www.girlpower2cure.org/grace.",
-  "quote": "This precious flower is Grace Elizabeth.  Grace is kindhearted, spirited and cherished by her adoring family.  With those precious dimples, sparkling blue eyes and angelic smile, who could resist loving on her? Grace is 11 years old and in 5th grade.  She absolutely loves school and is Spongebob’s b",
+  "quote": "",
   "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/grace-2016/photo-14/public",
   "roomTypes": [
     "Dream Bedroom",
@@ -40,8 +40,8 @@
       "alt": "Grace makeover photo"
     }
   ],
-  "age": null,
-  "diagnosis": null,
+  "age": 11,
+  "diagnosis": "Rett Syndrome",
   "_migration": {
     "cfHeroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/bfce39e9-d0ab-4ba4-160b-dfe733fa9600/full",
     "source": "wix-migration",
@@ -52,5 +52,7 @@
   "publishStatus": "published",
   "streamVideoId": null,
   "videoUrl": null,
-  "fundraisingUrl": null
+  "fundraisingUrl": null,
+  "bedroomCount": 1,
+  "bathroomCount": 1
 }

@@ -4,7 +4,7 @@
   "year": 2016,
   "status": "completed",
   "bio": "Cohen, like most teenage boys, loves sports and video games. This handsome champion is a sports enthusiast who passionately played a variety of sports including soccer, basketball and football beginning at age 3.  Running, jumping, kicking, dunking! Cohen played hard and basked in all the joys of boyhood.   As Cohen grew, things began to change.  Around 12, his parents and pediatrician noticed that he developed a gait abnormality in which he started turning his left foot outward to balance himself.  A series of tests first lead to the startling diagnosis of severe scoliosis with extensive scans and found the curvature of his spine was so severe it had pushed his heart to the other side of his body.  An Orthopedic Surgeon performed Spinal Fusion Surgery on Cohen in January of 2014, placing 2 titanium rods and 17 screws in his back to straighten his spine. Unfortunately, Cohen never regained his mobility after the surgery. During the surgery, the surgeon also noticed some neurological deficits and referred Cohen to be seen by a neurologist. This led to additional testing revealing two devastating diagnoses, Inherited Peripheral Neuropathy and a rare diagnosis of Hereditary Spastic Paraplegia. Hereditary Spastic Paraplegia is a genetic disease (effecting the spinal cord) detected on the Gene.  SPG7.  It has no cure, causes muscle weakness and has significantly affected his bilateral lower extremities.  When incidents occur, his legs become very weak and give out without notice to Cohen because of the spasticity which results in frequent and dangerous falls as he cannot predict when this will happen. Currently, Cohen uses a wheelchair and walker to move about his home.  Luckily, his upper extremities remain unaffected at this time and he is able to use his upper body strength to push his wheelchair and help transfer himself.  However, this is quite a feat and poses many challenges during bathing and dressing routines.  Weakness and fatigue make it difficult for him to remain active.  Although he will never walk again and cannot participate in traditional physical therapy, Cohen attends Aquatic Therapy to activate his muscles in a weightless environment. The reality of adjusting to a new way of life at 16 is enormous.  However, Cohen strives to maintain a positive spirit, continues to attend high school on-line and perfects his talents as master videogame champion. SOARD provided modifications that made his home environment safer so he can maintain mobility in his wheelchair, make transfers easier and safer from his bed or chair and move freely in the bathroom. ",
-  "quote": "Cohen, like most teenage boys, loves sports and video games. This handsome champion is a sports enthusiast who passionately played a variety of sports including soccer, basketball and football beginning at age 3.  Running, jumping, kicking, dunking! Cohen played hard and basked in all the joys of bo",
+  "quote": "",
   "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/cohen/photo-09/public",
   "roomTypes": [
     "Dream Bedroom"
@@ -35,8 +35,8 @@
       "alt": "Cohen makeover photo"
     }
   ],
-  "age": null,
-  "diagnosis": null,
+  "age": 16,
+  "diagnosis": "Hereditary Spastic Paraplegia",
   "_migration": {
     "cfHeroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/bfce39e9-d0ab-4ba4-160b-dfe733fa9600/full",
     "source": "wix-migration",
@@ -47,5 +47,6 @@
   "publishStatus": "published",
   "streamVideoId": null,
   "videoUrl": null,
-  "fundraisingUrl": null
+  "fundraisingUrl": null,
+  "bedroomCount": 1
 }

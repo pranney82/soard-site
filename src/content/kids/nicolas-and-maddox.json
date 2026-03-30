@@ -11,7 +11,7 @@
   "status": "completed",
   "bio": "Meet Nico and Maddox! In September of 2022, both boys were diagnosed with Metachromatic Leukodystrophy (MLD), a genetic disease that affects the brain and nervous system. Those with the disease progressively lose function as the substance that protects the nerve cells (Myelin) becomes damaged. The result is a loss of motor and cognitive function over time. There is no cure, and no treatment options are available at this stage of their disease.  \n\nNico (8) is a bundle of curiosity and creativity. From the moment he said his first words, dinosaurs became his world. His playroom is a prehistoric playground adorned with dinosaur toys, including his favorite T-Rex. It's common to find him engrossed in dinosaur books or correcting his parents on the difference between a Brachiosaurus and a Brontosaurus. Beyond his fascination with dinosaurs, Nico possesses a remarkable intellect and vivid imagination that sets him apart. His inquisitive nature has led him to develop a keen interest in puzzles. He often thrived on the mental stimulation that solving puzzles provides.\n\nMaddox (6) is a bundle of joy who can turn any moment into a celebration with his infectious laughter. His zest for life is evident in everything he does, and his laughter fills the air with happiness. He possesses an innate ability to lighten up a room, bringing smiles to the faces of those around him. His playful spirit and genuine enthusiasm for life make him a magnetic presence, drawing people in with the promise of shared laughter and joy. Music holds a special place in Maddox's heart, and he expresses his love for life through the power of song. His repertoire includes the timeless classics \"Happy Birthday\" and the festive \"Jingle Bells.\" His unwavering enthusiasm turns any sing-along into a heartwarming performance that leaves everyone smiling.\n\nOne of the family's favorite pastimes is following the path through their garden to look at all of the vegetables and flowers planted along the way. This is a perfect reflection of the family's love for life and being together!  Sunshine on a Ranney Day's goal is to make them as comfortable as possible as symptoms begin to limit the boys' abilities. We hope to help the family make the most of their time with the boys by improving the accessible areas of the home to accommodate the boys' needs.",
   "quote": "\"One of the family's favorite pastimes is following the path through their garden to look at all the vegetables and flowers planted along the way.\"",
-  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/nicolas-and-maddox/hero/public",
+  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/nicolas-and-maddox/photo-01/public",
   "photos": [
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/nicolas-and-maddox/photo-01/public",
@@ -32,17 +32,9 @@
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/nicolas-and-maddox/photo-05/public",
       "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/josue/photo-09/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/istvan/photo-22/public",
-      "alt": ""
     }
   ],
-  "photoCount": 7,
+  "photoCount": 5,
   "videoUrl": "https://www.youtube.com/watch?v=cNj8nQrV3II",
   "photographer": null,
   "partnerLogos": [
@@ -80,5 +72,9 @@
   "jsonLd": null,
   "streamVideoId": "cccb6f4de1c340b619e33898918f246c",
   "childCount": 2,
-  "roomCount": 2
+  "roomCount": 2,
+  "bedroomCount": 1,
+  "therapyRoomCount": 1,
+  "publishStatus": "published",
+  "fundraisingUrl": null
 }

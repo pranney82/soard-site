@@ -2,9 +2,7 @@
   "name": "Vickers Design Group",
   "slug": "vickers-design-group",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/vickers-design-group/public",
-  "website": "https://vickersdesigngroup.com",
-  "level": "champion",
-  "category": "design",
+  "tier": "design",
   "featured": true,
-  "order": 0
+  "website": "https://vickersdesigngroup.com"
 }

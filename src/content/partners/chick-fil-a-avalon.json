@@ -2,8 +2,8 @@
   "name": "Chick Fil A Avalon",
   "slug": "chick-fil-a-avalon",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/chick-fil-a-avalon/public",
-  "level": "friend",
-  "category": "community",
+  "tier": "community",
   "featured": false,
-  "order": 0
+  "level": "friend",
+  "category": "community"
 }

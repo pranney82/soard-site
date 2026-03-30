@@ -11,7 +11,7 @@
   "status": "completed",
   "bio": "Levi is a brilliant, sweet and chatty 7 year old boy who loves Ironman, Spiderman and Sonic the Hedgehog. He is affected by Nemaline Myopathy, a rare form of muscular dystrophy. Because NM affects his muscles, he is unable to walk and instead zips around in a power chair. Levi is unable to breathe adequately on his own, so he has a trach and ventilator to help him.\n\nHe has had multiple surgeries and hospital stays in his short life in an attempt to keep him healthy and maximize his quality of life. In moments like these, he loves being around his brother Ari for playtime. He still strives for independence and having a space that is adapted to assist him rather than being another obstacle, will be life changing!",
   "quote": "\"...having a space that is adapted to assist him rather than being another obstacle, will be life changing!\"",
-  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/levi/hero/public",
+  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/levi/photo-17/public",
   "photos": [
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/levi/photo-01/public",
@@ -208,5 +208,10 @@
   "altTexts": null,
   "jsonLd": null,
   "streamVideoId": "1f03e62b315773ce06ea27637952416a",
-  "roomCount": 2
+  "roomCount": 2,
+  "bedroomCount": 0,
+  "bathroomCount": 1,
+  "therapyRoomCount": 1,
+  "publishStatus": "published",
+  "fundraisingUrl": null
 }

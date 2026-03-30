@@ -2,8 +2,9 @@
   "name": "Aj Madison",
   "slug": "aj-madison",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/aj-madison/public",
-  "level": "friend",
-  "category": "build",
+  "tier": "construction",
   "featured": false,
-  "order": 0
+  "tagline": "",
+  "website": "https://www.ajmadison.com",
+  "level": "friend"
 }

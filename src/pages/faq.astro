@@ -95,20 +95,6 @@ const breadcrumbs = [
 </BaseLayout>
 
 <style>
-  /* ─── Shared ─────────────────────── */
-  .section-label--yellow {
-    font-size: 12px;
-    font-weight: 700;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: var(--c-yellow);
-    margin-bottom: 16px;
-  }
-  .highlight {
-    font-style: italic;
-    background-image: linear-gradient(transparent 55%, rgba(255, 218, 36, 0.45) 55%);
-  }
-
   /* ─── Hero ─────────────────────── */
   .faq-hero {
     background: var(--c-dark);
@@ -326,41 +312,6 @@ const breadcrumbs = [
     gap: 12px;
     justify-content: center;
     flex-wrap: wrap;
-  }
-
-  /* Buttons */
-  .btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    font-family: var(--font-body);
-    font-weight: 600;
-    font-size: 15px;
-    padding: 14px 32px;
-    border: none;
-    border-radius: 100px;
-    cursor: pointer;
-    text-decoration: none;
-    transition: transform 0.25s ease, box-shadow 0.25s ease, background 0.25s ease;
-    min-height: 48px;
-  }
-  .btn:hover { transform: translateY(-2px); }
-  .btn:active { transform: translateY(0); }
-  .btn-primary {
-    background: var(--c-dark);
-    color: #fff;
-  }
-  .btn-primary:hover { box-shadow: 0 8px 24px rgba(0,0,0,0.3); }
-  .btn-lg { padding: 18px 40px; font-size: 16px; }
-  .btn-ghost-light {
-    background: transparent;
-    color: var(--c-dark);
-    border: 1.5px solid rgba(45,46,51,0.2);
-  }
-  .btn-ghost-light:hover {
-    background: rgba(45,46,51,0.06);
-    border-color: rgba(45,46,51,0.35);
   }
 
   /* ─── Mobile ─────────────────────── */

@@ -1,9 +1,10 @@
 {
-  "name": "Castan And Lecca",
+  "name": "Castan And Lecca Attorneys at Law",
   "slug": "castan-and-lecca",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/castan-and-lecca/public",
-  "level": "friend",
-  "category": "build",
+  "tier": "construction",
   "featured": false,
-  "order": 0
+  "website": "https://castanlecca.com",
+  "level": "friend",
+  "category": "funding"
 }
