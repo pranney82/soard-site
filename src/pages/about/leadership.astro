@@ -1,35 +1,122 @@
 ---
 /**
  * Leadership — Team & Board of Directors
- * Pulls from src/content/team/ JSON files.
+ * Premium editorial layout with founders feature, scroll reveal,
+ * JSON-LD structured data, and breadcrumbs.
  */
 import PageLayout from '../../layouts/PageLayout.astro';
 import { getCollection } from 'astro:content';
 import { cfUrl, cfDensitySrcset, cfSrcset } from '../../utils/cf-image';
+import { getWebPageSchema, getBreadcrumbSchema, buildSchemaGraph } from '../../utils/schema';
+import { getSiteStats } from '../../utils/stats';
 
 const PLACEHOLDER = 'brand-logo-circle-display';
 
 const allTeam = await getCollection('team');
+const founders = allTeam
+  .filter(t => t.data.group === 'team' && (t.data.order === 1 || t.data.order === 2))
+  .sort((a, b) => (a.data.order || 0) - (b.data.order || 0));
 const teamMembers = allTeam
-  .filter(t => t.data.group === 'team')
+  .filter(t => t.data.group === 'team' && t.data.order > 2)
   .sort((a, b) => (a.data.order || 0) - (b.data.order || 0));
 const boardMembers = allTeam
   .filter(t => t.data.group === 'board')
   .sort((a, b) => (a.data.order || 0) - (b.data.order || 0));
+
+/* ── Stats ── */
+const computed = await getSiteStats();
+
+/* ── Schema ── */
+const pageUrl = 'https://sunshineonaranneyday.com/about/leadership/';
+const pageDesc = `Meet the team and board of directors behind Sunshine on a Ranney Day — the people who make dream rooms possible for ${computed.totalKids}+ children with special needs in the greater Atlanta area.`;
+const breadcrumbs = [
+  { name: 'Home', url: 'https://sunshineonaranneyday.com/' },
+  { name: 'About', url: 'https://sunshineonaranneyday.com/about/' },
+  { name: 'Leadership', url: pageUrl },
+];
+const jsonLd = buildSchemaGraph(
+  getWebPageSchema({ url: pageUrl, title: 'Leadership', description: pageDesc }),
+  getBreadcrumbSchema(breadcrumbs, pageUrl),
+);
 ---
 
 <PageLayout
   title="Leadership"
-  description="Meet the team and board of directors behind Sunshine on a Ranney Day — the people who make dream rooms possible for children with special needs."
-  heroLabel="Our Team"
-  heroTitle={'<em class="highlight">Leadership</em>'}
+  description={pageDesc}
+  jsonLd={jsonLd}
+  breadcrumbs={breadcrumbs}
+  heroLabel="About"
+  heroTitle={'Our <em class="highlight">Leadership</em>'}
   heroSubtitle="The people behind the mission"
 >
-  <!-- Team Section -->
-  <section class="section section--gray" id="our-team">
+
+  <!-- ══════ FOUNDERS FEATURE ══════ -->
+  <section class="founders-section" id="founders" aria-labelledby="founders-heading">
     <div class="container">
-      <div class="section-intro">
-        <h2 class="section-label">Our Team</h2>
+      <div class="section-intro" data-reveal>
+        <h2 class="section-label" id="founders-heading">Co-Founders</h2>
+        <p class="section-desc">
+          Since 2012, Holly and Peter Ranney have poured their hearts into building
+          <span class="highlight">dream rooms</span> for children who need them most.
+        </p>
+      </div>
+
+      <div class="founders-grid">
+        {founders.map((member, i) => (
+          <div class="founder-card" data-reveal data-delay={String(i)}>
+            <div class="founder-photo-wrap">
+              <div class="founder-photo">
+                {member.data.photo ? (
+                  <img
+                    src={cfUrl(member.data.photo, { w: 280, h: 280, fit: 'cover', gravity: 'face' })}
+                    srcset={cfSrcset(member.data.photo, [200, 280, 400, 560], { fit: 'cover', gravity: 'face', aspectRatio: 1 })}
+                    sizes="(max-width: 480px) 200px, 280px"
+                    alt={`${member.data.name}, ${member.data.title}`}
+                    width="280" height="280"
+                    loading="eager"
+                    decoding="async"
+                  />
+                ) : (
+                  <div class="photo-placeholder">
+                    <img src={cfUrl(PLACEHOLDER, { w: 256 })} alt="" class="placeholder-icon" width="256" height="256" loading="lazy" decoding="async" />
+                  </div>
+                )}
+              </div>
+              <div class="founder-ring" aria-hidden="true"></div>
+            </div>
+            <h3 class="founder-name">{member.data.name}</h3>
+            <p class="founder-title">{member.data.title}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════ IMPACT RIBBON ══════ -->
+  <section class="impact-ribbon" aria-label="Impact numbers">
+    <div class="ribbon-inner">
+      <div class="ribbon-stat" data-reveal>
+        <span class="ribbon-num">{computed.totalRooms}+</span>
+        <span class="ribbon-label">Rooms Completed</span>
+      </div>
+      <div class="ribbon-divider" role="presentation"></div>
+      <div class="ribbon-stat" data-reveal data-delay="1">
+        <span class="ribbon-num">{computed.totalKids}+</span>
+        <span class="ribbon-label">Children Served</span>
+      </div>
+      <div class="ribbon-divider" role="presentation"></div>
+      <div class="ribbon-stat" data-reveal data-delay="2">
+        <span class="ribbon-num">{computed.years}</span>
+        <span class="ribbon-label">Years of Impact</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════ TEAM GRID ══════ -->
+  <section class="section section--cream" id="our-team" aria-labelledby="team-heading">
+    <div class="container">
+      <div class="section-intro" data-reveal>
+        <h2 class="section-label" id="team-heading">Our Team</h2>
         <p class="section-desc">
           The dedicated crew that turns <span class="highlight">dreams into reality</span> — 
           from design and construction to operations and community outreach.
@@ -37,8 +124,8 @@ const boardMembers = allTeam
       </div>
 
       <div class="team-grid">
-        {teamMembers.map(member => (
-          <div class="member-card">
+        {teamMembers.map((member, i) => (
+          <div class="member-card" data-reveal data-delay={String(Math.min(i, 3))}>
             <div class="member-photo">
               {member.data.photo ? (
                 <img
@@ -51,7 +138,7 @@ const boardMembers = allTeam
                   decoding="async"
                 />
               ) : (
-                <div class="member-photo__placeholder">
+                <div class="photo-placeholder">
                   <img src={cfUrl(PLACEHOLDER, { w: 256 })} alt="" class="placeholder-icon" width="256" height="256" loading="lazy" decoding="async" />
                 </div>
               )}
@@ -67,19 +154,19 @@ const boardMembers = allTeam
     </div>
   </section>
 
-  <!-- Board Section -->
-  <section class="section section--gray" id="board">
+  <!-- ══════ BOARD OF DIRECTORS ══════ -->
+  <section class="section section--gray" id="board" aria-labelledby="board-heading">
     <div class="container">
-      <div class="section-intro">
-        <h2 class="section-label">Board of Directors</h2>
+      <div class="section-intro" data-reveal>
+        <h2 class="section-label" id="board-heading">Board of Directors</h2>
         <p class="section-desc">
           Community leaders and industry experts who guide our <span class="highlight">mission and growth</span>.
         </p>
       </div>
 
       <div class="board-grid">
-        {boardMembers.map(member => (
-          <div class="board-card">
+        {boardMembers.map((member, i) => (
+          <div class="board-card" data-reveal data-delay={String(Math.min(i, 4))}>
             <div class="board-photo">
               {member.data.photo ? (
                 <img
@@ -91,7 +178,7 @@ const boardMembers = allTeam
                   decoding="async"
                 />
               ) : (
-                <div class="board-photo__placeholder">
+                <div class="photo-placeholder photo-placeholder--sm">
                   <img src={cfUrl(PLACEHOLDER, { w: 256 })} alt="" class="placeholder-icon" width="256" height="256" loading="lazy" decoding="async" />
                 </div>
               )}
@@ -109,26 +196,159 @@ const boardMembers = allTeam
     </div>
   </section>
 
-  <!-- CTA -->
+  <!-- ══════ CTA ══════ -->
   <section class="section section--dark" slot="cta">
     <div class="container" style="text-align: center;">
-      <h2 class="cta-heading">
-        Want to <span class="highlight">join the mission</span>?
-      </h2>
-      <p class="cta-text">
-        We're always looking for passionate people — whether you want to volunteer, 
-        partner, or support our work in other ways.
-      </p>
-      <div class="cta-buttons">
-        <a href="/donate" class="btn btn--primary">Donate</a>
-        <a href="/partners/" class="btn btn--outline">Become a Partner</a>
+      <div data-reveal>
+        <h2 class="cta-heading">
+          Want to <span class="highlight">join the mission</span>?
+        </h2>
+        <p class="cta-text">
+          We're always looking for passionate people — whether you want to volunteer, 
+          partner, or support our work in other ways.
+        </p>
+        <div class="cta-buttons">
+          <a href="/donate/" class="btn btn-primary btn-lg">Donate</a>
+          <a href="/partners/" class="btn btn-ghost-light btn-lg">Become a Partner</a>
+        </div>
       </div>
     </div>
   </section>
 </PageLayout>
 
 <style>
-  /* ─── Section Intro ───────────────────── */
+  /* ═══════════════════════════════════════════
+     FOUNDERS FEATURE
+     ═══════════════════════════════════════════ */
+  .founders-section {
+    padding-block: var(--space-4xl) var(--space-3xl);
+    background: var(--c-cream);
+  }
+
+  .founders-grid {
+    display: flex;
+    justify-content: center;
+    gap: clamp(3rem, 8vw, 8rem);
+    max-width: 760px;
+    margin-inline: auto;
+  }
+
+  .founder-card {
+    text-align: center;
+    flex: 0 0 auto;
+  }
+
+  .founder-photo-wrap {
+    position: relative;
+    width: 280px;
+    height: 280px;
+    margin: 0 auto var(--space-xl);
+  }
+
+  .founder-photo {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    overflow: hidden;
+    position: relative;
+    z-index: 1;
+    background: var(--c-warm-gray);
+    box-shadow: var(--shadow-lg);
+  }
+
+  .founder-photo img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform var(--transition-slow);
+  }
+
+  .founder-card:hover .founder-photo img {
+    transform: scale(1.05);
+  }
+
+  .founder-ring {
+    position: absolute;
+    inset: -6px;
+    border-radius: 50%;
+    border: 3px solid var(--c-yellow);
+    opacity: 0;
+    transform: scale(0.96);
+    transition: opacity var(--transition-slow), transform var(--transition-slow);
+  }
+
+  .founder-card:hover .founder-ring {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  .founder-name {
+    font-family: var(--font-display);
+    font-size: 1.35rem;
+    font-weight: 700;
+    margin-bottom: 0.25rem;
+    color: var(--c-text);
+  }
+
+  .founder-title {
+    font-size: 0.95rem;
+    color: var(--c-text-muted);
+    font-weight: 500;
+    line-height: 1.5;
+  }
+
+  /* ═══════════════════════════════════════════
+     IMPACT RIBBON
+     ═══════════════════════════════════════════ */
+  .impact-ribbon {
+    background: var(--c-dark);
+    padding-block: var(--space-2xl);
+  }
+
+  .ribbon-inner {
+    max-width: var(--max-width);
+    margin-inline: auto;
+    padding-inline: var(--page-padding);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: clamp(var(--space-xl), 5vw, var(--space-4xl));
+  }
+
+  .ribbon-stat {
+    text-align: center;
+  }
+
+  .ribbon-num {
+    display: block;
+    font-family: var(--font-display);
+    font-size: clamp(1.75rem, 4vw, 2.5rem);
+    font-weight: 700;
+    color: var(--c-yellow);
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+  }
+
+  .ribbon-label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: rgba(255, 255, 255, 0.5);
+    margin-top: 0.35rem;
+    display: block;
+  }
+
+  .ribbon-divider {
+    width: 1px;
+    height: 48px;
+    background: rgba(255, 255, 255, 0.12);
+    flex-shrink: 0;
+  }
+
+  /* ═══════════════════════════════════════════
+     SECTION INTRO (shared)
+     ═══════════════════════════════════════════ */
   .section-intro {
     text-align: center;
     max-width: 640px;
@@ -142,12 +362,14 @@ const boardMembers = allTeam
     line-height: 1.7;
   }
 
-  /* ─── Team Grid ───────────────────────── */
+  /* ═══════════════════════════════════════════
+     TEAM GRID
+     ═══════════════════════════════════════════ */
   .team-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-    gap: var(--space-2xl);
-    max-width: 1000px;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--space-2xl) var(--space-xl);
+    max-width: 860px;
     margin-inline: auto;
   }
 
@@ -177,45 +399,32 @@ const boardMembers = allTeam
     object-fit: cover;
   }
 
-  .member-photo__placeholder {
-    width: 100%;
-    height: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: var(--c-warm-gray);
-  }
-
-  .member-photo__placeholder .placeholder-icon {
-    width: 60%;
-    height: 60%;
-    object-fit: contain;
-    opacity: 0.5;
-  }
-
   .member-name {
     font-family: var(--font-display);
     font-size: 1.15rem;
     font-weight: 700;
     margin-bottom: 0.2rem;
+    color: var(--c-text);
   }
 
   .member-title {
     font-size: 0.95rem;
-    color: var(--c-accent);
+    color: var(--c-text-muted);
     font-weight: 500;
   }
 
   .member-org {
     font-size: 0.85rem;
-    color: var(--c-text-muted);
+    color: var(--c-text-light);
     margin-top: 0.15rem;
   }
 
-  /* ─── Board Grid ──────────────────────── */
+  /* ═══════════════════════════════════════════
+     BOARD GRID
+     ═══════════════════════════════════════════ */
   .board-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
     gap: var(--space-lg);
     max-width: 1100px;
     margin-inline: auto;
@@ -226,46 +435,35 @@ const boardMembers = allTeam
     align-items: center;
     gap: var(--space-lg);
     background: var(--c-white);
-    padding: var(--space-lg);
+    padding: var(--space-lg) var(--space-xl);
     border-radius: var(--border-radius-lg);
     box-shadow: var(--shadow-sm);
-    transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+    border-left: 3px solid transparent;
+    transition: transform var(--transition-fast),
+                box-shadow var(--transition-fast),
+                border-color var(--transition-fast);
   }
 
   .board-card:hover {
-    transform: translateY(-2px);
+    transform: translateY(-3px);
     box-shadow: var(--shadow-md);
+    border-left-color: var(--c-yellow);
   }
 
   .board-photo {
-    width: 80px;
-    height: 80px;
+    width: 72px;
+    height: 72px;
     border-radius: 50%;
     overflow: hidden;
     flex-shrink: 0;
     background: var(--c-warm-gray);
+    box-shadow: var(--shadow-sm);
   }
 
   .board-photo img {
     width: 100%;
     height: 100%;
     object-fit: cover;
-  }
-
-  .board-photo__placeholder {
-    width: 100%;
-    height: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: var(--c-warm-gray);
-  }
-
-  .board-photo__placeholder .placeholder-icon {
-    width: 55%;
-    height: 55%;
-    object-fit: contain;
-    opacity: 0.5;
   }
 
   .board-info {
@@ -277,22 +475,49 @@ const boardMembers = allTeam
     font-size: 1.05rem;
     font-weight: 700;
     margin-bottom: 0.15rem;
+    color: var(--c-text);
   }
 
   .board-title {
     font-size: 0.85rem;
-    color: var(--c-accent);
-    font-weight: 500;
+    color: var(--c-text-muted);
+    font-weight: 600;
   }
 
   .board-org {
     font-size: 0.82rem;
-    color: var(--c-text-muted);
+    color: var(--c-text-light);
     margin-top: 0.15rem;
     line-height: 1.4;
   }
 
-  /* ─── CTA ─────────────────────────────── */
+  /* ═══════════════════════════════════════════
+     PLACEHOLDERS (shared)
+     ═══════════════════════════════════════════ */
+  .photo-placeholder {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--c-warm-gray);
+  }
+
+  .photo-placeholder .placeholder-icon {
+    width: 60%;
+    height: 60%;
+    object-fit: contain;
+    opacity: 0.5;
+  }
+
+  .photo-placeholder--sm .placeholder-icon {
+    width: 55%;
+    height: 55%;
+  }
+
+  /* ═══════════════════════════════════════════
+     CTA
+     ═══════════════════════════════════════════ */
   .cta-heading {
     font-family: var(--font-display);
     font-size: clamp(1.5rem, 4vw, 2.25rem);
@@ -302,7 +527,7 @@ const boardMembers = allTeam
 
   .cta-text {
     font-size: 1.1rem;
-    color: rgba(255, 255, 255, 0.75);
+    color: rgba(255, 255, 255, 0.7);
     max-width: 560px;
     margin-inline: auto;
     margin-bottom: var(--space-xl);
@@ -316,20 +541,150 @@ const boardMembers = allTeam
     flex-wrap: wrap;
   }
 
-  /* ─── Responsive ──────────────────────── */
+  /* ═══════════════════════════════════════════
+     SCROLL REVEAL
+     ═══════════════════════════════════════════ */
+  [data-reveal] {
+    opacity: 0;
+    transform: translateY(24px);
+    transition: opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1),
+                transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  [data-reveal].is-visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  /* Stagger delays */
+  [data-reveal][data-delay="1"] { transition-delay: 0.1s; }
+  [data-reveal][data-delay="2"] { transition-delay: 0.2s; }
+  [data-reveal][data-delay="3"] { transition-delay: 0.25s; }
+  [data-reveal][data-delay="4"] { transition-delay: 0.3s; }
+
+  /* Respect prefers-reduced-motion */
+  @media (prefers-reduced-motion: reduce) {
+    [data-reveal] {
+      opacity: 1;
+      transform: none;
+      transition: none;
+    }
+  }
+
+  /* ═══════════════════════════════════════════
+     RESPONSIVE
+     ═══════════════════════════════════════════ */
+  @media (max-width: 768px) {
+    .founders-grid {
+      gap: var(--space-2xl);
+    }
+
+    .founder-photo-wrap {
+      width: 220px;
+      height: 220px;
+    }
+
+    .team-grid {
+      grid-template-columns: repeat(3, 1fr);
+      gap: var(--space-xl);
+    }
+
+    .member-photo {
+      width: 140px;
+      height: 140px;
+    }
+
+    .board-grid {
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    }
+  }
+
   @media (max-width: 600px) {
+    .founders-section {
+      padding-block: var(--space-3xl) var(--space-2xl);
+    }
+
+    .founders-grid {
+      flex-direction: column;
+      align-items: center;
+      gap: var(--space-2xl);
+    }
+
+    .founder-photo-wrap {
+      width: 200px;
+      height: 200px;
+    }
+
+    .founder-name {
+      font-size: 1.2rem;
+    }
+
     .team-grid {
       grid-template-columns: repeat(2, 1fr);
       gap: var(--space-xl);
     }
 
     .member-photo {
-      width: 130px;
-      height: 130px;
+      width: 120px;
+      height: 120px;
+    }
+
+    .member-name {
+      font-size: 1.05rem;
     }
 
     .board-grid {
       grid-template-columns: 1fr;
     }
+
+    .ribbon-inner {
+      flex-wrap: wrap;
+      gap: var(--space-lg) var(--space-xl);
+    }
+
+    .ribbon-divider {
+      display: none;
+    }
+
+    .ribbon-stat {
+      flex: 0 0 calc(33% - var(--space-lg));
+    }
+  }
+
+  @media (max-width: 380px) {
+    .team-grid {
+      grid-template-columns: repeat(2, 1fr);
+      gap: var(--space-lg);
+    }
+
+    .member-photo {
+      width: 100px;
+      height: 100px;
+    }
+
+    .founder-photo-wrap {
+      width: 170px;
+      height: 170px;
+    }
   }
 </style>
+
+<script>
+  /* ── Scroll Reveal — IntersectionObserver ── */
+  const reveals = document.querySelectorAll('[data-reveal]');
+  if (reveals.length && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('is-visible');
+          observer.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.15, rootMargin: '0px 0px -60px 0px' });
+
+    reveals.forEach(el => observer.observe(el));
+  } else {
+    /* Reduced-motion or no elements — make visible immediately */
+    reveals.forEach(el => el.classList.add('is-visible'));
+  }
+</script>
