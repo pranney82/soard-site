@@ -11,12 +11,12 @@
  * - CFImage component for responsive srcsets
  * - data-reveal on below-fold elements
  */
-import BaseLayout from '../layouts/BaseLayout.astro';
-import CFImage from '../components/ui/CFImage.astro';
-import { getWebPageSchema, getBreadcrumbSchema, buildSchemaGraph } from '../utils/schema';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import CFImage from '../../components/ui/CFImage.astro';
+import { getWebPageSchema, getBreadcrumbSchema, buildSchemaGraph } from '../../utils/schema';
 import { getCollection } from 'astro:content';
-import { cfRaw, cfSrcset, cfLqip } from '../utils/cf-image';
-import { getSiteStats } from '../utils/stats';
+import { cfRaw, cfSrcset, cfLqip } from '../../utils/cf-image';
+import { getSiteStats } from '../../utils/stats';
 
 /* ── Community Projects from content collection ── */
 const allProjects = await getCollection('community');
