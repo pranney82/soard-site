@@ -20,7 +20,7 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
 import CFImage from '../../components/ui/CFImage.astro';
 import { getWebPageSchema, getBreadcrumbSchema, buildSchemaGraph } from '../../utils/schema';
 import { getCollection } from 'astro:content';
-import { cfRaw, cfSrcset, cfLqip } from '../../utils/cf-image';
+import { cfRaw, cfSrcset, cfLqip, cfId, cfDensitySrcset } from '../../utils/cf-image';
 import { getSiteStats } from '../../utils/stats';
 import siteSettings from '../../content/site/settings.json';
 
@@ -28,12 +28,14 @@ import siteSettings from '../../content/site/settings.json';
 const allProjects = await getCollection('community');
 const projects = allProjects
   .map(p => p.data)
-  .sort((a, b) => {
-    const aInProgress = a.status === 'in-progress' ? 0 : 1;
-    const bInProgress = b.status === 'in-progress' ? 0 : 1;
-    if (aInProgress !== bInProgress) return aInProgress - bInProgress;
-    return parseInt(b.year) - parseInt(a.year) || a.name.localeCompare(b.name);
-  });
+  .sort((a, b) => (a.order || 0) - (b.order || 0) || a.name.localeCompare(b.name));
+
+/* ── Community Partners (nonprofit orgs we serve) ── */
+const allCommunityPartners = await getCollection('communityPartners');
+const communityPartners = allCommunityPartners
+  .map(p => p.data)
+  .sort((a, b) => (a.order || 0) - (b.order || 0) || a.name.localeCompare(b.name));
+const featuredPartners = communityPartners.filter(p => p.featured);
 
 const { livesImpacted } = await getSiteStats();
 const totalImpact = livesImpacted.toLocaleString() + '+';
@@ -55,7 +57,7 @@ const jsonLd = buildSchemaGraph(
   getWebPageSchema({
     url: pageUrl,
     title: 'Community Projects',
-    description: 'Sunshine on a Ranney Day partners with nonprofits, schools, and camps to complete large-scale renovation projects that impact thousands of children with special needs each year.',
+    description: 'Sunshine on a Ranney Day partners with nonprofits, schools, and camps to complete large-scale renovation projects that impact thousands of children with special needs each year. Meet our nonprofit partners.',
   }),
   getBreadcrumbSchema(breadcrumbs, pageUrl),
 );
@@ -201,6 +203,57 @@ const jsonLd = buildSchemaGraph(
       </div>
     </div>
   </section>
+
+  <!-- ══════ NONPROFIT PARTNERS ══════ -->
+  {communityPartners.length > 0 && (
+    <section class="np-section" id="nonprofit-partners" aria-labelledby="np-heading">
+      <div class="np-inner">
+        <div class="np-header" data-reveal>
+          <p class="np-label">Nonprofit Partners</p>
+          <h2 id="np-heading">The organizations we <em class="highlight">serve</em>.</h2>
+          <p class="np-sub">These schools, camps, hospitals, and community centers open their doors so we can transform facilities for the children and families who need it most.</p>
+        </div>
+        <div class="np-grid" data-reveal data-delay="1">
+          {communityPartners.map(p => {
+            const hasLogo = !!p.logo;
+            const hasLink = !!p.website;
+            const Tag = hasLink ? 'a' : 'div';
+            return (
+              <Tag
+                class:list={['np-logo-card', { 'np-logo-card--linked': hasLink }]}
+                {...(hasLink ? { href: p.website, target: '_blank', rel: 'noopener noreferrer' } : {})}
+              >
+                <div class="np-logo-card__logo">
+                  {hasLogo ? (
+                    <img
+                      src={cfRaw(p.logo, 'w=280,h=80,fit=contain,q=80')}
+                      srcset={cfDensitySrcset(cfId(p.logo), 140, 40, { quality: 80, fit: 'contain' })}
+                      alt={p.name}
+                      width="140" height="40"
+                      loading="lazy" decoding="async"
+                    />
+                  ) : (
+                    <span class="np-logo-card__placeholder">{p.name}</span>
+                  )}
+                </div>
+                <span class="np-logo-card__name">{p.name}</span>
+                {hasLink && (
+                  <svg class="np-logo-card__ext" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7"/><path d="M7 7h10v10"/></svg>
+                )}
+              </Tag>
+            );
+          })}
+        </div>
+        <div class="np-cta" data-reveal>
+          <p>Is your organization serving children with special needs?</p>
+          <a href="mailto:info@soardcharity.com?subject=Community%20Partnership%20Inquiry" class="spotlight-link">
+            Start a Conversation
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </a>
+        </div>
+      </div>
+    </section>
+  )}
 
   <!-- ══════ CTA ══════ -->
   <section class="cta-section">
@@ -811,6 +864,155 @@ const jsonLd = buildSchemaGraph(
   @media (max-width: 768px) {
     .spotlight { padding-block: var(--space-3xl); }
     .spotlight-inner { grid-template-columns: 1fr; gap: var(--space-2xl); }
+  }
+
+  /* ══════════════════════════════════════════
+     NONPROFIT PARTNERS — Logo Grid
+     ══════════════════════════════════════════ */
+  .np-section {
+    background: #fff;
+    padding: clamp(64px, 10vw, 120px) 0;
+    scroll-margin-top: var(--header-height);
+  }
+
+  .np-inner {
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding: 0 var(--space-xl);
+  }
+
+  .np-header {
+    text-align: center;
+    max-width: 600px;
+    margin: 0 auto var(--space-xl);
+  }
+
+  .np-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--c-text-muted);
+    margin-bottom: var(--space-sm);
+  }
+
+  .np-header h2 {
+    font-size: clamp(1.5rem, 3.5vw, 2.25rem);
+    font-weight: 400;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+    color: var(--c-dark);
+  }
+
+  .np-header h2 em { font-style: normal; }
+
+  .np-sub {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-size: clamp(0.95rem, 1.8vw, 1.065rem);
+    color: var(--c-text-muted);
+    line-height: 1.5;
+    margin-top: var(--space-md);
+  }
+
+  .np-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 16px;
+  }
+
+  .np-logo-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    gap: 10px;
+    padding: 28px 20px 20px;
+    background: var(--c-cream);
+    border-radius: var(--border-radius-lg);
+    text-decoration: none;
+    transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+                box-shadow 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+    position: relative;
+    min-height: 140px;
+  }
+
+  .np-logo-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.06);
+  }
+
+  .np-logo-card__logo {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 48px;
+    flex-shrink: 0;
+  }
+
+  .np-logo-card__logo img {
+    max-width: 140px;
+    max-height: 48px;
+    object-fit: contain;
+    filter: grayscale(1);
+    opacity: 0.7;
+    transition: filter 0.35s ease, opacity 0.35s ease;
+  }
+
+  .np-logo-card:hover .np-logo-card__logo img {
+    filter: grayscale(0);
+    opacity: 1;
+  }
+
+  .np-logo-card__placeholder {
+    font-family: var(--font-display);
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--c-text-muted);
+    letter-spacing: -0.01em;
+    line-height: 1.25;
+  }
+
+  .np-logo-card__name {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--c-text-muted);
+    line-height: 1.3;
+    transition: color 0.2s;
+  }
+
+  .np-logo-card:hover .np-logo-card__name { color: var(--c-dark); }
+
+  .np-logo-card__ext {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    width: 14px;
+    height: 14px;
+    color: var(--c-text-muted);
+    opacity: 0;
+    transition: opacity 0.25s ease;
+  }
+
+  .np-logo-card:hover .np-logo-card__ext { opacity: 0.5; }
+
+  .np-cta {
+    text-align: center;
+    margin-top: var(--space-2xl);
+  }
+
+  .np-cta p {
+    font-size: 1.05rem;
+    color: var(--c-text-muted);
+    margin-bottom: var(--space-md);
+  }
+
+  @media (max-width: 480px) {
+    .np-grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
+    .np-logo-card { padding: 20px 12px 16px; min-height: 110px; }
+    .np-logo-card__logo { height: 36px; }
+    .np-logo-card__logo img { max-width: 100px; max-height: 36px; }
   }
 
   /* ══════════════════════════════════════════

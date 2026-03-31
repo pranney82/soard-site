@@ -1,0 +1,11 @@
+{
+  "name": "The Summit Counseling Center",
+  "slug": "summit-counseling-center",
+  "description": "Provides professional counseling services to children and families across North Atlanta. SOARD renovated their child therapy spaces into warm, welcoming rooms designed to help kids feel safe and supported.",
+  "category": "health",
+  "impact": "4,800",
+  "impactLabel": "children impacted yearly",
+  "location": "Johns Creek, GA",
+  "featured": true,
+  "order": 2
+}

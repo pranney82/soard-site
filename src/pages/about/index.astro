@@ -14,7 +14,7 @@ import { getWebPageSchema, getBreadcrumbSchema, buildSchemaGraph } from '../../u
 import { getSiteStats } from '../../utils/stats';
 import page from '../../content/site/our-story.json';
 
-import { CF_BASE as CF } from '../../utils/cf-image';
+import { CF_BASE as CF, cfUrl, cfSrcset } from '../../utils/cf-image';
 
 /* ── Auto-computed stats ── */
 const computed = await getSiteStats();
@@ -104,14 +104,15 @@ const jsonLd = buildSchemaGraph(
             {m.image && (
               <div class="tl-image">
                 <img
-                  src={`${CF}/${m.image}/w=480,h=280,fit=cover,gravity=face,q=75`}
-                  srcset={`${CF}/${m.image}/w=320,h=190,fit=cover,gravity=face,q=70 320w, ${CF}/${m.image}/w=480,h=280,fit=cover,gravity=face,q=75 480w, ${CF}/${m.image}/w=640,h=380,fit=cover,gravity=face,q=75 640w`}
+                  src={cfUrl(m.image, { w: 480, h: 280, fit: 'cover', gravity: 'face', q: 75 })}
+                  srcset={cfSrcset(m.image, [320, 480, 640], { fit: 'cover', gravity: 'face', quality: 75, aspectRatio: 280/480 })}
                   sizes="(max-width:640px) calc(100vw - 72px), (max-width:960px) calc(100vw - 100px), 420px"
                   alt={m.title}
                   width="480"
                   height="280"
                   loading={i < 2 ? 'eager' : 'lazy'}
                   decoding="async"
+                  class="lqip-img"
                 />
               </div>
             )}
@@ -401,8 +402,47 @@ const jsonLd = buildSchemaGraph(
     inset: 0;
     background: linear-gradient(180deg, var(--c-yellow) 0%, rgba(255, 218, 36, 0.6) 60%, rgba(255, 218, 36, 0.15) 100%);
     transform-origin: top;
+  }
+
+  .tl-ready .tl-track-fill {
     transform: scaleY(0);
     will-change: transform;
+  }
+
+  /* ── CSS scroll-driven fill — compositor thread, zero JS ──
+   * .timeline gets a named view-timeline. Children reference it
+   * so animation progress tracks the *timeline section* scrolling
+   * through the viewport, not the individual element. */
+  @supports (animation-timeline: view()) {
+    .timeline.tl-ready {
+      view-timeline-name: --tl;
+      view-timeline-axis: block;
+    }
+
+    @keyframes tl-fill-scroll {
+      from { transform: scaleY(0); }
+      to   { transform: scaleY(1); }
+    }
+
+    .tl-ready .tl-track-fill {
+      animation: tl-fill-scroll linear both;
+      animation-timeline: --tl;
+      animation-range: entry 0% exit 60%;
+    }
+
+    @keyframes tl-cursor-scroll {
+      0%   { top: 0%; opacity: 0; }
+      5%   { opacity: 1; }
+      95%  { opacity: 1; }
+      100% { top: 100%; opacity: 0; }
+    }
+
+    .tl-ready .tl-cursor {
+      animation: tl-cursor-scroll linear both;
+      animation-timeline: --tl;
+      animation-range: entry 0% exit 60%;
+      transition: none;
+    }
   }
 
   /* ── Scroll cursor — rides the fill line ── */
@@ -435,6 +475,8 @@ const jsonLd = buildSchemaGraph(
     align-items: start;
     margin-bottom: 72px;
     z-index: 1;
+    content-visibility: auto;
+    contain-intrinsic-size: auto 400px;
   }
 
   .tl-item:last-of-type { margin-bottom: 0; }
@@ -465,20 +507,30 @@ const jsonLd = buildSchemaGraph(
     border: 2px solid rgba(255, 218, 36, 0.15);
     top: 20px;
     left: 50%;
+    transform: translateX(-50%) scale(1);
+    opacity: 1;
+    transition: all 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .tl-ready .tl-dot-ring {
     transform: translateX(-50%) scale(0.4);
     opacity: 0;
-    transition: all 0.7s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
   .tl-dot-core {
     width: 14px;
     height: 14px;
     border-radius: 50%;
-    background: rgba(255, 255, 255, 0.08);
-    border: 2px solid rgba(255, 255, 255, 0.12);
+    background: var(--c-yellow);
+    border: 2px solid var(--c-yellow);
     transition: all 0.6s cubic-bezier(0.16, 1, 0.3, 1);
     position: relative;
     z-index: 1;
+  }
+
+  .tl-ready .tl-dot-core {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.12);
   }
 
   /* Active dot */
@@ -506,8 +558,13 @@ const jsonLd = buildSchemaGraph(
     position: absolute;
     top: 35px;
     height: 2px;
-    background: rgba(255, 218, 36, 0.12);
+    background: rgba(255, 218, 36, 0.25);
     transition: background 0.5s ease, width 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+    width: 30px;
+  }
+
+  .tl-ready .tl-connector {
+    background: rgba(255, 218, 36, 0.12);
     width: 0;
   }
 
@@ -528,17 +585,19 @@ const jsonLd = buildSchemaGraph(
     border-radius: 16px;
     border: 1px solid rgba(255, 255, 255, 0.06);
     overflow: hidden;
-    opacity: 0;
     transition: opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1),
                 transform 0.8s cubic-bezier(0.16, 1, 0.3, 1),
                 border-color 0.35s ease,
                 box-shadow 0.35s ease,
                 background 0.35s ease;
-    will-change: opacity, transform;
   }
 
-  .tl-item--left .tl-card  { transform: translateY(40px) translateX(30px); }
-  .tl-item--right .tl-card { transform: translateY(40px) translateX(-30px); }
+  /* Only hide cards once JS has confirmed it can reveal them */
+  .tl-ready .tl-card {
+    opacity: 0;
+  }
+  .tl-ready .tl-item--left .tl-card  { transform: translateY(40px) translateX(30px); }
+  .tl-ready .tl-item--right .tl-card { transform: translateY(40px) translateX(-30px); }
 
   .tl-item.is-active .tl-card {
     opacity: 1;
@@ -636,9 +695,12 @@ const jsonLd = buildSchemaGraph(
     padding-top: var(--space-3xl);
     position: relative;
     z-index: 2;
+    transition: all 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .tl-ready .tl-cap {
     opacity: 0;
     transform: translateY(20px);
-    transition: all 0.8s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
   .tl-cap.is-active {
@@ -790,6 +852,13 @@ const jsonLd = buildSchemaGraph(
 
     .tl-card {
       border-radius: 12px;
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    .tl-item {
+      contain-intrinsic-size: auto 320px;
     }
 
     .tl-image {
@@ -1076,6 +1145,12 @@ const jsonLd = buildSchemaGraph(
   }
 
   /* ══════════════════════════════════════════
+     LQIP REVEAL
+     ══════════════════════════════════════════ */
+  .lqip-img.lqip-pending { opacity: 0; }
+  .lqip-img:not(.lqip-pending) { transition: opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1); }
+
+  /* ══════════════════════════════════════════
      SCROLL REVEALS
      ══════════════════════════════════════════ */
   [data-reveal] {
@@ -1117,89 +1192,113 @@ const jsonLd = buildSchemaGraph(
     const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
     if (prefersReduced) {
-      fill.style.transform = 'scaleY(1)';
       items.forEach(el => el.classList.add('is-active'));
       cap?.classList.add('is-active');
-      return;
+      return; /* no .tl-ready — content stays visible as-is */
     }
 
-    /* ── Scroll-driven track fill + cursor ── */
-    function updateTrack() {
-      const rect = timeline!.getBoundingClientRect();
-      const viewH = window.innerHeight;
-      const timelineTop = rect.top;
-      const timelineH = rect.height;
+    /* ── Progressive enhancement gate ──
+     * Only hide elements AFTER confirming JS will reveal them.
+     * If JS never reaches this point, content stays visible. */
+    timeline.classList.add('tl-ready');
 
-      if (timelineTop > viewH) {
-        fill!.style.transform = 'scaleY(0)';
-        if (cursor) { cursor.classList.remove('is-visible'); }
-        return;
-      }
+    /* ── Track fill + cursor ──
+     * CSS animation-timeline handles this on the compositor thread
+     * when supported. JS scroll listener is the fallback only. */
+    const cssScrollDriven = CSS.supports('animation-timeline', 'view()');
+    let onScroll: (() => void) | null = null;
 
-      // Fill progress — the line reaches down to where the viewport is
-      const scrolled = viewH * 0.55 - timelineTop; // fill up to ~55% of viewport
-      const progress = Math.min(Math.max(scrolled / timelineH, 0), 1);
-      fill!.style.transform = `scaleY(${progress})`;
+    if (!cssScrollDriven) {
+      function updateTrack() {
+        const rect = timeline!.getBoundingClientRect();
+        const viewH = window.innerHeight;
+        const timelineTop = rect.top;
+        const timelineH = rect.height;
 
-      // Cursor rides the leading edge of the fill
-      if (cursor) {
-        if (progress > 0.01 && progress < 0.99) {
-          cursor.classList.add('is-visible');
-          cursor.style.top = `${progress * timelineH}px`;
-        } else {
-          cursor.classList.remove('is-visible');
+        if (timelineTop > viewH) {
+          fill!.style.transform = 'scaleY(0)';
+          if (cursor) { cursor.classList.remove('is-visible'); }
+          return;
+        }
+
+        const scrolled = viewH * 0.55 - timelineTop;
+        const progress = Math.min(Math.max(scrolled / timelineH, 0), 1);
+        fill!.style.transform = `scaleY(${progress})`;
+
+        if (cursor) {
+          if (progress > 0.01 && progress < 0.99) {
+            cursor.classList.add('is-visible');
+            cursor.style.top = `${progress * timelineH}px`;
+          } else {
+            cursor.classList.remove('is-visible');
+          }
         }
       }
+
+      let ticking = false;
+      onScroll = () => {
+        if (!ticking) {
+          ticking = true;
+          requestAnimationFrame(() => {
+            updateTrack();
+            ticking = false;
+          });
+        }
+      };
+
+      window.addEventListener('scroll', onScroll, { passive: true });
+      updateTrack();
     }
 
     /* ── Intersection observer for items ── */
+    const isMobile = window.innerWidth <= 640;
     let activatedCount = 0;
     const itemObserver = new IntersectionObserver((entries) => {
       entries.forEach(entry => {
         if (entry.isIntersecting && !entry.target.classList.contains('is-active')) {
           const el = entry.target as HTMLElement;
           const delay = Math.min(activatedCount * 100, 250);
-          setTimeout(() => {
-            el.classList.add('is-active');
-          }, delay);
+          setTimeout(() => el.classList.add('is-active'), delay);
           activatedCount++;
           itemObserver.unobserve(el);
         }
       });
-    }, { threshold: 0.15, rootMargin: '0px 0px -80px 0px' });
+    }, {
+      threshold: isMobile ? 0.08 : 0.15,
+      rootMargin: isMobile ? '0px 0px -30px 0px' : '0px 0px -80px 0px',
+    });
 
     items.forEach(el => itemObserver.observe(el));
 
     /* ── End cap observer ── */
+    let capObserver: IntersectionObserver | null = null;
     if (cap) {
-      const capObserver = new IntersectionObserver((entries) => {
+      capObserver = new IntersectionObserver((entries) => {
         if (entries[0].isIntersecting) {
           cap.classList.add('is-active');
-          capObserver.disconnect();
+          capObserver!.disconnect();
         }
       }, { threshold: 0.3 });
       capObserver.observe(cap);
     }
 
-    /* ── Scroll listener (passive, rAF-throttled) ── */
-    let ticking = false;
-    function onScroll() {
-      if (!ticking) {
-        ticking = true;
-        requestAnimationFrame(() => {
-          updateTrack();
-          ticking = false;
-        });
-      }
-    }
-
-    window.addEventListener('scroll', onScroll, { passive: true });
-    updateTrack(); // initial
+    /* ── Safety net — force-reveal if observer misses items ── */
+    const safety = setTimeout(() => {
+      items.forEach(el => {
+        if (!el.classList.contains('is-active')) {
+          el.classList.add('is-active');
+          itemObserver.unobserve(el);
+        }
+      });
+      if (cap && !cap.classList.contains('is-active')) cap.classList.add('is-active');
+    }, 4000);
 
     /* ── Cleanup for Astro View Transitions ── */
     document.addEventListener('astro:before-swap', () => {
-      window.removeEventListener('scroll', onScroll);
+      if (onScroll) window.removeEventListener('scroll', onScroll);
       itemObserver.disconnect();
+      capObserver?.disconnect();
+      clearTimeout(safety);
     }, { once: true });
   }
 

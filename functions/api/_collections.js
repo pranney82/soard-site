@@ -12,6 +12,7 @@ export const COLLECTION_MAP = {
   'src/content/community/': 'community',
   'src/content/articles/': 'articles',
   'src/content/medialogos/': 'medialogos',
+  'src/content/communityPartners/': 'community_partners',
 };
 
 export const SITE_PREFIX = 'src/content/site/';
@@ -26,6 +27,7 @@ export const NAME_COLUMN = {
   community: 'name',
   articles: 'title',
   medialogos: 'name',
+  community_partners: 'name',
 };
 
 /** Indexed column extractors for INSERT OR REPLACE.
@@ -63,6 +65,10 @@ export const EXTRACTORS = {
   medialogos: (d) => [
     ['"name"', '"order_num"'],
     [d.name, d.order ?? 0],
+  ],
+  community_partners: (d) => [
+    ['"name"', '"category"', '"featured"', '"order_num"'],
+    [d.name, d.category ?? null, d.featured ? 1 : 0, d.order ?? 0],
   ],
 };
 

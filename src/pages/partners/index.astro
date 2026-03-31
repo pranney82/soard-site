@@ -132,6 +132,7 @@ const jsonLd = buildSchemaGraph(
         <div class="sig-grid" data-reveal data-delay="1">
           {signature.map(p => {
             const hasLink = !!p.data.website;
+            const hasLogo = !!p.data.logo;
             const Tag = hasLink ? 'a' : 'div';
             return (
               <Tag
@@ -139,13 +140,17 @@ const jsonLd = buildSchemaGraph(
                 {...(hasLink ? { href: p.data.website, target: '_blank', rel: 'noopener noreferrer' } : {})}
               >
                 <div class="sig-card__logo">
-                  <img
-                    src={cfRaw(p.data.logo, 'w=400,h=120,fit=contain,q=85')}
-                    srcset={cfDensitySrcset(cfId(p.data.logo), 200, 60, { quality: 85, fit: 'contain' })}
-                    alt={p.data.name}
-                    width="200" height="60"
-                    loading="lazy" decoding="async"
-                  />
+                  {hasLogo ? (
+                    <img
+                      src={cfRaw(p.data.logo, 'w=400,h=120,fit=contain,q=85')}
+                      srcset={cfDensitySrcset(cfId(p.data.logo), 200, 60, { quality: 85, fit: 'contain' })}
+                      alt={p.data.name}
+                      width="200" height="60"
+                      loading="lazy" decoding="async"
+                    />
+                  ) : (
+                    <span class="logo-placeholder">{p.data.name}</span>
+                  )}
                 </div>
                 <div class="sig-card__info">
                   <h3 class="sig-card__name">{p.data.name}</h3>
@@ -201,6 +206,7 @@ const jsonLd = buildSchemaGraph(
         <div class="champ-grid" data-reveal data-delay="1">
           {champions.map(p => {
             const hasLink = !!p.data.website;
+            const hasLogo = !!p.data.logo;
             const Tag = hasLink ? 'a' : 'div';
             return (
               <Tag
@@ -208,13 +214,17 @@ const jsonLd = buildSchemaGraph(
                 {...(hasLink ? { href: p.data.website, target: '_blank', rel: 'noopener noreferrer' } : {})}
               >
                 <div class="champ-card__logo">
-                  <img
-                    src={cfRaw(p.data.logo, 'w=280,h=80,fit=contain,q=80')}
-                    srcset={cfDensitySrcset(cfId(p.data.logo), 140, 40, { quality: 80, fit: 'contain' })}
-                    alt={p.data.name}
-                    width="140" height="40"
-                    loading="lazy" decoding="async"
-                  />
+                  {hasLogo ? (
+                    <img
+                      src={cfRaw(p.data.logo, 'w=280,h=80,fit=contain,q=80')}
+                      srcset={cfDensitySrcset(cfId(p.data.logo), 140, 40, { quality: 80, fit: 'contain' })}
+                      alt={p.data.name}
+                      width="140" height="40"
+                      loading="lazy" decoding="async"
+                    />
+                  ) : (
+                    <span class="logo-placeholder">{p.data.name}</span>
+                  )}
                 </div>
                 <span class="champ-card__name">{p.data.name}</span>
                 {hasLink && (
@@ -256,6 +266,7 @@ const jsonLd = buildSchemaGraph(
         <div class="build-grid" data-reveal data-delay="1">
           {builders.map(p => {
             const hasLink = !!p.data.website;
+            const hasLogo = !!p.data.logo;
             const Tag = hasLink ? 'a' : 'div';
             return (
               <Tag
@@ -263,13 +274,17 @@ const jsonLd = buildSchemaGraph(
                 {...(hasLink ? { href: p.data.website, target: '_blank', rel: 'noopener noreferrer' } : {})}
               >
                 <div class="build-card__logo">
-                  <img
-                    src={cfRaw(p.data.logo, 'w=200,h=64,fit=contain,q=80')}
-                    srcset={cfDensitySrcset(cfId(p.data.logo), 100, 32, { quality: 80, fit: 'contain' })}
-                    alt={p.data.name}
-                    width="100" height="32"
-                    loading="lazy" decoding="async"
-                  />
+                  {hasLogo ? (
+                    <img
+                      src={cfRaw(p.data.logo, 'w=200,h=64,fit=contain,q=80')}
+                      srcset={cfDensitySrcset(cfId(p.data.logo), 100, 32, { quality: 80, fit: 'contain' })}
+                      alt={p.data.name}
+                      width="100" height="32"
+                      loading="lazy" decoding="async"
+                    />
+                  ) : (
+                    <span class="logo-placeholder">{p.data.name}</span>
+                  )}
                 </div>
                 <span class="build-card__name">{p.data.name}</span>
               </Tag>
@@ -321,13 +336,17 @@ const jsonLd = buildSchemaGraph(
               {...(hasLink ? { href: p.data.website, target: '_blank', rel: 'noopener noreferrer' } : {})}
             >
               <div class="ap-card__logo">
-                <img
-                  src={cfRaw(p.data.logo, 'w=180,h=64,fit=contain,q=75')}
-                  srcset={cfDensitySrcset(cfId(p.data.logo), 90, 32, { quality: 75, fit: 'contain' })}
-                  alt={p.data.name}
-                  width="90" height="32"
-                  loading="lazy" decoding="async"
-                />
+                {!!p.data.logo ? (
+                  <img
+                    src={cfRaw(p.data.logo, 'w=180,h=64,fit=contain,q=75')}
+                    srcset={cfDensitySrcset(cfId(p.data.logo), 90, 32, { quality: 75, fit: 'contain' })}
+                    alt={p.data.name}
+                    width="90" height="32"
+                    loading="lazy" decoding="async"
+                  />
+                ) : (
+                  <span class="logo-placeholder">{p.data.name}</span>
+                )}
               </div>
               <span class="ap-card__name">{p.data.name}</span>
             </Tag>
@@ -667,6 +686,24 @@ const jsonLd = buildSchemaGraph(
     .hero-ctas { flex-direction: column; }
     .hero-ctas .btn { width: 100%; justify-content: center; }
   }
+
+  /* ══════════════════════════════════════════
+     LOGO PLACEHOLDER (shared across tiers)
+     ══════════════════════════════════════════ */
+  .logo-placeholder {
+    font-family: var(--font-display);
+    font-weight: 600;
+    color: var(--c-text-muted);
+    text-align: center;
+    line-height: 1.2;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .sig-card__logo .logo-placeholder { font-size: 1rem; }
+  .champ-card__logo .logo-placeholder { font-size: 0.8125rem; }
+  .build-card__logo .logo-placeholder { font-size: 0.75rem; }
+  .ap-card__logo .logo-placeholder { font-size: 0.6875rem; }
 
   /* ══════════════════════════════════════════
      SIGNATURE PARTNERS — MAGAZINE FEATURE

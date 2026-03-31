@@ -91,7 +91,7 @@ const partners = defineCollection({
   schema: z.object({
     name: z.string(),
     slug: z.string(),
-    logo: z.string(),
+    logo: z.string().optional(),
     website: z.string().optional(),
     level: z.enum(['signature', 'champion', 'builder', 'friend']).default('friend'),
     category: z.preprocess(
@@ -198,6 +198,26 @@ const press = defineCollection({
     image: z.string().nullable().optional(),
     featured: z.boolean().default(false),
     order: z.number().default(0),
+    videoId: z.string().nullable().optional(),
+    featuredHeadline: z.string().nullable().optional(),
+    featuredDescription: z.string().nullable().optional(),
+  }),
+});
+
+const communityPartners = defineCollection({
+  type: 'data',
+  schema: z.object({
+    name: z.string(),
+    slug: z.string(),
+    logo: z.string().optional(),
+    website: z.string().optional(),
+    description: z.string(),
+    category: z.enum(['education', 'health', 'community', 'faith', 'government']).default('community'),
+    impact: z.string().optional(),
+    impactLabel: z.string().optional(),
+    location: z.string().optional(),
+    featured: z.boolean().default(false),
+    order: z.number().default(0),
   }),
 });
 
@@ -228,14 +248,6 @@ const community = defineCollection({
     metaDescription: z.string().optional(),
     videoUrl: z.string().nullable().optional(),
     streamVideoId: z.string().nullable().optional(),
-    beforePhotos: z.array(z.object({
-      url: z.string(),
-      alt: z.string().default(''),
-    })).default([]),
-    afterPhotos: z.array(z.object({
-      url: z.string(),
-      alt: z.string().default(''),
-    })).default([]),
     photos: z.array(z.object({
       url: z.string(),
       alt: z.string().default(''),
@@ -247,4 +259,4 @@ const community = defineCollection({
   }),
 });
 
-export const collections = { kids, partners, medialogos, team, articles, press, events, community, site };
+export const collections = { kids, partners, medialogos, team, articles, press, events, community, communityPartners, site };

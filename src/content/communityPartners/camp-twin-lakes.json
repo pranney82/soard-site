@@ -1,0 +1,11 @@
+{
+  "name": "Camp Twin Lakes",
+  "slug": "camp-twin-lakes",
+  "description": "Provides life-changing camp experiences for children with serious illnesses, disabilities, and other challenges across Georgia. SOARD renovated camp facilities, creating sensory-friendly spaces and accessible areas for thousands of children.",
+  "category": "community",
+  "impact": "10,000",
+  "impactLabel": "children impacted yearly",
+  "location": "Rutledge, GA",
+  "featured": true,
+  "order": 1
+}

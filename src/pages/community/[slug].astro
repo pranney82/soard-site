@@ -37,7 +37,7 @@ export async function getStaticPaths() {
 
 const { project, allProjects } = Astro.props;
 const storyParas = project.story ? project.story.split('\n\n').filter((p: string) => p.trim()) : [];
-const hasBeforeAfter = project.beforePhotos?.length > 0 || project.afterPhotos?.length > 0;
+const hasPhotos = project.photos?.length > 0;
 const hasPartners = project.partnerLogos?.length > 0;
 
 // ── Video ──
@@ -199,57 +199,32 @@ const jsonLd = buildSchemaGraph(
     </section>
   )}
 
-  <!-- ══════ BEFORE / AFTER GALLERY ══════ -->
-  {hasBeforeAfter && (
+  <!-- ══════ PROJECT PHOTOS GALLERY ══════ -->
+  {hasPhotos && (
     <section class="cp-detail-gallery" aria-labelledby="gallery-heading">
       <div class="cp-detail-gallery-inner">
         <h2 id="gallery-heading" class="cp-detail-gallery-heading" data-reveal>
-          {project.afterPhotos?.length > 0 ? 'Before & After' : 'Project Photos'}
+          Project Photos
         </h2>
 
-        {project.beforePhotos?.length > 0 && (
-          <div class="cp-detail-gallery-group" data-reveal>
-            <h3 class="cp-detail-gallery-label">Before</h3>
-            <div class="cp-detail-gallery-grid">
-              {project.beforePhotos.map((photo: { url: string; alt: string }) => (
-                <div class="cp-detail-gallery-item">
-                  <CFImage
-                    src={photo.url}
-                    alt={photo.alt || `${project.name} before renovation`}
-                    width={600} height={400}
-                    sizes="(max-width:768px) 45vw, 280px"
-                    widths={[300, 400, 600]}
-                    loading="lazy"
-                    fit="cover"
-                    class="cp-detail-gallery-img"
-                  />
-                </div>
-              ))}
-            </div>
+        <div class="cp-detail-gallery-group" data-reveal>
+          <div class="cp-detail-gallery-grid">
+            {project.photos.map((photo: { url: string; alt: string }) => (
+              <div class="cp-detail-gallery-item">
+                <CFImage
+                  src={photo.url}
+                  alt={photo.alt || `${project.name} project photo`}
+                  width={600} height={400}
+                  sizes="(max-width:768px) 45vw, 300px"
+                  widths={[300, 400, 600]}
+                  loading="lazy"
+                  fit="cover"
+                  class="cp-detail-gallery-img"
+                />
+              </div>
+            ))}
           </div>
-        )}
-
-        {project.afterPhotos?.length > 0 && (
-          <div class="cp-detail-gallery-group" data-reveal>
-            <h3 class="cp-detail-gallery-label">After</h3>
-            <div class="cp-detail-gallery-grid cp-detail-gallery-grid--after">
-              {project.afterPhotos.map((photo: { url: string; alt: string }) => (
-                <div class="cp-detail-gallery-item">
-                  <CFImage
-                    src={photo.url}
-                    alt={photo.alt || `${project.name} after renovation by SOARD`}
-                    width={600} height={400}
-                    sizes="(max-width:768px) 45vw, 300px"
-                    widths={[300, 400, 600]}
-                    loading="lazy"
-                    fit="cover"
-                    class="cp-detail-gallery-img"
-                  />
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+        </div>
       </div>
     </section>
   )}

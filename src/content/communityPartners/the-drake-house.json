@@ -1,0 +1,11 @@
+{
+  "name": "The Drake House",
+  "slug": "the-drake-house",
+  "description": "Provides housing and education for single mothers and their children experiencing homelessness. SOARD renovated their main headquarters — classrooms, activity spaces, a community kitchen, and teen gathering rooms.",
+  "category": "community",
+  "impact": "250",
+  "impactLabel": "families served",
+  "location": "Roswell, GA",
+  "featured": true,
+  "order": 4
+}
