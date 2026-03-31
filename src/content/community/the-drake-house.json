@@ -515,8 +515,6 @@
   "metaDescription": "See how Sunshine on a Ranney Day renovated The Drake House headquarters — classrooms, a community kitchen, and teen spaces for families overcoming homelessness.",
   "videoUrl": null,
   "streamVideoId": null,
-  "beforePhotos": [],
-  "afterPhotos": [],
   "partnerLogos": [
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/jackson-healthcare/public",
@@ -599,12 +597,38 @@
       "name": "Swinerton"
     },
     {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/envision-office-solutions/1774982809947/public",
+      "name": "Envision Office Solutions"
+    },
+    {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/nicole-photography/public",
       "name": "Nicole W Photography"
     },
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/nothing-bundt-cakes/public",
       "name": "Nothing Bundt Cakes"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/tlc-engineers/1774982947350/public",
+      "name": "TLC Engineering Solutions"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/alpharetta-rotary/1774983026565/public",
+      "name": "Alpharetta Rotary"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/ids-demolition/1774983165964/public",
+      "name": "IDS Demolition"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/cosentino/1774983316502/public",
+      "name": "Cosentino"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/j-k-electrical-contractors/1774983394301/public",
+      "name": "J&K Electrical Contractors"
     }
-  ]
+  ],
+  "beforePhotos": [],
+  "afterPhotos": []
 }

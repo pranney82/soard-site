@@ -4,5 +4,8 @@
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/chris-handyman-service/public",
   "tier": "construction",
   "featured": false,
-  "level": "signature"
+  "level": "friend",
+  "category": [
+    "build"
+  ]
 }

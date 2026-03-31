@@ -28,8 +28,8 @@
     "cta2Link": "#stories"
   },
   "featuredKidSlug": "amari",
-  "heroKidSlug": "adrian-2025",
-  "heroKidPhotoId": "kids/adrian/1774454540229-Adrian-SRD--33.jpg",
+  "heroKidSlug": "braxton",
+  "heroKidPhotoId": "",
   "kidShowcase": [
     {
       "slug": "adrian-2025",
@@ -67,7 +67,7 @@
     "roomBedroom": "kids/bryce/photo-22",
     "roomBath": "kids/adrian/1774454538805-Adrian-SRD--30.jpg",
     "roomTherapy": "kids/karter/1774384957640-Karter-Reveal-People-9.jpg",
-    "process": "kids/adrian/1774454540229-Adrian-SRD--33.jpg"
+    "process": "kids/oakley/photo-15"
   },
   "partnerLogos": [
     {
@@ -137,15 +137,15 @@
     "donatePhotos.story": "2026-03-30T19:13:44.133Z",
     "featuredKidSlug": "2026-03-25T17:24:10.084Z",
     "kidShowcase": "2026-03-30T17:46:01.341Z",
-    "sectionPhotos.process": "2026-03-30T18:52:09.176Z",
+    "sectionPhotos.process": "2026-03-31T19:03:27.519Z",
     "sectionPhotos.missionMain": "2026-03-30T18:51:43.241Z",
     "sectionPhotos.missionAccent": "2026-03-30T18:52:01.925Z",
-    "heroKidSlug": "2026-03-30T17:41:00.286Z",
-    "heroKidPhotoId": "2026-03-31T12:10:09.666Z",
+    "heroKidSlug": "2026-03-31T19:58:22.529Z",
+    "heroKidPhotoId": "2026-03-31T20:21:14.042Z",
     "sectionPhotos.roomBedroom": "2026-03-30T18:52:44.310Z",
     "sectionPhotos.roomBath": "2026-03-30T18:52:52.129Z",
     "sectionPhotos.roomTherapy": "2026-03-30T18:52:59.821Z",
-    "featuredStoryImage": "2026-03-31T15:23:14.726Z",
+    "featuredStoryImage": "2026-03-31T19:42:30.997Z",
     "communityPhotos.hero": "2026-03-31T16:57:53.974Z",
     "communityPhotos.accent": "2026-03-31T16:58:13.158Z",
     "waysToGivePhotos.hero": "2026-03-31T17:00:28.640Z",
@@ -158,7 +158,7 @@
   },
   "featuredStoryHeadline": "Amari's new space gave him independence — and his family peace of mind.",
   "featuredStoryDescription": "Amari, age 10, was injured in a head-on collision that left him paralyzed from waist down & an amputee. Our team transformed his space into an accessible, joyful haven, with custom features designed around his unique needs and personality.",
-  "featuredStoryImage": "kids/amari/photo-23",
+  "featuredStoryImage": "",
   "communityPhotos": {
     "hero": "community/summit-counseling-center/1774973192701-IMG-7393.JPG",
     "accent": "community/summit-counseling-center/1774973369216-IMG-7470.JPG"

@@ -6,7 +6,7 @@
  */
 import PageLayout from '../../layouts/PageLayout.astro';
 import { getCollection } from 'astro:content';
-import { cfUrl, cfDensitySrcset, cfSrcset, cfLqip } from '../../utils/cf-image';
+import { cfUrl, cfSrcset, cfLqip } from '../../utils/cf-image';
 import { getWebPageSchema, getBreadcrumbSchema, buildSchemaGraph } from '../../utils/schema';
 import { getSiteStats } from '../../utils/stats';
 
@@ -14,10 +14,10 @@ const PLACEHOLDER = 'brand-logo-circle-display';
 
 const allTeam = await getCollection('team');
 const founders = allTeam
-  .filter(t => t.data.group === 'team' && (t.data.order === 1 || t.data.order === 2))
+  .filter(t => t.data.group === 'team' && t.data.title?.toLowerCase().includes('co-founder'))
   .sort((a, b) => (a.data.order || 0) - (b.data.order || 0));
-const teamMembers = allTeam
-  .filter(t => t.data.group === 'team' && t.data.order > 2)
+const staff = allTeam
+  .filter(t => t.data.group === 'team' && !t.data.title?.toLowerCase().includes('co-founder'))
   .sort((a, b) => (a.data.order || 0) - (b.data.order || 0));
 const boardMembers = allTeam
   .filter(t => t.data.group === 'board')
@@ -50,63 +50,6 @@ const jsonLd = buildSchemaGraph(
   heroSubtitle="The people behind the mission"
 >
 
-  <!-- ══════ FOUNDERS FEATURE — Editorial Split ══════ -->
-  <section class="founders-section" id="founders" aria-labelledby="founders-heading">
-    <div class="container">
-      <div class="section-intro" data-reveal>
-        <span class="section-eyebrow">Est. 2012</span>
-        <h2 class="section-label" id="founders-heading">Co-Founders</h2>
-        <p class="section-tagline">The heart and hands behind every dream room</p>
-      </div>
-
-      {founders.map((member, i) => (
-        <>
-          {i > 0 && <div class="founder-divider" aria-hidden="true" data-reveal><span></span><span></span><span></span></div>}
-          <article class={`founder-feature ${i % 2 === 1 ? 'founder-feature--reverse' : ''}`} data-reveal data-delay={String(i)}>
-            <div class="founder-photo-col">
-              <div class="founder-photo-wrap">
-                <div class="founder-photo" style={member.data.photo ? `background-image:url(${cfLqip(member.data.photo)});background-size:cover;background-position:center` : undefined}>
-                  {member.data.photo ? (
-                    <img
-                      src={cfUrl(member.data.photo, { w: 400, h: 400, fit: 'cover', gravity: 'face' })}
-                      srcset={cfSrcset(member.data.photo, [280, 400, 560, 800], { fit: 'cover', gravity: 'face', aspectRatio: 1 })}
-                      sizes="(max-width: 600px) 260px, (max-width: 900px) 320px, 400px"
-                      alt={`${member.data.name}, ${member.data.title}`}
-                      width="400" height="400"
-                      loading="eager"
-                      decoding="async"
-                    />
-                  ) : (
-                    <div class="photo-placeholder">
-                      <img src={cfUrl(PLACEHOLDER, { w: 256 })} alt="" class="placeholder-icon" width="256" height="256" loading="lazy" decoding="async" />
-                    </div>
-                  )}
-                </div>
-                <div class="founder-ring" aria-hidden="true"></div>
-              </div>
-            </div>
-            <div class="founder-bio-col">
-              <h3 class="founder-name">{member.data.name}</h3>
-              <span class="founder-rule" aria-hidden="true"></span>
-              <p class="founder-title">{member.data.title}</p>
-              {member.data.bio && (
-                <p class="founder-bio">{member.data.bio}</p>
-              )}
-              {member.data.quote && (
-                <blockquote class="founder-quote">
-                  <svg class="quote-mark" aria-hidden="true" width="32" height="24" viewBox="0 0 32 24" fill="none">
-                    <path d="M0 24V14.4C0 10.4 0.8 7.2 2.4 4.8C4.1 2.4 6.9 0.5 10.8 0L12 3.6C9.7 4.3 8.1 5.4 7.1 6.9C6.1 8.4 5.6 10.1 5.6 12H12V24H0ZM20 24V14.4C20 10.4 20.8 7.2 22.4 4.8C24.1 2.4 26.9 0.5 30.8 0L32 3.6C29.7 4.3 28.1 5.4 27.1 6.9C26.1 8.4 25.6 10.1 25.6 12H32V24H20Z" fill="currentColor"/>
-                  </svg>
-                  <p>{member.data.quote}</p>
-                </blockquote>
-              )}
-            </div>
-          </article>
-        </>
-      ))}
-    </div>
-  </section>
-
   <!-- ══════ IMPACT RIBBON ══════ -->
   <section class="impact-ribbon" aria-label="Impact numbers">
     <div class="ribbon-inner">
@@ -127,8 +70,63 @@ const jsonLd = buildSchemaGraph(
     </div>
   </section>
 
-  <!-- ══════ TEAM GRID ══════ -->
-  <section class="section section--cream" id="our-team" aria-labelledby="team-heading">
+  <!-- ══════ BOARD OF DIRECTORS ══════ -->
+  <section class="section section--cream" id="board" aria-labelledby="board-heading">
+    <div class="container">
+      <div class="section-intro" data-reveal>
+        <h2 class="section-label" id="board-heading">Board of Directors</h2>
+        <p class="section-tagline">Community leaders guiding our <span class="highlight">mission and growth</span></p>
+        <p class="section-desc">
+          Industry experts who volunteer their time and expertise to ensure we serve more families, more effectively.
+        </p>
+      </div>
+
+      <div class="board-grid">
+        {boardMembers.map((member, i) => (
+          <div class="board-card" data-reveal data-delay={String(Math.min(i, 4))}>
+            <div class="board-photo" style={member.data.photo ? `background-image:url(${cfLqip(member.data.photo)});background-size:cover;background-position:center` : undefined}>
+              {member.data.photo ? (
+                <img
+                  src={cfUrl(member.data.photo, { w: 200, h: 200, fit: 'cover', gravity: 'face' })}
+                  srcset={cfSrcset(member.data.photo, [140, 200, 280, 400], { fit: 'cover', gravity: 'face', aspectRatio: 1 })}
+                  sizes="(max-width: 600px) 140px, 200px"
+                  alt={`${member.data.name}, ${member.data.title}`}
+                  width="200" height="200"
+                  loading="lazy"
+                  decoding="async"
+                />
+              ) : (
+                <div class="photo-placeholder">
+                  <img src={cfUrl(PLACEHOLDER, { w: 256 })} alt="" class="placeholder-icon" width="256" height="256" loading="lazy" decoding="async" />
+                </div>
+              )}
+            </div>
+            <h3 class="board-name">{member.data.name}</h3>
+            <p class="board-title">{member.data.title}</p>
+            {member.data.organization && (
+              <p class="board-org">{member.data.organization}</p>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════ MISSION QUOTE ══════ -->
+  <section class="quote-break" aria-label="Mission quote">
+    <div class="container">
+      <blockquote class="mission-quote" data-reveal>
+        <svg class="mission-quote-mark" aria-hidden="true" width="48" height="36" viewBox="0 0 32 24" fill="none">
+          <path d="M0 24V14.4C0 10.4 0.8 7.2 2.4 4.8C4.1 2.4 6.9 0.5 10.8 0L12 3.6C9.7 4.3 8.1 5.4 7.1 6.9C6.1 8.4 5.6 10.1 5.6 12H12V24H0ZM20 24V14.4C20 10.4 20.8 7.2 22.4 4.8C24.1 2.4 26.9 0.5 30.8 0L32 3.6C29.7 4.3 28.1 5.4 27.1 6.9C26.1 8.4 25.6 10.1 25.6 12H32V24H20Z" fill="currentColor"/>
+        </svg>
+        <p>Every child deserves a space that feels like their own — a room that says <em>'you matter.'</em></p>
+        <cite>Holly & Peter Ranney, Co-Founders</cite>
+      </blockquote>
+    </div>
+  </section>
+
+  <!-- ══════ OUR TEAM ══════ -->
+  <section class="section section--white" id="our-team" aria-labelledby="team-heading">
     <div class="container">
       <div class="section-intro" data-reveal>
         <h2 class="section-label" id="team-heading">Our Team</h2>
@@ -138,8 +136,44 @@ const jsonLd = buildSchemaGraph(
         </p>
       </div>
 
+      <!-- Founders row — wider 2-up layout -->
+      <div class="founders-row">
+        {founders.map((member, i) => (
+          <div class="founder-card" data-reveal data-delay={String(i)}>
+            <div class="founder-photo-wrap">
+              <div class="founder-photo" style={member.data.photo ? `background-image:url(${cfLqip(member.data.photo)});background-size:cover;background-position:center` : undefined}>
+                {member.data.photo ? (
+                  <img
+                    src={cfUrl(member.data.photo, { w: 220, h: 220, fit: 'cover', gravity: 'face' })}
+                    srcset={cfSrcset(member.data.photo, [160, 220, 320, 440], { fit: 'cover', gravity: 'face', aspectRatio: 1 })}
+                    sizes="(max-width: 600px) 160px, 220px"
+                    alt={`${member.data.name}, ${member.data.title}`}
+                    width="220" height="220"
+                    loading="eager"
+                    decoding="async"
+                  />
+                ) : (
+                  <div class="photo-placeholder">
+                    <img src={cfUrl(PLACEHOLDER, { w: 256 })} alt="" class="placeholder-icon" width="256" height="256" loading="lazy" decoding="async" />
+                  </div>
+                )}
+              </div>
+              <div class="founder-ring" aria-hidden="true"></div>
+            </div>
+            <span class="founder-badge">Co-Founder</span>
+            <h3 class="founder-name">{member.data.name}</h3>
+            <p class="founder-title">{member.data.title.replace(/Co-Founder\/?/i, '').trim()}</p>
+            <p class="founder-detail">{member.data.order === 1 ? 'Leading the mission since 2012' : 'Building dream rooms since day one'}</p>
+          </div>
+        ))}
+      </div>
+
+      <!-- Dot divider -->
+      <div class="team-divider" aria-hidden="true" data-reveal><span></span><span></span><span></span></div>
+
+      <!-- Staff grid -->
       <div class="team-grid">
-        {teamMembers.map((member, i) => (
+        {staff.map((member, i) => (
           <div class="member-card" data-reveal data-delay={String(Math.min(i, 3))}>
             <div class="member-photo" style={member.data.photo ? `background-image:url(${cfLqip(member.data.photo)});background-size:cover;background-position:center` : undefined}>
               {member.data.photo ? (
@@ -169,49 +203,6 @@ const jsonLd = buildSchemaGraph(
     </div>
   </section>
 
-  <!-- ══════ BOARD OF DIRECTORS ══════ -->
-  <section class="section section--gray" id="board" aria-labelledby="board-heading">
-    <div class="container">
-      <div class="section-intro" data-reveal>
-        <h2 class="section-label" id="board-heading">Board of Directors</h2>
-        <p class="section-tagline">Community leaders guiding our <span class="highlight">mission and growth</span></p>
-        <p class="section-desc">
-          Industry experts who volunteer their time and expertise to ensure we serve more families, more effectively.
-        </p>
-      </div>
-
-      <div class="board-grid">
-        {boardMembers.map((member, i) => (
-          <div class="board-card" data-reveal data-delay={String(Math.min(i, 4))}>
-            <div class="board-photo" style={member.data.photo ? `background-image:url(${cfLqip(member.data.photo)});background-size:cover;background-position:center` : undefined}>
-              {member.data.photo ? (
-                <img
-                  src={cfUrl(member.data.photo, { w: 80, h: 80, fit: 'cover', gravity: 'face' })}
-                  srcset={cfDensitySrcset(member.data.photo, 80, 80, { fit: 'cover', gravity: 'face' })}
-                  alt={`${member.data.name}, ${member.data.title}`}
-                  width="80" height="80"
-                  loading="lazy"
-                  decoding="async"
-                />
-              ) : (
-                <div class="photo-placeholder photo-placeholder--sm">
-                  <img src={cfUrl(PLACEHOLDER, { w: 256 })} alt="" class="placeholder-icon" width="256" height="256" loading="lazy" decoding="async" />
-                </div>
-              )}
-            </div>
-            <div class="board-info">
-              <h3 class="board-name">{member.data.name}</h3>
-              <p class="board-title">{member.data.title}</p>
-              {member.data.organization && (
-                <p class="board-org">{member.data.organization}</p>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  </section>
-
   <!-- ══════ CTA ══════ -->
   <section class="section section--dark" slot="cta">
     <div class="container" style="text-align: center;">
@@ -234,26 +225,13 @@ const jsonLd = buildSchemaGraph(
 
 <style>
   /* ═══════════════════════════════════════════
-     SECTION INTRO — Two-tier headings
+     SECTION INTRO
      ═══════════════════════════════════════════ */
   .section-intro {
     text-align: center;
     max-width: 640px;
     margin-inline: auto;
     margin-bottom: var(--space-3xl);
-  }
-
-  .section-eyebrow {
-    display: inline-block;
-    font-size: 0.7rem;
-    font-weight: 700;
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
-    color: var(--c-white);
-    background: var(--c-dark);
-    padding: 0.35em 1.2em;
-    border-radius: 100px;
-    margin-bottom: var(--space-lg);
   }
 
   .section-tagline {
@@ -269,161 +247,6 @@ const jsonLd = buildSchemaGraph(
     font-size: 1.05rem;
     color: var(--c-text-muted);
     line-height: 1.7;
-  }
-
-  /* ═══════════════════════════════════════════
-     FOUNDERS — Editorial Split Layout
-     ═══════════════════════════════════════════ */
-  .founders-section {
-    padding-block: var(--space-4xl) var(--space-4xl);
-    background: var(--c-cream);
-  }
-
-  .founder-feature {
-    display: grid;
-    grid-template-columns: 1fr 1.1fr;
-    gap: clamp(2.5rem, 6vw, 6rem);
-    align-items: center;
-    max-width: 980px;
-    margin-inline: auto;
-    margin-top: var(--space-3xl);
-  }
-
-  .founder-feature--reverse {
-    grid-template-columns: 1.1fr 1fr;
-    direction: rtl;
-  }
-
-  .founder-feature--reverse > * {
-    direction: ltr;
-  }
-
-  /* Decorative dot divider between founders */
-  .founder-divider {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    padding-block: var(--space-xl);
-    max-width: 980px;
-    margin-inline: auto;
-    margin-top: var(--space-2xl);
-  }
-
-  .founder-divider span {
-    width: 4px;
-    height: 4px;
-    border-radius: 50%;
-    background: var(--c-border);
-  }
-
-  .founder-photo-col {
-    display: flex;
-    justify-content: center;
-  }
-
-  .founder-photo-wrap {
-    position: relative;
-    width: clamp(280px, 24vw, 380px);
-    aspect-ratio: 1;
-  }
-
-  .founder-photo {
-    width: 100%;
-    height: 100%;
-    border-radius: 50%;
-    overflow: hidden;
-    position: relative;
-    z-index: 1;
-    background: var(--c-warm-gray);
-    box-shadow:
-      0 25px 50px -12px rgba(0, 0, 0, 0.15),
-      0 0 0 1px rgba(0, 0, 0, 0.03);
-  }
-
-  .founder-photo img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
-  }
-
-  .founder-feature:hover .founder-photo img {
-    transform: scale(1.04);
-  }
-
-  .founder-ring {
-    position: absolute;
-    inset: -10px;
-    border-radius: 50%;
-    border: 2px solid var(--c-yellow);
-    opacity: 0;
-    transform: scale(0.97);
-    transition: opacity 0.6s ease, transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
-  }
-
-  .founder-feature:hover .founder-ring {
-    opacity: 0.6;
-    transform: scale(1);
-  }
-
-  .founder-bio-col {
-    padding-block: var(--space-xl);
-  }
-
-  .founder-name {
-    font-family: var(--font-display);
-    font-size: clamp(1.65rem, 2.8vw, 2.25rem);
-    font-weight: 700;
-    color: var(--c-text);
-    margin-bottom: var(--space-md);
-    line-height: 1.15;
-    letter-spacing: -0.01em;
-  }
-
-  .founder-rule {
-    display: block;
-    width: 48px;
-    height: 2px;
-    background: var(--c-yellow);
-    margin-bottom: var(--space-md);
-  }
-
-  .founder-title {
-    font-size: 0.82rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    color: var(--c-text-muted);
-    margin-bottom: var(--space-xl);
-  }
-
-  .founder-bio {
-    font-size: 1.05rem;
-    color: var(--c-text-muted);
-    line-height: 1.8;
-    margin-bottom: var(--space-xl);
-  }
-
-  .founder-quote {
-    position: relative;
-    padding-left: calc(var(--space-lg) + 4px);
-    border-left: 3px solid var(--c-yellow);
-  }
-
-  .quote-mark {
-    color: var(--c-yellow);
-    opacity: 0.35;
-    margin-bottom: var(--space-sm);
-    display: block;
-  }
-
-  .founder-quote p {
-    font-family: var(--font-display);
-    font-size: 1.05rem;
-    font-style: italic;
-    color: var(--c-text);
-    line-height: 1.65;
   }
 
   /* ═══════════════════════════════════════════
@@ -444,9 +267,7 @@ const jsonLd = buildSchemaGraph(
     gap: clamp(var(--space-xl), 5vw, var(--space-4xl));
   }
 
-  .ribbon-stat {
-    text-align: center;
-  }
+  .ribbon-stat { text-align: center; }
 
   .ribbon-num {
     display: block;
@@ -476,6 +297,255 @@ const jsonLd = buildSchemaGraph(
   }
 
   /* ═══════════════════════════════════════════
+     BOARD OF DIRECTORS — Centered portrait cards
+     ═══════════════════════════════════════════ */
+  .board-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: var(--space-2xl) var(--space-xl);
+    max-width: 1000px;
+    margin-inline: auto;
+  }
+
+  .board-card {
+    text-align: center;
+  }
+
+  .board-photo {
+    width: 180px;
+    max-width: 100%;
+    aspect-ratio: 1;
+    height: auto;
+    border-radius: 50%;
+    overflow: hidden;
+    margin: 0 auto var(--space-md);
+    background: var(--c-warm-gray);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+    transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1),
+                box-shadow 0.5s ease;
+  }
+
+  @media (hover: hover) {
+    .board-card:hover .board-photo {
+      transform: scale(1.04) translateY(-4px);
+      box-shadow: 0 16px 48px rgba(0, 0, 0, 0.1), 0 0 0 3px rgba(255, 218, 36, 0.25);
+    }
+  }
+
+  .board-photo img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: filter 0.6s ease;
+  }
+
+  @media (hover: hover) {
+    .board-photo img {
+      filter: grayscale(100%) contrast(1.05);
+    }
+    .board-card:hover .board-photo img {
+      filter: grayscale(0%) contrast(1);
+    }
+  }
+
+  .board-name {
+    font-family: var(--font-display);
+    font-size: 1.05rem;
+    font-weight: 700;
+    margin-bottom: 0.15rem;
+    color: var(--c-text);
+  }
+
+  .board-title {
+    font-size: 0.85rem;
+    color: var(--c-text-muted);
+    font-weight: 500;
+    line-height: 1.4;
+  }
+
+  .board-org {
+    font-size: 0.78rem;
+    color: var(--c-text-light);
+    margin-top: 0.2rem;
+    line-height: 1.4;
+  }
+
+  /* ═══════════════════════════════════════════
+     MISSION QUOTE BREAK
+     ═══════════════════════════════════════════ */
+  .quote-break {
+    background: var(--c-dark);
+    padding-block: var(--space-4xl);
+  }
+
+  .mission-quote {
+    max-width: 680px;
+    margin-inline: auto;
+    text-align: center;
+  }
+
+  .mission-quote-mark {
+    color: var(--c-yellow);
+    opacity: 0.3;
+    margin-bottom: var(--space-lg);
+  }
+
+  .mission-quote p {
+    font-family: var(--font-display);
+    font-size: clamp(1.25rem, 2.8vw, 1.65rem);
+    font-style: italic;
+    font-weight: 500;
+    color: var(--c-white);
+    line-height: 1.6;
+    margin-bottom: var(--space-lg);
+  }
+
+  .mission-quote em {
+    color: var(--c-yellow);
+    font-style: italic;
+  }
+
+  .mission-quote cite {
+    font-style: normal;
+    font-size: 0.82rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.5);
+  }
+
+  /* ═══════════════════════════════════════════
+     FOUNDERS ROW — 2-up centered above grid
+     ═══════════════════════════════════════════ */
+  .founders-row {
+    display: flex;
+    justify-content: center;
+    gap: clamp(var(--space-3xl), 8vw, 8rem);
+    margin-bottom: var(--space-2xl);
+  }
+
+  .founder-card {
+    text-align: center;
+    max-width: 320px;
+  }
+
+  .founder-photo-wrap {
+    position: relative;
+    width: fit-content;
+    margin: 0 auto var(--space-lg);
+  }
+
+  .founder-photo {
+    width: 220px;
+    max-width: 100%;
+    aspect-ratio: 1;
+    height: auto;
+    border-radius: 50%;
+    overflow: hidden;
+    background: var(--c-warm-gray);
+    box-shadow:
+      0 20px 40px -8px rgba(0, 0, 0, 0.12),
+      0 0 0 1px rgba(0, 0, 0, 0.03);
+    transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1),
+                box-shadow 0.5s ease;
+  }
+
+  @media (hover: hover) {
+    .founder-card:hover .founder-photo {
+      transform: scale(1.04) translateY(-4px);
+      box-shadow: 0 24px 56px rgba(0, 0, 0, 0.14), 0 0 0 3px rgba(255, 218, 36, 0.3);
+    }
+  }
+
+  .founder-photo img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: filter 0.6s ease;
+  }
+
+  @media (hover: hover) {
+    .founder-photo img {
+      filter: grayscale(100%) contrast(1.05);
+    }
+    .founder-card:hover .founder-photo img {
+      filter: grayscale(0%) contrast(1);
+    }
+  }
+
+  .founder-ring {
+    position: absolute;
+    inset: -8px;
+    border-radius: 50%;
+    border: 2px solid var(--c-yellow);
+    opacity: 0;
+    transform: scale(0.97);
+    transition: opacity 0.6s ease, transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+    pointer-events: none;
+  }
+
+  @media (hover: hover) {
+    .founder-card:hover .founder-ring {
+      opacity: 0.5;
+      transform: scale(1);
+    }
+  }
+
+  .founder-badge {
+    display: inline-block;
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--c-white);
+    background: var(--c-dark);
+    padding: 0.35em 1.1em;
+    border-radius: 100px;
+    margin-bottom: var(--space-sm);
+  }
+
+  .founder-name {
+    font-family: var(--font-display);
+    font-size: 1.15rem;
+    font-weight: 700;
+    margin-bottom: 0.2rem;
+    color: var(--c-text);
+    line-height: 1.2;
+  }
+
+  .founder-title {
+    font-size: 0.88rem;
+    color: var(--c-text-muted);
+    font-weight: 500;
+    line-height: 1.4;
+    margin-bottom: var(--space-xs);
+  }
+
+  .founder-detail {
+    font-size: 0.82rem;
+    color: var(--c-text-light);
+    font-style: italic;
+    line-height: 1.4;
+  }
+
+  /* Dot divider between founders and staff */
+  .team-divider {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding-block: var(--space-md);
+    margin-bottom: var(--space-2xl);
+  }
+
+  .team-divider span {
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: var(--c-border);
+  }
+
+  /* ═══════════════════════════════════════════
      TEAM GRID — B&W→Color on hover
      ═══════════════════════════════════════════ */
   .team-grid {
@@ -492,31 +562,39 @@ const jsonLd = buildSchemaGraph(
 
   .member-photo {
     width: 220px;
-    height: 220px;
+    max-width: 100%;
+    aspect-ratio: 1;
+    height: auto;
+    margin: 0 auto var(--space-lg);
     border-radius: 50%;
     overflow: hidden;
-    margin: 0 auto var(--space-lg);
     background: var(--c-warm-gray);
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
     transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1),
                 box-shadow 0.5s ease;
   }
 
-  .member-card:hover .member-photo {
-    transform: scale(1.04) translateY(-4px);
-    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.1), 0 0 0 3px rgba(255, 218, 36, 0.25);
+  @media (hover: hover) {
+    .member-card:hover .member-photo {
+      transform: scale(1.04) translateY(-4px);
+      box-shadow: 0 16px 48px rgba(0, 0, 0, 0.1), 0 0 0 3px rgba(255, 218, 36, 0.25);
+    }
   }
 
   .member-photo img {
     width: 100%;
     height: 100%;
     object-fit: cover;
-    filter: grayscale(100%) contrast(1.05);
     transition: filter 0.6s ease;
   }
 
-  .member-card:hover .member-photo img {
-    filter: grayscale(0%) contrast(1);
+  @media (hover: hover) {
+    .member-photo img {
+      filter: grayscale(100%) contrast(1.05);
+    }
+    .member-card:hover .member-photo img {
+      filter: grayscale(0%) contrast(1);
+    }
   }
 
   .member-name {
@@ -541,83 +619,6 @@ const jsonLd = buildSchemaGraph(
   }
 
   /* ═══════════════════════════════════════════
-     BOARD GRID — B&W→Color on hover
-     ═══════════════════════════════════════════ */
-  .board-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-    gap: var(--space-lg);
-    max-width: 1100px;
-    margin-inline: auto;
-  }
-
-  .board-card {
-    display: flex;
-    align-items: center;
-    gap: var(--space-lg);
-    background: var(--c-white);
-    padding: var(--space-lg) var(--space-xl);
-    border-radius: var(--border-radius-lg);
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
-    border-left: 3px solid transparent;
-    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1),
-                box-shadow 0.3s ease,
-                border-color 0.3s ease;
-  }
-
-  .board-card:hover {
-    transform: translateY(-3px);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
-    border-left-color: var(--c-yellow);
-  }
-
-  .board-photo {
-    width: 72px;
-    height: 72px;
-    border-radius: 50%;
-    overflow: hidden;
-    flex-shrink: 0;
-    background: var(--c-warm-gray);
-  }
-
-  .board-photo img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    filter: grayscale(100%) contrast(1.05);
-    transition: filter 0.5s ease;
-  }
-
-  .board-card:hover .board-photo img {
-    filter: grayscale(0%) contrast(1);
-  }
-
-  .board-info {
-    min-width: 0;
-  }
-
-  .board-name {
-    font-family: var(--font-display);
-    font-size: 1.02rem;
-    font-weight: 700;
-    margin-bottom: 0.15rem;
-    color: var(--c-text);
-  }
-
-  .board-title {
-    font-size: 0.82rem;
-    color: var(--c-text-muted);
-    font-weight: 600;
-  }
-
-  .board-org {
-    font-size: 0.78rem;
-    color: var(--c-text-light);
-    margin-top: 0.15rem;
-    line-height: 1.4;
-  }
-
-  /* ═══════════════════════════════════════════
      PLACEHOLDERS (shared)
      ═══════════════════════════════════════════ */
   .photo-placeholder {
@@ -636,10 +637,6 @@ const jsonLd = buildSchemaGraph(
     opacity: 0.5;
   }
 
-  .photo-placeholder--sm .placeholder-icon {
-    width: 55%;
-    height: 55%;
-  }
 
   /* ═══════════════════════════════════════════
      CTA
@@ -670,7 +667,6 @@ const jsonLd = buildSchemaGraph(
   /* ═══════════════════════════════════════════
      SCROLL REVEAL
      ═══════════════════════════════════════════ */
-  /* Only hide elements when JS is available — prevents invisible content if JS fails */
   :global(.js-reveal) [data-reveal] {
     opacity: 0;
     transform: translateY(24px);
@@ -683,13 +679,11 @@ const jsonLd = buildSchemaGraph(
     transform: translateY(0);
   }
 
-  /* Stagger delays */
   :global(.js-reveal) [data-reveal][data-delay="1"] { transition-delay: 0.12s; }
   :global(.js-reveal) [data-reveal][data-delay="2"] { transition-delay: 0.24s; }
   :global(.js-reveal) [data-reveal][data-delay="3"] { transition-delay: 0.3s; }
   :global(.js-reveal) [data-reveal][data-delay="4"] { transition-delay: 0.36s; }
 
-  /* Respect prefers-reduced-motion */
   @media (prefers-reduced-motion: reduce) {
     :global(.js-reveal) [data-reveal] {
       opacity: 1;
@@ -697,112 +691,74 @@ const jsonLd = buildSchemaGraph(
       transition: none;
     }
 
+    .founder-photo,
+    .member-photo,
+    .board-photo {
+      transition: none;
+    }
+
+    .founder-photo img,
     .member-photo img,
     .board-photo img {
-      filter: none;
+      filter: none !important;
+      transition: none;
     }
   }
 
   /* ═══════════════════════════════════════════
      RESPONSIVE
      ═══════════════════════════════════════════ */
-  @media (max-width: 900px) {
-    .founder-feature,
-    .founder-feature--reverse {
+  @media (max-width: 768px) {
+    .founders-row {
       gap: var(--space-2xl);
     }
 
-    .founder-photo-wrap {
-      width: clamp(240px, 32vw, 320px);
-    }
-  }
-
-  @media (max-width: 768px) {
-    .founder-feature,
-    .founder-feature--reverse {
-      grid-template-columns: 1fr;
-      text-align: center;
-      gap: var(--space-lg);
-      margin-top: var(--space-2xl);
-      direction: ltr;
-    }
-
-    .founder-photo-wrap {
-      width: 280px;
-      margin-inline: auto;
-    }
-
-    .founder-bio-col {
-      padding-block: 0;
-    }
-
-    .founder-rule {
-      margin-inline: auto;
-    }
-
-    .founder-quote {
-      display: inline-block;
-      text-align: left;
-      max-width: 420px;
-    }
-
-    .founder-name {
-      font-size: 1.65rem;
-    }
-
-    .founder-divider {
-      margin-top: var(--space-lg);
-      padding-block: var(--space-md);
-    }
+    .founder-photo { width: 160px; }
 
     .team-grid {
       grid-template-columns: repeat(3, 1fr);
       gap: var(--space-xl);
     }
 
-    .member-photo {
-      width: 160px;
-      height: 160px;
-    }
+    .member-photo { width: 160px; }
 
     .board-grid {
-      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      grid-template-columns: repeat(3, 1fr);
+      gap: var(--space-xl);
     }
+
+    .board-photo { width: 150px; }
   }
 
   @media (max-width: 600px) {
-    .founders-section {
-      padding-block: var(--space-3xl) var(--space-2xl);
+    .founders-row {
+      flex-direction: column;
+      align-items: center;
+      gap: var(--space-xl);
     }
 
-    .founder-photo-wrap {
-      width: 240px;
-    }
-
-    .founder-name {
-      font-size: 1.4rem;
-    }
-
-    .founder-bio {
-      font-size: 1rem;
-    }
+    .founder-photo { width: 140px; }
+    .founder-name { font-size: 1.05rem; }
+    .founder-badge { font-size: 0.6rem; }
+    .founder-detail { font-size: 0.78rem; }
 
     .team-grid {
       grid-template-columns: repeat(2, 1fr);
-      gap: var(--space-2xl) var(--space-xl);
+      gap: var(--space-xl) var(--space-lg);
     }
 
-    .member-photo {
-      width: 140px;
-      height: 140px;
-    }
-
-    .member-name {
-      font-size: 1.05rem;
-    }
+    .member-photo { width: 140px; }
+    .member-name { font-size: 1.05rem; }
 
     .board-grid {
-      grid-template-columns: 1fr;
+      grid-template-columns: repeat(2, 1fr);
+      gap: var(--space-xl) var(--space-lg);
+    }
+
+    .board-photo { width: 130px; }
+
+    .quote-break {
+      padding-block: var(--space-3xl);
     }
 
     .ribbon-inner {
@@ -810,28 +766,34 @@ const jsonLd = buildSchemaGraph(
       gap: var(--space-lg) var(--space-xl);
     }
 
-    .ribbon-divider {
-      display: none;
-    }
+    .ribbon-divider { display: none; }
 
     .ribbon-stat {
       flex: 0 0 calc(33% - var(--space-lg));
     }
+
+    .section-intro {
+      margin-bottom: var(--space-2xl);
+    }
   }
 
   @media (max-width: 380px) {
+    .founder-photo { width: 110px; }
+
     .team-grid {
-      gap: var(--space-xl) var(--space-md);
+      gap: var(--space-lg) var(--space-md);
     }
 
-    .member-photo {
-      width: 110px;
-      height: 110px;
+    .member-photo { width: 110px; }
+
+    .board-grid {
+      gap: var(--space-lg) var(--space-md);
     }
 
-    .founder-photo-wrap {
-      width: 200px;
-    }
+    .board-photo { width: 110px; }
+
+    .board-name { font-size: 0.95rem; }
+    .board-title { font-size: 0.78rem; }
   }
 </style>
 

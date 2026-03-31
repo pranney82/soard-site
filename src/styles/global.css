@@ -399,7 +399,7 @@ h4, .h4 {
   background: currentColor;
   flex-shrink: 0;
 }
-.section-label--yellow { color: var(--c-yellow); }
+.section-label--yellow { color: inherit; }
 .section-label--yellow::before { background: var(--c-yellow); }
 .section-label--light { color: rgba(255, 255, 255, 0.7); }
 .section-label--light::before { background: rgba(255, 255, 255, 0.4); }

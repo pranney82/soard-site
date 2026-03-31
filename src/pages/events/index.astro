@@ -40,9 +40,7 @@ const regular = upcoming.filter(e => !e.data.featured);
 
 /* ── Detail page routing ── */
 const manualPages: Record<string, string> = {
-  'sunshine-on-a-ranney-fairway-2026': '/events/golf/',
-  'spring-gala-2026': '/events/gala/',
-  'room-reveal-jackson-2025': '/events/makeover/',
+  'sunshine-on-a-ranney-fairway': '/events/golf/',
 };
 const detailPages: Record<string, string> = { ...manualPages };
 for (const e of allEvents) {

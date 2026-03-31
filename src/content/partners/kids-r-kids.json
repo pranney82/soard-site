@@ -5,6 +5,8 @@
   "tier": "community",
   "featured": true,
   "website": "https://kidsrkids.com",
-  "category": "funding",
+  "category": [
+    "funding"
+  ],
   "level": "signature"
 }

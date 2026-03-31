@@ -259,4 +259,4 @@ const community = defineCollection({
   }),
 });
 
-export const collections = { kids, partners, medialogos, team, articles, press, events, community, communityPartners, site };
+export const collections = { kids, partners, medialogos, team, articles, press, events, community, community_partners: communityPartners, communityPartners, site };

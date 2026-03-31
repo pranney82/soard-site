@@ -76,7 +76,7 @@ const sp = siteSettings.sectionPhotos || {};
 const missionMainId = sp.missionMain || 'kids/eli/photo-01';
 const missionAccentId = sp.missionAccent || 'kids/georgia/photo-01';
 const heroPhotoId = siteSettings.heroKidPhotoId || `kids/${heroSlug}/hero`;
-const storyPhotoId = siteSettings.featuredStoryImage || `kids/${featuredSlug}/hero`;
+const storyPhotoId = siteSettings.featuredStoryImage || (fd?.heroImage ? extractCfId(fd.heroImage) : `kids/${featuredSlug}/hero`);
 const processPhotoId = sp.process || `kids/${featuredSlug}/hero`;
 const roomPhotos = {
   bedroom: sp.roomBedroom || 'kids/griffin/hero',
@@ -87,18 +87,11 @@ const roomPhotos = {
 const partnerCollection = await getCollection('partners');
 const totalPartners = partnerCollection.length;
 
-const partnerLogos = siteSettings.partnerLogos || siteSettings.homeLogos || [
-  { id: 'partners/gas-south', name: 'Gas South' },
-  { id: 'partners/randall-paulson', name: 'Randall Paulson' },
-  { id: 'partners/kids-r-kids', name: 'Kids R Kids' },
-  { id: 'partners/cambria', name: 'Cambria' },
-  { id: 'partners/mohawk', name: 'Mohawk' },
-  { id: 'partners/jackson-healthcare', name: 'Jackson Healthcare' },
-  { id: 'partners/crosby-design-group', name: 'Crosby Design Group' },
-  { id: 'partners/msi', name: 'MSI' },
-  { id: 'partners/cr-construction', name: 'CR Construction' },
-  { id: 'partners/stag-partners', name: 'Stag Partners' },
-];
+const signaturePartners = partnerCollection
+  .filter((p) => p.data.level === 'signature' && p.data.logo)
+  .map((p) => ({ id: extractCfId(p.data.logo), name: p.data.name }));
+
+const partnerLogos = signaturePartners;
 
 /* ── Hero image URLs (DRY — preload + img must be byte-identical) ── */
 const heroImg400 = `${CF}/${heroPhotoId}/w=400,h=500,fit=cover,q=65`;
@@ -295,39 +288,35 @@ const jsonLd = getWebSiteSchema();
         <h2 id="rooms-heading">Three types of spaces,<br/>one purpose: <em class="highlight">empowering kids</em></h2>
       </div>
 
-      <!-- Featured spread: image + text side by side -->
-      <article class="rm-spread" data-reveal>
-        <a href="/kids" class="rm-spread-link" aria-label="Accessible bathrooms — see our work">
-          <div class="rm-spread-img rm-parallax" style={`background-image:url('${cfLqip(roomPhotos.bath)}')`}>
-            <img
-              src={`${CF}/${roomPhotos.bath}/w=900,h=1100,fit=cover,q=80`}
-              srcset={cfSrcset(roomPhotos.bath, [400, 600, 900, 1200, 1600], { fit: 'cover', aspectRatio: 1100/900, quality: 80 })}
-              sizes="(max-width:600px) 92vw, (max-width:900px) 90vw, 45vw"
-              alt="An accessible bathroom" width="900" height="1100"
-              loading="lazy" decoding="async" class="lqip-img"
-            />
-          </div>
-          <div class="rm-spread-text">
-            <span class="rm-num" aria-hidden="true">01</span>
-            <div class="rm-spread-inner">
-              <h3>Accessible<br/>Bathrooms</h3>
+      <!-- Three room-type cards -->
+      <div class="rm-trio">
+        <article class="rm-card" data-reveal>
+          <a href="/kids" class="rm-card-link" aria-label="Accessible bathrooms — see our work">
+            <div class="rm-card-img rm-parallax" style={`background-image:url('${cfLqip(roomPhotos.bath)}')`}>
+              <img
+                src={`${CF}/${roomPhotos.bath}/w=700,h=875,fit=cover,q=80`}
+                srcset={cfSrcset(roomPhotos.bath, [360, 500, 700, 1000, 1400], { fit: 'cover', aspectRatio: 5/4, quality: 80 })}
+                sizes="(max-width:600px) 82vw, (max-width:900px) 46vw, 30vw"
+                alt="An accessible bathroom" width="700" height="875"
+                loading="lazy" decoding="async" class="lqip-img"
+              />
+            </div>
+            <div class="rm-card-text">
+              <span class="rm-num" aria-hidden="true">01</span>
+              <h3>Accessible Bathrooms</h3>
               <div class="rm-rule"></div>
               <p>Roll-in showers, grab bars, and lowered vanities — giving children independence and giving families relief from daily struggles.</p>
               <span class="rm-cta">See our work <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M4 10h12M11 5l5 5-5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
             </div>
-          </div>
-        </a>
-      </article>
-
-      <!-- Duo: two editorial cards -->
-      <div class="rm-duo">
+          </a>
+        </article>
         <article class="rm-card" data-reveal data-delay="1">
           <a href="/kids" class="rm-card-link" aria-label="Dream bedrooms — see our work">
             <div class="rm-card-img rm-parallax" style={`background-image:url('${cfLqip(roomPhotos.bedroom)}')`}>
               <img
                 src={`${CF}/${roomPhotos.bedroom}/w=700,h=875,fit=cover,q=80`}
                 srcset={cfSrcset(roomPhotos.bedroom, [360, 500, 700, 1000, 1400], { fit: 'cover', aspectRatio: 5/4, quality: 80 })}
-                sizes="(max-width:600px) 92vw, (max-width:900px) 46vw, 42vw"
+                sizes="(max-width:600px) 82vw, (max-width:900px) 46vw, 30vw"
                 alt="A custom dream bedroom" width="700" height="875"
                 loading="lazy" decoding="async" class="lqip-img"
               />
@@ -347,7 +336,7 @@ const jsonLd = getWebSiteSchema();
               <img
                 src={`${CF}/${roomPhotos.therapy}/w=700,h=875,fit=cover,q=80`}
                 srcset={cfSrcset(roomPhotos.therapy, [360, 500, 700, 1000, 1400], { fit: 'cover', aspectRatio: 5/4, quality: 80 })}
-                sizes="(max-width:600px) 92vw, (max-width:900px) 46vw, 42vw"
+                sizes="(max-width:600px) 82vw, (max-width:900px) 46vw, 30vw"
                 alt="A sensory therapy room" width="700" height="875"
                 loading="lazy" decoding="async" class="lqip-img"
               />
@@ -800,54 +789,10 @@ const jsonLd = getWebSiteSchema();
   }
 
   /* ════════════════════════════════════
-     FEATURED SPREAD — horizontal layout
+     TRIO CARDS — three-column grid
      ════════════════════════════════════ */
-  .rm-spread { margin-bottom: 96px; }
-  .rm-spread-link {
-    display: grid;
-    grid-template-columns: 1.4fr 1fr;
-    gap: 0;
-    text-decoration: none; color: inherit;
-    align-items: stretch;
-    min-height: 680px;
-  }
-
-  /* Image: left column, dominant */
-  .rm-spread-img {
-    aspect-ratio: auto; border-radius: 20px;
-    height: 100%; min-height: 600px;
-  }
-  .rm-spread-link:hover .rm-spread-img img { transform: scale(1.04); }
-  .rm-spread-link:hover .rm-num { color: var(--c-yellow); }
-  .rm-spread-link:hover .rm-rule { width: 88px; }
-  .rm-spread-link:hover .rm-cta { gap: 14px; }
-  .rm-spread-link:hover .rm-cta svg { transform: translateX(4px); }
-
-  /* Text: right column, anchored to bottom */
-  .rm-spread-text {
-    display: flex; flex-direction: column;
-    justify-content: flex-end;
-    padding: 40px 0 48px 56px;
-  }
-  .rm-spread-inner { max-width: 400px; }
-  .rm-spread-inner h3 {
-    font-family: var(--font-display);
-    font-size: clamp(34px, 4.5vw, 52px);
-    font-weight: 700; line-height: 1.08;
-    letter-spacing: -0.03em;
-    margin-bottom: 0;
-  }
-  .rm-spread-inner p {
-    font-size: 16px; line-height: 1.75;
-    color: var(--c-text-muted);
-    margin-bottom: 32px;
-  }
-
-  /* ════════════════════════════════════
-     DUO CARDS — two-column grid
-     ════════════════════════════════════ */
-  .rm-duo {
-    display: grid; grid-template-columns: 1fr 1fr;
+  .rm-trio {
+    display: grid; grid-template-columns: repeat(3, 1fr);
     gap: 40px;
   }
   .rm-card-link {
@@ -886,16 +831,8 @@ const jsonLd = getWebSiteSchema();
   /* ════════ Responsive ════════ */
   @media (max-width: 900px) {
     .rooms { padding: 100px 0 120px; }
-    .rm-spread { margin-bottom: 64px; }
-    .rm-spread-link {
-      grid-template-columns: 1fr;
-      min-height: auto;
-    }
-    .rm-spread-img { min-height: 360px; aspect-ratio: 16 / 10; }
-    .rm-spread-text { padding: 28px 0 0; justify-content: flex-start; }
-    .rm-spread-inner h3 br { display: none; }
+    .rm-trio { gap: 32px; }
     .rm-num { font-size: clamp(56px, 8vw, 80px); }
-    .rm-duo { gap: 32px; }
     .rm-card-img { aspect-ratio: 4 / 5; }
     .rm-card-text .rm-num { font-size: clamp(40px, 6vw, 56px); }
   }
@@ -913,48 +850,22 @@ const jsonLd = getWebSiteSchema();
     /* Rule: thinner on mobile */
     .rm-rule { margin: 12px 0 14px; width: 32px; height: 2px; }
 
-    /* Featured spread — image-overlay card on mobile */
-    .rm-spread { margin-bottom: 32px; }
-    .rm-spread-link {
-      display: grid; grid-template-rows: 1fr auto;
-      position: relative; border-radius: 16px; overflow: hidden;
-      min-height: min(70svh, 480px);
-    }
-    .rm-spread-img {
-      position: absolute; inset: 0;
-      min-height: auto; aspect-ratio: auto; border-radius: 0;
-    }
-    .rm-spread-img img { object-position: center 65%; }
-    .rm-spread-text {
-      position: relative; grid-row: 2; z-index: 2;
-      padding: 32px 24px calc(24px + env(safe-area-inset-bottom, 0px));
-      background: linear-gradient(to top, rgba(0,0,0,0.82) 0%, rgba(0,0,0,0.55) 70%, transparent 100%);
-      justify-content: flex-end;
-    }
-    .rm-spread-inner { max-width: none; }
-    .rm-spread-inner h3 { font-size: 24px; color: #fff; }
-    .rm-spread-inner h3 br { display: none; }
-    .rm-spread-inner p { font-size: 14px; line-height: 1.65; color: rgba(255,255,255,0.9); margin-bottom: 16px; }
-    .rm-spread .rm-num { color: var(--c-yellow); }
-    .rm-spread .rm-rule { background: var(--c-yellow); }
-    .rm-spread .rm-cta { color: #fff; font-size: 12px; }
-
-    /* Duo cards — horizontal scroll carousel */
-    .rm-duo {
+    /* Trio cards — horizontal scroll carousel on mobile */
+    .rm-trio {
       display: flex; gap: 16px;
       overflow-x: auto; scroll-snap-type: x mandatory;
       -webkit-overflow-scrolling: touch; scrollbar-width: none;
       margin: 0 calc(var(--page-padding) * -1);
       padding: 0 var(--page-padding);
     }
-    .rm-duo::-webkit-scrollbar { display: none; }
+    .rm-trio::-webkit-scrollbar { display: none; }
     /* Right padding so last card doesn't hit the edge */
-    .rm-duo::after {
+    .rm-trio::after {
       content: ''; flex: 0 0 var(--page-padding);
     }
 
     .rm-card {
-      flex: 0 0 82%; min-width: 0; scroll-snap-align: start;
+      flex: 0 0 78%; min-width: 0; scroll-snap-align: start;
     }
     .rm-card-link {
       display: block; position: relative;

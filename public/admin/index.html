@@ -1712,10 +1712,19 @@
 
     // ─── Constants ────────────────────────────
     const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
+    const NAMED_VARIANTS = new Set(['public', 'nav', 'footer', 'og']);
     const extractCfId = (url) => {
       if (!url) return '';
-      const m = url.match(/ROYFuPmfN2vPS6mt5sCkZQ\/(.+?)\/[^/]+$/);
-      return m ? m[1] : '';
+      if (!url.includes('imagedelivery.net')) return url;
+      let id = url.replace(CF + '/', '');
+      const lastSlash = id.lastIndexOf('/');
+      if (lastSlash > 0) {
+        const suffix = id.slice(lastSlash + 1);
+        if (NAMED_VARIANTS.has(suffix) || suffix.includes('=')) {
+          id = id.slice(0, lastSlash);
+        }
+      }
+      return id;
     };
     /** Resolve a CF image ID or full URL to a displayable URL with optional transforms */
     const cfThumb = (src, transforms = 'w=400,q=80') => {
@@ -2708,9 +2717,24 @@
       return { dragHandlers, reorder };
     }
 
+    // ─── Extract Cloudflare image ID from a delivery URL ────────
+    const CF_HASH = 'ROYFuPmfN2vPS6mt5sCkZQ';
+    const CF_BASE = `https://imagedelivery.net/${CF_HASH}`;
+    const NAMED_VARIANTS = new Set(['public', 'nav', 'footer', 'og']);
+    function extractCfImageId(src) {
+      if (!src || !src.includes('imagedelivery.net')) return null;
+      let id = src.replace(`${CF_BASE}/`, '');
+      const lastSlash = id.lastIndexOf('/');
+      if (lastSlash > 0) {
+        const suffix = id.slice(lastSlash + 1);
+        if (NAMED_VARIANTS.has(suffix) || suffix.includes('=')) id = id.slice(0, lastSlash);
+      }
+      return id || null;
+    }
+
     // ─── useSingleUpload hook ────────────────
     // For editors that upload a single image (partner logo, team photo, etc.)
-    // Returns { uploading, preview, upload } — preview holds blob URL during upload, then real URL.
+    // Returns { uploading, preview, upload, clear } — preview holds blob URL during upload, then real URL.
     function useSingleUpload({ setData, setDirty, addToast, buildCfId, field }) {
       const [uploading, setUploading] = useState(false);
       const [preview, setPreview] = useState(null);
@@ -2744,10 +2768,23 @@
         setUploading(false);
       };
 
+      const clear = async () => {
+        setDirty(true);
+        const currentUrl = preview;
+        setPreview(null);
+        setData(d => ({ ...d, [field]: '' }));
+        // Try to delete from Cloudflare Images
+        const imageId = extractCfImageId(currentUrl);
+        if (imageId) {
+          try { await api.deleteImage(imageId); } catch {}
+        }
+        addToast('Image removed', 'success');
+      };
+
       // Sync preview with loaded data
       const syncPreview = (url) => { if (url && !preview) setPreview(url); };
 
-      return { uploading, preview, upload, setPreview, syncPreview };
+      return { uploading, preview, upload, clear, setPreview, syncPreview };
     }
 
     // ─── Drop Zone ──────────────────────────
@@ -3738,12 +3775,16 @@
       };
 
       const removePhoto = (index) => {
+        const photoUrl = (data.photos || [])[index]?.url;
         setDirty(true);
         setData(d => ({
           ...d,
           photos: d.photos.filter((_, i) => i !== index),
           photoCount: d.photoCount - 1,
         }));
+        // Delete from Cloudflare Images in the background
+        const imageId = extractCfImageId(photoUrl);
+        if (imageId) { api.deleteImage(imageId).catch(() => {}); }
       };
 
       const setHero = (index) => {
@@ -4499,7 +4540,7 @@
           return parsed;
         },
       });
-      const { uploading, preview: logoPreview, upload: handleLogoUpload, syncPreview: syncLogo } = useSingleUpload({
+      const { uploading, preview: logoPreview, upload: handleLogoUpload, clear: clearLogo, syncPreview: syncLogo } = useSingleUpload({
         setData, setDirty, addToast, field: 'logo',
         buildCfId: (file) => `partners/${data.slug || slugify(data.name) || 'new'}/${Date.now()}`,
       });
@@ -4605,7 +4646,8 @@
             <div style="margin-bottom: 1rem; text-align: center;">
               <img src=${logoPreview} alt="Logo preview"
                 style="max-width: 200px; max-height: 120px; object-fit: contain;" />
-              ${uploading ? html`<div class="text-sm text-muted mt-1"><span class="spinner" /> Uploading...</div>` : null}
+              ${uploading ? html`<div class="text-sm text-muted mt-1"><span class="spinner" /> Uploading...</div>`
+                : html`<div style="margin-top: 0.5rem;"><button class="btn btn-ghost btn-sm" style="color: var(--color-danger);" onClick=${clearLogo}>Remove logo</button></div>`}
             </div>
           ` : null}
           <${DropZone} onFiles=${handleLogoUpload} multiple=${false}
@@ -4683,7 +4725,7 @@
         slug, type: 'communityPartners', addToast, onBack, existingSlugs,
         defaults: { name: '', slug: '', logo: '', website: '', description: '', category: 'community', impact: '', impactLabel: '', location: '', featured: false, order: 0 },
       });
-      const { uploading, preview: logoPreview, upload: handleLogoUpload, syncPreview: syncLogo } = useSingleUpload({
+      const { uploading, preview: logoPreview, upload: handleLogoUpload, clear: clearLogo, syncPreview: syncLogo } = useSingleUpload({
         setData, setDirty, addToast, field: 'logo',
         buildCfId: (file) => `community-partners/${data.slug || slugify(data.name) || 'new'}/${Date.now()}`,
       });
@@ -4729,7 +4771,7 @@
             </div>
           </div>
           <div class="form-group">
-            <label class="form-label">Description *</label>
+            <label class="form-label">Description</label>
             <textarea class="form-textarea" rows="3" value=${data.description || ''}
               onInput=${e => updateField('description', e.target.value)}
               placeholder="Brief description of the organization and how SOARD partnered with them..." />
@@ -4791,7 +4833,8 @@
             <div style="margin-bottom: 1rem; text-align: center;">
               <img src=${logoPreview} alt="Logo preview"
                 style="max-width: 200px; max-height: 120px; object-fit: contain;" />
-              ${uploading ? html`<div class="text-sm text-muted mt-1"><span class="spinner" /> Uploading...</div>` : null}
+              ${uploading ? html`<div class="text-sm text-muted mt-1"><span class="spinner" /> Uploading...</div>`
+                : html`<div style="margin-top: 0.5rem;"><button class="btn btn-ghost btn-sm" style="color: var(--color-danger);" onClick=${clearLogo}>Remove logo</button></div>`}
             </div>
           ` : null}
           <${DropZone} onFiles=${handleLogoUpload} multiple=${false}
@@ -4862,7 +4905,7 @@
         slug, type: 'medialogos', commitPrefix: 'media logo', addToast, onBack, existingSlugs,
         defaults: { name: '', slug: '', logo: '', order: 0 },
       });
-      const { uploading, preview: logoPreview, upload: handleLogoUpload, syncPreview: syncLogo } = useSingleUpload({
+      const { uploading, preview: logoPreview, upload: handleLogoUpload, clear: clearLogo, syncPreview: syncLogo } = useSingleUpload({
         setData, setDirty, addToast, field: 'logo',
         buildCfId: (file) => `medialogos/${data.slug || slugify(data.name) || 'new'}/${Date.now()}`,
       });
@@ -4920,7 +4963,8 @@
             <div style="margin-bottom: 1rem; text-align: center;">
               <img src=${logoPreview} alt="Logo preview"
                 style="max-width: 200px; max-height: 120px; object-fit: contain;" />
-              ${uploading ? html`<div class="text-sm text-muted mt-1"><span class="spinner" /> Uploading...</div>` : null}
+              ${uploading ? html`<div class="text-sm text-muted mt-1"><span class="spinner" /> Uploading...</div>`
+                : html`<div style="margin-top: 0.5rem;"><button class="btn btn-ghost btn-sm" style="color: var(--color-danger);" onClick=${clearLogo}>Remove logo</button></div>`}
             </div>
           ` : null}
           <${DropZone} onFiles=${handleLogoUpload} multiple=${false}
@@ -5147,7 +5191,7 @@
             const res = await api.uploadFile(file, path, 'Upload financial doc: ' + file.name);
             if (res.success) {
               addToast('Uploaded ' + file.name, 'success');
-              lastUploaded = { name: safeName, downloadUrl: res.downloadUrl || ('https://files.sunshineonaranneyday.com/financials/' + safeName) };
+              lastUploaded = { name: safeName, downloadUrl: 'https://files.sunshineonaranneyday.com/financials/' + safeName };
             }
             else addToast('Failed: ' + res.error, 'error');
           } catch (err) { addToast('Error: ' + err.message, 'error'); }
@@ -5158,7 +5202,7 @@
         if (lastUploaded && fileList.length === 1) {
           const cleanName = lastUploaded.name.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ');
           const yearMatch = lastUploaded.name.match(/\d{4}/);
-          setNewDoc({ title: cleanName, year: parseInt(yearMatch?.[0]) || new Date().getFullYear(), type: '990', url: lastUploaded.downloadUrl, source: 'local' });
+          setNewDoc({ title: cleanName, year: parseInt(yearMatch?.[0]) || new Date().getFullYear(), type: '990', url: lastUploaded.downloadUrl, source: 'r2' });
           setTab('documents');
           setShowAddDoc(true);
         }
@@ -5513,7 +5557,7 @@
         slug, type: 'team', commitPrefix: 'team member', addToast, onBack, existingSlugs,
         defaults: { name: '', slug: '', title: '', organization: '', photo: '', bio: '', quote: '', group: defaultGroup || 'team', order: 0 },
       });
-      const { uploading, preview: photoPreview, upload: handlePhotoUpload, syncPreview: syncPhoto } = useSingleUpload({
+      const { uploading, preview: photoPreview, upload: handlePhotoUpload, clear: clearPhoto, syncPreview: syncPhoto } = useSingleUpload({
         setData, setDirty, addToast, field: 'photo',
         buildCfId: (file) => `team/${data.slug || slugify(data.name) || 'new'}/${Date.now()}`,
       });
@@ -5598,7 +5642,8 @@
             <div style="margin-bottom: 1rem; text-align: center;">
               <img src=${photoPreview} alt="Photo preview"
                 style="width: 120px; height: 120px; object-fit: cover; border-radius: 50%;" />
-              ${uploading ? html`<div class="text-sm text-muted mt-1"><span class="spinner" /> Uploading...</div>` : null}
+              ${uploading ? html`<div class="text-sm text-muted mt-1"><span class="spinner" /> Uploading...</div>`
+                : html`<div style="margin-top: 0.5rem;"><button class="btn btn-ghost btn-sm" style="color: var(--color-danger);" onClick=${clearPhoto}>Remove photo</button></div>`}
             </div>
           ` : null}
           <${DropZone} onFiles=${handlePhotoUpload} multiple=${false}
@@ -6067,8 +6112,11 @@
       };
 
       const removePhoto = (index) => {
+        const photoUrl = (data.photos || [])[index]?.url;
         setDirty(true);
         setData(d => ({ ...d, photos: (d.photos || []).filter((_, i) => i !== index) }));
+        const imageId = extractCfImageId(photoUrl);
+        if (imageId) { api.deleteImage(imageId).catch(() => {}); }
       };
 
       const handleSave = async () => {
@@ -7234,6 +7282,7 @@
 
 
       const removePhoto = (index) => {
+        const photoUrl = (data.photos || [])[index]?.url;
         setDirty(true);
         setData(d => {
           const newPhotos = (d.photos || []).filter((_, i) => i !== index);
@@ -7244,6 +7293,8 @@
             imageId: newPhotos.length === 0 ? '' : d.imageId,
           };
         });
+        const imageId = extractCfImageId(photoUrl);
+        if (imageId) { api.deleteImage(imageId).catch(() => {}); }
       };
       const setHero = (index) => {
         setDirty(true);
@@ -8766,7 +8817,7 @@
                   alt="" style="width: 56px; height: 56px; border-radius: 8px; object-fit: cover; flex-shrink: 0; border: 1px solid var(--color-border);" />` : null;
               })()}
               <select class="form-input" style="flex: 1" value=${data.heroKidSlug || data.featuredKidSlug || ''}
-                onChange=${e => { updateField('heroKidSlug', e.target.value); updateField('heroKidPhotoId', ''); }}>
+                onChange=${e => { const kid = sortedKids.find(k => k.slug === e.target.value); updateField('heroKidSlug', e.target.value); updateField('heroKidPhotoId', kid ? extractCfId(kid.heroImage) : ''); }}>
                 <option value="">— Select a kid —</option>
                 ${sortedKids.map(k => html`<option value=${k.slug} selected=${k.slug === (data.heroKidSlug || data.featuredKidSlug)}>${k.name}${k.year ? ` (${k.year})` : ''}</option>`)}
               </select>
@@ -8788,8 +8839,7 @@
                 <div style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
                   ${allPhotos.map(p => html`
                     <button type="button" onClick=${() => {
-                      const val = p.label === 'Hero' ? '' : p.id;
-                      updateField('heroKidPhotoId', val);
+                      updateField('heroKidPhotoId', p.id);
                     }}
                       style="padding: 0; border: 3px solid ${(currentId === p.id) ? 'var(--color-primary, #2563eb)' : 'transparent'}; border-radius: 10px; overflow: hidden; cursor: pointer; background: none; position: relative; width: 80px; height: 80px; flex-shrink: 0;">
                       <img src=${CF + '/' + p.id + '/w=160,h=160,fit=cover'} alt=${p.label}

@@ -31,9 +31,10 @@ const projects = allProjects
   .sort((a, b) => (a.order || 0) - (b.order || 0) || a.name.localeCompare(b.name));
 
 /* ── Community Partners (nonprofit orgs we serve) ── */
-const allCommunityPartners = await getCollection('communityPartners');
+const allCommunityPartners = await getCollection('community_partners');
 const communityPartners = allCommunityPartners
   .map(p => p.data)
+  .filter(p => !!p.logo)
   .sort((a, b) => (a.order || 0) - (b.order || 0) || a.name.localeCompare(b.name));
 const featuredPartners = communityPartners.filter(p => p.featured);
 
@@ -141,8 +142,8 @@ const jsonLd = buildSchemaGraph(
                     src={photoId}
                     alt={project.imageAlt || `${project.name} project by SOARD`}
                     width={480} height={360}
-                    sizes="(max-width:768px) calc(50vw - 24px), (max-width:1100px) calc(33vw - 24px), 260px"
-                    widths={[240, 360, 480]}
+                    sizes="(max-width:768px) calc(50vw - 24px), (max-width:1100px) calc(33vw - 24px), 360px"
+                    widths={[320, 480, 640, 800]}
                     loading={i < 3 ? 'eager' : 'lazy'}
                     fit="cover"
                     class="project-card__img lqip-img"
@@ -496,19 +497,15 @@ const jsonLd = buildSchemaGraph(
   }
 
   @media (max-width: 768px) {
-    .hero-inner { grid-template-columns: 1fr; gap: 40px; text-align: center; }
-    .hero-lead { margin-inline: auto; }
+    .hero { min-height: auto; }
+    .hero-inner { grid-template-columns: 1fr; gap: var(--space-xl); text-align: center; padding-inline: var(--space-lg); }
+    .hero-lead { margin-inline: auto; margin-bottom: 28px; }
     .hero-ctas { justify-content: center; }
-    .hero-frame { max-width: 380px; margin: 0 auto; }
-    .hero-stat { position: relative; bottom: auto; right: auto; margin: -20px auto 0; width: fit-content; }
-  }
-
-  @media (max-width: 480px) {
-    .hero { padding-top: clamp(48px, 8vw, 80px); padding-bottom: var(--space-xl); min-height: auto; }
-    .hero-text h1 { font-size: clamp(2rem, 9vw, 3rem); }
+    .hero-frame { max-width: 340px; margin: 0 auto; }
     .hero-photo--small { display: none; }
     .hero-photo { border-radius: 18px; }
     .hero-accent { bottom: -12px; right: -12px; border-radius: 18px; }
+    .hero-stat { position: relative; bottom: auto; right: auto; margin: -16px auto 0; width: fit-content; }
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -578,8 +575,15 @@ const jsonLd = buildSchemaGraph(
     .projects-grid { grid-template-columns: repeat(2, 1fr); }
   }
 
-  @media (max-width: 480px) {
+  @media (max-width: 768px) {
+    .projects { padding: var(--space-lg) 0 var(--space-2xl); }
+    .projects-inner { padding-inline: var(--space-lg); }
+    .projects-header { margin-bottom: var(--space-lg); }
     .projects-grid { grid-template-columns: repeat(2, 1fr); gap: var(--space-md) 14px; }
+  }
+
+  @media (max-width: 380px) {
+    .projects-grid { gap: var(--space-sm) 10px; }
   }
 
   /* ── Card (mirrors kid-card pattern) ── */
@@ -694,6 +698,7 @@ const jsonLd = buildSchemaGraph(
 
   @media (max-width: 768px) {
     .project-card__hover { display: none; }
+    .project-card__cta { display: none; }
   }
 
   /* CTA arrow — yellow circle */
@@ -782,6 +787,18 @@ const jsonLd = buildSchemaGraph(
 
   @media (max-width: 768px) {
     .project-card__frame { border-radius: 12px; aspect-ratio: 4 / 5; }
+    .project-card__info { padding: 8px 2px 2px; gap: 4px; }
+    .project-card__name {
+      font-size: 0.88rem;
+      line-height: 1.25;
+    }
+    .project-card__meta { font-size: 0.72rem; padding: 2px 2px; }
+    .project-card__badge { font-size: 0.55rem; padding: 2px 7px; top: 6px; right: 6px; }
+  }
+
+  @media (max-width: 380px) {
+    .project-card__name { font-size: 0.8rem; }
+    .project-card__meta { font-size: 0.65rem; }
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -864,8 +881,13 @@ const jsonLd = buildSchemaGraph(
   .spotlight-link:hover svg { transform: translateX(4px); }
 
   @media (max-width: 768px) {
-    .spotlight { padding-block: var(--space-3xl); }
-    .spotlight-inner { grid-template-columns: 1fr; gap: var(--space-2xl); }
+    .spotlight { padding-block: var(--space-2xl); }
+    .spotlight-inner { grid-template-columns: 1fr; gap: var(--space-lg); padding-inline: var(--space-lg); }
+    .spotlight-frame { border-radius: 12px; }
+    .spotlight-text h2 { margin-bottom: var(--space-md); }
+    .spotlight-text p { font-size: 0.9rem; }
+    .spotlight-text p:first-of-type { font-size: 0.95rem; }
+    .spotlight-link { margin-top: var(--space-lg); }
   }
 
   /* ══════════════════════════════════════════
@@ -1010,11 +1032,15 @@ const jsonLd = buildSchemaGraph(
     margin-bottom: var(--space-md);
   }
 
-  @media (max-width: 480px) {
-    .np-grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
+  @media (max-width: 768px) {
+    .np-section { padding: var(--space-2xl) 0; }
+    .np-inner { padding-inline: var(--space-lg); }
+    .np-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
     .np-logo-card { padding: 20px 12px 16px; min-height: 110px; }
     .np-logo-card__logo { height: 36px; }
     .np-logo-card__logo img { max-width: 100px; max-height: 36px; }
+    .np-logo-card__name { font-size: 0.72rem; }
+    .np-cta p { font-size: 0.92rem; }
   }
 
   /* ══════════════════════════════════════════
@@ -1094,6 +1120,13 @@ const jsonLd = buildSchemaGraph(
   .btn-outline-light:hover {
     background: rgba(255, 255, 255, 0.1);
     border-color: var(--c-white);
+  }
+
+  @media (max-width: 768px) {
+    .cta-section { padding-block: var(--space-2xl); }
+    .cta-inner { padding-inline: var(--space-lg); }
+    .cta-section h2 { font-size: 1.35rem; }
+    .cta-section p { font-size: 0.92rem; margin-bottom: var(--space-lg); }
   }
 
   /* ══════════════════════════════════════════

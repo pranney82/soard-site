@@ -5,5 +5,8 @@
   "tier": "construction",
   "featured": true,
   "website": "https://www.constructionresourcesusa.com",
-  "level": "champion"
+  "level": "signature",
+  "category": [
+    "build"
+  ]
 }

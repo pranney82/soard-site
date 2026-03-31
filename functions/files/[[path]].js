@@ -1,6 +1,7 @@
 /**
  * GET /files/<key>
- * Serves files from R2 with proper caching and content headers.
+ * Serves files from R2 via Cloudflare's edge Cache API.
+ * First request per POP hits R2; subsequent requests are served from edge cache.
  * Uses a catch-all route so /files/financials/2024-990.pdf → R2 key "financials/2024-990.pdf"
  *
  * Env bindings: FILES (R2)
@@ -19,6 +20,14 @@ export async function onRequestGet(context) {
     return new Response('Not Found', { status: 404 });
   }
 
+  // Use Cloudflare's Cache API — keyed on the full request URL
+  const cache = caches.default;
+  const cacheKey = context.request;
+
+  const cached = await cache.match(cacheKey);
+  if (cached) return cached;
+
+  // Cache miss — fetch from R2
   const object = await FILES.get(key);
 
   if (!object) {
@@ -30,11 +39,10 @@ export async function onRequestGet(context) {
   headers.set('Cache-Control', CACHE_CONTROL);
   headers.set('ETag', object.httpEtag);
 
-  // If the browser sent If-None-Match matching the ETag, return 304
-  const ifNoneMatch = context.request.headers.get('If-None-Match');
-  if (ifNoneMatch === object.httpEtag) {
-    return new Response(null, { status: 304, headers });
-  }
+  const response = new Response(object.body, { headers });
 
-  return new Response(object.body, { headers });
+  // Store in edge cache (non-blocking)
+  context.waitUntil(cache.put(cacheKey, response.clone()));
+
+  return response;
 }
