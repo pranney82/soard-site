@@ -11,11 +11,12 @@
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import Button from '../../components/ui/Button.astro';
 import { getCollection } from 'astro:content';
+import { getPublishedKids } from '../../utils/collections';
 import { cfRaw, cfSrcset, cfLqip } from '../../utils/cf-image';
 import { getWebPageSchema, getBreadcrumbSchema, buildSchemaGraph } from '../../utils/schema';
 
 export async function getStaticPaths() {
-  const kids = await getCollection('kids');
+  const kids = await getPublishedKids();
   const featured = kids.filter(k => k.data.featured && k.data.caseStudy);
   return featured.map(entry => ({
     params: { slug: entry.data.slug },

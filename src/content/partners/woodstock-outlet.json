@@ -3,5 +3,10 @@
   "slug": "woodstock-outlet",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/woodstock-outlet/public",
   "tier": "construction",
-  "featured": false
+  "featured": false,
+  "category": [
+    "build"
+  ],
+  "level": "friend",
+  "website": "https://www.woodstockoutlet.com/index.php"
 }

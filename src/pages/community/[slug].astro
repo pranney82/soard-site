@@ -39,6 +39,16 @@ const { project, allProjects } = Astro.props;
 const storyParas = project.story ? project.story.split('\n\n').filter((p: string) => p.trim()) : [];
 const hasBeforeAfter = project.beforePhotos?.length > 0 || project.afterPhotos?.length > 0;
 const hasPartners = project.partnerLogos?.length > 0;
+
+// ── Video ──
+function getYouTubeId(url: string): string | null {
+  if (!url) return null;
+  const match = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/))([a-zA-Z0-9_-]{11})/);
+  return match ? match[1] : null;
+}
+const ytId = project.videoUrl ? getYouTubeId(project.videoUrl) : null;
+const streamId = project.streamVideoId || null;
+const hasVideo = streamId || ytId;
 const otherProjects = allProjects.filter((p: any) => p.slug !== project.slug && p.story);
 
 /* ── Schema ── */
@@ -76,7 +86,7 @@ const jsonLd = buildSchemaGraph(
 
       <div class="cp-detail-hero-split">
         {project.heroImage ? (
-          <div class="cp-detail-hero-photo">
+          <div class="cp-detail-hero-photo" transition:name="community-hero">
             <CFImage
               src={project.heroImage}
               alt={project.imageAlt || `${project.name} project by SOARD`}
@@ -89,7 +99,7 @@ const jsonLd = buildSchemaGraph(
             />
           </div>
         ) : (
-          <div class="cp-detail-hero-color" style={`background: ${project.color};`}>
+          <div class="cp-detail-hero-color" style={`background: ${project.color};`} transition:name="community-hero">
             <span class="cp-detail-hero-color-num">{project.impact}</span>
             <span class="cp-detail-hero-color-label">{project.impactLabel}</span>
           </div>
@@ -97,7 +107,7 @@ const jsonLd = buildSchemaGraph(
 
         <div class="cp-detail-hero-info">
           <div class="section-label">{project.year} Community Project</div>
-          <h1 class="cp-detail-hero-name">{project.name}</h1>
+          <h1 class="cp-detail-hero-name" transition:name="community-name">{project.name}</h1>
           {project.founded && (
             <p class="cp-detail-hero-founded">Founded in {project.founded}</p>
           )}
@@ -134,6 +144,57 @@ const jsonLd = buildSchemaGraph(
         <blockquote>
           <p>"{project.quote}"</p>
         </blockquote>
+      </div>
+    </section>
+  )}
+
+  <!-- ══════ VIDEO ══════ -->
+  {hasVideo && (
+    <section class="cp-detail-video" aria-label="Project video">
+      <div class="cp-detail-video-inner">
+        <h2 class="cp-detail-video-heading" data-reveal>Watch the <em class="highlight">Transformation</em></h2>
+        {streamId ? (
+          <div class="cp-detail-video-frame" data-reveal data-delay="1">
+            <div class="stream-facade" id="stream-facade" data-id={streamId} role="button" tabindex="0" aria-label={`Play ${project.name} video`}>
+              <img
+                src={`https://videodelivery.net/${streamId}/thumbnails/thumbnail.jpg?time=2s&height=720`}
+                alt={`Video thumbnail for ${project.name}`}
+                class="cp-detail-video-thumb"
+                loading="lazy"
+                decoding="async"
+                width="1280"
+                height="720"
+              />
+              <div class="cp-detail-video-play" aria-hidden="true">
+                <svg width="68" height="48" viewBox="0 0 68 48">
+                  <path d="M66.52 7.74c-.78-2.93-2.49-5.41-5.42-6.19C55.79.13 34 0 34 0S12.21.13 6.9 1.55C3.97 2.33 2.27 4.81 1.48 7.74.06 13.05 0 24 0 24s.06 10.95 1.48 16.26c.78 2.93 2.49 5.41 5.42 6.19C12.21 47.87 34 48 34 48s21.79-.13 27.1-1.55c2.93-.78 4.64-3.26 5.42-6.19C67.94 34.95 68 24 68 24s-.06-10.95-1.48-16.26z" fill="#FFDA24"/>
+                  <path d="M45 24L27 14v20" fill="#373A36"/>
+                </svg>
+              </div>
+            </div>
+          </div>
+        ) : ytId ? (
+          <div class="cp-detail-video-frame" data-reveal data-delay="1">
+            <div class="yt-facade" id="yt-facade" data-id={ytId} role="button" tabindex="0" aria-label={`Play ${project.name} video`}>
+              <picture>
+                <source type="image/webp" srcset={`https://i.ytimg.com/vi_webp/${ytId}/maxresdefault.webp`} />
+                <img
+                  src={`https://i.ytimg.com/vi/${ytId}/maxresdefault.jpg`}
+                  alt={`Video thumbnail for ${project.name}`}
+                  class="cp-detail-video-thumb"
+                  loading="lazy"
+                  decoding="async"
+                />
+              </picture>
+              <div class="cp-detail-video-play" aria-hidden="true">
+                <svg width="68" height="48" viewBox="0 0 68 48">
+                  <path d="M66.52 7.74c-.78-2.93-2.49-5.41-5.42-6.19C55.79.13 34 0 34 0S12.21.13 6.9 1.55C3.97 2.33 2.27 4.81 1.48 7.74.06 13.05 0 24 0 24s.06 10.95 1.48 16.26c.78 2.93 2.49 5.41 5.42 6.19C12.21 47.87 34 48 34 48s21.79-.13 27.1-1.55c2.93-.78 4.64-3.26 5.42-6.19C67.94 34.95 68 24 68 24s-.06-10.95-1.48-16.26z" fill="#FFDA24"/>
+                  <path d="M45 24L27 14v20" fill="#373A36"/>
+                </svg>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
     </section>
   )}
@@ -287,16 +348,22 @@ const jsonLd = buildSchemaGraph(
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    font-family: var(--font-body);
-    font-size: 0.85rem;
+    color: var(--c-dark);
+    font-size: 0.82rem;
     font-weight: 600;
-    color: var(--c-text-muted);
     text-decoration: none;
-    margin-bottom: clamp(24px, 4vh, 40px);
-    transition: color var(--transition-fast);
+    margin-bottom: var(--space-xl);
+    padding: 0.45rem 1rem 0.45rem 0.75rem;
+    background: var(--c-white);
+    border: 1px solid var(--c-border);
+    border-radius: 999px;
+    transition: background var(--transition-fast), box-shadow var(--transition-fast);
   }
 
-  .cp-detail-back:hover { color: var(--c-dark); }
+  .cp-detail-back:hover {
+    background: var(--c-warm-gray);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  }
 
   .cp-detail-hero-split {
     display: grid;
@@ -782,6 +849,75 @@ const jsonLd = buildSchemaGraph(
   }
 
   /* ══════════════════════════════════════════
+     VIDEO
+     ══════════════════════════════════════════ */
+  .cp-detail-video {
+    padding-block: var(--space-3xl);
+    background: var(--c-warm-gray);
+  }
+
+  .cp-detail-video-inner {
+    max-width: 900px;
+    margin-inline: auto;
+    padding-inline: var(--page-padding, clamp(1rem, 4vw, 2rem));
+  }
+
+  .cp-detail-video-heading {
+    font-family: var(--font-display);
+    font-size: clamp(1.5rem, 3vw, 2.25rem);
+    line-height: 1.2;
+    color: var(--c-dark);
+    margin-bottom: var(--space-2xl);
+    text-align: center;
+  }
+
+  .cp-detail-video-heading em { font-style: normal; }
+
+  .cp-detail-video-frame {
+    border-radius: var(--border-radius-lg, 16px);
+    overflow: hidden;
+    background: var(--c-dark);
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.1), 0 6px 20px rgba(0, 0, 0, 0.05);
+  }
+
+  .yt-facade,
+  .stream-facade {
+    position: relative;
+    aspect-ratio: 16 / 9;
+    cursor: pointer;
+    background: var(--c-dark);
+  }
+
+  .cp-detail-video-thumb {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), filter 0.4s ease;
+  }
+
+  .yt-facade:hover .cp-detail-video-thumb,
+  .stream-facade:hover .cp-detail-video-thumb {
+    transform: scale(1.03);
+    filter: brightness(0.85);
+  }
+
+  .cp-detail-video-play {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    opacity: 0.9;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+    filter: drop-shadow(0 4px 20px rgba(0, 0, 0, 0.4));
+  }
+
+  .yt-facade:hover .cp-detail-video-play,
+  .stream-facade:hover .cp-detail-video-play {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.08);
+  }
+
+  /* ══════════════════════════════════════════
      SCROLL REVEALS
      ══════════════════════════════════════════ */
   [data-reveal] {
@@ -811,3 +947,49 @@ const jsonLd = buildSchemaGraph(
     }
   }
 </style>
+
+<script>
+  // ── YouTube facade ────────────
+  const ytFacade = document.getElementById('yt-facade');
+  if (ytFacade) {
+    const activate = () => {
+      const id = ytFacade.dataset.id;
+      const wrapper = document.createElement('div');
+      wrapper.style.cssText = 'position:relative;aspect-ratio:16/9;border-radius:var(--border-radius-lg);overflow:hidden';
+      const iframe = document.createElement('iframe');
+      iframe.src = `https://www.youtube-nocookie.com/embed/${id}?autoplay=1`;
+      iframe.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture';
+      iframe.allowFullscreen = true;
+      iframe.title = 'Video player';
+      iframe.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border:0';
+      wrapper.appendChild(iframe);
+      ytFacade.replaceWith(wrapper);
+    };
+    ytFacade.addEventListener('click', activate);
+    ytFacade.addEventListener('keydown', (e: KeyboardEvent) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activate(); }
+    });
+  }
+
+  // ── Cloudflare Stream facade ────────────
+  const streamFacade = document.getElementById('stream-facade');
+  if (streamFacade) {
+    const activateStream = () => {
+      const id = streamFacade.dataset.id;
+      const wrapper = document.createElement('div');
+      wrapper.style.cssText = 'position:relative;aspect-ratio:16/9;border-radius:var(--border-radius-lg);overflow:hidden';
+      const iframe = document.createElement('iframe');
+      iframe.src = `https://iframe.videodelivery.net/${id}?autoplay=true`;
+      iframe.allow = 'accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture';
+      iframe.allowFullscreen = true;
+      iframe.title = 'Video player';
+      iframe.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border:0';
+      wrapper.appendChild(iframe);
+      streamFacade.replaceWith(wrapper);
+    };
+    streamFacade.addEventListener('click', activateStream);
+    streamFacade.addEventListener('keydown', (e: KeyboardEvent) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activateStream(); }
+    });
+  }
+</script>

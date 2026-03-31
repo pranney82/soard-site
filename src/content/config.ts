@@ -31,6 +31,10 @@ const kids = defineCollection({
     fundraisingUrl: z.string().nullable().optional(),
     childCount: z.number().default(1),
     roomCount: z.number().default(1),
+    bedroomCount: z.number().default(0),
+    bathroomCount: z.number().default(0),
+    therapyRoomCount: z.number().default(0),
+    publishStatus: z.enum(['published', 'draft']).default('published'),
     featured: z.boolean().default(false),
     caseStudy: z.object({
       projectTitle: z.string().nullable().optional(),
@@ -100,6 +104,16 @@ const partners = defineCollection({
   }),
 });
 
+const medialogos = defineCollection({
+  type: 'data',
+  schema: z.object({
+    name: z.string(),
+    slug: z.string(),
+    logo: z.string(),
+    order: z.number().default(0),
+  }),
+});
+
 const team = defineCollection({
   type: 'data',
   schema: z.object({
@@ -108,6 +122,8 @@ const team = defineCollection({
     title: z.string(),
     organization: z.string().optional(),
     photo: z.string().optional(),
+    bio: z.string().optional(),
+    quote: z.string().optional(),
     group: z.enum(['team', 'board']),
     order: z.number().default(0),
   }),
@@ -210,6 +226,8 @@ const community = defineCollection({
     quote: z.string().nullable().optional(),
     heroImage: z.string().nullable().optional(),
     metaDescription: z.string().optional(),
+    videoUrl: z.string().nullable().optional(),
+    streamVideoId: z.string().nullable().optional(),
     beforePhotos: z.array(z.object({
       url: z.string(),
       alt: z.string().default(''),
@@ -229,4 +247,4 @@ const community = defineCollection({
   }),
 });
 
-export const collections = { kids, partners, team, articles, press, events, community, site };
+export const collections = { kids, partners, medialogos, team, articles, press, events, community, site };

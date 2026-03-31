@@ -3,6 +3,7 @@
  * Every number derived from actual data — no manual overrides.
  */
 import { getCollection } from 'astro:content';
+import { getPublishedKids } from './collections';
 
 export interface SiteStats {
   /** Total individual children served (accounts for sibling profiles via childCount) */
@@ -24,7 +25,7 @@ let _cached: SiteStats | null = null;
 export async function getSiteStats(): Promise<SiteStats> {
   if (_cached) return _cached;
 
-  const kids = await getCollection('kids');
+  const kids = await getPublishedKids();
   const community = await getCollection('community');
 
   const totalKids = kids.reduce((sum, k) => sum + (k.data.childCount || 1), 0);

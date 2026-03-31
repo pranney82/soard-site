@@ -3,5 +3,8 @@
   "slug": "roswell-womens-club",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/roswell-womens-club/public",
   "tier": "construction",
-  "featured": false
+  "featured": false,
+  "level": "friend",
+  "category": "community",
+  "website": "https://roswellwomansclub.org"
 }

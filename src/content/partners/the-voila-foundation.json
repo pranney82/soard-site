@@ -3,5 +3,10 @@
   "slug": "the-voila-foundation",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/the-voila-foundation/public",
   "tier": "community",
-  "featured": false
+  "featured": false,
+  "category": [
+    "funding"
+  ],
+  "level": "friend",
+  "website": "https://thevoilafoundation.org"
 }

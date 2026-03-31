@@ -3,5 +3,9 @@
   "slug": "vivid-south",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/vivid-south/public",
   "tier": "construction",
-  "featured": false
+  "featured": false,
+  "category": [
+    "build"
+  ],
+  "level": "friend"
 }

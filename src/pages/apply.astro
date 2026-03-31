@@ -20,13 +20,14 @@
 import BaseLayout from '../layouts/BaseLayout.astro';
 import FAQSection from '../components/ui/FAQSection.astro';
 import { getCollection } from 'astro:content';
+import { getPublishedKids } from '../utils/collections';
 import { getSiteStats } from '../utils/stats';
 import { cfRaw, cfSrcset, cfLqip, cfId } from '../utils/cf-image';
 import { getFAQSchema } from '../utils/schema';
 import siteSettings from '../content/site/settings.json';
 
 const stats = await getSiteStats();
-const allKids = await getCollection('kids');
+const allKids = await getPublishedKids();
 
 /* ── Application status ── */
 const app = siteSettings.application;
@@ -104,9 +105,9 @@ const faqJsonLd = faqs.length ? getFAQSchema(faqs) : undefined;
         <p class="hero-lead">Dream bedrooms, accessible bathrooms, and therapy rooms for children with special needs — designed around who they are, built by community, and <strong>always free</strong>.</p>
         <div class="hero-ctas">
           {isOpen && appFormUrl ? (
-            <a href={appFormUrl} target="_blank" rel="noopener noreferrer" class="btn btn-primary btn-lg">Apply Now &rarr;</a>
+            <a href={appFormUrl} target="_blank" rel="noopener noreferrer" class="btn btn-primary btn-lg hero-glow">Apply Now &rarr;</a>
           ) : (
-            <a href="#how-it-works" class="btn btn-primary btn-lg">See How It Works &rarr;</a>
+            <a href="#how-it-works" class="btn btn-primary btn-lg hero-glow">See How It Works &rarr;</a>
           )}
           <a href="/kids" class="btn btn-outline-dark">Meet the Kids</a>
         </div>
@@ -151,7 +152,7 @@ const faqJsonLd = faqs.length ? getFAQSchema(faqs) : undefined;
       <div class={`status-dot ${isOpen ? 'status-dot--open' : ''}`} aria-hidden="true"></div>
       <div class="status-text">
         <p class="status-headline">{isOpen ? `The ${appYear} application is now open!` : closedMessage}</p>
-        <p class="status-sub">{isOpen ? "We're accepting applications for room makeovers in the greater Atlanta area." : 'Sign up below to be the first to know when applications reopen.'}</p>
+        <p class="status-sub">{isOpen ? "We're accepting applications for room makeovers in the greater Atlanta area." : 'Follow us on social media to be the first to know when applications reopen.'}</p>
       </div>
       {isOpen && appFormUrl && (
         <a href={appFormUrl} target="_blank" rel="noopener noreferrer" class="btn btn-primary">Apply Now &rarr;</a>
@@ -204,6 +205,14 @@ const faqJsonLd = faqs.length ? getFAQSchema(faqs) : undefined;
         <span class="narrative-num" aria-hidden="true">01</span>
         <h3>You Tell Us Your Story</h3>
         <p>Fill out a short application about your child — their diagnosis, their personality, their dreams, and the way their current space falls short. Every application is read by a real person.</p>
+      </div>
+      <div class="narrative-aside">
+        <div class="narrative-callout">
+          <span class="narrative-callout-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+          </span>
+          <p>Applications typically take <strong>10–15 minutes</strong>. You'll need basic medical info and a few photos of the current space.</p>
+        </div>
       </div>
     </div>
 
@@ -310,32 +319,20 @@ const faqJsonLd = faqs.length ? getFAQSchema(faqs) : undefined;
         <p class="criteria-lead">We don't just look at a diagnosis — we look at the whole picture. How would a new space change your child's daily life?</p>
         <ul class="criteria-list">
           <li>
-            <svg viewBox="0 0 24 24" fill="none" class="sel-icon" aria-hidden="true"><path d="M19.5 12.572l-7.5 7.428-7.5-7.428A5 5 0 1 1 12 6.006a5 5 0 1 1 7.5 6.572" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            <div>
-              <strong>Daily impact & safety</strong>
-              <span>How does the current space affect your child's independence or quality of life?</span>
-            </div>
+            <strong>Daily impact & safety</strong>
+            <span>How does the current space affect your child's independence or quality of life?</span>
           </li>
           <li>
-            <svg viewBox="0 0 24 24" fill="none" class="sel-icon" aria-hidden="true"><rect x="1" y="4" width="22" height="16" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M1 10h22" stroke="currentColor" stroke-width="1.5"/></svg>
-            <div>
-              <strong>Financial circumstances</strong>
-              <span>We prioritize families who couldn't otherwise afford these modifications.</span>
-            </div>
+            <strong>Financial circumstances</strong>
+            <span>We prioritize families who couldn't otherwise afford these modifications.</span>
           </li>
           <li>
-            <svg viewBox="0 0 24 24" fill="none" class="sel-icon" aria-hidden="true"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            <div>
-              <strong>Potential for transformation</strong>
-              <span>Will a new space meaningfully change how your child lives, plays, or heals?</span>
-            </div>
+            <strong>Potential for transformation</strong>
+            <span>Will a new space meaningfully change how your child lives, plays, or heals?</span>
           </li>
           <li>
-            <svg viewBox="0 0 24 24" fill="none" class="sel-icon" aria-hidden="true"><path d="M21.3 15.3a2.4 2.4 0 0 1 0 3.4l-2.6 2.6a2.4 2.4 0 0 1-3.4 0L2.7 8.7a2.41 2.41 0 0 1 0-3.4l2.6-2.6a2.41 2.41 0 0 1 3.4 0Z" stroke="currentColor" stroke-width="1.5"/><path d="m14.5 12.5 2-2m-5-1 2-2m-5-1 2-2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-            <div>
-              <strong>Scope & feasibility</strong>
-              <span>Can we build the right space within your home's existing footprint?</span>
-            </div>
+            <strong>Scope & feasibility</strong>
+            <span>Can we build the right space within your home's existing footprint?</span>
           </li>
         </ul>
         <p class="criteria-note">We serve children with special needs in the greater Atlanta area — physical disabilities, autism, sensory processing disorders, chronic illness, and more.</p>
@@ -372,127 +369,67 @@ const faqJsonLd = faqs.length ? getFAQSchema(faqs) : undefined;
     />
   )}
 
-  <!-- ══════ NOTIFY ME — Email capture when closed / CTA when open ══════ -->
-  <section class="notify">
-    <div class="notify-inner">
-      {isOpen ? (
-        <>
-          <h2 data-reveal>Ready to take the<br/><em>first step</em>?</h2>
-          <p class="notify-body" data-reveal data-delay="1">Applying takes just a few minutes. Tell us about your child, and let us take it from there.</p>
-          <div class="notify-ctas" data-reveal data-delay="2">
-            {appFormUrl && <a href={appFormUrl} target="_blank" rel="noopener noreferrer" class="btn btn-dark btn-lg">Start Your Application &rarr;</a>}
-            <a href="/kids" class="btn btn-outline-dark">See Past Makeovers</a>
-          </div>
-        </>
-      ) : (
-        <>
-          <h2 data-reveal>Be the first to know when<br/>applications <em>reopen</em>.</h2>
-          <p class="notify-body" data-reveal data-delay="1">Join our mailing list and we'll notify you the moment the next application window opens. No spam — just sunshine.</p>
-          <form class="notify-form" id="apply-notify-form" action="/api/newsletter" method="POST" data-reveal data-delay="2">
-            <div class="notify-fields">
-              <input
-                type="email"
-                name="email"
-                placeholder="Your email address"
-                required
-                autocomplete="email"
-                aria-label="Email address for application notifications"
-                class="notify-input"
-                id="apply-notify-email"
-              />
-              <button type="submit" class="notify-btn btn btn-dark" id="apply-notify-btn">
-                <span class="notify-btn-text">Notify Me</span>
-                <span class="notify-btn-sending" aria-hidden="true">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
-                </span>
-                <span class="notify-btn-done" aria-hidden="true">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
-                </span>
-              </button>
-            </div>
-            <div aria-hidden="true" style="position:absolute;left:-9999px;top:-9999px;"><input type="text" name="website" tabindex="-1" autocomplete="off" /></div>
-            <p class="notify-note" id="apply-notify-note">No spam, ever. Unsubscribe anytime.</p>
-          </form>
-          <div class="notify-social-alt">
-            <span>or follow us</span>
-            <div class="notify-social-links">
-              <a href={siteSettings.social.instagram} target="_blank" rel="noopener noreferrer" aria-label="Follow on Instagram">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg>
-              </a>
-              <a href={siteSettings.social.facebook} target="_blank" rel="noopener noreferrer" aria-label="Follow on Facebook">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/></svg>
-              </a>
-            </div>
-          </div>
-        </>
-      )}
-      <p class="notify-fine" data-reveal data-delay="3">Every makeover is 100% free &middot; 501(c)(3) &middot; EIN {siteSettings.ein}</p>
-    </div>
-  </section>
 
 </BaseLayout>
 
-<script>
-  document.addEventListener('astro:page-load', () => {
-    const form = document.getElementById('apply-notify-form') as HTMLFormElement | null;
-    if (!form) return;
-    const note = document.getElementById('apply-notify-note');
-    const btn = document.getElementById('apply-notify-btn');
-    const input = document.getElementById('apply-notify-email') as HTMLInputElement | null;
-    if (!note || !btn || !input) return;
-
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const email = input.value.trim();
-      if (!email) return;
-
-      const honeypot = form.querySelector<HTMLInputElement>('[name="website"]');
-      const hp = honeypot ? honeypot.value : '';
-
-      note.classList.remove('notify-note--success', 'notify-note--error');
-      btn.classList.remove('is-done');
-      btn.classList.add('is-sending');
-      btn.setAttribute('disabled', '');
-      input.setAttribute('disabled', '');
-
-      try {
-        const res = await fetch('/api/newsletter', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, hp }),
-        });
-        const data = await res.json();
-        btn.classList.remove('is-sending');
-
-        if (data.ok) {
-          btn.classList.add('is-done');
-          input.value = '';
-          note.textContent = "You're on the list! We'll let you know when applications open.";
-          note.classList.add('notify-note--success');
-        } else {
-          note.textContent = data.error || 'Something went wrong. Please try again.';
-          note.classList.add('notify-note--error');
-          btn.removeAttribute('disabled');
-          input.removeAttribute('disabled');
-        }
-      } catch {
-        btn.classList.remove('is-sending');
-        note.textContent = 'Something went wrong. Please try again.';
-        note.classList.add('notify-note--error');
-        btn.removeAttribute('disabled');
-        input.removeAttribute('disabled');
-      }
-    });
-  });
-</script>
 
 <style>
-  /* Page-specific: italic em color on h2 when not a highlight */
+  /* ══════════════════════════════════════════
+     SHARED
+     ══════════════════════════════════════════ */
   h2 em:not(.highlight) { font-style: italic; color: var(--c-yellow); }
+  .highlight--dark {
+    background-image: linear-gradient(transparent 55%, rgba(255, 218, 36, 0.3) 55%);
+  }
 
-  /* Section-label color modifier for light backgrounds */
-  .section-label--light { color: rgba(255,255,255,0.5); }
-  .section-label--light::before { background: rgba(255,255,255,0.25); }
+  .btn-lg { font-size: 17px; padding: 18px 44px; }
+  .hero-glow { animation: pulseGlow 3s ease-in-out 3s infinite; }
+  .btn-outline-dark {
+    background: transparent;
+    color: var(--c-dark);
+    border: 2px solid var(--c-dark);
+    padding: 12px 30px;
+  }
+  .btn-outline-dark:hover {
+    background: var(--c-dark);
+    color: var(--c-yellow);
+    transform: translateY(-3px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  }
+  .btn-ghost-light {
+    background: transparent;
+    color: rgba(255,255,255,0.7);
+    border: 1px solid rgba(255,255,255,0.15);
+    padding: 12px 28px;
+  }
+  .btn-ghost-light:hover {
+    background: rgba(255,255,255,0.08);
+    color: #fff;
+    border-color: rgba(255,255,255,0.3);
+    transform: translateY(-2px);
+  }
+
+  /* Hero entrance keyframes */
+  @keyframes heroUp {
+    from { opacity: 0; transform: translateY(24px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes heroSlide {
+    from { transform: translateY(12px); }
+    to { transform: translateY(0); }
+  }
+  @keyframes heroPhotoIn {
+    from { opacity: 0; transform: scale(0.97); }
+    to { opacity: 1; transform: scale(1); }
+  }
+  @keyframes accentIn {
+    from { opacity: 0; transform: scale(0.85); }
+    to { opacity: 0.35; transform: scale(1); }
+  }
+  @keyframes pulseGlow {
+    0%, 100% { box-shadow: 0 8px 24px var(--c-yellow-glow); }
+    50% { box-shadow: 0 8px 32px rgba(255, 218, 36, 0.55); }
+  }
 
   /* ══════════════════════════════════════════
      HERO
@@ -501,6 +438,9 @@ const faqJsonLd = faqs.length ? getFAQSchema(faqs) : undefined;
     background: var(--c-cream);
     padding: clamp(80px, 10vw, 140px) 0 clamp(64px, 8vw, 100px);
     position: relative;
+    contain: layout style;
+    min-height: clamp(480px, 70vh, 720px);
+    overflow: hidden;
   }
   .hero-inner {
     max-width: var(--max-width);
@@ -535,9 +475,9 @@ const faqJsonLd = faqs.length ? getFAQSchema(faqs) : undefined;
     animation: heroUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.05s both;
   }
   .hero-text h1 {
-    font-size: clamp(2.25rem, 5.5vw, 3.75rem);
-    letter-spacing: -0.03em;
-    line-height: 1.06;
+    font-size: clamp(2.5rem, 6vw, 4.5rem);
+    letter-spacing: -0.035em;
+    line-height: 1.04;
     color: var(--c-text);
     margin-bottom: 28px;
     /* NO opacity:0 — LCP element */
@@ -578,21 +518,22 @@ const faqJsonLd = faqs.length ? getFAQSchema(faqs) : undefined;
     width: 65%;
     height: 50%;
     background: var(--c-yellow);
-    border-radius: var(--border-radius-lg);
+    border-radius: 24px;
     z-index: 0;
-    opacity: 0.35;
+    opacity: 0;
+    animation: accentIn 1s cubic-bezier(0.16, 1, 0.3, 1) 0.7s both;
   }
   .hero-photo {
     position: relative;
     z-index: 1;
     aspect-ratio: 4 / 5;
-    border-radius: var(--border-radius-lg);
+    border-radius: 24px;
     overflow: hidden;
     background-size: cover;
     background-position: center;
     box-shadow:
-      0 4px 6px rgba(0, 0, 0, 0.04),
-      0 16px 48px rgba(0, 0, 0, 0.1);
+      0 32px 80px rgba(0, 0, 0, 0.12),
+      0 8px 24px rgba(0, 0, 0, 0.06);
   }
   .hero-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .hero-photo--small {
@@ -850,8 +791,7 @@ const faqJsonLd = faqs.length ? getFAQSchema(faqs) : undefined;
       0 12px 40px rgba(0, 0, 0, 0.08);
   }
   .narrative-media img { width: 100%; height: 100%; object-fit: cover; display: block; }
-  .narrative-block--reversed { direction: rtl; }
-  .narrative-block--reversed > * { direction: ltr; }
+  .narrative-block--reversed .narrative-media { order: -1; }
 
   /* ══════════════════════════════════════════
      THE REVEAL — Dark cinematic
@@ -1001,183 +941,62 @@ const faqJsonLd = faqs.length ? getFAQSchema(faqs) : undefined;
     flex-direction: column;
     gap: 20px;
   }
-  .criteria-list li { display: flex; gap: 12px; align-items: flex-start; }
-  .sel-icon {
-    width: 22px;
-    height: 22px;
-    flex-shrink: 0;
-    color: var(--c-yellow-hover);
-    margin-top: 2px;
+  .criteria-list li { padding-left: 24px; position: relative; }
+  .criteria-list li::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 8px;
+    width: 8px; height: 8px;
+    background: var(--c-yellow);
+    border-radius: 50%;
   }
-  .criteria-list li strong { display: block; font-size: 15px; font-weight: 700; color: var(--c-text); margin-bottom: 2px; }
+  .criteria-list li strong { display: block; font-size: 15px; font-weight: 700; color: var(--c-text); margin-bottom: 3px; }
   .criteria-list li span { font-size: 14px; color: var(--c-text-muted); line-height: 1.6; }
   .criteria-note { font-size: 14px; color: var(--c-text-light); font-style: italic; line-height: 1.65; }
 
-  .criteria-stats { display: flex; flex-direction: column; gap: 16px; padding-top: 8px; }
+  .criteria-stats { display: flex; flex-direction: column; gap: 12px; padding-top: 8px; }
   .criteria-stat-card {
-    background: var(--c-warm-gray);
+    background: #fff;
     border-radius: var(--border-radius-lg);
-    padding: 28px 32px;
-    text-align: center;
+    padding: 24px 28px;
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
     border: 1px solid var(--c-border);
   }
   .criteria-stat-card--highlight {
     background: var(--c-dark);
     border-color: transparent;
     color: #fff;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: 32px 28px;
   }
   .criteria-stat-num {
-    display: block;
     font-family: var(--font-display);
-    font-size: clamp(1.75rem, 3vw, 2.5rem);
+    font-size: clamp(1.5rem, 2.5vw, 2rem);
     font-weight: 400;
     color: var(--c-yellow);
     line-height: 1;
-    margin-bottom: 4px;
+    flex-shrink: 0;
   }
   .criteria-stat-label {
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 0.1em;
+    letter-spacing: 0.08em;
     color: var(--c-text-muted);
+  }
+  .criteria-stat-card--highlight .criteria-stat-num {
+    font-size: clamp(2rem, 3vw, 2.75rem);
   }
   .criteria-stat-card--highlight .criteria-stat-label { color: rgba(255,255,255,0.5); }
   .criteria-stat-sub {
     display: block;
     font-size: 12px;
     color: rgba(255,255,255,0.35);
-    margin-top: 4px;
-  }
-
-  /* ══════════════════════════════════════════
-     NOTIFY — Email capture / CTA finale
-     ══════════════════════════════════════════ */
-  .notify {
-    background: var(--c-yellow);
-    padding: var(--space-4xl) 0;
-    text-align: center;
-  }
-  .notify-inner {
-    max-width: var(--max-width-narrow);
-    margin: 0 auto;
-    padding: 0 var(--space-xl);
-  }
-  .notify h2 {
-    font-size: clamp(1.75rem, 4vw, 2.75rem);
-    letter-spacing: -0.02em;
-    line-height: 1.12;
-    color: var(--c-dark);
-    margin-bottom: 20px;
-  }
-  .notify h2 em { font-style: italic; color: inherit; }
-  .notify-body {
-    font-size: 16px;
-    line-height: 1.7;
-    color: var(--c-dark);
-    opacity: 0.7;
-    max-width: 520px;
-    margin: 0 auto 36px;
-  }
-  .notify-ctas {
-    display: flex;
-    gap: 14px;
-    justify-content: center;
-    flex-wrap: wrap;
-    margin-bottom: 28px;
-  }
-
-  /* Email form */
-  .notify-form {
-    max-width: 440px;
-    margin: 0 auto 24px;
-    position: relative;
-  }
-  .notify-fields {
-    display: flex;
-    gap: 0;
-    border-radius: 60px;
-    overflow: hidden;
-    background: var(--c-dark);
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
-  }
-  .notify-input {
-    flex: 1;
-    border: none;
-    background: transparent;
-    color: #fff;
-    padding: 16px 24px;
-    font-size: 15px;
-    outline: none;
-    min-width: 0;
-  }
-  .notify-input::placeholder { color: rgba(255,255,255,0.4); }
-  .notify-btn {
-    border-radius: 0 60px 60px 0 !important;
-    padding: 16px 28px !important;
-    flex-shrink: 0;
-    position: relative;
-  }
-  .notify-btn-sending, .notify-btn-done { display: none; }
-  .notify-btn.is-sending .notify-btn-text { display: none; }
-  .notify-btn.is-sending .notify-btn-sending {
-    display: inline-flex;
-    animation: spin 0.8s linear infinite;
-  }
-  .notify-btn.is-done .notify-btn-text { display: none; }
-  .notify-btn.is-done .notify-btn-done { display: inline-flex; }
-  .notify-btn.is-done {
-    background: #38A169 !important;
-    color: #fff !important;
-  }
-  @keyframes spin { to { transform: rotate(360deg); } }
-  .notify-note {
-    font-size: 13px;
-    color: var(--c-dark);
-    opacity: 0.5;
-    margin-top: 12px;
-    transition: color 0.2s ease;
-  }
-  .notify-note--success { color: var(--c-dark); opacity: 0.8; font-weight: 600; }
-  .notify-note--error { color: #C53030; opacity: 1; }
-
-  /* Social alternative */
-  .notify-social-alt {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 12px;
-    margin-bottom: 28px;
-  }
-  .notify-social-alt span {
-    font-size: 13px;
-    color: var(--c-dark);
-    opacity: 0.5;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    font-weight: 600;
-  }
-  .notify-social-links {
-    display: flex;
-    gap: 8px;
-  }
-  .notify-social-links a {
-    width: 40px; height: 40px;
-    border-radius: 50%;
-    background: var(--c-dark);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: transform var(--transition-fast), background var(--transition-fast);
-  }
-  .notify-social-links a:hover { transform: translateY(-2px); background: #1a1b1f; }
-  .notify-social-links svg { width: 16px; height: 16px; stroke: #fff; }
-
-  .notify-fine {
-    font-size: 13px;
-    color: var(--c-dark);
-    opacity: 0.35;
-    letter-spacing: 0.02em;
+    margin-top: 2px;
   }
 
   /* ══════════════════════════════════════════
@@ -1210,7 +1029,7 @@ const faqJsonLd = faqs.length ? getFAQSchema(faqs) : undefined;
     .story-photo { max-width: 400px; }
 
     .narrative-block { grid-template-columns: 1fr; gap: 24px; }
-    .narrative-block--reversed { direction: ltr; }
+    .narrative-block--reversed .narrative-media { order: 0; }
 
     .reveal-inner { grid-template-columns: 1fr; gap: 40px; text-align: center; }
     .reveal-content p { margin-inline: auto; }
@@ -1219,9 +1038,11 @@ const faqJsonLd = faqs.length ? getFAQSchema(faqs) : undefined;
   }
 
   @media (max-width: 768px) {
-    .hero { padding-top: clamp(48px, 8vw, 80px); padding-bottom: var(--space-xl); }
+    .hero { padding-top: clamp(48px, 8vw, 80px); padding-bottom: var(--space-xl); min-height: auto; }
+    .hero-text h1 { font-size: clamp(2rem, 9vw, 3rem); }
     .hero-photo--small { display: none; }
-    .hero-accent { bottom: -12px; right: -12px; }
+    .hero-photo { border-radius: 18px; }
+    .hero-accent { bottom: -12px; right: -12px; border-radius: 18px; }
 
     .status-inner { flex-direction: column; text-align: center; gap: 12px; padding: 20px var(--space-lg); }
 
@@ -1237,12 +1058,6 @@ const faqJsonLd = faqs.length ? getFAQSchema(faqs) : undefined;
 
     .criteria-stats { flex-direction: row; flex-wrap: wrap; }
     .criteria-stat-card { flex: 1; min-width: 140px; }
-
-    .notify { padding: var(--space-3xl) 0; }
-    .notify-ctas { flex-direction: column; align-items: center; }
-    .notify-fields { flex-direction: column; border-radius: var(--border-radius-lg); }
-    .notify-input { padding: 16px 20px; }
-    .notify-btn { border-radius: 0 0 var(--border-radius-lg) var(--border-radius-lg) !important; width: 100%; justify-content: center; }
   }
 
   /* ══════════════════════════════════════════
@@ -1250,10 +1065,16 @@ const faqJsonLd = faqs.length ? getFAQSchema(faqs) : undefined;
      ══════════════════════════════════════════ */
   @media (prefers-reduced-motion: reduce) {
     [data-reveal] { opacity: 1; transform: none; transition: none; }
+    .hero-text .section-label,
+    .hero-lead,
+    .hero-ctas,
+    .hero-frame { opacity: 1; transform: none; animation: none; }
+    .hero-text h1 { animation: none; }
+    .hero-accent { opacity: 0.35; animation: none; }
+    .hero-glow { animation: none; }
     .btn:hover, .btn-outline-dark:hover, .btn-ghost-light:hover { transform: none; }
     .status-dot--open { animation: none; }
     .lqip-img:not(.lqip-pending) { transition: none; }
     .lqip-img.lqip-pending { opacity: initial; }
-    .notify-btn.is-sending .notify-btn-sending { animation: none; }
   }
 </style>

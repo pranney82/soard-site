@@ -1,7 +1,8 @@
 {
-  "name": "Roll Off",
+  "name": "Roll Off Systems",
   "slug": "roll-off",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/roll-off/public",
   "tier": "construction",
-  "featured": false
+  "featured": false,
+  "level": "friend"
 }

@@ -3,5 +3,8 @@
   "slug": "reliable-heating-and-air",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/reliable-heating-and-air/public",
   "tier": "construction",
-  "featured": true
+  "featured": false,
+  "level": "friend",
+  "category": "community",
+  "website": "https://reliableair.com"
 }

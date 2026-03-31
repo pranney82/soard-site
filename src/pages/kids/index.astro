@@ -10,9 +10,10 @@
  */
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import { getCollection } from 'astro:content';
+import { getPublishedKids } from '../../utils/collections';
 import { getSiteStats } from '../../utils/stats';
 
-const allKids = await getCollection('kids');
+const allKids = await getPublishedKids();
 const kids = allKids
   .sort((a, b) => {
     const sA = a.data.status === 'in-progress' ? 0 : 1;

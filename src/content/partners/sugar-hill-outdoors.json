@@ -3,5 +3,10 @@
   "slug": "sugar-hill-outdoors",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/sugar-hill-outdoors/public",
   "tier": "construction",
-  "featured": false
+  "featured": false,
+  "category": [
+    "build"
+  ],
+  "level": "friend",
+  "website": "https://sugarhilloutdoors.com"
 }

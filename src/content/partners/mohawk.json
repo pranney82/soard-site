@@ -4,5 +4,10 @@
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/mohawk/public",
   "tier": "construction",
   "featured": true,
-  "website": "https://www.mohawkflooring.com"
+  "website": "https://www.mohawkflooring.com",
+  "category": [
+    "build",
+    "funding"
+  ],
+  "level": "signature"
 }

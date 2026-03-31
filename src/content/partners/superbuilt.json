@@ -3,5 +3,10 @@
   "slug": "superbuilt",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/superbuilt/public",
   "tier": "construction",
-  "featured": false
+  "featured": false,
+  "category": [
+    "build"
+  ],
+  "website": "https://superbuilt.net",
+  "level": "friend"
 }

@@ -1,6 +1,9 @@
 /**
  * POST /api/delete-content
- * Deletes content from D1 AND removes the file from GitHub.
+ * Deletes from D1 (source of truth for builds) THEN removes from GitHub (VCS backup).
+ * D1 is what the prebuild script reads — it must always reflect the latest state.
+ * GitHub failures are logged but don't block the delete.
+ *
  * Expects JSON body:
  *   {
  *     path: "src/content/kids/amari.json",
@@ -51,7 +54,7 @@ export async function onRequestPost(context) {
       }
     } catch (e) { /* ok */ }
 
-    // 1. Delete from D1 (read cache)
+    // 1. Delete from D1 FIRST (source of truth — prebuild reads from D1)
     if (parsed.type === 'site') {
       await DB.prepare('DELETE FROM site_config WHERE key = ?')
         .bind(parsed.key).run();
@@ -60,7 +63,7 @@ export async function onRequestPost(context) {
         .bind(parsed.slug).run();
     }
 
-    // 2. Delete from GitHub (awaited so we can report status to admin)
+    // 2. Delete from GitHub (VCS backup). Non-blocking — D1 already reflects the delete.
     let gitStatus = 'ok';
     try {
       await deleteFile(context.env, path, message);

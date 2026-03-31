@@ -1,7 +1,9 @@
 {
-  "name": "Sawnee Electrical",
+  "name": "Sawnee Electric Operation Electrical",
   "slug": "sawnee-electrical",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/sawnee-electrical/public",
   "tier": "construction",
-  "featured": false
+  "featured": false,
+  "level": "friend",
+  "category": "community"
 }

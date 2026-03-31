@@ -50,10 +50,6 @@
   "photographer": null,
   "partnerLogos": [
     {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/kids-r-kids/public",
-      "name": "Kids R Kids Foundation"
-    },
-    {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/artisan-design-studio/public",
       "name": "Artisan Design Studio"
     },
@@ -72,6 +68,18 @@
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/echols/public",
       "name": "Echols"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/kids-r-kids/public",
+      "name": "Kids R Kids Foundation"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/real-floors-commercial/1774544840079/public",
+      "name": "Real Floors Commercial"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/armistead-paint-supply/1774638875649/public",
+      "name": "Armistead Paint & Supply"
     }
   ],
   "shortDescription": null,

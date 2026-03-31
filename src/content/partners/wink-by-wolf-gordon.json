@@ -3,5 +3,10 @@
   "slug": "wink-by-wolf-gordon",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/wink-by-wolf-gordon/public",
   "tier": "construction",
-  "featured": false
+  "featured": false,
+  "category": [
+    "build"
+  ],
+  "website": "https://www.wolfgordon.com/wink?srsltid=AfmBOoo4vEnnZcX5rJlokVseELYO4daeYqn6522VSXs-wv5F2d969vLf",
+  "level": "friend"
 }

@@ -1,7 +1,12 @@
 {
-  "name": "Three Little Dogs",
+  "name": "Three Little Dogs Flooring & Interiors",
   "slug": "three-little-dogs",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/three-little-dogs/public",
   "tier": "construction",
-  "featured": false
+  "featured": false,
+  "category": [
+    "build"
+  ],
+  "website": "https://www.threelittledogsinteriors.com",
+  "level": "friend"
 }

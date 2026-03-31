@@ -1,7 +1,10 @@
 {
-  "name": "Rc Logo Wtagline",
+  "name": "Ruby Collins",
   "slug": "rc-logo-wtagline",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/rc/public",
   "tier": "construction",
-  "featured": false
+  "featured": false,
+  "level": "friend",
+  "category": "funding",
+  "website": "https://www.ruby-collins.com"
 }

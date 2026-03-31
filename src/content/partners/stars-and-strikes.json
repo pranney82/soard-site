@@ -1,7 +1,12 @@
 {
   "name": "Stars And Strikes",
   "slug": "stars-and-strikes",
-  "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/stars-and-strikes/public",
+  "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/stars-and-strikes/1774888904407/public",
   "tier": "construction",
-  "featured": false
+  "featured": false,
+  "category": [
+    "community"
+  ],
+  "level": "friend",
+  "website": "https://starsandstrikes.com"
 }

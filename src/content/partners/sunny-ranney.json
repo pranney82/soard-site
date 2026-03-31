@@ -1,7 +1,12 @@
 {
-  "name": "Sunny  Ranney",
+  "name": "Sunny & Ranney",
   "slug": "sunny-ranney",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/sunny-and-ranney/public",
   "tier": "construction",
-  "featured": false
+  "featured": false,
+  "category": [
+    "build"
+  ],
+  "website": "https://sunnyandranney.com",
+  "level": "signature"
 }

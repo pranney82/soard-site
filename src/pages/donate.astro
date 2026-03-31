@@ -19,6 +19,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 import MediaLogos from '../components/ui/MediaLogos.astro';
 import FAQSection from '../components/ui/FAQSection.astro';
 import { getCollection } from 'astro:content';
+import { getPublishedKids } from '../utils/collections';
 import faqData from '../content/site/faq.json';
 import siteSettings from '../content/site/settings.json';
 import { getDonateSchema } from '../utils/schema';
@@ -36,7 +37,7 @@ const donateStoryKidName = dp.storyKidName || 'Amari';
 const donateStoryKidSlug = (dp.storyKidName || 'Amari').toLowerCase().replace(/\s+/g, '-');
 
 /* ── Dynamic story kid data from collection ── */
-const allKids = await getCollection('kids');
+const allKids = await getPublishedKids();
 const storyKid = allKids.find(k => k.data.slug === donateStoryKidSlug);
 const storyBio = storyKid?.data.bio || '';
 const storyDiagnosis = storyKid?.data.diagnosis || '';
@@ -73,24 +74,24 @@ const breadcrumbs = [
   <link slot="head" rel="preload" as="image" imagesrcset={cfSrcset(donateHeroPhoto, [400, 640, 1024, 1600])} imagesizes="(max-width:768px) 100vw, 50vw" fetchpriority="high" />
 
   <!-- ══════ 1. HERO — Editorial Split ══════ -->
-  <section class="donate-hero">
-    <div class="donate-hero-inner">
-      <div class="donate-hero-content">
+  <section class="hero">
+    <div class="hero-inner">
+      <div class="hero-text">
         <div class="section-label">Give Today</div>
         <h1>A room can change<br/>a child's <em>entire</em> life.</h1>
-        <p class="donate-hero-lead">Your gift builds dream bedrooms, accessible bathrooms, and therapy rooms for children with special needs — at <strong>no cost to families</strong>.</p>
-        <div class="donate-hero-ctas">
+        <p class="hero-lead">Your gift builds dream bedrooms, accessible bathrooms, and therapy rooms for children with special needs — at <strong>no cost to families</strong>.</p>
+        <div class="hero-ctas">
           <a href={ZEFFY_ONETIME} target="_blank" rel="noopener noreferrer" data-zeffy class="btn btn-primary btn-lg btn-hero-glow">Donate Now →</a>
           <a href="#impact" class="btn btn-outline-dark">See Your Impact</a>
         </div>
-        <div class="donate-hero-trust">
-          <span class="dht-item"><svg class="dht-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="m9 12 2 2 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>Secure & Encrypted</span>
-          <span class="dht-item"><svg class="dht-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M14 8H8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M16 12H8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>Tax-Deductible</span>
-          <span class="dht-item"><svg class="dht-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.5"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 0 1 0 4H8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M12 18V6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>Zero Platform Fees</span>
+        <div class="hero-trust">
+          <span class="hero-trust-item"><svg class="hero-trust-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="m9 12 2 2 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>Secure & Encrypted</span>
+          <span class="hero-trust-item"><svg class="hero-trust-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M14 8H8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M16 12H8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>Tax-Deductible</span>
+          <span class="hero-trust-item"><svg class="hero-trust-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.5"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 0 1 0 4H8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M12 18V6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>Zero Platform Fees</span>
         </div>
       </div>
-      <div class="donate-hero-visual">
-        <div class="donate-hero-frame" style={`background-image:url('${cfLqip(donateHeroPhoto)}')`}>
+      <div class="hero-photo-wrap">
+        <div class="hero-frame" style={`background-image:url('${cfLqip(donateHeroPhoto)}')`}>
           <img
             src={cfRaw(donateHeroPhoto, 'w=1600,q=85')}
             srcset={cfSrcset(donateHeroPhoto, [400, 640, 1024, 1600])}
@@ -101,12 +102,12 @@ const breadcrumbs = [
             fetchpriority="high"
             loading="eager"
             decoding="async"
-            class="donate-hero-img lqip-img"
+            class="hero-img lqip-img"
           />
         </div>
-        <div class="donate-hero-stat">
-          <span class="donate-hero-stat-num">100<span>%</span></span>
-          <span class="donate-hero-stat-label">of your gift goes<br/>directly to kids</span>
+        <div class="hero-stat">
+          <span class="hero-stat-num">{computed.totalRooms}<span>+</span></span>
+          <span class="hero-stat-label">dream rooms<br/>built &amp; counting</span>
         </div>
       </div>
     </div>
@@ -198,7 +199,7 @@ const breadcrumbs = [
           <div class="tier-item tier-item--custom" data-reveal data-delay="3">
             <span class="tier-item-amount">Any $</span>
             <strong class="tier-item-what">Your Amount</strong>
-            <p>Every dollar has a purpose. Give whatever feels right — it all goes directly to building rooms for kids.</p>
+            <p>Every dollar has a purpose. Give whatever feels right — your gift helps build rooms for kids.</p>
             <a href={`${ZEFFY_ONETIME}?amount=50`} target="_blank" rel="noopener noreferrer" data-zeffy class="tier-item-cta">Choose Your Amount →</a>
           </div>
         </div>
@@ -237,7 +238,7 @@ const breadcrumbs = [
           <div class="tier-item tier-item--custom">
             <span class="tier-item-amount">Any $</span>
             <strong class="tier-item-what">Your Amount</strong>
-            <p>Set your own monthly amount — every dollar goes directly to building rooms for kids who need them most.</p>
+            <p>Set your own monthly amount — your recurring gift helps build rooms for kids who need them most.</p>
             <a href={`${ZEFFY_MONTHLY}?amount=50`} target="_blank" rel="noopener noreferrer" data-zeffy class="tier-item-cta">Choose Your Amount →</a>
           </div>
         </div>
@@ -258,26 +259,35 @@ const breadcrumbs = [
   <section class="donate-trust">
     <div class="donate-trust-inner">
       <div class="donate-trust-left" data-reveal>
-        <div class="section-label">Trust & Transparency</div>
+        <div class="section-label section-label--light">Trust & Transparency</div>
         <h2>We're an open book. <em class="highlight">Always.</em></h2>
         <p class="donate-trust-body">You should know exactly where every dollar goes. Our financials are public, our mission is clear, and our track record speaks for itself.</p>
         <div class="donate-trust-links">
-          <a href="/about/financials" class="btn btn-dark">View Our Financials →</a>
+          <a href="/about/financials" class="btn btn-trust">View Our Financials →</a>
           <a href="/ways-to-give" class="donate-trust-link">More ways to give →</a>
         </div>
       </div>
       <div class="donate-trust-right">
         <div class="dt-card" data-reveal>
+          <div class="dt-card-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
+          </div>
           <span class="dt-big">501(c)(3)</span>
           <span class="dt-label">Tax-Exempt Status</span>
           <p>Registered nonprofit. EIN 45-4773997. All donations are fully tax-deductible.</p>
         </div>
         <div class="dt-card" data-reveal data-delay="1">
+          <div class="dt-card-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+          </div>
           <span class="dt-big">{computed.totalRooms}+</span>
           <span class="dt-label">Rooms Completed</span>
           <p>Over {computed.totalKids} children served across the greater Atlanta area since 2012.</p>
         </div>
         <div class="dt-card" data-reveal data-delay="2">
+          <div class="dt-card-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+          </div>
           <span class="dt-big">990</span>
           <span class="dt-label">On File</span>
           <p>Our IRS Form 990 tax returns are available for anyone to review, anytime.</p>
@@ -369,7 +379,7 @@ const breadcrumbs = [
 
   document.addEventListener('astro:page-load', () => {
     const stickyBar = document.getElementById('sticky-cta');
-    const hero = document.querySelector('.donate-hero');
+    const hero = document.querySelector('.hero');
     const modal = document.getElementById('zeffy-modal');
     const iframe = document.getElementById('zeffy-iframe') as HTMLIFrameElement | null;
     const closeBtn = document.getElementById('zeffy-modal-close');
@@ -456,10 +466,10 @@ const breadcrumbs = [
   /* ══════════════════════════════════════════
      1. HERO — Editorial Split
      ══════════════════════════════════════════ */
-  .donate-hero {
+  .hero {
     padding: 120px 0 100px;
   }
-  .donate-hero-inner {
+  .hero-inner {
     max-width: var(--max-width);
     margin: 0 auto;
     padding: 0 var(--space-xl);
@@ -468,13 +478,13 @@ const breadcrumbs = [
     gap: 64px;
     align-items: center;
   }
-  .donate-hero-content { max-width: 540px; }
+  .hero-text { max-width: 540px; }
   /* Hero entrance stagger — matches homepage/community pattern */
-  .donate-hero-content .section-label {
+  .hero-text .section-label {
     opacity: 0;
     animation: heroUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.05s both;
   }
-  .donate-hero h1 {
+  .hero h1 {
     font-size: clamp(32px, 5.5vw, 56px);
     line-height: 1.1;
     letter-spacing: -0.03em;
@@ -482,11 +492,11 @@ const breadcrumbs = [
     /* NO opacity:0 — LCP element, must paint immediately */
     animation: heroSlide 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
   }
-  .donate-hero h1 em {
+  .hero h1 em {
     font-style: italic;
     color: var(--c-yellow-hover);
   }
-  .donate-hero-lead {
+  .hero-lead {
     font-size: clamp(16px, 2vw, 18px);
     color: var(--c-text-muted);
     line-height: 1.7;
@@ -495,15 +505,15 @@ const breadcrumbs = [
     opacity: 0;
     animation: heroUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.15s both;
   }
-  .donate-hero-lead strong { color: var(--c-dark); }
-  .donate-hero-ctas {
+  .hero-lead strong { color: var(--c-dark); }
+  .hero-ctas {
     display: flex;
     gap: 14px;
     flex-wrap: wrap;
     opacity: 0;
     animation: heroUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.25s both;
   }
-  .donate-hero-trust {
+  .hero-trust {
     display: flex;
     gap: 20px;
     flex-wrap: wrap;
@@ -511,7 +521,7 @@ const breadcrumbs = [
     opacity: 0;
     animation: heroUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.35s both;
   }
-  .dht-item {
+  .hero-trust-item {
     display: flex;
     align-items: center;
     gap: 6px;
@@ -520,17 +530,17 @@ const breadcrumbs = [
     color: var(--c-text-light);
     letter-spacing: 0.01em;
   }
-  .dht-icon {
+  .hero-trust-icon {
     width: 16px;
     height: 16px;
     flex-shrink: 0;
     color: var(--c-text-muted);
   }
-  .donate-hero-visual {
+  .hero-photo-wrap {
     position: relative;
     animation: heroPhotoIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
   }
-  .donate-hero-frame {
+  .hero-frame {
     border-radius: 24px;
     overflow: hidden;
     box-shadow: 0 32px 80px rgba(0,0,0,0.12);
@@ -538,13 +548,13 @@ const breadcrumbs = [
     background-position: center;
     aspect-ratio: 4 / 5;
   }
-  .donate-hero-img {
+  .hero-img {
     width: 100%;
     height: 100%;
     object-fit: cover;
     object-position: center 30%;
   }
-  .donate-hero-stat {
+  .hero-stat {
     position: absolute;
     bottom: -24px;
     left: -24px;
@@ -555,7 +565,7 @@ const breadcrumbs = [
     text-align: center;
     box-shadow: 0 16px 48px rgba(0,0,0,0.15);
   }
-  .donate-hero-stat-num {
+  .hero-stat-num {
     font-family: var(--font-display);
     font-size: 40px;
     font-weight: 700;
@@ -563,8 +573,8 @@ const breadcrumbs = [
     line-height: 1;
     display: block;
   }
-  .donate-hero-stat-num span { font-size: 28px; }
-  .donate-hero-stat-label {
+  .hero-stat-num span { font-size: 28px; }
+  .hero-stat-label {
     display: block;
     font-size: 12px;
     font-weight: 500;
@@ -619,23 +629,24 @@ const breadcrumbs = [
   }
   .why-text p:last-of-type { margin-bottom: 32px; }
 
-  /* Pull-quote testimonial */
+  /* Pull-quote testimonial — editorial accent */
   .why-testimonial {
     margin-top: 48px;
-    padding-top: 32px;
+    padding: 32px 0 0 28px;
     border-top: 1px solid var(--c-border);
+    border-left: 3px solid var(--c-yellow);
     position: relative;
   }
   .why-testimonial::before {
     content: '\201C';
     position: absolute;
-    top: 16px;
-    left: 0;
+    top: 12px;
+    left: 28px;
     font-family: var(--font-display);
-    font-size: 64px;
+    font-size: 56px;
     line-height: 1;
     color: var(--c-yellow);
-    opacity: 0.4;
+    opacity: 0.3;
   }
   .why-testimonial p {
     font-family: var(--font-display);
@@ -794,16 +805,18 @@ const breadcrumbs = [
     gap: 20px;
   }
   .tier-item {
-    background: var(--c-warm-gray);
+    background: #fff;
+    border: 1px solid var(--c-border);
     border-radius: 16px;
     padding: 32px 24px;
     display: flex;
     flex-direction: column;
-    transition: transform 0.5s cubic-bezier(0.16,1,0.3,1), box-shadow 0.5s cubic-bezier(0.16,1,0.3,1);
+    transition: transform 0.5s cubic-bezier(0.16,1,0.3,1), box-shadow 0.5s cubic-bezier(0.16,1,0.3,1), border-color 0.3s ease;
   }
   .tier-item:hover {
     transform: translateY(-6px);
     box-shadow: 0 16px 48px rgba(0,0,0,0.08);
+    border-color: rgba(255,218,36,0.3);
   }
   .tier-item-amount {
     font-family: var(--font-display);
@@ -902,11 +915,23 @@ const breadcrumbs = [
   .tiers-match p strong { color: var(--c-dark); }
 
   /* ══════════════════════════════════════════
-     4. TRUST & TRANSPARENCY — Light split
+     4. TRUST & TRANSPARENCY — Dark split
      ══════════════════════════════════════════ */
   .donate-trust {
     padding: 100px 0;
-    background: var(--c-warm-gray);
+    background: var(--c-dark);
+    position: relative;
+    overflow: hidden;
+  }
+  .donate-trust::before {
+    content: '';
+    position: absolute;
+    top: -40%;
+    right: -10%;
+    width: 500px;
+    height: 500px;
+    background: radial-gradient(circle, rgba(255,218,36,0.06) 0%, transparent 70%);
+    pointer-events: none;
   }
   .donate-trust-inner {
     max-width: var(--max-width);
@@ -916,17 +941,28 @@ const breadcrumbs = [
     grid-template-columns: 0.85fr 1fr;
     gap: 80px;
     align-items: start;
+    position: relative;
+  }
+  .section-label--light {
+    color: rgba(255,255,255,0.5) !important;
+  }
+  .section-label--light::before {
+    background: rgba(255,255,255,0.3) !important;
   }
   .donate-trust-left h2 {
-    font-size: clamp(26px, 3vw, 36px);
-    line-height: 1.25;
+    font-size: clamp(28px, 3.2vw, 40px);
+    line-height: 1.2;
     margin-bottom: 20px;
+    color: #fff;
+  }
+  .donate-trust-left h2 .highlight {
+    color: var(--c-yellow);
   }
   .donate-trust-body {
     font-size: 16px;
-    color: var(--c-text-muted);
+    color: rgba(255,255,255,0.65);
     line-height: 1.7;
-    margin-bottom: 32px;
+    margin-bottom: 36px;
   }
   .donate-trust-links {
     display: flex;
@@ -934,46 +970,79 @@ const breadcrumbs = [
     gap: 16px;
     align-items: flex-start;
   }
+  .btn-trust {
+    display: inline-flex;
+    align-items: center;
+    padding: 14px 28px;
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    border-radius: 80px;
+    background: var(--c-yellow);
+    color: var(--c-dark);
+    text-decoration: none;
+    transition: background 0.25s ease, transform 0.25s ease;
+  }
+  .btn-trust:hover {
+    background: var(--c-yellow-hover);
+    transform: translateY(-2px);
+  }
   .donate-trust-link {
     font-size: 14px;
     font-weight: 600;
-    color: var(--c-accent);
+    color: rgba(255,255,255,0.6);
     text-decoration: underline;
     text-underline-offset: 3px;
     transition: color 0.2s ease;
   }
-  .donate-trust-link:hover { color: var(--c-dark); }
+  .donate-trust-link:hover { color: #fff; }
   .dt-card {
-    background: #fff;
-    border: 1px solid var(--c-border);
-    border-radius: 20px;
-    padding: 36px;
-    margin-bottom: 16px;
-    transition: transform 0.4s ease;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 16px;
+    padding: 32px 36px;
+    margin-bottom: 12px;
+    transition: transform 0.4s ease, background 0.3s ease, border-color 0.3s ease;
+    position: relative;
   }
   .dt-card:last-child { margin-bottom: 0; }
-  .dt-card:hover { transform: translateY(-4px); }
+  .dt-card:hover {
+    transform: translateY(-3px);
+    background: rgba(255,255,255,0.09);
+    border-color: rgba(255,218,36,0.25);
+  }
+  .dt-card-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    background: rgba(255,218,36,0.12);
+    color: var(--c-yellow);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 16px;
+  }
   .dt-big {
     display: block;
     font-family: var(--font-display);
-    font-size: 40px;
+    font-size: 36px;
     font-weight: 700;
-    color: var(--c-yellow-hover);
+    color: #fff;
     line-height: 1;
-    margin-bottom: 8px;
+    margin-bottom: 6px;
   }
   .dt-label {
     display: block;
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 600;
-    color: var(--c-text-muted);
+    color: var(--c-yellow);
     text-transform: uppercase;
-    letter-spacing: 0.08em;
-    margin-bottom: 16px;
+    letter-spacing: 0.1em;
+    margin-bottom: 14px;
   }
   .dt-card p {
     font-size: 15px;
-    color: var(--c-text-muted);
+    color: rgba(255,255,255,0.55);
     line-height: 1.65;
     margin: 0;
   }
@@ -998,11 +1067,17 @@ const breadcrumbs = [
     line-height: 1.25;
   }
   .way-item {
-    padding: 24px 0;
+    padding: 24px 0 24px 20px;
     border-bottom: 1px solid var(--c-border);
+    border-left: 2px solid transparent;
+    transition: border-color 0.3s ease, padding-left 0.3s ease;
   }
   .way-item:first-child { padding-top: 0; }
   .way-item:last-child { border-bottom: none; }
+  .way-item:hover {
+    border-left-color: var(--c-yellow);
+    padding-left: 24px;
+  }
   .way-item h3 {
     font-size: 18px;
     margin-bottom: 6px;
@@ -1181,7 +1256,7 @@ const breadcrumbs = [
      LQIP blur-up placeholders
      ══════════════════════════════════════════ */
   .why-photo,
-  .donate-hero-frame {
+  .hero-frame {
     background-size: cover;
     background-position: center;
   }
@@ -1208,19 +1283,24 @@ const breadcrumbs = [
   }
 
   @media (max-width: 768px) {
-    .donate-hero { padding: 80px 0 64px; }
-    .donate-hero-inner {
+    .hero { padding: 80px 0 64px; }
+    .hero-inner {
       grid-template-columns: 1fr;
       gap: 40px;
     }
-    .donate-hero-frame { aspect-ratio: 3 / 2; }
-    .donate-hero-stat {
-      bottom: -16px;
-      left: 16px;
+    .hero-frame { aspect-ratio: 3 / 2; }
+    .hero-stat {
+      bottom: -12px;
+      left: 12px;
+      padding: 12px 18px;
+      border-radius: 12px;
     }
-    .donate-hero h1 { font-size: clamp(28px, 8vw, 40px); }
-    .donate-hero-ctas { width: 100%; }
-    .donate-hero-ctas .btn { flex: 1; min-width: 140px; justify-content: center; }
+    .hero-stat-num { font-size: 28px; }
+    .hero-stat-num span { font-size: 20px; }
+    .hero-stat-label { font-size: 10px; }
+    .hero h1 { font-size: clamp(28px, 8vw, 40px); }
+    .hero-ctas { width: 100%; }
+    .hero-ctas .btn { flex: 1; min-width: 140px; justify-content: center; }
 
     .why { padding: 64px 0; }
     .why-inner { grid-template-columns: 1fr; gap: 40px; }
@@ -1235,10 +1315,10 @@ const breadcrumbs = [
     .tier-row { grid-template-columns: 1fr; }
     .tier-item { padding: 28px 20px; }
 
-    .donate-trust { padding: 64px 0; }
+    .donate-trust { padding: 72px 0; }
     .donate-trust-inner {
       grid-template-columns: 1fr;
-      gap: 40px;
+      gap: 48px;
     }
 
     .other-ways { padding: 64px 0; }
@@ -1263,10 +1343,10 @@ const breadcrumbs = [
   }
 
   @media (max-width: 480px) {
-    .donate-hero-lead { margin-bottom: 24px; }
+    .hero-lead { margin-bottom: 24px; }
     .btn-lg { font-size: 15px; padding: 16px 32px; }
     .tier-row { grid-template-columns: 1fr; }
-    .dt-card { padding: 28px; }
+    .dt-card { padding: 24px 28px; }
   }
 
   /* ══════════════════════════════════════════

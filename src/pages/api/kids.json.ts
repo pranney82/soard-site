@@ -1,7 +1,8 @@
 import { getCollection } from 'astro:content';
+import { getPublishedKids } from '../../utils/collections';
 
 export async function GET() {
-  const allKids = await getCollection('kids');
+  const allKids = await getPublishedKids();
 
   const kids = allKids
     .filter(k => k.data.status === 'completed' && k.data.heroImage)

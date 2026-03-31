@@ -3,5 +3,9 @@
   "slug": "your-agent-catelyn",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/your-agent-catelyn/public",
   "tier": "construction",
-  "featured": false
+  "featured": false,
+  "category": [
+    "community"
+  ],
+  "level": "friend"
 }

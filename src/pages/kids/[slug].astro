@@ -23,10 +23,11 @@
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import Button from '../../components/ui/Button.astro';
 import { getCollection } from 'astro:content';
+import { getPublishedKids } from '../../utils/collections';
 import { getKidProfileSchema } from '../../utils/schema';
 
 export async function getStaticPaths() {
-  const kids = await getCollection('kids');
+  const kids = await getPublishedKids();
   const sorted = kids.sort((a, b) => (b.data.year || 0) - (a.data.year || 0));
   // Seeded shuffle — deterministic per slug so builds produce identical HTML
   // when content hasn't changed (preserves CF edge cache for 187+ pages)
@@ -355,7 +356,7 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
             </div>
             <div class="fundraise__content">
               <h2 class="fundraise__title">Help fund {kid.name}'s room</h2>
-              <p class="fundraise__text">Your donation goes directly toward building {kid.name}'s {kid.roomTypes?.length ? kid.roomTypes.join(' & ').toLowerCase() : 'dream room'}. Zeffy charges zero platform fees — every dollar reaches our mission.</p>
+              <p class="fundraise__text">Your donation helps build {kid.name}'s {kid.roomTypes?.length ? kid.roomTypes.join(' & ').toLowerCase() : 'dream room'}. Zeffy charges zero platform fees so more of your gift reaches our mission.</p>
             </div>
             <a href={kid.fundraisingUrl} target="_blank" rel="noopener noreferrer" class="fundraise__btn">
               Donate Now

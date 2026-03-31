@@ -6,7 +6,195 @@
   "year": "2022",
   "description": "The Drake House provides housing and education for single mothers and their children experiencing homelessness in North Metro Atlanta. SOARD renovated their main headquarters — redesigning classrooms, activity spaces, a community kitchen, and teen gathering rooms to create an environment where families can recover, learn, and rebuild with dignity.",
   "color": "#C62828",
-  "imageId": "",
+  "imageId": "community/the-drake-house/after-01",
   "imageAlt": "The Drake House headquarters renovated by SOARD",
-  "order": 4
+  "order": 4,
+  "founded": "2006",
+  "heroImage": "community/the-drake-house/after-01",
+  "metaDescription": "See how Sunshine on a Ranney Day renovated The Drake House headquarters — classrooms, a community kitchen, and teen spaces for families overcoming homelessness.",
+  "story": "Founded in 2006, The Drake House provides housing and education programs for single mothers and their children who are experiencing homelessness in North Metro Atlanta. It is a community where every family has the opportunity to recover quickly and with dignity from their homeless situation.\n\nEach year Sunshine on a Ranney Day completes a special community project that helps a large number of children and families. SOARD was excited to help The Drake House by renovating their main headquarters. This makeover included redesigning and renovating multiple rooms that serve as classrooms for kids studying, learning life skills, arts and crafts, and safe spaces for them to lounge. The rooms also serve to help moms with relationship building, parenting, health and wellness, and money management.\n\nThe goal of the makeover was to create flexible-use spaces that allow the children to feel at home in a learning and activity environment. The spaces also help keep the community of kids engaged with each other, creating an extended 'family' feel. The central community space in the basement is the food serving area — previously extremely cramped without a natural flow, inhibiting the ability to smoothly cater to families participating in the buffet line. SOARD created this natural flow through relocation of structural walls and the addition of a large island space.\n\nThere was not previously a dedicated space for older children and teens to gather for free time and engage with The Drake House volunteers for tutoring. SOARD converted the upstairs executive offices into that space, providing a leisure area as well as a learning and meeting space.",
+  "quote": "Over 40% of Atlanta's homeless population are women and children.",
+  "beforePhotos": [
+    {
+      "url": "community/the-drake-house/before-01",
+      "alt": "The Drake House kitchen area before renovation"
+    },
+    {
+      "url": "community/the-drake-house/before-02",
+      "alt": "The Drake House classroom before renovation"
+    },
+    {
+      "url": "community/the-drake-house/before-03",
+      "alt": "The Drake House common area before renovation"
+    },
+    {
+      "url": "community/the-drake-house/before-04",
+      "alt": "The Drake House office space before renovation"
+    }
+  ],
+  "afterPhotos": [
+    {
+      "url": "community/the-drake-house/after-01",
+      "alt": "The Drake House renovated gathering space"
+    },
+    {
+      "url": "community/the-drake-house/after-02",
+      "alt": "Renovated learning area with new furniture"
+    },
+    {
+      "url": "community/the-drake-house/after-03",
+      "alt": "New classroom space for children"
+    },
+    {
+      "url": "community/the-drake-house/after-04",
+      "alt": "SOARD team at The Drake House reveal"
+    },
+    {
+      "url": "community/the-drake-house/after-05",
+      "alt": "Renovated community kitchen with island"
+    },
+    {
+      "url": "community/the-drake-house/after-06",
+      "alt": "Drake House reveal celebration"
+    },
+    {
+      "url": "community/the-drake-house/after-07",
+      "alt": "New teen hangout and study space"
+    },
+    {
+      "url": "community/the-drake-house/after-08",
+      "alt": "Renovated hallway with fresh design"
+    },
+    {
+      "url": "community/the-drake-house/after-09",
+      "alt": "Activity room for kids at Drake House"
+    },
+    {
+      "url": "community/the-drake-house/after-10",
+      "alt": "New seating area in community space"
+    },
+    {
+      "url": "community/the-drake-house/after-11",
+      "alt": "Completed renovation detail"
+    }
+  ],
+  "photos": [],
+  "partnerLogos": [
+    {
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2021/06/logo_jackson_healthcare.png",
+      "name": "Jackson Healthcare"
+    },
+    {
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2021/06/logo_randall_paulson.png",
+      "name": "Randall Paulson Architects"
+    },
+    {
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2021/06/logo_real_floors_commercial.png",
+      "name": "Real Floors Commercial"
+    },
+    {
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2021/10/logo_randall_brothers.png",
+      "name": "Randall Brothers"
+    },
+    {
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2022/10/logo_sugar_hill_outdoors.png",
+      "name": "Sugar Hill Outdoors"
+    },
+    {
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2021/06/logo_mohawk.png",
+      "name": "Mohawk"
+    },
+    {
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2022/11/logo_envision_office_solutions.png",
+      "name": "Envision Office Solutions"
+    },
+    {
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2022/07/logo_builders_cabinet_company.png",
+      "name": "Builders Cabinet Company"
+    },
+    {
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2022/10/logo_rexel_foundation.png",
+      "name": "Rexel Foundation"
+    },
+    {
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2021/06/logo_cambria.png",
+      "name": "Cambria"
+    },
+    {
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2021/07/logo_cr_construction_v2.png",
+      "name": "CR Construction"
+    },
+    {
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2021/06/logo_echols.png",
+      "name": "Echols"
+    },
+    {
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2022/10/logo_tlc_engineering.png",
+      "name": "TLC Engineering"
+    },
+    {
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2023/01/logo_3lp_engineering.jpg",
+      "name": "3LP Engineering"
+    },
+    {
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2021/10/logo_emser_tile.jpg",
+      "name": "Emser Tile"
+    },
+    {
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2021/06/logo_wall_nut_custom_wall_murals.png",
+      "name": "The Wall Nut"
+    },
+    {
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2021/06/logo_comfort_research.png",
+      "name": "Comfort Research"
+    },
+    {
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2021/06/logo_atlas_disposal.png",
+      "name": "Atlas Disposal"
+    },
+    {
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2022/10/logo_cosentino.png",
+      "name": "Cosentino"
+    },
+    {
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2022/10/logo_mri_software.svg.png",
+      "name": "MRI Software"
+    },
+    {
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2022/06/logo_roswell_womens_club.webp",
+      "name": "Roswell Woman's Club"
+    },
+    {
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2022/10/logo_alpharetta_rotary.jpg",
+      "name": "Alpharetta Rotary"
+    },
+    {
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2022/10/logo_ids_demo.png",
+      "name": "IDS Demo"
+    },
+    {
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2022/10/logo_jk_electrical.png",
+      "name": "JK Electrical"
+    },
+    {
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2022/10/logo_tko_plumbing.webp",
+      "name": "TKO Plumbing"
+    },
+    {
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2022/10/logo_baker_paint.png",
+      "name": "Baker Paint"
+    },
+    {
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2021/06/logo_swinerton.png",
+      "name": "Swinerton"
+    },
+    {
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2021/06/logo_nicole_photography.png",
+      "name": "Nicole Photography"
+    },
+    {
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2021/06/logo_nothing_bundt_cakes.png",
+      "name": "Nothing Bundt Cakes"
+    }
+  ]
 }

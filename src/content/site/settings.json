@@ -28,11 +28,11 @@
     "cta2Link": "#stories"
   },
   "featuredKidSlug": "amari",
-  "heroKidSlug": "adrian",
-  "heroKidPhotoId": "",
+  "heroKidSlug": "adrian-2025",
+  "heroKidPhotoId": "kids/adrian/1774454540229-Adrian-SRD--33.jpg",
   "kidShowcase": [
     {
-      "slug": "adrian",
+      "slug": "adrian-2025",
       "cfId": "kids/adrian/photo-18"
     },
     {
@@ -65,13 +65,13 @@
     }
   ],
   "sectionPhotos": {
-    "missionMain": "kids/glenn/1774461115320-Untitled-design-22.png",
-    "missionAccent": "kids/summer/1774457765477-Summer-35.jpg",
+    "missionMain": "kids/emery/1774895731678-Untitled-design-31.png",
+    "missionAccent": "kids/desmond/photo-19",
     "storyPhoto": "kids/zyah/hero",
-    "roomBedroom": "kids/griffin/hero",
-    "roomBath": "kids/zyah/hero",
-    "roomTherapy": "kids/jackson/hero",
-    "process": "kids/oakley/photo-15"
+    "roomBedroom": "kids/bryce/photo-22",
+    "roomBath": "kids/adrian/1774454538805-Adrian-SRD--30.jpg",
+    "roomTherapy": "kids/karter/1774384957640-Karter-Reveal-People-9.jpg",
+    "process": "kids/adrian/1774454540229-Adrian-SRD--33.jpg"
   },
   "partnerLogos": [
     {
@@ -118,7 +118,7 @@
   "donatePhotos": {
     "hero": "kids/oakley/hero",
     "heroKidName": "Oakley",
-    "story": "kids/amari/hero",
+    "story": "kids/amari/photo-09",
     "storyKidName": "Amari"
   },
   "application": {
@@ -138,12 +138,20 @@
   "sunnyAndRanneyRooms": [],
   "photoTimestamps": {
     "donatePhotos.hero": "2026-03-25T16:42:57.347Z",
-    "donatePhotos.story": "2026-03-25T16:43:08.923Z",
+    "donatePhotos.story": "2026-03-30T19:13:44.133Z",
     "featuredKidSlug": "2026-03-25T17:24:10.084Z",
-    "kidShowcase": "2026-03-25T17:26:23.958Z",
-    "sectionPhotos.process": "2026-03-25T18:10:19.473Z",
-    "sectionPhotos.missionMain": "2026-03-26T01:33:00.467Z",
-    "sectionPhotos.missionAccent": "2026-03-26T01:33:07.602Z",
-    "heroKidSlug": "2026-03-26T01:49:31.703Z"
-  }
+    "kidShowcase": "2026-03-30T17:46:01.341Z",
+    "sectionPhotos.process": "2026-03-30T18:52:09.176Z",
+    "sectionPhotos.missionMain": "2026-03-30T18:51:43.241Z",
+    "sectionPhotos.missionAccent": "2026-03-30T18:52:01.925Z",
+    "heroKidSlug": "2026-03-30T17:41:00.286Z",
+    "heroKidPhotoId": "2026-03-31T12:10:09.666Z",
+    "sectionPhotos.roomBedroom": "2026-03-30T18:52:44.310Z",
+    "sectionPhotos.roomBath": "2026-03-30T18:52:52.129Z",
+    "sectionPhotos.roomTherapy": "2026-03-30T18:52:59.821Z",
+    "featuredStoryImage": "2026-03-31T12:10:02.322Z"
+  },
+  "featuredStoryHeadline": "Amari's new space gave him independence — and his family peace of mind.",
+  "featuredStoryDescription": "Amari, age 10, was injured in a head-on collision that left him paralyzed from waist down & an amputee. Our team transformed his space into an accessible, joyful haven, with custom features designed around his unique needs and personality.",
+  "featuredStoryImage": ""
 }

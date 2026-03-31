@@ -11,30 +11,27 @@ interface Props {
 }
 
 const { theme = 'dark', linked = true } = Astro.props;
-import { CF_BASE as CF, cfSrcset } from '../../utils/cf-image';
+import { getCollection } from 'astro:content';
+import { CF_BASE as CF, cfSrcset, cfId } from '../../utils/cf-image';
 const href = linked ? '/publicity' : undefined;
 
-let logos: Array<{id: string; alt: string}> = [];
-try {
-  const media = await import('../../content/site/media.json');
-  const data = media.default || media;
-  if (Array.isArray(data.pressLogos)) {
-    logos = data.pressLogos;
-  }
-} catch { /* config missing — render nothing */ }
+const allLogos = await getCollection('medialogos');
+const logos = allLogos
+  .map(entry => entry.data)
+  .sort((a, b) => (a.order || 0) - (b.order || 0));
 ---
 
 {logos.length > 0 && (
 <div class="ml" data-theme={theme}>
   <div class="ml__label">As Featured</div>
   <div class="ml__row">
-    {logos.map(logo => href ? (
-      <a href={href} class="ml__item" aria-label={`Featured on ${logo.alt}`}>
+    {logos.map(logo => { const id = cfId(logo.logo); return href ? (
+      <a href={href} class="ml__item" aria-label={`Featured on ${logo.name}`}>
         <img
-          src={`${CF}/${logo.id}/w=160,q=75`}
-          srcset={cfSrcset(logo.id, [120, 160, 240, 320], { quality: 75 })}
+          src={`${CF}/${id}/w=160,q=75`}
+          srcset={cfSrcset(id, [120, 160, 240, 320], { quality: 75 })}
           sizes="160px"
-          alt={logo.alt}
+          alt={logo.name}
           class="ml__logo"
           loading="eager"
           fetchpriority="low"
@@ -45,10 +42,10 @@ try {
     ) : (
       <div class="ml__item">
         <img
-          src={`${CF}/${logo.id}/w=160,q=75`}
-          srcset={cfSrcset(logo.id, [120, 160, 240, 320], { quality: 75 })}
+          src={`${CF}/${id}/w=160,q=75`}
+          srcset={cfSrcset(id, [120, 160, 240, 320], { quality: 75 })}
           sizes="160px"
-          alt={logo.alt}
+          alt={logo.name}
           class="ml__logo"
           loading="eager"
           fetchpriority="low"
@@ -56,7 +53,7 @@ try {
           height="48"
         />
       </div>
-    ))}
+    )})}
   </div>
 </div>
 )}

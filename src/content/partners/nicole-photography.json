@@ -1,7 +1,9 @@
 {
-  "name": "Nicole Photography",
+  "name": "Nicole W Photography",
   "slug": "nicole-photography",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/nicole-photography/public",
   "tier": "community",
-  "featured": false
+  "featured": false,
+  "level": "friend",
+  "category": "community"
 }

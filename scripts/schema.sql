@@ -1,6 +1,14 @@
 -- SOARD D1 Database Schema
 -- Run: wrangler d1 execute soard-db --file=scripts/schema.sql
 
+-- Schema version tracking — prevents re-running migrations and documents history
+CREATE TABLE IF NOT EXISTS schema_migrations (
+  version INTEGER PRIMARY KEY,
+  name TEXT NOT NULL,
+  applied_at TEXT DEFAULT (datetime('now'))
+);
+INSERT OR IGNORE INTO schema_migrations (version, name) VALUES (1, 'initial schema');
+
 -- Kids profiles (187+ rows)
 CREATE TABLE IF NOT EXISTS kids (
   slug TEXT PRIMARY KEY,
@@ -78,6 +86,16 @@ CREATE TABLE IF NOT EXISTS community (
   data TEXT NOT NULL,
   updated_at TEXT DEFAULT (datetime('now'))
 );
+
+-- Media logos (press outlet logos for homepage)
+CREATE TABLE IF NOT EXISTS medialogos (
+  slug TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  order_num INTEGER DEFAULT 0,
+  data TEXT NOT NULL,
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_medialogos_name ON medialogos(name);
 
 -- Articles (3+ rows)
 CREATE TABLE IF NOT EXISTS articles (

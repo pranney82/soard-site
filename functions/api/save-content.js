@@ -1,6 +1,9 @@
 /**
  * POST /api/save-content
- * Creates or updates content in D1 AND commits to GitHub.
+ * Updates D1 (source of truth for builds) THEN commits to GitHub (VCS backup).
+ * D1 is what the prebuild script reads — it must always have the latest data.
+ * GitHub failures are logged but don't block the save.
+ *
  * Expects JSON body:
  *   {
  *     path: "src/content/kids/amari.json",
@@ -57,7 +60,7 @@ export async function onRequestPost(context) {
       }
     } catch (e) { /* first save — no old data */ }
 
-    // 1. Write to D1 (fast read cache for admin panel)
+    // 1. Write to D1 FIRST (source of truth — prebuild reads from D1, not GitHub)
     if (parsed.type === 'site') {
       await DB.prepare(
         'INSERT OR REPLACE INTO site_config (key, data, updated_at) VALUES (?, ?, ?)'
@@ -84,7 +87,7 @@ export async function onRequestPost(context) {
 
     const sha = await generateSha(jsonStr);
 
-    // 2. Commit to GitHub (source of truth). Awaited so we can report status to admin.
+    // 2. Commit to GitHub (VCS backup). Non-blocking — D1 already has the data.
     let gitStatus = 'ok';
     try {
       await commitFile(context.env, path, prettyJson + '\n', message);

@@ -7,7 +7,54 @@
   "description": "Founded in 1967, the CDA in Roswell gives young children the best chance to read on grade level by third grade, graduate high school, and break the cycle of generational poverty. SOARD is part of the CDA's Learn.Play.Serve campaign — creating a new toddler classroom and community room with architecture by Randall Paulson, design by Crosby Design Group, and construction by Trident Construction.",
   "color": "#00838F",
   "badge": "In Progress",
-  "imageId": "",
+  "imageId": "community/childrens-development-academy/before-01",
   "imageAlt": "Children's Development Academy building before renovation",
-  "order": 6
+  "order": 6,
+  "founded": "1967",
+  "heroImage": "community/childrens-development-academy/before-01",
+  "metaDescription": "Sunshine on a Ranney Day is partnering with the Children's Development Academy in Roswell to create a new toddler classroom and community room as part of their Learn.Play.Serve campaign.",
+  "story": "In 1967, the Children's Development Academy's founders were driven by the belief that the best way to eradicate generational poverty was to start with the children. Today, the CDA gives young children the very best chance to read on grade level by the third grade, graduate from high school, attend college, and achieve other life-altering goals.\n\nSunshine on a Ranney Day is excited to be part of the CDA's Learn.Play.Serve campaign which will involve an extensive remodel to the CDA's current building. SOARD is organizing amazing partners to help create a new toddler classroom which will allow more children to enter the program, and a new community room which will be used by the CDA for programs and meetings.\n\nSOARD has organized some of our amazing partners to work with the CDA to complete this project. Randall Paulson handled the architecture, Crosby Design Group the design, and Trident Construction will be handling the construction.",
+  "quote": null,
+  "beforePhotos": [
+    {
+      "url": "community/childrens-development-academy/before-01",
+      "alt": "CDA building exterior before renovation"
+    },
+    {
+      "url": "community/childrens-development-academy/before-02",
+      "alt": "CDA interior classroom before renovation"
+    },
+    {
+      "url": "community/childrens-development-academy/before-03",
+      "alt": "CDA hallway before renovation"
+    },
+    {
+      "url": "community/childrens-development-academy/before-04",
+      "alt": "CDA room to be converted to toddler classroom"
+    },
+    {
+      "url": "community/childrens-development-academy/before-05",
+      "alt": "CDA space to be converted to community room"
+    },
+    {
+      "url": "community/childrens-development-academy/before-06",
+      "alt": "CDA building detail before renovation"
+    }
+  ],
+  "afterPhotos": [],
+  "photos": [],
+  "partnerLogos": [
+    {
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2021/06/logo_randall_paulson.png",
+      "name": "Randall Paulson Architects"
+    },
+    {
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2021/06/logo_crosby_design_group-e1742500582203.png",
+      "name": "Crosby Design Group"
+    },
+    {
+      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2026/01/Trident_ESOP__Horizontal-Color-scaled.png",
+      "name": "Trident Construction"
+    }
+  ]
 }

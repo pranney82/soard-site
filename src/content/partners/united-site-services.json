@@ -3,5 +3,10 @@
   "slug": "united-site-services",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/united-site-services/public",
   "tier": "construction",
-  "featured": false
+  "featured": false,
+  "category": [
+    "build"
+  ],
+  "level": "friend",
+  "website": "https://www.unitedsiteservices.com"
 }

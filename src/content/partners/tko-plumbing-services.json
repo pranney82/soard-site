@@ -4,5 +4,9 @@
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/tko-plumbing/public",
   "tier": "construction",
   "featured": true,
-  "website": "https://www.tkoplumbingservices.com"
+  "website": "https://www.tkoplumbingservices.com",
+  "category": [
+    "build"
+  ],
+  "level": "builder"
 }

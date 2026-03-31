@@ -3,5 +3,10 @@
   "slug": "swinerton",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/swinerton/public",
   "tier": "construction",
-  "featured": false
+  "featured": false,
+  "category": [
+    "build"
+  ],
+  "website": "https://swinerton.com",
+  "level": "friend"
 }

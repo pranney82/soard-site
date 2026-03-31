@@ -3,5 +3,7 @@
   "slug": "pear-tree-photography",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/pear-tree-photography/public",
   "tier": "community",
-  "featured": false
+  "featured": false,
+  "level": "friend",
+  "category": "community"
 }

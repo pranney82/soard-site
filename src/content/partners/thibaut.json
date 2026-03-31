@@ -3,5 +3,10 @@
   "slug": "thibaut",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/thibaut/public",
   "tier": "construction",
-  "featured": false
+  "featured": false,
+  "category": [
+    "build"
+  ],
+  "website": "https://www.thibautdesign.com",
+  "level": "friend"
 }

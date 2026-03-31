@@ -3,5 +3,8 @@
   "slug": "primerica",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/primerica/public",
   "tier": "construction",
-  "featured": false
+  "featured": false,
+  "level": "friend",
+  "category": "funding",
+  "website": "https://www.primerica.com/"
 }

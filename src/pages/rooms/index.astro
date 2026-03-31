@@ -8,12 +8,13 @@
 import PageLayout from '../../layouts/PageLayout.astro';
 import Button from '../../components/ui/Button.astro';
 import { getCollection } from 'astro:content';
+import { getPublishedKids } from '../../utils/collections';
 import { cfRaw, cfSrcset, cfLqip } from '../../utils/cf-image';
 import { getSiteStats } from '../../utils/stats';
 
 const stats = await getSiteStats();
 
-const allKids = await getCollection('kids');
+const allKids = await getPublishedKids();
 const featured = allKids
   .filter(k => k.data.featured && k.data.caseStudy && k.data.heroImage)
   .sort((a, b) => (b.data.year || 0) - (a.data.year || 0));

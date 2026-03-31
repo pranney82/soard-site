@@ -3,5 +3,6 @@
   "slug": "samsung",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/samsung/public",
   "tier": "construction",
-  "featured": false
+  "featured": false,
+  "level": "friend"
 }

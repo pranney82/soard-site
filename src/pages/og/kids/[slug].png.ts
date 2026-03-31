@@ -1,9 +1,10 @@
 import type { APIRoute, GetStaticPaths } from 'astro';
 import { getCollection } from 'astro:content';
+import { getPublishedKids } from '../../../utils/collections';
 import { generateOgImage } from '../../../utils/og';
 
 export const getStaticPaths: GetStaticPaths = async () => {
-  const kids = await getCollection('kids');
+  const kids = await getPublishedKids();
   return kids.map(kid => ({
     params: { slug: kid.data.slug },
     props: { kid: kid.data },

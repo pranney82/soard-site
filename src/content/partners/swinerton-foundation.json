@@ -1,7 +1,12 @@
 {
-  "name": "Swinerton Foundation",
+  "name": "The Swinerton Foundation",
   "slug": "swinerton-foundation",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/swinerton-foundation/public",
   "tier": "community",
-  "featured": false
+  "featured": false,
+  "category": [
+    "funding"
+  ],
+  "website": "https://theswinertonfoundation.org",
+  "level": "friend"
 }

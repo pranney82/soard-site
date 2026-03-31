@@ -2,11 +2,11 @@
 /**
  * Leadership — Team & Board of Directors
  * Premium editorial layout with founders feature, scroll reveal,
- * JSON-LD structured data, and breadcrumbs.
+ * B&W→color photo treatment, JSON-LD structured data, and breadcrumbs.
  */
 import PageLayout from '../../layouts/PageLayout.astro';
 import { getCollection } from 'astro:content';
-import { cfUrl, cfDensitySrcset, cfSrcset } from '../../utils/cf-image';
+import { cfUrl, cfDensitySrcset, cfSrcset, cfLqip } from '../../utils/cf-image';
 import { getWebPageSchema, getBreadcrumbSchema, buildSchemaGraph } from '../../utils/schema';
 import { getSiteStats } from '../../utils/stats';
 
@@ -50,45 +50,60 @@ const jsonLd = buildSchemaGraph(
   heroSubtitle="The people behind the mission"
 >
 
-  <!-- ══════ FOUNDERS FEATURE ══════ -->
+  <!-- ══════ FOUNDERS FEATURE — Editorial Split ══════ -->
   <section class="founders-section" id="founders" aria-labelledby="founders-heading">
     <div class="container">
       <div class="section-intro" data-reveal>
+        <span class="section-eyebrow">Est. 2012</span>
         <h2 class="section-label" id="founders-heading">Co-Founders</h2>
-        <p class="section-desc">
-          Since 2012, Holly and Peter Ranney have poured their hearts into building
-          <span class="highlight">dream rooms</span> for children who need them most.
-        </p>
+        <p class="section-tagline">The heart and hands behind every dream room</p>
       </div>
 
-      <div class="founders-grid">
-        {founders.map((member, i) => (
-          <div class="founder-card" data-reveal data-delay={String(i)}>
-            <div class="founder-photo-wrap">
-              <div class="founder-photo">
-                {member.data.photo ? (
-                  <img
-                    src={cfUrl(member.data.photo, { w: 280, h: 280, fit: 'cover', gravity: 'face' })}
-                    srcset={cfSrcset(member.data.photo, [200, 280, 400, 560], { fit: 'cover', gravity: 'face', aspectRatio: 1 })}
-                    sizes="(max-width: 480px) 200px, 280px"
-                    alt={`${member.data.name}, ${member.data.title}`}
-                    width="280" height="280"
-                    loading="eager"
-                    decoding="async"
-                  />
-                ) : (
-                  <div class="photo-placeholder">
-                    <img src={cfUrl(PLACEHOLDER, { w: 256 })} alt="" class="placeholder-icon" width="256" height="256" loading="lazy" decoding="async" />
-                  </div>
-                )}
+      {founders.map((member, i) => (
+        <>
+          {i > 0 && <div class="founder-divider" aria-hidden="true" data-reveal><span></span><span></span><span></span></div>}
+          <article class={`founder-feature ${i % 2 === 1 ? 'founder-feature--reverse' : ''}`} data-reveal data-delay={String(i)}>
+            <div class="founder-photo-col">
+              <div class="founder-photo-wrap">
+                <div class="founder-photo" style={member.data.photo ? `background-image:url(${cfLqip(member.data.photo)});background-size:cover;background-position:center` : undefined}>
+                  {member.data.photo ? (
+                    <img
+                      src={cfUrl(member.data.photo, { w: 400, h: 400, fit: 'cover', gravity: 'face' })}
+                      srcset={cfSrcset(member.data.photo, [280, 400, 560, 800], { fit: 'cover', gravity: 'face', aspectRatio: 1 })}
+                      sizes="(max-width: 600px) 260px, (max-width: 900px) 320px, 400px"
+                      alt={`${member.data.name}, ${member.data.title}`}
+                      width="400" height="400"
+                      loading="eager"
+                      decoding="async"
+                    />
+                  ) : (
+                    <div class="photo-placeholder">
+                      <img src={cfUrl(PLACEHOLDER, { w: 256 })} alt="" class="placeholder-icon" width="256" height="256" loading="lazy" decoding="async" />
+                    </div>
+                  )}
+                </div>
+                <div class="founder-ring" aria-hidden="true"></div>
               </div>
-              <div class="founder-ring" aria-hidden="true"></div>
             </div>
-            <h3 class="founder-name">{member.data.name}</h3>
-            <p class="founder-title">{member.data.title}</p>
-          </div>
-        ))}
-      </div>
+            <div class="founder-bio-col">
+              <h3 class="founder-name">{member.data.name}</h3>
+              <span class="founder-rule" aria-hidden="true"></span>
+              <p class="founder-title">{member.data.title}</p>
+              {member.data.bio && (
+                <p class="founder-bio">{member.data.bio}</p>
+              )}
+              {member.data.quote && (
+                <blockquote class="founder-quote">
+                  <svg class="quote-mark" aria-hidden="true" width="32" height="24" viewBox="0 0 32 24" fill="none">
+                    <path d="M0 24V14.4C0 10.4 0.8 7.2 2.4 4.8C4.1 2.4 6.9 0.5 10.8 0L12 3.6C9.7 4.3 8.1 5.4 7.1 6.9C6.1 8.4 5.6 10.1 5.6 12H12V24H0ZM20 24V14.4C20 10.4 20.8 7.2 22.4 4.8C24.1 2.4 26.9 0.5 30.8 0L32 3.6C29.7 4.3 28.1 5.4 27.1 6.9C26.1 8.4 25.6 10.1 25.6 12H32V24H20Z" fill="currentColor"/>
+                  </svg>
+                  <p>{member.data.quote}</p>
+                </blockquote>
+              )}
+            </div>
+          </article>
+        </>
+      ))}
     </div>
   </section>
 
@@ -117,23 +132,23 @@ const jsonLd = buildSchemaGraph(
     <div class="container">
       <div class="section-intro" data-reveal>
         <h2 class="section-label" id="team-heading">Our Team</h2>
+        <p class="section-tagline">The dedicated crew that turns <span class="highlight">dreams into reality</span></p>
         <p class="section-desc">
-          The dedicated crew that turns <span class="highlight">dreams into reality</span> — 
-          from design and construction to operations and community outreach.
+          From design and construction to operations and community outreach.
         </p>
       </div>
 
       <div class="team-grid">
         {teamMembers.map((member, i) => (
           <div class="member-card" data-reveal data-delay={String(Math.min(i, 3))}>
-            <div class="member-photo">
+            <div class="member-photo" style={member.data.photo ? `background-image:url(${cfLqip(member.data.photo)});background-size:cover;background-position:center` : undefined}>
               {member.data.photo ? (
                 <img
-                  src={cfUrl(member.data.photo, { w: 180, h: 180, fit: 'cover', gravity: 'face' })}
-                  srcset={cfSrcset(member.data.photo, [130, 180, 260, 360], { fit: 'cover', gravity: 'face', aspectRatio: 1 })}
-                  sizes="(max-width: 600px) 130px, 180px"
+                  src={cfUrl(member.data.photo, { w: 220, h: 220, fit: 'cover', gravity: 'face' })}
+                  srcset={cfSrcset(member.data.photo, [160, 220, 320, 440], { fit: 'cover', gravity: 'face', aspectRatio: 1 })}
+                  sizes="(max-width: 600px) 160px, 220px"
                   alt={`${member.data.name}, ${member.data.title}`}
-                  width="180" height="180"
+                  width="220" height="220"
                   loading="lazy"
                   decoding="async"
                 />
@@ -159,15 +174,16 @@ const jsonLd = buildSchemaGraph(
     <div class="container">
       <div class="section-intro" data-reveal>
         <h2 class="section-label" id="board-heading">Board of Directors</h2>
+        <p class="section-tagline">Community leaders guiding our <span class="highlight">mission and growth</span></p>
         <p class="section-desc">
-          Community leaders and industry experts who guide our <span class="highlight">mission and growth</span>.
+          Industry experts who volunteer their time and expertise to ensure we serve more families, more effectively.
         </p>
       </div>
 
       <div class="board-grid">
         {boardMembers.map((member, i) => (
           <div class="board-card" data-reveal data-delay={String(Math.min(i, 4))}>
-            <div class="board-photo">
+            <div class="board-photo" style={member.data.photo ? `background-image:url(${cfLqip(member.data.photo)});background-size:cover;background-position:center` : undefined}>
               {member.data.photo ? (
                 <img
                   src={cfUrl(member.data.photo, { w: 80, h: 80, fit: 'cover', gravity: 'face' })}
@@ -204,7 +220,7 @@ const jsonLd = buildSchemaGraph(
           Want to <span class="highlight">join the mission</span>?
         </h2>
         <p class="cta-text">
-          We're always looking for passionate people — whether you want to volunteer, 
+          We're always looking for passionate people — whether you want to volunteer,
           partner, or support our work in other ways.
         </p>
         <div class="cta-buttons">
@@ -218,31 +234,98 @@ const jsonLd = buildSchemaGraph(
 
 <style>
   /* ═══════════════════════════════════════════
-     FOUNDERS FEATURE
+     SECTION INTRO — Two-tier headings
+     ═══════════════════════════════════════════ */
+  .section-intro {
+    text-align: center;
+    max-width: 640px;
+    margin-inline: auto;
+    margin-bottom: var(--space-3xl);
+  }
+
+  .section-eyebrow {
+    display: inline-block;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--c-white);
+    background: var(--c-dark);
+    padding: 0.35em 1.2em;
+    border-radius: 100px;
+    margin-bottom: var(--space-lg);
+  }
+
+  .section-tagline {
+    font-family: var(--font-display);
+    font-size: clamp(1.35rem, 3vw, 1.75rem);
+    font-weight: 700;
+    color: var(--c-text);
+    line-height: 1.3;
+    margin-bottom: var(--space-sm);
+  }
+
+  .section-desc {
+    font-size: 1.05rem;
+    color: var(--c-text-muted);
+    line-height: 1.7;
+  }
+
+  /* ═══════════════════════════════════════════
+     FOUNDERS — Editorial Split Layout
      ═══════════════════════════════════════════ */
   .founders-section {
-    padding-block: var(--space-4xl) var(--space-3xl);
+    padding-block: var(--space-4xl) var(--space-4xl);
     background: var(--c-cream);
   }
 
-  .founders-grid {
-    display: flex;
-    justify-content: center;
-    gap: clamp(3rem, 8vw, 8rem);
-    max-width: 760px;
+  .founder-feature {
+    display: grid;
+    grid-template-columns: 1fr 1.1fr;
+    gap: clamp(2.5rem, 6vw, 6rem);
+    align-items: center;
+    max-width: 980px;
     margin-inline: auto;
+    margin-top: var(--space-3xl);
   }
 
-  .founder-card {
-    text-align: center;
-    flex: 0 0 auto;
+  .founder-feature--reverse {
+    grid-template-columns: 1.1fr 1fr;
+    direction: rtl;
+  }
+
+  .founder-feature--reverse > * {
+    direction: ltr;
+  }
+
+  /* Decorative dot divider between founders */
+  .founder-divider {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding-block: var(--space-xl);
+    max-width: 980px;
+    margin-inline: auto;
+    margin-top: var(--space-2xl);
+  }
+
+  .founder-divider span {
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: var(--c-border);
+  }
+
+  .founder-photo-col {
+    display: flex;
+    justify-content: center;
   }
 
   .founder-photo-wrap {
     position: relative;
-    width: 280px;
-    height: 280px;
-    margin: 0 auto var(--space-xl);
+    width: clamp(280px, 24vw, 380px);
+    aspect-ratio: 1;
   }
 
   .founder-photo {
@@ -253,48 +336,94 @@ const jsonLd = buildSchemaGraph(
     position: relative;
     z-index: 1;
     background: var(--c-warm-gray);
-    box-shadow: var(--shadow-lg);
+    box-shadow:
+      0 25px 50px -12px rgba(0, 0, 0, 0.15),
+      0 0 0 1px rgba(0, 0, 0, 0.03);
   }
 
   .founder-photo img {
     width: 100%;
     height: 100%;
     object-fit: cover;
-    transition: transform var(--transition-slow);
+    transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
-  .founder-card:hover .founder-photo img {
-    transform: scale(1.05);
+  .founder-feature:hover .founder-photo img {
+    transform: scale(1.04);
   }
 
   .founder-ring {
     position: absolute;
-    inset: -6px;
+    inset: -10px;
     border-radius: 50%;
-    border: 3px solid var(--c-yellow);
+    border: 2px solid var(--c-yellow);
     opacity: 0;
-    transform: scale(0.96);
-    transition: opacity var(--transition-slow), transform var(--transition-slow);
+    transform: scale(0.97);
+    transition: opacity 0.6s ease, transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
-  .founder-card:hover .founder-ring {
-    opacity: 1;
+  .founder-feature:hover .founder-ring {
+    opacity: 0.6;
     transform: scale(1);
+  }
+
+  .founder-bio-col {
+    padding-block: var(--space-xl);
   }
 
   .founder-name {
     font-family: var(--font-display);
-    font-size: 1.35rem;
+    font-size: clamp(1.65rem, 2.8vw, 2.25rem);
     font-weight: 700;
-    margin-bottom: 0.25rem;
     color: var(--c-text);
+    margin-bottom: var(--space-md);
+    line-height: 1.15;
+    letter-spacing: -0.01em;
+  }
+
+  .founder-rule {
+    display: block;
+    width: 48px;
+    height: 2px;
+    background: var(--c-yellow);
+    margin-bottom: var(--space-md);
   }
 
   .founder-title {
-    font-size: 0.95rem;
+    font-size: 0.82rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
     color: var(--c-text-muted);
-    font-weight: 500;
-    line-height: 1.5;
+    margin-bottom: var(--space-xl);
+  }
+
+  .founder-bio {
+    font-size: 1.05rem;
+    color: var(--c-text-muted);
+    line-height: 1.8;
+    margin-bottom: var(--space-xl);
+  }
+
+  .founder-quote {
+    position: relative;
+    padding-left: calc(var(--space-lg) + 4px);
+    border-left: 3px solid var(--c-yellow);
+  }
+
+  .quote-mark {
+    color: var(--c-yellow);
+    opacity: 0.35;
+    margin-bottom: var(--space-sm);
+    display: block;
+  }
+
+  .founder-quote p {
+    font-family: var(--font-display);
+    font-size: 1.05rem;
+    font-style: italic;
+    color: var(--c-text);
+    line-height: 1.65;
   }
 
   /* ═══════════════════════════════════════════
@@ -330,46 +459,30 @@ const jsonLd = buildSchemaGraph(
   }
 
   .ribbon-label {
-    font-size: 0.8rem;
+    font-size: 0.78rem;
     font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: rgba(255, 255, 255, 0.5);
-    margin-top: 0.35rem;
+    letter-spacing: 0.1em;
+    color: rgba(255, 255, 255, 0.45);
+    margin-top: 0.4rem;
     display: block;
   }
 
   .ribbon-divider {
     width: 1px;
     height: 48px;
-    background: rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.1);
     flex-shrink: 0;
   }
 
   /* ═══════════════════════════════════════════
-     SECTION INTRO (shared)
-     ═══════════════════════════════════════════ */
-  .section-intro {
-    text-align: center;
-    max-width: 640px;
-    margin-inline: auto;
-    margin-bottom: var(--space-3xl);
-  }
-
-  .section-desc {
-    font-size: 1.1rem;
-    color: var(--c-text-muted);
-    line-height: 1.7;
-  }
-
-  /* ═══════════════════════════════════════════
-     TEAM GRID
+     TEAM GRID — B&W→Color on hover
      ═══════════════════════════════════════════ */
   .team-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: var(--space-2xl) var(--space-xl);
-    max-width: 860px;
+    gap: var(--space-3xl) var(--space-2xl);
+    max-width: 940px;
     margin-inline: auto;
   }
 
@@ -378,25 +491,32 @@ const jsonLd = buildSchemaGraph(
   }
 
   .member-photo {
-    width: 180px;
-    height: 180px;
+    width: 220px;
+    height: 220px;
     border-radius: 50%;
     overflow: hidden;
     margin: 0 auto var(--space-lg);
     background: var(--c-warm-gray);
-    box-shadow: var(--shadow-md);
-    transition: transform var(--transition-slow), box-shadow var(--transition-slow);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+    transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1),
+                box-shadow 0.5s ease;
   }
 
   .member-card:hover .member-photo {
-    transform: scale(1.05);
-    box-shadow: 0 8px 30px rgba(255, 218, 36, 0.25);
+    transform: scale(1.04) translateY(-4px);
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.1), 0 0 0 3px rgba(255, 218, 36, 0.25);
   }
 
   .member-photo img {
     width: 100%;
     height: 100%;
     object-fit: cover;
+    filter: grayscale(100%) contrast(1.05);
+    transition: filter 0.6s ease;
+  }
+
+  .member-card:hover .member-photo img {
+    filter: grayscale(0%) contrast(1);
   }
 
   .member-name {
@@ -408,19 +528,20 @@ const jsonLd = buildSchemaGraph(
   }
 
   .member-title {
-    font-size: 0.95rem;
+    font-size: 0.9rem;
     color: var(--c-text-muted);
     font-weight: 500;
+    line-height: 1.4;
   }
 
   .member-org {
-    font-size: 0.85rem;
+    font-size: 0.82rem;
     color: var(--c-text-light);
-    margin-top: 0.15rem;
+    margin-top: 0.2rem;
   }
 
   /* ═══════════════════════════════════════════
-     BOARD GRID
+     BOARD GRID — B&W→Color on hover
      ═══════════════════════════════════════════ */
   .board-grid {
     display: grid;
@@ -437,16 +558,16 @@ const jsonLd = buildSchemaGraph(
     background: var(--c-white);
     padding: var(--space-lg) var(--space-xl);
     border-radius: var(--border-radius-lg);
-    box-shadow: var(--shadow-sm);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
     border-left: 3px solid transparent;
-    transition: transform var(--transition-fast),
-                box-shadow var(--transition-fast),
-                border-color var(--transition-fast);
+    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+                box-shadow 0.3s ease,
+                border-color 0.3s ease;
   }
 
   .board-card:hover {
     transform: translateY(-3px);
-    box-shadow: var(--shadow-md);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
     border-left-color: var(--c-yellow);
   }
 
@@ -457,13 +578,18 @@ const jsonLd = buildSchemaGraph(
     overflow: hidden;
     flex-shrink: 0;
     background: var(--c-warm-gray);
-    box-shadow: var(--shadow-sm);
   }
 
   .board-photo img {
     width: 100%;
     height: 100%;
     object-fit: cover;
+    filter: grayscale(100%) contrast(1.05);
+    transition: filter 0.5s ease;
+  }
+
+  .board-card:hover .board-photo img {
+    filter: grayscale(0%) contrast(1);
   }
 
   .board-info {
@@ -472,20 +598,20 @@ const jsonLd = buildSchemaGraph(
 
   .board-name {
     font-family: var(--font-display);
-    font-size: 1.05rem;
+    font-size: 1.02rem;
     font-weight: 700;
     margin-bottom: 0.15rem;
     color: var(--c-text);
   }
 
   .board-title {
-    font-size: 0.85rem;
+    font-size: 0.82rem;
     color: var(--c-text-muted);
     font-weight: 600;
   }
 
   .board-org {
-    font-size: 0.82rem;
+    font-size: 0.78rem;
     color: var(--c-text-light);
     margin-top: 0.15rem;
     line-height: 1.4;
@@ -544,44 +670,89 @@ const jsonLd = buildSchemaGraph(
   /* ═══════════════════════════════════════════
      SCROLL REVEAL
      ═══════════════════════════════════════════ */
-  [data-reveal] {
+  /* Only hide elements when JS is available — prevents invisible content if JS fails */
+  :global(.js-reveal) [data-reveal] {
     opacity: 0;
     transform: translateY(24px);
-    transition: opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1),
-                transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1),
+                transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
-  [data-reveal].is-visible {
+  :global(.js-reveal) [data-reveal].is-visible {
     opacity: 1;
     transform: translateY(0);
   }
 
   /* Stagger delays */
-  [data-reveal][data-delay="1"] { transition-delay: 0.1s; }
-  [data-reveal][data-delay="2"] { transition-delay: 0.2s; }
-  [data-reveal][data-delay="3"] { transition-delay: 0.25s; }
-  [data-reveal][data-delay="4"] { transition-delay: 0.3s; }
+  :global(.js-reveal) [data-reveal][data-delay="1"] { transition-delay: 0.12s; }
+  :global(.js-reveal) [data-reveal][data-delay="2"] { transition-delay: 0.24s; }
+  :global(.js-reveal) [data-reveal][data-delay="3"] { transition-delay: 0.3s; }
+  :global(.js-reveal) [data-reveal][data-delay="4"] { transition-delay: 0.36s; }
 
   /* Respect prefers-reduced-motion */
   @media (prefers-reduced-motion: reduce) {
-    [data-reveal] {
+    :global(.js-reveal) [data-reveal] {
       opacity: 1;
       transform: none;
       transition: none;
+    }
+
+    .member-photo img,
+    .board-photo img {
+      filter: none;
     }
   }
 
   /* ═══════════════════════════════════════════
      RESPONSIVE
      ═══════════════════════════════════════════ */
-  @media (max-width: 768px) {
-    .founders-grid {
+  @media (max-width: 900px) {
+    .founder-feature,
+    .founder-feature--reverse {
       gap: var(--space-2xl);
     }
 
     .founder-photo-wrap {
-      width: 220px;
-      height: 220px;
+      width: clamp(240px, 32vw, 320px);
+    }
+  }
+
+  @media (max-width: 768px) {
+    .founder-feature,
+    .founder-feature--reverse {
+      grid-template-columns: 1fr;
+      text-align: center;
+      gap: var(--space-lg);
+      margin-top: var(--space-2xl);
+      direction: ltr;
+    }
+
+    .founder-photo-wrap {
+      width: 280px;
+      margin-inline: auto;
+    }
+
+    .founder-bio-col {
+      padding-block: 0;
+    }
+
+    .founder-rule {
+      margin-inline: auto;
+    }
+
+    .founder-quote {
+      display: inline-block;
+      text-align: left;
+      max-width: 420px;
+    }
+
+    .founder-name {
+      font-size: 1.65rem;
+    }
+
+    .founder-divider {
+      margin-top: var(--space-lg);
+      padding-block: var(--space-md);
     }
 
     .team-grid {
@@ -590,8 +761,8 @@ const jsonLd = buildSchemaGraph(
     }
 
     .member-photo {
-      width: 140px;
-      height: 140px;
+      width: 160px;
+      height: 160px;
     }
 
     .board-grid {
@@ -604,29 +775,26 @@ const jsonLd = buildSchemaGraph(
       padding-block: var(--space-3xl) var(--space-2xl);
     }
 
-    .founders-grid {
-      flex-direction: column;
-      align-items: center;
-      gap: var(--space-2xl);
-    }
-
     .founder-photo-wrap {
-      width: 200px;
-      height: 200px;
+      width: 240px;
     }
 
     .founder-name {
-      font-size: 1.2rem;
+      font-size: 1.4rem;
+    }
+
+    .founder-bio {
+      font-size: 1rem;
     }
 
     .team-grid {
       grid-template-columns: repeat(2, 1fr);
-      gap: var(--space-xl);
+      gap: var(--space-2xl) var(--space-xl);
     }
 
     .member-photo {
-      width: 120px;
-      height: 120px;
+      width: 140px;
+      height: 140px;
     }
 
     .member-name {
@@ -653,26 +821,27 @@ const jsonLd = buildSchemaGraph(
 
   @media (max-width: 380px) {
     .team-grid {
-      grid-template-columns: repeat(2, 1fr);
-      gap: var(--space-lg);
+      gap: var(--space-xl) var(--space-md);
     }
 
     .member-photo {
-      width: 100px;
-      height: 100px;
+      width: 110px;
+      height: 110px;
     }
 
     .founder-photo-wrap {
-      width: 170px;
-      height: 170px;
+      width: 200px;
     }
   }
 </style>
 
 <script>
-  /* ── Scroll Reveal — IntersectionObserver ── */
+  /* ── Scroll Reveal — JS-dependent progressive enhancement ── */
   const reveals = document.querySelectorAll('[data-reveal]');
   if (reveals.length && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    /* Enable reveal styles only when JS is available */
+    document.documentElement.classList.add('js-reveal');
+
     const observer = new IntersectionObserver((entries) => {
       entries.forEach(entry => {
         if (entry.isIntersecting) {
@@ -683,8 +852,6 @@ const jsonLd = buildSchemaGraph(
     }, { threshold: 0.15, rootMargin: '0px 0px -60px 0px' });
 
     reveals.forEach(el => observer.observe(el));
-  } else {
-    /* Reduced-motion or no elements — make visible immediately */
-    reveals.forEach(el => el.classList.add('is-visible'));
   }
+  /* No else needed — without .js-reveal, content is visible by default */
 </script>

@@ -3,5 +3,7 @@
   "slug": "princess-with-a-purpose",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/princess-with-a-purpose/public",
   "tier": "construction",
-  "featured": false
+  "featured": false,
+  "level": "friend",
+  "category": "community"
 }

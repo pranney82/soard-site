@@ -3,5 +3,10 @@
   "slug": "the-town-carpenter",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/the-town-carpenter/public",
   "tier": "construction",
-  "featured": false
+  "featured": false,
+  "category": [
+    "build"
+  ],
+  "level": "friend",
+  "website": "https://www.thetowncarpenter.com"
 }

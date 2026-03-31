@@ -4,8 +4,13 @@
  * Large-scale renovations at schools, camps, and nonprofits
  * serving children with special needs.
  *
+ * DESIGN: Modeled after the kids index page — editorial split hero,
+ * premium project card grid with same hover system (yellow gradient
+ * overlay, inset border glow, CTA arrow, animated name underline),
+ * spotlight split, and dark CTA. Clean, focused, no section bloat.
+ *
  * PERF NOTES:
- * - Editorial split hero (no full-bleed image)
+ * - Editorial split hero with preloaded LCP image
  * - Hero image: fetchpriority="high", eager loading, LQIP blur-up
  * - All below-fold images: loading="lazy" with LQIP
  * - CFImage component for responsive srcsets
@@ -17,31 +22,33 @@ import { getWebPageSchema, getBreadcrumbSchema, buildSchemaGraph } from '../../u
 import { getCollection } from 'astro:content';
 import { cfRaw, cfSrcset, cfLqip } from '../../utils/cf-image';
 import { getSiteStats } from '../../utils/stats';
+import siteSettings from '../../content/site/settings.json';
 
 /* ── Community Projects from content collection ── */
 const allProjects = await getCollection('community');
 const projects = allProjects
   .map(p => p.data)
-  .sort((a, b) => parseInt(a.year) - parseInt(b.year));
+  .sort((a, b) => {
+    const aInProgress = a.status === 'in-progress' ? 0 : 1;
+    const bInProgress = b.status === 'in-progress' ? 0 : 1;
+    if (aInProgress !== bInProgress) return aInProgress - bInProgress;
+    return parseInt(b.year) - parseInt(a.year) || a.name.localeCompare(b.name);
+  });
 
 const { livesImpacted } = await getSiteStats();
 const totalImpact = livesImpacted.toLocaleString() + '+';
 
-/* ── Gallery photos — the 3 projects with images ── */
-const galleryPhotos = [
-  { id: 'kids/camp-twin-lakes/hero', alt: 'Camp Twin Lakes renovation by SOARD' },
-  { id: 'kids/summit-counseling-center/hero', alt: 'Summit Counseling Center renovation' },
-  { id: 'kids/murphy-harpst/hero', alt: 'Murphy-Harpst Children\'s Center renovation' },
-];
+/* ── Hero photos (editable via admin → Kids on Site → Community) ── */
+const heroPhotoId = siteSettings.communityPhotos?.hero || 'kids/camp-twin-lakes/hero';
+const heroAccentPhotoId = siteSettings.communityPhotos?.accent || 'kids/summit-counseling-center/hero';
 
-/* ── Spotlight photo ── */
+/* ── Spotlight ── */
 const spotlightPhoto = 'community/the-drake-house/after-01';
 
 /* ── Schema ── */
 const pageUrl = 'https://sunshineonaranneyday.com/community/';
 const breadcrumbs = [
   { name: 'Home', url: 'https://sunshineonaranneyday.com/' },
-  { name: 'Rooms', url: 'https://sunshineonaranneyday.com/rooms/' },
   { name: 'Community Projects', url: pageUrl },
 ];
 const jsonLd = buildSchemaGraph(
@@ -60,191 +67,203 @@ const jsonLd = buildSchemaGraph(
   jsonLd={jsonLd}
   breadcrumbs={breadcrumbs}
 >
+  <!-- Preload hero LCP image -->
+  <link slot="head" rel="preload" as="image" imagesrcset={cfSrcset(heroPhotoId, [400, 640, 800, 1024], { fit: 'cover', aspectRatio: 1.25 })} imagesizes="(max-width:768px) 80vw, (max-width:1200px) 38vw, 420px" fetchpriority="high" />
 
-  <!-- Noscript: ensure all content visible if JS is blocked -->
-  <!-- ══════ HERO — Typographic Opening ══════ -->
-  <section class="cp-hero" aria-label="Community Projects">
-    <div class="cp-hero-inner">
-      <div class="section-label cp-hero-label">Community Projects</div>
-      <h1 class="cp-hero-num" aria-label={`${totalImpact} children reached`}>{totalImpact}</h1>
-      <p class="cp-hero-context">children reached through community partnerships</p>
-      <div class="cp-hero-divider" aria-hidden="true"></div>
-      <div class="cp-hero-bottom">
-        <p class="cp-hero-lead">When one room isn't enough, we think bigger. We partner with schools, camps, and nonprofits to transform entire facilities — classrooms, therapy rooms, and gathering spaces that serve thousands of children every year.</p>
-        <div class="cp-hero-ctas">
-          <a href="#projects" class="btn btn-primary">See Our Partners</a>
-          <a href="/donate" class="btn btn-dark">Donate Today</a>
+  <!-- ══════ HERO — Editorial Split (matches apply/donate/home) ══════ -->
+  <section class="hero">
+    <div class="hero-inner">
+      <div class="hero-text">
+        <p class="hero-eyebrow">Community Projects</p>
+        <h1>Thinking <em>bigger</em>.</h1>
+        <p class="hero-lead">When one room isn't enough, we think bigger. We partner with schools, camps, and nonprofits to transform entire facilities — classrooms, therapy rooms, and gathering spaces that serve thousands of children every year.</p>
+        <div class="hero-ctas">
+          <a href="#projects" class="btn btn-primary">See Our Projects <span aria-hidden="true">&darr;</span></a>
         </div>
       </div>
-    </div>
-  </section>
-
-  <!-- ══════ PHOTO GALLERY — Editorial Strip ══════ -->
-  <section class="cp-gallery" aria-label="Community project photos">
-    <div class="cp-gallery-inner">
-      {galleryPhotos.map((photo, i) => (
-        <div class="cp-gallery-photo" data-reveal data-delay={String(i)} style={`background-image:url(${cfLqip(photo.id)})`}>
-          <CFImage
-            src={photo.id}
-            alt={photo.alt}
-            width={600} height={450}
-            sizes="(max-width:768px) 85vw, 33vw"
-            widths={[300, 400, 600]}
-            loading="eager"
-            fit="cover"
+      <div class="hero-frame">
+        <div class="hero-accent" aria-hidden="true"></div>
+        <div class="hero-photo" style={`background-image:url('${cfLqip(heroPhotoId)}')`}>
+          <img
+            src={cfRaw(heroPhotoId, 'w=640,h=800,fit=cover,q=82')}
+            srcset={cfSrcset(heroPhotoId, [400, 640, 800, 1024], { fit: 'cover', aspectRatio: 1.25 })}
+            sizes="(max-width:768px) 80vw, (max-width:1200px) 38vw, 420px"
+            alt="Camp Twin Lakes facility renovated by SOARD"
+            width="640" height="800"
             class="lqip-img"
+            fetchpriority="high"
+            loading="eager"
+            decoding="async"
           />
         </div>
-      ))}
+        <picture class="hero-photo hero-photo--small" style={`background-image:url('${cfLqip(heroAccentPhotoId)}')`}>
+          <source media="(max-width:768px)" srcset="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" />
+          <source media="(min-width:769px)" srcset={cfSrcset(heroAccentPhotoId, [240, 360, 480], { fit: 'cover', aspectRatio: 1.2 })} sizes="180px" />
+          <img
+            src={cfRaw(heroAccentPhotoId, 'w=360,h=432,fit=cover,q=75')}
+            alt="Summit Counseling Center renovation by SOARD"
+            width="360" height="432"
+            class="lqip-img" loading="lazy" decoding="async"
+          />
+        </picture>
+      </div>
+    </div>
+    <div class="hero-stat">
+      <span class="hero-stat-num">{totalImpact}</span>
+      <span class="hero-stat-label">children reached<br/>through partnerships</span>
     </div>
   </section>
 
-  <!-- ══════ IMPACT RIBBON ══════ -->
-  <section class="cp-ribbon" aria-label="Community project impact">
-    <div class="cp-ribbon-inner">
-      <div class="cp-ribbon-stat" data-reveal>
-        <span class="cp-ribbon-num">{projects.length}</span>
-        <span class="cp-ribbon-label">Major<br/>Partners</span>
+  <!-- ══════ PROJECTS GRID ══════ -->
+  <section class="projects" id="projects">
+    <div class="projects-inner">
+      <div class="projects-header" data-reveal>
+        <p class="projects-label">Our Projects</p>
+        <h2>Organizations we've <em class="highlight">transformed</em>.</h2>
+        <p class="projects-sub">Each partnership is a story of transformation — facilities redesigned, spaces reimagined, and thousands of lives changed.</p>
       </div>
-      <div class="cp-ribbon-divider" role="presentation"></div>
-      <div class="cp-ribbon-stat" data-reveal data-delay="1">
-        <span class="cp-ribbon-num">10+</span>
-        <span class="cp-ribbon-label">Years of<br/>Impact</span>
-      </div>
-      <div class="cp-ribbon-divider" role="presentation"></div>
-      <div class="cp-ribbon-stat" data-reveal data-delay="2">
-        <span class="cp-ribbon-num">100<span class="cp-ribbon-pct">%</span></span>
-        <span class="cp-ribbon-label">Volunteer<br/>Driven</span>
-      </div>
-      <div class="cp-ribbon-divider" role="presentation"></div>
-      <div class="cp-ribbon-stat" data-reveal data-delay="3">
-        <span class="cp-ribbon-num">$0</span>
-        <span class="cp-ribbon-label">Cost to<br/>Organizations</span>
+
+      <div class="projects-grid">
+        {projects.map((project, i) => {
+          const hasDetail = !!project.story;
+          const detailHref = `/community/${project.slug}/`;
+          const hasPhoto = project.imageId || project.heroImage;
+          const photoId = project.imageId || project.heroImage || '';
+          return (
+            <a href={hasDetail ? detailHref : undefined} class={`project-card ${!hasDetail ? 'project-card--static' : ''}`} data-reveal data-delay={String(i % 3)}>
+              <div class="project-card__frame" style={hasPhoto && project.imageId ? `background-image:url(${cfLqip(project.imageId)})` : ''}>
+                {hasPhoto ? (
+                  <CFImage
+                    src={photoId}
+                    alt={project.imageAlt || `${project.name} project by SOARD`}
+                    width={480} height={360}
+                    sizes="(max-width:768px) calc(50vw - 24px), (max-width:1100px) calc(33vw - 24px), 260px"
+                    widths={[240, 360, 480]}
+                    loading={i < 3 ? 'eager' : 'lazy'}
+                    fit="cover"
+                    class="project-card__img lqip-img"
+                  />
+                ) : (
+                  <div class="project-card__color" style={`background: ${project.color};`}>
+                    <span class="project-card__color-num">{project.impact}</span>
+                    <span class="project-card__color-label">{project.impactLabel}</span>
+                  </div>
+                )}
+                {hasDetail && (
+                  <div class="project-card__hover" aria-hidden="true">
+                    <span class="project-card__cta">
+                      <span class="sr-only">View project</span>
+                      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    </span>
+                  </div>
+                )}
+                {project.badge && <span class="project-card__badge">{project.badge}</span>}
+              </div>
+              <div class="project-card__info">
+                <span class="project-card__name">{project.name}</span>
+              </div>
+              <span class="project-card__meta">
+                {project.year} · {project.impact} {project.impactLabel}
+              </span>
+            </a>
+          );
+        })}
       </div>
     </div>
   </section>
 
-  <!-- ══════ PROJECTS ══════ -->
-  <section class="cp-projects" id="projects" aria-labelledby="projects-heading">
-    <div class="cp-projects-header" data-reveal>
-      <div class="section-label">Our Partners</div>
-      <h2 id="projects-heading">Organizations we've <em class="highlight">transformed</em>.</h2>
-    </div>
-
-    <div class="cp-projects-grid">
-      {projects.map((project, i) => {
-        const hasDetail = !!project.story;
-        const detailHref = `/community/${project.slug}/`;
-        const hasPhoto = project.imageId || project.heroImage;
-        return (
-          <article class="cp-card" data-reveal data-delay={String(i % 2)}>
-            {hasDetail ? <a href={detailHref} class="cp-card-link" aria-label={`View ${project.name} project details`}></a> : null}
-            {project.imageId ? (
-              <div class="cp-card-photo" style={`background-image:url(${cfLqip(project.imageId)})`}>
-                <CFImage
-                  src={project.imageId}
-                  alt={project.imageAlt || `${project.name} project by SOARD`}
-                  width={600} height={400}
-                  sizes="(max-width:768px) 90vw, 45vw"
-                  widths={[300, 400, 600]}
-                  loading="lazy"
-                  fit="cover"
-                  class="lqip-img"
-                />
-              </div>
-            ) : project.heroImage ? (
-              <div class="cp-card-photo">
-                <CFImage
-                  src={project.heroImage}
-                  alt={project.imageAlt || `${project.name} project by SOARD`}
-                  width={600} height={400}
-                  sizes="(max-width:768px) 90vw, 45vw"
-                  widths={[300, 400, 600]}
-                  loading="lazy"
-                  fit="cover"
-                  class="cp-card-hero-img"
-                />
-              </div>
-            ) : (
-              <div class="cp-card-color" style={`background: ${project.color};`}>
-                <span class="cp-card-color-num">{project.impact}</span>
-                <span class="cp-card-color-label">{project.impactLabel}</span>
-              </div>
-            )}
-            {project.badge && <span class="cp-card-badge">{project.badge}</span>}
-            <div class="cp-card-body">
-              <span class="cp-card-year">{project.year}</span>
-              <h3 class="cp-card-name">{project.name}</h3>
-              {hasPhoto && (
-                <div class="cp-card-impact">
-                  <span class="cp-card-num">{project.impact}</span>
-                  <span class="cp-card-label">{project.impactLabel}</span>
-                </div>
-              )}
-              <p class="cp-card-desc">{project.description}</p>
-              {hasDetail && (
-                <span class="cp-card-read-more">View Project →</span>
-              )}
-            </div>
-          </article>
-        );
-      })}
-    </div>
-  </section>
-
-  <!-- ══════ SPOTLIGHT ══════ -->
-  <section class="cp-spotlight" aria-labelledby="spotlight-heading">
-    <div class="cp-spotlight-inner">
-      <div class="cp-spotlight-visual" data-reveal>
-        <a href="/community/the-drake-house/" class="cp-spotlight-frame">
+  <!-- ══════ SPOTLIGHT — Drake House ══════ -->
+  <section class="spotlight" aria-labelledby="spotlight-heading">
+    <div class="spotlight-inner">
+      <div class="spotlight-visual" data-reveal>
+        <a href="/community/the-drake-house/" class="spotlight-frame">
           <CFImage
             src={spotlightPhoto}
             alt="The Drake House headquarters renovated by SOARD"
             width={800} height={600}
-            sizes="(max-width:768px) 90vw, 45vw"
+            sizes="(max-width:768px) 90vw, 50vw"
             widths={[400, 600, 800]}
             loading="lazy"
             fit="cover"
-            class="cp-spotlight-img"
+            class="spotlight-img"
           />
         </a>
       </div>
-      <div class="cp-spotlight-text" data-reveal data-delay="1">
+      <div class="spotlight-text" data-reveal data-delay="1">
         <div class="section-label">2022 Spotlight</div>
         <h2 id="spotlight-heading">Transforming The Drake House for families <em class="highlight">starting over</em>.</h2>
         <p>The Drake House provides housing and education for single mothers and their children experiencing homelessness. Over 40% of Atlanta's homeless population are women and children.</p>
         <p>SOARD renovated their headquarters — classrooms, activity spaces, a community kitchen, and teen gathering rooms — creating an environment where families can recover, learn, and rebuild with dignity.</p>
-        <a href="/community/the-drake-house/" class="cp-spotlight-link">View Full Project →</a>
+        <a href="/community/the-drake-house/" class="spotlight-link">
+          View Full Project
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </a>
       </div>
     </div>
   </section>
 
-  <!-- ══════ QUOTE ══════ -->
-  <section class="cp-quote" aria-label="Quote">
-    <div class="cp-quote-inner" data-reveal>
-      <blockquote>
-        <p>"These large-scale community projects have helped <em>thousands</em> of families in their most stressful time."</p>
-        <footer>
-          <strong>Peter Ranney</strong>, Co-Founder
-        </footer>
-      </blockquote>
-    </div>
-  </section>
-
-  <!-- ══════ FINAL CTA ══════ -->
-  <section class="cp-finale">
-    <div class="cp-finale-inner">
-      <h2 data-reveal>Help us build the <em>next</em> community project.</h2>
-      <p data-reveal data-delay="1">Every donation funds large-scale renovations at schools, camps, and nonprofits across greater Atlanta.</p>
-      <div class="cp-finale-ctas" data-reveal data-delay="2">
-        <a href="/donate" class="btn btn-dark btn-lg">Donate Today</a>
-        <a href="/kids" class="btn cp-btn-outline-dark">Meet the Kids</a>
+  <!-- ══════ CTA ══════ -->
+  <section class="cta-section">
+    <div class="cta-inner">
+      <h2 data-reveal>Every child deserves a space to <em>thrive</em></h2>
+      <p data-reveal data-delay="1">Your generosity helps us transform facilities at schools, camps, and nonprofits across greater Atlanta.</p>
+      <div class="cta-buttons" data-reveal data-delay="2">
+        <a href="/donate" class="btn btn-yellow">Donate Now</a>
+        <a href="/about" class="btn btn-outline-light">Our Story</a>
       </div>
-      <p class="cp-finale-note" data-reveal data-delay="3">501(c)(3) · EIN 45-4773997 · All donations tax-deductible</p>
     </div>
   </section>
 
 </BaseLayout>
+
+<!-- ══════ View Transitions: card ↔ hero morph ══════ -->
+<script>
+  function initCommunityTransitions() {
+    const grid = document.querySelector('.projects-grid');
+    if (!grid) return;
+
+    grid.addEventListener('click', (e) => {
+      const card = (e.target as HTMLElement).closest('.project-card') as HTMLElement | null;
+      if (!card || card.classList.contains('project-card--static')) return;
+
+      document.querySelectorAll('[style*="view-transition-name"]').forEach(el => {
+        (el as HTMLElement).style.viewTransitionName = '';
+      });
+
+      const frame = card.querySelector('.project-card__frame') as HTMLElement | null;
+      const name = card.querySelector('.project-card__name') as HTMLElement | null;
+      if (frame) {
+        frame.style.viewTransitionName = 'community-hero';
+        frame.style.boxShadow = 'none';
+        const overlay = frame.querySelector('.project-card__hover') as HTMLElement | null;
+        if (overlay) overlay.style.opacity = '0';
+        const cta = frame.querySelector('.project-card__cta') as HTMLElement | null;
+        if (cta) cta.style.opacity = '0';
+        const img = frame.querySelector('.project-card__img') as HTMLElement | null;
+        if (img) { img.style.transform = 'none'; img.style.filter = 'none'; }
+      }
+      if (name) name.style.viewTransitionName = 'community-name';
+    });
+  }
+
+  function setupCommunityBackTransition(e: any) {
+    const fromPath = window.location.pathname;
+    const slugMatch = fromPath.match(/^\/community\/([^/]+)\/?$/);
+    if (!slugMatch) return;
+    const newDoc = e.newDocument as Document;
+    if (!newDoc.querySelector('.projects-grid')) return;
+    const slug = slugMatch[1];
+    const card = newDoc.querySelector(`a.project-card[href="/community/${slug}/"]`) as HTMLElement | null;
+    if (!card) return;
+    const frame = card.querySelector('.project-card__frame') as HTMLElement | null;
+    const name = card.querySelector('.project-card__name') as HTMLElement | null;
+    if (frame) frame.style.viewTransitionName = 'community-hero';
+    if (name) name.style.viewTransitionName = 'community-name';
+  }
+
+  document.addEventListener('astro:page-load', initCommunityTransitions);
+  document.addEventListener('astro:before-swap', setupCommunityBackTransition);
+</script>
 
 <style>
   /* ── LQIP blur-up ── */
@@ -252,351 +271,336 @@ const jsonLd = buildSchemaGraph(
   .lqip-img:not(.lqip-pending) { transition: opacity 0.4s ease; }
 
   /* ══════════════════════════════════════════
-     HERO — Typographic Opening
+     HERO — Editorial Split (matches apply/donate/home)
      ══════════════════════════════════════════ */
-  .cp-hero {
-    background: var(--c-cream);
-    padding: clamp(48px, 10vh, 120px) 0 clamp(40px, 6vh, 72px);
-    overflow: hidden;
-  }
-
-  .cp-hero-inner {
-    max-width: 1000px;
-    margin: 0 auto;
-    padding: 0 var(--page-padding, clamp(1rem, 4vw, 2rem));
-  }
-
-  .cp-hero-label {
-    opacity: 0;
-    animation: cpFadeUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.05s both;
-  }
-
-  /* The number IS the hero */
-  .cp-hero-num {
-    font-family: var(--font-display);
-    font-size: clamp(80px, 16vw, 180px);
-    font-weight: 700;
-    line-height: 0.85;
-    letter-spacing: -0.04em;
-    color: var(--c-dark);
-    margin: var(--space-lg) 0 var(--space-md);
-    /* LCP — no opacity:0 */
-    animation: cpSlide 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
-  }
-
-  .cp-hero-context {
-    font-size: clamp(14px, 1.5vw, 18px);
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: var(--c-text-light);
-    opacity: 0;
-    animation: cpFadeUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.15s both;
-  }
-
-  .cp-hero-divider {
-    width: 48px;
-    height: 3px;
-    background: var(--c-yellow);
-    border-radius: 2px;
-    margin: var(--space-2xl) 0;
-    opacity: 0;
-    animation: cpFadeUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.25s both;
-  }
-
-  .cp-hero-bottom {
-    display: grid;
-    grid-template-columns: 1fr auto;
-    gap: var(--space-2xl);
-    align-items: end;
-    opacity: 0;
-    animation: cpFadeUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.3s both;
-  }
-
-  .cp-hero-lead {
-    max-width: 560px;
-    font-size: clamp(15px, 1.2vw, 17px);
-    line-height: 1.7;
-    color: var(--c-text-muted);
-  }
-
-  .cp-hero-ctas {
-    display: flex;
-    gap: 14px;
-    flex-wrap: wrap;
-    flex-shrink: 0;
-  }
-
-  @keyframes cpFadeUp {
+  @keyframes heroUp {
     from { opacity: 0; transform: translateY(24px); }
     to { opacity: 1; transform: translateY(0); }
   }
-  @keyframes cpSlide {
+  @keyframes heroSlide {
     from { transform: translateY(20px); }
     to { transform: translateY(0); }
   }
-
-  @media (prefers-reduced-motion: reduce) {
-    .cp-hero-label, .cp-hero-context, .cp-hero-divider,
-    .cp-hero-bottom { opacity: 1; transform: none; animation: none; }
+  @keyframes heroPhotoIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes accentIn {
+    from { opacity: 0; transform: scale(0.85); }
+    to { opacity: 1; transform: scale(1); }
   }
 
-  @media (max-width: 768px) {
-    .cp-hero { padding: clamp(32px, 6vh, 64px) 0 clamp(24px, 4vh, 48px); }
-    .cp-hero-num { font-size: clamp(64px, 18vw, 120px); }
-    .cp-hero-bottom {
-      grid-template-columns: 1fr;
-      gap: var(--space-xl);
-    }
-  }
-
-  @media (max-width: 480px) {
-    .cp-hero-num { font-size: clamp(52px, 16vw, 80px); }
-    .cp-hero-lead { font-size: 15px; }
-    .cp-hero-ctas .btn { padding: 12px 26px; font-size: 14px; }
-  }
-
-  /* ══════════════════════════════════════════
-     GALLERY — Three-photo editorial strip
-     ══════════════════════════════════════════ */
-  .cp-gallery {
+  .hero {
     background: var(--c-cream);
-    padding-bottom: clamp(40px, 6vh, 72px);
+    padding: clamp(80px, 10vw, 140px) 0 clamp(64px, 8vw, 100px);
+    position: relative;
+    contain: layout style;
+    min-height: clamp(480px, 70vh, 720px);
+    overflow: hidden;
   }
 
-  .cp-gallery-inner {
-    max-width: 1200px;
+  .hero-inner {
+    max-width: var(--max-width);
     margin: 0 auto;
-    padding: 0 var(--page-padding, clamp(1rem, 4vw, 2rem));
+    padding: 0 var(--space-xl);
     display: grid;
-    grid-template-columns: 1.2fr 0.9fr 0.9fr;
-    gap: var(--space-md);
+    grid-template-columns: 1.15fr 0.85fr;
+    gap: clamp(40px, 5vw, 80px);
+    align-items: center;
   }
 
-  .cp-gallery-photo {
-    border-radius: var(--border-radius-lg);
+  .hero-eyebrow {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--c-text-muted);
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    opacity: 0;
+    animation: heroUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.05s both;
+  }
+
+  .hero-eyebrow::before {
+    content: '';
+    width: 28px;
+    height: 2px;
+    background: currentColor;
+    flex-shrink: 0;
+  }
+
+  .hero-text h1 {
+    font-size: clamp(2.5rem, 6vw, 4.5rem);
+    letter-spacing: -0.035em;
+    line-height: 1.04;
+    color: var(--c-text);
+    margin-bottom: 28px;
+    animation: heroSlide 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  .hero-text h1 em {
+    font-style: italic;
+    background-image: linear-gradient(transparent 52%, var(--c-yellow-soft) 52%);
+    background-repeat: no-repeat;
+    background-size: 100% 100%;
+    padding: 0 0.05em;
+  }
+
+  .hero-lead {
+    font-size: clamp(16px, 1.6vw, 18px);
+    color: var(--c-text-muted);
+    line-height: 1.7;
+    margin-bottom: 40px;
+    max-width: 480px;
+    opacity: 0;
+    animation: heroUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.15s both;
+  }
+
+  .hero-ctas {
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+    opacity: 0;
+    animation: heroUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.25s both;
+  }
+
+  .hero-frame {
+    position: relative;
+    animation: heroPhotoIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  .hero-accent {
+    position: absolute;
+    bottom: -16px;
+    right: -16px;
+    width: 65%;
+    height: 50%;
+    background: var(--c-yellow);
+    border-radius: 24px;
+    z-index: 0;
+    opacity: 0;
+    animation: accentIn 1s cubic-bezier(0.16, 1, 0.3, 1) 0.7s both;
+  }
+
+  .hero-photo {
+    position: relative;
+    z-index: 1;
+    aspect-ratio: 4 / 5;
+    border-radius: 24px;
     overflow: hidden;
     background-size: cover;
     background-position: center;
-    background-repeat: no-repeat;
+    box-shadow: 0 32px 80px rgba(0, 0, 0, 0.12), 0 8px 24px rgba(0, 0, 0, 0.06);
   }
 
-  .cp-gallery-photo:first-child {
+  .hero-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+  .hero-photo--small {
+    position: absolute;
+    bottom: -24px;
+    left: -32px;
+    width: 40%;
+    aspect-ratio: 5 / 6;
+    z-index: 2;
+    border: 4px solid var(--c-cream);
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.06), 0 12px 36px rgba(0, 0, 0, 0.12);
+  }
+
+  .hero-stat {
+    position: absolute;
+    bottom: clamp(24px, 4vw, 48px);
+    right: clamp(24px, 6vw, 80px);
+    background: var(--c-dark);
+    color: #fff;
+    padding: 16px 24px;
+    border-radius: var(--border-radius-lg);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.08), 0 16px 48px rgba(0, 0, 0, 0.15);
+    z-index: 3;
+  }
+
+  .hero-stat-num {
+    font-family: var(--font-display);
+    font-size: clamp(28px, 3vw, 40px);
+    font-weight: 700;
+    color: var(--c-yellow);
+    line-height: 1;
+  }
+
+  .hero-stat-label {
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.35;
+    color: rgba(255, 255, 255, 0.6);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  @media (max-width: 768px) {
+    .hero-inner { grid-template-columns: 1fr; gap: 40px; text-align: center; }
+    .hero-lead { margin-inline: auto; }
+    .hero-ctas { justify-content: center; }
+    .hero-frame { max-width: 380px; margin: 0 auto; }
+    .hero-stat { position: relative; bottom: auto; right: auto; margin: -20px auto 0; width: fit-content; }
+  }
+
+  @media (max-width: 480px) {
+    .hero { padding-top: clamp(48px, 8vw, 80px); padding-bottom: var(--space-xl); min-height: auto; }
+    .hero-text h1 { font-size: clamp(2rem, 9vw, 3rem); }
+    .hero-photo--small { display: none; }
+    .hero-photo { border-radius: 18px; }
+    .hero-accent { bottom: -12px; right: -12px; border-radius: 18px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .hero-eyebrow, .hero-lead, .hero-ctas,
+    .hero-frame, .hero-accent { opacity: 1; transform: none; animation: none; }
+    .hero-text h1 { animation: none; }
+  }
+
+  /* ══════════════════════════════════════════
+     PROJECTS GRID — Modeled after kids index
+     ══════════════════════════════════════════ */
+  .projects {
+    background: var(--c-cream);
+    padding: var(--space-xl) 0 var(--space-5xl);
+    scroll-margin-top: var(--header-height);
+  }
+
+  .projects-inner {
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding: 0 var(--space-xl);
+  }
+
+  .projects-header {
+    text-align: center;
+    max-width: 580px;
+    margin: 0 auto var(--space-xl);
+  }
+
+  .projects-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--c-text-muted);
+    margin-bottom: var(--space-sm);
+  }
+
+  .projects-header h2 {
+    font-size: clamp(1.5rem, 3.5vw, 2.25rem);
+    font-weight: 400;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+    color: var(--c-dark);
+  }
+
+  .projects-header h2 em { font-style: normal; }
+
+  .projects-sub {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-size: clamp(0.95rem, 1.8vw, 1.065rem);
+    color: var(--c-text-muted);
+    line-height: 1.5;
+    margin-top: var(--space-md);
+  }
+
+
+  /* ── Grid ── */
+  .projects-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--space-lg);
+  }
+
+  @media (max-width: 900px) {
+    .projects-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+
+  @media (max-width: 480px) {
+    .projects-grid { grid-template-columns: repeat(2, 1fr); gap: var(--space-md) 14px; }
+  }
+
+  /* ── Card (mirrors kid-card pattern) ── */
+  .project-card {
+    display: block;
+    text-decoration: none;
+    outline-offset: 4px;
+    transition: opacity 0.25s ease;
+  }
+
+  .project-card:focus-visible {
+    outline: 2px solid var(--c-dark);
+    outline-offset: 4px;
+    border-radius: var(--border-radius-lg);
+  }
+
+  .project-card:active { opacity: 0.85; transition-duration: 80ms; }
+
+  .project-card--static { cursor: default; }
+
+  /* Frame — image container */
+  .project-card__frame {
+    position: relative;
+    border-radius: var(--border-radius-lg);
+    overflow: hidden;
     aspect-ratio: 4 / 3;
+    background: var(--c-warm-gray);
+    box-shadow: inset 0 0 0 0px var(--c-yellow);
+    transition: box-shadow 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+    background-size: cover;
+    background-position: center;
   }
 
-  .cp-gallery-photo:nth-child(2),
-  .cp-gallery-photo:nth-child(3) {
-    aspect-ratio: 1 / 1;
-  }
-
-  .cp-gallery-photo :global(img) {
+  .project-card__img {
     width: 100%;
     height: 100%;
     object-fit: cover;
     display: block;
-    transition: transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1),
+                filter 0.6s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
-  .cp-gallery-photo:hover :global(img) {
-    transform: scale(1.04);
-  }
-
-  @media (max-width: 768px) {
-    .cp-gallery-inner {
-      grid-template-columns: 1fr 1fr;
-      gap: var(--space-sm);
+  @media (hover: hover) {
+    .project-card:hover .project-card__img {
+      transform: scale(1.07);
+      filter: brightness(1.04) saturate(1.05);
     }
-    .cp-gallery-photo:first-child {
-      grid-column: 1 / -1;
-      aspect-ratio: 16 / 9;
-    }
-    .cp-gallery-photo:nth-child(2),
-    .cp-gallery-photo:nth-child(3) {
-      aspect-ratio: 4 / 3;
+    .project-card:hover .project-card__frame {
+      box-shadow: inset 0 0 0 3px var(--c-yellow);
     }
   }
 
-  /* ══════════════════════════════════════════
-     IMPACT RIBBON
-     ══════════════════════════════════════════ */
-  .cp-ribbon {
-    background: var(--c-dark);
-    padding-block: clamp(40px, 6vh, 72px);
+  .project-card:focus-visible .project-card__frame {
+    box-shadow: inset 0 0 0 3px var(--c-yellow);
   }
 
-  .cp-ribbon-inner {
-    max-width: 1000px;
-    margin-inline: auto;
-    padding-inline: var(--space-lg);
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: var(--space-xl);
-  }
-
-  .cp-ribbon-stat {
-    text-align: center;
-    flex: 1;
-  }
-
-  .cp-ribbon-num {
-    display: block;
-    font-family: var(--font-display);
-    font-size: clamp(2.25rem, 4.5vw, 3.25rem);
-    font-weight: 700;
-    color: var(--c-yellow);
-    line-height: 1;
-    letter-spacing: -0.02em;
-  }
-
-  .cp-ribbon-pct {
-    font-size: 0.55em;
-    vertical-align: super;
-  }
-
-  .cp-ribbon-label {
-    display: block;
-    margin-top: var(--space-sm);
-    font-size: 0.7rem;
-    color: rgba(255, 255, 255, 0.85);
-    letter-spacing: 0.06em;
-    line-height: 1.4;
-    text-transform: uppercase;
-    font-weight: 600;
-  }
-
-  .cp-ribbon-divider {
-    width: 1px;
-    height: var(--space-3xl);
-    background: rgba(255, 255, 255, 0.12);
-    flex-shrink: 0;
-  }
-
-  @media (max-width: 600px) {
-    .cp-ribbon { padding-block: var(--space-2xl); }
-    .cp-ribbon-inner {
-      flex-wrap: wrap;
-      gap: var(--space-xl) var(--space-md);
-    }
-    .cp-ribbon-stat { flex: 0 0 calc(50% - var(--space-md)); }
-    .cp-ribbon-divider { display: none; }
-  }
-
-  /* ══════════════════════════════════════════
-     PROJECTS — 2-column editorial grid
-     ══════════════════════════════════════════ */
-  .cp-projects {
-    padding-block: var(--space-5xl);
-    background: var(--c-warm-gray);
-    scroll-margin-top: var(--header-height);
-  }
-
-  .cp-projects-header {
-    max-width: 1200px;
-    margin-inline: auto;
-    padding-inline: var(--page-padding, clamp(1rem, 4vw, 2rem));
-    margin-bottom: var(--space-3xl);
-  }
-
-  .cp-projects-header h2 {
-    font-size: clamp(1.5rem, 3vw, 2.25rem);
-    line-height: 1.2;
-    letter-spacing: -0.01em;
-  }
-
-  .cp-projects-header h2 em { font-style: normal; }
-
-  .cp-projects-grid {
-    max-width: 1200px;
-    margin-inline: auto;
-    padding-inline: var(--page-padding, clamp(1rem, 4vw, 2rem));
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: var(--space-xl);
-  }
-
-  .cp-card {
-    position: relative;
-    background: var(--c-white);
-    border-radius: 20px;
-    overflow: hidden;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
-    display: flex;
-    flex-direction: column;
-    transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
-  }
-
-  .cp-card:hover {
-    transform: translateY(-8px);
-    box-shadow: 0 24px 56px rgba(0, 0, 0, 0.1);
-  }
-
-  /* Clickable overlay for cards with detail pages */
-  .cp-card-link {
-    position: absolute;
-    inset: 0;
-    z-index: 2;
-    cursor: pointer;
-  }
-
-  .cp-card-photo :global(.cp-card-hero-img) {
+  /* Color panel (projects without photos) */
+  .project-card__color {
     width: 100%;
-    aspect-ratio: 3 / 2;
-    object-fit: cover;
-    display: block;
-    transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
-  }
-
-  .cp-card:hover .cp-card-photo :global(.cp-card-hero-img) {
-    transform: scale(1.05);
-  }
-
-  .cp-card-read-more {
-    display: inline-block;
-    margin-top: var(--space-md);
-    font-size: 0.85rem;
-    font-weight: 600;
-    color: var(--c-purple);
-    transition: color var(--transition-fast);
-  }
-
-  .cp-card:hover .cp-card-read-more {
-    color: var(--c-dark);
-  }
-
-  /* Photo cards */
-  .cp-card-photo {
-    overflow: hidden;
-    background-size: cover;
-    background-position: center;
-    background-repeat: no-repeat;
-  }
-
-  .cp-card-photo :global(img) {
-    width: 100%;
-    aspect-ratio: 3 / 2;
-    object-fit: cover;
-    display: block;
-    transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
-  }
-
-  .cp-card:hover .cp-card-photo :global(img) {
-    transform: scale(1.05);
-  }
-
-  /* Color block cards (no photo) — the color IS the visual */
-  .cp-card-color {
-    aspect-ratio: 3 / 2;
+    height: 100%;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 4px;
+    gap: 6px;
     padding: var(--space-xl);
+    transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
-  .cp-card-color-num {
+  @media (hover: hover) {
+    .project-card:hover .project-card__color {
+      transform: scale(1.03);
+    }
+  }
+
+  .project-card__color-num {
     font-family: var(--font-display);
     font-size: clamp(2.5rem, 5vw, 3.5rem);
     font-weight: 700;
@@ -605,7 +609,7 @@ const jsonLd = buildSchemaGraph(
     letter-spacing: -0.02em;
   }
 
-  .cp-card-color-label {
+  .project-card__color-label {
     font-size: 0.7rem;
     font-weight: 600;
     text-transform: uppercase;
@@ -613,168 +617,143 @@ const jsonLd = buildSchemaGraph(
     color: rgba(255, 255, 255, 0.7);
   }
 
-  .cp-card-badge {
+  /* Hover overlay — yellow gradient */
+  .project-card__hover {
     position: absolute;
-    top: var(--space-md);
-    right: var(--space-md);
-    padding: 3px 12px;
-    background: var(--c-yellow);
-    color: var(--c-dark);
-    font-size: 0.65rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    border-radius: 100px;
+    inset: 0;
+    background: linear-gradient(
+      160deg,
+      transparent 30%,
+      rgba(255, 218, 36, 0.12) 70%,
+      rgba(255, 218, 36, 0.22) 100%
+    );
+    opacity: 0;
+    transition: opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1);
     z-index: 2;
+    pointer-events: none;
   }
 
-  .cp-card-body {
-    padding: var(--space-xl) var(--space-xl) var(--space-2xl);
-    flex: 1;
-  }
-
-  .cp-card-year {
-    font-size: 0.7rem;
-    font-weight: 700;
-    color: var(--c-text-light);
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-  }
-
-  .cp-card-name {
-    font-family: var(--font-display);
-    font-size: clamp(1.1rem, 1.5vw, 1.3rem);
-    color: var(--c-dark);
-    line-height: 1.3;
-    margin: var(--space-xs) 0 var(--space-sm);
-  }
-
-  .cp-card-impact {
-    display: flex;
-    align-items: baseline;
-    gap: var(--space-sm);
-    margin-bottom: var(--space-sm);
-  }
-
-  .cp-card-num {
-    font-family: var(--font-display);
-    font-size: 1.5rem;
-    font-weight: 700;
-    color: var(--c-dark);
-    line-height: 1;
-  }
-
-  .cp-card-label {
-    font-size: 0.65rem;
-    font-weight: 600;
-    color: var(--c-text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-  }
-
-  .cp-card-desc {
-    font-size: 0.85rem;
-    line-height: 1.65;
-    color: var(--c-text-muted);
+  @media (hover: hover) {
+    .project-card:hover .project-card__hover { opacity: 1; }
   }
 
   @media (max-width: 768px) {
-    .cp-projects { padding-block: var(--space-3xl); }
-    .cp-projects-grid {
-      grid-template-columns: 1fr;
-      gap: var(--space-lg);
+    .project-card__hover { display: none; }
+  }
+
+  /* CTA arrow — yellow circle */
+  .project-card__cta {
+    position: absolute;
+    bottom: 12px;
+    right: 12px;
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--c-yellow);
+    color: var(--c-dark);
+    border-radius: 50%;
+    z-index: 3;
+    opacity: 0;
+    transform: translate(6px, 6px) scale(0.8);
+    transition: opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+                transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1),
+                box-shadow 0.3s ease;
+    box-shadow: 0 4px 16px rgba(255, 218, 36, 0.3);
+  }
+
+  @media (hover: hover) {
+    .project-card:hover .project-card__cta {
+      opacity: 1;
+      transform: translate(0, 0) scale(1);
     }
   }
 
-  /* ══════════════════════════════════════════
-     QUOTE BREAK
-     ══════════════════════════════════════════ */
-  .cp-quote {
-    padding-block: var(--space-5xl);
-    background: var(--c-cream);
+  /* Badge */
+  .project-card__badge {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    padding: 3px 10px;
+    background: var(--c-yellow);
+    color: var(--c-dark);
+    font-size: 0.6rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    border-radius: 100px;
+    white-space: nowrap;
+    z-index: 2;
+    pointer-events: none;
   }
 
-  .cp-quote-inner {
-    max-width: 720px;
-    margin-inline: auto;
-    padding-inline: var(--space-lg);
+  /* Info below photo */
+  .project-card__info {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    padding: 14px 4px 4px;
   }
 
-  .cp-quote blockquote {
-    margin: 0;
-    border-left: 4px solid var(--c-yellow);
-    padding-left: var(--space-xl);
-  }
-
-  .cp-quote blockquote p {
+  .project-card__name {
+    color: var(--c-text);
     font-family: var(--font-display);
-    font-size: clamp(1.25rem, 2.5vw, 1.75rem);
-    line-height: 1.5;
-    color: var(--c-dark);
-    font-style: italic;
-    letter-spacing: -0.01em;
+    font-size: 1rem;
+    font-weight: 600;
+    line-height: 1.3;
+    background-image: linear-gradient(var(--c-yellow), var(--c-yellow));
+    background-size: 0% 2.5px;
+    background-repeat: no-repeat;
+    background-position: left bottom;
+    padding-bottom: 2px;
+    transition: background-size 0.35s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
-  .cp-quote blockquote em {
-    font-style: italic;
-    background-image: linear-gradient(transparent 55%, var(--c-yellow-soft) 55%);
+  @media (hover: hover) {
+    .project-card:hover .project-card__name {
+      color: var(--c-dark);
+      background-size: 100% 2.5px;
+    }
   }
 
-  .cp-quote blockquote footer {
-    margin-top: var(--space-lg);
-    font-family: var(--font-body);
-    font-size: 0.9rem;
-    font-style: normal;
+  .project-card__meta {
+    display: block;
+    padding: 4px 4px;
+    font-size: 0.78rem;
     color: var(--c-text-muted);
-    letter-spacing: 0.02em;
+    line-height: 1.45;
   }
 
-  .cp-quote blockquote footer strong {
-    color: var(--c-dark);
+  @media (max-width: 768px) {
+    .project-card__frame { border-radius: 12px; aspect-ratio: 4 / 5; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .project-card__img,
+    .project-card__color { transition: none; }
+    .project-card:hover .project-card__img { transform: none; filter: none; }
   }
 
   /* ══════════════════════════════════════════
-     SPOTLIGHT — Drake House
+     SPOTLIGHT — Editorial Split
      ══════════════════════════════════════════ */
-  .cp-spotlight {
-    padding-block: var(--space-5xl);
+  .spotlight {
+    padding-block: clamp(80px, 10vh, 140px);
+    background: var(--c-warm-gray);
   }
 
-  .cp-spotlight-inner {
-    max-width: 1200px;
+  .spotlight-inner {
+    max-width: var(--max-width);
     margin-inline: auto;
-    padding-inline: var(--space-lg);
+    padding-inline: var(--space-xl);
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1.2fr 0.8fr;
     gap: clamp(40px, 6vw, 80px);
     align-items: center;
   }
 
-  .cp-spotlight-text .section-label {
-    margin-bottom: var(--space-md);
-  }
-
-  .cp-spotlight-text h2 {
-    font-size: clamp(1.5rem, 3vw, 2.25rem);
-    line-height: 1.2;
-    margin-bottom: var(--space-lg);
-  }
-
-  .cp-spotlight-text h2 em { font-style: normal; }
-
-  .cp-spotlight-text p {
-    margin-top: var(--space-md);
-    line-height: 1.7;
-    color: var(--c-text);
-    font-size: 0.95rem;
-  }
-
-  .cp-spotlight-text p:first-of-type {
-    font-size: 1.05rem;
-    color: var(--c-text);
-  }
-
-  .cp-spotlight-frame {
+  .spotlight-frame {
     display: block;
     border-radius: var(--border-radius-lg);
     overflow: hidden;
@@ -782,113 +761,135 @@ const jsonLd = buildSchemaGraph(
     text-decoration: none;
   }
 
-  .cp-spotlight-frame :global(img) {
+  .spotlight-frame :global(img) {
     width: 100%;
     height: auto;
     display: block;
     transition: transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
-  .cp-spotlight-frame:hover :global(img) {
-    transform: scale(1.03);
+  .spotlight-frame:hover :global(img) { transform: scale(1.03); }
+
+  .spotlight-text .section-label { margin-bottom: var(--space-md); }
+
+  .spotlight-text h2 {
+    font-size: clamp(1.5rem, 3vw, 2.25rem);
+    line-height: 1.2;
+    margin-bottom: var(--space-lg);
   }
 
-  .cp-spotlight-link {
-    display: inline-block;
-    margin-top: var(--space-lg);
+  .spotlight-text h2 em { font-style: normal; }
+
+  .spotlight-text p {
+    margin-top: var(--space-md);
+    line-height: 1.75;
+    color: var(--c-text-muted);
+    font-size: 0.95rem;
+  }
+
+  .spotlight-text p:first-of-type {
+    font-size: 1.05rem;
+    color: var(--c-text);
+  }
+
+  .spotlight-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: var(--space-xl);
     font-size: 0.95rem;
     font-weight: 600;
-    color: var(--c-purple);
+    color: var(--c-dark);
     text-decoration: none;
-    transition: color var(--transition-fast);
+    transition: gap var(--transition-base), color var(--transition-base);
   }
 
-  .cp-spotlight-link:hover {
-    color: var(--c-dark);
-  }
+  .spotlight-link:hover { color: var(--c-text-muted); gap: 14px; }
+  .spotlight-link svg { transition: transform var(--transition-base); }
+  .spotlight-link:hover svg { transform: translateX(4px); }
 
   @media (max-width: 768px) {
-    .cp-spotlight { padding-block: var(--space-3xl); }
-    .cp-spotlight-inner {
-      grid-template-columns: 1fr;
-      gap: var(--space-2xl);
-    }
+    .spotlight { padding-block: var(--space-3xl); }
+    .spotlight-inner { grid-template-columns: 1fr; gap: var(--space-2xl); }
   }
 
   /* ══════════════════════════════════════════
-     FINAL CTA
+     BOTTOM CTA — Dark section (matches kids page)
      ══════════════════════════════════════════ */
-  .cp-finale {
-    background: var(--c-yellow);
-    padding-block: clamp(64px, 10vh, 120px);
+  .cta-section {
+    background: var(--c-dark);
+    padding-block: var(--space-4xl);
     text-align: center;
   }
 
-  .cp-finale-inner {
+  .cta-inner {
     max-width: 640px;
     margin-inline: auto;
-    padding-inline: var(--space-lg);
+    padding-inline: var(--space-xl);
   }
 
-  .cp-finale h2 {
-    font-size: clamp(1.75rem, 4vw, 2.75rem);
-    color: var(--c-dark);
-    letter-spacing: -0.02em;
-    line-height: 1.15;
+  .cta-section h2 {
+    font-family: var(--font-display);
+    font-size: clamp(1.5rem, 3vw, 2.25rem);
+    color: var(--c-white);
+    margin-bottom: var(--space-md);
+    line-height: 1.3;
   }
 
-  .cp-finale h2 em { font-style: italic; }
+  .cta-section h2 em { font-style: italic; }
 
-  .cp-finale > p,
-  .cp-finale-inner > p:not(.cp-finale-note) {
+  .cta-section p {
+    color: rgba(255, 255, 255, 0.75);
     font-size: 1.05rem;
-    color: rgba(45, 46, 51, 0.75);
-    margin-top: var(--space-lg);
-    line-height: 1.65;
+    max-width: 540px;
+    margin-inline: auto;
+    margin-bottom: var(--space-xl);
+    line-height: 1.6;
   }
 
-  .cp-finale-ctas {
-    margin-top: var(--space-2xl);
+  .cta-buttons {
     display: flex;
     gap: var(--space-md);
     justify-content: center;
     flex-wrap: wrap;
   }
 
-  .btn-lg { padding: 16px 40px; font-size: 16px; }
-
-  .cp-btn-outline-dark {
+  .btn-yellow {
     display: inline-flex;
     align-items: center;
-    gap: 8px;
     padding: 14px 32px;
-    font-family: var(--font-body);
+    background: var(--c-yellow);
+    color: var(--c-dark);
+    border-radius: 60px;
     font-size: 15px;
     font-weight: 600;
-    border-radius: 60px;
-    cursor: pointer;
     text-decoration: none;
     transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
-    white-space: nowrap;
-    background: transparent;
-    color: var(--c-dark);
-    border: 2px solid var(--c-dark);
+    border: none;
+    cursor: pointer;
   }
 
-  .cp-btn-outline-dark:hover {
-    background: var(--c-dark);
+  .btn-yellow:hover {
+    background: var(--c-yellow-hover);
+    box-shadow: 0 8px 32px rgba(255, 218, 36, 0.3);
+  }
+
+  .btn-outline-light {
+    display: inline-flex;
+    align-items: center;
+    padding: 12px 28px;
+    border: 1.5px solid rgba(255, 255, 255, 0.5);
+    border-radius: 60px;
     color: var(--c-white);
+    font-size: 0.95rem;
+    font-weight: 600;
+    text-decoration: none;
+    transition: background var(--transition-fast), border-color var(--transition-fast);
   }
 
-  .cp-finale-note {
-    margin-top: var(--space-2xl);
-    font-size: 0.85rem;
-    color: rgba(45, 46, 51, 0.65);
-    letter-spacing: 0.02em;
-  }
-
-  @media (max-width: 768px) {
-    .cp-finale { padding-block: var(--space-3xl); }
+  .btn-outline-light:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: var(--c-white);
   }
 
   /* ══════════════════════════════════════════
@@ -909,15 +910,28 @@ const jsonLd = buildSchemaGraph(
 
   @media (prefers-reduced-motion: reduce) {
     [data-reveal] { opacity: 1; transform: none; transition: none; }
-    .cp-gallery-photo :global(img),
-    .cp-card,
-    .cp-card-photo :global(img),
-    .cp-spotlight-frame :global(img) {
-      transition: none;
-    }
-    .cp-gallery-photo:hover :global(img),
-    .cp-card:hover,
-    .cp-card:hover .cp-card-photo :global(img),
-    .cp-spotlight-frame:hover :global(img) { transform: none; }
+    .spotlight-frame :global(img) { transition: none; }
+    .spotlight-frame:hover :global(img) { transform: none; }
+  }
+
+  /* ══════════════════════════════════════════
+     VIEW TRANSITIONS
+     ══════════════════════════════════════════ */
+  ::view-transition-group(community-hero) {
+    animation-duration: 280ms;
+    animation-timing-function: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  }
+
+  ::view-transition-group(community-name) {
+    animation-duration: 220ms;
+    animation-timing-function: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  }
+
+  /* ══════════════════════════════════════════
+     PERFORMANCE — content-visibility
+     ══════════════════════════════════════════ */
+  .project-card {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 260px auto 280px;
   }
 </style>

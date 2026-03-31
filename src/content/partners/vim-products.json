@@ -3,5 +3,10 @@
   "slug": "vim-products",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/vim-products/public",
   "tier": "construction",
-  "featured": false
+  "featured": false,
+  "category": [
+    "build"
+  ],
+  "website": "https://vimproducts.com",
+  "level": "friend"
 }

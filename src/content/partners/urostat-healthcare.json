@@ -3,5 +3,10 @@
   "slug": "urostat-healthcare",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/urostat-healthcare/public",
   "tier": "community",
-  "featured": false
+  "featured": false,
+  "category": [
+    "funding"
+  ],
+  "website": "https://urostathealthcare.com",
+  "level": "friend"
 }

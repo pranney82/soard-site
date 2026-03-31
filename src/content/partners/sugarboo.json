@@ -1,7 +1,12 @@
 {
-  "name": "Sugarboo",
+  "name": "Sugarboo & Co. ",
   "slug": "sugarboo",
-  "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/sugarboo/public",
+  "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/sugarboo/1774889288023/public",
   "tier": "construction",
-  "featured": false
+  "featured": false,
+  "category": [
+    "build"
+  ],
+  "website": "https://sugarbooandco.com",
+  "level": "friend"
 }

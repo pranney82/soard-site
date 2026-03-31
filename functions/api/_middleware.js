@@ -15,11 +15,35 @@ let _cachedKeys = null;
 let _cachedKeysExpiry = 0;
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 
-const cors = {
+// CORS: public endpoints allow any origin, authenticated endpoints restrict to our domain.
+const ALLOWED_ORIGIN = 'https://sunshineonaranneyday.com';
+const publicCors = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type',
 };
+function isAllowedOrigin(origin) {
+  if (!origin) return false;
+  if (origin === ALLOWED_ORIGIN) return true;
+  if (origin.endsWith('.cloudflareaccess.com')) return true;
+  // Strict localhost check — only exact hostname, not localhost.evil.com
+  try {
+    const url = new URL(origin);
+    if (url.hostname === 'localhost' || url.hostname === '127.0.0.1') return true;
+  } catch {}
+  return false;
+}
+
+function authedCors(request) {
+  const origin = request.headers.get('Origin') || '';
+  return {
+    'Access-Control-Allow-Origin': isAllowedOrigin(origin) ? origin : ALLOWED_ORIGIN,
+    'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, CF-Access-JWT-Assertion',
+    'Access-Control-Allow-Credentials': 'true',
+    'Vary': 'Origin',
+  };
+}
 
 // Public API routes that don't require authentication
 const PUBLIC_ROUTES = ['/api/newsletter', '/api/kids.json', '/api/cc-oauth-start', '/api/cc-oauth-callback'];
@@ -55,12 +79,14 @@ function isRateLimited(ip) {
 }
 
 export async function onRequest(context) {
-  // Always allow preflight
-  if (context.request.method === 'OPTIONS') {
-    return context.next();
-  }
-
   const url = new URL(context.request.url);
+  const isPublic = PUBLIC_ROUTES.some(route => url.pathname === route);
+
+  // Preflight: return CORS headers immediately — downstream handlers don't implement OPTIONS
+  if (context.request.method === 'OPTIONS') {
+    const headers = isPublic ? publicCors : authedCors(context.request);
+    return new Response(null, { status: 204, headers });
+  }
 
   // Rate limit abuse-prone public endpoints
   if (RATE_LIMITED_ROUTES.has(url.pathname) && context.request.method === 'POST') {
@@ -68,26 +94,31 @@ export async function onRequest(context) {
     if (isRateLimited(ip)) {
       return Response.json(
         { ok: false, error: 'Too many requests. Please try again later.' },
-        { status: 429, headers: { ...cors, 'Retry-After': '60' } }
+        { status: 429, headers: { ...publicCors, 'Retry-After': '60' } }
       );
     }
   }
 
   // Skip auth for public API routes
-  if (PUBLIC_ROUTES.some(route => url.pathname === route)) {
+  if (isPublic) {
     return context.next();
   }
 
   const { CF_ACCESS_TEAM_DOMAIN, CF_ACCESS_AUD } = context.env;
+  const cors = authedCors(context.request);
 
-  // If Access env vars aren't set yet, let requests through
-  // (avoids breaking the site during initial setup)
+  // Fail closed: if Access env vars aren't configured, reject all authenticated requests.
+  // This prevents accidental public exposure of admin APIs in production.
   if (!CF_ACCESS_TEAM_DOMAIN || !CF_ACCESS_AUD) {
-    console.warn('[middleware] CF_ACCESS_TEAM_DOMAIN or CF_ACCESS_AUD not set — skipping JWT validation');
-    return context.next();
+    console.error('[middleware] BLOCKED: CF_ACCESS_TEAM_DOMAIN or CF_ACCESS_AUD not set — refusing to serve authenticated endpoint without auth config');
+    return Response.json(
+      { success: false, error: 'Server misconfiguration — authentication not configured. Set CF_ACCESS_TEAM_DOMAIN and CF_ACCESS_AUD environment variables.' },
+      { status: 503, headers: cors }
+    );
   }
 
   const jwt = context.request.headers.get('CF-Access-JWT-Assertion') || getCookieValue(context.request, 'CF_Authorization');
+
   if (!jwt) {
     return Response.json(
       { success: false, error: 'Unauthorized — missing access token' },
@@ -109,7 +140,23 @@ export async function onRequest(context) {
   context.data = context.data || {};
   context.data.userEmail = payload.email || payload.sub || 'unknown';
 
-  return context.next();
+  // Call downstream handler, then inject CORS headers into its response.
+  // Handlers don't set CORS themselves — middleware owns it centrally.
+  const response = await context.next();
+  return injectCors(response, cors);
+}
+
+/** Inject CORS headers into an existing Response (immutable — must clone). */
+function injectCors(response, corsHeaders) {
+  const newHeaders = new Headers(response.headers);
+  for (const [key, value] of Object.entries(corsHeaders)) {
+    newHeaders.set(key, value);
+  }
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: newHeaders,
+  });
 }
 
 // ─── JWT Verification ──────────────────────────────────────────────

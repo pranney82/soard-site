@@ -3,5 +3,10 @@
   "slug": "weatherby-renovations",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/weatherby-renovations/public",
   "tier": "construction",
-  "featured": false
+  "featured": false,
+  "category": [
+    "build"
+  ],
+  "level": "friend",
+  "website": "https://weatherbyrenovations.com"
 }

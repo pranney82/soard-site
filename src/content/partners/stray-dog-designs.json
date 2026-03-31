@@ -3,5 +3,10 @@
   "slug": "stray-dog-designs",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/stray-dog-designs/public",
   "tier": "design",
-  "featured": false
+  "featured": false,
+  "category": [
+    "build"
+  ],
+  "level": "friend",
+  "website": "https://straydogdesigns.com"
 }

@@ -3,5 +3,7 @@
   "slug": "sequoyah-chiefs",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/sequoyah-chiefs/public",
   "tier": "construction",
-  "featured": false
+  "featured": false,
+  "level": "friend",
+  "category": "community"
 }

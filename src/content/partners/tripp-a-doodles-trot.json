@@ -3,5 +3,9 @@
   "slug": "tripp-a-doodles-trot",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/tripp-a-doodles-trot/public",
   "tier": "construction",
-  "featured": false
+  "featured": false,
+  "category": [
+    "funding"
+  ],
+  "level": "friend"
 }

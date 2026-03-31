@@ -3,5 +3,8 @@
   "slug": "signarama",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/signarama/public",
   "tier": "construction",
-  "featured": false
+  "featured": false,
+  "level": "friend",
+  "category": "build",
+  "website": "https://signarama.com"
 }

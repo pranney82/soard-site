@@ -10,6 +10,7 @@ import MediaLogos from '../components/ui/MediaLogos.astro';
 import PartnerShowcase from '../components/ui/PartnerShowcase.astro';
 import { getCollection } from 'astro:content';
 import { getSiteStats } from '../utils/stats';
+import { getPublishedKids } from '../utils/collections';
 
 import { CF_BASE as CF, cfId as extractCfId, cfRaw, cfSrcset, cfLqip } from '../utils/cf-image';
 
@@ -37,7 +38,7 @@ const heroCta2Label = siteSettings.homeHero?.cta2Label || 'See Our Work ↓';
 const heroCta2Link = siteSettings.homeHero?.cta2Link || '#stories';
 
 /* ── Hero Kid + Featured Story Kid (independent) ── */
-const allKids = await getCollection('kids');
+const allKids = await getPublishedKids();
 
 const heroSlug = siteSettings.heroKidSlug || siteSettings.featuredKidSlug || 'zyah';
 const heroKid = allKids.find(k => k.id === heroSlug);
@@ -176,15 +177,15 @@ const jsonLd = getWebSiteSchema();
       <div class="mission-text" data-reveal>
         <div class="section-label">Our Mission</div>
         <h2 id="mission-heading">Every child deserves a space that makes them feel <em class="highlight">safe</em>, <em class="highlight">seen</em>, and <em class="highlight">loved</em>.</h2>
-        <p class="mission-body">A dream bedroom. An accessible bathroom. A therapy room that finally fits. For children with special needs, the right space changes everything — unlocking independence, comfort, and confidence that transforms daily life for the entire family.</p>
+        <p class="mission-body">A bedroom that feels like theirs. A bathroom that works for them. A therapy room built around who they are. For children with special needs, the right space changes everything — unlocking independence, comfort, and confidence that transforms daily life for the entire family.</p>
         <p class="mission-body">Since 2012, we've partnered with designers, contractors, and families across Greater Atlanta to create over {stats.totalRooms} life-changing spaces. Every project is unique because every child is unique.</p>
       </div>
       <div class="mission-visual" role="presentation">
         <div class="mission-photo mission-photo--main" data-reveal style={`background-image:url('${cfLqip(missionMainId)}')`}>
-          <img src={`${CF}/${missionMainId}/w=500,q=65`} srcset={`${CF}/${missionMainId}/w=360,q=65 360w, ${CF}/${missionMainId}/w=500,q=65 500w, ${CF}/${missionMainId}/w=800,q=65 800w`} sizes="(max-width:768px) 65vw, 30vw" alt="A transformed room designed for a child with special needs" width="800" height="600" loading="lazy" decoding="async" class="lqip-img" />
+          <img src={`${CF}/${missionMainId}/w=800,q=65`} srcset={`${CF}/${missionMainId}/w=360,q=65 360w, ${CF}/${missionMainId}/w=600,q=65 600w, ${CF}/${missionMainId}/w=800,q=65 800w, ${CF}/${missionMainId}/w=1200,q=65 1200w`} sizes="(max-width:768px) 65vw, 30vw" alt="A transformed room designed for a child with special needs" width="800" height="600" loading="lazy" decoding="async" class="lqip-img" />
         </div>
         <div class="mission-photo mission-photo--accent" data-reveal data-delay="1" style={`background-image:url('${cfLqip(missionAccentId)}')`}>
-          <img src={`${CF}/${missionAccentId}/w=400,q=65`} srcset={`${CF}/${missionAccentId}/w=280,q=65 280w, ${CF}/${missionAccentId}/w=400,q=65 400w`} sizes="(max-width:768px) 52vw, 24vw" alt="A happy child in their new dream room" width="600" height="450" loading="lazy" decoding="async" class="lqip-img" />
+          <img src={`${CF}/${missionAccentId}/w=600,q=65`} srcset={`${CF}/${missionAccentId}/w=280,q=65 280w, ${CF}/${missionAccentId}/w=400,q=65 400w, ${CF}/${missionAccentId}/w=600,q=65 600w, ${CF}/${missionAccentId}/w=800,q=65 800w`} sizes="(max-width:768px) 52vw, 24vw" alt="A happy child in their new dream room" width="600" height="450" loading="lazy" decoding="async" class="lqip-img" />
         </div>
       </div>
     </div>
@@ -192,17 +193,19 @@ const jsonLd = getWebSiteSchema();
 
   <!-- ══════ FEATURED STORY ══════ -->
   <section class="story" id="stories" aria-labelledby="story-heading">
-    <div class="story-split">
-      <figure class="story-photo" style={`background-image:url('${cfLqip(storyPhotoId)}')`}>
-        <img src={`${CF}/${storyPhotoId}/w=900,q=65`} srcset={`${CF}/${storyPhotoId}/w=600,q=65 600w, ${CF}/${storyPhotoId}/w=900,q=65 900w`} sizes="(max-width:768px) 100vw, 55vw" alt={`${fd?.name || 'Zyah'}'s room reveal`} width="900" height="600" loading="lazy" decoding="async" class="story-photo-img lqip-img" />
-        <div class="story-photo-tag">Featured</div>
-      </figure>
-      <div class="story-content" data-reveal>
-        <div class="section-label">Featured Story</div>
-        <span class="story-type">{fd?.roomTypes?.[0] || 'Dream Bedroom'}</span>
-        <h2 id="story-heading">{siteSettings.featuredStoryHeadline || `${fd?.name || 'Zyah'}'s new space gave her independence — and her family peace of mind.`}</h2>
-        <p>{siteSettings.featuredStoryDescription || `${fd?.name || 'Zyah'}, ${Array.isArray(fd?.age) ? `ages ${fd.age.join(', ')}` : `age ${fd?.age || 7}`}, lives with ${fd?.diagnosis || 'Spinal Muscular Atrophy'}. Our team transformed her space into an accessible, joyful haven — with custom features designed around her unique needs and personality.`}</p>
-        <a href={`/kids/${featuredSlug}`} class="btn btn-dark">Read {fd?.name || 'Zyah'}'s Full Story →</a>
+    <div class="story-inner">
+      <div class="story-split">
+        <figure class="story-photo" style={`background-image:url('${cfLqip(storyPhotoId)}')`}>
+          <img src={`${CF}/${storyPhotoId}/w=900,q=65`} srcset={`${CF}/${storyPhotoId}/w=600,q=65 600w, ${CF}/${storyPhotoId}/w=900,q=65 900w`} sizes="(max-width:768px) 100vw, 55vw" alt={`${fd?.name || 'Zyah'}'s room reveal`} width="900" height="600" loading="lazy" decoding="async" class="story-photo-img lqip-img" />
+          <div class="story-photo-tag">Featured</div>
+        </figure>
+        <div class="story-content" data-reveal>
+          <div class="section-label">Featured Story</div>
+          <span class="story-type">{fd?.roomTypes?.[0] || 'Dream Bedroom'}</span>
+          <h2 id="story-heading">{siteSettings.featuredStoryHeadline || `${fd?.name || 'Zyah'}'s new space gave them independence — and their family peace of mind.`}</h2>
+          <p>{siteSettings.featuredStoryDescription || `${fd?.name || 'Zyah'}, ${Array.isArray(fd?.age) ? `ages ${fd.age.join(', ')}` : `age ${fd?.age || 7}`}, lives with ${fd?.diagnosis || 'Spinal Muscular Atrophy'}. Our team transformed their space into an accessible, joyful haven — with custom features designed around their unique needs and personality.`}</p>
+          <a href={`/kids/${featuredSlug}`} class="btn btn-dark btn-lg story-cta">Read {fd?.name || 'Zyah'}'s Full Story →</a>
+        </div>
       </div>
     </div>
   </section>
@@ -284,41 +287,80 @@ const jsonLd = getWebSiteSchema();
     </div>
   </section>
 
-  <!-- ══════ ROOM TYPES ══════ -->
+  <!-- ══════ ROOM TYPES — Editorial magazine ══════ -->
   <section class="rooms" aria-labelledby="rooms-heading">
     <div class="rooms-inner">
       <div class="rooms-header" data-reveal>
         <div class="section-label">What We Build</div>
-        <h2 id="rooms-heading">Three types of spaces, one purpose: <em class="highlight">empowering kids</em></h2>
+        <h2 id="rooms-heading">Three types of spaces,<br/>one purpose: <em class="highlight">empowering kids</em></h2>
       </div>
-      <div class="rooms-grid">
-        <a href="/kids" class="room-tile" data-accent="bedroom" data-reveal>
-          <div class="room-tile-photo" style={`background-image:url('${cfLqip(roomPhotos.bedroom)}')`}><img src={`${CF}/${roomPhotos.bedroom}/w=600,h=375,fit=cover,q=65`} alt="A custom dream bedroom" width="600" height="375" loading="lazy" decoding="async" class="lqip-img" /></div>
-          <div class="room-tile-content">
-            <span class="room-tile-tag">Most Popular</span>
-            <h3>Dream Bedrooms</h3>
-            <p>Personalized sanctuaries where children can escape, imagine, and simply be kids — designed around their unique interests and needs.</p>
-            <span class="room-tile-link">See bedrooms →</span>
+
+      <!-- Featured spread: image + text side by side -->
+      <article class="rm-spread" data-reveal>
+        <a href="/kids" class="rm-spread-link" aria-label="Accessible bathrooms — see our work">
+          <div class="rm-spread-img rm-parallax" style={`background-image:url('${cfLqip(roomPhotos.bath)}')`}>
+            <img
+              src={`${CF}/${roomPhotos.bath}/w=900,h=1100,fit=cover,q=80`}
+              srcset={cfSrcset(roomPhotos.bath, [400, 600, 900, 1200, 1600], { fit: 'cover', aspectRatio: 1100/900, quality: 80 })}
+              sizes="(max-width:600px) 92vw, (max-width:900px) 90vw, 45vw"
+              alt="An accessible bathroom" width="900" height="1100"
+              loading="lazy" decoding="async" class="lqip-img"
+            />
+          </div>
+          <div class="rm-spread-text">
+            <span class="rm-num" aria-hidden="true">01</span>
+            <div class="rm-spread-inner">
+              <h3>Accessible<br/>Bathrooms</h3>
+              <div class="rm-rule"></div>
+              <p>Roll-in showers, grab bars, and lowered vanities — giving children independence and giving families relief from daily struggles.</p>
+              <span class="rm-cta">See our work <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M4 10h12M11 5l5 5-5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+            </div>
           </div>
         </a>
-        <a href="/kids" class="room-tile" data-accent="bath" data-reveal data-delay="1">
-          <div class="room-tile-photo" style={`background-image:url('${cfLqip(roomPhotos.bath)}')`}><img src={`${CF}/${roomPhotos.bath}/w=600,h=375,fit=cover,q=65`} alt="An accessible bathroom" width="600" height="375" loading="lazy" decoding="async" class="lqip-img" /></div>
-          <div class="room-tile-content">
-            <span class="room-tile-tag">Life-Changing</span>
-            <h3>Accessible Bathrooms</h3>
-            <p>Roll-in showers, grab bars, and lowered vanities — giving children independence and giving families relief from daily struggles.</p>
-            <span class="room-tile-link">See bathrooms →</span>
-          </div>
-        </a>
-        <a href="/kids" class="room-tile" data-accent="therapy" data-reveal data-delay="2">
-          <div class="room-tile-photo" style={`background-image:url('${cfLqip(roomPhotos.therapy)}')`}><img src={`${CF}/${roomPhotos.therapy}/w=600,h=375,fit=cover,q=65`} alt="A sensory therapy room" width="600" height="375" loading="lazy" decoding="async" class="lqip-img" /></div>
-          <div class="room-tile-content">
-            <span class="room-tile-tag">Therapeutic</span>
-            <h3>Therapy Rooms</h3>
-            <p>Calming retreats with dimmable lights, swings, crash pads, and textured walls — spaces where children can decompress and develop.</p>
-            <span class="room-tile-link">See therapy rooms →</span>
-          </div>
-        </a>
+      </article>
+
+      <!-- Duo: two editorial cards -->
+      <div class="rm-duo">
+        <article class="rm-card" data-reveal data-delay="1">
+          <a href="/kids" class="rm-card-link" aria-label="Dream bedrooms — see our work">
+            <div class="rm-card-img rm-parallax" style={`background-image:url('${cfLqip(roomPhotos.bedroom)}')`}>
+              <img
+                src={`${CF}/${roomPhotos.bedroom}/w=700,h=875,fit=cover,q=80`}
+                srcset={cfSrcset(roomPhotos.bedroom, [360, 500, 700, 1000, 1400], { fit: 'cover', aspectRatio: 5/4, quality: 80 })}
+                sizes="(max-width:600px) 92vw, (max-width:900px) 46vw, 42vw"
+                alt="A custom dream bedroom" width="700" height="875"
+                loading="lazy" decoding="async" class="lqip-img"
+              />
+            </div>
+            <div class="rm-card-text">
+              <span class="rm-num" aria-hidden="true">02</span>
+              <h3>Dream Bedrooms</h3>
+              <div class="rm-rule"></div>
+              <p>Personalized sanctuaries where children can escape, imagine, and simply be kids — designed around their unique interests and needs.</p>
+              <span class="rm-cta">See our work <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M4 10h12M11 5l5 5-5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+            </div>
+          </a>
+        </article>
+        <article class="rm-card" data-reveal data-delay="2">
+          <a href="/kids" class="rm-card-link" aria-label="Therapy rooms — see our work">
+            <div class="rm-card-img rm-parallax" style={`background-image:url('${cfLqip(roomPhotos.therapy)}')`}>
+              <img
+                src={`${CF}/${roomPhotos.therapy}/w=700,h=875,fit=cover,q=80`}
+                srcset={cfSrcset(roomPhotos.therapy, [360, 500, 700, 1000, 1400], { fit: 'cover', aspectRatio: 5/4, quality: 80 })}
+                sizes="(max-width:600px) 92vw, (max-width:900px) 46vw, 42vw"
+                alt="A sensory therapy room" width="700" height="875"
+                loading="lazy" decoding="async" class="lqip-img"
+              />
+            </div>
+            <div class="rm-card-text">
+              <span class="rm-num" aria-hidden="true">03</span>
+              <h3>Therapy Rooms</h3>
+              <div class="rm-rule"></div>
+              <p>Calming retreats with dimmable lights, swings, crash pads, and textured walls — spaces where children can decompress and develop.</p>
+              <span class="rm-cta">See our work <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M4 10h12M11 5l5 5-5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+            </div>
+          </a>
+        </article>
       </div>
     </div>
   </section>
@@ -357,7 +399,7 @@ const jsonLd = getWebSiteSchema();
     <div class="finale-inner">
       <img src={`${CF}/brand-logo-nav-circle/w=120,h=120,fit=contain,format=png`} alt="Sunshine on a Ranney Day" class="finale-icon" width="60" height="60" loading="lazy" decoding="async" />
       <h2 id="cta-heading" data-reveal>A room can change a child's life.<br/><em>You</em> can make it happen.</h2>
-      <p data-reveal data-delay="1">Every donation — every dollar — goes directly to building dream spaces for children with special needs in the Atlanta area. No middlemen. No overhead bloat. Just kids, rooms, and community.</p>
+      <p data-reveal data-delay="1">Your donation helps build dream spaces for children with special needs in the Atlanta area. Every gift makes a real difference — for kids, rooms, and community.</p>
       <div class="finale-ctas" data-reveal data-delay="2">
         <a href="/donate" class="btn btn-dark btn-lg">Donate Today</a>
         <a href="/partners/" class="btn btn-outline-dark">Become a Partner</a>
@@ -374,7 +416,7 @@ const jsonLd = getWebSiteSchema();
   .story-photo,
   .kid-thumb-photo,
   .process-photo,
-  .room-tile-photo {
+  .rm-parallax {
     background-size: cover;
     background-position: center;
   }
@@ -622,16 +664,23 @@ const jsonLd = getWebSiteSchema();
   @media (max-width: 768px) { .mission { padding: 80px 0; } .mission-inner { grid-template-columns: 1fr; gap: 40px; } .mission-visual { min-height: 340px; } }
 
   /* ── STORY ── */
-  .story { background: var(--c-cream); contain: layout style; }
-  .story-split { display: grid; grid-template-columns: 1fr 1fr; min-height: 520px; max-height: 560px; }
-  .story-photo { position: relative; overflow: hidden; margin: 0; }
-  .story-photo-img { width: 100%; height: 100%; min-height: 400px; object-fit: cover; display: block; }
+  .story { background: var(--c-cream); contain: layout style; padding: 80px 0; }
+  .story-inner { max-width: var(--max-width); margin: 0 auto; padding: 0 var(--page-padding); }
+  .story-split { display: grid; grid-template-columns: 1fr 1fr; border-radius: 20px; overflow: hidden; background: #fff; box-shadow: 0 4px 32px rgba(0,0,0,0.06), 0 1px 4px rgba(0,0,0,0.04); }
+  .story-photo { position: relative; overflow: hidden; margin: 0; height: clamp(440px, 36vw, 560px); }
+  .story-photo-img { width: 100%; height: 100%; object-fit: cover; object-position: center top; display: block; }
   .story-photo-tag { position: absolute; top: 24px; left: 24px; background: var(--c-yellow); color: var(--c-dark); font-size: 12px; font-weight: 700; padding: 6px 16px; border-radius: 50px; letter-spacing: 0.04em; z-index: 1; }
-  .story-content { padding: 72px 80px; display: flex; flex-direction: column; justify-content: center; }
-  .story-type { display: inline-block; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--c-accent); margin-bottom: 20px; }
-  .story-content h2 { font-size: clamp(24px, 3vw, 32px); line-height: 1.3; margin-bottom: 20px; }
-  .story-content p { font-size: 16px; line-height: 1.75; margin-bottom: 28px; color: var(--c-text-muted); }
-  @media (max-width: 768px) { .story-split { grid-template-columns: 1fr; } .story-content { padding: 48px var(--page-padding); } }
+  .story-content { padding: 56px 60px; display: flex; flex-direction: column; justify-content: center; }
+  .story-type { display: inline-block; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.12em; color: var(--c-accent); margin-bottom: 16px; }
+  .story-content h2 { font-size: clamp(22px, 2.2vw, 28px); line-height: 1.35; margin-bottom: 20px; letter-spacing: -0.01em; }
+  .story-content p { font-size: 15px; line-height: 1.8; margin-bottom: 32px; color: var(--c-text-muted); }
+  .story-cta { align-self: flex-start; }
+  @media (max-width: 768px) {
+    .story { padding: 48px 0; }
+    .story-split { grid-template-columns: 1fr; border-radius: 16px; }
+    .story-photo { height: 300px; }
+    .story-content { padding: 36px 28px 40px; }
+  }
 
   /* ── KIDS STRIP ── */
   .kids-strip { padding: 100px 0 80px; overflow: hidden; contain: layout style; }
@@ -701,25 +750,233 @@ const jsonLd = getWebSiteSchema();
     .process-cta { text-align: center; }
   }
 
-  /* ── ROOMS ── */
-  .rooms { padding: 120px 0; background: var(--c-cream); contain: layout style; }
-  .rooms-inner { max-width: var(--max-width); margin: 0 auto; padding: 0 var(--page-padding); }
-  .rooms-header { max-width: 560px; margin-bottom: 56px; }
-  .rooms-header h2 { line-height: 1.25; }
+  /* ══ ROOMS — Editorial magazine layout ══ */
+  .rooms { padding: 140px 0 160px; background: var(--c-cream); contain: layout style; }
+  .rooms-inner { max-width: var(--max-width-wide); margin: 0 auto; padding: 0 var(--page-padding); }
+  .rooms-header { max-width: 600px; margin-bottom: 80px; }
+  .rooms-header h2 { line-height: 1.18; letter-spacing: -0.02em; }
   .rooms-header h2 em { font-style: italic; }
-  .rooms-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
-  .room-tile { background: #fff; border-radius: 20px; overflow: hidden; text-decoration: none; color: inherit; transition: all 0.5s cubic-bezier(0.16,1,0.3,1); box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
-  .room-tile:hover { transform: translateY(-8px); box-shadow: 0 24px 56px rgba(0,0,0,0.1); }
-  .room-tile-photo { aspect-ratio: 16 / 10; overflow: hidden; }
-  .room-tile-photo img { width: 100%; height: 100%; object-fit: cover; transition: transform 0.6s cubic-bezier(0.16,1,0.3,1); }
-  .room-tile:hover .room-tile-photo img { transform: scale(1.06); }
-  .room-tile-content { padding: 28px; }
-  .room-tile-tag { display: inline-block; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--c-accent); background: var(--c-accent-soft); padding: 4px 12px; border-radius: 50px; margin-bottom: 12px; }
-  .room-tile-content h3 { font-size: 22px; margin-bottom: 8px; }
-  .room-tile-content p { font-size: 15px; line-height: 1.65; margin-bottom: 20px; color: var(--c-text-muted); }
-  .room-tile-link { font-size: 14px; font-weight: 600; color: var(--c-accent); transition: letter-spacing 0.3s ease; }
-  .room-tile:hover .room-tile-link { letter-spacing: 0.02em; }
-  @media (max-width: 768px) { .rooms { padding: 80px 0; } .rooms-grid { grid-template-columns: 1fr; } }
+
+  /* ── Shared editorial elements ── */
+  .rm-num {
+    display: block;
+    font-family: var(--font-display); font-style: italic;
+    font-size: clamp(72px, 10vw, 120px); font-weight: 400;
+    line-height: 0.85; color: #E0DDD6;
+    transition: color 0.6s ease;
+    user-select: none;
+  }
+  .rm-rule {
+    width: 48px; height: 3px;
+    background: var(--c-yellow);
+    margin: 20px 0 24px;
+    border-radius: 2px;
+    transition: width 0.6s cubic-bezier(0.16,1,0.3,1);
+  }
+  .rm-cta {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-size: 13px; font-weight: 700; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--c-dark);
+    transition: gap 0.45s cubic-bezier(0.16,1,0.3,1);
+  }
+  .rm-cta svg {
+    transition: transform 0.45s cubic-bezier(0.16,1,0.3,1);
+    will-change: transform;
+  }
+
+  /* ── Parallax image container ── */
+  .rm-parallax {
+    overflow: hidden; border-radius: 20px;
+    background-size: cover; background-position: center;
+    contain: content;
+  }
+  .rm-parallax img {
+    width: 100%; height: 100%; object-fit: cover;
+    transform: scale(1.06);
+    transition: transform 1s cubic-bezier(0.16,1,0.3,1);
+  }
+  @media (min-width: 768px) {
+    .rm-parallax img { will-change: transform; }
+  }
+
+  /* ════════════════════════════════════
+     FEATURED SPREAD — horizontal layout
+     ════════════════════════════════════ */
+  .rm-spread { margin-bottom: 96px; }
+  .rm-spread-link {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr;
+    gap: 0;
+    text-decoration: none; color: inherit;
+    align-items: stretch;
+    min-height: 680px;
+  }
+
+  /* Image: left column, dominant */
+  .rm-spread-img {
+    aspect-ratio: auto; border-radius: 20px;
+    height: 100%; min-height: 600px;
+  }
+  .rm-spread-link:hover .rm-spread-img img { transform: scale(1.04); }
+  .rm-spread-link:hover .rm-num { color: var(--c-yellow); }
+  .rm-spread-link:hover .rm-rule { width: 88px; }
+  .rm-spread-link:hover .rm-cta { gap: 14px; }
+  .rm-spread-link:hover .rm-cta svg { transform: translateX(4px); }
+
+  /* Text: right column, anchored to bottom */
+  .rm-spread-text {
+    display: flex; flex-direction: column;
+    justify-content: flex-end;
+    padding: 40px 0 48px 56px;
+  }
+  .rm-spread-inner { max-width: 400px; }
+  .rm-spread-inner h3 {
+    font-family: var(--font-display);
+    font-size: clamp(34px, 4.5vw, 52px);
+    font-weight: 700; line-height: 1.08;
+    letter-spacing: -0.03em;
+    margin-bottom: 0;
+  }
+  .rm-spread-inner p {
+    font-size: 16px; line-height: 1.75;
+    color: var(--c-text-muted);
+    margin-bottom: 32px;
+  }
+
+  /* ════════════════════════════════════
+     DUO CARDS — two-column grid
+     ════════════════════════════════════ */
+  .rm-duo {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 40px;
+  }
+  .rm-card-link {
+    display: block; text-decoration: none; color: inherit;
+  }
+  .rm-card-img {
+    aspect-ratio: 4 / 5; border-radius: 20px;
+    margin-bottom: 28px;
+  }
+  .rm-card-link:hover .rm-card-img img { transform: scale(1.04); }
+  .rm-card-link:hover .rm-num { color: var(--c-yellow); }
+  .rm-card-link:hover .rm-rule { width: 88px; }
+  .rm-card-link:hover .rm-cta { gap: 14px; }
+  .rm-card-link:hover .rm-cta svg { transform: translateX(4px); }
+
+  .rm-card-text .rm-num { font-size: clamp(56px, 7vw, 88px); margin-bottom: -6px; }
+  .rm-card-text h3 {
+    font-family: var(--font-display);
+    font-size: clamp(24px, 2.8vw, 34px);
+    font-weight: 700; line-height: 1.15;
+    letter-spacing: -0.02em;
+  }
+  .rm-card-text p {
+    font-size: 15px; line-height: 1.7;
+    color: var(--c-text-muted);
+    margin-bottom: 28px;
+  }
+
+  /* ── Focus states ── */
+  .rm-spread-link:focus-visible,
+  .rm-card-link:focus-visible {
+    outline: 3px solid var(--c-yellow); outline-offset: 8px;
+    border-radius: 24px;
+  }
+
+  /* ════════ Responsive ════════ */
+  @media (max-width: 900px) {
+    .rooms { padding: 100px 0 120px; }
+    .rm-spread { margin-bottom: 64px; }
+    .rm-spread-link {
+      grid-template-columns: 1fr;
+      min-height: auto;
+    }
+    .rm-spread-img { min-height: 360px; aspect-ratio: 16 / 10; }
+    .rm-spread-text { padding: 28px 0 0; justify-content: flex-start; }
+    .rm-spread-inner h3 br { display: none; }
+    .rm-num { font-size: clamp(56px, 8vw, 80px); }
+    .rm-duo { gap: 32px; }
+    .rm-card-img { aspect-ratio: 4 / 5; }
+    .rm-card-text .rm-num { font-size: clamp(40px, 6vw, 56px); }
+  }
+  @media (max-width: 600px) {
+    .rooms { padding: 56px 0 64px; }
+    .rooms-header { margin-bottom: 32px; }
+    .rooms-header h2 { font-size: 24px; }
+
+    /* Numbers: small accent, not a hero element */
+    .rm-num { font-size: 14px; font-style: normal; font-weight: 700;
+      letter-spacing: 0.1em; color: var(--c-yellow);
+      margin-bottom: 8px;
+    }
+
+    /* Rule: thinner on mobile */
+    .rm-rule { margin: 12px 0 14px; width: 32px; height: 2px; }
+
+    /* Featured spread — image-overlay card on mobile */
+    .rm-spread { margin-bottom: 32px; }
+    .rm-spread-link { display: block; position: relative; border-radius: 16px; overflow: hidden; }
+    .rm-spread-img {
+      min-height: auto; aspect-ratio: 3 / 4; max-height: 440px;
+      border-radius: 0;
+    }
+    .rm-spread-text {
+      position: absolute; bottom: 0; left: 0; right: 0;
+      padding: 24px; background: linear-gradient(to top, rgba(0,0,0,0.75) 0%, rgba(0,0,0,0.35) 60%, transparent 100%);
+      justify-content: flex-end; z-index: 2;
+    }
+    .rm-spread-inner { max-width: none; }
+    .rm-spread-inner h3 { font-size: 24px; color: #fff; }
+    .rm-spread-inner h3 br { display: none; }
+    .rm-spread-inner p { font-size: 14px; line-height: 1.6; color: rgba(255,255,255,0.85); margin-bottom: 16px; }
+    .rm-spread .rm-num { color: var(--c-yellow); }
+    .rm-spread .rm-rule { background: var(--c-yellow); }
+    .rm-spread .rm-cta { color: #fff; font-size: 12px; }
+
+    /* Duo cards — horizontal scroll carousel */
+    .rm-duo {
+      display: flex; gap: 16px;
+      overflow-x: auto; scroll-snap-type: x mandatory;
+      -webkit-overflow-scrolling: touch; scrollbar-width: none;
+      margin: 0 calc(var(--page-padding) * -1);
+      padding: 0 var(--page-padding);
+    }
+    .rm-duo::-webkit-scrollbar { display: none; }
+    /* Right padding so last card doesn't hit the edge */
+    .rm-duo::after {
+      content: ''; flex: 0 0 var(--page-padding);
+    }
+
+    .rm-card {
+      flex: 0 0 82%; min-width: 0; scroll-snap-align: start;
+    }
+    .rm-card-link {
+      display: block; position: relative;
+      border-radius: 16px; overflow: hidden;
+      height: 100%;
+    }
+    .rm-card-img {
+      aspect-ratio: 4 / 5; max-height: 420px;
+      border-radius: 0; margin-bottom: 0;
+      height: 100%;
+    }
+    .rm-card-text {
+      position: absolute; bottom: 0; left: 0; right: 0;
+      padding: 24px;
+      background: linear-gradient(to top, rgba(0,0,0,0.78) 0%, rgba(0,0,0,0.35) 60%, transparent 100%);
+    }
+    .rm-card-text .rm-num { font-size: 14px; color: var(--c-yellow); margin-bottom: 6px; }
+    .rm-card-text h3 { font-size: 22px; color: #fff; font-family: var(--font-display); }
+    .rm-card-text .rm-rule { background: var(--c-yellow); width: 28px; margin: 10px 0 12px; }
+    .rm-card-text p { font-size: 13px; line-height: 1.6; color: rgba(255,255,255,0.85); margin-bottom: 16px; }
+    .rm-card-text .rm-cta { color: #fff; font-size: 12px; }
+
+    .rm-parallax { border-radius: 0; }
+    .rm-cta { padding: 4px 0; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .rm-parallax img { transition: none; }
+  }
 
   /* ── TRUST ── */
   .trust { padding: 120px 0; background: var(--c-dark-deep); color: #fff; contain: layout style; }
@@ -847,6 +1104,60 @@ const jsonLd = getWebSiteSchema();
     updateArrows();
   }
   document.addEventListener('astro:page-load', initKidsScroll);
+</script>
+
+<!-- Room images: scroll-driven parallax (desktop only) -->
+<script>
+  let _rmObserver: IntersectionObserver | null = null;
+  let _rmScroll: (() => void) | null = null;
+
+  function rmCleanup() {
+    _rmObserver?.disconnect(); _rmObserver = null;
+    if (_rmScroll) { window.removeEventListener('scroll', _rmScroll); _rmScroll = null; }
+  }
+
+  function initRoomParallax() {
+    rmCleanup();
+    // Skip on mobile (no visual payoff, saves battery) and reduced-motion
+    if (window.innerWidth < 768) return;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+    const imgs = document.querySelectorAll<HTMLElement>('.rm-parallax img');
+    if (!imgs.length) return;
+
+    const visible = new Set<HTMLElement>();
+
+    _rmObserver = new IntersectionObserver(entries => {
+      entries.forEach(e => {
+        if (e.isIntersecting) visible.add(e.target as HTMLElement);
+        else visible.delete(e.target as HTMLElement);
+      });
+    }, { rootMargin: '60px 0px' });
+
+    imgs.forEach(img => _rmObserver!.observe(img));
+
+    let ticking = false;
+    function onScroll() {
+      if (ticking || !visible.size) return;
+      ticking = true;
+      requestAnimationFrame(() => {
+        const vh = window.innerHeight;
+        visible.forEach(img => {
+          const rect = img.getBoundingClientRect();
+          const progress = (rect.top + rect.height / 2 - vh / 2) / vh;
+          img.style.transform = `scale(1.06) translateY(${progress * -16}px)`;
+        });
+        ticking = false;
+      });
+    }
+
+    _rmScroll = onScroll;
+    window.addEventListener('scroll', onScroll, { passive: true });
+    onScroll(); // initial position
+  }
+
+  document.addEventListener('astro:page-load', initRoomParallax);
+  document.addEventListener('astro:before-swap', rmCleanup);
 </script>
 
 <!-- Shared element morph: kid thumbnail → profile hero -->

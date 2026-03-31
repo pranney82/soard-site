@@ -3,5 +3,10 @@
   "slug": "wall-nut-custom-wall-murals",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/wall-nut-custom-wall-murals/public",
   "tier": "construction",
-  "featured": false
+  "featured": false,
+  "category": [
+    "build"
+  ],
+  "level": "builder",
+  "website": "https://www.facebook.com/andythewallnut/"
 }

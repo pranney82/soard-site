@@ -1,7 +1,12 @@
 {
-  "name": "Usa Insulation",
+  "name": "USA Insulation",
   "slug": "usa-insulation",
-  "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/usa-insulation/public",
+  "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/usa-insulation/1774890441868/public",
   "tier": "construction",
-  "featured": false
+  "featured": false,
+  "category": [
+    "build"
+  ],
+  "website": "https://usainsulation.net/atlanta?utm_source=google&utm_medium=cpc&utm_campaign=22983484507&utm_adgroup=183594162614&utm_term=usainsulation&utm_content=772329844272&device=c&matchtype=e&network=g&gad_source=1&gad_campaignid=22983484507&gbraid=0AAAABBSy7_bnQzCF9oDIdy0W0akity-90&gclid=CjwKCAjwvqjOBhAGEiwAngeQnV32TINo8yv7hAT1cg4WSbjvKr-tJ8ahcIJR3nHu20oFzTOX4I_CShoCSaIQAvD_BwE",
+  "level": "friend"
 }

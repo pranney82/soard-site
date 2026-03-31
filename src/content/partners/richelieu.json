@@ -1,7 +1,9 @@
 {
-  "name": "Richelieu",
+  "name": "Richelieu Hardware",
   "slug": "richelieu",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/richelieu/public",
   "tier": "construction",
-  "featured": false
+  "featured": false,
+  "website": "https://www.richelieu.com/us/en/",
+  "level": "friend"
 }

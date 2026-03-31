@@ -1,13 +1,18 @@
 ---
 /**
  * Partners Page — Sunshine on a Ranney Day
- * Best-in-class partner showcase with tiered levels + category filtering
+ * Top 1% editorial partner showcase with emotional narrative arc
  *
- * ARCHITECTURE:
- * - Levels: signature → champion → builder → friend (prestige hierarchy)
- * - Categories: build, design, funding, community (filterable)
- * - All data-driven from content collection (no hardcoded lists)
- * - Client-side filter tabs with zero framework JS
+ * STRUCTURE:
+ * 1. Hero — Editorial split (photo + bold typography with striking stat)
+ * 2. Signature Partners — Magazine-style feature cards
+ * 3. Impact Ribbon — Static stats strip (years, rooms, kids, partners)
+ * 4. Champion Partners — Elevated grid on cream
+ * 5. Editorial Interstitial — Large pull-quote
+ * 6. Builder Partners — Dark refined grid
+ * 7. All Partners — Filterable grid with smooth UX
+ * 8. Ways to Partner — CTA cards
+ * 9. CTA — Yellow emotional close
  *
  * PERF NOTES:
  * - Hero has NO data-reveal (LCP critical)
@@ -20,6 +25,7 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
 import { getCollection } from 'astro:content';
 import { cfRaw, cfId, cfDensitySrcset, cfSrcset, cfLqip } from '../../utils/cf-image';
 import { getWebPageSchema, getBreadcrumbSchema, buildSchemaGraph } from '../../utils/schema';
+import { getSiteStats } from '../../utils/stats';
 
 /* ── Site settings (editable from admin) ── */
 import siteSettings from '../../content/site/settings.json';
@@ -28,7 +34,10 @@ import siteSettings from '../../content/site/settings.json';
 const impactQuote = siteSettings.partnerQuote || "Seeing the look on a child\u2019s face when they walk into their new room \u2014 that\u2019s why we show up every build day.";
 const impactCiteName = siteSettings.partnerQuoteName || 'Lee Hainer';
 const impactCiteOrg = siteSettings.partnerQuoteOrg || 'Lee Hainer Construction';
-const impactPhoto = siteSettings.partnerPhoto || 'kids/oakley/photo-15';
+const heroPhoto = siteSettings.partnerPhoto || 'kids/oakley/photo-15';
+
+/* ── Stats ── */
+const stats = await getSiteStats();
 
 /* ── All partners from content collection ── */
 const allPartners = await getCollection('partners');
@@ -73,81 +82,109 @@ const jsonLd = buildSchemaGraph(
   breadcrumbs={breadcrumbs}
 >
 
-  <!-- ══════ HERO ══════ -->
-  <section class="partners-hero">
-    <div class="container">
-      <p class="partners-hero__label">Partners</p>
-      <h1 class="partners-hero__title">The people who make <em class="highlight">dreams</em> possible.</h1>
-      <p class="partners-hero__subtitle">Every room we build is a community effort. These incredible partners donate their time, talent, materials, and funding to transform the lives of children with special needs.</p>
-      <a href="#all" class="partners-hero__cta">View all {allPartners.length}+ partners &darr;</a>
-      <div class="partners-hero__rule" aria-hidden="true">
-        <span class="partners-hero__rule-accent"></span>
+  <!-- Preload hero LCP image -->
+  <link slot="head" rel="preload" as="image" imagesrcset={`${cfRaw(heroPhoto, 'w=400,h=500,fit=cover,gravity=auto,q=65')} 400w, ${cfRaw(heroPhoto, 'w=560,h=700,fit=cover,gravity=auto,q=65')} 560w, ${cfRaw(heroPhoto, 'w=800,h=1000,fit=cover,gravity=auto,q=65')} 800w`} imagesizes="(max-width:768px) 85vw, 420px" fetchpriority="high" />
+
+  <!-- ══════ HERO — Editorial Split ══════ -->
+  <section class="hero">
+    <div class="hero-inner">
+      <div class="hero-text">
+        <p class="hero-eyebrow">Our Partners</p>
+        <h1 class="hero-headline">The people who make <em>dreams</em> possible.</h1>
+        <p class="hero-lead">Every room we build is a community effort. These incredible partners donate their time, talent, materials, and funding to transform the lives of children with special needs.</p>
+        <div class="hero-ctas">
+          <a href="#signature" class="btn btn-primary btn-lg">Meet Our Partners &darr;</a>
+          <a href="mailto:info@soardcharity.com" class="btn btn-outline-dark btn-lg">Become a Partner &rarr;</a>
+        </div>
+      </div>
+      <div class="hero-photo-wrap">
+        <div class="hero-frame" style={`background-image:url('${cfLqip(heroPhoto)}')`}>
+          <img
+            src={cfRaw(heroPhoto, 'w=800,h=1000,fit=cover,gravity=auto,q=65')}
+            srcset={`${cfRaw(heroPhoto, 'w=400,h=500,fit=cover,gravity=auto,q=65')} 400w, ${cfRaw(heroPhoto, 'w=560,h=700,fit=cover,gravity=auto,q=65')} 560w, ${cfRaw(heroPhoto, 'w=800,h=1000,fit=cover,gravity=auto,q=65')} 800w`}
+            sizes="(max-width:768px) 85vw, 420px"
+            alt="Partners and volunteers working together on a SOARD room build"
+            width="800" height="1000"
+            fetchpriority="high"
+            loading="eager"
+            decoding="sync"
+            class="hero-img lqip-img"
+          />
+        </div>
+        <div class="hero-accent" aria-hidden="true"></div>
+        <div class="hero-stat">
+          <span class="hero-stat-num">{allPartners.length}+</span>
+          <span class="hero-stat-label">partners building<br/>dreams since 2012</span>
+        </div>
       </div>
     </div>
   </section>
 
-  <!-- ══════ SIGNATURE PARTNERS ══════ -->
+  <!-- ══════ SIGNATURE PARTNERS — MAGAZINE FEATURE ══════ -->
   {signature.length > 0 && (
     <section class="sig" id="signature" aria-labelledby="sig-heading">
       <div class="sig-inner">
         <div class="sig-header" data-reveal>
           <div class="section-label section-label--yellow">Signature Partners</div>
           <h2 id="sig-heading">The partners who <em>define</em> our mission</h2>
-          <p class="sig-subtitle">These extraordinary organizations are the backbone of every build season — contributing at the highest level to make dream rooms possible.</p>
+          <p class="sig-lead">These extraordinary organizations are the backbone of every build season — contributing at the highest level year after year.</p>
         </div>
         <div class="sig-grid" data-reveal data-delay="1">
-          {signature.map(p => (
-            <div class="sig-card">
-              <div class="sig-card__logo">
-                <img
-                  src={cfRaw(p.data.logo, 'w=320,h=100,fit=contain,q=85')}
-                  srcset={cfDensitySrcset(cfId(p.data.logo), 160, 50, { quality: 85, fit: 'contain' })}
-                  alt={p.data.name}
-                  width="160" height="50"
-                  loading="lazy" decoding="async"
-                />
-              </div>
-              <div class="sig-card__info">
-                <h3 class="sig-card__name">{p.data.name}</h3>
-                {p.data.tagline && <p class="sig-card__tagline">{p.data.tagline}</p>}
-              </div>
-              {p.data.website && (
-                <a href={p.data.website} target="_blank" rel="noopener noreferrer" class="sig-card__link" aria-label={`Visit ${p.data.name} website`}>
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
-                </a>
-              )}
-            </div>
-          ))}
+          {signature.map(p => {
+            const hasLink = !!p.data.website;
+            const Tag = hasLink ? 'a' : 'div';
+            return (
+              <Tag
+                class:list={['sig-card', { 'sig-card--linked': hasLink }]}
+                {...(hasLink ? { href: p.data.website, target: '_blank', rel: 'noopener noreferrer' } : {})}
+              >
+                <div class="sig-card__logo">
+                  <img
+                    src={cfRaw(p.data.logo, 'w=400,h=120,fit=contain,q=85')}
+                    srcset={cfDensitySrcset(cfId(p.data.logo), 200, 60, { quality: 85, fit: 'contain' })}
+                    alt={p.data.name}
+                    width="200" height="60"
+                    loading="lazy" decoding="async"
+                  />
+                </div>
+                <div class="sig-card__info">
+                  <h3 class="sig-card__name">{p.data.name}</h3>
+                  {p.data.tagline && <p class="sig-card__tagline">{p.data.tagline}</p>}
+                </div>
+                {hasLink && (
+                  <span class="sig-card__arrow" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7"/><path d="M7 7h10v10"/></svg>
+                  </span>
+                )}
+              </Tag>
+            );
+          })}
         </div>
       </div>
     </section>
   )}
 
-  <!-- ══════ IMPACT MOMENT ══════ -->
-  <section class="impact" aria-label="Partner impact">
-    <div class="impact-inner">
-      <div class="impact-photo" data-reveal>
-        <div class="impact-frame" style={`background-image:url('${cfLqip(impactPhoto)}')`}>
-          <img
-            class="impact-img lqip-img"
-            src={cfRaw(impactPhoto, 'w=640,h=480,fit=cover,gravity=auto,q=80')}
-            srcset={cfSrcset(impactPhoto, [400, 560, 640], { fit: 'cover', gravity: 'auto', aspectRatio: 0.75, quality: 80 })}
-            sizes="(max-width: 768px) 100vw, 50vw"
-            alt="Volunteers and partners working together on a SOARD room build day"
-            width="640" height="480"
-            loading="lazy" decoding="async"
-          />
-        </div>
+  <!-- ══════ IMPACT RIBBON — STATIC STATS ══════ -->
+  <section class="ribbon" aria-label="Impact statistics">
+    <div class="ribbon-inner" data-reveal>
+      <div class="ribbon-stat">
+        <span class="ribbon-stat__number">{stats.years}</span>
+        <span class="ribbon-stat__label">Years of impact</span>
       </div>
-      <div class="impact-content" data-reveal data-delay="1">
-        <div class="section-label section-label--yellow">Why We Partner</div>
-        <blockquote class="impact-quote">
-          <p>&ldquo;{impactQuote}&rdquo;</p>
-          <footer>
-            <cite>{impactCiteName}</cite>
-            <span>{impactCiteOrg}</span>
-          </footer>
-        </blockquote>
+      <div class="ribbon-divider" aria-hidden="true"></div>
+      <div class="ribbon-stat">
+        <span class="ribbon-stat__number">{stats.totalRooms}</span>
+        <span class="ribbon-stat__label">Rooms built</span>
+      </div>
+      <div class="ribbon-divider" aria-hidden="true"></div>
+      <div class="ribbon-stat">
+        <span class="ribbon-stat__number">{stats.totalKids}</span>
+        <span class="ribbon-stat__label">Children served</span>
+      </div>
+      <div class="ribbon-divider" aria-hidden="true"></div>
+      <div class="ribbon-stat">
+        <span class="ribbon-stat__number">{allPartners.length}+</span>
+        <span class="ribbon-stat__label">Partners strong</span>
       </div>
     </div>
   </section>
@@ -159,7 +196,7 @@ const jsonLd = buildSchemaGraph(
         <div class="champ-header" data-reveal>
           <div class="section-label">Champion Partners</div>
           <h2 id="champ-heading">Champions of <em class="highlight">Sunshine</em></h2>
-          <p class="champ-subtitle">Major sponsors, top contributors, and featured partners who make an outsized impact on our mission through funding, materials, and expertise.</p>
+          <p class="champ-lead">Major sponsors and top contributors who make an outsized impact through funding, materials, and expertise.</p>
         </div>
         <div class="champ-grid" data-reveal data-delay="1">
           {champions.map(p => {
@@ -172,16 +209,16 @@ const jsonLd = buildSchemaGraph(
               >
                 <div class="champ-card__logo">
                   <img
-                    src={cfRaw(p.data.logo, 'w=240,h=72,fit=contain,q=80')}
-                    srcset={cfDensitySrcset(cfId(p.data.logo), 120, 36, { quality: 80, fit: 'contain' })}
+                    src={cfRaw(p.data.logo, 'w=280,h=80,fit=contain,q=80')}
+                    srcset={cfDensitySrcset(cfId(p.data.logo), 140, 40, { quality: 80, fit: 'contain' })}
                     alt={p.data.name}
-                    width="120" height="36"
+                    width="140" height="40"
                     loading="lazy" decoding="async"
                   />
                 </div>
                 <span class="champ-card__name">{p.data.name}</span>
                 {hasLink && (
-                  <svg class="champ-card__ext" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
+                  <svg class="champ-card__ext" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7"/><path d="M7 7h10v10"/></svg>
                 )}
               </Tag>
             );
@@ -191,6 +228,22 @@ const jsonLd = buildSchemaGraph(
     </section>
   )}
 
+  <!-- ══════ EDITORIAL INTERSTITIAL — PULL QUOTE ══════ -->
+  <section class="interstitial" aria-label="Partner testimonial">
+    <div class="interstitial-inner">
+      <div class="interstitial-content" data-reveal>
+        <blockquote class="interstitial-quote">
+          <svg class="interstitial-mark" viewBox="0 0 48 48" fill="currentColor" aria-hidden="true"><path d="M21 7.2v1.6C14.4 12 10 17.6 10 24v17h17V24H17c0-6 3-10.8 8-13.6L21 7.2zm24 0v1.6C38.4 12 34 17.6 34 24v17h17V24H41c0-6 3-10.8 8-13.6L45 7.2z" opacity=".12"/></svg>
+          <p>&ldquo;{impactQuote}&rdquo;</p>
+          <footer>
+            <cite>{impactCiteName}</cite>
+            <span>{impactCiteOrg}</span>
+          </footer>
+        </blockquote>
+      </div>
+    </div>
+  </section>
+
   <!-- ══════ BUILDER PARTNERS ══════ -->
   {builders.length > 0 && (
     <section class="build" id="builders" aria-labelledby="build-heading">
@@ -198,7 +251,7 @@ const jsonLd = buildSchemaGraph(
         <div class="build-header" data-reveal>
           <div class="section-label section-label--yellow">Builder Partners</div>
           <h2 id="build-heading">The hands & hearts behind every <em>room</em></h2>
-          <p class="build-subtitle">These partners donate materials, labor, and services on a regular basis. They are the hands and hearts behind every room we build.</p>
+          <p class="build-lead">These partners donate materials, labor, and services on a regular basis. They are the hands and hearts behind every room we build.</p>
         </div>
         <div class="build-grid" data-reveal data-delay="1">
           {builders.map(p => {
@@ -231,9 +284,9 @@ const jsonLd = buildSchemaGraph(
   <section class="all" id="all" aria-labelledby="all-heading">
     <div class="all-inner">
       <div class="all-header" data-reveal>
-        <div class="section-label">All Partners</div>
-        <h2 id="all-heading">Every partner who has helped build <em class="highlight">dreams</em></h2>
-        <p class="all-subtitle">{allPartners.length}+ organizations and individuals who have donated time, materials, or funding to SOARD since 2012.</p>
+        <div class="section-label">Every Partner</div>
+        <h2 id="all-heading">The full roster of <em class="highlight">dream-builders</em></h2>
+        <p class="all-lead">{allPartners.length}+ organizations and individuals who have donated time, materials, or funding to SOARD since 2012.</p>
       </div>
 
       <!-- Filter tabs -->
@@ -290,7 +343,7 @@ const jsonLd = buildSchemaGraph(
       <div class="ways-header" data-reveal>
         <div class="section-label section-label--yellow">Get Involved</div>
         <h2 id="ways-heading">Ways to <em>partner</em> with us</h2>
-        <p class="ways-subtitle">Whether you're a contractor, designer, brand, or individual — there's a place for you.</p>
+        <p class="ways-lead">Whether you're a contractor, designer, brand, or individual — there's a place for you.</p>
       </div>
       <div class="ways-grid" data-reveal data-delay="1">
         <div class="way-card">
@@ -329,9 +382,8 @@ const jsonLd = buildSchemaGraph(
   <section class="partners-cta" aria-labelledby="cta-heading">
     <div class="partners-cta-inner">
       <div class="partners-cta-content" data-reveal>
-        <div class="section-label section-label--dark">Join Us</div>
-        <h2 id="cta-heading">Join {allPartners.length}+ partners building <em>dreams</em></h2>
-        <p>Every contribution, big or small, helps build a dream room for a child who needs it most.</p>
+        <h2 id="cta-heading">Every dream room starts with a partner who says <em>yes</em>.</h2>
+        <p>Join {allPartners.length}+ organizations building something bigger than any one of us.</p>
         <div class="partners-cta-btns">
           <a href="mailto:info@soardcharity.com" class="btn btn-primary btn-cta">Become a Partner &rarr;</a>
           <a href="/donate" class="btn btn-dark">Donate Today &rarr;</a>
@@ -352,41 +404,52 @@ const jsonLd = buildSchemaGraph(
     if (!tabs.length || !cards.length) return;
 
     function applyFilter(cat: string) {
-      // Update active tab
       tabs.forEach(t => {
         t.classList.toggle('is-active', t.dataset.cat === cat);
         t.setAttribute('aria-selected', String(t.dataset.cat === cat));
       });
 
-      // Filter cards with fade
       let visible = 0;
       cards.forEach(card => {
         const show = cat === 'all' || (card.dataset.category || '').split(',').includes(cat);
-        if (show) {
-          card.style.display = '';
-          card.style.opacity = '1';
-          visible++;
-        } else {
-          card.style.opacity = '0';
-          card.style.display = 'none';
-        }
+        card.classList.toggle('is-hidden', !show);
+        if (show) visible++;
       });
 
-      // Update counter
       if (counter) {
         const label = cat === 'all' ? 'all' : cat;
         counter.textContent = `Showing ${visible} ${label} partner${visible !== 1 ? 's' : ''}`;
         counter.style.display = cat === 'all' ? 'none' : '';
       }
 
-      // Update URL hash for deep-linking
       const hash = cat === 'all' ? '#all' : `#all:${cat}`;
       history.replaceState(null, '', hash);
     }
 
-    // Tab click
+    // Click
     tabs.forEach(tab => {
       tab.addEventListener('click', () => applyFilter(tab.dataset.cat!));
+    });
+
+    // Keyboard arrow-key navigation (WAI-ARIA tabs pattern)
+    tabs.forEach((tab, i) => {
+      tab.addEventListener('keydown', (e: KeyboardEvent) => {
+        let target: number | null = null;
+        if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+          target = (i + 1) % tabs.length;
+        } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+          target = (i - 1 + tabs.length) % tabs.length;
+        } else if (e.key === 'Home') {
+          target = 0;
+        } else if (e.key === 'End') {
+          target = tabs.length - 1;
+        }
+        if (target !== null) {
+          e.preventDefault();
+          tabs[target].focus();
+          applyFilter(tabs[target].dataset.cat!);
+        }
+      });
     });
 
     // Restore from URL hash on load
@@ -404,86 +467,18 @@ const jsonLd = buildSchemaGraph(
 
 <style>
   /* ══════════════════════════════════════════
-     HERO
+     PAGE-LEVEL DATA-REVEAL
      ══════════════════════════════════════════ */
-  .partners-hero {
-    background: var(--c-cream);
-    padding-block: var(--space-2xl) 0;
-    text-align: center;
+  [data-reveal] {
+    opacity: 0;
+    transform: translateY(28px);
+    transition: opacity 0.7s cubic-bezier(0.16,1,0.3,1),
+                transform 0.7s cubic-bezier(0.16,1,0.3,1);
   }
-
-  .partners-hero .container {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-  }
-
-  .partners-hero__label {
-    font-size: 0.75rem;
-    font-weight: 600;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: var(--c-text-muted);
-    margin-bottom: var(--space-md);
-  }
-
-  .partners-hero__title {
-    color: var(--c-text);
-    font-size: clamp(2rem, 5vw, 3.125rem);
-    font-weight: 400;
-    letter-spacing: -0.025em;
-    line-height: 1.15;
-    max-width: 700px;
-    margin-inline: auto;
-  }
-
-  .partners-hero__title :global(em) {
-    font-style: italic;
-  }
-
-  .partners-hero__subtitle {
-    margin-top: var(--space-sm);
-    font-family: var(--font-display);
-    font-style: italic;
-    font-size: clamp(0.95rem, 1.8vw, 1.065rem);
-    line-height: 1.6;
-    color: var(--c-text-muted);
-    max-width: 600px;
-    margin-inline: auto;
-  }
-
-  .partners-hero__cta {
-    display: inline-block;
-    margin-top: var(--space-lg);
-    font-size: 0.8125rem;
-    font-weight: 600;
-    color: var(--c-text-muted);
-    letter-spacing: 0.02em;
-    transition: color var(--transition-fast);
-  }
-
-  .partners-hero__cta:hover {
-    color: var(--c-text);
-  }
-
-  .partners-hero__rule {
-    position: relative;
-    height: 2px;
-    background: var(--c-border);
-    margin-top: var(--space-lg);
-    width: 100%;
-  }
-
-  .partners-hero__rule-accent {
-    position: absolute;
-    left: 50%;
-    transform: translateX(-50%);
-    top: -1px;
-    width: 48px;
-    height: 3px;
-    background: var(--c-yellow);
-    border-radius: 1px;
-  }
+  [data-reveal].is-visible { opacity: 1; transform: translateY(0); }
+  [data-delay="1"] { transition-delay: 0.12s; }
+  [data-delay="2"] { transition-delay: 0.24s; }
+  [data-delay="3"] { transition-delay: 0.36s; }
 
   /* ══════════════════════════════════════════
      PAGE-SPECIFIC OVERRIDES
@@ -497,7 +492,184 @@ const jsonLd = buildSchemaGraph(
   }
 
   /* ══════════════════════════════════════════
-     SIGNATURE PARTNERS (3–5 spotlight cards)
+     HERO — EDITORIAL SPLIT (WTG pattern)
+     ══════════════════════════════════════════ */
+  .hero {
+    position: relative;
+    background: var(--c-cream);
+    contain: layout style;
+    padding: clamp(40px, 8vh, 100px) 0 40px;
+    overflow: hidden;
+  }
+
+  .hero-inner {
+    max-width: var(--max-width-wide, 1400px);
+    margin: 0 auto;
+    padding: 0 var(--space-lg);
+    display: grid;
+    grid-template-columns: 1.15fr 0.85fr;
+    gap: clamp(32px, 5vw, 80px);
+    align-items: center;
+    min-height: clamp(480px, 70vh, 720px);
+  }
+
+  .hero-eyebrow {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--c-text-light);
+    margin-bottom: 28px;
+    opacity: 0;
+    animation: heroUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.05s both;
+  }
+
+  .hero-headline {
+    font-size: clamp(42px, 6.5vw, 88px);
+    line-height: 1.04;
+    letter-spacing: -0.035em;
+    color: var(--c-dark);
+    margin-bottom: 28px;
+    animation: heroSlide 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  .hero-headline em {
+    font-style: italic;
+    background-image: linear-gradient(transparent 52%, var(--c-yellow-soft, rgba(255, 218, 36, 0.3)) 52%);
+    background-repeat: no-repeat;
+    background-size: 100% 100%;
+    padding: 0 0.05em;
+  }
+
+  .hero-lead {
+    font-size: clamp(16px, 1.3vw, 19px);
+    line-height: 1.7;
+    color: var(--c-text-muted);
+    max-width: 480px;
+    margin-bottom: 36px;
+    opacity: 0;
+    animation: heroUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.15s both;
+  }
+
+  .hero-ctas {
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+    opacity: 0;
+    animation: heroUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.25s both;
+  }
+
+  .hero-photo-wrap {
+    position: relative;
+    animation: heroPhotoIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  .hero-frame {
+    display: block;
+    position: relative;
+    border-radius: 24px;
+    overflow: hidden;
+    aspect-ratio: 4 / 5;
+    box-shadow: 0 32px 80px rgba(0, 0, 0, 0.12), 0 8px 24px rgba(0, 0, 0, 0.06);
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+  }
+
+  .hero-frame img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    transition: transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .hero-frame:hover img { transform: scale(1.03); }
+
+  .hero-accent {
+    position: absolute;
+    z-index: -1;
+    bottom: -16px;
+    right: -16px;
+    width: 55%;
+    height: 55%;
+    border-radius: 20px;
+    background: var(--c-yellow);
+    opacity: 0.35;
+  }
+
+  .hero-stat {
+    position: absolute;
+    bottom: -24px;
+    left: -24px;
+    background: var(--c-dark);
+    color: #fff;
+    border-radius: 16px;
+    padding: 20px 28px;
+    text-align: center;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.15);
+    opacity: 0;
+    animation: heroUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.4s both;
+  }
+
+  .hero-stat-num {
+    font-family: var(--font-display);
+    font-size: 40px;
+    font-weight: 700;
+    color: var(--c-yellow);
+    line-height: 1;
+    display: block;
+  }
+
+  .hero-stat-label {
+    display: block;
+    font-size: 12px;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.7);
+    margin-top: 4px;
+    line-height: 1.4;
+  }
+
+  @keyframes heroUp {
+    from { opacity: 0; transform: translateY(24px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes heroSlide {
+    from { transform: translateY(20px); }
+    to { transform: translateY(0); }
+  }
+  @keyframes heroPhotoIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .hero-eyebrow, .hero-lead, .hero-ctas,
+    .hero-photo-wrap, .hero-stat { opacity: 1; transform: none; animation: none; }
+  }
+
+  @media (max-width: 768px) {
+    .hero { padding: clamp(28px, 6vh, 60px) 0 24px; }
+    .hero-inner {
+      grid-template-columns: 1fr;
+      min-height: auto;
+      gap: var(--space-xl);
+    }
+    .hero-text { text-align: center; }
+    .hero-lead { max-width: 100%; margin-inline: auto; }
+    .hero-ctas { justify-content: center; }
+    .hero-photo-wrap { max-width: 360px; margin: 0 auto; }
+    .hero-stat { left: -12px; bottom: -16px; padding: 14px 20px; }
+    .hero-stat-num { font-size: 28px; }
+  }
+
+  @media (max-width: 480px) {
+    .hero-ctas { flex-direction: column; }
+    .hero-ctas .btn { width: 100%; justify-content: center; }
+  }
+
+  /* ══════════════════════════════════════════
+     SIGNATURE PARTNERS — MAGAZINE FEATURE
      ══════════════════════════════════════════ */
   .sig {
     background: var(--c-dark);
@@ -518,22 +690,22 @@ const jsonLd = buildSchemaGraph(
 
   .sig-header h2 {
     color: var(--c-white);
-    font-size: clamp(1.625rem, 3vw + 0.5rem, 2.5rem);
-    letter-spacing: -0.01em;
-    line-height: 1.2;
+    font-size: clamp(1.75rem, 3.5vw, 2.75rem);
+    letter-spacing: -0.02em;
+    line-height: 1.15;
     margin-bottom: var(--space-md);
   }
 
-  .sig-subtitle {
+  .sig-lead {
     font-size: clamp(0.95rem, 1.5vw, 1.065rem);
     line-height: 1.65;
-    color: rgba(255, 255, 255, 0.6);
+    color: rgba(255, 255, 255, 0.55);
   }
 
   .sig-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-    gap: 16px;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 14px;
     contain: content;
   }
 
@@ -543,182 +715,136 @@ const jsonLd = buildSchemaGraph(
     flex-direction: column;
     align-items: center;
     gap: 16px;
-    padding: 36px 28px;
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    padding: 40px 32px;
+    background: var(--c-white);
+    border: 1px solid var(--c-border);
     border-radius: var(--border-radius-lg);
     text-align: center;
-    transition: all var(--transition-base);
+    text-decoration: none;
+    transition: border-color var(--transition-base),
+                transform 0.35s cubic-bezier(0.16,1,0.3,1),
+                box-shadow 0.35s cubic-bezier(0.16,1,0.3,1);
+    will-change: transform;
   }
 
-  .sig-card:hover {
-    background: rgba(255, 255, 255, 0.1);
+  .sig-card--linked:hover {
     border-color: var(--c-yellow);
-    transform: translateY(-3px);
-    box-shadow: 0 8px 30px rgba(255, 218, 36, 0.1);
+    transform: translateY(-4px);
+    box-shadow: 0 12px 40px rgba(255, 218, 36, 0.15);
   }
 
   .sig-card__logo {
     display: flex;
     align-items: center;
     justify-content: center;
-    height: 56px;
+    height: 64px;
   }
 
   .sig-card__logo img {
-    max-height: 56px;
+    max-height: 64px;
     width: auto;
     object-fit: contain;
-    filter: brightness(0) invert(1);
-    opacity: 0.85;
     transition: opacity var(--transition-base);
-  }
-
-  .sig-card:hover .sig-card__logo img {
-    opacity: 1;
   }
 
   .sig-card__name {
     font-family: var(--font-display);
     font-size: 1.125rem;
     font-weight: 700;
-    color: var(--c-white);
+    color: var(--c-dark);
   }
 
   .sig-card__tagline {
     font-size: 0.875rem;
-    line-height: 1.5;
-    color: rgba(255, 255, 255, 0.5);
+    line-height: 1.55;
+    color: var(--c-text-muted);
     margin-top: -8px;
   }
 
-  .sig-card__link {
+  .sig-card__arrow {
     position: absolute;
-    top: 14px;
-    right: 14px;
+    top: 16px;
+    right: 16px;
+    width: 28px;
+    height: 28px;
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
-    color: rgba(255, 255, 255, 0.3);
-    transition: all var(--transition-base);
+    color: var(--c-border);
+    transition: color var(--transition-base);
   }
+  .sig-card__arrow svg { width: 16px; height: 16px; }
+  .sig-card--linked:hover .sig-card__arrow { color: var(--c-yellow); }
 
-  .sig-card__link:hover {
-    color: var(--c-yellow);
-    background: rgba(255, 255, 255, 0.08);
-  }
-
-  .sig-card__link svg {
-    width: 15px;
-    height: 15px;
-  }
-
-  @media (max-width: 480px) {
-    .sig-grid {
-      grid-template-columns: 1fr;
-    }
+  @media (max-width: 640px) {
+    .sig-grid { grid-template-columns: 1fr; }
+    .sig-card { padding: 28px 20px; }
   }
 
   /* ══════════════════════════════════════════
-     IMPACT MOMENT — editorial split
+     IMPACT RIBBON — STATS STRIP
      ══════════════════════════════════════════ */
-  .impact {
-    background: var(--c-warm-gray);
-    padding-block: var(--space-4xl);
+  .ribbon {
+    background: var(--c-yellow);
+    padding-block: var(--space-2xl);
   }
 
-  .impact-inner {
+  .ribbon-inner {
     max-width: var(--max-width);
     margin: 0 auto;
     padding-inline: var(--space-lg);
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: var(--space-2xl);
+    display: flex;
     align-items: center;
+    justify-content: center;
+    gap: var(--space-2xl);
   }
 
-  .impact-frame {
-    position: relative;
-    border-radius: var(--border-radius-lg);
-    overflow: hidden;
-    aspect-ratio: 4 / 3;
-    background-size: cover;
-    background-position: center;
-    background-repeat: no-repeat;
-  }
-
-  .impact-img {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-  }
-
-  .impact-img.lqip-pending {
-    opacity: 0;
-  }
-
-  .impact-img:not(.lqip-pending) {
-    transition: opacity 0.6s ease;
-  }
-
-  .impact-content {
-    max-width: 480px;
-  }
-
-  .impact-quote {
-    margin: 0;
-  }
-
-  .impact-quote p {
-    font-family: var(--font-display);
-    font-style: italic;
-    font-size: clamp(1.125rem, 2.2vw, 1.375rem);
-    line-height: 1.55;
-    color: var(--c-text);
-    letter-spacing: -0.01em;
-  }
-
-  .impact-quote footer {
-    margin-top: var(--space-lg);
+  .ribbon-stat {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    align-items: center;
+    gap: 4px;
+    text-align: center;
   }
 
-  .impact-quote cite {
-    font-family: var(--font-body);
-    font-style: normal;
-    font-size: 0.875rem;
-    font-weight: 600;
+  .ribbon-stat__number {
+    font-family: var(--font-display);
+    font-size: clamp(2rem, 4vw, 3rem);
+    font-weight: 700;
     color: var(--c-dark);
-    letter-spacing: 0.02em;
+    letter-spacing: -0.03em;
+    line-height: 1;
   }
 
-  .impact-quote footer span {
-    font-size: 0.8125rem;
-    color: var(--c-text-muted);
+  .ribbon-stat__label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--c-dark);
+    opacity: 0.55;
   }
 
-  @media (max-width: 768px) {
-    .impact {
-      padding-block: var(--space-2xl);
+  .ribbon-divider {
+    width: 1px;
+    height: 40px;
+    background: var(--c-dark);
+    opacity: 0.15;
+    flex-shrink: 0;
+  }
+
+  @media (max-width: 640px) {
+    .ribbon { padding-block: var(--space-xl); }
+    .ribbon-inner {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: var(--space-lg);
     }
-    .impact-inner {
-      grid-template-columns: 1fr;
-      gap: var(--space-xl);
-    }
-    .impact-frame {
-      aspect-ratio: 16 / 10;
-    }
+    .ribbon-divider { display: none; }
   }
 
   /* ══════════════════════════════════════════
-     CHAMPION PARTNERS (medium logo grid)
+     CHAMPION PARTNERS
      ══════════════════════════════════════════ */
   .champ {
     background: var(--c-cream);
@@ -737,13 +863,13 @@ const jsonLd = buildSchemaGraph(
   }
 
   .champ-header h2 {
-    font-size: clamp(1.625rem, 3vw + 0.5rem, 2.5rem);
-    letter-spacing: -0.01em;
-    line-height: 1.2;
+    font-size: clamp(1.75rem, 3.5vw, 2.75rem);
+    letter-spacing: -0.02em;
+    line-height: 1.15;
     margin-bottom: var(--space-md);
   }
 
-  .champ-subtitle {
+  .champ-lead {
     font-size: clamp(0.95rem, 1.5vw, 1.065rem);
     line-height: 1.65;
     color: var(--c-text-muted);
@@ -763,31 +889,34 @@ const jsonLd = buildSchemaGraph(
     align-items: center;
     justify-content: center;
     gap: 10px;
-    padding: 24px 18px;
+    padding: 28px 20px;
     background: var(--c-white);
     border: 1px solid var(--c-border);
     border-radius: var(--border-radius);
     text-align: center;
-    min-height: 120px;
+    min-height: 130px;
     text-decoration: none;
-    transition: all var(--transition-base);
+    transition: border-color var(--transition-base),
+                box-shadow 0.35s cubic-bezier(0.16,1,0.3,1),
+                transform 0.35s cubic-bezier(0.16,1,0.3,1);
+    will-change: transform;
   }
 
   .champ-card--linked:hover {
     border-color: var(--c-yellow);
-    box-shadow: 0 4px 20px rgba(255, 218, 36, 0.12);
-    transform: translateY(-2px);
+    box-shadow: 0 6px 24px rgba(255, 218, 36, 0.12);
+    transform: translateY(-3px);
   }
 
   .champ-card__logo {
     display: flex;
     align-items: center;
     justify-content: center;
-    height: 44px;
+    height: 48px;
   }
 
   .champ-card__logo img {
-    max-height: 44px;
+    max-height: 48px;
     width: auto;
     object-fit: contain;
   }
@@ -801,8 +930,8 @@ const jsonLd = buildSchemaGraph(
 
   .champ-card__ext {
     position: absolute;
-    top: 10px;
-    right: 10px;
+    top: 12px;
+    right: 12px;
     width: 14px;
     height: 14px;
     color: var(--c-border);
@@ -814,17 +943,78 @@ const jsonLd = buildSchemaGraph(
   }
 
   @media (max-width: 480px) {
-    .champ-grid {
-      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-    }
-    .champ-card {
-      min-height: 100px;
-      padding: 18px 14px;
-    }
+    .champ-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
+    .champ-card { min-height: 100px; padding: 20px 14px; }
   }
 
   /* ══════════════════════════════════════════
-     BUILDER PARTNERS (smaller logo grid)
+     EDITORIAL INTERSTITIAL — PULL QUOTE
+     ══════════════════════════════════════════ */
+  .interstitial {
+    background: var(--c-warm-gray);
+    padding-block: var(--space-4xl);
+  }
+
+  .interstitial-inner {
+    max-width: 720px;
+    margin: 0 auto;
+    padding-inline: var(--space-lg);
+  }
+
+  .interstitial-content {
+    text-align: center;
+  }
+
+  .interstitial-quote {
+    position: relative;
+    margin: 0;
+  }
+
+  .interstitial-mark {
+    width: 48px;
+    height: 48px;
+    color: var(--c-yellow);
+    margin-bottom: var(--space-md);
+  }
+
+  .interstitial-quote p {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-size: clamp(1.25rem, 2.8vw, 1.625rem);
+    line-height: 1.5;
+    color: var(--c-text);
+    letter-spacing: -0.01em;
+  }
+
+  .interstitial-quote footer {
+    margin-top: var(--space-lg);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+  }
+
+  .interstitial-quote cite {
+    font-family: var(--font-body);
+    font-style: normal;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--c-dark);
+    letter-spacing: 0.02em;
+  }
+
+  .interstitial-quote footer span {
+    font-size: 0.8125rem;
+    color: var(--c-text-muted);
+  }
+
+  @media (max-width: 640px) {
+    .interstitial { padding-block: var(--space-2xl); }
+    .interstitial-mark { width: 36px; height: 36px; }
+  }
+
+  /* ══════════════════════════════════════════
+     BUILDER PARTNERS
      ══════════════════════════════════════════ */
   .build {
     background: var(--c-dark);
@@ -845,16 +1035,16 @@ const jsonLd = buildSchemaGraph(
 
   .build-header h2 {
     color: var(--c-white);
-    font-size: clamp(1.625rem, 3vw + 0.5rem, 2.5rem);
-    letter-spacing: -0.01em;
-    line-height: 1.2;
+    font-size: clamp(1.75rem, 3.5vw, 2.75rem);
+    letter-spacing: -0.02em;
+    line-height: 1.15;
     margin-bottom: var(--space-md);
   }
 
-  .build-subtitle {
+  .build-lead {
     font-size: clamp(0.95rem, 1.5vw, 1.065rem);
     line-height: 1.65;
-    color: rgba(255, 255, 255, 0.6);
+    color: rgba(255, 255, 255, 0.55);
   }
 
   .build-grid {
@@ -870,20 +1060,23 @@ const jsonLd = buildSchemaGraph(
     align-items: center;
     justify-content: center;
     gap: 8px;
-    padding: 20px 14px;
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    padding: 22px 14px;
+    background: var(--c-white);
+    border: 1px solid var(--c-border);
     border-radius: var(--border-radius);
     text-align: center;
     min-height: 100px;
     text-decoration: none;
-    transition: all var(--transition-base);
+    transition: border-color var(--transition-base),
+                transform 0.35s cubic-bezier(0.16,1,0.3,1),
+                box-shadow 0.35s cubic-bezier(0.16,1,0.3,1);
+    will-change: transform;
   }
 
   .build-card--linked:hover {
-    background: rgba(255, 255, 255, 0.08);
     border-color: var(--c-yellow);
     transform: translateY(-2px);
+    box-shadow: 0 4px 20px rgba(255, 218, 36, 0.12);
   }
 
   .build-card__logo {
@@ -897,30 +1090,19 @@ const jsonLd = buildSchemaGraph(
     max-height: 36px;
     width: auto;
     object-fit: contain;
-    filter: brightness(0) invert(1);
-    opacity: 0.75;
     transition: opacity var(--transition-base);
-  }
-
-  .build-card:hover .build-card__logo img {
-    opacity: 1;
   }
 
   .build-card__name {
     font-size: 0.8125rem;
     font-weight: 500;
-    color: rgba(255, 255, 255, 0.65);
+    color: var(--c-text-muted);
     line-height: 1.3;
   }
 
   @media (max-width: 480px) {
-    .build-grid {
-      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-    }
-    .build-card {
-      min-height: 80px;
-      padding: 14px 10px;
-    }
+    .build-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+    .build-card { min-height: 80px; padding: 16px 10px; }
   }
 
   /* ══════════════════════════════════════════
@@ -943,13 +1125,13 @@ const jsonLd = buildSchemaGraph(
   }
 
   .all-header h2 {
-    font-size: clamp(1.625rem, 3vw + 0.5rem, 2.5rem);
-    letter-spacing: -0.01em;
-    line-height: 1.2;
+    font-size: clamp(1.75rem, 3.5vw, 2.75rem);
+    letter-spacing: -0.02em;
+    line-height: 1.15;
     margin-bottom: var(--space-md);
   }
 
-  .all-subtitle {
+  .all-lead {
     font-size: clamp(0.95rem, 1.5vw, 1.065rem);
     line-height: 1.65;
     color: var(--c-text-muted);
@@ -966,15 +1148,14 @@ const jsonLd = buildSchemaGraph(
     scrollbar-width: none;
     -ms-overflow-style: none;
     padding-bottom: 4px;
-    -webkit-mask-image: linear-gradient(90deg, #000 90%, transparent);
-    mask-image: linear-gradient(90deg, #000 90%, transparent);
   }
   .filter-tabs::-webkit-scrollbar { display: none; }
 
-  @media (min-width: 601px) {
+  /* Scroll affordance on mobile */
+  @media (max-width: 600px) {
     .filter-tabs {
-      -webkit-mask-image: none;
-      mask-image: none;
+      -webkit-mask-image: linear-gradient(90deg, #000 85%, transparent);
+      mask-image: linear-gradient(90deg, #000 85%, transparent);
     }
   }
 
@@ -990,7 +1171,7 @@ const jsonLd = buildSchemaGraph(
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    padding: 8px 16px;
+    padding: 8px 18px;
     font-size: 0.8125rem;
     font-weight: 600;
     font-family: var(--font-body);
@@ -1008,6 +1189,11 @@ const jsonLd = buildSchemaGraph(
     color: var(--c-text);
   }
 
+  .filter-tab:focus-visible {
+    outline: 2px solid var(--c-yellow);
+    outline-offset: 2px;
+  }
+
   .filter-tab.is-active {
     background: var(--c-dark);
     color: var(--c-white);
@@ -1020,9 +1206,7 @@ const jsonLd = buildSchemaGraph(
     opacity: 0.6;
   }
 
-  .filter-tab.is-active .filter-tab__count {
-    opacity: 0.5;
-  }
+  .filter-tab.is-active .filter-tab__count { opacity: 0.5; }
 
   /* ── Grid ── */
   .all-grid {
@@ -1047,7 +1231,13 @@ const jsonLd = buildSchemaGraph(
     text-align: center;
     min-height: 90px;
     text-decoration: none;
-    transition: border-color var(--transition-fast), opacity 0.2s ease;
+    transition: border-color var(--transition-fast),
+                box-shadow var(--transition-fast),
+                opacity 0.25s ease;
+  }
+
+  .ap-card.is-hidden {
+    display: none;
   }
 
   .ap-card--linked:hover {
@@ -1070,9 +1260,7 @@ const jsonLd = buildSchemaGraph(
     transition: filter var(--transition-base);
   }
 
-  .ap-card--linked:hover .ap-card__logo img {
-    filter: grayscale(0);
-  }
+  .ap-card--linked:hover .ap-card__logo img { filter: grayscale(0); }
 
   .ap-card__name {
     font-size: 0.75rem;
@@ -1086,10 +1274,7 @@ const jsonLd = buildSchemaGraph(
       grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
       gap: 6px;
     }
-    .ap-card {
-      padding: 14px 8px;
-      min-height: 76px;
-    }
+    .ap-card { padding: 14px 8px; min-height: 76px; }
   }
 
   /* ══════════════════════════════════════════
@@ -1114,36 +1299,39 @@ const jsonLd = buildSchemaGraph(
 
   .ways-header h2 {
     color: var(--c-white);
-    font-size: clamp(1.625rem, 3vw + 0.5rem, 2.5rem);
-    letter-spacing: -0.01em;
-    line-height: 1.2;
+    font-size: clamp(1.75rem, 3.5vw, 2.75rem);
+    letter-spacing: -0.02em;
+    line-height: 1.15;
     margin-bottom: var(--space-md);
   }
 
-  .ways-subtitle {
+  .ways-lead {
     font-size: clamp(0.95rem, 1.5vw, 1.065rem);
     line-height: 1.65;
-    color: rgba(255, 255, 255, 0.6);
+    color: rgba(255, 255, 255, 0.55);
   }
 
   .ways-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-    gap: 16px;
+    gap: 14px;
   }
 
   .way-card {
     padding: 28px 24px;
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.07);
     border-radius: var(--border-radius-lg);
-    transition: all var(--transition-base);
+    transition: background var(--transition-base),
+                border-color var(--transition-base),
+                transform 0.35s cubic-bezier(0.16,1,0.3,1);
+    will-change: transform;
   }
 
   .way-card:hover {
     background: rgba(255, 255, 255, 0.08);
     border-color: var(--c-yellow);
-    transform: translateY(-2px);
+    transform: translateY(-3px);
   }
 
   .way-card__icon {
@@ -1174,23 +1362,16 @@ const jsonLd = buildSchemaGraph(
   .way-card__desc {
     font-size: 0.875rem;
     line-height: 1.6;
-    color: rgba(255, 255, 255, 0.55);
+    color: rgba(255, 255, 255, 0.5);
   }
 
   @media (max-width: 480px) {
-    .ways-grid {
-      grid-template-columns: 1fr 1fr;
-      gap: 10px;
-    }
-    .way-card {
-      padding: 20px 16px;
-    }
+    .ways-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
+    .way-card { padding: 20px 16px; }
   }
 
   @media (max-width: 340px) {
-    .ways-grid {
-      grid-template-columns: 1fr;
-    }
+    .ways-grid { grid-template-columns: 1fr; }
   }
 
   /* ══════════════════════════════════════════
@@ -1214,9 +1395,9 @@ const jsonLd = buildSchemaGraph(
   }
 
   .partners-cta h2 {
-    font-size: clamp(1.625rem, 3vw + 0.5rem, 2.5rem);
-    letter-spacing: -0.01em;
-    line-height: 1.2;
+    font-size: clamp(1.75rem, 3.5vw, 2.75rem);
+    letter-spacing: -0.02em;
+    line-height: 1.15;
     margin-bottom: var(--space-md);
     color: var(--c-dark);
   }
@@ -1230,7 +1411,7 @@ const jsonLd = buildSchemaGraph(
     font-size: clamp(0.95rem, 1.5vw, 1.065rem);
     line-height: 1.65;
     color: var(--c-dark);
-    opacity: 0.8;
+    opacity: 0.75;
   }
 
   .partners-cta-btns {
@@ -1245,9 +1426,7 @@ const jsonLd = buildSchemaGraph(
   .btn-cta {
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
   }
-  .btn-cta:hover {
-    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.2);
-  }
+  .btn-cta:hover { box-shadow: 0 8px 30px rgba(0, 0, 0, 0.2); }
 
   .partners-cta .btn-primary {
     background: var(--c-dark);
@@ -1262,26 +1441,21 @@ const jsonLd = buildSchemaGraph(
     background: var(--c-white);
     color: var(--c-dark);
   }
-  .partners-cta .btn-dark:hover {
-    background: var(--c-cream);
-  }
+  .partners-cta .btn-dark:hover { background: var(--c-cream); }
 
   .partners-cta-note {
     margin-top: var(--space-xl);
     font-size: 0.8125rem;
     font-weight: 500;
-    opacity: 0.5 !important;
+    color: var(--c-dark);
+    opacity: 0.45;
     letter-spacing: 0.04em;
   }
 
   /* ══════════════════════════════════════════
-     MOBILE
+     GLOBAL MOBILE
      ══════════════════════════════════════════ */
   @media (max-width: 768px) {
-    .partners-hero {
-      padding-block: var(--space-xl) 0;
-    }
-
     .sig,
     .champ,
     .build,
@@ -1310,10 +1484,10 @@ const jsonLd = buildSchemaGraph(
   }
 
   /* ══════════════════════════════════════════
-     TOUCH DEVICES
+     TOUCH DEVICES — disable lift on hover
      ══════════════════════════════════════════ */
   @media (hover: none) and (pointer: coarse) {
-    .sig-card:hover,
+    .sig-card--linked:hover,
     .champ-card--linked:hover,
     .build-card--linked:hover,
     .way-card:hover {

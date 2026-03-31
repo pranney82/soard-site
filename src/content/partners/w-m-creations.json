@@ -3,5 +3,9 @@
   "slug": "w-m-creations",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/w-m-creations/public",
   "tier": "construction",
-  "featured": false
+  "featured": false,
+  "category": [
+    "community"
+  ],
+  "level": "friend"
 }

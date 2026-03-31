@@ -1,7 +1,10 @@
 {
-  "name": "Stag Partners",
+  "name": "STAG Partners",
   "slug": "stag-partners",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/stag-partners/public",
   "tier": "construction",
-  "featured": false
+  "featured": false,
+  "level": "champion",
+  "category": "funding",
+  "website": "https://stagpartners.com"
 }

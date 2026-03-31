@@ -150,18 +150,25 @@ try {
   const [collectionResults, siteRows] = await Promise.all([
     Promise.all(
       collections.map(async ({ table, dir }) => {
-        const rows = await queryD1(`SELECT slug, data FROM ${table}`);
-        return { table, dir, rows };
+        try {
+          const rows = await queryD1(`SELECT slug, data FROM ${table}`);
+          return { table, dir, rows };
+        } catch (err) {
+          console.warn(`  ⚠ ${dir}: skipped (${err.message})`);
+          return { table, dir, rows: [], skipped: true };
+        }
       })
     ),
     queryD1('SELECT key, data FROM site_config'),
   ]);
 
-  for (const { dir, rows } of collectionResults) {
+  for (const { dir, rows, skipped } of collectionResults) {
     const outDir = join(CONTENT, dir);
     ensureDir(outDir);
 
-    if (rows.length === 0) {
+    if (skipped) {
+      // Already warned in catch block — skip file writes, stale git files remain as fallback
+    } else if (rows.length === 0) {
       console.warn(`  ⚠ ${dir}: 0 items (table may be empty or query failed silently)`);
     } else {
       console.log(`  ${dir}: ${rows.length} items`);

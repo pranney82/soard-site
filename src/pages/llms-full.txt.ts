@@ -1,10 +1,11 @@
 import type { APIRoute } from 'astro';
 import { getCollection } from 'astro:content';
+import { getPublishedKids } from '../utils/collections';
 import { getSiteStats } from '../utils/stats';
 
 export const GET: APIRoute = async () => {
   const s = await getSiteStats();
-  const kids = await getCollection('kids');
+  const kids = await getPublishedKids();
   const team = await getCollection('team');
   const partners = await getCollection('partners');
   const community = await getCollection('community');

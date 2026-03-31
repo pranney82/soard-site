@@ -1,7 +1,9 @@
 {
-  "name": "Sei Group",
+  "name": "SEI Group",
   "slug": "sei-group",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/sei-group/public",
   "tier": "construction",
-  "featured": false
+  "featured": false,
+  "website": "https://seigroupusa.com",
+  "level": "friend"
 }

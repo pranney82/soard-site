@@ -5,6 +5,9 @@
   "tier": "construction",
   "featured": true,
   "website": "https://www.beazer.com",
-  "category": "funding",
+  "category": [
+    "funding",
+    "community"
+  ],
   "level": "champion"
 }
