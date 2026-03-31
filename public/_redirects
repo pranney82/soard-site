@@ -1,3 +1,17 @@
+# ═══════════════════════════════════════════════════════════════
+# Sunshine on a Ranney Day — 301 Redirect Map
+# WordPress (sunshineonaranneyday.com) → Astro (Cloudflare Pages)
+#
+# FORMAT: /old-path  /new-path  status-code
+# LIMITS: 2000 static rules + 100 dynamic (splat) rules
+# DOCS:   https://developers.cloudflare.com/pages/configuration/redirects/
+#
+# IMPORTANT: Static rules are matched FIRST, then dynamic (splat) rules.
+# Keep static rules above dynamic ones for predictable behavior.
+# ═══════════════════════════════════════════════════════════════
+
+# ─── Kid blog post redirects (132 posts) ─────────────────────
+# WordPress: /blog/YYYY/MM/DD/slug → New: /kids/slug/
 /blog/2017/01/27/dylan  /kids/dylan/  301
 /blog/2017/04/15/shawn  /kids/shawn/  301
 /blog/2017/05/16/zyah  /kids/zyah/  301
@@ -131,24 +145,154 @@
 /blog/2026/03/05/peter  /kids/peter/  301
 /blog/2026/03/05/dex  /kids/dex/  301
 /blog/2026/03/05/jackson  /kids/jackson/  301
-# ─── Community project blog redirects ─────
+
+# ─── Community project blog redirects ─────────────────────────
 /blog/2022/01/17/the-cottage-school  /community/the-cottage-school/  301
 /blog/2022/06/03/the-drake-house  /community/the-drake-house/  301
 /blog/2024/09/18/mt-zion-umc-preschool  /community/mt-zion-umc-preschool/  301
 /blog/2025/11/26/cda-roswell-remodel  /community/childrens-development-academy/  301
-# ─── Page redirects ───────────────────────
+
+# ─── Partner blog post redirects (19 posts) ──────────────────
+# Design partners
+/blog/2024/05/27/randall-paulson-architects  /partners/  301
+/blog/2024/05/28/artisan-design-studio  /partners/  301
+/blog/2024/05/29/crosby-design-group  /partners/  301
+/blog/2024/05/29/seabrook-design-co  /partners/  301
+/blog/2024/05/30/reynard-custom-homes  /partners/  301
+/blog/2024/06/27/vickers-design-group  /partners/  301
+/blog/2024/07/09/chattahoochee-tech-design-program  /partners/  301
+/blog/2024/07/09/means-and-carney-interiors  /partners/  301
+/blog/2024/07/15/ranney-blair-weidmann  /partners/  301
+# Construction partners
+/blog/2024/07/15/real-floors-commercial  /partners/  301
+/blog/2024/08/20/mohawk  /partners/  301
+/blog/2024/08/20/servicewise-electric  /partners/  301
+/blog/2024/08/20/the-wall-nut  /partners/  301
+/blog/2024/08/20/tko-plumbing-services  /partners/  301
+/blog/2024/09/03/bin-there-dump-that-atlanta  /partners/  301
+/blog/2024/09/03/cambria  /partners/  301
+/blog/2024/09/03/construction-resources  /partners/  301
+/blog/2024/09/03/pulley-and-associates  /partners/  301
+/blog/2024/09/03/randall-brothers  /partners/  301
+
+# ─── WordPress page redirects ────────────────────────────────
 /about-us/  /about/  301
 /about-us/financials/  /about/financials/  301
 /leadership/  /about/leadership/  301
 /what-we-do/  /rooms/  301
 /meet-the-kids/  /kids/  301
+/meet-the-kids/elizabeth-html/  /kids/elizabeth/  301
 /community-projects/  /community/  301
-/rooms/community/     /community/  301
+/rooms/community/  /community/  301
 /get-involved/  /partners/  301
-/construction-partners/  /partners/construction/  301
-/featured-designers/  /partners/design/  301
+/construction-partners/  /partners/  301
+/featured-designers/  /partners/  301
 /before/  /rooms/before-after/  301
 /application/  /apply/  301
 /faqs/  /faq/  301
 /media-kit/  /publicity/  301
 /financials/  /about/financials/  301
+
+# ─── WP category archive redirects → nearest equivalent ──────
+/category/meet-the-kids/  /kids/  301
+/category/community-projects/  /community/  301
+/category/construction-partners/  /partners/  301
+/category/construction-projects/  /rooms/  301
+/category/designers/  /partners/  301
+/category/commercial-designers/  /partners/  301
+/category/designer-projects/  /rooms/  301
+/category/artisan-design-studio/  /partners/  301
+/category/bin-there-dump-that-atlanta/  /partners/  301
+/category/cambria/  /partners/  301
+/category/chattahoochee-tech-design-program/  /partners/  301
+/category/construction-resources/  /partners/  301
+/category/crosby-design-group/  /partners/  301
+/category/means-carney-interiors/  /partners/  301
+/category/mohawk/  /partners/  301
+/category/pulley-and-associates/  /partners/  301
+/category/randall-brothers/  /partners/  301
+/category/randall-paulson-architects/  /partners/  301
+/category/ranney-blair-weidmann/  /partners/  301
+/category/real-floors-commercial/  /partners/  301
+/category/reynard-custom-homes/  /partners/  301
+/category/seabrook-design-co/  /partners/  301
+/category/seas-interiors/  /partners/  301
+/category/servicewise-electric/  /partners/  301
+/category/the-wall-nut/  /partners/  301
+/category/tko-plumbing-services/  /partners/  301
+/category/vickers-design-group/  /partners/  301
+/category/uncategorized/  /  301
+
+# ─── WP tag archive redirects → nearest equivalent ───────────
+/tag/dream-bedroom/  /rooms/  301
+/tag/accessible-bathroom/  /rooms/  301
+/tag/therapy-room/  /rooms/  301
+/tag/wheelchair-ramp/  /rooms/  301
+/tag/chair-lift/  /rooms/  301
+/tag/concrete-carport/  /rooms/  301
+/tag/community-project/  /community/  301
+/tag/school/  /community/  301
+/tag/healthcare/  /community/  301
+/tag/non-profit/  /about/  301
+/tag/in-progress/  /kids/  301
+/tag/makeover-in-progress/  /kids/  301
+/tag/2017/  /kids/  301
+/tag/2018/  /kids/  301
+/tag/2019/  /kids/  301
+/tag/2020/  /kids/  301
+/tag/2021/  /kids/  301
+/tag/2022/  /kids/  301
+/tag/2023/  /kids/  301
+/tag/2024/  /kids/  301
+/tag/2025/  /kids/  301
+/tag/2026/  /kids/  301
+
+# ─── WordPress system URL redirects ──────────────────────────
+# Bots hammer these constantly after a WP migration
+/wp-login.php  /  301
+/xmlrpc.php  /  301
+/wp-cron.php  /  301
+/feed/  /  301
+/comments/feed/  /  301
+/wp-signup.php  /  301
+/wp-register.php  /  301
+
+# ─── WP presentation tags (not real content) ─────────────────
+/tag/background-bottom-center/  /  301
+/tag/background-center-center/  /  301
+/tag/background-top-center/  /  301
+
+# ─── Misc WP attachment page slugs (top-level, non-post) ─────
+# WordPress creates permalink pages for individual images.
+# These are the ones that appear as top-level URLs (not under /blog/).
+/soard_home/  /  301
+/e4f885_a1767d1d744849ed956422d53f12cce9mv2/  /  301
+/findus-fb-rgb-brc-site-500/  /  301
+
+# ═══════════════════════════════════════════════════════════════
+# DYNAMIC (SPLAT) RULES — matched after all static rules above
+# Cloudflare Pages allows up to 100 dynamic redirect rules.
+# These use * (splat) to catch entire URL path segments.
+# ═══════════════════════════════════════════════════════════════
+
+# ─── Catch-all: remaining /blog/ URLs (date archives, etc.) ──
+/blog/*  /kids/  301
+
+# ─── Catch-all: remaining /category/ URLs ────────────────────
+/category/*  /kids/  301
+
+# ─── Catch-all: remaining /tag/ URLs ─────────────────────────
+/tag/*  /kids/  301
+
+# ─── Catch-all: /author/ archive pages ───────────────────────
+/author/*  /about/  301
+
+# ─── Catch-all: wp-content (images, uploads, plugins) ────────
+# 4,147 WP attachment pages + direct image file URLs.
+# Images now live on Cloudflare Images, so these can't resolve.
+/wp-content/*  /  301
+
+# ─── Catch-all: WP system directories ────────────────────────
+/wp-includes/*  /  301
+/wp-admin/*  /  301
+/wp-json/*  /  301
