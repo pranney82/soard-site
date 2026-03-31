@@ -9696,7 +9696,7 @@
     // ═══════════════════════════════════════════
     // COMMAND PALETTE (Cmd+K)
     // ═══════════════════════════════════════════
-    function CommandPalette({ open, onClose, onNavigate, kids, partners, mediaLogos, team, articles, events, communityProjects, press }) {
+    function CommandPalette({ open, onClose, onNavigate, kids, partners, communityPartners, mediaLogos, team, articles, events, communityProjects, press }) {
       const [query, setQuery] = useState('');
       const [activeIdx, setActiveIdx] = useState(0);
       const inputRef = useRef();
@@ -10476,7 +10476,7 @@
 
           <${ToastContainer} toasts=${toasts} />
           <${CommandPalette} open=${cmdPaletteOpen} onClose=${() => setCmdPaletteOpen(false)}
-            onNavigate=${navigate} kids=${kids} partners=${partners} mediaLogos=${mediaLogos} team=${team}
+            onNavigate=${navigate} kids=${kids} partners=${partners} communityPartners=${communityPartners} mediaLogos=${mediaLogos} team=${team}
             articles=${articles} events=${events} communityProjects=${communityProjects} press=${press} />
           <${KeyboardShortcuts} open=${shortcutsOpen} onClose=${() => setShortcutsOpen(false)} />
 

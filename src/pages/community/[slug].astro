@@ -37,7 +37,7 @@ export async function getStaticPaths() {
 
 const { project, allProjects } = Astro.props;
 const storyParas = project.story ? project.story.split('\n\n').filter((p: string) => p.trim()) : [];
-const hasPhotos = project.photos?.length > 0;
+const hasPhotos = project.photos?.length > 1;
 const hasPartners = project.partnerLogos?.length > 0;
 
 // ── Video ──
@@ -815,7 +815,7 @@ const jsonLd = buildSchemaGraph(
   .cp-detail-cta-note {
     margin-top: var(--space-2xl);
     font-size: 0.85rem;
-    color: rgba(45, 46, 51, 0.65);
+    color: rgba(45, 46, 51, 0.85);
     letter-spacing: 0.02em;
   }
 

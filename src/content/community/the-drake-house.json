@@ -6,194 +6,604 @@
   "year": "2022",
   "description": "The Drake House provides housing and education for single mothers and their children experiencing homelessness in North Metro Atlanta. SOARD renovated their main headquarters — redesigning classrooms, activity spaces, a community kitchen, and teen gathering rooms to create an environment where families can recover, learn, and rebuild with dignity.",
   "color": "#C62828",
-  "imageId": "community/the-drake-house/after-01",
+  "imageId": "community/the-drake-house/1774968285135-IMG-9426.JPG",
   "imageAlt": "The Drake House headquarters renovated by SOARD",
+  "badge": "",
   "order": 4,
+  "photos": [
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774967930867-IMG-9128.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774967930867-IMG-9128.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774967934811-IMG-9131.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774967934811-IMG-9131.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774967939013-IMG-9134.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774967939013-IMG-9134.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774967941472-IMG-9136.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774967941472-IMG-9136.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774967949151-IMG-9139.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774967949151-IMG-9139.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774967952181-IMG-9141.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774967952181-IMG-9141.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774967956800-IMG-9144.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774967956800-IMG-9144.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774967963487-IMG-9150.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774967963487-IMG-9150.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774967966779-IMG-9152.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774967966779-IMG-9152.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774967974621-IMG-9155.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774967974621-IMG-9155.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774967978953-IMG-9158.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774967978953-IMG-9158.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774967986274-IMG-9168.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774967986274-IMG-9168.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774967989906-IMG-9172.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774967989906-IMG-9172.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774967993498-IMG-9180.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774967993498-IMG-9180.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774967995948-IMG-9184.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774967995948-IMG-9184.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774967998764-IMG-9185.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774967998764-IMG-9185.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968002808-IMG-9187.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968002808-IMG-9187.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968016122-IMG-9195.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968016122-IMG-9195.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968019754-IMG-9197.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968019754-IMG-9197.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968023084-IMG-9199.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968023084-IMG-9199.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968026686-IMG-9200.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968026686-IMG-9200.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968030979-IMG-9206.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968030979-IMG-9206.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968035476-IMG-9210.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968035476-IMG-9210.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968038629-IMG-9212.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968038629-IMG-9212.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968041313-IMG-9216.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968041313-IMG-9216.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968044994-IMG-9218.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968044994-IMG-9218.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968048071-IMG-9219.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968048071-IMG-9219.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968051895-IMG-9221.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968051895-IMG-9221.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968055239-IMG-9222.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968055239-IMG-9222.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968058922-IMG-9226.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968058922-IMG-9226.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968061657-IMG-9229.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968061657-IMG-9229.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968065330-IMG-9231.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968065330-IMG-9231.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968068346-IMG-9236.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968068346-IMG-9236.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968071112-IMG-9241.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968071112-IMG-9241.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968074282-IMG-9244.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968074282-IMG-9244.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968078438-IMG-9246.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968078438-IMG-9246.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968082274-IMG-9248.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968082274-IMG-9248.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968086118-IMG-9252.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968086118-IMG-9252.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968089728-IMG-9258.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968089728-IMG-9258.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968101501-IMG-9264.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968101501-IMG-9264.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968106746-IMG-9268.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968106746-IMG-9268.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968113401-IMG-9272.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968113401-IMG-9272.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968117294-IMG-9274.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968117294-IMG-9274.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968121427-IMG-9277.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968121427-IMG-9277.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968125283-IMG-9280.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968125283-IMG-9280.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968138288-IMG-9296.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968138288-IMG-9296.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968151393-IMG-9303.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968151393-IMG-9303.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968155286-IMG-9305.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968155286-IMG-9305.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968159485-IMG-9307.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968159485-IMG-9307.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968164530-IMG-9312.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968164530-IMG-9312.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968168188-IMG-9322.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968168188-IMG-9322.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968172808-IMG-9325.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968172808-IMG-9325.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968176891-IMG-9328.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968176891-IMG-9328.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968180784-IMG-9331.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968180784-IMG-9331.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968186598-IMG-9336.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968186598-IMG-9336.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968192206-IMG-9342.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968192206-IMG-9342.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968198199-IMG-9344.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968198199-IMG-9344.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968203822-IMG-9346.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968203822-IMG-9346.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968208125-IMG-9349.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968208125-IMG-9349.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968214474-IMG-9354.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968214474-IMG-9354.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968220721-IMG-9359.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968220721-IMG-9359.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968225533-IMG-9368.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968225533-IMG-9368.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968231062-IMG-9373.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968231062-IMG-9373.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968235940-IMG-9377.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968235940-IMG-9377.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968240280-IMG-9379.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968240280-IMG-9379.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968243287-IMG-9382.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968243287-IMG-9382.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968245809-IMG-9384.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968245809-IMG-9384.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968248187-IMG-9385.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968248187-IMG-9385.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968251132-IMG-9394.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968251132-IMG-9394.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968254240-IMG-9396.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968254240-IMG-9396.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968258086-IMG-9401.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968258086-IMG-9401.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968261988-IMG-9405.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968261988-IMG-9405.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968264856-IMG-9410.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968264856-IMG-9410.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968268029-IMG-9413.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968268029-IMG-9413.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968270493-IMG-9415.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968270493-IMG-9415.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968273271-IMG-9418.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968273271-IMG-9418.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968275746-IMG-9420.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968275746-IMG-9420.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968278574-IMG-9421.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968278574-IMG-9421.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968282207-IMG-9423.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968282207-IMG-9423.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968285135-IMG-9426.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968285135-IMG-9426.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968287692-IMG-9429.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968287692-IMG-9429.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968290148-IMG-9432.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968290148-IMG-9432.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968293435-IMG-9437.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968293435-IMG-9437.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968296088-IMG-9440.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968296088-IMG-9440.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968298493-IMG-9443.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968298493-IMG-9443.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968306700-IMG-9445.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968306700-IMG-9445.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968312062-IMG-9447.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968312062-IMG-9447.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968315236-IMG-9448.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968315236-IMG-9448.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968318205-IMG-9449.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968318205-IMG-9449.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968321381-IMG-9451.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968321381-IMG-9451.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968324453-IMG-9453.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968324453-IMG-9453.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968327217-IMG-9459.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968327217-IMG-9459.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968347047-IMG-9473.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968347047-IMG-9473.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968350134-IMG-9477.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968350134-IMG-9477.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968367915-IMG-9496.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968367915-IMG-9496.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968407780-IMG-9530.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968407780-IMG-9530.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968419993-IMG-9543.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968419993-IMG-9543.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968424089-IMG-9547.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968424089-IMG-9547.JPG"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968429194-IMG-9548.JPG/public",
+      "alt": "",
+      "cfImageId": "community/the-drake-house/1774968429194-IMG-9548.JPG"
+    }
+  ],
+  "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/the-drake-house/1774968285135-IMG-9426.JPG/public",
+  "status": "completed",
   "founded": "2006",
-  "heroImage": "community/the-drake-house/after-01",
-  "metaDescription": "See how Sunshine on a Ranney Day renovated The Drake House headquarters — classrooms, a community kitchen, and teen spaces for families overcoming homelessness.",
   "story": "Founded in 2006, The Drake House provides housing and education programs for single mothers and their children who are experiencing homelessness in North Metro Atlanta. It is a community where every family has the opportunity to recover quickly and with dignity from their homeless situation.\n\nEach year Sunshine on a Ranney Day completes a special community project that helps a large number of children and families. SOARD was excited to help The Drake House by renovating their main headquarters. This makeover included redesigning and renovating multiple rooms that serve as classrooms for kids studying, learning life skills, arts and crafts, and safe spaces for them to lounge. The rooms also serve to help moms with relationship building, parenting, health and wellness, and money management.\n\nThe goal of the makeover was to create flexible-use spaces that allow the children to feel at home in a learning and activity environment. The spaces also help keep the community of kids engaged with each other, creating an extended 'family' feel. The central community space in the basement is the food serving area — previously extremely cramped without a natural flow, inhibiting the ability to smoothly cater to families participating in the buffet line. SOARD created this natural flow through relocation of structural walls and the addition of a large island space.\n\nThere was not previously a dedicated space for older children and teens to gather for free time and engage with The Drake House volunteers for tutoring. SOARD converted the upstairs executive offices into that space, providing a leisure area as well as a learning and meeting space.",
   "quote": "Over 40% of Atlanta's homeless population are women and children.",
-  "beforePhotos": [
-    {
-      "url": "community/the-drake-house/before-01",
-      "alt": "The Drake House kitchen area before renovation"
-    },
-    {
-      "url": "community/the-drake-house/before-02",
-      "alt": "The Drake House classroom before renovation"
-    },
-    {
-      "url": "community/the-drake-house/before-03",
-      "alt": "The Drake House common area before renovation"
-    },
-    {
-      "url": "community/the-drake-house/before-04",
-      "alt": "The Drake House office space before renovation"
-    }
-  ],
-  "afterPhotos": [
-    {
-      "url": "community/the-drake-house/after-01",
-      "alt": "The Drake House renovated gathering space"
-    },
-    {
-      "url": "community/the-drake-house/after-02",
-      "alt": "Renovated learning area with new furniture"
-    },
-    {
-      "url": "community/the-drake-house/after-03",
-      "alt": "New classroom space for children"
-    },
-    {
-      "url": "community/the-drake-house/after-04",
-      "alt": "SOARD team at The Drake House reveal"
-    },
-    {
-      "url": "community/the-drake-house/after-05",
-      "alt": "Renovated community kitchen with island"
-    },
-    {
-      "url": "community/the-drake-house/after-06",
-      "alt": "Drake House reveal celebration"
-    },
-    {
-      "url": "community/the-drake-house/after-07",
-      "alt": "New teen hangout and study space"
-    },
-    {
-      "url": "community/the-drake-house/after-08",
-      "alt": "Renovated hallway with fresh design"
-    },
-    {
-      "url": "community/the-drake-house/after-09",
-      "alt": "Activity room for kids at Drake House"
-    },
-    {
-      "url": "community/the-drake-house/after-10",
-      "alt": "New seating area in community space"
-    },
-    {
-      "url": "community/the-drake-house/after-11",
-      "alt": "Completed renovation detail"
-    }
-  ],
-  "photos": [],
+  "metaDescription": "See how Sunshine on a Ranney Day renovated The Drake House headquarters — classrooms, a community kitchen, and teen spaces for families overcoming homelessness.",
+  "videoUrl": null,
+  "streamVideoId": null,
+  "beforePhotos": [],
+  "afterPhotos": [],
   "partnerLogos": [
     {
-      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2021/06/logo_jackson_healthcare.png",
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/jackson-healthcare/public",
       "name": "Jackson Healthcare"
     },
     {
-      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2021/06/logo_randall_paulson.png",
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/randall-paulson/public",
       "name": "Randall Paulson Architects"
     },
     {
-      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2021/06/logo_real_floors_commercial.png",
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/real-floors-commercial/1774544840079/public",
       "name": "Real Floors Commercial"
     },
     {
-      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2021/10/logo_randall_brothers.png",
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/randall-brothers/public",
       "name": "Randall Brothers"
     },
     {
-      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2022/10/logo_sugar_hill_outdoors.png",
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/sugar-hill-outdoors/public",
       "name": "Sugar Hill Outdoors"
     },
     {
-      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2021/06/logo_mohawk.png",
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/mohawk/public",
       "name": "Mohawk"
     },
     {
-      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2022/11/logo_envision_office_solutions.png",
-      "name": "Envision Office Solutions"
-    },
-    {
-      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2022/07/logo_builders_cabinet_company.png",
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/builders-cabinet-company/public",
       "name": "Builders Cabinet Company"
     },
     {
-      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2022/10/logo_rexel_foundation.png",
-      "name": "Rexel Foundation"
-    },
-    {
-      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2021/06/logo_cambria.png",
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/cambria-black/public",
       "name": "Cambria"
     },
     {
-      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2021/07/logo_cr_construction_v2.png",
-      "name": "CR Construction"
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/construction-resources/public",
+      "name": "Construction Resources"
     },
     {
-      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2021/06/logo_echols.png",
-      "name": "Echols"
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/echols/public",
+      "name": "Echols Glass & Mirror"
     },
     {
-      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2022/10/logo_tlc_engineering.png",
-      "name": "TLC Engineering"
-    },
-    {
-      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2023/01/logo_3lp_engineering.jpg",
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/3lp-engineering/public",
       "name": "3LP Engineering"
     },
     {
-      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2021/10/logo_emser_tile.jpg",
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/emser-tile/public",
       "name": "Emser Tile"
     },
     {
-      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2021/06/logo_wall_nut_custom_wall_murals.png",
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/wall-nut-custom-wall-murals/public",
       "name": "The Wall Nut"
     },
     {
-      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2021/06/logo_comfort_research.png",
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/comfort-research/public",
       "name": "Comfort Research"
     },
     {
-      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2021/06/logo_atlas_disposal.png",
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/atlas-disposal/public",
       "name": "Atlas Disposal"
     },
     {
-      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2022/10/logo_cosentino.png",
-      "name": "Cosentino"
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/mri-software/1774879311285/public",
+      "name": "Mri Software"
     },
     {
-      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2022/10/logo_mri_software.svg.png",
-      "name": "MRI Software"
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/roswell-womens-club/public",
+      "name": "Roswell Womens Club"
     },
     {
-      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2022/06/logo_roswell_womens_club.webp",
-      "name": "Roswell Woman's Club"
-    },
-    {
-      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2022/10/logo_alpharetta_rotary.jpg",
-      "name": "Alpharetta Rotary"
-    },
-    {
-      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2022/10/logo_ids_demo.png",
-      "name": "IDS Demo"
-    },
-    {
-      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2022/10/logo_jk_electrical.png",
-      "name": "JK Electrical"
-    },
-    {
-      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2022/10/logo_tko_plumbing.webp",
-      "name": "TKO Plumbing"
-    },
-    {
-      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2022/10/logo_baker_paint.png",
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/baker-paint/public",
       "name": "Baker Paint"
     },
     {
-      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2021/06/logo_swinerton.png",
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/seabrook-design-co/1774882284043/public",
+      "name": "Seabrook Design Co"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/swinerton/public",
       "name": "Swinerton"
     },
     {
-      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2021/06/logo_nicole_photography.png",
-      "name": "Nicole Photography"
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/nicole-photography/public",
+      "name": "Nicole W Photography"
     },
     {
-      "url": "https://sunshineonaranneyday.com/wp-content/uploads/2021/06/logo_nothing_bundt_cakes.png",
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/nothing-bundt-cakes/public",
       "name": "Nothing Bundt Cakes"
     }
   ]

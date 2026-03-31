@@ -1,12 +1,13 @@
 ---
 /**
- * EventCard.astro — Reusable event card with category-driven visuals
+ * EventCard.astro — Premium event card with category-driven visuals
  *
- * Supports two modes:
+ * Supports two visual modes:
  *   1. Image header — event.image is set → CF Image with LQIP + gradient overlay
  *   2. Gradient header — no image → category gradient + icon pattern
  *
- * Used on events/index.astro and anywhere event cards are shown.
+ * PERF: CF Images w/ srcset, LQIP blur-up, contain
+ * A11Y: ARIA, keyboard focus, prefers-reduced-motion
  */
 import { cfRaw, cfSrcset, cfLqip } from '../../utils/cf-image';
 
@@ -24,10 +25,11 @@ interface Props {
     category: string;
   };
   detailUrl?: string;
+  calendarUrl?: string;
   index?: number;
 }
 
-const { event, detailUrl, index = 0 } = Astro.props;
+const { event, detailUrl, calendarUrl, index = 0 } = Astro.props;
 
 const catLabel: Record<string, string> = {
   fundraiser: 'Fundraiser', volunteer: 'Volunteer',
@@ -43,11 +45,11 @@ const catGradient: Record<string, string> = {
 };
 
 const catIcon: Record<string, string> = {
-  fundraiser: '<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9.5a5.5 5.5 0 0 1 9.591-3.676.56.56 0 0 0 .818 0A5.49 5.49 0 0 1 22 9.5c0 2.29-1.5 4-3 5.5l-5.492 5.313a2 2 0 0 1-3 .019L5 15c-1.5-1.5-3-3.2-3-5.5"/></svg>',
-  volunteer:  '<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m15 12-9.373 9.373a1 1 0 0 1-3.001-3L12 9"/><path d="m18 15 4-4"/><path d="m21.5 11.5-1.914-1.914A2 2 0 0 1 19 8.172v-.344a2 2 0 0 0-.586-1.414l-1.657-1.657A6 6 0 0 0 12.516 3H9l1.243 1.243A6 6 0 0 1 12 8.485V10l2 2h1.172a2 2 0 0 1 1.414.586L18.5 14.5"/></svg>',
-  reveal:     '<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z"/></svg>',
-  community:  '<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.128a4 4 0 0 1 0 7.744"/></svg>',
-  other:      '<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg>',
+  fundraiser: '<svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9.5a5.5 5.5 0 0 1 9.591-3.676.56.56 0 0 0 .818 0A5.49 5.49 0 0 1 22 9.5c0 2.29-1.5 4-3 5.5l-5.492 5.313a2 2 0 0 1-3 .019L5 15c-1.5-1.5-3-3.2-3-5.5"/></svg>',
+  volunteer:  '<svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m15 12-9.373 9.373a1 1 0 0 1-3.001-3L12 9"/><path d="m18 15 4-4"/><path d="m21.5 11.5-1.914-1.914A2 2 0 0 1 19 8.172v-.344a2 2 0 0 0-.586-1.414l-1.657-1.657A6 6 0 0 0 12.516 3H9l1.243 1.243A6 6 0 0 1 12 8.485V10l2 2h1.172a2 2 0 0 1 1.414.586L18.5 14.5"/></svg>',
+  reveal:     '<svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z"/></svg>',
+  community:  '<svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.128a4 4 0 0 1 0 7.744"/></svg>',
+  other:      '<svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg>',
 };
 
 function fmtDate(d: string) {
@@ -74,12 +76,12 @@ function fmtDay(d: string) {
   >
     {event.image ? (
       <img
-        src={cfRaw(event.image, 'w=600,h=340,fit=cover,q=80')}
-        srcset={cfSrcset(event.image, [400, 600], { fit: 'cover', aspectRatio: 340/600 })}
+        src={cfRaw(event.image, 'w=600,h=380,fit=cover,q=80')}
+        srcset={cfSrcset(event.image, [400, 600], { fit: 'cover', aspectRatio: 380/600 })}
         sizes="(max-width: 639px) 100vw, (max-width: 959px) 50vw, 33vw"
         alt={event.title}
         class="ev-card__hero-img lqip-img"
-        width="600" height="340"
+        width="600" height="380"
         loading="lazy" decoding="async"
       />
     ) : (
@@ -96,7 +98,11 @@ function fmtDay(d: string) {
       </time>
     </div>
     <div class="ev-card__hero-cat">{catLabel[event.category]}</div>
+    {event.ticketPrice && (
+      <div class="ev-card__hero-price">{event.ticketPrice}</div>
+    )}
   </div>
+
   <div class="ev-card__inner">
     <h3 class="ev-card__title">{event.title}</h3>
     <div class="ev-card__meta">
@@ -116,15 +122,28 @@ function fmtDay(d: string) {
       </span>
     </div>
     <p class="ev-card__desc">{event.description}</p>
+
     <div class="ev-card__foot">
-      {detailUrl ? (
-        <a href={detailUrl} class="ev-card__cta">View Details <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></a>
-      ) : event.ticketUrl ? (
-        <a href={event.ticketUrl} class="ev-card__cta" target="_blank" rel="noopener noreferrer">Get Tickets <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 7h10v10"/><path d="M7 17 17 7"/></svg></a>
-      ) : (
-        <span class="ev-card__soon">Details coming soon</span>
-      )}
-      {event.ticketPrice && <span class="ev-card__price">{event.ticketPrice}</span>}
+      <div class="ev-card__actions">
+        {detailUrl ? (
+          <a href={detailUrl} class="ev-card__btn">
+            View Details
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+          </a>
+        ) : event.ticketUrl ? (
+          <a href={event.ticketUrl} class="ev-card__btn" target="_blank" rel="noopener noreferrer">
+            Get Tickets
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 7h10v10"/><path d="M7 17 17 7"/></svg>
+          </a>
+        ) : (
+          <span class="ev-card__soon">Details coming soon</span>
+        )}
+        {calendarUrl && (
+          <a href={calendarUrl} class="ev-card__cal" target="_blank" rel="noopener noreferrer" title="Add to Calendar">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg>
+          </a>
+        )}
+      </div>
     </div>
   </div>
 </article>
@@ -137,18 +156,22 @@ function fmtDay(d: string) {
     border-radius: var(--border-radius-lg);
     overflow: hidden;
     contain: layout style;
-    transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1),
-                box-shadow 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+    display: flex;
+    flex-direction: column;
+    transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+                box-shadow 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+                border-color 0.4s cubic-bezier(0.16, 1, 0.3, 1);
   }
   .ev-card:hover {
     transform: translateY(-6px);
-    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.12);
+    box-shadow: 0 20px 56px rgba(0, 0, 0, 0.12);
+    border-color: rgba(255, 218, 36, 0.3);
   }
 
   /* ─ Card hero header ─ */
   .ev-card__hero {
     position: relative;
-    height: 140px;
+    height: 180px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -169,44 +192,48 @@ function fmtDay(d: string) {
       radial-gradient(ellipse 40% 40% at 85% 15%, rgba(255, 255, 255, 0.06) 0%, transparent 50%);
   }
   .ev-card__hero-icon {
-    color: rgba(255, 255, 255, 0.2);
+    color: rgba(255, 255, 255, 0.18);
     z-index: 1;
-    transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1),
-                color 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1),
+                color 0.5s cubic-bezier(0.16, 1, 0.3, 1);
   }
   .ev-card:hover .ev-card__hero-icon {
-    transform: scale(1.15);
-    color: rgba(255, 255, 255, 0.3);
+    transform: scale(1.2) rotate(3deg);
+    color: rgba(255, 255, 255, 0.28);
   }
+
+  /* Date badge */
   .ev-card__hero-date {
     position: absolute;
     top: var(--space-md);
     left: var(--space-md);
     background: rgba(0, 0, 0, 0.25);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
-    border-radius: 10px;
-    padding: var(--space-xs) var(--space-sm);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-radius: 12px;
+    padding: 0.35rem 0.55rem;
     text-align: center;
-    min-width: 48px;
-    z-index: 1;
+    min-width: 52px;
+    z-index: 2;
   }
   .ev-card__hero-month {
     display: block;
     font-size: 0.55rem;
-    font-weight: 700;
+    font-weight: 800;
     text-transform: uppercase;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.1em;
     color: rgba(255, 255, 255, 0.7);
   }
   .ev-card__hero-day {
     display: block;
     font-family: var(--font-display);
-    font-size: 1.4rem;
+    font-size: 1.5rem;
     font-weight: 700;
     line-height: 1;
     color: #fff;
   }
+
+  /* Category pill */
   .ev-card__hero-cat {
     position: absolute;
     bottom: var(--space-md);
@@ -215,13 +242,29 @@ function fmtDay(d: string) {
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.1em;
-    color: rgba(255, 255, 255, 0.85);
-    background: rgba(0, 0, 0, 0.2);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
-    padding: 0.2rem 0.6rem;
+    color: rgba(255, 255, 255, 0.9);
+    background: rgba(0, 0, 0, 0.22);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    padding: 0.25rem 0.65rem;
     border-radius: 100px;
-    z-index: 1;
+    z-index: 2;
+  }
+
+  /* Price badge */
+  .ev-card__hero-price {
+    position: absolute;
+    top: var(--space-md);
+    right: var(--space-md);
+    font-size: 0.6rem;
+    font-weight: 700;
+    color: #fff;
+    background: rgba(0, 0, 0, 0.25);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    padding: 0.25rem 0.65rem;
+    border-radius: 100px;
+    z-index: 2;
   }
 
   /* Image-backed card hero */
@@ -235,6 +278,10 @@ function fmtDay(d: string) {
     width: 100%;
     height: 100%;
     object-fit: cover;
+    transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .ev-card:hover .ev-card__hero-img {
+    transform: scale(1.04);
   }
   .ev-card__hero-img.lqip-pending { opacity: 0; }
   .ev-card__hero-img.loaded { opacity: 1; transition: opacity 0.4s ease; }
@@ -243,35 +290,37 @@ function fmtDay(d: string) {
     position: absolute;
     inset: 0;
     background: linear-gradient(to top, rgba(0,0,0,0.5) 0%, rgba(0,0,0,0.1) 50%, transparent 100%);
-    z-index: 0;
+    z-index: 1;
     pointer-events: none;
   }
   .ev-card__hero--img .ev-card__hero-date,
-  .ev-card__hero--img .ev-card__hero-cat { z-index: 1; }
+  .ev-card__hero--img .ev-card__hero-cat,
+  .ev-card__hero--img .ev-card__hero-price { z-index: 2; }
 
+  /* Card body */
   .ev-card__inner {
-    padding: var(--space-lg);
+    padding: var(--space-lg) var(--space-lg) var(--space-md);
     display: flex;
     flex-direction: column;
     flex: 1;
   }
   .ev-card__title {
     font-family: var(--font-display);
-    font-size: 1.1rem;
-    line-height: 1.3;
+    font-size: 1.15rem;
+    line-height: 1.25;
     color: var(--c-dark);
     margin-bottom: var(--space-md);
   }
   .ev-card__meta {
     display: flex;
     flex-direction: column;
-    gap: 0.3rem;
+    gap: 0.35rem;
     margin-bottom: var(--space-md);
   }
   .ev-card__meta-item {
     display: flex;
     align-items: center;
-    gap: 5px;
+    gap: 6px;
     font-size: 0.8rem;
     color: var(--c-text-muted);
   }
@@ -289,43 +338,75 @@ function fmtDay(d: string) {
     overflow: hidden;
     flex: 1;
   }
+
+  /* Card footer */
   .ev-card__foot {
-    display: flex;
-    align-items: center;
-    gap: var(--space-md);
-    flex-wrap: wrap;
     margin-top: var(--space-lg);
     padding-top: var(--space-md);
     border-top: 1px solid var(--c-border);
   }
-  .ev-card__cta {
+  .ev-card__actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+  }
+
+  /* Primary CTA button */
+  .ev-card__btn {
     display: inline-flex;
     align-items: center;
-    gap: 5px;
-    font-size: 0.82rem;
+    gap: 6px;
+    padding: 0.5rem 1.15rem;
+    font-size: 0.8rem;
     font-weight: 600;
     color: var(--c-dark);
+    background: var(--c-yellow);
+    border-radius: 100px;
     text-decoration: none;
-    transition: gap 0.2s ease, color 0.2s ease;
+    transition: transform 200ms, box-shadow 200ms, gap 200ms;
   }
-  .ev-card__cta:hover { gap: 8px; color: var(--c-yellow-hover); }
+  .ev-card__btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 16px var(--c-yellow-glow);
+    gap: 8px;
+  }
+  .ev-card__btn:active { transform: scale(0.97); }
+
+  /* Calendar icon button */
+  .ev-card__cal {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    color: var(--c-text-muted);
+    background: var(--c-warm-gray);
+    text-decoration: none;
+    transition: background 200ms, color 200ms, transform 200ms;
+    margin-left: auto;
+    flex-shrink: 0;
+  }
+  .ev-card__cal:hover {
+    background: var(--c-border);
+    color: var(--c-dark);
+    transform: scale(1.08);
+  }
+
   .ev-card__soon {
     font-size: 0.82rem;
     color: var(--c-text-light);
     font-style: italic;
   }
-  .ev-card__price {
-    font-size: 0.78rem;
-    color: var(--c-text-light);
-    margin-left: auto;
-  }
 
   @media (max-width: 640px) {
-    .ev-card__cta { min-height: 44px; display: inline-flex; align-items: center; }
+    .ev-card__btn { min-height: 44px; }
+    .ev-card__cal { width: 44px; height: 44px; }
   }
 
   @media (prefers-reduced-motion: reduce) {
     .ev-card { transition: none; }
     .ev-card__hero-icon { transition: none; }
+    .ev-card__hero-img { transition: none; }
   }
 </style>

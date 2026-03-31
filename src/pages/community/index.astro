@@ -131,8 +131,10 @@ const jsonLd = buildSchemaGraph(
           const detailHref = `/community/${project.slug}/`;
           const hasPhoto = project.imageId || project.heroImage;
           const photoId = project.imageId || project.heroImage || '';
+          const Tag = hasDetail ? 'a' : 'div';
+          const tagProps = hasDetail ? { href: detailHref } : {};
           return (
-            <a href={hasDetail ? detailHref : undefined} class={`project-card ${!hasDetail ? 'project-card--static' : ''}`} data-reveal data-delay={String(i % 3)}>
+            <Tag {...tagProps} class={`project-card ${!hasDetail ? 'project-card--static' : ''}`} data-reveal data-delay={String(i % 3)}>
               <div class="project-card__frame" style={hasPhoto && project.imageId ? `background-image:url(${cfLqip(project.imageId)})` : ''}>
                 {hasPhoto ? (
                   <CFImage
@@ -167,7 +169,7 @@ const jsonLd = buildSchemaGraph(
               <span class="project-card__meta">
                 {project.year} · {project.impact} {project.impactLabel}
               </span>
-            </a>
+            </Tag>
           );
         })}
       </div>
@@ -611,7 +613,7 @@ const jsonLd = buildSchemaGraph(
     background-position: center;
   }
 
-  .project-card__img {
+  .project-card__frame :global(.project-card__img) {
     width: 100%;
     height: 100%;
     object-fit: cover;
@@ -621,7 +623,7 @@ const jsonLd = buildSchemaGraph(
   }
 
   @media (hover: hover) {
-    .project-card:hover .project-card__img {
+    .project-card:hover :global(.project-card__img) {
       transform: scale(1.07);
       filter: brightness(1.04) saturate(1.05);
     }
@@ -783,9 +785,9 @@ const jsonLd = buildSchemaGraph(
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .project-card__img,
+    :global(.project-card__img),
     .project-card__color { transition: none; }
-    .project-card:hover .project-card__img { transform: none; filter: none; }
+    .project-card:hover :global(.project-card__img) { transform: none; filter: none; }
   }
 
   /* ══════════════════════════════════════════

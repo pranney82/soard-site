@@ -2,6 +2,7 @@
   "name": "PGA Superstore",
   "slug": "pga-superstore",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/pga-superstore/public",
+  "tier": "construction",
   "featured": false,
   "level": "friend",
   "category": "funding",

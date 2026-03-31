@@ -2,6 +2,7 @@
   "name": "Speciality Tile Products",
   "slug": "stp",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/stp/public",
+  "tier": "construction",
   "featured": false,
   "category": [
     "build",

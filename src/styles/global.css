@@ -71,8 +71,8 @@ html {
   -webkit-text-size-adjust: 100%;
   -webkit-tap-highlight-color: transparent;
   text-rendering: optimizeLegibility;
-  /* Prevent horizontal scroll from any overflowing element */
-  overflow-x: hidden;
+  /* Prevent horizontal scroll without breaking position:sticky */
+  overflow-x: clip;
   /* Prevent content from hiding behind sticky header on anchor nav / find-in-page */
   scroll-padding-top: calc(var(--header-height) + 1rem);
   /* Match footer background so overscroll / bounce never shows cream */
@@ -401,8 +401,8 @@ h4, .h4 {
 }
 .section-label--yellow { color: var(--c-yellow); }
 .section-label--yellow::before { background: var(--c-yellow); }
-.section-label--light { color: rgba(255, 255, 255, 0.5); }
-.section-label--light::before { background: rgba(255, 255, 255, 0.25); }
+.section-label--light { color: rgba(255, 255, 255, 0.7); }
+.section-label--light::before { background: rgba(255, 255, 255, 0.4); }
 
 /* ─── Global Button Styles ─────────────── */
 .btn {
@@ -553,7 +553,7 @@ h4, .h4 {
   font-family: var(--font-display);
   font-size: 1.5rem;
   font-weight: 700;
-  color: var(--c-border);
+  color: #919190;
   line-height: 1;
   margin-bottom: 4px;
   letter-spacing: -0.02em;

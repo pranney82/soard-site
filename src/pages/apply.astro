@@ -377,7 +377,7 @@ const faqJsonLd = faqs.length ? getFAQSchema(faqs) : undefined;
   /* ══════════════════════════════════════════
      SHARED
      ══════════════════════════════════════════ */
-  h2 em:not(.highlight) { font-style: italic; color: var(--c-yellow); }
+  h2 em:not(.highlight) { font-style: italic; color: #8A7200; }
   .highlight--dark {
     background-image: linear-gradient(transparent 55%, rgba(255, 218, 36, 0.3) 55%);
   }
@@ -743,10 +743,9 @@ const faqJsonLd = faqs.length ? getFAQSchema(faqs) : undefined;
     font-family: var(--font-display);
     font-size: clamp(48px, 5vw, 72px);
     font-weight: 400;
-    color: var(--c-yellow);
+    color: #A08300;
     line-height: 1;
     margin-bottom: 12px;
-    opacity: 0.55;
   }
   .narrative-text h3 {
     font-size: clamp(1.25rem, 2vw, 1.625rem);
@@ -977,7 +976,7 @@ const faqJsonLd = faqs.length ? getFAQSchema(faqs) : undefined;
     font-family: var(--font-display);
     font-size: clamp(1.5rem, 2.5vw, 2rem);
     font-weight: 400;
-    color: var(--c-yellow);
+    color: #A08300;
     line-height: 1;
     flex-shrink: 0;
   }
@@ -991,11 +990,12 @@ const faqJsonLd = faqs.length ? getFAQSchema(faqs) : undefined;
   .criteria-stat-card--highlight .criteria-stat-num {
     font-size: clamp(2rem, 3vw, 2.75rem);
   }
-  .criteria-stat-card--highlight .criteria-stat-label { color: rgba(255,255,255,0.5); }
+  .criteria-stat-card--highlight .criteria-stat-num { color: var(--c-yellow); }
+  .criteria-stat-card--highlight .criteria-stat-label { color: rgba(255,255,255,0.7); }
   .criteria-stat-sub {
     display: block;
     font-size: 12px;
-    color: rgba(255,255,255,0.35);
+    color: rgba(255,255,255,0.65);
     margin-top: 2px;
   }
 

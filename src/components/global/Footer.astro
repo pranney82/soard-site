@@ -209,6 +209,9 @@ const mapsUrl = `https://maps.google.com/?q=${encodeURIComponent(`${address.stre
       <p class="footer-copyright">
         &copy; {year} Sunshine on a Ranney Day. All rights reserved.
       </p>
+      <p class="footer-built-by">
+        Website built by Sunshine Team & Peter Ranney
+      </p>
       <div class="footer-legal-links">
         <a href="/privacy-policy/">Privacy Policy</a>
         <a href="/terms/">Terms of Use</a>
@@ -366,6 +369,7 @@ const mapsUrl = `https://maps.google.com/?q=${encodeURIComponent(`${address.stre
   }
   .newsletter-btn {
     padding: 14px 28px;
+    min-height: 48px;
     background: var(--c-yellow);
     color: var(--c-dark);
     font-family: var(--font-body);
@@ -375,6 +379,8 @@ const mapsUrl = `https://maps.google.com/?q=${encodeURIComponent(`${address.stre
     border-radius: 60px;
     cursor: pointer;
     white-space: nowrap;
+    position: relative;
+    z-index: 1;
     transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
   }
   .newsletter-btn:hover {
@@ -528,6 +534,8 @@ const mapsUrl = `https://maps.google.com/?q=${encodeURIComponent(`${address.stre
     display: inline-flex;
     align-items: center;
     gap: 4px;
+    padding-block: 6px;
+    min-height: 28px;
   }
   .footer-col a:hover {
     color: var(--c-yellow);
@@ -675,6 +683,10 @@ const mapsUrl = `https://maps.google.com/?q=${encodeURIComponent(`${address.stre
   .footer-copyright {
     font-size: 12px;
     color: rgba(255, 255, 255, 0.5);
+  }
+  .footer-built-by {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.65);
   }
   .footer-legal-links {
     display: flex;

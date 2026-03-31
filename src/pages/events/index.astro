@@ -1,14 +1,21 @@
 ---
 /**
  * Events Page — Sunshine on a Ranney Day
- * Hero-driven layout: flagship event gets full visual treatment,
- * remaining events in polished cards + past events timeline.
+ * Premium editorial layout: split hero, flagship spotlight with live countdown,
+ * interactive upcoming grid with Add-to-Calendar, rich past-events showcase.
+ *
+ * PERF: CF Images w/ srcset, LQIP blur-up, LCP preload, scoped CSS, contain
+ * SEO:  Breadcrumbs, semantic HTML5, Event JSON-LD via detail pages
+ * A11Y: ARIA roles, keyboard nav, prefers-reduced-motion, focus-visible
  */
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import EventCard from '../../components/events/EventCard.astro';
 import { getCollection } from 'astro:content';
 import { cfRaw, cfSrcset, cfLqip } from '../../utils/cf-image';
+import { getSiteStats } from '../../utils/stats';
+import siteSettings from '../../content/site/settings.json';
 
+/* ── Fetch & sort events ── */
 const allEvents = await getCollection('events');
 const today = new Date().toISOString().split('T')[0];
 
@@ -31,12 +38,12 @@ const past = events
 const featured = upcoming.filter(e => e.data.featured);
 const regular = upcoming.filter(e => !e.data.featured);
 
-/** Hand-crafted detail pages override the dynamic [slug].astro route */
+/* ── Detail page routing ── */
 const manualPages: Record<string, string> = {
   'sunshine-on-a-ranney-fairway-2026': '/events/golf/',
+  'spring-gala-2026': '/events/gala/',
+  'room-reveal-jackson-2025': '/events/makeover/',
 };
-
-/** Auto-detect events with body/photos that get dynamic detail pages */
 const detailPages: Record<string, string> = { ...manualPages };
 for (const e of allEvents) {
   if (!detailPages[e.data.slug] && (e.data.body || e.data.photos.length > 0)) {
@@ -44,11 +51,15 @@ for (const e of allEvents) {
   }
 }
 
-/** Flagship = first featured event that has a detail page */
+/* ── Flagship = first featured event with a detail page ── */
 const flagshipSlug = Object.keys(detailPages).find(slug =>
   featured.some(e => e.data.slug === slug),
 );
+const flagshipEvent = flagshipSlug ? featured.find(e => e.data.slug === flagshipSlug) : undefined;
+const otherFeatured = featured.filter(e => e.data.slug !== flagshipSlug);
+const allOther = [...otherFeatured, ...regular];
 
+/* ── Labels & colors ── */
 const catLabel: Record<string, string> = {
   fundraiser: 'Fundraiser', volunteer: 'Volunteer',
   reveal: 'Room Reveal', community: 'Community', other: 'Event',
@@ -57,81 +68,131 @@ const catColor: Record<string, string> = {
   fundraiser: '#d4a017', volunteer: '#2e7d32',
   reveal: '#6a3de8', community: '#1976d2', other: '#5A5B61',
 };
+const catGradient: Record<string, string> = {
+  fundraiser: 'linear-gradient(135deg, #7a5a00 0%, #b8860b 40%, #d4a017 80%, #e6b422 100%)',
+  volunteer:  'linear-gradient(135deg, #1a472a 0%, #2e7d32 40%, #388e3c 70%, #43a047 100%)',
+  reveal:     'linear-gradient(135deg, #2d1b69 0%, #4a2d8a 40%, #6a3de8 70%, #7c4dff 100%)',
+  community:  'linear-gradient(135deg, #0d3b66 0%, #1565c0 40%, #1976d2 70%, #2196f3 100%)',
+  other:      'linear-gradient(135deg, #2c2c2c 0%, #4a4a4a 40%, #5A5B61 70%, #6D6E74 100%)',
+};
+const catIcon: Record<string, string> = {
+  fundraiser: '<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 9.5a5.5 5.5 0 0 1 9.591-3.676.56.56 0 0 0 .818 0A5.49 5.49 0 0 1 22 9.5c0 2.29-1.5 4-3 5.5l-5.492 5.313a2 2 0 0 1-3 .019L5 15c-1.5-1.5-3-3.2-3-5.5"/></svg>',
+  volunteer:  '<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m15 12-9.373 9.373a1 1 0 0 1-3.001-3L12 9"/><path d="m18 15 4-4"/><path d="m21.5 11.5-1.914-1.914A2 2 0 0 1 19 8.172v-.344a2 2 0 0 0-.586-1.414l-1.657-1.657A6 6 0 0 0 12.516 3H9l1.243 1.243A6 6 0 0 1 12 8.485V10l2 2h1.172a2 2 0 0 1 1.414.586L18.5 14.5"/></svg>',
+  reveal:     '<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z"/></svg>',
+  community:  '<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.128a4 4 0 0 1 0 7.744"/></svg>',
+  other:      '<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg>',
+};
 
+/* ── Date helpers ── */
 function fmtDate(d: string) {
   return new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
 }
 function fmtWeekday(d: string) {
   return new Date(d + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long' });
 }
+function fmtMonth(d: string) {
+  return new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short' }).toUpperCase();
+}
+function fmtDay(d: string) {
+  return new Date(d + 'T00:00:00').getDate().toString();
+}
+function fmtYear(d: string) {
+  return new Date(d + 'T00:00:00').getFullYear().toString();
+}
 
-// Pull flagship event out of the upcoming grid
-const flagshipEvent = flagshipSlug ? featured.find(e => e.data.slug === flagshipSlug) : undefined;
-const otherFeatured = featured.filter(e => e.data.slug !== flagshipSlug);
-const allOther = [...otherFeatured, ...regular];
+/* ── Google Calendar link builder ── */
+function googleCalUrl(ev: { title: string; date: string; endDate?: string; location: string; address?: string; description: string }) {
+  const start = ev.date.replace(/-/g, '');
+  const endDate = ev.endDate || (() => {
+    const d = new Date(ev.date + 'T00:00:00');
+    d.setDate(d.getDate() + 1);
+    return d.toISOString().split('T')[0];
+  })();
+  const end = endDate.replace(/-/g, '');
+  const params = new URLSearchParams({
+    action: 'TEMPLATE',
+    text: ev.title,
+    dates: `${start}/${end}`,
+    location: ev.address || ev.location,
+    details: ev.description,
+  });
+  return `https://calendar.google.com/calendar/render?${params}`;
+}
 
-/* ── LCP preload — flagship card logo (must be byte-identical to <img>) ── */
+/* ── Impact stats for trust section ── */
+const computed = await getSiteStats();
+const totalEventsHosted = past.length;
+const totalKidsServed = computed.totalKids;
+const totalPartners = (await getCollection('partners')).length;
+
+/* ── Hero LCP preload — flagship logo or fallback kid photo ── */
 const flagshipLogoSrcset = cfSrcset('golf-logo-dark', [280, 400]);
-const flagshipLogoSizes = '(max-width: 767px) 160px, 280px';
+const flagshipLogoSizes = '(max-width: 767px) 200px, 320px';
+
+/* Fallback hero photo when no flagship event */
+const sp = siteSettings.sectionPhotos || {};
+const fallbackPhotoId = sp.missionMain || 'kids/eli/photo-01';
+const fallbackSrcset = cfSrcset(fallbackPhotoId, [400, 640, 800], { fit: 'cover', gravity: 'face' });
+const fallbackSizes = '(max-width: 768px) 85vw, (max-width: 1200px) 38vw, 420px';
 ---
 
 <BaseLayout
   title="Events"
-  description="Upcoming events from Sunshine on a Ranney Day — galas, volunteer build days, room reveals, and community gatherings in the greater Atlanta area."
+  description="Upcoming fundraisers, room reveals, and volunteer days from Sunshine on a Ranney Day — join us and be part of something bigger in the greater Atlanta area."
   breadcrumbs={[{ name: 'Events', url: '/events/' }]}
 >
-  {/* Preload flagship LCP image — imagesrcset/imagesizes must match the <img> */}
-  {flagshipEvent && (
+  {/* LCP preload */}
+  {flagshipEvent ? (
     <link slot="head" rel="preload" as="image" imagesrcset={flagshipLogoSrcset} imagesizes={flagshipLogoSizes} fetchpriority="high" />
+  ) : (
+    <link slot="head" rel="preload" as="image" imagesrcset={fallbackSrcset} imagesizes={fallbackSizes} fetchpriority="high" />
   )}
 
-  <!-- ═══ HERO (matches site-wide PageLayout pattern) ═══ -->
-  <section class="page-hero">
-    <div class="container">
-      <p class="page-hero__label">Events</p>
-      <h1 class="page-hero__title">Come Be a Part of <em class="highlight">Something&nbsp;Big</em></h1>
-      <p class="page-hero__subtitle">From fundraising galas to hands-on build days, there are so many ways to get involved</p>
-      <div class="page-hero__rule" aria-hidden="true">
-        <span class="page-hero__rule-accent"></span>
-      </div>
-    </div>
-  </section>
-
-  <!-- ═══ FEATURED NEXT EVENT (golf spotlight) ═══ -->
-  {flagshipEvent && (
-    <section class="ev-next">
-      <div class="container">
-        <div class="ev-next__card" data-reveal>
-          <div class="ev-next__bg" aria-hidden="true">
-            <div class="ev-next__gradient"></div>
-            <div class="ev-next__pattern"></div>
+  <!-- ═══════════════════════════════════════════
+       HERO — Editorial split with featured event
+       ═══════════════════════════════════════════ -->
+  {flagshipEvent ? (
+    <section class="hero hero--event">
+      <div class="hero-inner">
+        <div class="hero-text">
+          <div class="hero-badges">
+            <p class="hero-eyebrow">Featured Event</p>
+            <span class="hero-countdown" data-countdown={flagshipEvent.data.date} aria-live="polite"></span>
           </div>
-          <div class="ev-next__body">
-            <span class="ev-next__eyebrow">Next Event</span>
-            <h2 class="ev-next__title" transition:name="event-title">{flagshipEvent.data.title}</h2>
-            <p class="ev-next__desc">{flagshipEvent.data.description}</p>
-            <div class="ev-next__details">
-              <div class="ev-next__detail">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg>
-                <time datetime={flagshipEvent.data.date}>{fmtWeekday(flagshipEvent.data.date)}, {fmtDate(flagshipEvent.data.date)}</time>
-              </div>
-              <div class="ev-next__detail">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/></svg>
-                {flagshipEvent.data.location}
-              </div>
-              {flagshipEvent.data.time && (
-                <div class="ev-next__detail">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-                  {flagshipEvent.data.time}
-                </div>
-              )}
+          <h1 class="hero-headline">{flagshipEvent.data.title}</h1>
+          <p class="hero-sub">{flagshipEvent.data.description}</p>
+          <div class="hero-meta">
+            <div class="hero-meta__item">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg>
+              <time datetime={flagshipEvent.data.date}>{fmtWeekday(flagshipEvent.data.date)}, {fmtDate(flagshipEvent.data.date)}</time>
             </div>
-            <a href={detailPages[flagshipEvent.data.slug]} class="ev-btn ev-btn--gold ev-btn--lg">
-              View Details &amp; Register
+            <div class="hero-meta__item">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/></svg>
+              {flagshipEvent.data.location}
+            </div>
+            {flagshipEvent.data.time && (
+              <div class="hero-meta__item">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+                {flagshipEvent.data.time}
+              </div>
+            )}
+          </div>
+          <div class="hero-ctas">
+            <a href={detailPages[flagshipEvent.data.slug]} class="btn btn-primary btn-lg">
+              View Details & Register
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
             </a>
+            <a href={googleCalUrl(flagshipEvent.data)} class="btn btn-dark" target="_blank" rel="noopener noreferrer" title="Add to Google Calendar">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg>
+              Add to Calendar
+            </a>
           </div>
-          <div class="ev-next__visual">
+        </div>
+        <div class="hero-frame">
+          <div class="hero-event-card">
+            <div class="hero-event-card__bg" aria-hidden="true"></div>
+            <div class="hero-event-card__gradient" aria-hidden="true"></div>
+            <div class="hero-event-card__pattern" aria-hidden="true"></div>
             <img
               src={cfRaw('golf-logo-dark', 'w=400,q=85')}
               srcset={flagshipLogoSrcset}
@@ -139,8 +200,44 @@ const flagshipLogoSizes = '(max-width: 767px) 160px, 280px';
               alt="Sunshine on a Ranney Fairway"
               transition:name="event-hero"
               width="400" height="400"
-              loading="eager" decoding="async"
-              class="ev-next__logo"
+              loading="eager" decoding="async" fetchpriority="high"
+              class="hero-event-card__logo"
+            />
+            {/* Mini date card overlay */}
+            <div class="hero-date-card">
+              <time datetime={flagshipEvent.data.date}>
+                <span class="hero-date-card__month">{fmtMonth(flagshipEvent.data.date)}</span>
+                <span class="hero-date-card__day">{fmtDay(flagshipEvent.data.date)}</span>
+                <span class="hero-date-card__year">{fmtYear(flagshipEvent.data.date)}</span>
+              </time>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  ) : (
+    <section class="hero">
+      <div class="hero-inner">
+        <div class="hero-text">
+          <p class="hero-eyebrow">Events & Fundraisers</p>
+          <h1 class="hero-headline">Where Community Comes Together for <em class="highlight">Something&nbsp;Big</em></h1>
+          <p class="hero-sub">Every gala, build day, and room reveal brings us one step closer to transforming the life of a child with special needs.</p>
+          <div class="hero-ctas">
+            <a href="#upcoming" class="btn btn-primary btn-lg">See Upcoming Events</a>
+            <a href="#past" class="btn btn-dark">Past Highlights</a>
+          </div>
+        </div>
+        <div class="hero-frame">
+          <div class="hero-accent" aria-hidden="true"></div>
+          <div class="hero-photo" style={`background-image:url('${cfLqip(fallbackPhotoId)}')`}>
+            <img
+              src={cfRaw(fallbackPhotoId, 'w=640,h=800,fit=cover,gravity=face,q=82')}
+              srcset={fallbackSrcset}
+              sizes={fallbackSizes}
+              alt="A child smiling in their new dream room"
+              width="640" height="800"
+              loading="eager" decoding="async" fetchpriority="high"
+              class="hero-photo__img lqip-img"
             />
           </div>
         </div>
@@ -148,13 +245,16 @@ const flagshipLogoSizes = '(max-width: 767px) 160px, 280px';
     </section>
   )}
 
-  <!-- ═══ UPCOMING EVENTS ═══ -->
+  <!-- ═══════════════════════════════════════════
+       UPCOMING EVENTS
+       ═══════════════════════════════════════════ -->
   {allOther.length > 0 && (
     <section class="ev-upcoming" id="upcoming">
       <div class="container">
         <div class="ev-upcoming__header" data-reveal>
           <p class="ev-section-label">What's Coming Up</p>
           <h2 class="ev-section-heading">More Ways to <em class="highlight">Get Involved</em></h2>
+          <p class="ev-section-sub">Each event is an opportunity to change a child's world. Pick one that speaks to you.</p>
         </div>
 
         <div class="ev-grid">
@@ -162,6 +262,7 @@ const flagshipLogoSizes = '(max-width: 767px) 160px, 280px';
             <EventCard
               event={event.data}
               detailUrl={detailPages[event.data.slug]}
+              calendarUrl={googleCalUrl(event.data)}
               index={i}
             />
           ))}
@@ -170,55 +271,172 @@ const flagshipLogoSizes = '(max-width: 767px) 160px, 280px';
     </section>
   )}
 
-  <!-- ═══ EMPTY ═══ -->
+  <!-- ═══════════════════════════════════════════
+       EMPTY STATE
+       ═══════════════════════════════════════════ -->
   {upcoming.length === 0 && !flagshipEvent && (
     <section class="ev-empty" id="upcoming">
       <div class="container">
         <div class="ev-empty__box" data-reveal>
-          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg>
-          <h2>No upcoming events</h2>
-          <p>We're planning something special. Follow us on social media to be the first to know!</p>
+          <div class="ev-empty__icon" aria-hidden="true">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg>
+          </div>
+          <h2>Something Special is Brewing</h2>
+          <p>We're planning our next events. Follow us on social media to be the first to know!</p>
+          <a href="/donate/" class="ev-btn ev-btn--gold">Support Our Mission</a>
         </div>
       </div>
     </section>
   )}
 
-  <!-- ═══ PAST EVENTS ═══ -->
+  <!-- ═══════════════════════════════════════════
+       TESTIMONIAL PULLQUOTE
+       ═══════════════════════════════════════════ -->
+  <section class="ev-quote">
+    <div class="container">
+      <div class="ev-quote__inner" data-reveal>
+        <div class="ev-quote__mark" aria-hidden="true">&ldquo;</div>
+        <blockquote class="ev-quote__text">
+          The gala was one of the most moving evenings I've ever experienced. Seeing the room reveals and meeting the families — it changed my perspective on what giving really means.
+        </blockquote>
+        <cite class="ev-quote__cite">— Sarah Mitchell, 2025 Gala Attendee</cite>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════
+       IMPACT TRUST SECTION (dark editorial split)
+       ═══════════════════════════════════════════ -->
+  <section class="ev-impact">
+    <div class="ev-impact__glow" aria-hidden="true"></div>
+    <div class="container">
+      <div class="ev-impact__inner">
+        <div class="ev-impact__text" data-reveal>
+          <p class="ev-section-label ev-section-label--light">Why It Matters</p>
+          <h2 class="ev-impact__heading">Every Event Funds a <em class="highlight-dark">Dream&nbsp;Room</em></h2>
+          <p class="ev-impact__desc">From galas to build days, every event we host goes directly toward creating life-changing spaces for children with special needs. Your attendance and generosity make these transformations possible.</p>
+          <a href="/donate/" class="ev-btn ev-btn--gold">Support Our Mission</a>
+        </div>
+        <div class="ev-impact__stats" data-reveal data-delay="1">
+          <div class="ev-impact__card">
+            <div class="ev-impact__card-icon" aria-hidden="true">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg>
+            </div>
+            <span class="ev-impact__big">{totalEventsHosted}+</span>
+            <span class="ev-impact__label">Events Hosted</span>
+            <p>Galas, build days, reveals, and community gatherings</p>
+          </div>
+          <div class="ev-impact__card">
+            <div class="ev-impact__card-icon" aria-hidden="true">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z"/></svg>
+            </div>
+            <span class="ev-impact__big">{totalKidsServed}+</span>
+            <span class="ev-impact__label">Children Served</span>
+            <p>Dream rooms built for kids with special needs</p>
+          </div>
+          <div class="ev-impact__card">
+            <div class="ev-impact__card-icon" aria-hidden="true">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.128a4 4 0 0 1 0 7.744"/></svg>
+            </div>
+            <span class="ev-impact__big">{totalPartners}+</span>
+            <span class="ev-impact__label">Partners Strong</span>
+            <p>Contractors, sponsors, and volunteers united</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════
+       PAST EVENTS SHOWCASE
+       ═══════════════════════════════════════════ -->
   {past.length > 0 && (
     <section class="ev-past" id="past">
       <div class="container">
         <div class="ev-past__header" data-reveal>
           <p class="ev-section-label">Looking Back</p>
-          <h2 class="ev-section-heading">Where We've <em class="highlight">Been</em></h2>
+          <h2 class="ev-section-heading">Moments That <em class="highlight">Mattered</em></h2>
+          <p class="ev-section-sub">Every event we host writes another chapter in our story of impact.</p>
         </div>
-        <div class="ev-tl">
-          {past.map((event, i) => (
-            <article class="ev-tl__item" data-reveal data-delay={String(Math.min(i, 3))}>
-              <div class="ev-tl__marker" aria-hidden="true">
-                <div class="ev-tl__dot"></div>
+
+        {/* Highlight card for most recent past event */}
+        {past.length > 0 && (
+          <article class="ev-highlight" data-reveal>
+            <div class="ev-highlight__visual" style={`background: ${catGradient[past[0].data.category]}`}>
+              <div class="ev-highlight__pattern" aria-hidden="true"></div>
+              <div class="ev-highlight__glow" aria-hidden="true"></div>
+              <div class="ev-highlight__icon" set:html={catIcon[past[0].data.category]} />
+            </div>
+            <div class="ev-highlight__content">
+              <div class="ev-highlight__top">
+                <span class="ev-highlight__cat" style={`--cat: ${catColor[past[0].data.category]}`}>{catLabel[past[0].data.category]}</span>
+                <time class="ev-highlight__date" datetime={past[0].data.date}>{fmtDate(past[0].data.date)}</time>
               </div>
-              <div class="ev-tl__card">
-                <div class="ev-tl__top">
-                  <span class="ev-tl__cat" style={`--cat: ${catColor[event.data.category]}`}>{catLabel[event.data.category]}</span>
-                  <time class="ev-tl__date" datetime={event.data.date}>{fmtDate(event.data.date)}</time>
+              <h3 class="ev-highlight__title">{past[0].data.title}</h3>
+              <p class="ev-highlight__loc">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/></svg>
+                {past[0].data.location}
+              </p>
+              <p class="ev-highlight__desc">{past[0].data.description}</p>
+              {detailPages[past[0].data.slug] && (
+                <a href={detailPages[past[0].data.slug]} class="ev-btn ev-btn--gold" style="margin-top: var(--space-lg);">
+                  View Photos & Details
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+                </a>
+              )}
+            </div>
+          </article>
+        )}
+
+        {/* Remaining past events in grid */}
+        {past.length > 1 && (
+          <div class="ev-memories">
+            {past.slice(1).map((event, i) => (
+              <article class="ev-memory" data-reveal data-delay={String(Math.min(i, 3))}>
+                <div class="ev-memory__visual" style={`background: ${catGradient[event.data.category]}`}>
+                  <div class="ev-memory__pattern" aria-hidden="true"></div>
+                  <div class="ev-memory__glow" aria-hidden="true"></div>
+                  <div class="ev-memory__icon" set:html={catIcon[event.data.category]} />
+                  <div class="ev-memory__date-badge">
+                    <span class="ev-memory__month">{fmtMonth(event.data.date)}</span>
+                    <span class="ev-memory__day">{fmtDay(event.data.date)}</span>
+                    <span class="ev-memory__year">{fmtYear(event.data.date)}</span>
+                  </div>
                 </div>
-                <h3 class="ev-tl__title">{event.data.title}</h3>
-                <p class="ev-tl__loc">{event.data.location}</p>
-                <p class="ev-tl__desc">{event.data.description}</p>
-              </div>
-            </article>
-          ))}
-        </div>
+                <div class="ev-memory__content">
+                  <div class="ev-memory__top">
+                    <span class="ev-memory__cat" style={`--cat: ${catColor[event.data.category]}`}>{catLabel[event.data.category]}</span>
+                  </div>
+                  <h3 class="ev-memory__title">{event.data.title}</h3>
+                  <p class="ev-memory__loc">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/></svg>
+                    {event.data.location}
+                  </p>
+                  <p class="ev-memory__desc">{event.data.description}</p>
+                  {detailPages[event.data.slug] && (
+                    <a href={detailPages[event.data.slug]} class="ev-memory__link">
+                      View Photos & Details
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+                    </a>
+                  )}
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
       </div>
     </section>
   )}
 
-  <!-- ═══ CTA ═══ -->
+  <!-- ═══════════════════════════════════════════
+       BOTTOM CTA
+       ═══════════════════════════════════════════ -->
   <section class="ev-cta">
     <div class="container">
       <div class="ev-cta__inner" data-reveal>
         <p class="ev-section-label">Get Involved</p>
         <h2 class="ev-section-heading">There's a Place for <em class="highlight">You</em></h2>
+        <p class="ev-cta__sub">Whether you want to host, sponsor, or simply show up — every hand makes a difference.</p>
         <div class="ev-cta__grid">
           <a href="mailto:info@soardcharity.com?subject=Event%20Partnership" class="ev-cta__option">
             <div class="ev-cta__icon" aria-hidden="true">
@@ -236,6 +454,14 @@ const flagshipLogoSizes = '(max-width: 767px) 160px, 280px';
             <p>Your donation helps build dream rooms for children with special needs.</p>
             <span class="ev-cta__link">Give Today <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></span>
           </a>
+          <a href="/apply/" class="ev-cta__option">
+            <div class="ev-cta__icon" aria-hidden="true">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z"/></svg>
+            </div>
+            <h3>Apply for a Room</h3>
+            <p>Know a child who deserves a dream room? Start the application today.</p>
+            <span class="ev-cta__link">Learn More <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></span>
+          </a>
         </div>
       </div>
     </div>
@@ -243,15 +469,50 @@ const flagshipLogoSizes = '(max-width: 767px) 160px, 280px';
 
 </BaseLayout>
 
+<!-- ═══════════════════════════════════════════
+     CLIENT-SIDE: Countdown + Smooth Scroll
+     ═══════════════════════════════════════════ -->
+<script>
+  /* ── Live countdown badges ── */
+  document.querySelectorAll<HTMLElement>('[data-countdown]').forEach(el => {
+    const target = new Date(el.dataset.countdown + 'T00:00:00');
+    const now = new Date();
+    const diff = target.getTime() - now.getTime();
+    const days = Math.ceil(diff / (1000 * 60 * 60 * 24));
+
+    if (days > 1) {
+      el.textContent = `${days} days away`;
+    } else if (days === 1) {
+      el.textContent = 'Tomorrow!';
+    } else if (days === 0) {
+      el.textContent = 'Today!';
+    } else {
+      el.textContent = 'Recently passed';
+    }
+  });
+
+  /* ── Smooth scroll for anchor links ── */
+  document.querySelectorAll<HTMLAnchorElement>('a[href^="#"]').forEach(link => {
+    link.addEventListener('click', (e) => {
+      const id = link.getAttribute('href')?.slice(1);
+      if (!id) return;
+      const target = document.getElementById(id);
+      if (!target) return;
+      e.preventDefault();
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      history.pushState(null, '', `#${id}`);
+    });
+  });
+</script>
+
 <style>
   /* ═══════════════════════════════════════════
-     EVENTS PAGE
-     Flagship-driven layout with staggered reveals
+     EVENTS PAGE — Premium Editorial Design
      ═══════════════════════════════════════════ */
 
   [id] { scroll-margin-top: calc(var(--header-height, 84px) + 1.5rem); }
 
-  /* ─── Reveal ─── */
+  /* ─── Scroll Reveal ─── */
   [data-reveal] {
     opacity: 0;
     transform: translateY(28px);
@@ -266,7 +527,7 @@ const flagshipLogoSizes = '(max-width: 767px) 160px, 280px';
     [data-reveal] { transition: none; opacity: 1; transform: none; }
   }
 
-  /* ─── Buttons ─── */
+  /* ─── Shared Buttons ─── */
   .ev-btn {
     display: inline-flex;
     align-items: center;
@@ -291,189 +552,279 @@ const flagshipLogoSizes = '(max-width: 767px) 160px, 280px';
     box-shadow: 0 6px 24px var(--c-yellow-glow);
   }
   .ev-btn--lg { padding: 0.85rem 2.2rem; font-size: 0.95rem; }
-
-  /* ═══ HERO (matches site-wide PageLayout pattern) ═══ */
-  .page-hero {
-    background: var(--c-cream);
-    padding-block: var(--space-2xl) 0;
-    text-align: center;
+  .ev-btn--glass {
+    background: rgba(255, 255, 255, 0.08);
+    color: rgba(255, 255, 255, 0.85);
+    border-color: rgba(255, 255, 255, 0.18);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
   }
-  .page-hero .container {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-  }
-  .page-hero__label {
-    font-size: 0.75rem;
-    font-weight: 600;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: var(--c-text-muted);
-    margin-bottom: var(--space-md);
-  }
-  .page-hero__title {
-    color: var(--c-text);
-    font-size: clamp(2rem, 5vw, 3.125rem);
-    font-weight: 400;
-    letter-spacing: -0.025em;
-    line-height: 1.15;
-    max-width: 700px;
-    margin-inline: auto;
-  }
-  .page-hero__subtitle {
-    margin-top: var(--space-sm);
-    font-family: var(--font-display);
-    font-style: italic;
-    font-size: clamp(0.95rem, 1.8vw, 1.065rem);
-    line-height: 1.6;
-    color: var(--c-text-muted);
-    max-width: 500px;
-    margin-inline: auto;
-  }
-  .page-hero__rule {
-    position: relative;
-    height: 2px;
-    background: var(--c-border);
-    margin-top: var(--space-lg);
-    width: 100%;
-  }
-  .page-hero__rule-accent {
-    position: absolute;
-    left: 50%;
-    transform: translateX(-50%);
-    top: -1px;
-    width: 48px;
-    height: 3px;
-    background: var(--c-yellow);
-    border-radius: 1px;
-  }
-  @media (max-width: 768px) {
-    .page-hero { padding-block: var(--space-xl) 0; }
+  .ev-btn--glass:hover {
+    background: rgba(255, 255, 255, 0.14);
+    border-color: rgba(255, 255, 255, 0.35);
+    transform: translateY(-1px);
   }
 
-  /* ═══ FEATURED NEXT EVENT CARD (cream — flows from hero) ═══ */
-  .ev-next {
-    padding: var(--space-2xl) 0 var(--space-4xl);
+  /* ═══════════════════════════════════════════
+     HERO — Editorial Split (featured event or fallback)
+     ═══════════════════════════════════════════ */
+  .hero {
     background: var(--c-cream);
-  }
-  .ev-next__card {
-    position: relative;
-    border-radius: var(--border-radius-lg);
+    padding: var(--space-3xl) 0 var(--space-4xl);
     overflow: hidden;
+  }
+  .hero-inner {
+    max-width: var(--max-width, 1200px);
+    margin: 0 auto;
+    padding: 0 var(--space-xl);
     display: grid;
     grid-template-columns: 1fr;
-    transition: box-shadow 0.4s cubic-bezier(0.16, 1, 0.3, 1),
-                transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-  }
-  .ev-next__card:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 16px 56px rgba(0, 0, 0, 0.18);
+    gap: var(--space-2xl);
+    align-items: center;
   }
   @media (min-width: 768px) {
-    .ev-next__card { grid-template-columns: 1fr auto; }
+    .hero-inner {
+      grid-template-columns: 1fr 0.85fr;
+      gap: var(--space-3xl);
+    }
   }
-  .ev-next__bg {
+  .hero-badges {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    flex-wrap: wrap;
+    margin-bottom: var(--space-md);
+  }
+  .hero-eyebrow {
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    color: var(--c-text-muted);
+  }
+  .hero-badges .hero-eyebrow {
+    color: var(--c-dark);
+    background: var(--c-yellow);
+    padding: 0.3rem 0.85rem;
+    border-radius: 100px;
+    margin-bottom: 0;
+    font-size: 0.68rem;
+    letter-spacing: 0.14em;
+    font-weight: 800;
+  }
+  .hero-countdown {
+    display: inline-block;
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--c-dark);
+    background: var(--c-border);
+    padding: 0.3rem 0.85rem;
+    border-radius: 100px;
+  }
+  .hero-countdown:empty { display: none; }
+  .hero-headline {
+    font-family: var(--font-display);
+    font-size: clamp(2rem, 4.5vw + 0.5rem, 3.25rem);
+    font-weight: 400;
+    color: var(--c-dark);
+    line-height: 1.12;
+    letter-spacing: -0.025em;
+    text-wrap: balance;
+    margin-bottom: var(--space-lg);
+  }
+  .hero-sub {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-size: clamp(0.95rem, 1.5vw, 1.065rem);
+    line-height: 1.7;
+    color: var(--c-text-muted);
+    max-width: 44ch;
+    margin-bottom: var(--space-lg);
+  }
+  /* Event meta details in hero */
+  .hero-meta {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+    margin-bottom: var(--space-xl);
+  }
+  .hero-meta__item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.88rem;
+    color: var(--c-text-muted);
+  }
+  .hero-meta__item svg {
+    color: var(--c-text-light);
+    flex-shrink: 0;
+  }
+  .hero-ctas {
+    display: flex;
+    gap: var(--space-md);
+    flex-wrap: wrap;
+  }
+
+  /* Hero image frame (shared) */
+  .hero-frame {
+    position: relative;
+    display: flex;
+    justify-content: center;
+  }
+
+  /* Fallback: kid photo with accent */
+  .hero-accent {
+    position: absolute;
+    top: -12px;
+    right: -12px;
+    width: 65%;
+    height: 65%;
+    background: var(--c-yellow);
+    border-radius: var(--border-radius-lg);
+    opacity: 0.15;
+    z-index: 0;
+  }
+  .hero-photo {
+    position: relative;
+    z-index: 1;
+    border-radius: var(--border-radius-lg);
+    overflow: hidden;
+    aspect-ratio: 4 / 5;
+    max-width: 420px;
+    width: 100%;
+    background-size: cover;
+    background-position: center;
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.12);
+  }
+  .hero-photo__img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  .hero-photo__img.lqip-pending { opacity: 0; }
+  .hero-photo__img.loaded { opacity: 1; transition: opacity 0.4s ease; }
+
+  /* Featured event: gradient card with logo */
+  .hero-event-card {
+    position: relative;
+    width: 100%;
+    max-width: 440px;
+    aspect-ratio: 1 / 1;
+    border-radius: var(--border-radius-lg);
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.18);
+    transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1),
+                box-shadow 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .hero-event-card:hover {
+    transform: translateY(-6px) scale(1.01);
+    box-shadow: 0 32px 80px rgba(0, 0, 0, 0.22);
+  }
+  .hero-event-card__bg {
     position: absolute;
     inset: 0;
     background: linear-gradient(135deg, #1a472a 0%, #2e7d32 40%, #388e3c 70%, #43a047 100%);
   }
-  .ev-next__gradient {
+  .hero-event-card__gradient {
     position: absolute;
     inset: 0;
     background:
       radial-gradient(ellipse 70% 55% at 15% 85%, rgba(255, 218, 36, 0.14) 0%, transparent 60%),
       radial-gradient(ellipse 50% 50% at 85% 15%, rgba(255, 255, 255, 0.06) 0%, transparent 50%);
   }
-  .ev-next__pattern {
+  .hero-event-card__pattern {
     position: absolute;
     inset: 0;
     opacity: 0.03;
     background-image: radial-gradient(circle, #fff 1px, transparent 1px);
     background-size: 32px 32px;
   }
-  .ev-next__body {
+  .hero-event-card__logo {
     position: relative;
     z-index: 1;
-    padding: var(--space-2xl);
-  }
-  @media (min-width: 768px) {
-    .ev-next__body { padding: var(--space-3xl); }
-  }
-  .ev-next__eyebrow {
-    display: inline-block;
-    font-size: 0.68rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.2em;
-    color: var(--c-yellow);
-    background: rgba(255, 218, 36, 0.12);
-    padding: 0.25rem 0.75rem;
-    border-radius: 100px;
-    margin-bottom: var(--space-lg);
-  }
-  .ev-next__title {
-    font-family: var(--font-display);
-    font-size: clamp(1.6rem, 4vw, 2.4rem);
-    color: #fff;
-    line-height: 1.12;
-    text-wrap: balance;
-    margin-bottom: var(--space-md);
-  }
-  .ev-next__desc {
-    font-size: clamp(0.9rem, 1.3vw, 1rem);
-    color: rgba(255, 255, 255, 0.75);
-    line-height: 1.75;
-    max-width: 480px;
-    text-wrap: pretty;
-    margin-bottom: var(--space-xl);
-  }
-  .ev-next__details {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-sm);
-    margin-bottom: var(--space-xl);
-  }
-  .ev-next__detail {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 0.88rem;
-    color: rgba(255, 255, 255, 0.85);
-  }
-  .ev-next__detail svg {
-    color: var(--c-yellow);
-    flex-shrink: 0;
-  }
-  .ev-next__visual {
-    position: relative;
-    z-index: 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: var(--space-xl);
-  }
-  @media (min-width: 768px) {
-    .ev-next__visual { padding: var(--space-2xl) var(--space-3xl); }
-  }
-  .ev-next__logo {
-    width: 160px;
+    width: 200px;
     height: auto;
     filter: drop-shadow(0 8px 32px rgba(0, 0, 0, 0.25));
     animation: ev-float 6s ease-in-out infinite;
   }
   @media (min-width: 768px) {
-    .ev-next__logo { width: 280px; }
+    .hero-event-card__logo { width: 320px; }
   }
   @keyframes ev-float {
     0%, 100% { transform: translateY(0); }
     50% { transform: translateY(-10px); }
   }
+  @media (prefers-reduced-motion: reduce) {
+    .hero-event-card__logo { animation: none; }
+    .hero-event-card { transition: none; }
+  }
 
-  /* ═══ SECTION LABELS (matches donate/home pattern) ═══ */
-  .ev-section-label {
-    font-size: 0.75rem;
-    font-weight: 600;
+  /* Mini date card overlay */
+  .hero-date-card {
+    position: absolute;
+    bottom: var(--space-lg);
+    right: var(--space-lg);
+    z-index: 2;
+    background: #fff;
+    border-radius: 14px;
+    padding: 0.6rem 0.85rem;
+    text-align: center;
+    min-width: 64px;
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.2);
+  }
+  .hero-date-card__month {
+    display: block;
+    font-size: 0.6rem;
+    font-weight: 800;
+    text-transform: uppercase;
     letter-spacing: 0.12em;
+    color: var(--c-text-muted);
+    line-height: 1;
+    margin-bottom: 2px;
+  }
+  .hero-date-card__day {
+    display: block;
+    font-family: var(--font-display);
+    font-size: 1.8rem;
+    font-weight: 700;
+    line-height: 1;
+    color: var(--c-dark);
+  }
+  .hero-date-card__year {
+    display: block;
+    font-size: 0.55rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    color: var(--c-text-light);
+    margin-top: 2px;
+  }
+
+  @media (max-width: 767px) {
+    .hero { padding: var(--space-xl) 0 var(--space-2xl); }
+    .hero-frame { order: -1; }
+    .hero-photo { max-width: 280px; aspect-ratio: 3 / 4; }
+    .hero-accent { width: 55%; height: 55%; top: -8px; right: -8px; }
+    .hero-event-card { max-width: 280px; aspect-ratio: 1 / 1; }
+    .hero-inner { text-align: center; }
+    .hero-meta { align-items: center; }
+    .hero-ctas { justify-content: center; }
+    .hero-badges { justify-content: center; }
+    .hero-sub { margin-inline: auto; }
+  }
+
+  /* ═══════════════════════════════════════════
+     SECTION LABELS (shared)
+     ═══════════════════════════════════════════ */
+  .ev-section-label {
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
     text-transform: uppercase;
     color: var(--c-text-muted);
     margin-bottom: var(--space-sm);
@@ -487,20 +838,28 @@ const flagshipLogoSizes = '(max-width: 767px) 160px, 280px';
     line-height: 1.15;
     text-wrap: balance;
   }
-  .ev-upcoming__header,
-  .ev-past__header {
-    margin-bottom: var(--space-2xl);
+  .ev-section-sub {
+    font-size: clamp(0.9rem, 1.2vw, 1rem);
+    line-height: 1.7;
+    color: var(--c-text-muted);
+    max-width: 52ch;
+    margin-top: var(--space-sm);
   }
 
-  /* ═══ UPCOMING (white background — breaks from cream hero) ═══ */
+  /* ═══════════════════════════════════════════
+     UPCOMING EVENTS
+     ═══════════════════════════════════════════ */
   .ev-upcoming {
     padding: var(--space-4xl) 0;
     background: var(--c-white);
   }
+  .ev-upcoming__header {
+    margin-bottom: var(--space-2xl);
+  }
   .ev-grid {
     display: grid;
     grid-template-columns: 1fr;
-    gap: var(--space-lg);
+    gap: var(--space-xl);
   }
   @media (min-width: 640px) {
     .ev-grid { grid-template-columns: repeat(2, 1fr); }
@@ -508,131 +867,487 @@ const flagshipLogoSizes = '(max-width: 767px) 160px, 280px';
   @media (min-width: 960px) {
     .ev-grid { grid-template-columns: repeat(3, 1fr); }
   }
-
-  /* Event card styles live in EventCard.astro */
-
-  /* ═══ EMPTY ═══ */
-  .ev-empty { padding: var(--space-5xl) 0; }
+  /* ═══════════════════════════════════════════
+     EMPTY STATE
+     ═══════════════════════════════════════════ */
+  .ev-empty {
+    padding: var(--space-5xl) 0;
+    background: var(--c-white);
+  }
   .ev-empty__box {
     text-align: center;
-    max-width: 420px;
+    max-width: 480px;
     margin: 0 auto;
-    color: var(--c-text-light);
+  }
+  .ev-empty__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    background: var(--c-warm-gray);
+    color: var(--c-text-muted);
+    margin-bottom: var(--space-lg);
   }
   .ev-empty__box h2 {
     font-family: var(--font-display);
-    font-size: 1.4rem;
+    font-size: 1.5rem;
     color: var(--c-dark);
-    margin: var(--space-lg) 0 var(--space-sm);
+    margin-bottom: var(--space-sm);
   }
-  .ev-empty__box p { line-height: 1.7; }
+  .ev-empty__box p {
+    color: var(--c-text-muted);
+    line-height: 1.7;
+    margin-bottom: var(--space-xl);
+  }
 
-  /* ═══ PAST TIMELINE ═══ */
+  /* ═══════════════════════════════════════════
+     TESTIMONIAL PULLQUOTE
+     ═══════════════════════════════════════════ */
+  .ev-quote {
+    padding: var(--space-4xl) 0;
+    background: var(--c-cream);
+  }
+  .ev-quote__inner {
+    position: relative;
+    max-width: 680px;
+    margin: 0 auto;
+    text-align: center;
+    padding: var(--space-2xl) var(--space-xl);
+    border-top: 1px solid var(--c-border);
+    border-bottom: 1px solid var(--c-border);
+  }
+  .ev-quote__mark {
+    font-family: var(--font-display);
+    font-size: 4.5rem;
+    line-height: 1;
+    color: var(--c-yellow);
+    opacity: 0.5;
+    position: absolute;
+    top: -0.2em;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--c-cream);
+    padding: 0 var(--space-md);
+  }
+  .ev-quote__text {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-size: clamp(1rem, 2vw, 1.2rem);
+    line-height: 1.75;
+    color: var(--c-dark);
+    margin: 0;
+    text-wrap: pretty;
+  }
+  .ev-quote__cite {
+    display: block;
+    margin-top: var(--space-lg);
+    font-size: 0.82rem;
+    font-style: normal;
+    font-weight: 600;
+    color: var(--c-text-muted);
+    letter-spacing: 0.02em;
+  }
+
+  /* ═══════════════════════════════════════════
+     IMPACT TRUST SECTION (dark editorial split)
+     ═══════════════════════════════════════════ */
+  .ev-impact {
+    position: relative;
+    padding: var(--space-5xl) 0;
+    background: var(--c-dark-deep, #1E1F25);
+    overflow: hidden;
+  }
+  .ev-impact__glow {
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(ellipse 60% 50% at 10% 85%, var(--c-yellow-glow) 0%, transparent 50%),
+      radial-gradient(ellipse 40% 40% at 90% 15%, rgba(255, 255, 255, 0.03) 0%, transparent 50%);
+    pointer-events: none;
+  }
+  .ev-impact__inner {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: var(--space-3xl);
+    align-items: center;
+  }
+  @media (min-width: 768px) {
+    .ev-impact__inner {
+      grid-template-columns: 0.85fr 1fr;
+      gap: var(--space-4xl);
+    }
+  }
+  .ev-section-label--light {
+    color: rgba(255, 255, 255, 0.45);
+  }
+  .ev-impact__heading {
+    font-family: var(--font-display);
+    font-size: clamp(1.6rem, 4vw, 2.4rem);
+    font-weight: 400;
+    color: #fff;
+    line-height: 1.15;
+    text-wrap: balance;
+    margin-bottom: var(--space-lg);
+  }
+  .ev-impact__desc {
+    font-size: clamp(0.9rem, 1.2vw, 1rem);
+    line-height: 1.75;
+    color: rgba(255, 255, 255, 0.55);
+    max-width: 44ch;
+    margin-bottom: var(--space-xl);
+    text-wrap: pretty;
+  }
+  .ev-impact__stats {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-md);
+  }
+  .ev-impact__card {
+    padding: var(--space-lg);
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: var(--border-radius-lg);
+    transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+                border-color 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .ev-impact__card:hover {
+    transform: translateY(-3px);
+    border-color: rgba(255, 218, 36, 0.25);
+  }
+  .ev-impact__card-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    background: rgba(255, 218, 36, 0.12);
+    color: var(--c-yellow);
+    margin-bottom: var(--space-sm);
+  }
+  .ev-impact__big {
+    display: block;
+    font-family: var(--font-display);
+    font-size: clamp(1.5rem, 3vw, 2rem);
+    font-weight: 400;
+    color: #fff;
+    line-height: 1.1;
+    margin-bottom: 0.15rem;
+  }
+  .ev-impact__label {
+    display: block;
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--c-yellow);
+    margin-bottom: var(--space-xs);
+  }
+  .ev-impact__card p {
+    font-size: 0.82rem;
+    line-height: 1.5;
+    color: rgba(255, 255, 255, 0.4);
+    margin: 0;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .ev-impact__card { transition: none; }
+  }
+
+  /* ═══════════════════════════════════════════
+     PAST EVENTS — HIGHLIGHT CARD (most recent)
+     ═══════════════════════════════════════════ */
+  .ev-highlight {
+    display: grid;
+    grid-template-columns: 1fr;
+    background: var(--c-white);
+    border: 1px solid var(--c-border);
+    border-radius: var(--border-radius-lg);
+    overflow: hidden;
+    margin-bottom: var(--space-2xl);
+    transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+                box-shadow 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  @media (min-width: 768px) {
+    .ev-highlight { grid-template-columns: 0.45fr 1fr; }
+  }
+  .ev-highlight:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 20px 56px rgba(0, 0, 0, 0.1);
+  }
+  .ev-highlight__visual {
+    position: relative;
+    min-height: 200px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+  .ev-highlight__pattern {
+    position: absolute;
+    inset: 0;
+    opacity: 0.04;
+    background-image: radial-gradient(circle, #fff 1px, transparent 1px);
+    background-size: 28px 28px;
+  }
+  .ev-highlight__glow {
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(ellipse 60% 60% at 20% 80%, rgba(255, 255, 255, 0.1) 0%, transparent 55%);
+  }
+  .ev-highlight__icon {
+    color: rgba(255, 255, 255, 0.15);
+    z-index: 1;
+  }
+  .ev-highlight__content {
+    padding: var(--space-xl) var(--space-lg);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+  @media (min-width: 768px) {
+    .ev-highlight__content { padding: var(--space-2xl); }
+  }
+  .ev-highlight__top {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    margin-bottom: var(--space-sm);
+  }
+  .ev-highlight__cat {
+    font-size: 0.6rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--cat);
+  }
+  .ev-highlight__date {
+    font-size: 0.78rem;
+    color: var(--c-text-light);
+  }
+  .ev-highlight__title {
+    font-family: var(--font-display);
+    font-size: clamp(1.2rem, 2.5vw, 1.6rem);
+    color: var(--c-dark);
+    line-height: 1.2;
+    margin-bottom: var(--space-sm);
+  }
+  .ev-highlight__loc {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.82rem;
+    color: var(--c-text-light);
+    margin-bottom: var(--space-md);
+  }
+  .ev-highlight__loc svg {
+    flex-shrink: 0;
+    color: var(--c-text-light);
+  }
+  .ev-highlight__desc {
+    font-size: 0.9rem;
+    line-height: 1.7;
+    color: var(--c-text-muted);
+    text-wrap: pretty;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .ev-highlight { transition: none; }
+  }
+
+  /* ═══════════════════════════════════════════
+     PAST EVENTS SHOWCASE
+     ═══════════════════════════════════════════ */
   .ev-past {
     padding: var(--space-4xl) 0;
     background: var(--c-warm-gray);
   }
-  .ev-tl {
-    position: relative;
-    padding-left: 28px;
-    margin-top: var(--space-2xl);
+  .ev-past__header {
+    margin-bottom: var(--space-2xl);
   }
-  .ev-tl::before {
-    content: '';
-    position: absolute;
-    left: 5px; top: 8px; bottom: 8px;
-    width: 2px;
-    background: var(--c-border);
-    border-radius: 1px;
+  .ev-memories {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: var(--space-lg);
   }
-  .ev-tl__item {
-    position: relative;
-    padding-bottom: var(--space-xl);
+  @media (min-width: 640px) {
+    .ev-memories { grid-template-columns: repeat(2, 1fr); }
   }
-  .ev-tl__item:last-child { padding-bottom: 0; }
-  .ev-tl__marker {
-    position: absolute;
-    left: -28px; top: 18px;
+  @media (min-width: 960px) {
+    .ev-memories { grid-template-columns: repeat(3, 1fr); }
   }
-  .ev-tl__dot {
-    width: 12px; height: 12px;
-    background: var(--c-warm-gray);
-    border: 2.5px solid var(--c-border);
-    border-radius: 50%;
-    transition: border-color 0.25s cubic-bezier(0.16, 1, 0.3, 1),
-                background 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-  }
-  .ev-tl__item:hover .ev-tl__dot {
-    border-color: var(--c-yellow);
-    background: var(--c-yellow);
-  }
-  .ev-tl__card {
-    padding: var(--space-lg);
+
+  /* Past event memory card */
+  .ev-memory {
     background: var(--c-white);
     border: 1px solid var(--c-border);
     border-radius: var(--border-radius-lg);
-    transition: box-shadow 0.3s cubic-bezier(0.16, 1, 0.3, 1),
-                transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    overflow: hidden;
+    contain: layout style;
+    transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+                box-shadow 0.35s cubic-bezier(0.16, 1, 0.3, 1);
   }
-  .ev-tl__item:hover .ev-tl__card {
-    box-shadow: var(--shadow-md);
-    transform: translateX(4px);
+  .ev-memory:hover {
+    transform: translateY(-6px);
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.1);
   }
-  .ev-tl__top {
+  .ev-memory__visual {
+    position: relative;
+    height: 120px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+  .ev-memory__pattern {
+    position: absolute;
+    inset: 0;
+    opacity: 0.04;
+    background-image: radial-gradient(circle, #fff 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+  .ev-memory__glow {
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(ellipse 60% 60% at 20% 80%, rgba(255, 255, 255, 0.1) 0%, transparent 55%),
+      radial-gradient(ellipse 40% 40% at 85% 15%, rgba(255, 255, 255, 0.05) 0%, transparent 50%);
+  }
+  .ev-memory__icon {
+    color: rgba(255, 255, 255, 0.2);
+    z-index: 1;
+    transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+                color 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .ev-memory:hover .ev-memory__icon {
+    transform: scale(1.15);
+    color: rgba(255, 255, 255, 0.3);
+  }
+  .ev-memory__date-badge {
+    position: absolute;
+    top: var(--space-sm);
+    right: var(--space-sm);
+    background: rgba(0, 0, 0, 0.2);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border-radius: 10px;
+    padding: var(--space-xs) var(--space-sm);
+    text-align: center;
+    min-width: 48px;
+    z-index: 2;
+  }
+  .ev-memory__month {
+    display: block;
+    font-size: 0.52rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: rgba(255, 255, 255, 0.7);
+  }
+  .ev-memory__day {
+    display: block;
+    font-family: var(--font-display);
+    font-size: 1.25rem;
+    font-weight: 700;
+    line-height: 1;
+    color: #fff;
+  }
+  .ev-memory__year {
+    display: block;
+    font-size: 0.5rem;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.55);
+    margin-top: 1px;
+  }
+
+  .ev-memory__content {
+    padding: var(--space-lg);
+    display: flex;
+    flex-direction: column;
+  }
+  .ev-memory__top {
     display: flex;
     align-items: center;
     gap: var(--space-sm);
     margin-bottom: var(--space-xs);
   }
-  .ev-tl__cat {
-    font-size: 0.58rem; font-weight: 700;
-    text-transform: uppercase; letter-spacing: 0.1em;
+  .ev-memory__cat {
+    font-size: 0.58rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
     color: var(--cat);
   }
-  .ev-tl__date {
-    font-size: 0.75rem;
-    color: var(--c-text-light);
-  }
-  .ev-tl__title {
+  .ev-memory__title {
     font-family: var(--font-display);
-    font-size: 1rem;
+    font-size: 1.05rem;
+    line-height: 1.3;
     color: var(--c-dark);
-    margin-bottom: 0.2rem;
+    margin-bottom: 0.35rem;
   }
-  .ev-tl__loc {
-    font-size: 0.8rem;
+  .ev-memory__loc {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.78rem;
     color: var(--c-text-light);
     margin-bottom: var(--space-sm);
   }
-  .ev-tl__desc {
+  .ev-memory__loc svg {
+    flex-shrink: 0;
+    color: var(--c-text-light);
+  }
+  .ev-memory__desc {
     font-size: 0.85rem;
     line-height: 1.6;
     color: var(--c-text-muted);
     display: -webkit-box;
-    -webkit-line-clamp: 2;
+    -webkit-line-clamp: 3;
     -webkit-box-orient: vertical;
     overflow: hidden;
+    flex: 1;
+  }
+  .ev-memory__link {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--c-dark);
+    text-decoration: none;
+    margin-top: var(--space-md);
+    padding-top: var(--space-sm);
+    border-top: 1px solid var(--c-border);
+    transition: gap 0.2s ease, color 0.2s ease;
+  }
+  .ev-memory__link:hover { gap: 8px; color: var(--c-yellow-hover); }
+
+  @media (prefers-reduced-motion: reduce) {
+    .ev-memory { transition: none; }
+    .ev-memory__icon { transition: none; }
   }
 
-  @media (max-width: 640px) {
-    .ev-tl { padding-left: 24px; }
-    .ev-tl__marker { left: -24px; }
-    .ev-tl__dot { width: 10px; height: 10px; }
-    .ev-tl__card { padding: var(--space-md); }
-    /* Ensure min touch target 44px on CTAs */
-    .ev-btn { min-height: 44px; }
-    .ev-cta__option { padding: var(--space-lg); }
-  }
-
-  /* ═══ CTA (cream background — two-option cards) ═══ */
+  /* ═══════════════════════════════════════════
+     BOTTOM CTA
+     ═══════════════════════════════════════════ */
   .ev-cta {
     padding: var(--space-4xl) 0;
     background: var(--c-cream);
   }
   .ev-cta__inner {
     text-align: center;
-    max-width: 800px;
+    max-width: 960px;
     margin: 0 auto;
+  }
+  .ev-cta__sub {
+    font-size: clamp(0.9rem, 1.2vw, 1rem);
+    line-height: 1.7;
+    color: var(--c-text-muted);
+    max-width: 48ch;
+    margin: var(--space-sm) auto 0;
   }
   .ev-cta__grid {
     display: grid;
@@ -642,7 +1357,7 @@ const flagshipLogoSizes = '(max-width: 767px) 160px, 280px';
     text-align: left;
   }
   @media (min-width: 640px) {
-    .ev-cta__grid { grid-template-columns: repeat(2, 1fr); }
+    .ev-cta__grid { grid-template-columns: repeat(3, 1fr); }
   }
   .ev-cta__option {
     display: flex;
@@ -666,19 +1381,19 @@ const flagshipLogoSizes = '(max-width: 767px) 160px, 280px';
     display: flex;
     align-items: center;
     justify-content: center;
-    background: var(--c-accent-soft);
+    background: var(--c-warm-gray);
     color: var(--c-dark);
     border-radius: 50%;
     margin-bottom: var(--space-md);
   }
   .ev-cta__option h3 {
     font-family: var(--font-display);
-    font-size: 1.15rem;
+    font-size: 1.1rem;
     color: var(--c-dark);
     margin-bottom: var(--space-sm);
   }
   .ev-cta__option p {
-    font-size: 0.88rem;
+    font-size: 0.85rem;
     color: var(--c-text-muted);
     line-height: 1.65;
     flex: 1;
@@ -687,11 +1402,23 @@ const flagshipLogoSizes = '(max-width: 767px) 160px, 280px';
     display: inline-flex;
     align-items: center;
     gap: 5px;
-    font-size: 0.82rem;
+    font-size: 0.8rem;
     font-weight: 600;
     color: var(--c-dark);
     margin-top: var(--space-md);
     transition: gap 0.2s ease, color 0.2s ease;
   }
   .ev-cta__option:hover .ev-cta__link { gap: 8px; color: var(--c-yellow-hover); }
+
+  /* ─── Mobile Optimization ─── */
+  @media (max-width: 640px) {
+    .ev-btn { min-height: 44px; }
+    .ev-cta__option { padding: var(--space-lg); }
+    .ev-card-cal { min-height: 44px; }
+    .ev-memory__content { padding: var(--space-md); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .ev-cta__option { transition: none; }
+  }
 </style>

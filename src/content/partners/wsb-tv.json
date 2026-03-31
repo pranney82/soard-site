@@ -2,6 +2,7 @@
   "name": "WSB-TV ",
   "slug": "wsb-tv",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/wsb-tv/public",
+  "tier": "construction",
   "featured": false,
   "category": [
     "community"

@@ -36,7 +36,7 @@ const featured = logos.slice(0, 6);
 
     <div class="ps__grid" data-reveal data-delay="1" role="list" aria-label="Featured partners">
       {featured.map(p => (
-        <a class="ps__cell" href="/partners" role="listitem">
+        <div role="listitem"><a class="ps__cell" href="/partners">
           <div class="ps__logo-frame">
             <img
               src={`${CF}/${p.id}/w=140,h=80,fit=contain,q=80`}
@@ -49,7 +49,7 @@ const featured = logos.slice(0, 6);
             />
           </div>
           <span class="ps__name">{p.name}</span>
-        </a>
+        </a></div>
       ))}
     </div>
 

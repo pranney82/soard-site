@@ -2,6 +2,7 @@
   "name": "Vim Products",
   "slug": "vim-products",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/vim-products/public",
+  "tier": "construction",
   "featured": false,
   "category": [
     "build"

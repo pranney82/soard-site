@@ -2,6 +2,7 @@
   "name": "Superbuilt",
   "slug": "superbuilt",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/superbuilt/public",
+  "tier": "construction",
   "featured": false,
   "category": [
     "build"

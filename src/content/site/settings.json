@@ -44,10 +44,6 @@
       "cfId": "kids/cayden/photo-09"
     },
     {
-      "slug": "summer",
-      "cfId": "kids/summer/hero"
-    },
-    {
       "slug": "naji",
       "cfId": "kids/naji/hero"
     },
@@ -128,12 +124,12 @@
     "closedMessage": ""
   },
   "applyPhotos": {
-    "hero": "kids/griffin/hero",
-    "story": "kids/eli/photo-01",
-    "selection": "kids/georgia/photo-01"
+    "hero": "kids/adrian/1774454544254-Adrian-SRD--36.jpg",
+    "story": "kids/summer/1774457749073-Summer-28.jpg",
+    "selection": "kids/karter/1774384972619-Karter-Reveal-People-20.jpg"
   },
   "newsletter": {
-    "listId": ""
+    "listId": "f09a647e-26ba-11f0-a791-fa163eb0d538"
   },
   "sunnyAndRanneyRooms": [],
   "photoTimestamps": {
@@ -149,9 +145,28 @@
     "sectionPhotos.roomBedroom": "2026-03-30T18:52:44.310Z",
     "sectionPhotos.roomBath": "2026-03-30T18:52:52.129Z",
     "sectionPhotos.roomTherapy": "2026-03-30T18:52:59.821Z",
-    "featuredStoryImage": "2026-03-31T12:10:02.322Z"
+    "featuredStoryImage": "2026-03-31T15:23:14.726Z",
+    "communityPhotos.hero": "2026-03-31T16:57:53.974Z",
+    "communityPhotos.accent": "2026-03-31T16:58:13.158Z",
+    "waysToGivePhotos.hero": "2026-03-31T17:00:28.640Z",
+    "waysToGivePhotos.breakPhoto": "2026-03-31T16:59:16.374Z",
+    "waysToGivePhotos.legacyPhoto": "2026-03-31T16:59:29.674Z",
+    "partnerPhoto": "2026-03-31T16:59:39.441Z",
+    "applyPhotos.hero": "2026-03-31T17:00:42.040Z",
+    "applyPhotos.story": "2026-03-31T17:01:24.890Z",
+    "applyPhotos.selection": "2026-03-31T17:01:07.656Z"
   },
   "featuredStoryHeadline": "Amari's new space gave him independence — and his family peace of mind.",
   "featuredStoryDescription": "Amari, age 10, was injured in a head-on collision that left him paralyzed from waist down & an amputee. Our team transformed his space into an accessible, joyful haven, with custom features designed around his unique needs and personality.",
-  "featuredStoryImage": ""
+  "featuredStoryImage": "kids/amari/photo-23",
+  "communityPhotos": {
+    "hero": "community/summit-counseling-center/1774973192701-IMG-7393.JPG",
+    "accent": "community/summit-counseling-center/1774973369216-IMG-7470.JPG"
+  },
+  "waysToGivePhotos": {
+    "hero": "kids/oakley/photo-15",
+    "breakPhoto": "kids/emery/photo-17",
+    "legacyPhoto": "kids/cayden/photo-15"
+  },
+  "partnerPhoto": "kids/bryce/photo-22"
 }
