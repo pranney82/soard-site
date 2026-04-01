@@ -323,9 +323,112 @@ function kidTextOnly(name: string, age?: number | number[] | null, diagnosis?: s
 }
 
 // ═══════════════════════════════════════════════════
-// TEMPLATE: DEFAULT PAGE — Bold editorial
+// TEMPLATE: DEFAULT PAGE — Photo hero with overlay
 // ═══════════════════════════════════════════════════
-function defaultTemplate(title: string, subtitle?: string) {
+function defaultWithPhoto(title: string, photoB64: string, subtitle?: string) {
+  return {
+    type: 'div',
+    props: {
+      style: {
+        width: '100%', height: '100%',
+        display: 'flex', position: 'relative' as const,
+        overflow: 'hidden' as const, background: DARK,
+      },
+      children: [
+        // Background photo — fills entire frame
+        {
+          type: 'img',
+          props: {
+            src: photoB64,
+            width: 1200, height: 630,
+            style: {
+              position: 'absolute' as const, top: 0, left: 0,
+              width: '100%', height: '100%',
+              objectFit: 'cover' as const,
+            },
+          },
+        },
+        // Gradient overlay — dark from bottom for text readability
+        {
+          type: 'div',
+          props: {
+            style: {
+              position: 'absolute' as const, bottom: 0, left: 0, right: 0,
+              height: '80%',
+              background: 'linear-gradient(to top, rgba(26,27,31,0.95) 0%, rgba(26,27,31,0.85) 40%, rgba(26,27,31,0.4) 75%, transparent 100%)',
+              display: 'flex',
+            },
+          },
+        },
+        // Yellow top accent bar
+        {
+          type: 'div',
+          props: {
+            style: {
+              position: 'absolute' as const, top: 0, left: 0, right: 0,
+              height: '5px', background: YELLOW, display: 'flex',
+            },
+          },
+        },
+        // Content overlay
+        {
+          type: 'div',
+          props: {
+            style: {
+              position: 'absolute' as const, bottom: 0, left: 0, right: 0,
+              display: 'flex', flexDirection: 'column' as const,
+              padding: '0 60px 40px',
+              gap: '12px',
+            },
+            children: [
+              // Yellow accent line
+              { type: 'div', props: { style: { width: '64px', height: '4px', background: YELLOW, borderRadius: '2px', display: 'flex' } } },
+              // Title
+              {
+                type: 'div',
+                props: {
+                  style: {
+                    fontSize: '54px', fontFamily: 'Libre Baskerville', fontWeight: 700,
+                    color: WHITE, lineHeight: 1.12, maxWidth: '920px',
+                  },
+                  children: truncate(title, 70),
+                },
+              },
+              ...(subtitle ? [{
+                type: 'div',
+                props: {
+                  style: {
+                    fontSize: '21px', fontFamily: 'Outfit', fontWeight: 400,
+                    color: 'rgba(255,255,255,0.8)', maxWidth: '800px', lineHeight: 1.45,
+                  },
+                  children: truncate(subtitle, 120),
+                },
+              }] : []),
+              // Bottom bar: URL + branding
+              {
+                type: 'div',
+                props: {
+                  style: {
+                    display: 'flex', justifyContent: 'space-between' as const,
+                    alignItems: 'center', marginTop: '10px',
+                    borderTop: '1px solid rgba(255,255,255,0.15)',
+                    paddingTop: '14px',
+                  },
+                  children: [siteUrl(), brandBadge()],
+                },
+              },
+            ],
+          },
+        },
+      ],
+    },
+  };
+}
+
+// ═══════════════════════════════════════════════════
+// TEMPLATE: DEFAULT PAGE — Text fallback (no photo)
+// ═══════════════════════════════════════════════════
+function defaultTextOnly(title: string, subtitle?: string) {
   return {
     type: 'div',
     props: {
@@ -403,9 +506,120 @@ function defaultTemplate(title: string, subtitle?: string) {
 }
 
 // ═══════════════════════════════════════════════════
-// TEMPLATE: ARTICLE — Tag badge + title + description
+// TEMPLATE: ARTICLE — Photo hero with tag badge
 // ═══════════════════════════════════════════════════
-function articleTemplate(title: string, tag: string, description?: string) {
+function articleWithPhoto(title: string, tag: string, photoB64: string, description?: string) {
+  return {
+    type: 'div',
+    props: {
+      style: {
+        width: '100%', height: '100%',
+        display: 'flex', position: 'relative' as const,
+        overflow: 'hidden' as const, background: DARK,
+      },
+      children: [
+        // Background photo
+        {
+          type: 'img',
+          props: {
+            src: photoB64,
+            width: 1200, height: 630,
+            style: {
+              position: 'absolute' as const, top: 0, left: 0,
+              width: '100%', height: '100%',
+              objectFit: 'cover' as const,
+            },
+          },
+        },
+        // Gradient overlay
+        {
+          type: 'div',
+          props: {
+            style: {
+              position: 'absolute' as const, bottom: 0, left: 0, right: 0,
+              height: '85%',
+              background: 'linear-gradient(to top, rgba(26,27,31,0.95) 0%, rgba(26,27,31,0.88) 40%, rgba(26,27,31,0.4) 75%, transparent 100%)',
+              display: 'flex',
+            },
+          },
+        },
+        // Yellow top accent bar
+        {
+          type: 'div',
+          props: {
+            style: {
+              position: 'absolute' as const, top: 0, left: 0, right: 0,
+              height: '5px', background: YELLOW, display: 'flex',
+            },
+          },
+        },
+        // Left accent stripe
+        {
+          type: 'div',
+          props: {
+            style: {
+              position: 'absolute' as const, top: '5px', left: 0, bottom: 0,
+              width: '6px', background: YELLOW, display: 'flex',
+            },
+          },
+        },
+        // Content overlay
+        {
+          type: 'div',
+          props: {
+            style: {
+              position: 'absolute' as const, bottom: 0, left: 0, right: 0,
+              display: 'flex', flexDirection: 'column' as const,
+              padding: '0 60px 40px 72px',
+              gap: '12px',
+            },
+            children: [
+              pill(tag || 'Resource Guide'),
+              {
+                type: 'div',
+                props: {
+                  style: {
+                    fontSize: '46px', fontFamily: 'Libre Baskerville', fontWeight: 700,
+                    color: WHITE, lineHeight: 1.18, maxWidth: '1000px',
+                  },
+                  children: truncate(title, 90),
+                },
+              },
+              ...(description ? [{
+                type: 'div',
+                props: {
+                  style: {
+                    fontSize: '20px', fontFamily: 'Outfit', fontWeight: 400,
+                    color: 'rgba(255,255,255,0.8)', maxWidth: '900px', lineHeight: 1.4,
+                  },
+                  children: truncate(description, 130),
+                },
+              }] : []),
+              // Bottom bar
+              {
+                type: 'div',
+                props: {
+                  style: {
+                    display: 'flex', justifyContent: 'space-between' as const,
+                    alignItems: 'center', marginTop: '10px',
+                    borderTop: '1px solid rgba(255,255,255,0.15)',
+                    paddingTop: '14px',
+                  },
+                  children: [siteUrl(), brandBadge()],
+                },
+              },
+            ],
+          },
+        },
+      ],
+    },
+  };
+}
+
+// ═══════════════════════════════════════════════════
+// TEMPLATE: ARTICLE — Text fallback (no photo)
+// ═══════════════════════════════════════════════════
+function articleTextOnly(title: string, tag: string, description?: string) {
   return {
     type: 'div',
     props: {
@@ -519,11 +733,37 @@ export async function generateOgImage(opts: OgOptions): Promise<Buffer> {
       }
       break;
     }
-    case 'article':
-      element = articleTemplate(opts.title, opts.tag || 'Guide', opts.description);
+    case 'article': {
+      let photoB64: string | null = null;
+      if (opts.heroImage) {
+        const imgUrl = opts.heroImage.startsWith('http')
+          ? opts.heroImage
+          : `${CF_DIRECT}/${opts.heroImage}/w=1200,h=630,fit=cover,gravity=auto,q=80`;
+        photoB64 = await fetchImageBase64(imgUrl);
+      }
+      if (photoB64) {
+        element = articleWithPhoto(opts.title, opts.tag || 'Guide', photoB64, opts.description);
+      } else {
+        element = articleTextOnly(opts.title, opts.tag || 'Guide', opts.description);
+      }
       break;
-    default:
-      element = defaultTemplate(opts.title, opts.subtitle);
+    }
+    default: {
+      // Try to fetch the hero photo for a photo-backed OG image
+      let photoB64: string | null = null;
+      if (opts.heroImage) {
+        const imgUrl = opts.heroImage.startsWith('http')
+          ? opts.heroImage
+          : `${CF_DIRECT}/${opts.heroImage}/w=1200,h=630,fit=cover,gravity=auto,q=80`;
+        photoB64 = await fetchImageBase64(imgUrl);
+      }
+      if (photoB64) {
+        element = defaultWithPhoto(opts.title, photoB64, opts.subtitle);
+      } else {
+        element = defaultTextOnly(opts.title, opts.subtitle);
+      }
+      break;
+    }
   }
 
   const svg = await satori(element, {

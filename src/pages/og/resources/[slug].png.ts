@@ -18,6 +18,7 @@ export const GET: APIRoute = async ({ props }) => {
     title: article.title,
     tag: article.tag,
     description: article.description,
+    heroImage: article.heroImage,
   });
 
   return new Response(png, {
