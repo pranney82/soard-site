@@ -1,6 +1,32 @@
 ---
+/**
+ * Resources Hub — Editorial resource guide listing
+ *
+ * DESIGN: Editorial split hero (matching site pattern), narrative "why" section,
+ * guide cards with tag-colored accents, trust signals, scroll reveals.
+ *
+ * STRUCTURE: Hero → MediaLogos → Why → Guides → CTA
+ *
+ * PERF NOTES:
+ * - Hero content has NO data-reveal (prevents LCP penalty from opacity:0)
+ * - Hero image: fetchpriority="high", explicit dimensions, eager loading, LQIP
+ * - All below-fold images: loading="lazy"
+ * - contain: layout style on heavy sections
+ * - data-reveal scroll observer (~300 bytes)
+ */
 import BaseLayout from '../../layouts/BaseLayout.astro';
+import MediaLogos from '../../components/ui/MediaLogos.astro';
 import { getCollection } from 'astro:content';
+import { getSiteStats } from '../../utils/stats';
+import { cfRaw, cfSrcset, cfLqip } from '../../utils/cf-image';
+import siteSettings from '../../content/site/settings.json';
+
+const computed = await getSiteStats();
+
+/* ── Photos (from admin settings, with fallbacks) ── */
+const rp = (siteSettings as any).resourcesPhotos || {};
+const heroPhotoId = rp.hero || 'kids/summer/hero';
+const whyPhotoId = rp.why || siteSettings.sectionPhotos?.missionMain || 'kids/eli/photo-01';
 
 const breadcrumbs = [
   { name: 'Home', url: 'https://sunshineonaranneyday.com/' },
@@ -15,7 +41,15 @@ const guides = allArticles
     description: a.data.description,
     url: `/resources/${a.data.slug}/`,
     tag: a.data.tag,
+    heroImage: a.data.heroImage || null,
   }));
+
+/* ── Tag → color mapping for card accents ── */
+const tagColors: Record<string, string> = {
+  'Accessibility': '#3B82F6',
+  'Sensory': '#8B5CF6',
+  'Therapy': '#10B981',
+};
 ---
 
 <BaseLayout
@@ -23,63 +57,385 @@ const guides = allArticles
   description="Guides, tools, and information for families of children with special needs — from accessible home design to sensory-friendly bedrooms and therapy room setup."
   breadcrumbs={breadcrumbs}
 >
-  <section class="resources-hero">
-    <div class="container container--narrow">
-      <div class="section-label section-label--yellow">Resources</div>
-      <h1>Tools and guides for <em class="highlight">families</em></h1>
-      <p class="resources-hero-lead">Practical information for families navigating home modifications, therapy spaces, and accessible design — drawn from over a decade of building rooms for children with special needs.</p>
+  <!-- Preload hero LCP image -->
+  <link slot="head" rel="preload" as="image" imagesrcset={`${cfRaw(heroPhotoId, 'w=400,h=500,fit=cover,gravity=face,q=65')} 400w, ${cfRaw(heroPhotoId, 'w=560,h=700,fit=cover,gravity=face,q=65')} 560w, ${cfRaw(heroPhotoId, 'w=800,h=1000,fit=cover,gravity=face,q=65')} 800w`} imagesizes="(max-width:768px) 85vw, 420px" fetchpriority="high" />
+
+  <!-- ══════ 1. HERO — Editorial Split ══════ -->
+  <section class="hero" aria-label="Resources introduction">
+    <div class="hero-inner">
+      <div class="hero-text">
+        <p class="hero-eyebrow">Resource Library</p>
+        <h1>Tools and guides for <em>families</em>.</h1>
+        <p class="hero-lead">Practical information for families navigating home modifications, therapy spaces, and accessible design — drawn from over a decade of building rooms for children with special needs.</p>
+        <div class="hero-ctas">
+          <a href="#guides" class="btn btn-primary btn-lg btn-hero-glow">Browse Guides ↓</a>
+          <a href="/apply/" class="btn btn-outline-dark">Apply for a Makeover</a>
+        </div>
+        <div class="hero-trust">
+          <span class="hero-trust-item"><svg class="hero-trust-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>Expert Guides</span>
+          <span class="hero-trust-item"><svg class="hero-trust-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="m9 12 2 2 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>Trusted by Families</span>
+          <span class="hero-trust-item"><svg class="hero-trust-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.5"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 0 1 0 4H8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M12 18V6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>Always Free</span>
+        </div>
+      </div>
+      <div class="hero-photo-wrap">
+        <div class="hero-frame" style={`background-image:url('${cfLqip(heroPhotoId)}')`}>
+          <img
+            src={cfRaw(heroPhotoId, 'w=800,h=1000,fit=cover,gravity=face,q=65')}
+            srcset={`${cfRaw(heroPhotoId, 'w=400,h=500,fit=cover,gravity=face,q=65')} 400w, ${cfRaw(heroPhotoId, 'w=560,h=700,fit=cover,gravity=face,q=65')} 560w, ${cfRaw(heroPhotoId, 'w=800,h=1000,fit=cover,gravity=face,q=65')} 800w`}
+            sizes="(max-width:768px) 85vw, 420px"
+            alt="A child in their new dream room built by Sunshine on a Ranney Day"
+            width="800" height="1000"
+            fetchpriority="high"
+            loading="eager"
+            decoding="async"
+            class="hero-img lqip-img"
+          />
+        </div>
+        <div class="hero-accent" aria-hidden="true"></div>
+        <div class="hero-stat">
+          <span class="hero-stat-num">{computed.totalRooms}+</span>
+          <span class="hero-stat-label">rooms built<br/>since 2012</span>
+        </div>
+      </div>
     </div>
   </section>
 
-  <section class="section">
-    <div class="container">
+  <!-- ══════ 2. MEDIA LOGOS ══════ -->
+  <MediaLogos theme="dark" linked={true} />
+
+  <!-- ══════ 3. WHY — Narrative context ══════ -->
+  <section class="why" aria-labelledby="why-heading">
+    <div class="why-inner">
+      <div class="why-photo" data-reveal style={`background-image:url('${cfLqip(whyPhotoId)}')`}>
+        <img
+          src={cfRaw(whyPhotoId, 'w=600,q=65')}
+          srcset={`${cfRaw(whyPhotoId, 'w=360,q=65')} 360w, ${cfRaw(whyPhotoId, 'w=480,q=65')} 480w, ${cfRaw(whyPhotoId, 'w=600,q=65')} 600w`}
+          sizes="(max-width:768px) 90vw, 480px"
+          alt="A family with their child in a newly built accessible space"
+          width="600" height="450"
+          loading="lazy"
+          decoding="async"
+          class="lqip-img"
+        />
+      </div>
+      <div class="why-text" data-reveal data-delay="1">
+        <div class="section-label section-label--yellow">Why We Share This</div>
+        <h2 id="why-heading">The knowledge we've gained building {computed.totalRooms}+ rooms belongs to <em class="highlight">every</em> family.</h2>
+        <p>Since 2012, our team has worked alongside occupational therapists, contractors, and interior designers to build accessible bathrooms, dream bedrooms, and therapy rooms for children with special needs. These guides share what we've learned — the practical details that make the difference between a renovation that looks good and one that truly changes a child's daily life.</p>
+        <p>Every guide is written from direct project experience, reviewed for accuracy, and always free.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════ 4. GUIDES ══════ -->
+  <section class="guides" id="guides" aria-label="Resource guides">
+    <div class="guides-inner">
+      <div class="guides-header" data-reveal>
+        <div class="section-label section-label--yellow">Guides</div>
+        <h2>Expert resources for your <em class="highlight">family</em></h2>
+      </div>
       <div class="guides-grid">
-        {guides.map(guide => (
-          <a href={guide.url} class="guide-card">
-            <span class="guide-tag">{guide.tag}</span>
-            <h2>{guide.title}</h2>
-            <p>{guide.description}</p>
-            <span class="guide-link">Read the guide →</span>
+        {guides.map((guide, idx) => (
+          <a href={guide.url} class="guide-card" data-reveal data-delay={String(idx)}>
+            {guide.heroImage ? (
+              <div class="guide-card-img" style={`background-image:url('${cfLqip(guide.heroImage)}')`}>
+                <img
+                  src={cfRaw(guide.heroImage, 'w=640,h=360,fit=cover,gravity=auto,q=75')}
+                  srcset={`${cfRaw(guide.heroImage, 'w=400,h=225,fit=cover,gravity=auto,q=75')} 400w, ${cfRaw(guide.heroImage, 'w=640,h=360,fit=cover,gravity=auto,q=75')} 640w`}
+                  sizes="(max-width:768px) 90vw, 400px"
+                  alt=""
+                  width="640" height="360"
+                  loading="lazy"
+                  decoding="async"
+                  class="lqip-img"
+                />
+              </div>
+            ) : (
+              <div class="guide-card-accent" style={`background: linear-gradient(135deg, ${tagColors[guide.tag] || '#FFDA24'} 0%, ${tagColors[guide.tag] || '#FFDA24'}33 100%)`}>
+                <svg class="guide-card-accent-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </div>
+            )}
+            <div class="guide-card-body">
+              <span class="guide-tag">{guide.tag}</span>
+              <h3>{guide.title}</h3>
+              <p>{guide.description}</p>
+              <span class="guide-link">Read the guide →</span>
+            </div>
           </a>
         ))}
       </div>
     </div>
   </section>
 
-  <section class="section" style="background: var(--c-warm-gray);">
-    <div class="container container--narrow" style="text-align: center;">
+  <!-- ══════ 5. CTA ══════ -->
+  <section class="resources-cta" aria-label="Get help">
+    <div class="resources-cta-inner" data-reveal>
       <div class="section-label">Need More Help?</div>
-      <h2 style="font-family: var(--font-display);">We're here for your family</h2>
-      <p style="max-width: 600px; margin: var(--space-md) auto var(--space-xl); color: var(--c-text-muted);">If your child has special needs and could benefit from a home makeover, we'd love to hear from you. Sunshine on a Ranney Day provides accessible bathrooms, dream bedrooms, and therapy rooms at no cost to families.</p>
-      <div style="display: flex; gap: var(--space-md); justify-content: center; flex-wrap: wrap;">
-        <a href="/apply/" class="btn btn--primary">Apply for a Makeover</a>
-        <a href="/faq/" class="btn btn--outline">Read Our FAQs</a>
+      <h2>We're here for your family</h2>
+      <p class="resources-cta-body">If your child has special needs and could benefit from a home makeover, we'd love to hear from you. Sunshine on a Ranney Day provides accessible bathrooms, dream bedrooms, and therapy rooms at no cost to families.</p>
+      <div class="resources-cta-btns">
+        <a href="/apply/" class="btn btn-primary btn-hero-glow">Apply for a Makeover</a>
+        <a href="/faq/" class="btn btn-outline-dark">Read Our FAQs</a>
       </div>
     </div>
   </section>
 </BaseLayout>
 
 <style>
-  .resources-hero {
-    background: var(--c-dark);
-    color: var(--c-white);
-    padding-block: var(--space-3xl) var(--space-2xl);
-    text-align: center;
+  /* ── HERO — Editorial Split ── */
+  .hero {
+    padding: clamp(32px, 6vh, 64px) 0 clamp(48px, 8vh, 80px);
+    contain: layout style;
   }
-  .resources-hero h1 {
-    color: var(--c-white);
-    font-size: clamp(2rem, 5vw, 3.25rem);
+  .hero-inner {
+    max-width: var(--max-width-wide);
+    margin: 0 auto;
+    padding: 0 var(--page-padding);
+    display: grid;
+    grid-template-columns: 1.15fr 0.85fr;
+    gap: clamp(32px, 5vw, 80px);
+    align-items: center;
+    min-height: clamp(420px, 60vh, 640px);
   }
-  .resources-hero-lead {
-    margin-top: var(--space-lg);
-    font-size: clamp(1rem, 2vw, 1.2rem);
-    color: rgba(255,255,255,0.75);
-    max-width: 640px;
-    margin-inline: auto;
+  .hero-eyebrow {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--c-text-light);
+    margin-bottom: 28px;
+    opacity: 0;
+    animation: heroUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.05s both;
+  }
+  .hero-inner h1 {
+    font-size: clamp(36px, 5.5vw, 72px);
+    line-height: 1.08;
+    letter-spacing: -0.03em;
+    color: var(--c-dark);
+    margin-bottom: 24px;
+    animation: heroSlideUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  .hero-inner h1 em {
+    font-style: italic;
+    background-image: linear-gradient(transparent 52%, var(--c-yellow-soft) 52%);
+    background-repeat: no-repeat;
+    background-size: 100% 100%;
+    padding: 0 0.05em;
+  }
+  .hero-lead {
+    font-size: clamp(16px, 1.3vw, 19px);
+    line-height: 1.7;
+    color: var(--c-text-muted);
+    max-width: 480px;
+    margin-bottom: 32px;
+    opacity: 0;
+    animation: heroUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.15s both;
+  }
+  .hero-ctas {
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+    margin-bottom: 28px;
+    opacity: 0;
+    animation: heroUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.25s both;
+  }
+  .hero-trust {
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+    opacity: 0;
+    animation: heroUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.35s both;
+  }
+  .hero-trust-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--c-text-muted);
+  }
+  .hero-trust-icon {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+  }
+
+  /* Photo column */
+  .hero-photo-wrap {
+    position: relative;
+    width: 100%;
+    animation: heroPhotoIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  .hero-frame {
+    border-radius: 24px;
+    overflow: hidden;
+    aspect-ratio: 4 / 5;
+    box-shadow: 0 32px 80px rgba(0, 0, 0, 0.12), 0 8px 24px rgba(0, 0, 0, 0.06);
+    background-size: cover;
+    background-position: center;
+  }
+  .hero-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  .hero-accent {
+    position: absolute;
+    bottom: -16px;
+    right: -16px;
+    width: 50%;
+    height: 40%;
+    border-radius: 20px;
+    background: var(--c-yellow);
+    z-index: -1;
+    opacity: 0;
+    animation: accentIn 1s cubic-bezier(0.16, 1, 0.3, 1) 0.7s both;
+  }
+  .hero-stat {
+    position: absolute;
+    bottom: 24px;
+    left: -24px;
+    background: var(--c-white);
+    border: 1px solid var(--c-border);
+    border-radius: 16px;
+    padding: 16px 24px;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.1);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    opacity: 0;
+    animation: heroUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.9s both;
+  }
+  .hero-stat-num {
+    font-family: var(--font-display);
+    font-size: 32px;
+    font-weight: 700;
+    color: var(--c-dark);
+    line-height: 1;
+  }
+  .hero-stat-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--c-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    line-height: 1.4;
+  }
+
+  /* Animations */
+  @keyframes heroUp {
+    from { opacity: 0; transform: translateY(28px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes heroSlideUp {
+    from { transform: translateY(16px); }
+    to { transform: translateY(0); }
+  }
+  @keyframes heroPhotoIn {
+    from { transform: translateY(12px) scale(0.98); }
+    to { transform: translateY(0) scale(1); }
+  }
+  @keyframes accentIn {
+    from { opacity: 0; transform: translate(12px, 12px); }
+    to { opacity: 1; transform: translate(0, 0); }
+  }
+
+  @media (max-width: 900px) {
+    .hero { padding-top: clamp(24px, 5vh, 48px); }
+    .hero-inner {
+      grid-template-columns: 1fr;
+      gap: 40px;
+      min-height: auto;
+    }
+    .hero-inner h1 { font-size: clamp(32px, 8.5vw, 48px); }
+    .hero-photo-wrap {
+      max-width: 400px;
+      margin: 0 auto;
+    }
+    .hero-accent { bottom: -12px; right: -12px; }
+    .hero-stat { left: -12px; bottom: 16px; }
+  }
+  @media (max-width: 480px) {
+    .hero-inner h1 { font-size: clamp(28px, 8vw, 36px); }
+    .hero-lead { font-size: 15px; }
+    .hero-ctas :global(.btn) { padding: 12px 26px; font-size: 14px; }
+    .hero-photo-wrap { max-width: 320px; }
+    .hero-trust { gap: 12px; }
+    .hero-trust-item { font-size: 12px; }
+  }
+
+  /* ── WHY ── */
+  .why {
+    padding: 100px 0;
+    contain: layout style;
+  }
+  .why-inner {
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding: 0 var(--page-padding);
+    display: grid;
+    grid-template-columns: 1fr 1.15fr;
+    gap: 80px;
+    align-items: center;
+  }
+  .why-photo {
+    border-radius: 20px;
+    overflow: hidden;
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.1);
+    background-size: cover;
+    background-position: center;
+  }
+  .why-photo img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    aspect-ratio: 4 / 3;
+  }
+  .why-text h2 {
+    font-size: clamp(26px, 3.5vw, 38px);
+    line-height: 1.25;
+    margin-bottom: 24px;
+  }
+  .why-text h2 em { font-style: italic; }
+  .why-text p {
+    font-size: 17px;
+    line-height: 1.8;
+    color: var(--c-text-muted);
+    margin-bottom: 16px;
+  }
+  .why-text p:last-child { margin-bottom: 0; }
+
+  @media (max-width: 768px) {
+    .why { padding: 64px 0; }
+    .why-inner { grid-template-columns: 1fr; gap: 40px; }
+  }
+
+  /* ── GUIDES ── */
+  .guides {
+    padding: 100px 0;
+    background: var(--c-warm-gray);
+    contain: layout style;
+  }
+  .guides-inner {
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding: 0 var(--page-padding);
+  }
+  .guides-header {
+    margin-bottom: 56px;
+  }
+  .guides-header h2 {
+    font-size: clamp(26px, 3.5vw, 40px);
+    line-height: 1.25;
+    margin-top: 12px;
   }
   .guides-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
     gap: var(--space-xl);
   }
   .guide-card {
@@ -88,14 +444,53 @@ const guides = allArticles
     background: var(--c-white);
     border: 1px solid var(--c-border);
     border-radius: var(--border-radius-lg);
-    padding: var(--space-xl);
+    overflow: hidden;
     text-decoration: none;
     color: inherit;
     transition: box-shadow var(--transition-base), transform var(--transition-base);
   }
   .guide-card:hover {
     box-shadow: var(--shadow-lg);
-    transform: translateY(-2px);
+    transform: translateY(-3px);
+  }
+  .guide-card-img {
+    aspect-ratio: 16 / 9;
+    overflow: hidden;
+    background-size: cover;
+    background-position: center;
+  }
+  .guide-card-img img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .guide-card:hover .guide-card-img img {
+    transform: scale(1.04);
+  }
+  .guide-card-accent {
+    aspect-ratio: 16 / 9;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    overflow: hidden;
+  }
+  .guide-card-accent-icon {
+    width: 48px;
+    height: 48px;
+    color: rgba(255, 255, 255, 0.6);
+    transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .guide-card:hover .guide-card-accent-icon {
+    transform: scale(1.1);
+  }
+  .guide-card-body {
+    padding: var(--space-xl);
+    display: flex;
+    flex-direction: column;
+    flex: 1;
   }
   .guide-tag {
     display: inline-block;
@@ -110,16 +505,17 @@ const guides = allArticles
     width: fit-content;
     margin-bottom: var(--space-md);
   }
-  .guide-card h2 {
+  .guide-card h3 {
     font-family: var(--font-display);
-    font-size: 1.25rem;
+    font-size: clamp(1.1rem, 1.8vw, 1.3rem);
     line-height: 1.35;
     margin-bottom: var(--space-sm);
+    color: var(--c-dark);
   }
   .guide-card p {
     color: var(--c-text-muted);
     font-size: 0.95rem;
-    line-height: 1.6;
+    line-height: 1.65;
     flex: 1;
   }
   .guide-link {
@@ -132,5 +528,76 @@ const guides = allArticles
     text-decoration: underline;
     text-underline-offset: 3px;
     text-decoration-color: var(--c-yellow);
+  }
+
+  @media (max-width: 768px) {
+    .guides { padding: 64px 0; }
+    .guides-header { margin-bottom: 36px; }
+    .guides-grid { grid-template-columns: 1fr; }
+  }
+
+  /* ── CTA ── */
+  .resources-cta {
+    padding: 100px 0;
+    contain: layout style;
+  }
+  .resources-cta-inner {
+    max-width: var(--max-width-narrow);
+    margin: 0 auto;
+    padding: 0 var(--page-padding);
+    text-align: center;
+  }
+  .resources-cta h2 {
+    font-family: var(--font-display);
+    font-size: clamp(26px, 3.5vw, 40px);
+    line-height: 1.25;
+    margin-top: 12px;
+  }
+  .resources-cta-body {
+    max-width: 600px;
+    margin: var(--space-md) auto var(--space-xl);
+    color: var(--c-text-muted);
+    font-size: 16px;
+    line-height: 1.7;
+  }
+  .resources-cta-btns {
+    display: flex;
+    gap: var(--space-md);
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  @media (max-width: 768px) {
+    .resources-cta { padding: 64px 0; }
+  }
+
+  /* ── LQIP blur-up ── */
+  .hero-frame,
+  .why-photo,
+  .guide-card-img {
+    background-size: cover;
+    background-position: center;
+  }
+  .lqip-img.lqip-pending {
+    opacity: 0;
+  }
+  .lqip-img:not(.lqip-pending) {
+    transition: opacity 0.4s ease;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .hero-eyebrow,
+    .hero-lead,
+    .hero-ctas,
+    .hero-trust,
+    .hero-stat {
+      opacity: 1;
+      animation: none;
+    }
+    .hero-inner h1 { animation: none; }
+    .hero-photo-wrap { animation: none; }
+    .hero-accent { opacity: 1; animation: none; }
+    .lqip-img:not(.lqip-pending) { transition: none; }
+    .lqip-img.lqip-pending { opacity: initial; }
   }
 </style>

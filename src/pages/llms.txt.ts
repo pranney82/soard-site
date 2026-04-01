@@ -33,8 +33,6 @@ ${roomTypeLines.join('\n')}
 - [About — Leadership](https://sunshineonaranneyday.com/about/leadership/): Board of directors and advisory board bios
 - [About — Financials](https://sunshineonaranneyday.com/about/financials/): 990 filings, annual reports, GuideStar profile
 - [Meet the Kids](https://sunshineonaranneyday.com/kids/): Profiles of every child we've served with photos and stories
-- [Featured Rooms](https://sunshineonaranneyday.com/rooms/): Gallery of completed room makeovers
-- [Before & After](https://sunshineonaranneyday.com/rooms/before-after/): Dramatic before/after photo comparisons
 - [Community Projects](https://sunshineonaranneyday.com/community/): School and facility renovation projects
 - [Partners](https://sunshineonaranneyday.com/partners/): Companies and organizations that make our work possible
 - [Donate](https://sunshineonaranneyday.com/donate/): Tax-deductible donations via Zeffy (0% platform fees)

@@ -6,7 +6,7 @@
   "main": "index.js",
   "scripts": {
     "dev": "astro dev",
-    "prebuild": "node scripts/prebuild.js && node scripts/generate-lqip.js",
+    "prebuild": "node scripts/prebuild.js && node scripts/generate-lqip.js && node scripts/generate-dimensions.js",
     "build": "astro build",
     "preview": "astro preview",
     "astro": "astro"

@@ -255,6 +255,14 @@ const breadcrumbs = [
     </div>
   </section>
 
+  <!-- ══════ 3b. MAIL A CHECK ══════ -->
+  <div class="donate-check-bar">
+    <div class="donate-check-bar-inner" data-reveal>
+      <svg class="donate-check-bar-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect width="20" height="16" x="2" y="4" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <p><strong>Prefer to mail a check?</strong> Make payable to <strong>{siteSettings.name}</strong> and send to: <span class="donate-check-bar-addr">{siteSettings.address.street}, {siteSettings.address.city}, {siteSettings.address.state} {siteSettings.address.zip}</span></p>
+    </div>
+  </div>
+
   <!-- ══════ 4. TRUST & TRANSPARENCY ══════ -->
   <section class="donate-trust">
     <div class="donate-trust-inner">
@@ -913,6 +921,41 @@ const breadcrumbs = [
     margin: 0;
   }
   .tiers-match p strong { color: var(--c-dark); }
+
+  /* ══════════════════════════════════════════
+     3b. MAIL A CHECK BAR
+     ══════════════════════════════════════════ */
+  .donate-check-bar {
+    background: var(--c-warm-gray);
+    padding: 24px 0;
+  }
+  .donate-check-bar-inner {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 0 24px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  .donate-check-bar-icon {
+    width: 28px;
+    height: 28px;
+    flex-shrink: 0;
+    color: var(--c-text-muted);
+  }
+  .donate-check-bar-inner p {
+    font-size: 15px;
+    line-height: 1.6;
+    color: var(--c-text);
+    margin: 0;
+  }
+  .donate-check-bar-addr {
+    white-space: nowrap;
+  }
+  @media (max-width: 600px) {
+    .donate-check-bar-inner { flex-direction: column; text-align: center; gap: 10px; }
+    .donate-check-bar-addr { white-space: normal; }
+  }
 
   /* ══════════════════════════════════════════
      4. TRUST & TRANSPARENCY — Dark split

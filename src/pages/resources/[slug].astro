@@ -1,25 +1,74 @@
 ---
 /**
- * [slug].astro — Dynamic article/guide page
- * Renders articles from src/content/articles/*.json
- * Admin panel can create, edit, and delete articles.
+ * [slug].astro — Dynamic article/guide detail page
+ *
+ * DESIGN: Editorial split hero, reading progress bar, auto-generated TOC,
+ * reading time, premium prose, FAQSection, "More Resources" cross-links.
+ *
+ * STRUCTURE: Progress Bar → Hero → MediaLogos → TOC + Body → FAQ → More → CTA
+ *
+ * PERF NOTES:
+ * - Hero content has NO data-reveal (prevents LCP penalty from opacity:0)
+ * - Hero image: fetchpriority="high", eager loading, LQIP blur-up
+ * - FAQ uses native <details name="..."> for exclusive accordion (zero JS)
+ * - Reading progress bar: tiny scroll listener (~150 bytes)
+ * - contain: layout style on heavy sections
+ * - data-reveal scroll observer (~300 bytes)
  */
 import BaseLayout from '../../layouts/BaseLayout.astro';
+import FAQSection from '../../components/ui/FAQSection.astro';
+import MediaLogos from '../../components/ui/MediaLogos.astro';
 import { getCollection } from 'astro:content';
 import { getFAQSchema } from '../../utils/schema';
-import { cfAbsolute } from '../../utils/cf-image';
+import { cfAbsolute, cfRaw, cfSrcset, cfLqip } from '../../utils/cf-image';
+import { getSiteStats } from '../../utils/stats';
+import siteSettings from '../../content/site/settings.json';
 
 export async function getStaticPaths() {
   const articles = await getCollection('articles');
   return articles.map(article => ({
     params: { slug: article.data.slug },
-    props: { article: article.data },
+    props: { article: article.data, allArticles: articles.map(a => a.data) },
   }));
 }
 
-const { article } = Astro.props;
+const { article, allArticles } = Astro.props;
+const computed = await getSiteStats();
 
-/* Auto-generate meta description from body if not provided */
+/* ── Hero photo: use article heroImage, fall back to site-level photo ── */
+const rp = (siteSettings as any).resourcesPhotos || {};
+const heroPhotoId = article.heroImage || rp.hero || 'kids/summer/hero';
+
+/* ── Reading time (avg 238 words/min for instructional content) ── */
+const wordCount = article.body.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().split(/\s+/).length;
+const readingTime = Math.max(1, Math.round(wordCount / 238));
+
+/* ── Auto-generate TOC from h2 headings in body ── */
+const h2Regex = /<h2>(.*?)<\/h2>/g;
+let match: RegExpExecArray | null;
+const tocItems: { text: string; id: string }[] = [];
+while ((match = h2Regex.exec(article.body)) !== null) {
+  const text = match[1].replace(/<[^>]+>/g, '');
+  const id = text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  tocItems.push({ text, id });
+}
+
+/* ── Inject IDs into h2 headings for anchor links ── */
+let bodyWithIds = article.body;
+for (const item of tocItems) {
+  bodyWithIds = bodyWithIds.replace(
+    `<h2>${item.text}</h2>`,
+    `<h2 id="${item.id}">${item.text}</h2>`
+  );
+}
+
+/* ── More Resources (other articles, excluding current) ── */
+const moreGuides = allArticles
+  .filter(a => a.slug !== article.slug)
+  .sort((a, b) => (a.order || 0) - (b.order || 0))
+  .slice(0, 3);
+
+/* ── Meta description ── */
 const autoDesc = article.description
   || (article.body
     ? article.body.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 155).replace(/\s\S*$/, '…')
@@ -34,7 +83,6 @@ const breadcrumbs = [
 // Build page-specific JSON-LD
 const pageSchemas: Record<string, any>[] = [];
 
-// Article schema
 pageSchemas.push({
   "@type": "Article",
   "headline": article.title,
@@ -46,124 +94,666 @@ pageSchemas.push({
   "mainEntityOfPage": `https://sunshineonaranneyday.com/resources/${article.slug}/`,
   ...(article.heroImage ? { "image": cfAbsolute(article.heroImage) } : {}),
   "about": (article.aboutTopics || []).map(t => ({ "@type": "Thing", "name": t })),
+  "wordCount": wordCount,
 });
 
-// FAQPage schema if there are FAQs
 if (article.faqs && article.faqs.length > 0) {
   pageSchemas.push(getFAQSchema(article.faqs));
 }
+
+/* ── Tag colors for "More Resources" cards ── */
+const tagColors: Record<string, string> = {
+  'Accessibility': '#3B82F6',
+  'Sensory': '#8B5CF6',
+  'Therapy': '#10B981',
+};
 ---
 
 <BaseLayout
   title={article.title}
   description={autoDesc}
   ogType="article"
-  ogImage={article.heroImage ? cfAbsolute(article.heroImage) : undefined}
   jsonLd={pageSchemas}
   breadcrumbs={breadcrumbs}
   datePublished={article.datePublished}
   dateModified={article.dateModified}
 >
-  <article class="pillar-article">
-    <!-- Hero -->
-    <section class="pillar-hero">
-      <div class="container container--narrow">
-        <div class="section-label section-label--yellow">{article.tag || 'Resource Guide'}</div>
-        <h1 set:html={article.title} />
-        <p class="pillar-hero-lead">{article.heroLead}</p>
+  <!-- Preload hero LCP image -->
+  <link slot="head" rel="preload" as="image" imagesrcset={`${cfRaw(heroPhotoId, 'w=400,h=500,fit=cover,gravity=face,q=65')} 400w, ${cfRaw(heroPhotoId, 'w=560,h=700,fit=cover,gravity=face,q=65')} 560w, ${cfRaw(heroPhotoId, 'w=800,h=1000,fit=cover,gravity=face,q=65')} 800w`} imagesizes="(max-width:768px) 85vw, 420px" fetchpriority="high" />
+
+  <!-- ══════ READING PROGRESS BAR ══════ -->
+  <div class="progress-bar" aria-hidden="true">
+    <div class="progress-fill" id="reading-progress"></div>
+  </div>
+
+  <article>
+    <!-- ══════ 1. HERO — Editorial Split ══════ -->
+    <section class="hero" aria-label="Article introduction">
+      <div class="hero-inner">
+        <div class="hero-text">
+          <a href="/resources/" class="hero-back">← Back to Resources</a>
+          <div class="section-label section-label--yellow">{article.tag || 'Resource Guide'}</div>
+          <h1 set:html={article.title} />
+          <p class="hero-lead">{article.heroLead}</p>
+          <div class="hero-meta">
+            <span class="hero-meta-item">
+              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.5"/><polyline points="12 6 12 12 16 14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              {readingTime} min read
+            </span>
+            <span class="hero-meta-item">
+              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              {tocItems.length} sections
+            </span>
+          </div>
+        </div>
+        <div class="hero-photo-wrap">
+          <div class="hero-frame" style={`background-image:url('${cfLqip(heroPhotoId)}')`}>
+            <img
+              src={cfRaw(heroPhotoId, 'w=800,h=1000,fit=cover,gravity=face,q=65')}
+              srcset={`${cfRaw(heroPhotoId, 'w=400,h=500,fit=cover,gravity=face,q=65')} 400w, ${cfRaw(heroPhotoId, 'w=560,h=700,fit=cover,gravity=face,q=65')} 560w, ${cfRaw(heroPhotoId, 'w=800,h=1000,fit=cover,gravity=face,q=65')} 800w`}
+              sizes="(max-width:768px) 85vw, 420px"
+              alt="A child in their new room built by Sunshine on a Ranney Day"
+              width="800" height="1000"
+              fetchpriority="high"
+              loading="eager"
+              decoding="async"
+              class="hero-img lqip-img"
+            />
+          </div>
+          <div class="hero-accent" aria-hidden="true"></div>
+          <div class="hero-stat">
+            <span class="hero-stat-num">{computed.totalRooms}+</span>
+            <span class="hero-stat-label">rooms built<br/>since 2012</span>
+          </div>
+        </div>
       </div>
     </section>
 
-    <!-- Body Content -->
-    <section class="pillar-content section">
-      <div class="container container--narrow prose">
-        <Fragment set:html={article.body} />
+    <!-- ══════ 2. MEDIA LOGOS ══════ -->
+    <MediaLogos theme="dark" linked={true} />
 
-        <!-- FAQs -->
-        {article.faqs && article.faqs.length > 0 && (
-          <>
-            <h2>Frequently Asked Questions</h2>
-            {article.faqs.map(faq => (
-              <details class="pillar-faq">
-                <summary><strong>{faq.question}</strong></summary>
-                <p>{faq.answer}</p>
-              </details>
-            ))}
-          </>
+    <!-- ══════ 3. BODY — TOC sidebar + prose ══════ -->
+    <section class="article-body" aria-label="Article content">
+      <div class="article-body-inner">
+        {tocItems.length > 0 && (
+          <aside class="toc" data-reveal aria-label="Table of contents">
+            <div class="toc-label">In This Guide</div>
+            <nav>
+              <ol class="toc-list">
+                {tocItems.map((item, idx) => (
+                  <li>
+                    <a href={`#${item.id}`} class="toc-link">
+                      <span class="toc-num">{String(idx + 1).padStart(2, '0')}</span>
+                      {item.text}
+                    </a>
+                  </li>
+                ))}
+              </ol>
+            </nav>
+          </aside>
         )}
+        <div class="prose" data-reveal>
+          <Fragment set:html={bodyWithIds} />
+        </div>
       </div>
     </section>
 
-    <!-- CTA -->
-    <section class="pillar-cta section" style="background: var(--c-warm-gray);">
-      <div class="container container--narrow" style="text-align: center;">
-        <div class="section-label">Get Help</div>
+    <!-- ══════ 4. FAQs ══════ -->
+    {article.faqs && article.faqs.length > 0 && (
+      <FAQSection
+        sectionLabel="Common Questions"
+        heading={`Frequently asked <em class="highlight">questions</em>`}
+        body="Answers to the questions families ask most about this topic."
+        items={article.faqs}
+        accordionName={`faq-${article.slug}`}
+        ctaLabel="Apply for a Makeover"
+        ctaHref="/apply/"
+      />
+    )}
+
+    <!-- ══════ 5. MORE RESOURCES ══════ -->
+    {moreGuides.length > 0 && (
+      <section class="more" aria-label="More resource guides">
+        <div class="more-inner">
+          <div class="more-header" data-reveal>
+            <div class="section-label section-label--yellow">Keep Reading</div>
+            <h2>More guides for <em class="highlight">families</em></h2>
+          </div>
+          <div class="more-grid">
+            {moreGuides.map((guide, idx) => (
+              <a href={`/resources/${guide.slug}/`} class="more-card" data-reveal data-delay={String(idx)}>
+                <div class="more-card-accent" style={`background: linear-gradient(135deg, ${tagColors[guide.tag] || '#FFDA24'} 0%, ${tagColors[guide.tag] || '#FFDA24'}33 100%)`}></div>
+                <span class="more-card-tag">{guide.tag}</span>
+                <h3>{guide.title}</h3>
+                <span class="more-card-link">Read the guide →</span>
+              </a>
+            ))}
+          </div>
+        </div>
+      </section>
+    )}
+
+    <!-- ══════ 6. CTA ══════ -->
+    <section class="article-cta" aria-label="Get help">
+      <div class="article-cta-inner" data-reveal>
+        <div class="section-label section-label--yellow">Get Help</div>
         <h2>{article.ctaHeading}</h2>
-        <p style="max-width: 600px; margin: var(--space-md) auto var(--space-xl); color: var(--c-text-muted);">{article.ctaText}</p>
-        <div style="display: flex; gap: var(--space-md); justify-content: center; flex-wrap: wrap;">
-          <a href={article.ctaPrimaryLink} class="btn btn--primary">{article.ctaPrimaryLabel}</a>
-          <a href={article.ctaSecondaryLink} class="btn btn--outline">{article.ctaSecondaryLabel}</a>
+        <p class="article-cta-body">{article.ctaText}</p>
+        <div class="article-cta-btns">
+          <a href={article.ctaPrimaryLink} class="btn btn-primary btn-hero-glow">{article.ctaPrimaryLabel}</a>
+          <a href={article.ctaSecondaryLink} class="btn btn-outline-dark">{article.ctaSecondaryLabel}</a>
         </div>
       </div>
     </section>
   </article>
 </BaseLayout>
 
+<!-- Reading progress bar script (~150 bytes) -->
+<script>
+  const bar = document.getElementById('reading-progress');
+  if (bar) {
+    const update = () => {
+      const h = document.documentElement.scrollHeight - window.innerHeight;
+      bar.style.transform = `scaleX(${h > 0 ? Math.min(window.scrollY / h, 1) : 0})`;
+    };
+    window.addEventListener('scroll', update, { passive: true });
+    update();
+  }
+</script>
+
 <style>
-  .pillar-hero {
-    background: var(--c-dark);
-    color: var(--c-white);
-    padding-block: var(--space-3xl) var(--space-2xl);
-    text-align: center;
+  /* ── READING PROGRESS BAR ── */
+  .progress-bar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    z-index: 1000;
+    background: transparent;
+    pointer-events: none;
   }
-  .pillar-hero h1 {
-    color: var(--c-white);
-    font-size: clamp(1.75rem, 4vw, 2.75rem);
-    line-height: 1.25;
+  .progress-fill {
+    height: 100%;
+    background: var(--c-yellow);
+    transform-origin: left;
+    transform: scaleX(0);
+    will-change: transform;
   }
-  .pillar-hero-lead {
-    margin-top: var(--space-lg);
-    font-size: clamp(1rem, 2vw, 1.15rem);
-    color: rgba(255,255,255,0.75);
-    max-width: 640px;
-    margin-inline: auto;
+
+  /* ── HERO — Editorial Split ── */
+  .hero {
+    padding: clamp(32px, 6vh, 64px) 0 clamp(48px, 8vh, 80px);
+    contain: layout style;
   }
-  .pillar-content h2 {
+  .hero-inner {
+    max-width: var(--max-width-wide);
+    margin: 0 auto;
+    padding: 0 var(--page-padding);
+    display: grid;
+    grid-template-columns: 1.15fr 0.85fr;
+    gap: clamp(32px, 5vw, 80px);
+    align-items: center;
+    min-height: clamp(420px, 60vh, 640px);
+  }
+  .hero-back {
+    display: inline-block;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--c-text-muted);
+    text-decoration: none;
+    margin-bottom: 24px;
+    transition: color var(--transition-fast);
+    opacity: 0;
+    animation: heroUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  .hero-back:hover { color: var(--c-dark); }
+  .hero-inner h1 {
+    font-size: clamp(30px, 4.5vw, 56px);
+    line-height: 1.12;
+    letter-spacing: -0.025em;
+    color: var(--c-dark);
+    margin-bottom: 24px;
+    animation: heroSlideUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.05s both;
+  }
+  .hero-lead {
+    font-size: clamp(16px, 1.3vw, 19px);
+    line-height: 1.7;
+    color: var(--c-text-muted);
+    max-width: 520px;
+    margin-bottom: 20px;
+    opacity: 0;
+    animation: heroUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.15s both;
+  }
+  .hero-meta {
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+    opacity: 0;
+    animation: heroUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.25s both;
+  }
+  .hero-meta-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--c-text-muted);
+  }
+  .hero-meta-item svg {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+  }
+
+  /* Photo column */
+  .hero-photo-wrap {
+    position: relative;
+    width: 100%;
+    animation: heroPhotoIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  .hero-frame {
+    border-radius: 24px;
+    overflow: hidden;
+    aspect-ratio: 4 / 5;
+    box-shadow: 0 32px 80px rgba(0, 0, 0, 0.12), 0 8px 24px rgba(0, 0, 0, 0.06);
+    background-size: cover;
+    background-position: center;
+  }
+  .hero-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  .hero-accent {
+    position: absolute;
+    bottom: -16px;
+    right: -16px;
+    width: 50%;
+    height: 40%;
+    border-radius: 20px;
+    background: var(--c-yellow);
+    z-index: -1;
+    opacity: 0;
+    animation: accentIn 1s cubic-bezier(0.16, 1, 0.3, 1) 0.7s both;
+  }
+  .hero-stat {
+    position: absolute;
+    bottom: 24px;
+    left: -24px;
+    background: var(--c-white);
+    border: 1px solid var(--c-border);
+    border-radius: 16px;
+    padding: 16px 24px;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.1);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    opacity: 0;
+    animation: heroUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.9s both;
+  }
+  .hero-stat-num {
     font-family: var(--font-display);
-    font-size: clamp(1.25rem, 3vw, 1.75rem);
+    font-size: 32px;
+    font-weight: 700;
+    color: var(--c-dark);
+    line-height: 1;
+  }
+  .hero-stat-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--c-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    line-height: 1.4;
+  }
+
+  /* Animations */
+  @keyframes heroUp {
+    from { opacity: 0; transform: translateY(28px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes heroSlideUp {
+    from { transform: translateY(16px); }
+    to { transform: translateY(0); }
+  }
+  @keyframes heroPhotoIn {
+    from { transform: translateY(12px) scale(0.98); }
+    to { transform: translateY(0) scale(1); }
+  }
+  @keyframes accentIn {
+    from { opacity: 0; transform: translate(12px, 12px); }
+    to { opacity: 1; transform: translate(0, 0); }
+  }
+
+  @media (max-width: 900px) {
+    .hero { padding-top: clamp(24px, 5vh, 48px); }
+    .hero-inner {
+      grid-template-columns: 1fr;
+      gap: 40px;
+      min-height: auto;
+    }
+    .hero-inner h1 { font-size: clamp(26px, 7vw, 40px); }
+    .hero-photo-wrap {
+      max-width: 400px;
+      margin: 0 auto;
+    }
+    .hero-accent { bottom: -12px; right: -12px; }
+    .hero-stat { left: -12px; bottom: 16px; }
+  }
+  @media (max-width: 480px) {
+    .hero-inner h1 { font-size: clamp(24px, 7vw, 32px); }
+    .hero-lead { font-size: 15px; }
+    .hero-photo-wrap { max-width: 320px; }
+  }
+
+  /* ── ARTICLE BODY — TOC + Prose layout ── */
+  .article-body {
+    padding: 80px 0 100px;
+    contain: layout style;
+  }
+  .article-body-inner {
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding: 0 var(--page-padding);
+    display: grid;
+    grid-template-columns: 260px 1fr;
+    gap: 64px;
+    align-items: start;
+  }
+
+  /* Table of Contents */
+  .toc {
+    position: sticky;
+    top: calc(var(--header-height) + 32px);
+    padding-top: 8px;
+  }
+  .toc-label {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--c-text-light);
+    margin-bottom: 20px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--c-border);
+  }
+  .toc-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+  .toc-list li {
+    margin-bottom: 4px;
+  }
+  .toc-link {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    padding: 8px 12px;
+    border-radius: var(--border-radius);
+    text-decoration: none;
+    font-size: 14px;
+    line-height: 1.4;
+    color: var(--c-text-muted);
+    transition: background var(--transition-fast), color var(--transition-fast);
+  }
+  .toc-link:hover {
+    background: var(--c-warm-gray);
+    color: var(--c-dark);
+  }
+  .toc-num {
+    font-family: var(--font-display);
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--c-yellow-hover);
+    flex-shrink: 0;
+    min-width: 20px;
+  }
+
+  @media (max-width: 960px) {
+    .article-body-inner {
+      grid-template-columns: 1fr;
+      gap: 0;
+      max-width: var(--max-width-narrow);
+    }
+    .toc {
+      position: static;
+      margin-bottom: 48px;
+      padding: 24px;
+      background: var(--c-warm-gray);
+      border-radius: var(--border-radius-lg);
+    }
+  }
+
+  /* Premium prose styling */
+  .prose {
+    max-width: var(--max-width-narrow);
+  }
+  .prose :global(h2) {
+    font-family: var(--font-display);
+    font-size: clamp(1.35rem, 3vw, 1.85rem);
+    line-height: 1.25;
+    margin-top: var(--space-3xl);
+    margin-bottom: var(--space-lg);
+    color: var(--c-dark);
+    letter-spacing: -0.01em;
+    scroll-margin-top: calc(var(--header-height) + 24px);
+  }
+  .prose :global(h2:first-of-type) {
+    margin-top: 0;
+  }
+  .prose :global(h3) {
+    font-family: var(--font-display);
+    font-size: clamp(1.1rem, 2.5vw, 1.4rem);
+    line-height: 1.3;
     margin-top: var(--space-2xl);
     margin-bottom: var(--space-md);
     color: var(--c-dark);
   }
-  .pillar-content h3 {
-    font-family: var(--font-display);
-    font-size: clamp(1.1rem, 2.5vw, 1.35rem);
-    margin-top: var(--space-xl);
+  .prose :global(p) {
+    font-size: clamp(16px, 1.1vw, 18px);
+    line-height: 1.8;
+    color: var(--c-text-muted);
+    margin-bottom: var(--space-lg);
+  }
+  .prose :global(p:last-child) {
+    margin-bottom: 0;
+  }
+  .prose :global(strong) {
+    color: var(--c-dark);
+    font-weight: 600;
+  }
+  .prose :global(a) {
+    color: var(--c-dark);
+    text-decoration: underline;
+    text-decoration-color: var(--c-yellow);
+    text-underline-offset: 3px;
+    text-decoration-thickness: 2px;
+    transition: text-decoration-color var(--transition-fast);
+  }
+  .prose :global(a:hover) {
+    text-decoration-color: var(--c-dark);
+  }
+  .prose :global(ul),
+  .prose :global(ol) {
+    padding-left: 1.5em;
+    margin-bottom: var(--space-lg);
+  }
+  .prose :global(li) {
+    font-size: clamp(16px, 1.1vw, 18px);
+    line-height: 1.8;
+    color: var(--c-text-muted);
     margin-bottom: var(--space-sm);
+  }
+  .prose :global(li::marker) {
+    color: var(--c-yellow);
+  }
+  .prose :global(blockquote) {
+    border-left: 4px solid var(--c-yellow);
+    padding: var(--space-md) var(--space-xl);
+    margin: var(--space-xl) 0;
+    background: var(--c-warm-gray);
+    border-radius: 0 var(--border-radius) var(--border-radius) 0;
+  }
+  .prose :global(blockquote p) {
+    color: var(--c-dark);
+    font-style: italic;
+    margin-bottom: 0;
+  }
+  .prose :global(img) {
+    max-width: 100%;
+    height: auto;
+    border-radius: var(--border-radius-lg);
+    margin: var(--space-xl) 0;
+  }
+
+  @media (max-width: 768px) {
+    .article-body { padding: 48px 0 64px; }
+  }
+
+  /* ── MORE RESOURCES ── */
+  .more {
+    padding: 100px 0;
+    background: var(--c-warm-gray);
+    contain: layout style;
+  }
+  .more-inner {
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding: 0 var(--page-padding);
+  }
+  .more-header {
+    margin-bottom: 48px;
+  }
+  .more-header h2 {
+    font-size: clamp(26px, 3.5vw, 38px);
+    line-height: 1.25;
+    margin-top: 12px;
+  }
+  .more-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: var(--space-xl);
+  }
+  .more-card {
+    display: flex;
+    flex-direction: column;
+    background: var(--c-white);
+    border: 1px solid var(--c-border);
+    border-radius: var(--border-radius-lg);
+    overflow: hidden;
+    padding: var(--space-xl);
+    text-decoration: none;
+    color: inherit;
+    position: relative;
+    transition: box-shadow var(--transition-base), transform var(--transition-base);
+  }
+  .more-card:hover {
+    box-shadow: var(--shadow-lg);
+    transform: translateY(-3px);
+  }
+  .more-card-accent {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+  }
+  .more-card-tag {
+    display: inline-block;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--c-text-light);
+    margin-bottom: var(--space-sm);
+  }
+  .more-card h3 {
+    font-family: var(--font-display);
+    font-size: clamp(1rem, 1.5vw, 1.15rem);
+    line-height: 1.35;
+    color: var(--c-dark);
+    margin-bottom: var(--space-md);
+    flex: 1;
+  }
+  .more-card-link {
+    font-size: 0.85rem;
+    font-weight: 600;
     color: var(--c-dark);
   }
-  .pillar-content h2:first-of-type {
-    margin-top: 0;
+  .more-card:hover .more-card-link {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    text-decoration-color: var(--c-yellow);
   }
-  .pillar-faq {
-    border: 1px solid var(--c-border);
-    border-radius: var(--border-radius);
-    padding: var(--space-md) var(--space-lg);
-    margin-top: var(--space-md);
+
+  @media (max-width: 768px) {
+    .more { padding: 64px 0; }
+    .more-grid { grid-template-columns: 1fr; }
   }
-  .pillar-faq summary {
-    cursor: pointer;
-    list-style: none;
+
+  /* ── CTA ── */
+  .article-cta {
+    padding: 100px 0;
+    contain: layout style;
   }
-  .pillar-faq summary::marker,
-  .pillar-faq summary::-webkit-details-marker {
-    display: none;
+  .article-cta-inner {
+    max-width: var(--max-width-narrow);
+    margin: 0 auto;
+    padding: 0 var(--page-padding);
+    text-align: center;
   }
-  .pillar-faq p {
-    margin-top: var(--space-md);
-    color: var(--c-text-muted);
-  }
-  .pillar-cta h2 {
+  .article-cta h2 {
     font-family: var(--font-display);
+    font-size: clamp(26px, 3.5vw, 40px);
+    line-height: 1.25;
+    margin-top: 12px;
+  }
+  .article-cta-body {
+    max-width: 600px;
+    margin: var(--space-md) auto var(--space-xl);
+    color: var(--c-text-muted);
+    font-size: 16px;
+    line-height: 1.7;
+  }
+  .article-cta-btns {
+    display: flex;
+    gap: var(--space-md);
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  @media (max-width: 768px) {
+    .article-cta { padding: 64px 0; }
+  }
+
+  /* ── LQIP blur-up ── */
+  .hero-frame {
+    background-size: cover;
+    background-position: center;
+  }
+  .lqip-img.lqip-pending {
+    opacity: 0;
+  }
+  .lqip-img:not(.lqip-pending) {
+    transition: opacity 0.4s ease;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .hero-back,
+    .hero-lead,
+    .hero-meta,
+    .hero-stat {
+      opacity: 1;
+      animation: none;
+    }
+    .hero-inner h1 { animation: none; }
+    .hero-photo-wrap { animation: none; }
+    .hero-accent { opacity: 1; animation: none; }
+    .progress-fill { transition: none; }
+    .lqip-img:not(.lqip-pending) { transition: none; }
+    .lqip-img.lqip-pending { opacity: initial; }
   }
 </style>

@@ -694,9 +694,504 @@ function articleTextOnly(title: string, tag: string, description?: string) {
 }
 
 // ═══════════════════════════════════════════════════
+// TEMPLATE: COMMUNITY — Photo hero with impact stat
+// ═══════════════════════════════════════════════════
+function communityTemplate(name: string, photoB64: string | null, year?: string, impact?: string, impactLabel?: string) {
+  const hasPhoto = !!photoB64;
+  return {
+    type: 'div',
+    props: {
+      style: {
+        width: '100%', height: '100%',
+        display: 'flex', position: 'relative' as const,
+        overflow: 'hidden' as const,
+        background: hasPhoto ? DARK : DARK_DEEP,
+      },
+      children: [
+        // Background photo
+        ...(hasPhoto ? [{
+          type: 'img',
+          props: {
+            src: photoB64,
+            width: 1200, height: 630,
+            style: {
+              position: 'absolute' as const, top: 0, left: 0,
+              width: '100%', height: '100%',
+              objectFit: 'cover' as const,
+            },
+          },
+        },
+        // Gradient overlay
+        {
+          type: 'div',
+          props: {
+            style: {
+              position: 'absolute' as const, bottom: 0, left: 0, right: 0,
+              height: '80%',
+              background: 'linear-gradient(to top, rgba(26,27,31,0.95) 0%, rgba(26,27,31,0.88) 40%, rgba(26,27,31,0.4) 75%, transparent 100%)',
+              display: 'flex',
+            },
+          },
+        }] : []),
+        // Yellow top accent bar
+        {
+          type: 'div',
+          props: {
+            style: {
+              position: 'absolute' as const, top: 0, left: 0, right: 0,
+              height: '5px', background: YELLOW, display: 'flex',
+            },
+          },
+        },
+        // Content overlay
+        {
+          type: 'div',
+          props: {
+            style: {
+              position: 'absolute' as const, bottom: 0, left: 0, right: 0,
+              display: 'flex', flexDirection: 'column' as const,
+              padding: '0 60px 40px',
+              gap: '10px',
+            },
+            children: [
+              // "COMMUNITY PROJECT" label + year
+              {
+                type: 'div',
+                props: {
+                  style: {
+                    display: 'flex', alignItems: 'center', gap: '12px',
+                  },
+                  children: [
+                    pill('Community Project'),
+                    ...(year ? [{
+                      type: 'div',
+                      props: {
+                        style: {
+                          fontSize: '15px', fontFamily: 'Outfit', fontWeight: 600,
+                          color: 'rgba(255,255,255,0.6)',
+                        },
+                        children: year,
+                      },
+                    }] : []),
+                  ],
+                },
+              },
+              // Project name
+              {
+                type: 'div',
+                props: {
+                  style: {
+                    fontSize: '56px', fontFamily: 'Libre Baskerville', fontWeight: 700,
+                    color: WHITE, lineHeight: 1.08,
+                  },
+                  children: truncate(name, 40),
+                },
+              },
+              // Impact stat
+              ...(impact && impactLabel ? [{
+                type: 'div',
+                props: {
+                  style: {
+                    display: 'flex', alignItems: 'baseline', gap: '10px',
+                    marginTop: '4px',
+                  },
+                  children: [
+                    {
+                      type: 'div',
+                      props: {
+                        style: {
+                          fontSize: '32px', fontFamily: 'Libre Baskerville', fontWeight: 700,
+                          color: YELLOW, lineHeight: 1,
+                        },
+                        children: impact,
+                      },
+                    },
+                    {
+                      type: 'div',
+                      props: {
+                        style: {
+                          fontSize: '17px', fontFamily: 'Outfit', fontWeight: 400,
+                          color: 'rgba(255,255,255,0.7)',
+                        },
+                        children: impactLabel,
+                      },
+                    },
+                  ],
+                },
+              }] : []),
+              // Bottom bar
+              {
+                type: 'div',
+                props: {
+                  style: {
+                    display: 'flex', justifyContent: 'space-between' as const,
+                    alignItems: 'center', marginTop: '12px',
+                    borderTop: '1px solid rgba(255,255,255,0.15)',
+                    paddingTop: '14px',
+                  },
+                  children: [siteUrl(), brandBadge()],
+                },
+              },
+            ],
+          },
+        },
+      ],
+    },
+  };
+}
+
+// ═══════════════════════════════════════════════════
+// TEMPLATE: EVENT — Photo hero with date/location
+// ═══════════════════════════════════════════════════
+function eventTemplate(title: string, photoB64: string | null, category?: string, date?: string, location?: string) {
+  const hasPhoto = !!photoB64;
+  const catLabels: Record<string, string> = {
+    fundraiser: 'Fundraiser', volunteer: 'Volunteer Day',
+    reveal: 'Room Reveal', community: 'Community', other: 'Event',
+  };
+  const catLabel = catLabels[category || 'other'] || 'Event';
+
+  return {
+    type: 'div',
+    props: {
+      style: {
+        width: '100%', height: '100%',
+        display: 'flex', position: 'relative' as const,
+        overflow: 'hidden' as const,
+        background: hasPhoto ? DARK : DARK_DEEP,
+      },
+      children: [
+        // Background photo
+        ...(hasPhoto ? [{
+          type: 'img',
+          props: {
+            src: photoB64,
+            width: 1200, height: 630,
+            style: {
+              position: 'absolute' as const, top: 0, left: 0,
+              width: '100%', height: '100%',
+              objectFit: 'cover' as const,
+            },
+          },
+        },
+        // Gradient overlay
+        {
+          type: 'div',
+          props: {
+            style: {
+              position: 'absolute' as const, bottom: 0, left: 0, right: 0,
+              height: '80%',
+              background: 'linear-gradient(to top, rgba(26,27,31,0.95) 0%, rgba(26,27,31,0.88) 40%, rgba(26,27,31,0.4) 75%, transparent 100%)',
+              display: 'flex',
+            },
+          },
+        }] : []),
+        // Yellow top accent bar
+        {
+          type: 'div',
+          props: {
+            style: {
+              position: 'absolute' as const, top: 0, left: 0, right: 0,
+              height: '5px', background: YELLOW, display: 'flex',
+            },
+          },
+        },
+        // Content overlay
+        {
+          type: 'div',
+          props: {
+            style: {
+              position: 'absolute' as const, bottom: 0, left: 0, right: 0,
+              display: 'flex', flexDirection: 'column' as const,
+              padding: '0 60px 40px',
+              gap: '10px',
+            },
+            children: [
+              // Category pill
+              pill(catLabel),
+              // Title
+              {
+                type: 'div',
+                props: {
+                  style: {
+                    fontSize: '52px', fontFamily: 'Libre Baskerville', fontWeight: 700,
+                    color: WHITE, lineHeight: 1.1,
+                  },
+                  children: truncate(title, 50),
+                },
+              },
+              // Date + Location
+              ...(date || location ? [{
+                type: 'div',
+                props: {
+                  style: {
+                    display: 'flex', alignItems: 'center', gap: '16px',
+                    marginTop: '4px',
+                  },
+                  children: [
+                    ...(date ? [{
+                      type: 'div',
+                      props: {
+                        style: {
+                          fontSize: '18px', fontFamily: 'Outfit', fontWeight: 600,
+                          color: YELLOW,
+                        },
+                        children: date,
+                      },
+                    }] : []),
+                    ...(date && location ? [{
+                      type: 'div',
+                      props: {
+                        style: { fontSize: '18px', color: 'rgba(255,255,255,0.4)' },
+                        children: '·',
+                      },
+                    }] : []),
+                    ...(location ? [{
+                      type: 'div',
+                      props: {
+                        style: {
+                          fontSize: '17px', fontFamily: 'Outfit', fontWeight: 400,
+                          color: 'rgba(255,255,255,0.7)',
+                        },
+                        children: truncate(location, 50),
+                      },
+                    }] : []),
+                  ],
+                },
+              }] : []),
+              // Bottom bar
+              {
+                type: 'div',
+                props: {
+                  style: {
+                    display: 'flex', justifyContent: 'space-between' as const,
+                    alignItems: 'center', marginTop: '12px',
+                    borderTop: '1px solid rgba(255,255,255,0.15)',
+                    paddingTop: '14px',
+                  },
+                  children: [siteUrl(), brandBadge()],
+                },
+              },
+            ],
+          },
+        },
+      ],
+    },
+  };
+}
+
+// ═══════════════════════════════════════════════════
+// TEMPLATE: GOLF — Green gradient hero with logo
+// ═══════════════════════════════════════════════════
+function golfTemplate(logoB64: string | null, date?: string, location?: string) {
+  return {
+    type: 'div',
+    props: {
+      style: {
+        width: '100%', height: '100%',
+        display: 'flex', position: 'relative' as const,
+        overflow: 'hidden' as const,
+        // Green gradient matching the golf hero
+        background: 'linear-gradient(135deg, #1a472a 0%, #2e7d32 40%, #388e3c 70%, #43a047 100%)',
+      },
+      children: [
+        // Radial glow — warm yellow bottom-left
+        {
+          type: 'div',
+          props: {
+            style: {
+              position: 'absolute' as const, inset: 0,
+              background: 'radial-gradient(ellipse 80% 60% at 20% 80%, rgba(255,218,36,0.15) 0%, transparent 70%)',
+              display: 'flex',
+            },
+          },
+        },
+        // Radial glow — white top-right
+        {
+          type: 'div',
+          props: {
+            style: {
+              position: 'absolute' as const, inset: 0,
+              background: 'radial-gradient(ellipse 50% 50% at 80% 20%, rgba(255,255,255,0.08) 0%, transparent 60%)',
+              display: 'flex',
+            },
+          },
+        },
+        // Yellow top accent bar
+        {
+          type: 'div',
+          props: {
+            style: {
+              position: 'absolute' as const, top: 0, left: 0, right: 0,
+              height: '5px', background: YELLOW, display: 'flex',
+            },
+          },
+        },
+        // Content: left text + right logo
+        {
+          type: 'div',
+          props: {
+            style: {
+              position: 'relative' as const,
+              width: '100%', height: '100%',
+              display: 'flex', alignItems: 'center',
+              padding: '60px',
+              gap: '48px',
+            },
+            children: [
+              // Left: text content
+              {
+                type: 'div',
+                props: {
+                  style: {
+                    flex: 1, display: 'flex', flexDirection: 'column' as const,
+                    justifyContent: 'center', gap: '16px',
+                  },
+                  children: [
+                    // Eyebrow
+                    {
+                      type: 'div',
+                      props: {
+                        style: {
+                          fontSize: '14px', fontFamily: 'Outfit', fontWeight: 700,
+                          color: YELLOW, letterSpacing: '0.18em',
+                          textTransform: 'uppercase' as const,
+                        },
+                        children: 'Charity Golf Tournament',
+                      },
+                    },
+                    // Title: "Sunshine on a Ranney Fairway"
+                    {
+                      type: 'div',
+                      props: {
+                        style: {
+                          display: 'flex', flexDirection: 'column' as const,
+                          gap: '0px',
+                        },
+                        children: [
+                          {
+                            type: 'div',
+                            props: {
+                              style: {
+                                fontSize: '52px', fontFamily: 'Libre Baskerville', fontWeight: 700,
+                                color: WHITE, lineHeight: 1.08,
+                              },
+                              children: 'Sunshine on a',
+                            },
+                          },
+                          {
+                            type: 'div',
+                            props: {
+                              style: {
+                                display: 'flex', alignItems: 'baseline', gap: '14px',
+                              },
+                              children: [
+                                {
+                                  type: 'div',
+                                  props: {
+                                    style: {
+                                      fontSize: '52px', fontFamily: 'Libre Baskerville', fontWeight: 700,
+                                      color: WHITE, lineHeight: 1.08,
+                                    },
+                                    children: 'Ranney',
+                                  },
+                                },
+                                {
+                                  type: 'div',
+                                  props: {
+                                    style: {
+                                      fontSize: '52px', fontFamily: 'Libre Baskerville', fontWeight: 700,
+                                      color: YELLOW, lineHeight: 1.08,
+                                      fontStyle: 'italic' as const,
+                                    },
+                                    children: 'Fairway',
+                                  },
+                                },
+                              ],
+                            },
+                          },
+                        ],
+                      },
+                    },
+                    // Date + Location
+                    ...(date || location ? [{
+                      type: 'div',
+                      props: {
+                        style: {
+                          display: 'flex', flexDirection: 'column' as const,
+                          gap: '4px', marginTop: '8px',
+                        },
+                        children: [
+                          ...(date ? [{
+                            type: 'div',
+                            props: {
+                              style: {
+                                fontSize: '18px', fontFamily: 'Outfit', fontWeight: 600,
+                                color: 'rgba(255,255,255,0.9)',
+                              },
+                              children: date,
+                            },
+                          }] : []),
+                          ...(location ? [{
+                            type: 'div',
+                            props: {
+                              style: {
+                                fontSize: '16px', fontFamily: 'Outfit', fontWeight: 400,
+                                color: 'rgba(255,255,255,0.7)',
+                              },
+                              children: location,
+                            },
+                          }] : []),
+                        ],
+                      },
+                    }] : []),
+                    // Bottom: site URL
+                    {
+                      type: 'div',
+                      props: {
+                        style: {
+                          marginTop: '16px',
+                          borderTop: '1px solid rgba(255,255,255,0.2)',
+                          paddingTop: '14px',
+                          display: 'flex', justifyContent: 'space-between' as const,
+                          alignItems: 'center',
+                        },
+                        children: [siteUrl(), brandBadge()],
+                      },
+                    },
+                  ],
+                },
+              },
+              // Right: golf logo
+              ...(logoB64 ? [{
+                type: 'div',
+                props: {
+                  style: {
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    flexShrink: 0,
+                  },
+                  children: [{
+                    type: 'img',
+                    props: {
+                      src: logoB64,
+                      width: 280, height: 280,
+                      style: { objectFit: 'contain' as const },
+                    },
+                  }],
+                },
+              }] : []),
+            ],
+          },
+        },
+      ],
+    },
+  };
+}
+
+// ═══════════════════════════════════════════════════
 // PUBLIC API
 // ═══════════════════════════════════════════════════
-export type OgTemplate = 'default' | 'kid' | 'article';
+export type OgTemplate = 'default' | 'kid' | 'article' | 'golf' | 'community' | 'event';
 
 export interface OgOptions {
   template: OgTemplate;
@@ -708,6 +1203,16 @@ export interface OgOptions {
   heroImage?: string | null;
   tag?: string;
   description?: string;
+  golfDate?: string;
+  golfLocation?: string;
+  // Community
+  year?: string;
+  impact?: string;
+  impactLabel?: string;
+  // Event
+  category?: string;
+  eventDate?: string;
+  eventLocation?: string;
 }
 
 export async function generateOgImage(opts: OgOptions): Promise<Buffer> {
@@ -731,6 +1236,39 @@ export async function generateOgImage(opts: OgOptions): Promise<Buffer> {
       } else {
         element = kidTextOnly(opts.title, opts.age, opts.diagnosis, opts.roomTypes);
       }
+      break;
+    }
+    case 'community': {
+      let photoB64: string | null = null;
+      if (opts.heroImage) {
+        const imgUrl = opts.heroImage.startsWith('http')
+          ? opts.heroImage
+          : `${CF_DIRECT}/${opts.heroImage}/w=1200,h=630,fit=cover,gravity=auto,q=80`;
+        photoB64 = await fetchImageBase64(imgUrl);
+      }
+      element = communityTemplate(opts.title, photoB64, opts.year, opts.impact, opts.impactLabel);
+      break;
+    }
+    case 'event': {
+      let photoB64: string | null = null;
+      if (opts.heroImage) {
+        const imgUrl = opts.heroImage.startsWith('http')
+          ? opts.heroImage
+          : `${CF_DIRECT}/${opts.heroImage}/w=1200,h=630,fit=cover,gravity=auto,q=80`;
+        photoB64 = await fetchImageBase64(imgUrl);
+      }
+      element = eventTemplate(opts.title, photoB64, opts.category, opts.eventDate, opts.eventLocation);
+      break;
+    }
+    case 'golf': {
+      let logoB64: string | null = null;
+      if (opts.heroImage) {
+        const imgUrl = opts.heroImage.startsWith('http')
+          ? opts.heroImage
+          : `${CF_DIRECT}/${opts.heroImage}/w=400,q=85`;
+        logoB64 = await fetchImageBase64(imgUrl);
+      }
+      element = golfTemplate(logoB64, opts.golfDate, opts.golfLocation);
       break;
     }
     case 'article': {

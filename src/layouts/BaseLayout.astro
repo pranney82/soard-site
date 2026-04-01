@@ -68,12 +68,13 @@ function computeOgImage(pathname: string): string {
   const artMatch = clean.match(/^\/resources\/([^/]+)$/);
   if (artMatch) return `/og/resources/${artMatch[1]}.png`;
 
-  // Featured rooms: /rooms/amari/ → /og/rooms/amari.png
-  // (skip static sub-pages that have their own entry in [page].png.ts)
-  const roomMatch = clean.match(/^\/rooms\/([^/]+)$/);
-  if (roomMatch && !['before-after', 'community'].includes(roomMatch[1])) {
-    return `/og/rooms/${roomMatch[1]}.png`;
-  }
+  // Community projects: /community/murphy-harpst/ → /og/community/murphy-harpst.png
+  const communityMatch = clean.match(/^\/community\/([^/]+)$/);
+  if (communityMatch) return `/og/community/${communityMatch[1]}.png`;
+
+  // Events: /events/some-event/ → /og/events/some-event.png
+  const eventMatch = clean.match(/^\/events\/([^/]+)$/);
+  if (eventMatch) return `/og/events/${eventMatch[1]}.png`;
 
   // Static pages: /donate/ → /og/donate.png, /about/leadership/ → /og/leadership.png
   const segments = clean.split('/').filter(Boolean);

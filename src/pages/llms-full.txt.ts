@@ -110,8 +110,6 @@ ${kidsList.join('\n')}
 - [About — Leadership](https://sunshineonaranneyday.com/about/leadership/): Board and team bios
 - [About — Financials](https://sunshineonaranneyday.com/about/financials/): 990 filings and reports
 - [Meet the Kids](https://sunshineonaranneyday.com/kids/): All ${s.totalKids}+ kid profiles
-- [Featured Rooms](https://sunshineonaranneyday.com/rooms/): Room gallery
-- [Before & After](https://sunshineonaranneyday.com/rooms/before-after/): Photo comparisons
 - [Community Projects](https://sunshineonaranneyday.com/community/): School/facility projects
 - [Partners](https://sunshineonaranneyday.com/partners/): Supporting organizations
 - [Donate](https://sunshineonaranneyday.com/donate/): Tax-deductible giving

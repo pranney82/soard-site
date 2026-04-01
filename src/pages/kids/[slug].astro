@@ -82,12 +82,12 @@ export async function getStaticPaths() {
 
 const { kid, prevKid, nextKid, relatedKids } = Astro.props;
 const photos = kid.photos || [];
-const isFeatured = kid.featured && kid.caseStudy;
-
 // ── CF Image helpers ──────────────────────
 import { cfUrl as _cfUrl, cfSrcset as _cfSrcset, cfRaw, CF_BASE, cfId } from '../../utils/cf-image';
 import lqipManifest from '../../data/lqip-kids.json';
+import dimsManifest from '../../data/dimensions-kids.json';
 const _lqipMap: Record<string, string> = lqipManifest;
+const _dimsMap: Record<string, [number, number]> = dimsManifest;
 
 function cfUrl(src: string, opts: string) { return cfRaw(src, opts); }
 function cfSrcset(src: string, widths: number[]) {
@@ -98,6 +98,13 @@ function cfSrcset(src: string, widths: number[]) {
 function lqip(src: string): string {
   const id = cfId(src);
   return _lqipMap[id] || cfRaw(src, 'w=30,q=30,blur=20');
+}
+
+/** Real aspect ratio from build-time manifest. Returns [w, h] at GCD-reduced
+ *  scale, or a 4:3 fallback if the image isn't in the manifest. */
+function dims(src: string): [number, number] {
+  const id = cfId(src);
+  return _dimsMap[id] || [4, 3];
 }
 
 // ── YouTube ID extraction ─────────────────
@@ -154,21 +161,38 @@ const heroMobileSrcset = kid.heroImage ? _cfSrcset(kid.heroImage, [320, 480], { 
 const heroMobileSizes = '(max-width: 480px) 280px, 300px';
 
 // ── Narrative: scroll-linked story ───────
-const useNarrative = remainingParas.length >= 2 && galleryPhotos.length >= 3;
+const storyPhotos = kid.storyPhotos || [];
+const hasStoryPhotos = storyPhotos.length > 0;
+const useNarrative = hasStoryPhotos
+  ? remainingParas.length >= 1
+  : remainingParas.length >= 2 && galleryPhotos.length >= 3;
 let narrativePairs: Array<{ text: string; photo: typeof photos[0] }> = [];
 let overflowParas: string[] = remainingParas;
 
 if (useNarrative) {
-  const pairCount = Math.min(remainingParas.length, 4, Math.floor(galleryPhotos.length / 2));
-  const step = galleryPhotos.length / pairCount;
-  for (let i = 0; i < pairCount; i++) {
-    const photoIdx = Math.min(Math.floor(i * step), galleryPhotos.length - 1);
-    narrativePairs.push({
-      text: remainingParas[i],
-      photo: galleryPhotos[photoIdx],
-    });
+  if (hasStoryPhotos) {
+    // Use designated story photos, pairing each with a bio paragraph
+    const pairCount = Math.min(remainingParas.length, storyPhotos.length);
+    for (let i = 0; i < pairCount; i++) {
+      narrativePairs.push({
+        text: remainingParas[i],
+        photo: storyPhotos[i],
+      });
+    }
+    overflowParas = remainingParas.slice(pairCount);
+  } else {
+    // Auto-select from gallery (existing behavior)
+    const pairCount = Math.min(remainingParas.length, 4, Math.floor(galleryPhotos.length / 2));
+    const step = galleryPhotos.length / pairCount;
+    for (let i = 0; i < pairCount; i++) {
+      const photoIdx = Math.min(Math.floor(i * step), galleryPhotos.length - 1);
+      narrativePairs.push({
+        text: remainingParas[i],
+        photo: galleryPhotos[photoIdx],
+      });
+    }
+    overflowParas = remainingParas.slice(pairCount);
   }
-  overflowParas = remainingParas.slice(pairCount);
 }
 
 // ── Minimal data detection ────────────────
@@ -305,7 +329,7 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
               <div class="narrative__text">
                 <div class={`narrative__text-inner prose ${i === 0 ? 'prose--dropcap' : ''}`} set:html={`<p>${pair.text}</p>`} />
               </div>
-              <div class="narrative__media" style={`--lqip: url('${lqip(pair.photo.url)}')`}>
+              <div class="narrative__media" style={`--lqip: url('${lqip(pair.photo.url)}'); --ar: ${dims(pair.photo.url)[0]} / ${dims(pair.photo.url)[1]}`}>
                 <img
                   src={_cfUrl(pair.photo.url, { w: 600, q: 85 })}
                   srcset={_cfSrcset(pair.photo.url, [400, 600, 900])}
@@ -314,6 +338,8 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
                   class="narrative__img lqip-img"
                   loading="lazy"
                   decoding="async"
+                  width={dims(pair.photo.url)[0]}
+                  height={dims(pair.photo.url)[1]}
                 />
               </div>
             </div>
@@ -451,6 +477,8 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
                   class="masonry__img lqip-img"
                   loading="lazy"
                   decoding="async"
+                  width={dims(photo.url)[0]}
+                  height={dims(photo.url)[1]}
                 />
                 <div class="masonry__overlay">
                   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
@@ -458,24 +486,6 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
               </button>
             ))}
           </div>
-        </div>
-      </section>
-    )}
-
-    <!-- ═══ Featured Project Link ═══════════ -->
-    {isFeatured && (
-      <section class="featured-link stagger-section">
-        <div class="container container--narrow">
-          <a href={`/rooms/${kid.slug}/`} class="featured-card">
-            <div class="featured-card__accent" aria-hidden="true"></div>
-            <span class="featured-card__eyebrow">Featured Project</span>
-            <h2 class="featured-card__title">Go Behind the Build</h2>
-            <p class="featured-card__desc">See the full case study — from design concept through construction to the big reveal.</p>
-            <span class="featured-card__cta">
-              View Full Project
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-            </span>
-          </a>
         </div>
       </section>
     )}
@@ -593,8 +603,14 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     <button class="lightbox__nav lightbox__nav--next" id="lb-next" aria-label="Next photo">
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
     </button>
-    <div class="lightbox__stage">
-      <img class="lightbox__img" id="lb-img" src="" alt="" tabindex="0" />
+    <div class="lightbox__stage" id="lb-stage">
+      <div class="lightbox__frame" id="lb-frame">
+        <img class="lightbox__placeholder" id="lb-placeholder" src="" alt="" aria-hidden="true" />
+        <img class="lightbox__img" id="lb-img" src="" alt="" tabindex="0" />
+        <div class="lightbox__loader" id="lb-loader" aria-hidden="true">
+          <div class="lightbox__loader-ring"></div>
+        </div>
+      </div>
       <p class="lightbox__counter" id="lb-counter" aria-live="polite"></p>
     </div>
   </div>
@@ -674,6 +690,7 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
         iframe.src = `https://www.youtube-nocookie.com/embed/${id}?autoplay=1&rel=0`;
         iframe.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture';
         iframe.allowFullscreen = true;
+        iframe.title = 'Video player';
         iframe.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border:0';
         wrapper.appendChild(iframe);
         facade.replaceWith(wrapper);
@@ -692,7 +709,7 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
         const wrapper = document.createElement('div');
         wrapper.style.cssText = 'position:relative;aspect-ratio:16/9;border-radius:var(--border-radius-lg);overflow:hidden';
         const iframe = document.createElement('iframe');
-        iframe.src = `https://iframe.videodelivery.net/${id}?autoplay=true`;
+        iframe.src = `https://iframe.videodelivery.net/${id}?autoplay=true&preload=true`;
         iframe.allow = 'accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture';
         iframe.allowFullscreen = true;
         iframe.title = 'Video player';
@@ -706,9 +723,22 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
       });
     }
 
-    // ── Lightbox ────────────────────────────
+    // ══════════════════════════════════════════════════
+    // ── Lightbox — top 1% gallery engine ─────────────
+    // ══════════════════════════════════════════════════
+    //
+    //  SPEED:  LQIP data-URI → thumbnail promotion → in-memory bitmap cache
+    //          → img.decode() off-thread → predictive preload (±3, hover, idle)
+    //          → connection-aware radius → navGeneration stale-frame guard
+    //  MOTION: directional translateX slide → smooth open/close with backdrop
+    //          → loading ring after 180ms → GPU compositing only
+    //          → prefers-reduced-motion respected
+    //
     const lightbox = document.getElementById('lightbox') as HTMLElement;
     const lbImg = document.getElementById('lb-img') as HTMLImageElement;
+    const lbPlaceholder = document.getElementById('lb-placeholder') as HTMLImageElement;
+    const lbFrame = document.getElementById('lb-frame') as HTMLElement;
+    const lbLoader = document.getElementById('lb-loader') as HTMLElement;
     const lbCounter = document.getElementById('lb-counter') as HTMLElement;
     const lbPrev = document.getElementById('lb-prev') as HTMLButtonElement;
     const lbNext = document.getElementById('lb-next') as HTMLButtonElement;
@@ -717,52 +747,204 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     if (lightbox && galleryItems.length > 0) {
       let currentIndex = 0;
       let previousFocus: HTMLElement | null = null;
-      const prefetched = new Set<string>();
+      let navGeneration = 0;
+      let loaderTimer = 0;
 
-      function showPhoto(index: number) {
+      const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+      // ── Image cache ────────────────────────
+      const cache = new Map<number, { img: HTMLImageElement; decoded: boolean; promise: Promise<HTMLImageElement> }>();
+
+      function ensureCached(index: number): { img: HTMLImageElement; decoded: boolean; promise: Promise<HTMLImageElement> } {
+        if (cache.has(index)) return cache.get(index)!;
         const item = galleryItems[index];
-        if (!item) return;
-        currentIndex = index;
-        lbImg.src = item.dataset.src || '';
-        lbImg.srcset = item.dataset.srcset || '';
-        lbImg.sizes = '90vw';
-        lbImg.alt = item.dataset.alt || '';
-        lbCounter.textContent = `${index + 1} / ${galleryItems.length}`;
-        lbPrev.style.display = index === 0 ? 'none' : '';
-        lbNext.style.display = index === galleryItems.length - 1 ? 'none' : '';
-        [index - 1, index + 1].forEach(adj => {
-          const src = galleryItems[adj]?.dataset.src;
-          if (src && !prefetched.has(src)) {
-            prefetched.add(src);
-            const link = document.createElement('link');
-            link.rel = 'prefetch';
-            link.href = src;
-            link.as = 'image';
-            document.head.appendChild(link);
+        if (!item) {
+          const dummy = new Image();
+          return { img: dummy, decoded: false, promise: Promise.resolve(dummy) };
+        }
+        const img = new Image();
+        img.srcset = item.dataset.srcset || '';
+        img.sizes = '90vw';
+        img.src = item.dataset.src || '';
+        const entry = {
+          img,
+          decoded: false,
+          promise: (img.decode
+            ? img.decode().then(() => { entry.decoded = true; return img; }).catch(() => { entry.decoded = true; return img; })
+            : new Promise<HTMLImageElement>(r => { img.onload = img.onerror = () => { entry.decoded = true; r(img); }; })
+          ),
+        };
+        cache.set(index, entry);
+        return entry;
+      }
+
+      // ── Preload logic ─────────────────────
+      function getPreloadRadius(): number {
+        const conn = (navigator as any).connection;
+        if (!conn) return 3;
+        const et = conn.effectiveType;
+        if (et === '4g') return 3;
+        if (et === '3g') return 1;
+        return 0;
+      }
+
+      function preloadNeighbours(center: number) {
+        const r = getPreloadRadius();
+        for (let d = 1; d <= r; d++) {
+          if (center + d < galleryItems.length) ensureCached(center + d);
+          if (center - d >= 0) ensureCached(center - d);
+        }
+      }
+
+      let idlePreloadStarted = false;
+      function startIdlePreload() {
+        if (idlePreloadStarted) return;
+        idlePreloadStarted = true;
+        const ric = (window as any).requestIdleCallback || ((cb: Function) => setTimeout(cb, 200));
+        let nextIdx = 0;
+        function step(deadline?: { timeRemaining: () => number }) {
+          const budget = deadline ? deadline.timeRemaining() : 16;
+          while (nextIdx < galleryItems.length && budget > 2) {
+            ensureCached(nextIdx);
+            nextIdx++;
+            if (nextIdx % 4 === 0) break;
           }
+          if (nextIdx < galleryItems.length) ric(step);
+        }
+        ric(step);
+      }
+
+      // ── Loading indicator ──────────────────
+      function showLoader() {
+        clearTimeout(loaderTimer);
+        lbLoader.classList.remove('lightbox__loader--visible');
+        loaderTimer = window.setTimeout(() => {
+          lbLoader.classList.add('lightbox__loader--visible');
+        }, 180);
+      }
+      function hideLoader() {
+        clearTimeout(loaderTimer);
+        lbLoader.classList.remove('lightbox__loader--visible');
+      }
+
+      // ── Directional slide (Web Animations API) ──
+      function slideFrame(direction: number) {
+        if (prefersReducedMotion || direction === 0) return;
+        lbFrame.getAnimations().forEach(a => a.cancel());
+        const dist = direction > 0 ? 40 : -40;
+        lbFrame.animate([
+          { transform: `translateX(${dist}px)`, opacity: 0.7 },
+          { transform: 'translateX(0)', opacity: 1 },
+        ], {
+          duration: 180,
+          easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
+          fill: 'none',
         });
       }
 
+      // ── Show photo ─────────────────────────
+      function showPhoto(index: number, direction: number = 0) {
+        const item = galleryItems[index];
+        if (!item) return;
+        currentIndex = index;
+        const gen = ++navGeneration;
+        const alt = item.dataset.alt || '';
+
+        slideFrame(direction);
+
+        // 1) Placeholder: LQIP → thumbnail (progressive, both instant)
+        const lqipUrl = item.style.getPropertyValue('--lqip');
+        const lqipMatch = lqipUrl.match(/url\(['"]?([^'"]+)['"]?\)/);
+        if (lqipMatch) lbPlaceholder.src = lqipMatch[1];
+        const thumbImg = item.querySelector('img') as HTMLImageElement | null;
+        if (thumbImg && thumbImg.currentSrc) lbPlaceholder.src = thumbImg.currentSrc;
+        lbPlaceholder.alt = alt;
+        lbPlaceholder.style.opacity = '1';
+
+        // 2) Full-res from cache
+        const entry = ensureCached(index);
+
+        if (entry.decoded && entry.img.complete && entry.img.naturalWidth > 0) {
+          hideLoader();
+          lbImg.srcset = entry.img.srcset;
+          lbImg.sizes = '90vw';
+          lbImg.src = entry.img.src;
+          lbImg.alt = alt;
+          lbImg.style.opacity = '1';
+          lbPlaceholder.style.opacity = '0';
+        } else {
+          lbImg.style.opacity = '0';
+          showLoader();
+          entry.promise.then((img) => {
+            if (navGeneration !== gen) return;
+            hideLoader();
+            lbImg.srcset = img.srcset;
+            lbImg.sizes = '90vw';
+            lbImg.src = img.src;
+            lbImg.alt = alt;
+            const ready = lbImg.decode ? lbImg.decode().catch(() => {}) : Promise.resolve();
+            ready.then(() => {
+              if (navGeneration !== gen) return;
+              lbImg.style.opacity = '1';
+              lbPlaceholder.style.opacity = '0';
+            });
+          });
+        }
+
+        lbCounter.textContent = `${index + 1} / ${galleryItems.length}`;
+        lbPrev.style.visibility = index === 0 ? 'hidden' : '';
+        lbPrev.style.pointerEvents = index === 0 ? 'none' : '';
+        lbNext.style.visibility = index === galleryItems.length - 1 ? 'hidden' : '';
+        lbNext.style.pointerEvents = index === galleryItems.length - 1 ? 'none' : '';
+        preloadNeighbours(index);
+      }
+
+      // ── Open / Close ───────────────────────
       function openLightbox(index: number) {
         previousFocus = document.activeElement as HTMLElement;
-        showPhoto(index);
+        showPhoto(index, 0);
         lightbox.hidden = false;
         document.body.style.overflow = 'hidden';
+        if (!prefersReducedMotion) {
+          lightbox.classList.remove('lightbox--open');
+          // Double-rAF ensures the browser has painted the un-animated state first
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => lightbox.classList.add('lightbox--open'));
+          });
+        } else {
+          lightbox.classList.add('lightbox--open');
+        }
         lbImg.focus();
+        startIdlePreload();
       }
 
       function closeLightbox() {
-        lightbox.hidden = true;
+        hideLoader();
+        if (!prefersReducedMotion) {
+          lightbox.classList.remove('lightbox--open');
+          const onDone = () => {
+            lightbox.hidden = true;
+            lightbox.removeEventListener('transitionend', onDone);
+          };
+          lightbox.addEventListener('transitionend', onDone);
+          setTimeout(() => { lightbox.hidden = true; }, 300);
+        } else {
+          lightbox.classList.remove('lightbox--open');
+          lightbox.hidden = true;
+        }
         document.body.style.overflow = '';
         previousFocus?.focus();
       }
 
+      // ── Focus trap ─────────────────────────
       function trapFocus(e: KeyboardEvent) {
         if (e.key !== 'Tab') return;
         const focusable = lightbox.querySelectorAll<HTMLElement>(
-          'button:not([style*="display: none"]):not([hidden]), [tabindex="0"]'
+          'button:not([hidden]), [tabindex="0"]'
         );
-        const list = Array.from(focusable).filter(el => el.offsetParent !== null);
+        const list = Array.from(focusable).filter(el =>
+          el.offsetParent !== null && getComputedStyle(el).visibility !== 'hidden'
+        );
         if (list.length === 0) return;
         const first = list[0];
         const last = list[list.length - 1];
@@ -775,12 +957,25 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
         }
       }
 
+      // ── Navigation helpers ─────────────────
+      function goNext() { if (currentIndex < galleryItems.length - 1) showPhoto(currentIndex + 1, 1); }
+      function goPrev() { if (currentIndex > 0) showPhoto(currentIndex - 1, -1); }
+
+      // ── Event wiring ───────────────────────
       galleryItems.forEach((item, i) => {
         item.addEventListener('click', () => openLightbox(i));
+        item.addEventListener('pointerenter', () => ensureCached(i), { passive: true });
       });
 
-      lbPrev.addEventListener('click', () => showPhoto(currentIndex - 1));
-      lbNext.addEventListener('click', () => showPhoto(currentIndex + 1));
+      const galleryEl = document.getElementById('gallery');
+      if (galleryEl) {
+        galleryEl.addEventListener('pointerenter', () => {
+          for (let i = 0; i < Math.min(5, galleryItems.length); i++) ensureCached(i);
+        }, { once: true, passive: true });
+      }
+
+      lbPrev.addEventListener('click', goPrev);
+      lbNext.addEventListener('click', goNext);
 
       lightbox.querySelectorAll('[data-close]').forEach(el => {
         el.addEventListener('click', closeLightbox);
@@ -788,11 +983,12 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
 
       lightbox.addEventListener('keydown', (e: KeyboardEvent) => {
         if (e.key === 'Escape') closeLightbox();
-        if (e.key === 'ArrowLeft' && currentIndex > 0) showPhoto(currentIndex - 1);
-        if (e.key === 'ArrowRight' && currentIndex < galleryItems.length - 1) showPhoto(currentIndex + 1);
+        if (e.key === 'ArrowLeft') goPrev();
+        if (e.key === 'ArrowRight') goNext();
         trapFocus(e);
       });
 
+      // ── Touch / swipe ──────────────────────
       let touchStartX = 0;
       let touchStartY = 0;
       lightbox.addEventListener('touchstart', (e: TouchEvent) => {
@@ -804,8 +1000,8 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
         const dx = e.changedTouches[0].screenX - touchStartX;
         const dy = e.changedTouches[0].screenY - touchStartY;
         if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) {
-          if (dx < 0 && currentIndex < galleryItems.length - 1) showPhoto(currentIndex + 1);
-          if (dx > 0 && currentIndex > 0) showPhoto(currentIndex - 1);
+          if (dx < 0) goNext();
+          if (dx > 0) goPrev();
         }
       }, { passive: true });
     }
@@ -1237,6 +1433,7 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
   .narrative__media {
     border-radius: var(--profile-radius);
     overflow: hidden;
+    aspect-ratio: var(--ar, 4 / 3);
     background-image: var(--lqip);
     background-size: cover;
     background-position: center;
@@ -1248,7 +1445,8 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
 
   .narrative__img {
     width: 100%;
-    height: auto;
+    height: 100%;
+    object-fit: cover;
     display: block;
   }
 
@@ -1463,77 +1661,6 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
   .masonry__item:focus-visible {
     outline: 3px solid var(--c-yellow);
     outline-offset: 3px;
-  }
-
-  /* ═══ Featured Link Card ═══════════════════ */
-  .featured-link {
-    padding-block: var(--space-xl);
-  }
-
-  .featured-card {
-    display: block;
-    text-decoration: none;
-    position: relative;
-    overflow: hidden;
-    background: linear-gradient(135deg, var(--c-dark) 0%, #1A1B1F 100%);
-    border-radius: var(--profile-radius);
-    padding: var(--space-2xl);
-    color: #fff;
-    transition: transform 0.3s ease, box-shadow 0.3s ease;
-  }
-
-  .featured-card__accent {
-    position: absolute;
-    top: -60px;
-    right: -60px;
-    width: 200px;
-    height: 200px;
-    background: radial-gradient(circle, rgba(255, 218, 36, 0.12) 0%, transparent 70%);
-    border-radius: 50%;
-  }
-
-  .featured-card:hover {
-    transform: translateY(-3px);
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2);
-  }
-
-  .featured-card__eyebrow {
-    display: inline-block;
-    font-size: 0.68rem;
-    font-weight: 700;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: var(--c-yellow);
-    margin-bottom: var(--space-sm);
-  }
-
-  .featured-card__title {
-    font-family: var(--font-display);
-    font-size: 1.4rem;
-    color: #fff;
-    margin-bottom: var(--space-xs);
-  }
-
-  .featured-card__desc {
-    color: rgba(255, 255, 255, 0.6);
-    font-size: 0.92rem;
-    line-height: 1.5;
-    max-width: 480px;
-    margin-bottom: var(--space-md);
-  }
-
-  .featured-card__cta {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-weight: 600;
-    font-size: 0.88rem;
-    color: var(--c-yellow);
-    transition: gap 0.2s;
-  }
-
-  .featured-card:hover .featured-card__cta {
-    gap: 10px;
   }
 
   /* ═══ Partners ═════════════════════════════ */
@@ -1754,7 +1881,7 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     color: var(--c-white);
   }
 
-  /* ═══ Lightbox ═════════════════════════════ */
+  /* ═══ Lightbox — premium gallery ═══════════ */
   .lightbox[hidden] { display: none; }
 
   .lightbox {
@@ -1766,13 +1893,25 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     justify-content: center;
   }
 
+  /* ── Smooth open / close ─────────────────── */
   .lightbox__backdrop {
     position: absolute;
     inset: 0;
     background: rgba(0, 0, 0, 0.92);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
+    opacity: 0;
+    transition: opacity 0.22s cubic-bezier(0.22, 1, 0.36, 1);
   }
+  .lightbox--open .lightbox__backdrop { opacity: 1; }
+
+  .lightbox__close,
+  .lightbox__nav {
+    opacity: 0;
+    transition: opacity 0.18s ease-out, background 0.15s ease-out;
+  }
+  .lightbox--open .lightbox__close,
+  .lightbox--open .lightbox__nav { opacity: 1; }
 
   .lightbox__close {
     position: absolute;
@@ -1789,7 +1928,6 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     justify-content: center;
     color: var(--c-white);
     cursor: pointer;
-    transition: background var(--transition-fast);
   }
 
   .lightbox__close:hover { background: rgba(255, 255, 255, 0.2); }
@@ -1809,37 +1947,134 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     justify-content: center;
     color: var(--c-white);
     cursor: pointer;
-    transition: background var(--transition-fast);
   }
 
   .lightbox__nav:hover { background: rgba(255, 255, 255, 0.2); }
   .lightbox__nav--prev { left: var(--space-lg); }
   .lightbox__nav--next { right: var(--space-lg); }
 
+  /* ── Stage + frame layout ────────────────── */
   .lightbox__stage {
     position: relative;
     z-index: 5;
-    max-width: 90vw;
-    max-height: 85vh;
+    /* Fixed viewport dimensions — images resize inside via object-fit,
+       so landscape ↔ portrait never causes layout shift or frame resize.
+       Directional slide always moves the same-sized box. */
+    width: 90vw;
+    height: 85vh;
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: var(--space-md);
+    justify-content: center;
+    gap: var(--space-sm);
+    /* Entrance: scale up + fade in */
+    transform: scale(0.94);
+    opacity: 0;
+    transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+                opacity 0.22s ease-out;
+  }
+  .lightbox--open .lightbox__stage {
+    transform: scale(1);
+    opacity: 1;
   }
 
+  .lightbox__frame {
+    position: relative;
+    width: 100%;
+    flex: 1 1 0%;
+    min-height: 0;
+    display: grid;
+    grid-template: 1fr / 1fr;
+    justify-items: center;
+    align-items: center;
+  }
+  /* Promote to GPU layer only while lightbox is open */
+  .lightbox--open .lightbox__frame {
+    will-change: transform, opacity;
+  }
+
+  .lightbox__placeholder,
   .lightbox__img {
+    grid-row: 1;
+    grid-column: 1;
     max-width: 100%;
-    max-height: 80vh;
+    max-height: 100%;
+    width: auto;
+    height: auto;
     object-fit: contain;
     border-radius: 12px;
     outline: none;
+    transition: opacity 0.12s ease-out;
+  }
+  .lightbox--open .lightbox__placeholder,
+  .lightbox--open .lightbox__img {
+    will-change: opacity;
+  }
+
+  .lightbox__placeholder {
+    z-index: 1;
+    filter: blur(2px);
+    pointer-events: none;
+  }
+
+  .lightbox__img {
+    z-index: 2;
+  }
+
+  /* ── Loading ring (appears after 180ms) ──── */
+  .lightbox__loader {
+    grid-row: 1;
+    grid-column: 1;
+    z-index: 3;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.2s ease-out;
+  }
+  .lightbox__loader--visible { opacity: 1; }
+
+  .lightbox__loader-ring {
+    width: 36px;
+    height: 36px;
+    border: 3px solid rgba(255, 255, 255, 0.15);
+    border-top-color: rgba(255, 255, 255, 0.7);
+    border-radius: 50%;
+    animation: lb-spin 0.7s linear infinite;
+  }
+
+  @keyframes lb-spin {
+    to { transform: rotate(360deg); }
   }
 
   .lightbox__counter {
+    flex-shrink: 0;
     color: rgba(255, 255, 255, 0.55);
     font-size: 0.82rem;
     font-weight: 500;
     letter-spacing: 0.04em;
+  }
+
+  /* ── Reduced motion ─────────────────────── */
+  @media (prefers-reduced-motion: reduce) {
+    .lightbox__backdrop,
+    .lightbox__close,
+    .lightbox__nav,
+    .lightbox__stage,
+    .lightbox__placeholder,
+    .lightbox__img,
+    .lightbox__loader {
+      transition: none !important;
+    }
+    .lightbox__stage {
+      transform: none;
+      opacity: 1;
+    }
+    .lightbox__backdrop { opacity: 1; }
+    .lightbox__close,
+    .lightbox__nav { opacity: 1; }
+    .lightbox__loader-ring { animation: none; }
   }
 
   /* ═══ View Transitions ═════════════════════ */

@@ -17,6 +17,15 @@ const kids = defineCollection({
       url: z.string(),
       alt: z.string().default(''),
     })).default([]),
+    storyPhotos: z.array(z.object({
+      url: z.string(),
+      alt: z.string().default(''),
+    })).max(4).default([]),
+    plans: z.array(z.object({
+      url: z.string(),
+      label: z.string().default(''),
+      type: z.enum(['as-built', 'proposed']),
+    })).default([]),
     photoCount: z.number().default(0),
     videoUrl: z.string().nullable().optional(),
     streamVideoId: z.string().nullable().optional(),
@@ -35,54 +44,6 @@ const kids = defineCollection({
     bathroomCount: z.number().default(0),
     therapyRoomCount: z.number().default(0),
     publishStatus: z.enum(['published', 'draft']).default('published'),
-    featured: z.boolean().default(false),
-    caseStudy: z.object({
-      projectTitle: z.string().nullable().optional(),
-      subtitle: z.string().nullable().optional(),
-      overview: z.string().nullable().optional(),
-      stats: z.array(z.object({
-        label: z.string(),
-        value: z.string(),
-      })).default([]),
-      challenge: z.object({
-        text: z.string().nullable().optional(),
-        photos: z.array(z.object({
-          url: z.string(),
-          alt: z.string().default(''),
-          caption: z.string().default(''),
-        })).default([]),
-      }).nullable().optional(),
-      design: z.object({
-        text: z.string().nullable().optional(),
-        photos: z.array(z.object({
-          url: z.string(),
-          alt: z.string().default(''),
-          caption: z.string().default(''),
-        })).default([]),
-      }).nullable().optional(),
-      build: z.object({
-        text: z.string().nullable().optional(),
-        photos: z.array(z.object({
-          url: z.string(),
-          alt: z.string().default(''),
-          caption: z.string().default(''),
-        })).default([]),
-      }).nullable().optional(),
-      reveal: z.object({
-        text: z.string().nullable().optional(),
-        quote: z.string().nullable().optional(),
-        photos: z.array(z.object({
-          url: z.string(),
-          alt: z.string().default(''),
-          caption: z.string().default(''),
-        })).default([]),
-      }).nullable().optional(),
-      gallery: z.array(z.object({
-        url: z.string(),
-        alt: z.string().default(''),
-        caption: z.string().default(''),
-      })).default([]),
-    }).nullable().optional(),
   }),
 });
 

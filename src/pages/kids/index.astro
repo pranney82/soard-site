@@ -12,6 +12,7 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
 import { getCollection } from 'astro:content';
 import { getPublishedKids } from '../../utils/collections';
 import { getSiteStats } from '../../utils/stats';
+import siteSettings from '../../content/site/settings.json';
 
 const allKids = await getPublishedKids();
 const kids = allKids
@@ -164,7 +165,7 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
       <div class="kids-hero__text">
         <p class="kids-hero__label">Our Kids</p>
         <h1 class="kids-hero__title">Meet our <em class="highlight">Sunshine</em> Kids</h1>
-        <p class="kids-hero__subtitle">Discover the incredible stories behind every room we build.</p>
+        <p class="kids-hero__subtitle">{siteSettings.kidsPageSummary || 'Discover the incredible stories behind every room we build.'}</p>
       </div>
 
       <!-- Face constellation -->

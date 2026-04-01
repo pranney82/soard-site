@@ -1,6 +1,9 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
 import media from '../content/site/media.json';
+import { getSiteStats } from '../utils/stats';
+
+const stats = await getSiteStats();
 
 const founderParagraphs = media.founderStory.split('\n\n');
 
@@ -59,6 +62,7 @@ const jsonLd = {
   <nav class="brand-mobile-nav" aria-label="Brand kit sections">
     <div class="mobile-nav-scroll">
       <a href="#media-bio" class="mobile-nav-link active">Bio</a>
+      <a href="#media-impact" class="mobile-nav-link">Impact</a>
       <a href="#media-mission" class="mobile-nav-link">Mission</a>
       <a href="#media-founders" class="mobile-nav-link">Founders</a>
       <a href="#media-contact" class="mobile-nav-link">Contact</a>
@@ -78,6 +82,7 @@ const jsonLd = {
         <p class="sidebar-label">Contents</p>
         <p class="sidebar-group-label">Media Kit</p>
         <a href="#media-bio" class="sidebar-link active">Bio & Overview</a>
+        <a href="#media-impact" class="sidebar-link">Impact Stats</a>
         <a href="#media-mission" class="sidebar-link">Mission</a>
         <a href="#media-founders" class="sidebar-link">Founder's Story</a>
         <a href="#media-contact" class="sidebar-link">Contact & Social</a>
@@ -134,6 +139,33 @@ const jsonLd = {
             <span class="media-detail-value">{media.bio.website}</span>
           </div>
         </div>
+      </section>
+
+      <section id="media-impact" class="brand-section">
+        <h2>Impact Stats</h2>
+        <p class="section-desc">Key numbers for press materials, grant applications, and partnership proposals.</p>
+
+        <div class="impact-stats-grid">
+          <div class="impact-stat-card">
+            <span class="impact-stat-num">{stats.totalRooms}+</span>
+            <span class="impact-stat-label">Room Makeovers</span>
+          </div>
+          <div class="impact-stat-card">
+            <span class="impact-stat-num">{stats.totalKids}+</span>
+            <span class="impact-stat-label">Children Served</span>
+          </div>
+          <div class="impact-stat-card">
+            <span class="impact-stat-num">{stats.years}</span>
+            <span class="impact-stat-label">Years of Impact</span>
+          </div>
+          <div class="impact-stat-card impact-stat-card--highlight">
+            <span class="impact-stat-num">$0</span>
+            <span class="impact-stat-label">Cost to Families</span>
+            <span class="impact-stat-sub">every makeover is 100% free</span>
+          </div>
+        </div>
+
+        <div class="info-box"><p><strong>Note:</strong> These numbers are auto-calculated from our records and stay current. Feel free to use them in press materials — they reflect our impact as of today.</p></div>
       </section>
 
       <section id="media-mission" class="brand-section">
@@ -495,6 +527,17 @@ const jsonLd = {
   .media-detail-value a{color:var(--c-dark);text-decoration:underline;text-decoration-color:rgba(55,58,54,.25);text-underline-offset:2px;transition:text-decoration-color .15s}
   .media-detail-value a:hover{text-decoration-color:var(--c-yellow)}
 
+  /* ═══ IMPACT STATS ═══ */
+  .impact-stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px}
+  .impact-stat-card{background:#fff;border:1px solid rgba(55,58,54,.1);border-radius:16px;padding:28px 24px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:4px}
+  .impact-stat-num{font-family:var(--font-display);font-size:clamp(2rem,3vw,2.75rem);font-weight:400;color:var(--c-dark);letter-spacing:-.02em;line-height:1.1}
+  .impact-stat-label{font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:rgba(55,58,54,.7)}
+  .impact-stat-card--highlight{background:var(--c-yellow);border-color:var(--c-yellow)}
+  .impact-stat-card--highlight .impact-stat-num{color:var(--c-dark)}
+  .impact-stat-card--highlight .impact-stat-label{color:rgba(55,58,54,.85)}
+  .impact-stat-sub{font-size:12px;color:rgba(55,58,54,.6);margin-top:2px}
+  .impact-stat-card--highlight .impact-stat-sub{color:rgba(55,58,54,.7)}
+
   /* ═══ LOGO CARDS ═══ */
   .card{background:#fff;border:1px solid rgba(55,58,54,.1);border-radius:16px;overflow:hidden;transition:transform .2s ease,box-shadow .2s ease;display:flex;flex-direction:column}
   .card:hover{transform:translateY(-3px);box-shadow:0 12px 32px rgba(0,0,0,.08)}
@@ -617,7 +660,7 @@ const jsonLd = {
   /* ═══ RESPONSIVE ═══ */
   @media(max-width:1024px){.brand-sidebar{display:none}.brand-layout{padding:32px 20px 48px}.logo-grid-3{grid-template-columns:repeat(3,1fr)}.brand-mobile-nav{display:block}.brand-section{scroll-margin-top:160px}}
   @media(max-width:900px){.logo-grid-3{grid-template-columns:repeat(2,1fr)}}
-  @media(max-width:768px){.brand-hero{padding:72px 20px 60px}.logo-grid{grid-template-columns:1fr}.logo-grid-3{grid-template-columns:1fr}.usage-grid{grid-template-columns:1fr}.dodont-grid{grid-template-columns:1fr}.color-grid{grid-template-columns:1fr 1fr}.two-col{grid-template-columns:1fr}.vis-grid{grid-template-columns:1fr 1fr}.section-header-row{flex-direction:column}.media-details-grid{grid-template-columns:1fr}.dl-btn{padding:10px 16px;font-size:13px;min-height:44px}.specs-table-wrap{overflow-x:auto}.specs-table{min-width:540px}.print-fonts-grid{grid-template-columns:1fr}}
+  @media(max-width:768px){.brand-hero{padding:72px 20px 60px}.logo-grid{grid-template-columns:1fr}.logo-grid-3{grid-template-columns:1fr}.usage-grid{grid-template-columns:1fr}.dodont-grid{grid-template-columns:1fr}.color-grid{grid-template-columns:1fr 1fr}.two-col{grid-template-columns:1fr}.vis-grid{grid-template-columns:1fr 1fr}.section-header-row{flex-direction:column}.media-details-grid{grid-template-columns:1fr}.dl-btn{padding:10px 16px;font-size:13px;min-height:44px}.specs-table-wrap{overflow-x:auto}.specs-table{min-width:540px}.print-fonts-grid{grid-template-columns:1fr}.impact-stats-grid{grid-template-columns:repeat(2,1fr)}}
   @media(max-width:480px){.color-grid{grid-template-columns:1fr}.vis-grid{grid-template-columns:1fr}.hero-btn{width:100%;justify-content:center}}
 
   /* ═══ REDUCED MOTION ═══ */

@@ -74,7 +74,6 @@ const eventJsonLd = {
 <BaseLayout
   title={`${ev.title} — Sunshine on a Ranney Day`}
   description={ev.description}
-  ogImage={ev.image ? cfRaw(ev.image, 'w=1200,h=630,fit=cover,q=85') : undefined}
   jsonLd={eventJsonLd}
   breadcrumbs={[
     { name: 'Events', url: '/events/' },

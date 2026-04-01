@@ -278,7 +278,7 @@
       .form-grid .span-2 { grid-column: 1; }
       .form-input, .form-textarea, .form-select { font-size: 16px; } /* prevents iOS zoom */
       .search-bar { max-width: 100%; }
-      .rte-body { min-height: 120px !important; }
+      .rte-wrap .ProseMirror { min-height: 120px !important; }
 
       /* Modals */
       .modal-overlay { padding: 0.5rem; padding-bottom: env(safe-area-inset-bottom, 0.5rem); }
@@ -1033,17 +1033,48 @@
       font-size: 0.85rem; font-weight: 600; color: var(--color-text); transition: background 0.1s;
     }
     .rte-btn:hover { background: rgba(0,0,0,0.08); }
-    .rte-btn.active { background: var(--color-primary); }
+    .rte-btn.active { background: var(--color-primary); color: #000; }
+    .rte-btn:disabled { opacity: 0.3; cursor: not-allowed; }
     .rte-sep { width: 1px; height: 20px; background: var(--color-border); margin: 4px 2px; }
-    .rte-body {
+    .rte-wrap .ProseMirror {
       min-height: 200px; padding: 0.75rem; font-size: 0.95rem; line-height: 1.6;
       outline: none; background: var(--color-bg-card);
     }
-    .rte-body p { margin-bottom: 0.5em; }
-    .rte-body h3 { margin-bottom: 0.3em; font-weight: 700; }
-    .rte-body ul, .rte-body ol { margin-left: 1.5em; margin-bottom: 0.5em; }
-    .rte-body blockquote { border-left: 3px solid var(--color-primary); padding-left: 0.75rem; color: var(--color-text-secondary); margin-bottom: 0.5em; }
-    .rte-body a { color: #1a0dab; text-decoration: underline; }
+    .rte-wrap .ProseMirror p { margin-bottom: 0.5em; }
+    .rte-wrap .ProseMirror h3 { margin-bottom: 0.3em; font-weight: 700; }
+    .rte-wrap .ProseMirror ul, .rte-wrap .ProseMirror ol { margin-left: 1.5em; margin-bottom: 0.5em; }
+    .rte-wrap .ProseMirror blockquote { border-left: 3px solid var(--color-primary); padding-left: 0.75rem; color: var(--color-text-secondary); margin-bottom: 0.5em; }
+    .rte-wrap .ProseMirror a { color: #1a0dab; text-decoration: underline; }
+    .rte-wrap .ProseMirror p.is-editor-empty:first-child::before {
+      content: attr(data-placeholder); float: left; color: rgba(0,0,0,0.3);
+      pointer-events: none; height: 0; font-style: italic;
+    }
+    .rte-counts {
+      display: flex; gap: 1rem; padding: 0.35rem 0.75rem; font-size: 0.75rem;
+      color: var(--color-text-secondary); background: var(--color-bg);
+      border-top: 1px solid var(--color-border);
+    }
+    .rte-counts .rte-para-count { color: var(--color-primary); font-weight: 600; }
+
+    /* ─── Story Photo Picker ──────────── */
+    .story-photo-picker {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+      gap: 0.5rem; margin-top: 0.5rem;
+    }
+    .story-photo-option {
+      position: relative; aspect-ratio: 1; border-radius: 8px; overflow: hidden;
+      cursor: pointer; border: 2px solid transparent; transition: all 0.15s;
+    }
+    .story-photo-option img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .story-photo-option:hover { border-color: rgba(0,0,0,0.2); }
+    .story-photo-option.selected { border-color: var(--color-primary); box-shadow: 0 0 0 2px var(--color-primary); }
+    .story-photo-option.dimmed { opacity: 0.35; cursor: not-allowed; }
+    .story-photo-badge {
+      position: absolute; top: 4px; right: 4px; width: 22px; height: 22px;
+      background: var(--color-primary); color: #000; font-weight: 700; font-size: 0.75rem;
+      border-radius: 50%; display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+    }
 
     /* ─── Sortable table headers ──────── */
     th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
@@ -1674,10 +1705,10 @@
     .img-picker-toolbar { display: flex; gap: 0.75rem; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; }
     .img-picker-toolbar input { flex: 1; min-width: 200px; }
     .img-picker-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0.75rem; overflow-y: auto; flex: 1; padding: 0.25rem; }
-    .img-picker-thumb { position: relative; aspect-ratio: 1; border-radius: 10px; overflow: hidden; cursor: pointer; border: 3px solid transparent; transition: all 0.15s ease; background: #F5F4F0; }
+    .img-picker-thumb { position: relative; aspect-ratio: 1; border-radius: 10px; overflow: hidden; cursor: pointer; border: 3px solid transparent; transition: all 0.15s ease; background: #F5F4F0; display: flex; align-items: center; justify-content: center; }
     .img-picker-thumb:hover { border-color: var(--color-primary); transform: translateY(-2px); box-shadow: 0 4px 16px rgba(0,0,0,0.12); }
     .img-picker-thumb.selected { border-color: var(--color-primary); box-shadow: 0 0 0 2px var(--color-primary); }
-    .img-picker-thumb img { width: 100%; height: 100%; object-fit: cover; }
+    .img-picker-thumb img { width: 100%; height: 100%; object-fit: contain; }
     .img-picker-id { position: absolute; bottom: 0; left: 0; right: 0; background: rgba(0,0,0,0.7); color: #fff; font-size: 0.7rem; padding: 4px 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .img-picker-pager { display: flex; justify-content: center; align-items: center; gap: 0.75rem; padding-top: 1rem; border-top: 1px solid rgba(45,46,51,0.08); margin-top: 0.75rem; }
     .img-picker-empty { text-align: center; padding: 3rem; color: #6B6C72; grid-column: 1 / -1; }
@@ -1701,6 +1732,25 @@
 <body>
   <div id="app"></div>
 
+  <script type="importmap">
+  {
+    "imports": {
+      "@tiptap/pm/state": "https://esm.sh/@tiptap/pm@2.11.5/state",
+      "@tiptap/pm/view": "https://esm.sh/@tiptap/pm@2.11.5/view",
+      "@tiptap/pm/model": "https://esm.sh/@tiptap/pm@2.11.5/model",
+      "@tiptap/pm/transform": "https://esm.sh/@tiptap/pm@2.11.5/transform",
+      "@tiptap/pm/commands": "https://esm.sh/@tiptap/pm@2.11.5/commands",
+      "@tiptap/pm/keymap": "https://esm.sh/@tiptap/pm@2.11.5/keymap",
+      "@tiptap/pm/history": "https://esm.sh/@tiptap/pm@2.11.5/history",
+      "@tiptap/pm/dropcursor": "https://esm.sh/@tiptap/pm@2.11.5/dropcursor",
+      "@tiptap/pm/gapcursor": "https://esm.sh/@tiptap/pm@2.11.5/gapcursor",
+      "@tiptap/pm/schema-list": "https://esm.sh/@tiptap/pm@2.11.5/schema-list",
+      "@tiptap/pm/inputrules": "https://esm.sh/@tiptap/pm@2.11.5/inputrules",
+      "@tiptap/pm/tables": "https://esm.sh/@tiptap/pm@2.11.5/tables"
+    }
+  }
+  </script>
+
   <script type="module">
     import { h, render, Component } from 'https://esm.sh/preact@10.25.4';
     import { useState, useEffect, useCallback, useRef, useMemo } from 'https://esm.sh/preact@10.25.4/hooks';
@@ -1708,6 +1758,12 @@
     import * as tus from 'https://esm.sh/tus-js-client@4.3.1/lib.esm/browser/index.js';
     import DOMPurify from 'https://esm.sh/dompurify@3.2.4';
     import Sortable from 'https://esm.sh/sortablejs@1.15.6';
+    import { Editor } from 'https://esm.sh/@tiptap/core@2.11.5?external=@tiptap/pm';
+    import StarterKit from 'https://esm.sh/@tiptap/starter-kit@2.11.5?external=@tiptap/pm';
+    import TiptapUnderline from 'https://esm.sh/@tiptap/extension-underline@2.11.5?external=@tiptap/pm';
+    import TiptapLink from 'https://esm.sh/@tiptap/extension-link@2.11.5?external=@tiptap/pm';
+    import Placeholder from 'https://esm.sh/@tiptap/extension-placeholder@2.11.5?external=@tiptap/pm';
+    import CharacterCount from 'https://esm.sh/@tiptap/extension-character-count@2.11.5?external=@tiptap/pm';
     const html = htm.bind(h);
 
     // ─── Constants ────────────────────────────
@@ -2313,77 +2369,150 @@
     }
 
     // ─── Rich Text Editor ─────────────────────
-    function RichTextEditor({ value, onChange, placeholder, minHeight = 200 }) {
-      const editorRef = useRef();
+    function RichTextEditor({ value, onChange, onCounts, placeholder, minHeight = 200 }) {
+      const containerRef = useRef(null);
+      const editorRef = useRef(null);
       const isUpdating = useRef(false);
+      const [activeStates, setActiveStates] = useState({});
+      const [counts, setCounts] = useState({ chars: 0, words: 0, paragraphs: 0 });
       const [showLinkInput, setShowLinkInput] = useState(false);
       const [linkUrl, setLinkUrl] = useState('');
       const linkInputRef = useRef();
+      const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+      const mod = isMac ? '⌘' : 'Ctrl+';
 
-      // Init content on mount
+      const updateActiveStates = (editor) => {
+        setActiveStates({
+          bold: editor.isActive('bold'),
+          italic: editor.isActive('italic'),
+          underline: editor.isActive('underline'),
+          heading: editor.isActive('heading', { level: 3 }),
+          blockquote: editor.isActive('blockquote'),
+          bulletList: editor.isActive('bulletList'),
+          orderedList: editor.isActive('orderedList'),
+          link: editor.isActive('link'),
+        });
+      };
+
+      const updateCounts = (editor) => {
+        const text = editor.state.doc.textContent;
+        const words = text.trim() ? text.trim().split(/\s+/).length : 0;
+        const chars = editor.storage.characterCount.characters();
+        let paragraphs = 0;
+        editor.state.doc.forEach(node => {
+          if (node.type.name === 'paragraph' && node.textContent.trim()) paragraphs++;
+        });
+        const c = { chars, words, paragraphs };
+        setCounts(c);
+        onCounts?.(c);
+      };
+
+      // Mount TipTap
       useEffect(() => {
-        if (editorRef.current && value && !editorRef.current.innerHTML) {
-          editorRef.current.innerHTML = DOMPurify.sanitize(value);
-        }
+        if (!containerRef.current || editorRef.current) return;
+        const editor = new Editor({
+          element: containerRef.current,
+          extensions: [
+            StarterKit.configure({
+              heading: { levels: [3] },
+              strike: false,
+              code: false,
+              codeBlock: false,
+              horizontalRule: false,
+            }),
+            TiptapUnderline,
+            TiptapLink.configure({
+              openOnClick: false,
+              HTMLAttributes: { target: '_blank', rel: 'noopener noreferrer' },
+            }),
+            Placeholder.configure({ placeholder: placeholder || '' }),
+            CharacterCount,
+          ],
+          content: value || '',
+          editorProps: {
+            transformPastedHTML: (html) => DOMPurify.sanitize(html, {
+              ALLOWED_TAGS: ['b', 'i', 'u', 'em', 'strong', 'a', 'p', 'br', 'ul', 'ol', 'li', 'h3', 'blockquote'],
+              ALLOWED_ATTR: ['href', 'target', 'rel'],
+            }),
+          },
+          onUpdate: ({ editor }) => {
+            isUpdating.current = true;
+            onChange(editor.getHTML());
+            updateCounts(editor);
+            requestAnimationFrame(() => { isUpdating.current = false; });
+          },
+          onSelectionUpdate: ({ editor }) => updateActiveStates(editor),
+          onTransaction: ({ editor }) => updateActiveStates(editor),
+        });
+        editorRef.current = editor;
+        updateCounts(editor);
+        updateActiveStates(editor);
+        return () => { editor.destroy(); editorRef.current = null; };
       }, []);
 
-      // Sync external value changes (e.g. loading from API)
+      // Sync external value (e.g. loading from API)
       useEffect(() => {
-        if (isUpdating.current) return;
-        if (editorRef.current && value !== undefined) {
-          const current = editorRef.current.innerHTML;
-          if (current === '' && value) editorRef.current.innerHTML = DOMPurify.sanitize(value);
+        if (isUpdating.current || !editorRef.current) return;
+        if (value && editorRef.current.isEmpty) {
+          editorRef.current.commands.setContent(value);
+          updateCounts(editorRef.current);
         }
       }, [value]);
 
-      const exec = (cmd, val = null) => {
-        document.execCommand(cmd, false, val);
-        editorRef.current?.focus();
-        handleInput();
-      };
-
-      const handleInput = () => {
-        isUpdating.current = true;
-        onChange(editorRef.current?.innerHTML || '');
-        requestAnimationFrame(() => { isUpdating.current = false; });
-      };
-
-      const handlePaste = (e) => {
-        e.preventDefault();
-        const raw = e.clipboardData.getData('text/html') || e.clipboardData.getData('text/plain');
-        const clean = DOMPurify.sanitize(raw, {
-          ALLOWED_TAGS: ['b', 'i', 'u', 'em', 'strong', 'a', 'p', 'br', 'ul', 'ol', 'li', 'h3', 'blockquote'],
-          ALLOWED_ATTR: ['href', 'target', 'rel'],
-        });
-        document.execCommand('insertHTML', false, clean);
-        handleInput();
-      };
+      const cmd = (fn) => () => { fn(editorRef.current?.chain().focus())?.run(); };
 
       const insertLink = () => {
+        const existing = editorRef.current?.getAttributes('link')?.href || '';
+        setLinkUrl(existing);
         setShowLinkInput(true);
-        setLinkUrl('');
         setTimeout(() => linkInputRef.current?.focus(), 50);
       };
       const applyLink = () => {
-        if (linkUrl) { editorRef.current?.focus(); exec('createLink', linkUrl); }
+        if (linkUrl) {
+          editorRef.current?.chain().focus().extendMarkRange('link').setLink({ href: linkUrl, target: '_blank' }).run();
+        } else {
+          editorRef.current?.chain().focus().extendMarkRange('link').unsetLink().run();
+        }
         setShowLinkInput(false);
       };
+      const removeLink = () => {
+        editorRef.current?.chain().focus().extendMarkRange('link').unsetLink().run();
+        setShowLinkInput(false);
+      };
+
+      const e = editorRef.current;
 
       return html`
         <div class="rte-wrap">
           <div class="rte-toolbar">
-            <button type="button" class="rte-btn" onClick=${() => exec('bold')} title="Bold"><b>B</b></button>
-            <button type="button" class="rte-btn" onClick=${() => exec('italic')} title="Italic"><i>I</i></button>
-            <button type="button" class="rte-btn" onClick=${() => exec('underline')} title="Underline"><u>U</u></button>
+            <button type="button" class="rte-btn ${activeStates.bold ? 'active' : ''}"
+              onClick=${cmd(c => c.toggleBold())} title="Bold (${mod}B)"><b>B</b></button>
+            <button type="button" class="rte-btn ${activeStates.italic ? 'active' : ''}"
+              onClick=${cmd(c => c.toggleItalic())} title="Italic (${mod}I)"><i>I</i></button>
+            <button type="button" class="rte-btn ${activeStates.underline ? 'active' : ''}"
+              onClick=${cmd(c => c.toggleUnderline())} title="Underline (${mod}U)"><u>U</u></button>
             <div class="rte-sep" />
-            <button type="button" class="rte-btn" onClick=${() => exec('formatBlock', '<h3>')} title="Heading">H</button>
-            <button type="button" class="rte-btn" onClick=${() => exec('formatBlock', '<blockquote>')} title="Quote">"</button>
+            <button type="button" class="rte-btn ${activeStates.heading ? 'active' : ''}"
+              onClick=${cmd(c => c.toggleHeading({ level: 3 }))} title="Heading (${mod}Alt+3)">H</button>
+            <button type="button" class="rte-btn ${activeStates.blockquote ? 'active' : ''}"
+              onClick=${cmd(c => c.toggleBlockquote())} title="Quote (${mod}Shift+B)">"</button>
             <div class="rte-sep" />
-            <button type="button" class="rte-btn" onClick=${() => exec('insertUnorderedList')} title="Bullet list">•</button>
-            <button type="button" class="rte-btn" onClick=${() => exec('insertOrderedList')} title="Numbered list">1.</button>
+            <button type="button" class="rte-btn ${activeStates.bulletList ? 'active' : ''}"
+              onClick=${cmd(c => c.toggleBulletList())} title="Bullet list (${mod}Shift+8)">•</button>
+            <button type="button" class="rte-btn ${activeStates.orderedList ? 'active' : ''}"
+              onClick=${cmd(c => c.toggleOrderedList())} title="Numbered list (${mod}Shift+7)">1.</button>
             <div class="rte-sep" />
-            <button type="button" class="rte-btn" onClick=${insertLink} title="Insert link">🔗</button>
-            <button type="button" class="rte-btn" onClick=${() => exec('removeFormat')} title="Clear formatting">✕</button>
+            <button type="button" class="rte-btn ${activeStates.link ? 'active' : ''}"
+              onClick=${insertLink} title="Insert link (${mod}K)">🔗</button>
+            <button type="button" class="rte-btn"
+              onClick=${cmd(c => c.unsetAllMarks().clearNodes())} title="Clear formatting">✕</button>
+            <div class="rte-sep" />
+            <button type="button" class="rte-btn"
+              onClick=${cmd(c => c.undo())} disabled=${!e?.can().undo()}
+              title="Undo (${mod}Z)">↩</button>
+            <button type="button" class="rte-btn"
+              onClick=${cmd(c => c.redo())} disabled=${!e?.can().redo()}
+              title="Redo (${mod}Shift+Z)">↪</button>
             ${showLinkInput ? html`
               <div style="display: flex; align-items: center; gap: 0.35rem; margin-left: 0.25rem;">
                 <input ref=${linkInputRef} type="url" value=${linkUrl} onInput=${e => setLinkUrl(e.target.value)}
@@ -2391,17 +2520,20 @@
                   placeholder="https://..."
                   style="width: 180px; padding: 2px 6px; font-size: 0.8rem; border: 1px solid #E5E4E0; border-radius: 4px; height: 26px;" />
                 <button type="button" class="rte-btn" style="width: 26px; height: 26px; font-size: 0.75rem;" onClick=${applyLink} title="Apply">✓</button>
-                <button type="button" class="rte-btn" style="width: 26px; height: 26px; font-size: 0.75rem;" onClick=${() => setShowLinkInput(false)} title="Cancel">✕</button>
+                ${activeStates.link ? html`
+                  <button type="button" class="rte-btn" style="width: 26px; height: 26px; font-size: 0.75rem; color: var(--color-danger);" onClick=${removeLink} title="Remove link">✕</button>
+                ` : html`
+                  <button type="button" class="rte-btn" style="width: 26px; height: 26px; font-size: 0.75rem;" onClick=${() => setShowLinkInput(false)} title="Cancel">✕</button>
+                `}
               </div>
             ` : null}
           </div>
-          <div class="rte-body" ref=${editorRef}
-            contenteditable="true"
-            style="min-height: ${minHeight}px;"
-            data-placeholder=${placeholder || ''}
-            onInput=${handleInput}
-            onPaste=${handlePaste}
-          />
+          <div ref=${containerRef} style="min-height: ${minHeight}px;" />
+          <div class="rte-counts">
+            <span class="rte-para-count">${counts.paragraphs} paragraph${counts.paragraphs !== 1 ? 's' : ''}</span>
+            <span>${counts.words} word${counts.words !== 1 ? 's' : ''}</span>
+            <span>${counts.chars} character${counts.chars !== 1 ? 's' : ''}</span>
+          </div>
         </div>
       `;
     }
@@ -3478,7 +3610,6 @@
                           onKeyDown=${e => { if (e.key === 'Enter') saveInlineEdit(); if (e.key === 'Escape') setInlineEdit(null); }}
                           ref=${el => el && el.focus()} />`
                       : html`<strong onDblClick=${e => startInlineEdit(e, k.slug, 'name', k.name)} style="cursor: text;" title="Double-click to edit">${k.name}</strong>`}
-                    ${k.featured ? html` <span class="badge" style="background: #FFDA24; color: #373A36; font-size: 0.65rem; padding: 1px 6px; margin-left: 4px;">★</span>` : ''}
                   </td>
                   <td><${CompletenessRing} pct=${pct} missing=${missing} /></td>
                   <td>${Array.isArray(k.age) ? k.age.join(', ') : (k.age || '—')}</td>
@@ -3526,14 +3657,14 @@
         shortDescription: '', metaDescription: '', fundraisingUrl: '',
         roomCount: 1, childCount: 1,
         bedroomCount: 0, bathroomCount: 0, therapyRoomCount: 0,
-        featured: false, caseStudy: null,
+        storyPhotos: [],
+        plans: [],
       });
+      const [bioCounts, setBioCounts] = useState({ chars: 0, words: 0, paragraphs: 0 });
       const [videoUploading, setVideoUploading] = useState(false);
       const [videoProgress, setVideoProgress] = useState(0);
       const [generatingSeo, setGeneratingSeo] = useState(false);
       const [generatingAlt, setGeneratingAlt] = useState(false);
-      const [showCsImagePicker, setShowCsImagePicker] = useState(false);
-      const [csImagePickerTarget, setCsImagePickerTarget] = useState(null);
       const [showPreview, setShowPreview] = useState(false);
       const [previewDevice, setPreviewDevice] = useState('desktop');
       const [lastSaved, setLastSaved] = useState(null);
@@ -3557,6 +3688,23 @@
         replaceEntry: (item, res) => ({ url: res.imageId, name: item.name }),
       });
       const { dragHandlers: partnerDragHandlers } = useDragReorder({ setData, setDirty, arrayKey: 'partnerLogos' });
+
+      // ─── Plan image upload hook ──────
+      const { uploading: planUploading, upload: uploadPlans } = useImageUpload({
+        setData, setDirty, addToast,
+        buildCfId: (file) => `kids/${data.slug || 'new'}/plan-${Date.now()}-${file.name.replace(/[^a-z0-9.]/gi, '-')}`,
+        arrayKey: 'plans',
+        makeEntry: (localUrl, file, tempId) => ({ url: localUrl, label: file.name.replace(/\.[^.]+$/, ''), type: 'as-built', _tempId: tempId }),
+        replaceEntry: (item, res) => ({ url: res.imageId, label: item.label, type: item.type }),
+      });
+
+      const removePlan = (index) => {
+        const planUrl = (data.plans || [])[index]?.url;
+        setDirty(true);
+        setData(d => ({ ...d, plans: (d.plans || []).filter((_, i) => i !== index) }));
+        const imageId = extractCfImageId(planUrl);
+        if (imageId) { api.deleteImage(imageId).catch(() => {}); }
+      };
 
       // Generate SEO fields with AI
       const handleGenerateSeo = async () => {
@@ -3784,6 +3932,8 @@
           ...d,
           photos: d.photos.filter((_, i) => i !== index),
           photoCount: d.photoCount - 1,
+          // Also remove from storyPhotos if present
+          storyPhotos: (d.storyPhotos || []).filter(sp => sp.url !== photoUrl),
         }));
         // Delete from Cloudflare Images in the background
         const imageId = extractCfImageId(photoUrl);
@@ -3793,6 +3943,20 @@
       const setHero = (index) => {
         setDirty(true);
         setData(d => ({ ...d, heroImage: d.photos[index]?.url || '' }));
+      };
+
+      const toggleStoryPhoto = (photo) => {
+        setDirty(true);
+        setData(d => {
+          const current = d.storyPhotos || [];
+          const idx = current.findIndex(sp => sp.url === photo.url);
+          if (idx !== -1) {
+            return { ...d, storyPhotos: current.filter((_, i) => i !== idx) };
+          } else if (current.length < 4) {
+            return { ...d, storyPhotos: [...current, { url: photo.url, alt: photo.alt || '' }] };
+          }
+          return d;
+        });
       };
 
       const handleVideoUpload = async (files) => {
@@ -3843,6 +4007,8 @@
             fundraisingUrl: data.fundraisingUrl || null,
             photos: data.photos.map(({ _tempId, ...p }) => p),
             partnerLogos: (data.partnerLogos || []).map(({ _tempId, ...p }) => p),
+            storyPhotos: (data.storyPhotos || []).map(({ _tempId, ...p }) => p),
+            plans: (data.plans || []).map(({ _tempId, ...p }) => p),
             photoCount: data.photos.length,
           };
           const path = `src/content/kids/${data.slug}.json`;
@@ -3871,26 +4037,6 @@
       if (loading) return html`<${EditorSkeleton} />`;
 
       return html`
-        ${showCsImagePicker ? html`<${ImagePicker}
-          onSelect=${(id) => {
-            const url = CF + '/' + id + '/public';
-            if (csImagePickerTarget) {
-              const { section, index, field } = csImagePickerTarget;
-              const cs = { ...(data.caseStudy || {}) };
-              if (section === 'gallery') {
-                cs.gallery = [...(cs.gallery || [])];
-                cs.gallery[index] = { ...cs.gallery[index], [field]: url };
-              } else {
-                cs[section] = { ...(cs[section] || {}) };
-                cs[section].photos = [...(cs[section].photos || [])];
-                cs[section].photos[index] = { ...cs[section].photos[index], [field]: url };
-              }
-              updateField('caseStudy', cs);
-            }
-            setShowCsImagePicker(false);
-          }}
-          onClose=${() => setShowCsImagePicker(false)}
-        />` : null}
         ${showDeleteModal ? html`<${ConfirmModal}
           title="Delete ${data.name}?"
           message="This will permanently remove this kid's profile and all associated data from the site. This cannot be undone."
@@ -4069,6 +4215,7 @@
             <label class="form-label">Bio</label>
             <${RichTextEditor} value=${data.bio || ''}
               onChange=${v => updateField('bio', v)}
+              onCounts=${setBioCounts}
               placeholder="Tell this child's story..."
               minHeight=${200} />
           </div>
@@ -4161,170 +4308,61 @@
         </div>
 
         <div class="card">
-          <div class="flex items-center justify-between mb-1">
-            <h3>Featured Project</h3>
-            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.85rem;">
-              <input type="checkbox" checked=${data.featured || false}
-                onChange=${e => updateField('featured', e.target.checked)}
-                style="accent-color: #FFDA24; width: 18px; height: 18px;" />
-              Featured Project
-            </label>
-          </div>
-          <p class="text-sm text-muted mb-1">Mark as featured to create a standalone magazine-style project page at /rooms/${data.slug || '...'}/ with design process, construction, and reveal sections.</p>
-
-          ${data.featured ? html`
-            <div style="margin-top: 1rem; border-top: 1px solid #E5E4E0; padding-top: 1rem;">
-              <div class="form-row">
-                <div class="form-group">
-                  <label class="form-label">Project Title</label>
-                  <input class="form-input" value=${data.caseStudy?.projectTitle || ''}
-                    onInput=${e => updateField('caseStudy', { ...(data.caseStudy || {}), projectTitle: e.target.value })}
-                    placeholder="e.g., Amari's Sports Haven" />
-                </div>
-                <div class="form-group">
-                  <label class="form-label">Subtitle</label>
-                  <input class="form-input" value=${data.caseStudy?.subtitle || ''}
-                    onInput=${e => updateField('caseStudy', { ...(data.caseStudy || {}), subtitle: e.target.value })}
-                    placeholder="e.g., Accessible Bathroom & Dream Bedroom" />
-                </div>
-              </div>
-              <div class="form-group">
-                <label class="form-label">Overview</label>
-                <textarea class="form-textarea" style="min-height: 100px;" value=${data.caseStudy?.overview || ''}
-                  onInput=${e => updateField('caseStudy', { ...(data.caseStudy || {}), overview: e.target.value })}
-                  placeholder="Brief overview for donors — what was the project and why did it matter?" />
-              </div>
-
-              <!-- Stats -->
-              <div style="margin-top: 1.25rem;">
-                <div class="flex items-center justify-between mb-1">
-                  <h4 style="font-size: 0.9rem;">Stats (${(data.caseStudy?.stats || []).length})</h4>
-                  <button class="btn btn-ghost btn-sm" onClick=${() => {
-                    const cs = data.caseStudy || {};
-                    updateField('caseStudy', { ...cs, stats: [...(cs.stats || []), { label: '', value: '' }] });
-                  }}>+ Add Stat</button>
-                </div>
-                <p class="text-sm text-muted" style="margin-bottom: 0.5rem;">Key facts shown in a sidebar (e.g., Timeline: 3 Days, Room Type: Bedroom, Year: 2025)</p>
-                ${(data.caseStudy?.stats || []).map((stat, i) => html`
-                  <div key=${i} class="flex gap-1 items-center" style="margin-bottom: 0.35rem;">
-                    <input class="form-input" style="flex: 1; font-size: 0.85rem; padding: 0.35rem 0.5rem;" value=${stat.label}
-                      onInput=${e => { const cs = { ...(data.caseStudy || {}) }; cs.stats = [...cs.stats]; cs.stats[i] = { ...cs.stats[i], label: e.target.value }; updateField('caseStudy', cs); }}
-                      placeholder="Label" />
-                    <input class="form-input" style="flex: 1; font-size: 0.85rem; padding: 0.35rem 0.5rem;" value=${stat.value}
-                      onInput=${e => { const cs = { ...(data.caseStudy || {}) }; cs.stats = [...cs.stats]; cs.stats[i] = { ...cs.stats[i], value: e.target.value }; updateField('caseStudy', cs); }}
-                      placeholder="Value" />
-                    <button class="btn btn-ghost btn-sm" style="color: #e53e3e; padding: 0.2rem;" onClick=${() => {
-                      const cs = { ...(data.caseStudy || {}) }; cs.stats = cs.stats.filter((_, j) => j !== i); updateField('caseStudy', cs);
-                    }}>✕</button>
-                  </div>
-                `)}
-              </div>
-
-              <!-- Section helper -->
-              ${['challenge', 'design', 'build', 'reveal'].map(section => {
-                const labels = { challenge: '🔍 The Challenge (Before Photos)', design: '🎨 The Design (Mood Boards, Renderings)', build: '🔨 The Build (Construction Progress)', reveal: '🎉 The Reveal (Final Photos & Reaction)' };
-                const sec = data.caseStudy?.[section] || {};
+          <h3 style="margin-bottom: 0.25rem;">Story Photos</h3>
+          <p class="text-sm text-muted mb-1">
+            Select up to 4 photos to pair with bio paragraphs on the profile page. Photo 1 appears beside paragraph 2, photo 2 beside paragraph 3, etc.
+            ${bioCounts.paragraphs > 1 ? html` Your bio has <strong>${bioCounts.paragraphs} paragraphs</strong> — you can pair up to <strong>${Math.min(bioCounts.paragraphs - 1, 4)}</strong> story photo${Math.min(bioCounts.paragraphs - 1, 4) !== 1 ? 's' : ''}.` : bioCounts.paragraphs === 1 ? html` Your bio has <strong>1 paragraph</strong> — add paragraph breaks to pair photos with text.` : ''}
+          </p>
+          ${(data.photos || []).length > 0 ? html`
+            <div class="story-photo-picker">
+              ${data.photos.map((photo, i) => {
+                const spIndex = (data.storyPhotos || []).findIndex(sp => sp.url === photo.url);
+                const isSelected = spIndex !== -1;
+                const isFull = (data.storyPhotos || []).length >= 4;
                 return html`
-                  <div style="margin-top: 1.5rem; border-top: 1px solid #E5E4E0; padding-top: 1rem;">
-                    <h4 style="font-size: 0.9rem; margin-bottom: 0.5rem;">${labels[section]}</h4>
-                    <div class="form-group">
-                      <label class="form-label">Narrative</label>
-                      <textarea class="form-textarea" style="min-height: 80px; font-size: 0.85rem;" value=${sec.text || ''}
-                        onInput=${e => {
-                          const cs = { ...(data.caseStudy || {}) };
-                          cs[section] = { ...(cs[section] || {}), text: e.target.value };
-                          updateField('caseStudy', cs);
-                        }}
-                        placeholder=${section === 'challenge' ? 'Describe the family\'s situation and what they needed...'
-                          : section === 'design' ? 'Describe the design concept, mood boards, inspiration...'
-                          : section === 'build' ? 'Describe demo day, construction process, techniques...'
-                          : 'Describe the family\'s reaction to the finished room...'} />
-                    </div>
-                    ${section === 'reveal' ? html`
-                      <div class="form-group">
-                        <label class="form-label">Family Quote</label>
-                        <input class="form-input" style="font-size: 0.85rem;" value=${sec.quote || ''}
-                          onInput=${e => {
-                            const cs = { ...(data.caseStudy || {}) };
-                            cs.reveal = { ...(cs.reveal || {}), quote: e.target.value };
-                            updateField('caseStudy', cs);
-                          }}
-                          placeholder="What the family said about the room..." />
-                      </div>
-                    ` : null}
-                    <div class="flex items-center justify-between" style="margin-bottom: 0.35rem;">
-                      <label class="form-label" style="margin: 0;">Photos (${(sec.photos || []).length})</label>
-                      <button class="btn btn-ghost btn-sm" onClick=${() => {
-                        const cs = { ...(data.caseStudy || {}) };
-                        cs[section] = { ...(cs[section] || {}) };
-                        cs[section].photos = [...(cs[section].photos || []), { url: '', alt: '', caption: '' }];
-                        updateField('caseStudy', cs);
-                      }}>+ Photo</button>
-                    </div>
-                    ${(sec.photos || []).map((photo, i) => html`
-                      <div key=${i} style="background: #FEFCF5; border: 1px solid #E5E4E0; border-radius: 6px; padding: 0.5rem; margin-bottom: 0.5rem;">
-                        ${photo.url ? html`<img src=${photo.url} alt="" style="width: 100%; height: 120px; object-fit: cover; border-radius: 4px; margin-bottom: 0.35rem;" loading="lazy" />` : null}
-                        <div class="flex gap-1 items-center" style="margin-bottom: 0.25rem; flex-wrap: wrap;">
-                          <input class="form-input" style="flex: 2; min-width: 120px; font-size: 0.8rem; padding: 0.3rem 0.4rem;" value=${photo.url}
-                            onInput=${e => {
-                              const cs = { ...(data.caseStudy || {}) }; cs[section] = { ...(cs[section] || {}) };
-                              cs[section].photos = [...cs[section].photos]; cs[section].photos[i] = { ...cs[section].photos[i], url: e.target.value };
-                              updateField('caseStudy', cs);
-                            }} placeholder="CF Images URL" />
-                          <button class="btn btn-ghost btn-sm" style="font-size: 0.75rem; padding: 0.2rem 0.5rem;" onClick=${() => {
-                            setCsImagePickerTarget({ section, index: i, field: 'url' });
-                            setShowCsImagePicker(true);
-                          }}>Browse</button>
-                          <input class="form-input" style="flex: 1; min-width: 80px; font-size: 0.8rem; padding: 0.3rem 0.4rem;" value=${photo.caption}
-                            onInput=${e => {
-                              const cs = { ...(data.caseStudy || {}) }; cs[section] = { ...(cs[section] || {}) };
-                              cs[section].photos = [...cs[section].photos]; cs[section].photos[i] = { ...cs[section].photos[i], caption: e.target.value };
-                              updateField('caseStudy', cs);
-                            }} placeholder="Caption" />
-                          <button class="btn btn-ghost btn-sm" style="color: #e53e3e; padding: 0.2rem;" onClick=${() => {
-                            const cs = { ...(data.caseStudy || {}) }; cs[section] = { ...(cs[section] || {}) };
-                            cs[section].photos = cs[section].photos.filter((_, j) => j !== i); updateField('caseStudy', cs);
-                          }}>✕</button>
-                        </div>
-                      </div>
-                    `)}
+                  <div key=${photo.url || i}
+                    class="story-photo-option ${isSelected ? 'selected' : ''} ${!isSelected && isFull ? 'dimmed' : ''}"
+                    onClick=${() => { if (!isSelected && isFull) return; toggleStoryPhoto(photo); }}>
+                    <img src=${photo.url} alt=${photo.alt || ''} loading="lazy" />
+                    ${isSelected ? html`<span class="story-photo-badge">${spIndex + 1}</span>` : null}
                   </div>
                 `;
               })}
+            </div>
+            ${(data.storyPhotos || []).length > 0 ? html`
+              <p class="text-sm text-muted" style="margin-top: 0.5rem;">
+                ${(data.storyPhotos || []).length} of 4 selected. Click a selected photo to remove it.
+              </p>
+            ` : null}
+          ` : html`<p class="text-sm text-muted">Upload photos first, then select story photos here.</p>`}
+        </div>
 
-              <!-- Full gallery -->
-              <div style="margin-top: 1.5rem; border-top: 1px solid #E5E4E0; padding-top: 1rem;">
-                <div class="flex items-center justify-between mb-1">
-                  <h4 style="font-size: 0.9rem;">📸 Full Gallery (${(data.caseStudy?.gallery || []).length})</h4>
-                  <button class="btn btn-ghost btn-sm" onClick=${() => {
-                    const cs = data.caseStudy || {};
-                    updateField('caseStudy', { ...cs, gallery: [...(cs.gallery || []), { url: '', alt: '', caption: '' }] });
-                  }}>+ Photo</button>
-                </div>
-                <p class="text-sm text-muted" style="margin-bottom: 0.5rem;">Additional photos shown in a masonry grid at the bottom of the page.</p>
-                ${(data.caseStudy?.gallery || []).map((photo, i) => html`
-                  <div key=${i} class="flex gap-1 items-center" style="margin-bottom: 0.35rem; flex-wrap: wrap;">
-                    ${photo.url ? html`<img src=${photo.url} alt="" style="width: 48px; height: 36px; object-fit: cover; border-radius: 4px; flex-shrink: 0;" loading="lazy" />` : null}
-                    <input class="form-input" style="flex: 2; min-width: 120px; font-size: 0.8rem; padding: 0.3rem 0.4rem;" value=${photo.url}
-                      onInput=${e => {
-                        const cs = { ...(data.caseStudy || {}) }; cs.gallery = [...cs.gallery]; cs.gallery[i] = { ...cs.gallery[i], url: e.target.value };
-                        updateField('caseStudy', cs);
-                      }} placeholder="CF Images URL" />
-                    <button class="btn btn-ghost btn-sm" style="font-size: 0.75rem; padding: 0.2rem 0.5rem;" onClick=${() => {
-                      setCsImagePickerTarget({ section: 'gallery', index: i, field: 'url' });
-                      setShowCsImagePicker(true);
-                    }}>Browse</button>
-                    <input class="form-input" style="flex: 1; min-width: 80px; font-size: 0.8rem; padding: 0.3rem 0.4rem;" value=${photo.caption}
-                      onInput=${e => {
-                        const cs = { ...(data.caseStudy || {}) }; cs.gallery = [...cs.gallery]; cs.gallery[i] = { ...cs.gallery[i], caption: e.target.value };
-                        updateField('caseStudy', cs);
-                      }} placeholder="Caption" />
-                    <button class="btn btn-ghost btn-sm" style="color: #e53e3e; padding: 0.2rem;" onClick=${() => {
-                      const cs = { ...(data.caseStudy || {}) }; cs.gallery = cs.gallery.filter((_, j) => j !== i); updateField('caseStudy', cs);
-                    }}>✕</button>
+        <div class="card">
+          <h3 style="margin-bottom: 0.25rem;">Plans</h3>
+          <p class="text-sm text-muted mb-1">Upload as-built and proposed plan images (floor plans, renderings, etc.).</p>
+          <${DropZone} onFiles=${uploadPlans} label="JPG, PNG, PDF — upload plan images" />
+          ${(data.plans || []).length > 0 ? html`
+            <div class="photo-grid" style="margin-top: 0.75rem;">
+              ${(data.plans || []).map((plan, i) => html`
+                <div key=${plan.url || i} class="photo-grid-item">
+                  <div class="photo-item" style="background: #fff;">
+                    <img src=${plan.url} alt=${plan.label || ''} loading="lazy" style="object-fit: contain; padding: 0.25rem;" />
+                    ${planUploading[plan._tempId] ? html`<div class="photo-uploading"><span class="spinner" /></div>` : null}
+                    <div class="photo-actions">
+                      <button class="photo-btn" onClick=${(e) => { e.stopPropagation(); removePlan(i); }} title="Remove" aria-label="Remove plan">${icons.x}</button>
+                    </div>
                   </div>
-                `)}
-              </div>
+                  <input class="form-input" style="font-size: 0.75rem; padding: 0.3rem 0.4rem; margin-top: 0.25rem; border-radius: 6px;"
+                    value=${plan.label || ''} placeholder="Label (e.g. Master Bath)..."
+                    onInput=${e => { setDirty(true); setData(d => ({ ...d, plans: (d.plans || []).map((p, idx) => idx === i ? { ...p, label: e.target.value } : p) })); }} />
+                  <select class="form-select" style="font-size: 0.75rem; padding: 0.3rem 0.4rem; margin-top: 0.25rem; border-radius: 6px;"
+                    value=${plan.type || 'as-built'}
+                    onChange=${e => { setDirty(true); setData(d => ({ ...d, plans: (d.plans || []).map((p, idx) => idx === i ? { ...p, type: e.target.value } : p) })); }}>
+                    <option value="as-built">As-Built</option>
+                    <option value="proposed">Proposed</option>
+                  </select>
+                </div>
+              `)}
             </div>
           ` : null}
         </div>
@@ -8146,7 +8184,7 @@
               : pageImages.map(img => html`
                 <div key=${img.id} class="img-picker-thumb" title=${img.id}
                   onClick=${() => { onSelect(img.id); onClose(); }}>
-                  <img src="${CF}/${img.id}/w=400,h=400,fit=cover" alt="" loading="lazy" />
+                  <img src="${CF}/${img.id}/w=400,fit=scale-down" alt="" loading="lazy" />
                   <div class="img-picker-id">${img.id.startsWith('kids/') ? img.id.replace('kids/', '') : img.id}</div>
                 </div>
               `)
@@ -8161,6 +8199,325 @@
           ` : null}
         </div>
       </div>`;
+    }
+
+    // ═══════════════════════════════════════════
+    // GOLF TOURNAMENT EDITOR
+    // ═══════════════════════════════════════════
+    function GolfTournamentEditor({ addToast }) {
+      const [loading, setLoading] = useState(true);
+      const [saving, setSaving] = useState(false);
+      const [sha, setSha] = useState(null);
+      const [data, setData] = useState({
+        testimonial: { quote: '', name: '', title: '' },
+        faqs: [],
+        sponsors: [],
+        galleryPhotos: [],
+        tiers: { main: [], addons: [] },
+      });
+      const [activeTab, setActiveTab] = useState('tiers');
+      const [showImagePicker, setShowImagePicker] = useState(false);
+      const [imagePickerTarget, setImagePickerTarget] = useState(null); // 'sponsor:0' or 'gallery:0'
+
+      useEffect(() => {
+        (async () => {
+          try {
+            const res = await api.readContent('src/content/site/golf.json');
+            if (res.success) {
+              setData(JSON.parse(res.content));
+              setSha(res.sha);
+            }
+          } catch {}
+          setLoading(false);
+        })();
+      }, []);
+
+      const handleSave = async () => {
+        setSaving(true);
+        try {
+          const content = JSON.stringify(data, null, 2);
+          const res = await api.saveContent(
+            'src/content/site/golf.json', content,
+            'Update golf tournament settings', sha
+          );
+          if (res.success) {
+            setSha(res.sha);
+            addToast('Golf settings saved!', 'success');
+            logActivity('updated', 'Golf Tournament Settings', '');
+          } else {
+            addToast('Failed: ' + (res.error || 'Unknown error'), 'error');
+          }
+        } catch (err) {
+          addToast('Error: ' + err.message, 'error');
+        }
+        setSaving(false);
+      };
+
+      const updateTier = (type, idx, field, value) => {
+        setData(d => ({
+          ...d,
+          tiers: {
+            ...d.tiers,
+            [type]: d.tiers[type].map((t, i) => i === idx ? { ...t, [field]: value } : t),
+          },
+        }));
+      };
+
+      const addFaq = () => {
+        setData(d => ({ ...d, faqs: [...d.faqs, { question: '', answer: '' }] }));
+      };
+
+      const updateFaq = (idx, field, value) => {
+        setData(d => ({
+          ...d,
+          faqs: d.faqs.map((f, i) => i === idx ? { ...f, [field]: value } : f),
+        }));
+      };
+
+      const removeFaq = (idx) => {
+        setData(d => ({ ...d, faqs: d.faqs.filter((_, i) => i !== idx) }));
+      };
+
+      if (loading) return html`<div class="loading-state"><span class="spinner" /> Loading golf settings...</div>`;
+
+      const handleImageSelect = (id) => {
+        if (!imagePickerTarget) return;
+        const [type, idxStr] = imagePickerTarget.split(':');
+        const idx = parseInt(idxStr);
+        if (type === 'sponsor') {
+          setData(d => ({ ...d, sponsors: d.sponsors.map((sp, j) => j === idx ? { ...sp, logo: id } : sp) }));
+        } else if (type === 'gallery') {
+          setData(d => ({ ...d, galleryPhotos: d.galleryPhotos.map((ph, j) => j === idx ? { ...ph, id } : ph) }));
+        }
+        setShowImagePicker(false);
+        setImagePickerTarget(null);
+      };
+
+      return html`
+        ${showImagePicker ? html`<${ImagePicker}
+          onSelect=${handleImageSelect}
+          onClose=${() => { setShowImagePicker(false); setImagePickerTarget(null); }}
+        />` : null}
+        <div class="editor-page">
+          <div class="editor-header">
+            <h1 class="editor-title">Golf Tournament Settings</h1>
+            <p class="editor-subtitle">Manage sponsorship tiers, testimonials, FAQs, sponsors, and gallery photos for the golf tournament page.</p>
+          </div>
+
+          <div class="hub-tabs" style="margin-bottom: 1.5rem;">
+            <button class="hub-tab ${activeTab === 'tiers' ? 'active' : ''}" onClick=${() => setActiveTab('tiers')}>Tiers & Status</button>
+            <button class="hub-tab ${activeTab === 'testimonial' ? 'active' : ''}" onClick=${() => setActiveTab('testimonial')}>Testimonial</button>
+            <button class="hub-tab ${activeTab === 'faqs' ? 'active' : ''}" onClick=${() => setActiveTab('faqs')}>FAQs</button>
+            <button class="hub-tab ${activeTab === 'sponsors' ? 'active' : ''}" onClick=${() => setActiveTab('sponsors')}>Sponsors</button>
+            <button class="hub-tab ${activeTab === 'gallery' ? 'active' : ''}" onClick=${() => setActiveTab('gallery')}>Gallery</button>
+          </div>
+
+          ${activeTab === 'tiers' && html`
+            <div class="card">
+              <h2 class="card-title">Main Sponsorship Tiers</h2>
+              <p class="card-subtitle" style="margin-bottom: 1rem;">Update availability status for each tier. Changes appear on the golf page after saving.</p>
+              <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                ${(data.tiers?.main || []).map((tier, i) => html`
+                  <div style="display: flex; align-items: center; gap: 1rem; padding: 0.75rem; background: var(--bg-secondary); border-radius: 8px;">
+                    <div style="flex: 1; min-width: 0;">
+                      <strong style="font-size: 0.88rem;">${tier.name}</strong>
+                      <span style="color: var(--text-secondary); margin-left: 0.5rem; font-size: 0.82rem;">${tier.price}</span>
+                    </div>
+                    <select value=${tier.status || 'available'} onChange=${(e) => updateTier('main', i, 'status', e.target.value)}
+                      style="padding: 0.35rem 0.6rem; border-radius: 6px; border: 1px solid var(--border); font-size: 0.82rem; background: var(--bg-primary);">
+                      <option value="available">Available</option>
+                      <option value="few-left">Few Left</option>
+                      <option value="sold-out">Sold Out</option>
+                    </select>
+                  </div>
+                `)}
+              </div>
+            </div>
+            <div class="card" style="margin-top: 1.5rem;">
+              <h2 class="card-title">Add-On Sponsorships</h2>
+              <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                ${(data.tiers?.addons || []).map((tier, i) => html`
+                  <div style="display: flex; align-items: center; gap: 1rem; padding: 0.75rem; background: var(--bg-secondary); border-radius: 8px;">
+                    <div style="flex: 1; min-width: 0;">
+                      <strong style="font-size: 0.88rem;">${tier.name}</strong>
+                      <span style="color: var(--text-secondary); margin-left: 0.5rem; font-size: 0.82rem;">${tier.price}</span>
+                    </div>
+                    <select value=${tier.status || 'available'} onChange=${(e) => updateTier('addons', i, 'status', e.target.value)}
+                      style="padding: 0.35rem 0.6rem; border-radius: 6px; border: 1px solid var(--border); font-size: 0.82rem; background: var(--bg-primary);">
+                      <option value="available">Available</option>
+                      <option value="few-left">Few Left</option>
+                      <option value="sold-out">Sold Out</option>
+                    </select>
+                  </div>
+                `)}
+              </div>
+            </div>
+          `}
+
+          ${activeTab === 'testimonial' && html`
+            <div class="card">
+              <h2 class="card-title">Testimonial</h2>
+              <p class="card-subtitle" style="margin-bottom: 1rem;">A quote displayed above the ticket section. Leave blank to hide.</p>
+              <div class="field-group">
+                <label class="field-label">Quote</label>
+                <textarea rows="3" class="input" placeholder="The best charity golf event in Atlanta..."
+                  value=${data.testimonial?.quote || ''}
+                  onInput=${(e) => setData(d => ({ ...d, testimonial: { ...d.testimonial, quote: e.target.value } }))} />
+              </div>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1rem;">
+                <div class="field-group">
+                  <label class="field-label">Name / Attribution</label>
+                  <input class="input" placeholder="John Smith"
+                    value=${data.testimonial?.name || ''}
+                    onInput=${(e) => setData(d => ({ ...d, testimonial: { ...d.testimonial, name: e.target.value } }))} />
+                </div>
+                <div class="field-group">
+                  <label class="field-label">Title (optional)</label>
+                  <input class="input" placeholder="2025 Gold Sponsor"
+                    value=${data.testimonial?.title || ''}
+                    onInput=${(e) => setData(d => ({ ...d, testimonial: { ...d.testimonial, title: e.target.value } }))} />
+                </div>
+              </div>
+            </div>
+          `}
+
+          ${activeTab === 'faqs' && html`
+            <div class="card">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <div>
+                  <h2 class="card-title">FAQs</h2>
+                  <p class="card-subtitle">Questions displayed in the FAQ section on the golf page.</p>
+                </div>
+                <button class="btn btn-primary btn-sm" onClick=${addFaq}>+ Add FAQ</button>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 1rem;">
+                ${(data.faqs || []).map((faq, i) => html`
+                  <div style="padding: 1rem; background: var(--bg-secondary); border-radius: 8px; position: relative;">
+                    <button class="btn btn-ghost btn-sm" style="position: absolute; top: 0.5rem; right: 0.5rem; color: var(--text-tertiary);"
+                      onClick=${() => removeFaq(i)} title="Remove">✕</button>
+                    <div class="field-group">
+                      <label class="field-label">Question</label>
+                      <input class="input" placeholder="What's included?"
+                        value=${faq.question}
+                        onInput=${(e) => updateFaq(i, 'question', e.target.value)} />
+                    </div>
+                    <div class="field-group" style="margin-top: 0.75rem;">
+                      <label class="field-label">Answer <span style="color: var(--text-tertiary); font-weight: 400;">(HTML allowed)</span></label>
+                      <textarea rows="2" class="input" placeholder="All packages include..."
+                        value=${faq.answer}
+                        onInput=${(e) => updateFaq(i, 'answer', e.target.value)} />
+                    </div>
+                  </div>
+                `)}
+                ${(data.faqs || []).length === 0 && html`
+                  <p style="text-align: center; color: var(--text-tertiary); padding: 2rem;">No FAQs yet. Click "Add FAQ" to create one.</p>
+                `}
+              </div>
+            </div>
+          `}
+
+          ${activeTab === 'sponsors' && html`
+            <div class="card">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <div>
+                  <h2 class="card-title">2026 Sponsors</h2>
+                  <p class="card-subtitle">Current sponsors shown on the golf page. Add their name, optional logo (CF Image ID), and sponsorship tier.</p>
+                </div>
+                <button class="btn btn-primary btn-sm" onClick=${() => setData(d => ({ ...d, sponsors: [...(d.sponsors || []), { name: '', logo: '', tier: '' }] }))}>+ Add Sponsor</button>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                ${(data.sponsors || []).map((s, i) => html`
+                  <div style="display: flex; gap: 0.75rem; align-items: center; padding: 0.75rem; background: var(--bg-secondary); border-radius: 8px;">
+                    <div style="flex-shrink: 0; width: 64px; height: 64px; border-radius: 8px; background: var(--bg-primary); border: 1px dashed var(--border); display: flex; align-items: center; justify-content: center; cursor: pointer; overflow: hidden;"
+                      onClick=${() => { setImagePickerTarget('sponsor:' + i); setShowImagePicker(true); }}
+                      title="Choose logo image">
+                      ${s.logo
+                        ? html`<img src=${cfThumb(s.logo, 'w=128,h=128,fit=contain')} alt="" style="width: 100%; height: 100%; object-fit: contain;" />`
+                        : html`<span style="font-size: 0.6rem; color: var(--text-tertiary); text-align: center; line-height: 1.3;">Click to<br/>add logo</span>`
+                      }
+                    </div>
+                    <div style="flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; align-items: end;">
+                      <div class="field-group">
+                        <label class="field-label">Name</label>
+                        <input class="input" placeholder="Company Name" value=${s.name}
+                          onInput=${(e) => setData(d => ({ ...d, sponsors: d.sponsors.map((sp, j) => j === i ? { ...sp, name: e.target.value } : sp) }))} />
+                      </div>
+                      <div class="field-group">
+                        <label class="field-label">Tier</label>
+                        <select value=${s.tier || ''} onChange=${(e) => setData(d => ({ ...d, sponsors: d.sponsors.map((sp, j) => j === i ? { ...sp, tier: e.target.value } : sp) }))}
+                          style="padding: 0.45rem 0.6rem; border-radius: 6px; border: 1px solid var(--border); font-size: 0.82rem; background: var(--bg-primary);">
+                          <option value="">No label</option>
+                          <option value="Presenting">Presenting</option>
+                          <option value="Titanium">Titanium</option>
+                          <option value="Diamond">Diamond</option>
+                          <option value="Platinum">Platinum</option>
+                          <option value="Gold">Gold</option>
+                          <option value="Foursome">Foursome</option>
+                          <option value="Add-On">Add-On</option>
+                        </select>
+                      </div>
+                    </div>
+                    <button class="btn btn-ghost btn-sm" style="color: var(--text-tertiary);"
+                      onClick=${() => setData(d => ({ ...d, sponsors: d.sponsors.filter((_, j) => j !== i) }))}>✕</button>
+                  </div>
+                `)}
+                ${(data.sponsors || []).length === 0 && html`
+                  <p style="text-align: center; color: var(--text-tertiary); padding: 2rem;">No sponsors yet. Add sponsors as they register.</p>
+                `}
+              </div>
+            </div>
+          `}
+
+          ${activeTab === 'gallery' && html`
+            <div class="card">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <div>
+                  <h2 class="card-title">Photo Gallery</h2>
+                  <p class="card-subtitle">Photos shown in the scrolling gallery strip on the golf page.</p>
+                </div>
+                <button class="btn btn-primary btn-sm" onClick=${() => {
+                  setData(d => ({ ...d, galleryPhotos: [...(d.galleryPhotos || []), { id: '', alt: '' }] }));
+                  // Open picker for the newly added photo
+                  setTimeout(() => {
+                    setImagePickerTarget('gallery:' + (data.galleryPhotos || []).length);
+                    setShowImagePicker(true);
+                  }, 50);
+                }}>+ Add Photo</button>
+              </div>
+              ${(data.galleryPhotos || []).length > 0 ? html`
+                <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 0.75rem;">
+                  ${(data.galleryPhotos || []).map((p, i) => html`
+                    <div style="position: relative; border-radius: 10px; overflow: hidden; background: var(--bg-secondary); border: 1px solid var(--border);">
+                      <div style="aspect-ratio: 4/3; cursor: pointer; display: flex; align-items: center; justify-content: center; background: var(--bg-primary);"
+                        onClick=${() => { setImagePickerTarget('gallery:' + i); setShowImagePicker(true); }}>
+                        ${p.id
+                          ? html`<img src=${cfThumb(p.id, 'w=320,h=240,fit=cover')} alt=${p.alt || ''} style="width: 100%; height: 100%; object-fit: cover;" />`
+                          : html`<span style="font-size: 0.7rem; color: var(--text-tertiary); text-align: center; padding: 0.5rem;">Click to<br/>choose image</span>`
+                        }
+                      </div>
+                      <div style="padding: 0.5rem;">
+                        <input class="input" placeholder="Alt text" value=${p.alt || ''} style="font-size: 0.78rem; padding: 0.3rem 0.5rem;"
+                          onInput=${(e) => setData(d => ({ ...d, galleryPhotos: d.galleryPhotos.map((ph, j) => j === i ? { ...ph, alt: e.target.value } : ph) }))} />
+                      </div>
+                      <button style="position: absolute; top: 4px; right: 4px; width: 22px; height: 22px; border-radius: 50%; background: rgba(0,0,0,0.6); color: #fff; border: none; cursor: pointer; font-size: 0.7rem; display: flex; align-items: center; justify-content: center;"
+                        onClick=${() => setData(d => ({ ...d, galleryPhotos: d.galleryPhotos.filter((_, j) => j !== i) }))}>✕</button>
+                    </div>
+                  `)}
+                </div>
+              ` : html`
+                <p style="text-align: center; color: var(--text-tertiary); padding: 2rem;">No gallery photos yet. Click "+ Add Photo" to browse and select images.</p>
+              `}
+            </div>
+          `}
+
+          <div class="editor-save-footer">
+            <button class="btn btn-primary" onClick=${handleSave} disabled=${saving}>
+              ${saving ? html`<span class="spinner" />` : null}
+              ${saving ? 'Saving...' : 'Save & Publish'}
+            </button>
+          </div>
+        </div>
+      `;
     }
 
     // ═══════════════════════════════════════════
@@ -8806,6 +9163,18 @@
             <span><strong>${fSummary.aging} photo${fSummary.aging > 1 ? 's' : ''}</strong> ha${fSummary.aging > 1 ? 've' : 's'} been the same for over ${PHOTO_FRESH_DAYS} days. Consider updating soon.</span>
           </div>
         ` : null}
+
+        <div class="card">
+          <h3 style="margin-bottom: 1rem;">Kids Page Hero</h3>
+          <p class="text-sm text-muted mb-1">The summary text shown in the hero on the /kids/ page.</p>
+          <div class="form-group">
+            <label class="form-label">Summary</label>
+            <textarea class="form-textarea" rows="3" value=${data.kidsPageSummary || ''}
+              placeholder="Discover the incredible stories behind every room we build."
+              onInput=${e => updateField('kidsPageSummary', e.target.value)} />
+            <div class="char-count ${(data.kidsPageSummary || '').length > 200 ? 'over' : ''}">${(data.kidsPageSummary || '').length}/200</div>
+          </div>
+        </div>
 
         <div class="card">
           <h3 style="margin-bottom: 1rem;">Homepage Hero ${freshnessBadge(newest(pts['heroKidSlug'], pts['heroKidPhotoId']))}</h3>
@@ -10396,12 +10765,24 @@
               ? html`<${ArticleEditor} slug=${editSlug || undefined} onBack=${() => { navigate('articles'); loadData(); }} addToast=${addToast} existingSlugs=${articles.map(a => a.slug)} />`
               : html`<${ArticlesList} articles=${articles} onEdit=${s => navigate('articles', s)} onAdd=${() => navigate('articles', '')}
                   onDelete=${a => setDeleteModal({ type: 'article', item: a })} />`;
-          case 'events':
-            return editSlug !== null
-              ? html`<${EventEditor} slug=${editSlug || undefined} onBack=${() => { navigate('events'); loadData(); }} addToast=${addToast} existingSlugs=${events.map(e => e.slug)} />`
-              : html`<${EventsList} events=${events} onEdit=${s => navigate('events', s)} onAdd=${() => navigate('events', '')}
-                  onDelete=${e => setDeleteModal({ type: 'event', item: { ...e, name: e.title } })}
-                  dashboardFilter=${dashboardFilter} onClearFilter=${() => setDashboardFilter(null)} />`;
+          case 'events': {
+            const evTab = subTab || 'list';
+            if (editSlug !== null && evTab === 'list') {
+              return html`<${EventEditor} slug=${editSlug || undefined} onBack=${() => { navigate('events'); loadData(); }} addToast=${addToast} existingSlugs=${events.map(e => e.slug)} />`;
+            }
+            return html`
+              <div class="hub-tabs">
+                <button class="hub-tab ${evTab === 'list' ? 'active' : ''}" onClick=${() => { setSubTab('list'); setEditSlug(null); }}>All Events</button>
+                <button class="hub-tab ${evTab === 'golf' ? 'active' : ''}" onClick=${() => { setSubTab('golf'); setEditSlug(null); }}>Golf Tournament</button>
+              </div>
+              ${evTab === 'golf'
+                ? html`<${GolfTournamentEditor} addToast=${addToast} />`
+                : html`<${EventsList} events=${events} onEdit=${s => { setSubTab('list'); navigate('events', s); }} onAdd=${() => { setSubTab('list'); navigate('events', ''); }}
+                    onDelete=${e => setDeleteModal({ type: 'event', item: { ...e, name: e.title } })}
+                    dashboardFilter=${dashboardFilter} onClearFilter=${() => setDashboardFilter(null)} />`
+              }
+            `;
+          }
 
           // ─── Press Hub (tabs: Press & Media | Press Monitor) ───
           case 'press-hub': {

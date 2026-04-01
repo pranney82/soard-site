@@ -73,7 +73,6 @@ const jsonLd = buildSchemaGraph(
 <BaseLayout
   title={`${project.name} — Community Project`}
   description={project.metaDescription || project.description}
-  ogImage={project.imageId ? cfRaw(project.imageId, 'w=1200,h=630,fit=cover,q=85') : (project.photos?.[0]?.cfImageId ? cfRaw(project.photos[0].cfImageId, 'w=1200,h=630,fit=cover,q=85') : undefined)}
   jsonLd={jsonLd}
   breadcrumbs={breadcrumbs}
 >
