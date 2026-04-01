@@ -66,10 +66,11 @@ export async function onRequestPost(context) {
       );
     }
 
-    // Return the delivery URL
+    // Return the delivery URL — construct fallback if variants array is empty
     const imageId = result.result.id;
     const variants = result.result.variants || [];
-    const publicUrl = variants.find(v => v.endsWith('/public')) || variants[0] || '';
+    const publicUrl = variants.find(v => v.endsWith('/public')) || variants[0]
+      || `https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/${imageId}/public`;
 
     return Response.json(
       {

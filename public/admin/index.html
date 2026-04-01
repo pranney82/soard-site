@@ -4301,7 +4301,7 @@
                 <div key=${photo.url || i} class="photo-grid-item"
                   ...${uploading[photo._tempId] ? {} : photoDragHandlers(i)}>
                   <div class="photo-item ${photo.url === data.heroImage ? 'is-hero' : ''}">
-                    <img src=${photo.url} alt=${photo.alt || ''} loading="lazy" />
+                    <img src=${cfThumb(photo.url)} alt=${photo.alt || ''} loading="lazy" />
                     ${uploading[photo._tempId] ? html`<div class="photo-uploading"><span class="spinner" /></div>` : null}
                     <div class="photo-actions">
                       <button class="photo-btn ${photo.url === data.heroImage ? 'hero-btn' : ''}"
@@ -4335,7 +4335,7 @@
                   <div key=${photo.url || i}
                     class="story-photo-option ${isSelected ? 'selected' : ''} ${!isSelected && isFull ? 'dimmed' : ''}"
                     onClick=${() => { if (!isSelected && isFull) return; toggleStoryPhoto(photo); }}>
-                    <img src=${photo.url} alt=${photo.alt || ''} loading="lazy" />
+                    <img src=${cfThumb(photo.url)} alt=${photo.alt || ''} loading="lazy" />
                     ${isSelected ? html`<span class="story-photo-badge">${spIndex + 1}</span>` : null}
                   </div>
                 `;
@@ -4358,7 +4358,7 @@
               ${(data.plans || []).map((plan, i) => html`
                 <div key=${plan.url || i} class="photo-grid-item">
                   <div class="photo-item" style="background: #fff;">
-                    <img src=${plan.url} alt=${plan.label || ''} loading="lazy" style="object-fit: contain; padding: 0.25rem;" />
+                    <img src=${cfThumb(plan.url)} alt=${plan.label || ''} loading="lazy" style="object-fit: contain; padding: 0.25rem;" />
                     ${planUploading[plan._tempId] ? html`<div class="photo-uploading"><span class="spinner" /></div>` : null}
                     <div class="photo-actions">
                       <button class="photo-btn" onClick=${(e) => { e.stopPropagation(); removePlan(i); }} title="Remove" aria-label="Remove plan">${icons.x}</button>
@@ -4392,7 +4392,7 @@
                 <div key=${pl.url || i} class="photo-grid-item"
                   ...${partnerLogoUploading[pl._tempId] ? {} : partnerDragHandlers(i)}>
                   <div class="photo-item" style="background: #fff;">
-                    <img src=${pl.url} alt=${pl.name || ''} loading="lazy" style="object-fit: contain; padding: 0.25rem;" />
+                    <img src=${cfThumb(pl.url)} alt=${pl.name || ''} loading="lazy" style="object-fit: contain; padding: 0.25rem;" />
                     ${partnerLogoUploading[pl._tempId] ? html`<div class="photo-uploading"><span class="spinner" /></div>` : null}
                     <div class="photo-actions">
                       <button class="photo-btn" onClick=${(e) => { e.stopPropagation(); removePartnerLogo(i); }} title="Remove" aria-label="Remove partner logo">${icons.x}</button>
@@ -6421,7 +6421,7 @@
                 <div key=${idx} class="photo-grid-item"
                   ...${uploading[photo._tempId] ? {} : eventPhotoDragHandlers(idx)}
                   style="position: relative; border-radius: 8px; overflow: hidden; aspect-ratio: 4/3; background: #f0f0f0;">
-                  <img src=${photo.id}
+                  <img src=${cfThumb(photo.id)}
                     alt=${photo.alt || ''} style="width: 100%; height: 100%; object-fit: cover; display: block;" loading="lazy" />
                   ${uploading[photo._tempId] ? html`
                     <div style="position: absolute; inset: 0; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center;">
@@ -7729,7 +7729,7 @@
                 <div key=${pl.url || i} class="photo-grid-item"
                   ...${partnerLogoUploading[pl._tempId] ? {} : partnerDragHandlers(i)}>
                   <div class="photo-item" style="background: #fff;">
-                    <img src=${pl.url} alt=${pl.name || ''} loading="lazy" style="object-fit: contain; padding: 0.25rem;" />
+                    <img src=${cfThumb(pl.url)} alt=${pl.name || ''} loading="lazy" style="object-fit: contain; padding: 0.25rem;" />
                     ${partnerLogoUploading[pl._tempId] ? html`<div class="photo-uploading"><span class="spinner" /></div>` : null}
                     <div class="photo-actions">
                       <button class="photo-btn" onClick=${(e) => { e.stopPropagation(); removePartnerLogo(i); }} title="Remove">${icons.x}</button>

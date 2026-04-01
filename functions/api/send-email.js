@@ -49,7 +49,7 @@ export async function onRequestPost(context) {
     return Response.json({ ok: false, error: 'Missing "subject" or "html".' }, { status: 400 });
   }
 
-  from = from || 'Sunshine on a Ranney Day <sunshine@updates.soardcharity.com>';
+  from = from || 'Sunshine on a Ranney Day <sunshine@comms.soardcharity.com>';
 
   try {
     const res = await fetch('https://api.resend.com/emails', {

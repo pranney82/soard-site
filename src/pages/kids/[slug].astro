@@ -144,7 +144,19 @@ const heroSrcset = kid.heroImage ? _cfSrcset(kid.heroImage, [480, 800, 1200], { 
 const heroSizes = '(max-width: 1100px) 50vw, 520px';
 
 // ── Bio paragraphs + pull quote ───────────
-const bioParas = kid.bio ? kid.bio.split('\n\n').filter(p => p.trim()) : [];
+// Handle both \n\n-separated plain text AND <p>-wrapped HTML from rich editor
+function splitBio(bio: string): string[] {
+  if (!bio) return [];
+  // If bio contains <p> tags, extract content between them
+  if (bio.includes('<p>')) {
+    return [...bio.matchAll(/<p>([\s\S]*?)<\/p>/gi)]
+      .map(m => m[1].replace(/<br\s*\/?>/gi, '').trim())
+      .filter(Boolean);
+  }
+  // Plain text: split on double newlines
+  return bio.split('\n\n').filter(p => p.trim());
+}
+const bioParas = splitBio(kid.bio || '');
 const introPara = bioParas.length > 0 ? bioParas[0] : '';
 const remainingParas = bioParas.slice(1);
 
@@ -160,26 +172,35 @@ const galleryPhotos = photos.slice(0, 30);
 const heroMobileSrcset = kid.heroImage ? _cfSrcset(kid.heroImage, [320, 480], { fit: 'cover', gravity: 'face', aspectRatio: 4/3 }) : '';
 const heroMobileSizes = '(max-width: 480px) 280px, 300px';
 
-// ── Narrative: magazine longform layout ──
+// ── Photo Essay: NatGeo-inspired vertical photo essay ──
+//
+// Each photo gets a DIFFERENT layout composition:
+//   cinematic — near-viewport-width, maximum visual impact
+//   duo       — two photos side by side, showing contrast/progression
+//   offset    — photo pushed to one side, negative space on other
+//   contained — standard width, clean and simple
+//
+// Text blocks are narrow (58ch) and centered. The first text
+// after the cinematic opener is display-sized (the "lede").
 const storyPhotos = kid.storyPhotos || [];
 const hasStoryPhotos = storyPhotos.length > 0;
-const useNarrative = hasStoryPhotos
+const usePhotoEssay = hasStoryPhotos
   ? remainingParas.length >= 1
   : remainingParas.length >= 2 && galleryPhotos.length >= 3;
 
-// Photo-forward: images are the star — large, dominant floats
-// Size rhythm: hero → large → hero → large (photos always prominent)
-// Side rhythm: right, left, right, left
-type NarrativeItem =
-  | { type: 'pair'; text: string; photo: typeof photos[0]; size: 'lg' | 'md'; side: 'right' | 'left' }
-  | { type: 'break'; photo: typeof photos[0] }
+type EssayItem =
+  | { type: 'cinematic'; photo: typeof photos[0] }
+  | { type: 'duo'; photos: [typeof photos[0], typeof photos[0]] }
+  | { type: 'offset'; photo: typeof photos[0]; side: 'left' | 'right' }
+  | { type: 'contained'; photo: typeof photos[0] }
+  | { type: 'lede'; text: string }
+  | { type: 'text'; text: string }
   | { type: 'quote'; text: string };
 
-const sizePattern: Array<'lg' | 'md'> = ['lg', 'md', 'lg', 'md'];
-let narrativeItems: NarrativeItem[] = [];
+let essayItems: EssayItem[] = [];
 let overflowParas: string[] = remainingParas;
 
-if (useNarrative) {
+if (usePhotoEssay) {
   const srcPhotos = hasStoryPhotos ? storyPhotos : (() => {
     const pairCount = Math.min(remainingParas.length, 4, Math.floor(galleryPhotos.length / 2));
     const step = galleryPhotos.length / pairCount;
@@ -187,28 +208,45 @@ if (useNarrative) {
       galleryPhotos[Math.min(Math.floor(i * step), galleryPhotos.length - 1)]
     );
   })();
-  const pairCount = Math.min(remainingParas.length, srcPhotos.length);
+  const n = srcPhotos.length;
+  const paras = [...remainingParas];
+  let paraIdx = 0;
 
-  for (let i = 0; i < pairCount; i++) {
-    const size = sizePattern[i % sizePattern.length];
-    const side = i % 2 === 0 ? 'right' : 'left';
-    narrativeItems.push({
-      type: 'pair',
-      text: remainingParas[i],
-      photo: srcPhotos[i],
-      size,
-      side,
-    });
-    // Insert pull quote after the 2nd pair if we have one
-    if (i === 1 && pullQuote) {
-      narrativeItems.push({ type: 'quote', text: pullQuote });
-    }
+  if (n >= 4) {
+    // 4+ photos: cinematic → lede → duo(2,3) → text → [quote] → offset(4) → text
+    essayItems.push({ type: 'cinematic', photo: srcPhotos[0] });
+    if (paras[paraIdx]) essayItems.push({ type: 'lede', text: paras[paraIdx++] });
+    essayItems.push({ type: 'duo', photos: [srcPhotos[1], srcPhotos[2]] });
+    if (paras[paraIdx]) essayItems.push({ type: 'text', text: paras[paraIdx++] });
+    if (pullQuote) essayItems.push({ type: 'quote', text: pullQuote });
+    essayItems.push({ type: 'offset', photo: srcPhotos[3], side: 'right' });
+    if (paras[paraIdx]) essayItems.push({ type: 'text', text: paras[paraIdx++] });
+  } else if (n === 3) {
+    // 3 photos: cinematic → lede → contained → text → [quote] → offset → text
+    essayItems.push({ type: 'cinematic', photo: srcPhotos[0] });
+    if (paras[paraIdx]) essayItems.push({ type: 'lede', text: paras[paraIdx++] });
+    essayItems.push({ type: 'contained', photo: srcPhotos[1] });
+    if (paras[paraIdx]) essayItems.push({ type: 'text', text: paras[paraIdx++] });
+    if (pullQuote) essayItems.push({ type: 'quote', text: pullQuote });
+    essayItems.push({ type: 'offset', photo: srcPhotos[2], side: 'left' });
+    if (paras[paraIdx]) essayItems.push({ type: 'text', text: paras[paraIdx++] });
+  } else if (n === 2) {
+    // 2 photos: cinematic → lede → [quote] → contained → text
+    essayItems.push({ type: 'cinematic', photo: srcPhotos[0] });
+    if (paras[paraIdx]) essayItems.push({ type: 'lede', text: paras[paraIdx++] });
+    if (pullQuote) essayItems.push({ type: 'quote', text: pullQuote });
+    essayItems.push({ type: 'contained', photo: srcPhotos[1] });
+    if (paras[paraIdx]) essayItems.push({ type: 'text', text: paras[paraIdx++] });
+  } else {
+    // 1 photo: cinematic → lede
+    essayItems.push({ type: 'cinematic', photo: srcPhotos[0] });
+    if (paras[paraIdx]) essayItems.push({ type: 'lede', text: paras[paraIdx++] });
+    if (pullQuote) essayItems.push({ type: 'quote', text: pullQuote });
   }
-  overflowParas = remainingParas.slice(pairCount);
+  overflowParas = paras.slice(paraIdx);
 }
 
-// If pull quote wasn't woven in (< 2 pairs), keep it for the overflow section
-const quoteWoven = narrativeItems.some(it => it.type === 'quote');
+const quoteWoven = essayItems.some(it => it.type === 'quote');
 const remainingQuote = (!quoteWoven && pullQuote) ? pullQuote : null;
 
 // ── Minimal data detection ────────────────
@@ -336,53 +374,149 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
       </div>
     </section>
 
-    <!-- ═══ Narrative: Magazine Longform ══════ -->
-    {narrativeItems.length > 0 && (
-      <section class="narrative stagger-section">
-        <div class="container container--narrow">
-          <div class="narrative__flow prose" itemprop="articleBody">
-            {narrativeItems.map((item, i) => {
-              if (item.type === 'quote') {
-                return (
-                  <blockquote class="narrative__quote stagger-section">
-                    <svg class="narrative__quote-mark" viewBox="0 0 48 48" fill="none" aria-hidden="true">
-                      <path d="M14 28c-2.2 0-4-1.8-4-4 0-6.6 5.4-12 12-12v4c-4.4 0-8 3.6-8 8h4c2.2 0 4 1.8 4 4s-1.8 4-4 4h-4zm20 0c-2.2 0-4-1.8-4-4 0-6.6 5.4-12 12-12v4c-4.4 0-8 3.6-8 8h4c2.2 0 4 1.8 4 4s-1.8 4-4 4h-4z" fill="currentColor"/>
-                    </svg>
-                    <p>{item.text}</p>
-                  </blockquote>
-                );
-              }
-              if (item.type === 'pair') {
-                const photoW = dims(item.photo.url)[0];
-                const photoH = dims(item.photo.url)[1];
-                const isFirst = i === 0;
-                return (
-                  <Fragment>
-                    <figure class={`narrative__fig narrative__fig--${item.side} narrative__fig--${item.size}`}
-                      style={`--lqip: url('${lqip(item.photo.url)}')`}>
-                      <img
-                        src={_cfUrl(item.photo.url, { w: item.size === 'lg' ? 800 : 600, q: 85 })}
-                        srcset={_cfSrcset(item.photo.url, item.size === 'lg' ? [400, 600, 900, 1200] : [400, 600, 800, 1000])}
-                        sizes={item.size === 'lg'
-                          ? '(max-width: 480px) 92vw, (max-width: 768px) 92vw, (max-width: 1024px) 55vw, 520px'
-                          : '(max-width: 480px) 92vw, (max-width: 768px) 52vw, (max-width: 1024px) 46vw, 420px'
-                        }
-                        alt={item.photo.alt || `${kid.name}'s room`}
-                        class="narrative__img lqip-img"
-                        loading={isFirst ? 'eager' : 'lazy'}
-                        decoding="async"
-                        width={photoW}
-                        height={photoH}
-                      />
-                    </figure>
-                    <div class={isFirst ? 'prose--dropcap' : ''} set:html={`<p>${item.text}</p>`} />
-                  </Fragment>
-                );
-              }
-              return null;
-            })}
-          </div>
-        </div>
+    <!-- ═══ Photo Essay — NatGeo-Inspired ═══ -->
+    {essayItems.length > 0 && (
+      <section class="essay" itemprop="articleBody">
+        {essayItems.map((item, i) => {
+          /* ── Cinematic: massive, near-viewport-width ── */
+          if (item.type === 'cinematic') {
+            const [w, h] = dims(item.photo.url);
+            return (
+              <figure class="essay__cinematic stagger-section">
+                <div class="essay__img-wrap" style={`--lqip: url('${lqip(item.photo.url)}')`}>
+                  <img
+                    src={_cfUrl(item.photo.url, { w: 1400, q: 85 })}
+                    srcset={_cfSrcset(item.photo.url, [600, 900, 1400, 2000])}
+                    sizes="(max-width: 768px) 100vw, (max-width: 1400px) 94vw, 1320px"
+                    alt={item.photo.alt || `${kid.name}'s room`}
+                    class="essay__img lqip-img"
+                    loading={i === 0 ? 'eager' : 'lazy'}
+                    decoding="async"
+                    width={w}
+                    height={h}
+                  />
+                </div>
+              </figure>
+            );
+          }
+
+          /* ── Duo: two photos side by side ── */
+          if (item.type === 'duo') {
+            const [p1, p2] = item.photos;
+            return (
+              <div class="essay__duo stagger-section">
+                <figure class="essay__duo-fig">
+                  <div class="essay__img-wrap" style={`--lqip: url('${lqip(p1.url)}')`}>
+                    <img
+                      src={_cfUrl(p1.url, { w: 700, q: 85 })}
+                      srcset={_cfSrcset(p1.url, [400, 700, 1000])}
+                      sizes="(max-width: 768px) 48vw, (max-width: 1200px) 44vw, 520px"
+                      alt={p1.alt || `${kid.name}'s room`}
+                      class="essay__img lqip-img"
+                      loading="lazy"
+                      decoding="async"
+                      width={dims(p1.url)[0]}
+                      height={dims(p1.url)[1]}
+                    />
+                  </div>
+                </figure>
+                <figure class="essay__duo-fig">
+                  <div class="essay__img-wrap" style={`--lqip: url('${lqip(p2.url)}')`}>
+                    <img
+                      src={_cfUrl(p2.url, { w: 700, q: 85 })}
+                      srcset={_cfSrcset(p2.url, [400, 700, 1000])}
+                      sizes="(max-width: 768px) 48vw, (max-width: 1200px) 44vw, 520px"
+                      alt={p2.alt || `${kid.name}'s room`}
+                      class="essay__img lqip-img"
+                      loading="lazy"
+                      decoding="async"
+                      width={dims(p2.url)[0]}
+                      height={dims(p2.url)[1]}
+                    />
+                  </div>
+                </figure>
+              </div>
+            );
+          }
+
+          /* ── Offset: photo pushed to one side, breathing room ── */
+          if (item.type === 'offset') {
+            const [w, h] = dims(item.photo.url);
+            return (
+              <figure class={`essay__offset essay__offset--${item.side} stagger-section`}>
+                <div class="essay__img-wrap" style={`--lqip: url('${lqip(item.photo.url)}')`}>
+                  <img
+                    src={_cfUrl(item.photo.url, { w: 900, q: 85 })}
+                    srcset={_cfSrcset(item.photo.url, [500, 800, 1200])}
+                    sizes="(max-width: 768px) 92vw, (max-width: 1200px) 58vw, 680px"
+                    alt={item.photo.alt || `${kid.name}'s room`}
+                    class="essay__img lqip-img"
+                    loading="lazy"
+                    decoding="async"
+                    width={w}
+                    height={h}
+                  />
+                </div>
+              </figure>
+            );
+          }
+
+          /* ── Contained: standard editorial width ── */
+          if (item.type === 'contained') {
+            const [w, h] = dims(item.photo.url);
+            return (
+              <figure class="essay__contained stagger-section">
+                <div class="essay__img-wrap" style={`--lqip: url('${lqip(item.photo.url)}')`}>
+                  <img
+                    src={_cfUrl(item.photo.url, { w: 900, q: 85 })}
+                    srcset={_cfSrcset(item.photo.url, [500, 800, 1200])}
+                    sizes="(max-width: 768px) 92vw, (max-width: 1200px) 72vw, 820px"
+                    alt={item.photo.alt || `${kid.name}'s room`}
+                    class="essay__img lqip-img"
+                    loading="lazy"
+                    decoding="async"
+                    width={w}
+                    height={h}
+                  />
+                </div>
+              </figure>
+            );
+          }
+
+          /* ── Lede: display-sized opening text ── */
+          if (item.type === 'lede') {
+            return (
+              <div class="essay__lede stagger-section prose--dropcap">
+                <div class="essay__lede-inner" set:html={`<p>${item.text}</p>`} />
+              </div>
+            );
+          }
+
+          /* ── Text: narrow centered paragraph ── */
+          if (item.type === 'text') {
+            return (
+              <div class="essay__text stagger-section">
+                <div class="essay__text-inner" set:html={`<p>${item.text}</p>`} />
+              </div>
+            );
+          }
+
+          /* ── Quote: dramatic typographic break ── */
+          if (item.type === 'quote') {
+            return (
+              <blockquote class="essay__quote stagger-section">
+                <div class="essay__quote-inner">
+                  <svg class="essay__quote-mark" viewBox="0 0 48 48" fill="none" aria-hidden="true">
+                    <path d="M14 28c-2.2 0-4-1.8-4-4 0-6.6 5.4-12 12-12v4c-4.4 0-8 3.6-8 8h4c2.2 0 4 1.8 4 4s-1.8 4-4 4h-4zm20 0c-2.2 0-4-1.8-4-4 0-6.6 5.4-12 12-12v4c-4.4 0-8 3.6-8 8h4c2.2 0 4 1.8 4 4s-1.8 4-4 4h-4z" fill="currentColor"/>
+                  </svg>
+                  <p>{item.text}</p>
+                </div>
+              </blockquote>
+            );
+          }
+
+          return null;
+        })}
       </section>
     )}
 
@@ -391,7 +525,7 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
       <section class="story">
         <div class="container container--narrow">
           {overflowParas.length > 0 && (
-            <div class={`story__body prose stagger-section ${narrativeItems.length === 0 ? 'prose--dropcap' : ''}`} itemprop="articleBody">
+            <div class={`story__body prose stagger-section ${essayItems.length === 0 ? 'prose--dropcap' : ''}`} itemprop="articleBody">
               {overflowParas.map(paragraph => (
                 <p>{paragraph}</p>
               ))}
@@ -482,7 +616,7 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
       </section>
     )}
 
-    <!-- ═══ Masonry Photo Gallery ═════════════ -->
+    <!-- ═══ Bento Photo Grid ═══════════════════ -->
     {galleryPhotos.length > 1 && (
       <section class="gallery stagger-section">
         <div class="container">
@@ -495,12 +629,23 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
               </p>
             )}
           </div>
-          <div class="masonry" id="gallery">
+          <div class="bento" id="gallery">
             {galleryPhotos.map((photo, i) => {
-              const isFeatured = i === 0;
+              // Bento sizing: hero (0), tall (1,5,9...), wide (3,7,11...), standard (rest)
+              const isHero = i === 0;
+              const isTall = !isHero && (i % 4 === 1);
+              const isWide = !isHero && (i % 4 === 3) && i < 16;
+              const bentoClass = isHero ? 'bento__hero' : isTall ? 'bento__tall' : isWide ? 'bento__wide' : '';
+              const imgW = isHero ? 1000 : 600;
+              const srcsetWidths = isHero ? [500, 800, 1200] : [300, 500, 800];
+              const sizesAttr = isHero
+                ? '(max-width: 768px) 92vw, (max-width: 1100px) 60vw, 580px'
+                : isTall || isWide
+                  ? '(max-width: 768px) 46vw, (max-width: 1100px) 35vw, 380px'
+                  : '(max-width: 768px) 46vw, (max-width: 1100px) 28vw, 280px';
               return (
                 <button
-                  class="masonry__item"
+                  class={`masonry__item bento__cell ${bentoClass}`}
                   data-index={i}
                   data-src={cfUrl(photo.url, 'w=1600,q=85')}
                   data-srcset={_cfSrcset(photo.url, [800, 1200, 1600, 2400])}
@@ -510,21 +655,18 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
                   style={`--lqip: url('${lqip(photo.url)}')`}
                 >
                   <img
-                    src={cfUrl(photo.url, isFeatured ? 'w=900,q=85' : 'w=500,q=85')}
-                    srcset={cfSrcset(photo.url, isFeatured ? [500, 800, 1200] : [300, 500, 800])}
-                    sizes={isFeatured
-                      ? '(max-width: 768px) 92vw, (max-width: 1100px) 60vw, 560px'
-                      : '(max-width: 768px) 45vw, (max-width: 1100px) 30vw, 280px'
-                    }
+                    src={cfUrl(photo.url, `w=${imgW},q=85`)}
+                    srcset={cfSrcset(photo.url, srcsetWidths)}
+                    sizes={sizesAttr}
                     alt={photo.alt || `${kid.name}'s room transformation photo ${i + 1}`}
-                    class="masonry__img lqip-img"
+                    class="bento__img lqip-img"
                     loading="lazy"
                     decoding="async"
                     width={dims(photo.url)[0]}
                     height={dims(photo.url)[1]}
                   />
-                  <div class="masonry__overlay">
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+                  <div class="bento__overlay">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
                   </div>
                 </button>
               );
@@ -1113,7 +1255,7 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
 
   /* ═══ LQIP Blur-Up (dominant-color → blurred thumb → full res) ══ */
   .hero__portrait,
-  .masonry__item,
+  .bento__cell,
   .related__img-wrap {
     background-image: var(--lqip);
     background-size: cover;
@@ -1205,7 +1347,7 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
 
   .hero__split {
     display: grid;
-    grid-template-columns: 55fr 45fr;
+    grid-template-columns: 3fr 2fr;
     gap: clamp(var(--space-xl), 4vw, var(--space-3xl));
     align-items: center;
   }
@@ -1454,120 +1596,175 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     color: var(--c-text);
   }
 
-  /* ═══ Narrative: Photo-Forward ════════════ */
-  .narrative {
-    padding-block: var(--space-3xl);
+  /* ═══ Photo Essay — NatGeo Vertical Sequence ═══
+     5 distinct layout compositions:
+       cinematic  — near-viewport width, maximum impact
+       duo        — two photos side by side
+       offset     — photo pushed to one side, negative space
+       contained  — standard editorial width
+       lede       — display-sized opening text (not body copy)
+     Text is always narrow (58ch) and centered.
+     ═══════════════════════════════════════════════ */
+  .essay {
     background: var(--c-white);
+    padding-block: var(--space-xl) var(--space-3xl);
   }
 
-  .narrative__flow {
-    font-size: clamp(1rem, 0.92rem + 0.25vw, 1.12rem);
-    line-height: 1.85;
-    color: var(--c-text);
-    max-width: 72ch;
-    margin-inline: auto;
-  }
-
-  .narrative__flow p {
-    margin-bottom: 1.25em;
-    text-wrap: pretty;
-  }
-
-  .narrative__flow::after {
-    content: '';
-    display: table;
-    clear: both;
-  }
-
-  /* ── Figure: shared base ── */
-  .narrative__fig {
-    margin: 0;
-    margin-bottom: var(--space-md);
-    margin-top: 0.25em;
+  /* ── Shared image styles ── */
+  .essay__img-wrap {
     border-radius: var(--profile-radius);
     overflow: hidden;
     background-image: var(--lqip);
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;
-    box-shadow:
-      0 1px 2px rgba(0, 0, 0, 0.04),
-      0 6px 20px rgba(0, 0, 0, 0.07),
-      0 20px 50px rgba(0, 0, 0, 0.04);
-    shape-margin: 0.75rem;
   }
 
-  /* ── Figure: size variants — photos dominate ── */
-  .narrative__fig--lg {
-    width: clamp(280px, 58%, 520px);
-  }
-  .narrative__fig--md {
-    width: clamp(240px, 48%, 420px);
-  }
-
-  /* ── Figure: float sides ── */
-  .narrative__fig--right {
-    float: right;
-    margin-left: clamp(1.25rem, 2.5vw, 2rem);
-    clear: right;
-    shape-outside: inset(0 0 0 0 round var(--profile-radius));
-  }
-
-  .narrative__fig--left {
-    float: left;
-    margin-right: clamp(1.25rem, 2.5vw, 2rem);
-    clear: left;
-    shape-outside: inset(0 0 0 0 round var(--profile-radius));
-  }
-
-  .narrative__img {
+  .essay__img {
     width: 100%;
     height: auto;
-    object-fit: cover;
     display: block;
-    transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1),
-                box-shadow 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+    object-fit: cover;
   }
 
-  .narrative__fig:hover .narrative__img {
-    transform: scale(1.02);
+  /* ── Cinematic: massive, near-viewport-width ── */
+  .essay__cinematic {
+    margin: 0 auto var(--space-md);
+    max-width: 1320px;
+    padding-inline: var(--page-padding);
   }
 
-  .narrative__fig:hover {
+  .essay__cinematic .essay__img-wrap {
     box-shadow:
-      0 2px 4px rgba(0, 0, 0, 0.05),
-      0 10px 30px rgba(0, 0, 0, 0.1),
-      0 30px 60px rgba(0, 0, 0, 0.05);
+      0 8px 16px rgba(0, 0, 0, 0.06),
+      0 24px 64px rgba(0, 0, 0, 0.1);
   }
 
-  /* ── Inline pull quote (woven between pairs) ── */
-  .narrative__quote {
-    clear: both;
+  /* ── Duo: two photos side by side ── */
+  .essay__duo {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: clamp(8px, 1.5vw, 20px);
+    max-width: var(--max-width);
+    margin: 0 auto var(--space-md);
+    padding-inline: var(--page-padding);
+  }
+
+  .essay__duo-fig {
+    margin: 0;
+  }
+
+  .essay__duo .essay__img-wrap {
+    box-shadow:
+      0 2px 6px rgba(0, 0, 0, 0.04),
+      0 8px 24px rgba(0, 0, 0, 0.06);
+  }
+
+  /* ── Offset: pushed to one side with negative space ── */
+  .essay__offset {
+    margin: 0 auto var(--space-md);
+    max-width: var(--max-width);
+    padding-inline: var(--page-padding);
+  }
+
+  .essay__offset .essay__img-wrap {
+    max-width: 62%;
+    box-shadow:
+      0 4px 8px rgba(0, 0, 0, 0.04),
+      0 12px 36px rgba(0, 0, 0, 0.07);
+  }
+
+  .essay__offset--right .essay__img-wrap {
+    margin-left: auto;
+  }
+
+  .essay__offset--left .essay__img-wrap {
+    margin-right: auto;
+  }
+
+  /* ── Contained: standard editorial width ── */
+  .essay__contained {
+    margin: 0 auto var(--space-md);
+    max-width: var(--max-width-narrow);
+    padding-inline: var(--page-padding);
+  }
+
+  .essay__contained .essay__img-wrap {
+    box-shadow:
+      0 2px 4px rgba(0, 0, 0, 0.03),
+      0 8px 24px rgba(0, 0, 0, 0.06);
+  }
+
+  /* ── Lede: display-sized opening text ── */
+  .essay__lede {
+    max-width: 58ch;
+    margin-inline: auto;
+    padding: var(--space-2xl) var(--page-padding) var(--space-xl);
+  }
+
+  .essay__lede-inner {
+    font-size: clamp(1.15rem, 1rem + 0.4vw, 1.3rem);
+    line-height: 1.85;
+    color: var(--c-text);
+    text-wrap: pretty;
+  }
+
+  .essay__lede-inner p {
+    margin: 0;
+  }
+
+  /* ── Text blocks — narrow, centered ── */
+  .essay__text {
+    max-width: 58ch;
+    margin-inline: auto;
+    padding: var(--space-lg) var(--page-padding) var(--space-xl);
+  }
+
+  .essay__text-inner {
+    font-size: clamp(1.02rem, 0.94rem + 0.25vw, 1.12rem);
+    line-height: 1.85;
+    color: var(--c-text);
+    text-wrap: pretty;
+  }
+
+  .essay__text-inner p {
+    margin: 0;
+  }
+
+  /* ── Pull quote — dramatic typographic break ── */
+  .essay__quote {
+    margin: var(--space-lg) 0 var(--space-xl);
+    padding: var(--space-3xl) var(--page-padding);
+    background: linear-gradient(180deg, rgba(255, 218, 36, 0.04) 0%, rgba(255, 218, 36, 0.01) 100%);
+    border-top: 1px solid rgba(255, 218, 36, 0.15);
+    border-bottom: 1px solid rgba(255, 218, 36, 0.15);
+  }
+
+  .essay__quote-inner {
     position: relative;
-    margin: var(--space-2xl) 0;
-    padding: var(--space-xl) var(--space-2xl) var(--space-xl) var(--space-3xl);
-    background: linear-gradient(135deg, rgba(255, 218, 36, 0.07) 0%, rgba(255, 218, 36, 0.02) 100%);
-    border-left: 4px solid var(--c-yellow);
-    border-radius: 0 var(--profile-radius) var(--profile-radius) 0;
+    max-width: 52ch;
+    margin-inline: auto;
+    padding-left: var(--space-2xl);
   }
 
-  .narrative__quote-mark {
+  .essay__quote-mark {
     position: absolute;
-    top: var(--space-lg);
-    left: var(--space-lg);
-    width: 28px;
-    height: 28px;
+    top: -4px;
+    left: 0;
+    width: 32px;
+    height: 32px;
     color: var(--c-yellow);
-    opacity: 0.45;
+    opacity: 0.5;
   }
 
-  .narrative__quote p {
+  .essay__quote p {
     font-family: var(--font-display);
     font-style: italic;
-    font-size: clamp(1.1rem, 1rem + 0.4vw, 1.3rem);
-    line-height: 1.65;
+    font-size: clamp(1.25rem, 1.1rem + 0.6vw, 1.6rem);
+    line-height: 1.5;
     color: var(--c-dark);
     margin: 0;
+    letter-spacing: -0.01em;
   }
 
   /* ═══ Fundraising CTA ═════════════════════ */
@@ -1717,33 +1914,47 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     font-weight: 400;
   }
 
-  .masonry {
+  /* ── Bento Grid — intentional, designed layout ── */
+  .bento {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    grid-auto-rows: 260px;
-    gap: 10px;
+    grid-template-columns: repeat(4, 1fr);
+    grid-auto-rows: 200px;
+    gap: 4px;
+    border-radius: var(--profile-radius);
+    overflow: hidden;
   }
 
-  /* First image: featured hero — spans 2 cols + 2 rows */
-  .masonry__item:first-child {
+  /* Hero: 2 cols × 2 rows — the anchor image */
+  .bento__hero {
     grid-column: span 2;
     grid-row: span 2;
   }
 
-  .masonry__item {
+  /* Tall: 1 col × 2 rows — vertical rhythm */
+  .bento__tall {
+    grid-row: span 2;
+  }
+
+  /* Wide: 2 cols × 1 row — horizontal accent */
+  .bento__wide {
+    grid-column: span 2;
+  }
+
+  .bento__cell {
     position: relative;
     display: block;
-    border-radius: 14px;
-    overflow: hidden;
-    background-color: var(--c-cream);
     border: none;
     padding: 0;
     cursor: pointer;
-    transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1),
-                box-shadow 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    overflow: hidden;
+    background-color: var(--c-cream);
+    background-image: var(--lqip);
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
   }
 
-  .masonry__img {
+  .bento__img {
     width: 100%;
     height: 100%;
     object-fit: cover;
@@ -1753,7 +1964,7 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
-  .masonry__overlay {
+  .bento__overlay {
     position: absolute;
     inset: 0;
     z-index: 3;
@@ -1768,25 +1979,24 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
   }
 
   @media (hover: hover) {
-    .masonry__item:hover {
-      transform: translateY(-3px);
-      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.14);
+    .bento__cell:hover {
       z-index: 2;
     }
 
-    .masonry__item:hover .masonry__img {
-      transform: scale(1.03);
+    .bento__cell:hover .bento__img {
+      transform: scale(1.04);
     }
 
-    .masonry__item:hover .masonry__overlay {
-      background: rgba(0, 0, 0, 0.2);
+    .bento__cell:hover .bento__overlay {
+      background: rgba(0, 0, 0, 0.18);
       opacity: 1;
     }
   }
 
-  .masonry__item:focus-visible {
+  .bento__cell:focus-visible {
     outline: 3px solid var(--c-yellow);
-    outline-offset: 3px;
+    outline-offset: -3px;
+    z-index: 4;
   }
 
   /* ═══ Partners ═════════════════════════════ */
@@ -2252,57 +2462,78 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
       font-size: 0.95rem;
     }
 
-    /* Mobile: large images full-width, medium still float but wider */
-    .narrative__fig--lg {
-      float: none;
-      width: 100%;
-      margin-left: 0;
-      margin-right: 0;
-      margin-bottom: var(--space-sm);
-      margin-top: var(--space-md);
-      shape-outside: none;
+    /* Essay mobile: cinematic goes true edge-to-edge */
+    .essay__cinematic {
+      padding-inline: 0;
+    }
+    .essay__cinematic .essay__img-wrap {
+      border-radius: 0;
+      box-shadow: none;
     }
 
-    .narrative__fig--md {
-      width: clamp(160px, 52%, 240px);
-      margin-bottom: var(--space-sm);
-    }
-
-    .narrative__flow > .narrative__fig:first-child {
-      margin-top: 0;
-    }
-
-    .narrative__flow {
-      font-size: 0.98rem;
-      line-height: 1.75;
-    }
-
-    .narrative__quote {
-      margin: var(--space-lg) 0;
-      padding: var(--space-lg) var(--space-lg) var(--space-lg) var(--space-xl);
-    }
-
-    .narrative__quote-mark {
-      left: var(--space-md);
-      top: var(--space-md);
-      width: 22px;
-      height: 22px;
-    }
-
-    .masonry {
-      grid-template-columns: repeat(2, 1fr);
-      grid-auto-rows: 180px;
+    /* Duo stacks vertically with small gap */
+    .essay__duo {
+      grid-template-columns: 1fr;
       gap: 8px;
+      padding-inline: var(--page-padding);
     }
 
-    /* On mobile, hero image spans full width instead of 2x2 */
-    .masonry__item:first-child {
+    /* Offset goes full-width on mobile */
+    .essay__offset .essay__img-wrap {
+      max-width: 100%;
+    }
+
+    .essay__lede {
+      padding: var(--space-lg) var(--page-padding) var(--space-md);
+    }
+
+    .essay__text {
+      padding: var(--space-md) var(--page-padding) var(--space-lg);
+    }
+
+    .essay__text-inner {
+      font-size: 1rem;
+      line-height: 1.8;
+    }
+
+    .essay__quote {
+      padding: var(--space-xl) var(--page-padding);
+    }
+
+    .essay__quote-inner {
+      padding-left: var(--space-xl);
+    }
+
+    .essay__quote-mark {
+      width: 24px;
+      height: 24px;
+    }
+
+    .essay__quote p {
+      font-size: 1.1rem;
+    }
+
+    .bento {
+      grid-template-columns: repeat(2, 1fr);
+      grid-auto-rows: 160px;
+      gap: 3px;
+      border-radius: 12px;
+    }
+
+    /* Hero spans full width on mobile */
+    .bento__hero {
       grid-column: 1 / -1;
       grid-row: span 1;
     }
 
-    .masonry__item {
-      border-radius: 10px;
+    /* Tall resets to standard on mobile */
+    .bento__tall {
+      grid-row: span 1;
+    }
+
+    /* Wide stays 2-col on mobile */
+    .bento__wide {
+      grid-column: span 2;
     }
 
     .related__grid {
@@ -2358,17 +2589,14 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     .gallery__header { flex-direction: column; }
     .hero__portrait { max-width: 260px; }
 
-    /* Small phones: all images full-width, photos hero the viewport */
-    .narrative__fig,
-    .narrative__fig--md {
-      float: none;
-      width: 100%;
-      margin-left: 0;
-      margin-right: 0;
-      margin-top: var(--space-md);
-      margin-bottom: var(--space-sm);
-      border-radius: 14px;
-      shape-outside: none;
+    /* Small phones: tighter essay spacing */
+    .essay__lede,
+    .essay__text {
+      padding: var(--space-sm) var(--page-padding) var(--space-md);
+    }
+
+    .essay__lede-inner {
+      font-size: 1.05rem;
     }
   }
 
@@ -2391,11 +2619,11 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     .scroll-progress { display: none; }
 
     .video__thumb,
-    .masonry__img,
-    .masonry__item,
+    .bento__img,
+    .bento__cell,
     .related__img,
     .related__card,
-    .narrative__img {
+    .essay__img {
       transition: none;
     }
   }
