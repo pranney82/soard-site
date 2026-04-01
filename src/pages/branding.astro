@@ -12,7 +12,7 @@ const dlIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" v
 const copyIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>`;
 
 /* Cloudflare Images — imagedelivery.net auto-negotiates AVIF/WebP via Accept header */
-import { cfRaw, cfSrcset as _cfSrcset } from '../utils/cf-image';
+import { cfRaw, cfSrcset as _cfSrcset, cfLqip } from '../utils/cf-image';
 const cfSrc = (id: string, w: number) => cfRaw(id, `w=${w},q=85`);
 const cfSrcset = (id: string, widths: number[]) => _cfSrcset(id, widths);
 
@@ -65,6 +65,7 @@ const jsonLd = {
       <a href="#media-impact" class="mobile-nav-link">Impact</a>
       <a href="#media-mission" class="mobile-nav-link">Mission</a>
       <a href="#media-founders" class="mobile-nav-link">Founders</a>
+      <a href="#media-photos" class="mobile-nav-link">Photos</a>
       <a href="#media-contact" class="mobile-nav-link">Contact</a>
       <a href="#logos" class="mobile-nav-link">Logos</a>
       <a href="#logo-usage" class="mobile-nav-link">Usage</a>
@@ -85,6 +86,7 @@ const jsonLd = {
         <a href="#media-impact" class="sidebar-link">Impact Stats</a>
         <a href="#media-mission" class="sidebar-link">Mission</a>
         <a href="#media-founders" class="sidebar-link">Founder's Story</a>
+        <a href="#media-photos" class="sidebar-link">Photography</a>
         <a href="#media-contact" class="sidebar-link">Contact & Social</a>
         <p class="sidebar-group-label">Brand Guidelines</p>
         <a href="#logos" class="sidebar-link">Logos</a>
@@ -203,6 +205,50 @@ const jsonLd = {
           </div>
         </div>
       </section>
+
+      {(media.brandingPhotos?.length ?? 0) > 0 && (
+        <section id="media-photos" class="brand-section">
+          <div class="section-header-row">
+            <div>
+              <h2>Photography</h2>
+              <p>Press-ready photos from our makeovers. Download individually or grab the full set.</p>
+            </div>
+            <a href="/api/download-branding-photos" download class="download-all-btn" aria-label="Download all branding photos as ZIP">
+              <Fragment set:html={dlIcon} />Download All Photos
+            </a>
+          </div>
+
+          <div class="branding-photos-grid">
+            {media.brandingPhotos.map((bp: { cfId: string; caption: string; kidSlug: string }, i: number) => (
+              <div class="branding-photo-card">
+                <div class="branding-photo-wrap" style={`background-image:url(${cfLqip(bp.cfId)});background-size:cover;background-position:center`}>
+                  <img
+                    src={cfRaw(bp.cfId, 'w=600,q=85,fit=cover,gravity=face')}
+                    srcset={_cfSrcset(bp.cfId, [400, 600, 900], { fit: 'cover', gravity: 'face' })}
+                    sizes="(max-width: 768px) 90vw, (max-width: 1024px) 45vw, 420px"
+                    alt={bp.caption || 'SOARD makeover photo'}
+                    width="600"
+                    height="400"
+                    loading="lazy"
+                    decoding="async"
+                    fetchpriority="low"
+                  />
+                </div>
+                <div class="branding-photo-footer">
+                  {bp.caption && <p class="branding-photo-caption">{bp.caption}</p>}
+                  <a href={`/api/download-branding-photos?photo=${i}`} download class="branding-photo-dl" aria-label={`Download photo of ${bp.caption || 'makeover'}`}>
+                    <Fragment set:html={dlIcon} />
+                  </a>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div class="info-box" style="margin-top:24px;">
+            <p><strong>Usage:</strong> These photos are provided for press, media, and editorial use in connection with coverage of Sunshine on a Ranney Day. Each download includes a <code>credits.txt</code> with photographer attribution and usage rights. For additional images or specific requests, contact <a href={`mailto:${media.contactEmail}`}>{media.contactEmail}</a>.</p>
+          </div>
+        </section>
+      )}
 
       <section id="media-contact" class="brand-section">
         <h2>Contact & Social</h2>
@@ -653,6 +699,19 @@ const jsonLd = {
   .specs-platform{font-weight:600;color:var(--c-dark)}
   .specs-dims{font-family:'SF Mono','Courier New',monospace;font-size:13px;color:var(--c-dark);background:var(--c-warm-gray,#F5F4F0);padding:4px 10px;border-radius:6px;display:inline-block}
 
+  /* ═══ BRANDING PHOTOS ═══ */
+  .branding-photos-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:24px}
+  .branding-photo-card{background:#fff;border:1px solid rgba(55,58,54,.1);border-radius:16px;overflow:hidden;transition:transform .2s ease,box-shadow .2s ease;display:flex;flex-direction:column}
+  .branding-photo-card:hover{transform:translateY(-3px);box-shadow:0 12px 32px rgba(0,0,0,.08)}
+  .branding-photo-wrap{overflow:hidden;aspect-ratio:3/2;background-color:var(--c-warm-gray,#F5F4F0)}
+  .branding-photo-wrap img{width:100%;height:100%;object-fit:cover;display:block}
+  .branding-photo-footer{display:flex;align-items:center;justify-content:space-between;padding:12px 20px;border-top:1px solid rgba(55,58,54,.06);gap:12px;min-height:52px}
+  .branding-photo-caption{font-size:14px;font-weight:500;color:var(--c-dark);line-height:1.4;flex:1;min-width:0}
+  .branding-photo-dl{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:8px;background:transparent;border:1px solid rgba(55,58,54,.12);color:rgba(55,58,54,.7);flex-shrink:0;transition:all .15s ease;text-decoration:none}
+  .branding-photo-dl:hover{background:var(--c-yellow);color:var(--c-dark);border-color:var(--c-yellow)}
+  .branding-photo-dl svg{width:14px;height:14px}
+  .info-box code{font-family:'SF Mono','Courier New',monospace;font-size:13px;background:rgba(55,58,54,.08);padding:2px 6px;border-radius:4px}
+
   /* Toast */
   .brand-toast{position:fixed;bottom:32px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--c-dark-deep);color:#fff;padding:12px 24px;border-radius:10px;font-size:14px;font-weight:500;opacity:0;pointer-events:none;transition:all .3s ease;z-index:999;box-shadow:0 8px 32px rgba(0,0,0,.2)}
   .brand-toast.visible{opacity:1;transform:translateX(-50%) translateY(0)}
@@ -660,12 +719,12 @@ const jsonLd = {
   /* ═══ RESPONSIVE ═══ */
   @media(max-width:1024px){.brand-sidebar{display:none}.brand-layout{padding:32px 20px 48px}.logo-grid-3{grid-template-columns:repeat(3,1fr)}.brand-mobile-nav{display:block}.brand-section{scroll-margin-top:160px}}
   @media(max-width:900px){.logo-grid-3{grid-template-columns:repeat(2,1fr)}}
-  @media(max-width:768px){.brand-hero{padding:72px 20px 60px}.logo-grid{grid-template-columns:1fr}.logo-grid-3{grid-template-columns:1fr}.usage-grid{grid-template-columns:1fr}.dodont-grid{grid-template-columns:1fr}.color-grid{grid-template-columns:1fr 1fr}.two-col{grid-template-columns:1fr}.vis-grid{grid-template-columns:1fr 1fr}.section-header-row{flex-direction:column}.media-details-grid{grid-template-columns:1fr}.dl-btn{padding:10px 16px;font-size:13px;min-height:44px}.specs-table-wrap{overflow-x:auto}.specs-table{min-width:540px}.print-fonts-grid{grid-template-columns:1fr}.impact-stats-grid{grid-template-columns:repeat(2,1fr)}}
+  @media(max-width:768px){.brand-hero{padding:72px 20px 60px}.logo-grid{grid-template-columns:1fr}.logo-grid-3{grid-template-columns:1fr}.usage-grid{grid-template-columns:1fr}.dodont-grid{grid-template-columns:1fr}.color-grid{grid-template-columns:1fr 1fr}.two-col{grid-template-columns:1fr}.vis-grid{grid-template-columns:1fr 1fr}.section-header-row{flex-direction:column}.media-details-grid{grid-template-columns:1fr}.dl-btn{padding:10px 16px;font-size:13px;min-height:44px}.specs-table-wrap{overflow-x:auto}.specs-table{min-width:540px}.print-fonts-grid{grid-template-columns:1fr}.impact-stats-grid{grid-template-columns:repeat(2,1fr)}.branding-photos-grid{grid-template-columns:1fr}}
   @media(max-width:480px){.color-grid{grid-template-columns:1fr}.vis-grid{grid-template-columns:1fr}.hero-btn{width:100%;justify-content:center}}
 
   /* ═══ REDUCED MOTION ═══ */
   @media(prefers-reduced-motion:reduce){
-    .card,.usage-card,.color-card,.print-font-card,.media-card,.brand-toast{transition:none}
+    .card,.usage-card,.color-card,.print-font-card,.media-card,.brand-toast,.branding-photo-card{transition:none}
     .card:hover{transform:none;box-shadow:none}
     .color-card:hover{transform:none;box-shadow:none}
     .hero-btn-primary:hover{transform:none}

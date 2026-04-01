@@ -9,10 +9,9 @@
  * 3. Impact Ribbon — Static stats strip (years, rooms, kids, partners)
  * 4. Champion Partners — Elevated grid on cream
  * 5. Editorial Interstitial — Large pull-quote
- * 6. Builder Partners — Dark refined grid
- * 7. All Partners — Filterable grid with smooth UX
- * 8. Ways to Partner — CTA cards
- * 9. CTA — Yellow emotional close
+ * 6. Partner Directory — Searchable/filterable grid (Builder + Friend tiers)
+ * 7. Ways to Partner — CTA cards
+ * 8. CTA — Yellow emotional close
  *
  * PERF NOTES:
  * - Hero has NO data-reveal (LCP critical)
@@ -31,10 +30,12 @@ import { getSiteStats } from '../../utils/stats';
 import siteSettings from '../../content/site/settings.json';
 
 /* ── Impact Moment (admin-editable via site settings) ── */
+const heroPhoto = siteSettings.partnerPhoto || 'kids/oakley/photo-15';
+
+/* ── Partner Testimonial (admin-editable) ── */
 const impactQuote = siteSettings.partnerQuote || "Seeing the look on a child\u2019s face when they walk into their new room \u2014 that\u2019s why we show up every build day.";
 const impactCiteName = siteSettings.partnerQuoteName || 'Lee Hainer';
 const impactCiteOrg = siteSettings.partnerQuoteOrg || 'Lee Hainer Construction';
-const heroPhoto = siteSettings.partnerPhoto || 'kids/oakley/photo-15';
 
 /* ── Stats ── */
 const stats = await getSiteStats();
@@ -50,16 +51,18 @@ const sorted = [...allPartners].sort((a, b) =>
 /* ── Level groups ── */
 const signature = sorted.filter(p => p.data.level === 'signature');
 const champions = sorted.filter(p => p.data.level === 'champion');
-const builders  = sorted.filter(p => p.data.level === 'builder');
 const friends   = sorted.filter(p => p.data.level === 'friend');
 
-/* ── Category counts (for filter tab labels) ── */
+/* ── Directory partners (Builder + Friend — Signature & Champion have dedicated sections) ── */
+const directory = sorted.filter(p => p.data.level === 'builder' || p.data.level === 'friend');
+
+/* ── Category counts for directory partners ── */
 const catCounts = {
-  all: allPartners.length,
-  build: allPartners.filter(p => p.data.category.includes('build')).length,
-  design: allPartners.filter(p => p.data.category.includes('design')).length,
-  funding: allPartners.filter(p => p.data.category.includes('funding')).length,
-  community: allPartners.filter(p => p.data.category.includes('community')).length,
+  all: directory.length,
+  build: directory.filter(p => p.data.category.includes('build')).length,
+  design: directory.filter(p => p.data.category.includes('design')).length,
+  funding: directory.filter(p => p.data.category.includes('funding')).length,
+  community: directory.filter(p => p.data.category.includes('community')).length,
 };
 
 /* ── Schema ── */
@@ -262,91 +265,58 @@ const jsonLd = buildSchemaGraph(
     </div>
   </section>
 
-  <!-- ══════ BUILDER PARTNERS ══════ -->
-  {builders.length > 0 && (
-    <section class="build" id="builders" aria-labelledby="build-heading">
-      <div class="build-inner">
-        <div class="build-header" data-reveal>
-          <div class="section-label section-label--yellow">Builder Partners</div>
-          <h2 id="build-heading">The hands & hearts behind every <em>room</em></h2>
-          <p class="build-lead">These partners donate materials, labor, and services on a regular basis. They are the hands and hearts behind every room we build.</p>
-        </div>
-        <div class="build-grid" data-reveal data-delay="1">
-          {builders.map(p => {
-            const hasLink = !!p.data.website;
-            const hasLogo = !!p.data.logo;
-            const Tag = hasLink ? 'a' : 'div';
-            return (
-              <Tag
-                class:list={['build-card', { 'build-card--linked': hasLink }]}
-                {...(hasLink ? { href: p.data.website, target: '_blank', rel: 'noopener noreferrer' } : {})}
-              >
-                <div class="build-card__logo">
-                  {hasLogo ? (
-                    <Fragment>
-                      <img
-                        src={cfRaw(p.data.logo, 'w=200,h=64,fit=contain,q=80')}
-                        srcset={cfDensitySrcset(cfId(p.data.logo), 100, 32, { quality: 80, fit: 'contain' })}
-                        alt=""
-                        width="100" height="32"
-                        loading="lazy" decoding="async"
-                        onerror="this.style.display='none';this.nextElementSibling.style.display=''"
-                      />
-                      <span class="logo-placeholder" style="display:none">{p.data.name}</span>
-                    </Fragment>
-                  ) : (
-                    <span class="logo-placeholder">{p.data.name}</span>
-                  )}
-                </div>
-                <span class="build-card__name">{p.data.name}</span>
-              </Tag>
-            );
-          })}
-        </div>
-      </div>
-    </section>
-  )}
-
-  <!-- ══════ ALL PARTNERS — FILTERABLE ══════ -->
+  <!-- ══════ PARTNER DIRECTORY — FILTERABLE ══════ -->
   <section class="all" id="all" aria-labelledby="all-heading">
     <div class="all-inner">
       <div class="all-header" data-reveal>
-        <div class="section-label">Every Partner</div>
-        <h2 id="all-heading">The full roster of <em class="highlight">dream-builders</em></h2>
-        <p class="all-lead">{allPartners.length}+ organizations and individuals who have donated time, materials, or funding to SOARD since 2012.</p>
+        <div class="section-label">Partner Directory</div>
+        <h2 id="all-heading">Every partner who helps build <em class="highlight">dreams</em></h2>
+        <p class="all-lead">{directory.length}+ organizations and individuals who donate time, materials, and funding — the full community behind every SOARD room.</p>
       </div>
 
-      <!-- Filter tabs -->
-      <div class="filter-tabs" role="tablist" aria-label="Filter partners by category" data-reveal data-delay="1">
-        <button class="filter-tab is-active" role="tab" aria-selected="true" data-cat="all">
-          All <span class="filter-tab__count">{catCounts.all}</span>
-        </button>
-        <button class="filter-tab" role="tab" aria-selected="false" data-cat="build">
-          Build <span class="filter-tab__count">{catCounts.build}</span>
-        </button>
-        <button class="filter-tab" role="tab" aria-selected="false" data-cat="design">
-          Design <span class="filter-tab__count">{catCounts.design}</span>
-        </button>
-        <button class="filter-tab" role="tab" aria-selected="false" data-cat="funding">
-          Funding <span class="filter-tab__count">{catCounts.funding}</span>
-        </button>
-        <button class="filter-tab" role="tab" aria-selected="false" data-cat="community">
-          Community <span class="filter-tab__count">{catCounts.community}</span>
-        </button>
+      <!-- Filter bar: tabs + search -->
+      <div class="filter-bar" data-reveal data-delay="1">
+        <div class="filter-tabs" role="tablist" aria-label="Filter partners by category">
+          <button class="filter-tab is-active" role="tab" aria-selected="true" data-cat="all">
+            All <span class="filter-tab__count">{catCounts.all}</span>
+          </button>
+          <button class="filter-tab" role="tab" aria-selected="false" data-cat="build">
+            Build <span class="filter-tab__count">{catCounts.build}</span>
+          </button>
+          <button class="filter-tab" role="tab" aria-selected="false" data-cat="design">
+            Design <span class="filter-tab__count">{catCounts.design}</span>
+          </button>
+          <button class="filter-tab" role="tab" aria-selected="false" data-cat="funding">
+            Funding <span class="filter-tab__count">{catCounts.funding}</span>
+          </button>
+          <button class="filter-tab" role="tab" aria-selected="false" data-cat="community">
+            Community <span class="filter-tab__count">{catCounts.community}</span>
+          </button>
+        </div>
+        <div class="search-wrap">
+          <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+          <input type="search" class="search-input" placeholder="Search partners..." aria-label="Search partners by name" autocomplete="off" />
+          <button class="search-clear" type="button" aria-label="Clear search" style="display:none;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+          </button>
+        </div>
       </div>
 
       <p class="filter-count" aria-live="polite" style="display:none;"></p>
 
       <div class="all-grid" role="tabpanel" aria-label="Filtered partners" data-reveal data-delay="2">
-        {sorted.map(p => {
+        {directory.map(p => {
           const hasLink = !!p.data.website;
           const Tag = hasLink ? 'a' : 'div';
           return (
             <Tag
-              class:list={['ap-card', { 'ap-card--linked': hasLink }]}
+              class:list={['ap-card', `ap-card--${p.data.level}`, { 'ap-card--linked': hasLink, 'ap-card--featured': p.data.featured }]}
               data-category={p.data.category.join(',')}
+              data-name={p.data.name.toLowerCase()}
+              data-level={p.data.level}
               {...(hasLink ? { href: p.data.website, target: '_blank', rel: 'noopener noreferrer' } : {})}
             >
+              {p.data.level === 'builder' && <span class="ap-badge ap-badge--builder">Builder</span>}
               <div class="ap-card__logo">
                 {!!p.data.logo ? (
                   <Fragment>
@@ -365,9 +335,21 @@ const jsonLd = buildSchemaGraph(
                 )}
               </div>
               <span class="ap-card__name">{p.data.name}</span>
+              {p.data.tagline && <span class="ap-card__tagline">{p.data.tagline}</span>}
+              {hasLink && (
+                <svg class="ap-card__ext" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7"/><path d="M7 7h10v10"/></svg>
+              )}
             </Tag>
           );
         })}
+      </div>
+
+      <!-- Empty state -->
+      <div class="all-empty" style="display:none;" aria-live="polite">
+        <svg class="all-empty__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/><path d="M8 11h6"/></svg>
+        <p class="all-empty__title">No partners found</p>
+        <p class="all-empty__desc">Try a different search term or category filter.</p>
+        <button class="all-empty__reset btn btn-outline-dark" type="button">Clear filters</button>
       </div>
     </div>
   </section>
@@ -428,6 +410,7 @@ const jsonLd = buildSchemaGraph(
     </div>
   </section>
 
+
 </BaseLayout>
 
 <!-- ══════ CLIENT-SIDE FILTER ══════ -->
@@ -436,34 +419,78 @@ const jsonLd = buildSchemaGraph(
     const tabs = document.querySelectorAll<HTMLButtonElement>('.filter-tab');
     const cards = document.querySelectorAll<HTMLElement>('.ap-card');
     const counter = document.querySelector<HTMLElement>('.filter-count');
+    const searchInput = document.querySelector<HTMLInputElement>('.search-input');
+    const searchClear = document.querySelector<HTMLButtonElement>('.search-clear');
+    const grid = document.querySelector<HTMLElement>('.all-grid');
+    const emptyState = document.querySelector<HTMLElement>('.all-empty');
+    const resetBtn = document.querySelector<HTMLButtonElement>('.all-empty__reset');
     if (!tabs.length || !cards.length) return;
 
-    function applyFilter(cat: string) {
+    let activeCat = 'all';
+    let searchQuery = '';
+
+    function applyFilters() {
       tabs.forEach(t => {
-        t.classList.toggle('is-active', t.dataset.cat === cat);
-        t.setAttribute('aria-selected', String(t.dataset.cat === cat));
+        t.classList.toggle('is-active', t.dataset.cat === activeCat);
+        t.setAttribute('aria-selected', String(t.dataset.cat === activeCat));
       });
 
       let visible = 0;
+      let staggerIndex = 0;
       cards.forEach(card => {
-        const show = cat === 'all' || (card.dataset.category || '').split(',').includes(cat);
+        const matchesCat = activeCat === 'all' || (card.dataset.category || '').split(',').includes(activeCat);
+        const matchesSearch = !searchQuery || (card.dataset.name || '').includes(searchQuery);
+        const show = matchesCat && matchesSearch;
         card.classList.toggle('is-hidden', !show);
-        if (show) visible++;
+        if (show) {
+          if (staggerIndex < 30) {
+            card.style.setProperty('--stagger', `${staggerIndex * 20}ms`);
+            card.classList.add('ap-enter');
+          } else {
+            card.classList.remove('ap-enter');
+          }
+          staggerIndex++;
+          visible++;
+        } else {
+          card.classList.remove('ap-enter');
+        }
       });
 
+      // Counter
       if (counter) {
-        const label = cat === 'all' ? 'all' : cat;
-        counter.textContent = `Showing ${visible} ${label} partner${visible !== 1 ? 's' : ''}`;
-        counter.style.display = cat === 'all' ? 'none' : '';
+        const hasFilter = activeCat !== 'all' || searchQuery;
+        if (hasFilter) {
+          const catLabel = activeCat === 'all' ? '' : ` ${activeCat}`;
+          counter.textContent = `Showing ${visible}${catLabel} partner${visible !== 1 ? 's' : ''}${searchQuery ? ` matching "${searchQuery}"` : ''}`;
+          counter.style.display = '';
+        } else {
+          counter.style.display = 'none';
+        }
       }
 
-      const hash = cat === 'all' ? '#all' : `#all:${cat}`;
+      // Empty state
+      if (emptyState && grid) {
+        const isEmpty = visible === 0 && (activeCat !== 'all' || searchQuery);
+        emptyState.style.display = isEmpty ? '' : 'none';
+        grid.style.display = isEmpty ? 'none' : '';
+      }
+
+      // Search clear button
+      if (searchClear) {
+        searchClear.style.display = searchQuery ? '' : 'none';
+      }
+
+      // URL hash
+      const hash = activeCat === 'all' ? '#all' : `#all:${activeCat}`;
       history.replaceState(null, '', hash);
     }
 
-    // Click
+    // Tab clicks
     tabs.forEach(tab => {
-      tab.addEventListener('click', () => applyFilter(tab.dataset.cat!));
+      tab.addEventListener('click', () => {
+        activeCat = tab.dataset.cat!;
+        applyFilters();
+      });
     });
 
     // Keyboard arrow-key navigation (WAI-ARIA tabs pattern)
@@ -482,17 +509,75 @@ const jsonLd = buildSchemaGraph(
         if (target !== null) {
           e.preventDefault();
           tabs[target].focus();
-          applyFilter(tabs[target].dataset.cat!);
+          activeCat = tabs[target].dataset.cat!;
+          applyFilters();
         }
       });
     });
+
+    // Search input (debounced)
+    let debounceTimer: ReturnType<typeof setTimeout>;
+    if (searchInput) {
+      searchInput.addEventListener('input', () => {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+          searchQuery = searchInput.value.trim().toLowerCase();
+          applyFilters();
+        }, 150);
+      });
+
+      // Escape to clear
+      searchInput.addEventListener('keydown', (e: KeyboardEvent) => {
+        if (e.key === 'Escape' && searchQuery) {
+          e.preventDefault();
+          searchInput.value = '';
+          searchQuery = '';
+          applyFilters();
+          searchInput.blur();
+        }
+      });
+    }
+
+    // Search clear button
+    if (searchClear && searchInput) {
+      searchClear.addEventListener('click', () => {
+        searchInput.value = '';
+        searchQuery = '';
+        applyFilters();
+        searchInput.focus();
+      });
+    }
+
+    // Empty state reset
+    if (resetBtn && searchInput) {
+      resetBtn.addEventListener('click', () => {
+        searchInput.value = '';
+        searchQuery = '';
+        activeCat = 'all';
+        applyFilters();
+      });
+    }
+
+    // Sticky shadow on filter bar
+    const filterBar = document.querySelector<HTMLElement>('.filter-bar');
+    if (filterBar) {
+      const sentinel = document.createElement('div');
+      sentinel.style.cssText = 'height:1px;width:1px;position:absolute;top:-1px;pointer-events:none;';
+      filterBar.parentElement?.insertBefore(sentinel, filterBar);
+      const observer = new IntersectionObserver(
+        ([e]) => filterBar.classList.toggle('is-stuck', !e.isIntersecting),
+        { threshold: 0 }
+      );
+      observer.observe(sentinel);
+    }
 
     // Restore from URL hash on load
     const hash = location.hash;
     if (hash.startsWith('#all:')) {
       const cat = hash.slice(5);
       if (['build', 'design', 'funding', 'community'].includes(cat)) {
-        applyFilter(cat);
+        activeCat = cat;
+        applyFilters();
       }
     }
   }
@@ -1067,98 +1152,6 @@ const jsonLd = buildSchemaGraph(
   }
 
   /* ══════════════════════════════════════════
-     BUILDER PARTNERS
-     ══════════════════════════════════════════ */
-  .build {
-    background: var(--c-dark);
-    color: var(--c-white);
-    padding-block: var(--space-4xl);
-  }
-
-  .build-inner {
-    max-width: var(--max-width);
-    margin: 0 auto;
-    padding-inline: var(--space-lg);
-  }
-
-  .build-header {
-    max-width: 640px;
-    margin-bottom: var(--space-2xl);
-  }
-
-  .build-header h2 {
-    color: var(--c-white);
-    font-size: clamp(1.75rem, 3.5vw, 2.75rem);
-    letter-spacing: -0.02em;
-    line-height: 1.15;
-    margin-bottom: var(--space-md);
-  }
-
-  .build-lead {
-    font-size: clamp(0.95rem, 1.5vw, 1.065rem);
-    line-height: 1.65;
-    color: rgba(255, 255, 255, 0.55);
-  }
-
-  .build-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-    gap: 10px;
-    contain: content;
-  }
-
-  .build-card {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    padding: 22px 14px;
-    background: var(--c-white);
-    border: 1px solid var(--c-border);
-    border-radius: var(--border-radius);
-    text-align: center;
-    min-height: 100px;
-    text-decoration: none;
-    transition: border-color var(--transition-base),
-                transform 0.35s cubic-bezier(0.16,1,0.3,1),
-                box-shadow 0.35s cubic-bezier(0.16,1,0.3,1);
-    will-change: transform;
-  }
-
-  .build-card--linked:hover {
-    border-color: var(--c-yellow);
-    transform: translateY(-2px);
-    box-shadow: 0 4px 20px rgba(255, 218, 36, 0.12);
-  }
-
-  .build-card__logo {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    height: 36px;
-  }
-
-  .build-card__logo img {
-    max-height: 36px;
-    width: auto;
-    object-fit: contain;
-    transition: opacity var(--transition-base);
-  }
-
-  .build-card__name {
-    font-size: 0.8125rem;
-    font-weight: 500;
-    color: var(--c-text-muted);
-    line-height: 1.3;
-  }
-
-  @media (max-width: 480px) {
-    .build-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
-    .build-card { min-height: 80px; padding: 16px 10px; }
-  }
-
-  /* ══════════════════════════════════════════
      ALL PARTNERS — FILTERABLE GRID
      ══════════════════════════════════════════ */
   .all {
@@ -1190,17 +1183,37 @@ const jsonLd = buildSchemaGraph(
     color: var(--c-text-muted);
   }
 
-  /* ── Filter Tabs ── */
+  /* ── Filter Bar (tabs + search) — sticky ── */
+  .filter-bar {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    margin-bottom: var(--space-lg);
+    padding: 12px 0;
+    background: var(--c-cream);
+    flex-wrap: wrap;
+    transition: box-shadow 0.2s ease;
+  }
+
+  /* Subtle shadow when stuck */
+  .filter-bar.is-stuck {
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
+  }
+
   .filter-tabs {
     position: relative;
     display: flex;
     gap: 6px;
-    margin-bottom: var(--space-lg);
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
     -ms-overflow-style: none;
     padding-bottom: 4px;
+    flex: 1;
+    min-width: 0;
   }
   .filter-tabs::-webkit-scrollbar { display: none; }
 
@@ -1210,6 +1223,77 @@ const jsonLd = buildSchemaGraph(
       -webkit-mask-image: linear-gradient(90deg, #000 85%, transparent);
       mask-image: linear-gradient(90deg, #000 85%, transparent);
     }
+  }
+
+  /* ── Search ── */
+  .search-wrap {
+    position: relative;
+    flex-shrink: 0;
+    width: 220px;
+  }
+
+  .search-icon {
+    position: absolute;
+    left: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 16px;
+    height: 16px;
+    color: var(--c-text-light);
+    pointer-events: none;
+  }
+
+  .search-input {
+    width: 100%;
+    padding: 9px 38px 9px 38px;
+    font-family: var(--font-body);
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--c-text);
+    background: var(--c-white);
+    border: 1px solid var(--c-border);
+    border-radius: 100px;
+    outline: none;
+    transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+  }
+
+  .search-input::placeholder {
+    color: var(--c-text-light);
+    opacity: 0.7;
+  }
+
+  .search-input:focus {
+    border-color: var(--c-yellow);
+    box-shadow: 0 0 0 3px var(--c-yellow-soft);
+  }
+
+  /* WebKit clear button removal */
+  .search-input::-webkit-search-cancel-button { -webkit-appearance: none; }
+
+  .search-clear {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: var(--c-border);
+    color: var(--c-text-muted);
+    cursor: pointer;
+    transition: background var(--transition-fast), color var(--transition-fast);
+  }
+  .search-clear svg { width: 12px; height: 12px; }
+  .search-clear:hover { background: var(--c-text-muted); color: var(--c-white); }
+
+  @media (max-width: 700px) {
+    .filter-bar { flex-direction: column; align-items: stretch; }
+    .search-wrap { width: 100%; }
   }
 
   .filter-count {
@@ -1272,6 +1356,7 @@ const jsonLd = buildSchemaGraph(
   }
 
   .ap-card {
+    position: relative;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -1286,7 +1371,7 @@ const jsonLd = buildSchemaGraph(
     text-decoration: none;
     transition: border-color var(--transition-fast),
                 box-shadow var(--transition-fast),
-                opacity 0.25s ease;
+                transform 0.3s cubic-bezier(0.16,1,0.3,1);
   }
 
   .ap-card.is-hidden {
@@ -1295,7 +1380,46 @@ const jsonLd = buildSchemaGraph(
 
   .ap-card--linked:hover {
     border-color: var(--c-yellow);
-    box-shadow: 0 2px 12px rgba(255, 218, 36, 0.08);
+    box-shadow: 0 4px 16px rgba(255, 218, 36, 0.1);
+    transform: translateY(-2px);
+  }
+
+  /* Tier-specific left border accent */
+  .ap-card--builder { border-left: 3px solid var(--c-text-light); }
+
+  /* Featured partner subtle glow */
+  .ap-card--featured {
+    box-shadow: 0 0 0 1px var(--c-yellow-soft);
+  }
+
+  /* ── Tier Badge ── */
+  .ap-badge {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    font-size: 0.5625rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    border-radius: 100px;
+    line-height: 1.4;
+  }
+  .ap-badge--builder {
+    background: var(--c-warm-gray);
+    color: var(--c-text-muted);
+  }
+
+  /* ── Stagger entrance animation ── */
+  @keyframes apEnter {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .ap-enter {
+    animation: apEnter 0.35s cubic-bezier(0.16, 1, 0.3, 1) var(--stagger, 0ms) both;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .ap-enter { animation: none; opacity: 1; transform: none; }
   }
 
   .ap-card__logo {
@@ -1322,12 +1446,79 @@ const jsonLd = buildSchemaGraph(
     line-height: 1.3;
   }
 
+  .ap-card__tagline {
+    font-size: 0.6875rem;
+    line-height: 1.4;
+    color: var(--c-text-light);
+    margin-top: -4px;
+    max-width: 160px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .ap-card:hover .ap-card__tagline {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: unset;
+  }
+
+  .ap-card__ext {
+    position: absolute;
+    bottom: 6px;
+    right: 6px;
+    width: 12px;
+    height: 12px;
+    color: var(--c-border);
+    opacity: 0;
+    transition: opacity var(--transition-fast), color var(--transition-fast);
+  }
+  .ap-card--linked:hover .ap-card__ext {
+    opacity: 1;
+    color: var(--c-yellow);
+  }
+
   @media (max-width: 600px) {
     .all-grid {
       grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
       gap: 6px;
     }
     .ap-card { padding: 14px 8px; min-height: 76px; }
+    .ap-badge { font-size: 0.5rem; padding: 1px 5px; top: 4px; right: 4px; }
+    .ap-card__tagline { display: none; }
+    .ap-card__ext { display: none; }
+  }
+
+  /* ── Empty State ── */
+  .all-empty {
+    text-align: center;
+    padding: var(--space-3xl) var(--space-lg);
+  }
+
+  .all-empty__icon {
+    width: 48px;
+    height: 48px;
+    color: var(--c-text-light);
+    opacity: 0.4;
+    margin-bottom: var(--space-md);
+  }
+
+  .all-empty__title {
+    font-family: var(--font-display);
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--c-text);
+    margin-bottom: 6px;
+  }
+
+  .all-empty__desc {
+    font-size: 0.875rem;
+    color: var(--c-text-muted);
+    margin-bottom: var(--space-lg);
+  }
+
+  .all-empty__reset {
+    font-size: 0.8125rem;
   }
 
   /* ══════════════════════════════════════════
@@ -1511,7 +1702,6 @@ const jsonLd = buildSchemaGraph(
   @media (max-width: 768px) {
     .sig,
     .champ,
-    .build,
     .all,
     .ways,
     .partners-cta {
@@ -1520,7 +1710,6 @@ const jsonLd = buildSchemaGraph(
 
     .sig-header,
     .champ-header,
-    .build-header,
     .all-header,
     .ways-header {
       margin-bottom: var(--space-xl);
@@ -1542,9 +1731,10 @@ const jsonLd = buildSchemaGraph(
   @media (hover: none) and (pointer: coarse) {
     .sig-card--linked:hover,
     .champ-card--linked:hover,
-    .build-card--linked:hover,
+    .ap-card--linked:hover,
     .way-card:hover {
       transform: none;
     }
   }
+
 </style>

@@ -2887,11 +2887,11 @@
           console.log('[useSingleUpload] field:', field, 'res:', JSON.stringify(res));
           if (res.success) {
             setData(d => {
-              const next = { ...d, [field]: res.imageId };
-              console.log('[useSingleUpload] setData — old:', d[field], '→ new:', res.imageId);
+              const next = { ...d, [field]: res.imageUrl };
+              console.log('[useSingleUpload] setData — old:', d[field], '→ new:', res.imageUrl);
               return next;
             });
-            setPreview(cfThumb(res.imageId));
+            setPreview(res.imageUrl);
             addToast('Uploaded', 'success');
           } else {
             addToast(`Upload failed: ${res.error}`, 'error');
@@ -3654,7 +3654,7 @@
         year: new Date().getFullYear(), status: 'completed', bio: '',
         quote: '', heroImage: '', photos: [], photoCount: 0,
         videoUrl: '', streamVideoId: '', photographer: '', partnerLogos: [],
-        shortDescription: '', metaDescription: '', fundraisingUrl: '',
+        heroSummary: '', shortDescription: '', metaDescription: '', fundraisingUrl: '',
         roomCount: 1, childCount: 1,
         bedroomCount: 0, bathroomCount: 0, therapyRoomCount: 0,
         storyPhotos: [],
@@ -3675,7 +3675,7 @@
         buildCfId: (file) => `kids/${data.slug || 'new'}/${Date.now()}-${file.name.replace(/[^a-z0-9.]/gi, '-')}`,
         arrayKey: 'photos', countKey: 'photoCount',
         makeEntry: (localUrl, file, tempId) => ({ url: localUrl, alt: '', _tempId: tempId }),
-        replaceEntry: (item, res) => ({ url: res.imageId, alt: '' }),
+        replaceEntry: (item, res) => ({ url: res.imageUrl, alt: '' }),
       });
       const { dragHandlers: photoDragHandlers } = useDragReorder({ setData, setDirty, arrayKey: 'photos' });
 
@@ -3685,7 +3685,7 @@
         buildCfId: (file) => `kids/${data.slug || 'new'}/partner-${Date.now()}-${file.name.replace(/[^a-z0-9.]/gi, '-')}`,
         arrayKey: 'partnerLogos',
         makeEntry: (localUrl, file, tempId) => ({ url: localUrl, name: file.name.replace(/\.[^.]+$/, ''), _tempId: tempId }),
-        replaceEntry: (item, res) => ({ url: res.imageId, name: item.name }),
+        replaceEntry: (item, res) => ({ url: res.imageUrl, name: item.name }),
       });
       const { dragHandlers: partnerDragHandlers } = useDragReorder({ setData, setDirty, arrayKey: 'partnerLogos' });
 
@@ -3695,7 +3695,7 @@
         buildCfId: (file) => `kids/${data.slug || 'new'}/plan-${Date.now()}-${file.name.replace(/[^a-z0-9.]/gi, '-')}`,
         arrayKey: 'plans',
         makeEntry: (localUrl, file, tempId) => ({ url: localUrl, label: file.name.replace(/\.[^.]+$/, ''), type: 'as-built', _tempId: tempId }),
-        replaceEntry: (item, res) => ({ url: res.imageId, label: item.label, type: item.type }),
+        replaceEntry: (item, res) => ({ url: res.imageUrl, label: item.label, type: item.type }),
       });
 
       const removePlan = (index) => {
@@ -4210,6 +4210,18 @@
         </div>
 
         <div class="card">
+          <h3 style="margin-bottom: 1rem;">Hero Summary</h3>
+          <p class="text-sm text-muted mb-1">Short intro shown in the hero section on this kid's page. If blank, the first paragraph of the bio is used.</p>
+          <div class="form-group">
+            <label class="form-label">Summary</label>
+            <textarea class="form-textarea" rows="3" value=${data.heroSummary || ''}
+              onInput=${e => updateField('heroSummary', e.target.value)}
+              placeholder="A short, punchy intro for the hero section..." />
+            <div class="char-count ${(data.heroSummary || '').length > 250 ? 'over' : ''}">${(data.heroSummary || '').length}/250</div>
+          </div>
+        </div>
+
+        <div class="card">
           <h3 style="margin-bottom: 1rem;">Story</h3>
           <div class="form-group">
             <label class="form-label">Bio</label>
@@ -4483,7 +4495,7 @@
                 <div style="padding: ${previewDevice === 'mobile' ? '1rem' : '1.5rem'};">
                   <h2 style="margin: 0 0 0.25rem 0; font-size: ${previewDevice === 'mobile' ? '1.3rem' : '1.6rem'};">${data.name}</h2>
                   ${data.age ? html`<p style="color: #6B6C72; margin: 0 0 0.5rem 0;">${Array.isArray(data.age) && data.age.length > 1 ? 'Ages' : 'Age'} ${Array.isArray(data.age) ? data.age.join(', ') : data.age}${data.year ? ` · Class of ${data.year}` : ''}</p>` : null}
-                  ${data.shortDescription ? html`<p style="color: #6B6C72; font-style: italic; margin: 0 0 1rem 0;">${data.shortDescription}</p>` : null}
+                  ${(data.heroSummary || data.shortDescription) ? html`<p style="color: #6B6C72; font-style: italic; margin: 0 0 1rem 0;">${data.heroSummary || data.shortDescription}</p>` : null}
                   ${data.bio ? html`<div style="line-height: 1.6;" dangerouslySetInnerHTML=${{ __html: DOMPurify.sanitize(data.bio) }}></div>` : null}
                   ${data.photos?.length > 1 ? html`
                     <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(${previewDevice === 'mobile' ? '80px' : '120px'}, 1fr)); gap: 0.5rem; margin-top: 1rem;">
@@ -6103,7 +6115,7 @@
         buildCfId: (file) => `events/${data.slug || 'new'}/${Date.now()}-${file.name.replace(/[^a-z0-9.]/gi, '-')}`,
         arrayKey: 'photos',
         makeEntry: (localUrl, file, tempId) => ({ id: localUrl, alt: '', _tempId: tempId }),
-        replaceEntry: (item, res) => ({ id: res.imageId, alt: '' }),
+        replaceEntry: (item, res) => ({ id: res.imageUrl, alt: '' }),
       });
       const { dragHandlers: eventPhotoDragHandlers } = useDragReorder({ setData, setDirty, arrayKey: 'photos' });
 
@@ -6116,7 +6128,7 @@
           const cfId = `events/${data.slug || 'new'}/${Date.now()}-${file.name.replace(/[^a-z0-9.]/gi, '-')}`;
           const res = await api.uploadImage(file, cfId);
           if (res.success) {
-            update('image', res.imageId);
+            update('image', res.imageUrl);
             addToast('Event image uploaded!', 'success');
           } else {
             addToast(`Image upload failed: ${res.error}`, 'error');
@@ -6409,7 +6421,7 @@
                 <div key=${idx} class="photo-grid-item"
                   ...${uploading[photo._tempId] ? {} : eventPhotoDragHandlers(idx)}
                   style="position: relative; border-radius: 8px; overflow: hidden; aspect-ratio: 4/3; background: #f0f0f0;">
-                  <img src=${photo.id && photo.id.startsWith('blob:') ? photo.id : cfThumb(photo.id, 'w=300')}
+                  <img src=${photo.id}
                     alt=${photo.alt || ''} style="width: 100%; height: 100%; object-fit: cover; display: block;" loading="lazy" />
                   ${uploading[photo._tempId] ? html`
                     <div style="position: absolute; inset: 0; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center;">
@@ -7252,11 +7264,11 @@
         buildCfId: (file) => `community/${data.slug || 'new'}/${Date.now()}-${file.name.replace(/[^a-z0-9.]/gi, '-')}`,
         arrayKey: 'photos',
         makeEntry: (localUrl, file, tempId) => ({ url: localUrl, alt: '', _tempId: tempId }),
-        replaceEntry: (item, res) => ({ url: res.imageId, alt: '' }),
+        replaceEntry: (item, res) => ({ url: res.imageUrl, alt: '' }),
         onSuccess: (d, res) => ({
           ...d,
           imageId: d.imageId || res.imageId,
-          heroImage: d.heroImage || res.imageId,
+          heroImage: d.heroImage || res.imageUrl,
         }),
       });
       const { dragHandlers: communityPhotoDragHandlers } = useDragReorder({ setData, setDirty, arrayKey: 'photos' });
@@ -7267,7 +7279,7 @@
         buildCfId: (file) => `community/${data.slug || 'new'}/partner-${Date.now()}-${file.name.replace(/[^a-z0-9.]/gi, '-')}`,
         arrayKey: 'partnerLogos',
         makeEntry: (localUrl, file, tempId) => ({ url: localUrl, name: file.name.replace(/\.[^.]+$/, ''), _tempId: tempId }),
-        replaceEntry: (item, res) => ({ url: res.imageId, name: item.name }),
+        replaceEntry: (item, res) => ({ url: res.imageUrl, name: item.name }),
       });
       const { dragHandlers: partnerDragHandlers } = useDragReorder({ setData, setDirty, arrayKey: 'partnerLogos' });
 
@@ -9724,12 +9736,59 @@
     // ═══════════════════════════════════════════
     // MEDIA KIT EDITOR
     // ═══════════════════════════════════════════
-    function MediaKit({ addToast }) {
+    function MediaKit({ addToast, kids: allKids = [] }) {
       const {
-        data, loading, saving, handleSave, updateNestedField: updateField,
+        data, loading, saving, dirty, setDirty, handleSave, updateNestedField: updateField, setData,
       } = useEditor({
         path: 'src/content/site/media.json', label: 'Media Kit', addToast,
       });
+
+      const sortedKids = useMemo(() =>
+        [...allKids].filter(k => k.heroImage || (k.photos && k.photos.length))
+          .sort((a, b) => (b.year || 0) - (a.year || 0) || (a.name || '').localeCompare(b.name || '')),
+        [allKids]
+      );
+
+      const setBrandingData = (fn) => { setData(fn); setDirty(true); };
+      const addBrandingPhoto = () => {
+        setBrandingData(d => ({
+          ...d,
+          brandingPhotos: [...(d.brandingPhotos || []), { kidSlug: '', cfId: '', caption: '' }],
+        }));
+      };
+      const removeBrandingPhoto = (index) => {
+        setBrandingData(d => ({
+          ...d,
+          brandingPhotos: (d.brandingPhotos || []).filter((_, i) => i !== index),
+        }));
+      };
+      const updateBrandingPhoto = (index, field, value) => {
+        setBrandingData(d => {
+          const arr = [...(d.brandingPhotos || [])];
+          arr[index] = { ...arr[index], [field]: value };
+          return { ...d, brandingPhotos: arr };
+        });
+      };
+      const moveBrandingPhoto = (from, to) => {
+        setBrandingData(d => {
+          const arr = [...(d.brandingPhotos || [])];
+          const [item] = arr.splice(from, 1);
+          arr.splice(to, 0, item);
+          return { ...d, brandingPhotos: arr };
+        });
+      };
+      const handleBrandingKidSelect = (index, slug) => {
+        const kid = allKids.find(k => k.slug === slug);
+        setBrandingData(d => {
+          const arr = [...(d.brandingPhotos || [])];
+          arr[index] = {
+            kidSlug: slug,
+            cfId: kid ? extractCfId(kid.heroImage) : '',
+            caption: kid ? `${kid.name}${kid.diagnosis ? ' — ' + kid.diagnosis : ''}` : '',
+          };
+          return { ...d, brandingPhotos: arr };
+        });
+      };
 
       if (loading) return html`<${EditorSkeleton} />`;
 
@@ -9807,6 +9866,60 @@
             <textarea class="form-input" style="min-height: 160px;" value=${data.founderStory || ''}
               onInput=${e => updateField('founderStory', e.target.value)} />
           </div>
+        </div>
+
+        <div class="card">
+          <h3 style="margin-bottom: 0.5rem;">Branding Photos</h3>
+          <p class="text-sm text-muted mb-1">Select up to 8 kid photos to showcase on the branding page. Pick a kid, then choose which photo to feature.</p>
+          ${(data.brandingPhotos || []).map((bp, i) => {
+            const kid = allKids.find(k => k.slug === bp.kidSlug);
+            const seen = new Set();
+            const kidPhotos = kid ? [
+              { id: extractCfId(kid.heroImage), label: 'Hero' },
+              ...(kid.photos || []).map((p, pi) => ({ id: extractCfId(p.url), label: `Photo ${pi + 1}` })),
+            ].filter(p => p.id && !seen.has(p.id) && seen.add(p.id)) : [];
+            return html`
+              <div style="display: flex; gap: 0.75rem; align-items: flex-start; margin-bottom: 1rem; padding: 0.75rem; background: rgba(0,0,0,0.02); border-radius: 10px; border: 1px solid var(--color-border);">
+                <div style="flex-shrink: 0; display: flex; flex-direction: column; gap: 0.25rem; align-items: center;">
+                  <span style="font-size: 0.7rem; font-weight: 700; color: var(--color-muted);">${i + 1}</span>
+                  <button class="btn btn-ghost" style="padding: 0.2rem 0.4rem; font-size: 0.75rem;" disabled=${i === 0}
+                    onClick=${() => moveBrandingPhoto(i, i - 1)}>↑</button>
+                  <button class="btn btn-ghost" style="padding: 0.2rem 0.4rem; font-size: 0.75rem;" disabled=${i === (data.brandingPhotos || []).length - 1}
+                    onClick=${() => moveBrandingPhoto(i, i + 1)}>↓</button>
+                </div>
+                <div style="flex: 1; min-width: 0;">
+                  <div style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.5rem;">
+                    ${bp.cfId ? html`<img src=${CF + '/' + bp.cfId + '/w=120,h=120,fit=cover,gravity=face'}
+                      alt="" style="width: 48px; height: 48px; border-radius: 8px; object-fit: cover; flex-shrink: 0; border: 1px solid var(--color-border);" />` : null}
+                    <select class="form-input" style="flex: 1;" value=${bp.kidSlug || ''}
+                      onChange=${e => handleBrandingKidSelect(i, e.target.value)}>
+                      <option value="">— Select a kid —</option>
+                      ${sortedKids.map(k => html`<option value=${k.slug} selected=${k.slug === bp.kidSlug}>${k.name}${k.year ? ` (${k.year})` : ''}</option>`)}
+                    </select>
+                  </div>
+                  ${kidPhotos.length ? html`
+                    <div style="display: flex; flex-wrap: wrap; gap: 0.35rem; margin-bottom: 0.5rem;">
+                      ${kidPhotos.slice(0, 20).map(p => html`
+                        <button type="button" onClick=${() => updateBrandingPhoto(i, 'cfId', p.id)}
+                          style="padding: 0; border: 3px solid ${bp.cfId === p.id ? 'var(--color-primary, #2563eb)' : 'transparent'}; border-radius: 8px; overflow: hidden; cursor: pointer; background: none; position: relative; width: 56px; height: 56px; flex-shrink: 0;">
+                          <img src=${CF + '/' + p.id + '/w=112,h=112,fit=cover,gravity=face'} alt=${p.label}
+                            style="width: 100%; height: 100%; object-fit: cover; display: block;" />
+                          ${bp.cfId === p.id ? html`<span style="position: absolute; top: 1px; right: 1px; background: var(--color-primary, #2563eb); color: #fff; border-radius: 50%; width: 16px; height: 16px; display: flex; align-items: center; justify-content: center; font-size: 10px;">✓</span>` : null}
+                        </button>
+                      `)}
+                    </div>
+                  ` : null}
+                  <input class="form-input" style="font-size: 0.85rem;" value=${bp.caption || ''} placeholder="Caption (e.g. Zyah — Spinal Muscular Atrophy)"
+                    onInput=${e => updateBrandingPhoto(i, 'caption', e.target.value)} />
+                </div>
+                <button class="btn btn-ghost" style="padding: 0.3rem 0.5rem; color: var(--color-danger); flex-shrink: 0;"
+                  onClick=${() => removeBrandingPhoto(i)} title="Remove">✕</button>
+              </div>
+            `;
+          })}
+          ${(data.brandingPhotos || []).length < 8 ? html`
+            <button class="btn btn-ghost" style="margin-top: 0.25rem;" onClick=${addBrandingPhoto}>+ Add Photo</button>
+          ` : html`<p class="text-sm text-muted" style="margin-top: 0.5rem;">Maximum of 8 photos reached.</p>`}
         </div>
 
         <div class="card">
@@ -10828,7 +10941,7 @@
               </div>
               ${sTab === 'faq' ? html`<${FAQManager} addToast=${addToast} />`
                 : sTab === 'ourstory' ? html`<${OurStory} addToast=${addToast} />`
-                : sTab === 'mediakit' ? html`<${MediaKit} addToast=${addToast} />`
+                : sTab === 'mediakit' ? html`<${MediaKit} addToast=${addToast} kids=${kids} />`
                 : sTab === 'snapshot' ? html`<${FinancialSnapshot} addToast=${addToast} />`
                 : sTab === 'financials' ? html`<${Financials} addToast=${addToast} />`
                 : sTab === 'settings' ? html`<${SiteSettings} addToast=${addToast} kids=${kids} partners=${partners} />`

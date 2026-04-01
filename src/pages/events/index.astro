@@ -186,7 +186,7 @@ const fallbackSizes = '(max-width: 768px) 85vw, (max-width: 1200px) 38vw, 420px'
             </a>
           </div>
         </div>
-        <div class="hero-frame">
+        <a href={detailPages[flagshipEvent.data.slug]} class="hero-frame">
           <div class="hero-event-card">
             <div class="hero-event-card__bg" aria-hidden="true"></div>
             <div class="hero-event-card__gradient" aria-hidden="true"></div>
@@ -210,7 +210,7 @@ const fallbackSizes = '(max-width: 768px) 85vw, (max-width: 1200px) 38vw, 420px'
               </time>
             </div>
           </div>
-        </div>
+        </a>
       </div>
     </section>
   ) : (
@@ -670,6 +670,8 @@ const fallbackSizes = '(max-width: 768px) 85vw, (max-width: 1200px) 38vw, 420px'
     position: relative;
     display: flex;
     justify-content: center;
+    text-decoration: none;
+    color: inherit;
   }
 
   /* Fallback: kid photo with accent */

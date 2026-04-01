@@ -46,7 +46,7 @@ function authedCors(request) {
 }
 
 // Public API routes that don't require authentication
-const PUBLIC_ROUTES = ['/api/newsletter', '/api/kids.json', '/api/cc-oauth-start', '/api/cc-oauth-callback'];
+const PUBLIC_ROUTES = ['/api/newsletter', '/api/kids.json', '/api/cc-oauth-start', '/api/cc-oauth-callback', '/api/download-logo', '/api/download-branding-photos'];
 
 // ─── Rate Limiting (in-memory, per-isolate) ─────────────────────────
 // Limits POST /api/newsletter to 5 requests per IP per 60 seconds.

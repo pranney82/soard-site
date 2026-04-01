@@ -33,6 +33,7 @@ const kids = defineCollection({
     partnerLogos: z.array(z.object({
       url: z.string(),
     })).default([]),
+    heroSummary: z.string().nullable().optional(),
     shortDescription: z.string().nullable().optional(),
     metaDescription: z.string().nullable().optional(),
     altTexts: z.any().nullable().optional(),

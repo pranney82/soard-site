@@ -89,9 +89,11 @@
     }, 3000);
   }
 
-  // CRITICAL: after-swap fires synchronously BEFORE paint.
-  // Revealing above-fold elements here prevents the opacity:0 flash
-  // that otherwise appears for 1-2 frames on client-side navigation.
+  // Run on initial load — bundled modules may execute after astro:page-load
+  // has already fired, so we can't rely solely on the event listener.
+  initReveal();
+
+  // Re-run on client-side navigations (ClientRouter / View Transitions)
   document.addEventListener('astro:after-swap', revealAboveFold);
   document.addEventListener('astro:page-load', initReveal);
   document.addEventListener('astro:before-swap', cleanupReveal);
