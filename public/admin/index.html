@@ -1711,12 +1711,15 @@
     const html = htm.bind(h);
 
     // ─── Constants ────────────────────────────
-    const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
+    const CF = 'https://sunshineonaranneyday.com/cdn-cgi/imagedelivery/ROYFuPmfN2vPS6mt5sCkZQ';
+    const CF_LEGACY = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
     const NAMED_VARIANTS = new Set(['public', 'nav', 'footer', 'og']);
     const extractCfId = (url) => {
       if (!url) return '';
+      // Already a bare ID (no protocol)
+      if (!url.startsWith('http') && !url.startsWith('data:') && !url.startsWith('blob:')) return url;
       if (!url.includes('imagedelivery.net')) return url;
-      let id = url.replace(CF + '/', '');
+      let id = url.replace(CF_LEGACY + '/', '');
       const lastSlash = id.lastIndexOf('/');
       if (lastSlash > 0) {
         const suffix = id.slice(lastSlash + 1);
@@ -2718,11 +2721,12 @@
     }
 
     // ─── Extract Cloudflare image ID from a delivery URL ────────
-    const CF_HASH = 'ROYFuPmfN2vPS6mt5sCkZQ';
-    const CF_BASE = `https://imagedelivery.net/${CF_HASH}`;
     function extractCfImageId(src) {
-      if (!src || !src.includes('imagedelivery.net')) return null;
-      let id = src.replace(`${CF_BASE}/`, '');
+      if (!src) return null;
+      // Already a bare ID
+      if (!src.startsWith('http')) return src;
+      if (!src.includes('imagedelivery.net')) return null;
+      let id = src.replace(CF_LEGACY + '/', '');
       const lastSlash = id.lastIndexOf('/');
       if (lastSlash > 0) {
         const suffix = id.slice(lastSlash + 1);
@@ -2751,11 +2755,11 @@
           console.log('[useSingleUpload] field:', field, 'res:', JSON.stringify(res));
           if (res.success) {
             setData(d => {
-              const next = { ...d, [field]: res.imageUrl };
-              console.log('[useSingleUpload] setData — old:', d[field], '→ new:', res.imageUrl);
+              const next = { ...d, [field]: res.imageId };
+              console.log('[useSingleUpload] setData — old:', d[field], '→ new:', res.imageId);
               return next;
             });
-            setPreview(res.imageUrl);
+            setPreview(cfThumb(res.imageId));
             addToast('Uploaded', 'success');
           } else {
             addToast(`Upload failed: ${res.error}`, 'error');
@@ -3540,7 +3544,7 @@
         buildCfId: (file) => `kids/${data.slug || 'new'}/${Date.now()}-${file.name.replace(/[^a-z0-9.]/gi, '-')}`,
         arrayKey: 'photos', countKey: 'photoCount',
         makeEntry: (localUrl, file, tempId) => ({ url: localUrl, alt: '', _tempId: tempId }),
-        replaceEntry: (item, res) => ({ url: res.imageUrl, alt: '', cfImageId: res.imageId }),
+        replaceEntry: (item, res) => ({ url: res.imageId, alt: '' }),
       });
       const { dragHandlers: photoDragHandlers } = useDragReorder({ setData, setDirty, arrayKey: 'photos' });
 
@@ -3550,7 +3554,7 @@
         buildCfId: (file) => `kids/${data.slug || 'new'}/partner-${Date.now()}-${file.name.replace(/[^a-z0-9.]/gi, '-')}`,
         arrayKey: 'partnerLogos',
         makeEntry: (localUrl, file, tempId) => ({ url: localUrl, name: file.name.replace(/\.[^.]+$/, ''), _tempId: tempId }),
-        replaceEntry: (item, res) => ({ url: res.imageUrl, name: item.name }),
+        replaceEntry: (item, res) => ({ url: res.imageId, name: item.name }),
       });
       const { dragHandlers: partnerDragHandlers } = useDragReorder({ setData, setDirty, arrayKey: 'partnerLogos' });
 
@@ -6282,7 +6286,7 @@
             <span class="form-label">Event Card Image</span>
             ${data.image ? html`
               <div style="margin-bottom: 0.75rem; border-radius: 8px; overflow: hidden; max-width: 400px; position: relative;">
-                <img src=${'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/' + data.image + '/w=400'}
+                <img src=${cfThumb(data.image)}
                   alt="Event image preview" style="width: 100%; height: 180px; object-fit: cover; display: block;" />
                 <button class="btn btn-ghost btn-sm" style="position: absolute; top: 8px; right: 8px; background: rgba(0,0,0,0.6); color: white; border-radius: 6px; padding: 0.25rem 0.5rem;"
                   onClick=${() => update('image', null)}>✕ Remove</button>
@@ -6367,7 +6371,7 @@
                 <div key=${idx} class="photo-grid-item"
                   ...${uploading[photo._tempId] ? {} : eventPhotoDragHandlers(idx)}
                   style="position: relative; border-radius: 8px; overflow: hidden; aspect-ratio: 4/3; background: #f0f0f0;">
-                  <img src=${photo.id && photo.id.startsWith('blob:') ? photo.id : 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/' + photo.id + '/w=300'}
+                  <img src=${photo.id && photo.id.startsWith('blob:') ? photo.id : cfThumb(photo.id, 'w=300')}
                     alt=${photo.alt || ''} style="width: 100%; height: 100%; object-fit: cover; display: block;" loading="lazy" />
                   ${uploading[photo._tempId] ? html`
                     <div style="position: absolute; inset: 0; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center;">
@@ -6480,7 +6484,7 @@
       const [sha, setSha] = useState(null);
       const [dirty, setDirty] = useState(false);
       const [showImagePicker, setShowImagePicker] = useState(false);
-      const CF_BASE = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
+      const CF_PRESS = CF; // Use same base as rest of admin
       const [data, setData] = useState(() => {
         // Check for pre-filled data from Press Monitor
         const prefill = sessionStorage.getItem('press-prefill');
@@ -6580,7 +6584,7 @@
 
       return html`
         ${showImagePicker ? html`<${ImagePicker}
-          onSelect=${(id) => { update('image', CF_BASE + '/' + id); setShowImagePicker(false); setDirty(true); }}
+          onSelect=${(id) => { update('image', id); setShowImagePicker(false); setDirty(true); }}
           onClose=${() => setShowImagePicker(false)}
         />` : null}
         <nav class="breadcrumb" aria-label="Breadcrumb">
@@ -6657,10 +6661,10 @@
             <div style="display: flex; gap: 0.5rem;">
               <input class="form-input" type="text" style="flex: 1;" value=${data.image || ''}
                 onInput=${e => update('image', e.target.value || null)}
-                placeholder="https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/press/11alive-2025" />
+                placeholder="press/11alive-2025" />
               <button class="btn btn-ghost" type="button" onClick=${() => setShowImagePicker(true)}>Browse</button>
             </div>
-            <span class="form-hint">Full Cloudflare Images base URL (without variant). Leave blank for no image.</span>
+            <span class="form-hint">Cloudflare Images ID (e.g. press/11alive-2025). Leave blank for no image.</span>
             ${data.image ? html`
               <div style="margin-top: 0.75rem; border-radius: 8px; overflow: hidden; max-width: 400px;">
                 <img src=${data.image + '/public'}
@@ -7210,11 +7214,11 @@
         buildCfId: (file) => `community/${data.slug || 'new'}/${Date.now()}-${file.name.replace(/[^a-z0-9.]/gi, '-')}`,
         arrayKey: 'photos',
         makeEntry: (localUrl, file, tempId) => ({ url: localUrl, alt: '', _tempId: tempId }),
-        replaceEntry: (item, res) => ({ url: res.imageUrl, alt: '', cfImageId: res.imageId }),
+        replaceEntry: (item, res) => ({ url: res.imageId, alt: '' }),
         onSuccess: (d, res) => ({
           ...d,
           imageId: d.imageId || res.imageId,
-          heroImage: d.heroImage || res.imageUrl,
+          heroImage: d.heroImage || res.imageId,
         }),
       });
       const { dragHandlers: communityPhotoDragHandlers } = useDragReorder({ setData, setDirty, arrayKey: 'photos' });
@@ -7225,7 +7229,7 @@
         buildCfId: (file) => `community/${data.slug || 'new'}/partner-${Date.now()}-${file.name.replace(/[^a-z0-9.]/gi, '-')}`,
         arrayKey: 'partnerLogos',
         makeEntry: (localUrl, file, tempId) => ({ url: localUrl, name: file.name.replace(/\.[^.]+$/, ''), _tempId: tempId }),
-        replaceEntry: (item, res) => ({ url: res.imageUrl, name: item.name }),
+        replaceEntry: (item, res) => ({ url: res.imageId, name: item.name }),
       });
       const { dragHandlers: partnerDragHandlers } = useDragReorder({ setData, setDirty, arrayKey: 'partnerLogos' });
 
@@ -7359,8 +7363,8 @@
           if (res.success) {
             const parsed = JSON.parse(res.content);
             if (parsed.imageId && (!parsed.photos || parsed.photos.length === 0)) {
-              parsed.photos = [{ url: `${CF}/${parsed.imageId}/public`, alt: parsed.imageAlt || '', cfImageId: parsed.imageId }];
-              parsed.heroImage = parsed.heroImage || `${CF}/${parsed.imageId}/public`;
+              parsed.photos = [{ url: parsed.imageId, alt: parsed.imageAlt || '' }];
+              parsed.heroImage = parsed.heroImage || parsed.imageId;
             }
             if (!parsed.photos) parsed.photos = [];
             if (!parsed.partnerLogos) parsed.partnerLogos = [];
@@ -8436,7 +8440,7 @@
           <p class="text-sm text-muted mb-1">Logos shown in the scrolling partner marquee on the homepage.</p>
           ${(data.partnerLogos || []).map((logo, i) => html`
             <div class="array-row-item" style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.5rem; padding: 0.5rem; background: rgba(0,0,0,0.02); border-radius: 8px;">
-              ${logo.id ? html`<img src=${'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/' + logo.id + '/w=80,h=40,fit=contain'}
+              ${logo.id ? html`<img src=${cfThumb(logo.id, 'w=80,h=40,fit=contain')}
                 alt="" style="width: 60px; height: 30px; object-fit: contain; flex-shrink: 0; background: #fff; border-radius: 4px; padding: 2px;" />` : null}
               <select class="form-input" style="flex: 1" value=${logo.name || ''}
                 onChange=${e => {
@@ -10474,7 +10478,7 @@
 
           <nav class="sidebar ${sidebarOpen ? 'open' : ''}">
             <div class="sidebar-logo">
-              <img src="https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/brand-logo-admin/w=128,format=auto" alt="" />
+              <img src="https://sunshineonaranneyday.com/cdn-cgi/imagedelivery/ROYFuPmfN2vPS6mt5sCkZQ/brand-logo-admin/w=128" alt="" />
               <small>Content Admin</small>
             </div>
             <button onClick=${() => setCmdPaletteOpen(true)}

@@ -94,20 +94,27 @@ const signaturePartners = partnerCollection
 const partnerLogos = signaturePartners;
 
 /* ── Hero image URLs (DRY — preload + img must be byte-identical) ── */
-const heroImg320 = `${CF}/${heroPhotoId}/w=320,h=400,fit=cover,q=65`;
-const heroImg400 = `${CF}/${heroPhotoId}/w=400,h=500,fit=cover,q=65`;
-const heroImg560 = `${CF}/${heroPhotoId}/w=560,h=700,fit=cover,q=65`;
-const heroImg800 = `${CF}/${heroPhotoId}/w=800,h=1000,fit=cover,q=65`;
-const heroSrcset = `${heroImg320} 320w, ${heroImg400} 400w, ${heroImg560} 560w, ${heroImg800} 800w`;
-const heroSizes = '(max-width:768px) 85vw, 420px';
+/* Hero srcset: 4:5 aspect, gravity=face for kid photos, q=70 balances sharpness vs weight.
+   CF Images auto-negotiates AVIF/WebP via Accept header — no format= needed.
+   Preload <link> + <img> must use byte-identical srcset/sizes strings. */
+const heroTransforms = 'fit=cover,gravity=face,q=70';
+const heroImg320  = `${CF}/${heroPhotoId}/w=320,h=400,${heroTransforms}`;
+const heroImg480  = `${CF}/${heroPhotoId}/w=480,h=600,${heroTransforms}`;
+const heroImg640  = `${CF}/${heroPhotoId}/w=640,h=800,${heroTransforms}`;
+const heroImg960  = `${CF}/${heroPhotoId}/w=960,h=1200,${heroTransforms}`;
+const heroImg1280 = `${CF}/${heroPhotoId}/w=1280,h=1600,${heroTransforms}`;
+const heroSrcset = `${heroImg320} 320w, ${heroImg480} 480w, ${heroImg640} 640w, ${heroImg960} 960w, ${heroImg1280} 1280w`;
+/* Photo column: 0.85fr of 1400px grid ≈ 530px. 2× retina → 1060px. 1280w covers 2.4× comfortably. */
+const heroSizes = '(max-width:480px) 80vw, (max-width:768px) 60vw, 530px';
 
 import { getWebSiteSchema } from '../utils/schema';
 const jsonLd = getWebSiteSchema();
 ---
 
 <BaseLayout
-  title="Building Dreams, One Room at a Time"
+  title="Home"
   description="Sunshine on a Ranney Day is a 501(c)(3) nonprofit creating life-changing home makeovers for children with special needs — dream bedrooms, accessible bathrooms, and therapy spaces — all at no cost to families in greater Atlanta."
+  ogImage={`/og/kids/${heroSlug}.png`}
   jsonLd={jsonLd}
 >
   <!-- Preload hero LCP image — imagesrcset/imagesizes must match the <img> -->
@@ -128,12 +135,12 @@ const jsonLd = getWebSiteSchema();
       <div class="hero-photo-wrap">
         <a href={`/kids/${heroSlug}`} class="hero-photo">
           <img
-            src={heroImg800}
+            src={heroImg960}
             srcset={heroSrcset}
             sizes={heroSizes}
             alt={`${hd?.name || 'Zyah'}'s room reveal — a life-changing moment`}
-            width="800" height="1000"
-            loading="eager" fetchpriority="high" decoding="sync"
+            width="960" height="1200"
+            loading="eager" fetchpriority="high" decoding="auto"
           />
           <span class="hero-photo-name">{hd?.name || 'Zyah'}, {Array.isArray(hd?.age) ? `ages ${hd.age.join(', ')}` : `age ${hd?.age || 7}`}</span>
         </a>
@@ -292,7 +299,7 @@ const jsonLd = getWebSiteSchema();
       <!-- Three room-type cards -->
       <div class="rm-trio">
         <article class="rm-card" data-reveal>
-          <a href="/kids" class="rm-card-link" aria-label="Accessible bathrooms — see our work">
+          <a href="/kids?type=type-accessible-bathroom" class="rm-card-link" aria-label="Accessible bathrooms — see our work">
             <div class="rm-card-img rm-parallax" style={`background-image:url('${cfLqip(roomPhotos.bath)}')`}>
               <img
                 src={`${CF}/${roomPhotos.bath}/w=700,h=875,fit=cover,q=80`}
@@ -312,7 +319,7 @@ const jsonLd = getWebSiteSchema();
           </a>
         </article>
         <article class="rm-card" data-reveal data-delay="1">
-          <a href="/kids" class="rm-card-link" aria-label="Dream bedrooms — see our work">
+          <a href="/kids?type=type-dream-bedroom" class="rm-card-link" aria-label="Dream bedrooms — see our work">
             <div class="rm-card-img rm-parallax" style={`background-image:url('${cfLqip(roomPhotos.bedroom)}')`}>
               <img
                 src={`${CF}/${roomPhotos.bedroom}/w=700,h=875,fit=cover,q=80`}
@@ -332,7 +339,7 @@ const jsonLd = getWebSiteSchema();
           </a>
         </article>
         <article class="rm-card" data-reveal data-delay="2">
-          <a href="/kids" class="rm-card-link" aria-label="Therapy rooms — see our work">
+          <a href="/kids?type=type-therapy-room" class="rm-card-link" aria-label="Therapy rooms — see our work">
             <div class="rm-card-img rm-parallax" style={`background-image:url('${cfLqip(roomPhotos.therapy)}')`}>
               <img
                 src={`${CF}/${roomPhotos.therapy}/w=700,h=875,fit=cover,q=80`}

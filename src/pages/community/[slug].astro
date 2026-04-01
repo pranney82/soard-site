@@ -21,6 +21,7 @@ import { getCollection } from 'astro:content';
 import { getWebPageSchema, getBreadcrumbSchema, buildSchemaGraph } from '../../utils/schema';
 import { cfRaw, cfLqip, isCF } from '../../utils/cf-image';
 
+
 export async function getStaticPaths() {
   const allProjects = await getCollection('community');
   const sorted = allProjects
@@ -240,7 +241,7 @@ const jsonLd = buildSchemaGraph(
           {project.partnerLogos.map((logo: { url: string; name: string }) => (
             <div class="cp-detail-partner-logo" title={logo.name}>
               <img
-                src={logo.url}
+                src={cfRaw(logo.url, 'w=280,h=140,fit=contain,q=80')}
                 alt={logo.name || 'Project partner logo'}
                 width="140"
                 height="70"

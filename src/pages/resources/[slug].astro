@@ -7,6 +7,7 @@
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import { getCollection } from 'astro:content';
 import { getFAQSchema } from '../../utils/schema';
+import { cfAbsolute } from '../../utils/cf-image';
 
 export async function getStaticPaths() {
   const articles = await getCollection('articles');
@@ -43,7 +44,7 @@ pageSchemas.push({
   "datePublished": article.datePublished,
   ...(article.dateModified ? { "dateModified": article.dateModified } : {}),
   "mainEntityOfPage": `https://sunshineonaranneyday.com/resources/${article.slug}/`,
-  ...(article.heroImage ? { "image": article.heroImage } : {}),
+  ...(article.heroImage ? { "image": cfAbsolute(article.heroImage) } : {}),
   "about": (article.aboutTopics || []).map(t => ({ "@type": "Thing", "name": t })),
 });
 
@@ -57,7 +58,7 @@ if (article.faqs && article.faqs.length > 0) {
   title={article.title}
   description={autoDesc}
   ogType="article"
-  ogImage={article.heroImage || undefined}
+  ogImage={article.heroImage ? cfAbsolute(article.heroImage) : undefined}
   jsonLd={pageSchemas}
   breadcrumbs={breadcrumbs}
   datePublished={article.datePublished}

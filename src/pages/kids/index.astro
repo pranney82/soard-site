@@ -119,7 +119,7 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
   : null;
 
 // ── Hero face collage: 12 diverse kids across years ──
-const heroFacePool = kids.filter(k => k.data.heroImage?.includes('imagedelivery.net'));
+const heroFacePool = kids.filter(k => !!k.data.heroImage);
 // Round-robin across years for visual diversity
 const yearGroups: Record<number, typeof heroFacePool> = {};
 heroFacePool.forEach(k => {
@@ -260,9 +260,9 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
 
             <select id="filter-type" class="filter-select" aria-label="Filter by project type">
               <option value="all">All Projects</option>
-              {roomTypes.map(type => (
-                <option value={`type-${type.toLowerCase().replace(/\s+/g, '-')}`}>{type}</option>
-              ))}
+              <option value="type-accessible-bathroom">Accessible Bathroom</option>
+              <option value="type-dream-bedroom">Dream Bedroom</option>
+              <option value="type-therapy-room">Therapy Room</option>
             </select>
 
           </div>
@@ -325,9 +325,9 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
               <label class="sheet-label" for="sheet-type">Project Type</label>
               <select id="sheet-type" class="sheet-select" aria-label="Filter by project type">
                 <option value="all">All Projects</option>
-                {roomTypes.map(type => (
-                  <option value={`type-${type.toLowerCase().replace(/\s+/g, '-')}`}>{type}</option>
-                ))}
+                <option value="type-accessible-bathroom">Accessible Bathroom</option>
+                <option value="type-dream-bedroom">Dream Bedroom</option>
+                <option value="type-therapy-room">Therapy Room</option>
               </select>
             </div>
           </div>
@@ -633,7 +633,7 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
     cachedCards.forEach(cacheOriginalText);
 
     // ── Create overflow cards from JSON data island ──
-    const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
+    const CF = 'https://sunshineonaranneyday.com/cdn-cgi/imagedelivery/ROYFuPmfN2vPS6mt5sCkZQ';
     function cfCard(id: string, w: number, h: number) {
       return `${CF}/${id}/w=${w},h=${h},fit=cover,gravity=face,q=70`;
     }
@@ -845,7 +845,13 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
       }
       if (typeFilter !== 'all') {
         const label = typeSelect.options[typeSelect.selectedIndex]?.text || typeFilter;
-        html += `<span class="filter-chip" role="group" aria-label="Project: ${escapeHtml(label)}"><svg class="filter-chip__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>${escapeHtml(label)}<button class="filter-chip__remove" data-chip="type" aria-label="Remove project filter"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></span>`;
+        const typeIconMap: Record<string, string> = {
+          'dream bedroom': '<svg class="filter-chip__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/><path d="M20 3v4"/><path d="M22 5h-4"/><path d="M4 17v2"/><path d="M5 18H3"/></svg>',
+          'accessible bathroom': '<svg class="filter-chip__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><circle cx="16" cy="4" r="1"/><path d="m18 19 1-7-6 1"/><path d="m5 8 3-3 5.5 3-2.36 3.5"/><path d="M4.24 14.5a5 5 0 0 0 6.88 6"/><path d="M13.76 17.5a5 5 0 0 0-6.88-6"/></svg>',
+          'therapy room': '<svg class="filter-chip__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.409 13.017A5 5 0 0 1 22 15c0 3.866-4 7-9 7-4.077 0-8.153-.82-10.371-2.462-.426-.316-.631-.832-.62-1.362C2.118 12.723 2.627 2 10 2a3 3 0 0 1 3 3 2 2 0 0 1-2 2c-1.105 0-1.64-.444-2-1"/><path d="M15 14a5 5 0 0 0-7.584 2"/><path d="M9.964 6.825C8.019 7.977 9.5 13 8 15"/></svg>',
+        };
+        const typeIcon = typeIconMap[label.toLowerCase()] || '<svg class="filter-chip__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>';
+        html += `<span class="filter-chip" role="group" aria-label="Project: ${escapeHtml(label)}">${typeIcon}${escapeHtml(label)}<button class="filter-chip__remove" data-chip="type" aria-label="Remove project filter"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></span>`;
         chipCount++;
       }
       if (statusActive) {
@@ -1938,8 +1944,8 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
   .filter-chips :global(.filter-chip__icon) {
     flex-shrink: 0;
     color: var(--c-text-light);
-    width: 11px;
-    height: 11px;
+    width: 15px;
+    height: 15px;
   }
 
   .filter-chips :global(.filter-chip__remove) {
@@ -2775,25 +2781,6 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
     }
 
     .faces {
-      max-width: 380px;
-      padding-block: 4px;
-      gap: 0;
-      flex-wrap: nowrap;
-    }
-
-    .face {
-      margin-inline: -3px;
-    }
-
-    /* Mobile: same-size circles with arc vertical offset */
-    .face:nth-child(n) { --face-s: 44px; }
-    .face:nth-child(1), .face:nth-child(7) { --face-y: 8px; }
-    .face:nth-child(2), .face:nth-child(6) { --face-y: 3px; }
-    .face:nth-child(3), .face:nth-child(5) { --face-y: -2px; }
-    .face:nth-child(4)                     { --face-y: -6px; }
-
-    /* Hide last 5 faces so 7 fit in one row */
-    .face:nth-child(n+8) {
       display: none;
     }
 
@@ -2950,12 +2937,7 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
       max-width: 260px;
     }
 
-    /* At 320px, 7×44+6×4=332px > 288px container. Show 5 instead. */
-    .face:nth-child(n+6) {
-      display: none;
-    }
-
-    .kids-grid {
+.kids-grid {
       gap: var(--space-sm) 10px;
     }
 

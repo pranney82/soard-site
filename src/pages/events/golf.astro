@@ -4,7 +4,7 @@
  * Ported from sunnyandranney.com/events/ and adapted for SOARD design system
  */
 import BaseLayout from '../../layouts/BaseLayout.astro';
-import { cfRaw, cfSrcset, cfLqip } from '../../utils/cf-image';
+import { cfRaw, cfSrcset, cfLqip, cfAbsolute } from '../../utils/cf-image';
 
 /* ── Sponsorship tiers (data-driven) ── */
 interface Tier {
@@ -60,7 +60,7 @@ const eventJsonLd = {
     },
   },
   "organizer": { "@id": "https://sunshineonaranneyday.com/#organization" },
-  "image": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/golf-logo-dark/public",
+  "image": cfAbsolute("golf-logo-dark"),
   "offers": [
     {
       "@type": "Offer",

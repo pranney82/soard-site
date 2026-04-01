@@ -133,6 +133,18 @@ export function cfSrcset(src: string, widths: number[], opts?: SrcsetOpts): stri
  *
  *   cfLqip("kids/amari/hero") → "https://imagedelivery.net/.../w=30,q=30,blur=20"
  */
+/**
+ * Absolute public URL for JSON-LD schema and OG meta tags.
+ * Returns the /public named variant which CF Images auto-negotiates format on.
+ *
+ *   cfAbsolute("kids/amari/hero") → "https://sunshineonaranneyday.com/cdn-cgi/imagedelivery/.../kids/amari/hero/public"
+ */
+export function cfAbsolute(src: string): string {
+  const id = cfId(src);
+  if (!id) return src;
+  return `${CF_BASE}/${id}/public`;
+}
+
 export function cfLqip(src: string): string {
   const id = cfId(src);
   if (!id) return '';

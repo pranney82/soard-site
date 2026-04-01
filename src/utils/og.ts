@@ -12,7 +12,10 @@ import satori from 'satori';
 import sharp from 'sharp';
 import fs from 'node:fs';
 import path from 'node:path';
-import { CF_BASE } from './cf-image';
+import { CF_HASH } from './cf-image';
+
+// imagedelivery.net works at build time regardless of host (unlike the /cdn-cgi/ proxy)
+const CF_DIRECT = `https://imagedelivery.net/${CF_HASH}`;
 
 // ── Brand tokens ──────────────────────────────────
 const YELLOW = '#FFDA24';
@@ -42,7 +45,7 @@ function loadFonts() {
 let logoB64: string | null = null;
 async function getLogo(): Promise<string> {
   if (logoB64) return logoB64;
-  const url = `${CF_BASE}/brand-logo-nav-circle/w=256,q=85`;
+  const url = `${CF_DIRECT}/brand-logo-nav-circle/w=256,q=85`;
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
     if (!res.ok) throw new Error(`CF Images responded ${res.status}`);
@@ -503,7 +506,11 @@ export async function generateOgImage(opts: OgOptions): Promise<Buffer> {
       // Try to fetch the hero photo for a photo-backed OG image
       let photoB64: string | null = null;
       if (opts.heroImage) {
-        photoB64 = await fetchImageBase64(opts.heroImage);
+        // heroImage is a bare CF image ID (e.g. "kids/zyah/photo-18") — build a full URL
+        const imgUrl = opts.heroImage.startsWith('http')
+          ? opts.heroImage
+          : `${CF_DIRECT}/${opts.heroImage}/w=1200,h=630,fit=cover,gravity=face,q=80`;
+        photoB64 = await fetchImageBase64(imgUrl);
       }
       if (photoB64) {
         element = kidWithPhoto(opts.title, photoB64, opts.age, opts.diagnosis, opts.roomTypes);

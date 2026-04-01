@@ -6,6 +6,8 @@
  * across the entire site.
  */
 
+import { cfAbsolute } from './cf-image';
+
 const SITE_URL = 'https://sunshineonaranneyday.com';
 const ORG_NAME = 'Sunshine on a Ranney Day';
 const ORG_SHORT = 'SOARD';
@@ -191,7 +193,7 @@ export function getKidProfileSchema(kid: {
     "@type": "Person",
     "@id": `${url}#person`,
     "name": kid.name,
-    ...(kid.heroImage ? { "image": kid.heroImage } : {}),
+    ...(kid.heroImage ? { "image": cfAbsolute(kid.heroImage) } : {}),
   };
   if (kid.age) person.age = Array.isArray(kid.age) ? kid.age.join(', ') : kid.age;
   if (kid.diagnosis) {
@@ -213,7 +215,7 @@ export function getKidProfileSchema(kid: {
     "publisher": { "@id": `${SITE_URL}/#organization` },
     "mainEntityOfPage": { "@id": `${url}#webpage` },
     "mainEntity": { "@id": `${url}#person` },
-    ...(kid.heroImage ? { "image": kid.heroImage } : {}),
+    ...(kid.heroImage ? { "image": cfAbsolute(kid.heroImage) } : {}),
     ...(kid.year ? { "datePublished": `${kid.year}-01-01` } : {}),
     "inLanguage": "en-US",
     "about": [
@@ -273,7 +275,7 @@ export function getKidProfileSchema(kid: {
       ...(kid.photographer ? { "creator": { "@type": "Person", "name": kid.photographer } } : {}),
       "image": kid.photos.slice(0, 20).map((photo, i) => ({
         "@type": "ImageObject",
-        "url": photo.url,
+        "url": cfAbsolute(photo.url),
         "caption": photo.alt || `${kid.name}'s room transformation photo ${i + 1}`,
       })),
     });
