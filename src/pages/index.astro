@@ -94,10 +94,11 @@ const signaturePartners = partnerCollection
 const partnerLogos = signaturePartners;
 
 /* ── Hero image URLs (DRY — preload + img must be byte-identical) ── */
+const heroImg320 = `${CF}/${heroPhotoId}/w=320,h=400,fit=cover,q=65`;
 const heroImg400 = `${CF}/${heroPhotoId}/w=400,h=500,fit=cover,q=65`;
 const heroImg560 = `${CF}/${heroPhotoId}/w=560,h=700,fit=cover,q=65`;
 const heroImg800 = `${CF}/${heroPhotoId}/w=800,h=1000,fit=cover,q=65`;
-const heroSrcset = `${heroImg400} 400w, ${heroImg560} 560w, ${heroImg800} 800w`;
+const heroSrcset = `${heroImg320} 320w, ${heroImg400} 400w, ${heroImg560} 560w, ${heroImg800} 800w`;
 const heroSizes = '(max-width:768px) 85vw, 420px';
 
 import { getWebSiteSchema } from '../utils/schema';
@@ -175,7 +176,7 @@ const jsonLd = getWebSiteSchema();
       </div>
       <div class="mission-visual" role="presentation">
         <div class="mission-photo mission-photo--main" data-reveal style={`background-image:url('${cfLqip(missionMainId)}')`}>
-          <img src={`${CF}/${missionMainId}/w=800,q=65`} srcset={`${CF}/${missionMainId}/w=360,q=65 360w, ${CF}/${missionMainId}/w=600,q=65 600w, ${CF}/${missionMainId}/w=800,q=65 800w, ${CF}/${missionMainId}/w=1200,q=65 1200w`} sizes="(max-width:768px) 65vw, 30vw" alt="A transformed room designed for a child with special needs" width="800" height="600" loading="lazy" decoding="async" class="lqip-img" />
+          <img src={`${CF}/${missionMainId}/w=600,q=65`} srcset={`${CF}/${missionMainId}/w=360,q=65 360w, ${CF}/${missionMainId}/w=480,q=65 480w, ${CF}/${missionMainId}/w=600,q=65 600w`} sizes="(max-width:768px) 65vw, 30vw" alt="A transformed room designed for a child with special needs" width="800" height="600" loading="lazy" decoding="async" class="lqip-img" />
         </div>
         <div class="mission-photo mission-photo--accent" data-reveal data-delay="1" style={`background-image:url('${cfLqip(missionAccentId)}')`}>
           <img src={`${CF}/${missionAccentId}/w=600,q=65`} srcset={`${CF}/${missionAccentId}/w=280,q=65 280w, ${CF}/${missionAccentId}/w=400,q=65 400w, ${CF}/${missionAccentId}/w=600,q=65 600w, ${CF}/${missionAccentId}/w=800,q=65 800w`} sizes="(max-width:768px) 52vw, 24vw" alt="A happy child in their new dream room" width="600" height="450" loading="lazy" decoding="async" class="lqip-img" />
@@ -189,7 +190,7 @@ const jsonLd = getWebSiteSchema();
     <div class="story-inner">
       <div class="story-split">
         <figure class="story-photo" style={`background-image:url('${cfLqip(storyPhotoId)}')`}>
-          <img src={`${CF}/${storyPhotoId}/w=900,q=65`} srcset={`${CF}/${storyPhotoId}/w=600,q=65 600w, ${CF}/${storyPhotoId}/w=900,q=65 900w`} sizes="(max-width:768px) 100vw, 55vw" alt={`${fd?.name || 'Zyah'}'s room reveal`} width="900" height="600" loading="lazy" decoding="async" class="story-photo-img lqip-img" />
+          <img src={`${CF}/${storyPhotoId}/w=700,q=65`} srcset={`${CF}/${storyPhotoId}/w=400,q=65 400w, ${CF}/${storyPhotoId}/w=600,q=65 600w, ${CF}/${storyPhotoId}/w=700,q=65 700w`} sizes="(max-width:768px) 100vw, 40vw" alt={`${fd?.name || 'Zyah'}'s room reveal`} width="900" height="600" loading="lazy" decoding="async" class="story-photo-img lqip-img" />
           <div class="story-photo-tag">Featured</div>
         </figure>
         <div class="story-content" data-reveal>
@@ -245,7 +246,7 @@ const jsonLd = getWebSiteSchema();
 
       <div class="process-split">
         <div class="process-photo" data-reveal style={`background-image:url('${cfLqip(processPhotoId)}')`}>
-          <img src={`${CF}/${processPhotoId}/w=960,fit=scale-down,gravity=face,q=70`} alt={`${fd?.name || 'A child'} sees their new room for the first time`} width="960" loading="lazy" decoding="async" class="lqip-img" />
+          <img src={`${CF}/${processPhotoId}/w=960,fit=scale-down,gravity=face,q=70`} alt={`${fd?.name || 'A child'} sees their new room for the first time`} width="960" height="640" loading="lazy" decoding="async" class="lqip-img" />
         </div>
 
         <div class="process-content">
@@ -486,17 +487,13 @@ const jsonLd = getWebSiteSchema();
     opacity: 0;
     animation: heroUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.25s both;
   }
-  .btn-hero-glow {
-    animation: pulseGlow 3s ease-in-out 3s infinite;
-  }
-  @keyframes pulseGlow {
-    0%, 100% { box-shadow: 0 8px 24px rgba(255, 218, 36, 0.3); }
-    50% { box-shadow: 0 8px 40px rgba(255, 218, 36, 0.55); }
-  }
+  /* pulseGlow animation defined in global.css */
 
   /* ── Photo column ── */
   .hero-photo-wrap {
     position: relative;
+    width: 100%;
+    aspect-ratio: 4 / 5;
     /* NO opacity:0 — hero image is LCP candidate, must paint on load */
     animation: heroPhotoIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
   }
@@ -629,7 +626,7 @@ const jsonLd = getWebSiteSchema();
   }
 
   /* ── RIBBON ── */
-  .ribbon { background: var(--c-dark-deep); padding: 56px 0; contain: layout style; }
+  .ribbon { background: var(--c-dark-deep); padding: 56px 0; contain: layout style; min-height: 160px; }
   .ribbon-inner { max-width: var(--max-width); margin: 0 auto; padding: 0 var(--page-padding); display: flex; justify-content: center; align-items: center; gap: 48px; flex-wrap: wrap; }
   .ribbon-stat { text-align: center; min-width: 130px; }
   .ribbon-num { font-family: var(--font-display); font-size: clamp(36px, 5vw, 52px); font-weight: 700; color: var(--c-yellow); line-height: 1; }

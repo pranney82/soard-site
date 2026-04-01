@@ -1582,6 +1582,8 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
   .face {
     width: var(--face-s, 56px);
     height: var(--face-s, 56px);
+    min-width: var(--face-s, 56px);
+    aspect-ratio: 1;
     border-radius: 50%;
     overflow: hidden;
     border: 2.5px solid var(--c-white);
@@ -2773,23 +2775,24 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
     }
 
     .faces {
-      max-width: 340px;
-      padding-block: 2px;
-      gap: 4px;
+      max-width: 380px;
+      padding-block: 4px;
+      gap: 0;
       flex-wrap: nowrap;
     }
 
     .face {
-      margin-inline: 0;
+      margin-inline: -3px;
     }
 
-    /* Mobile: flatten arc — 44px for recognizable faces, no vertical offset */
-    .face:nth-child(n) {
-      --face-s: 44px;
-      --face-y: 0px;
-    }
+    /* Mobile: same-size circles with arc vertical offset */
+    .face:nth-child(n) { --face-s: 44px; }
+    .face:nth-child(1), .face:nth-child(7) { --face-y: 8px; }
+    .face:nth-child(2), .face:nth-child(6) { --face-y: 3px; }
+    .face:nth-child(3), .face:nth-child(5) { --face-y: -2px; }
+    .face:nth-child(4)                     { --face-y: -6px; }
 
-    /* Hide last 5 faces so 7 fit in one row: 7 × 44 + 6 × 4 = 332px */
+    /* Hide last 5 faces so 7 fit in one row */
     .face:nth-child(n+8) {
       display: none;
     }

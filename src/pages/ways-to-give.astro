@@ -1094,11 +1094,19 @@ const jsonLd = {
 <script>
   const links = document.querySelectorAll<HTMLAnchorElement>('.wtg-nav-link');
   const targets = document.querySelectorAll<HTMLElement>('.wtg-section');
+  const track = document.querySelector<HTMLElement>('.wtg-nav-track');
   if (links.length && targets.length) {
     const io = new IntersectionObserver((entries) => {
       entries.forEach(e => {
         if (e.isIntersecting && e.target.id) {
-          links.forEach(l => l.classList.toggle('is-active', l.hash === `#${e.target.id}`));
+          links.forEach(l => {
+            const active = l.hash === `#${e.target.id}`;
+            l.classList.toggle('is-active', active);
+            if (active && track) {
+              const scrollLeft = l.offsetLeft - track.offsetWidth / 2 + l.offsetWidth / 2;
+              track.scrollTo({ left: scrollLeft, behavior: 'smooth' });
+            }
+          });
         }
       });
     }, { rootMargin: '-40% 0px -55% 0px' });

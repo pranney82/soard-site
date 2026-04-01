@@ -481,13 +481,16 @@ h4, .h4 {
   from { opacity: 0; transform: translate(12px, 12px); }
   to { opacity: 1; transform: translate(0, 0); }
 }
-/* CTA pulse glow — draws attention to primary action */
+/* CTA pulse glow — draws attention to primary action
+   Uses filter: drop-shadow (GPU-composited) instead of box-shadow
+   to avoid non-composited animation jank and CLS */
 @keyframes pulseGlow {
-  0%, 100% { box-shadow: 0 8px 24px rgba(255, 218, 36, 0.3); }
-  50% { box-shadow: 0 8px 40px rgba(255, 218, 36, 0.55); }
+  0%, 100% { filter: drop-shadow(0 8px 12px rgba(255, 218, 36, 0.3)); }
+  50% { filter: drop-shadow(0 8px 20px rgba(255, 218, 36, 0.55)); }
 }
 .btn-hero-glow {
   animation: pulseGlow 3s ease-in-out 3s infinite;
+  will-change: filter;
 }
 
 /* ─── Legal Pages (Privacy, Terms) ─────── */

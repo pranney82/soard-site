@@ -11,7 +11,8 @@
  */
 
 export const CF_HASH = 'ROYFuPmfN2vPS6mt5sCkZQ';
-export const CF_BASE = `https://imagedelivery.net/${CF_HASH}`;
+const CF_ORIGIN = `https://imagedelivery.net/${CF_HASH}`;
+export const CF_BASE = `https://sunshineonaranneyday.com/cdn-cgi/imagedelivery/${CF_HASH}`;
 
 const NAMED_VARIANTS = new Set(['public', 'nav', 'footer', 'og']);
 
@@ -26,7 +27,7 @@ export function cfId(src: string): string {
   if (!src) return '';
   if (!src.includes('imagedelivery.net')) return src;
 
-  let id = src.replace(`${CF_BASE}/`, '');
+  let id = src.replace(`${CF_ORIGIN}/`, '');
   const lastSlash = id.lastIndexOf('/');
   if (lastSlash > 0) {
     const suffix = id.slice(lastSlash + 1);

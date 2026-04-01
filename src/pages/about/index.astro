@@ -56,7 +56,7 @@ const jsonLd = buildSchemaGraph(
   <section class="founders" id="our-story" aria-labelledby="founders-heading">
     <div class="founders-inner">
       <div class="founders-photo">
-        <img src={`${CF}/${founderPhotoId}/w=600,q=80`} srcset={`${CF}/${founderPhotoId}/w=400,q=80 400w, ${CF}/${founderPhotoId}/w=600,q=80 600w`} sizes="(max-width:768px) 90vw, 500px" alt="Peter and Holly Ranney, founders of Sunshine on a Ranney Day" width="600" height="450" loading="eager" decoding="async" fetchpriority="high" />
+        <img src={`${CF}/${founderPhotoId}/w=600,q=80`} srcset={`${CF}/${founderPhotoId}/w=400,q=80 400w, ${CF}/${founderPhotoId}/w=600,q=80 600w, ${CF}/${founderPhotoId}/w=800,q=80 800w`} sizes="(max-width:768px) calc(100vw - 48px), 460px" alt="Peter and Holly Ranney, founders of Sunshine on a Ranney Day" width="600" height="450" loading="eager" decoding="async" fetchpriority="high" />
       </div>
       <div class="founders-text" data-reveal>
         <div class="section-label">{page.founders.label}</div>
@@ -75,7 +75,7 @@ const jsonLd = buildSchemaGraph(
         {page.turningPoint.paragraphs.map((p: string) => <p set:html={p} />)}
       </div>
       <div class="turning-point-photo" data-reveal data-delay="1">
-        <img src={`${CF}/${trippPhotoId}/w=600,q=80`} srcset={`${CF}/${trippPhotoId}/w=400,q=80 400w, ${CF}/${trippPhotoId}/w=600,q=80 600w`} sizes="(max-width:768px) 90vw, 500px" alt="The Halstead family — Tripp's story inspired millions and helped expand SOARD's mission" width="600" height="807" loading="lazy" decoding="async" />
+        <img src={`${CF}/${trippPhotoId}/w=600,q=80`} srcset={`${CF}/${trippPhotoId}/w=400,q=80 400w, ${CF}/${trippPhotoId}/w=600,q=80 600w, ${CF}/${trippPhotoId}/w=800,q=80 800w`} sizes="(max-width:768px) calc(100vw - 48px), 460px" alt="The Halstead family — Tripp's story inspired millions and helped expand SOARD's mission" width="600" height="807" loading="lazy" decoding="async" />
       </div>
     </div>
   </section>
@@ -167,7 +167,7 @@ const jsonLd = buildSchemaGraph(
       </div>
       <div class="mascot-visual" data-reveal data-delay="1">
         <div class="mascot-photo">
-          <img src={`${CF}/${graciePhotoId}/w=600,q=80`} srcset={`${CF}/${graciePhotoId}/w=400,q=80 400w, ${CF}/${graciePhotoId}/w=600,q=80 600w`} sizes="(max-width:768px) 90vw, 500px" alt="Gracie the Pig — the real pot-bellied pig that inspired SOARD's mascot" width="600" height="400" loading="lazy" decoding="async" />
+          <img src={`${CF}/${graciePhotoId}/w=600,q=80`} srcset={`${CF}/${graciePhotoId}/w=400,q=80 400w, ${CF}/${graciePhotoId}/w=600,q=80 600w, ${CF}/${graciePhotoId}/w=800,q=80 800w`} sizes="(max-width:768px) calc(100vw - 48px), 460px" alt="Gracie the Pig — the real pot-bellied pig that inspired SOARD's mascot" width="600" height="400" loading="lazy" decoding="async" />
         </div>
       </div>
     </div>
@@ -177,7 +177,7 @@ const jsonLd = buildSchemaGraph(
   <section class="store-section" aria-labelledby="store-heading">
     <div class="store-inner">
       <div class="store-photo" data-reveal>
-        <img src={`${CF}/${storePhotoId}/w=600,q=80`} srcset={`${CF}/${storePhotoId}/w=400,q=80 400w, ${CF}/${storePhotoId}/w=600,q=80 600w`} sizes="(max-width:768px) 90vw, 500px" alt="Sunny & Ranney, a nonprofit home furnishings store in Roswell, Georgia" width="600" height="450" loading="lazy" decoding="async" />
+        <img src={`${CF}/${storePhotoId}/w=600,q=80`} srcset={`${CF}/${storePhotoId}/w=400,q=80 400w, ${CF}/${storePhotoId}/w=600,q=80 600w, ${CF}/${storePhotoId}/w=800,q=80 800w`} sizes="(max-width:768px) calc(100vw - 48px), 460px" alt="Sunny & Ranney, a nonprofit home furnishings store in Roswell, Georgia" width="600" height="450" loading="lazy" decoding="async" />
       </div>
       <div class="store-text" data-reveal data-delay="1">
         <div class="section-label">{page.store.label}</div>
@@ -431,10 +431,10 @@ const jsonLd = buildSchemaGraph(
     }
 
     @keyframes tl-cursor-scroll {
-      0%   { top: 0%; opacity: 0; }
+      0%   { transform: translateY(0%); opacity: 0; }
       5%   { opacity: 1; }
       95%  { opacity: 1; }
-      100% { top: 100%; opacity: 0; }
+      100% { transform: translateY(100%); opacity: 0; }
     }
 
     .tl-ready .tl-cursor {
@@ -446,20 +446,32 @@ const jsonLd = buildSchemaGraph(
   }
 
   /* ── Scroll cursor — rides the fill line ── */
+  /* height: 100% makes translateY(%) parent-relative → compositable */
   .tl-cursor {
     position: absolute;
     left: 50%;
     top: 0;
+    width: 0;
+    height: 100%;
+    transform: translateY(0%);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    z-index: 3;
+    pointer-events: none;
+    will-change: transform, opacity;
+  }
+
+  .tl-cursor::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 50%;
     width: 8px;
     height: 8px;
     border-radius: 50%;
     background: var(--c-yellow);
     transform: translate(-50%, -50%);
     box-shadow: 0 0 12px 4px rgba(255, 218, 36, 0.5), 0 0 40px 8px rgba(255, 218, 36, 0.15);
-    opacity: 0;
-    transition: opacity 0.3s ease;
-    z-index: 3;
-    pointer-events: none;
   }
 
   .tl-cursor.is-visible {
@@ -1228,7 +1240,7 @@ const jsonLd = buildSchemaGraph(
         if (cursor) {
           if (progress > 0.01 && progress < 0.99) {
             cursor.classList.add('is-visible');
-            cursor.style.top = `${progress * timelineH}px`;
+            cursor.style.transform = `translateY(${progress * 100}%)`;
           } else {
             cursor.classList.remove('is-visible');
           }

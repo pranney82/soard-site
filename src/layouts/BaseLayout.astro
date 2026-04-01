@@ -183,9 +183,7 @@ const structuredData = buildSchemaGraph(...graphSchemas);
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="manifest" href="/site.webmanifest" />
 
-  <!-- Preconnect to Cloudflare Images CDN -->
-  <link rel="preconnect" href="https://imagedelivery.net" crossorigin />
-  <link rel="dns-prefetch" href="https://imagedelivery.net" />
+  <!-- Images now route through same origin via /cdn-cgi/imagedelivery/ -->
   <!-- videodelivery.net preconnect added per-page where needed via <slot name="head" /> -->
 
   <!-- Preload critical fonts -->

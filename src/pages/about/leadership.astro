@@ -163,13 +163,9 @@ const jsonLd = buildSchemaGraph(
             <span class="founder-badge">Co-Founder</span>
             <h3 class="founder-name">{member.data.name}</h3>
             <p class="founder-title">{member.data.title.replace(/Co-Founder\/?/i, '').trim()}</p>
-            <p class="founder-detail">{member.data.order === 1 ? 'Leading the mission since 2012' : 'Building dream rooms since day one'}</p>
           </div>
         ))}
       </div>
-
-      <!-- Dot divider -->
-      <div class="team-divider" aria-hidden="true" data-reveal><span></span><span></span><span></span></div>
 
       <!-- Staff grid -->
       <div class="team-grid">
@@ -411,7 +407,7 @@ const jsonLd = buildSchemaGraph(
     font-weight: 600;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: rgba(255, 255, 255, 0.5);
+    color: rgba(255, 255, 255, 0.72);
   }
 
   /* ═══════════════════════════════════════════
@@ -521,31 +517,8 @@ const jsonLd = buildSchemaGraph(
     margin-bottom: var(--space-xs);
   }
 
-  .founder-detail {
-    font-size: 0.82rem;
-    color: var(--c-text-light);
-    font-style: italic;
-    line-height: 1.4;
-  }
 
-  /* Dot divider between founders and staff */
-  .team-divider {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    padding-block: var(--space-md);
-    margin-bottom: var(--space-2xl);
-  }
-
-  .team-divider span {
-    width: 4px;
-    height: 4px;
-    border-radius: 50%;
-    background: var(--c-border);
-  }
-
-  /* ═══════════════════════════════════════════
+/* ═══════════════════════════════════════════
      TEAM GRID — B&W→Color on hover
      ═══════════════════════════════════════════ */
   .team-grid {
@@ -732,15 +705,12 @@ const jsonLd = buildSchemaGraph(
 
   @media (max-width: 600px) {
     .founders-row {
-      flex-direction: column;
-      align-items: center;
-      gap: var(--space-xl);
+      gap: var(--space-lg);
     }
 
     .founder-photo { width: 140px; }
     .founder-name { font-size: 1.05rem; }
     .founder-badge { font-size: 0.6rem; }
-    .founder-detail { font-size: 0.78rem; }
 
     .team-grid {
       grid-template-columns: repeat(2, 1fr);

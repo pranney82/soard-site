@@ -1705,7 +1705,7 @@
     import { h, render, Component } from 'https://esm.sh/preact@10.25.4';
     import { useState, useEffect, useCallback, useRef, useMemo } from 'https://esm.sh/preact@10.25.4/hooks';
     import htm from 'https://esm.sh/htm@3.1.1';
-    import * as tus from 'https://esm.sh/tus-js-client@4.3.1';
+    import * as tus from 'https://esm.sh/tus-js-client@4.3.1/lib.esm/browser/index.js';
     import DOMPurify from 'https://esm.sh/dompurify@3.2.4';
     import Sortable from 'https://esm.sh/sortablejs@1.15.6';
     const html = htm.bind(h);
@@ -2720,7 +2720,6 @@
     // ─── Extract Cloudflare image ID from a delivery URL ────────
     const CF_HASH = 'ROYFuPmfN2vPS6mt5sCkZQ';
     const CF_BASE = `https://imagedelivery.net/${CF_HASH}`;
-    const NAMED_VARIANTS = new Set(['public', 'nav', 'footer', 'og']);
     function extractCfImageId(src) {
       if (!src || !src.includes('imagedelivery.net')) return null;
       let id = src.replace(`${CF_BASE}/`, '');
