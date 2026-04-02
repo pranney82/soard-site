@@ -45,6 +45,15 @@ const kids = defineCollection({
     bathroomCount: z.number().default(0),
     therapyRoomCount: z.number().default(0),
     publishStatus: z.enum(['published', 'draft']).default('published'),
+    beforeAfterPhotos: z.array(z.object({
+      before: z.string(),
+      after: z.string(),
+      room: z.string().default(''),
+      beforeAlt: z.string().default(''),
+      afterAlt: z.string().default(''),
+    })).default([]),
+    galleryFeatured: z.array(z.string()).default([]),
+    storyChapters: z.array(z.string()).default([]),
   }),
 });
 

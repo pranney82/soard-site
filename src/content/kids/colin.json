@@ -23,6 +23,10 @@
   "photographer": null,
   "partnerLogos": [
     {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/beazer/public",
+      "name": "Beazer Homes"
+    },
+    {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/cpwc/1774544037309/public",
       "name": "CPWC"
     },
@@ -47,5 +51,7 @@
   "publishStatus": "published",
   "streamVideoId": null,
   "fundraisingUrl": null,
-  "bathroomCount": 1
+  "bathroomCount": 1,
+  "storyPhotos": [],
+  "plans": []
 }

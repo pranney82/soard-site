@@ -4155,7 +4155,8 @@
       });
       const { dragHandlers: partnerDragHandlers } = useDragReorder({ setData, setDirty, arrayKey: 'partnerLogos' });
 
-      // ─── Plan image upload hook ──────
+      // ─── Plan image upload + reorder hooks ──────
+      const { dragHandlers: planDragHandlers } = useDragReorder({ setData, setDirty, arrayKey: 'plans' });
       const { uploading: planUploading, upload: uploadPlans } = useImageUpload({
         setData, setDirty, addToast,
         buildCfId: (file) => `kids/${data.slug || 'new'}/plan-${Date.now()}-${file.name.replace(/[^a-z0-9.]/gi, '-')}`,
@@ -4817,12 +4818,12 @@
 
         <div class="card">
           <h3 style="margin-bottom: 0.25rem;">Plans</h3>
-          <p class="text-sm text-muted mb-1">Upload as-built and proposed plan images (floor plans, renderings, etc.).</p>
+          <p class="text-sm text-muted mb-1">Upload as-built and proposed plan images (floor plans, renderings, etc.). Drag to reorder.</p>
           <${DropZone} onFiles=${uploadPlans} label="JPG, PNG, PDF — upload plan images" />
           ${(data.plans || []).length > 0 ? html`
             <div class="photo-grid" style="margin-top: 0.75rem;">
               ${(data.plans || []).map((plan, i) => html`
-                <div key=${plan.url || i} class="photo-grid-item">
+                <div key=${plan.url || i} class="photo-grid-item" ...${planUploading[plan._tempId] ? {} : planDragHandlers(i)}>
                   <div class="photo-item" style="background: #fff;">
                     <img src=${cfThumb(plan.url)} alt=${plan.label || ''} loading="lazy" style="object-fit: contain; padding: 0.25rem;" />
                     ${planUploading[plan._tempId] ? html`<div class="photo-uploading"><span class="spinner" /></div>` : null}

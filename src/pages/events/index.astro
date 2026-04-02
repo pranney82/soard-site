@@ -489,6 +489,11 @@ const fallbackSizes = '(max-width: 768px) 85vw, (max-width: 1200px) 38vw, 420px'
     }
   });
 
+  /* ── Freeze golf logo float animation before view-transition snapshot ── */
+  document.addEventListener('astro:before-preparation', () => {
+    document.querySelectorAll('.hero-event-card__logo').forEach(el => el.classList.add('vt-freeze'));
+  });
+
   /* ── Smooth scroll for anchor links ── */
   document.querySelectorAll<HTMLAnchorElement>('a[href^="#"]').forEach(link => {
     link.addEventListener('click', (e) => {
@@ -763,6 +768,12 @@ const fallbackSizes = '(max-width: 768px) 85vw, (max-width: 1200px) 38vw, 420px'
   @media (prefers-reduced-motion: reduce) {
     .hero-event-card__logo { animation: none; }
     .hero-event-card { transition: none; }
+  }
+  /* When view-transition is about to start, JS adds this class so the
+     snapshot is taken at the rest position — prevents the logo jumping. */
+  .hero-event-card__logo.vt-freeze {
+    animation: none !important;
+    transform: translateY(0) !important;
   }
 
   /* Mini date card overlay */

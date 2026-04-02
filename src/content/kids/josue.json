@@ -58,6 +58,10 @@
       "name": "Lead Coverage Logo"
     },
     {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/target-circle-community-giving/1774986726374/public",
+      "name": "Target Circle Community Giving"
+    },
+    {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/top-knobs/public",
       "name": "Top Knobs"
     },
@@ -90,5 +94,7 @@
   "roomCount": 1,
   "publishStatus": "published",
   "fundraisingUrl": null,
-  "bedroomCount": 1
+  "bedroomCount": 1,
+  "storyPhotos": [],
+  "plans": []
 }

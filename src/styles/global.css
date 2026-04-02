@@ -143,6 +143,33 @@ html {
   isolation: auto;
 }
 
+/* Event hero/title morph (events index ↔ golf/event detail pages) */
+::view-transition-group(event-hero) {
+  animation-duration: 250ms;
+  animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  overflow: hidden;
+}
+::view-transition-old(event-hero) {
+  animation: 120ms cubic-bezier(0.4, 0, 1, 1) both vt-fade-out;
+}
+::view-transition-new(event-hero) {
+  animation: 160ms cubic-bezier(0, 0, 0.2, 1) 70ms both vt-fade-in;
+}
+::view-transition-group(event-title) {
+  animation-duration: 220ms;
+  animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+}
+::view-transition-old(event-title) {
+  animation: 90ms ease both vt-fade-out;
+}
+::view-transition-new(event-title) {
+  animation: 140ms ease 70ms both vt-fade-in;
+}
+::view-transition-image-pair(event-hero),
+::view-transition-image-pair(event-title) {
+  isolation: auto;
+}
+
 body {
   font-family: var(--font-body);
   font-weight: 400;

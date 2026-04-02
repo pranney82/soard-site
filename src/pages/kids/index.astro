@@ -119,23 +119,7 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
   ? cfCropSrcset(lcpKid.data.heroImage, [180, 260, 380, 520], 4/3)
   : null;
 
-// ── Hero face collage: 12 diverse kids across years ──
-const heroFacePool = kids.filter(k => !!k.data.heroImage);
-// Round-robin across years for visual diversity
-const yearGroups: Record<number, typeof heroFacePool> = {};
-heroFacePool.forEach(k => {
-  const y = k.data.year || 0;
-  (yearGroups[y] ||= []).push(k);
-});
-const sortedYears = Object.keys(yearGroups).map(Number).sort((a, b) => b - a);
-const heroFaces: typeof heroFacePool = [];
-let yi = 0;
-while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
-  const bucket = yearGroups[sortedYears[yi % sortedYears.length]];
-  const pick = bucket.shift();
-  if (pick) heroFaces.push(pick);
-  yi++;
-}
+// ── (hero is minimal — no featured photo needed) ──
 
 ---
 
@@ -159,62 +143,28 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
       imagesizes="(min-width: 1400px) 240px, (min-width: 1100px) calc(25vw - 30px), calc(33vw - 27px)" />
   )}
 
-  <!-- ══════ HERO — Face Collage + Headline + Stats ══════ -->
+  <!-- ══════ HERO — Minimal collection header ══════ -->
   <section class="kids-hero" aria-label="Meet the Kids">
     <div class="kids-hero__inner">
       <div class="kids-hero__text">
-        <p class="kids-hero__label">Our Kids</p>
-        <h1 class="kids-hero__title">Meet our <em class="highlight">Sunshine</em> Kids</h1>
-        <p class="kids-hero__subtitle">{siteSettings.kidsPageSummary || 'Discover the incredible stories behind every room we build.'}</p>
+        <h1 class="kids-hero__headline">Meet our <em>Sunshine</em> Kids</h1>
+        <p class="kids-hero__sub">{siteSettings.kidsPageSummary || 'Every room we build changes a child\'s world.'}</p>
       </div>
-
-      <!-- Face constellation -->
-      <div class="faces" aria-label={`Photos of ${heroFaces.length} children helped by SOARD`}>
-        {heroFaces.map((kid, i) => (
-          <a
-            href={`/kids/${kid.data.slug}/`}
-            class="face"
-            style={`--i:${i}`}
-            aria-label={kid.data.name}
-          >
-            <img
-              src={cfUrl(kid.data.heroImage!, { w: 68, h: 68, fit: 'cover', gravity: 'face', q: 70 })}
-              srcset={cfDensitySrcset(kid.data.heroImage!, 68, 68, { fit: 'cover', gravity: 'face', quality: 70 })}
-              alt={kid.data.name}
-              width="68"
-              height="68"
-              loading="lazy"
-              decoding="async"
-            />
-          </a>
-        ))}
-      </div>
-
-      <!-- Impact stats inline -->
-      <div class="hero-stats" aria-label="Impact statistics">
-        <div class="hero-stat">
-          <span class="hero-stat__num">{totalKids}</span>
-          <span class="hero-stat__label">Kids Helped</span>
+      <div class="kids-hero__stats" aria-label="Impact statistics">
+        <div class="kids-hero__stat">
+          <span class="kids-hero__stat-num">{totalKids}</span>
+          <span class="kids-hero__stat-label">Kids Helped</span>
         </div>
-        <div class="hero-stat">
-          <span class="hero-stat__num">{siteStats.totalRooms}</span>
-          <span class="hero-stat__label">Rooms Built</span>
+        <div class="kids-hero__stat">
+          <span class="kids-hero__stat-num">{siteStats.totalRooms}</span>
+          <span class="kids-hero__stat-label">Rooms Built</span>
         </div>
         {inProgressCount > 0 && (
-          <div class="hero-stat">
-            <span class="hero-stat__num">{inProgressCount}</span>
-            <span class="hero-stat__label">In Progress</span>
+          <div class="kids-hero__stat">
+            <span class="kids-hero__stat-num">{inProgressCount}</span>
+            <span class="kids-hero__stat-label">In Progress</span>
           </div>
         )}
-        <div class="hero-stat">
-          <span class="hero-stat__num">{new Date().getFullYear() - (years[years.length - 1] || 2012)}</span>
-          <span class="hero-stat__label">Years Strong</span>
-        </div>
-      </div>
-
-      <!-- Accent rule — matches site-wide PageLayout pattern -->
-      <div class="kids-hero__rule" aria-hidden="true">
-        <span class="kids-hero__rule-accent"></span>
       </div>
     </div>
   </section>
@@ -666,7 +616,7 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
       return a;
     }
 
-    function revealAllCards() {
+    function revealAllCards(forFilter = false) {
       if (allCardsLoaded) return;
       const dataEl = document.getElementById('kids-overflow');
       if (!dataEl?.textContent) { allCardsLoaded = true; return; }
@@ -674,8 +624,17 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
       const frag = document.createDocumentFragment();
       for (const kid of overflow) {
         const card = createCard(kid);
-        if (!reducedMotion && _kidsObserver) _kidsObserver.observe(card);
-        else card.classList.add('revealed');
+        if (forFilter) {
+          // During filtering: reveal immediately, skip cardIn animation.
+          // Without this, .js-anim :not(.revealed) holds cards at opacity:0.
+          card.style.animation = 'none';
+          card.classList.add('revealed');
+        } else if (!reducedMotion && _kidsObserver) {
+          // Load More: staggered scroll reveal via IntersectionObserver
+          _kidsObserver.observe(card);
+        } else {
+          card.classList.add('revealed');
+        }
         cacheOriginalText(card);
         frag.appendChild(card);
       }
@@ -726,9 +685,15 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
     currentSort = sortSelect?.value || 'newest';
 
     // ══════════════════════════════════════════
-    //  FLIP ANIMATION SYSTEM
+    //  WAAPI FLIP ANIMATION SYSTEM
+    //  – Fully cancellable (no stale transforms)
+    //  – Compositor-threaded (no jank)
+    //  – Works for both sort AND filter reflows
     // ══════════════════════════════════════════
     type Rect = { x: number; y: number; w: number; h: number };
+    const flipAnims = new WeakMap<HTMLElement, Animation>();
+    const FLIP_EASE = 'cubic-bezier(0.16, 1, 0.3, 1)';
+    const FLIP_DUR = 350;
 
     function capturePositions(): Map<HTMLElement, Rect> {
       const map = new Map<HTMLElement, Rect>();
@@ -750,28 +715,19 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
         const dx = oldPos.x - newRect.left;
         const dy = oldPos.y - newRect.top;
         if (Math.abs(dx) < 1 && Math.abs(dy) < 1) continue;
-        // Cancel any in-flight FLIP to prevent overlapping transforms
-        if (card.classList.contains('is-flipping')) {
-          card.classList.remove('is-flipping');
-          void card.offsetWidth; // force style recalc
-        }
-        card.style.transform = `translate(${dx}px, ${dy}px)`;
-        card.classList.add('is-flipping');
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            card.style.transform = '';
-          });
-        });
+        // Cancel any in-flight animation — WAAPI makes this clean
+        flipAnims.get(card)?.cancel();
+        const anim = card.animate(
+          [
+            { transform: `translate(${dx}px, ${dy}px)` },
+            { transform: 'translate(0, 0)' },
+          ],
+          { duration: FLIP_DUR, easing: FLIP_EASE, fill: 'none' }
+        );
+        flipAnims.set(card, anim);
+        anim.finished.then(() => flipAnims.delete(card)).catch(() => {});
       }
     }
-
-    // Clean up FLIP class
-    grid.addEventListener('transitionend', (e) => {
-      const card = (e.target as HTMLElement).closest('.kid-card');
-      if (card?.classList.contains('is-flipping')) {
-        card.classList.remove('is-flipping');
-      }
-    }, { signal });
 
     // ══════════════════════════════════════════
     //  SORT with FLIP
@@ -936,11 +892,11 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
       if (typeFilter !== 'all') {
         const label = typeSelect.options[typeSelect.selectedIndex]?.text || typeFilter;
         const typeIconMap: Record<string, string> = {
-          'dream bedroom': '<svg class="filter-chip__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/><path d="M20 3v4"/><path d="M22 5h-4"/><path d="M4 17v2"/><path d="M5 18H3"/></svg>',
-          'accessible bathroom': '<svg class="filter-chip__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><circle cx="16" cy="4" r="1"/><path d="m18 19 1-7-6 1"/><path d="m5 8 3-3 5.5 3-2.36 3.5"/><path d="M4.24 14.5a5 5 0 0 0 6.88 6"/><path d="M13.76 17.5a5 5 0 0 0-6.88-6"/></svg>',
-          'therapy room': '<svg class="filter-chip__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.409 13.017A5 5 0 0 1 22 15c0 3.866-4 7-9 7-4.077 0-8.153-.82-10.371-2.462-.426-.316-.631-.832-.62-1.362C2.118 12.723 2.627 2 10 2a3 3 0 0 1 3 3 2 2 0 0 1-2 2c-1.105 0-1.64-.444-2-1"/><path d="M15 14a5 5 0 0 0-7.584 2"/><path d="M9.964 6.825C8.019 7.977 9.5 13 8 15"/></svg>',
+          'type-dream-bedroom': '<svg class="filter-chip__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/><path d="M20 3v4"/><path d="M22 5h-4"/><path d="M4 17v2"/><path d="M5 18H3"/></svg>',
+          'type-accessible-bathroom': '<svg class="filter-chip__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><circle cx="16" cy="4" r="1"/><path d="m18 19 1-7-6 1"/><path d="m5 8 3-3 5.5 3-2.36 3.5"/><path d="M4.24 14.5a5 5 0 0 0 6.88 6"/><path d="M13.76 17.5a5 5 0 0 0-6.88-6"/></svg>',
+          'type-therapy-room': '<svg class="filter-chip__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.409 13.017A5 5 0 0 1 22 15c0 3.866-4 7-9 7-4.077 0-8.153-.82-10.371-2.462-.426-.316-.631-.832-.62-1.362C2.118 12.723 2.627 2 10 2a3 3 0 0 1 3 3 2 2 0 0 1-2 2c-1.105 0-1.64-.444-2-1"/><path d="M15 14a5 5 0 0 0-7.584 2"/><path d="M9.964 6.825C8.019 7.977 9.5 13 8 15"/></svg>',
         };
-        const typeIcon = typeIconMap[label.toLowerCase()] || '<svg class="filter-chip__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>';
+        const typeIcon = typeIconMap[typeFilter] || '<svg class="filter-chip__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>';
         html += `<span class="filter-chip" role="group" aria-label="Project: ${escapeHtml(label)}">${typeIcon}${escapeHtml(label)}<button class="filter-chip__remove" data-chip="type" aria-label="Remove project filter"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></span>`;
         chipCount++;
       }
@@ -970,17 +926,37 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
     // ══════════════════════════════════════════
     //  ANIMATED FILTER TRANSITIONS
     // ══════════════════════════════════════════
-    // ── Card visibility ──
-    // Uses display:none so the browser never unloads decoded images.
-    // No opacity animations on show/hide — images stay rock-solid.
+    // display:none keeps images decoded in memory — zero flash.
+    // WAAPI FLIP glides remaining cards to new positions.
+    // WAAPI scale-in entrance for newly revealed cards.
+    const enterAnims = new WeakMap<HTMLElement, Animation>();
+    const ENTER_DUR = 280;
+
+    let _skipEntrance = false; // suppressed during rapid typing for perf
+
     function showCard(card: HTMLElement) {
+      if (!card.classList.contains('is-hidden')) return; // already visible
       card.classList.remove('is-hidden');
+      // Subtle scale entrance — transform only, NEVER opacity (image-safe).
+      // Skipped during typing (80ms debounce) to avoid 182 WAAPI calls per keystroke.
+      if (!reducedMotion && !_skipEntrance) {
+        enterAnims.get(card)?.cancel();
+        const anim = card.animate(
+          [
+            { transform: 'scale(0.94)' },
+            { transform: 'scale(1)' },
+          ],
+          { duration: ENTER_DUR, easing: 'cubic-bezier(0.34, 1.56, 0.64, 1)', fill: 'none' }
+        );
+        enterAnims.set(card, anim);
+        anim.finished.then(() => enterAnims.delete(card)).catch(() => {});
+      }
     }
 
     function hideCard(card: HTMLElement) {
       if (card.classList.contains('is-hidden')) return;
-      card.classList.remove('is-flipping');
-      card.style.transform = '';
+      flipAnims.get(card)?.cancel();
+      enterAnims.get(card)?.cancel();
       card.classList.add('is-hidden');
     }
 
@@ -1087,21 +1063,40 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
     // ══════════════════════════════════════════
     //  MAIN FILTER LOGIC
     // ══════════════════════════════════════════
-    function applyFilters() {
+    function applyFilters(skipFLIP = false) {
+      _skipEntrance = skipFLIP;
       const query = searchInput.value.toLowerCase().trim();
       const yearFilter = yearSelect.value;
       const typeFilter = typeSelect.value;
       const hasFilters = yearFilter !== 'all' || typeFilter !== 'all' || statusActive || query.length > 0;
 
-      // When filtering, reveal all server-rendered cards so filters can match them
-      if (hasFilters && !allCardsLoaded) {
-        revealAllCards();
-        if (loadMoreWrap) loadMoreWrap.classList.add('is-hidden');
+      // When filtering, reveal all cards so filters can match them.
+      // Also mark ALL cards as .revealed — the staggered scroll-reveal
+      // is only for initial page load. During filtering, any card without
+      // .revealed would be stuck at opacity:0 by the .js-anim CSS rule.
+      if (hasFilters) {
+        if (!allCardsLoaded) {
+          revealAllCards(true);
+          if (loadMoreWrap) loadMoreWrap.classList.add('is-hidden');
+        }
+        // Ensure ALL cards are revealed — the staggered scroll-reveal is
+        // only for initial load. Without this, any card without .revealed
+        // is stuck at opacity:0 by the .js-anim CSS rule → flash.
+        for (const card of cachedCards) {
+          if (!card.classList.contains('revealed')) {
+            card.style.animation = 'none';
+            card.classList.add('revealed');
+          }
+        }
       }
 
       if (!hasFilters && !allCardsLoaded && loadMoreWrap) {
         loadMoreWrap.classList.remove('is-hidden');
       }
+
+      // Snapshot positions BEFORE any DOM changes (FLIP "First").
+      // Skip during rapid typing — saves 2 forced layouts per 80ms tick.
+      const oldPos = skipFLIP ? null : capturePositions();
 
       // Build highlight regex once for the entire pass (not per-card)
       const hlRe = buildHighlightRe(query);
@@ -1133,6 +1128,9 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
           if (diagEl) highlightText(diagEl, hlRe, orig.diagnosis);
         }
       }
+
+      // FLIP "Last + Invert + Play" — glide remaining cards to new positions.
+      if (oldPos) animateFLIP(oldPos);
 
       // Update status text — use stable DOM references, never recreate #visible-count
       const totalText = String(cachedCards.length);
@@ -1268,7 +1266,7 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
       visibleCountEl.style.opacity = '0.4';
       searchTimer = setTimeout(() => {
         visibleCountEl.style.opacity = '';
-        applyFilters();
+        applyFilters(true); // skipFLIP — avoid 2 forced layouts per 80ms keystroke
       }, 80);
     }, { signal });
 
@@ -1639,11 +1637,12 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
   /* ═══════════════════════════════════════════
      HERO — Face Collage + Text + Stats
      ═══════════════════════════════════════════ */
+  /* ═══════════════════════════════════════════
+     HERO — Minimal collection header
+     ═══════════════════════════════════════════ */
   .kids-hero {
     background: var(--c-cream);
-    padding: var(--space-xl) 0 var(--space-sm);
-    text-align: center;
-    overflow: hidden;
+    padding: var(--space-xl) 0 var(--space-md);
   }
 
   .kids-hero__inner {
@@ -1651,148 +1650,68 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
     margin: 0 auto;
     padding: 0 var(--page-padding);
     display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: var(--space-sm);
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: var(--space-xl);
   }
 
-  .kids-hero__label {
-    font-size: 0.75rem;
-    font-weight: 600;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: var(--c-text-muted);
-    margin-bottom: 0;
-  }
-
-  .kids-hero__title {
+  .kids-hero__headline {
     color: var(--c-text);
-    font-size: clamp(2rem, 5vw, 3.125rem);
+    font-size: clamp(2rem, 4.5vw, 3rem);
     font-weight: 400;
     letter-spacing: -0.025em;
-    line-height: 1.15;
-    max-width: 700px;
-    margin: var(--space-sm) auto 0;
+    line-height: 1.1;
+    margin: 0 0 var(--space-xs);
   }
 
-  .kids-hero__subtitle {
-    font-family: var(--font-display);
+  .kids-hero__headline em {
     font-style: italic;
-    font-size: clamp(0.95rem, 1.8vw, 1.065rem);
+    background-image: linear-gradient(transparent 54%, var(--c-yellow-soft, rgba(255, 218, 36, 0.3)) 54%);
+    background-repeat: no-repeat;
+    background-size: 100% 100%;
+  }
+
+  .kids-hero__sub {
+    font-size: clamp(0.92rem, 1.2vw, 1.05rem);
     line-height: 1.6;
     color: var(--c-text-muted);
-    max-width: 500px;
-    margin: 0 auto;
+    max-width: 460px;
+    margin: 0;
   }
 
-  /* ── Face Constellation — organic arc ── */
-  .faces {
+  /* ── Stats — right-aligned, bold impact numbers ── */
+  .kids-hero__stats {
     display: flex;
-    justify-content: center;
-    align-items: center;
-    flex-wrap: wrap;
-    max-width: 640px;
-    padding-block: var(--space-xs);
-  }
-
-  .face {
-    width: var(--face-s, 56px);
-    height: var(--face-s, 56px);
-    min-width: var(--face-s, 56px);
-    aspect-ratio: 1;
-    border-radius: 50%;
-    overflow: hidden;
-    border: 2.5px solid var(--c-white);
-    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
-    transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1),
-                box-shadow 0.3s ease,
-                border-color 0.3s ease;
-    animation: faceIn 0.5s ease both;
-    animation-delay: calc(var(--i) * 60ms);
-    transform: translateY(var(--face-y, 0px));
-    margin-inline: -3px;
-    position: relative;
+    gap: var(--space-xl);
     flex-shrink: 0;
+    padding: var(--space-md) var(--space-lg);
+    background: var(--c-white);
+    border-radius: var(--border-radius-lg, 16px);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 4px 20px rgba(0, 0, 0, 0.03);
   }
 
-  /* Arc: center faces bigger + higher, edges smaller + lower */
-  .face:nth-child(1), .face:nth-child(12) { --face-s: 44px; --face-y: 10px; }
-  .face:nth-child(2), .face:nth-child(11) { --face-s: 50px; --face-y: 4px; }
-  .face:nth-child(3), .face:nth-child(10) { --face-s: 56px; --face-y: -2px; }
-  .face:nth-child(4), .face:nth-child(9)  { --face-s: 60px; --face-y: -6px; }
-  .face:nth-child(5), .face:nth-child(8)  { --face-s: 64px; --face-y: -10px; }
-  .face:nth-child(6), .face:nth-child(7)  { --face-s: 68px; --face-y: -14px; }
-
-  .face:hover {
-    transform: translateY(calc(var(--face-y, 0px) - 6px)) scale(1.12);
-    box-shadow: 0 8px 24px rgba(255, 218, 36, 0.25), 0 4px 12px rgba(0, 0, 0, 0.1);
-    border-color: var(--c-yellow);
-    z-index: 2;
-  }
-
-  .face img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    display: block;
-  }
-
-  @keyframes faceIn {
-    from { opacity: 0; transform: translateY(calc(var(--face-y, 0px) + 12px)) scale(0.6); }
-    to { opacity: 1; transform: translateY(var(--face-y, 0px)) scale(1); }
-  }
-
-  /* ── Hero Stats ── */
-  .hero-stats {
-    display: flex;
-    justify-content: center;
-    gap: var(--space-2xl);
-    padding-top: var(--space-sm);
-    border-top: 1px solid var(--c-border);
-    width: 100%;
-    max-width: 540px;
-  }
-
-  .hero-stat {
+  .kids-hero__stat {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 2px;
+    gap: 3px;
   }
 
-  .hero-stat__num {
+  .kids-hero__stat-num {
     font-family: var(--font-display);
-    font-size: clamp(1.35rem, 2.5vw, 1.75rem);
+    font-size: clamp(1.75rem, 2.5vw, 2.25rem);
     font-weight: 700;
     color: var(--c-dark);
-    line-height: 1.1;
+    line-height: 1;
+    letter-spacing: -0.02em;
   }
 
-  .hero-stat__label {
-    font-size: 0.7rem;
-    font-weight: 500;
+  .kids-hero__stat-label {
+    font-size: 0.62rem;
+    font-weight: 600;
     color: var(--c-text-muted);
     text-transform: uppercase;
-    letter-spacing: 0.08em;
-  }
-
-  /* ── Hero Accent Rule — matches PageLayout ── */
-  .kids-hero__rule {
-    position: relative;
-    height: 2px;
-    background: var(--c-border);
-    width: 100%;
-  }
-
-  .kids-hero__rule-accent {
-    position: absolute;
-    left: 50%;
-    transform: translateX(-50%);
-    top: -1px;
-    width: 48px;
-    height: 3px;
-    background: var(--c-yellow);
-    border-radius: 1px;
+    letter-spacing: 0.1em;
   }
 
   /* ═══════════════════════════════════════════
@@ -2227,11 +2146,7 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
     contain: layout style paint;
   }
 
-  /* ── FLIP transition helper ── */
-  :global(.kid-card.is-flipping) {
-    transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
-    z-index: 1;
-  }
+  /* FLIP animations are handled via WAAPI — no CSS transition needed */
 
   /* ── Filter Controls (Desktop) ── */
   .toolbar__filters--desktop {
@@ -2946,40 +2861,33 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
   /* Mobile */
   @media (max-width: 768px) {
     .kids-hero {
-      padding: var(--space-md) 0 var(--space-xs);
+      padding: var(--space-md) 0 var(--space-sm);
     }
 
     .kids-hero__inner {
-      gap: var(--space-xs);
+      flex-direction: column;
+      align-items: flex-start;
+      gap: var(--space-md);
     }
 
-    .kids-hero__title {
-      font-size: clamp(1.75rem, 7vw, 2.25rem);
+    .kids-hero__headline {
+      font-size: clamp(1.6rem, 7vw, 2rem);
     }
 
-    .kids-hero__subtitle {
+    .kids-hero__sub {
       font-size: 0.9rem;
       max-width: 320px;
     }
 
-    .faces {
-      display: none;
+    .kids-hero__stats {
+      gap: var(--space-md);
     }
 
-    /* Stats as compact single row */
-    .hero-stats {
-      display: flex;
-      justify-content: center;
-      gap: var(--space-lg);
-      padding-top: var(--space-xs);
-      max-width: 100%;
+    .kids-hero__stat-num {
+      font-size: 1.1rem;
     }
 
-    .hero-stat__num {
-      font-size: 1.05rem;
-    }
-
-    .hero-stat__label {
+    .kids-hero__stat-label {
       font-size: 0.55rem;
     }
 
@@ -3120,9 +3028,10 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
   }
 
   @media (max-width: 380px) {
-    .hero-stats {
-      gap: var(--space-xs) var(--space-lg);
-      max-width: 260px;
+    .kids-hero__stats {
+      gap: var(--space-sm) var(--space-md);
+      flex-wrap: wrap;
+      justify-content: center;
     }
 
     .kids-grid {
@@ -3152,10 +3061,6 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
       transition: none;
     }
 
-    :global(.kid-card.is-flipping) {
-      transition: none;
-    }
-
     :global(.kid-card.is-hidden) {
       display: none;
       pointer-events: none;
@@ -3166,8 +3071,8 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
       transition: none;
     }
 
-    .face {
-      animation: none;
+    .kids-hero__stats {
+      gap: var(--space-sm);
     }
 
     :global(.kid-card__img) {

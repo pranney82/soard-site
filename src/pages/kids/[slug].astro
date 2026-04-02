@@ -1,17 +1,15 @@
 ---
 /**
- * [slug].astro — Individual kid profile page (Top 1%)
+ * [slug].astro — Individual kid profile page
  *
- * Premium editorial storytelling with:
- *   - LQIP blur-up image placeholders (tiny CF thumbnail → full res)
- *   - Staggered cascade reveal animations (each element sequences in)
- *   - CSS-only scroll progress indicator
- *   - Asymmetric hero with portrait + typography (never full-width)
- *   - Masonry gallery with face-gravity, hover zoom overlay
- *   - Video facade (CF Stream + YouTube)
- *   - Fundraising CTA, partner logos, related kids
- *   - Graceful empty states for minimal-data kids
- *   - content-visibility: auto for rendering perf
+ * Guided Journey — immersive editorial storytelling with interactive chapters:
+ *   1. Meet [Name]: Editorial split hero with hook, pills, stats
+ *   2. The Story: Editorial photo/text pairs with alternating layouts
+ *   3. The Design: Side-by-side as-built vs proposed plans
+ *   4. Before & After: Interactive comparison sliders
+ *   5. The Reveal: Video climax (Cloudflare Stream / YouTube)
+ *   6. The Gallery: Masonry grid with hero treatment + cascade reveal
+ *   + Sticky chapter nav (desktop right rail, mobile bottom bar)
  *
  * PERF: CF Images w/ srcset + gravity:face, LQIP blur-up, lazy loading,
  *       video facade, content-visibility, inline CSS (build config)
@@ -29,8 +27,6 @@ import { getKidProfileSchema } from '../../utils/schema';
 export async function getStaticPaths() {
   const kids = await getPublishedKids();
   const sorted = kids.sort((a, b) => (b.data.year || 0) - (a.data.year || 0));
-  // Seeded shuffle — deterministic per slug so builds produce identical HTML
-  // when content hasn't changed (preserves CF edge cache for 187+ pages)
   const seedHash = (str: string) => {
     let h = 0;
     for (let i = 0; i < str.length; i++) {
@@ -54,7 +50,6 @@ export async function getStaticPaths() {
       k.data.roomTypes?.some(t => kid.data.roomTypes?.includes(t))
     );
     const sameYear = others.filter(k => k.data.year === kid.data.year);
-    // Deduplicate by slug, preserving priority order (sameType > sameYear > others)
     const seen = new Set();
     const slug = kid.data.slug;
     const deduped = [...seededShuffle(sameType, slug), ...seededShuffle(sameYear, slug + ':year'), ...seededShuffle(others, slug + ':all')]
@@ -93,15 +88,10 @@ function cfUrl(src: string, opts: string) { return cfRaw(src, opts); }
 function cfSrcset(src: string, widths: number[]) {
   return _cfSrcset(src, widths);
 }
-/** LQIP: Inline base64 from build-time manifest (zero HTTP requests).
- *  Falls back to CF URL only if the image isn't in the manifest. */
 function lqip(src: string): string {
   const id = cfId(src);
   return _lqipMap[id] || cfRaw(src, 'w=30,q=30,blur=20');
 }
-
-/** Real aspect ratio from build-time manifest. Returns [w, h] at GCD-reduced
- *  scale, or a 4:3 fallback if the image isn't in the manifest. */
 function dims(src: string): [number, number] {
   const id = cfId(src);
   return _dimsMap[id] || [4, 3];
@@ -140,28 +130,23 @@ const metaDesc = kid.metaDescription
 const dateModified = kid.year ? `${kid.year}-01-01` : undefined;
 
 // ── LCP preload for hero image ────────────
-// Large srcset for retina sharpness — gravity:face positions focal point
 const heroSrcset = kid.heroImage ? _cfSrcset(kid.heroImage, [600, 900, 1200, 1600, 2400], { fit: 'cover', gravity: 'face' }) : '';
 const heroSizes = '(max-width: 768px) 92vw, (max-width: 1100px) 55vw, 640px';
 
 // ── Bio paragraphs + pull quote ───────────
-// Handle both \n\n-separated plain text AND <p>-wrapped HTML from rich editor
 function splitBio(bio: string): string[] {
   if (!bio) return [];
-  // If bio contains <p> tags, extract content between them
   if (bio.includes('<p>')) {
     return [...bio.matchAll(/<p>([\s\S]*?)<\/p>/gi)]
       .map(m => m[1].replace(/<br\s*\/?>/gi, '').trim())
       .filter(Boolean);
   }
-  // Plain text: split on double newlines
   return bio.split('\n\n').filter(p => p.trim());
 }
 const bioParas = splitBio(kid.bio || '');
 const introPara = bioParas.length > 0 ? bioParas[0] : '';
 const remainingParas = bioParas.slice(1);
 
-// Only use explicit quote from CMS — no auto-extraction from bio
 let pullQuote: string | null = null;
 if (kid.quote && kid.quote !== kid.bio && kid.quote !== introPara) {
   pullQuote = kid.quote;
@@ -169,46 +154,19 @@ if (kid.quote && kid.quote !== kid.bio && kid.quote !== introPara) {
 
 const galleryPhotos = photos.slice(0, 30);
 
-// ── Bento layout roles: forced visual rhythm ───────
-// Repeating 8-photo cycle guarantees variety regardless of photo aspect ratios.
-// hero(2x2), std, std, wide(2x1), tall(1x2), std, std, wide(2x1)
-const BENTO_ROLES = ['hero', 'std', 'std', 'wide', 'tall', 'std', 'std', 'wide'];
-function bentoRole(i: number, total: number): string {
-  if (i === 0) return 'hero';
-  if (total <= 3) return 'std';
-  if (total <= 5) return i === 3 ? 'wide' : 'std';
-  return BENTO_ROLES[i % BENTO_ROLES.length];
-}
-
-// ── Hero: art-directed mobile — bigger for retina sharpness ───────
+// ── Hero: art-directed mobile ─────────────
 const heroMobileSrcset = kid.heroImage ? _cfSrcset(kid.heroImage, [600, 900, 1200], { fit: 'cover', gravity: 'face' }) : '';
 const heroMobileSizes = '(max-width: 480px) 92vw, 92vw';
 
-// ── Photo Essay: editorial prose with interwoven photos ──
-//
-// One continuous text column with photos placed within the flow:
-//   breakout  — wide photo breaking out of text column between paragraphs
-//   float     — smaller photo floated into text, wrapping prose around it
-//   cinematic — near-viewport-width dramatic pause
+// ── Story Photo Essay ─────────────────────
 const storyPhotos = kid.storyPhotos || [];
 const hasStoryPhotos = storyPhotos.length > 0;
 const usePhotoEssay = hasStoryPhotos
   ? remainingParas.length >= 1
   : remainingParas.length >= 2 && galleryPhotos.length >= 3;
 
-// Essay item types (mapped to placement in template):
-//   spread  → breakout (wide photo between paragraphs)
-//   reverse → float-right (photo floats into text)
-//   moment  → cinematic (near-full-width dramatic pause)
-//   accent  → float-left (photo floats into text)
-type EssayItem =
-  | { type: 'spread'; photo: typeof photos[0]; text: string }
-  | { type: 'reverse'; photo: typeof photos[0]; text: string }
-  | { type: 'moment'; photo: typeof photos[0]; text?: string }
-  | { type: 'accent'; photo: typeof photos[0]; text: string; side: 'left' | 'right' }
-  | { type: 'quote'; text: string };
-
-let essayItems: EssayItem[] = [];
+type StoryPair = { text: string; photo: typeof photos[0] | null; layout: 'left' | 'right' };
+let storyPairs: StoryPair[] = [];
 let overflowParas: string[] = remainingParas;
 
 if (usePhotoEssay) {
@@ -219,39 +177,75 @@ if (usePhotoEssay) {
       galleryPhotos[Math.min(Math.floor(i * step), galleryPhotos.length - 1)]
     );
   })();
-  const n = srcPhotos.length;
   const paras = [...remainingParas];
-  let paraIdx = 0;
-
-  if (n >= 4) {
-    // spread(1) → reverse(2) → [quote] → moment(3) → accent(4)
-    essayItems.push({ type: 'spread', photo: srcPhotos[0], text: paras[paraIdx++] || '' });
-    essayItems.push({ type: 'reverse', photo: srcPhotos[1], text: paras[paraIdx++] || '' });
-    if (pullQuote) essayItems.push({ type: 'quote', text: pullQuote });
-    essayItems.push({ type: 'moment', photo: srcPhotos[2], text: paras[paraIdx++] });
-    essayItems.push({ type: 'accent', photo: srcPhotos[3], text: paras[paraIdx++] || '', side: 'right' });
-  } else if (n === 3) {
-    essayItems.push({ type: 'spread', photo: srcPhotos[0], text: paras[paraIdx++] || '' });
-    if (pullQuote) essayItems.push({ type: 'quote', text: pullQuote });
-    essayItems.push({ type: 'reverse', photo: srcPhotos[1], text: paras[paraIdx++] || '' });
-    essayItems.push({ type: 'moment', photo: srcPhotos[2], text: paras[paraIdx++] });
-  } else if (n === 2) {
-    essayItems.push({ type: 'spread', photo: srcPhotos[0], text: paras[paraIdx++] || '' });
-    if (pullQuote) essayItems.push({ type: 'quote', text: pullQuote });
-    essayItems.push({ type: 'moment', photo: srcPhotos[1], text: paras[paraIdx++] });
-  } else {
-    essayItems.push({ type: 'moment', photo: srcPhotos[0], text: paras[paraIdx++] });
-    if (pullQuote) essayItems.push({ type: 'quote', text: pullQuote });
+  const pairCount = Math.min(paras.length, srcPhotos.length);
+  for (let i = 0; i < pairCount; i++) {
+    storyPairs.push({
+      text: paras[i],
+      photo: srcPhotos[i],
+      layout: i % 2 === 0 ? 'left' : 'right',
+    });
   }
-  overflowParas = paras.slice(paraIdx);
+  overflowParas = paras.slice(pairCount);
 }
-
-const quoteWoven = essayItems.some(it => it.type === 'quote');
-const remainingQuote = (!quoteWoven && pullQuote) ? pullQuote : null;
 
 // ── Minimal data detection ────────────────
 const hasDetails = kid.age || (kid.roomTypes && kid.roomTypes.length > 0) || kid.year;
 const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
+
+// ── Plans — proposed vs as-built ──────────
+const plans = kid.plans || [];
+const hasPlans = plans.length > 0;
+const proposedPlans = plans.filter((p: any) => p.type === 'proposed');
+const asBuiltPlans = plans.filter((p: any) => p.type === 'as-built');
+
+// ── Before/After photos ───────────────────
+const beforeAfterPhotos = kid.beforeAfterPhotos || [];
+const hasBeforeAfter = beforeAfterPhotos.length > 0;
+
+// ── Gallery — masonry with hero treatment ──
+const galleryFeatured = kid.galleryFeatured || [];
+const heroGalleryPhotos = galleryPhotos.slice(0, 2);
+const supportingPhotos = galleryPhotos.slice(2, 8);
+const overflowGalleryPhotos = galleryPhotos.slice(8);
+const showExpandButton = galleryPhotos.length > 8;
+
+// ── Partner count for hero stats ──────────
+const partnerCount = kid.partnerLogos?.length || 0;
+
+// ── Hero hook ─────────────────────────────
+const _rawHook = kid.heroSummary
+  || (introPara ? introPara.replace(/<[^>]+>/g, '') : '');
+const heroHook = (() => {
+  if (!_rawHook) return '';
+  const firstSentence = _rawHook.match(/^[^.!?]+[.!?]/)?.[0] || _rawHook;
+  if (firstSentence.length <= 130) return firstSentence;
+  return firstSentence.slice(0, 120).replace(/\s+\S*$/, '') + '...';
+})();
+const storyLede = kid.heroSummary || introPara;
+
+// ── Stats for hero at-a-glance ────────────
+const statsItems = [
+  kid.age && `Age ${Array.isArray(kid.age) ? kid.age.join(' & ') : kid.age}`,
+  kid.roomCount && `${kid.roomCount} Room${kid.roomCount > 1 ? 's' : ''}`,
+  partnerCount > 0 && `${partnerCount} Partner${partnerCount > 1 ? 's' : ''}`,
+  kid.year,
+].filter(Boolean);
+
+// ── Chapter Nav — conditional rendering ───
+const chapters = [
+  { id: 'chapter-meet', label: 'Meet', icon: 'user', show: true },
+  { id: 'chapter-story', label: 'Story', icon: 'book', show: !!(storyLede || bioParas.length) },
+  { id: 'chapter-design', label: 'Design', icon: 'blueprint', show: hasPlans },
+  { id: 'chapter-transform', label: 'Transform', icon: 'compare', show: hasBeforeAfter },
+  { id: 'chapter-reveal', label: 'Reveal', icon: 'play', show: !!hasVideo },
+  { id: 'chapter-gallery', label: 'Gallery', icon: 'camera', show: galleryPhotos.length > 1 },
+].filter(c => c.show);
+
+// ── Plans display ─────────────────────────
+const displayAsBuilt = asBuiltPlans.slice(0, 1);
+const displayProposed = proposedPlans.slice(0, 1);
+const extraPlansCount = plans.length - displayAsBuilt.length - displayProposed.length;
 ---
 
 <BaseLayout
@@ -270,8 +264,26 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
   <div class="scroll-progress" aria-hidden="true"></div>
 
   <article class="kid-profile" itemscope itemtype="https://schema.org/Article">
-    <!-- ═══ Hero: Magazine Cover ════════════ -->
-    <section class="hero">
+
+    <!-- ═══ Sticky Chapter Nav — Top Pill Bar ═══ -->
+    {chapters.length > 1 && (
+      <nav class="chapter-nav" id="chapter-nav" aria-label="Page chapters">
+        <div class="chapter-nav__track">
+          {chapters.map((ch, i) => (
+            <a
+              href={`#${ch.id}`}
+              class={`chapter-nav__pill${i === 0 ? ' chapter-nav__pill--active' : ''}`}
+              data-target={ch.id}
+            >
+              {ch.label}
+            </a>
+          ))}
+        </div>
+      </nav>
+    )}
+
+    <!-- ═══ 1. Meet — Hero ═══ -->
+    <section class="hero" id="chapter-meet" data-chapter="Meet">
       <div class="hero__split">
         {kid.heroImage ? (
           <div class="hero__portrait" style={`--lqip: url('${lqip(kid.heroImage)}')`} transition:name="kid-hero">
@@ -322,14 +334,20 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
             <p class="hero__diagnosis stagger">{kid.diagnosis}</p>
           )}
 
-          {hasDetails && (
-            <p class="hero__meta stagger">
-              {[
-                kid.age && `Age ${Array.isArray(kid.age) ? kid.age.join(' & ') : kid.age}`,
-                kid.roomTypes?.length && kid.roomTypes.join(' & '),
-                kid.year,
-              ].filter(Boolean).join(' · ')}
-            </p>
+          {kid.roomTypes && kid.roomTypes.length > 0 && (
+            <div class="hero__pills stagger">
+              {kid.roomTypes.map(type => (
+                <span class="hero__pill">{type}</span>
+              ))}
+            </div>
+          )}
+
+          {statsItems.length > 0 && (
+            <p class="hero__meta stagger">{statsItems.join(' · ')}</p>
+          )}
+
+          {heroHook && (
+            <p class="hero__hook stagger">{heroHook}</p>
           )}
 
           <div class="hero__actions stagger">
@@ -347,200 +365,306 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
       </div>
     </section>
 
-    <!-- ═══ Lede: The Opening Statement ═══ -->
-    {(kid.heroSummary || introPara) && (
-      <section class="lede">
-        <div class="container container--narrow">
-          <p class="lede__text prose--dropcap" itemprop="description">
-            <span set:html={kid.heroSummary || introPara} />
-          </p>
+    <!-- ═══ 2. The Story — Narrative ═══ -->
+    {(storyLede || storyPairs.length > 0 || overflowParas.length > 0) && (
+      <section class="story" id="chapter-story" data-chapter="Story" itemprop="articleBody">
+        <div class="story__divider container container--narrow">
+          <span class="section-rule"></span>
+          <span class="section-rule__label">The Story</span>
         </div>
-      </section>
-    )}
 
-    <!-- ═══ Editorial Story — Continuous Text with Interwoven Photos ═══
-         One continuous prose column. Photos are placed WITHIN the flow:
-           - breakout: wide photo between paragraphs (breaks out of text column)
-           - float:    smaller photo floated into the text column (wraps text around it)
-           - cinematic: near-full-width photo as a visual pause
-         The reader never loses their place — photos enhance, not interrupt.
-         ═══════════════════════════════════════════════════════════════════ -->
-    {essayItems.length > 0 && (
-      <section class="essay stagger-section" itemprop="articleBody">
-        <div class="essay__flow">
-          {essayItems.map((item, i) => {
-            if (item.type === 'quote') {
-              return (
-                <blockquote class="essay__quote">
-                  <div class="essay__quote-inner">
-                    <svg class="essay__quote-mark" viewBox="0 0 48 48" fill="none" aria-hidden="true">
-                      <path d="M14 28c-2.2 0-4-1.8-4-4 0-6.6 5.4-12 12-12v4c-4.4 0-8 3.6-8 8h4c2.2 0 4 1.8 4 4s-1.8 4-4 4h-4zm20 0c-2.2 0-4-1.8-4-4 0-6.6 5.4-12 12-12v4c-4.4 0-8 3.6-8 8h4c2.2 0 4 1.8 4 4s-1.8 4-4 4h-4z" fill="currentColor"/>
-                    </svg>
-                    <p>{item.text}</p>
-                  </div>
-                </blockquote>
-              );
-            }
+        {storyLede && (
+          <div class="story__lede container container--narrow">
+            <p class="story__lede-text prose--dropcap" itemprop="description">
+              <span set:html={storyLede} />
+            </p>
+          </div>
+        )}
 
-            // Placement pattern:
-            //   1st photo (spread)  → breakout between paragraphs
-            //   2nd photo (reverse) → float right within text column
-            //   3rd photo (moment)  → cinematic full pause
-            //   4th photo (accent)  → float left within text column
-            const placement = item.type === 'moment' ? 'cinematic'
-                            : item.type === 'reverse' ? 'float-right'
-                            : item.type === 'accent' ? 'float-left'
-                            : 'breakout';
-            const photo = item.photo;
-            const text = item.text;
-            const [w, h] = dims(photo.url);
-            const isFirst = i === 0;
-            const caption = photo.alt && photo.alt !== `${kid.name}'s room` ? photo.alt : null;
-            const isFloat = placement === 'float-right' || placement === 'float-left';
-
-            const srcWidths = placement === 'cinematic' ? [600, 900, 1400, 2000]
-                            : isFloat ? [300, 500, 800]
-                            : [600, 900, 1200, 1600];
-            const sizes = placement === 'cinematic'
-              ? '(max-width: 768px) 100vw, (max-width: 1400px) 85vw, 1200px'
-              : isFloat
-                ? '(max-width: 768px) 92vw, (max-width: 1200px) 40vw, 340px'
-                : '(max-width: 768px) 92vw, (max-width: 1200px) 75vw, 960px';
-            const imgW = placement === 'cinematic' ? 1400 : isFloat ? 800 : 1200;
-
-            if (isFloat) {
-              // Float: photo + text together in one block — text wraps around the photo
-              return (
-                <div class="essay__woven">
-                  <figure class={`essay__float essay__float--${placement === 'float-right' ? 'right' : 'left'}`}>
-                    <div class="essay__img-wrap" style={`--lqip: url('${lqip(photo.url)}')`}>
+        {storyPairs.length > 0 && (
+          <div class="story__pairs">
+            {storyPairs.map((pair, i) => (
+              <div class={`story__pair story__pair--${pair.layout}`} data-reveal="fade-up" style={`--reveal-delay: ${i * 100}ms`}>
+                {pair.photo && (
+                  <figure class="story__pair-photo">
+                    <div class="story__pair-img-wrap" style={`--lqip: url('${lqip(pair.photo.url)}')`}>
                       <img
-                        src={_cfUrl(photo.url, { w: imgW, q: 85 })}
-                        srcset={_cfSrcset(photo.url, srcWidths)}
-                        sizes={sizes}
-                        alt={photo.alt || `${kid.name}'s room`}
-                        class="essay__img lqip-img"
+                        src={_cfUrl(pair.photo.url, { w: 900, q: 85 })}
+                        srcset={_cfSrcset(pair.photo.url, [400, 600, 900, 1200])}
+                        sizes="(max-width: 768px) 92vw, (max-width: 1200px) 45vw, 500px"
+                        alt={pair.photo.alt || `${kid.name}'s room`}
+                        class="story__pair-img lqip-img"
                         loading="lazy"
                         decoding="async"
-                        width={w}
-                        height={h}
+                        width={dims(pair.photo.url)[0]}
+                        height={dims(pair.photo.url)[1]}
                       />
                     </div>
-                    {caption && <figcaption class="essay__caption">{caption}</figcaption>}
                   </figure>
-                  {text && <p set:html={text} />}
+                )}
+                <div class="story__pair-text">
+                  <p set:html={pair.text} />
                 </div>
-              );
-            }
+              </div>
+            ))}
+          </div>
+        )}
 
-            // Breakout / cinematic: photo breaks out of text column, text below stays narrow
-            return (
-              <Fragment>
-                <figure class={`essay__break essay__break--${placement}`}>
-                  <div class="essay__img-wrap" style={`--lqip: url('${lqip(photo.url)}')`}>
-                    <img
-                      src={_cfUrl(photo.url, { w: imgW, q: 85 })}
-                      srcset={_cfSrcset(photo.url, srcWidths)}
-                      sizes={sizes}
-                      alt={photo.alt || `${kid.name}'s room`}
-                      class="essay__img lqip-img"
-                      loading={isFirst ? 'eager' : 'lazy'}
-                      decoding="async"
-                      width={w}
-                      height={h}
-                    />
-                  </div>
-                  {caption && <figcaption class="essay__caption">{caption}</figcaption>}
-                </figure>
-                {text && <p class={isFirst ? 'prose--dropcap' : ''} set:html={text} />}
-              </Fragment>
-            );
-          })}
-        </div>
-      </section>
-    )}
-
-    <!-- ═══ Story Section (overflow + quote) ═══ -->
-    {(overflowParas.length > 0 || remainingQuote) && (
-      <section class="story">
-        <div class="container container--narrow">
-          {overflowParas.length > 0 && (
-            <div class={`story__body prose stagger-section ${essayItems.length === 0 ? 'prose--dropcap' : ''}`} itemprop="articleBody">
+        {overflowParas.length > 0 && (
+          <div class="story__overflow container container--narrow">
+            <div class="story__body prose">
               {overflowParas.map(paragraph => (
                 <p set:html={paragraph} />
               ))}
             </div>
-          )}
+          </div>
+        )}
 
-          {remainingQuote && (
-            <blockquote class="pullquote stagger-section">
-              <svg class="pullquote__mark" viewBox="0 0 48 48" fill="none" aria-hidden="true">
-                <path d="M14 28c-2.2 0-4-1.8-4-4 0-6.6 5.4-12 12-12v4c-4.4 0-8 3.6-8 8h4c2.2 0 4 1.8 4 4s-1.8 4-4 4h-4zm20 0c-2.2 0-4-1.8-4-4 0-6.6 5.4-12 12-12v4c-4.4 0-8 3.6-8 8h4c2.2 0 4 1.8 4 4s-1.8 4-4 4h-4z" fill="currentColor"/>
-              </svg>
-              <p>{remainingQuote}</p>
+        {pullQuote && (
+          <div class="story__quote-wrap">
+            <blockquote class="story__pullquote">
+              <div class="story__pullquote-inner">
+                <svg class="story__pullquote-mark" viewBox="0 0 48 48" fill="none" aria-hidden="true">
+                  <path d="M14 28c-2.2 0-4-1.8-4-4 0-6.6 5.4-12 12-12v4c-4.4 0-8 3.6-8 8h4c2.2 0 4 1.8 4 4s-1.8 4-4 4h-4zm20 0c-2.2 0-4-1.8-4-4 0-6.6 5.4-12 12-12v4c-4.4 0-8 3.6-8 8h4c2.2 0 4 1.8 4 4s-1.8 4-4 4h-4z" fill="currentColor"/>
+                </svg>
+                <p>{pullQuote}</p>
+              </div>
             </blockquote>
+          </div>
+        )}
+      </section>
+    )}
+
+    <!-- ═══ 3. The Design — Overlapping Cards ═══ -->
+    {hasPlans && (
+      <section class="design" id="chapter-design" data-chapter="Design">
+        <div class="container">
+          <div class="design__divider">
+            <span class="section-rule"></span>
+            <span class="section-rule__label">The Design</span>
+          </div>
+          <h2 class="section-label" style="text-align: center;">From Blueprint to Reality</h2>
+          <p class="design__sub">Explore the architectural plans behind {kid.name}'s transformation.</p>
+
+          <div class="design__desk">
+            {displayAsBuilt.length > 0 && (
+              displayAsBuilt.map((plan, i) => {
+                const lbIndex = galleryPhotos.length + plans.indexOf(plan);
+                return (
+                  <div class="design__stack design__stack--back" data-reveal="fade-up" style="--reveal-delay: 0ms">
+                    <span class="design__tag">As Built</span>
+                    <button
+                      class="design__card masonry__item"
+                      data-index={lbIndex}
+                      data-src={cfUrl(plan.url, 'w=1600,q=85')}
+                      data-srcset={_cfSrcset(plan.url, [800, 1200, 1600, 2400])}
+                      data-alt={plan.label || `As-built plan`}
+                      type="button"
+                      aria-label={`View plan: ${plan.label || 'As-built plan'}`}
+                      style={`--lqip: url('${lqip(plan.url)}')`}
+                    >
+                      <img
+                        src={cfUrl(plan.url, 'w=800,q=85')}
+                        srcset={cfSrcset(plan.url, [400, 600, 800, 1200])}
+                        sizes="(max-width: 768px) 80vw, (max-width: 1100px) 45vw, 440px"
+                        alt={plan.label || `As-built plan`}
+                        class="design__img lqip-img"
+                        loading="lazy"
+                        decoding="async"
+                        width={dims(plan.url)[0]}
+                        height={dims(plan.url)[1]}
+                      />
+                    </button>
+                  </div>
+                );
+              })
+            )}
+
+            {displayProposed.length > 0 && (
+              displayProposed.map((plan, i) => {
+                const lbIndex = galleryPhotos.length + plans.indexOf(plan);
+                return (
+                  <div class="design__stack design__stack--front" data-reveal="fade-up" style="--reveal-delay: 200ms">
+                    <span class="design__tag design__tag--accent">Proposed Design</span>
+                    <button
+                      class="design__card masonry__item"
+                      data-index={lbIndex}
+                      data-src={cfUrl(plan.url, 'w=1600,q=85')}
+                      data-srcset={_cfSrcset(plan.url, [800, 1200, 1600, 2400])}
+                      data-alt={plan.label || `Proposed plan`}
+                      type="button"
+                      aria-label={`View plan: ${plan.label || 'Proposed plan'}`}
+                      style={`--lqip: url('${lqip(plan.url)}')`}
+                    >
+                      <img
+                        src={cfUrl(plan.url, 'w=800,q=85')}
+                        srcset={cfSrcset(plan.url, [400, 600, 800, 1200])}
+                        sizes="(max-width: 768px) 80vw, (max-width: 1100px) 45vw, 440px"
+                        alt={plan.label || `Proposed plan`}
+                        class="design__img lqip-img"
+                        loading="lazy"
+                        decoding="async"
+                        width={dims(plan.url)[0]}
+                        height={dims(plan.url)[1]}
+                      />
+                    </button>
+                  </div>
+                );
+              })
+            )}
+
+            <!-- Directional arrow between cards -->
+            <div class="design__arrow" aria-hidden="true">
+              <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+                <circle cx="24" cy="24" r="23" stroke="var(--c-yellow)" stroke-width="2" opacity="0.4"/>
+                <path d="M18 24h12m0 0-5-5m5 5-5 5" stroke="var(--c-yellow)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </div>
+          </div>
+
+          {extraPlansCount > 0 && (
+            <p class="design__more">
+              <button class="design__more-btn masonry__item" data-index={galleryPhotos.length + (displayAsBuilt.length > 0 ? 1 : 0) + (displayProposed.length > 0 ? 1 : 0)}
+                data-src={cfUrl(plans[2]?.url || plans[0].url, 'w=1600,q=85')}
+                data-srcset={_cfSrcset(plans[2]?.url || plans[0].url, [800, 1200, 1600, 2400])}
+                data-alt="Plan"
+                type="button">
+                View all {plans.length} plans
+              </button>
+            </p>
           )}
         </div>
       </section>
     )}
 
-    <!-- ═══ Video ════════════════════════════ -->
+    <!-- ═══ 4. Before & After — Comparison Sliders ═══ -->
+    {hasBeforeAfter && (
+      <section class="ba-section" id="chapter-transform" data-chapter="Transform">
+        <div class="container">
+          <div class="ba-section__divider">
+            <span class="section-rule"></span>
+            <span class="section-rule__label">The Transformation</span>
+          </div>
+          <h2 class="section-label" style="text-align: center;">Before & After</h2>
+          <p class="ba-section__sub">Drag the slider to compare {kid.name}'s space before and after renovation.</p>
+
+          <div class="ba-section__sliders">
+            {beforeAfterPhotos.map((pair: any, i: number) => (
+              <div class="ba-slider" data-ba-slider data-reveal="fade-up" style={`--reveal-delay: ${i * 150}ms`}>
+                {pair.room && <p class="ba-slider__room">{pair.room}</p>}
+                <div class="ba-slider__container" style="--ba-pos: 50%">
+                  <img
+                    class="ba-slider__after lqip-img"
+                    src={_cfUrl(pair.after, { w: 1200, q: 85 })}
+                    srcset={_cfSrcset(pair.after, [600, 900, 1200, 1600])}
+                    sizes="(max-width: 768px) 92vw, (max-width: 1100px) 70vw, 800px"
+                    alt={pair.afterAlt || `${kid.name}'s room after renovation`}
+                    loading="lazy"
+                    decoding="async"
+                    width="1200"
+                    height="900"
+                    style={`--lqip: url('${lqip(pair.after)}')`}
+                  />
+                  <div class="ba-slider__before-clip">
+                    <img
+                      class="ba-slider__before lqip-img"
+                      src={_cfUrl(pair.before, { w: 1200, q: 85 })}
+                      srcset={_cfSrcset(pair.before, [600, 900, 1200, 1600])}
+                      sizes="(max-width: 768px) 92vw, (max-width: 1100px) 70vw, 800px"
+                      alt={pair.beforeAlt || `${kid.name}'s room before renovation`}
+                      loading="lazy"
+                      decoding="async"
+                      width="1200"
+                      height="900"
+                      style={`--lqip: url('${lqip(pair.before)}')`}
+                    />
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    value="50"
+                    class="ba-slider__range"
+                    aria-label={`Compare before and after${pair.room ? ` for ${pair.room}` : ''}`}
+                  />
+                  <div class="ba-slider__handle" aria-hidden="true">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="m9 18-6-6 6-6"/><path d="m15 6 6 6-6 6"/>
+                    </svg>
+                  </div>
+                  <span class="ba-slider__label ba-slider__label--before">Before</span>
+                  <span class="ba-slider__label ba-slider__label--after">After</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+    )}
+
+    <!-- ═══ 5. The Reveal — Video ═══ -->
     {hasVideo && (
-      <section class="video stagger-section">
-        <div class="container container--narrow">
+      <section class="reveal" id="chapter-reveal" data-chapter="Reveal">
+        <div class="container">
+          <div class="reveal__divider">
+            <span class="section-rule"></span>
+            <span class="section-rule__label">The Reveal</span>
+          </div>
           <h2 class="section-label">Watch {kid.name}'s Story</h2>
-          {streamId ? (
-            <div class="video__frame">
+          <div class="reveal__frame" data-reveal="fade-up">
+            {streamId ? (
               <div class="stream-facade" id="stream-facade" data-id={streamId} role="button" tabindex="0" aria-label={`Play ${kid.name}'s video`}>
                 <img
                   src={`https://videodelivery.net/${streamId}/thumbnails/thumbnail.jpg?time=2s&height=720`}
                   alt={`Video thumbnail for ${kid.name}'s story`}
-                  class="video__thumb"
+                  class="reveal__thumb"
                   loading="lazy"
                   decoding="async"
                   width="1280"
                   height="720"
                 />
-                <div class="video__play" aria-hidden="true">
+                <div class="reveal__play" aria-hidden="true">
                   <svg width="68" height="48" viewBox="0 0 68 48">
                     <path d="M66.52 7.74c-.78-2.93-2.49-5.41-5.42-6.19C55.79.13 34 0 34 0S12.21.13 6.9 1.55C3.97 2.33 2.27 4.81 1.48 7.74.06 13.05 0 24 0 24s.06 10.95 1.48 16.26c.78 2.93 2.49 5.41 5.42 6.19C12.21 47.87 34 48 34 48s21.79-.13 27.1-1.55c2.93-.78 4.64-3.26 5.42-6.19C67.94 34.95 68 24 68 24s-.06-10.95-1.48-16.26z" fill="#FFDA24"/>
                     <path d="M45 24L27 14v20" fill="#373A36"/>
                   </svg>
                 </div>
               </div>
-            </div>
-          ) : ytId ? (
-            <div class="video__frame">
+            ) : ytId ? (
               <div class="yt-facade" id="yt-facade" data-id={ytId} role="button" tabindex="0" aria-label={`Play ${kid.name}'s video`}>
                 <picture>
                   <source type="image/webp" srcset={`https://i.ytimg.com/vi_webp/${ytId}/maxresdefault.webp`} />
                   <img
                     src={`https://i.ytimg.com/vi/${ytId}/maxresdefault.jpg`}
                     alt={`Video thumbnail for ${kid.name}'s story`}
-                    class="video__thumb"
+                    class="reveal__thumb"
                     loading="lazy"
                     decoding="async"
                   />
                 </picture>
-                <div class="video__play" aria-hidden="true">
+                <div class="reveal__play" aria-hidden="true">
                   <svg width="68" height="48" viewBox="0 0 68 48">
                     <path d="M66.52 7.74c-.78-2.93-2.49-5.41-5.42-6.19C55.79.13 34 0 34 0S12.21.13 6.9 1.55C3.97 2.33 2.27 4.81 1.48 7.74.06 13.05 0 24 0 24s.06 10.95 1.48 16.26c.78 2.93 2.49 5.41 5.42 6.19C12.21 47.87 34 48 34 48s21.79-.13 27.1-1.55c2.93-.78 4.64-3.26 5.42-6.19C67.94 34.95 68 24 68 24s-.06-10.95-1.48-16.26z" fill="#FFDA24"/>
                     <path d="M45 24L27 14v20" fill="#373A36"/>
                   </svg>
                 </div>
               </div>
-            </div>
-          ) : null}
+            ) : null}
+          </div>
         </div>
       </section>
     )}
 
-    <!-- ═══ Bento Photo Grid ═══════════════════ -->
+    <!-- ═══ 6. The Gallery — Photo Showcase ═══ -->
     {galleryPhotos.length > 1 && (
-      <section class="gallery stagger-section">
+      <section class="gallery" id="chapter-gallery" data-chapter="Gallery">
         <div class="container">
+          <div class="gallery__divider">
+            <span class="section-rule"></span>
+            <span class="section-rule__label">The Gallery</span>
+          </div>
           <div class="gallery__header">
-            <h2 class="section-label">Room Transformation</h2>
+            <h2 class="section-label">The Transformation</h2>
             {kid.photographer && (
               <p class="gallery__credit">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13.997 4a2 2 0 0 1 1.76 1.05l.486.9A2 2 0 0 0 18.003 7H20a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h1.997a2 2 0 0 0 1.759-1.048l.489-.904A2 2 0 0 1 10.004 4z"/><circle cx="12" cy="13" r="3"/></svg>
@@ -548,89 +672,139 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
               </p>
             )}
           </div>
-          <div class="bento" id="gallery">
-            {galleryPhotos.map((photo, i) => {
-              const role = bentoRole(i, galleryPhotos.length);
-              const isHero = role === 'hero';
-              const isTall = role === 'tall';
-              const isWide = role === 'wide';
-              const bentoClass = isHero ? 'bento__hero' : isTall ? 'bento__tall' : isWide ? 'bento__wide' : '';
-              const imgW = isHero ? 1200 : (isTall || isWide) ? 900 : 700;
-              const srcsetWidths = isHero ? [600, 900, 1200, 1600] : [400, 600, 900];
-              const sizesAttr = isHero
-                ? '(max-width: 768px) 92vw, (max-width: 1100px) 60vw, 580px'
-                : isTall || isWide
-                  ? '(max-width: 768px) 46vw, (max-width: 1100px) 35vw, 380px'
-                  : '(max-width: 768px) 46vw, (max-width: 1100px) 28vw, 280px';
+
+          <!-- Hero photos — first 2 large -->
+          <div class="gallery__grid" id="gallery">
+            {heroGalleryPhotos.map((photo, i) => {
               const altText = photo.alt || `${kid.name}'s room transformation photo ${i + 1}`;
               return (
                 <button
-                  class={`masonry__item bento__cell ${bentoClass}`}
+                  class="masonry__item gallery__cell gallery__cell--hero"
                   data-index={i}
                   data-src={cfUrl(photo.url, 'w=1600,q=85')}
                   data-srcset={_cfSrcset(photo.url, [800, 1200, 1600, 2400])}
                   data-alt={altText}
                   aria-label={`View photo ${i + 1} of ${galleryPhotos.length}`}
                   type="button"
-                  style={`--lqip: url('${lqip(photo.url)}'); --idx: ${i}`}
+                  style={`--lqip: url('${lqip(photo.url)}'); --stagger: ${i}`}
                 >
                   <img
-                    src={cfUrl(photo.url, `w=${imgW},q=85`)}
-                    srcset={cfSrcset(photo.url, srcsetWidths)}
-                    sizes={sizesAttr}
+                    src={cfUrl(photo.url, 'w=1200,q=85')}
+                    srcset={cfSrcset(photo.url, [600, 900, 1200, 1600])}
+                    sizes={i === 0 ? '(max-width: 768px) 92vw, 60vw' : '(max-width: 768px) 92vw, 40vw'}
                     alt={altText}
-                    class="bento__img lqip-img"
-                    loading={isHero ? 'eager' : 'lazy'}
-                    decoding={isHero ? 'sync' : 'async'}
-                    fetchpriority={isHero ? 'high' : undefined}
+                    class="gallery__img lqip-img"
+                    loading="lazy"
+                    decoding="async"
                     width={dims(photo.url)[0]}
                     height={dims(photo.url)[1]}
                   />
-                  <div class="bento__overlay">
-                    <span class="bento__expand">
+                  <div class="gallery__overlay">
+                    <span class="gallery__expand">
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
-                      View
                     </span>
-                    <span class="bento__counter">{i + 1}/{galleryPhotos.length}</span>
+                  </div>
+                </button>
+              );
+            })}
+
+            <!-- Supporting photos -->
+            {supportingPhotos.map((photo, i) => {
+              const globalIndex = heroGalleryPhotos.length + i;
+              const altText = photo.alt || `${kid.name}'s room transformation photo ${globalIndex + 1}`;
+              return (
+                <button
+                  class="masonry__item gallery__cell"
+                  data-index={globalIndex}
+                  data-src={cfUrl(photo.url, 'w=1600,q=85')}
+                  data-srcset={_cfSrcset(photo.url, [800, 1200, 1600, 2400])}
+                  data-alt={altText}
+                  aria-label={`View photo ${globalIndex + 1} of ${galleryPhotos.length}`}
+                  type="button"
+                  style={`--lqip: url('${lqip(photo.url)}'); --stagger: ${globalIndex}`}
+                >
+                  <img
+                    src={cfUrl(photo.url, 'w=700,q=85')}
+                    srcset={cfSrcset(photo.url, [400, 600, 900])}
+                    sizes="(max-width: 768px) 46vw, (max-width: 1100px) 30vw, 280px"
+                    alt={altText}
+                    class="gallery__img lqip-img"
+                    loading="lazy"
+                    decoding="async"
+                    width={dims(photo.url)[0]}
+                    height={dims(photo.url)[1]}
+                  />
+                  <div class="gallery__overlay">
+                    <span class="gallery__expand">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+                    </span>
+                    <span class="gallery__counter">{globalIndex + 1}/{galleryPhotos.length}</span>
                   </div>
                 </button>
               );
             })}
           </div>
+
+          <!-- Overflow photos (hidden by default) -->
+          {overflowGalleryPhotos.length > 0 && (
+            <div class="gallery__overflow" id="gallery-overflow" hidden>
+              {overflowGalleryPhotos.map((photo, i) => {
+                const globalIndex = 8 + i;
+                const altText = photo.alt || `${kid.name}'s room transformation photo ${globalIndex + 1}`;
+                return (
+                  <button
+                    class="masonry__item gallery__cell"
+                    data-index={globalIndex}
+                    data-src={cfUrl(photo.url, 'w=1600,q=85')}
+                    data-srcset={_cfSrcset(photo.url, [800, 1200, 1600, 2400])}
+                    data-alt={altText}
+                    aria-label={`View photo ${globalIndex + 1} of ${galleryPhotos.length}`}
+                    type="button"
+                    style={`--lqip: url('${lqip(photo.url)}'); --stagger: ${globalIndex}`}
+                  >
+                    <img
+                      src={cfUrl(photo.url, 'w=700,q=85')}
+                      srcset={cfSrcset(photo.url, [400, 600, 900])}
+                      sizes="(max-width: 768px) 46vw, (max-width: 1100px) 30vw, 280px"
+                      alt={altText}
+                      class="gallery__img lqip-img"
+                      loading="lazy"
+                      decoding="async"
+                      width={dims(photo.url)[0]}
+                      height={dims(photo.url)[1]}
+                    />
+                    <div class="gallery__overlay">
+                      <span class="gallery__counter">{globalIndex + 1}/{galleryPhotos.length}</span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {showExpandButton && (
+            <div class="gallery__expand-wrap">
+              <button class="gallery__show-all" id="gallery-expand" type="button">
+                Show all {galleryPhotos.length} photos
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+              </button>
+            </div>
+          )}
         </div>
       </section>
     )}
 
-    <!-- ═══ Fundraising CTA ═══════════════════ -->
-    {kid.fundraisingUrl && (
-      <section class="fundraise stagger-section">
-        <div class="container container--narrow">
-          <div class="fundraise__card">
-            <div class="fundraise__icon" aria-hidden="true">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9.5a5.5 5.5 0 0 1 9.591-3.676.56.56 0 0 0 .818 0A5.49 5.49 0 0 1 22 9.5c0 2.29-1.5 4-3 5.5l-5.492 5.313a2 2 0 0 1-3 .019L5 15c-1.5-1.5-3-3.2-3-5.5"/></svg>
-            </div>
-            <div class="fundraise__content">
-              <h2 class="fundraise__title">Help fund {kid.name}'s room</h2>
-              <p class="fundraise__text">Your donation helps build {kid.name}'s {kid.roomTypes?.length ? kid.roomTypes.join(' & ').toLowerCase() : 'dream room'}. Zeffy charges zero platform fees so more of your gift reaches our mission.</p>
-            </div>
-            <a href={kid.fundraisingUrl} target="_blank" rel="noopener noreferrer" class="fundraise__btn">
-              Donate Now
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-            </a>
-          </div>
-        </div>
-      </section>
-    )}
-
-    <!-- ═══ Partner Logos ═══════════════════ -->
+    <!-- ═══ The Village — Partners ═══ -->
     {kid.partnerLogos && kid.partnerLogos.length > 0 && (
-      <section class="partners stagger-section">
+      <section class="village stagger-section">
         <div class="container">
-          <h2 class="section-label" style="text-align: center;">Project Partners</h2>
-          <p class="partners__sub">Made possible by the generous support of these partners.</p>
-          <div class="partners__grid">
+          <h2 class="section-label" style="text-align: center;">It Takes a Village</h2>
+          <p class="village__stat">
+            <strong>{partnerCount}</strong> partner{partnerCount > 1 ? 's' : ''} made {kid.name}'s room possible
+          </p>
+          <div class="village__grid">
             {kid.partnerLogos.map(logo => (
-              <div class="partners__logo">
+              <div class="village__logo">
                 <img
                   src={cfUrl(logo.url, 'w=200,q=85')}
                   alt={logo.name || 'Project partner'}
@@ -646,7 +820,7 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
       </section>
     )}
 
-    <!-- ═══ Related Kids ═══════════════════ -->
+    <!-- ═══ More Stories ═══ -->
     {relatedKids && relatedKids.length > 0 && (
       <section class="related stagger-section">
         <div class="container">
@@ -686,7 +860,28 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
       </section>
     )}
 
-    <!-- ═══ Prev / Next Navigation ════════ -->
+    <!-- ═══ Fundraising CTA ═══ -->
+    {kid.fundraisingUrl && (
+      <section class="fundraise stagger-section">
+        <div class="container container--narrow">
+          <div class="fundraise__card">
+            <div class="fundraise__icon" aria-hidden="true">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9.5a5.5 5.5 0 0 1 9.591-3.676.56.56 0 0 0 .818 0A5.49 5.49 0 0 1 22 9.5c0 2.29-1.5 4-3 5.5l-5.492 5.313a2 2 0 0 1-3 .019L5 15c-1.5-1.5-3-3.2-3-5.5"/></svg>
+            </div>
+            <div class="fundraise__content">
+              <h2 class="fundraise__title">Help fund {kid.name}'s room</h2>
+              <p class="fundraise__text">Your donation helps build {kid.name}'s {kid.roomTypes?.length ? kid.roomTypes.join(' & ').toLowerCase() : 'dream room'}. Zeffy charges zero platform fees so more of your gift reaches our mission.</p>
+            </div>
+            <a href={kid.fundraisingUrl} target="_blank" rel="noopener noreferrer" class="fundraise__btn">
+              Donate Now
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+            </a>
+          </div>
+        </div>
+      </section>
+    )}
+
+    <!-- ═══ Prev / Next Navigation ═══ -->
     <nav class="kid-nav" aria-label="Navigate between kid profiles">
       <div class="container">
         <div class="kid-nav__grid">
@@ -736,7 +931,7 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
       </div>
     </nav>
 
-    <!-- ═══ CTA ═══════════════════════════ -->
+    <!-- ═══ CTA ═══ -->
     <section class="cta stagger-section">
       <div class="cta__watermark" aria-hidden="true">Sunshine</div>
       <div class="container container--narrow" style="text-align: center;">
@@ -750,7 +945,8 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     </section>
   </article>
 
-  <!-- ═══ Lightbox ══════════════════════════ -->
+  <!-- ═══ Lightbox ═══ -->
+  <div id="lb-meta" data-gallery-count={galleryPhotos.length} data-plan-count={plans.length} hidden></div>
   <div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-label="Photo viewer" hidden>
     <div class="lightbox__backdrop" data-close aria-hidden="true"></div>
     <button class="lightbox__close" data-close aria-label="Close photo viewer">
@@ -775,25 +971,35 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
   </div>
 </BaseLayout>
 
-<!-- ═══ Client-side JS ═══════════════════════ -->
+<!-- ═══ Client-side JS ═══ -->
 <script>
   let _kidObserver: IntersectionObserver | null = null;
   let _staggerObserver: IntersectionObserver | null = null;
+  let _chapterObserver: IntersectionObserver | null = null;
+  let _revealObserver: IntersectionObserver | null = null;
+  let _galleryCascadeObserver: IntersectionObserver | null = null;
+  let _videoEntranceObserver: IntersectionObserver | null = null;
 
   function cleanupKidPage() {
     _kidObserver?.disconnect();
     _kidObserver = null;
     _staggerObserver?.disconnect();
     _staggerObserver = null;
+    _chapterObserver?.disconnect();
+    _chapterObserver = null;
+    _revealObserver?.disconnect();
+    _revealObserver = null;
+    _galleryCascadeObserver?.disconnect();
+    _galleryCascadeObserver = null;
+    _videoEntranceObserver?.disconnect();
+    _videoEntranceObserver = null;
   }
 
   function initKidPage() {
     cleanupKidPage();
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
     // ── Staggered hero reveals ────────────────
-    // astro:page-load fires AFTER the view transition morph finishes,
-    // so no artificial delay needed — just cascade immediately.
-
     const heroStaggers = document.querySelectorAll('.hero .stagger');
     heroStaggers.forEach((el, i) => {
       const htmlEl = el as HTMLElement;
@@ -802,7 +1008,7 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     });
 
     // ── Staggered section reveals ─────────────
-    if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    if (!prefersReducedMotion) {
       _staggerObserver = new IntersectionObserver(
         (entries) => {
           entries.forEach(entry => {
@@ -819,14 +1025,199 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
         _staggerObserver!.observe(el);
       });
     } else {
-      // Reduced motion: just show everything
       document.querySelectorAll('.stagger-section').forEach(el => {
         el.classList.add('stagger-section--visible');
       });
     }
 
-    // Scroll progress is now pure CSS (animation-timeline: scroll())
-    // JS fallback for browsers that don't support it yet
+    // ── Per-element scroll reveals ────────────
+    if (!prefersReducedMotion) {
+      _revealObserver = new IntersectionObserver(
+        (entries) => {
+          entries.forEach(entry => {
+            if (entry.isIntersecting) {
+              (entry.target as HTMLElement).classList.add('revealed');
+              _revealObserver?.unobserve(entry.target);
+            }
+          });
+        },
+        { rootMargin: '20px', threshold: 0.1 }
+      );
+      document.querySelectorAll('[data-reveal]').forEach(el => {
+        _revealObserver!.observe(el);
+      });
+    } else {
+      document.querySelectorAll('[data-reveal]').forEach(el => {
+        el.classList.add('revealed');
+      });
+    }
+
+    // ── Gallery cascade ───────────────────────
+    const galleryGrid = document.getElementById('gallery');
+    if (galleryGrid && !prefersReducedMotion) {
+      _galleryCascadeObserver = new IntersectionObserver(
+        (entries) => {
+          entries.forEach(entry => {
+            if (entry.isIntersecting) {
+              galleryGrid.classList.add('gallery__grid--visible');
+              _galleryCascadeObserver?.unobserve(galleryGrid);
+            }
+          });
+        },
+        { rootMargin: '40px', threshold: 0.05 }
+      );
+      _galleryCascadeObserver.observe(galleryGrid);
+    } else if (galleryGrid) {
+      galleryGrid.classList.add('gallery__grid--visible');
+    }
+
+    // ── Video entrance animation ──────────────
+    const revealSection = document.querySelector('.reveal__frame');
+    if (revealSection && !prefersReducedMotion) {
+      _videoEntranceObserver = new IntersectionObserver(
+        (entries) => {
+          entries.forEach(entry => {
+            if (entry.isIntersecting) {
+              (entry.target as HTMLElement).classList.add('reveal__frame--entered');
+              _videoEntranceObserver?.unobserve(entry.target);
+            }
+          });
+        },
+        { rootMargin: '0px', threshold: 0.3 }
+      );
+      _videoEntranceObserver.observe(revealSection);
+    }
+
+    // ── Sticky Chapter Nav — Pill Bar ────────────
+    const chapterNav = document.getElementById('chapter-nav');
+    if (chapterNav) {
+      const pills = chapterNav.querySelectorAll<HTMLElement>('.chapter-nav__pill');
+      const sections = document.querySelectorAll<HTMLElement>('[data-chapter]');
+
+      // Active chapter tracking
+      if (sections.length > 0) {
+        _chapterObserver = new IntersectionObserver(
+          (entries) => {
+            entries.forEach(entry => {
+              if (entry.isIntersecting) {
+                const id = entry.target.id;
+                pills.forEach(pill => {
+                  const isActive = pill.dataset.target === id;
+                  pill.classList.toggle('chapter-nav__pill--active', isActive);
+                  // Scroll active pill into view on mobile
+                  if (isActive) {
+                    pill.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+                  }
+                });
+              }
+            });
+          },
+          { rootMargin: '-50% 0px -50% 0px', threshold: 0 }
+        );
+        sections.forEach(s => _chapterObserver!.observe(s));
+      }
+
+      // Smooth scroll on click
+      pills.forEach(pill => {
+        pill.addEventListener('click', (e) => {
+          e.preventDefault();
+          const target = document.querySelector(pill.getAttribute('href')!);
+          if (target) {
+            target.scrollIntoView({
+              behavior: prefersReducedMotion ? 'auto' : 'smooth',
+              block: 'start'
+            });
+          }
+        });
+      });
+
+      // Hide on scroll down, show on scroll up
+      let lastScrollY = window.scrollY;
+      let navHidden = false;
+      const heroSection = document.getElementById('chapter-meet');
+      const heroBottom = heroSection ? heroSection.offsetTop + heroSection.offsetHeight : 400;
+
+      const handleScroll = () => {
+        const currentY = window.scrollY;
+        const scrollingDown = currentY > lastScrollY;
+        const pastHero = currentY > heroBottom - 60;
+
+        if (!pastHero) {
+          // Hide when still in hero
+          if (!navHidden) {
+            chapterNav.classList.add('chapter-nav--hidden');
+            navHidden = true;
+          }
+        } else if (scrollingDown && currentY - lastScrollY > 8) {
+          // Hide on scroll down
+          if (!navHidden) {
+            chapterNav.classList.add('chapter-nav--hidden');
+            navHidden = true;
+          }
+        } else if (!scrollingDown && lastScrollY - currentY > 8) {
+          // Show on scroll up
+          if (navHidden) {
+            chapterNav.classList.remove('chapter-nav--hidden');
+            navHidden = false;
+          }
+        }
+        lastScrollY = currentY;
+      };
+
+      window.addEventListener('scroll', handleScroll, { passive: true });
+      // Start hidden, reveal after hero
+      chapterNav.classList.add('chapter-nav--hidden');
+    }
+
+    // ── Before/After Sliders ──────────────────
+    document.querySelectorAll<HTMLElement>('[data-ba-slider]').forEach(slider => {
+      const container = slider.querySelector<HTMLElement>('.ba-slider__container');
+      const range = slider.querySelector<HTMLInputElement>('.ba-slider__range');
+      if (!container || !range) return;
+
+      const updatePosition = (value: number) => {
+        container.style.setProperty('--ba-pos', `${value}%`);
+      };
+
+      range.addEventListener('input', () => {
+        updatePosition(parseFloat(range.value));
+      });
+
+      // Auto-reveal animation on first scroll into view
+      if (!prefersReducedMotion) {
+        range.value = '100';
+        updatePosition(100);
+        const baObserver = new IntersectionObserver(
+          (entries) => {
+            entries.forEach(entry => {
+              if (entry.isIntersecting) {
+                baObserver.disconnect();
+                let start: number | null = null;
+                const duration = 1200;
+                const from = 100;
+                const to = 50;
+                const easeOut = (t: number) => 1 - Math.pow(1 - t, 3);
+                const animate = (timestamp: number) => {
+                  if (!start) start = timestamp;
+                  const elapsed = timestamp - start;
+                  const progress = Math.min(elapsed / duration, 1);
+                  const eased = easeOut(progress);
+                  const value = from + (to - from) * eased;
+                  range.value = String(value);
+                  updatePosition(value);
+                  if (progress < 1) requestAnimationFrame(animate);
+                };
+                requestAnimationFrame(animate);
+              }
+            });
+          },
+          { threshold: 0.4 }
+        );
+        baObserver.observe(slider);
+      }
+    });
+
+    // Scroll progress — CSS animation-timeline with JS fallback
     const progressBar = document.querySelector('.scroll-progress') as HTMLElement;
     if (progressBar && !CSS.supports('animation-timeline', 'scroll()')) {
       const updateProgress = () => {
@@ -838,6 +1229,27 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
       progressBar.style.animation = 'none';
       window.addEventListener('scroll', updateProgress, { passive: true });
       updateProgress();
+    }
+
+    // ── Gallery expand button ─────────────────
+    const expandBtn = document.getElementById('gallery-expand');
+    const overflowEl = document.getElementById('gallery-overflow');
+    if (expandBtn && overflowEl) {
+      expandBtn.addEventListener('click', () => {
+        overflowEl.hidden = false;
+        expandBtn.style.display = 'none';
+        // Re-wire lightbox for new items
+        const newItems = overflowEl.querySelectorAll<HTMLButtonElement>('.masonry__item');
+        newItems.forEach((item, i) => {
+          item.addEventListener('click', () => {
+            const idx = parseInt(item.dataset.index || '0', 10);
+            const allItems = document.querySelectorAll<HTMLButtonElement>('.masonry__item');
+            const itemArray = Array.from(allItems);
+            const position = itemArray.indexOf(item);
+            if (position >= 0) openLightboxAtIndex(position);
+          });
+        });
+      });
     }
 
     // ── YouTube facade ──────────────────────
@@ -884,17 +1296,7 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
       });
     }
 
-    // ══════════════════════════════════════════════════
-    // ── Lightbox — top 1% gallery engine ─────────────
-    // ══════════════════════════════════════════════════
-    //
-    //  SPEED:  LQIP data-URI → thumbnail promotion → in-memory bitmap cache
-    //          → img.decode() off-thread → predictive preload (±3, hover, idle)
-    //          → connection-aware radius → navGeneration stale-frame guard
-    //  MOTION: directional translateX slide → smooth open/close with backdrop
-    //          → loading ring after 180ms → GPU compositing only
-    //          → prefers-reduced-motion respected
-    //
+    // ═══ Lightbox — unified gallery + plans ═══
     const lightbox = document.getElementById('lightbox') as HTMLElement;
     const lbImg = document.getElementById('lb-img') as HTMLImageElement;
     const lbPlaceholder = document.getElementById('lb-placeholder') as HTMLImageElement;
@@ -903,7 +1305,17 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     const lbCounter = document.getElementById('lb-counter') as HTMLElement;
     const lbPrev = document.getElementById('lb-prev') as HTMLButtonElement;
     const lbNext = document.getElementById('lb-next') as HTMLButtonElement;
-    const galleryItems = document.querySelectorAll<HTMLButtonElement>('.masonry__item');
+    let galleryItems = document.querySelectorAll<HTMLButtonElement>('.masonry__item');
+
+    const lbMeta = document.getElementById('lb-meta');
+    const galleryCount = parseInt(lbMeta?.dataset.galleryCount || '0', 10);
+    const planCount = parseInt(lbMeta?.dataset.planCount || '0', 10);
+
+    // Expose for gallery expand
+    function openLightboxAtIndex(index: number) {
+      openLightbox(index);
+    }
+    (window as any).__openLightbox = openLightboxAtIndex;
 
     if (lightbox && galleryItems.length > 0) {
       let currentIndex = 0;
@@ -911,12 +1323,11 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
       let navGeneration = 0;
       let loaderTimer = 0;
 
-      const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-      // ── Image cache ────────────────────────
       const cache = new Map<number, { img: HTMLImageElement; decoded: boolean; promise: Promise<HTMLImageElement> }>();
 
       function ensureCached(index: number): { img: HTMLImageElement; decoded: boolean; promise: Promise<HTMLImageElement> } {
+        // Refresh list in case overflow was expanded
+        galleryItems = document.querySelectorAll<HTMLButtonElement>('.masonry__item');
         if (cache.has(index)) return cache.get(index)!;
         const item = galleryItems[index];
         if (!item) {
@@ -939,7 +1350,6 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
         return entry;
       }
 
-      // ── Preload logic ─────────────────────
       function getPreloadRadius(): number {
         const conn = (navigator as any).connection;
         if (!conn) return 3;
@@ -950,6 +1360,7 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
       }
 
       function preloadNeighbours(center: number) {
+        galleryItems = document.querySelectorAll<HTMLButtonElement>('.masonry__item');
         const r = getPreloadRadius();
         for (let d = 1; d <= r; d++) {
           if (center + d < galleryItems.length) ensureCached(center + d);
@@ -964,6 +1375,7 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
         const ric = (window as any).requestIdleCallback || ((cb: Function) => setTimeout(cb, 200));
         let nextIdx = 0;
         function step(deadline?: { timeRemaining: () => number }) {
+          galleryItems = document.querySelectorAll<HTMLButtonElement>('.masonry__item');
           const budget = deadline ? deadline.timeRemaining() : 16;
           while (nextIdx < galleryItems.length && budget > 2) {
             ensureCached(nextIdx);
@@ -975,7 +1387,6 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
         ric(step);
       }
 
-      // ── Loading indicator ──────────────────
       function showLoader() {
         clearTimeout(loaderTimer);
         lbLoader.classList.remove('lightbox__loader--visible');
@@ -988,7 +1399,6 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
         lbLoader.classList.remove('lightbox__loader--visible');
       }
 
-      // ── Directional slide (Web Animations API) ──
       function slideFrame(direction: number) {
         if (prefersReducedMotion || direction === 0) return;
         lbFrame.getAnimations().forEach(a => a.cancel());
@@ -1003,8 +1413,8 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
         });
       }
 
-      // ── Show photo ─────────────────────────
       function showPhoto(index: number, direction: number = 0) {
+        galleryItems = document.querySelectorAll<HTMLButtonElement>('.masonry__item');
         const item = galleryItems[index];
         if (!item) return;
         currentIndex = index;
@@ -1013,7 +1423,6 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
 
         slideFrame(direction);
 
-        // 1) Placeholder: LQIP → thumbnail (progressive, both instant)
         const lqipUrl = item.style.getPropertyValue('--lqip');
         const lqipMatch = lqipUrl.match(/url\(['"]?([^'"]+)['"]?\)/);
         if (lqipMatch) lbPlaceholder.src = lqipMatch[1];
@@ -1022,7 +1431,6 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
         lbPlaceholder.alt = alt;
         lbPlaceholder.style.opacity = '1';
 
-        // 2) Full-res from cache
         const entry = ensureCached(index);
 
         if (entry.decoded && entry.img.complete && entry.img.naturalWidth > 0) {
@@ -1052,7 +1460,15 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
           });
         }
 
-        lbCounter.textContent = `${index + 1} / ${galleryItems.length}`;
+        const dataIdx = parseInt(item.dataset.index || '0', 10);
+        if (planCount > 0 && dataIdx >= galleryCount) {
+          lbCounter.textContent = `Plan ${dataIdx - galleryCount + 1} / ${planCount}`;
+        } else {
+          lbCounter.textContent = galleryCount > 0
+            ? `Photo ${dataIdx + 1} / ${galleryCount}`
+            : `${index + 1} / ${galleryItems.length}`;
+        }
+
         lbPrev.style.visibility = index === 0 ? 'hidden' : '';
         lbPrev.style.pointerEvents = index === 0 ? 'none' : '';
         lbNext.style.visibility = index === galleryItems.length - 1 ? 'hidden' : '';
@@ -1060,7 +1476,6 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
         preloadNeighbours(index);
       }
 
-      // ── Open / Close ───────────────────────
       function openLightbox(index: number) {
         previousFocus = document.activeElement as HTMLElement;
         showPhoto(index, 0);
@@ -1068,7 +1483,6 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
         document.body.style.overflow = 'hidden';
         if (!prefersReducedMotion) {
           lightbox.classList.remove('lightbox--open');
-          // Double-rAF ensures the browser has painted the un-animated state first
           requestAnimationFrame(() => {
             requestAnimationFrame(() => lightbox.classList.add('lightbox--open'));
           });
@@ -1097,7 +1511,6 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
         previousFocus?.focus();
       }
 
-      // ── Focus trap ─────────────────────────
       function trapFocus(e: KeyboardEvent) {
         if (e.key !== 'Tab') return;
         const focusable = lightbox.querySelectorAll<HTMLElement>(
@@ -1118,11 +1531,12 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
         }
       }
 
-      // ── Navigation helpers ─────────────────
-      function goNext() { if (currentIndex < galleryItems.length - 1) showPhoto(currentIndex + 1, 1); }
+      function goNext() {
+        galleryItems = document.querySelectorAll<HTMLButtonElement>('.masonry__item');
+        if (currentIndex < galleryItems.length - 1) showPhoto(currentIndex + 1, 1);
+      }
       function goPrev() { if (currentIndex > 0) showPhoto(currentIndex - 1, -1); }
 
-      // ── Event wiring ───────────────────────
       galleryItems.forEach((item, i) => {
         item.addEventListener('click', () => openLightbox(i));
         item.addEventListener('pointerenter', () => ensureCached(i), { passive: true });
@@ -1149,7 +1563,6 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
         trapFocus(e);
       });
 
-      // ── Touch / swipe ──────────────────────
       let touchStartX = 0;
       let touchStartY = 0;
       lightbox.addEventListener('touchstart', (e: TouchEvent) => {
@@ -1199,7 +1612,7 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
 
 <style>
   /* ═══════════════════════════════════════════
-     Kid Profile — Cinematic Editorial Layout
+     Kid Profile — Guided Journey Editorial
      ═══════════════════════════════════════════ */
 
   .kid-profile {
@@ -1228,8 +1641,10 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
 
   /* ═══ LQIP Blur-Up ══════════════════════ */
   .hero__portrait,
-  .bento__cell,
-  .related__img-wrap {
+  .gallery__cell,
+  .design__card,
+  .related__img-wrap,
+  .story__pair-img-wrap {
     background-image: var(--lqip);
     background-size: cover;
     background-position: center;
@@ -1241,6 +1656,27 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
   }
   .lqip-img:not(.lqip-pending) {
     transition: opacity 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  /* ═══ Section Dividers — Editorial ═══════ */
+  .section-rule {
+    display: block;
+    width: 48px;
+    height: 3px;
+    background: var(--c-yellow);
+    border-radius: 2px;
+    margin: 0 auto 12px;
+  }
+
+  .section-rule__label {
+    display: block;
+    text-align: center;
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--c-text-light);
+    margin-bottom: var(--space-xl);
   }
 
   /* ═══ Staggered Reveal — Hero Elements ════ */
@@ -1270,6 +1706,20 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     transform: translateY(0);
   }
 
+  /* ═══ Per-element Scroll Reveals ══════════ */
+  [data-reveal] {
+    opacity: 0;
+    transform: translateY(24px);
+    transition: opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1),
+                transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+    transition-delay: var(--reveal-delay, 0ms);
+  }
+
+  [data-reveal].revealed {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
   /* ═══ Containers ═══════════════════════════ */
   .container {
     max-width: var(--max-width);
@@ -1291,33 +1741,84 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     letter-spacing: -0.02em;
   }
 
-  /* ═══ Hero — Contained Editorial Split ══════
-     Image in a rounded container that works for
-     both portrait AND landscape photos. Contained
-     within the max-width — premium framing.
+  /* ═══ Sticky Chapter Nav — Top Pill Bar ══════
+     Horizontal pill tabs, frosted glass, sticks to
+     top. Hides on scroll down, shows on scroll up.
      ═══════════════════════════════════════════ */
-  .hero {
-    padding: 48px 0 72px;
-    background: var(--c-cream);
+  .chapter-nav {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 100;
+    background: rgba(255, 255, 255, 0.88);
+    backdrop-filter: blur(16px) saturate(1.4);
+    -webkit-backdrop-filter: blur(16px) saturate(1.4);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+    padding: 0 var(--page-padding);
+    transform: translateY(0);
+    transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1),
+                opacity 0.35s cubic-bezier(0.22, 1, 0.36, 1);
   }
 
-  .hero__back {
+  .chapter-nav--hidden {
+    transform: translateY(-100%);
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .chapter-nav__track {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    max-width: var(--max-width);
+    margin-inline: auto;
+    padding: 10px 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .chapter-nav__track::-webkit-scrollbar { display: none; }
+
+  .chapter-nav__pill {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    color: var(--c-text-muted);
+    padding: 6px 16px;
     font-size: 0.72rem;
     font-weight: 600;
-    letter-spacing: 0.1em;
-    text-decoration: none;
+    letter-spacing: 0.06em;
     text-transform: uppercase;
-    margin-bottom: var(--space-xl);
-    transition: color var(--transition-fast), gap var(--transition-fast);
+    text-decoration: none;
+    white-space: nowrap;
+    color: var(--c-text-muted);
+    border-radius: 100px;
+    transition: color 0.25s ease, background 0.25s ease, box-shadow 0.25s ease;
+    cursor: pointer;
+    flex-shrink: 0;
   }
 
-  .hero__back:hover {
+  .chapter-nav__pill:hover {
     color: var(--c-dark);
-    gap: 8px;
+    background: rgba(0, 0, 0, 0.04);
+  }
+
+  .chapter-nav__pill--active {
+    color: var(--c-dark);
+    background: var(--c-yellow);
+    font-weight: 700;
+    box-shadow: 0 2px 8px rgba(255, 218, 36, 0.3);
+  }
+
+  .chapter-nav__pill--active:hover {
+    background: var(--c-yellow);
+  }
+
+  /* ═══ 1. Hero — Documentary Title Card ═════ */
+  .hero {
+    padding: 48px 0 64px;
+    background: var(--c-cream);
   }
 
   .hero__split {
@@ -1325,12 +1826,11 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     margin-inline: auto;
     padding-inline: var(--page-padding);
     display: grid;
-    grid-template-columns: 1.15fr 1fr;
-    gap: 48px;
+    grid-template-columns: 1fr 1fr;
+    gap: clamp(32px, 5vw, 64px);
     align-items: center;
   }
 
-  /* ── Portrait: contained rounded frame, any aspect ratio ── */
   .hero__portrait {
     position: relative;
     overflow: hidden;
@@ -1339,8 +1839,8 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     box-shadow:
       0 8px 24px rgba(0, 0, 0, 0.08),
       0 32px 80px rgba(0, 0, 0, 0.12);
-    aspect-ratio: 4 / 5;
-    max-height: 75vh;
+    aspect-ratio: 3 / 4;
+    max-height: 520px;
   }
 
   .hero__portrait--empty {
@@ -1352,17 +1852,8 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     background: linear-gradient(160deg, var(--c-warm-gray) 0%, var(--c-cream) 100%);
   }
 
-  .hero__placeholder-icon {
-    width: 72px;
-    height: 72px;
-    color: var(--c-border);
-  }
-
-  .hero__placeholder-text {
-    font-family: var(--font-display);
-    font-size: 1.75rem;
-    color: var(--c-text-muted);
-  }
+  .hero__placeholder-icon { width: 72px; height: 72px; color: var(--c-border); }
+  .hero__placeholder-text { font-family: var(--font-display); font-size: 1.75rem; color: var(--c-text-muted); }
 
   .hero__img {
     width: 100%;
@@ -1370,6 +1861,19 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     object-fit: cover;
     object-position: center 30%;
     display: block;
+  }
+
+  @supports (animation-timeline: scroll()) {
+    .hero__img {
+      animation: hero-parallax linear both;
+      animation-timeline: scroll();
+      animation-range: 0% 50vh;
+    }
+  }
+
+  @keyframes hero-parallax {
+    from { object-position: center 25%; }
+    to   { object-position: center 40%; }
   }
 
   .hero__badge {
@@ -1388,63 +1892,93 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     box-shadow: 0 4px 12px rgba(255, 218, 36, 0.3);
   }
 
-  /* ── Info: generous whitespace, dramatic hierarchy ── */
+  .hero__back {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--c-text-muted);
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-decoration: none;
+    text-transform: uppercase;
+    margin-bottom: var(--space-lg);
+    transition: color var(--transition-fast), gap var(--transition-fast);
+  }
+
+  .hero__back:hover { color: var(--c-dark); gap: 8px; }
+
   .hero__info {
     display: flex;
     flex-direction: column;
     justify-content: center;
-    padding-block: var(--space-2xl);
+    padding-block: var(--space-lg);
   }
 
-  /* ── Name: massive, architectural ── */
   .hero__name {
     font-family: var(--font-display);
-    font-size: clamp(3rem, 7vw, 6.5rem);
+    font-size: clamp(2.5rem, 5vw, 4.5rem);
     color: var(--c-dark);
-    line-height: 0.9;
-    letter-spacing: -0.04em;
-    margin-bottom: var(--space-lg);
+    line-height: 0.92;
+    letter-spacing: -0.03em;
+    margin-bottom: var(--space-md);
   }
 
-  /* Yellow accent bar under the name */
   .hero__name::after {
     content: '';
     display: block;
     width: 48px;
-    height: 4px;
+    height: 3px;
     background: var(--c-yellow);
     border-radius: 2px;
-    margin-top: var(--space-lg);
+    margin-top: var(--space-md);
   }
 
-  /* ── Diagnosis: italic serif ── */
   .hero__diagnosis {
     font-family: var(--font-display);
     font-style: italic;
-    font-size: clamp(1.05rem, 1.8vw, 1.3rem);
+    font-size: clamp(0.95rem, 1.5vw, 1.15rem);
     color: var(--c-text);
     line-height: 1.45;
-    margin-bottom: var(--space-sm);
+    margin-bottom: 8px;
     max-width: 380px;
   }
 
-  /* ── Meta: refined detail line ── */
+  .hero__pills { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+
+  .hero__pill {
+    display: inline-block;
+    font-size: 0.64rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--c-dark);
+    background: rgba(255, 218, 36, 0.15);
+    padding: 3px 10px;
+    border-radius: 100px;
+  }
+
   .hero__meta {
-    font-size: 0.72rem;
+    font-size: 0.68rem;
     font-weight: 600;
     letter-spacing: 0.1em;
     text-transform: uppercase;
     color: var(--c-text-light);
     line-height: 1.5;
-    margin-bottom: var(--space-2xl);
+    margin-bottom: 12px;
   }
 
-  .hero__actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 12px;
-    align-items: center;
+  .hero__hook {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-size: clamp(0.88rem, 1.3vw, 1rem);
+    color: var(--c-text-muted);
+    line-height: 1.5;
+    max-width: 340px;
+    margin-bottom: var(--space-lg);
   }
+
+  .hero__actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
 
   .hero__donate-btn {
     display: inline-flex;
@@ -1485,38 +2019,22 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     transition: border-color var(--transition-fast), color var(--transition-fast), background var(--transition-fast);
   }
 
-  .hero__share-btn:hover {
-    border-color: var(--c-dark);
-    color: var(--c-dark);
-    background: rgba(0, 0, 0, 0.02);
-  }
+  .hero__share-btn:hover { border-color: var(--c-dark); color: var(--c-dark); background: rgba(0, 0, 0, 0.02); }
+  .hero__share-btn.shared { border-color: rgba(255, 218, 36, 0.5); color: var(--c-dark); background: rgba(255, 218, 36, 0.08); }
 
-  .hero__share-btn.shared {
-    border-color: rgba(255, 218, 36, 0.5);
-    color: var(--c-dark);
-    background: rgba(255, 218, 36, 0.08);
-  }
-
-  /* ═══ Lede — Dramatic Opening Statement ═══ */
-  .lede {
-    padding: 80px 0 88px;
+  /* ═══ 2. The Story ═══════════════════════ */
+  .story {
+    padding-block: 80px 48px;
     background: var(--c-white);
-    position: relative;
+    content-visibility: auto;
+    contain-intrinsic-size: auto 800px;
   }
 
-  /* Gentle gradient dissolve into white for the next section */
-  .lede::after {
-    content: '';
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    height: 120px;
-    background: linear-gradient(to bottom, transparent, var(--c-white));
-    pointer-events: none;
-  }
+  .story__divider { margin-bottom: 48px; }
 
-  .lede__text {
+  .story__lede { margin-bottom: 48px; }
+
+  .story__lede-text {
     font-family: var(--font-display);
     font-size: clamp(1.4rem, 1.2rem + 0.7vw, 1.85rem);
     line-height: 1.65;
@@ -1524,26 +2042,6 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     text-wrap: pretty;
     max-width: 48ch;
     letter-spacing: -0.01em;
-  }
-
-  /* ═══ Story Section ════════════════════════ */
-  .story {
-    padding-block: 80px;
-    background: var(--c-white);
-    content-visibility: auto;
-    contain-intrinsic-size: auto 600px;
-  }
-
-  .story__body {
-    font-size: 1.18rem;
-    line-height: 1.85;
-    color: var(--c-dark);
-    max-width: 640px;
-    letter-spacing: -0.005em;
-  }
-
-  .story__body p + p {
-    margin-top: var(--space-xl);
   }
 
   .prose--dropcap p:first-child::first-letter {
@@ -1557,7 +2055,6 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     font-weight: 700;
   }
 
-  /* Progressive enhancement: initial-letter for browsers that support it */
   @supports (initial-letter: 3) {
     .prose--dropcap p:first-child::first-letter {
       initial-letter: 3;
@@ -1569,50 +2066,58 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     }
   }
 
-  .pullquote {
-    position: relative;
-    margin-top: 64px;
-    padding: 40px 40px 40px 56px;
-    background: linear-gradient(135deg, rgba(255, 218, 36, 0.07) 0%, rgba(255, 218, 36, 0.02) 100%);
-    border-left: 4px solid var(--c-yellow);
-    border-radius: 0 var(--profile-radius) var(--profile-radius) 0;
-    max-width: 660px;
-  }
-
-  .pullquote__mark {
-    position: absolute;
-    top: 24px;
-    left: 20px;
-    width: 28px;
-    height: 28px;
-    color: var(--c-yellow);
-    opacity: 0.6;
-  }
-
-  .pullquote p {
-    font-family: var(--font-display);
-    font-style: italic;
-    font-size: 1.25rem;
-    line-height: 1.6;
-    color: var(--c-dark);
-  }
-
-  /* ═══ Editorial Story — Continuous Prose with Interwoven Photos ═════
-     One flowing text column. Photos placed WITHIN the reading flow:
-       .essay__break  — breaks out of text column (breakout or cinematic)
-       .essay__float  — floats into text column, text wraps around
-       .essay__woven  — container for float + its paragraph
-     ═══════════════════════════════════════════════════════════════════ */
-  .essay {
-    background: var(--c-white);
-    padding-block: 16px 48px;
-  }
-
-  /* ── The continuous prose column ── */
-  .essay__flow {
-    max-width: 680px;
+  /* ── Story Pairs — Alternating Editorial Splits ── */
+  .story__pairs {
+    max-width: var(--max-width);
     margin-inline: auto;
     padding-inline: var(--page-padding);
+  }
+
+  .story__pair {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: clamp(24px, 4vw, 56px);
+    align-items: center;
+    margin-bottom: clamp(48px, 6vw, 80px);
+  }
+
+  .story__pair--right .story__pair-photo {
+    order: -1;
+  }
+
+  .story__pair-photo {
+    margin: 0;
+  }
+
+  .story__pair-img-wrap {
+    border-radius: var(--profile-radius);
+    overflow: hidden;
+    box-shadow:
+      0 8px 16px rgba(0, 0, 0, 0.06),
+      0 24px 64px rgba(0, 0, 0, 0.1);
+  }
+
+  .story__pair-img {
+    width: 100%;
+    height: auto;
+    display: block;
+    object-fit: cover;
+  }
+
+  @supports (animation-timeline: view()) {
+    .story__pair-img {
+      animation: story-parallax linear both;
+      animation-timeline: view();
+      animation-range: entry 0% exit 100%;
+    }
+  }
+
+  @keyframes story-parallax {
+    from { transform: scale(1.04) translateY(-2%); }
+    to   { transform: scale(1) translateY(1%); }
+  }
+
+  .story__pair-text {
     font-size: 1.15rem;
     line-height: 1.85;
     color: var(--c-dark);
@@ -1620,136 +2125,30 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     letter-spacing: -0.005em;
   }
 
-  .essay__flow > p,
-  .essay__woven > p {
-    margin-block: 0 1.6em;
+  .story__pair-text p { margin: 0; }
+
+  .story__overflow { margin-top: 48px; }
+
+  .story__body {
+    font-size: 1.18rem;
+    line-height: 1.85;
+    color: var(--c-dark);
+    max-width: 640px;
+    letter-spacing: -0.005em;
   }
 
-  /* ── Shared image styles ── */
-  .essay__img-wrap {
-    border-radius: var(--profile-radius);
-    overflow: hidden;
-    background-image: var(--lqip);
-    background-size: cover;
-    background-position: center;
-    background-repeat: no-repeat;
-  }
+  .story__body p + p { margin-top: var(--space-xl); }
 
-  .essay__img {
-    width: 100%;
-    height: auto;
-    display: block;
-    object-fit: cover;
-  }
-
-  /* ── Photo captions ── */
-  .essay__caption {
-    font-size: 0.78rem;
-    color: var(--c-text-muted);
-    line-height: 1.5;
-    margin-top: 10px;
-    letter-spacing: 0.01em;
-  }
-
-  /* ── Scroll-driven parallax (CSS only, progressive) ── */
-  @supports (animation-timeline: view()) {
-    .essay__break .essay__img {
-      animation: essay-parallax linear both;
-      animation-timeline: view();
-      animation-range: entry 0% exit 100%;
-    }
-  }
-
-  @keyframes essay-parallax {
-    from { transform: scale(1.05) translateY(-2%); }
-    to   { transform: scale(1) translateY(1%); }
-  }
-
-  /* ═══ Breakout photos — wider than text column ═══ */
-  .essay__break {
-    margin: 2.4em 0 1.8em;
-    /* Break out of the 680px text column — use viewport-relative width */
-    width: calc(100vw - var(--page-padding) * 2);
-    max-width: 960px;
-    margin-left: 50%;
-    transform: translateX(-50%);
-    box-shadow:
-      0 8px 16px rgba(0, 0, 0, 0.06),
-      0 24px 64px rgba(0, 0, 0, 0.1);
-    border-radius: var(--profile-radius);
-    overflow: hidden;
-  }
-
-  .essay__break .essay__img-wrap {
-    border-radius: 0;
-    box-shadow: none;
-  }
-
-  .essay__break .essay__caption {
-    padding: 0 16px;
-  }
-
-  .essay__break--cinematic {
-    max-width: 1200px;
-    box-shadow:
-      0 12px 24px rgba(0, 0, 0, 0.08),
-      0 32px 80px rgba(0, 0, 0, 0.12);
-  }
-
-  /* ═══ Float photos — woven into text ═══ */
-  .essay__woven {
-    margin-block: 0.4em 1.6em;
-    overflow: hidden; /* contain floats */
-  }
-
-  .essay__float {
-    margin: 0;
-    width: 45%;
-    max-width: 320px;
-    border-radius: var(--profile-radius);
-    overflow: hidden;
-    box-shadow:
-      0 4px 12px rgba(0, 0, 0, 0.06),
-      0 12px 32px rgba(0, 0, 0, 0.08);
-  }
-
-  .essay__float .essay__img-wrap {
-    border-radius: 0;
-    box-shadow: none;
-  }
-
-  .essay__float--right {
-    float: right;
-    margin: 0.3em 0 1em 1.8em;
-  }
-
-  .essay__float--left {
-    float: left;
-    margin: 0.3em 1.8em 1em 0;
-  }
-
-  .essay__float .essay__caption {
-    padding: 8px 10px 10px;
-    font-size: 0.72rem;
-  }
-
-  /* ═══ Pull quote — dramatic typographic centerpiece ═══ */
-  .essay__quote {
-    margin: 2.4em 0;
+  /* ── Pull Quote — Full-width dark band ── */
+  .story__quote-wrap {
+    margin-top: 64px;
     padding: 72px var(--page-padding);
     background: var(--c-dark);
     position: relative;
     overflow: hidden;
-    border-radius: var(--profile-radius);
-    /* Break out of .essay__flow text column */
-    width: calc(100vw - var(--page-padding) * 2);
-    max-width: 960px;
-    margin-left: 50%;
-    transform: translateX(-50%);
   }
 
-  /* Subtle radial glow behind the quote */
-  .essay__quote::before {
+  .story__quote-wrap::before {
     content: '';
     position: absolute;
     top: -50%;
@@ -1761,14 +2160,20 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     pointer-events: none;
   }
 
-  .essay__quote-inner {
+  .story__pullquote {
+    margin: 0;
+    border: 0;
+    padding: 0;
+  }
+
+  .story__pullquote-inner {
     position: relative;
     max-width: 48ch;
     margin-inline: auto;
     text-align: center;
   }
 
-  .essay__quote-mark {
+  .story__pullquote-mark {
     width: 56px;
     height: 56px;
     color: var(--c-yellow);
@@ -1778,7 +2183,7 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     display: block;
   }
 
-  .essay__quote p {
+  .story__pullquote p {
     font-family: var(--font-display);
     font-style: italic;
     font-size: clamp(1.5rem, 1.3rem + 0.8vw, 2.1rem);
@@ -1788,94 +2193,351 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     letter-spacing: -0.02em;
   }
 
-  /* ═══ Fundraising CTA — Premium Card ═════ */
-  .fundraise {
-    padding-block: 48px;
+  /* ═══ 3. The Design — Overlapping Cards ════ */
+  .design {
+    padding-block: 80px;
+    background: var(--c-dark);
+    content-visibility: auto;
+    contain-intrinsic-size: auto 600px;
+    position: relative;
+    overflow: hidden;
   }
 
-  .fundraise__card {
-    display: flex;
-    align-items: center;
-    gap: var(--space-xl);
-    background: linear-gradient(135deg, rgba(255, 218, 36, 0.08) 0%, rgba(255, 218, 36, 0.02) 100%);
-    border: 1.5px solid rgba(255, 218, 36, 0.25);
-    border-radius: var(--profile-radius);
-    padding: 28px 36px;
-    box-shadow: 0 4px 24px rgba(255, 218, 36, 0.06);
-    transition: box-shadow 0.3s ease, border-color 0.3s ease;
+  /* Subtle blueprint grid texture */
+  .design::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
   }
 
-  .fundraise__card:hover {
-    box-shadow: 0 8px 40px rgba(255, 218, 36, 0.12);
-    border-color: rgba(255, 218, 36, 0.4);
-  }
+  .design__divider { margin-bottom: 0; position: relative; z-index: 1; }
+  .design .section-rule__label { color: rgba(255, 255, 255, 0.4); }
+  .design .section-label { color: var(--c-white); position: relative; z-index: 1; }
 
-  .fundraise__icon {
-    flex-shrink: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 56px;
-    height: 56px;
-    border-radius: 16px;
-    background: rgba(255, 218, 36, 0.18);
-    color: var(--c-dark);
-  }
-
-  .fundraise__content {
-    flex: 1;
-    min-width: 0;
-  }
-
-  .fundraise__title {
-    font-family: var(--font-display);
-    font-size: 1.2rem;
-    color: var(--c-dark);
-    margin-bottom: 6px;
-  }
-
-  .fundraise__text {
+  .design__sub {
+    text-align: center;
+    color: rgba(255, 255, 255, 0.5);
     font-size: 0.92rem;
-    line-height: 1.55;
-    color: var(--c-text-muted);
+    margin-top: -12px;
+    margin-bottom: 56px;
+    line-height: 1.5;
+    position: relative;
+    z-index: 1;
   }
 
-  .fundraise__btn {
+  /* The "desk" — contains overlapping stacked cards */
+  .design__desk {
+    position: relative;
+    max-width: 900px;
+    margin-inline: auto;
+    min-height: 400px;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding: 40px 0 60px;
+    z-index: 1;
+  }
+
+  .design__stack {
+    position: relative;
+    width: 48%;
+    max-width: 440px;
     flex-shrink: 0;
+  }
+
+  /* Back card (As Built) — tilted left, sits behind */
+  .design__stack--back {
+    transform: rotate(-2.5deg) translateY(12px);
+    z-index: 1;
+    margin-right: -6%;
+  }
+
+  /* Front card (Proposed) — tilted right, overlaps */
+  .design__stack--front {
+    transform: rotate(1.5deg) translateY(-8px);
+    z-index: 2;
+    margin-left: -6%;
+  }
+
+  .design__tag {
+    display: inline-block;
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.55);
+    margin-bottom: 10px;
+    padding: 4px 12px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 100px;
+    background: rgba(255, 255, 255, 0.04);
+  }
+
+  .design__tag--accent {
+    color: var(--c-yellow);
+    border-color: rgba(255, 218, 36, 0.25);
+    background: rgba(255, 218, 36, 0.08);
+  }
+
+  .design__card {
+    position: relative;
+    display: block;
+    border: none;
+    padding: 8px;
+    cursor: pointer;
+    overflow: hidden;
+    border-radius: 12px;
+    background-color: var(--c-white);
+    box-shadow:
+      0 4px 12px rgba(0, 0, 0, 0.15),
+      0 16px 48px rgba(0, 0, 0, 0.25),
+      0 1px 0 rgba(255, 255, 255, 0.06) inset;
+    transform: translateZ(0);
+    transition: box-shadow 0.5s cubic-bezier(0.22, 1, 0.36, 1),
+                transform 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .design__img {
+    width: 100%;
+    height: auto;
+    object-fit: contain;
+    display: block;
+    border-radius: 8px;
+  }
+
+  @media (hover: hover) {
+    .design__stack:hover {
+      z-index: 10;
+    }
+
+    .design__stack--back:hover {
+      transform: rotate(-1deg) translateY(8px) scale(1.03);
+    }
+
+    .design__stack--front:hover {
+      transform: rotate(0.5deg) translateY(-12px) scale(1.03);
+    }
+
+    .design__stack:hover .design__card {
+      box-shadow:
+        0 8px 24px rgba(0, 0, 0, 0.2),
+        0 32px 80px rgba(0, 0, 0, 0.35);
+    }
+  }
+
+  .design__stack {
+    transition: transform 0.5s cubic-bezier(0.22, 1, 0.36, 1), z-index 0s;
+  }
+
+  .design__card:focus-visible {
+    outline: 3px solid var(--c-yellow);
+    outline-offset: 4px;
+  }
+
+  /* Arrow between the cards */
+  .design__arrow {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 5;
+    opacity: 0.7;
+    filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.4));
+    pointer-events: none;
+  }
+
+  .design__more {
+    text-align: center;
+    margin-top: var(--space-xl);
+    position: relative;
+    z-index: 1;
+  }
+
+  .design__more-btn {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    padding: 12px 26px;
-    background: var(--c-yellow);
-    color: var(--c-dark);
-    font-weight: 700;
-    font-size: 0.88rem;
+    padding: 10px 20px;
+    background: transparent;
+    border: 1.5px solid rgba(255, 255, 255, 0.2);
     border-radius: 100px;
-    text-decoration: none;
-    white-space: nowrap;
-    box-shadow: 0 4px 16px rgba(255, 218, 36, 0.25);
-    transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.25s ease;
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: border-color var(--transition-fast), color var(--transition-fast);
   }
 
-  .fundraise__btn:hover {
-    transform: translateY(-3px);
-    box-shadow: 0 8px 28px rgba(255, 218, 36, 0.4);
-  }
+  .design__more-btn:hover { border-color: var(--c-yellow); color: var(--c-white); }
 
-  /* ═══ Video Section ═══════════════════════ */
-  .video {
-    padding-block: 48px;
+  /* ═══ 4. Before & After — Sliders ═════════ */
+  .ba-section {
+    padding-block: 80px;
+    background: var(--c-white);
     content-visibility: auto;
-    contain-intrinsic-size: auto 500px;
+    contain-intrinsic-size: auto 600px;
   }
 
-  .video__frame {
+  .ba-section__divider { margin-bottom: 0; }
+
+  .ba-section__sub {
+    text-align: center;
+    color: var(--c-text-muted);
+    font-size: 0.92rem;
+    margin-top: -12px;
+    margin-bottom: 48px;
+    line-height: 1.5;
+  }
+
+  .ba-section__sliders {
+    display: flex;
+    flex-direction: column;
+    gap: 48px;
+    max-width: 900px;
+    margin-inline: auto;
+  }
+
+  .ba-slider__room {
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--c-text-muted);
+    text-align: center;
+    margin-bottom: 16px;
+  }
+
+  .ba-slider__container {
+    position: relative;
+    border-radius: var(--profile-radius);
+    overflow: hidden;
+    aspect-ratio: 4 / 3;
+    box-shadow:
+      0 8px 24px rgba(0, 0, 0, 0.08),
+      0 32px 80px rgba(0, 0, 0, 0.12);
+    cursor: ew-resize;
+  }
+
+  .ba-slider__after {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  .ba-slider__before-clip {
+    position: absolute;
+    inset: 0;
+    clip-path: inset(0 calc(100% - var(--ba-pos)) 0 0);
+    z-index: 2;
+  }
+
+  .ba-slider__before {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  .ba-slider__range {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 4;
+    opacity: 0;
+    cursor: ew-resize;
+    margin: 0;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+
+  .ba-slider__handle {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: calc(var(--ba-pos) - 20px);
+    width: 40px;
+    z-index: 3;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+  }
+
+  .ba-slider__handle::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 50%;
+    width: 3px;
+    background: var(--c-white);
+    transform: translateX(-50%);
+    box-shadow: 0 0 8px rgba(0, 0, 0, 0.3);
+  }
+
+  .ba-slider__handle svg {
+    background: var(--c-white);
+    border-radius: 50%;
+    padding: 6px;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.25);
+    color: var(--c-dark);
+    width: 36px;
+    height: 36px;
+    position: relative;
+  }
+
+  .ba-slider__label {
+    position: absolute;
+    top: 16px;
+    z-index: 5;
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--c-white);
+    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+    pointer-events: none;
+  }
+
+  .ba-slider__label--before { left: 16px; }
+  .ba-slider__label--after { right: 16px; }
+
+  /* ═══ 5. The Reveal — Video ══════════════ */
+  .reveal {
+    padding-block: 80px;
+    background: var(--c-cream);
+    content-visibility: auto;
+    contain-intrinsic-size: auto 600px;
+  }
+
+  .reveal__divider { margin-bottom: 0; }
+
+  .reveal__frame {
     border-radius: var(--profile-radius);
     overflow: hidden;
     background: var(--c-dark);
     box-shadow:
       0 8px 16px rgba(0, 0, 0, 0.08),
       0 24px 64px rgba(0, 0, 0, 0.12);
+  }
+
+  /* Bold moment: Video entrance animation */
+  .reveal__frame {
+    transform: scale(1.02);
+    transition: transform 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .reveal__frame--entered {
+    transform: scale(1);
   }
 
   .yt-facade,
@@ -1886,20 +2548,20 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     background: var(--c-dark);
   }
 
-  .video__thumb {
+  .reveal__thumb {
     width: 100%;
     height: 100%;
     object-fit: cover;
     transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1), filter 0.5s ease;
   }
 
-  .yt-facade:hover .video__thumb,
-  .stream-facade:hover .video__thumb {
+  .yt-facade:hover .reveal__thumb,
+  .stream-facade:hover .reveal__thumb {
     transform: scale(1.04);
     filter: brightness(0.82);
   }
 
-  .video__play {
+  .reveal__play {
     position: absolute;
     top: 50%;
     left: 50%;
@@ -1909,23 +2571,31 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     filter: drop-shadow(0 6px 24px rgba(0, 0, 0, 0.45));
   }
 
-  .yt-facade:hover .video__play,
-  .stream-facade:hover .video__play {
+  .yt-facade:hover .reveal__play,
+  .stream-facade:hover .reveal__play {
     opacity: 1;
     transform: translate(-50%, -50%) scale(1.1);
   }
 
-  /* ═══ Bento Photo Gallery ════════════════════════════
-     Warm gray background creates the emotional shift
-     from "understanding the story" to "seeing the impact."
-     Premium gallery with generous gaps and dramatic hover.
-     ═══════════════════════════════════════════════════ */
+  /* Bold moment: Play button pulse */
+  .reveal__frame--entered .reveal__play {
+    animation: play-pulse 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.3s;
+  }
+
+  @keyframes play-pulse {
+    0%, 100% { transform: translate(-50%, -50%) scale(1); }
+    50% { transform: translate(-50%, -50%) scale(1.12); }
+  }
+
+  /* ═══ 6. The Gallery — Masonry ═════════════ */
   .gallery {
     padding-block: 80px;
     background: var(--c-warm-gray);
     content-visibility: auto;
     contain-intrinsic-size: auto 800px;
   }
+
+  .gallery__divider { margin-bottom: 0; }
 
   .gallery__header {
     display: flex;
@@ -1936,9 +2606,7 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     margin-bottom: 40px;
   }
 
-  .gallery__header .section-label {
-    margin-bottom: 0;
-  }
+  .gallery__header .section-label { margin-bottom: 0; }
 
   .gallery__credit {
     display: inline-flex;
@@ -1949,35 +2617,31 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     font-weight: 400;
   }
 
-  /* ── Bento Grid — editorial gallery with breathing room ── */
-  .bento {
+  /* Gallery grid — hero photos span 2 cols */
+  .gallery__grid {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    grid-auto-rows: 220px;
+    grid-template-columns: repeat(3, 1fr);
     gap: 10px;
   }
 
-  .bento__hero {
+  .gallery__cell--hero {
     grid-column: span 2;
     grid-row: span 2;
   }
 
-  .bento__tall {
+  .gallery__cell--hero:nth-child(2) {
+    grid-column: span 1;
     grid-row: span 2;
   }
 
-  .bento__wide {
-    grid-column: span 2;
-  }
-
-  .bento__cell {
+  .gallery__cell {
     position: relative;
     display: block;
     border: none;
     padding: 0;
     cursor: pointer;
     overflow: hidden;
-    border-radius: 10px;
+    border-radius: 12px;
     background-color: var(--c-cream);
     background-image: var(--lqip);
     background-size: cover;
@@ -1986,29 +2650,39 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     transform: translateZ(0);
     transition: box-shadow 0.4s cubic-bezier(0.22, 1, 0.36, 1),
                 transform 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+    min-height: 180px;
   }
 
-  .bento__img {
+  /* Gallery cascade animation */
+  .gallery__grid .gallery__cell {
+    opacity: 0;
+    transform: translateY(20px) scale(0.96);
+    transition: opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1),
+                transform 0.6s cubic-bezier(0.16, 1, 0.3, 1),
+                box-shadow 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+    transition-delay: calc(var(--stagger, 0) * 60ms);
+  }
+
+  .gallery__grid--visible .gallery__cell {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+
+  .gallery__img {
     width: 100%;
     height: 100%;
     object-fit: cover;
     display: block;
     position: relative;
     z-index: 2;
-    transition: transform 1.2s cubic-bezier(0.16, 1, 0.3, 1),
-                filter 0.6s ease;
+    transition: transform 1.2s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
-  .bento__overlay {
+  .gallery__overlay {
     position: absolute;
     inset: 0;
     z-index: 3;
-    background: linear-gradient(
-      to top,
-      rgba(0, 0, 0, 0.45) 0%,
-      rgba(0, 0, 0, 0.12) 25%,
-      rgba(0, 0, 0, 0) 50%
-    );
+    background: linear-gradient(to top, rgba(0,0,0,0.4) 0%, transparent 40%);
     display: flex;
     align-items: flex-end;
     justify-content: space-between;
@@ -2018,19 +2692,15 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     pointer-events: none;
   }
 
-  .bento__expand {
+  .gallery__expand {
     color: rgba(255, 255, 255, 0.85);
     display: flex;
     align-items: center;
     gap: 5px;
-    font-size: 0.7rem;
-    font-weight: 500;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
     text-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
   }
 
-  .bento__counter {
+  .gallery__counter {
     color: rgba(255, 255, 255, 0.65);
     font-size: 0.68rem;
     font-weight: 500;
@@ -2039,96 +2709,99 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     text-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
   }
 
-  /* ── Ken-Burns hover: cinematic drift + shadow lift ── */
   @media (hover: hover) {
-    .bento__cell:hover {
+    .gallery__cell:hover {
       z-index: 2;
       box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
       transform: translateZ(0) scale(1.01);
     }
-
-    .bento__cell:hover .bento__img {
+    .gallery__cell:hover .gallery__img {
       transform: scale(1.06);
       transition-duration: 6s;
       transition-timing-function: cubic-bezier(0.25, 0.46, 0.45, 0.94);
     }
-
-    .bento__cell:hover .bento__overlay {
-      opacity: 1;
-    }
+    .gallery__cell:hover .gallery__overlay { opacity: 1; }
   }
 
-  .bento__cell:focus-visible {
+  .gallery__cell:focus-visible {
     outline: 3px solid var(--c-yellow);
     outline-offset: 2px;
     z-index: 4;
   }
 
-  /* ── Staggered bento entrance ── */
-  @supports (animation-timeline: view()) {
-    .bento__cell {
-      animation: bento-enter 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
-      animation-timeline: view();
-      animation-range: entry 0% entry 35%;
-    }
-
-    @keyframes bento-enter {
-      from {
-        opacity: 0;
-        transform: scale(0.96) translateY(8px);
-      }
-      to {
-        opacity: 1;
-        transform: scale(1) translateY(0);
-      }
-    }
+  /* Overflow grid */
+  .gallery__overflow {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    margin-top: 10px;
   }
 
-  /* ═══ Partners ═════════════════════════════ */
-  .partners {
+  .gallery__overflow[hidden] { display: none; }
+
+  .gallery__expand-wrap {
+    text-align: center;
+    margin-top: 24px;
+  }
+
+  .gallery__show-all {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 12px 28px;
+    background: transparent;
+    border: 1.5px solid var(--c-border);
+    border-radius: 100px;
+    color: var(--c-text-muted);
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: border-color var(--transition-fast), color var(--transition-fast), background var(--transition-fast);
+  }
+
+  .gallery__show-all:hover {
+    border-color: var(--c-dark);
+    color: var(--c-dark);
+    background: rgba(0, 0, 0, 0.02);
+  }
+
+  /* ═══ Village — Partners ══════════════════ */
+  .village {
     padding-block: 80px;
     background: var(--c-white);
     content-visibility: auto;
     contain-intrinsic-size: auto 300px;
   }
 
-  .partners__sub {
+  .village__stat {
     text-align: center;
     color: var(--c-text-muted);
-    font-size: 0.92rem;
+    font-size: 1.08rem;
     margin-top: -12px;
     margin-bottom: 40px;
     line-height: 1.5;
   }
 
-  .partners__grid {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 32px;
-    justify-content: center;
-    align-items: center;
+  .village__stat strong {
+    font-family: var(--font-display);
+    font-size: 1.6rem;
+    color: var(--c-dark);
+    font-weight: 700;
   }
 
-  .partners__logo {
+  .village__grid { display: flex; flex-wrap: wrap; gap: 32px; justify-content: center; align-items: center; }
+
+  .village__logo {
     width: 130px;
     opacity: 0.55;
     transition: opacity 0.4s ease, filter 0.4s ease, transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
     filter: grayscale(80%);
   }
 
-  .partners__logo:hover {
-    opacity: 1;
-    filter: grayscale(0%);
-    transform: scale(1.1);
-  }
+  .village__logo:hover { opacity: 1; filter: grayscale(0%); transform: scale(1.1); }
+  .village__logo img { width: 100%; height: auto; object-fit: contain; }
 
-  .partners__logo img {
-    width: 100%;
-    height: auto;
-    object-fit: contain;
-  }
-
-  /* ═══ Related Kids — Premium Card Grid ════ */
+  /* ═══ Related Kids ═══════════════════════ */
   .related {
     padding-block: 80px;
     background: var(--c-warm-gray);
@@ -2136,11 +2809,7 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     contain-intrinsic-size: auto 500px;
   }
 
-  .related__grid {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 24px;
-  }
+  .related__grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px; }
 
   .related__card {
     text-decoration: none;
@@ -2168,29 +2837,13 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
   }
 
   @media (hover: hover) {
-    .related__card:hover {
-      transform: translateY(-8px);
-    }
-    .related__card:hover .related__img-wrap {
-      box-shadow: 0 16px 48px rgba(0, 0, 0, 0.12);
-    }
-    .related__card:hover .related__img {
-      transform: scale(1.06);
-    }
+    .related__card:hover { transform: translateY(-8px); }
+    .related__card:hover .related__img-wrap { box-shadow: 0 16px 48px rgba(0, 0, 0, 0.12); }
+    .related__card:hover .related__img { transform: scale(1.06); }
   }
 
-  .related__meta {
-    padding: 14px 4px 0;
-  }
-
-  .related__name {
-    display: block;
-    font-family: var(--font-display);
-    font-size: 1.05rem;
-    font-weight: 600;
-    color: var(--c-text);
-    line-height: 1.3;
-  }
+  .related__meta { padding: 14px 4px 0; }
+  .related__name { display: block; font-family: var(--font-display); font-size: 1.05rem; font-weight: 600; color: var(--c-text); line-height: 1.3; }
 
   .related__tag {
     display: inline-block;
@@ -2205,15 +2858,61 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     margin-top: 6px;
   }
 
-  .related__diagnosis {
-    display: block;
-    font-size: 0.8rem;
-    color: var(--c-text-muted);
-    line-height: 1.4;
-    margin-top: 4px;
+  .related__diagnosis { display: block; font-size: 0.8rem; color: var(--c-text-muted); line-height: 1.4; margin-top: 4px; }
+
+  /* ═══ Fundraising CTA ════════════════════ */
+  .fundraise { padding-block: 48px; }
+
+  .fundraise__card {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xl);
+    background: linear-gradient(135deg, rgba(255, 218, 36, 0.08) 0%, rgba(255, 218, 36, 0.02) 100%);
+    border: 1.5px solid rgba(255, 218, 36, 0.25);
+    border-radius: var(--profile-radius);
+    padding: 28px 36px;
+    box-shadow: 0 4px 24px rgba(255, 218, 36, 0.06);
+    transition: box-shadow 0.3s ease, border-color 0.3s ease;
   }
 
-  /* ═══ Prev / Next Nav — Refined ═══════════ */
+  .fundraise__card:hover { box-shadow: 0 8px 40px rgba(255, 218, 36, 0.12); border-color: rgba(255, 218, 36, 0.4); }
+
+  .fundraise__icon {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 56px;
+    height: 56px;
+    border-radius: 16px;
+    background: rgba(255, 218, 36, 0.18);
+    color: var(--c-dark);
+  }
+
+  .fundraise__content { flex: 1; min-width: 0; }
+  .fundraise__title { font-family: var(--font-display); font-size: 1.2rem; color: var(--c-dark); margin-bottom: 6px; }
+  .fundraise__text { font-size: 0.92rem; line-height: 1.55; color: var(--c-text-muted); }
+
+  .fundraise__btn {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 12px 26px;
+    background: var(--c-yellow);
+    color: var(--c-dark);
+    font-weight: 700;
+    font-size: 0.88rem;
+    border-radius: 100px;
+    text-decoration: none;
+    white-space: nowrap;
+    box-shadow: 0 4px 16px rgba(255, 218, 36, 0.25);
+    transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.25s ease;
+  }
+
+  .fundraise__btn:hover { transform: translateY(-3px); box-shadow: 0 8px 28px rgba(255, 218, 36, 0.4); }
+
+  /* ═══ Prev / Next Nav ════════════════════ */
   .kid-nav {
     border-top: 1px solid var(--c-border);
     padding-block: 32px;
@@ -2227,14 +2926,7 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     gap: var(--space-lg);
   }
 
-  .kid-nav__thumb {
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
-    object-fit: cover;
-    flex-shrink: 0;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-  }
+  .kid-nav__thumb { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; flex-shrink: 0; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08); }
 
   .kid-nav__link {
     display: inline-flex;
@@ -2246,33 +2938,11 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     transition: background 0.2s ease, box-shadow 0.2s ease;
   }
 
-  .kid-nav__link:hover {
-    background: var(--c-warm-gray);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
-  }
+  .kid-nav__link:hover { background: var(--c-warm-gray); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04); }
+  .kid-nav__link--next { justify-self: end; }
 
-  .kid-nav__link--next {
-    justify-self: end;
-  }
-
-  .kid-nav__label {
-    display: block;
-    font-size: 0.68rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    color: var(--c-text-muted);
-    margin-bottom: 2px;
-  }
-
-  .kid-nav__name {
-    display: block;
-    font-family: var(--font-display);
-    font-size: 1.1rem;
-    font-weight: 600;
-    color: var(--c-dark);
-    line-height: 1.25;
-  }
+  .kid-nav__label { display: block; font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; color: var(--c-text-muted); margin-bottom: 2px; }
+  .kid-nav__name { display: block; font-family: var(--font-display); font-size: 1.1rem; font-weight: 600; color: var(--c-dark); line-height: 1.25; }
 
   .kid-nav__all {
     display: inline-flex;
@@ -2287,19 +2957,15 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     transition: color var(--transition-fast), background var(--transition-fast);
   }
 
-  .kid-nav__all:hover {
-    color: var(--c-dark);
-    background: var(--c-warm-gray);
-  }
+  .kid-nav__all:hover { color: var(--c-dark); background: var(--c-warm-gray); }
 
-  /* ═══ CTA — Cinematic Dark Section ════════ */
+  /* ═══ CTA — Dark Section ═════════════════ */
   .cta {
     padding-block: 100px;
     background: var(--c-dark);
     position: relative;
   }
 
-  /* Subtle gradient texture */
   .cta::before {
     content: '';
     position: absolute;
@@ -2308,7 +2974,6 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     pointer-events: none;
   }
 
-  /* Giant decorative watermark text */
   .cta__watermark {
     position: absolute;
     top: 50%;
@@ -2344,26 +3009,11 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     position: relative;
   }
 
-  .cta__buttons {
-    display: flex;
-    gap: 14px;
-    justify-content: center;
-    flex-wrap: wrap;
-    position: relative;
-  }
+  .cta__buttons { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; position: relative; }
+  .cta__buttons :global(.btn--outline) { color: var(--c-white); box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.35); }
+  .cta__buttons :global(.btn--outline:hover) { background: rgba(255, 255, 255, 0.1); box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.65); color: var(--c-white); }
 
-  .cta__buttons :global(.btn--outline) {
-    color: var(--c-white);
-    box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.35);
-  }
-
-  .cta__buttons :global(.btn--outline:hover) {
-    background: rgba(255, 255, 255, 0.1);
-    box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.65);
-    color: var(--c-white);
-  }
-
-  /* ═══ Lightbox — premium gallery ═══════════ */
+  /* ═══ Lightbox ═══════════════════════════ */
   .lightbox[hidden] { display: none; }
 
   .lightbox {
@@ -2375,7 +3025,6 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     justify-content: center;
   }
 
-  /* ── Smooth open / close ─────────────────── */
   .lightbox__backdrop {
     position: absolute;
     inset: 0;
@@ -2435,13 +3084,9 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
   .lightbox__nav--prev { left: var(--space-lg); }
   .lightbox__nav--next { right: var(--space-lg); }
 
-  /* ── Stage + frame layout ────────────────── */
   .lightbox__stage {
     position: relative;
     z-index: 5;
-    /* Fixed viewport dimensions — images resize inside via object-fit,
-       so landscape ↔ portrait never causes layout shift or frame resize.
-       Directional slide always moves the same-sized box. */
     width: 90vw;
     height: 85vh;
     display: flex;
@@ -2449,16 +3094,12 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     align-items: center;
     justify-content: center;
     gap: var(--space-sm);
-    /* Entrance: scale up + fade in */
     transform: scale(0.94);
     opacity: 0;
     transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1),
                 opacity 0.22s ease-out;
   }
-  .lightbox--open .lightbox__stage {
-    transform: scale(1);
-    opacity: 1;
-  }
+  .lightbox--open .lightbox__stage { transform: scale(1); opacity: 1; }
 
   .lightbox__frame {
     position: relative;
@@ -2470,10 +3111,7 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     justify-items: center;
     align-items: center;
   }
-  /* Promote to GPU layer only while lightbox is open */
-  .lightbox--open .lightbox__frame {
-    will-change: transform, opacity;
-  }
+  .lightbox--open .lightbox__frame { will-change: transform, opacity; }
 
   .lightbox__placeholder,
   .lightbox__img {
@@ -2489,21 +3127,19 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     transition: opacity 0.12s ease-out;
   }
   .lightbox--open .lightbox__placeholder,
-  .lightbox--open .lightbox__img {
-    will-change: opacity;
+  .lightbox--open .lightbox__img { will-change: opacity; }
+
+  .lightbox__placeholder { z-index: 1; filter: blur(2px); pointer-events: none; }
+  .lightbox__img { z-index: 2; }
+
+  .lightbox__counter {
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 0.78rem;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    font-variant-numeric: tabular-nums;
   }
 
-  .lightbox__placeholder {
-    z-index: 1;
-    filter: blur(2px);
-    pointer-events: none;
-  }
-
-  .lightbox__img {
-    z-index: 2;
-  }
-
-  /* ── Loading ring (appears after 180ms) ──── */
   .lightbox__loader {
     grid-row: 1;
     grid-column: 1;
@@ -2530,205 +3166,90 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     to { transform: rotate(360deg); }
   }
 
-  .lightbox__counter {
-    flex-shrink: 0;
-    color: rgba(255, 255, 255, 0.55);
-    font-size: 0.82rem;
-    font-weight: 500;
-    letter-spacing: 0.04em;
-  }
-
-  /* ── Reduced motion ─────────────────────── */
-  @media (prefers-reduced-motion: reduce) {
-    .lightbox__backdrop,
-    .lightbox__close,
-    .lightbox__nav,
-    .lightbox__stage,
-    .lightbox__placeholder,
-    .lightbox__img,
-    .lightbox__loader {
-      transition: none !important;
-    }
-    .lightbox__stage {
-      transform: none;
-      opacity: 1;
-    }
-    .lightbox__backdrop { opacity: 1; }
-    .lightbox__close,
-    .lightbox__nav { opacity: 1; }
-    .lightbox__loader-ring { animation: none; }
-  }
-
-  /* ═══ View Transitions ═════════════════════ */
-  ::view-transition-group(kid-hero) {
-    animation-duration: 280ms;
-    animation-timing-function: cubic-bezier(0.25, 0.46, 0.45, 0.94);
-  }
-
-  ::view-transition-group(kid-name) {
-    animation-duration: 220ms;
-    animation-timing-function: cubic-bezier(0.25, 0.46, 0.45, 0.94);
-  }
-
-  /* ═══ Responsive: Tablet ═══════════════════ */
-  @media (max-width: 1100px) {
-    .related__grid {
-      grid-template-columns: repeat(4, 1fr);
-      gap: 16px;
-    }
-
-    .essay__break {
-      border-radius: 16px;
-    }
-
-    .essay__quote {
-      border-radius: 16px;
-      margin-inline: var(--page-padding);
-    }
-  }
-
-  /* ═══ Responsive: Mobile — Premium ════════ */
+  /* ═══ Responsive: Mobile ═══════════════ */
   @media (max-width: 768px) {
-    .hero {
-      padding-top: 24px;
+    /* Chapter nav — mobile adjustments */
+    .chapter-nav__track {
+      justify-content: flex-start;
+      padding: 8px 0;
+      gap: 2px;
     }
 
-    .hero__split {
-      grid-template-columns: 1fr;
-      gap: 0;
+    .chapter-nav__pill {
+      padding: 5px 12px;
+      font-size: 0.66rem;
     }
 
-    .hero__portrait {
-      aspect-ratio: 4 / 5;
-      max-height: 55vh;
-    }
+    .hero { padding-top: 24px; }
 
-    .hero__info {
-      padding: 28px var(--page-padding) 20px;
-    }
-
-    .hero__back {
-      margin-bottom: 16px;
-    }
-
-    .hero__name {
-      font-size: clamp(2.8rem, 13vw, 4.5rem);
-      margin-bottom: 16px;
-    }
-
-    .hero__name::after {
-      width: 36px;
-      margin-top: 12px;
-    }
-
-    .hero__diagnosis {
-      font-size: 1.02rem;
-      max-width: none;
-    }
-
-    /* Touch targets: minimum 44px */
+    .hero__split { grid-template-columns: 1fr; gap: 0; }
+    .hero__portrait { aspect-ratio: 4 / 5; max-height: 50vh; }
+    .hero__info { padding: 28px var(--page-padding) 20px; }
+    .hero__back { margin-bottom: 16px; }
+    .hero__name { font-size: clamp(2.2rem, 10vw, 3.2rem); margin-bottom: 12px; }
+    .hero__name::after { width: 36px; margin-top: 10px; }
+    .hero__diagnosis { font-size: 1.02rem; max-width: none; }
+    .hero__hook { font-size: 0.95rem; max-width: none; }
     .hero__donate-btn,
-    .hero__share-btn {
-      min-height: 44px;
-      padding-inline: 24px;
-    }
+    .hero__share-btn { min-height: 44px; padding-inline: 24px; }
 
-    .lede {
-      padding: 48px 0 40px;
-    }
-
-    .lede::after {
-      height: 80px;
-    }
-
-    .lede__text {
-      font-size: 1.12rem;
-    }
-
-    .story {
-      padding-block: 48px;
-    }
-
+    .story { padding-block: 48px 32px; }
+    .story__lede-text { font-size: 1.12rem; }
     .story__body { font-size: 1.02rem; }
 
-    /* Essay — tighter on mobile */
-    .essay__flow { font-size: 1.02rem; }
-
-    /* Breakout photos: edge-to-edge on mobile */
-    .essay__break {
-      border-radius: 0;
-      box-shadow: none;
-      margin-block: 1.8em 1.4em;
+    .story__pair {
+      grid-template-columns: 1fr;
+      gap: 24px;
+      margin-bottom: 48px;
     }
 
-    /* Floats become full-width on mobile — no wrapping on small screens */
-    .essay__float {
-      float: none;
-      width: 100%;
-      max-width: none;
-      margin: 0 0 1.2em 0;
-      border-radius: var(--profile-radius);
-    }
+    .story__pair--right .story__pair-photo { order: 0; }
 
-    .essay__float--right,
-    .essay__float--left {
-      margin: 0 0 1.2em 0;
-    }
+    .story__pair-text { font-size: 1.02rem; }
 
-    .essay__quote {
+    .story__quote-wrap {
       padding: 48px var(--page-padding);
-      border-radius: 0;
-      margin-inline: calc(-1 * var(--page-padding));
-      width: calc(100% + var(--page-padding) * 2);
-      max-width: none;
-      transform: none;
     }
-    .essay__quote-mark { width: 44px; height: 44px; }
-    .essay__quote p { font-size: 1.25rem; }
+    .story__pullquote-mark { width: 44px; height: 44px; }
+    .story__pullquote p { font-size: 1.25rem; }
 
-    .bento {
-      grid-template-columns: repeat(2, 1fr);
-      grid-auto-rows: 180px;
-      gap: 8px;
+    .design__desk {
+      flex-direction: column;
+      align-items: center;
+      min-height: auto;
+      padding: 20px 0 40px;
+      gap: 24px;
     }
 
-    .bento__cell { border-radius: 8px; }
+    .design__stack { width: 85%; max-width: none; margin: 0; }
+    .design__stack--back { transform: rotate(-1.5deg); }
+    .design__stack--front { transform: rotate(1deg); }
+    .design__arrow { display: none; }
 
-    .bento__hero {
-      grid-column: 1 / -1;
-      grid-row: span 2;
-    }
+    .ba-slider__container { aspect-ratio: 3 / 2; }
 
-    .bento__tall { grid-row: span 2; }
-    .bento__wide { grid-column: 1 / -1; }
-
-    .bento__expand { display: none; }
+    .reveal { padding-block: 56px; }
 
     .gallery { padding-block: 56px; }
+    .gallery__grid { grid-template-columns: repeat(2, 1fr); }
+    .gallery__cell--hero { grid-column: 1 / -1; grid-row: span 1; }
+    .gallery__cell--hero:nth-child(2) { grid-column: 1 / -1; grid-row: span 1; }
+    .gallery__cell { min-height: 150px; }
+    .gallery__overflow { grid-template-columns: repeat(2, 1fr); }
+
+    .village { padding-block: 56px; }
+    .village__logo { width: 100px; }
+    .village__grid { gap: 24px; }
+    .village__stat strong { font-size: 1.3rem; }
 
     .related { padding-block: 56px; }
-    .related__grid {
-      grid-template-columns: repeat(2, 1fr);
-      gap: 16px;
-    }
+    .related__grid { grid-template-columns: repeat(2, 1fr); gap: 16px; }
     .related__name { font-size: 0.92rem; }
     .related__diagnosis { font-size: 0.75rem; }
-    .related__img-wrap {
-      border-radius: 16px;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-    }
+    .related__img-wrap { border-radius: 16px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06); }
 
-    .kid-nav__grid {
-      grid-template-columns: 1fr 1fr;
-      gap: 8px;
-    }
-
-    .kid-nav__all {
-      grid-column: 1 / -1;
-      justify-self: center;
-      order: -1;
-    }
-
+    .kid-nav__grid { grid-template-columns: 1fr 1fr; gap: 8px; }
+    .kid-nav__all { grid-column: 1 / -1; justify-self: center; order: -1; }
     .kid-nav__link { padding: 10px; border-radius: 12px; }
     .kid-nav__name { font-size: 0.95rem; }
     .kid-nav__thumb { width: 36px; height: 36px; }
@@ -2738,22 +3259,8 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     .lightbox__close { top: 8px; right: 8px; }
     .lightbox__nav, .lightbox__close { width: 44px; height: 44px; }
 
-    .pullquote {
-      padding: 28px 24px 28px 36px;
-    }
-    .pullquote p { font-size: 1.08rem; }
-
     .fundraise { padding-block: 32px; }
-    .fundraise__card {
-      flex-direction: column;
-      text-align: center;
-      padding: 28px 24px;
-      gap: 16px;
-    }
-
-    .partners { padding-block: 56px; }
-    .partners__logo { width: 100px; }
-    .partners__grid { gap: 24px; }
+    .fundraise__card { flex-direction: column; text-align: center; padding: 28px 24px; gap: 16px; }
 
     .cta { padding-block: 72px; }
     .cta__title { font-size: clamp(1.5rem, 6vw, 2rem); }
@@ -2761,49 +3268,59 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
 
   @media (max-width: 480px) {
     .gallery__header { flex-direction: column; }
-    .hero__name { font-size: clamp(2.5rem, 12vw, 3.5rem); }
-
-    .essay__flow { font-size: 0.98rem; }
-
-    .bento {
-      grid-auto-rows: 160px;
-      gap: 6px;
-    }
-    .bento__cell { border-radius: 6px; }
-    .bento__overlay { padding: 10px 12px; }
-    .bento__counter { font-size: 0.62rem; }
+    .hero__name { font-size: clamp(2rem, 10vw, 2.8rem); }
+    .gallery__cell { min-height: 130px; border-radius: 8px; }
+    .gallery__overflow .gallery__cell { border-radius: 8px; }
   }
 
-  /* ═══ Reduced Motion ═══════════════════════ */
+  /* ═══ Reduced Motion ═══════════════════ */
   @media (prefers-reduced-motion: reduce) {
     .stagger,
-    .stagger-section {
+    .stagger-section,
+    [data-reveal] {
       opacity: 1;
       transform: none;
       transition: none;
     }
 
-    .lqip-img:not(.lqip-pending) {
+    .gallery__grid .gallery__cell {
+      opacity: 1;
+      transform: none;
       transition: none;
     }
-    .lqip-img.lqip-pending {
-      opacity: initial;
-    }
+
+    .lqip-img:not(.lqip-pending) { transition: none; }
+    .lqip-img.lqip-pending { opacity: initial; }
 
     .scroll-progress { display: none; }
 
-    .video__thumb,
-    .bento__img,
-    .bento__cell,
+    .reveal__frame {
+      transform: none;
+      transition: none;
+    }
+
+    .reveal__frame--entered .reveal__play {
+      animation: none;
+    }
+
+    .hero__img,
+    .reveal__thumb,
+    .gallery__img,
+    .gallery__cell,
+    .design__card,
+    .design__stack,
     .related__img,
     .related__card,
     .related__img-wrap,
-    .essay__img,
+    .story__pair-img,
     .hero__back,
     .hero__donate-btn,
     .hero__share-btn,
     .fundraise__card,
-    .fundraise__btn {
+    .fundraise__btn,
+    .ba-slider__handle,
+    .chapter-nav,
+    .chapter-nav__pill {
       transition: none;
       animation: none !important;
     }

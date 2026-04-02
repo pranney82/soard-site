@@ -186,7 +186,6 @@ const structuredData = buildSchemaGraph(...graphSchemas);
 
   <!-- Images route through same origin via /cdn-cgi/imagedelivery/ — no preconnect needed -->
   <!-- videodelivery.net preconnect added per-page where needed via <slot name="head" /> -->
-  <link rel="dns-prefetch" href="https://connect.facebook.net" />
   <link rel="dns-prefetch" href="https://static.cloudflareinsights.com" />
 
   <!-- Preload critical fonts -->
@@ -231,27 +230,6 @@ const structuredData = buildSchemaGraph(...graphSchemas);
   <!-- JSON-LD: Unified @graph with Organization + WebPage + page-specific schemas -->
   <script type="application/ld+json" set:html={JSON.stringify(structuredData)} />
 
-  <!-- Facebook Pixel (deferred until first user interaction for performance) -->
-  <script is:inline>
-    (function(){
-      var loaded=false;
-      function loadFBPixel(){
-        if(loaded)return;loaded=true;
-        ['scroll','click','touchstart','keydown'].forEach(function(e){document.removeEventListener(e,loadFBPixel)});
-        !function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?
-        n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;
-        n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;
-        t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,
-        document,'script','https://connect.facebook.net/en_US/fbevents.js');
-        fbq('init','1325956761183424');fbq('track','PageView');
-      }
-      ['scroll','click','touchstart','keydown'].forEach(function(e){document.addEventListener(e,loadFBPixel,{once:true,passive:true})});
-    })();
-  </script>
-  <noscript>
-    <img height="1" width="1" style="display:none" alt=""
-      src="https://www.facebook.com/tr?id=1325956761183424&ev=PageView&noscript=1" />
-  </noscript>
   <!-- Page-specific head content (preloads, etc.) -->
   <slot name="head" />
 </head>
