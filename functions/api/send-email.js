@@ -7,13 +7,21 @@
  *   RESEND_API_KEY  — Resend API key
  *
  * Request body (JSON):
- *   { "to": ["email@example.com"], "subject": "...", "html": "...", "from": "..." }
  *
- * Or use a preset template:
- *   { "template": "adrian-2025", "to": ["email@example.com"] }
+ *   Raw HTML:
+ *     { "to": [...], "subject": "...", "html": "...", "from": "..." }
+ *
+ *   Project Reveal (completed kid):
+ *     { "template": "reveal", "kid": { ...kidJson }, "to": [...], "founderNote": "...", "headline": "..." }
+ *
+ *   Project Kickoff (upcoming kid):
+ *     { "template": "kickoff", "kid": { ...kidJson }, "to": [...], "founderNote": "..." }
+ *
+ *   Monthly Impact:
+ *     { "template": "monthly", "data": { month, totalKids, totalRooms, years, ... }, "to": [...] }
  */
 
-import { getEmailTemplate } from './_email-templates.js';
+import { projectReveal, projectKickoff, monthlyImpact } from './_email-templates.js';
 
 export async function onRequestPost(context) {
   const { RESEND_API_KEY } = context.env;
@@ -26,16 +34,25 @@ export async function onRequestPost(context) {
   }
 
   const body = await context.request.json();
-  let { to, subject, html, from, template } = body;
+  let { to, subject, html, from, template, kid, data, ...opts } = body;
 
-  // If a named template is requested, load it
   if (template) {
-    const tpl = getEmailTemplate(template);
-    if (!tpl) {
-      return Response.json(
-        { ok: false, error: `Unknown template: ${template}` },
-        { status: 400 }
-      );
+    let tpl;
+    switch (template) {
+      case 'reveal':
+        if (!kid) return Response.json({ ok: false, error: 'Missing "kid" for reveal template.' }, { status: 400 });
+        tpl = projectReveal(kid, opts);
+        break;
+      case 'kickoff':
+        if (!kid) return Response.json({ ok: false, error: 'Missing "kid" for kickoff template.' }, { status: 400 });
+        tpl = projectKickoff(kid, opts);
+        break;
+      case 'monthly':
+        if (!data) return Response.json({ ok: false, error: 'Missing "data" for monthly template.' }, { status: 400 });
+        tpl = monthlyImpact(data, opts);
+        break;
+      default:
+        return Response.json({ ok: false, error: `Unknown template: ${template}` }, { status: 400 });
     }
     subject = subject || tpl.subject;
     html = tpl.html;

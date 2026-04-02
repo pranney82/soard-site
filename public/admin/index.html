@@ -1835,6 +1835,7 @@
       warning:    _s(html`<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/>`),
       menu:       _s(html`<line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/>`),
       chevLeft:   _s(html`<path d="m15 18-6-6 6-6"/>`),
+      mail:       _s(html`<rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>`),
     };
 
     // ─── API Helpers ────────────────────────
@@ -2039,6 +2040,342 @@
     }
 
     // ─── Full Audit Log Page ──────────────────────
+    // ─── Email Composer ─────────────────────
+    function EmailComposer({ kids, events, addToast }) {
+      const [template, setTemplate] = useState('reveal');
+      const [selectedSlug, setSelectedSlug] = useState('');
+      const [subject, setSubject] = useState('');
+      const [preheader, setPreheader] = useState('');
+      const [headline, setHeadline] = useState('');
+      const [founderNote, setFounderNote] = useState('');
+      const [monthlyMonth, setMonthlyMonth] = useState('');
+      const [monthlyNote, setMonthlyNote] = useState('');
+      const [monthlyRevealSlug, setMonthlyRevealSlug] = useState('');
+      const [monthlyCurrentSlug, setMonthlyCurrentSlug] = useState('');
+      const [sending, setSending] = useState(false);
+      const [result, setResult] = useState(null);
+      const [previewHtml, setPreviewHtml] = useState('');
+      const [showPreview, setShowPreview] = useState(false);
+      const previewRef = useRef(null);
+
+      const completedKids = (kids || []).filter(k => k.status === 'completed').sort((a, b) => (b.year || 0) - (a.year || 0));
+      const inProgressKids = (kids || []).filter(k => k.status === 'in-progress');
+      const kidOptions = template === 'kickoff' ? inProgressKids : completedKids;
+
+      // Auto-select & reset when template changes
+      useEffect(() => {
+        setSelectedSlug(kidOptions[0]?.slug || '');
+        setSubject(''); setPreheader(''); setHeadline(''); setFounderNote('');
+        setResult(null); setPreviewHtml(''); setShowPreview(false);
+        if (!monthlyRevealSlug) setMonthlyRevealSlug(completedKids[0]?.slug || '');
+        if (!monthlyCurrentSlug) setMonthlyCurrentSlug(inProgressKids[0]?.slug || '');
+      }, [template]);
+
+      useEffect(() => {
+        if (!monthlyMonth) {
+          const d = new Date();
+          setMonthlyMonth(d.toLocaleString('en-US', { month: 'long', year: 'numeric' }));
+        }
+      }, []);
+
+      // Write preview HTML into iframe
+      useEffect(() => {
+        if (previewRef.current && previewHtml) {
+          const doc = previewRef.current.contentDocument;
+          doc.open(); doc.write(previewHtml); doc.close();
+        }
+      }, [previewHtml, showPreview]);
+
+      const selectedKid = (kids || []).find(k => k.slug === selectedSlug);
+      const monthlyRevealKid = (kids || []).find(k => k.slug === monthlyRevealSlug);
+      const monthlyCurrentKid = (kids || []).find(k => k.slug === monthlyCurrentSlug);
+
+      const buildBody = async () => {
+        if (template === 'monthly') {
+          const totalKids = completedKids.length;
+          const totalRooms = completedKids.reduce((s, k) => s + (k.roomCount || 1), 0);
+          const rv = monthlyRevealKid;
+          const cp = monthlyCurrentKid;
+          return {
+            template: 'monthly',
+            data: {
+              month: monthlyMonth,
+              totalKids, totalRooms,
+              years: new Date().getFullYear() - 2012,
+              recentReveal: rv ? { name: rv.name, slug: rv.slug, heroImage: rv.heroImage, diagnosis: rv.diagnosis, roomTypes: rv.roomTypes } : null,
+              currentProject: cp ? { name: cp.name, slug: cp.slug, heroImage: cp.heroImage, diagnosis: cp.diagnosis, roomTypes: cp.roomTypes } : null,
+              upcomingEvents: (events || []).filter(e => e.status === 'published').slice(0, 3).map(e => ({ name: e.name || e.title, date: e.date || '', url: e.url || (e.slug ? `https://sunshineonaranneyday.com/events/${e.slug}` : '') })),
+              founderNote: monthlyNote || undefined,
+            },
+            opts: { ...(subject ? { subject } : {}), ...(preheader ? { preheader } : {}) },
+          };
+        }
+        if (!selectedKid) throw new Error('Please select a kid');
+        const kidData = await api.readContent('src/content/kids/' + selectedSlug + '.json');
+        if (!kidData.success) throw new Error('Failed to load kid data');
+        const opts = {};
+        if (founderNote) opts.founderNote = founderNote;
+        if (headline) opts.headline = headline;
+        if (subject) opts.subject = subject;
+        if (preheader) opts.preheader = preheader;
+        return { template, kid: kidData.content, opts };
+      };
+
+      const handlePreview = async () => {
+        setSending(true);
+        try {
+          const body = await buildBody();
+          const res = await fetch('/api/create-broadcast', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ...body, preview: true }),
+          });
+          const data = await res.json();
+          if (data.ok) {
+            setPreviewHtml(data.previewHtml || '');
+            setShowPreview(true);
+          } else {
+            addToast?.(data.error || 'Preview failed', 'error');
+          }
+        } catch (e) {
+          addToast?.(e.message || 'Something went wrong', 'error');
+        }
+        setSending(false);
+      };
+
+      const handleCreate = async () => {
+        setSending(true); setResult(null);
+        try {
+          const body = await buildBody();
+          const res = await fetch('/api/create-broadcast', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          });
+          const data = await res.json();
+          if (data.ok) {
+            setResult(data);
+            setPreviewHtml(data.previewHtml || '');
+            setShowPreview(true);
+            addToast?.('Broadcast draft created in Resend!', 'success');
+          } else {
+            addToast?.(data.error || 'Failed to create broadcast', 'error');
+          }
+        } catch (e) {
+          addToast?.(e.message || 'Something went wrong', 'error');
+        }
+        setSending(false);
+      };
+
+      const templateCards = [
+        { id: 'reveal', label: 'Project Reveal', desc: 'Completed project — announce the room transformation to donors & partners.', icon: icons.star },
+        { id: 'kickoff', label: 'Project Kickoff', desc: 'Upcoming kid — introduce them and rally support for the build.', icon: icons.sparkle },
+        { id: 'monthly', label: 'Monthly Impact', desc: 'Recurring update — stats, recent work, current project, events.', icon: icons.barChart },
+      ];
+
+      const KidCard = ({ kid: k, size = 'md' }) => {
+        if (!k) return null;
+        const imgSize = size === 'sm' ? '48px' : '72px';
+        return html`
+          <div style="display: flex; gap: ${size === 'sm' ? '0.75rem' : '1rem'}; padding: ${size === 'sm' ? '0.75rem' : '1rem'}; background: var(--color-bg-secondary); border-radius: var(--radius-sm); align-items: center;">
+            ${k.heroImage ? html`<img src="${k.heroImage}" alt="" style="width: ${imgSize}; height: ${imgSize}; border-radius: 8px; object-fit: cover; flex-shrink: 0;" />` : html`
+              <div style="width: ${imgSize}; height: ${imgSize}; border-radius: 8px; background: var(--color-border); display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: var(--color-text-muted);">${icons.user}</div>
+            `}
+            <div style="min-width: 0;">
+              <div style="font-weight: 600; font-size: ${size === 'sm' ? '0.85rem' : '1rem'};">${k.name}${k.age ? html`<span style="font-weight: 400; color: var(--color-text-muted);">${', '}${Array.isArray(k.age) ? 'ages ' + k.age.join(', ') : 'age ' + k.age}</span>` : null}</div>
+              ${k.diagnosis ? html`<div style="font-size: ${size === 'sm' ? '0.78rem' : '0.85rem'}; color: var(--color-text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${k.diagnosis}</div>` : null}
+              ${k.roomTypes?.length ? html`<div style="display: flex; gap: 0.35rem; margin-top: 0.35rem; flex-wrap: wrap;">
+                ${k.roomTypes.map(t => html`<span style="padding: 0.15rem 0.5rem; background: rgba(45,46,51,0.08); border-radius: 100px; font-size: 0.72rem; font-weight: 500; color: var(--color-text-secondary);">${t}</span>`)}
+              </div>` : null}
+            </div>
+          </div>
+        `;
+      };
+
+      return html`
+        <div>
+          <!-- Header -->
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.75rem;">
+            <div>
+              <h2 style="margin: 0 0 0.25rem;">Email</h2>
+              <p style="margin: 0; color: var(--color-text-secondary); font-size: 0.9rem;">Create on-brand email broadcasts. Drafts go to Resend for review before sending.</p>
+            </div>
+            <a href="https://resend.com/broadcasts" target="_blank" rel="noopener noreferrer" class="btn btn-ghost" style="font-size: 0.8rem; padding: 0.4rem 0.8rem; gap: 0.35rem;">
+              ${icons.mail} Resend Dashboard ↗
+            </a>
+          </div>
+
+          <!-- Template picker -->
+          <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem; margin-bottom: 1.75rem;">
+            ${templateCards.map(t => html`
+              <button key=${t.id}
+                onClick=${() => setTemplate(t.id)}
+                style="padding: 1.25rem 1rem; border-radius: var(--radius-md); border: 2px solid ${template === t.id ? 'var(--color-primary)' : 'var(--color-border)'}; background: ${template === t.id ? 'var(--color-primary-bg)' : 'var(--color-bg-card)'}; cursor: pointer; text-align: left; transition: all 0.15s; position: relative; overflow: hidden;">
+                <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.35rem;">
+                  <span style="color: ${template === t.id ? 'var(--color-primary-hover)' : 'var(--color-text-muted)'}; transition: color 0.15s;">${t.icon}</span>
+                  <span style="font-weight: 600; font-size: 0.95rem; color: var(--color-text);">${t.label}</span>
+                </div>
+                <div style="font-size: 0.78rem; line-height: 1.4; color: var(--color-text-muted);">${t.desc}</div>
+                ${template === t.id ? html`<div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: var(--color-primary);"></div>` : null}
+              </button>
+            `)}
+          </div>
+
+          <!-- Main layout: controls + preview -->
+          <div style="display: grid; grid-template-columns: ${showPreview ? '380px 1fr' : '1fr'}; gap: 1.5rem; align-items: start;">
+
+            <!-- Controls panel -->
+            <div class="card" style="padding: 1.5rem;">
+
+              ${template !== 'monthly' ? html`
+                <!-- Kid selector -->
+                <div class="form-group">
+                  <label class="form-label">${template === 'reveal' ? 'Select Completed Kid' : 'Select In-Progress Kid'}</label>
+                  <select class="form-input" value=${selectedSlug} onChange=${e => { setSelectedSlug(e.target.value); setResult(null); setPreviewHtml(''); setShowPreview(false); }}>
+                    ${kidOptions.length === 0 ? html`<option value="">No ${template === 'kickoff' ? 'in-progress' : 'completed'} kids</option>` : null}
+                    ${kidOptions.map(k => html`<option key=${k.slug} value=${k.slug}>${k.name}${k.year ? ` (${k.year})` : ''} — ${k.roomTypes?.join(', ') || 'No rooms'}</option>`)}
+                  </select>
+                </div>
+
+                ${selectedKid ? html`<div style="margin-bottom: 1.25rem;"><${KidCard} kid=${selectedKid} /></div>` : null}
+
+                <!-- Subject line -->
+                <div class="form-group">
+                  <label class="form-label">Subject Line <span style="font-weight: 400; color: var(--color-text-muted);">(optional override)</span></label>
+                  <input class="form-input" type="text" value=${subject} onInput=${e => setSubject(e.target.value)}
+                    placeholder=${selectedKid ? `${selectedKid.name}'s Dream Room is ${template === 'reveal' ? 'Complete' : 'Coming Soon'} — See the ${template === 'reveal' ? 'Transformation' : 'Plan'}` : 'Auto-generated from kid data'} />
+                  <div class="form-hint">Leave blank to auto-generate from kid data.</div>
+                </div>
+
+                <!-- Preview text -->
+                <div class="form-group">
+                  <label class="form-label">Preview Text <span style="font-weight: 400; color: var(--color-text-muted);">(optional)</span></label>
+                  <input class="form-input" type="text" value=${preheader} onInput=${e => setPreheader(e.target.value)}
+                    placeholder="Shown in inbox before opening. Auto-generated from bio if blank." maxlength="150" />
+                  <div class="form-hint">The snippet shown in inbox previews. ~90-150 characters ideal.</div>
+                </div>
+
+                <!-- Headline -->
+                <div class="form-group">
+                  <label class="form-label">Headline <span style="font-weight: 400; color: var(--color-text-muted);">(optional)</span></label>
+                  <input class="form-input" type="text" value=${headline} onInput=${e => setHeadline(e.target.value)}
+                    placeholder=${selectedKid ? `Meet ${selectedKid.name}` : 'Auto-generated'} />
+                </div>
+
+                <!-- Founder note -->
+                <div class="form-group">
+                  <label class="form-label">Founder Note <span style="font-weight: 400; color: var(--color-text-muted);">(optional)</span></label>
+                  <textarea class="form-input" rows="3" placeholder="Personal message from Peter & Holly. Leave blank for auto-generated note." value=${founderNote} onInput=${e => setFounderNote(e.target.value)} style="resize: vertical;" />
+                </div>
+              ` : html`
+                <!-- Monthly: month -->
+                <div class="form-group">
+                  <label class="form-label">Month</label>
+                  <input class="form-input" type="text" value=${monthlyMonth} onInput=${e => setMonthlyMonth(e.target.value)} placeholder="e.g. April 2026" />
+                </div>
+
+                <!-- Monthly: subject override -->
+                <div class="form-group">
+                  <label class="form-label">Subject Line <span style="font-weight: 400; color: var(--color-text-muted);">(optional)</span></label>
+                  <input class="form-input" type="text" value=${subject} onInput=${e => setSubject(e.target.value)}
+                    placeholder=${`SOARD ${monthlyMonth} Update — Building Dreams, Changing Lives`} />
+                </div>
+
+                <!-- Monthly: preview text -->
+                <div class="form-group">
+                  <label class="form-label">Preview Text <span style="font-weight: 400; color: var(--color-text-muted);">(optional)</span></label>
+                  <input class="form-input" type="text" value=${preheader} onInput=${e => setPreheader(e.target.value)}
+                    placeholder=${`Your ${monthlyMonth} SOARD update: stats, stories, and how you're changing lives.`} maxlength="150" />
+                  <div class="form-hint">The snippet shown in inbox previews. ~90-150 characters ideal.</div>
+                </div>
+
+                <!-- Monthly: featured reveal kid -->
+                <div class="form-group">
+                  <label class="form-label">Featured Reveal</label>
+                  <select class="form-input" value=${monthlyRevealSlug} onChange=${e => setMonthlyRevealSlug(e.target.value)}>
+                    <option value="">None</option>
+                    ${completedKids.map(k => html`<option key=${k.slug} value=${k.slug}>${k.name}${k.year ? ` (${k.year})` : ''}</option>`)}
+                  </select>
+                  ${monthlyRevealKid ? html`<div style="margin-top: 0.5rem;"><${KidCard} kid=${monthlyRevealKid} size="sm" /></div>` : null}
+                </div>
+
+                <!-- Monthly: current project kid -->
+                <div class="form-group">
+                  <label class="form-label">Current Project</label>
+                  <select class="form-input" value=${monthlyCurrentSlug} onChange=${e => setMonthlyCurrentSlug(e.target.value)}>
+                    <option value="">None</option>
+                    ${inProgressKids.map(k => html`<option key=${k.slug} value=${k.slug}>${k.name} — ${k.roomTypes?.join(', ') || ''}</option>`)}
+                  </select>
+                  ${monthlyCurrentKid ? html`<div style="margin-top: 0.5rem;"><${KidCard} kid=${monthlyCurrentKid} size="sm" /></div>` : null}
+                </div>
+
+                <!-- Monthly: founder note -->
+                <div class="form-group">
+                  <label class="form-label">Founder Note <span style="font-weight: 400; color: var(--color-text-muted);">(optional)</span></label>
+                  <textarea class="form-input" rows="3" placeholder="Personal monthly note. Leave blank for default." value=${monthlyNote} onInput=${e => setMonthlyNote(e.target.value)} style="resize: vertical;" />
+                </div>
+
+                <!-- Auto-populated info -->
+                <div style="padding: 0.75rem 1rem; background: var(--color-primary-bg); border-radius: var(--radius-sm); margin-bottom: 1.25rem; font-size: 0.8rem; color: var(--color-text-secondary);">
+                  Stats (${completedKids.length} kids, ${completedKids.reduce((s, k) => s + (k.roomCount || 1), 0)} rooms, ${new Date().getFullYear() - 2012} years) and upcoming events are auto-populated.
+                </div>
+              `}
+
+              <!-- Action buttons -->
+              <div style="display: flex; gap: 0.75rem;">
+                <button class="btn btn-ghost" style="flex: 1;"
+                  onClick=${handlePreview}
+                  disabled=${sending || (template !== 'monthly' && !selectedSlug)}>
+                  ${sending && !result ? html`<div class="spinner" style="width: 14px; height: 14px; border-width: 2px;" />` : 'Preview'}
+                </button>
+                <button class="btn btn-primary" style="flex: 2;"
+                  onClick=${handleCreate}
+                  disabled=${sending || (template !== 'monthly' && !selectedSlug)}>
+                  ${sending ? html`<div class="spinner" style="width: 14px; height: 14px; border-width: 2px; border-top-color: var(--color-text);" />` : 'Create Broadcast Draft'}
+                </button>
+              </div>
+
+              <!-- Success result -->
+              ${result ? html`
+                <div style="margin-top: 1.25rem; padding: 1rem 1.25rem; background: rgba(56, 161, 105, 0.06); border: 1px solid rgba(56, 161, 105, 0.2); border-radius: var(--radius-sm);">
+                  <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
+                    <span style="color: var(--color-success);">${icons.check}</span>
+                    <span style="font-weight: 600; color: var(--color-success); font-size: 0.9rem;">Draft Created in Resend</span>
+                  </div>
+                  <p style="margin: 0 0 0.75rem; font-size: 0.8rem; color: var(--color-text-secondary); line-height: 1.5;">
+                    <strong>${result.name}</strong><br/>
+                    Subject: ${result.subject}
+                  </p>
+                  <a href="https://resend.com/broadcasts" target="_blank" rel="noopener noreferrer"
+                    class="btn btn-secondary" style="width: 100%; font-size: 0.85rem; padding: 0.6rem; justify-content: center;">
+                    Review & Send in Resend ↗
+                  </a>
+                </div>
+              ` : null}
+            </div>
+
+            <!-- Preview panel -->
+            ${showPreview ? html`
+              <div class="card" style="padding: 0; overflow: hidden; position: sticky; top: 1rem;">
+                <div style="padding: 0.75rem 1.25rem; border-bottom: 1px solid var(--color-border); display: flex; align-items: center; justify-content: space-between;">
+                  <div style="font-weight: 600; font-size: 0.85rem;">Email Preview</div>
+                  <div style="display: flex; gap: 0.5rem;">
+                    <button class="btn btn-sm btn-ghost" onClick=${() => {
+                      const w = window.open('', '_blank');
+                      w.document.write(previewHtml);
+                      w.document.close();
+                    }}>Open in Tab ↗</button>
+                    <button class="btn btn-sm btn-ghost" onClick=${() => { setShowPreview(false); setPreviewHtml(''); }}>${icons.x}</button>
+                  </div>
+                </div>
+                <iframe ref=${previewRef} style="width: 100%; height: calc(100vh - 180px); border: none; background: #F5F4F0;" title="Email preview" />
+              </div>
+            ` : null}
+          </div>
+        </div>
+      `;
+    }
+
     function AuditLogPage({ addToast }) {
       const [entries, setEntries] = useState([]);
       const [total, setTotal] = useState(0);
@@ -10782,6 +11119,9 @@
           { id: 'events', icon: icons.events, label: 'Events' },
           { id: 'press-hub', icon: icons.press, label: 'Press' },
         ]},
+        { label: 'Comms', items: [
+          { id: 'email', icon: icons.mail, label: 'Email' },
+        ]},
         { label: 'Site', items: [
           { id: 'site-hub', icon: icons.settings, label: 'Site Config' },
           { id: 'audit-log', icon: icons.auditLog, label: 'Audit Log' },
@@ -10922,6 +11262,9 @@
 
           case 'audit-log':
             return html`<${AuditLogPage} addToast=${addToast} />`;
+
+          case 'email':
+            return html`<${EmailComposer} kids=${kids} events=${events} addToast=${addToast} />`;
 
           case 'deploys':
             return html`<${Deploys} addToast=${addToast} />`;
