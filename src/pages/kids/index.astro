@@ -584,6 +584,7 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
     let allCardsLoaded = false;
     let statusActive = false;
     let currentSort = 'newest';
+    let isTyping = false;
     const originalTexts = new WeakMap<HTMLElement, { name: string; diagnosis: string }>();
 
     // ── DOM refs ──
@@ -1148,13 +1149,14 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
         }
       }
 
-      // No DOM reorder during search — cards stay in sort order, search only
-      // shows/hides. This preserves spatial memory, avoids image flash from
-      // DOM detachment, and matches best-in-class grid filter UX (Airbnb, Zillow).
-      // Relevance score is still used above for the match threshold (fuzzyMatch > 0).
-
-      // FLIP animate position changes from cards appearing/disappearing
-      requestAnimationFrame(() => animateFLIP(oldPos));
+      // FLIP animate position changes — but NOT during typing.
+      // Typing triggers applyFilters every 80ms; FLIP takes 350ms. Overlapping
+      // FLIPs cause cards to snap/jump (the "flash"). Skip FLIP while typing —
+      // cards just appear/disappear instantly. FLIP runs on discrete actions
+      // (sort change, dropdown filter, clear) where there's no rapid-fire overlap.
+      if (!isTyping) {
+        requestAnimationFrame(() => animateFLIP(oldPos));
+      }
 
       // Update status text — use stable DOM references, never recreate #visible-count
       const totalText = String(cachedCards.length);
@@ -1223,6 +1225,7 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
 
     function clearAll() {
       searchInput.value = '';
+      isTyping = false;
       searchInput.style.paddingRight = '';
       searchCountEl.hidden = true;
       searchClear.hidden = true;
@@ -1280,17 +1283,25 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
     }
 
     // Search input: debounced single-pass filter-as-you-type
+    let typingEndTimer: ReturnType<typeof setTimeout>;
     searchInput.addEventListener('input', () => {
       clearTimeout(searchTimer);
+      clearTimeout(typingEndTimer);
       const val = searchInput.value;
       searchClear.hidden = !val;
       if (kbdHint) kbdHint.classList.toggle('is-hidden', !!val);
+
+      // Flag typing state — suppresses FLIP during rapid keystrokes
+      isTyping = true;
 
       // Debounce the single-pass DOM filter
       visibleCountEl.style.opacity = '0.4';
       searchTimer = setTimeout(() => {
         visibleCountEl.style.opacity = '';
         applyFilters();
+        // Clear typing flag after a settling pause — next discrete
+        // action (dropdown, clear) will get FLIP animation
+        typingEndTimer = setTimeout(() => { isTyping = false; }, 300);
       }, 80);
     }, { signal });
 
@@ -1302,6 +1313,7 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
     }, { signal });
 
     searchClear.addEventListener('click', () => {
+      isTyping = false;
       searchInput.value = '';
       searchClear.hidden = true;
       searchCountEl.hidden = true;
