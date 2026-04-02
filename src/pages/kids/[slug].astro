@@ -188,13 +188,16 @@ const usePhotoEssay = hasStoryPhotos
   ? remainingParas.length >= 1
   : remainingParas.length >= 2 && galleryPhotos.length >= 3;
 
+// Each item uses a fundamentally different GRID LAYOUT:
+//   spread   — photo 70% + text 30% alongside (asymmetric 2-col)
+//   reverse  — text 35% + photo 65% (flipped, different proportions)
+//   moment   — full-width photo, text below, narrow centered
+//   accent   — smaller photo (45%) offset, text alongside
 type EssayItem =
-  | { type: 'cinematic'; photo: typeof photos[0] }
-  | { type: 'duo'; photos: [typeof photos[0], typeof photos[0]] }
-  | { type: 'offset'; photo: typeof photos[0]; side: 'left' | 'right' }
-  | { type: 'contained'; photo: typeof photos[0] }
-  | { type: 'lede'; text: string }
-  | { type: 'text'; text: string }
+  | { type: 'spread'; photo: typeof photos[0]; text: string }
+  | { type: 'reverse'; photo: typeof photos[0]; text: string }
+  | { type: 'moment'; photo: typeof photos[0]; text?: string }
+  | { type: 'accent'; photo: typeof photos[0]; text: string; side: 'left' | 'right' }
   | { type: 'quote'; text: string };
 
 let essayItems: EssayItem[] = [];
@@ -213,34 +216,23 @@ if (usePhotoEssay) {
   let paraIdx = 0;
 
   if (n >= 4) {
-    // 4+ photos: cinematic → lede → duo(2,3) → text → [quote] → offset(4) → text
-    essayItems.push({ type: 'cinematic', photo: srcPhotos[0] });
-    if (paras[paraIdx]) essayItems.push({ type: 'lede', text: paras[paraIdx++] });
-    essayItems.push({ type: 'duo', photos: [srcPhotos[1], srcPhotos[2]] });
-    if (paras[paraIdx]) essayItems.push({ type: 'text', text: paras[paraIdx++] });
+    // spread(1) → reverse(2) → [quote] → moment(3) → accent(4)
+    essayItems.push({ type: 'spread', photo: srcPhotos[0], text: paras[paraIdx++] || '' });
+    essayItems.push({ type: 'reverse', photo: srcPhotos[1], text: paras[paraIdx++] || '' });
     if (pullQuote) essayItems.push({ type: 'quote', text: pullQuote });
-    essayItems.push({ type: 'offset', photo: srcPhotos[3], side: 'right' });
-    if (paras[paraIdx]) essayItems.push({ type: 'text', text: paras[paraIdx++] });
+    essayItems.push({ type: 'moment', photo: srcPhotos[2], text: paras[paraIdx++] });
+    essayItems.push({ type: 'accent', photo: srcPhotos[3], text: paras[paraIdx++] || '', side: 'right' });
   } else if (n === 3) {
-    // 3 photos: cinematic → lede → contained → text → [quote] → offset → text
-    essayItems.push({ type: 'cinematic', photo: srcPhotos[0] });
-    if (paras[paraIdx]) essayItems.push({ type: 'lede', text: paras[paraIdx++] });
-    essayItems.push({ type: 'contained', photo: srcPhotos[1] });
-    if (paras[paraIdx]) essayItems.push({ type: 'text', text: paras[paraIdx++] });
+    essayItems.push({ type: 'spread', photo: srcPhotos[0], text: paras[paraIdx++] || '' });
     if (pullQuote) essayItems.push({ type: 'quote', text: pullQuote });
-    essayItems.push({ type: 'offset', photo: srcPhotos[2], side: 'left' });
-    if (paras[paraIdx]) essayItems.push({ type: 'text', text: paras[paraIdx++] });
+    essayItems.push({ type: 'reverse', photo: srcPhotos[1], text: paras[paraIdx++] || '' });
+    essayItems.push({ type: 'moment', photo: srcPhotos[2], text: paras[paraIdx++] });
   } else if (n === 2) {
-    // 2 photos: cinematic → lede → [quote] → contained → text
-    essayItems.push({ type: 'cinematic', photo: srcPhotos[0] });
-    if (paras[paraIdx]) essayItems.push({ type: 'lede', text: paras[paraIdx++] });
+    essayItems.push({ type: 'spread', photo: srcPhotos[0], text: paras[paraIdx++] || '' });
     if (pullQuote) essayItems.push({ type: 'quote', text: pullQuote });
-    essayItems.push({ type: 'contained', photo: srcPhotos[1] });
-    if (paras[paraIdx]) essayItems.push({ type: 'text', text: paras[paraIdx++] });
+    essayItems.push({ type: 'moment', photo: srcPhotos[1], text: paras[paraIdx++] });
   } else {
-    // 1 photo: cinematic → lede
-    essayItems.push({ type: 'cinematic', photo: srcPhotos[0] });
-    if (paras[paraIdx]) essayItems.push({ type: 'lede', text: paras[paraIdx++] });
+    essayItems.push({ type: 'moment', photo: srcPhotos[0], text: paras[paraIdx++] });
     if (pullQuote) essayItems.push({ type: 'quote', text: pullQuote });
   }
   overflowParas = paras.slice(paraIdx);
@@ -270,233 +262,218 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
   <div class="scroll-progress" aria-hidden="true"></div>
 
   <article class="kid-profile" itemscope itemtype="https://schema.org/Article">
-    <!-- ═══ Hero: Split Layout ═══════════════ -->
+    <!-- ═══ Hero: Magazine Cover ════════════ -->
     <section class="hero">
-      <div class="container">
-        <a href="/kids/" class="hero__back stagger" aria-label="Back to all kids">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
-          Meet the Kids
-        </a>
+      <a href="/kids/" class="hero__back stagger" aria-label="Back to all kids">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+        All Kids
+      </a>
 
-        <div class="hero__split">
-          {kid.heroImage ? (
-            <div class="hero__portrait" style={`--lqip: url('${lqip(kid.heroImage)}')`} transition:name="kid-hero">
-              <picture>
-                <source
-                  media="(max-width: 768px)"
-                  srcset={heroMobileSrcset}
-                  sizes={heroMobileSizes}
-                  width="300"
-                  height="400"
-                />
-                <img
-                  src={cfUrl(kid.heroImage, 'w=600,h=800,fit=cover,gravity=face,q=85')}
-                  srcset={heroSrcset}
-                  sizes={heroSizes}
-                  alt={`Photo of ${kid.name}${kid.diagnosis ? ` — ${kid.diagnosis}` : ''}`}
-                  class="hero__img lqip-img"
-                  width="600"
-                  height="800"
-                  loading="eager"
-                  decoding="async"
-                  fetchpriority="high"
-                  itemprop="image"
-                />
-              </picture>
-              {kid.status === 'in-progress' && (
-                <span class="hero__badge">In Progress</span>
-              )}
-            </div>
-          ) : (
-            <div class="hero__portrait hero__portrait--empty">
-              <svg class="hero__placeholder-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
-                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-                <circle cx="12" cy="7" r="4"/>
-              </svg>
-              <span class="hero__placeholder-text">{kid.name}</span>
-            </div>
+      <div class="hero__split">
+        {kid.heroImage ? (
+          <div class="hero__portrait" style={`--lqip: url('${lqip(kid.heroImage)}')`} transition:name="kid-hero">
+            <picture>
+              <source
+                media="(max-width: 768px)"
+                srcset={heroMobileSrcset}
+                sizes={heroMobileSizes}
+                width="300"
+                height="400"
+              />
+              <img
+                src={cfUrl(kid.heroImage, 'w=800,h=1000,fit=cover,gravity=face,q=85')}
+                srcset={heroSrcset}
+                sizes={heroSizes}
+                alt={`Photo of ${kid.name}${kid.diagnosis ? ` — ${kid.diagnosis}` : ''}`}
+                class="hero__img lqip-img"
+                width="800"
+                height="1000"
+                loading="eager"
+                decoding="async"
+                fetchpriority="high"
+                itemprop="image"
+              />
+            </picture>
+            {kid.status === 'in-progress' && (
+              <span class="hero__badge">In Progress</span>
+            )}
+          </div>
+        ) : (
+          <div class="hero__portrait hero__portrait--empty">
+            <svg class="hero__placeholder-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+              <circle cx="12" cy="7" r="4"/>
+            </svg>
+            <span class="hero__placeholder-text">{kid.name}</span>
+          </div>
+        )}
+
+        <div class="hero__info">
+          <h1 class="hero__name" itemprop="headline" transition:name="kid-name">{kid.name}</h1>
+
+          {kid.diagnosis && (
+            <p class="hero__diagnosis stagger">{kid.diagnosis}</p>
           )}
 
-          <div class="hero__info">
-            <h1 class="hero__name" itemprop="headline" transition:name="kid-name">{kid.name}</h1>
+          {hasDetails && (
+            <p class="hero__meta stagger">
+              {[
+                kid.age && `Age ${Array.isArray(kid.age) ? kid.age.join(' & ') : kid.age}`,
+                kid.roomTypes?.length && kid.roomTypes.join(' & '),
+                kid.year,
+              ].filter(Boolean).join(' · ')}
+            </p>
+          )}
 
-            {kid.roomTypes && kid.roomTypes.length > 0 && (
-              <p class="hero__diagnosis stagger">{kid.roomTypes.join(' & ')}</p>
+          <div class="hero__actions stagger">
+            {kid.fundraisingUrl && (
+              <a href={kid.fundraisingUrl} target="_blank" rel="noopener noreferrer" class="hero__donate-btn">
+                Donate
+              </a>
             )}
-
-            {hasDetails && (
-              <div class="hero__details stagger">
-                {kid.age && (
-                  <div class="detail-chip">
-                    <span class="detail-chip__label">{Array.isArray(kid.age) && kid.age.length > 1 ? 'Ages' : 'Age'}</span>
-                    <span class="detail-chip__value">{Array.isArray(kid.age) ? kid.age.join(', ') : kid.age}</span>
-                  </div>
-                )}
-                {kid.diagnosis && (
-                  <div class="detail-chip">
-                    <span class="detail-chip__label">Diagnosis</span>
-                    <span class="detail-chip__value">{kid.diagnosis}</span>
-                  </div>
-                )}
-                {kid.year && (
-                  <div class="detail-chip">
-                    <span class="detail-chip__label">Year</span>
-                    <span class="detail-chip__value">{kid.year}</span>
-                  </div>
-                )}
-                {kid.roomCount && kid.roomCount > 1 && (
-                  <div class="detail-chip">
-                    <span class="detail-chip__label">Rooms</span>
-                    <span class="detail-chip__value">{kid.roomCount}</span>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {(kid.heroSummary || introPara) && (
-              <p class="hero__intro stagger" itemprop="description">{kid.heroSummary || introPara}</p>
-            )}
-
-            <div class="hero__actions stagger">
-              {kid.fundraisingUrl && (
-                <a href={kid.fundraisingUrl} target="_blank" rel="noopener noreferrer" class="hero__donate-btn">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 9.5a5.5 5.5 0 0 1 9.591-3.676.56.56 0 0 0 .818 0A5.49 5.49 0 0 1 22 9.5c0 2.29-1.5 4-3 5.5l-5.492 5.313a2 2 0 0 1-3 .019L5 15c-1.5-1.5-3-3.2-3-5.5"/></svg>
-                  Donate for {kid.name}
-                </a>
-              )}
-              <button class="hero__share-btn" id="share-btn" type="button" aria-label="Share this story">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
-                Share
-              </button>
-            </div>
+            <button class="hero__share-btn" id="share-btn" type="button" aria-label="Share this story">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+              Share
+            </button>
           </div>
         </div>
       </div>
     </section>
 
-    <!-- ═══ Photo Essay — NatGeo-Inspired ═══ -->
+    <!-- ═══ Lede: The Opening Statement ═══ -->
+    {(kid.heroSummary || introPara) && (
+      <section class="lede">
+        <div class="container container--narrow">
+          <p class="lede__text prose--dropcap" itemprop="description">
+            <span set:html={kid.heroSummary || introPara} />
+          </p>
+        </div>
+      </section>
+    )}
+
+    <!-- ═══ Magazine Spreads — Photo Essay ═══ -->
     {essayItems.length > 0 && (
       <section class="essay" itemprop="articleBody">
         {essayItems.map((item, i) => {
-          /* ── Cinematic: massive, near-viewport-width ── */
-          if (item.type === 'cinematic') {
+          /* ── Spread: photo 70% + text 30% alongside ── */
+          if (item.type === 'spread') {
             const [w, h] = dims(item.photo.url);
+            const isFirst = i === 0;
             return (
-              <figure class="essay__cinematic stagger-section">
-                <div class="essay__img-wrap" style={`--lqip: url('${lqip(item.photo.url)}')`}>
-                  <img
-                    src={_cfUrl(item.photo.url, { w: 1400, q: 85 })}
-                    srcset={_cfSrcset(item.photo.url, [600, 900, 1400, 2000])}
-                    sizes="(max-width: 768px) 100vw, (max-width: 1400px) 94vw, 1320px"
-                    alt={item.photo.alt || `${kid.name}'s room`}
-                    class="essay__img lqip-img"
-                    loading={i === 0 ? 'eager' : 'lazy'}
-                    decoding="async"
-                    width={w}
-                    height={h}
-                  />
+              <div class="spread stagger-section">
+                <div class="container">
+                  <div class="spread__grid">
+                    <figure class="spread__media">
+                      <div class="essay__img-wrap" style={`--lqip: url('${lqip(item.photo.url)}')`}>
+                        <img
+                          src={_cfUrl(item.photo.url, { w: 1200, q: 85 })}
+                          srcset={_cfSrcset(item.photo.url, [600, 900, 1200, 1600])}
+                          sizes="(max-width: 768px) 100vw, (max-width: 1200px) 66vw, 760px"
+                          alt={item.photo.alt || `${kid.name}'s room`}
+                          class="essay__img lqip-img"
+                          loading={isFirst ? 'eager' : 'lazy'}
+                          decoding="async"
+                          width={w}
+                          height={h}
+                        />
+                      </div>
+                    </figure>
+                    <div class={`spread__text ${isFirst ? 'prose--dropcap' : ''}`}>
+                      <div class="spread__text-inner" set:html={`<p>${item.text}</p>`} />
+                    </div>
+                  </div>
                 </div>
-              </figure>
-            );
-          }
-
-          /* ── Duo: two photos side by side ── */
-          if (item.type === 'duo') {
-            const [p1, p2] = item.photos;
-            return (
-              <div class="essay__duo stagger-section">
-                <figure class="essay__duo-fig">
-                  <div class="essay__img-wrap" style={`--lqip: url('${lqip(p1.url)}')`}>
-                    <img
-                      src={_cfUrl(p1.url, { w: 700, q: 85 })}
-                      srcset={_cfSrcset(p1.url, [400, 700, 1000])}
-                      sizes="(max-width: 768px) 48vw, (max-width: 1200px) 44vw, 520px"
-                      alt={p1.alt || `${kid.name}'s room`}
-                      class="essay__img lqip-img"
-                      loading="lazy"
-                      decoding="async"
-                      width={dims(p1.url)[0]}
-                      height={dims(p1.url)[1]}
-                    />
-                  </div>
-                </figure>
-                <figure class="essay__duo-fig">
-                  <div class="essay__img-wrap" style={`--lqip: url('${lqip(p2.url)}')`}>
-                    <img
-                      src={_cfUrl(p2.url, { w: 700, q: 85 })}
-                      srcset={_cfSrcset(p2.url, [400, 700, 1000])}
-                      sizes="(max-width: 768px) 48vw, (max-width: 1200px) 44vw, 520px"
-                      alt={p2.alt || `${kid.name}'s room`}
-                      class="essay__img lqip-img"
-                      loading="lazy"
-                      decoding="async"
-                      width={dims(p2.url)[0]}
-                      height={dims(p2.url)[1]}
-                    />
-                  </div>
-                </figure>
               </div>
             );
           }
 
-          /* ── Offset: photo pushed to one side, breathing room ── */
-          if (item.type === 'offset') {
+          /* ── Reverse: text 35% + photo 65% (flipped) ── */
+          if (item.type === 'reverse') {
             const [w, h] = dims(item.photo.url);
             return (
-              <figure class={`essay__offset essay__offset--${item.side} stagger-section`}>
-                <div class="essay__img-wrap" style={`--lqip: url('${lqip(item.photo.url)}')`}>
-                  <img
-                    src={_cfUrl(item.photo.url, { w: 900, q: 85 })}
-                    srcset={_cfSrcset(item.photo.url, [500, 800, 1200])}
-                    sizes="(max-width: 768px) 92vw, (max-width: 1200px) 58vw, 680px"
-                    alt={item.photo.alt || `${kid.name}'s room`}
-                    class="essay__img lqip-img"
-                    loading="lazy"
-                    decoding="async"
-                    width={w}
-                    height={h}
-                  />
+              <div class="spread spread--reverse stagger-section">
+                <div class="container">
+                  <div class="spread__grid spread__grid--reverse">
+                    <div class="spread__text">
+                      <div class="spread__text-inner" set:html={`<p>${item.text}</p>`} />
+                    </div>
+                    <figure class="spread__media">
+                      <div class="essay__img-wrap" style={`--lqip: url('${lqip(item.photo.url)}')`}>
+                        <img
+                          src={_cfUrl(item.photo.url, { w: 1000, q: 85 })}
+                          srcset={_cfSrcset(item.photo.url, [500, 800, 1200])}
+                          sizes="(max-width: 768px) 100vw, (max-width: 1200px) 60vw, 680px"
+                          alt={item.photo.alt || `${kid.name}'s room`}
+                          class="essay__img lqip-img"
+                          loading="lazy"
+                          decoding="async"
+                          width={w}
+                          height={h}
+                        />
+                      </div>
+                    </figure>
+                  </div>
                 </div>
-              </figure>
-            );
-          }
-
-          /* ── Contained: standard editorial width ── */
-          if (item.type === 'contained') {
-            const [w, h] = dims(item.photo.url);
-            return (
-              <figure class="essay__contained stagger-section">
-                <div class="essay__img-wrap" style={`--lqip: url('${lqip(item.photo.url)}')`}>
-                  <img
-                    src={_cfUrl(item.photo.url, { w: 900, q: 85 })}
-                    srcset={_cfSrcset(item.photo.url, [500, 800, 1200])}
-                    sizes="(max-width: 768px) 92vw, (max-width: 1200px) 72vw, 820px"
-                    alt={item.photo.alt || `${kid.name}'s room`}
-                    class="essay__img lqip-img"
-                    loading="lazy"
-                    decoding="async"
-                    width={w}
-                    height={h}
-                  />
-                </div>
-              </figure>
-            );
-          }
-
-          /* ── Lede: display-sized opening text ── */
-          if (item.type === 'lede') {
-            return (
-              <div class="essay__lede stagger-section prose--dropcap">
-                <div class="essay__lede-inner" set:html={`<p>${item.text}</p>`} />
               </div>
             );
           }
 
-          /* ── Text: narrow centered paragraph ── */
-          if (item.type === 'text') {
+          /* ── Moment: full-width photo, text below centered ── */
+          if (item.type === 'moment') {
+            const [w, h] = dims(item.photo.url);
             return (
-              <div class="essay__text stagger-section">
-                <div class="essay__text-inner" set:html={`<p>${item.text}</p>`} />
+              <div class="moment stagger-section">
+                <figure class="moment__media">
+                  <div class="essay__img-wrap" style={`--lqip: url('${lqip(item.photo.url)}')`}>
+                    <img
+                      src={_cfUrl(item.photo.url, { w: 1400, q: 85 })}
+                      srcset={_cfSrcset(item.photo.url, [600, 900, 1400, 2000])}
+                      sizes="(max-width: 768px) 100vw, (max-width: 1400px) 90vw, 1200px"
+                      alt={item.photo.alt || `${kid.name}'s room`}
+                      class="essay__img lqip-img"
+                      loading="lazy"
+                      decoding="async"
+                      width={w}
+                      height={h}
+                    />
+                  </div>
+                </figure>
+                {item.text && (
+                  <div class="moment__text">
+                    <div class="moment__text-inner" set:html={`<p>${item.text}</p>`} />
+                  </div>
+                )}
+              </div>
+            );
+          }
+
+          /* ── Accent: smaller photo offset, text alongside ── */
+          if (item.type === 'accent') {
+            const [w, h] = dims(item.photo.url);
+            return (
+              <div class={`accent accent--${item.side} stagger-section`}>
+                <div class="container">
+                  <div class="accent__grid">
+                    <div class="accent__text">
+                      <div class="accent__text-inner" set:html={`<p>${item.text}</p>`} />
+                    </div>
+                    <figure class="accent__media">
+                      <div class="essay__img-wrap" style={`--lqip: url('${lqip(item.photo.url)}')`}>
+                        <img
+                          src={_cfUrl(item.photo.url, { w: 800, q: 85 })}
+                          srcset={_cfSrcset(item.photo.url, [400, 600, 900])}
+                          sizes="(max-width: 768px) 92vw, (max-width: 1200px) 42vw, 480px"
+                          alt={item.photo.alt || `${kid.name}'s room`}
+                          class="essay__img lqip-img"
+                          loading="lazy"
+                          decoding="async"
+                          width={w}
+                          height={h}
+                        />
+                      </div>
+                    </figure>
+                  </div>
+                </div>
               </div>
             );
           }
@@ -631,12 +608,16 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
           </div>
           <div class="bento" id="gallery">
             {galleryPhotos.map((photo, i) => {
-              // Bento sizing: hero (0), tall (1,5,9...), wide (3,7,11...), standard (rest)
+              // Aspect-ratio-aware bento: read REAL dimensions from
+              // build-time manifest. Portrait → tall (span 2 rows),
+              // landscape → wide (span 2 cols), square → standard.
               const isHero = i === 0;
-              const isTall = !isHero && (i % 4 === 1);
-              const isWide = !isHero && (i % 4 === 3) && i < 16;
+              const [pw, ph] = dims(photo.url);
+              const ar = pw / ph;
+              const isTall = !isHero && ar < 0.85;    // portrait
+              const isWide = !isHero && ar > 1.4;     // landscape
               const bentoClass = isHero ? 'bento__hero' : isTall ? 'bento__tall' : isWide ? 'bento__wide' : '';
-              const imgW = isHero ? 1000 : 600;
+              const imgW = isHero ? 1000 : (isTall || isWide) ? 800 : 600;
               const srcsetWidths = isHero ? [500, 800, 1200] : [300, 500, 800];
               const sizesAttr = isHero
                 ? '(max-width: 768px) 92vw, (max-width: 1100px) 60vw, 580px'
@@ -1317,54 +1298,62 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     line-height: 1.2;
   }
 
-  /* ═══ Hero: Split Layout ═══════════════════ */
+  /* ═══ Hero — Magazine Cover ═══════════════
+     Portrait bleeds to the left viewport edge.
+     No left padding. No left border-radius.
+     The image touches the screen like a magazine
+     cover that's been cut. Name is 8vw+.
+     ═══════════════════════════════════════════ */
   .hero {
     padding-top: var(--space-lg);
-    padding-bottom: var(--space-3xl);
+    padding-bottom: 0;
     background: var(--c-cream);
+    overflow: hidden;
   }
 
   .hero__back {
+    position: absolute;
+    top: var(--space-lg);
+    right: var(--page-padding);
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    color: var(--c-dark);
-    font-size: 0.82rem;
+    gap: 5px;
+    color: var(--c-text-muted);
+    font-size: 0.72rem;
     font-weight: 600;
+    letter-spacing: 0.08em;
     text-decoration: none;
-    margin-bottom: var(--space-xl);
-    padding: 0.45rem 1rem 0.45rem 0.75rem;
-    background: var(--c-white);
-    border: 1px solid var(--c-border);
-    border-radius: 999px;
-    transition: background var(--transition-fast), box-shadow var(--transition-fast);
+    text-transform: uppercase;
+    z-index: 5;
+    transition: color var(--transition-fast);
   }
 
   .hero__back:hover {
-    background: var(--c-cream-dark, #f3efe6);
-    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    color: var(--c-dark);
   }
 
   .hero__split {
     display: grid;
-    grid-template-columns: 3fr 2fr;
-    gap: clamp(var(--space-xl), 4vw, var(--space-3xl));
-    align-items: center;
+    grid-template-columns: 1fr 1fr;
+    gap: 0;
+    align-items: stretch;
+    min-height: 70vh;
+    max-height: 85vh;
   }
 
+  /* ── Portrait: bleeds to left edge ── */
   .hero__portrait {
     position: relative;
-    border-radius: var(--profile-radius);
     overflow: hidden;
-    aspect-ratio: 3 / 4;
-    max-height: 620px;
     background-color: var(--c-warm-gray);
+    /* No left radius — touches viewport edge.
+       Right corners get dramatic radius. */
+    border-radius: 0 var(--profile-radius) var(--profile-radius) 0;
+    /* Dramatic asymmetric shadow */
     box-shadow:
-      0 4px 6px rgba(0, 0, 0, 0.05),
-      0 16px 48px rgba(0, 0, 0, 0.1),
-      0 -3px 0 var(--c-yellow);
+      8px 0 16px rgba(0, 0, 0, 0.04),
+      24px 0 64px rgba(0, 0, 0, 0.08);
   }
-
 
   .hero__portrait--empty {
     display: flex;
@@ -1392,98 +1381,61 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     height: 100%;
     object-fit: cover;
     display: block;
-    position: relative;
-    z-index: 2;
   }
 
   .hero__badge {
     position: absolute;
-    top: 10px;
-    right: 10px;
+    top: 16px;
+    right: 16px;
     z-index: 3;
     background: var(--c-yellow);
     color: var(--c-dark);
-    font-size: 0.7rem;
+    font-size: 0.6rem;
     font-weight: 700;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.12em;
     text-transform: uppercase;
-    padding: 6px 14px;
+    padding: 5px 12px;
     border-radius: 100px;
   }
 
+  /* ── Info: vertically centered alongside portrait ── */
   .hero__info {
     display: flex;
     flex-direction: column;
-    gap: 0;
+    justify-content: center;
+    padding: var(--space-3xl) clamp(var(--space-2xl), 5vw, var(--space-4xl, 6rem));
+    padding-right: var(--page-padding);
   }
 
+  /* ── Name: architectural, massive ── */
   .hero__name {
     font-family: var(--font-display);
-    font-size: clamp(2.8rem, 6vw, 4.5rem);
+    font-size: clamp(3.5rem, 8vw, 7rem);
     color: var(--c-dark);
-    line-height: 1.05;
-    letter-spacing: -0.02em;
-    margin-bottom: var(--space-sm);
+    line-height: 0.9;
+    letter-spacing: -0.04em;
+    margin-bottom: var(--space-xl);
   }
 
+  /* ── Diagnosis: italic serif, human ── */
   .hero__diagnosis {
-    font-size: clamp(1rem, 2vw, 1.2rem);
-    color: var(--c-text-muted);
-    font-weight: 400;
-    margin-bottom: var(--space-xl);
-    line-height: 1.4;
-  }
-
-  .hero__details {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
-    margin-bottom: var(--space-xl);
-  }
-
-  .detail-chip {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    padding: 10px 18px;
-    background: var(--c-white);
-    border: 1px solid var(--c-border);
-    border-radius: 12px;
-    min-width: 72px;
-    transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
-  }
-
-  .detail-chip:hover {
-    border-color: var(--c-yellow);
-    box-shadow: 0 0 0 3px var(--c-yellow-soft);
-  }
-
-  .detail-chip--room {
-    border-color: rgba(255, 218, 36, 0.4);
-    background: rgba(255, 218, 36, 0.06);
-  }
-
-  .detail-chip__label {
-    font-size: 0.65rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    color: var(--c-text-light);
-  }
-
-  .detail-chip__value {
-    font-size: 0.95rem;
-    font-weight: 600;
-    color: var(--c-dark);
-    line-height: 1.2;
-  }
-
-  .hero__intro {
-    font-size: 1.05rem;
-    line-height: 1.75;
+    font-family: var(--font-display);
+    font-style: italic;
+    font-size: clamp(1rem, 1.8vw, 1.25rem);
     color: var(--c-text);
-    margin-bottom: var(--space-xl);
-    max-width: 480px;
+    line-height: 1.4;
+    margin-bottom: var(--space-md);
+  }
+
+  /* ── Meta: tiny, uppercase, secondary ── */
+  .hero__meta {
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--c-text-light);
+    line-height: 1.4;
+    margin-bottom: var(--space-2xl);
   }
 
   .hero__actions {
@@ -1496,12 +1448,14 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
   .hero__donate-btn {
     display: inline-flex;
     align-items: center;
-    gap: 8px;
-    padding: 12px 24px;
+    gap: 6px;
+    padding: 10px 24px;
     background: var(--c-yellow);
     color: var(--c-dark);
     font-weight: 700;
-    font-size: 0.9rem;
+    font-size: 0.78rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
     border-radius: 100px;
     text-decoration: none;
     transition: transform 0.2s ease, box-shadow 0.2s ease;
@@ -1515,28 +1469,44 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
   .hero__share-btn {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    padding: 12px 20px;
+    gap: 5px;
+    padding: 10px 18px;
     background: transparent;
     border: 1px solid var(--c-border);
     border-radius: 100px;
     color: var(--c-text-muted);
-    font-size: 0.85rem;
-    font-weight: 500;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
     cursor: pointer;
-    transition: border-color var(--transition-fast), color var(--transition-fast), background var(--transition-fast);
+    transition: border-color var(--transition-fast), color var(--transition-fast);
   }
 
   .hero__share-btn:hover {
     border-color: var(--c-dark);
     color: var(--c-dark);
-    background: var(--c-white);
   }
 
   .hero__share-btn.shared {
     border-color: rgba(255, 218, 36, 0.5);
     color: var(--c-dark);
     background: rgba(255, 218, 36, 0.1);
+  }
+
+  /* ═══ Lede — Opening Statement ═══════════ */
+  .lede {
+    padding: var(--space-4xl, 5rem) 0 var(--space-3xl);
+    background: var(--c-white);
+  }
+
+  .lede__text {
+    font-family: var(--font-display);
+    font-size: clamp(1.2rem, 1.05rem + 0.45vw, 1.5rem);
+    line-height: 1.7;
+    color: var(--c-dark);
+    text-wrap: pretty;
+    max-width: 52ch;
   }
 
   /* ═══ Story Section ════════════════════════ */
@@ -1596,14 +1566,13 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     color: var(--c-text);
   }
 
-  /* ═══ Photo Essay — NatGeo Vertical Sequence ═══
-     5 distinct layout compositions:
-       cinematic  — near-viewport width, maximum impact
-       duo        — two photos side by side
-       offset     — photo pushed to one side, negative space
-       contained  — standard editorial width
-       lede       — display-sized opening text (not body copy)
-     Text is always narrow (58ch) and centered.
+  /* ═══ Magazine Spreads — Photo Essay ═════════
+     4 structurally different grid layouts:
+       spread   — photo 70% + text 30% alongside
+       reverse  — text 35% + photo 65% (flipped)
+       moment   — full-width photo, text below centered
+       accent   — smaller photo offset, text alongside
+     Every scroll reveals a different composition.
      ═══════════════════════════════════════════════ */
   .essay {
     background: var(--c-white);
@@ -1627,111 +1596,145 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     object-fit: cover;
   }
 
-  /* ── Cinematic: massive, near-viewport-width ── */
-  .essay__cinematic {
-    margin: 0 auto var(--space-md);
-    max-width: 1320px;
-    padding-inline: var(--page-padding);
+  /* ── Scroll-driven parallax (CSS only, progressive) ── */
+  @supports (animation-timeline: view()) {
+    .spread__media .essay__img,
+    .moment__media .essay__img {
+      animation: essay-parallax linear both;
+      animation-timeline: view();
+      animation-range: entry 0% exit 100%;
+    }
+
+    .accent__media .essay__img {
+      animation: essay-parallax-subtle linear both;
+      animation-timeline: view();
+      animation-range: entry 0% exit 100%;
+    }
   }
 
-  .essay__cinematic .essay__img-wrap {
-    box-shadow:
-      0 8px 16px rgba(0, 0, 0, 0.06),
-      0 24px 64px rgba(0, 0, 0, 0.1);
+  @keyframes essay-parallax {
+    from { transform: scale(1.06) translateY(-2%); }
+    to   { transform: scale(1) translateY(1%); }
   }
 
-  /* ── Duo: two photos side by side ── */
-  .essay__duo {
+  @keyframes essay-parallax-subtle {
+    from { transform: scale(1.04) translateY(-1.5%); }
+    to   { transform: scale(1) translateY(0.5%); }
+  }
+
+  /* ═══ Spread: photo 70% + text 30% alongside ═══ */
+  .spread {
+    padding-block: var(--space-2xl);
+  }
+
+  .spread__grid {
     display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: clamp(8px, 1.5vw, 20px);
-    max-width: var(--max-width);
-    margin: 0 auto var(--space-md);
-    padding-inline: var(--page-padding);
+    grid-template-columns: 7fr 3fr;
+    gap: clamp(var(--space-xl), 4vw, var(--space-3xl));
+    align-items: center;
   }
 
-  .essay__duo-fig {
+  .spread__grid--reverse {
+    grid-template-columns: 35fr 65fr;
+  }
+
+  .spread__media {
     margin: 0;
   }
 
-  .essay__duo .essay__img-wrap {
-    box-shadow:
-      0 2px 6px rgba(0, 0, 0, 0.04),
-      0 8px 24px rgba(0, 0, 0, 0.06);
-  }
-
-  /* ── Offset: pushed to one side with negative space ── */
-  .essay__offset {
-    margin: 0 auto var(--space-md);
-    max-width: var(--max-width);
-    padding-inline: var(--page-padding);
-  }
-
-  .essay__offset .essay__img-wrap {
-    max-width: 62%;
+  .spread__media .essay__img-wrap {
     box-shadow:
       0 4px 8px rgba(0, 0, 0, 0.04),
-      0 12px 36px rgba(0, 0, 0, 0.07);
+      0 16px 48px rgba(0, 0, 0, 0.08);
   }
 
-  .essay__offset--right .essay__img-wrap {
-    margin-left: auto;
-  }
-
-  .essay__offset--left .essay__img-wrap {
-    margin-right: auto;
-  }
-
-  /* ── Contained: standard editorial width ── */
-  .essay__contained {
-    margin: 0 auto var(--space-md);
-    max-width: var(--max-width-narrow);
-    padding-inline: var(--page-padding);
-  }
-
-  .essay__contained .essay__img-wrap {
-    box-shadow:
-      0 2px 4px rgba(0, 0, 0, 0.03),
-      0 8px 24px rgba(0, 0, 0, 0.06);
-  }
-
-  /* ── Lede: display-sized opening text ── */
-  .essay__lede {
-    max-width: 58ch;
-    margin-inline: auto;
-    padding: var(--space-2xl) var(--page-padding) var(--space-xl);
-  }
-
-  .essay__lede-inner {
-    font-size: clamp(1.15rem, 1rem + 0.4vw, 1.3rem);
-    line-height: 1.85;
-    color: var(--c-text);
-    text-wrap: pretty;
-  }
-
-  .essay__lede-inner p {
-    margin: 0;
-  }
-
-  /* ── Text blocks — narrow, centered ── */
-  .essay__text {
-    max-width: 58ch;
-    margin-inline: auto;
-    padding: var(--space-lg) var(--page-padding) var(--space-xl);
-  }
-
-  .essay__text-inner {
+  .spread__text-inner {
     font-size: clamp(1.02rem, 0.94rem + 0.25vw, 1.12rem);
     line-height: 1.85;
     color: var(--c-text);
     text-wrap: pretty;
   }
 
-  .essay__text-inner p {
+  .spread__text-inner p { margin: 0; }
+
+  /* ═══ Moment: full-width photo + narrow text ═══ */
+  .moment {
+    padding-block: var(--space-xl);
+  }
+
+  .moment__media {
+    margin: 0 auto;
+    max-width: 1320px;
+    padding-inline: var(--page-padding);
+  }
+
+  .moment__media .essay__img-wrap {
+    box-shadow:
+      0 8px 16px rgba(0, 0, 0, 0.06),
+      0 24px 64px rgba(0, 0, 0, 0.1);
+  }
+
+  .moment__text {
+    max-width: 56ch;
+    margin-inline: auto;
+    padding: var(--space-2xl) var(--page-padding) var(--space-lg);
+  }
+
+  .moment__text-inner {
+    font-family: var(--font-display);
+    font-size: clamp(1.12rem, 1rem + 0.35vw, 1.28rem);
+    line-height: 1.8;
+    color: var(--c-dark);
+    text-wrap: pretty;
+  }
+
+  .moment__text-inner p { margin: 0; }
+
+  /* ═══ Accent: smaller photo + text alongside ═══ */
+  .accent {
+    padding-block: var(--space-2xl);
+  }
+
+  .accent__grid {
+    display: grid;
+    grid-template-columns: 1fr 45fr;
+    gap: clamp(var(--space-xl), 4vw, var(--space-3xl));
+    align-items: center;
+  }
+
+  /* Default: text left, photo right */
+  .accent__grid {
+    grid-template-columns: 55fr 45fr;
+  }
+
+  .accent--right .accent__media {
+    order: 1;
+  }
+
+  .accent--right .accent__text {
+    order: 0;
+  }
+
+  .accent__media {
     margin: 0;
   }
 
-  /* ── Pull quote — dramatic typographic break ── */
+  .accent__media .essay__img-wrap {
+    box-shadow:
+      0 2px 4px rgba(0, 0, 0, 0.03),
+      0 8px 24px rgba(0, 0, 0, 0.06);
+  }
+
+  .accent__text-inner {
+    font-size: clamp(1.02rem, 0.94rem + 0.25vw, 1.12rem);
+    line-height: 1.85;
+    color: var(--c-text);
+    text-wrap: pretty;
+  }
+
+  .accent__text-inner p { margin: 0; }
+
+  /* ═══ Pull quote — dramatic typographic break ═══ */
   .essay__quote {
     margin: var(--space-lg) 0 var(--space-xl);
     padding: var(--space-3xl) var(--page-padding);
@@ -1884,7 +1887,10 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     transform: translate(-50%, -50%) scale(1.08);
   }
 
-  /* ═══ Photo Gallery — CSS Grid with Featured Hero ═══ */
+  /* ═══ Bento Photo Gallery ════════════════════════════
+     Warm gray background creates the emotional shift
+     from "understanding the story" to "seeing the impact."
+     ═══════════════════════════════════════════════════ */
   .gallery {
     padding-block: var(--space-3xl);
     background: var(--c-warm-gray);
@@ -1961,7 +1967,7 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     display: block;
     position: relative;
     z-index: 2;
-    transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: transform 0.8s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
   .bento__overlay {
@@ -1974,21 +1980,24 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     justify-content: center;
     color: var(--c-white);
     opacity: 0;
-    transition: background 0.3s ease, opacity 0.3s ease;
+    transition: background 0.4s ease, opacity 0.4s ease;
     pointer-events: none;
   }
 
+  /* ── Ken-Burns hover: slow, alive drift (not just scale) ── */
   @media (hover: hover) {
     .bento__cell:hover {
       z-index: 2;
     }
 
     .bento__cell:hover .bento__img {
-      transform: scale(1.04);
+      transform: scale(1.06);
+      transition-duration: 3s;
+      transition-timing-function: cubic-bezier(0.25, 0.46, 0.45, 0.94);
     }
 
     .bento__cell:hover .bento__overlay {
-      background: rgba(0, 0, 0, 0.18);
+      background: rgba(0, 0, 0, 0.15);
       opacity: 1;
     }
   }
@@ -1997,6 +2006,26 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     outline: 3px solid var(--c-yellow);
     outline-offset: -3px;
     z-index: 4;
+  }
+
+  /* ── Staggered bento entrance via scroll-timeline ── */
+  @supports (animation-timeline: view()) {
+    .bento__cell {
+      animation: bento-enter 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+      animation-timeline: view();
+      animation-range: entry 0% entry 25%;
+    }
+
+    @keyframes bento-enter {
+      from {
+        opacity: 0;
+        transform: scale(0.95) translateY(8px);
+      }
+      to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+      }
+    }
   }
 
   /* ═══ Partners ═════════════════════════════ */
@@ -2435,83 +2464,85 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
   /* ═══ Responsive: Mobile ═══════════════════ */
   @media (max-width: 768px) {
     .hero {
-      padding-top: var(--space-md);
-      padding-bottom: var(--space-xl);
+      padding-top: 0;
     }
 
     .hero__back {
-      margin-bottom: var(--space-md);
+      top: var(--space-md);
+      right: var(--space-md);
     }
 
     .hero__split {
       grid-template-columns: 1fr;
-      gap: var(--space-lg);
+      gap: 0;
+      min-height: auto;
+      max-height: none;
     }
 
     .hero__portrait {
-      max-width: 300px;
-      margin-inline: auto;
-      aspect-ratio: 3 / 4;
+      aspect-ratio: 4 / 3;
+      border-radius: 0;
+      box-shadow: none;
+    }
+
+    .hero__info {
+      padding: var(--space-xl) var(--page-padding) var(--space-lg);
     }
 
     .hero__name {
-      font-size: clamp(2.2rem, 10vw, 3.2rem);
+      font-size: clamp(2.8rem, 12vw, 4rem);
+      margin-bottom: var(--space-md);
+    }
+
+    .hero__diagnosis {
+      font-size: 1rem;
+    }
+
+    .lede {
+      padding: var(--space-2xl) 0 var(--space-xl);
+    }
+
+    .lede__text {
+      font-size: 1.1rem;
     }
 
     .hero__intro {
       font-size: 0.95rem;
     }
 
-    /* Essay mobile: cinematic goes true edge-to-edge */
-    .essay__cinematic {
+    /* Spreads stack on mobile — photo above text */
+    .spread__grid,
+    .spread__grid--reverse {
+      grid-template-columns: 1fr;
+      gap: var(--space-lg);
+    }
+
+    /* Moment: cinematic goes true edge-to-edge */
+    .moment__media {
       padding-inline: 0;
     }
-    .essay__cinematic .essay__img-wrap {
+    .moment__media .essay__img-wrap {
       border-radius: 0;
       box-shadow: none;
     }
-
-    /* Duo stacks vertically with small gap */
-    .essay__duo {
-      grid-template-columns: 1fr;
-      gap: 8px;
-      padding-inline: var(--page-padding);
-    }
-
-    /* Offset goes full-width on mobile */
-    .essay__offset .essay__img-wrap {
-      max-width: 100%;
-    }
-
-    .essay__lede {
+    .moment__text {
       padding: var(--space-lg) var(--page-padding) var(--space-md);
     }
 
-    .essay__text {
-      padding: var(--space-md) var(--page-padding) var(--space-lg);
+    /* Accent stacks on mobile */
+    .accent__grid {
+      grid-template-columns: 1fr;
+      gap: var(--space-lg);
     }
-
-    .essay__text-inner {
-      font-size: 1rem;
-      line-height: 1.8;
-    }
+    .accent--right .accent__media { order: 0; }
+    .accent--right .accent__text { order: 1; }
 
     .essay__quote {
       padding: var(--space-xl) var(--page-padding);
     }
-
-    .essay__quote-inner {
-      padding-left: var(--space-xl);
-    }
-
-    .essay__quote-mark {
-      width: 24px;
-      height: 24px;
-    }
-
-    .essay__quote p {
-      font-size: 1.1rem;
-    }
+    .essay__quote-inner { padding-left: var(--space-xl); }
+    .essay__quote-mark { width: 24px; height: 24px; }
+    .essay__quote p { font-size: 1.1rem; }
 
     .bento {
       grid-template-columns: repeat(2, 1fr);
@@ -2589,14 +2620,13 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     .gallery__header { flex-direction: column; }
     .hero__portrait { max-width: 260px; }
 
-    /* Small phones: tighter essay spacing */
-    .essay__lede,
-    .essay__text {
-      padding: var(--space-sm) var(--page-padding) var(--space-md);
+    /* Small phones: tighter spacing */
+    .spread__text-inner,
+    .accent__text-inner {
+      font-size: 0.98rem;
     }
-
-    .essay__lede-inner {
-      font-size: 1.05rem;
+    .moment__text {
+      padding: var(--space-md) var(--page-padding) var(--space-sm);
     }
   }
 
@@ -2625,6 +2655,7 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     .related__card,
     .essay__img {
       transition: none;
+      animation: none !important;
     }
   }
 </style>

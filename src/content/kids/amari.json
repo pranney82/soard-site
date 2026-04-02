@@ -315,10 +315,6 @@
   "bathroomCount": 1,
   "storyPhotos": [
     {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/amari/photo-09/public",
-      "alt": ""
-    },
-    {
       "url": "kids/amari/1775077224815-IMG-6536.HEIC",
       "alt": ""
     },
@@ -328,6 +324,10 @@
     },
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/amari/photo-16/public",
+      "alt": ""
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/amari/photo-07/public",
       "alt": ""
     }
   ],
