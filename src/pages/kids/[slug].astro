@@ -2468,8 +2468,15 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     }
 
     .hero__back {
+      position: fixed;
       top: var(--space-md);
       right: var(--space-md);
+      background: rgba(255, 255, 255, 0.85);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      padding: 6px 12px;
+      border-radius: 100px;
+      z-index: 10;
     }
 
     .hero__split {
@@ -2506,8 +2513,16 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
       font-size: 1.1rem;
     }
 
-    .hero__intro {
-      font-size: 0.95rem;
+    /* Reverse spread: photo still first on mobile */
+    .spread__grid--reverse .spread__media {
+      order: -1;
+    }
+
+    /* Touch targets: minimum 44px */
+    .hero__donate-btn,
+    .hero__share-btn {
+      min-height: 44px;
+      padding-inline: 24px;
     }
 
     /* Spreads stack on mobile — photo above text */
@@ -2615,10 +2630,8 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
   }
 
   @media (max-width: 480px) {
-    .hero__details { gap: 8px; }
-    .detail-chip { padding: 8px 14px; }
     .gallery__header { flex-direction: column; }
-    .hero__portrait { max-width: 260px; }
+    .hero__name { font-size: clamp(2.4rem, 11vw, 3.2rem); }
 
     /* Small phones: tighter spacing */
     .spread__text-inner,
