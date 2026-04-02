@@ -52,6 +52,8 @@ export interface TransformOpts {
   fit?: 'cover' | 'contain' | 'crop' | 'scale-down' | 'pad';
   gravity?: 'face' | 'auto' | 'center' | 'top' | 'bottom' | 'left' | 'right';
   q?: number;
+  /** Light output sharpening (0–10). 1 = subtle, good for face crops at small sizes. */
+  sharpen?: number;
 }
 
 function buildTransform(opts: TransformOpts): string {
@@ -61,6 +63,9 @@ function buildTransform(opts: TransformOpts): string {
   if (opts.fit) parts.push(`fit=${opts.fit}`);
   if (opts.gravity) parts.push(`gravity=${opts.gravity}`);
   parts.push(`q=${opts.q ?? 85}`);
+  if (opts.sharpen) parts.push(`sharpen=${opts.sharpen}`);
+  // Strip EXIF/metadata from all transforms — prevents GPS, camera info, timestamps leaking
+  parts.push('metadata=none');
   return parts.join(',');
 }
 
@@ -96,6 +101,8 @@ export interface SrcsetOpts {
   aspectRatio?: number;
   /** Fixed height for all widths (overrides aspectRatio). */
   height?: number;
+  /** Light output sharpening (0–10). Passed to each transform in the srcset. */
+  sharpen?: number;
 }
 
 /**
@@ -116,6 +123,7 @@ export function cfSrcset(src: string, widths: number[], opts?: SrcsetOpts): stri
       else if (opts?.aspectRatio) o.h = Math.round(w * opts.aspectRatio);
       if (opts?.fit) o.fit = opts.fit;
       if (opts?.gravity) o.gravity = opts.gravity;
+      if (opts?.sharpen) o.sharpen = opts.sharpen;
       return `${CF_BASE}/${id}/${buildTransform(o)} ${w}w`;
     })
     .join(', ');

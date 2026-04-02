@@ -2,6 +2,7 @@ node_modules/
 dist/
 .astro/
 .env
+.dev.vars
 *.log
 .DS_Store
 soard_secrets.txt
@@ -18,3 +19,6 @@ src/content/site/
 
 # Financial PDFs are stored in R2
 public/financials/*.pdf
+
+# Local Wrangler dev state
+.wrangler/

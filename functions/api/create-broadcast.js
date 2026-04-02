@@ -5,18 +5,20 @@
  * a Resend broadcast draft. Returns the broadcast ID so the admin can
  * link to Resend to review and send.
  *
+ * GET /api/create-broadcast
+ *
+ * Returns recent broadcast history from Resend.
+ *
  * Authenticated endpoint (behind CF Access).
  *
  * Required env vars: RESEND_API_KEY, RESEND_AUDIENCE_ID
- *
- * Request body:
- *   { "template": "reveal"|"kickoff"|"monthly", "kid": {...}, "data": {...}, "opts": {...} }
  */
 
 import { projectReveal, projectKickoff, monthlyImpact } from './_email-templates.js';
+import { logAudit } from './_audit.js';
 
 export async function onRequestPost(context) {
-  const { RESEND_API_KEY, RESEND_AUDIENCE_ID } = context.env;
+  const { RESEND_API_KEY, RESEND_AUDIENCE_ID, DB } = context.env;
 
   if (!RESEND_API_KEY) {
     return Response.json({ ok: false, error: 'RESEND_API_KEY is not configured.' }, { status: 503 });
@@ -90,6 +92,25 @@ export async function onRequestPost(context) {
       );
     }
 
+    // Log to audit trail
+    const userEmail = context.data?.userEmail || 'unknown';
+    if (DB) {
+      await logAudit(DB, {
+        userEmail,
+        action: 'create',
+        entityType: 'email-broadcast',
+        entitySlug: result.id,
+        entityName: name,
+        changes: [
+          { field: 'template', from: null, to: template },
+          { field: 'subject', from: null, to: tpl.subject },
+          { field: 'kid', from: null, to: kid?.name || data?.month || null },
+        ],
+        path: null,
+        gitStatus: 'draft',
+      });
+    }
+
     return Response.json({
       ok: true,
       broadcastId: result.id,
@@ -99,6 +120,42 @@ export async function onRequestPost(context) {
     });
   } catch (err) {
     console.error('Create broadcast error:', err);
+    return Response.json({ ok: false, error: 'Something went wrong.' }, { status: 500 });
+  }
+}
+
+// GET — List recent broadcasts from Resend
+export async function onRequestGet(context) {
+  const { RESEND_API_KEY } = context.env;
+
+  if (!RESEND_API_KEY) {
+    return Response.json({ ok: false, error: 'RESEND_API_KEY is not configured.' }, { status: 503 });
+  }
+
+  try {
+    const res = await fetch('https://api.resend.com/broadcasts', {
+      headers: { Authorization: `Bearer ${RESEND_API_KEY}` },
+    });
+
+    const result = await res.json();
+
+    if (!res.ok) {
+      return Response.json({ ok: false, error: result.message || 'Failed to fetch broadcasts.' }, { status: res.status });
+    }
+
+    // Resend returns { data: [...] }
+    const broadcasts = (result.data || []).map(b => ({
+      id: b.id,
+      name: b.name || '(untitled)',
+      status: b.status || 'draft',
+      createdAt: b.created_at,
+      sentAt: b.sent_at || null,
+      subject: b.subject || null,
+    }));
+
+    return Response.json({ ok: true, broadcasts });
+  } catch (err) {
+    console.error('List broadcasts error:', err);
     return Response.json({ ok: false, error: 'Something went wrong.' }, { status: 500 });
   }
 }

@@ -66,14 +66,14 @@ export async function getStaticPaths() {
     const related = deduped
       .filter(k => k.data.heroImage)
       .slice(0, 4)
-      .map(k => ({ name: k.data.name, slug: k.data.slug, heroImage: k.data.heroImage, diagnosis: k.data.diagnosis }));
+      .map(k => ({ name: k.data.name, slug: k.data.slug, heroImage: k.data.heroImage, diagnosis: k.data.diagnosis, roomTypes: k.data.roomTypes }));
 
     return {
       params: { slug: kid.data.slug },
       props: {
         kid: kid.data,
-        prevKid: i > 0 ? sorted[i - 1].data : null,
-        nextKid: i < sorted.length - 1 ? sorted[i + 1].data : null,
+        prevKid: i > 0 ? { name: sorted[i - 1].data.name, slug: sorted[i - 1].data.slug, heroImage: sorted[i - 1].data.heroImage } : null,
+        nextKid: i < sorted.length - 1 ? { name: sorted[i + 1].data.name, slug: sorted[i + 1].data.slug, heroImage: sorted[i + 1].data.heroImage } : null,
         relatedKids: related,
       },
     };
@@ -140,8 +140,9 @@ const metaDesc = kid.metaDescription
 const dateModified = kid.year ? `${kid.year}-01-01` : undefined;
 
 // ── LCP preload for hero image ────────────
-const heroSrcset = kid.heroImage ? _cfSrcset(kid.heroImage, [480, 800, 1200], { fit: 'cover', gravity: 'face', aspectRatio: 4/3 }) : '';
-const heroSizes = '(max-width: 1100px) 50vw, 520px';
+// Large srcset for retina sharpness — gravity:face positions focal point
+const heroSrcset = kid.heroImage ? _cfSrcset(kid.heroImage, [600, 900, 1200, 1600, 2400], { fit: 'cover', gravity: 'face' }) : '';
+const heroSizes = '(max-width: 768px) 92vw, (max-width: 1100px) 55vw, 640px';
 
 // ── Bio paragraphs + pull quote ───────────
 // Handle both \n\n-separated plain text AND <p>-wrapped HTML from rich editor
@@ -168,31 +169,38 @@ if (kid.quote && kid.quote !== kid.bio && kid.quote !== introPara) {
 
 const galleryPhotos = photos.slice(0, 30);
 
-// ── Hero: art-directed mobile crop ───────
-const heroMobileSrcset = kid.heroImage ? _cfSrcset(kid.heroImage, [320, 480], { fit: 'cover', gravity: 'face', aspectRatio: 4/3 }) : '';
-const heroMobileSizes = '(max-width: 480px) 280px, 300px';
+// ── Bento layout roles: forced visual rhythm ───────
+// Repeating 8-photo cycle guarantees variety regardless of photo aspect ratios.
+// hero(2x2), std, std, wide(2x1), tall(1x2), std, std, wide(2x1)
+const BENTO_ROLES = ['hero', 'std', 'std', 'wide', 'tall', 'std', 'std', 'wide'];
+function bentoRole(i: number, total: number): string {
+  if (i === 0) return 'hero';
+  if (total <= 3) return 'std';
+  if (total <= 5) return i === 3 ? 'wide' : 'std';
+  return BENTO_ROLES[i % BENTO_ROLES.length];
+}
 
-// ── Photo Essay: NatGeo-inspired vertical photo essay ──
+// ── Hero: art-directed mobile — bigger for retina sharpness ───────
+const heroMobileSrcset = kid.heroImage ? _cfSrcset(kid.heroImage, [600, 900, 1200], { fit: 'cover', gravity: 'face' }) : '';
+const heroMobileSizes = '(max-width: 480px) 92vw, 92vw';
+
+// ── Photo Essay: editorial prose with interwoven photos ──
 //
-// Each photo gets a DIFFERENT layout composition:
-//   cinematic — near-viewport-width, maximum visual impact
-//   duo       — two photos side by side, showing contrast/progression
-//   offset    — photo pushed to one side, negative space on other
-//   contained — standard width, clean and simple
-//
-// Text blocks are narrow (58ch) and centered. The first text
-// after the cinematic opener is display-sized (the "lede").
+// One continuous text column with photos placed within the flow:
+//   breakout  — wide photo breaking out of text column between paragraphs
+//   float     — smaller photo floated into text, wrapping prose around it
+//   cinematic — near-viewport-width dramatic pause
 const storyPhotos = kid.storyPhotos || [];
 const hasStoryPhotos = storyPhotos.length > 0;
 const usePhotoEssay = hasStoryPhotos
   ? remainingParas.length >= 1
   : remainingParas.length >= 2 && galleryPhotos.length >= 3;
 
-// Each item uses a fundamentally different GRID LAYOUT:
-//   spread   — photo 70% + text 30% alongside (asymmetric 2-col)
-//   reverse  — text 35% + photo 65% (flipped, different proportions)
-//   moment   — full-width photo, text below, narrow centered
-//   accent   — smaller photo (45%) offset, text alongside
+// Essay item types (mapped to placement in template):
+//   spread  → breakout (wide photo between paragraphs)
+//   reverse → float-right (photo floats into text)
+//   moment  → cinematic (near-full-width dramatic pause)
+//   accent  → float-left (photo floats into text)
 type EssayItem =
   | { type: 'spread'; photo: typeof photos[0]; text: string }
   | { type: 'reverse'; photo: typeof photos[0]; text: string }
@@ -276,13 +284,13 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
                 height="400"
               />
               <img
-                src={cfUrl(kid.heroImage, 'w=800,h=1000,fit=cover,gravity=face,q=85')}
+                src={cfUrl(kid.heroImage, 'w=1200,fit=cover,gravity=face,q=85')}
                 srcset={heroSrcset}
                 sizes={heroSizes}
                 alt={`Photo of ${kid.name}${kid.diagnosis ? ` — ${kid.diagnosis}` : ''}`}
                 class="hero__img lqip-img"
-                width="800"
-                height="1000"
+                width="900"
+                height="1200"
                 loading="eager"
                 decoding="async"
                 fetchpriority="high"
@@ -343,10 +351,6 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     {(kid.heroSummary || introPara) && (
       <section class="lede">
         <div class="container container--narrow">
-          <div class="lede__accent" aria-hidden="true">
-            <span class="lede__accent-line"></span>
-            <span class="lede__accent-dot"></span>
-          </div>
           <p class="lede__text prose--dropcap" itemprop="description">
             <span set:html={kid.heroSummary || introPara} />
           </p>
@@ -354,149 +358,105 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
       </section>
     )}
 
-    <!-- ═══ Magazine Spreads — Photo Essay ═══ -->
+    <!-- ═══ Editorial Story — Continuous Text with Interwoven Photos ═══
+         One continuous prose column. Photos are placed WITHIN the flow:
+           - breakout: wide photo between paragraphs (breaks out of text column)
+           - float:    smaller photo floated into the text column (wraps text around it)
+           - cinematic: near-full-width photo as a visual pause
+         The reader never loses their place — photos enhance, not interrupt.
+         ═══════════════════════════════════════════════════════════════════ -->
     {essayItems.length > 0 && (
-      <section class="essay" itemprop="articleBody">
-        {essayItems.map((item, i) => {
-          /* ── Spread: photo 70% + text 30% alongside ── */
-          if (item.type === 'spread') {
-            const [w, h] = dims(item.photo.url);
+      <section class="essay stagger-section" itemprop="articleBody">
+        <div class="essay__flow">
+          {essayItems.map((item, i) => {
+            if (item.type === 'quote') {
+              return (
+                <blockquote class="essay__quote">
+                  <div class="essay__quote-inner">
+                    <svg class="essay__quote-mark" viewBox="0 0 48 48" fill="none" aria-hidden="true">
+                      <path d="M14 28c-2.2 0-4-1.8-4-4 0-6.6 5.4-12 12-12v4c-4.4 0-8 3.6-8 8h4c2.2 0 4 1.8 4 4s-1.8 4-4 4h-4zm20 0c-2.2 0-4-1.8-4-4 0-6.6 5.4-12 12-12v4c-4.4 0-8 3.6-8 8h4c2.2 0 4 1.8 4 4s-1.8 4-4 4h-4z" fill="currentColor"/>
+                    </svg>
+                    <p>{item.text}</p>
+                  </div>
+                </blockquote>
+              );
+            }
+
+            // Placement pattern:
+            //   1st photo (spread)  → breakout between paragraphs
+            //   2nd photo (reverse) → float right within text column
+            //   3rd photo (moment)  → cinematic full pause
+            //   4th photo (accent)  → float left within text column
+            const placement = item.type === 'moment' ? 'cinematic'
+                            : item.type === 'reverse' ? 'float-right'
+                            : item.type === 'accent' ? 'float-left'
+                            : 'breakout';
+            const photo = item.photo;
+            const text = item.text;
+            const [w, h] = dims(photo.url);
             const isFirst = i === 0;
-            return (
-              <div class="spread stagger-section">
-                <div class="container">
-                  <div class="spread__grid">
-                    <figure class="spread__media">
-                      <div class="essay__img-wrap" style={`--lqip: url('${lqip(item.photo.url)}')`}>
-                        <img
-                          src={_cfUrl(item.photo.url, { w: 1200, q: 85 })}
-                          srcset={_cfSrcset(item.photo.url, [600, 900, 1200, 1600])}
-                          sizes="(max-width: 768px) 100vw, (max-width: 1200px) 66vw, 760px"
-                          alt={item.photo.alt || `${kid.name}'s room`}
-                          class="essay__img lqip-img"
-                          loading={isFirst ? 'eager' : 'lazy'}
-                          decoding="async"
-                          width={w}
-                          height={h}
-                        />
-                      </div>
-                    </figure>
-                    <div class={`spread__text ${isFirst ? 'prose--dropcap' : ''}`}>
-                      <div class="spread__text-inner" set:html={`<p>${item.text}</p>`} />
-                    </div>
-                  </div>
-                </div>
-              </div>
-            );
-          }
+            const caption = photo.alt && photo.alt !== `${kid.name}'s room` ? photo.alt : null;
+            const isFloat = placement === 'float-right' || placement === 'float-left';
 
-          /* ── Reverse: text 35% + photo 65% (flipped) ── */
-          if (item.type === 'reverse') {
-            const [w, h] = dims(item.photo.url);
-            return (
-              <div class="spread spread--reverse stagger-section">
-                <div class="container">
-                  <div class="spread__grid spread__grid--reverse">
-                    <div class="spread__text">
-                      <div class="spread__text-inner" set:html={`<p>${item.text}</p>`} />
-                    </div>
-                    <figure class="spread__media">
-                      <div class="essay__img-wrap" style={`--lqip: url('${lqip(item.photo.url)}')`}>
-                        <img
-                          src={_cfUrl(item.photo.url, { w: 1000, q: 85 })}
-                          srcset={_cfSrcset(item.photo.url, [500, 800, 1200])}
-                          sizes="(max-width: 768px) 100vw, (max-width: 1200px) 60vw, 680px"
-                          alt={item.photo.alt || `${kid.name}'s room`}
-                          class="essay__img lqip-img"
-                          loading="lazy"
-                          decoding="async"
-                          width={w}
-                          height={h}
-                        />
-                      </div>
-                    </figure>
-                  </div>
-                </div>
-              </div>
-            );
-          }
+            const srcWidths = placement === 'cinematic' ? [600, 900, 1400, 2000]
+                            : isFloat ? [300, 500, 800]
+                            : [600, 900, 1200, 1600];
+            const sizes = placement === 'cinematic'
+              ? '(max-width: 768px) 100vw, (max-width: 1400px) 85vw, 1200px'
+              : isFloat
+                ? '(max-width: 768px) 92vw, (max-width: 1200px) 40vw, 340px'
+                : '(max-width: 768px) 92vw, (max-width: 1200px) 75vw, 960px';
+            const imgW = placement === 'cinematic' ? 1400 : isFloat ? 800 : 1200;
 
-          /* ── Moment: full-width photo, text below centered ── */
-          if (item.type === 'moment') {
-            const [w, h] = dims(item.photo.url);
+            if (isFloat) {
+              // Float: photo + text together in one block — text wraps around the photo
+              return (
+                <div class="essay__woven">
+                  <figure class={`essay__float essay__float--${placement === 'float-right' ? 'right' : 'left'}`}>
+                    <div class="essay__img-wrap" style={`--lqip: url('${lqip(photo.url)}')`}>
+                      <img
+                        src={_cfUrl(photo.url, { w: imgW, q: 85 })}
+                        srcset={_cfSrcset(photo.url, srcWidths)}
+                        sizes={sizes}
+                        alt={photo.alt || `${kid.name}'s room`}
+                        class="essay__img lqip-img"
+                        loading="lazy"
+                        decoding="async"
+                        width={w}
+                        height={h}
+                      />
+                    </div>
+                    {caption && <figcaption class="essay__caption">{caption}</figcaption>}
+                  </figure>
+                  {text && <p set:html={text} />}
+                </div>
+              );
+            }
+
+            // Breakout / cinematic: photo breaks out of text column, text below stays narrow
             return (
-              <div class="moment stagger-section">
-                <figure class="moment__media">
-                  <div class="essay__img-wrap" style={`--lqip: url('${lqip(item.photo.url)}')`}>
+              <Fragment>
+                <figure class={`essay__break essay__break--${placement}`}>
+                  <div class="essay__img-wrap" style={`--lqip: url('${lqip(photo.url)}')`}>
                     <img
-                      src={_cfUrl(item.photo.url, { w: 1400, q: 85 })}
-                      srcset={_cfSrcset(item.photo.url, [600, 900, 1400, 2000])}
-                      sizes="(max-width: 768px) 100vw, (max-width: 1400px) 90vw, 1200px"
-                      alt={item.photo.alt || `${kid.name}'s room`}
+                      src={_cfUrl(photo.url, { w: imgW, q: 85 })}
+                      srcset={_cfSrcset(photo.url, srcWidths)}
+                      sizes={sizes}
+                      alt={photo.alt || `${kid.name}'s room`}
                       class="essay__img lqip-img"
-                      loading="lazy"
+                      loading={isFirst ? 'eager' : 'lazy'}
                       decoding="async"
                       width={w}
                       height={h}
                     />
                   </div>
+                  {caption && <figcaption class="essay__caption">{caption}</figcaption>}
                 </figure>
-                {item.text && (
-                  <div class="moment__text">
-                    <div class="moment__text-inner" set:html={`<p>${item.text}</p>`} />
-                  </div>
-                )}
-              </div>
+                {text && <p class={isFirst ? 'prose--dropcap' : ''} set:html={text} />}
+              </Fragment>
             );
-          }
-
-          /* ── Accent: smaller photo offset, text alongside ── */
-          if (item.type === 'accent') {
-            const [w, h] = dims(item.photo.url);
-            return (
-              <div class={`accent accent--${item.side} stagger-section`}>
-                <div class="container">
-                  <div class="accent__grid">
-                    <div class="accent__text">
-                      <div class="accent__text-inner" set:html={`<p>${item.text}</p>`} />
-                    </div>
-                    <figure class="accent__media">
-                      <div class="essay__img-wrap" style={`--lqip: url('${lqip(item.photo.url)}')`}>
-                        <img
-                          src={_cfUrl(item.photo.url, { w: 800, q: 85 })}
-                          srcset={_cfSrcset(item.photo.url, [400, 600, 900])}
-                          sizes="(max-width: 768px) 92vw, (max-width: 1200px) 42vw, 480px"
-                          alt={item.photo.alt || `${kid.name}'s room`}
-                          class="essay__img lqip-img"
-                          loading="lazy"
-                          decoding="async"
-                          width={w}
-                          height={h}
-                        />
-                      </div>
-                    </figure>
-                  </div>
-                </div>
-              </div>
-            );
-          }
-
-          /* ── Quote: dramatic typographic break ── */
-          if (item.type === 'quote') {
-            return (
-              <blockquote class="essay__quote stagger-section">
-                <div class="essay__quote-inner">
-                  <svg class="essay__quote-mark" viewBox="0 0 48 48" fill="none" aria-hidden="true">
-                    <path d="M14 28c-2.2 0-4-1.8-4-4 0-6.6 5.4-12 12-12v4c-4.4 0-8 3.6-8 8h4c2.2 0 4 1.8 4 4s-1.8 4-4 4h-4zm20 0c-2.2 0-4-1.8-4-4 0-6.6 5.4-12 12-12v4c-4.4 0-8 3.6-8 8h4c2.2 0 4 1.8 4 4s-1.8 4-4 4h-4z" fill="currentColor"/>
-                  </svg>
-                  <p>{item.text}</p>
-                </div>
-              </blockquote>
-            );
-          }
-
-          return null;
-        })}
+          })}
+        </div>
       </section>
     )}
 
@@ -520,27 +480,6 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
               <p>{remainingQuote}</p>
             </blockquote>
           )}
-        </div>
-      </section>
-    )}
-
-    <!-- ═══ Fundraising CTA ═══════════════════ -->
-    {kid.fundraisingUrl && (
-      <section class="fundraise stagger-section">
-        <div class="container container--narrow">
-          <div class="fundraise__card">
-            <div class="fundraise__icon" aria-hidden="true">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9.5a5.5 5.5 0 0 1 9.591-3.676.56.56 0 0 0 .818 0A5.49 5.49 0 0 1 22 9.5c0 2.29-1.5 4-3 5.5l-5.492 5.313a2 2 0 0 1-3 .019L5 15c-1.5-1.5-3-3.2-3-5.5"/></svg>
-            </div>
-            <div class="fundraise__content">
-              <h2 class="fundraise__title">Help fund {kid.name}'s room</h2>
-              <p class="fundraise__text">Your donation helps build {kid.name}'s {kid.roomTypes?.length ? kid.roomTypes.join(' & ').toLowerCase() : 'dream room'}. Zeffy charges zero platform fees so more of your gift reaches our mission.</p>
-            </div>
-            <a href={kid.fundraisingUrl} target="_blank" rel="noopener noreferrer" class="fundraise__btn">
-              Donate Now
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-            </a>
-          </div>
         </div>
       </section>
     )}
@@ -596,17 +535,6 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
       </section>
     )}
 
-    <!-- ═══ Section Divider ═══════════════════ -->
-    {galleryPhotos.length > 1 && (
-      <div class="section-divider" aria-hidden="true">
-        <span class="section-divider__line"></span>
-        <span class="section-divider__icon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
-        </span>
-        <span class="section-divider__line"></span>
-      </div>
-    )}
-
     <!-- ═══ Bento Photo Grid ═══════════════════ -->
     {galleryPhotos.length > 1 && (
       <section class="gallery stagger-section">
@@ -622,50 +550,73 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
           </div>
           <div class="bento" id="gallery">
             {galleryPhotos.map((photo, i) => {
-              // Aspect-ratio-aware bento: read REAL dimensions from
-              // build-time manifest. Portrait → tall (span 2 rows),
-              // landscape → wide (span 2 cols), square → standard.
-              const isHero = i === 0;
-              const [pw, ph] = dims(photo.url);
-              const ar = pw / ph;
-              const isTall = !isHero && ar < 0.85;    // portrait
-              const isWide = !isHero && ar > 1.4;     // landscape
+              const role = bentoRole(i, galleryPhotos.length);
+              const isHero = role === 'hero';
+              const isTall = role === 'tall';
+              const isWide = role === 'wide';
               const bentoClass = isHero ? 'bento__hero' : isTall ? 'bento__tall' : isWide ? 'bento__wide' : '';
-              const imgW = isHero ? 1000 : (isTall || isWide) ? 800 : 600;
-              const srcsetWidths = isHero ? [500, 800, 1200] : [300, 500, 800];
+              const imgW = isHero ? 1200 : (isTall || isWide) ? 900 : 700;
+              const srcsetWidths = isHero ? [600, 900, 1200, 1600] : [400, 600, 900];
               const sizesAttr = isHero
                 ? '(max-width: 768px) 92vw, (max-width: 1100px) 60vw, 580px'
                 : isTall || isWide
                   ? '(max-width: 768px) 46vw, (max-width: 1100px) 35vw, 380px'
                   : '(max-width: 768px) 46vw, (max-width: 1100px) 28vw, 280px';
+              const altText = photo.alt || `${kid.name}'s room transformation photo ${i + 1}`;
               return (
                 <button
                   class={`masonry__item bento__cell ${bentoClass}`}
                   data-index={i}
                   data-src={cfUrl(photo.url, 'w=1600,q=85')}
                   data-srcset={_cfSrcset(photo.url, [800, 1200, 1600, 2400])}
-                  data-alt={photo.alt || `${kid.name}'s room transformation photo ${i + 1}`}
+                  data-alt={altText}
                   aria-label={`View photo ${i + 1} of ${galleryPhotos.length}`}
                   type="button"
-                  style={`--lqip: url('${lqip(photo.url)}')`}
+                  style={`--lqip: url('${lqip(photo.url)}'); --idx: ${i}`}
                 >
                   <img
                     src={cfUrl(photo.url, `w=${imgW},q=85`)}
                     srcset={cfSrcset(photo.url, srcsetWidths)}
                     sizes={sizesAttr}
-                    alt={photo.alt || `${kid.name}'s room transformation photo ${i + 1}`}
+                    alt={altText}
                     class="bento__img lqip-img"
-                    loading="lazy"
-                    decoding="async"
+                    loading={isHero ? 'eager' : 'lazy'}
+                    decoding={isHero ? 'sync' : 'async'}
+                    fetchpriority={isHero ? 'high' : undefined}
                     width={dims(photo.url)[0]}
                     height={dims(photo.url)[1]}
                   />
                   <div class="bento__overlay">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+                    <span class="bento__expand">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+                      View
+                    </span>
+                    <span class="bento__counter">{i + 1}/{galleryPhotos.length}</span>
                   </div>
                 </button>
               );
             })}
+          </div>
+        </div>
+      </section>
+    )}
+
+    <!-- ═══ Fundraising CTA ═══════════════════ -->
+    {kid.fundraisingUrl && (
+      <section class="fundraise stagger-section">
+        <div class="container container--narrow">
+          <div class="fundraise__card">
+            <div class="fundraise__icon" aria-hidden="true">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9.5a5.5 5.5 0 0 1 9.591-3.676.56.56 0 0 0 .818 0A5.49 5.49 0 0 1 22 9.5c0 2.29-1.5 4-3 5.5l-5.492 5.313a2 2 0 0 1-3 .019L5 15c-1.5-1.5-3-3.2-3-5.5"/></svg>
+            </div>
+            <div class="fundraise__content">
+              <h2 class="fundraise__title">Help fund {kid.name}'s room</h2>
+              <p class="fundraise__text">Your donation helps build {kid.name}'s {kid.roomTypes?.length ? kid.roomTypes.join(' & ').toLowerCase() : 'dream room'}. Zeffy charges zero platform fees so more of your gift reaches our mission.</p>
+            </div>
+            <a href={kid.fundraisingUrl} target="_blank" rel="noopener noreferrer" class="fundraise__btn">
+              Donate Now
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+            </a>
           </div>
         </div>
       </section>
@@ -701,7 +652,9 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
         <div class="container">
           <h2 class="section-label" style="text-align: center;">More Sunshine Stories</h2>
           <div class="related__grid">
-            {relatedKids.map(rk => (
+            {relatedKids.map(rk => {
+              const sharedType = rk.roomTypes?.find(t => kid.roomTypes?.includes(t));
+              return (
               <a href={`/kids/${rk.slug}/`} class="related__card">
                 <div class="related__img-wrap" style={`--lqip: url('${lqip(rk.heroImage)}')`}>
                   <img
@@ -718,12 +671,16 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
                 </div>
                 <div class="related__meta">
                   <span class="related__name">{rk.name}</span>
+                  {sharedType && (
+                    <span class="related__tag">{sharedType}</span>
+                  )}
                   {rk.diagnosis && (
                     <span class="related__diagnosis">{rk.diagnosis}</span>
                   )}
                 </div>
               </a>
-            ))}
+            );
+            })}
           </div>
         </div>
       </section>
@@ -735,7 +692,17 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
         <div class="kid-nav__grid">
           {prevKid ? (
             <a href={`/kids/${prevKid.slug}/`} class="kid-nav__link kid-nav__link--prev">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+              {prevKid.heroImage && (
+                <img
+                  src={cfUrl(prevKid.heroImage, 'w=80,h=80,fit=cover,gravity=face,q=80')}
+                  alt=""
+                  class="kid-nav__thumb"
+                  loading="lazy"
+                  decoding="async"
+                  width="40"
+                  height="40"
+                />
+              )}
               <div class="kid-nav__text">
                 <span class="kid-nav__label">Previous</span>
                 <span class="kid-nav__name">{prevKid.name}</span>
@@ -752,7 +719,17 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
                 <span class="kid-nav__label">Next</span>
                 <span class="kid-nav__name">{nextKid.name}</span>
               </div>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+              {nextKid.heroImage && (
+                <img
+                  src={cfUrl(nextKid.heroImage, 'w=80,h=80,fit=cover,gravity=face,q=80')}
+                  alt=""
+                  class="kid-nav__thumb"
+                  loading="lazy"
+                  decoding="async"
+                  width="40"
+                  height="40"
+                />
+              )}
             </a>
           ) : <div />}
         </div>
@@ -1314,15 +1291,14 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     letter-spacing: -0.02em;
   }
 
-  /* ═══ Hero — Cinematic Magazine Cover ══════
-     Portrait dominates the left 55%. Bleeds to
-     the viewport edge. The right side is pure
-     typography with generous whitespace.
+  /* ═══ Hero — Contained Editorial Split ══════
+     Image in a rounded container that works for
+     both portrait AND landscape photos. Contained
+     within the max-width — premium framing.
      ═══════════════════════════════════════════ */
   .hero {
-    padding: 0;
+    padding: 48px 0 72px;
     background: var(--c-cream);
-    overflow: hidden;
   }
 
   .hero__back {
@@ -1335,7 +1311,7 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     letter-spacing: 0.1em;
     text-decoration: none;
     text-transform: uppercase;
-    margin-bottom: var(--space-2xl);
+    margin-bottom: var(--space-xl);
     transition: color var(--transition-fast), gap var(--transition-fast);
   }
 
@@ -1345,24 +1321,26 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
   }
 
   .hero__split {
+    max-width: var(--max-width);
+    margin-inline: auto;
+    padding-inline: var(--page-padding);
     display: grid;
     grid-template-columns: 1.15fr 1fr;
-    gap: 0;
+    gap: 48px;
     align-items: center;
   }
 
-  /* ── Portrait: full image visible, no cropping ── */
+  /* ── Portrait: contained rounded frame, any aspect ratio ── */
   .hero__portrait {
     position: relative;
     overflow: hidden;
     background-color: var(--c-warm-gray);
-    border-radius: 0 clamp(28px, 4vw, 56px) clamp(28px, 4vw, 56px) 0;
+    border-radius: var(--profile-radius);
     box-shadow:
-      12px 0 24px rgba(0, 0, 0, 0.06),
-      40px 0 80px rgba(0, 0, 0, 0.1);
-    /* Let the image define the height — no cropping */
+      0 8px 24px rgba(0, 0, 0, 0.08),
+      0 32px 80px rgba(0, 0, 0, 0.12);
     aspect-ratio: 4 / 5;
-    max-height: 85vh;
+    max-height: 75vh;
   }
 
   .hero__portrait--empty {
@@ -1373,8 +1351,6 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     gap: var(--space-md);
     background: linear-gradient(160deg, var(--c-warm-gray) 0%, var(--c-cream) 100%);
   }
-
-  .hero__portrait--empty::after { display: none; }
 
   .hero__placeholder-icon {
     width: 72px;
@@ -1392,27 +1368,14 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     width: 100%;
     height: 100%;
     object-fit: cover;
+    object-position: center 30%;
     display: block;
   }
 
-  /* Yellow accent stripe at bottom of portrait */
-  .hero__portrait::after {
-    content: '';
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    height: 4px;
-    background: linear-gradient(to right, var(--c-yellow), rgba(255, 218, 36, 0.3));
-    z-index: 3;
-  }
-
-  .hero__portrait--empty::after { display: none; }
-
   .hero__badge {
     position: absolute;
-    top: 20px;
-    right: 20px;
+    top: 16px;
+    right: 16px;
     z-index: 3;
     background: var(--c-yellow);
     color: var(--c-dark);
@@ -1430,41 +1393,39 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     display: flex;
     flex-direction: column;
     justify-content: center;
-    padding: var(--space-4xl) clamp(var(--space-2xl), 6vw, 5rem);
-    padding-right: var(--page-padding);
+    padding-block: var(--space-2xl);
   }
 
-  /* ── Name: massive, architectural, commands the page ── */
+  /* ── Name: massive, architectural ── */
   .hero__name {
     font-family: var(--font-display);
-    font-size: clamp(3.5rem, 9vw, 8rem);
+    font-size: clamp(3rem, 7vw, 6.5rem);
     color: var(--c-dark);
-    line-height: 0.88;
-    letter-spacing: -0.045em;
-    margin-bottom: var(--space-xl);
+    line-height: 0.9;
+    letter-spacing: -0.04em;
+    margin-bottom: var(--space-lg);
   }
 
-  /* Dramatic yellow accent bar under the name */
+  /* Yellow accent bar under the name */
   .hero__name::after {
     content: '';
     display: block;
-    width: 56px;
+    width: 48px;
     height: 4px;
     background: var(--c-yellow);
     border-radius: 2px;
     margin-top: var(--space-lg);
-    box-shadow: 0 0 16px rgba(255, 218, 36, 0.3);
   }
 
-  /* ── Diagnosis: italic serif, the human story ── */
+  /* ── Diagnosis: italic serif ── */
   .hero__diagnosis {
     font-family: var(--font-display);
     font-style: italic;
-    font-size: clamp(1.05rem, 2vw, 1.35rem);
+    font-size: clamp(1.05rem, 1.8vw, 1.3rem);
     color: var(--c-text);
     line-height: 1.45;
-    margin-bottom: var(--space-md);
-    max-width: 360px;
+    margin-bottom: var(--space-sm);
+    max-width: 380px;
   }
 
   /* ── Meta: refined detail line ── */
@@ -1538,43 +1499,31 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
 
   /* ═══ Lede — Dramatic Opening Statement ═══ */
   .lede {
-    padding: 100px 0 80px;
+    padding: 80px 0 88px;
     background: var(--c-white);
     position: relative;
   }
 
-  /* Vertical accent: line + dot — editorial divider */
-  .lede__accent {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0;
-    margin-bottom: 48px;
-  }
-
-  .lede__accent-line {
-    display: block;
-    width: 1px;
-    height: 48px;
-    background: linear-gradient(to bottom, var(--c-border), var(--c-yellow));
-  }
-
-  .lede__accent-dot {
-    display: block;
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: var(--c-yellow);
-    box-shadow: 0 0 12px rgba(255, 218, 36, 0.4);
+  /* Gentle gradient dissolve into white for the next section */
+  .lede::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 120px;
+    background: linear-gradient(to bottom, transparent, var(--c-white));
+    pointer-events: none;
   }
 
   .lede__text {
     font-family: var(--font-display);
-    font-size: clamp(1.3rem, 1.15rem + 0.55vw, 1.65rem);
-    line-height: 1.72;
+    font-size: clamp(1.4rem, 1.2rem + 0.7vw, 1.85rem);
+    line-height: 1.65;
     color: var(--c-dark);
     text-wrap: pretty;
-    max-width: 52ch;
+    max-width: 48ch;
+    letter-spacing: -0.01em;
   }
 
   /* ═══ Story Section ════════════════════════ */
@@ -1586,10 +1535,11 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
   }
 
   .story__body {
-    font-size: 1.15rem;
-    line-height: 1.9;
+    font-size: 1.18rem;
+    line-height: 1.85;
     color: var(--c-dark);
-    max-width: 660px;
+    max-width: 640px;
+    letter-spacing: -0.005em;
   }
 
   .story__body p + p {
@@ -1598,13 +1548,25 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
 
   .prose--dropcap p:first-child::first-letter {
     font-family: var(--font-display);
-    font-size: 3.8em;
+    font-size: 4.2em;
     float: left;
-    line-height: 0.82;
-    margin-right: 10px;
-    margin-top: 5px;
+    line-height: 0.78;
+    margin-right: 12px;
+    margin-top: 6px;
     color: var(--c-dark);
     font-weight: 700;
+  }
+
+  /* Progressive enhancement: initial-letter for browsers that support it */
+  @supports (initial-letter: 3) {
+    .prose--dropcap p:first-child::first-letter {
+      initial-letter: 3;
+      float: none;
+      font-size: inherit;
+      line-height: inherit;
+      margin-right: 8px;
+      margin-top: 0;
+    }
   }
 
   .pullquote {
@@ -1635,14 +1597,32 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     color: var(--c-dark);
   }
 
-  /* ═══ Magazine Spreads — Photo Essay ═════════
-     4 structurally different grid layouts with
-     cinematic spacing and dramatic image shadows.
-     Each scroll reveals a new composition.
-     ═══════════════════════════════════════════════ */
+  /* ═══ Editorial Story — Continuous Prose with Interwoven Photos ═════
+     One flowing text column. Photos placed WITHIN the reading flow:
+       .essay__break  — breaks out of text column (breakout or cinematic)
+       .essay__float  — floats into text column, text wraps around
+       .essay__woven  — container for float + its paragraph
+     ═══════════════════════════════════════════════════════════════════ */
   .essay {
     background: var(--c-white);
-    padding-block: 40px 80px;
+    padding-block: 16px 48px;
+  }
+
+  /* ── The continuous prose column ── */
+  .essay__flow {
+    max-width: 680px;
+    margin-inline: auto;
+    padding-inline: var(--page-padding);
+    font-size: 1.15rem;
+    line-height: 1.85;
+    color: var(--c-dark);
+    text-wrap: pretty;
+    letter-spacing: -0.005em;
+  }
+
+  .essay__flow > p,
+  .essay__woven > p {
+    margin-block: 0 1.6em;
   }
 
   /* ── Shared image styles ── */
@@ -1662,146 +1642,110 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     object-fit: cover;
   }
 
+  /* ── Photo captions ── */
+  .essay__caption {
+    font-size: 0.78rem;
+    color: var(--c-text-muted);
+    line-height: 1.5;
+    margin-top: 10px;
+    letter-spacing: 0.01em;
+  }
+
   /* ── Scroll-driven parallax (CSS only, progressive) ── */
   @supports (animation-timeline: view()) {
-    .spread__media .essay__img,
-    .moment__media .essay__img {
+    .essay__break .essay__img {
       animation: essay-parallax linear both;
-      animation-timeline: view();
-      animation-range: entry 0% exit 100%;
-    }
-
-    .accent__media .essay__img {
-      animation: essay-parallax-subtle linear both;
       animation-timeline: view();
       animation-range: entry 0% exit 100%;
     }
   }
 
   @keyframes essay-parallax {
-    from { transform: scale(1.08) translateY(-3%); }
-    to   { transform: scale(1) translateY(1.5%); }
-  }
-
-  @keyframes essay-parallax-subtle {
     from { transform: scale(1.05) translateY(-2%); }
-    to   { transform: scale(1) translateY(0.5%); }
+    to   { transform: scale(1) translateY(1%); }
   }
 
-  /* ═══ Spread: photo 70% + text 30% alongside ═══ */
-  .spread {
-    padding-block: 48px;
-  }
-
-  .spread__grid {
-    display: grid;
-    grid-template-columns: 7fr 3fr;
-    gap: clamp(32px, 5vw, 64px);
-    align-items: center;
-  }
-
-  .spread__grid--reverse {
-    grid-template-columns: 35fr 65fr;
-  }
-
-  .spread__media {
-    margin: 0;
-  }
-
-  .spread__media .essay__img-wrap {
+  /* ═══ Breakout photos — wider than text column ═══ */
+  .essay__break {
+    margin: 2.4em 0 1.8em;
+    /* Break out of the 680px text column — use viewport-relative width */
+    width: calc(100vw - var(--page-padding) * 2);
+    max-width: 960px;
+    margin-left: 50%;
+    transform: translateX(-50%);
     box-shadow:
       0 8px 16px rgba(0, 0, 0, 0.06),
       0 24px 64px rgba(0, 0, 0, 0.1);
+    border-radius: var(--profile-radius);
+    overflow: hidden;
   }
 
-  .spread__text-inner {
-    font-size: clamp(1.1rem, 1rem + 0.35vw, 1.22rem);
-    line-height: 1.9;
-    color: var(--c-dark);
-    text-wrap: pretty;
+  .essay__break .essay__img-wrap {
+    border-radius: 0;
+    box-shadow: none;
   }
 
-  .spread__text-inner p { margin: 0; }
-
-  /* ═══ Moment: cinematic full-width photo + narrow text ═══ */
-  .moment {
-    padding-block: 48px;
+  .essay__break .essay__caption {
+    padding: 0 16px;
   }
 
-  .moment__media {
-    margin: 0 auto;
-    max-width: 1320px;
-    padding-inline: var(--page-padding);
-  }
-
-  .moment__media .essay__img-wrap {
+  .essay__break--cinematic {
+    max-width: 1200px;
     box-shadow:
       0 12px 24px rgba(0, 0, 0, 0.08),
       0 32px 80px rgba(0, 0, 0, 0.12);
   }
 
-  .moment__text {
-    max-width: 54ch;
-    margin-inline: auto;
-    padding: 48px var(--page-padding) 24px;
+  /* ═══ Float photos — woven into text ═══ */
+  .essay__woven {
+    margin-block: 0.4em 1.6em;
+    overflow: hidden; /* contain floats */
   }
 
-  .moment__text-inner {
-    font-family: var(--font-display);
-    font-size: clamp(1.2rem, 1.05rem + 0.45vw, 1.4rem);
-    line-height: 1.75;
-    color: var(--c-dark);
-    text-wrap: pretty;
-  }
-
-  .moment__text-inner p { margin: 0; }
-
-  /* ═══ Accent: smaller photo + text alongside ═══ */
-  .accent {
-    padding-block: 48px;
-  }
-
-  .accent__grid {
-    display: grid;
-    grid-template-columns: 55fr 45fr;
-    gap: clamp(32px, 5vw, 64px);
-    align-items: center;
-  }
-
-  .accent--right .accent__media {
-    order: 1;
-  }
-
-  .accent--right .accent__text {
-    order: 0;
-  }
-
-  .accent__media {
+  .essay__float {
     margin: 0;
-  }
-
-  .accent__media .essay__img-wrap {
+    width: 45%;
+    max-width: 320px;
+    border-radius: var(--profile-radius);
+    overflow: hidden;
     box-shadow:
-      0 4px 8px rgba(0, 0, 0, 0.04),
+      0 4px 12px rgba(0, 0, 0, 0.06),
       0 12px 32px rgba(0, 0, 0, 0.08);
   }
 
-  .accent__text-inner {
-    font-size: clamp(1.1rem, 1rem + 0.35vw, 1.22rem);
-    line-height: 1.9;
-    color: var(--c-dark);
-    text-wrap: pretty;
+  .essay__float .essay__img-wrap {
+    border-radius: 0;
+    box-shadow: none;
   }
 
-  .accent__text-inner p { margin: 0; }
+  .essay__float--right {
+    float: right;
+    margin: 0.3em 0 1em 1.8em;
+  }
+
+  .essay__float--left {
+    float: left;
+    margin: 0.3em 1.8em 1em 0;
+  }
+
+  .essay__float .essay__caption {
+    padding: 8px 10px 10px;
+    font-size: 0.72rem;
+  }
 
   /* ═══ Pull quote — dramatic typographic centerpiece ═══ */
   .essay__quote {
-    margin: 40px 0 56px;
-    padding: 80px var(--page-padding);
+    margin: 2.4em 0;
+    padding: 72px var(--page-padding);
     background: var(--c-dark);
     position: relative;
     overflow: hidden;
+    border-radius: var(--profile-radius);
+    /* Break out of .essay__flow text column */
+    width: calc(100vw - var(--page-padding) * 2);
+    max-width: 960px;
+    margin-left: 50%;
+    transform: translateX(-50%);
   }
 
   /* Subtle radial glow behind the quote */
@@ -1813,7 +1757,7 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     transform: translateX(-50%);
     width: 600px;
     height: 600px;
-    background: radial-gradient(ellipse, rgba(255, 218, 36, 0.08) 0%, transparent 70%);
+    background: radial-gradient(ellipse, rgba(255, 218, 36, 0.1) 0%, transparent 70%);
     pointer-events: none;
   }
 
@@ -1825,23 +1769,23 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
   }
 
   .essay__quote-mark {
-    width: 40px;
-    height: 40px;
+    width: 56px;
+    height: 56px;
     color: var(--c-yellow);
-    opacity: 0.7;
+    opacity: 0.9;
     margin-inline: auto;
-    margin-bottom: 24px;
+    margin-bottom: 28px;
     display: block;
   }
 
   .essay__quote p {
     font-family: var(--font-display);
     font-style: italic;
-    font-size: clamp(1.35rem, 1.2rem + 0.7vw, 1.85rem);
-    line-height: 1.5;
+    font-size: clamp(1.5rem, 1.3rem + 0.8vw, 2.1rem);
+    line-height: 1.45;
     color: var(--c-white);
     margin: 0;
-    letter-spacing: -0.015em;
+    letter-spacing: -0.02em;
   }
 
   /* ═══ Fundraising CTA — Premium Card ═════ */
@@ -1971,39 +1915,6 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     transform: translate(-50%, -50%) scale(1.1);
   }
 
-  /* ═══ Section Divider — Editorial Break ═══════════ */
-  .section-divider {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 16px;
-    padding: 24px var(--page-padding);
-    background: var(--c-white);
-  }
-
-  .section-divider__line {
-    flex: 1;
-    max-width: 120px;
-    height: 1px;
-    background: linear-gradient(to right, transparent, var(--c-border));
-  }
-
-  .section-divider__line:last-child {
-    background: linear-gradient(to left, transparent, var(--c-border));
-  }
-
-  .section-divider__icon {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 44px;
-    height: 44px;
-    border-radius: 50%;
-    background: var(--c-warm-gray);
-    color: var(--c-text-muted);
-    flex-shrink: 0;
-  }
-
   /* ═══ Bento Photo Gallery ════════════════════════════
      Warm gray background creates the emotional shift
      from "understanding the story" to "seeing the impact."
@@ -2038,14 +1949,12 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     font-weight: 400;
   }
 
-  /* ── Bento Grid — premium gallery with breathing room ── */
+  /* ── Bento Grid — editorial gallery with breathing room ── */
   .bento {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
-    grid-auto-rows: 200px;
-    gap: 4px;
-    border-radius: var(--profile-radius);
-    overflow: hidden;
+    grid-auto-rows: 220px;
+    gap: 10px;
   }
 
   .bento__hero {
@@ -2068,11 +1977,15 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     padding: 0;
     cursor: pointer;
     overflow: hidden;
+    border-radius: 10px;
     background-color: var(--c-cream);
     background-image: var(--lqip);
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;
+    transform: translateZ(0);
+    transition: box-shadow 0.4s cubic-bezier(0.22, 1, 0.36, 1),
+                transform 0.4s cubic-bezier(0.22, 1, 0.36, 1);
   }
 
   .bento__img {
@@ -2082,59 +1995,87 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     display: block;
     position: relative;
     z-index: 2;
-    transition: transform 1s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: transform 1.2s cubic-bezier(0.16, 1, 0.3, 1),
+                filter 0.6s ease;
   }
 
   .bento__overlay {
     position: absolute;
     inset: 0;
     z-index: 3;
-    background: rgba(0, 0, 0, 0);
+    background: linear-gradient(
+      to top,
+      rgba(0, 0, 0, 0.45) 0%,
+      rgba(0, 0, 0, 0.12) 25%,
+      rgba(0, 0, 0, 0) 50%
+    );
     display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--c-white);
+    align-items: flex-end;
+    justify-content: space-between;
+    padding: 14px 16px;
     opacity: 0;
-    transition: background 0.5s ease, opacity 0.5s ease;
+    transition: opacity 0.4s cubic-bezier(0.22, 1, 0.36, 1);
     pointer-events: none;
   }
 
-  /* ── Ken-Burns hover: slow cinematic drift ── */
+  .bento__expand {
+    color: rgba(255, 255, 255, 0.85);
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.7rem;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  }
+
+  .bento__counter {
+    color: rgba(255, 255, 255, 0.65);
+    font-size: 0.68rem;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    font-variant-numeric: tabular-nums;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  }
+
+  /* ── Ken-Burns hover: cinematic drift + shadow lift ── */
   @media (hover: hover) {
     .bento__cell:hover {
       z-index: 2;
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+      transform: translateZ(0) scale(1.01);
     }
 
     .bento__cell:hover .bento__img {
-      transform: scale(1.08);
-      transition-duration: 4s;
+      transform: scale(1.06);
+      transition-duration: 6s;
       transition-timing-function: cubic-bezier(0.25, 0.46, 0.45, 0.94);
     }
 
     .bento__cell:hover .bento__overlay {
-      background: rgba(0, 0, 0, 0.2);
       opacity: 1;
     }
   }
 
   .bento__cell:focus-visible {
     outline: 3px solid var(--c-yellow);
-    outline-offset: -3px;
+    outline-offset: 2px;
     z-index: 4;
   }
 
-  /* ── Staggered bento entrance via scroll-timeline ── */
+  /* ── Staggered bento entrance ── */
   @supports (animation-timeline: view()) {
     .bento__cell {
-      animation: bento-enter 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+      animation: bento-enter 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
       animation-timeline: view();
-      animation-range: entry 0% entry 30%;
+      animation-range: entry 0% entry 35%;
     }
 
     @keyframes bento-enter {
       from {
         opacity: 0;
-        transform: scale(0.94) translateY(12px);
+        transform: scale(0.96) translateY(8px);
       }
       to {
         opacity: 1;
@@ -2170,9 +2111,9 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
 
   .partners__logo {
     width: 130px;
-    opacity: 0.45;
+    opacity: 0.55;
     transition: opacity 0.4s ease, filter 0.4s ease, transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-    filter: grayscale(100%);
+    filter: grayscale(80%);
   }
 
   .partners__logo:hover {
@@ -2251,6 +2192,19 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     line-height: 1.3;
   }
 
+  .related__tag {
+    display: inline-block;
+    font-size: 0.65rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--c-dark);
+    background: rgba(255, 218, 36, 0.2);
+    padding: 3px 8px;
+    border-radius: 100px;
+    margin-top: 6px;
+  }
+
   .related__diagnosis {
     display: block;
     font-size: 0.8rem;
@@ -2271,6 +2225,15 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     grid-template-columns: 1fr auto 1fr;
     align-items: center;
     gap: var(--space-lg);
+  }
+
+  .kid-nav__thumb {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   }
 
   .kid-nav__link {
@@ -2354,7 +2317,7 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     font-family: var(--font-display);
     font-size: clamp(8rem, 20vw, 20rem);
     font-weight: 700;
-    color: rgba(255, 255, 255, 0.02);
+    color: rgba(255, 255, 255, 0.04);
     white-space: nowrap;
     pointer-events: none;
     letter-spacing: -0.05em;
@@ -2613,24 +2576,31 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
       grid-template-columns: repeat(4, 1fr);
       gap: 16px;
     }
+
+    .essay__break {
+      border-radius: 16px;
+    }
+
+    .essay__quote {
+      border-radius: 16px;
+      margin-inline: var(--page-padding);
+    }
   }
 
   /* ═══ Responsive: Mobile — Premium ════════ */
   @media (max-width: 768px) {
+    .hero {
+      padding-top: 24px;
+    }
+
     .hero__split {
       grid-template-columns: 1fr;
       gap: 0;
-      min-height: auto;
-      max-height: none;
     }
 
     .hero__portrait {
-      aspect-ratio: 3 / 4;
-      max-height: 60vh;
-      border-radius: var(--profile-radius);
-      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.12);
-      margin-inline: var(--page-padding);
-      margin-top: 12px;
+      aspect-ratio: 4 / 5;
+      max-height: 55vh;
     }
 
     .hero__info {
@@ -2664,11 +2634,11 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     }
 
     .lede {
-      padding: 56px 0 40px;
+      padding: 48px 0 40px;
     }
 
-    .lede::before {
-      height: 32px;
+    .lede::after {
+      height: 80px;
     }
 
     .lede__text {
@@ -2681,61 +2651,48 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
 
     .story__body { font-size: 1.02rem; }
 
-    /* Reverse spread: photo still first on mobile */
-    .spread__grid--reverse .spread__media {
-      order: -1;
-    }
+    /* Essay — tighter on mobile */
+    .essay__flow { font-size: 1.02rem; }
 
-    /* Spreads stack on mobile — photo above text */
-    .spread__grid,
-    .spread__grid--reverse {
-      grid-template-columns: 1fr;
-      gap: 24px;
-    }
-
-    .spread { padding-block: 32px; }
-    .moment { padding-block: 32px; }
-    .accent { padding-block: 32px; }
-
-    /* Moment: cinematic goes true edge-to-edge */
-    .moment__media {
-      padding-inline: 0;
-    }
-    .moment__media .essay__img-wrap {
+    /* Breakout photos: edge-to-edge on mobile */
+    .essay__break {
       border-radius: 0;
       box-shadow: none;
-    }
-    .moment__text {
-      padding: 24px var(--page-padding) 16px;
+      margin-block: 1.8em 1.4em;
     }
 
-    /* Accent stacks on mobile */
-    .accent__grid {
-      grid-template-columns: 1fr;
-      gap: 24px;
+    /* Floats become full-width on mobile — no wrapping on small screens */
+    .essay__float {
+      float: none;
+      width: 100%;
+      max-width: none;
+      margin: 0 0 1.2em 0;
+      border-radius: var(--profile-radius);
     }
-    .accent--right .accent__media { order: 0; }
-    .accent--right .accent__text { order: 1; }
+
+    .essay__float--right,
+    .essay__float--left {
+      margin: 0 0 1.2em 0;
+    }
 
     .essay__quote {
       padding: 48px var(--page-padding);
+      border-radius: 0;
+      margin-inline: calc(-1 * var(--page-padding));
+      width: calc(100% + var(--page-padding) * 2);
+      max-width: none;
+      transform: none;
     }
-    .essay__quote-mark { width: 32px; height: 32px; }
-    .essay__quote p { font-size: 1.15rem; }
-
-    .section-divider__line { max-width: 80px; }
-    .section-divider__icon { width: 36px; height: 36px; }
-    .section-divider__icon svg { width: 16px; height: 16px; }
-
-    .lede__accent { margin-bottom: 32px; }
-    .lede__accent-line { height: 32px; }
+    .essay__quote-mark { width: 44px; height: 44px; }
+    .essay__quote p { font-size: 1.25rem; }
 
     .bento {
       grid-template-columns: repeat(2, 1fr);
-      grid-auto-rows: 160px;
-      gap: 3px;
-      border-radius: 16px;
+      grid-auto-rows: 180px;
+      gap: 8px;
     }
+
+    .bento__cell { border-radius: 8px; }
 
     .bento__hero {
       grid-column: 1 / -1;
@@ -2743,7 +2700,9 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     }
 
     .bento__tall { grid-row: span 2; }
-    .bento__wide { grid-column: span 2; }
+    .bento__wide { grid-column: 1 / -1; }
+
+    .bento__expand { display: none; }
 
     .gallery { padding-block: 56px; }
 
@@ -2772,6 +2731,7 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
 
     .kid-nav__link { padding: 10px; border-radius: 12px; }
     .kid-nav__name { font-size: 0.95rem; }
+    .kid-nav__thumb { width: 36px; height: 36px; }
 
     .lightbox__nav--prev { left: 8px; }
     .lightbox__nav--next { right: 8px; }
@@ -2803,17 +2763,15 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     .gallery__header { flex-direction: column; }
     .hero__name { font-size: clamp(2.5rem, 12vw, 3.5rem); }
 
-    .spread__text-inner,
-    .accent__text-inner {
-      font-size: 0.98rem;
-    }
-    .moment__text {
-      padding: 20px var(--page-padding) 12px;
-    }
+    .essay__flow { font-size: 0.98rem; }
 
     .bento {
-      grid-auto-rows: 140px;
+      grid-auto-rows: 160px;
+      gap: 6px;
     }
+    .bento__cell { border-radius: 6px; }
+    .bento__overlay { padding: 10px 12px; }
+    .bento__counter { font-size: 0.62rem; }
   }
 
   /* ═══ Reduced Motion ═══════════════════════ */

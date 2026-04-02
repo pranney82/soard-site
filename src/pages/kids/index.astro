@@ -33,7 +33,7 @@ import lqipManifest from '../../data/lqip-kids.json';
 const lqip: Record<string, string> = lqipManifest;
 /** Srcset with proportional height + face-crop at each breakpoint. */
 function cfCropSrcset(src: string, widths: number[], hwRatio: number) {
-  return _cfSrcset(src, widths, { fit: 'cover', gravity: 'face', quality: 70, aspectRatio: hwRatio });
+  return _cfSrcset(src, widths, { fit: 'cover', gravity: 'face', quality: 70, aspectRatio: hwRatio, sharpen: 1 });
 }
 
 // ── Stats ────────────────────────────────
@@ -113,10 +113,10 @@ const overflowKids = kids.slice(INITIAL_BATCH).map(kid => ({
 // ── LCP preload: first card's hero image (must match <picture> srcset exactly) ──
 const lcpKid = kids[0];
 const lcpSrcsetMobile = lcpKid?.data.heroImage
-  ? cfCropSrcset(lcpKid.data.heroImage, [160, 320, 480], 5/4)
+  ? cfCropSrcset(lcpKid.data.heroImage, [160, 240, 360, 480], 5/4)
   : null;
 const lcpSrcsetDesktop = lcpKid?.data.heroImage
-  ? cfCropSrcset(lcpKid.data.heroImage, [170, 260, 340, 520], 4/3)
+  ? cfCropSrcset(lcpKid.data.heroImage, [180, 260, 380, 520], 4/3)
   : null;
 
 // ── Hero face collage: 12 diverse kids across years ──
@@ -232,7 +232,7 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
               type="search"
               id="kid-search"
               class="search-box__input"
-              placeholder="Search kids..."
+              placeholder="Search by name, diagnosis, or project..."
               aria-label="Search kids by name, diagnosis, year, or project type"
               autocomplete="off"
             />
@@ -271,6 +271,7 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
           <!-- Mobile filter button -->
           <button class="filter-btn-mobile" id="filter-btn-mobile" type="button" aria-label="Open filters">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" y1="6" x2="20" y2="6"/><line x1="8" y1="12" x2="20" y2="12"/><line x1="12" y1="18" x2="20" y2="18"/></svg>
+            <span class="filter-btn-mobile__badge" id="mobile-filter-count" hidden aria-live="polite"></span>
           </button>
         </div>
 
@@ -295,7 +296,7 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
       <!-- Mobile Bottom Sheet -->
       <div class="bottom-sheet" id="bottom-sheet" aria-hidden="true">
         <div class="bottom-sheet__backdrop" id="sheet-backdrop"></div>
-        <div class="bottom-sheet__panel" role="dialog" aria-label="Filter options">
+        <div class="bottom-sheet__panel" role="dialog" aria-modal="true" aria-label="Filter options">
           <div class="bottom-sheet__handle" aria-hidden="true"><span></span></div>
           <div class="bottom-sheet__header">
             <h3 class="bottom-sheet__title">Filters</h3>
@@ -334,7 +335,7 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
           </div>
           <div class="bottom-sheet__footer">
             <button class="btn btn-dark btn--sm" id="sheet-clear" type="button">Clear All</button>
-            <button class="btn btn-yellow btn--sm" id="sheet-apply" type="button">Show Results</button>
+            <button class="btn btn-yellow btn--sm" id="sheet-apply" type="button">Show Results <span class="sheet-result-count" id="sheet-result-count"></span></button>
           </div>
         </div>
       </div>
@@ -367,12 +368,12 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
                 <picture>
                   <source
                     media="(max-width: 768px)"
-                    srcset={cfCropSrcset(kid.data.heroImage, [160, 320, 480], 5/4)}
+                    srcset={cfCropSrcset(kid.data.heroImage, [160, 240, 360, 480], 5/4)}
                     sizes="calc(50vw - 31px)"
                   />
                   <img
                     src={cfUrl(kid.data.heroImage, { w: 220, h: 293, fit: 'cover', gravity: 'face', q: 70 })}
-                    srcset={cfCropSrcset(kid.data.heroImage, [170, 260, 340, 520], 4/3)}
+                    srcset={cfCropSrcset(kid.data.heroImage, [180, 260, 380, 520], 4/3)}
                     sizes="(min-width: 1400px) 240px, (min-width: 1100px) calc(25vw - 30px), calc(33vw - 27px)"
                     alt={`Photo of ${kid.data.name}${(kid.data.roomTypes || []).length > 0 ? ` — ${(kid.data.roomTypes || []).join(', ')}` : ''} — Sunshine on a Ranney Day`}
                     class="kid-card__img"
@@ -422,11 +423,13 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
 
       <!-- No results -->
       <div class="no-results" id="no-results" hidden>
-        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.34-4.34"/><path d="M8 8 14 14"/><path d="m14 8-6 6"/></svg>
-        <p class="no-results__title">No kids found</p>
+        <div class="no-results__icon" aria-hidden="true">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.34-4.34"/></svg>
+        </div>
+        <p class="no-results__title">No matches found</p>
         <p class="no-results__hint" id="no-results-hint">Try a different search term or adjust your filters.</p>
         <div class="no-results__suggestions" id="no-results-suggestions"></div>
-        <button class="btn btn-dark btn--sm" id="clear-filters-alt">Clear all filters</button>
+        <button class="btn btn-dark btn--sm" id="clear-filters-alt">Start fresh</button>
       </div>
 
       {kids.length === 0 && (
@@ -636,7 +639,7 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
     // ── Create overflow cards from JSON data island ──
     const CF = 'https://sunshineonaranneyday.com/cdn-cgi/imagedelivery/ROYFuPmfN2vPS6mt5sCkZQ';
     function cfCard(id: string, w: number, h: number) {
-      return `${CF}/${id}/w=${w},h=${h},fit=cover,gravity=face,q=70`;
+      return `${CF}/${id}/w=${w},h=${h},fit=cover,gravity=face,q=70,sharpen=1,metadata=none`;
     }
     function cfSS(id: string, widths: number[], ratio: number) {
       return widths.map(w => `${cfCard(id, w, Math.round(w * ratio))} ${w}w`).join(', ');
@@ -654,7 +657,7 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
       const alt = escapeHtml(`Photo of ${kid.n}${roomTypes ? ` — ${roomTypes}` : ''} — Sunshine on a Ranney Day`);
       let imgHtml: string;
       if (kid.i) {
-        imgHtml = `<picture><source media="(max-width:768px)" srcset="${cfSS(kid.i,[160,320,480],5/4)}" sizes="calc(50vw - 31px)"/><img src="${cfCard(kid.i,220,293)}" srcset="${cfSS(kid.i,[170,260,340,520],4/3)}" sizes="(min-width:1400px) 240px,(min-width:1100px) calc(25vw - 30px),calc(33vw - 27px)" alt="${alt}" class="kid-card__img" width="340" height="453" loading="lazy" decoding="async"/></picture>`;
+        imgHtml = `<picture><source media="(max-width:768px)" srcset="${cfSS(kid.i,[160,240,360,480],5/4)}" sizes="calc(50vw - 31px)"/><img src="${cfCard(kid.i,220,293)}" srcset="${cfSS(kid.i,[180,260,380,520],4/3)}" sizes="(min-width:1400px) 240px,(min-width:1100px) calc(25vw - 30px),calc(33vw - 27px)" alt="${alt}" class="kid-card__img" width="340" height="453" loading="lazy" decoding="async"/></picture>`;
       } else {
         imgHtml = `<div class="kid-card__placeholder" aria-hidden="true"><svg width="48" height="48"><use href="#icon-placeholder"/></svg></div>`;
       }
@@ -819,6 +822,87 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
           if (badge) badge.classList.remove('is-visible');
         }
       });
+    }
+
+    // ══════════════════════════════════════════
+    //  LIVE FILTER COUNTS on dropdowns
+    // ══════════════════════════════════════════
+    // Build lightweight data array from ALL kids (server-rendered + overflow JSON)
+    // so counts are accurate even before overflow cards are created in the DOM.
+    type CountEntry = { year: string; types: string; name: string; diagnosis: string; status: string };
+    const allKidData: CountEntry[] = [];
+    cachedCards.forEach(card => {
+      const { year, types, name, diagnosis, status } = card.dataset;
+      allKidData.push({ year: year || '', types: types || '', name: name || '', diagnosis: diagnosis || '', status: status || '' });
+    });
+    // Also include overflow kids from JSON island
+    {
+      const overflowEl = document.getElementById('kids-overflow');
+      if (overflowEl?.textContent) {
+        try {
+          const overflow: { s: string; n: string; i: string; b: string; y: number; t: string[]; d: string; st: string }[] = JSON.parse(overflowEl.textContent);
+          for (const kid of overflow) {
+            allKidData.push({
+              year: `year-${kid.y}`,
+              types: kid.t.map(t => `type-${t.toLowerCase().replace(/\s+/g, '-')}`).join(' '),
+              name: kid.n.toLowerCase(),
+              diagnosis: kid.d.toLowerCase(),
+              status: kid.st,
+            });
+          }
+        } catch { /* ignore parse errors */ }
+      }
+    }
+
+    // Store original option labels (without counts)
+    const origYearLabels = new Map<string, string>();
+    const origTypeLabels = new Map<string, string>();
+    for (const opt of Array.from(yearSelect.options)) origYearLabels.set(opt.value, opt.textContent || '');
+    for (const opt of Array.from(typeSelect.options)) origTypeLabels.set(opt.value, opt.textContent || '');
+
+    function updateFilterCounts() {
+      const query = searchInput.value.toLowerCase().trim();
+      const currentYear = yearSelect.value;
+      const currentType = typeSelect.value;
+
+      // Year counts: how many match if we pick each year (with current type + status + search)
+      for (const opt of Array.from(yearSelect.options)) {
+        if (opt.value === 'all') continue;
+        let count = 0;
+        for (const kid of allKidData) {
+          if (kid.year !== opt.value) continue;
+          if (currentType !== 'all' && !kid.types.split(' ').includes(currentType)) continue;
+          if (statusActive && kid.status !== 'in-progress') continue;
+          const yearStr = kid.year.replace('year-', '');
+          const typesStr = kid.types.replace(/type-/g, '').replace(/-/g, ' ');
+          if (query && fuzzyMatch(query, kid.name, kid.diagnosis, yearStr, typesStr) <= 0) continue;
+          count++;
+        }
+        const base = origYearLabels.get(opt.value) || opt.value;
+        opt.textContent = `${base} (${count})`;
+      }
+
+      // Type counts: how many match if we pick each type (with current year + status + search)
+      for (const opt of Array.from(typeSelect.options)) {
+        if (opt.value === 'all') continue;
+        let count = 0;
+        for (const kid of allKidData) {
+          if (!kid.types.split(' ').includes(opt.value)) continue;
+          if (currentYear !== 'all' && kid.year !== currentYear) continue;
+          if (statusActive && kid.status !== 'in-progress') continue;
+          const yearStr = kid.year.replace('year-', '');
+          const typesStr = kid.types.replace(/type-/g, '').replace(/-/g, ' ');
+          if (query && fuzzyMatch(query, kid.name, kid.diagnosis, yearStr, typesStr) <= 0) continue;
+          count++;
+        }
+        const base = origTypeLabels.get(opt.value) || opt.value;
+        opt.textContent = `${base} (${count})`;
+      }
+
+      // Visual state: mark active filters with data attribute for CSS styling
+      yearSelect.classList.toggle('is-active', currentYear !== 'all');
+      typeSelect.classList.toggle('is-active', currentType !== 'all');
+      if (sortSelect) sortSelect.classList.toggle('is-active', currentSort !== 'newest');
     }
 
     // ══════════════════════════════════════════
@@ -1037,7 +1121,6 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
       const hlRe = buildHighlightRe(query);
 
       let visibleCount = 0;
-      const scored: { card: HTMLElement; score: number }[] = [];
 
       for (const card of cachedCards) {
         const { year, types, name, diagnosis, status } = card.dataset;
@@ -1051,7 +1134,6 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
         if (matchesYear && matchesType && matchesStatus && matchScore > 0) {
           showCard(card);
           visibleCount++;
-          if (query) scored.push({ card, score: matchScore });
         } else {
           hideCard(card);
         }
@@ -1066,25 +1148,25 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
         }
       }
 
-      // Relevance-rank: re-sort visible cards by match score when searching
-      if (query && scored.length > 1) {
-        scored.sort((a, b) => b.score - a.score);
-        const frag = document.createDocumentFragment();
-        scored.forEach(({ card }) => frag.appendChild(card));
-        for (const card of cachedCards) {
-          if (card.classList.contains('is-hidden') || card.classList.contains('is-hiding')) {
-            frag.appendChild(card);
-          }
-        }
-        grid.appendChild(frag);
-      }
+      // No DOM reorder during search — cards stay in sort order, search only
+      // shows/hides. This preserves spatial memory, avoids image flash from
+      // DOM detachment, and matches best-in-class grid filter UX (Airbnb, Zillow).
+      // Relevance score is still used above for the match threshold (fuzzyMatch > 0).
 
-      // FLIP animate remaining visible cards into new positions
+      // FLIP animate position changes from cards appearing/disappearing
       requestAnimationFrame(() => animateFLIP(oldPos));
 
       // Update status text — use stable DOM references, never recreate #visible-count
       const totalText = String(cachedCards.length);
-      visibleCountEl.textContent = String(visibleCount);
+      const prevCount = visibleCountEl.textContent;
+      const newCount = String(visibleCount);
+      if (prevCount !== newCount) {
+        visibleCountEl.classList.add('is-updating');
+        requestAnimationFrame(() => {
+          visibleCountEl.textContent = newCount;
+          requestAnimationFrame(() => visibleCountEl.classList.remove('is-updating'));
+        });
+      }
       if (resultCount) {
         if (query && visibleCount > 0) {
           resultCount.innerHTML = `<strong>${visibleCount}</strong> ${visibleCount === 1 ? 'result' : 'results'} for \u201c${escapeHtml(query)}\u201d`;
@@ -1108,6 +1190,9 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
 
       // Update chips
       renderChips();
+
+      // Live filter counts on dropdowns
+      updateFilterCounts();
 
       // Year badges
       updateYearBadges();
@@ -1255,7 +1340,20 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
     //  BOTTOM SHEET
     // ══════════════════════════════════════════
     let savedScrollY = 0;
+    function syncSheetCounts() {
+      // Copy count labels from desktop selects to sheet selects
+      for (const opt of Array.from(yearSelect.options)) {
+        const sheetOpt = sheetYear.querySelector(`option[value="${opt.value}"]`) as HTMLOptionElement | null;
+        if (sheetOpt) sheetOpt.textContent = opt.textContent;
+      }
+      for (const opt of Array.from(typeSelect.options)) {
+        const sheetOpt = sheetType.querySelector(`option[value="${opt.value}"]`) as HTMLOptionElement | null;
+        if (sheetOpt) sheetOpt.textContent = opt.textContent;
+      }
+    }
+
     function openSheet() {
+      syncSheetCounts();
       sheetYear.value = yearSelect.value;
       sheetType.value = typeSelect.value;
       if (sheetSort) sheetSort.value = sortSelect?.value || 'newest';
@@ -1265,6 +1363,7 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
       }
       sheet.classList.add('is-open');
       sheet.setAttribute('aria-hidden', 'false');
+      updateSheetPreview();
       savedScrollY = window.scrollY;
       document.body.style.position = 'fixed';
       document.body.style.top = `-${savedScrollY}px`;
@@ -1294,6 +1393,30 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
         sheetStatus.setAttribute('aria-pressed', String(isActive));
       }, { signal });
     }
+    // Live result count preview in bottom sheet
+    const sheetResultCount = document.getElementById('sheet-result-count') as HTMLElement | null;
+    function updateSheetPreview() {
+      if (!sheetResultCount) return;
+      const query = searchInput.value.toLowerCase().trim();
+      const yr = sheetYear.value;
+      const tp = sheetType.value;
+      const st = sheetStatus ? sheetStatus.classList.contains('active') : false;
+      let count = 0;
+      for (const kid of allKidData) {
+        if (yr !== 'all' && kid.year !== yr) continue;
+        if (tp !== 'all' && !kid.types.split(' ').includes(tp)) continue;
+        if (st && kid.status !== 'in-progress') continue;
+        const yearStr = kid.year.replace('year-', '');
+        const typesStr = kid.types.replace(/type-/g, '').replace(/-/g, ' ');
+        if (query && fuzzyMatch(query, kid.name, kid.diagnosis, yearStr, typesStr) <= 0) continue;
+        count++;
+      }
+      sheetResultCount.textContent = `(${count})`;
+    }
+    sheetYear.addEventListener('change', updateSheetPreview, { signal });
+    sheetType.addEventListener('change', updateSheetPreview, { signal });
+    if (sheetStatus) sheetStatus.addEventListener('click', () => setTimeout(updateSheetPreview, 10), { signal });
+
     sheetClear?.addEventListener('click', () => {
       sheetYear.value = 'all';
       sheetType.value = 'all';
@@ -1302,6 +1425,7 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
         sheetStatus.classList.remove('active');
         sheetStatus.setAttribute('aria-pressed', 'false');
       }
+      updateSheetPreview();
     }, { signal });
     sheetApply?.addEventListener('click', () => {
       yearSelect.value = sheetYear.value;
@@ -1318,6 +1442,12 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
       }
       applyFilters();
       closeSheet();
+      // Move focus to first visible result for screen readers
+      requestAnimationFrame(() => {
+        const firstVisible = grid.querySelector('.kid-card:not(.is-hidden)') as HTMLElement | null;
+        if (firstVisible) firstVisible.focus({ preventScroll: true });
+        else searchInput.focus();
+      });
     }, { signal });
 
     document.addEventListener('keydown', (e) => {
@@ -1465,6 +1595,7 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
     } else {
       // Still show year badges on initial load if sort is year-based
       updateYearBadges();
+      updateFilterCounts();
     }
 
   } // end initKidsIndex
@@ -1698,18 +1829,22 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
     position: sticky;
     top: var(--header-height, 84px);
     z-index: 20;
-    background: var(--c-cream);
+    background: rgba(252, 249, 243, 0.82);
+    background: color-mix(in srgb, var(--c-cream) 82%, transparent);
+    backdrop-filter: blur(16px) saturate(1.4);
+    -webkit-backdrop-filter: blur(16px) saturate(1.4);
     margin-inline: calc(-1 * var(--space-lg));
     padding: var(--space-md) var(--space-lg);
     margin-bottom: var(--space-xl);
     border-bottom: 1px solid transparent;
-    transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+    transition: border-color 0.3s ease, box-shadow 0.3s ease, background 0.3s ease;
     scroll-margin-top: var(--header-height, 84px);
   }
 
   .toolbar.is-scrolled {
-    border-bottom-color: var(--c-border);
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
+    border-bottom-color: rgba(224, 222, 218, 0.6);
+    border-bottom-color: color-mix(in srgb, var(--c-border) 60%, transparent);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.04), 0 4px 24px rgba(0, 0, 0, 0.06);
   }
 
   .toolbar__row {
@@ -1730,6 +1865,14 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
   .result-count strong {
     color: var(--c-text);
     font-weight: 600;
+    display: inline-block;
+    font-variant-numeric: tabular-nums;
+    transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.15s ease;
+  }
+
+  .result-count strong.is-updating {
+    transform: translateY(-2px);
+    opacity: 0.5;
   }
 
   .result-count[hidden] {
@@ -1762,6 +1905,11 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
     flex: 1;
     min-width: 180px;
     max-width: 340px;
+    transition: max-width 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .search-box:focus-within {
+    max-width: 420px;
   }
 
   .search-box__icon {
@@ -1771,7 +1919,7 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
     transform: translateY(-50%);
     color: var(--c-text-light);
     pointer-events: none;
-    transition: color var(--transition-fast);
+    transition: color 0.2s ease, transform 0.2s ease;
   }
 
   .search-box__input {
@@ -1779,25 +1927,32 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
     height: 44px;
     padding: 0 44px 0 42px;
     font-size: 0.9rem;
-    border: 1px solid var(--c-border);
+    border: 1.5px solid var(--c-border);
     border-radius: var(--border-radius);
     background: var(--c-white);
     color: var(--c-text);
-    transition: border-color var(--transition-fast), box-shadow var(--transition-fast), padding var(--transition-fast);
+    transition: border-color 0.2s ease, box-shadow 0.3s ease, padding 0.15s ease, background 0.2s ease;
   }
 
   .search-box__input::placeholder {
     color: var(--c-text-light);
+    transition: color 0.2s ease;
   }
 
   .search-box__input:focus {
     outline: none;
     border-color: var(--c-dark);
-    box-shadow: 0 0 0 3px var(--c-accent-soft);
+    box-shadow: 0 0 0 3px var(--c-accent-soft), 0 2px 12px rgba(0, 0, 0, 0.06);
+  }
+
+  .search-box__input:focus::placeholder {
+    color: rgba(160, 160, 166, 0.6);
+    color: color-mix(in srgb, var(--c-text-light) 60%, transparent);
   }
 
   .search-box:focus-within .search-box__icon {
     color: var(--c-dark);
+    transform: translateY(-50%) scale(1.05);
   }
 
   .search-box__input::-webkit-search-cancel-button {
@@ -1870,10 +2025,17 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
     color: inherit;
     border-radius: 2px;
     padding: 0 1px;
+    animation: highlightReveal 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
   }
   :global(.kid-card__name mark) {
     background: none;
     color: inherit;
+    font-weight: 700;
+    animation: highlightReveal 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  @keyframes highlightReveal {
+    from { background-color: rgba(255, 218, 36, 0.7); }
+    to { background-color: transparent; }
   }
 
   /* ── Search count badge ── */
@@ -1985,12 +2147,18 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
     flex-shrink: 0;
   }
 
-  /* Touch devices: always show remove button */
+  /* Touch devices: always show remove button with larger tap target */
   @media (hover: none) {
+    .filter-chips :global(.filter-chip) {
+      padding: 8px 12px;
+      min-height: 36px;
+    }
+
     .filter-chips :global(.filter-chip__remove) {
-      width: 14px;
+      width: 20px;
+      height: 20px;
       opacity: 1;
-      margin-left: 2px;
+      margin-left: 4px;
     }
   }
 
@@ -2079,7 +2247,7 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
   /* ── Content-Visibility for off-screen cards ── */
   :global(.kid-card) {
     content-visibility: auto;
-    contain-intrinsic-size: auto 260px auto 400px;
+    contain-intrinsic-size: auto 240px auto 370px;
   }
 
   /* ── FLIP transition helper ── */
@@ -2122,11 +2290,25 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
     box-shadow: 0 0 0 3px var(--c-accent-soft);
   }
 
+  /* Active filter visual state — subtle yellow accent */
+  .filter-select.is-active {
+    border-color: var(--c-yellow);
+    background-color: rgba(255, 252, 243, 1);
+    background-color: color-mix(in srgb, var(--c-yellow) 6%, var(--c-white));
+    font-weight: 600;
+  }
+
+  .filter-select.is-active:hover {
+    border-color: rgba(210, 180, 30, 1);
+    border-color: color-mix(in srgb, var(--c-yellow) 80%, var(--c-dark));
+  }
+
   /* ── Mobile filter button ── */
   .filter-btn-mobile {
     display: none;
     align-items: center;
     justify-content: center;
+    position: relative;
     height: 44px;
     width: 44px;
     padding: 0;
@@ -2137,6 +2319,27 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
     color: var(--c-text);
     flex-shrink: 0;
   }
+
+  .filter-btn-mobile__badge {
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    background: var(--c-yellow);
+    color: var(--c-dark);
+    font-size: 0.6rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    line-height: 18px;
+    text-align: center;
+    border-radius: 100px;
+    pointer-events: none;
+    animation: countIn 0.2s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  }
+
+  .filter-btn-mobile__badge[hidden] { display: none; }
 
   /* ── Pill Toggle ── */
   .pill-toggle {
@@ -2241,8 +2444,10 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
     transform: translateY(100%);
     transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
     max-height: 80vh;
+    max-height: 80dvh;
     display: flex;
     flex-direction: column;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
   }
 
   .bottom-sheet.is-open .bottom-sheet__panel {
@@ -2329,6 +2534,11 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
     background-position: right 12px center;
   }
 
+  .sheet-result-count {
+    font-weight: 400;
+    opacity: 0.8;
+  }
+
   .pill-toggle--sheet {
     width: 100%;
     justify-content: center;
@@ -2370,12 +2580,6 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
     outline-offset: 4px;
     transition: opacity 0.25s ease;
     min-width: 0;
-  }
-
-  @media (hover: hover) {
-    :global(.kid-card:hover) {
-      /* No lift — effects stay contained inside the frame */
-    }
   }
 
   :global(.kid-card:focus-visible) {
@@ -2465,7 +2669,7 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
   :global(.kid-card__frame[style*="background-image"])::before {
     content: '';
     position: absolute;
-    inset: -10px; /* overshoot to hide blur edges */
+    inset: -24px; /* overshoot ≥ blur radius to contain soft edges */
     background: inherit;
     background-size: cover;
     background-position: center;
@@ -2679,11 +2883,30 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
     text-align: center;
     padding: var(--space-4xl) var(--space-lg);
     color: var(--c-text-light);
+    animation: emptyFadeIn 0.4s ease both;
+  }
+
+  @keyframes emptyFadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .no-results__icon {
+    width: 80px;
+    height: 80px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: var(--c-warm-gray);
+    color: var(--c-text-light);
+    margin-bottom: var(--space-xs);
   }
 
   .no-results__title {
     font-family: var(--font-display);
     font-size: 1.25rem;
+    font-weight: 600;
     color: var(--c-text);
   }
 
@@ -2691,6 +2914,8 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
     font-size: 0.9rem;
     color: var(--c-text-muted);
     margin-bottom: var(--space-sm);
+    max-width: 360px;
+    line-height: 1.55;
   }
 
   /* ═══════════════════════════════════════════
@@ -2812,6 +3037,8 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
       margin-inline: calc(-1 * var(--space-lg));
       padding: var(--space-sm) var(--space-lg);
       margin-bottom: var(--space-md);
+      background: rgba(252, 249, 243, 0.88);
+      background: color-mix(in srgb, var(--c-cream) 88%, transparent);
     }
 
     .toolbar__row {
@@ -2822,6 +3049,10 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
       max-width: none;
       min-width: 0;
       flex: 1;
+    }
+
+    .search-box:focus-within {
+      max-width: none;
     }
 
     .search-box__input {
@@ -2988,6 +3219,45 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
 
     .face {
       animation: none;
+    }
+
+    :global(.kid-card__img) {
+      opacity: 1 !important;
+      transition: none;
+    }
+
+    :global(.kid-card__name) {
+      transition: none;
+    }
+
+    :global(.kid-card__name mark),
+    :global(.kid-card__diagnosis mark) {
+      animation: none;
+    }
+
+    .filter-chips :global(.filter-chip) {
+      animation: none;
+    }
+
+    .filter-chips :global(.filter-chips__clear) {
+      animation: none;
+    }
+
+    .search-box__count {
+      animation: none;
+      opacity: 1;
+    }
+
+    .filter-btn-mobile__badge {
+      animation: none;
+    }
+
+    .no-results {
+      animation: none;
+    }
+
+    .search-box {
+      transition: none;
     }
 
   }

@@ -2055,6 +2055,9 @@
       const [sending, setSending] = useState(false);
       const [result, setResult] = useState(null);
       const [previewHtml, setPreviewHtml] = useState('');
+      const [emailTab, setEmailTab] = useState('compose');
+      const [broadcasts, setBroadcasts] = useState([]);
+      const [historyLoading, setHistoryLoading] = useState(false);
       const [showPreview, setShowPreview] = useState(false);
       const previewRef = useRef(null);
 
@@ -2167,6 +2170,34 @@
         setSending(false);
       };
 
+      const loadHistory = useCallback(async () => {
+        setHistoryLoading(true);
+        try {
+          const res = await fetch('/api/create-broadcast');
+          const data = await res.json();
+          if (data.ok) setBroadcasts(data.broadcasts || []);
+        } catch (e) {
+          addToast?.('Failed to load email history', 'error');
+        }
+        setHistoryLoading(false);
+      }, []);
+
+      useEffect(() => {
+        if (emailTab === 'history') loadHistory();
+      }, [emailTab]);
+
+      // Also refresh history after creating a broadcast
+      useEffect(() => {
+        if (result) loadHistory();
+      }, [result]);
+
+      const statusColors = {
+        draft: { bg: '#FEFCBF', color: '#744210' },
+        sent: { bg: '#C6F6D5', color: '#22543D' },
+        queued: { bg: '#BEE3F8', color: '#2A4365' },
+        cancelled: { bg: '#FED7D7', color: '#742A2A' },
+      };
+
       const templateCards = [
         { id: 'reveal', label: 'Project Reveal', desc: 'Completed project — announce the room transformation to donors & partners.', icon: icons.star },
         { id: 'kickoff', label: 'Project Kickoff', desc: 'Upcoming kid — introduce them and rally support for the build.', icon: icons.sparkle },
@@ -2195,15 +2226,80 @@
       return html`
         <div>
           <!-- Header -->
-          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.75rem;">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
             <div>
-              <h2 style="margin: 0 0 0.25rem;">Email</h2>
+              <h2 style="margin: 0 0 0.25rem; display: flex; align-items: center; gap: 0.5rem;">${icons.mail} Email</h2>
               <p style="margin: 0; color: var(--color-text-secondary); font-size: 0.9rem;">Create on-brand email broadcasts. Drafts go to Resend for review before sending.</p>
             </div>
             <a href="https://resend.com/broadcasts" target="_blank" rel="noopener noreferrer" class="btn btn-ghost" style="font-size: 0.8rem; padding: 0.4rem 0.8rem; gap: 0.35rem;">
               ${icons.mail} Resend Dashboard ↗
             </a>
           </div>
+
+          <!-- Tabs: Compose / History -->
+          <div class="hub-tabs" style="margin-bottom: 1.75rem;">
+            <button class="hub-tab ${emailTab === 'compose' ? 'active' : ''}" onClick=${() => setEmailTab('compose')}>Compose</button>
+            <button class="hub-tab ${emailTab === 'history' ? 'active' : ''}" onClick=${() => setEmailTab('history')}>
+              History${broadcasts.length > 0 ? html` <span style="margin-left: 0.35rem; min-width: 18px; height: 18px; border-radius: 9px; background: var(--color-bg); font-size: 0.7rem; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; padding: 0 5px; color: var(--color-text-muted);">${broadcasts.length}</span>` : null}
+            </button>
+          </div>
+
+          ${emailTab === 'history' ? html`
+            <!-- ═══ HISTORY TAB ═══ -->
+            ${historyLoading ? html`
+              <div style="text-align: center; padding: 3rem;">
+                <div class="spinner" style="margin: 0 auto 1rem;" />
+                <p style="color: var(--color-text-muted); font-size: 0.85rem;">Loading broadcast history...</p>
+              </div>
+            ` : broadcasts.length === 0 ? html`
+              <div class="card" style="padding: 3rem; text-align: center;">
+                <div style="margin-bottom: 0.75rem; color: var(--color-text-muted);">${icons.mail}</div>
+                <p style="font-weight: 600; margin: 0 0 0.25rem;">No broadcasts yet</p>
+                <p style="font-size: 0.85rem; color: var(--color-text-muted); margin: 0;">Create your first broadcast in the Compose tab.</p>
+              </div>
+            ` : html`
+              <div class="card" style="padding: 0;">
+                <div class="table-wrap">
+                  <table style="width: 100%; border-collapse: collapse;">
+                    <thead>
+                      <tr>
+                        <th style="text-align: left; padding: 0.75rem 1rem; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-muted); border-bottom: 1px solid var(--color-border);">Name</th>
+                        <th style="text-align: left; padding: 0.75rem 1rem; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-muted); border-bottom: 1px solid var(--color-border);">Status</th>
+                        <th style="text-align: left; padding: 0.75rem 1rem; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-muted); border-bottom: 1px solid var(--color-border);">Created</th>
+                        <th style="text-align: left; padding: 0.75rem 1rem; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-muted); border-bottom: 1px solid var(--color-border);">Sent</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${broadcasts.map(b => {
+                        const sc = statusColors[b.status] || statusColors.draft;
+                        const created = b.createdAt ? new Date(b.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—';
+                        const sent = b.sentAt ? new Date(b.sentAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—';
+                        return html`
+                          <tr key=${b.id} style="border-bottom: 1px solid var(--color-bg);">
+                            <td style="padding: 0.75rem 1rem;">
+                              <div style="font-weight: 600; font-size: 0.9rem;">${b.name}</div>
+                              ${b.subject ? html`<div style="font-size: 0.78rem; color: var(--color-text-muted); margin-top: 0.15rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 300px;">${b.subject}</div>` : null}
+                            </td>
+                            <td style="padding: 0.75rem 1rem;">
+                              <span style="display: inline-block; padding: 0.2rem 0.6rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600; text-transform: capitalize; background: ${sc.bg}; color: ${sc.color};">${b.status}</span>
+                            </td>
+                            <td style="padding: 0.75rem 1rem; font-size: 0.85rem; color: var(--color-text-secondary); white-space: nowrap;">${created}</td>
+                            <td style="padding: 0.75rem 1rem; font-size: 0.85rem; color: var(--color-text-secondary); white-space: nowrap;">${sent}</td>
+                          </tr>
+                        `;
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              <div style="margin-top: 0.75rem; text-align: right;">
+                <button class="btn btn-sm btn-ghost" onClick=${loadHistory} disabled=${historyLoading}>
+                  ${historyLoading ? html`<div class="spinner" style="width: 12px; height: 12px; border-width: 2px;" />` : 'Refresh'}
+                </button>
+              </div>
+            `}
+          ` : html`
+          <!-- ═══ COMPOSE TAB ═══ -->
 
           <!-- Template picker -->
           <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem; margin-bottom: 1.75rem;">
@@ -2372,6 +2468,7 @@
               </div>
             ` : null}
           </div>
+          `}
         </div>
       `;
     }
