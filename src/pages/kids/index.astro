@@ -584,7 +584,6 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
     let allCardsLoaded = false;
     let statusActive = false;
     let currentSort = 'newest';
-    let isTyping = false;
     const originalTexts = new WeakMap<HTMLElement, { name: string; diagnosis: string }>();
 
     // ── DOM refs ──
@@ -751,6 +750,11 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
         const dx = oldPos.x - newRect.left;
         const dy = oldPos.y - newRect.top;
         if (Math.abs(dx) < 1 && Math.abs(dy) < 1) continue;
+        // Cancel any in-flight FLIP to prevent overlapping transforms
+        if (card.classList.contains('is-flipping')) {
+          card.classList.remove('is-flipping');
+          void card.offsetWidth; // force style recalc
+        }
         card.style.transform = `translate(${dx}px, ${dy}px)`;
         card.classList.add('is-flipping');
         requestAnimationFrame(() => {
@@ -966,35 +970,19 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
     // ══════════════════════════════════════════
     //  ANIMATED FILTER TRANSITIONS
     // ══════════════════════════════════════════
-    let hideTimers = new Map<HTMLElement, number>();
-
+    // ── Card visibility ──
+    // Uses display:none so the browser never unloads decoded images.
+    // No opacity animations on show/hide — images stay rock-solid.
     function showCard(card: HTMLElement) {
-      const timer = hideTimers.get(card);
-      if (timer) { clearTimeout(timer); hideTimers.delete(card); }
-      card.classList.remove('is-hiding');
-      if (card.classList.contains('is-hidden')) {
-        card.classList.remove('is-hidden');
-        if (!reducedMotion) card.classList.add('is-showing');
-      }
+      card.classList.remove('is-hidden');
     }
 
     function hideCard(card: HTMLElement) {
       if (card.classList.contains('is-hidden')) return;
-      if (reducedMotion) { card.classList.add('is-hidden'); return; }
-      card.classList.remove('is-showing');
-      card.classList.add('is-hiding');
-      const timer = window.setTimeout(() => {
-        card.classList.remove('is-hiding');
-        card.classList.add('is-hidden');
-        hideTimers.delete(card);
-      }, 200);
-      hideTimers.set(card, timer);
+      card.classList.remove('is-flipping');
+      card.style.transform = '';
+      card.classList.add('is-hidden');
     }
-
-    grid.addEventListener('animationend', (e) => {
-      const card = (e.target as HTMLElement).closest('.kid-card') as HTMLElement | null;
-      if (card?.classList.contains('is-showing')) card.classList.remove('is-showing');
-    }, { signal });
 
     // ══════════════════════════════════════════
     //  SMART EMPTY STATE
@@ -1115,9 +1103,6 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
         loadMoreWrap.classList.remove('is-hidden');
       }
 
-      // Capture positions for FLIP
-      const oldPos = capturePositions();
-
       // Build highlight regex once for the entire pass (not per-card)
       const hlRe = buildHighlightRe(query);
 
@@ -1147,15 +1132,6 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
           if (nameEl) highlightText(nameEl, hlRe, orig.name);
           if (diagEl) highlightText(diagEl, hlRe, orig.diagnosis);
         }
-      }
-
-      // FLIP animate position changes — but NOT during typing.
-      // Typing triggers applyFilters every 80ms; FLIP takes 350ms. Overlapping
-      // FLIPs cause cards to snap/jump (the "flash"). Skip FLIP while typing —
-      // cards just appear/disappear instantly. FLIP runs on discrete actions
-      // (sort change, dropdown filter, clear) where there's no rapid-fire overlap.
-      if (!isTyping) {
-        requestAnimationFrame(() => animateFLIP(oldPos));
       }
 
       // Update status text — use stable DOM references, never recreate #visible-count
@@ -1225,7 +1201,6 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
 
     function clearAll() {
       searchInput.value = '';
-      isTyping = false;
       searchInput.style.paddingRight = '';
       searchCountEl.hidden = true;
       searchClear.hidden = true;
@@ -1282,26 +1257,18 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
       }, { signal });
     }
 
-    // Search input: debounced single-pass filter-as-you-type
-    let typingEndTimer: ReturnType<typeof setTimeout>;
+    // Search input: debounced filter-as-you-type
     searchInput.addEventListener('input', () => {
       clearTimeout(searchTimer);
-      clearTimeout(typingEndTimer);
       const val = searchInput.value;
       searchClear.hidden = !val;
       if (kbdHint) kbdHint.classList.toggle('is-hidden', !!val);
 
-      // Flag typing state — suppresses FLIP during rapid keystrokes
-      isTyping = true;
-
-      // Debounce the single-pass DOM filter
+      // Debounce the DOM filter pass
       visibleCountEl.style.opacity = '0.4';
       searchTimer = setTimeout(() => {
         visibleCountEl.style.opacity = '';
         applyFilters();
-        // Clear typing flag after a settling pause — next discrete
-        // action (dropdown, clear) will get FLIP animation
-        typingEndTimer = setTimeout(() => { isTyping = false; }, 300);
       }, 80);
     }, { signal });
 
@@ -1313,7 +1280,6 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
     }, { signal });
 
     searchClear.addEventListener('click', () => {
-      isTyping = false;
       searchInput.value = '';
       searchClear.hidden = true;
       searchCountEl.hidden = true;
@@ -1570,9 +1536,9 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
     function initImageFade(img: HTMLImageElement) {
       const onLoaded = () => {
         img.classList.add('is-loaded');
-        // Remove blur placeholder once real image is visible
+        // Fade out LQIP blur after the real image has had one frame to paint
         const frame = img.closest('.kid-card__frame');
-        if (frame) frame.classList.add('lqip-done');
+        if (frame) requestAnimationFrame(() => frame.classList.add('lqip-done'));
       };
       if (img.complete && img.naturalWidth > 0) {
         onLoaded();
@@ -2256,10 +2222,9 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
     color: var(--c-text-light);
   }
 
-  /* ── Content-Visibility for off-screen cards ── */
+  /* ── Containment for off-screen cards ── */
   :global(.kid-card) {
-    content-visibility: auto;
-    contain-intrinsic-size: auto 240px auto 370px;
+    contain: layout style paint;
   }
 
   /* ── FLIP transition helper ── */
@@ -2590,7 +2555,6 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
     display: block;
     text-decoration: none;
     outline-offset: 4px;
-    transition: opacity 0.25s ease;
     min-width: 0;
   }
 
@@ -2602,7 +2566,7 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
 
   :global(.kid-card:active) {
     opacity: 0.85;
-    transition-duration: 80ms;
+    transition: opacity 80ms ease;
   }
 
   /* Staggered reveal */
@@ -2621,30 +2585,8 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
   }
 
   :global(.kid-card.is-hidden) {
-    opacity: 0;
-    transform: scale(0.92);
+    display: none;
     pointer-events: none;
-    position: absolute;
-    visibility: hidden;
-    /* Removed from grid flow but animated out */
-  }
-
-  :global(.kid-card.is-showing) {
-    animation: cardShow 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-  }
-
-  :global(.kid-card.is-hiding) {
-    animation: cardHide 0.2s ease forwards;
-  }
-
-  @keyframes cardShow {
-    from { opacity: 0; transform: scale(0.92); }
-    to { opacity: 1; transform: scale(1); }
-  }
-
-  @keyframes cardHide {
-    from { opacity: 1; transform: scale(1); }
-    to { opacity: 0; transform: scale(0.92); }
   }
 
   /* Load More button */
@@ -2687,9 +2629,12 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
     background-position: center;
     filter: blur(20px);
     z-index: 0;
+    opacity: 1;
+    transition: opacity 0.3s ease;
   }
   :global(.kid-card__frame.lqip-done)::before {
-    display: none;
+    opacity: 0;
+    pointer-events: none;
   }
   /* Ensure img and overlays sit above the blur pseudo-element */
   :global(.kid-card__frame > *) {
@@ -2703,20 +2648,19 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
     height: 100%;
     object-fit: cover;
     display: block;
-    transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1),
-                filter 0.6s cubic-bezier(0.16, 1, 0.3, 1);
-  }
-
-  /* Only hide images when JS is active — progressive enhancement */
-  :global(.js-img-fade .kid-card__img) {
-    opacity: 0;
     transition: opacity 0.4s ease,
                 transform 0.6s cubic-bezier(0.16, 1, 0.3, 1),
                 filter 0.6s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
-  :global(.js-img-fade .kid-card__img.is-loaded) {
-    opacity: 1;
+  /* Image reveal — progressive enhancement.
+     :not(.is-loaded) sets opacity:0. Once is-loaded is added the rule
+     no longer matches, so opacity can NEVER regress to 0 — completely
+     eliminates flash on filter/search/scroll regardless of parent state.
+     The transition lives on the base .kid-card__img so it's always in
+     effect when the class changes. */
+  :global(.js-img-fade .kid-card__img:not(.is-loaded)) {
+    opacity: 0;
   }
 
   @media (hover: hover) {
@@ -3208,19 +3152,12 @@ while (heroFaces.length < 12 && yi < sortedYears.length * 3) {
       transition: none;
     }
 
-    :global(.kid-card.is-hiding),
-    :global(.kid-card.is-showing) {
-      animation: none;
-    }
-
     :global(.kid-card.is-flipping) {
       transition: none;
     }
 
     :global(.kid-card.is-hidden) {
-      opacity: 0;
-      visibility: hidden;
-      position: absolute;
+      display: none;
       pointer-events: none;
     }
 

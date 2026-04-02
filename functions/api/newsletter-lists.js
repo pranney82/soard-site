@@ -1,14 +1,12 @@
 /**
  * GET /api/newsletter-lists
  *
- * Fetches all contact lists from Constant Contact v3 API.
+ * Fetches all audiences from Resend API.
  * Admin-only (behind Cloudflare Access middleware).
  *
- * Required env vars: CC_CLIENT_ID, CC_CLIENT_SECRET, CC_REFRESH_TOKEN
+ * Required env vars: RESEND_API_KEY
  * Returns: { ok: true, lists: [{ id, name, memberCount }] }
  */
-
-import { getCCAccessToken, clearCCTokenCache, CCAuthError } from './_cc-auth.js';
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -16,49 +14,33 @@ const cors = {
 };
 
 export async function onRequestGet(context) {
-  let token;
-  try {
-    token = await getCCAccessToken(context.env);
-  } catch (err) {
-    if (err instanceof CCAuthError) {
-      return new Response(
-        JSON.stringify({ ok: false, error: err.message }),
-        { status: err.status, headers: cors }
-      );
-    }
-    throw err;
+  const apiKey = context.env.RESEND_API_KEY;
+  if (!apiKey) {
+    return new Response(
+      JSON.stringify({ ok: false, error: 'RESEND_API_KEY is not configured.' }),
+      { status: 503, headers: cors }
+    );
   }
 
   try {
-    let res = await fetch(
-      'https://api.cc.email/v3/contact_lists?include_count=true&include_membership_count=all&status=active',
-      { headers: { Authorization: `Bearer ${token}` } }
-    );
-
-    // If 401, clear cache and retry once with a fresh token
-    if (res.status === 401) {
-      clearCCTokenCache();
-      token = await getCCAccessToken(context.env);
-      res = await fetch(
-        'https://api.cc.email/v3/contact_lists?include_count=true&include_membership_count=all&status=active',
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-    }
+    const res = await fetch('https://api.resend.com/audiences', {
+      headers: { Authorization: `Bearer ${apiKey}` },
+    });
 
     if (!res.ok) {
       const body = await res.text();
-      console.error(`CC API error ${res.status}: ${body}`);
+      console.error(`Resend API error ${res.status}: ${body}`);
       return new Response(
-        JSON.stringify({ ok: false, error: `Constant Contact API returned ${res.status}.` }),
+        JSON.stringify({ ok: false, error: `Resend API returned ${res.status}.` }),
         { status: 502, headers: cors }
       );
     }
 
     const data = await res.json();
-    const lists = (data.lists || []).map(l => ({
-      id: l.list_id,
-      name: l.name,
-      memberCount: l.membership_count || 0,
+    const lists = (data.data || []).map(a => ({
+      id: a.id,
+      name: a.name,
+      memberCount: 0, // Resend doesn't return count in list endpoint
     }));
 
     return new Response(
@@ -66,15 +48,9 @@ export async function onRequestGet(context) {
       { status: 200, headers: cors }
     );
   } catch (err) {
-    if (err instanceof CCAuthError) {
-      return new Response(
-        JSON.stringify({ ok: false, error: err.message }),
-        { status: err.status, headers: cors }
-      );
-    }
     console.error('Newsletter lists error:', err);
     return new Response(
-      JSON.stringify({ ok: false, error: 'Failed to fetch lists from Constant Contact.' }),
+      JSON.stringify({ ok: false, error: 'Failed to fetch audiences from Resend.' }),
       { status: 500, headers: cors }
     );
   }

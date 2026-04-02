@@ -277,7 +277,7 @@ function buildRevealHtml(kid, opts) {
   const donateUrl = `${SITE_URL}/donate`;
 
   // ── Image selection ──
-  const heroSrc = kid.heroImage || (photos[0] && photos[0].url) || '';
+  const heroSrc = opts.heroImage || kid.heroImage || (photos[0] && photos[0].url) || '';
   const heroImg = cfImg(heroSrc, 'w=1200,h=900,fit=cover,gravity=face,q=80');
 
   // Pick duo photos (2nd and 3rd from gallery, skipping hero)
@@ -633,7 +633,7 @@ function buildKickoffHtml(kid, opts) {
   const donateUrl = kid.fundraisingUrl || `${SITE_URL}/donate`;
   const roomLabel = roomTypes.join(' + ');
 
-  const heroSrc = kid.heroImage || (photos[0] && photos[0].url) || '';
+  const heroSrc = opts.heroImage || kid.heroImage || (photos[0] && photos[0].url) || '';
   const heroImg = heroSrc ? cfImg(heroSrc, 'w=1200,h=900,fit=cover,gravity=face,q=80') : '';
 
   const paras = kid.bio ? bioParagraphs(kid.bio) : [];

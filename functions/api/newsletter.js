@@ -1,21 +1,19 @@
 /**
  * POST /api/newsletter
  *
- * Adds an email to the Constant Contact mailing list via their v3 API.
+ * Adds an email to a Resend Audience via their API.
  *
  * Required Cloudflare Pages env vars:
- *   CC_CLIENT_ID, CC_CLIENT_SECRET, CC_REFRESH_TOKEN
+ *   RESEND_API_KEY
  *
- * List ID source (in priority order):
- *   1. CC_LIST_ID env var (override)
- *   2. newsletter.listId from site settings (set via admin panel)
+ * Audience ID source (in priority order):
+ *   1. RESEND_AUDIENCE_ID env var (override)
+ *   2. newsletter.audienceId from site settings (set via admin panel)
  *
  * Accepts both JSON (JS-enhanced) and form-encoded (no-JS fallback) POSTs.
  * JSON:  { "email": "user@example.com" }  →  { "ok": true/false }
  * Form:  standard form POST  →  302 redirect back with ?subscribed=1 or ?newsletter_error=...
  */
-
-import { getCCAccessToken, clearCCTokenCache, CCAuthError } from './_cc-auth.js';
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -37,7 +35,6 @@ function safeRedirectPath(referer, requestUrl) {
   try {
     const ref = new URL(referer);
     const req = new URL(requestUrl);
-    // Only allow same-origin redirects to prevent open redirect
     if (ref.origin === req.origin) return ref.pathname;
   } catch { /* invalid URL, fall through */ }
   return '/';
@@ -65,7 +62,6 @@ export async function onRequestPost(context) {
 
     // Honeypot: if the hidden field has a value, it's a bot
     if (hp) {
-      // Silently accept to avoid tipping off the bot
       if (isFormPost) return redirect(origin, redirectPath, { subscribed: '1' });
       return jsonOk({ ok: true });
     }
@@ -75,84 +71,60 @@ export async function onRequestPost(context) {
       return jsonOk({ ok: false, error: 'Please enter a valid email address.' }, 400);
     }
 
-    let token;
-    try {
-      token = await getCCAccessToken(context.env);
-    } catch (err) {
-      if (err instanceof CCAuthError) {
-        console.error(err.message);
-        if (isFormPost) return redirect(origin, redirectPath, { newsletter_error: 'not_configured' });
-        return jsonOk({ ok: false, error: 'Newsletter signup is not configured yet. Please try again later.' }, 503);
-      }
-      throw err;
+    const apiKey = context.env.RESEND_API_KEY;
+    if (!apiKey) {
+      console.error('RESEND_API_KEY is not set');
+      if (isFormPost) return redirect(origin, redirectPath, { newsletter_error: 'not_configured' });
+      return jsonOk({ ok: false, error: 'Newsletter signup is not configured yet. Please try again later.' }, 503);
     }
 
-    // Resolve list ID: env var takes priority, then static config from admin
-    let listId = context.env.CC_LIST_ID || '';
-    if (!listId) {
+    // Resolve audience ID: env var takes priority, then static config from admin
+    let audienceId = context.env.RESEND_AUDIENCE_ID || '';
+    if (!audienceId) {
       try {
         const configRes = await context.env.ASSETS.fetch(
           new URL('/newsletter-config.json', context.request.url)
         );
         if (configRes.ok) {
           const config = await configRes.json();
-          listId = config.listId || '';
+          audienceId = config.audienceId || '';
         }
       } catch (e) {
         console.error('Failed to read newsletter config:', e);
       }
     }
 
-    if (!listId) {
-      console.error('No CC_LIST_ID env var or newsletter.listId in settings');
+    if (!audienceId) {
+      console.error('No RESEND_AUDIENCE_ID env var or newsletter.audienceId in settings');
       if (isFormPost) return redirect(origin, redirectPath, { newsletter_error: 'not_configured' });
       return jsonOk({ ok: false, error: 'Newsletter signup is not configured yet. Please try again later.' }, 503);
     }
 
-    let res = await fetch('https://api.cc.email/v3/contacts/sign_up_form', {
+    const res = await fetch(`https://api.resend.com/audiences/${audienceId}/contacts`, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${token}`,
+        Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        email_address: email,
-        list_memberships: [listId],
-      }),
+      body: JSON.stringify({ email }),
     });
 
-    // If 401, clear cache and retry once with a fresh token
-    if (res.status === 401) {
-      clearCCTokenCache();
-      token = await getCCAccessToken(context.env);
-      res = await fetch('https://api.cc.email/v3/contacts/sign_up_form', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          email_address: email,
-          list_memberships: [listId],
-        }),
-      });
+    if (res.ok) {
+      if (isFormPost) return redirect(origin, redirectPath, { subscribed: '1' });
+      return jsonOk({ ok: true });
     }
 
-    if (res.ok || res.status === 409) {
-      // 409 = already subscribed, still a success from the user's perspective
+    // Resend returns 409 if contact already exists — still a success for the user
+    if (res.status === 409) {
       if (isFormPost) return redirect(origin, redirectPath, { subscribed: '1' });
       return jsonOk({ ok: true });
     }
 
     const errBody = await res.text();
-    console.error(`CC API error ${res.status}: ${errBody}`);
+    console.error(`Resend API error ${res.status}: ${errBody}`);
     if (isFormPost) return redirect(origin, redirectPath, { newsletter_error: 'server' });
     return jsonOk({ ok: false, error: 'Something went wrong. Please try again.' }, 502);
   } catch (err) {
-    if (err instanceof CCAuthError) {
-      if (isFormPost) return redirect(origin, redirectPath, { newsletter_error: 'not_configured' });
-      return jsonOk({ ok: false, error: 'Newsletter signup is not configured yet. Please try again later.' }, 503);
-    }
     console.error('Newsletter handler error:', err);
     if (isFormPost) return redirect(origin, redirectPath, { newsletter_error: 'server' });
     return jsonOk({ ok: false, error: 'Something went wrong. Please try again.' }, 500);

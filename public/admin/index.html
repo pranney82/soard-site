@@ -430,7 +430,7 @@
         gap: 0.5rem;
       }
 
-      /* ─── Newsletter / Constant Contact table ── */
+      /* ─── Newsletter / Resend table ── */
       .card table[style*="border-collapse"] {
         font-size: 0.82rem !important;
       }
@@ -1836,6 +1836,16 @@
       menu:       _s(html`<line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/>`),
       chevLeft:   _s(html`<path d="m15 18-6-6 6-6"/>`),
       mail:       _s(html`<rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>`),
+      kids:       _s(html`<circle cx="12" cy="12" r="10"/><circle cx="12" cy="10" r="3"/><path d="M7 20.662V19a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v1.662"/>`),
+      team:       _s(html`<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><path d="M16 3.128a4 4 0 0 1 0 7.744"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><circle cx="9" cy="7" r="4"/>`),
+      partners:   _s(html`<path d="m11 17 2 2a1 1 0 1 0 3-3"/><path d="m14 14 2.5 2.5a1 1 0 1 0 3-3l-3.88-3.88a3 3 0 0 0-4.24 0l-.88.88a1 1 0 1 1-3-3l2.81-2.81a5.79 5.79 0 0 1 7.06-.87l.47.28a2 2 0 0 0 1.42.25L21 4"/><path d="m21 3 1 11h-2"/><path d="M3 3 2 14l6.5 6.5a1 1 0 1 0 3-3"/><path d="M3 4h8"/>`),
+      articles:   _s(html`<path d="M15 18h-5"/><path d="M18 14h-8"/><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-4 0v-9a2 2 0 0 1 2-2h2"/><rect width="8" height="4" x="10" y="6" rx="1"/>`),
+      events:     _s(html`<path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/>`),
+      press:      _s(html`<path d="M15 18h-5"/><path d="M18 14h-8"/><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-4 0v-9a2 2 0 0 1 2-2h2"/><rect width="8" height="4" x="10" y="6" rx="1"/>`),
+      settings:   _s(html`<path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/><circle cx="12" cy="12" r="3"/>`),
+      auditLog:   _s(html`<path d="M15 12h-5"/><path d="M15 8h-5"/><path d="M19 17V5a2 2 0 0 0-2-2H4"/><path d="M8 21h12a2 2 0 0 0 2-2v-1a1 1 0 0 0-1-1H11a1 1 0 0 0-1 1v1a2 2 0 1 1-4 0V5a2 2 0 1 0-4 0v2a1 1 0 0 0 1 1h3"/>`),
+      deploys:    _s(html`<path d="M12 3v12"/><path d="m17 8-5-5-5 5"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>`),
+      globe:      _s(html`<circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/>`),
     };
 
     // ─── API Helpers ────────────────────────
@@ -2052,6 +2062,7 @@
       const [monthlyNote, setMonthlyNote] = useState('');
       const [monthlyRevealSlug, setMonthlyRevealSlug] = useState('');
       const [monthlyCurrentSlug, setMonthlyCurrentSlug] = useState('');
+      const [heroImageOverride, setHeroImageOverride] = useState('');
       const [sending, setSending] = useState(false);
       const [result, setResult] = useState(null);
       const [previewHtml, setPreviewHtml] = useState('');
@@ -2068,7 +2079,7 @@
       // Auto-select & reset when template changes
       useEffect(() => {
         setSelectedSlug(kidOptions[0]?.slug || '');
-        setSubject(''); setPreheader(''); setHeadline(''); setFounderNote('');
+        setSubject(''); setPreheader(''); setHeadline(''); setFounderNote(''); setHeroImageOverride('');
         setResult(null); setPreviewHtml(''); setShowPreview(false);
         if (!monthlyRevealSlug) setMonthlyRevealSlug(completedKids[0]?.slug || '');
         if (!monthlyCurrentSlug) setMonthlyCurrentSlug(inProgressKids[0]?.slug || '');
@@ -2116,12 +2127,14 @@
         if (!selectedKid) throw new Error('Please select a kid');
         const kidData = await api.readContent('src/content/kids/' + selectedSlug + '.json');
         if (!kidData.success) throw new Error('Failed to load kid data');
+        const kid = typeof kidData.content === 'string' ? JSON.parse(kidData.content) : kidData.content;
         const opts = {};
         if (founderNote) opts.founderNote = founderNote;
         if (headline) opts.headline = headline;
         if (subject) opts.subject = subject;
         if (preheader) opts.preheader = preheader;
-        return { template, kid: kidData.content, opts };
+        if (heroImageOverride) opts.heroImage = heroImageOverride;
+        return { template, kid, opts };
       };
 
       const handlePreview = async () => {
@@ -2327,13 +2340,32 @@
                 <!-- Kid selector -->
                 <div class="form-group">
                   <label class="form-label">${template === 'reveal' ? 'Select Completed Kid' : 'Select In-Progress Kid'}</label>
-                  <select class="form-input" value=${selectedSlug} onChange=${e => { setSelectedSlug(e.target.value); setResult(null); setPreviewHtml(''); setShowPreview(false); }}>
+                  <select class="form-input" value=${selectedSlug} onChange=${e => { setSelectedSlug(e.target.value); setHeroImageOverride(''); setResult(null); setPreviewHtml(''); setShowPreview(false); }}>
                     ${kidOptions.length === 0 ? html`<option value="">No ${template === 'kickoff' ? 'in-progress' : 'completed'} kids</option>` : null}
                     ${kidOptions.map(k => html`<option key=${k.slug} value=${k.slug}>${k.name}${k.year ? ` (${k.year})` : ''} — ${k.roomTypes?.join(', ') || 'No rooms'}</option>`)}
                   </select>
                 </div>
 
                 ${selectedKid ? html`<div style="margin-bottom: 1.25rem;"><${KidCard} kid=${selectedKid} /></div>` : null}
+
+                <!-- Hero photo picker -->
+                ${selectedKid?.photos?.length > 1 ? html`
+                  <div class="form-group">
+                    <label class="form-label">Hero Photo <span style="font-weight: 400; color: var(--color-text-muted);">(click to change)</span></label>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: 6px;">
+                      ${selectedKid.photos.map(p => {
+                        const isSelected = heroImageOverride ? p.url === heroImageOverride : p.url === selectedKid.heroImage;
+                        return html`
+                          <div onClick=${() => setHeroImageOverride(p.url === heroImageOverride || (!heroImageOverride && p.url === selectedKid.heroImage) ? '' : p.url)}
+                            style="cursor: pointer; border-radius: 8px; overflow: hidden; aspect-ratio: 1; border: 2.5px solid ${isSelected ? '#FFDA24' : 'transparent'}; opacity: ${isSelected ? 1 : 0.6}; transition: all 0.15s;">
+                            <img src="${p.url}" alt="" style="width: 100%; height: 100%; object-fit: cover; display: block;" />
+                          </div>
+                        `;
+                      })}
+                    </div>
+                    <div class="form-hint">${heroImageOverride ? 'Custom photo selected for email.' : 'Using default hero photo.'}</div>
+                  </div>
+                ` : null}
 
                 <!-- Subject line -->
                 <div class="form-group">
@@ -8988,10 +9020,10 @@
             setLists(data.lists);
             setFetched(true);
           } else {
-            setError(data.error || 'Failed to fetch lists.');
+            setError(data.error || 'Failed to fetch audiences.');
           }
         } catch (err) {
-          setError('Failed to connect. Use the "Connect Constant Contact" button above to authorize.');
+          setError('Failed to connect. Make sure RESEND_API_KEY is set in your environment.');
         }
         setLoading(false);
       };
@@ -9000,24 +9032,19 @@
 
       return html`
         <div class="card">
-          <h3 style="margin-bottom: 1rem;">Newsletter (Constant Contact)</h3>
-          <p class="text-sm text-muted mb-1">Choose which Constant Contact list new subscribers are added to.</p>
-          <div style="margin: 0.75rem 0;">
-            <a href="/api/cc-oauth-start" class="btn btn-ghost" style="font-size: 0.85rem; text-decoration: none;">
-              ↗ Connect / Reconnect Constant Contact
-            </a>
-          </div>
+          <h3 style="margin-bottom: 1rem;">Newsletter (Resend)</h3>
+          <p class="text-sm text-muted mb-1">Choose which Resend audience new subscribers are added to.</p>
           <div style="display: flex; gap: 0.5rem; align-items: flex-start; margin-top: 0.75rem;">
             <div class="form-group" style="flex: 1; margin-bottom: 0;">
-              <label class="form-label">List ID</label>
-              <input class="form-input" value=${listId} placeholder="Click 'Fetch Lists' to browse →"
+              <label class="form-label">Audience ID</label>
+              <input class="form-input" value=${listId} placeholder="Click 'Fetch Audiences' to browse →"
                 onInput=${e => onSelect(e.target.value)} readonly style="background: #f8f8f6;" />
             </div>
             <div style="padding-top: 1.6rem;">
               <button class="btn btn-ghost" onClick=${fetchLists} disabled=${loading}
                 style="white-space: nowrap;">
                 ${loading ? html`<span class="spinner" style="width:14px;height:14px;" />` : null}
-                ${loading ? ' Loading...' : 'Fetch Lists'}
+                ${loading ? ' Loading...' : 'Fetch Audiences'}
               </button>
             </div>
           </div>
@@ -9028,8 +9055,7 @@
               <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem;">
                 <thead>
                   <tr style="background: #f5f4f0; text-align: left;">
-                    <th style="padding: 0.5rem 0.75rem; font-weight: 600;">List Name</th>
-                    <th style="padding: 0.5rem 0.75rem; font-weight: 600; width: 80px; text-align: right;">Members</th>
+                    <th style="padding: 0.5rem 0.75rem; font-weight: 600;">Audience Name</th>
                     <th style="padding: 0.5rem 0.75rem; width: 70px;"></th>
                   </tr>
                 </thead>
@@ -9040,7 +9066,6 @@
                         ${l.name}
                         ${l.id === listId ? html` <span style="color: #22c55e; font-weight: 600; font-size: 0.75rem;">✓ Active</span>` : null}
                       </td>
-                      <td style="padding: 0.5rem 0.75rem; text-align: right; color: #6B6C72;">${l.memberCount.toLocaleString()}</td>
                       <td style="padding: 0.5rem 0.75rem; text-align: center;">
                         ${l.id !== listId ? html`
                           <button class="btn btn-ghost" style="padding: 0.2rem 0.6rem; font-size: 0.8rem;"
@@ -9053,7 +9078,7 @@
               </table>
             </div>
           ` : null}
-          ${fetched && lists.length === 0 && !error ? html`<p class="text-sm text-muted" style="margin-top: 0.5rem;">No active lists found in your Constant Contact account.</p>` : null}
+          ${fetched && lists.length === 0 && !error ? html`<p class="text-sm text-muted" style="margin-top: 0.5rem;">No audiences found in your Resend account.</p>` : null}
         </div>
       `;
     }
@@ -9307,7 +9332,7 @@
             </div>
           </div>
         </div>
-        <${NewsletterSettings} listId=${data.newsletter?.listId || ''} onSelect=${(id) => updateField('newsletter.listId', id)} />
+        <${NewsletterSettings} listId=${data.newsletter?.audienceId || ''} onSelect=${(id) => updateField('newsletter.audienceId', id)} />
 
         <div class="card">
           <h3 style="margin-bottom: 1rem;">Social Links</h3>
