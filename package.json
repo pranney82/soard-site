@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "astro dev",
     "prebuild": "node scripts/prebuild.js && node scripts/generate-lqip.js && node scripts/generate-dimensions.js",
-    "build": "astro build",
+    "build": "npm run prebuild && astro build",
     "preview": "astro preview",
     "astro": "astro"
   },
