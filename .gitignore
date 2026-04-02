@@ -11,7 +11,7 @@ src/content/kids/
 src/content/partners/
 src/content/press/
 src/content/team/
-src/content/events/
+# src/content/events/ — checked in so golf hero fallback works
 src/content/community/
 src/content/articles/
 src/content/site/
