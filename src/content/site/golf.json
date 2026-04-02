@@ -1,0 +1,144 @@
+{
+  "testimonial": {
+    "quote": "The best charity golf event in Atlanta — incredible cause, incredible people. We'll be back every year.",
+    "name": "2025 Gold Sponsor",
+    "title": ""
+  },
+  "faqs": [
+    {
+      "question": "What's included with my sponsorship or foursome?",
+      "answer": "All packages include lunch, beverages, golf cart, and a swag bag. Sponsorship tiers also include signage, social media promotion, and additional perks depending on level."
+    },
+    {
+      "question": "Can I register a single golfer instead of a foursome?",
+      "answer": "The tournament is organized by foursomes. If you'd like to play individually, contact us and we'll pair you with a group."
+    },
+    {
+      "question": "Where does the money go?",
+      "answer": "100% of proceeds fund dream room makeovers for children with special needs through <a href='https://sunshineonaranneyday.com'>Sunshine on a Ranney Day</a>. Zeffy charges zero platform fees."
+    },
+    {
+      "question": "Can I donate without playing?",
+      "answer": "Absolutely! You can <a href='/donate/'>donate directly</a> or shop <a href='https://www.sunnyandranney.com/shop/' target='_blank'>Sunny & Ranney</a> — profits go directly to funding room makeovers."
+    },
+    {
+      "question": "What is the format of the tournament?",
+      "answer": "The tournament is a scramble format — perfect for players of all skill levels. It's about having fun and supporting a great cause."
+    },
+    {
+      "question": "Is there a dress code?",
+      "answer": "Standard golf attire is required. Collared shirts, golf shorts or pants, and soft-spike golf shoes."
+    }
+  ],
+  "sponsors": [],
+  "galleryPhotos": [],
+  "tiers": {
+    "main": [
+      {
+        "name": "Presenting Sponsor",
+        "price": "$20,000",
+        "detail": "2 Foursomes (8 Golfers)",
+        "perk": "Oakley sunglasses + Footjoy shoes per player, video interview, logo on all signage & social media",
+        "badge": "Top Sponsor",
+        "badgeStyle": "gold",
+        "highlight": "featured",
+        "status": "available"
+      },
+      {
+        "name": "Titanium Sponsor",
+        "price": "$15,000",
+        "detail": "2 Foursomes (8 Golfers)",
+        "perk": "Oakley sunglasses or Footjoy shoes, video interview, logo placement",
+        "status": "available"
+      },
+      {
+        "name": "Diamond Sponsor",
+        "price": "$10,000",
+        "detail": "1 Foursome (4 Golfers)",
+        "perk": "Video interview, logo on social media & signage",
+        "status": "available"
+      },
+      {
+        "name": "Platinum Sponsor",
+        "price": "$7,500",
+        "detail": "1 Foursome (4 Golfers)",
+        "perk": "Signage, multiple social media posts",
+        "status": "available"
+      },
+      {
+        "name": "Gold Sponsor",
+        "price": "$5,000",
+        "detail": "1 Foursome (4 Golfers)",
+        "perk": "Signage, social media posts",
+        "status": "available"
+      },
+      {
+        "name": "Foursome",
+        "price": "$1,500",
+        "detail": "4 Golfers",
+        "perk": "Lunch & beverages included",
+        "badge": "Most Popular",
+        "badgeStyle": "green",
+        "highlight": "popular",
+        "status": "available"
+      }
+    ],
+    "addons": [
+      {
+        "name": "Tournament Coin Sponsor",
+        "price": "$4,000",
+        "status": "available"
+      },
+      {
+        "name": "Lunch Sponsor",
+        "price": "$2,500",
+        "status": "available"
+      },
+      {
+        "name": "Putting Contest Sponsor",
+        "price": "$2,500",
+        "status": "available"
+      },
+      {
+        "name": "Beverage Cart Sponsor",
+        "price": "$2,000",
+        "status": "available"
+      },
+      {
+        "name": "Bloody Mary Bar Sponsor",
+        "price": "$2,000",
+        "status": "available"
+      },
+      {
+        "name": "Banquet Bar Sponsor",
+        "price": "$2,000",
+        "status": "available"
+      },
+      {
+        "name": "Raffle Sponsor",
+        "price": "$2,000",
+        "status": "available"
+      },
+      {
+        "name": "Titleist Golf Ball Sponsor",
+        "price": "$1,750",
+        "status": "available"
+      },
+      {
+        "name": "Banquet Sponsor",
+        "price": "$1,500",
+        "status": "available"
+      },
+      {
+        "name": "Closest to the Pin",
+        "price": "$1,500",
+        "status": "available"
+      },
+      {
+        "name": "Hole Sponsor",
+        "price": "$1,000",
+        "status": "available"
+      }
+    ]
+  }
+}
