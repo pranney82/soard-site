@@ -264,9 +264,9 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
   <article class="kid-profile" itemscope itemtype="https://schema.org/Article">
     <!-- ═══ Hero: Magazine Cover ════════════ -->
     <section class="hero">
-      <a href="/kids/" class="hero__back stagger" aria-label="Back to all kids">
+      <a href="/kids/" class="hero__back stagger" aria-label="Back to Meet the Kids">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
-        All Kids
+        Meet the Kids
       </a>
 
       <div class="hero__split">
@@ -1305,7 +1305,7 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
      cover that's been cut. Name is 8vw+.
      ═══════════════════════════════════════════ */
   .hero {
-    padding-top: var(--space-lg);
+    padding-top: 0;
     padding-bottom: 0;
     background: var(--c-cream);
     overflow: hidden;
@@ -1920,28 +1920,31 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     font-weight: 400;
   }
 
-  /* ── Bento Grid — intentional, designed layout ── */
+  /* ── Bento Grid — contact sheet density ──
+     2px gaps, flush to container, varied row heights.
+     Hero image anchors top-left at 2×2.
+     Aspect-ratio-aware spans from build-time manifest. */
   .bento {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
-    grid-auto-rows: 200px;
-    gap: 4px;
+    grid-auto-rows: 180px;
+    gap: 2px;
     border-radius: var(--profile-radius);
     overflow: hidden;
   }
 
-  /* Hero: 2 cols × 2 rows — the anchor image */
+  /* Hero: 2 cols × 2 rows — the anchor */
   .bento__hero {
     grid-column: span 2;
     grid-row: span 2;
   }
 
-  /* Tall: 1 col × 2 rows — vertical rhythm */
+  /* Tall: portrait photos span 2 rows */
   .bento__tall {
     grid-row: span 2;
   }
 
-  /* Wide: 2 cols × 1 row — horizontal accent */
+  /* Wide: landscape photos span 2 cols */
   .bento__wide {
     grid-column: span 2;
   }
@@ -2487,9 +2490,12 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
     }
 
     .hero__portrait {
-      aspect-ratio: 4 / 3;
-      border-radius: 0;
-      box-shadow: none;
+      aspect-ratio: 3 / 4;
+      max-height: 65vh;
+      border-radius: var(--profile-radius);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+      margin-inline: var(--page-padding);
+      margin-top: var(--space-md);
     }
 
     .hero__info {
@@ -2561,23 +2567,21 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
 
     .bento {
       grid-template-columns: repeat(2, 1fr);
-      grid-auto-rows: 160px;
-      gap: 3px;
-      border-radius: 12px;
+      grid-auto-rows: 140px;
+      gap: 2px;
+      border-radius: 14px;
     }
 
-    /* Hero spans full width on mobile */
     .bento__hero {
       grid-column: 1 / -1;
-      grid-row: span 1;
+      grid-row: span 2;
     }
 
-    /* Tall resets to standard on mobile */
+    /* Portrait photos keep their tall span on mobile */
     .bento__tall {
-      grid-row: span 1;
+      grid-row: span 2;
     }
 
-    /* Wide stays 2-col on mobile */
     .bento__wide {
       grid-column: span 2;
     }
