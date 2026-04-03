@@ -13,6 +13,7 @@ const kids = defineCollection({
     bio: z.string().nullable(),
     quote: z.string().nullable(),
     heroImage: z.string().nullable(),
+    accentImage: z.string().nullable().optional(),
     photos: z.array(z.object({
       url: z.string(),
       alt: z.string().default(''),

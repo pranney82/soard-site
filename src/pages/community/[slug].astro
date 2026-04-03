@@ -669,14 +669,13 @@ const jsonLd = buildSchemaGraph(
     max-width: 120px;
     max-height: 60px;
     object-fit: contain;
-    filter: grayscale(100%);
     opacity: 0.65;
     transition: filter 0.3s ease, opacity 0.3s ease;
   }
 
-  .cp-detail-partner-logo:hover img {
-    filter: grayscale(0%);
-    opacity: 1;
+  @media (hover: hover) {
+    .cp-detail-partner-logo img { filter: grayscale(100%); }
+    .cp-detail-partner-logo:hover img { filter: grayscale(0%); opacity: 1; }
   }
 
   @media (max-width: 768px) {

@@ -25,6 +25,9 @@ const kids = allKids
 
 const years = [...new Set(kids.map(k => k.data.year).filter(Boolean))].sort((a, b) => b - a);
 const roomTypes = [...new Set(kids.flatMap(k => k.data.roomTypes || []))].sort();
+
+const ROOM_ORDER: Record<string, number> = { 'Accessible Bathroom': 0, 'Dream Bedroom': 1, 'Therapy Room': 2 };
+const sortRoomTypes = (types: string[]) => [...types].sort((a, b) => (ROOM_ORDER[a] ?? 99) - (ROOM_ORDER[b] ?? 99));
 const totalKids = kids.reduce((sum, k) => sum + (k.data.childCount || 1), 0);
 
 // ── CF Image helpers ──────────────────────
@@ -105,7 +108,7 @@ const overflowKids = kids.slice(INITIAL_BATCH).map(kid => ({
   i: kid.data.heroImage ? cfId(kid.data.heroImage) : '',
   b: kid.data.heroImage ? (lqip[cfId(kid.data.heroImage)] || '') : '',
   y: kid.data.year || 0,
-  t: kid.data.roomTypes || [],
+  t: sortRoomTypes(kid.data.roomTypes || []),
   d: kid.data.diagnosis || '',
   st: kid.data.status || 'completed',
 }));
@@ -147,24 +150,32 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
   <section class="kids-hero" aria-label="Meet the Kids">
     <div class="kids-hero__inner">
       <div class="kids-hero__text">
+        <span class="section-label section-label--yellow kids-hero__eyebrow">Our Kids</span>
         <h1 class="kids-hero__headline">Meet our <em>Sunshine</em> Kids</h1>
         <p class="kids-hero__sub">{siteSettings.kidsPageSummary || 'Every room we build changes a child\'s world.'}</p>
       </div>
-      <div class="kids-hero__stats" aria-label="Impact statistics">
-        <div class="kids-hero__stat">
-          <span class="kids-hero__stat-num">{totalKids}</span>
-          <span class="kids-hero__stat-label">Kids Helped</span>
-        </div>
-        <div class="kids-hero__stat">
-          <span class="kids-hero__stat-num">{siteStats.totalRooms}</span>
-          <span class="kids-hero__stat-label">Rooms Built</span>
-        </div>
-        {inProgressCount > 0 && (
+
+      <div class="kids-hero__panel" aria-label="Impact statistics">
+        <div class="kids-hero__panel-stats">
           <div class="kids-hero__stat">
-            <span class="kids-hero__stat-num">{inProgressCount}</span>
-            <span class="kids-hero__stat-label">In Progress</span>
+            <span class="kids-hero__stat-num">{totalKids}</span>
+            <span class="kids-hero__stat-label">Children</span>
           </div>
-        )}
+          <span class="kids-hero__stat-div" aria-hidden="true"></span>
+          <div class="kids-hero__stat">
+            <span class="kids-hero__stat-num">{siteStats.totalRooms}</span>
+            <span class="kids-hero__stat-label">Rooms Built</span>
+          </div>
+          {inProgressCount > 0 && (
+            <>
+              <span class="kids-hero__stat-div" aria-hidden="true"></span>
+              <div class="kids-hero__stat kids-hero__stat--live">
+                <span class="kids-hero__stat-num">{inProgressCount}</span>
+                <span class="kids-hero__stat-label">In Progress</span>
+              </div>
+            </>
+          )}
+        </div>
       </div>
     </div>
   </section>
@@ -173,122 +184,97 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
   <section class="kids-section">
     <div class="container container--wide">
 
-      <!-- Toolbar -->
+      <!-- Toolbar — single-line: pills left, utilities right -->
       <div class="toolbar" id="toolbar">
-        <div class="toolbar__row">
-          <div class="search-box">
-            <svg class="search-box__icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.34-4.34"/></svg>
-            <input
-              type="search"
-              id="kid-search"
-              class="search-box__input"
-              placeholder="Search by name, diagnosis, or project..."
-              aria-label="Search kids by name, diagnosis, year, or project type"
-              autocomplete="off"
-            />
-            <span class="search-box__count" id="search-count" hidden aria-live="polite"></span>
-            <kbd class="search-box__kbd" id="search-kbd" aria-hidden="true">/</kbd>
-            <button class="search-box__clear" id="search-clear" type="button" aria-label="Clear search" hidden>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+        <div class="toolbar__bar">
+          <!-- Filter pills — left-aligned, primary interaction -->
+          <div class="toolbar__pills" id="filter-pills">
+            <div class="pill-group" role="group" aria-label="Filter by project type">
+              <button class="filter-pill is-active" data-filter="type" data-value="all" type="button">All</button>
+              <button class="filter-pill" data-filter="type" data-value="type-accessible-bathroom" type="button">
+                <svg class="filter-pill__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="16" cy="4" r="1"/><path d="m18 19 1-7-6 1"/><path d="m5 8 3-3 5.5 3-2.36 3.5"/><path d="M4.24 14.5a5 5 0 0 0 6.88 6"/><path d="M13.76 17.5a5 5 0 0 0-6.88-6"/></svg>
+                Accessible Bathroom
+              </button>
+              <button class="filter-pill" data-filter="type" data-value="type-dream-bedroom" type="button">
+                <svg class="filter-pill__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/></svg>
+                Dream Bedroom
+              </button>
+              <button class="filter-pill" data-filter="type" data-value="type-therapy-room" type="button">
+                <svg class="filter-pill__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.409 13.017A5 5 0 0 1 22 15c0 3.866-4 7-9 7-4.077 0-8.153-.82-10.371-2.462-.426-.316-.631-.832-.62-1.362C2.118 12.723 2.627 2 10 2a3 3 0 0 1 3 3 2 2 0 0 1-2 2c-1.105 0-1.64-.444-2-1"/><path d="M15 14a5 5 0 0 0-7.584 2"/><path d="M9.964 6.825C8.019 7.977 9.5 13 8 15"/></svg>
+                Therapy Room
+              </button>
+            </div>
+            <span class="pill-divider" aria-hidden="true"></span>
+            <div class="pill-group" role="group" aria-label="Filter by year">
+              <div class="year-pill-wrap" id="year-dropdown">
+                <button type="button" class="year-pill-select" id="year-btn" aria-haspopup="listbox" aria-expanded="false" aria-label="Filter by year">
+                  <span id="year-label">All Years</span>
+                </button>
+                <ul class="year-dropdown__menu" id="year-menu" role="listbox" aria-label="Filter by year">
+                  <li role="option" data-value="all" aria-selected="true">All Years</li>
+                  {years.map(year => (
+                    <li role="option" data-value={`year-${year}`} aria-selected="false">{year}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+            {inProgressCount > 0 && (
+              <>
+                <span class="pill-divider" aria-hidden="true"></span>
+                <button class="filter-pill filter-pill--status" id="filter-status" data-filter="status" type="button" aria-pressed="false">
+                  <span class="filter-pill__dot" aria-hidden="true"></span>
+                  In Progress
+                </button>
+              </>
+            )}
+          </div>
+
+          <!-- Right side: search + sort + count -->
+          <div class="toolbar__right">
+            <div class="search-box">
+              <svg class="search-box__icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.34-4.34"/></svg>
+              <input
+                type="search"
+                id="kid-search"
+                class="search-box__input"
+                placeholder="Search..."
+                aria-label="Search kids by name, diagnosis, year, or project type"
+                autocomplete="off"
+              />
+              <span class="search-box__count" id="search-count" hidden aria-live="polite"></span>
+
+              <button class="search-box__clear" id="search-clear" type="button" aria-label="Clear search" hidden>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+              </button>
+            </div>
+
+            <div class="sort-dropdown" id="sort-dropdown">
+              <button type="button" class="sort-select" id="sort-order-btn" aria-haspopup="listbox" aria-expanded="false" aria-label="Sort order">
+                <svg class="sort-select__icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 16 4 4 4-4"/><path d="M7 20V4"/><path d="m21 8-4-4-4 4"/><path d="M17 4v16"/></svg>
+              </button>
+              <ul class="sort-dropdown__menu" id="sort-order-menu" role="listbox" aria-label="Sort order">
+                <li role="option" data-value="newest" aria-selected="true">Newest First</li>
+                <li role="option" data-value="oldest" aria-selected="false">Oldest First</li>
+                <li role="option" data-value="name-az" aria-selected="false">Name A &rarr; Z</li>
+                <li role="option" data-value="name-za" aria-selected="false">Name Z &rarr; A</li>
+              </ul>
+            </div>
+
+            <span class="toolbar__count" aria-live="polite" aria-atomic="true">
+              <span class="result-count" id="result-count" hidden>
+                <strong id="visible-count">{INITIAL_BATCH}</strong><span class="toolbar__count-sep">/</span><span id="total-count">{totalKidsCount}</span>
+              </span>
+              <span class="result-loading" id="result-loading" hidden>
+                <svg class="result-loading__spinner" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M12 2v4"/><path d="m16.2 7.8 2.9-2.9"/><path d="M18 12h4"/><path d="m16.2 16.2 2.9 2.9"/><path d="M12 18v4"/><path d="m4.9 19.1 2.9-2.9"/><path d="M2 12h4"/><path d="m4.9 4.9 2.9 2.9"/></svg>
+              </span>
+            </span>
+            <button class="clear-btn" id="clear-filters" hidden aria-label="Clear all filters">
+              Clear filters
             </button>
           </div>
-
-          <!-- Desktop filters -->
-          <div class="toolbar__filters toolbar__filters--desktop">
-            <select id="sort-order" class="filter-select" aria-label="Sort order">
-              <option value="newest">Newest First</option>
-              <option value="oldest">Oldest First</option>
-              <option value="name-az">Name A → Z</option>
-              <option value="name-za">Name Z → A</option>
-            </select>
-
-            <select id="filter-year" class="filter-select" aria-label="Filter by year">
-              <option value="all">All Years</option>
-              {years.map(year => (
-                <option value={`year-${year}`}>{year}</option>
-              ))}
-            </select>
-
-            <select id="filter-type" class="filter-select" aria-label="Filter by project type">
-              <option value="all">All Projects</option>
-              <option value="type-accessible-bathroom">Accessible Bathroom</option>
-              <option value="type-dream-bedroom">Dream Bedroom</option>
-              <option value="type-therapy-room">Therapy Room</option>
-            </select>
-
-          </div>
-
-          <!-- Mobile filter button -->
-          <button class="filter-btn-mobile" id="filter-btn-mobile" type="button" aria-label="Open filters">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" y1="6" x2="20" y2="6"/><line x1="8" y1="12" x2="20" y2="12"/><line x1="12" y1="18" x2="20" y2="18"/></svg>
-            <span class="filter-btn-mobile__badge" id="mobile-filter-count" hidden aria-live="polite"></span>
-          </button>
-        </div>
-
-        <div class="toolbar__status" aria-live="polite" aria-atomic="true">
-          <span class="result-count" id="result-count" hidden>
-            Showing <strong id="visible-count">{INITIAL_BATCH}</strong> of <span id="total-count">{totalKidsCount}</span> kids
-          </span>
-          <span class="result-loading" id="result-loading" hidden>
-            <svg class="result-loading__spinner" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M12 2v4"/><path d="m16.2 7.8 2.9-2.9"/><path d="M18 12h4"/><path d="m16.2 16.2 2.9 2.9"/><path d="M12 18v4"/><path d="m4.9 19.1 2.9-2.9"/><path d="M2 12h4"/><path d="m4.9 4.9 2.9 2.9"/></svg>
-            Loading all kids...
-          </span>
-          <button class="clear-btn" id="clear-filters" hidden aria-label="Clear all filters">
-            Clear filters
-          </button>
         </div>
       </div>
 
-      <!-- Filter Chips -->
-      <div class="filter-chips" id="filter-chips" hidden aria-label="Active filters">
-      </div>
-
-      <!-- Mobile Bottom Sheet -->
-      <div class="bottom-sheet" id="bottom-sheet" aria-hidden="true">
-        <div class="bottom-sheet__backdrop" id="sheet-backdrop"></div>
-        <div class="bottom-sheet__panel" role="dialog" aria-modal="true" aria-label="Filter options">
-          <div class="bottom-sheet__handle" aria-hidden="true"><span></span></div>
-          <div class="bottom-sheet__header">
-            <h3 class="bottom-sheet__title">Filters</h3>
-            <button class="bottom-sheet__close" id="sheet-close" type="button" aria-label="Close filters">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-            </button>
-          </div>
-          <div class="bottom-sheet__body">
-            <div class="sheet-group">
-              <label class="sheet-label" for="sheet-sort">Sort By</label>
-              <select id="sheet-sort" class="sheet-select" aria-label="Sort order">
-                <option value="newest">Newest First</option>
-                <option value="oldest">Oldest First</option>
-                <option value="name-az">Name A → Z</option>
-                <option value="name-za">Name Z → A</option>
-              </select>
-            </div>
-            <div class="sheet-group">
-              <label class="sheet-label" for="sheet-year">Year</label>
-              <select id="sheet-year" class="sheet-select" aria-label="Filter by year">
-                <option value="all">All Years</option>
-                {years.map(year => (
-                  <option value={`year-${year}`}>{year}</option>
-                ))}
-              </select>
-            </div>
-            <div class="sheet-group">
-              <label class="sheet-label" for="sheet-type">Project Type</label>
-              <select id="sheet-type" class="sheet-select" aria-label="Filter by project type">
-                <option value="all">All Projects</option>
-                <option value="type-accessible-bathroom">Accessible Bathroom</option>
-                <option value="type-dream-bedroom">Dream Bedroom</option>
-                <option value="type-therapy-room">Therapy Room</option>
-              </select>
-            </div>
-          </div>
-          <div class="bottom-sheet__footer">
-            <button class="btn btn-dark btn--sm" id="sheet-clear" type="button">Clear All</button>
-            <button class="btn btn-yellow btn--sm" id="sheet-apply" type="button">Show Results <span class="sheet-result-count" id="sheet-result-count"></span></button>
-          </div>
-        </div>
-      </div>
 
       <!-- SVG sprite for repeated icons (avoids 187 inline copies) -->
       <svg xmlns="http://www.w3.org/2000/svg" style="display:none">
@@ -331,7 +317,7 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
                     height="453"
                     loading={i < 4 ? 'eager' : 'lazy'}
                     fetchpriority={i < 2 ? 'high' : undefined}
-                    decoding={i < 4 ? 'sync' : 'async'}
+                    decoding={i < 2 ? 'sync' : 'async'}
                   />
                 </picture>
               ) : (
@@ -348,13 +334,17 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
               {kid.data.status === 'in-progress' && (
                 <span class="kid-card__badge">In Progress</span>
               )}
+              {(kid.data.roomTypes || []).length > 0 && (
+                <div class="kid-card__tags" aria-hidden="true">
+                  {sortRoomTypes(kid.data.roomTypes || []).map(type => (
+                    <span class="kid-card__tag">{type}</span>
+                  ))}
+                </div>
+              )}
             </div>
             <div class="kid-card__info">
               <span class="kid-card__name">{kid.data.name}</span>
             </div>
-            {(kid.data.roomTypes || []).length > 0 && (
-              <span class="kid-card__diagnosis">{(kid.data.roomTypes || []).join(', ')}</span>
-            )}
           </a>
         ))}
       </div>
@@ -405,7 +395,7 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
   <!-- Noscript: hide dead controls -->
   <noscript>
     <style>
-      .toolbar, .bottom-sheet, .filter-btn-mobile, .load-more { display: none !important; }
+      .toolbar, .load-more { display: none !important; }
     </style>
     <p style="text-align: center; color: var(--c-text-muted); padding: var(--space-lg);">
       Showing {INITIAL_BATCH} of {totalKidsCount} kids. Enable JavaScript to see all profiles, search, and filter.
@@ -435,6 +425,10 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
     cleanupKidsIndex();
     _kidsAbortController = new AbortController();
     const signal = _kidsAbortController.signal;
+
+    // ── Room type sort order ──
+    const ROOM_ORDER: Record<string, number> = { 'Accessible Bathroom': 0, 'Dream Bedroom': 1, 'Therapy Room': 2 };
+    const sortRoomTypes = (types: string[]) => [...types].sort((a, b) => (ROOM_ORDER[a] ?? 99) - (ROOM_ORDER[b] ?? 99));
 
     // ══════════════════════════════════════════
     //  FUZZY SEARCH — bigram similarity
@@ -534,14 +528,22 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
     let allCardsLoaded = false;
     let statusActive = false;
     let currentSort = 'newest';
+    let currentYear = 'all';
+    let currentType = 'all';
     const originalTexts = new WeakMap<HTMLElement, { name: string; diagnosis: string }>();
 
     // ── DOM refs ──
     const searchInput = document.getElementById('kid-search') as HTMLInputElement;
-    const yearSelect = document.getElementById('filter-year') as HTMLSelectElement;
-    const typeSelect = document.getElementById('filter-type') as HTMLSelectElement;
-    const sortSelect = document.getElementById('sort-order') as HTMLSelectElement;
+    const sortDropdown = document.getElementById('sort-dropdown') as HTMLElement;
+    const sortBtn = document.getElementById('sort-order-btn') as HTMLButtonElement;
+    const sortMenu = document.getElementById('sort-order-menu') as HTMLElement;
+
+    const yearDropdown = document.getElementById('year-dropdown') as HTMLElement;
+    const yearBtn = document.getElementById('year-btn') as HTMLButtonElement;
+    const yearMenu = document.getElementById('year-menu') as HTMLElement;
+    const yearLabel = document.getElementById('year-label') as HTMLElement;
     const statusBtn = document.getElementById('filter-status') as HTMLButtonElement | null;
+    const pillsContainer = document.getElementById('filter-pills') as HTMLElement;
     const noResults = document.getElementById('no-results') as HTMLElement;
     const noResultsHint = document.getElementById('no-results-hint') as HTMLElement;
     const noResultsSuggestions = document.getElementById('no-results-suggestions') as HTMLElement;
@@ -551,26 +553,20 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
     const toolbar = document.getElementById('toolbar') as HTMLElement;
     const searchClear = document.getElementById('search-clear') as HTMLButtonElement;
     const searchCountEl = document.getElementById('search-count') as HTMLElement;
-    const kbdHint = document.getElementById('search-kbd') as HTMLElement;
-    const chipsEl = document.getElementById('filter-chips') as HTMLElement;
-    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-    const sheet = document.getElementById('bottom-sheet') as HTMLElement;
-    const sheetBackdrop = document.getElementById('sheet-backdrop') as HTMLElement;
-    const sheetClose = document.getElementById('sheet-close') as HTMLButtonElement;
-    const sheetYear = document.getElementById('sheet-year') as HTMLSelectElement;
-    const sheetType = document.getElementById('sheet-type') as HTMLSelectElement;
-    const sheetSort = document.getElementById('sheet-sort') as HTMLSelectElement;
-    const sheetStatus = document.getElementById('sheet-status') as HTMLButtonElement | null;
-    const sheetClear = document.getElementById('sheet-clear') as HTMLButtonElement;
-    const sheetApply = document.getElementById('sheet-apply') as HTMLButtonElement;
-    const filterBtnMobile = document.getElementById('filter-btn-mobile') as HTMLButtonElement;
-    const mobileFilterCount = document.getElementById('mobile-filter-count') as HTMLElement | null;
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
     const loadMoreWrap = document.getElementById('load-more') as HTMLElement | null;
     const loadMoreBtn = document.getElementById('load-more-btn') as HTMLButtonElement | null;
     const resultLoading = document.getElementById('result-loading') as HTMLElement | null;
     const resultCount = document.getElementById('result-count') as HTMLElement | null;
+
+    // ── Pill helpers ──
+    function setActivePill(filterName: string, value: string) {
+      pillsContainer.querySelectorAll<HTMLElement>(`.filter-pill[data-filter="${filterName}"]`).forEach(pill => {
+        pill.classList.toggle('is-active', pill.dataset.value === value);
+      });
+    }
 
     // ── Cache original text ──
     function cacheOriginalText(card: HTMLElement) {
@@ -612,11 +608,13 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
         imgHtml = `<div class="kid-card__placeholder" aria-hidden="true"><svg width="48" height="48"><use href="#icon-placeholder"/></svg></div>`;
       }
       const blurStyle = kid.b ? ` style="background-image:url(${kid.b})"` : '';
-      a.innerHTML = `<div class="kid-card__frame"${blurStyle}>${imgHtml}<div class="kid-card__hover-overlay" aria-hidden="true"><span class="kid-card__cta"><span class="kid-card__cta-text">Read their story</span><svg class="kid-card__cta-arrow" width="14" height="14"><use href="#icon-cta-arrow"/></svg></span></div>${kid.st === 'in-progress' ? '<span class="kid-card__badge">In Progress</span>' : ''}</div><div class="kid-card__info"><span class="kid-card__name">${escapeHtml(kid.n)}</span></div>${roomTypes ? `<span class="kid-card__diagnosis">${escapeHtml(roomTypes)}</span>` : ''}`;
+      const sortedTypes = sortRoomTypes(kid.t);
+      const tagsHtml = sortedTypes.length > 0 ? `<div class="kid-card__tags" aria-hidden="true">${sortedTypes.map(t => `<span class="kid-card__tag">${escapeHtml(t)}</span>`).join('')}</div>` : '';
+      a.innerHTML = `<div class="kid-card__frame"${blurStyle}>${imgHtml}<div class="kid-card__hover-overlay" aria-hidden="true"><span class="kid-card__cta"><span class="kid-card__cta-text">Read their story</span><svg class="kid-card__cta-arrow" width="14" height="14"><use href="#icon-cta-arrow"/></svg></span></div>${kid.st === 'in-progress' ? '<span class="kid-card__badge">In Progress</span>' : ''}${tagsHtml}</div><div class="kid-card__info"><span class="kid-card__name">${escapeHtml(kid.n)}</span></div>`;
       return a;
     }
 
-    function revealAllCards(forFilter = false) {
+    function revealAllCards() {
       if (allCardsLoaded) return;
       const dataEl = document.getElementById('kids-overflow');
       if (!dataEl?.textContent) { allCardsLoaded = true; return; }
@@ -624,17 +622,6 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
       const frag = document.createDocumentFragment();
       for (const kid of overflow) {
         const card = createCard(kid);
-        if (forFilter) {
-          // During filtering: reveal immediately, skip cardIn animation.
-          // Without this, .js-anim :not(.revealed) holds cards at opacity:0.
-          card.style.animation = 'none';
-          card.classList.add('revealed');
-        } else if (!reducedMotion && _kidsObserver) {
-          // Load More: staggered scroll reveal via IntersectionObserver
-          _kidsObserver.observe(card);
-        } else {
-          card.classList.add('revealed');
-        }
         cacheOriginalText(card);
         frag.appendChild(card);
       }
@@ -669,20 +656,34 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
 
     // ── URL state restore ──
     const params = new URLSearchParams(window.location.search);
-    if (params.get('year')) yearSelect.value = params.get('year')!;
-    if (params.get('type')) typeSelect.value = params.get('type')!;
-    if (params.get('sort') && sortSelect) sortSelect.value = params.get('sort')!;
+    if (params.get('year')) {
+      currentYear = params.get('year')!;
+      const yearOpt = yearMenu?.querySelector(`[data-value="${currentYear}"]`);
+      if (yearOpt) {
+        yearLabel.textContent = yearOpt.textContent;
+        yearMenu.querySelectorAll('li').forEach(li => li.setAttribute('aria-selected', String(li.dataset.value === currentYear)));
+      }
+      yearDropdown?.classList.add('is-active');
+    }
+    if (params.get('type')) { currentType = params.get('type')!; setActivePill('type', currentType); }
+    if (params.get('sort') && sortBtn) {
+      const sortVal = params.get('sort')!;
+      const opt = sortMenu?.querySelector(`[data-value="${sortVal}"]`);
+      if (opt) {
+        sortMenu.querySelectorAll('li').forEach(li => li.setAttribute('aria-selected', String(li.dataset.value === sortVal)));
+      }
+    }
     if (params.get('q')) {
       searchInput.value = params.get('q')!;
       searchClear.hidden = false;
-      if (kbdHint) kbdHint.classList.add('is-hidden');
+
     }
     if (params.get('status') === 'in-progress' && statusBtn) {
       statusActive = true;
-      statusBtn.classList.add('active');
+      statusBtn.classList.add('is-active');
       statusBtn.setAttribute('aria-pressed', 'true');
     }
-    currentSort = sortSelect?.value || 'newest';
+    currentSort = sortMenu?.querySelector('[aria-selected="true"]')?.getAttribute('data-value') || 'newest';
 
     // ══════════════════════════════════════════
     //  WAAPI FLIP ANIMATION SYSTEM
@@ -786,7 +787,7 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
     }
 
     // ══════════════════════════════════════════
-    //  LIVE FILTER COUNTS on dropdowns
+    //  LIVE FILTER COUNTS on pills
     // ══════════════════════════════════════════
     // Build lightweight data array from ALL kids (server-rendered + overflow JSON)
     // so counts are accurate even before overflow cards are created in the DOM.
@@ -815,113 +816,33 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
       }
     }
 
-    // Store original option labels (without counts)
-    const origYearLabels = new Map<string, string>();
-    const origTypeLabels = new Map<string, string>();
-    for (const opt of Array.from(yearSelect.options)) origYearLabels.set(opt.value, opt.textContent || '');
-    for (const opt of Array.from(typeSelect.options)) origTypeLabels.set(opt.value, opt.textContent || '');
+    function updatePillCounts() {
+      // Pill active states are handled by setActivePill — keep sort visual state in sync
+      if (sortBtn) sortBtn.classList.toggle('is-active', currentSort !== 'newest');
 
-    function updateFilterCounts() {
+      // Dim pills that would return 0 results (zero-state affordance)
       const query = searchInput.value.toLowerCase().trim();
-      const currentYear = yearSelect.value;
-      const currentType = typeSelect.value;
-
-      // Year counts: how many match if we pick each year (with current type + status + search)
-      for (const opt of Array.from(yearSelect.options)) {
-        if (opt.value === 'all') continue;
+      pillsContainer.querySelectorAll<HTMLElement>('.filter-pill[data-filter]').forEach(pill => {
+        const filterName = pill.dataset.filter;
+        const val = pill.dataset.value || '';
+        if (val === 'all' || filterName === 'status') return;
         let count = 0;
         for (const kid of allKidData) {
-          if (kid.year !== opt.value) continue;
-          if (currentType !== 'all' && !kid.types.split(' ').includes(currentType)) continue;
+          if (filterName === 'type' && !kid.types.split(' ').includes(val)) continue;
+          if (filterName === 'year' && kid.year !== val) continue;
+          if (filterName === 'type' && currentYear !== 'all' && kid.year !== currentYear) continue;
+          if (filterName === 'year' && currentType !== 'all' && !kid.types.split(' ').includes(currentType)) continue;
           if (statusActive && kid.status !== 'in-progress') continue;
           const yearStr = kid.year.replace('year-', '');
           const typesStr = kid.types.replace(/type-/g, '').replace(/-/g, ' ');
           if (query && fuzzyMatch(query, kid.name, kid.diagnosis, yearStr, typesStr) <= 0) continue;
           count++;
         }
-        const base = origYearLabels.get(opt.value) || opt.value;
-        opt.textContent = `${base} (${count})`;
-      }
-
-      // Type counts: how many match if we pick each type (with current year + status + search)
-      for (const opt of Array.from(typeSelect.options)) {
-        if (opt.value === 'all') continue;
-        let count = 0;
-        for (const kid of allKidData) {
-          if (!kid.types.split(' ').includes(opt.value)) continue;
-          if (currentYear !== 'all' && kid.year !== currentYear) continue;
-          if (statusActive && kid.status !== 'in-progress') continue;
-          const yearStr = kid.year.replace('year-', '');
-          const typesStr = kid.types.replace(/type-/g, '').replace(/-/g, ' ');
-          if (query && fuzzyMatch(query, kid.name, kid.diagnosis, yearStr, typesStr) <= 0) continue;
-          count++;
-        }
-        const base = origTypeLabels.get(opt.value) || opt.value;
-        opt.textContent = `${base} (${count})`;
-      }
-
-      // Visual state: mark active filters with data attribute for CSS styling
-      yearSelect.classList.toggle('is-active', currentYear !== 'all');
-      typeSelect.classList.toggle('is-active', currentType !== 'all');
-      if (sortSelect) sortSelect.classList.toggle('is-active', currentSort !== 'newest');
+        pill.classList.toggle('is-empty', count === 0 && !pill.classList.contains('is-active'));
+      });
     }
 
-    // ══════════════════════════════════════════
-    //  FILTER CHIPS
-    // ══════════════════════════════════════════
-    function renderChips() {
-      const yearFilter = yearSelect.value;
-      const typeFilter = typeSelect.value;
-      const query = searchInput.value.trim();
-      const hasAny = yearFilter !== 'all' || typeFilter !== 'all' || statusActive;
-
-      if (!hasAny) {
-        chipsEl.hidden = true;
-        chipsEl.innerHTML = '';
-        return;
-      }
-
-      let html = '';
-      let chipCount = 0;
-      // Search query chip omitted — already visible in the input
-      if (yearFilter !== 'all') {
-        const label = yearSelect.options[yearSelect.selectedIndex]?.text || yearFilter;
-        html += `<span class="filter-chip" role="group" aria-label="Year: ${escapeHtml(label)}"><svg class="filter-chip__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>${escapeHtml(label)}<button class="filter-chip__remove" data-chip="year" aria-label="Remove year filter"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></span>`;
-        chipCount++;
-      }
-      if (typeFilter !== 'all') {
-        const label = typeSelect.options[typeSelect.selectedIndex]?.text || typeFilter;
-        const typeIconMap: Record<string, string> = {
-          'type-dream-bedroom': '<svg class="filter-chip__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/><path d="M20 3v4"/><path d="M22 5h-4"/><path d="M4 17v2"/><path d="M5 18H3"/></svg>',
-          'type-accessible-bathroom': '<svg class="filter-chip__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><circle cx="16" cy="4" r="1"/><path d="m18 19 1-7-6 1"/><path d="m5 8 3-3 5.5 3-2.36 3.5"/><path d="M4.24 14.5a5 5 0 0 0 6.88 6"/><path d="M13.76 17.5a5 5 0 0 0-6.88-6"/></svg>',
-          'type-therapy-room': '<svg class="filter-chip__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.409 13.017A5 5 0 0 1 22 15c0 3.866-4 7-9 7-4.077 0-8.153-.82-10.371-2.462-.426-.316-.631-.832-.62-1.362C2.118 12.723 2.627 2 10 2a3 3 0 0 1 3 3 2 2 0 0 1-2 2c-1.105 0-1.64-.444-2-1"/><path d="M15 14a5 5 0 0 0-7.584 2"/><path d="M9.964 6.825C8.019 7.977 9.5 13 8 15"/></svg>',
-        };
-        const typeIcon = typeIconMap[typeFilter] || '<svg class="filter-chip__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>';
-        html += `<span class="filter-chip" role="group" aria-label="Project: ${escapeHtml(label)}">${typeIcon}${escapeHtml(label)}<button class="filter-chip__remove" data-chip="type" aria-label="Remove project filter"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></span>`;
-        chipCount++;
-      }
-      if (statusActive) {
-        html += `<span class="filter-chip" role="group" aria-label="Status: In Progress"><span class="pill-toggle__dot" style="width:6px;height:6px;border-radius:50%;background:var(--c-yellow);display:inline-block" aria-hidden="true"></span>In Progress<button class="filter-chip__remove" data-chip="status" aria-label="Remove status filter"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></span>`;
-        chipCount++;
-      }
-      html += `<button class="filter-chips__clear" data-chip="all" style="animation-delay:${chipCount * 0.04}s">Clear all</button>`;
-
-      chipsEl.innerHTML = html;
-      chipsEl.hidden = false;
-    }
-
-    // Chip click delegation
-    chipsEl.addEventListener('click', (e) => {
-      const btn = (e.target as HTMLElement).closest('[data-chip]') as HTMLElement | null;
-      if (!btn) return;
-      const chip = btn.dataset.chip;
-      if (chip === 'search') { searchInput.value = ''; searchClear.hidden = true; if (kbdHint) kbdHint.classList.remove('is-hidden'); }
-      else if (chip === 'year') { yearSelect.value = 'all'; }
-      else if (chip === 'type') { typeSelect.value = 'all'; }
-      else if (chip === 'status' && statusBtn) { statusActive = false; statusBtn.classList.remove('active'); statusBtn.setAttribute('aria-pressed', 'false'); }
-      else if (chip === 'all') { clearAll(); return; }
-      applyFilters();
-    }, { signal });
+    // (Filter chips replaced by inline pill active states)
 
     // ══════════════════════════════════════════
     //  ANIMATED FILTER TRANSITIONS
@@ -977,11 +898,10 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
           if (matchType && matchStatus && matchSearch) countWithoutYear++;
         });
         if (countWithoutYear > 0) {
-          const yearLabel = yearSelect.options[yearSelect.selectedIndex]?.text || yearFilter;
           suggestions.push({
             label: `All years`,
             count: countWithoutYear,
-            action: () => { yearSelect.value = 'all'; applyFilters(); }
+            action: () => { currentYear = 'all'; yearLabel.textContent = 'All Years'; yearMenu.querySelectorAll('li').forEach(li => li.setAttribute('aria-selected', String(li.dataset.value === 'all'))); yearDropdown?.classList.remove('is-active'); applyFilters(); }
           });
         }
       }
@@ -999,7 +919,7 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
           suggestions.push({
             label: `All projects`,
             count: countWithoutType,
-            action: () => { typeSelect.value = 'all'; applyFilters(); }
+            action: () => { currentType = 'all'; setActivePill('type', 'all'); applyFilters(); }
           });
         }
       }
@@ -1032,7 +952,7 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
           suggestions.push({
             label: `Search only`,
             count: countSearchOnly,
-            action: () => { yearSelect.value = 'all'; typeSelect.value = 'all'; if (statusBtn) { statusActive = false; statusBtn.classList.remove('active'); statusBtn.setAttribute('aria-pressed', 'false'); } applyFilters(); }
+            action: () => { currentYear = 'all'; currentType = 'all'; yearLabel.textContent = 'All Years'; yearMenu.querySelectorAll('li').forEach(li => li.setAttribute('aria-selected', String(li.dataset.value === 'all'))); yearDropdown?.classList.remove('is-active'); setActivePill('type', 'all'); if (statusBtn) { statusActive = false; statusBtn.classList.remove('is-active'); statusBtn.setAttribute('aria-pressed', 'false'); } applyFilters(); }
           });
         }
       }
@@ -1040,8 +960,8 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
       // Build hint text
       const parts: string[] = [];
       if (query) parts.push(`"${query}"`);
-      if (yearFilter !== 'all') parts.push(yearSelect.options[yearSelect.selectedIndex]?.text || yearFilter);
-      if (typeFilter !== 'all') parts.push(typeSelect.options[typeSelect.selectedIndex]?.text || typeFilter);
+      if (yearFilter !== 'all') parts.push(yearFilter.replace('year-', ''));
+      if (typeFilter !== 'all') parts.push(typeFilter.replace('type-', '').replace(/-/g, ' '));
       if (statusActive) parts.push('In Progress');
 
       noResultsHint.textContent = parts.length > 1
@@ -1066,27 +986,15 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
     function applyFilters(skipFLIP = false) {
       _skipEntrance = skipFLIP;
       const query = searchInput.value.toLowerCase().trim();
-      const yearFilter = yearSelect.value;
-      const typeFilter = typeSelect.value;
+      const yearFilter = currentYear;
+      const typeFilter = currentType;
       const hasFilters = yearFilter !== 'all' || typeFilter !== 'all' || statusActive || query.length > 0;
 
-      // When filtering, reveal all cards so filters can match them.
-      // Also mark ALL cards as .revealed — the staggered scroll-reveal
-      // is only for initial page load. During filtering, any card without
-      // .revealed would be stuck at opacity:0 by the .js-anim CSS rule.
+      // When filtering, load all overflow cards so filters can match them
       if (hasFilters) {
         if (!allCardsLoaded) {
-          revealAllCards(true);
+          revealAllCards();
           if (loadMoreWrap) loadMoreWrap.classList.add('is-hidden');
-        }
-        // Ensure ALL cards are revealed — the staggered scroll-reveal is
-        // only for initial load. Without this, any card without .revealed
-        // is stuck at opacity:0 by the .js-anim CSS rule → flash.
-        for (const card of cachedCards) {
-          if (!card.classList.contains('revealed')) {
-            card.style.animation = 'none';
-            card.classList.add('revealed');
-          }
         }
       }
 
@@ -1157,35 +1065,17 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
       // Sync badge with actual filtered count
       if (query) updateSearchCount(visibleCount);
       else searchCountEl.hidden = true;
-      // Few results — center the grid
-      grid.classList.toggle('is-few-results', hasFilters && visibleCount > 0 && visibleCount <= 3);
+      grid.classList.remove('is-few-results');
       const showingNoResults = visibleCount === 0 && hasFilters;
       noResults.hidden = !showingNoResults;
       if (showingNoResults) buildSmartEmptyState(query, yearFilter, typeFilter);
       clearBtn.hidden = !hasFilters;
 
-      // Update chips
-      renderChips();
-
-      // Live filter counts on dropdowns
-      updateFilterCounts();
+      // Live filter counts on pills
+      updatePillCounts();
 
       // Year badges
       updateYearBadges();
-
-      // Mobile filter count
-      let filterCount = 0;
-      if (yearFilter !== 'all') filterCount++;
-      if (typeFilter !== 'all') filterCount++;
-      if (statusActive) filterCount++;
-      if (mobileFilterCount) {
-        if (filterCount > 0) {
-          mobileFilterCount.textContent = String(filterCount);
-          mobileFilterCount.hidden = false;
-        } else {
-          mobileFilterCount.hidden = true;
-        }
-      }
 
       // URL state
       const url = new URL(window.location.href);
@@ -1203,13 +1093,18 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
       searchCountEl.hidden = true;
       searchClear.hidden = true;
       grid.classList.remove('is-few-results');
-      if (kbdHint) kbdHint.classList.remove('is-hidden');
-      yearSelect.value = 'all';
-      typeSelect.value = 'all';
-      if (sortSelect) { sortSelect.value = 'newest'; currentSort = 'newest'; }
+
+      currentYear = 'all';
+      currentType = 'all';
+      yearLabel.textContent = 'All Years'; yearMenu.querySelectorAll('li').forEach(li => li.setAttribute('aria-selected', String(li.dataset.value === 'all'))); yearDropdown?.classList.remove('is-active');
+      setActivePill('type', 'all');
+      if (sortBtn) {
+        sortMenu.querySelectorAll('li').forEach(li => li.setAttribute('aria-selected', String(li.dataset.value === 'newest')));
+        currentSort = 'newest';
+      }
       if (statusBtn) {
         statusActive = false;
-        statusBtn.classList.remove('active');
+        statusBtn.classList.remove('is-active');
         statusBtn.setAttribute('aria-pressed', 'false');
       }
       cachedCards.forEach(card => {
@@ -1245,22 +1140,170 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
     //  EVENT WIRING
     // ══════════════════════════════════════════
     let searchTimer: ReturnType<typeof setTimeout>;
-    yearSelect.addEventListener('change', () => applyFilters(), { signal });
-    typeSelect.addEventListener('change', () => applyFilters(), { signal });
-    if (sortSelect) {
-      sortSelect.addEventListener('change', () => {
-        currentSort = sortSelect.value;
+
+    // ── Pill click handler (event delegation) ──
+    pillsContainer.addEventListener('click', (e) => {
+      const pill = (e.target as HTMLElement).closest('.filter-pill') as HTMLElement | null;
+      if (!pill) return;
+      const filterName = pill.dataset.filter;
+      const value = pill.dataset.value || 'all';
+
+      if (filterName === 'status') {
+        // Toggle status pill
+        statusActive = !statusActive;
+        pill.classList.toggle('is-active', statusActive);
+        pill.setAttribute('aria-pressed', String(statusActive));
+      } else if (filterName === 'type') {
+        currentType = value;
+        setActivePill('type', value);
+      } else {
+        return; // Year is handled by select, not pills
+      }
+
+      applyFilters();
+    }, { signal });
+
+    // ── Dropdown portal (mobile bottom-sheet on <body>) ──
+    const isMobile = () => window.matchMedia('(max-width: 768px)').matches;
+    let portalEl: HTMLElement | null = null;
+    let backdropEl: HTMLElement | null = null;
+
+    function openPortal(sourceMenu: HTMLElement, variant: 'years' | 'sort', onSelect: (val: string, text: string) => void) {
+      closeAllDropdowns();
+      if (!isMobile()) return false; // desktop uses inline menu
+
+      backdropEl = document.createElement('div');
+      backdropEl.className = 'dropdown-backdrop is-visible';
+      document.body.appendChild(backdropEl);
+
+      portalEl = document.createElement('ul');
+      portalEl.className = `dropdown-portal dropdown-portal--${variant} is-visible`;
+      portalEl.setAttribute('role', 'listbox');
+
+      sourceMenu.querySelectorAll('li').forEach(srcLi => {
+        const li = document.createElement('li');
+        li.setAttribute('role', 'option');
+        li.dataset.value = (srcLi as HTMLElement).dataset.value || '';
+        li.setAttribute('aria-selected', srcLi.getAttribute('aria-selected') || 'false');
+        li.textContent = srcLi.textContent;
+        portalEl!.appendChild(li);
+      });
+
+      document.body.appendChild(portalEl);
+
+      portalEl.addEventListener('click', (e) => {
+        const li = (e.target as HTMLElement).closest('li');
+        if (!li) return;
+        onSelect(li.dataset.value!, li.textContent!);
+        closeAllDropdowns();
+      });
+
+      backdropEl.addEventListener('click', () => closeAllDropdowns());
+      return true; // used portal
+    }
+
+    function closeAllDropdowns() {
+      yearDropdown.classList.remove('is-open');
+      yearBtn.setAttribute('aria-expanded', 'false');
+      sortDropdown?.classList.remove('is-open');
+      sortBtn?.setAttribute('aria-expanded', 'false');
+      if (portalEl) { portalEl.remove(); portalEl = null; }
+      if (backdropEl) { backdropEl.remove(); backdropEl = null; }
+    }
+
+    // Year dropdown handler
+    yearBtn.addEventListener('click', () => {
+      const wasOpen = yearDropdown.classList.contains('is-open');
+      closeAllDropdowns();
+      if (wasOpen) return;
+
+      const usedPortal = openPortal(yearMenu, 'years', (val, text) => {
+        yearLabel.textContent = text;
+        yearMenu.querySelectorAll('li').forEach(el => el.setAttribute('aria-selected', String((el as HTMLElement).dataset.value === val)));
+        currentYear = val;
+        yearDropdown.classList.toggle('is-active', currentYear !== 'all');
+        applyFilters();
+      });
+
+      if (!usedPortal) {
+        yearDropdown.classList.add('is-open');
+        yearBtn.setAttribute('aria-expanded', 'true');
+      }
+    }, { signal });
+
+    yearMenu.addEventListener('click', (e) => {
+      const li = (e.target as HTMLElement).closest('li');
+      if (!li) return;
+      const val = li.dataset.value!;
+      yearLabel.textContent = li.textContent;
+      yearMenu.querySelectorAll('li').forEach(el => el.setAttribute('aria-selected', String(el === li)));
+      closeAllDropdowns();
+      currentYear = val;
+      yearDropdown.classList.toggle('is-active', currentYear !== 'all');
+      applyFilters();
+    }, { signal });
+
+    document.addEventListener('click', (e) => {
+      if (!yearDropdown.contains(e.target as Node) && !sortDropdown?.contains(e.target as Node)) {
+        closeAllDropdowns();
+      }
+    }, { signal });
+
+    if (sortBtn) {
+      sortBtn.addEventListener('click', () => {
+        const wasOpen = sortDropdown.classList.contains('is-open');
+        closeAllDropdowns();
+        if (wasOpen) return;
+
+        const usedPortal = openPortal(sortMenu, 'sort', (val, text) => {
+          sortMenu.querySelectorAll('li').forEach(el => el.setAttribute('aria-selected', String((el as HTMLElement).dataset.value === val)));
+          currentSort = val;
+          sortCards();
+          applyFilters();
+        });
+
+        if (!usedPortal) {
+          sortDropdown.classList.add('is-open');
+          sortBtn.setAttribute('aria-expanded', 'true');
+        }
+      }, { signal });
+
+      sortMenu.addEventListener('click', (e) => {
+        const li = (e.target as HTMLElement).closest('li');
+        if (!li) return;
+        const val = li.dataset.value!;
+        sortMenu.querySelectorAll('li').forEach(el => el.setAttribute('aria-selected', String(el === li)));
+        closeAllDropdowns();
+        currentSort = val;
         sortCards();
         applyFilters();
       }, { signal });
+
     }
 
+    // ── Scroll management ──
+    // The toolbar is sticky — always visible regardless of scroll position.
+    // No programmatic scroll on search focus or typing. Results filter in-place.
+    // Best-in-class pattern: never fight the browser's scroll position.
+
     // Search input: debounced filter-as-you-type
+    let hasScrolledForSearch = false;
     searchInput.addEventListener('input', () => {
       clearTimeout(searchTimer);
       const val = searchInput.value;
       searchClear.hidden = !val;
-      if (kbdHint) kbdHint.classList.toggle('is-hidden', !!val);
+
+      // On first keystroke, scroll so grid results are visible below sticky toolbar
+      if (val && !hasScrolledForSearch) {
+        const gridTop = grid.getBoundingClientRect().top;
+        const stickyBottom = toolbar.getBoundingClientRect().bottom;
+        if (gridTop > window.innerHeight || gridTop < stickyBottom) {
+          const scrollTarget = grid.offsetTop - toolbar.offsetHeight - (parseFloat(getComputedStyle(toolbar).top) || 0) - 8;
+          window.scrollTo({ top: scrollTarget, behavior: 'smooth' });
+        }
+        hasScrolledForSearch = true;
+      }
+      if (!val) hasScrolledForSearch = false;
 
       // Debounce the DOM filter pass
       visibleCountEl.style.opacity = '0.4';
@@ -1270,32 +1313,17 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
       }, 80);
     }, { signal });
 
-    searchInput.addEventListener('focus', () => {
-      if (kbdHint) kbdHint.classList.add('is-hidden');
-    }, { signal });
-    searchInput.addEventListener('blur', () => {
-      if (kbdHint && !searchInput.value) kbdHint.classList.remove('is-hidden');
-    }, { signal });
-
     searchClear.addEventListener('click', () => {
       searchInput.value = '';
       searchClear.hidden = true;
       searchCountEl.hidden = true;
-      if (kbdHint) kbdHint.classList.remove('is-hidden');
       applyFilters();
       searchInput.focus();
     }, { signal });
     clearBtn.addEventListener('click', clearAll, { signal });
     clearBtnAlt.addEventListener('click', clearAll, { signal });
 
-    if (statusBtn) {
-      statusBtn.addEventListener('click', () => {
-        statusActive = !statusActive;
-        statusBtn.classList.toggle('active', statusActive);
-        statusBtn.setAttribute('aria-pressed', String(statusActive));
-        applyFilters();
-      }, { signal });
-    }
+    // Status toggle is now handled by pill click delegation above
 
     // ══════════════════════════════════════════
     //  KEYBOARD SHORTCUT — / or Cmd+K
@@ -1308,227 +1336,14 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
         e.preventDefault();
         searchInput.focus();
         searchInput.select();
-        toolbar.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       }
     }, { signal });
 
-    // ══════════════════════════════════════════
-    //  BOTTOM SHEET
-    // ══════════════════════════════════════════
-    let savedScrollY = 0;
-    function syncSheetCounts() {
-      // Copy count labels from desktop selects to sheet selects
-      for (const opt of Array.from(yearSelect.options)) {
-        const sheetOpt = sheetYear.querySelector(`option[value="${opt.value}"]`) as HTMLOptionElement | null;
-        if (sheetOpt) sheetOpt.textContent = opt.textContent;
-      }
-      for (const opt of Array.from(typeSelect.options)) {
-        const sheetOpt = sheetType.querySelector(`option[value="${opt.value}"]`) as HTMLOptionElement | null;
-        if (sheetOpt) sheetOpt.textContent = opt.textContent;
-      }
-    }
+    // (Bottom sheet removed — filters are now inline pills)
 
-    function openSheet() {
-      syncSheetCounts();
-      sheetYear.value = yearSelect.value;
-      sheetType.value = typeSelect.value;
-      if (sheetSort) sheetSort.value = sortSelect?.value || 'newest';
-      if (sheetStatus) {
-        sheetStatus.classList.toggle('active', statusActive);
-        sheetStatus.setAttribute('aria-pressed', String(statusActive));
-      }
-      sheet.classList.add('is-open');
-      sheet.setAttribute('aria-hidden', 'false');
-      updateSheetPreview();
-      savedScrollY = window.scrollY;
-      document.body.style.position = 'fixed';
-      document.body.style.top = `-${savedScrollY}px`;
-      document.body.style.left = '0';
-      document.body.style.right = '0';
-      document.body.style.overflow = 'hidden';
-    }
-    function closeSheet() {
-      sheet.classList.remove('is-open');
-      sheet.setAttribute('aria-hidden', 'true');
-      document.body.style.position = '';
-      document.body.style.top = '';
-      document.body.style.left = '';
-      document.body.style.right = '';
-      document.body.style.overflow = '';
-      window.scrollTo(0, savedScrollY);
-      const panel = sheet.querySelector('.bottom-sheet__panel') as HTMLElement;
-      if (panel) { panel.style.transform = ''; panel.style.transition = ''; }
-    }
-
-    filterBtnMobile?.addEventListener('click', openSheet, { signal });
-    sheetBackdrop?.addEventListener('click', closeSheet, { signal });
-    sheetClose?.addEventListener('click', closeSheet, { signal });
-    if (sheetStatus) {
-      sheetStatus.addEventListener('click', () => {
-        const isActive = sheetStatus.classList.toggle('active');
-        sheetStatus.setAttribute('aria-pressed', String(isActive));
-      }, { signal });
-    }
-    // Live result count preview in bottom sheet
-    const sheetResultCount = document.getElementById('sheet-result-count') as HTMLElement | null;
-    function updateSheetPreview() {
-      if (!sheetResultCount) return;
-      const query = searchInput.value.toLowerCase().trim();
-      const yr = sheetYear.value;
-      const tp = sheetType.value;
-      const st = sheetStatus ? sheetStatus.classList.contains('active') : false;
-      let count = 0;
-      for (const kid of allKidData) {
-        if (yr !== 'all' && kid.year !== yr) continue;
-        if (tp !== 'all' && !kid.types.split(' ').includes(tp)) continue;
-        if (st && kid.status !== 'in-progress') continue;
-        const yearStr = kid.year.replace('year-', '');
-        const typesStr = kid.types.replace(/type-/g, '').replace(/-/g, ' ');
-        if (query && fuzzyMatch(query, kid.name, kid.diagnosis, yearStr, typesStr) <= 0) continue;
-        count++;
-      }
-      sheetResultCount.textContent = `(${count})`;
-    }
-    sheetYear.addEventListener('change', updateSheetPreview, { signal });
-    sheetType.addEventListener('change', updateSheetPreview, { signal });
-    if (sheetStatus) sheetStatus.addEventListener('click', () => setTimeout(updateSheetPreview, 10), { signal });
-
-    sheetClear?.addEventListener('click', () => {
-      sheetYear.value = 'all';
-      sheetType.value = 'all';
-      if (sheetSort) sheetSort.value = 'newest';
-      if (sheetStatus) {
-        sheetStatus.classList.remove('active');
-        sheetStatus.setAttribute('aria-pressed', 'false');
-      }
-      updateSheetPreview();
-    }, { signal });
-    sheetApply?.addEventListener('click', () => {
-      yearSelect.value = sheetYear.value;
-      typeSelect.value = sheetType.value;
-      if (sortSelect && sheetSort) {
-        sortSelect.value = sheetSort.value;
-        currentSort = sheetSort.value;
-        sortCards();
-      }
-      if (statusBtn && sheetStatus) {
-        statusActive = sheetStatus.classList.contains('active');
-        statusBtn.classList.toggle('active', statusActive);
-        statusBtn.setAttribute('aria-pressed', String(statusActive));
-      }
-      applyFilters();
-      closeSheet();
-      // Move focus to first visible result for screen readers
-      requestAnimationFrame(() => {
-        const firstVisible = grid.querySelector('.kid-card:not(.is-hidden)') as HTMLElement | null;
-        if (firstVisible) firstVisible.focus({ preventScroll: true });
-        else searchInput.focus();
-      });
-    }, { signal });
-
-    document.addEventListener('keydown', (e) => {
-      if (!sheet.classList.contains('is-open')) return;
-      if (e.key === 'Escape') { closeSheet(); return; }
-      if (e.key === 'Tab') {
-        const panel = sheet.querySelector('.bottom-sheet__panel') as HTMLElement;
-        const focusable = panel.querySelectorAll<HTMLElement>('button, select, input, [tabindex]:not([tabindex="-1"])');
-        if (!focusable.length) return;
-        const first = focusable[0];
-        const last = focusable[focusable.length - 1];
-        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
-        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
-      }
-    }, { signal });
-
-    // ══════════════════════════════════════════
-    //  VELOCITY-BASED SWIPE-TO-DISMISS
-    // ══════════════════════════════════════════
-    {
-      const panel = sheet?.querySelector('.bottom-sheet__panel') as HTMLElement;
-      if (panel) {
-        let startY = 0;
-        let currentY = 0;
-        let isDragging = false;
-        let startTime = 0;
-        let velocitySamples: { y: number; t: number }[] = [];
-
-        const handle = panel.querySelector('.bottom-sheet__handle') as HTMLElement;
-        const header = panel.querySelector('.bottom-sheet__header') as HTMLElement;
-        const swipeTargets = [handle, header].filter(Boolean);
-
-        swipeTargets.forEach(target => {
-          target!.addEventListener('touchstart', (e: TouchEvent) => {
-            if (!sheet.classList.contains('is-open')) return;
-            isDragging = true;
-            startY = e.touches[0].clientY;
-            startTime = Date.now();
-            currentY = 0;
-            velocitySamples = [{ y: 0, t: startTime }];
-            panel.style.transition = 'none';
-          }, { passive: true, signal });
-        });
-
-        panel.addEventListener('touchmove', (e: TouchEvent) => {
-          if (!isDragging) return;
-          const dy = e.touches[0].clientY - startY;
-          currentY = Math.max(0, dy);
-          panel.style.transform = `translateY(${currentY}px)`;
-          const progress = Math.min(currentY / 300, 1);
-          sheetBackdrop.style.opacity = String(1 - progress * 0.6);
-          // Track velocity samples (keep last 5)
-          velocitySamples.push({ y: currentY, t: Date.now() });
-          if (velocitySamples.length > 5) velocitySamples.shift();
-        }, { passive: true, signal });
-
-        const endSwipe = () => {
-          if (!isDragging) return;
-          isDragging = false;
-          panel.style.transition = '';
-          sheetBackdrop.style.opacity = '';
-
-          // Calculate velocity (px/ms)
-          let velocity = 0;
-          if (velocitySamples.length >= 2) {
-            const first = velocitySamples[0];
-            const last = velocitySamples[velocitySamples.length - 1];
-            const dt = last.t - first.t;
-            if (dt > 0) velocity = (last.y - first.y) / dt;
-          }
-
-          // Dismiss if: fast flick (>0.5 px/ms) OR dragged >100px
-          if (velocity > 0.5 || currentY > 100) {
-            closeSheet();
-          } else {
-            panel.style.transform = '';
-          }
-        };
-
-        panel.addEventListener('touchend', endSwipe, { signal });
-        panel.addEventListener('touchcancel', endSwipe, { signal });
-      }
-    }
-
-    // ── Staggered reveal ──
-    if (!reducedMotion) {
-      document.documentElement.classList.add('js-anim');
-      cachedCards.forEach((card, i) => {
-        if (i < 8) card.classList.add('revealed');
-      });
-      _kidsObserver = new IntersectionObserver(
-        (entries) => {
-          entries.filter(e => e.isIntersecting).forEach((entry, i) => {
-            const el = entry.target as HTMLElement;
-            el.style.setProperty('--stagger', String(i));
-            el.classList.add('revealed');
-            _kidsObserver?.unobserve(el);
-          });
-        },
-        { rootMargin: '100px', threshold: 0.01 }
-      );
-      cachedCards.forEach((card, i) => {
-        if (i >= 8) _kidsObserver!.observe(card);
-      });
-    }
+    // Cards are always visible — no stagger-reveal opacity animation.
+    // Images handle their own LQIP blur-up fade-in, which is enough.
+    // This eliminates the "flash" users see when cards scroll into view.
 
     // ── Smooth image fade-in on load (with LQIP blur-up) ──
     function initImageFade(img: HTMLImageElement) {
@@ -1567,17 +1382,42 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
     if (hasURLFilters) {
       if (currentSort !== 'newest') sortCards(false);
       applyFilters();
-      toolbar.scrollIntoView({ behavior: 'smooth', block: 'start' });
     } else {
       // Still show year badges on initial load if sort is year-based
       updateYearBadges();
-      updateFilterCounts();
+      updatePillCounts();
     }
 
   } // end initKidsIndex
 
   document.addEventListener('astro:page-load', initKidsIndex);
   document.addEventListener('astro:before-swap', cleanupKidsIndex);
+</script>
+
+<!-- Cursor glow: warm light follows mouse across card frames -->
+<script>
+  function initCursorGlow() {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    if (!window.matchMedia('(hover: hover)').matches) return;
+
+    const grid = document.getElementById('kids-grid');
+    if (!grid) return;
+
+    grid.addEventListener('mousemove', (e) => {
+      const frame = (e.target as HTMLElement).closest('.kid-card__frame') as HTMLElement | null;
+      if (!frame) return;
+      const rect = frame.getBoundingClientRect();
+      const x = ((e.clientX - rect.left) / rect.width) * 100;
+      const y = ((e.clientY - rect.top) / rect.height) * 100;
+      const overlay = frame.querySelector('.kid-card__hover-overlay') as HTMLElement | null;
+      if (overlay) {
+        overlay.style.setProperty('--glow-x', `${x}%`);
+        overlay.style.setProperty('--glow-y', `${y}%`);
+      }
+    }, { passive: true });
+  }
+
+  document.addEventListener('astro:page-load', initCursorGlow);
 </script>
 
 <!-- View Transitions: card ↔ hero morph (forward + back) -->
@@ -1635,14 +1475,12 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
 
 <style>
   /* ═══════════════════════════════════════════
-     HERO — Face Collage + Text + Stats
-     ═══════════════════════════════════════════ */
-  /* ═══════════════════════════════════════════
-     HERO — Minimal collection header
+     HERO — Condensed collection header
      ═══════════════════════════════════════════ */
   .kids-hero {
     background: var(--c-cream);
-    padding: var(--space-xl) 0 var(--space-md);
+    padding: clamp(2.5rem, 5vw, 3.5rem) 0 clamp(1.5rem, 3vw, 2rem);
+    border-bottom: 1px solid var(--c-border);
   }
 
   .kids-hero__inner {
@@ -1652,67 +1490,127 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
     display: flex;
     align-items: flex-end;
     justify-content: space-between;
-    gap: var(--space-xl);
+    gap: clamp(2rem, 4vw, 4rem);
+  }
+
+  /* ── Text column ── */
+  .kids-hero__text {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .kids-hero__eyebrow {
+    opacity: 0;
+    animation: heroUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.05s both;
   }
 
   .kids-hero__headline {
-    color: var(--c-text);
-    font-size: clamp(2rem, 4.5vw, 3rem);
-    font-weight: 400;
+    color: var(--c-dark);
+    font-family: var(--font-display);
+    font-size: clamp(2rem, 4.5vw + 0.25rem, 3.25rem);
+    font-weight: 700;
     letter-spacing: -0.025em;
-    line-height: 1.1;
-    margin: 0 0 var(--space-xs);
+    line-height: 1.12;
+    margin: 0 0 var(--space-sm);
+    animation: heroSlide 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.1s both;
   }
 
   .kids-hero__headline em {
     font-style: italic;
-    background-image: linear-gradient(transparent 54%, var(--c-yellow-soft, rgba(255, 218, 36, 0.3)) 54%);
+    background-image: linear-gradient(transparent 54%, rgba(255, 218, 36, 0.45) 54%);
     background-repeat: no-repeat;
     background-size: 100% 100%;
+    padding: 0 0.05em;
   }
 
   .kids-hero__sub {
-    font-size: clamp(0.92rem, 1.2vw, 1.05rem);
+    font-size: clamp(0.95rem, 1.2vw, 1.1rem);
     line-height: 1.6;
     color: var(--c-text-muted);
     max-width: 460px;
     margin: 0;
+    opacity: 0;
+    animation: heroUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.15s both;
   }
 
-  /* ── Stats — right-aligned, bold impact numbers ── */
-  .kids-hero__stats {
-    display: flex;
-    gap: var(--space-xl);
+  /* ── Dark stat panel — right column ── */
+  .kids-hero__panel {
     flex-shrink: 0;
-    padding: var(--space-md) var(--space-lg);
-    background: var(--c-white);
-    border-radius: var(--border-radius-lg, 16px);
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 4px 20px rgba(0, 0, 0, 0.03);
+    background: var(--c-dark);
+    border-radius: var(--border-radius-lg);
+    padding: clamp(1.25rem, 2vw, 1.75rem) clamp(1.5rem, 2.5vw, 2.25rem);
+    opacity: 0;
+    animation: heroUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.25s both;
+    border-top: 3px solid var(--c-yellow);
+  }
+
+  .kids-hero__panel-stats {
+    display: flex;
+    align-items: center;
+    gap: 0;
   }
 
   .kids-hero__stat {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 3px;
+    gap: 6px;
+    padding: 0 clamp(0.85rem, 1.8vw, 1.5rem);
+  }
+
+  .kids-hero__stat-div {
+    width: 1px;
+    height: 32px;
+    background: rgba(255, 255, 255, 0.1);
+    flex-shrink: 0;
   }
 
   .kids-hero__stat-num {
     font-family: var(--font-display);
-    font-size: clamp(1.75rem, 2.5vw, 2.25rem);
+    font-size: clamp(1.75rem, 2.5vw, 2.5rem);
     font-weight: 700;
-    color: var(--c-dark);
+    color: var(--c-white);
     line-height: 1;
-    letter-spacing: -0.02em;
+    letter-spacing: -0.03em;
+    font-variant-numeric: tabular-nums;
   }
 
   .kids-hero__stat-label {
-    font-size: 0.62rem;
+    font-size: 0.7rem;
     font-weight: 600;
-    color: var(--c-text-muted);
+    color: rgba(255, 255, 255, 0.45);
+    letter-spacing: 0.06em;
     text-transform: uppercase;
-    letter-spacing: 0.1em;
+    white-space: nowrap;
   }
+
+  /* ── Live / in-progress accent ── */
+  .kids-hero__stat--live .kids-hero__stat-num {
+    color: var(--c-yellow);
+    position: relative;
+  }
+
+  .kids-hero__stat--live .kids-hero__stat-num::after {
+    content: "";
+    position: absolute;
+    top: 1px;
+    right: -9px;
+    width: 6px;
+    height: 6px;
+    background: #34C759;
+    border-radius: 50%;
+    animation: livePulse 2.5s ease-in-out infinite;
+  }
+
+  .kids-hero__stat--live .kids-hero__stat-label {
+    color: rgba(255, 218, 36, 0.55);
+  }
+
+  @keyframes livePulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(1.4); }
+  }
+
 
   /* ═══════════════════════════════════════════
      GRID SECTION
@@ -1728,10 +1626,10 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
     z-index: 20;
     background: rgba(252, 249, 243, 0.82);
     background: color-mix(in srgb, var(--c-cream) 82%, transparent);
-    backdrop-filter: blur(16px) saturate(1.4);
-    -webkit-backdrop-filter: blur(16px) saturate(1.4);
+    backdrop-filter: blur(20px) saturate(1.5);
+    -webkit-backdrop-filter: blur(20px) saturate(1.5);
     margin-inline: calc(-1 * var(--space-lg));
-    padding: var(--space-md) var(--space-lg);
+    padding: 0 var(--space-lg);
     margin-bottom: var(--space-xl);
     border-bottom: 1px solid transparent;
     transition: border-color 0.3s ease, box-shadow 0.3s ease, background 0.3s ease;
@@ -1739,24 +1637,40 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
   }
 
   .toolbar.is-scrolled {
-    border-bottom-color: rgba(224, 222, 218, 0.6);
-    border-bottom-color: color-mix(in srgb, var(--c-border) 60%, transparent);
-    box-shadow: 0 1px 2px rgba(0,0,0,0.04), 0 4px 24px rgba(0, 0, 0, 0.06);
+    border-bottom-color: rgba(224, 222, 218, 0.4);
+    border-bottom-color: color-mix(in srgb, var(--c-border) 40%, transparent);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.02), 0 8px 32px rgba(0, 0, 0, 0.05);
   }
 
-  .toolbar__row {
-    display: flex;
-    align-items: center;
-    gap: var(--space-md);
-  }
-
-  .toolbar__status {
+  /* Single-bar layout: pills left, utilities right */
+  .toolbar__bar {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-top: var(--space-sm);
-    font-size: 0.8rem;
-    color: var(--c-text-muted);
+    gap: 16px;
+    min-height: 64px;
+  }
+
+  .toolbar__right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+  }
+
+  .toolbar__count {
+    display: flex;
+    align-items: center;
+    font-size: 0.75rem;
+    font-variant-numeric: tabular-nums;
+    color: var(--c-text-light);
+    letter-spacing: 0.01em;
+    white-space: nowrap;
+  }
+
+  .toolbar__count-sep {
+    opacity: 0.35;
+    margin: 0 1px;
   }
 
   .result-count strong {
@@ -1799,19 +1713,18 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
   /* ── Search Box ── */
   .search-box {
     position: relative;
-    flex: 1;
-    min-width: 180px;
-    max-width: 340px;
-    transition: max-width 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+    width: 180px;
+    flex-shrink: 0;
+    transition: width 0.35s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
   .search-box:focus-within {
-    max-width: 420px;
+    width: 280px;
   }
 
   .search-box__icon {
     position: absolute;
-    left: 14px;
+    left: 13px;
     top: 50%;
     transform: translateY(-50%);
     color: var(--c-text-light);
@@ -1821,14 +1734,16 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
 
   .search-box__input {
     width: 100%;
-    height: 44px;
-    padding: 0 44px 0 42px;
-    font-size: 0.9rem;
-    border: 1.5px solid var(--c-border);
-    border-radius: var(--border-radius);
+    height: 38px;
+    padding: 0 36px 0 38px;
+    font-size: 0.82rem;
+    letter-spacing: 0.005em;
+    border: 1px solid rgba(224, 222, 218, 0.7);
+    border-radius: 100px;
     background: var(--c-white);
     color: var(--c-text);
-    transition: border-color 0.2s ease, box-shadow 0.3s ease, padding 0.15s ease, background 0.2s ease;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+    transition: border-color 0.25s ease, box-shadow 0.35s ease, background 0.2s ease, width 0.35s ease;
   }
 
   .search-box__input::placeholder {
@@ -1839,12 +1754,12 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
   .search-box__input:focus {
     outline: none;
     border-color: var(--c-dark);
-    box-shadow: 0 0 0 3px var(--c-accent-soft), 0 2px 12px rgba(0, 0, 0, 0.06);
+    box-shadow: 0 0 0 3px rgba(55, 58, 54, 0.06), 0 4px 20px rgba(0, 0, 0, 0.06);
   }
 
   .search-box__input:focus::placeholder {
-    color: rgba(160, 160, 166, 0.6);
-    color: color-mix(in srgb, var(--c-text-light) 60%, transparent);
+    color: rgba(160, 160, 166, 0.5);
+    color: color-mix(in srgb, var(--c-text-light) 50%, transparent);
   }
 
   .search-box:focus-within .search-box__icon {
@@ -1864,8 +1779,8 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
     transform: translateY(-50%);
     background: none;
     border: none;
-    width: 44px;
-    height: 44px;
+    width: 38px;
+    height: 38px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1875,55 +1790,27 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
   }
 
   .search-box__clear svg {
-    background: var(--c-warm-gray);
+    background: rgba(224, 222, 218, 0.5);
     border-radius: 50%;
-    width: 24px;
-    height: 24px;
+    width: 22px;
+    height: 22px;
     padding: 4px;
-    transition: background var(--transition-fast), color var(--transition-fast);
+    transition: background 0.2s ease, color 0.2s ease, transform 0.15s ease;
   }
 
   .search-box__clear:hover svg {
-    background: var(--c-border);
+    background: rgba(200, 198, 194, 0.6);
     color: var(--c-dark);
+    transform: scale(1.08);
   }
 
-  /* ── Keyboard Shortcut Hint ── */
-  .search-box__kbd {
-    position: absolute;
-    right: 12px;
-    top: 50%;
-    transform: translateY(-50%);
-    font-family: var(--font-body);
-    font-size: 0.72rem;
-    font-weight: 600;
-    color: var(--c-text-light);
-    background: var(--c-warm-gray);
-    border: 1px solid var(--c-border);
-    border-radius: 4px;
-    padding: 2px 7px;
-    line-height: 1.4;
-    pointer-events: none;
-    transition: opacity 0.15s ease;
+  .search-box__clear[hidden] {
+    display: none;
   }
 
-  .search-box__kbd.is-hidden {
-    opacity: 0;
-    position: absolute;
-    visibility: hidden;
-    pointer-events: none;
-    transform: translateY(-50%);
-    animation: none;
-  }
 
   /* ── Search Highlight (mark elements are JS-injected, needs :global) ── */
-  :global(.kid-card__diagnosis mark) {
-    background: linear-gradient(transparent 20%, rgba(255, 218, 36, 0.5) 20%);
-    color: inherit;
-    border-radius: 2px;
-    padding: 0 1px;
-    animation: highlightReveal 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
-  }
+  /* (diagnosis mark styles removed — room types now shown as photo overlay pills) */
   :global(.kid-card__name mark) {
     background: none;
     color: inherit;
@@ -1938,10 +1825,10 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
   /* ── Search count badge ── */
   .search-box__count {
     position: absolute;
-    right: 44px;
+    right: 38px;
     top: 50%;
     transform: translateY(-50%);
-    font-size: 0.7rem;
+    font-size: 0.65rem;
     font-weight: 700;
     font-variant-numeric: tabular-nums;
     color: var(--c-dark);
@@ -1960,124 +1847,7 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
   }
   .search-box__count[hidden] { display: none; }
 
-  /* ── Filter Chips ── */
-  @keyframes kidsChipIn {
-    from { opacity: 0; transform: scale(0.94) translateY(3px); }
-    to { opacity: 1; transform: scale(1) translateY(0); }
-  }
-
-  .filter-chips {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 6px;
-    padding-bottom: var(--space-md);
-  }
-
-  .filter-chips[hidden] { display: none; }
-
-  .filter-chips :global(.filter-chip) {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    padding: 5px 10px;
-    background: var(--c-warm-gray);
-    border: 1px solid var(--c-border);
-    border-radius: 100px;
-    font-size: 0.74rem;
-    font-weight: 500;
-    color: var(--c-text);
-    white-space: nowrap;
-    animation: kidsChipIn 0.25s cubic-bezier(0.22, 1, 0.36, 1) both;
-    transition: border-color 0.15s ease, background 0.15s ease;
-  }
-
-  .filter-chips :global(.filter-chip:nth-child(1)) { animation-delay: 0s; }
-  .filter-chips :global(.filter-chip:nth-child(2)) { animation-delay: 0.04s; }
-  .filter-chips :global(.filter-chip:nth-child(3)) { animation-delay: 0.08s; }
-
-  .filter-chips :global(.filter-chip:hover) {
-    border-color: var(--c-text-muted);
-    background: var(--c-border);
-  }
-
-  .filter-chips :global(.filter-chip__icon) {
-    flex-shrink: 0;
-    color: var(--c-text-light);
-    width: 15px;
-    height: 15px;
-  }
-
-  .filter-chips :global(.filter-chip__remove) {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 0;
-    height: 14px;
-    border-radius: 50%;
-    background: transparent;
-    border: none;
-    cursor: pointer;
-    color: var(--c-text-muted);
-    padding: 0;
-    flex-shrink: 0;
-    margin-left: 0;
-    opacity: 0;
-    overflow: hidden;
-    transition: width 0.15s ease, opacity 0.15s ease, margin 0.15s ease, background 0.15s ease, color 0.15s ease;
-  }
-
-  .filter-chips :global(.filter-chip:hover .filter-chip__remove) {
-    width: 14px;
-    opacity: 1;
-    margin-left: 2px;
-  }
-
-  .filter-chips :global(.filter-chip__remove:hover) {
-    background: var(--c-dark);
-    color: var(--c-white);
-  }
-
-  .filter-chips :global(.filter-chip__remove svg) {
-    width: 8px;
-    height: 8px;
-    flex-shrink: 0;
-  }
-
-  /* Touch devices: always show remove button with larger tap target */
-  @media (hover: none) {
-    .filter-chips :global(.filter-chip) {
-      padding: 8px 12px;
-      min-height: 36px;
-    }
-
-    .filter-chips :global(.filter-chip__remove) {
-      width: 20px;
-      height: 20px;
-      opacity: 1;
-      margin-left: 4px;
-    }
-  }
-
-  .filter-chips :global(.filter-chips__clear) {
-    font-size: 0.7rem;
-    font-weight: 500;
-    color: var(--c-text-light);
-    background: none;
-    border: none;
-    cursor: pointer;
-    text-decoration: none;
-    padding: 5px 10px;
-    margin-left: 2px;
-    border-radius: 100px;
-    transition: color 0.15s ease, background 0.15s ease;
-    animation: kidsChipIn 0.25s cubic-bezier(0.22, 1, 0.36, 1) both;
-  }
-
-  .filter-chips :global(.filter-chips__clear:hover) {
-    color: var(--c-text);
-    background: var(--c-border);
-  }
+  /* (Filter chips removed — inline pill active states replace them) */
 
   /* ── Year Badge on Cards (global because JS-injected) ── */
   :global(.kid-card__year-badge) {
@@ -2148,130 +1918,342 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
 
   /* FLIP animations are handled via WAAPI — no CSS transition needed */
 
-  /* ── Filter Controls (Desktop) ── */
-  .toolbar__filters--desktop {
-    display: flex;
-    align-items: center;
-    gap: var(--space-sm);
-  }
-
-  .filter-select {
-    height: 44px;
-    padding: 0 36px 0 14px;
-    background: var(--c-white);
-    border: 1px solid var(--c-border);
-    border-radius: var(--border-radius);
-    font-size: 0.85rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
-    color: var(--c-text);
-    appearance: none;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%236B6C72' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
-    background-repeat: no-repeat;
-    background-position: right 12px center;
-  }
-
-  .filter-select:hover {
-    border-color: var(--c-dark);
-  }
-
-  .filter-select:focus {
-    outline: none;
-    border-color: var(--c-dark);
-    box-shadow: 0 0 0 3px var(--c-accent-soft);
-  }
-
-  /* Active filter visual state — subtle yellow accent */
-  .filter-select.is-active {
-    border-color: var(--c-yellow);
-    background-color: rgba(255, 252, 243, 1);
-    background-color: color-mix(in srgb, var(--c-yellow) 6%, var(--c-white));
-    font-weight: 600;
-  }
-
-  .filter-select.is-active:hover {
-    border-color: rgba(210, 180, 30, 1);
-    border-color: color-mix(in srgb, var(--c-yellow) 80%, var(--c-dark));
-  }
-
-  /* ── Mobile filter button ── */
-  .filter-btn-mobile {
-    display: none;
-    align-items: center;
-    justify-content: center;
+  /* ── Sort Dropdown ── */
+  .sort-dropdown {
     position: relative;
-    height: 44px;
-    width: 44px;
-    padding: 0;
-    background: var(--c-white);
-    border: 1px solid var(--c-border);
-    border-radius: var(--border-radius);
-    cursor: pointer;
-    color: var(--c-text);
     flex-shrink: 0;
   }
 
-  .filter-btn-mobile__badge {
-    position: absolute;
-    top: -4px;
-    right: -4px;
-    min-width: 18px;
-    height: 18px;
-    padding: 0 5px;
-    background: var(--c-yellow);
-    color: var(--c-dark);
-    font-size: 0.6rem;
-    font-weight: 700;
-    font-variant-numeric: tabular-nums;
-    line-height: 18px;
-    text-align: center;
-    border-radius: 100px;
-    pointer-events: none;
-    animation: countIn 0.2s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
-  }
-
-  .filter-btn-mobile__badge[hidden] { display: none; }
-
-  /* ── Pill Toggle ── */
-  .pill-toggle {
+  .sort-select {
+    height: 38px;
+    width: 38px;
+    padding: 0;
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    height: 44px;
-    padding: 0 16px;
+    justify-content: center;
     background: var(--c-white);
-    border: 1px solid var(--c-border);
-    border-radius: var(--border-radius);
-    font-size: 0.85rem;
-    font-weight: 500;
+    border: 1px solid rgba(224, 222, 218, 0.7);
+    border-radius: 100px;
     cursor: pointer;
-    transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
-    color: var(--c-text);
+    transition: border-color 0.25s ease, box-shadow 0.3s ease, background 0.2s ease, color 0.2s ease;
+    color: var(--c-text-muted);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+  }
+
+  .sort-select__icon {
+    flex-shrink: 0;
+  }
+
+  .sort-select:hover { border-color: var(--c-border); color: var(--c-text); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05); }
+  .sort-select:focus { outline: none; border-color: var(--c-dark); box-shadow: 0 0 0 3px rgba(55, 58, 54, 0.06); }
+  .sort-select.is-active { background: var(--c-dark); color: var(--c-white); border-color: var(--c-dark); }
+
+  .sort-dropdown__menu {
+    display: none;
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    min-width: 100%;
+    background: var(--c-white);
+    border: 1px solid rgba(224, 222, 218, 0.6);
+    border-radius: 14px;
+    padding: 6px;
+    margin: 0;
+    list-style: none;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06), 0 12px 36px rgba(0, 0, 0, 0.08);
+    z-index: 100;
+  }
+
+  .sort-dropdown.is-open .sort-dropdown__menu {
+    display: block;
+  }
+
+  .sort-dropdown__menu li {
+    padding: 10px 16px;
+    font-size: 0.82rem;
+    font-weight: 500;
+    color: var(--c-text-muted);
+    border-radius: 8px;
+    cursor: pointer;
     white-space: nowrap;
+    transition: background var(--transition-fast), color var(--transition-fast);
   }
 
-  .pill-toggle__dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: var(--c-border);
-    transition: background var(--transition-fast);
+  .sort-dropdown__menu li:hover {
+    background: var(--c-warm-gray);
+    color: var(--c-text);
   }
 
-  .pill-toggle:hover {
-    border-color: var(--c-dark);
-  }
-
-  .pill-toggle.active {
-    background: var(--c-yellow);
-    border-color: var(--c-yellow);
-    color: var(--c-dark);
+  .sort-dropdown__menu li[aria-selected="true"] {
+    color: var(--c-text);
     font-weight: 600;
   }
 
-  .pill-toggle.active .pill-toggle__dot {
+  /* ═══════════════════════════════════════════
+     FILTER PILLS
+     ═══════════════════════════════════════════ */
+  .toolbar__pills {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    flex: 1;
+    min-width: 0;
+  }
+  .toolbar__pills:has(.is-open) {
+    overflow-x: visible;
+  }
+  .toolbar__pills::-webkit-scrollbar { display: none; }
+
+  .pill-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+
+  .pill-divider {
+    width: 0;
+    height: 0;
+    flex-shrink: 0;
+    margin: 0 4px;
+    background: none;
+    border: none;
+    opacity: 0;
+  }
+
+  .filter-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 38px;
+    padding: 0 18px;
+    background: var(--c-white);
+    border: 1px solid rgba(224, 222, 218, 0.65);
+    border-radius: 100px;
+    font-size: 0.78rem;
+    font-weight: 500;
+    color: var(--c-text-muted);
+    cursor: pointer;
+    white-space: nowrap;
+    flex-shrink: 0;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+    transition: background 0.2s ease,
+                border-color 0.2s ease,
+                color 0.2s ease,
+                box-shadow 0.25s ease,
+                transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
+    user-select: none;
+    -webkit-user-select: none;
+    letter-spacing: 0.01em;
+  }
+
+  .filter-pill:hover {
+    border-color: rgba(180, 178, 174, 0.6);
+    color: var(--c-text);
+    background: var(--c-white);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  }
+
+  .filter-pill:active {
+    transform: scale(0.97);
+  }
+
+  .filter-pill.is-active {
     background: var(--c-dark);
+    border-color: var(--c-dark);
+    color: var(--c-white);
+    font-weight: 600;
+    box-shadow:
+      0 2px 6px rgba(55, 58, 54, 0.15),
+      0 4px 12px rgba(55, 58, 54, 0.1);
+  }
+
+  .filter-pill.is-active:hover {
+    background: #2a2d28;
+    border-color: #2a2d28;
+    box-shadow:
+      0 3px 8px rgba(55, 58, 54, 0.14),
+      0 6px 20px rgba(55, 58, 54, 0.1);
+  }
+
+  .filter-pill__icon {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+    opacity: 0.4;
+    transition: opacity 0.2s ease;
+  }
+
+  .filter-pill:hover .filter-pill__icon {
+    opacity: 0.65;
+  }
+
+  .filter-pill.is-active .filter-pill__icon {
+    opacity: 1;
+  }
+
+  .filter-pill__dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--c-yellow);
+    flex-shrink: 0;
+  }
+
+  .filter-pill.is-active .filter-pill__dot {
+    background: var(--c-yellow);
+  }
+
+  @keyframes dotPulse {
+    /* unused */
+    0%, 100% { opacity: 1; }
+  }
+
+  /* Zero-result pills are dimmed so users know what's available */
+  .filter-pill.is-empty {
+    opacity: 0.38;
+    pointer-events: auto;
+    cursor: default;
+  }
+
+  /* Year select styled as a pill */
+  .year-pill-wrap {
+    display: inline-flex;
+    position: relative;
+  }
+
+  .year-pill-select {
+    height: 38px;
+    padding: 0 32px 0 16px;
+    background: var(--c-white);
+    border: 1px solid rgba(224, 222, 218, 0.65);
+    border-radius: 100px;
+    font-size: 0.78rem;
+    font-weight: 500;
+    color: var(--c-text-muted);
+    cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 24 24' fill='none' stroke='%236B6C72' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 11px center;
+    transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease, box-shadow 0.25s ease;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    font-family: inherit;
+    line-height: 1;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+    letter-spacing: 0.01em;
+  }
+
+  .year-pill-select:hover {
+    border-color: rgba(180, 178, 174, 0.6);
+    color: var(--c-text);
+    background-color: var(--c-white);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  }
+
+  .year-pill-select:focus {
+    outline: none;
+    border-color: var(--c-dark);
+    box-shadow: 0 0 0 3px rgba(55, 58, 54, 0.08);
+  }
+
+  .year-pill-wrap.is-active .year-pill-select {
+    background-color: var(--c-dark);
+    border-color: var(--c-dark);
+    color: var(--c-white);
+    font-weight: 600;
+    box-shadow: 0 2px 8px rgba(55, 58, 54, 0.18);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  }
+
+  .year-pill-wrap.is-active .year-pill-select:hover {
+    background-color: #2a2d28;
+    border-color: #2a2d28;
+  }
+
+  .year-dropdown__menu {
+    display: none;
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 0;
+    background: var(--c-white);
+    border: 1px solid rgba(224, 222, 218, 0.6);
+    border-radius: 14px;
+    padding: 6px;
+    margin: 0;
+    list-style: none;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06), 0 12px 36px rgba(0, 0, 0, 0.08);
+    z-index: 100;
+    display: none;
+    grid-template-columns: 1fr 1fr;
+    gap: 2px;
+    width: max-content;
+  }
+
+  .year-pill-wrap.is-open .year-dropdown__menu {
+    display: grid;
+  }
+
+  .year-dropdown__menu li:first-child {
+    grid-column: 1 / -1;
+    border-bottom: 1px solid var(--c-border);
+    margin-bottom: 2px;
+    padding-bottom: 10px;
+  }
+
+  .year-dropdown__menu li {
+    padding: 8px 20px;
+    font-size: 0.78rem;
+    font-weight: 500;
+    color: var(--c-text-muted);
+    border-radius: 8px;
+    cursor: pointer;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+    transition: background var(--transition-fast), color var(--transition-fast);
+  }
+
+  .year-dropdown__menu li:hover {
+    background: var(--c-warm-gray);
+    color: var(--c-text);
+  }
+
+  .year-dropdown__menu li[aria-selected="true"] {
+    color: var(--c-text);
+    font-weight: 600;
+  }
+
+  /* Status pill — warm golden tint signals "live" without being loud */
+  .filter-pill--status {
+    background: var(--c-white);
+    border: 1px solid rgba(224, 222, 218, 0.65);
+    color: var(--c-text);
+    font-weight: 500;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+  }
+
+  .filter-pill--status:hover {
+    border-color: rgba(180, 178, 174, 0.6);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+  }
+
+  .filter-pill--status.is-active {
+    background: var(--c-dark);
+    border-color: var(--c-dark);
+    color: #fff;
+    font-weight: 600;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+  }
+
+  .filter-pill--status.is-active:hover {
+    background: #2a2d28;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
   }
 
   /* ── Clear Button ── */
@@ -2298,157 +2280,7 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
     font-size: 0.85rem;
   }
 
-  /* ═══════════════════════════════════════════
-     BOTTOM SHEET (Mobile Filters)
-     ═══════════════════════════════════════════ */
-  .bottom-sheet {
-    position: fixed;
-    inset: 0;
-    z-index: 100;
-    pointer-events: none;
-    visibility: hidden;
-  }
-
-  .bottom-sheet.is-open {
-    pointer-events: auto;
-    visibility: visible;
-  }
-
-  .bottom-sheet__backdrop {
-    position: absolute;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.4);
-    opacity: 0;
-    transition: opacity 0.3s ease;
-  }
-
-  .bottom-sheet.is-open .bottom-sheet__backdrop {
-    opacity: 1;
-  }
-
-  .bottom-sheet__panel {
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    background: var(--c-white);
-    border-radius: 20px 20px 0 0;
-    transform: translateY(100%);
-    transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
-    max-height: 80vh;
-    max-height: 80dvh;
-    display: flex;
-    flex-direction: column;
-    padding-bottom: env(safe-area-inset-bottom, 0px);
-  }
-
-  .bottom-sheet.is-open .bottom-sheet__panel {
-    transform: translateY(0);
-  }
-
-  .bottom-sheet__handle {
-    display: flex;
-    justify-content: center;
-    padding: 12px 0 4px;
-  }
-
-  .bottom-sheet__handle span {
-    width: 36px;
-    height: 4px;
-    border-radius: 2px;
-    background: var(--c-border);
-  }
-
-  .bottom-sheet__header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: var(--space-sm) var(--space-lg);
-    border-bottom: 1px solid var(--c-border);
-  }
-
-  .bottom-sheet__title {
-    font-family: var(--font-display);
-    font-size: 1.1rem;
-    font-weight: 700;
-    color: var(--c-dark);
-    margin: 0;
-  }
-
-  .bottom-sheet__close {
-    background: none;
-    border: none;
-    padding: 8px;
-    cursor: pointer;
-    color: var(--c-text-muted);
-    border-radius: 50%;
-    transition: background var(--transition-fast);
-  }
-
-  .bottom-sheet__close:hover {
-    background: var(--c-warm-gray);
-  }
-
-  .bottom-sheet__body {
-    padding: var(--space-lg);
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-lg);
-    overflow-y: auto;
-  }
-
-  .sheet-group {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-sm);
-  }
-
-  .sheet-label {
-    font-size: 0.75rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: var(--c-text-muted);
-  }
-
-  .sheet-select {
-    height: 48px;
-    padding: 0 36px 0 14px;
-    background: var(--c-warm-gray);
-    border: 1px solid var(--c-border);
-    border-radius: var(--border-radius);
-    font-size: 16px;
-    font-weight: 500;
-    color: var(--c-text);
-    appearance: none;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%236B6C72' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
-    background-repeat: no-repeat;
-    background-position: right 12px center;
-  }
-
-  .sheet-result-count {
-    font-weight: 400;
-    opacity: 0.8;
-  }
-
-  .pill-toggle--sheet {
-    width: 100%;
-    justify-content: center;
-    height: 48px;
-  }
-
-  .bottom-sheet__footer {
-    display: flex;
-    gap: var(--space-md);
-    padding: var(--space-lg);
-    border-top: 1px solid var(--c-border);
-  }
-
-  .bottom-sheet__footer .btn {
-    flex: 1;
-    justify-content: center;
-    text-align: center;
-  }
+  /* (Bottom sheet styles removed — inline pill filters used instead) */
 
   /* ═══════════════════════════════════════════
      KID GRID
@@ -2458,11 +2290,6 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
     grid-template-columns: repeat(4, 1fr);
     gap: var(--space-lg);
     min-width: 0;
-  }
-
-  /* Few results: keep standard columns, left-aligned */
-  .kids-grid.is-few-results {
-    justify-content: start;
   }
 
   /* ── Card (global: JS creates overflow cards dynamically) ── */
@@ -2480,24 +2307,13 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
   }
 
   :global(.kid-card:active) {
-    opacity: 0.85;
-    transition: opacity 80ms ease;
+    opacity: 0.92;
+    transition: opacity 60ms ease;
   }
 
-  /* Staggered reveal */
-  :global(.js-anim .kid-card:not(.revealed)) {
-    opacity: 0;
-  }
-
-  :global(.js-anim .kid-card.revealed) {
-    animation: cardIn 0.3s ease forwards;
-    animation-delay: calc(var(--stagger, 0) * 40ms);
-  }
-
-  @keyframes cardIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
-  }
+  /* Cards are always visible — no staggered opacity reveal.
+     Images handle their own smooth LQIP blur-up fade-in.
+     Adding card-level opacity on top creates a double-flash. */
 
   :global(.kid-card.is-hidden) {
     display: none;
@@ -2519,11 +2335,13 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
     gap: var(--space-sm);
     min-width: 220px;
     justify-content: center;
+    letter-spacing: 0.01em;
   }
 
   .load-more__count {
-    font-weight: 400;
-    opacity: 0.7;
+    font-weight: 500;
+    opacity: 0.6;
+    font-size: 0.9em;
   }
 
   /* ── Card Frame + LQIP blur placeholder ── */
@@ -2563,9 +2381,7 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
     height: 100%;
     object-fit: cover;
     display: block;
-    transition: opacity 0.4s ease,
-                transform 0.6s cubic-bezier(0.16, 1, 0.3, 1),
-                filter 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: opacity 0.4s ease;
   }
 
   /* Image reveal — progressive enhancement.
@@ -2578,12 +2394,7 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
     opacity: 0;
   }
 
-  @media (hover: hover) {
-    :global(.kid-card:hover .kid-card__img) {
-      transform: scale(1.07);
-      filter: brightness(1.04) saturate(1.05);
-    }
-  }
+  /* Hover effects consolidated in the main @media (hover: hover) block below */
 
   :global(.kid-card__placeholder) {
     width: 100%;
@@ -2595,92 +2406,86 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
     color: var(--c-text-light);
   }
 
-  /* ── Hover Overlay (desktop only) ── */
+  /* ── Cursor glow (desktop only) ── */
   :global(.kid-card__hover-overlay) {
     position: absolute;
     inset: 0;
-    background: linear-gradient(
-      160deg,
-      transparent 30%,
-      rgba(255, 218, 36, 0.12) 70%,
-      rgba(255, 218, 36, 0.22) 100%
-    );
     opacity: 0;
-    transition: opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1);
     z-index: 2;
     pointer-events: none;
+    background: radial-gradient(
+      600px circle at var(--glow-x, 50%) var(--glow-y, 50%),
+      rgba(255, 218, 36, 0.12) 0%,
+      rgba(255, 218, 36, 0.04) 30%,
+      transparent 60%
+    );
+    transition: opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    mix-blend-mode: soft-light;
   }
 
-  /* Yellow border glow on frame — inset shadow avoids layout shift */
+  /* ── Frame shadow ── */
   :global(.kid-card__frame) {
-    box-shadow: inset 0 0 0 0px var(--c-yellow);
-    transition: box-shadow 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+    box-shadow: none;
+    transition: box-shadow 0.6s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
-  /* Floating arrow indicator */
+  /* CTA pill — slides up on hover */
   :global(.kid-card__cta) {
     position: absolute;
     bottom: 12px;
-    right: 12px;
-    width: 36px;
-    height: 36px;
+    left: 50%;
+    transform: translateX(-50%) translateY(8px);
     display: flex;
     align-items: center;
-    justify-content: center;
-    background: var(--c-yellow);
-    color: var(--c-dark);
-    border-radius: 50%;
-    z-index: 3;
+    gap: 6px;
+    padding: 8px 16px;
+    background: rgba(255, 255, 255, 0.92);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border-radius: 100px;
     opacity: 0;
-    transform: translate(6px, 6px) scale(0.8);
-    transition: opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1),
-                transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1),
-                box-shadow 0.3s ease;
-    box-shadow: 0 4px 16px rgba(255, 218, 36, 0.3);
+    pointer-events: none;
+    z-index: 3;
+    transition:
+      opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+      transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
   :global(.kid-card__cta-text) {
-    /* Visually hidden but accessible */
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--c-dark);
+    letter-spacing: 0.02em;
     white-space: nowrap;
   }
 
   :global(.kid-card__cta-arrow) {
+    width: 12px;
+    height: 12px;
+    color: var(--c-dark);
     flex-shrink: 0;
-    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
   @media (hover: hover) {
     :global(.kid-card:hover .kid-card__hover-overlay) {
       opacity: 1;
     }
-    :global(.kid-card:hover .kid-card__frame) {
-      box-shadow: inset 0 0 0 3px var(--c-yellow);
-    }
     :global(.kid-card:hover .kid-card__cta) {
       opacity: 1;
-      transform: translate(0, 0) scale(1);
+      transform: translateX(-50%) translateY(0);
     }
-    :global(.kid-card:hover .kid-card__cta-arrow) {
-      transform: translateX(1px);
+    :global(.kid-card:hover .kid-card__frame) {
+      box-shadow: none;
     }
-  }
-
-  :global(.kid-card:focus-visible .kid-card__hover-overlay) {
-    opacity: 1;
   }
 
   :global(.kid-card:focus-visible .kid-card__frame) {
-    box-shadow: inset 0 0 0 3px var(--c-yellow);
+    box-shadow: 0 0 0 2px var(--c-yellow);
   }
 
   :global(.kid-card:focus-visible .kid-card__cta) {
     opacity: 1;
-    transform: translate(0, 0) scale(1);
+    transform: translateX(-50%) translateY(0);
   }
 
   /* ── Info Below Photo ── */
@@ -2712,34 +2517,58 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
     }
   }
 
-  :global(.kid-card__diagnosis) {
-    display: block;
-    padding: 4px 4px 4px;
-    font-size: 0.78rem;
-    color: var(--c-text-muted);
-    line-height: 1.45;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-  }
+  /* (kid-card__diagnosis removed — room types now as photo overlay pills) */
 
   :global(.kid-card__badge) {
     position: absolute;
     top: 8px;
     right: 8px;
-    padding: 3px 10px;
-    background: var(--c-yellow);
-    color: var(--c-dark);
-    font-size: 0.6rem;
-    font-weight: 700;
+    padding: 4px 11px;
+    background: rgba(0, 0, 0, 0.45);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    color: rgba(255, 255, 255, 0.9);
+    font-size: 0.55rem;
+    font-weight: 500;
     text-transform: uppercase;
-    letter-spacing: 0.06em;
+    letter-spacing: 0.05em;
     border-radius: 100px;
     white-space: nowrap;
     z-index: 2;
+    box-shadow: none;
     pointer-events: none;
   }
+
+  /* ── Room Type Tags (overlaid on photo) ── */
+  :global(.kid-card__tags) {
+    position: absolute;
+    bottom: 8px;
+    left: 8px;
+    right: 48px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    z-index: 2;
+    pointer-events: none;
+  }
+
+  :global(.kid-card__tag) {
+    display: inline-block;
+    padding: 4px 10px;
+    background: rgba(255, 255, 255, 0.88);
+    backdrop-filter: blur(8px) saturate(1.2);
+    -webkit-backdrop-filter: blur(8px) saturate(1.2);
+    border-radius: 100px;
+    font-size: 0.58rem;
+    font-weight: 700;
+    color: var(--c-dark);
+    letter-spacing: 0.03em;
+    line-height: 1.4;
+    white-space: nowrap;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+  }
+
+  /* Tags stay unchanged on hover — clean and quiet */
 
   /* ── No Results ── */
   .no-results[hidden] {
@@ -2794,6 +2623,16 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
      ═══════════════════════════════════════════ */
   .bottom-cta {
     padding-block: var(--space-4xl);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .bottom-cta::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at 50% 0%, rgba(255, 218, 36, 0.05) 0%, transparent 60%);
+    pointer-events: none;
   }
 
   .bottom-cta__title {
@@ -2802,15 +2641,18 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
     color: var(--c-white);
     margin-bottom: var(--space-md);
     line-height: 1.3;
+    letter-spacing: -0.02em;
+    position: relative;
   }
 
   .bottom-cta__text {
-    color: rgba(255, 255, 255, 0.75);
+    color: rgba(255, 255, 255, 0.65);
     font-size: 1.05rem;
     max-width: 540px;
     margin-inline: auto;
     margin-bottom: var(--space-xl);
-    line-height: 1.6;
+    line-height: 1.65;
+    position: relative;
   }
 
   .bottom-cta__buttons {
@@ -2818,24 +2660,38 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
     gap: var(--space-md);
     justify-content: center;
     flex-wrap: wrap;
+    position: relative;
   }
 
   .btn-outline-light {
     display: inline-flex;
     align-items: center;
-    padding: 12px 28px;
-    border: 1.5px solid rgba(255, 255, 255, 0.5);
-    border-radius: var(--border-radius);
+    padding: 14px 32px;
+    border: 1.5px solid rgba(255, 255, 255, 0.25);
+    border-radius: 100px;
     color: var(--c-white);
     font-size: 0.95rem;
-    font-weight: 600;
+    font-weight: 700;
+    letter-spacing: 0.01em;
     text-decoration: none;
-    transition: background var(--transition-fast), border-color var(--transition-fast);
+    min-height: 48px;
+    transition:
+      background 0.2s ease,
+      border-color 0.25s ease,
+      transform 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+      box-shadow 0.3s ease;
   }
 
   .btn-outline-light:hover {
     background: rgba(255, 255, 255, 0.1);
-    border-color: var(--c-white);
+    border-color: rgba(255, 255, 255, 0.5);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  }
+
+  .btn-outline-light:active {
+    transform: translateY(0) scale(0.98);
+    transition-duration: 80ms;
   }
 
   /* ═══════════════════════════════════════════
@@ -2861,94 +2717,125 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
   /* Mobile */
   @media (max-width: 768px) {
     .kids-hero {
-      padding: var(--space-md) 0 var(--space-sm);
+      padding: var(--space-xl) 0 var(--space-lg);
     }
 
     .kids-hero__inner {
       flex-direction: column;
-      align-items: flex-start;
-      gap: var(--space-md);
+      align-items: stretch;
+      gap: var(--space-lg);
     }
 
     .kids-hero__headline {
-      font-size: clamp(1.6rem, 7vw, 2rem);
+      font-size: clamp(1.75rem, 7vw, 2.25rem);
     }
 
     .kids-hero__sub {
-      font-size: 0.9rem;
-      max-width: 320px;
+      font-size: 0.93rem;
+      max-width: none;
     }
 
-    .kids-hero__stats {
-      gap: var(--space-md);
+    .kids-hero__panel {
+      padding: var(--space-lg) var(--space-lg);
+    }
+
+    .kids-hero__stat {
+      flex: 1;
+      padding: 0 var(--space-sm);
     }
 
     .kids-hero__stat-num {
-      font-size: 1.1rem;
+      font-size: clamp(1.35rem, 5vw, 1.75rem);
     }
 
     .kids-hero__stat-label {
-      font-size: 0.55rem;
+      font-size: 0.62rem;
     }
+
+    .kids-hero__stat-div {
+      height: 26px;
+    }
+
 
     .kids-section {
       padding-block: 0 var(--space-2xl);
     }
 
-    /* Toolbar */
+    /* Toolbar — stacks vertically on mobile */
     .toolbar {
-      top: var(--header-height, 68px);
       margin-inline: calc(-1 * var(--space-lg));
-      padding: var(--space-sm) var(--space-lg);
-      margin-bottom: var(--space-md);
-      background: rgba(252, 249, 243, 0.88);
-      background: color-mix(in srgb, var(--c-cream) 88%, transparent);
+      padding: 12px var(--space-lg) 14px;
+      margin-bottom: var(--space-lg);
+      background: rgba(252, 249, 243, 0.92);
+      background: color-mix(in srgb, var(--c-cream) 92%, transparent);
     }
 
-    .toolbar__row {
-      gap: var(--space-sm);
+    .toolbar__bar {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 10px;
+      min-height: auto;
+    }
+
+    .toolbar__right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
     }
 
     .search-box {
-      max-width: none;
-      min-width: 0;
+      width: auto;
       flex: 1;
+      min-width: 0;
     }
 
     .search-box:focus-within {
-      max-width: none;
+      width: auto;
     }
 
     .search-box__input {
       height: 44px;
-      padding: 0 44px 0 38px;
+      padding: 0 42px 0 38px;
       font-size: 16px; /* Prevents iOS zoom */
+      border-radius: 100px;
     }
 
-    /* Hide desktop filters, show mobile button */
-    .toolbar__filters--desktop {
-      display: none;
+    /* Sort select on mobile */
+    .sort-select {
+      height: 44px;
+      width: 44px;
+      padding: 0;
+      border-radius: 100px;
     }
 
-    .filter-btn-mobile {
-      display: inline-flex;
-    }
-
-    /* Filter chips: scroll horizontal on mobile */
-    .filter-chips {
-      flex-wrap: nowrap;
-      overflow-x: auto;
-      -webkit-overflow-scrolling: touch;
-      scrollbar-width: none;
-      padding-bottom: var(--space-sm);
+    /* Pills: edge-to-edge scroll */
+    .toolbar__pills {
       margin-inline: calc(-1 * var(--space-lg));
       padding-inline: var(--space-lg);
+      justify-content: flex-start;
+      gap: 8px;
+      flex: none;
+      /* Fade edges to hint at scroll */
+      mask-image: linear-gradient(to right, transparent, black 20px, black calc(100% - 20px), transparent);
+      -webkit-mask-image: linear-gradient(to right, transparent, black 20px, black calc(100% - 20px), transparent);
     }
-    .filter-chips::-webkit-scrollbar { display: none; }
 
-    .toolbar__status {
-      font-size: 0.75rem;
-      margin-top: var(--space-xs);
+    .filter-pill {
+      height: 40px;
+      padding: 0 16px;
+      font-size: 0.82rem;
+      min-width: 44px;
+    }
+
+    .year-pill-select {
+      height: 40px;
+      font-size: 16px; /* Prevents iOS zoom */
+      padding: 0 32px 0 14px;
+    }
+
+    .toolbar__count {
+      font-size: 0.72rem;
+      display: none; /* Hide count on mobile to keep row clean */
     }
 
     /* Grid: 2 columns */
@@ -2959,7 +2846,7 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
     }
 
     .kids-grid.is-few-results {
-      grid-template-columns: repeat(2, 1fr);
+      justify-content: start;
     }
 
 
@@ -2968,21 +2855,10 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
       aspect-ratio: 4 / 5;
     }
 
-    /* Hide hover overlay on touch */
-    :global(.kid-card__hover-overlay) {
-      display: none;
-    }
+    /* Hide hover overlay + CTA on touch */
+    :global(.kid-card__hover-overlay),
     :global(.kid-card__cta) {
       display: none;
-    }
-    :global(.kid-card:focus-visible .kid-card__hover-overlay) {
-      display: block;
-      opacity: 1;
-    }
-    :global(.kid-card:focus-visible .kid-card__cta) {
-      display: flex;
-      opacity: 1;
-      transform: translate(0, 0) scale(1);
     }
 
     :global(.kid-card__info) {
@@ -2999,10 +2875,16 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
       min-width: 0;
     }
 
-    :global(.kid-card__diagnosis) {
-      -webkit-line-clamp: 1;
-      font-size: 0.72rem;
-      padding: 0 2px;
+    :global(.kid-card__tags) {
+      bottom: 6px;
+      left: 6px;
+      right: 40px;
+      gap: 3px;
+    }
+
+    :global(.kid-card__tag) {
+      font-size: 0.56rem;
+      padding: 3px 8px;
     }
 
     :global(.kid-card__badge) {
@@ -3028,10 +2910,12 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
   }
 
   @media (max-width: 380px) {
-    .kids-hero__stats {
-      gap: var(--space-sm) var(--space-md);
-      flex-wrap: wrap;
-      justify-content: center;
+    .kids-hero__stat {
+      padding: 0 var(--space-xs);
+    }
+
+    .kids-hero__stat-num {
+      font-size: 1.25rem;
     }
 
     .kids-grid {
@@ -3041,20 +2925,36 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
     :global(.kid-card__name) {
       font-size: 0.8rem;
     }
-  }
 
-  /* Hide bottom sheet on desktop */
-  @media (min-width: 769px) {
-    .bottom-sheet {
-      display: none;
+    /* Compact pills for very small screens */
+    .filter-pill {
+      height: 42px;
+      padding: 0 14px;
+      font-size: 0.76rem;
+    }
+
+    .filter-pill__icon {
+      width: 12px;
+      height: 12px;
+    }
+
+    .sort-select {
+      height: 42px;
+      width: 42px;
+      padding: 0;
+    }
+
+    .year-pill-select {
+      height: 38px;
+      padding: 0 28px 0 10px;
+      font-size: 14px;
     }
   }
 
+
   /* ── Reduced Motion ── */
   @media (prefers-reduced-motion: reduce) {
-    :global(.kid-card),
-    :global(.js-anim .kid-card:not(.revealed)),
-    :global(.js-anim .kid-card.revealed) {
+    :global(.kid-card) {
       opacity: 1;
       transform: none;
       animation: none;
@@ -3084,26 +2984,21 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
       transition: none;
     }
 
-    :global(.kid-card__name mark),
-    :global(.kid-card__diagnosis mark) {
+    :global(.kid-card__name mark) {
       animation: none;
     }
 
-    .filter-chips :global(.filter-chip) {
-      animation: none;
+    .filter-pill {
+      transition: none;
     }
 
-    .filter-chips :global(.filter-chips__clear) {
+    .filter-pill__dot {
       animation: none;
     }
 
     .search-box__count {
       animation: none;
       opacity: 1;
-    }
-
-    .filter-btn-mobile__badge {
-      animation: none;
     }
 
     .no-results {
@@ -3114,5 +3009,97 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
       transition: none;
     }
 
+  }
+</style>
+
+<style is:global>
+  /* ── Mobile bottom-sheet portal (appended to body via JS) ── */
+  .dropdown-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.3);
+    z-index: 999;
+    animation: dropdownFadeIn 0.15s ease-out;
+  }
+
+  .dropdown-backdrop.is-visible {
+    display: block;
+  }
+
+  .dropdown-portal {
+    display: none;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    border-radius: 16px 16px 0 0;
+    background: var(--c-white);
+    box-shadow: 0 -4px 32px rgba(0, 0, 0, 0.15);
+    padding: 8px 12px calc(env(safe-area-inset-bottom, 0px) + 12px);
+    max-height: 50vh;
+    overflow-y: auto;
+    z-index: 1000;
+    list-style: none;
+    margin: 0;
+    animation: dropdownSlideUp 0.2s ease-out;
+  }
+
+  .dropdown-portal.is-visible {
+    display: grid;
+  }
+
+  .dropdown-portal--years {
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 4px;
+  }
+
+  .dropdown-portal--sort {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+
+  .dropdown-portal li {
+    padding: 14px 16px;
+    font-size: 15px;
+    font-weight: 500;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--c-text-muted);
+    border-radius: 10px;
+    cursor: pointer;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+
+  .dropdown-portal li:hover,
+  .dropdown-portal li:active {
+    background: var(--c-warm-gray);
+    color: var(--c-text);
+  }
+
+  .dropdown-portal li[aria-selected="true"] {
+    color: var(--c-text);
+    font-weight: 600;
+  }
+
+  .dropdown-portal--years li:first-child {
+    grid-column: 1 / -1;
+    border-bottom: 1px solid var(--c-border);
+    margin-bottom: 2px;
+    padding-bottom: 14px;
+  }
+
+  @keyframes dropdownSlideUp {
+    from { transform: translateY(100%); }
+    to { transform: translateY(0); }
+  }
+
+  @keyframes dropdownFadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
   }
 </style>

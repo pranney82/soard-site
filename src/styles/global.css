@@ -7,7 +7,7 @@
 :root {
   /* Brand Colors — per official brand guidelines */
   --c-yellow: #FFDA24;
-  --c-yellow-soft: rgba(255, 218, 36, 0.45);
+  --c-yellow-soft: rgba(255, 218, 36, 0.3);
   --c-yellow-hover: #E6C400;
   --c-yellow-glow: rgba(255, 218, 36, 0.35);
   --c-accent: #373A36;
@@ -19,7 +19,7 @@
   --c-white: #FFFFFF;
   --c-text: #373A36;
   --c-text-muted: #5A5B61;
-  --c-text-light: #6D6E74;
+  --c-text-light: #5F6066;
   --c-border: #E5E4E0;
 
   /* Page padding */
@@ -100,7 +100,7 @@ html {
   animation: none;
 }
 ::view-transition-new(root) {
-  animation: 90ms cubic-bezier(0, 0, 0.2, 1) both vt-fade-in;
+  animation: 60ms cubic-bezier(0, 0, 0.2, 1) both vt-fade-in;
 }
 
 /* Shared element morph for kid card ↔ hero portrait.
@@ -232,15 +232,18 @@ p {
 h1, .h1 {
   font-size: clamp(2rem, 4vw + 0.5rem, 3.25rem);
   letter-spacing: -0.02em;
+  line-height: 1.15;
 }
 
 h2, .h2 {
   font-size: clamp(1.625rem, 3vw + 0.5rem, 2.5rem);
   letter-spacing: -0.01em;
+  line-height: 1.25;
 }
 
 h3, .h3 {
   font-size: clamp(1.25rem, 2vw + 0.5rem, 1.75rem);
+  line-height: 1.3;
 }
 
 h4, .h4 {
@@ -411,25 +414,25 @@ h4, .h4 {
 .section-label {
   display: flex;
   align-items: center;
-  gap: 12px;
-  font-size: 12px;
+  gap: 0.75rem;
+  font-size: 0.75rem;
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--c-accent);
-  margin-bottom: 20px;
+  margin-bottom: 1.25rem;
 }
 .section-label::before {
   content: '';
-  width: 28px;
+  width: 1.75rem;
   height: 2px;
   background: currentColor;
   flex-shrink: 0;
 }
 .section-label--yellow { color: inherit; }
 .section-label--yellow::before { background: var(--c-yellow); }
-.section-label--light { color: rgba(255, 255, 255, 0.7); }
-.section-label--light::before { background: rgba(255, 255, 255, 0.4); }
+.section-label--light { color: rgba(255, 255, 255, 0.8); }
+.section-label--light::before { background: rgba(255, 255, 255, 0.5); }
 
 /* ─── Global Button Styles ─────────────── */
 .btn {
@@ -440,53 +443,99 @@ h4, .h4 {
   padding: 14px 32px;
   font-family: var(--font-body);
   font-size: 15px;
-  font-weight: 600;
+  font-weight: 700;
+  letter-spacing: 0.01em;
   border-radius: 100px;
   border: none;
   cursor: pointer;
   text-decoration: none;
-  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1),
-              box-shadow 0.25s cubic-bezier(0.16, 1, 0.3, 1),
-              background 0.25s ease, color 0.25s ease;
   white-space: nowrap;
   min-height: 48px;
+  position: relative;
+  isolation: isolate;
+  transition:
+    transform 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+    background 0.2s ease,
+    color 0.2s ease,
+    border-color 0.2s ease;
 }
-.btn:hover { transform: translateY(-2px); }
+.btn:hover { transform: translateY(-1px); }
+.btn:active { transform: translateY(0) scale(0.98); transition-duration: 80ms; }
+.btn:focus-visible { outline: 2px solid var(--c-yellow); outline-offset: 3px; }
+
+/* ── Yellow primary ── */
+.btn-yellow,
 .btn-primary {
   background: var(--c-yellow);
   color: var(--c-dark);
+  box-shadow:
+    0 1px 2px rgba(255, 218, 36, 0.3),
+    0 4px 12px rgba(255, 218, 36, 0.15);
 }
+.btn-yellow:hover,
 .btn-primary:hover {
-  box-shadow: 0 8px 24px var(--c-yellow-glow);
+  background: var(--c-yellow-hover, #E6C400);
+  box-shadow:
+    0 4px 8px rgba(255, 218, 36, 0.25),
+    0 12px 32px rgba(255, 218, 36, 0.2);
 }
+.btn-yellow:active,
+.btn-primary:active {
+  box-shadow: 0 1px 4px rgba(255, 218, 36, 0.2);
+}
+
+/* ── Dark charcoal ── */
 .btn-dark {
   background: var(--c-dark);
   color: var(--c-white);
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.08),
+    0 4px 12px rgba(0, 0, 0, 0.08);
 }
 .btn-dark:hover {
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  background: #2a2d28;
+  box-shadow:
+    0 4px 8px rgba(0, 0, 0, 0.12),
+    0 12px 32px rgba(0, 0, 0, 0.15);
 }
-.btn-lg { font-size: 17px; padding: 18px 44px; }
-.btn-xl { font-size: 18px; padding: 20px 52px; }
+.btn-dark:active {
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+}
+
+.btn-lg { font-size: 17px; padding: 18px 44px; min-height: 56px; }
+.btn-xl { font-size: 18px; padding: 20px 52px; min-height: 60px; }
+
+/* ── Outline dark ── */
 .btn-outline-dark {
   background: transparent;
   color: var(--c-dark);
-  border: 2px solid var(--c-dark);
+  border: 1.5px solid var(--c-dark);
 }
 .btn-outline-dark:hover {
   background: var(--c-dark);
   color: var(--c-yellow);
+  box-shadow: 0 4px 12px rgba(55, 58, 54, 0.12);
 }
+.btn-outline-dark:active {
+  box-shadow: none;
+}
+
+/* ── Ghost light (dark backgrounds) ── */
 .btn-ghost-light {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.06);
   color: #fff;
-  border: 1.5px solid rgba(255, 255, 255, 0.2);
+  border: 1.5px solid rgba(255, 255, 255, 0.18);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
 }
 .btn-ghost-light:hover {
-  background: rgba(255, 255, 255, 0.15);
-  border-color: rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.35);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+}
+.btn-ghost-light:active {
+  background: rgba(255, 255, 255, 0.08);
 }
 
 /* ─── Hero Entrance Animations ─────────── */
@@ -516,8 +565,7 @@ h4, .h4 {
   50% { filter: drop-shadow(0 8px 20px rgba(255, 218, 36, 0.55)); }
 }
 .btn-hero-glow {
-  animation: pulseGlow 3s ease-in-out 3s infinite;
-  will-change: filter;
+  animation: pulseGlow 3s ease-in-out 3s 3;
 }
 
 /* ─── Legal Pages (Privacy, Terms) ─────── */
@@ -672,8 +720,8 @@ h4, .h4 {
 
 /* Instant visual feedback on tap for interactive elements */
 .btn:active {
-  transform: scale(0.97);
-  transition-duration: 50ms;
+  transform: scale(0.98);
+  transition-duration: 60ms;
 }
 
 a:active img {

@@ -167,14 +167,13 @@ const featured = logos;
     height: 100%;
     object-fit: contain;
     opacity: 0.55;
-    filter: grayscale(1);
     transition: opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1),
                 filter 0.4s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
-  .ps__cell:hover .ps__logo-frame img {
-    opacity: 1;
-    filter: grayscale(0);
+  @media (hover: hover) {
+    .ps__logo-frame img { filter: grayscale(1); }
+    .ps__cell:hover .ps__logo-frame img { opacity: 1; filter: grayscale(0); }
   }
 
   /* ── Footer link ── */

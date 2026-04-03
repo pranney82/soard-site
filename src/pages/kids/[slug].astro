@@ -154,6 +154,13 @@ if (kid.quote && kid.quote !== kid.bio && kid.quote !== introPara) {
 
 const galleryPhotos = photos.slice(0, 30);
 
+// ── Accent photo for hero ────────────────
+const accentPhoto = kid.accentImage || (photos.length > 1 ? photos[0].url : null);
+
+// ── Hero image — use real dimensions for native aspect ratio ──
+const heroDims = kid.heroImage ? dims(kid.heroImage) : [3, 4];
+const heroAR = `${heroDims[0]} / ${heroDims[1]}`;
+
 // ── Hero: art-directed mobile ─────────────
 const heroMobileSrcset = kid.heroImage ? _cfSrcset(kid.heroImage, [600, 900, 1200], { fit: 'cover', gravity: 'face' }) : '';
 const heroMobileSizes = '(max-width: 480px) 92vw, 92vw';
@@ -169,6 +176,9 @@ type StoryPair = { text: string; photo: typeof photos[0] | null; layout: 'left' 
 let storyPairs: StoryPair[] = [];
 let overflowParas: string[] = remainingParas;
 
+// Lead cinematic photo — shown full-width between lede and pairs
+let storyCinematicPhoto: typeof photos[0] | null = null;
+
 if (usePhotoEssay) {
   const srcPhotos = hasStoryPhotos ? storyPhotos : (() => {
     const pairCount = Math.min(remainingParas.length, 4, Math.floor(galleryPhotos.length / 2));
@@ -177,12 +187,18 @@ if (usePhotoEssay) {
       galleryPhotos[Math.min(Math.floor(i * step), galleryPhotos.length - 1)]
     );
   })();
+
+  // First photo is cinematic lead, rest are editorial pairs
+  if (srcPhotos.length > 0) {
+    storyCinematicPhoto = srcPhotos[0];
+  }
+  const pairPhotos = srcPhotos.slice(1);
   const paras = [...remainingParas];
-  const pairCount = Math.min(paras.length, srcPhotos.length);
+  const pairCount = Math.min(paras.length, pairPhotos.length);
   for (let i = 0; i < pairCount; i++) {
     storyPairs.push({
       text: paras[i],
-      photo: srcPhotos[i],
+      photo: pairPhotos[i],
       layout: i % 2 === 0 ? 'left' : 'right',
     });
   }
@@ -265,69 +281,62 @@ const extraPlansCount = plans.length - displayAsBuilt.length - displayProposed.l
 
   <article class="kid-profile" itemscope itemtype="https://schema.org/Article">
 
-    <!-- ═══ Sticky Chapter Nav — Top Pill Bar ═══ -->
-    {chapters.length > 1 && (
-      <nav class="chapter-nav" id="chapter-nav" aria-label="Page chapters">
-        <div class="chapter-nav__track">
-          {chapters.map((ch, i) => (
-            <a
-              href={`#${ch.id}`}
-              class={`chapter-nav__pill${i === 0 ? ' chapter-nav__pill--active' : ''}`}
-              data-target={ch.id}
-            >
-              {ch.label}
-            </a>
-          ))}
-        </div>
-      </nav>
-    )}
-
     <!-- ═══ 1. Meet — Hero ═══ -->
     <section class="hero" id="chapter-meet" data-chapter="Meet">
       <div class="hero__split">
-        {kid.heroImage ? (
-          <div class="hero__portrait" style={`--lqip: url('${lqip(kid.heroImage)}')`} transition:name="kid-hero">
-            <picture>
-              <source
-                media="(max-width: 768px)"
-                srcset={heroMobileSrcset}
-                sizes={heroMobileSizes}
-                width="300"
-                height="400"
-              />
+        <div class="hero__frame">
+          {kid.heroImage ? (
+            <div class="hero__portrait" style={`--lqip: url('${lqip(kid.heroImage)}'); --hero-ar: ${heroAR}`} transition:name="kid-hero">
+              <picture>
+                <source
+                  media="(max-width: 768px)"
+                  srcset={heroMobileSrcset}
+                  sizes={heroMobileSizes}
+                  width="300"
+                  height="400"
+                />
+                <img
+                  src={cfUrl(kid.heroImage, 'w=1200,fit=cover,gravity=face,q=85')}
+                  srcset={heroSrcset}
+                  sizes={heroSizes}
+                  alt={`Photo of ${kid.name}${kid.diagnosis ? ` — ${kid.diagnosis}` : ''}`}
+                  class="hero__img lqip-img"
+                  width="900"
+                  height="1200"
+                  loading="eager"
+                  decoding="async"
+                  fetchpriority="high"
+                  itemprop="image"
+                />
+              </picture>
+              {kid.status === 'in-progress' && (
+                <span class="hero__badge">In Progress</span>
+              )}
+            </div>
+          ) : (
+            <div class="hero__portrait hero__portrait--empty">
+              <svg class="hero__placeholder-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                <circle cx="12" cy="7" r="4"/>
+              </svg>
+              <span class="hero__placeholder-text">{kid.name}</span>
+            </div>
+          )}
+          {accentPhoto && kid.heroImage && (
+            <picture class="hero__accent-photo" style={`--lqip: url('${lqip(accentPhoto)}')`}>
+              <source media="(max-width: 768px)" srcset={_cfSrcset(accentPhoto, [160, 240, 320], { fit: 'cover', gravity: 'face', aspectRatio: 1.2 })} sizes="(max-width: 480px) 26vw, 28vw" />
+              <source media="(min-width: 769px)" srcset={_cfSrcset(accentPhoto, [240, 360, 480], { fit: 'cover', gravity: 'face', aspectRatio: 1.2 })} sizes="180px" />
               <img
-                src={cfUrl(kid.heroImage, 'w=1200,fit=cover,gravity=face,q=85')}
-                srcset={heroSrcset}
-                sizes={heroSizes}
-                alt={`Photo of ${kid.name}${kid.diagnosis ? ` — ${kid.diagnosis}` : ''}`}
-                class="hero__img lqip-img"
-                width="900"
-                height="1200"
-                loading="eager"
-                decoding="async"
-                fetchpriority="high"
-                itemprop="image"
+                src={cfUrl(accentPhoto, 'w=360,h=432,fit=cover,gravity=face,q=75')}
+                alt={`${kid.name}'s room`}
+                width="360" height="432"
+                class="lqip-img" loading="eager" decoding="async"
               />
             </picture>
-            {kid.status === 'in-progress' && (
-              <span class="hero__badge">In Progress</span>
-            )}
-          </div>
-        ) : (
-          <div class="hero__portrait hero__portrait--empty">
-            <svg class="hero__placeholder-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
-              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-              <circle cx="12" cy="7" r="4"/>
-            </svg>
-            <span class="hero__placeholder-text">{kid.name}</span>
-          </div>
-        )}
+          )}
+        </div>
 
         <div class="hero__info">
-          <a href="/kids/" class="hero__back stagger" aria-label="Back to Meet the Kids">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
-            Meet the Kids
-          </a>
           <h1 class="hero__name" itemprop="headline" transition:name="kid-name">{kid.name}</h1>
 
           {kid.diagnosis && (
@@ -343,7 +352,14 @@ const extraPlansCount = plans.length - displayAsBuilt.length - displayProposed.l
           )}
 
           {statsItems.length > 0 && (
-            <p class="hero__meta stagger">{statsItems.join(' · ')}</p>
+            <p class="hero__meta stagger">
+              {statsItems.map((item, i) => (
+                <>
+                  {i > 0 && <span class="hero__meta-dot" aria-hidden="true">&middot;</span>}
+                  <span class="hero__meta-item">{item}</span>
+                </>
+              ))}
+            </p>
           )}
 
           {heroHook && (
@@ -365,6 +381,32 @@ const extraPlansCount = plans.length - displayAsBuilt.length - displayProposed.l
       </div>
     </section>
 
+    <!-- ═══ Sticky Chapter Nav — after hero, sticks on scroll ═══ -->
+    {chapters.length > 1 && (
+      <nav class="chapter-nav" id="chapter-nav" aria-label={`${kid.name}'s story chapters`}>
+        <div class="chapter-nav__track">
+          <div class="chapter-nav__pill" aria-hidden="true"></div>
+          <a href="/kids/" class="chapter-nav__back" aria-label="Meet the Kids">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M10 3L5 8l5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <span>All Kids</span>
+          </a>
+          <span class="chapter-nav__divider" aria-hidden="true"></span>
+          <a href="#chapter-meet" class="chapter-nav__link chapter-nav__link--name is-active" data-target="chapter-meet">
+            <span>{kid.name}</span>
+          </a>
+          {chapters.filter(ch => ch.id !== 'chapter-meet').map((ch) => (
+            <a
+              href={`#${ch.id}`}
+              class="chapter-nav__link"
+              data-target={ch.id}
+            >
+              <span>{ch.label}</span>
+            </a>
+          ))}
+        </div>
+      </nav>
+    )}
+
     <!-- ═══ 2. The Story — Narrative ═══ -->
     {(storyLede || storyPairs.length > 0 || overflowParas.length > 0) && (
       <section class="story" id="chapter-story" data-chapter="Story" itemprop="articleBody">
@@ -379,6 +421,24 @@ const extraPlansCount = plans.length - displayAsBuilt.length - displayProposed.l
               <span set:html={storyLede} />
             </p>
           </div>
+        )}
+
+        {storyCinematicPhoto && (
+          <figure class="story__cinematic" data-reveal="fade-up">
+            <div class="story__cinematic-wrap" style={`--lqip: url('${lqip(storyCinematicPhoto.url)}')`}>
+              <img
+                src={_cfUrl(storyCinematicPhoto.url, { w: 1400, q: 85 })}
+                srcset={_cfSrcset(storyCinematicPhoto.url, [600, 900, 1200, 1600, 2000])}
+                sizes="(max-width: 768px) 92vw, (max-width: 1400px) 85vw, 1200px"
+                alt={storyCinematicPhoto.alt || `${kid.name}'s room`}
+                class="story__cinematic-img lqip-img"
+                loading="lazy"
+                decoding="async"
+                width={dims(storyCinematicPhoto.url)[0]}
+                height={dims(storyCinematicPhoto.url)[1]}
+              />
+            </div>
+          </figure>
         )}
 
         {storyPairs.length > 0 && (
@@ -979,6 +1039,7 @@ const extraPlansCount = plans.length - displayAsBuilt.length - displayProposed.l
   let _revealObserver: IntersectionObserver | null = null;
   let _galleryCascadeObserver: IntersectionObserver | null = null;
   let _videoEntranceObserver: IntersectionObserver | null = null;
+  let _cleanupFns: (() => void)[] = [];
 
   function cleanupKidPage() {
     _kidObserver?.disconnect();
@@ -993,11 +1054,17 @@ const extraPlansCount = plans.length - displayAsBuilt.length - displayProposed.l
     _galleryCascadeObserver = null;
     _videoEntranceObserver?.disconnect();
     _videoEntranceObserver = null;
+    _cleanupFns.forEach(fn => fn());
+    _cleanupFns = [];
+    document.documentElement.classList.remove('kid-page-active');
   }
 
   function initKidPage() {
     cleanupKidPage();
     const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    // Override global scroll-padding for accurate chapter nav positioning
+    document.documentElement.classList.add('kid-page-active');
 
     // ── Staggered hero reveals ────────────────
     const heroStaggers = document.querySelectorAll('.hero .stagger');
@@ -1088,85 +1155,111 @@ const extraPlansCount = plans.length - displayAsBuilt.length - displayProposed.l
       _videoEntranceObserver.observe(revealSection);
     }
 
-    // ── Sticky Chapter Nav — Pill Bar ────────────
+    // ── Sticky Chapter Nav (mirrors ways-to-give) ────────────
     const chapterNav = document.getElementById('chapter-nav');
-    if (chapterNav) {
-      const pills = chapterNav.querySelectorAll<HTMLElement>('.chapter-nav__pill');
-      const sections = document.querySelectorAll<HTMLElement>('[data-chapter]');
+    const chapterLinks = document.querySelectorAll<HTMLAnchorElement>('.chapter-nav__link');
+    const chapterSections = document.querySelectorAll<HTMLElement>('[data-chapter]');
+    const chapterTrack = document.querySelector<HTMLElement>('.chapter-nav__track');
+    const chapterPill = document.querySelector<HTMLElement>('.chapter-nav__pill');
 
-      // Active chapter tracking
-      if (sections.length > 0) {
-        _chapterObserver = new IntersectionObserver(
-          (entries) => {
-            entries.forEach(entry => {
-              if (entry.isIntersecting) {
-                const id = entry.target.id;
-                pills.forEach(pill => {
-                  const isActive = pill.dataset.target === id;
-                  pill.classList.toggle('chapter-nav__pill--active', isActive);
-                  // Scroll active pill into view on mobile
-                  if (isActive) {
-                    pill.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
-                  }
-                });
-              }
-            });
-          },
-          { rootMargin: '-50% 0px -50% 0px', threshold: 0 }
-        );
-        sections.forEach(s => _chapterObserver!.observe(s));
+    if (chapterNav && chapterLinks.length && chapterSections.length && chapterTrack && chapterPill) {
+
+      /* ── Move pill behind a link ── */
+      function movePill(link: HTMLElement, instant = false) {
+        const trackRect = chapterTrack!.getBoundingClientRect();
+        const linkRect = link.getBoundingClientRect();
+        const x = Math.round(linkRect.left - trackRect.left + chapterTrack!.scrollLeft);
+        const w = Math.round(linkRect.width);
+        const h = Math.round(linkRect.height);
+        if (instant) chapterPill!.style.transition = 'none';
+        chapterPill!.style.width = `${w}px`;
+        chapterPill!.style.height = `${h}px`;
+        chapterPill!.style.transform = `translateX(${x}px) translateY(-50%)`;
+        if (instant) {
+          chapterPill!.offsetHeight; // force reflow
+          chapterPill!.style.transition = '';
+        }
       }
 
-      // Smooth scroll on click
-      pills.forEach(pill => {
-        pill.addEventListener('click', (e) => {
-          e.preventDefault();
-          const target = document.querySelector(pill.getAttribute('href')!);
-          if (target) {
-            target.scrollIntoView({
-              behavior: prefersReducedMotion ? 'auto' : 'smooth',
-              block: 'start'
-            });
+      /* ── Activate a link ── */
+      function activate(id: string, instant = false) {
+        chapterLinks.forEach(l => {
+          const active = l.dataset.target === id;
+          l.classList.toggle('is-active', active);
+          if (active) {
+            movePill(l, instant);
+            const sl = l.offsetLeft - chapterTrack!.offsetWidth / 2 + l.offsetWidth / 2;
+            chapterTrack!.scrollTo({ left: sl, behavior: instant ? 'auto' : 'smooth' });
           }
+        });
+      }
+
+      /* ── Init: position pill without animation, then fade in ── */
+      const firstActive = chapterTrack.querySelector<HTMLAnchorElement>('.chapter-nav__link.is-active');
+      if (firstActive) {
+        movePill(firstActive, true);
+        requestAnimationFrame(() => chapterPill.classList.add('is-ready'));
+        /* Reposition after fonts load — display font can shift link widths */
+        document.fonts.ready.then(() => {
+          const active = chapterTrack.querySelector<HTMLElement>('.chapter-nav__link.is-active');
+          if (active) movePill(active, true);
+        });
+      }
+
+      /* ── Stuck shadow ── */
+      const sentinel = document.createElement('div');
+      sentinel.style.cssText = 'height:1px;width:1px;pointer-events:none;position:absolute;';
+      chapterNav.before(sentinel);
+      const stuckObs = new IntersectionObserver(
+        ([e]) => { chapterNav.classList.toggle('is-stuck', !e.isIntersecting); },
+        { threshold: 0 }
+      );
+      stuckObs.observe(sentinel);
+      (_cleanupFns as (() => void)[]).push(() => { stuckObs.disconnect(); sentinel.remove(); });
+
+      /* ── Scroll-spy ── */
+      let clickScrolling = false;
+      _chapterObserver = new IntersectionObserver((entries) => {
+        if (clickScrolling) return;
+        for (const e of entries) {
+          if (e.isIntersecting && e.target.id) {
+            activate(e.target.id);
+            break;
+          }
+        }
+      }, { rootMargin: '-20% 0px -75% 0px' });
+      chapterSections.forEach(t => { if (t.id) _chapterObserver!.observe(t); });
+
+      /* ── Scroll offset — clears header + sticky nav + breathing room ── */
+      function getOffset() {
+        const headerH = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--header-height')) || 84;
+        return headerH + chapterNav.offsetHeight + 16;
+      }
+
+      /* ── Click ── */
+      chapterLinks.forEach(link => {
+        link.addEventListener('click', (e) => {
+          const hash = link.hash || link.getAttribute('href');
+          const section = hash && document.querySelector<HTMLElement>(hash);
+          if (!section) return;
+          e.preventDefault();
+          clickScrolling = true;
+          activate(link.dataset.target || section.id);
+          /* Scroll to the section divider/heading if present, not the section padding */
+          const anchor = section.querySelector<HTMLElement>('.section-rule') || section;
+          const top = anchor.getBoundingClientRect().top + window.scrollY - getOffset();
+          window.scrollTo({ top, behavior: prefersReducedMotion ? 'auto' : 'smooth' });
+          setTimeout(() => { clickScrolling = false; }, prefersReducedMotion ? 100 : 800);
         });
       });
 
-      // Hide on scroll down, show on scroll up
-      let lastScrollY = window.scrollY;
-      let navHidden = false;
-      const heroSection = document.getElementById('chapter-meet');
-      const heroBottom = heroSection ? heroSection.offsetTop + heroSection.offsetHeight : 400;
-
-      const handleScroll = () => {
-        const currentY = window.scrollY;
-        const scrollingDown = currentY > lastScrollY;
-        const pastHero = currentY > heroBottom - 60;
-
-        if (!pastHero) {
-          // Hide when still in hero
-          if (!navHidden) {
-            chapterNav.classList.add('chapter-nav--hidden');
-            navHidden = true;
-          }
-        } else if (scrollingDown && currentY - lastScrollY > 8) {
-          // Hide on scroll down
-          if (!navHidden) {
-            chapterNav.classList.add('chapter-nav--hidden');
-            navHidden = true;
-          }
-        } else if (!scrollingDown && lastScrollY - currentY > 8) {
-          // Show on scroll up
-          if (navHidden) {
-            chapterNav.classList.remove('chapter-nav--hidden');
-            navHidden = false;
-          }
-        }
-        lastScrollY = currentY;
+      /* ── Resize — reposition pill ── */
+      const handleResize = () => {
+        const active = chapterTrack.querySelector<HTMLElement>('.chapter-nav__link.is-active');
+        if (active) movePill(active, true);
       };
-
-      window.addEventListener('scroll', handleScroll, { passive: true });
-      // Start hidden, reveal after hero
-      chapterNav.classList.add('chapter-nav--hidden');
+      window.addEventListener('resize', handleResize, { passive: true });
+      (_cleanupFns as (() => void)[]).push(() => window.removeEventListener('resize', handleResize));
     }
 
     // ── Before/After Sliders ──────────────────
@@ -1742,83 +1835,160 @@ const extraPlansCount = plans.length - displayAsBuilt.length - displayProposed.l
   }
 
   /* ═══ Sticky Chapter Nav — Top Pill Bar ══════
-     Horizontal pill tabs, frosted glass, sticks to
-     top. Hides on scroll down, shows on scroll up.
+     Always visible once past the hero. Kid's name
+     on the left, pill tabs with sliding indicator
+     on the right. Frosted glass backdrop.
      ═══════════════════════════════════════════ */
-  .chapter-nav {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    z-index: 100;
-    background: rgba(255, 255, 255, 0.88);
-    backdrop-filter: blur(16px) saturate(1.4);
-    -webkit-backdrop-filter: blur(16px) saturate(1.4);
-    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
-    padding: 0 var(--page-padding);
-    transform: translateY(0);
-    transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1),
-                opacity 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+  [data-chapter] {
+    scroll-margin-top: calc(var(--header-height, 84px) + 60px);
   }
 
-  .chapter-nav--hidden {
-    transform: translateY(-100%);
-    opacity: 0;
-    pointer-events: none;
+  .chapter-nav {
+    position: sticky;
+    top: var(--header-height, 84px);
+    z-index: 90;
+    background: rgba(255, 253, 247, 0.95);
+    -webkit-backdrop-filter: blur(16px) saturate(1.5);
+    backdrop-filter: blur(16px) saturate(1.5);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+    transition: box-shadow 0.4s ease;
+  }
+
+  .chapter-nav.is-stuck {
+    box-shadow: 0 1px 24px rgba(0, 0, 0, 0.06);
   }
 
   .chapter-nav__track {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 4px;
+    position: relative;
     max-width: var(--max-width);
-    margin-inline: auto;
-    padding: 10px 0;
+    margin: 0 auto;
+    padding: 10px var(--page-padding);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 6px;
     overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
-    -ms-overflow-style: none;
   }
 
   .chapter-nav__track::-webkit-scrollbar { display: none; }
 
+  /* ── Sliding dark pill (behind active link) ── */
   .chapter-nav__pill {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    height: 0;
+    width: 0;
+    transform: translateY(-50%);
+    background: var(--c-dark, #2a2a2a);
+    border-radius: 100px;
+    transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+                width 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+                height 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+                opacity 0.2s ease;
+    will-change: transform, width, height;
+    pointer-events: none;
+    opacity: 0;
+  }
+
+  .chapter-nav__pill.is-ready { opacity: 1; }
+
+  .chapter-nav__link {
+    position: relative;
+    z-index: 1;
+    flex-shrink: 0;
     display: inline-flex;
     align-items: center;
-    padding: 6px 16px;
-    font-size: 0.72rem;
+    justify-content: center;
+    height: 40px;
+    padding: 0 20px;
+    font-size: 13px;
     font-weight: 600;
-    letter-spacing: 0.06em;
+    letter-spacing: 0.04em;
     text-transform: uppercase;
+    color: var(--c-text-muted);
     text-decoration: none;
     white-space: nowrap;
-    color: var(--c-text-muted);
     border-radius: 100px;
-    transition: color 0.25s ease, background 0.25s ease, box-shadow 0.25s ease;
-    cursor: pointer;
+    transition: color 0.25s ease;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .chapter-nav__link span { position: relative; z-index: 1; }
+  .chapter-nav__link:hover { color: var(--c-dark); }
+  .chapter-nav__link.is-active { color: #fff; font-weight: 700; }
+
+  .chapter-nav__back {
+    position: relative;
+    z-index: 1;
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    height: 36px;
+    padding: 0 14px 0 10px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--c-text-muted);
+    text-decoration: none;
+    white-space: nowrap;
+    border-radius: 100px;
+    background: transparent;
+    transition: color 0.2s ease, background 0.2s ease;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .chapter-nav__back:hover {
+    color: var(--c-dark);
+    background: rgba(0, 0, 0, 0.05);
+  }
+
+  .chapter-nav__back:active { transform: scale(0.97); }
+
+  .chapter-nav__back svg {
+    flex-shrink: 0;
+    opacity: 0.6;
+    transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease;
+  }
+
+  .chapter-nav__back:hover svg { transform: translateX(-1.5px); opacity: 1; }
+
+  .chapter-nav__back span { position: relative; z-index: 1; }
+
+  .chapter-nav__back:focus-visible {
+    outline: 2px solid var(--c-yellow);
+    outline-offset: 2px;
+  }
+
+  .chapter-nav__divider {
+    width: 1px;
+    height: 18px;
+    background: rgba(0, 0, 0, 0.1);
     flex-shrink: 0;
   }
 
-  .chapter-nav__pill:hover {
-    color: var(--c-dark);
-    background: rgba(0, 0, 0, 0.04);
-  }
-
-  .chapter-nav__pill--active {
-    color: var(--c-dark);
-    background: var(--c-yellow);
+  .chapter-nav__link--name {
+    font-family: var(--font-display);
+    font-size: 15px;
     font-weight: 700;
-    box-shadow: 0 2px 8px rgba(255, 218, 36, 0.3);
+    letter-spacing: -0.01em;
+    text-transform: none;
   }
 
-  .chapter-nav__pill--active:hover {
-    background: var(--c-yellow);
+  .chapter-nav__link:focus-visible {
+    outline: 2px solid var(--c-yellow);
+    outline-offset: 2px;
   }
 
   /* ═══ 1. Hero — Documentary Title Card ═════ */
   .hero {
-    padding: 48px 0 64px;
+    padding: 56px 0 72px;
     background: var(--c-cream);
+    position: relative;
   }
 
   .hero__split {
@@ -1827,8 +1997,39 @@ const extraPlansCount = plans.length - displayAsBuilt.length - displayProposed.l
     padding-inline: var(--page-padding);
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: clamp(32px, 5vw, 64px);
+    gap: clamp(40px, 5vw, 72px);
     align-items: center;
+  }
+
+  .hero__frame {
+    position: relative;
+    padding-bottom: 32px;
+    padding-left: 32px;
+  }
+
+  /* Decorative yellow block behind portrait */
+  .hero__frame::before {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    right: -20px;
+    width: 55%;
+    height: 40%;
+    background: var(--c-yellow);
+    border-radius: var(--profile-radius);
+    z-index: 0;
+    opacity: 0;
+    animation: accentBlockIn 1.1s cubic-bezier(0.16, 1, 0.3, 1) 0.5s both;
+  }
+
+  @keyframes accentBlockIn {
+    from { opacity: 0; transform: scale(0.8) rotate(-1deg); }
+    to { opacity: 0.22; transform: scale(1) rotate(0deg); }
+  }
+
+  @keyframes accentPhotoIn {
+    from { opacity: 0; transform: translateY(16px) rotate(-5deg) scale(0.88); }
+    to { opacity: 1; transform: translateY(0) rotate(-3deg) scale(1); }
   }
 
   .hero__portrait {
@@ -1837,10 +2038,43 @@ const extraPlansCount = plans.length - displayAsBuilt.length - displayProposed.l
     background-color: var(--c-warm-gray);
     border-radius: var(--profile-radius);
     box-shadow:
-      0 8px 24px rgba(0, 0, 0, 0.08),
-      0 32px 80px rgba(0, 0, 0, 0.12);
-    aspect-ratio: 3 / 4;
-    max-height: 520px;
+      0 1px 2px rgba(0, 0, 0, 0.04),
+      0 4px 8px rgba(0, 0, 0, 0.04),
+      0 12px 24px rgba(0, 0, 0, 0.06),
+      0 32px 64px rgba(0, 0, 0, 0.08),
+      0 48px 96px rgba(0, 0, 0, 0.04);
+    aspect-ratio: var(--hero-ar, 3 / 4);
+    max-height: 620px;
+    z-index: 1;
+  }
+
+  .hero__accent-photo {
+    position: absolute;
+    bottom: -12px;
+    left: -24px;
+    width: 36%;
+    aspect-ratio: 5 / 6;
+    z-index: 2;
+    border-radius: 18px;
+    overflow: hidden;
+    border: 3px solid rgba(255, 255, 255, 0.9);
+    box-shadow:
+      0 2px 4px rgba(0, 0, 0, 0.04),
+      0 8px 20px rgba(0, 0, 0, 0.08),
+      0 20px 40px rgba(0, 0, 0, 0.06),
+      0 40px 80px rgba(0, 0, 0, 0.04);
+    background-size: cover;
+    background-position: center;
+    background-image: var(--lqip);
+    transform: rotate(-3deg);
+    opacity: 0;
+    animation: accentPhotoIn 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.7s both;
+  }
+  .hero__accent-photo img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
   }
 
   .hero__portrait--empty {
@@ -1892,21 +2126,6 @@ const extraPlansCount = plans.length - displayAsBuilt.length - displayProposed.l
     box-shadow: 0 4px 12px rgba(255, 218, 36, 0.3);
   }
 
-  .hero__back {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    color: var(--c-text-muted);
-    font-size: 0.68rem;
-    font-weight: 600;
-    letter-spacing: 0.1em;
-    text-decoration: none;
-    text-transform: uppercase;
-    margin-bottom: var(--space-lg);
-    transition: color var(--transition-fast), gap var(--transition-fast);
-  }
-
-  .hero__back:hover { color: var(--c-dark); gap: 8px; }
 
   .hero__info {
     display: flex;
@@ -1917,17 +2136,17 @@ const extraPlansCount = plans.length - displayAsBuilt.length - displayProposed.l
 
   .hero__name {
     font-family: var(--font-display);
-    font-size: clamp(2.5rem, 5vw, 4.5rem);
+    font-size: clamp(2.8rem, 5.5vw, 5rem);
     color: var(--c-dark);
-    line-height: 0.92;
-    letter-spacing: -0.03em;
+    line-height: 0.9;
+    letter-spacing: -0.035em;
     margin-bottom: var(--space-md);
   }
 
   .hero__name::after {
     content: '';
     display: block;
-    width: 48px;
+    width: 40px;
     height: 3px;
     background: var(--c-yellow);
     border-radius: 2px;
@@ -1937,45 +2156,72 @@ const extraPlansCount = plans.length - displayAsBuilt.length - displayProposed.l
   .hero__diagnosis {
     font-family: var(--font-display);
     font-style: italic;
-    font-size: clamp(0.95rem, 1.5vw, 1.15rem);
+    font-size: clamp(0.95rem, 1.5vw, 1.18rem);
     color: var(--c-text);
     line-height: 1.45;
-    margin-bottom: 8px;
+    margin-bottom: 10px;
     max-width: 380px;
   }
 
-  .hero__pills { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+  .hero__pills { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
 
   .hero__pill {
-    display: inline-block;
-    font-size: 0.64rem;
+    display: inline-flex;
+    align-items: center;
+    font-size: 0.62rem;
     font-weight: 700;
-    letter-spacing: 0.06em;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
     color: var(--c-dark);
     background: rgba(255, 218, 36, 0.15);
-    padding: 3px 10px;
+    border: 1px solid rgba(255, 218, 36, 0.3);
+    padding: 6px 14px;
     border-radius: 100px;
+    box-shadow: 0 1px 3px rgba(255, 218, 36, 0.08);
+    transition: background 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  @media (hover: hover) {
+    .hero__pill:hover {
+      background: rgba(255, 218, 36, 0.25);
+      box-shadow: 0 2px 8px rgba(255, 218, 36, 0.15);
+    }
   }
 
   .hero__meta {
-    font-size: 0.68rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 14px;
+  }
+
+  .hero__meta-item {
+    font-size: 0.65rem;
     font-weight: 600;
-    letter-spacing: 0.1em;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
     color: var(--c-text-light);
-    line-height: 1.5;
-    margin-bottom: 12px;
+    line-height: 1;
+    padding: 5px 0;
+  }
+
+  .hero__meta-dot {
+    color: var(--c-border);
+    font-size: 0.5rem;
+    line-height: 1;
+    display: flex;
+    align-items: center;
   }
 
   .hero__hook {
     font-family: var(--font-display);
     font-style: italic;
-    font-size: clamp(0.88rem, 1.3vw, 1rem);
+    font-size: clamp(0.9rem, 1.3vw, 1.05rem);
     color: var(--c-text-muted);
-    line-height: 1.5;
-    max-width: 340px;
+    line-height: 1.55;
+    max-width: 360px;
     margin-bottom: var(--space-lg);
+    text-wrap: pretty;
   }
 
   .hero__actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
@@ -1984,50 +2230,111 @@ const extraPlansCount = plans.length - displayAsBuilt.length - displayProposed.l
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    padding: 12px 28px;
+    padding: 14px 32px;
     background: var(--c-yellow);
     color: var(--c-dark);
     font-weight: 700;
-    font-size: 0.8rem;
-    letter-spacing: 0.04em;
+    font-size: 0.78rem;
+    letter-spacing: 0.05em;
     text-transform: uppercase;
     border-radius: 100px;
     text-decoration: none;
-    box-shadow: 0 4px 16px rgba(255, 218, 36, 0.25);
-    transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.25s ease;
+    min-height: 48px;
+    box-shadow:
+      0 1px 2px rgba(255, 218, 36, 0.3),
+      0 4px 12px rgba(255, 218, 36, 0.15),
+      0 8px 24px rgba(255, 218, 36, 0.1);
+    transition:
+      transform 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+      box-shadow 0.3s ease,
+      background 0.2s ease;
   }
 
   .hero__donate-btn:hover {
     transform: translateY(-3px);
-    box-shadow: 0 12px 32px rgba(255, 218, 36, 0.4);
+    background: var(--c-yellow-hover, #E6C400);
+    box-shadow:
+      0 4px 8px rgba(255, 218, 36, 0.25),
+      0 12px 32px rgba(255, 218, 36, 0.2),
+      0 24px 48px rgba(255, 218, 36, 0.1);
+  }
+
+  .hero__donate-btn:active {
+    transform: translateY(0) scale(0.98);
+    box-shadow: 0 1px 4px rgba(255, 218, 36, 0.2);
+    transition-duration: 80ms;
   }
 
   .hero__share-btn {
     display: inline-flex;
     align-items: center;
     gap: 5px;
-    padding: 12px 20px;
+    padding: 14px 24px;
     background: transparent;
     border: 1.5px solid var(--c-border);
     border-radius: 100px;
     color: var(--c-text-muted);
-    font-size: 0.75rem;
-    font-weight: 600;
-    letter-spacing: 0.04em;
+    font-size: 0.73rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
     text-transform: uppercase;
     cursor: pointer;
-    transition: border-color var(--transition-fast), color var(--transition-fast), background var(--transition-fast);
+    min-height: 48px;
+    transition:
+      border-color 0.25s ease,
+      color 0.25s ease,
+      background 0.25s ease,
+      transform 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+      box-shadow 0.3s ease;
   }
 
-  .hero__share-btn:hover { border-color: var(--c-dark); color: var(--c-dark); background: rgba(0, 0, 0, 0.02); }
+  .hero__share-btn:hover {
+    border-color: var(--c-dark);
+    color: var(--c-dark);
+    background: rgba(0, 0, 0, 0.02);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+  }
+  .hero__share-btn:active { transform: translateY(0) scale(0.98); transition-duration: 80ms; }
   .hero__share-btn.shared { border-color: rgba(255, 218, 36, 0.5); color: var(--c-dark); background: rgba(255, 218, 36, 0.08); }
+
+  /* ═══ Seamless Section Gradient Transitions ═══ */
+  .hero::after,
+  .story::after,
+  .reveal::after,
+  .village::after {
+    content: '';
+    position: absolute;
+    bottom: -1px;
+    left: 0;
+    right: 0;
+    height: 80px;
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  .hero::after {
+    background: linear-gradient(to bottom, transparent, var(--c-white));
+  }
+
+  .story::after {
+    background: linear-gradient(to bottom, transparent, var(--c-warm-gray));
+  }
+
+  .reveal::after {
+    background: linear-gradient(to bottom, transparent, var(--c-warm-gray));
+  }
+
+  .village::after {
+    background: linear-gradient(to bottom, transparent, var(--c-warm-gray));
+  }
 
   /* ═══ 2. The Story ═══════════════════════ */
   .story {
     padding-block: 80px 48px;
     background: var(--c-white);
-    content-visibility: auto;
-    contain-intrinsic-size: auto 800px;
+    /* content-visibility removed — breaks scroll-to positioning */
+    position: relative;
   }
 
   .story__divider { margin-bottom: 48px; }
@@ -2036,12 +2343,12 @@ const extraPlansCount = plans.length - displayAsBuilt.length - displayProposed.l
 
   .story__lede-text {
     font-family: var(--font-display);
-    font-size: clamp(1.4rem, 1.2rem + 0.7vw, 1.85rem);
-    line-height: 1.65;
+    font-size: clamp(1.5rem, 1.3rem + 0.8vw, 2rem);
+    line-height: 1.6;
     color: var(--c-dark);
     text-wrap: pretty;
     max-width: 48ch;
-    letter-spacing: -0.01em;
+    letter-spacing: -0.015em;
   }
 
   .prose--dropcap p:first-child::first-letter {
@@ -2063,6 +2370,42 @@ const extraPlansCount = plans.length - displayAsBuilt.length - displayProposed.l
       line-height: inherit;
       margin-right: 8px;
       margin-top: 0;
+    }
+  }
+
+  /* ── Story Cinematic Lead Photo ── */
+  .story__cinematic {
+    margin: 0 0 clamp(48px, 6vw, 80px);
+    width: calc(100vw - var(--page-padding) * 2);
+    max-width: 1100px;
+    margin-left: 50%;
+    transform: translateX(-50%);
+  }
+
+  .story__cinematic-wrap {
+    border-radius: var(--profile-radius);
+    overflow: hidden;
+    background-image: var(--lqip);
+    background-size: cover;
+    background-position: center;
+    box-shadow:
+      0 12px 24px rgba(0, 0, 0, 0.08),
+      0 32px 80px rgba(0, 0, 0, 0.12);
+  }
+
+  .story__cinematic-img {
+    width: 100%;
+    height: auto;
+    display: block;
+    object-fit: cover;
+    max-height: 560px;
+  }
+
+  @supports (animation-timeline: view()) {
+    .story__cinematic-img {
+      animation: story-parallax linear both;
+      animation-timeline: view();
+      animation-range: entry 0% exit 100%;
     }
   }
 
@@ -2095,11 +2438,12 @@ const extraPlansCount = plans.length - displayAsBuilt.length - displayProposed.l
     box-shadow:
       0 8px 16px rgba(0, 0, 0, 0.06),
       0 24px 64px rgba(0, 0, 0, 0.1);
+    aspect-ratio: 4 / 5;
   }
 
   .story__pair-img {
     width: 100%;
-    height: auto;
+    height: 100%;
     display: block;
     object-fit: cover;
   }
@@ -2141,8 +2485,8 @@ const extraPlansCount = plans.length - displayAsBuilt.length - displayProposed.l
 
   /* ── Pull Quote — Full-width dark band ── */
   .story__quote-wrap {
-    margin-top: 64px;
-    padding: 72px var(--page-padding);
+    margin-top: 80px;
+    padding: 88px var(--page-padding);
     background: var(--c-dark);
     position: relative;
     overflow: hidden;
@@ -2174,31 +2518,30 @@ const extraPlansCount = plans.length - displayAsBuilt.length - displayProposed.l
   }
 
   .story__pullquote-mark {
-    width: 56px;
-    height: 56px;
+    width: 72px;
+    height: 72px;
     color: var(--c-yellow);
-    opacity: 0.9;
+    opacity: 0.7;
     margin-inline: auto;
-    margin-bottom: 28px;
+    margin-bottom: 32px;
     display: block;
   }
 
   .story__pullquote p {
     font-family: var(--font-display);
     font-style: italic;
-    font-size: clamp(1.5rem, 1.3rem + 0.8vw, 2.1rem);
+    font-size: clamp(1.65rem, 1.4rem + 1vw, 2.4rem);
     line-height: 1.45;
     color: var(--c-white);
     margin: 0;
-    letter-spacing: -0.02em;
+    letter-spacing: -0.025em;
   }
 
   /* ═══ 3. The Design — Overlapping Cards ════ */
   .design {
     padding-block: 80px;
     background: var(--c-dark);
-    content-visibility: auto;
-    contain-intrinsic-size: auto 600px;
+    /* content-visibility removed — breaks scroll-to positioning */
     position: relative;
     overflow: hidden;
   }
@@ -2362,25 +2705,41 @@ const extraPlansCount = plans.length - displayAsBuilt.length - displayProposed.l
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    padding: 10px 20px;
-    background: transparent;
-    border: 1.5px solid rgba(255, 255, 255, 0.2);
+    padding: 12px 24px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1.5px solid rgba(255, 255, 255, 0.15);
     border-radius: 100px;
     color: rgba(255, 255, 255, 0.6);
     font-size: 0.8rem;
-    font-weight: 600;
+    font-weight: 700;
     cursor: pointer;
-    transition: border-color var(--transition-fast), color var(--transition-fast);
+    min-height: 44px;
+    transition:
+      border-color 0.25s ease,
+      color 0.25s ease,
+      background 0.25s ease,
+      transform 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+      box-shadow 0.3s ease;
   }
 
-  .design__more-btn:hover { border-color: var(--c-yellow); color: var(--c-white); }
+  .design__more-btn:hover {
+    border-color: rgba(255, 218, 36, 0.4);
+    color: var(--c-white);
+    background: rgba(255, 255, 255, 0.06);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  }
+
+  .design__more-btn:active {
+    transform: translateY(0) scale(0.98);
+    transition-duration: 80ms;
+  }
 
   /* ═══ 4. Before & After — Sliders ═════════ */
   .ba-section {
     padding-block: 80px;
     background: var(--c-white);
-    content-visibility: auto;
-    contain-intrinsic-size: auto 600px;
+    /* content-visibility removed — breaks scroll-to positioning */
   }
 
   .ba-section__divider { margin-bottom: 0; }
@@ -2515,8 +2874,8 @@ const extraPlansCount = plans.length - displayAsBuilt.length - displayProposed.l
   .reveal {
     padding-block: 80px;
     background: var(--c-cream);
-    content-visibility: auto;
-    contain-intrinsic-size: auto 600px;
+    /* content-visibility removed — breaks scroll-to positioning */
+    position: relative;
   }
 
   .reveal__divider { margin-bottom: 0; }
@@ -2591,8 +2950,7 @@ const extraPlansCount = plans.length - displayAsBuilt.length - displayProposed.l
   .gallery {
     padding-block: 80px;
     background: var(--c-warm-gray);
-    content-visibility: auto;
-    contain-intrinsic-size: auto 800px;
+    /* content-visibility removed — breaks scroll-to positioning */
   }
 
   .gallery__divider { margin-bottom: 0; }
@@ -2617,21 +2975,27 @@ const extraPlansCount = plans.length - displayAsBuilt.length - displayProposed.l
     font-weight: 400;
   }
 
-  /* Gallery grid — hero photos span 2 cols */
+  /* Gallery grid — cinematic masonry with hero treatment */
   .gallery__grid {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 10px;
+    grid-template-columns: 1.6fr 1fr;
+    grid-auto-rows: minmax(220px, auto);
+    gap: 12px;
   }
 
+  /* First photo: large hero spanning left column */
   .gallery__cell--hero {
-    grid-column: span 2;
     grid-row: span 2;
   }
 
+  /* Second hero: right column, tall */
   .gallery__cell--hero:nth-child(2) {
-    grid-column: span 1;
     grid-row: span 2;
+  }
+
+  /* Supporting photos: alternate fill */
+  .gallery__cell:nth-child(n+3) {
+    aspect-ratio: 4 / 3;
   }
 
   .gallery__cell {
@@ -2641,7 +3005,7 @@ const extraPlansCount = plans.length - displayAsBuilt.length - displayProposed.l
     padding: 0;
     cursor: pointer;
     overflow: hidden;
-    border-radius: 12px;
+    border-radius: var(--profile-radius);
     background-color: var(--c-cream);
     background-image: var(--lqip);
     background-size: cover;
@@ -2650,17 +3014,16 @@ const extraPlansCount = plans.length - displayAsBuilt.length - displayProposed.l
     transform: translateZ(0);
     transition: box-shadow 0.4s cubic-bezier(0.22, 1, 0.36, 1),
                 transform 0.4s cubic-bezier(0.22, 1, 0.36, 1);
-    min-height: 180px;
   }
 
   /* Gallery cascade animation */
   .gallery__grid .gallery__cell {
     opacity: 0;
-    transform: translateY(20px) scale(0.96);
-    transition: opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1),
-                transform 0.6s cubic-bezier(0.16, 1, 0.3, 1),
+    transform: translateY(24px) scale(0.95);
+    transition: opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1),
+                transform 0.7s cubic-bezier(0.16, 1, 0.3, 1),
                 box-shadow 0.4s cubic-bezier(0.22, 1, 0.36, 1);
-    transition-delay: calc(var(--stagger, 0) * 60ms);
+    transition-delay: calc(var(--stagger, 0) * 80ms);
   }
 
   .gallery__grid--visible .gallery__cell {
@@ -2716,8 +3079,9 @@ const extraPlansCount = plans.length - displayAsBuilt.length - displayProposed.l
       transform: translateZ(0) scale(1.01);
     }
     .gallery__cell:hover .gallery__img {
-      transform: scale(1.06);
-      transition-duration: 6s;
+      transform: scale(1.05);
+      filter: brightness(1.03);
+      transition-duration: 4s;
       transition-timing-function: cubic-bezier(0.25, 0.46, 0.45, 0.94);
     }
     .gallery__cell:hover .gallery__overlay { opacity: 1; }
@@ -2729,15 +3093,35 @@ const extraPlansCount = plans.length - displayAsBuilt.length - displayProposed.l
     z-index: 4;
   }
 
+  .gallery__cell::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.06);
+    pointer-events: none;
+    z-index: 3;
+  }
+
   /* Overflow grid */
   .gallery__overflow {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 10px;
-    margin-top: 10px;
+    grid-auto-rows: 200px;
+    gap: 12px;
+    margin-top: 12px;
   }
 
   .gallery__overflow[hidden] { display: none; }
+
+  .gallery__overflow {
+    animation: gallery-expand 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  @keyframes gallery-expand {
+    from { opacity: 0; transform: translateY(16px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
 
   .gallery__expand-wrap {
     text-align: center;
@@ -2748,29 +3132,42 @@ const extraPlansCount = plans.length - displayAsBuilt.length - displayProposed.l
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    padding: 12px 28px;
+    padding: 14px 30px;
     background: transparent;
     border: 1.5px solid var(--c-border);
     border-radius: 100px;
     color: var(--c-text-muted);
     font-size: 0.82rem;
-    font-weight: 600;
+    font-weight: 700;
     cursor: pointer;
-    transition: border-color var(--transition-fast), color var(--transition-fast), background var(--transition-fast);
+    min-height: 48px;
+    transition:
+      border-color 0.2s ease,
+      color 0.2s ease,
+      background 0.2s ease,
+      transform 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+      box-shadow 0.3s ease;
   }
 
   .gallery__show-all:hover {
     border-color: var(--c-dark);
     color: var(--c-dark);
     background: rgba(0, 0, 0, 0.02);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+  }
+
+  .gallery__show-all:active {
+    transform: translateY(0) scale(0.98);
+    transition-duration: 80ms;
   }
 
   /* ═══ Village — Partners ══════════════════ */
   .village {
     padding-block: 80px;
     background: var(--c-white);
-    content-visibility: auto;
-    contain-intrinsic-size: auto 300px;
+    /* content-visibility removed — breaks scroll-to positioning */
+    position: relative;
   }
 
   .village__stat {
@@ -2795,18 +3192,19 @@ const extraPlansCount = plans.length - displayAsBuilt.length - displayProposed.l
     width: 130px;
     opacity: 0.55;
     transition: opacity 0.4s ease, filter 0.4s ease, transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-    filter: grayscale(80%);
   }
 
-  .village__logo:hover { opacity: 1; filter: grayscale(0%); transform: scale(1.1); }
+  @media (hover: hover) {
+    .village__logo { filter: grayscale(80%); }
+    .village__logo:hover { opacity: 1; filter: grayscale(0%); transform: scale(1.1); }
+  }
   .village__logo img { width: 100%; height: auto; object-fit: contain; }
 
   /* ═══ Related Kids ═══════════════════════ */
   .related {
     padding-block: 80px;
     background: var(--c-warm-gray);
-    content-visibility: auto;
-    contain-intrinsic-size: auto 500px;
+    /* content-visibility removed — breaks scroll-to positioning */
   }
 
   .related__grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px; }
@@ -2898,7 +3296,7 @@ const extraPlansCount = plans.length - displayAsBuilt.length - displayProposed.l
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    padding: 12px 26px;
+    padding: 14px 30px;
     background: var(--c-yellow);
     color: var(--c-dark);
     font-weight: 700;
@@ -2906,11 +3304,29 @@ const extraPlansCount = plans.length - displayAsBuilt.length - displayProposed.l
     border-radius: 100px;
     text-decoration: none;
     white-space: nowrap;
-    box-shadow: 0 4px 16px rgba(255, 218, 36, 0.25);
-    transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.25s ease;
+    min-height: 48px;
+    box-shadow:
+      0 1px 2px rgba(255, 218, 36, 0.3),
+      0 4px 12px rgba(255, 218, 36, 0.15);
+    transition:
+      transform 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+      box-shadow 0.3s ease,
+      background 0.2s ease;
   }
 
-  .fundraise__btn:hover { transform: translateY(-3px); box-shadow: 0 8px 28px rgba(255, 218, 36, 0.4); }
+  .fundraise__btn:hover {
+    transform: translateY(-3px);
+    background: var(--c-yellow-hover, #E6C400);
+    box-shadow:
+      0 4px 8px rgba(255, 218, 36, 0.25),
+      0 12px 32px rgba(255, 218, 36, 0.2);
+  }
+
+  .fundraise__btn:active {
+    transform: translateY(0) scale(0.98);
+    box-shadow: 0 1px 4px rgba(255, 218, 36, 0.2);
+    transition-duration: 80ms;
+  }
 
   /* ═══ Prev / Next Nav ════════════════════ */
   .kid-nav {
@@ -2935,10 +3351,21 @@ const extraPlansCount = plans.length - displayAsBuilt.length - displayProposed.l
     text-decoration: none;
     padding: 16px 20px;
     border-radius: 16px;
-    transition: background 0.2s ease, box-shadow 0.2s ease;
+    transition:
+      background 0.2s ease,
+      box-shadow 0.3s ease,
+      transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
-  .kid-nav__link:hover { background: var(--c-warm-gray); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04); }
+  .kid-nav__link:hover {
+    background: var(--c-warm-gray);
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+    transform: translateX(4px);
+  }
+
+  .kid-nav__link--prev:hover {
+    transform: translateX(-4px);
+  }
   .kid-nav__link--next { justify-self: end; }
 
   .kid-nav__label { display: block; font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; color: var(--c-text-muted); margin-bottom: 2px; }
@@ -3010,8 +3437,21 @@ const extraPlansCount = plans.length - displayAsBuilt.length - displayProposed.l
   }
 
   .cta__buttons { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; position: relative; }
-  .cta__buttons :global(.btn--outline) { color: var(--c-white); box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.35); }
-  .cta__buttons :global(.btn--outline:hover) { background: rgba(255, 255, 255, 0.1); box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.65); color: var(--c-white); }
+  .cta__buttons :global(.btn--primary) {
+    box-shadow:
+      0 1px 2px rgba(255, 218, 36, 0.3),
+      0 4px 12px rgba(255, 218, 36, 0.15),
+      0 8px 24px rgba(255, 218, 36, 0.1);
+  }
+  .cta__buttons :global(.btn--primary:hover) {
+    box-shadow:
+      0 4px 8px rgba(255, 218, 36, 0.25),
+      0 12px 32px rgba(255, 218, 36, 0.2),
+      0 24px 48px rgba(255, 218, 36, 0.1);
+  }
+  .cta__buttons :global(.btn--outline) { color: var(--c-white); box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.25); }
+  .cta__buttons :global(.btn--outline:hover) { background: rgba(255, 255, 255, 0.1); box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.5), 0 4px 16px rgba(0, 0, 0, 0.12); color: var(--c-white); }
+  .cta__buttons :global(.btn--outline:active) { box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.3); }
 
   /* ═══ Lightbox ═══════════════════════════ */
   .lightbox[hidden] { display: none; }
@@ -3049,8 +3489,8 @@ const extraPlansCount = plans.length - displayAsBuilt.length - displayProposed.l
     top: var(--space-lg);
     right: var(--space-lg);
     z-index: 10;
-    background: rgba(255, 255, 255, 0.1);
-    border: 1px solid rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.12);
     border-radius: 50%;
     width: 48px;
     height: 48px;
@@ -3059,17 +3499,21 @@ const extraPlansCount = plans.length - displayAsBuilt.length - displayProposed.l
     justify-content: center;
     color: var(--c-white);
     cursor: pointer;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
-  .lightbox__close:hover { background: rgba(255, 255, 255, 0.2); }
+  .lightbox__close:hover { background: rgba(255, 255, 255, 0.18); border-color: rgba(255, 255, 255, 0.25); transform: scale(1.05); }
+  .lightbox__close:active { transform: scale(0.95); transition-duration: 80ms; }
 
   .lightbox__nav {
     position: absolute;
     top: 50%;
     transform: translateY(-50%);
     z-index: 10;
-    background: rgba(255, 255, 255, 0.1);
-    border: 1px solid rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.12);
     border-radius: 50%;
     width: 48px;
     height: 48px;
@@ -3078,9 +3522,13 @@ const extraPlansCount = plans.length - displayAsBuilt.length - displayProposed.l
     justify-content: center;
     color: var(--c-white);
     cursor: pointer;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
-  .lightbox__nav:hover { background: rgba(255, 255, 255, 0.2); }
+  .lightbox__nav:hover { background: rgba(255, 255, 255, 0.18); border-color: rgba(255, 255, 255, 0.25); transform: translateY(-50%) scale(1.08); }
+  .lightbox__nav:active { transform: translateY(-50%) scale(0.95); transition-duration: 80ms; }
   .lightbox__nav--prev { left: var(--space-lg); }
   .lightbox__nav--next { right: var(--space-lg); }
 
@@ -3168,28 +3616,41 @@ const extraPlansCount = plans.length - displayAsBuilt.length - displayProposed.l
 
   /* ═══ Responsive: Mobile ═══════════════ */
   @media (max-width: 768px) {
-    /* Chapter nav — mobile adjustments */
-    .chapter-nav__track {
-      justify-content: flex-start;
-      padding: 8px 0;
-      gap: 2px;
+    /* Chapter nav — mobile */
+    [data-chapter] { scroll-margin-top: calc(var(--header-height, 72px) + 52px); }
+    .chapter-nav__track { justify-content: flex-start; }
+    .chapter-nav__link { padding: 8px 16px; font-size: 12px; min-height: 44px; display: flex; align-items: center; }
+
+    .chapter-nav__back {
+      min-height: 44px;
+      padding: 0 12px 0 8px;
+      gap: 4px;
+      font-size: 11px;
+      margin-right: 2px;
     }
 
-    .chapter-nav__pill {
-      padding: 5px 12px;
-      font-size: 0.66rem;
-    }
-
-    .hero { padding-top: 24px; }
+    .hero { padding-top: 16px; padding-bottom: 48px; }
 
     .hero__split { grid-template-columns: 1fr; gap: 0; }
-    .hero__portrait { aspect-ratio: 4 / 5; max-height: 50vh; }
-    .hero__info { padding: 28px var(--page-padding) 20px; }
-    .hero__back { margin-bottom: 16px; }
-    .hero__name { font-size: clamp(2.2rem, 10vw, 3.2rem); margin-bottom: 12px; }
-    .hero__name::after { width: 36px; margin-top: 10px; }
-    .hero__diagnosis { font-size: 1.02rem; max-width: none; }
-    .hero__hook { font-size: 0.95rem; max-width: none; }
+    .hero__frame { padding-bottom: 24px; padding-left: 0; }
+    .hero__frame::before { right: -8px; width: 50%; height: 35%; }
+    .hero__portrait { max-height: 56vh; border-radius: 20px; }
+    .hero__accent-photo {
+      width: 28%;
+      bottom: -8px;
+      left: auto;
+      right: -8px;
+      border-radius: 14px;
+      transform: rotate(2deg);
+      border-width: 2.5px;
+    }
+    .hero__info { padding: 24px 0 12px; }
+    .hero__name { font-size: clamp(2.4rem, 10vw, 3.4rem); margin-bottom: 10px; }
+    .hero__name::after { width: 32px; margin-top: 8px; }
+    .hero__diagnosis { font-size: 1rem; max-width: none; }
+    .hero__hook { font-size: 0.92rem; max-width: none; }
+    .hero__pills { margin-bottom: 10px; }
+    .hero__meta { margin-bottom: 10px; }
     .hero__donate-btn,
     .hero__share-btn { min-height: 44px; padding-inline: 24px; }
 
@@ -3231,11 +3692,16 @@ const extraPlansCount = plans.length - displayAsBuilt.length - displayProposed.l
     .reveal { padding-block: 56px; }
 
     .gallery { padding-block: 56px; }
-    .gallery__grid { grid-template-columns: repeat(2, 1fr); }
-    .gallery__cell--hero { grid-column: 1 / -1; grid-row: span 1; }
-    .gallery__cell--hero:nth-child(2) { grid-column: 1 / -1; grid-row: span 1; }
-    .gallery__cell { min-height: 150px; }
-    .gallery__overflow { grid-template-columns: repeat(2, 1fr); }
+    .gallery__grid {
+      grid-template-columns: 1fr 1fr;
+      grid-auto-rows: minmax(160px, auto);
+      gap: 8px;
+    }
+    .gallery__cell--hero { grid-column: 1 / -1; grid-row: span 1; aspect-ratio: 16 / 10; }
+    .gallery__cell--hero:nth-child(2) { grid-column: 1 / -1; grid-row: span 1; aspect-ratio: 16 / 10; }
+    .gallery__cell:nth-child(n+3) { aspect-ratio: 1; }
+    .gallery__cell { border-radius: 16px; }
+    .gallery__overflow { grid-template-columns: repeat(2, 1fr); grid-auto-rows: 160px; gap: 8px; }
 
     .village { padding-block: 56px; }
     .village__logo { width: 100px; }
@@ -3268,7 +3734,8 @@ const extraPlansCount = plans.length - displayAsBuilt.length - displayProposed.l
 
   @media (max-width: 480px) {
     .gallery__header { flex-direction: column; }
-    .hero__name { font-size: clamp(2rem, 10vw, 2.8rem); }
+    .hero__name { font-size: clamp(2.2rem, 10vw, 2.8rem); }
+    .hero__accent-photo { width: 26%; border-radius: 12px; }
     .gallery__cell { min-height: 130px; border-radius: 8px; }
     .gallery__overflow .gallery__cell { border-radius: 8px; }
   }
@@ -3313,16 +3780,24 @@ const extraPlansCount = plans.length - displayAsBuilt.length - displayProposed.l
     .related__card,
     .related__img-wrap,
     .story__pair-img,
-    .hero__back,
     .hero__donate-btn,
     .hero__share-btn,
     .fundraise__card,
     .fundraise__btn,
     .ba-slider__handle,
     .chapter-nav,
-    .chapter-nav__pill {
+    .chapter-nav__pill,
+    .chapter-nav__link,
+    .chapter-nav__back,
+    .hero__accent-photo,
+    .hero__frame::before {
       transition: none;
       animation: none !important;
     }
+    .hero__accent-photo { opacity: 1; transform: rotate(-3deg); }
+    @media (max-width: 768px) {
+      .hero__accent-photo { transform: rotate(2deg); }
+    }
+    .hero__frame::before { opacity: 0.3; }
   }
 </style>

@@ -1433,11 +1433,13 @@ const jsonLd = buildSchemaGraph(
     max-height: 32px;
     width: auto;
     object-fit: contain;
-    filter: grayscale(0.3);
     transition: filter var(--transition-base);
   }
 
-  .ap-card--linked:hover .ap-card__logo img { filter: grayscale(0); }
+  @media (hover: hover) {
+    .ap-card__logo img { filter: grayscale(0.3); }
+    .ap-card--linked:hover .ap-card__logo img { filter: grayscale(0); }
+  }
 
   .ap-card__name {
     font-size: 0.75rem;

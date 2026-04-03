@@ -1,8 +1,8 @@
 ---
 /**
  * Button.astro
- * Reusable button/link with primary (yellow), secondary (dark),
- * outline, and link variants.
+ * Premium button/link — primary (yellow), secondary (dark),
+ * outline, and link variants with layered depth and tactile feel.
  */
 interface Props {
   href?: string;
@@ -42,51 +42,92 @@ const externalAttrs = external ? { target: '_blank', rel: 'noopener noreferrer' 
     justify-content: center;
     gap: 0.5rem;
     font-family: var(--font-body);
-    font-weight: 600;
+    font-weight: 700;
+    letter-spacing: 0.01em;
     border: none;
     border-radius: 100px;
     cursor: pointer;
     text-decoration: none;
-    transition: background var(--transition-fast), color var(--transition-fast), transform var(--transition-fast), box-shadow var(--transition-fast);
+    white-space: nowrap;
+    position: relative;
+    isolation: isolate;
+    transition:
+      transform 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+      box-shadow 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+      background 0.2s ease,
+      color 0.2s ease;
   }
 
-  .btn:hover { transform: translateY(-1px); }
-  .btn:active { transform: translateY(0); }
+  .btn:hover { transform: translateY(-2px); }
+  .btn:active { transform: translateY(0) scale(0.98); transition-duration: 80ms; }
+
+  .btn:focus-visible {
+    outline: 2px solid var(--c-yellow);
+    outline-offset: 3px;
+  }
 
   /* Sizes */
-  .btn--sm { font-size: 0.8rem; padding: 0.4rem 1rem; }
-  .btn--md { font-size: 0.95rem; padding: 0.65rem 1.5rem; }
-  .btn--lg { font-size: 1.05rem; padding: 0.85rem 2rem; }
+  .btn--sm { font-size: 0.82rem; padding: 10px 22px; min-height: 40px; }
+  .btn--md { font-size: 0.95rem; padding: 14px 32px; min-height: 48px; }
+  .btn--lg { font-size: 1.05rem; padding: 18px 40px; min-height: 56px; }
 
-  /* Variants */
+  /* ── Primary — Sunshine gold ── */
   .btn--primary {
     background: var(--c-yellow);
     color: var(--c-dark);
+    box-shadow:
+      0 1px 2px rgba(255, 218, 36, 0.3),
+      0 4px 12px rgba(255, 218, 36, 0.15);
   }
   .btn--primary:hover {
-    background: var(--c-yellow-hover);
-    box-shadow: 0 4px 12px var(--c-yellow-glow);
+    background: var(--c-yellow-hover, #E6C400);
+    box-shadow:
+      0 4px 8px rgba(255, 218, 36, 0.25),
+      0 12px 32px rgba(255, 218, 36, 0.2),
+      0 0 0 1px rgba(255, 218, 36, 0.1);
+  }
+  .btn--primary:active {
+    box-shadow:
+      0 1px 4px rgba(255, 218, 36, 0.2);
   }
 
+  /* ── Secondary — Charcoal ── */
   .btn--secondary {
-    background: var(--c-accent);
+    background: var(--c-dark);
     color: var(--c-white);
+    box-shadow:
+      0 1px 2px rgba(0, 0, 0, 0.08),
+      0 4px 12px rgba(0, 0, 0, 0.08);
   }
   .btn--secondary:hover {
-    background: #2D2E33;
-    box-shadow: 0 4px 12px rgba(55, 58, 54, 0.3);
+    background: #2a2d28;
+    box-shadow:
+      0 4px 8px rgba(0, 0, 0, 0.12),
+      0 12px 32px rgba(0, 0, 0, 0.15);
+  }
+  .btn--secondary:active {
+    box-shadow:
+      0 1px 4px rgba(0, 0, 0, 0.1);
   }
 
+  /* ── Outline — Transparent with border ── */
   .btn--outline {
     background: transparent;
     color: var(--c-dark);
-    box-shadow: inset 0 0 0 2px var(--c-dark);
+    box-shadow: inset 0 0 0 1.5px var(--c-dark);
   }
   .btn--outline:hover {
     background: var(--c-dark);
     color: var(--c-white);
+    box-shadow:
+      inset 0 0 0 1.5px var(--c-dark),
+      0 4px 12px rgba(55, 58, 54, 0.12);
+  }
+  .btn--outline:active {
+    box-shadow: inset 0 0 0 1.5px var(--c-dark);
   }
 
+  /* ── Link — Text-only ── */
   .btn--link {
     background: none;
     color: var(--c-accent);
@@ -94,9 +135,22 @@ const externalAttrs = external ? { target: '_blank', rel: 'noopener noreferrer' 
     border-radius: 0;
     text-decoration: underline;
     text-underline-offset: 3px;
+    text-decoration-thickness: 1.5px;
+    text-decoration-color: rgba(55, 58, 54, 0.25);
+    min-height: auto;
   }
   .btn--link:hover {
     color: var(--c-dark);
+    text-decoration-color: var(--c-dark);
     transform: none;
+  }
+  .btn--link:active {
+    transform: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .btn { transition: none; }
+    .btn:hover { transform: none; }
+    .btn:active { transform: none; }
   }
 </style>

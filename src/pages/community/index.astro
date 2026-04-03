@@ -978,14 +978,13 @@ const jsonLd = buildSchemaGraph(
     max-width: 140px;
     max-height: 48px;
     object-fit: contain;
-    filter: grayscale(1);
     opacity: 0.7;
     transition: filter 0.35s ease, opacity 0.35s ease;
   }
 
-  .np-logo-card:hover .np-logo-card__logo img {
-    filter: grayscale(0);
-    opacity: 1;
+  @media (hover: hover) {
+    .np-logo-card__logo img { filter: grayscale(1); }
+    .np-logo-card:hover .np-logo-card__logo img { filter: grayscale(0); opacity: 1; }
   }
 
   .np-logo-card__placeholder {

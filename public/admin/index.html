@@ -4125,6 +4125,7 @@
         bedroomCount: 0, bathroomCount: 0, therapyRoomCount: 0,
         storyPhotos: [],
         plans: [],
+        beforeAfterPhotos: [],
       });
       const [bioCounts, setBioCounts] = useState({ chars: 0, words: 0, paragraphs: 0 });
       const [videoUploading, setVideoUploading] = useState(false);
@@ -4171,6 +4172,43 @@
         setData(d => ({ ...d, plans: (d.plans || []).filter((_, i) => i !== index) }));
         const imageId = extractCfImageId(planUrl);
         if (imageId) { api.deleteImage(imageId).catch(() => {}); }
+      };
+
+      // ─── Before/After photo helpers ──────
+      const addBeforeAfterPair = () => {
+        setDirty(true);
+        setData(d => ({ ...d, beforeAfterPhotos: [...(d.beforeAfterPhotos || []), { before: '', after: '', room: '', beforeAlt: '', afterAlt: '' }] }));
+      };
+      const removeBeforeAfterPair = (index) => {
+        setDirty(true);
+        const pair = (data.beforeAfterPhotos || [])[index];
+        setData(d => ({ ...d, beforeAfterPhotos: (d.beforeAfterPhotos || []).filter((_, i) => i !== index) }));
+        if (pair) {
+          [pair.before, pair.after].forEach(url => { const id = extractCfImageId(url); if (id) api.deleteImage(id).catch(() => {}); });
+        }
+      };
+      const updateBeforeAfterField = (index, field, value) => {
+        setDirty(true);
+        setData(d => ({ ...d, beforeAfterPhotos: (d.beforeAfterPhotos || []).map((p, i) => i === index ? { ...p, [field]: value } : p) }));
+      };
+      const uploadBeforeAfterImage = async (index, field, files) => {
+        if (!files.length) return;
+        const file = files[0];
+        const localUrl = URL.createObjectURL(file);
+        updateBeforeAfterField(index, field, localUrl);
+        try {
+          const cfId = `kids/${data.slug || 'new'}/ba-${field}-${Date.now()}-${file.name.replace(/[^a-z0-9.]/gi, '-')}`;
+          const res = await api.uploadImage(file, cfId);
+          if (res.success) {
+            updateBeforeAfterField(index, field, res.imageUrl);
+          } else {
+            addToast(`Upload failed: ${res.error}`, 'error');
+            updateBeforeAfterField(index, field, '');
+          }
+        } catch (err) {
+          addToast(`Upload error: ${err.message}`, 'error');
+          updateBeforeAfterField(index, field, '');
+        }
       };
 
       // Generate SEO fields with AI
@@ -4476,6 +4514,7 @@
             partnerLogos: (data.partnerLogos || []).map(({ _tempId, ...p }) => p),
             storyPhotos: (data.storyPhotos || []).map(({ _tempId, ...p }) => p),
             plans: (data.plans || []).map(({ _tempId, ...p }) => p),
+            beforeAfterPhotos: (data.beforeAfterPhotos || []).filter(p => p.before && p.after),
             photoCount: data.photos.length,
           };
           const path = `src/content/kids/${data.slug}.json`;
@@ -4844,6 +4883,67 @@
               `)}
             </div>
           ` : null}
+        </div>
+
+        <div class="card">
+          <div class="flex items-center justify-between mb-1">
+            <h3>Before & After (${(data.beforeAfterPhotos || []).length})</h3>
+            <button class="btn btn-ghost btn-sm" type="button" onClick=${addBeforeAfterPair}>+ Add Pair</button>
+          </div>
+          <p class="text-sm text-muted mb-1">Add before/after photo pairs for the comparison slider on the profile page.</p>
+          ${(data.beforeAfterPhotos || []).map((pair, i) => html`
+            <div key=${i} style="border: 1px solid var(--color-border); border-radius: 8px; padding: 0.75rem; margin-bottom: 0.75rem;">
+              <div class="flex items-center justify-between" style="margin-bottom: 0.5rem;">
+                <strong style="font-size: 0.85rem;">Pair ${i + 1}</strong>
+                <button class="btn btn-ghost btn-sm" style="color: var(--color-danger);" onClick=${() => removeBeforeAfterPair(i)}>Remove</button>
+              </div>
+              <div class="form-group" style="margin-bottom: 0.5rem;">
+                <label class="form-label" style="font-size: 0.78rem;">Room Label (optional)</label>
+                <input class="form-input" value=${pair.room || ''} placeholder="e.g. Master Bedroom"
+                  onInput=${e => updateBeforeAfterField(i, 'room', e.target.value)} />
+              </div>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
+                <div>
+                  <label class="form-label" style="font-size: 0.78rem;">Before Photo</label>
+                  ${pair.before ? html`
+                    <div style="position: relative; margin-bottom: 0.25rem;">
+                      <img src=${cfThumb(pair.before)} style="width: 100%; border-radius: 6px; aspect-ratio: 4/3; object-fit: cover;" />
+                      <button class="photo-btn" style="position: absolute; top: 4px; right: 4px;"
+                        onClick=${() => updateBeforeAfterField(i, 'before', '')} title="Remove">${icons.x}</button>
+                    </div>
+                  ` : html`
+                    <label style="display: flex; align-items: center; justify-content: center; border: 2px dashed var(--color-border); border-radius: 6px; aspect-ratio: 4/3; cursor: pointer; font-size: 0.8rem; color: var(--color-text-muted);">
+                      Click to upload
+                      <input type="file" accept="image/*" style="display: none;"
+                        onChange=${e => uploadBeforeAfterImage(i, 'before', Array.from(e.target.files))} />
+                    </label>
+                  `}
+                  <input class="form-input" style="font-size: 0.75rem; padding: 0.3rem 0.4rem; margin-top: 0.25rem; border-radius: 6px;"
+                    value=${pair.beforeAlt || ''} placeholder="Before alt text..."
+                    onInput=${e => updateBeforeAfterField(i, 'beforeAlt', e.target.value)} />
+                </div>
+                <div>
+                  <label class="form-label" style="font-size: 0.78rem;">After Photo</label>
+                  ${pair.after ? html`
+                    <div style="position: relative; margin-bottom: 0.25rem;">
+                      <img src=${cfThumb(pair.after)} style="width: 100%; border-radius: 6px; aspect-ratio: 4/3; object-fit: cover;" />
+                      <button class="photo-btn" style="position: absolute; top: 4px; right: 4px;"
+                        onClick=${() => updateBeforeAfterField(i, 'after', '')} title="Remove">${icons.x}</button>
+                    </div>
+                  ` : html`
+                    <label style="display: flex; align-items: center; justify-content: center; border: 2px dashed var(--color-border); border-radius: 6px; aspect-ratio: 4/3; cursor: pointer; font-size: 0.8rem; color: var(--color-text-muted);">
+                      Click to upload
+                      <input type="file" accept="image/*" style="display: none;"
+                        onChange=${e => uploadBeforeAfterImage(i, 'after', Array.from(e.target.files))} />
+                    </label>
+                  `}
+                  <input class="form-input" style="font-size: 0.75rem; padding: 0.3rem 0.4rem; margin-top: 0.25rem; border-radius: 6px;"
+                    value=${pair.afterAlt || ''} placeholder="After alt text..."
+                    onInput=${e => updateBeforeAfterField(i, 'afterAlt', e.target.value)} />
+                </div>
+              </div>
+            </div>
+          `)}
         </div>
 
         <div class="card">

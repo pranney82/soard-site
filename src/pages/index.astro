@@ -34,7 +34,7 @@ const heroHeadline = `${heroLine1}<br>${heroLine2}`;
 const heroSub = siteSettings.homeHero?.lead || 'Dream bedrooms, accessible bathrooms, and therapy rooms for children with special needs — at no cost to families.';
 const heroCta1Label = siteSettings.homeHero?.cta1Label || 'Give Today';
 const heroCta1Link = siteSettings.homeHero?.cta1Link || '/donate';
-const heroCta2Label = siteSettings.homeHero?.cta2Label || 'See Our Work ↓';
+const heroCta2Label = siteSettings.homeHero?.cta2Label || 'See Our Work';
 const heroCta2Link = siteSettings.homeHero?.cta2Link || '#stories';
 
 /* ── Hero Kid + Featured Story Kid (independent) ── */
@@ -129,7 +129,7 @@ const jsonLd = getWebSiteSchema();
         <p class="hero-sub" set:html={heroSub} />
         <div class="hero-ctas">
           <a href={heroCta1Link} class="btn btn-primary btn-hero-glow">{heroCta1Label}</a>
-          <a href={heroCta2Link} class="btn btn-dark">{heroCta2Label}</a>
+          <a href={heroCta2Link} class="btn btn-dark">{heroCta2Label} <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true" style="margin-left:2px"><path d="M8 3v10M3 8l5 5 5-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
         </div>
       </div>
       <div class="hero-photo-wrap">
@@ -183,10 +183,10 @@ const jsonLd = getWebSiteSchema();
       </div>
       <div class="mission-visual" role="presentation">
         <div class="mission-photo mission-photo--main" data-reveal style={`background-image:url('${cfLqip(missionMainId)}')`}>
-          <img src={`${CF}/${missionMainId}/w=600,q=65`} srcset={`${CF}/${missionMainId}/w=360,q=65 360w, ${CF}/${missionMainId}/w=480,q=65 480w, ${CF}/${missionMainId}/w=600,q=65 600w`} sizes="(max-width:768px) 65vw, 30vw" alt="A transformed room designed for a child with special needs" width="800" height="600" loading="lazy" decoding="async" class="lqip-img" />
+          <img src={`${CF}/${missionMainId}/w=600,q=65`} srcset={`${CF}/${missionMainId}/w=360,q=65 360w, ${CF}/${missionMainId}/w=480,q=65 480w, ${CF}/${missionMainId}/w=600,q=65 600w`} sizes="(max-width:768px) 65vw, 30vw" alt={`A completed SOARD room makeover — one of ${stats.totalRooms}+ spaces built for children with special needs`} width="800" height="600" loading="lazy" decoding="async" class="lqip-img" />
         </div>
         <div class="mission-photo mission-photo--accent" data-reveal data-delay="1" style={`background-image:url('${cfLqip(missionAccentId)}')`}>
-          <img src={`${CF}/${missionAccentId}/w=600,q=65`} srcset={`${CF}/${missionAccentId}/w=280,q=65 280w, ${CF}/${missionAccentId}/w=400,q=65 400w, ${CF}/${missionAccentId}/w=600,q=65 600w, ${CF}/${missionAccentId}/w=800,q=65 800w`} sizes="(max-width:768px) 52vw, 24vw" alt="A happy child in their new dream room" width="600" height="450" loading="lazy" decoding="async" class="lqip-img" />
+          <img src={`${CF}/${missionAccentId}/w=600,q=65`} srcset={`${CF}/${missionAccentId}/w=280,q=65 280w, ${CF}/${missionAccentId}/w=400,q=65 400w, ${CF}/${missionAccentId}/w=600,q=65 600w, ${CF}/${missionAccentId}/w=800,q=65 800w`} sizes="(max-width:768px) 52vw, 24vw" alt="A child smiling in their newly designed dream bedroom by Sunshine on a Ranney Day" width="600" height="450" loading="lazy" decoding="async" class="lqip-img" />
         </div>
       </div>
     </div>
@@ -305,7 +305,7 @@ const jsonLd = getWebSiteSchema();
                 src={`${CF}/${roomPhotos.bath}/w=700,h=875,fit=cover,q=80`}
                 srcset={cfSrcset(roomPhotos.bath, [360, 500, 700, 1000, 1400], { fit: 'cover', aspectRatio: 5/4, quality: 80 })}
                 sizes="(max-width:600px) 82vw, (max-width:900px) 46vw, 30vw"
-                alt="An accessible bathroom" width="700" height="875"
+                alt="An accessible bathroom built by SOARD with roll-in shower, grab bars, and lowered vanity" width="700" height="875"
                 loading="lazy" decoding="async" class="lqip-img"
               />
             </div>
@@ -325,7 +325,7 @@ const jsonLd = getWebSiteSchema();
                 src={`${CF}/${roomPhotos.bedroom}/w=700,h=875,fit=cover,q=80`}
                 srcset={cfSrcset(roomPhotos.bedroom, [360, 500, 700, 1000, 1400], { fit: 'cover', aspectRatio: 5/4, quality: 80 })}
                 sizes="(max-width:600px) 82vw, (max-width:900px) 46vw, 30vw"
-                alt="A custom dream bedroom" width="700" height="875"
+                alt="A personalized dream bedroom designed around a child's interests and needs" width="700" height="875"
                 loading="lazy" decoding="async" class="lqip-img"
               />
             </div>
@@ -345,7 +345,7 @@ const jsonLd = getWebSiteSchema();
                 src={`${CF}/${roomPhotos.therapy}/w=700,h=875,fit=cover,q=80`}
                 srcset={cfSrcset(roomPhotos.therapy, [360, 500, 700, 1000, 1400], { fit: 'cover', aspectRatio: 5/4, quality: 80 })}
                 sizes="(max-width:600px) 82vw, (max-width:900px) 46vw, 30vw"
-                alt="A sensory therapy room" width="700" height="875"
+                alt="A calming sensory therapy room with dimmable lights, swing, and textured walls" width="700" height="875"
                 loading="lazy" decoding="async" class="lqip-img"
               />
             </div>
@@ -457,7 +457,7 @@ const jsonLd = getWebSiteSchema();
     color: var(--c-text-light);
     margin-bottom: 28px;
     opacity: 0;
-    animation: heroUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.05s both;
+    animation: heroUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.04s both;
   }
 
   .hero-headline {
@@ -466,8 +466,6 @@ const jsonLd = getWebSiteSchema();
     letter-spacing: -0.035em;
     color: var(--c-dark);
     margin-bottom: 28px;
-    /* NO opacity:0 — this is the LCP element, must paint immediately */
-    animation: heroSlideUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
   }
   .hero-headline :global(em) {
     font-style: italic;
@@ -484,7 +482,7 @@ const jsonLd = getWebSiteSchema();
     max-width: 480px;
     margin-bottom: 36px;
     opacity: 0;
-    animation: heroUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.15s both;
+    animation: heroUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.1s both;
   }
 
   .hero-ctas {
@@ -492,7 +490,7 @@ const jsonLd = getWebSiteSchema();
     gap: 14px;
     flex-wrap: wrap;
     opacity: 0;
-    animation: heroUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.25s both;
+    animation: heroUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.18s both;
   }
   /* pulseGlow animation defined in global.css */
 
@@ -502,7 +500,7 @@ const jsonLd = getWebSiteSchema();
     width: 100%;
     aspect-ratio: 4 / 5;
     /* NO opacity:0 — hero image is LCP candidate, must paint on load */
-    animation: heroPhotoIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+    animation: heroPhotoIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
   }
 
   .hero-photo {
@@ -556,7 +554,7 @@ const jsonLd = getWebSiteSchema();
     background: var(--c-yellow);
     z-index: -1;
     opacity: 0;
-    animation: accentIn 1s cubic-bezier(0.16, 1, 0.3, 1) 0.7s both;
+    animation: accentIn 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.5s both;
   }
 
 
@@ -565,10 +563,6 @@ const jsonLd = getWebSiteSchema();
   @keyframes heroUp {
     from { opacity: 0; transform: translateY(28px); }
     to { opacity: 1; transform: translateY(0); }
-  }
-  @keyframes heroSlideUp {
-    from { transform: translateY(16px); }
-    to { transform: translateY(0); }
   }
   @keyframes heroPhotoIn {
     from { transform: translateY(12px) scale(0.98); }
