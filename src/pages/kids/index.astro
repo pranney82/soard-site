@@ -1556,13 +1556,21 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
     align-items: center;
     gap: 6px;
     padding: 0 clamp(0.85rem, 1.8vw, 1.5rem);
+    opacity: 0;
+    animation: heroUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
   }
+
+  .kids-hero__stat:nth-child(1) { animation-delay: 0.35s; }
+  .kids-hero__stat:nth-child(3) { animation-delay: 0.45s; }
+  .kids-hero__stat:nth-child(5) { animation-delay: 0.55s; }
 
   .kids-hero__stat-div {
     width: 1px;
     height: 32px;
     background: rgba(255, 255, 255, 0.1);
     flex-shrink: 0;
+    opacity: 0;
+    animation: fadeIn 0.4s ease 0.5s both;
   }
 
   .kids-hero__stat-num {
@@ -2381,7 +2389,11 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
     height: 100%;
     object-fit: cover;
     display: block;
-    transition: opacity 0.4s ease;
+    transition:
+      opacity 0.4s ease,
+      transform 0.5s cubic-bezier(0.16, 1, 0.3, 1),
+      filter 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+    will-change: transform;
   }
 
   /* Image reveal — progressive enhancement.
@@ -2406,42 +2418,35 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
     color: var(--c-text-light);
   }
 
-  /* ── Cursor glow (desktop only) ── */
+  /* ── Hover scrim — subtle bottom gradient for CTA readability ── */
   :global(.kid-card__hover-overlay) {
     position: absolute;
     inset: 0;
     opacity: 0;
     z-index: 2;
     pointer-events: none;
-    background: radial-gradient(
-      600px circle at var(--glow-x, 50%) var(--glow-y, 50%),
-      rgba(255, 218, 36, 0.12) 0%,
-      rgba(255, 218, 36, 0.04) 30%,
-      transparent 60%
+    background: linear-gradient(
+      to top,
+      rgba(0, 0, 0, 0.35) 0%,
+      rgba(0, 0, 0, 0.08) 40%,
+      transparent 70%
     );
     transition: opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-    mix-blend-mode: soft-light;
   }
 
-  /* ── Frame shadow ── */
-  :global(.kid-card__frame) {
-    box-shadow: none;
-    transition: box-shadow 0.6s cubic-bezier(0.16, 1, 0.3, 1);
-  }
 
-  /* CTA pill — slides up on hover */
+
+  /* CTA pill — slides up on hover, centered on image */
   :global(.kid-card__cta) {
     position: absolute;
-    bottom: 12px;
+    bottom: 50%;
     left: 50%;
-    transform: translateX(-50%) translateY(8px);
+    transform: translateX(-50%) translateY(calc(50% + 8px));
     display: flex;
     align-items: center;
     gap: 6px;
     padding: 8px 16px;
-    background: rgba(255, 255, 255, 0.92);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
+    background: var(--c-white);
     border-radius: 100px;
     opacity: 0;
     pointer-events: none;
@@ -2467,15 +2472,19 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
   }
 
   @media (hover: hover) {
+    :global(.kid-card:hover .kid-card__img) {
+      transform: scale(1.03);
+      filter: brightness(1.04);
+    }
     :global(.kid-card:hover .kid-card__hover-overlay) {
       opacity: 1;
     }
+    :global(.kid-card:hover .kid-card__tags) {
+      opacity: 0;
+    }
     :global(.kid-card:hover .kid-card__cta) {
       opacity: 1;
-      transform: translateX(-50%) translateY(0);
-    }
-    :global(.kid-card:hover .kid-card__frame) {
-      box-shadow: none;
+      transform: translateX(-50%) translateY(50%);
     }
   }
 
@@ -2550,6 +2559,7 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
     gap: 4px;
     z-index: 2;
     pointer-events: none;
+    transition: opacity 0.25s ease;
   }
 
   :global(.kid-card__tag) {

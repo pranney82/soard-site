@@ -24,7 +24,7 @@
     "lead": "We create life-changing spaces for children with special needs — dream bedrooms, accessible bathrooms, and therapy rooms — all at <strong>no cost to families</strong>.",
     "cta1Label": "Give Today",
     "cta1Link": "/donate",
-    "cta2Label": "See Our Work",
+    "cta2Label": "See Our Work ↓",
     "cta2Link": "#stories"
   },
   "featuredKidSlug": "amari",
@@ -149,8 +149,8 @@
     "communityPhotos.hero": "2026-03-31T16:57:53.974Z",
     "communityPhotos.accent": "2026-03-31T16:58:13.158Z",
     "waysToGivePhotos.hero": "2026-03-31T17:00:28.640Z",
-    "waysToGivePhotos.breakPhoto": "2026-03-31T16:59:16.374Z",
-    "waysToGivePhotos.legacyPhoto": "2026-03-31T16:59:29.674Z",
+    "waysToGivePhotos.breakPhoto": "2026-04-06T12:35:24.457Z",
+    "waysToGivePhotos.legacyPhoto": "2026-04-06T12:35:37.306Z",
     "partnerPhoto": "2026-03-31T16:59:39.441Z",
     "applyPhotos.hero": "2026-03-31T17:00:42.040Z",
     "applyPhotos.story": "2026-03-31T17:01:24.890Z",
@@ -165,8 +165,8 @@
   },
   "waysToGivePhotos": {
     "hero": "kids/oakley/photo-15",
-    "breakPhoto": "kids/emery/photo-17",
-    "legacyPhoto": "kids/cayden/photo-15"
+    "breakPhoto": "kids/cayden/photo-15",
+    "legacyPhoto": "kids/emery/photo-18"
   },
   "partnerPhoto": "kids/bryce/photo-22"
 }

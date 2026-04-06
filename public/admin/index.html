@@ -846,6 +846,7 @@
       object-fit: cover;
     }
     .photo-item.is-hero { outline: 3px solid var(--color-primary); outline-offset: -3px; }
+    .photo-item.is-accent { outline: 3px solid #9b59b6; outline-offset: -3px; }
     .photo-actions {
       position: absolute; top: 0.35rem; right: 0.35rem;
       display: flex; gap: 0.25rem;
@@ -862,6 +863,7 @@
     }
     .photo-btn:hover { background: rgba(0,0,0,0.85); }
     .photo-btn.hero-btn { background: rgba(255,213,0,0.9); color: var(--color-text); }
+    .photo-btn.accent-btn { background: rgba(155,89,182,0.9); color: #fff; }
     .photo-uploading {
       position: absolute; inset: 0;
       background: rgba(0,0,0,0.5);
@@ -1817,6 +1819,8 @@
       x:          _s(html`<path d="M18 6 6 18"/><path d="m6 6 12 12"/>`),
       star:       html`<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;flex-shrink:0;"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`,
       starOutline:_s(html`<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>`),
+      diamond:    html`<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;flex-shrink:0;"><path d="M12 2 L22 12 L12 22 L2 12 Z"/></svg>`,
+      diamondOutline:_s(html`<path d="M12 2 L22 12 L12 22 L2 12 Z"/>`),
       fileText:   _s(html`<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 13H8"/><path d="M16 17H8"/><path d="M16 13h-2"/>`),
       search:     _s(html`<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>`),
       barChart:   _s(html`<line x1="12" x2="12" y1="20" y2="10"/><line x1="18" x2="18" y1="20" y2="4"/><line x1="6" x2="6" y1="20" y2="16"/>`, 20),
@@ -4450,6 +4454,11 @@
         setData(d => ({ ...d, heroImage: d.photos[index]?.url || '' }));
       };
 
+      const setAccent = (index) => {
+        setDirty(true);
+        setData(d => ({ ...d, accentImage: d.photos[index]?.url || '' }));
+      };
+
       const toggleStoryPhoto = (photo) => {
         setDirty(true);
         setData(d => {
@@ -4717,13 +4726,13 @@
 
         <div class="card">
           <h3 style="margin-bottom: 1rem;">Hero Summary</h3>
-          <p class="text-sm text-muted mb-1">Short intro shown in the hero section on this kid's page. If blank, the first paragraph of the bio is used.</p>
+          <p class="text-sm text-muted mb-1">Short intro shown in the hero section. Keep it punchy — 1-2 sentences max. If blank, the first paragraph of the bio is used.</p>
           <div class="form-group">
             <label class="form-label">Summary</label>
             <textarea class="form-textarea" rows="3" value=${data.heroSummary || ''}
               onInput=${e => updateField('heroSummary', e.target.value)}
               placeholder="A short, punchy intro for the hero section..." />
-            <div class="char-count ${(data.heroSummary || '').length > 250 ? 'over' : ''}">${(data.heroSummary || '').length}/250</div>
+            <div class="char-count ${(data.heroSummary || '').length > 220 ? 'over' : ''}">${(data.heroSummary || '').length}/220</div>
           </div>
         </div>
 
@@ -4799,19 +4808,21 @@
           <div class="flex items-center justify-between mb-1">
             <h3>Photos</h3>
           </div>
-          <p class="text-sm text-muted mb-1">Upload photos, click star for hero.</p>
+          <p class="text-sm text-muted mb-1">Upload photos, click star for hero, diamond for accent.</p>
           <${DropZone} onFiles=${handlePhotoUpload} label="JPG, PNG, WebP — upload as many as you need" />
           ${data.photos.length > 0 ? html`
             <div class="photo-grid">
               ${data.photos.map((photo, i) => html`
                 <div key=${photo.url || i} class="photo-grid-item"
                   ...${uploading[photo._tempId] ? {} : photoDragHandlers(i)}>
-                  <div class="photo-item ${photo.url === data.heroImage ? 'is-hero' : ''}">
+                  <div class="photo-item ${photo.url === data.heroImage ? 'is-hero' : ''} ${photo.url === data.accentImage ? 'is-accent' : ''}">
                     <img src=${cfThumb(photo.url)} alt=${photo.alt || ''} loading="lazy" />
                     ${uploading[photo._tempId] ? html`<div class="photo-uploading"><span class="spinner" /></div>` : null}
                     <div class="photo-actions">
                       <button class="photo-btn ${photo.url === data.heroImage ? 'hero-btn' : ''}"
                         onClick=${(e) => { e.stopPropagation(); setHero(i); }} title="Set as hero image" aria-label="Set as hero image">${icons.star}</button>
+                      <button class="photo-btn ${photo.url === data.accentImage ? 'accent-btn' : ''}"
+                        onClick=${(e) => { e.stopPropagation(); setAccent(i); }} title="Set as accent image" aria-label="Set as accent image">${icons.diamond}</button>
                       <button class="photo-btn" onClick=${(e) => { e.stopPropagation(); removePhoto(i); }} title="Remove" aria-label="Remove photo">${icons.x}</button>
                     </div>
                   </div>
