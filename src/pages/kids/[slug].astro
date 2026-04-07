@@ -385,6 +385,9 @@ const planOrientation = (() => {
     <!-- ═══ 2. The Story — Premium Progressive Disclosure ═══ -->
     {bioParas.length > 0 && (
       <section class="story" id="chapter-story" data-chapter="Story" itemprop="articleBody">
+        <div class="story__header">
+          <span class="story__label">The Story</span>
+        </div>
         <div class="story__inner">
           <div class="story__content" itemprop="description">
             <p class="story__lead" set:html={bioParas[0]} />
@@ -523,21 +526,13 @@ const planOrientation = (() => {
                     <div class="ba-slider__handle-glow"></div>
                     <div class="ba-slider__handle-line"></div>
                     <div class="ba-slider__handle-knob">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                        <polyline points="15 18 9 12 15 6"></polyline>
-                        <polyline points="9 18 15 12 9 6" transform="translate(6, 0)"></polyline>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M8 12H4m0 0l3-3m-3 3l3 3M16 12h4m0 0l-3-3m3 3l-3 3"/>
                       </svg>
                     </div>
                   </div>
                   <span class="ba-slider__label ba-slider__label--before" data-ba-label="before">Before</span>
                   <span class="ba-slider__label ba-slider__label--after" data-ba-label="after">After</span>
-                  <div class="ba-slider__hint" data-ba-hint>
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
-                      <polyline points="8 4 4 8 8 12"></polyline>
-                      <polyline points="16 4 20 8 16 12"></polyline>
-                    </svg>
-                    <span>Drag to compare</span>
-                  </div>
                 </div>
               </div>
             ))}
@@ -557,15 +552,14 @@ const planOrientation = (() => {
               {streamId ? (
                 <div class="stream-facade" id="stream-facade" data-id={streamId} role="button" tabindex="0" aria-label={`Play ${kid.name}'s video`}>
                   <img
-                    src={`https://videodelivery.net/${streamId}/thumbnails/thumbnail.jpg?time=2s&height=720`}
+                    src={`https://videodelivery.net/${streamId}/thumbnails/thumbnail.jpg?time=2s&width=1920&height=1080&fit=crop`}
                     alt={`Video thumbnail for ${kid.name}'s story`}
                     class="reveal__thumb"
                     loading="lazy"
                     decoding="async"
-                    width="1280"
-                    height="720"
+                    width="1920"
+                    height="1080"
                   />
-                  <div class="reveal__vignette"></div>
                   <div class="reveal__play" aria-hidden="true">
                     <span class="reveal__play-ring"></span>
                     <svg class="reveal__play-tri" viewBox="0 0 24 28" fill="none">
@@ -585,7 +579,6 @@ const planOrientation = (() => {
                       decoding="async"
                     />
                   </picture>
-                  <div class="reveal__vignette"></div>
                   <div class="reveal__play" aria-hidden="true">
                     <span class="reveal__play-ring"></span>
                     <svg class="reveal__play-tri" viewBox="0 0 24 28" fill="none">
@@ -757,36 +750,58 @@ const planOrientation = (() => {
       </section>
     )}
 
-    <!-- ═══ More Stories ═══ -->
-    {relatedKids && relatedKids.length > 0 && (
-      <section class="related">
-        <div class="container">
-          <h2 class="related__title">More Stories</h2>
-          <div class="related__grid">
-            {relatedKids.map((rk) => (
-              <a href={`/kids/${rk.slug}/`} class="related__card">
-                <div class="related__frame" style={`--lqip: url('${lqip(rk.heroImage)}')`}>
+    <!-- ═══ More Stories — Cinematic Carousel ═══ -->
+    <section class="more-stories">
+      <div class="more-stories__header">
+        <h2 class="more-stories__title">Meet More Kids</h2>
+        <p class="more-stories__subtitle">Every story is a life transformed</p>
+      </div>
+
+      {relatedKids && relatedKids.length > 0 && (
+        <div class="story-carousel" role="region" aria-label="More stories carousel">
+          <div class="story-carousel__track">
+            {relatedKids.map((rk, idx) => (
+              <a href={`/kids/${rk.slug}/`} class="story-slide" data-index={idx}>
+                <div class="story-slide__img-wrap" style={`--lqip: url('${lqip(rk.heroImage)}')`}>
                   <img
-                    src={cfUrl(rk.heroImage, 'w=340,h=453,fit=cover,gravity=face,q=80')}
-                    srcset={_cfSrcset(rk.heroImage, [180, 260, 380], { fit: 'cover', gravity: 'face', aspectRatio: 4/3 })}
-                    sizes="(max-width: 600px) calc(50vw - 24px), 240px"
+                    src={cfUrl(rk.heroImage, 'w=600,h=750,fit=cover,gravity=face,q=85')}
+                    srcset={`${cfUrl(rk.heroImage, 'w=400,h=500,fit=cover,gravity=face,q=80')} 400w, ${cfUrl(rk.heroImage, 'w=600,h=750,fit=cover,gravity=face,q=85')} 600w, ${cfUrl(rk.heroImage, 'w=800,h=1000,fit=cover,gravity=face,q=85')} 800w`}
+                    sizes="(max-width: 600px) 85vw, (max-width: 1024px) 45vw, 340px"
                     alt={`Photo of ${rk.name}`}
-                    class="related__img lqip-img"
+                    class="story-slide__img"
                     loading="lazy"
                     decoding="async"
-                    width="340"
-                    height="453"
+                    width="600"
+                    height="750"
                   />
                 </div>
-                <div class="related__info">
-                  <span class="related__name">{rk.name}</span>
+                <div class="story-slide__info">
+                  <span class="story-slide__name">{rk.name}</span>
+                  {rk.roomTypes && rk.roomTypes[0] && (
+                    <span class="story-slide__room">{rk.roomTypes[0]}</span>
+                  )}
                 </div>
               </a>
             ))}
           </div>
+
+          <!-- Progress indicator -->
+          <div class="story-carousel__progress" aria-hidden="true">
+            {relatedKids.map((_, idx) => (
+              <span class="story-carousel__dot" data-dot={idx}></span>
+            ))}
+          </div>
         </div>
-      </section>
-    )}
+      )}
+
+      <!-- View All CTA -->
+      <div class="story-cta">
+        <a href="/kids/" class="story-cta__btn">
+          View All Stories
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+        </a>
+      </div>
+    </section>
 
     <!-- ═══ Final CTA ═══ -->
     <section class="page-cta">
@@ -815,30 +830,6 @@ const planOrientation = (() => {
       </div>
     </section>
 
-    <!-- ═══ Prev / Next Navigation ═══ -->
-    <nav class="kid-nav" aria-label="Navigate between kid profiles">
-      <div class="container">
-        <div class="kid-nav__grid">
-          {prevKid ? (
-            <a href={`/kids/${prevKid.slug}/`} class="kid-nav__link kid-nav__link--prev">
-              <span class="kid-nav__arrow" aria-hidden="true">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
-              </span>
-              <span class="kid-nav__name">{prevKid.name}</span>
-            </a>
-          ) : <span />}
-          <a href="/kids/" class="kid-nav__all">All Kids</a>
-          {nextKid ? (
-            <a href={`/kids/${nextKid.slug}/`} class="kid-nav__link kid-nav__link--next">
-              <span class="kid-nav__name">{nextKid.name}</span>
-              <span class="kid-nav__arrow" aria-hidden="true">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
-              </span>
-            </a>
-          ) : <span />}
-        </div>
-      </div>
-    </nav>
   </article>
 
   <!-- ═══ Lightbox ═══ -->
@@ -1176,12 +1167,11 @@ const planOrientation = (() => {
     document.querySelectorAll<HTMLElement>('[data-ba-slider]').forEach(slider => {
       const container = slider.querySelector<HTMLElement>('[data-ba-container]');
       const range = slider.querySelector<HTMLInputElement>('.ba-slider__range');
-      const hint = slider.querySelector<HTMLElement>('[data-ba-hint]');
       const labelBefore = slider.querySelector<HTMLElement>('[data-ba-label="before"]');
       const labelAfter = slider.querySelector<HTMLElement>('[data-ba-label="after"]');
       if (!container || !range) return;
 
-      let pos = 50, vel = 0, momRaf: number | null = null, interacted = false;
+      let pos = 50, vel = 0, momRaf: number | null = null;
       let isDrag = false, lastX = 0, lastT = 0, vels: number[] = [];
 
       const updatePos = (v: number, sync = true) => {
@@ -1192,7 +1182,6 @@ const planOrientation = (() => {
         if (labelAfter) labelAfter.toggleAttribute('data-fade', pos > 80);
       };
 
-      const hideHint = () => { if (hint && !interacted) { interacted = true; hint.hidden = true; } };
       const getP = (x: number) => ((x - container.getBoundingClientRect().left) / container.getBoundingClientRect().width) * 100;
 
       // Momentum animation loop
@@ -1234,7 +1223,7 @@ const planOrientation = (() => {
         if ((e.target as HTMLElement).closest('button')) return;
         isDrag = true; lastX = e.clientX; lastT = performance.now(); vels = [];
         if (momRaf) cancelAnimationFrame(momRaf);
-        vel = 0; hideHint();
+        vel = 0;
         container.setPointerCapture(e.pointerId);
         container.classList.add('is-dragging');
         // Prevent scroll during drag
@@ -1269,7 +1258,7 @@ const planOrientation = (() => {
       container.addEventListener('pointercancel', onUp);
 
       // Range input for accessibility
-      range.addEventListener('input', () => { hideHint(); updatePos(parseFloat(range.value), false); });
+      range.addEventListener('input', () => updatePos(parseFloat(range.value), false));
       range.addEventListener('focus', () => { activeSlider = { upd: (v) => updatePos(v), pos: () => pos }; });
 
       // Auto-reveal with overshoot easing (easeOutBack)
@@ -1454,6 +1443,7 @@ const planOrientation = (() => {
 
     if (lightbox && galleryItems.length > 0) {
       let currentIndex = 0;
+      let isInPlanGallery = false;
       let previousFocus: HTMLElement | null = null;
       let navGeneration = 0;
       let loaderTimer = 0;
@@ -1604,6 +1594,7 @@ const planOrientation = (() => {
 
         const dataIdx = parseInt(item.dataset.index || '0', 10);
         const isPlan = item.dataset.plan === 'true' || (planCount > 0 && dataIdx >= galleryCount);
+        isInPlanGallery = isPlan;
         lightbox.classList.toggle('lightbox--plan', isPlan);
         if (isPlan) {
           lbCounter.textContent = `Plan ${dataIdx - galleryCount + 1} / ${planCount}`;
@@ -1613,10 +1604,13 @@ const planOrientation = (() => {
             : `${index + 1} / ${galleryItems.length}`;
         }
 
-        lbPrev.style.visibility = index === 0 ? 'hidden' : '';
-        lbPrev.style.pointerEvents = index === 0 ? 'none' : '';
-        lbNext.style.visibility = index === galleryItems.length - 1 ? 'hidden' : '';
-        lbNext.style.pointerEvents = index === galleryItems.length - 1 ? 'none' : '';
+        // Determine navigation boundaries based on current gallery type
+        const minIndex = isPlan ? galleryCount : 0;
+        const maxIndex = isPlan ? galleryCount + planCount - 1 : (galleryCount > 0 ? galleryCount - 1 : galleryItems.length - 1);
+        lbPrev.style.visibility = index <= minIndex ? 'hidden' : '';
+        lbPrev.style.pointerEvents = index <= minIndex ? 'none' : '';
+        lbNext.style.visibility = index >= maxIndex ? 'hidden' : '';
+        lbNext.style.pointerEvents = index >= maxIndex ? 'none' : '';
         preloadNeighbours(index);
       }
 
@@ -1679,9 +1673,15 @@ const planOrientation = (() => {
 
       function goNext() {
         galleryItems = sortByDataIndex(document.querySelectorAll<HTMLButtonElement>('.masonry__item'));
-        if (currentIndex < galleryItems.length - 1) showPhoto(currentIndex + 1, 1);
+        const maxIndex = isInPlanGallery
+          ? galleryCount + planCount - 1
+          : (galleryCount > 0 ? galleryCount - 1 : galleryItems.length - 1);
+        if (currentIndex < maxIndex) showPhoto(currentIndex + 1, 1);
       }
-      function goPrev() { if (currentIndex > 0) showPhoto(currentIndex - 1, -1); }
+      function goPrev() {
+        const minIndex = isInPlanGallery ? galleryCount : 0;
+        if (currentIndex > minIndex) showPhoto(currentIndex - 1, -1);
+      }
 
       galleryItems.forEach((item, i) => {
         item.addEventListener('click', () => openLightbox(i));
@@ -1796,6 +1796,53 @@ const planOrientation = (() => {
     const shareBtn = document.getElementById('share-btn');
     if (shareBtn) {
       shareBtn.addEventListener('click', () => handleShare(shareBtn));
+    }
+
+    // ── Story Carousel Progress Dots ───────────────
+    const carouselTrack = document.querySelector('.story-carousel__track');
+    const carouselDots = document.querySelectorAll('.story-carousel__dot');
+    const carouselSlides = document.querySelectorAll('.story-slide');
+
+    if (carouselTrack && carouselDots.length > 0 && carouselSlides.length > 0) {
+      const updateActiveDot = () => {
+        const trackRect = carouselTrack.getBoundingClientRect();
+        const trackCenter = trackRect.left + trackRect.width / 2;
+
+        let closestIndex = 0;
+        let closestDistance = Infinity;
+
+        carouselSlides.forEach((slide, index) => {
+          const slideRect = slide.getBoundingClientRect();
+          const slideCenter = slideRect.left + slideRect.width / 2;
+          const distance = Math.abs(slideCenter - trackCenter);
+
+          if (distance < closestDistance) {
+            closestDistance = distance;
+            closestIndex = index;
+          }
+        });
+
+        carouselDots.forEach((dot, index) => {
+          dot.classList.toggle('active', index === closestIndex);
+        });
+      };
+
+      // Update on scroll
+      carouselTrack.addEventListener('scroll', updateActiveDot, { passive: true });
+
+      // Initial state
+      updateActiveDot();
+
+      // Click on dots to scroll to slide
+      carouselDots.forEach((dot, index) => {
+        dot.addEventListener('click', () => {
+          const targetSlide = carouselSlides[index] as HTMLElement;
+          if (targetSlide) {
+            targetSlide.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+          }
+        });
+        dot.style.cursor = 'pointer';
+      });
     }
 
   } // end initKidPage
@@ -2738,9 +2785,40 @@ const planOrientation = (() => {
 
   /* ═══ 2. The Story — Premium Progressive Disclosure ═══════════════════════ */
   .story {
-    padding-block: 48px clamp(80px, 12vw, 120px);
+    position: relative;
+    padding-block: clamp(64px, 10vw, 100px) clamp(80px, 12vw, 120px);
     background: var(--c-cream);
   }
+
+  .story__header {
+    text-align: center;
+    margin-bottom: clamp(48px, 8vw, 72px);
+  }
+
+  .story__label {
+    display: inline-block;
+    font-family: var(--font-body);
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--c-text-muted);
+    position: relative;
+    padding: 0 24px;
+  }
+
+  .story__label::before,
+  .story__label::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    width: 32px;
+    height: 1px;
+    background: var(--c-border);
+  }
+
+  .story__label::before { right: 100%; }
+  .story__label::after { left: 100%; }
 
   .story__inner {
     max-width: 720px;
@@ -2757,23 +2835,36 @@ const planOrientation = (() => {
     font-family: var(--font-display);
     font-size: clamp(1.25rem, 1.1rem + 0.5vw, 1.5rem);
     font-weight: 400;
-    line-height: 1.7;
+    line-height: 1.75;
     color: var(--c-dark);
     margin: 0;
     text-wrap: pretty;
     letter-spacing: -0.01em;
   }
 
-  /* Drop cap */
-  .story__lead::first-letter {
-    font-family: var(--font-display);
-    font-size: 3.4em;
-    float: left;
-    line-height: 0.85;
-    margin-right: 12px;
-    margin-top: 4px;
-    font-weight: 700;
-    color: var(--c-dark);
+  /* Drop cap — desktop only for clean mobile experience */
+  @media (min-width: 769px) {
+    .story__lead {
+      display: flow-root;
+    }
+
+    .story__lead::first-letter {
+      font-family: var(--font-display);
+      font-weight: 700;
+      color: var(--c-dark);
+      -webkit-initial-letter: 3;
+      initial-letter: 3;
+    }
+
+    @supports not (initial-letter: 3) {
+      .story__lead::first-letter {
+        float: left;
+        font-size: 3.2em;
+        line-height: 0.8;
+        margin-right: 0.1em;
+        margin-top: 0.05em;
+      }
+    }
   }
 
   /* Expand button — minimal text link */
@@ -3380,48 +3471,6 @@ const planOrientation = (() => {
   .ba-slider__label--before[data-fade] { opacity: 0; }
   .ba-slider__label--after[data-fade] { opacity: 0; }
 
-  .ba-slider__hint {
-    position: absolute;
-    bottom: 20px;
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 4;
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 0.75rem;
-    font-weight: 600;
-    letter-spacing: 0.05em;
-    color: var(--c-white);
-    background: rgba(0, 0, 0, 0.6);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
-    padding: 10px 18px;
-    border-radius: 100px;
-    pointer-events: none;
-    transition: opacity 0.4s ease, transform 0.4s ease;
-    animation: ba-hint-pulse 2s ease-in-out infinite;
-  }
-
-  .ba-slider__hint svg {
-    animation: ba-hint-arrows 1.5s ease-in-out infinite;
-  }
-
-  @keyframes ba-hint-pulse {
-    0%, 100% { transform: translateX(-50%) scale(1); opacity: 1; }
-    50% { transform: translateX(-50%) scale(1.03); opacity: 0.9; }
-  }
-
-  @keyframes ba-hint-arrows {
-    0%, 100% { transform: scaleX(1); }
-    50% { transform: scaleX(1.15); }
-  }
-
-  .ba-slider__hint[hidden] {
-    opacity: 0;
-    transform: translateX(-50%) translateY(10px);
-  }
-
   /* ═══ 5. The Reveal — Video ══════════════ */
   .reveal {
     position: relative;
@@ -3462,20 +3511,6 @@ const planOrientation = (() => {
       inset 0 0 0 1px rgba(255, 255, 255, 0.04);
   }
 
-  .reveal__frame::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(
-      180deg,
-      rgba(255, 218, 36, 0.03) 0%,
-      transparent 30%
-    );
-    pointer-events: none;
-    z-index: 1;
-    border-radius: inherit;
-  }
-
   .yt-facade,
   .stream-facade {
     position: relative;
@@ -3488,26 +3523,12 @@ const planOrientation = (() => {
     width: 100%;
     height: 100%;
     object-fit: cover;
-    transition: transform 0.7s cubic-bezier(0.16, 1, 0.3, 1), filter 0.5s ease;
-  }
-
-  .reveal__vignette {
-    position: absolute;
-    inset: 0;
-    background: radial-gradient(ellipse at center, transparent 0%, rgba(0, 0, 0, 0.3) 100%);
-    pointer-events: none;
-    transition: opacity 0.4s ease;
+    transition: transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
   .yt-facade:hover .reveal__thumb,
   .stream-facade:hover .reveal__thumb {
     transform: scale(1.02);
-    filter: brightness(0.8);
-  }
-
-  .yt-facade:hover .reveal__vignette,
-  .stream-facade:hover .reveal__vignette {
-    opacity: 0.6;
   }
 
   /* Play button — premium glass morphism */
@@ -3955,102 +3976,181 @@ const planOrientation = (() => {
     filter: grayscale(100%);
   }
 
-  /* ═══ Related Stories ═══════════════════════ */
-  .related {
-    padding: clamp(80px, 12vw, 120px) 0;
+  /* ═══ More Stories — Cinematic Carousel ═══════════ */
+  .more-stories {
+    padding: clamp(80px, 12vw, 120px) 0 clamp(64px, 10vw, 96px);
     background: var(--c-cream);
+    overflow: hidden;
   }
 
-  .related__title {
+  .more-stories__header {
+    text-align: center;
+    margin-bottom: clamp(40px, 6vw, 64px);
+    padding-inline: 24px;
+  }
+
+  .more-stories__title {
     font-family: var(--font-display);
-    font-size: clamp(2.2rem, 4vw, 3rem);
+    font-size: clamp(2rem, 4vw, 3rem);
     font-weight: 700;
     color: var(--c-dark);
-    text-align: center;
     line-height: 1;
     letter-spacing: -0.03em;
-    margin: 0 0 clamp(48px, 8vw, 64px);
+    margin: 0 0 12px;
   }
 
-  .related__grid {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 20px;
+  .more-stories__subtitle {
+    font-size: clamp(1rem, 2vw, 1.125rem);
+    color: var(--c-text-muted);
+    margin: 0;
+    font-weight: 400;
   }
 
-  .related__card {
-    display: block;
+  /* Carousel Track */
+  .story-carousel {
+    position: relative;
+    margin-bottom: clamp(48px, 8vw, 72px);
+  }
+
+  .story-carousel__track {
+    display: flex;
+    gap: clamp(16px, 3vw, 32px);
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    scroll-behavior: smooth;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding: 0 max(24px, calc((100vw - 1200px) / 2 + 24px));
+  }
+
+  .story-carousel__track::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Story Slides */
+  .story-slide {
+    flex: 0 0 auto;
+    width: clamp(280px, 40vw, 340px);
+    scroll-snap-align: center;
     text-decoration: none;
     outline-offset: 4px;
   }
 
-  .related__card:focus-visible {
+  .story-slide:focus-visible {
     outline: 2px solid var(--c-dark);
-    outline-offset: 4px;
+    outline-offset: 8px;
     border-radius: var(--border-radius-lg);
   }
 
-  /* Frame */
-  .related__frame {
+  .story-slide__img-wrap {
     position: relative;
-    border-radius: var(--border-radius-lg);
+    border-radius: clamp(16px, 2vw, 24px);
     overflow: hidden;
-    aspect-ratio: 3 / 4;
+    aspect-ratio: 4 / 5;
     background-color: var(--c-warm-gray);
     background-image: var(--lqip);
     background-size: cover;
     background-position: center;
+    margin-bottom: 16px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
+    transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.5s ease;
   }
 
-  .related__img {
+  .story-slide__img {
     width: 100%;
     height: 100%;
     object-fit: cover;
     display: block;
-    transition:
-      transform 0.5s cubic-bezier(0.16, 1, 0.3, 1),
-      filter 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
-  /* Hover states */
+  .story-slide__info {
+    text-align: center;
+  }
+
+  .story-slide__name {
+    display: block;
+    font-family: var(--font-display);
+    font-size: clamp(1.125rem, 2vw, 1.25rem);
+    font-weight: 600;
+    color: var(--c-dark);
+    line-height: 1.3;
+    margin-bottom: 4px;
+    transition: color 0.2s ease;
+  }
+
+  .story-slide__room {
+    display: block;
+    font-size: 0.875rem;
+    color: var(--c-text-muted);
+    text-transform: capitalize;
+  }
+
   @media (hover: hover) {
-    .related__card:hover .related__img {
+    .story-slide:hover .story-slide__img-wrap {
+      transform: translateY(-4px);
+      box-shadow: 0 16px 48px rgba(0, 0, 0, 0.12);
+    }
+    .story-slide:hover .story-slide__img {
       transform: scale(1.03);
     }
-    .related__card:hover .related__name {
+    .story-slide:hover .story-slide__name {
       color: var(--c-text-muted);
     }
   }
 
-  .related__card:focus-visible .related__frame {
-    box-shadow: 0 0 0 2px var(--c-yellow);
-  }
-
-  .related__card:focus-visible .related__name {
-    opacity: 1;
-    transform: translateX(-50%) translateY(0);
-  }
-
-  /* Info below photo */
-  .related__info {
+  /* Progress Dots */
+  .story-carousel__progress {
     display: flex;
-    align-items: center;
-    gap: var(--space-sm);
-    padding: 14px 4px 4px;
+    justify-content: center;
+    gap: 8px;
+    margin-top: clamp(24px, 4vw, 32px);
   }
 
-  .related__name {
-    color: var(--c-text);
-    font-family: var(--font-display);
-    font-size: 1rem;
+  .story-carousel__dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--c-border);
+    transition: background 0.3s ease, transform 0.3s ease;
+  }
+
+  .story-carousel__dot.active {
+    background: var(--c-dark);
+    transform: scale(1.25);
+  }
+
+  /* Story CTA */
+  .story-cta {
+    text-align: center;
+    padding-top: clamp(8px, 2vw, 16px);
+  }
+
+  .story-cta__btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 16px 32px;
+    background: var(--c-dark);
+    color: var(--c-white);
+    font-size: 0.9rem;
     font-weight: 600;
-    line-height: 1.3;
-    background-image: linear-gradient(var(--c-yellow), var(--c-yellow));
-    background-size: 0% 2.5px;
-    background-repeat: no-repeat;
-    background-position: left bottom;
-    padding-bottom: 2px;
-    transition: background-size 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+    border-radius: 100px;
+    text-decoration: none;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  .story-cta__btn svg {
+    transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .story-cta__btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  }
+
+  .story-cta__btn:hover svg {
+    transform: translateX(4px);
   }
 
   /* ═══ Page CTA — Final Action ════════════════════ */
@@ -4167,58 +4267,6 @@ const planOrientation = (() => {
     transform: translateY(0) scale(0.98);
     box-shadow: 0 1px 4px rgba(255, 218, 36, 0.2);
     transition-duration: 80ms;
-  }
-
-  /* ═══ Prev / Next Nav — Minimal ════════════════════ */
-  .kid-nav {
-    padding: clamp(32px, 6vw, 48px) 0;
-    background: var(--c-cream);
-    border-top: 1px solid var(--c-border);
-  }
-
-  .kid-nav__grid {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
-  }
-
-  .kid-nav__link {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    text-decoration: none;
-    color: var(--c-text-muted);
-    font-size: 0.9rem;
-    transition: color 0.2s ease;
-  }
-
-  .kid-nav__link:hover {
-    color: var(--c-dark);
-  }
-
-  .kid-nav__arrow {
-    display: flex;
-    color: inherit;
-  }
-
-  .kid-nav__name {
-    font-weight: 500;
-    color: var(--c-dark);
-  }
-
-  .kid-nav__all {
-    font-size: 0.8rem;
-    font-weight: 600;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
-    color: var(--c-text-muted);
-    text-decoration: none;
-    transition: color 0.2s ease;
-  }
-
-  .kid-nav__all:hover {
-    color: var(--c-dark);
   }
 
   /* ═══ CTA (Legacy — hidden) ═════════════════ */
@@ -4577,12 +4625,13 @@ const planOrientation = (() => {
     /* ── Hero Mobile ─────────────────────── */
     .hero {
       min-height: auto;
+      padding-bottom: 0;
     }
 
     .hero__container {
       grid-template-columns: 1fr;
       gap: 0;
-      padding: 24px var(--page-padding) 48px;
+      padding: 24px var(--page-padding) 40px;
     }
 
     .hero__media {
@@ -4707,10 +4756,28 @@ const planOrientation = (() => {
       font-size: 0.62rem;
     }
 
-    /* Story mobile */
-    .story { padding-block: 28px 64px; }
-    .story__lead { font-size: 1.15rem; line-height: 1.75; }
-    .story__lead::first-letter { font-size: 2.8em; margin-right: 8px; }
+    /* Story mobile — clean, no drop cap */
+    .story { padding-block: 80px 64px; }
+    .story__header { margin-bottom: 32px; }
+    .story__label {
+      font-size: 0.65rem;
+      padding: 0 16px;
+    }
+    .story__label::before,
+    .story__label::after { width: 24px; }
+    .story__lead {
+      font-size: 1.1rem;
+      line-height: 1.8;
+    }
+    /* No drop cap on mobile — cleaner, no clipping issues */
+    .story__lead::first-letter {
+      float: none;
+      font-size: inherit;
+      line-height: inherit;
+      margin: 0;
+      -webkit-initial-letter: unset;
+      initial-letter: unset;
+    }
     .story__expand { margin-top: 28px; font-size: 0.85rem; }
     .story__more { margin-top: 32px; }
     .story__para { font-size: 1rem; }
@@ -4764,7 +4831,6 @@ const planOrientation = (() => {
     .ba-slider__label { top: 14px; font-size: 0.65rem; padding: 5px 10px; }
     .ba-slider__label--before { left: 14px; }
     .ba-slider__label--after { right: 14px; }
-    .ba-slider__hint { bottom: 14px; padding: 8px 14px; font-size: 0.7rem; }
 
     .reveal__inner { padding: 40px var(--page-padding) 56px; }
     .reveal__title { font-size: 1.8rem; margin-bottom: 32px; }
@@ -4807,26 +4873,56 @@ const planOrientation = (() => {
     .village__logos { gap: 24px; }
     .village__logo { width: 80px; }
 
-    /* Related — Mobile */
-    .related { padding: 56px 0 36px; }
-    .related__title { font-size: 1.8rem; margin-bottom: 32px; }
-    .related__grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
-    .related__frame { aspect-ratio: 5 / 4; border-radius: 12px; }
-    .related__info { padding: 10px 2px 4px; }
-    .related__name { font-size: 0.9rem; }
+    /* More Stories — Mobile */
+    .more-stories { padding: 56px 0 48px; }
+    .more-stories__header { margin-bottom: 32px; padding-inline: 20px; }
+    .more-stories__title { font-size: 1.75rem; margin-bottom: 8px; }
+    .more-stories__subtitle { font-size: 0.9rem; }
+
+    .story-carousel { margin-bottom: 40px; }
+    .story-carousel__track {
+      gap: 16px;
+      padding: 0 20px;
+      scroll-padding: 20px;
+    }
+
+    .story-slide {
+      width: 85vw;
+      max-width: 320px;
+      scroll-snap-align: start;
+    }
+
+    .story-slide__img-wrap {
+      border-radius: 16px;
+      margin-bottom: 12px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+    }
+
+    .story-slide__name { font-size: 1.1rem; }
+    .story-slide__room { font-size: 0.8rem; }
+
+    .story-carousel__progress {
+      gap: 6px;
+      margin-top: 20px;
+    }
+
+    .story-carousel__dot {
+      width: 6px;
+      height: 6px;
+    }
+
+    /* Story CTA — Mobile */
+    .story-cta { padding-top: 8px; }
+    .story-cta__btn {
+      padding: 14px 28px;
+      font-size: 0.85rem;
+    }
 
     /* Page CTA — Mobile */
     .page-cta { padding-block: 64px; }
     .page-cta__title { font-size: 1.5rem; }
     .page-cta__text { font-size: 0.9rem; }
     .page-cta__btn { padding: 14px 28px; font-size: 0.85rem; }
-
-    /* Kid Nav — Mobile */
-    .kid-nav { padding: 24px 0; }
-    .kid-nav__grid { flex-wrap: wrap; justify-content: center; gap: 12px 24px; }
-    .kid-nav__all { order: -1; width: 100%; text-align: center; margin-bottom: 8px; }
-    .kid-nav__link { font-size: 0.85rem; }
-    .kid-nav__name { font-size: 0.85rem; }
 
     /* Lightbox mobile — premium touch experience */
     .lightbox {
@@ -4887,8 +4983,6 @@ const planOrientation = (() => {
     .ba-slider__label { top: 10px; font-size: 0.6rem; padding: 4px 8px; }
     .ba-slider__label--before { left: 10px; }
     .ba-slider__label--after { right: 10px; }
-    .ba-slider__hint { bottom: 10px; padding: 6px 12px; font-size: 0.65rem; }
-
   }
 
   /* ═══ Reduced Motion ═══════════════════ */
@@ -4914,8 +5008,7 @@ const planOrientation = (() => {
 
     .reveal__thumb,
     .reveal__play-ring,
-    .reveal__play-tri,
-    .reveal__vignette {
+    .reveal__play-tri {
       transition: none;
     }
 
@@ -4932,9 +5025,15 @@ const planOrientation = (() => {
     .design__btn,
     .design__view-all,
     .design__view-all-icon,
-    .related__img,
-    .related__card,
-    .related__img-wrap,
+    .story-card,
+    .story-card__img,
+    .story-card__img-wrap,
+    .story-card__name,
+    .story-nav__link,
+    .story-nav__arrow,
+    .story-nav__avatar,
+    .story-nav__all,
+    .story-nav__all svg,
     .hero__donate-btn,
     .hero__share-btn,
     .fundraise__card,
@@ -4942,7 +5041,6 @@ const planOrientation = (() => {
     .ba-slider__handle,
     .ba-slider__handle-knob,
     .ba-slider__handle-glow,
-    .ba-slider__hint,
     .ba-slider__label,
     .chapter-nav,
     .chapter-nav__pill,
