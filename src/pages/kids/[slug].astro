@@ -236,6 +236,7 @@ const chapters = [
   { id: 'chapter-transform', label: 'Transform', icon: 'compare', show: hasBeforeAfter },
   { id: 'chapter-reveal', label: 'Reveal', icon: 'play', show: !!hasVideo },
   { id: 'chapter-gallery', label: 'Gallery', icon: 'camera', show: galleryPhotos.length > 1 },
+  { id: 'chapter-partners', label: 'Partners', icon: 'heart', show: kid.partnerLogos && kid.partnerLogos.length > 0 },
 ].filter(c => c.show);
 
 // ── Plans display ─────────────────────────
@@ -727,7 +728,7 @@ const planOrientation = (() => {
 
     <!-- ═══ The Village — Partners ═══ -->
     {kid.partnerLogos && kid.partnerLogos.length > 0 && (
-      <section class="village">
+      <section class="village" id="chapter-partners" data-chapter="Partners">
         <div class="container container--narrow">
           <div class="village__inner">
             <p class="village__label">Made possible by</p>

@@ -59,6 +59,9 @@
   "roomCount": 1,
   "publishStatus": "published",
   "streamVideoId": null,
-  "fundraisingUrl": null,
-  "therapyRoomCount": 1
+  "fundraisingUrl": "https://www.zeffy.com/en-US/donation-form/help-build-dylans-therapy-room",
+  "therapyRoomCount": 1,
+  "storyPhotos": [],
+  "plans": [],
+  "beforeAfterPhotos": []
 }
