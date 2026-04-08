@@ -163,6 +163,7 @@ const accentPhoto = kid.accentImage || null;
 // ── Hero image — use real dimensions for native aspect ratio ──
 const heroDims = kid.heroImage ? dims(kid.heroImage) : [3, 4];
 const heroAR = `${heroDims[0]} / ${heroDims[1]}`;
+const isHeroLandscape = heroDims[0] > heroDims[1];
 
 // ── Hero: art-directed mobile ─────────────
 const heroMobileSrcset = kid.heroImage ? _cfSrcset(kid.heroImage, [600, 900, 1200], { fit: 'cover', gravity: 'face' }) : '';
@@ -312,7 +313,7 @@ const planOrientation = (() => {
           </div>
 
           {accentPhoto && kid.heroImage && (
-            <picture class="hero__accent" data-reveal="accent">
+            <picture class={`hero__accent ${isHeroLandscape ? 'hero__accent--landscape' : ''}`} data-reveal="accent">
               <source media="(max-width: 768px)" srcset={_cfSrcset(accentPhoto, [180, 280, 400], { fit: 'cover', gravity: 'face', aspectRatio: 1.15 })} sizes="(max-width: 480px) 32vw, 35vw" />
               <source media="(min-width: 769px)" srcset={_cfSrcset(accentPhoto, [280, 400, 560], { fit: 'cover', gravity: 'face', aspectRatio: 1.15 })} sizes="220px" />
               <img
@@ -449,7 +450,7 @@ const planOrientation = (() => {
 
           {plans.length > 2 && (
             <button class="design__more" id="design-view-all" data-first-plan-index={galleryPhotos.length} type="button">
-              View all {plans.length} plans
+              View all {plans.length} designs
             </button>
           )}
 
@@ -1554,8 +1555,7 @@ const planOrientation = (() => {
         lbPlaceholder.style.opacity = '1';
 
         const entry = ensureCached(index);
-        const isPlanItem = item.dataset.plan === 'true';
-        const imgSizes = isPlanItem ? 'min(900px, 80vw)' : '90vw';
+        const imgSizes = '90vw';
 
         if (entry.decoded && entry.img.complete && entry.img.naturalWidth > 0) {
           hideLoader();
@@ -1595,7 +1595,7 @@ const planOrientation = (() => {
         lbCaption.style.display = caption ? '' : 'none';
 
         if (isPlan) {
-          lbCounter.textContent = `Plan ${dataIdx - galleryCount + 1} / ${planCount}`;
+          lbCounter.textContent = `${dataIdx - galleryCount + 1} / ${planCount}`;
         } else {
           lbCounter.textContent = galleryCount > 0
             ? `Photo ${dataIdx + 1} / ${galleryCount}`
@@ -1767,47 +1767,301 @@ const planOrientation = (() => {
         trapFocus(e);
       });
 
-      // ── Premium touch gestures with velocity detection ──
+      // ── Best-in-class touch gestures ──
+      // Features: tap to toggle UI, double-tap zoom, swipe down to close, pinch zoom, pan when zoomed
       let touchStartX = 0;
       let touchStartY = 0;
       let touchStartTime = 0;
-      let isSwiping = false;
+      let lastTapTime = 0;
+      let gestureType: 'none' | 'swipe-h' | 'swipe-v' | 'pinch' | 'pan' = 'none';
+
+      // Zoom state
+      let zoomScale = 1;
+      let zoomX = 0;
+      let zoomY = 0;
+      let initialPinchDistance = 0;
+      let initialZoomScale = 1;
+      let panStartX = 0;
+      let panStartY = 0;
+      let initialZoomX = 0;
+      let initialZoomY = 0;
+
+      // Drag-to-close state
+      let dragY = 0;
+      let dragStartY = 0;
+
+      function isZoomed() {
+        return zoomScale > 1.05;
+      }
+
+      function toggleUI() {
+        if (isZoomed()) return;
+        lightbox.classList.toggle('lightbox--ui-hidden');
+        if (navigator.vibrate) navigator.vibrate(5);
+      }
+
+      function resetZoom(animate = true) {
+        zoomScale = 1;
+        zoomX = 0;
+        zoomY = 0;
+        lightbox.classList.remove('lightbox--zoomed');
+        if (animate) {
+          lbImg.style.transition = 'transform 0.25s cubic-bezier(0.16, 1, 0.3, 1)';
+          setTimeout(() => { lbImg.style.transition = ''; }, 250);
+        }
+        lbImg.style.transform = '';
+      }
+
+      function applyZoom(animate = false) {
+        if (animate) {
+          lbImg.style.transition = 'transform 0.25s cubic-bezier(0.16, 1, 0.3, 1)';
+          setTimeout(() => { lbImg.style.transition = ''; }, 250);
+        }
+        lbImg.style.transform = `translate(${zoomX}px, ${zoomY}px) scale(${zoomScale})`;
+        lightbox.classList.toggle('lightbox--zoomed', isZoomed());
+      }
+
+      function clampPan() {
+        if (zoomScale <= 1) return;
+        const rect = lbImg.getBoundingClientRect();
+        const containerRect = lbFrame.getBoundingClientRect();
+        const scaledW = rect.width;
+        const scaledH = rect.height;
+        const maxX = Math.max(0, (scaledW - containerRect.width) / 2);
+        const maxY = Math.max(0, (scaledH - containerRect.height) / 2);
+        zoomX = Math.max(-maxX, Math.min(maxX, zoomX));
+        zoomY = Math.max(-maxY, Math.min(maxY, zoomY));
+      }
+
+      function getDistance(t1: Touch, t2: Touch) {
+        return Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+      }
+
+      function getMidpoint(t1: Touch, t2: Touch) {
+        return {
+          x: (t1.clientX + t2.clientX) / 2,
+          y: (t1.clientY + t2.clientY) / 2
+        };
+      }
+
+      // Reset zoom when changing photos
+      const originalShowPhoto = showPhoto;
+      showPhoto = function(index: number, direction: number = 0) {
+        resetZoom(false);
+        lightbox.classList.remove('lightbox--ui-hidden');
+        originalShowPhoto(index, direction);
+      };
 
       lightbox.addEventListener('touchstart', (e: TouchEvent) => {
-        touchStartX = e.changedTouches[0].screenX;
-        touchStartY = e.changedTouches[0].screenY;
-        touchStartTime = Date.now();
-        isSwiping = false;
+        const now = Date.now();
+
+        if (e.touches.length === 2) {
+          // Pinch start
+          gestureType = 'pinch';
+          initialPinchDistance = getDistance(e.touches[0], e.touches[1]);
+          initialZoomScale = zoomScale;
+          const mid = getMidpoint(e.touches[0], e.touches[1]);
+          panStartX = mid.x;
+          panStartY = mid.y;
+          initialZoomX = zoomX;
+          initialZoomY = zoomY;
+        } else if (e.touches.length === 1) {
+          touchStartX = e.touches[0].clientX;
+          touchStartY = e.touches[0].clientY;
+          touchStartTime = now;
+          gestureType = 'none';
+          dragY = 0;
+          dragStartY = touchStartY;
+
+          if (isZoomed()) {
+            // Pan start when zoomed
+            gestureType = 'pan';
+            panStartX = touchStartX;
+            panStartY = touchStartY;
+            initialZoomX = zoomX;
+            initialZoomY = zoomY;
+          }
+        }
       }, { passive: true });
 
       lightbox.addEventListener('touchmove', (e: TouchEvent) => {
-        if (isSwiping) return;
-        const dx = e.changedTouches[0].screenX - touchStartX;
-        const dy = e.changedTouches[0].screenY - touchStartY;
-        // Detect horizontal swipe intent early
-        if (Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy) * 1.2) {
-          isSwiping = true;
+        if (e.touches.length === 2 && gestureType === 'pinch') {
+          // Pinch zoom
+          const dist = getDistance(e.touches[0], e.touches[1]);
+          const scale = (dist / initialPinchDistance) * initialZoomScale;
+          zoomScale = Math.max(1, Math.min(4, scale));
+
+          // Pan while pinching
+          const mid = getMidpoint(e.touches[0], e.touches[1]);
+          zoomX = initialZoomX + (mid.x - panStartX);
+          zoomY = initialZoomY + (mid.y - panStartY);
+          clampPan();
+          applyZoom();
+          return;
+        }
+
+        if (e.touches.length !== 1) return;
+
+        const dx = e.touches[0].clientX - touchStartX;
+        const dy = e.touches[0].clientY - touchStartY;
+
+        if (gestureType === 'pan' && isZoomed()) {
+          // Pan when zoomed
+          zoomX = initialZoomX + (e.touches[0].clientX - panStartX);
+          zoomY = initialZoomY + (e.touches[0].clientY - panStartY);
+          clampPan();
+          applyZoom();
+          return;
+        }
+
+        // Detect gesture type if not set
+        if (gestureType === 'none' && (Math.abs(dx) > 10 || Math.abs(dy) > 10)) {
+          if (Math.abs(dx) > Math.abs(dy) * 1.2) {
+            gestureType = 'swipe-h';
+          } else if (dy > 10 && Math.abs(dy) > Math.abs(dx) * 1.5) {
+            gestureType = 'swipe-v';
+            dragStartY = touchStartY;
+          }
+        }
+
+        // Swipe down to close with drag feedback
+        if (gestureType === 'swipe-v' && !isZoomed()) {
+          dragY = Math.max(0, e.touches[0].clientY - dragStartY);
+          lightbox.classList.add('lightbox--dragging');
+          const progress = Math.min(dragY / 200, 1);
+          const scale = 1 - (progress * 0.15);
+          const opacity = 1 - (progress * 0.5);
+          lbStage.style.transform = `scale(${scale}) translateY(${dragY * 0.5}px)`;
+          lbStage.style.opacity = String(opacity);
+          // Fade backdrop
+          const backdrop = lightbox.querySelector('.lightbox__backdrop') as HTMLElement;
+          if (backdrop) backdrop.style.opacity = String(1 - progress * 0.7);
         }
       }, { passive: true });
 
       lightbox.addEventListener('touchend', (e: TouchEvent) => {
-        const dx = e.changedTouches[0].screenX - touchStartX;
-        const dy = e.changedTouches[0].screenY - touchStartY;
+        const dx = e.changedTouches[0].clientX - touchStartX;
+        const dy = e.changedTouches[0].clientY - touchStartY;
         const dt = Date.now() - touchStartTime;
-        const velocity = Math.abs(dx) / dt;
+        const now = Date.now();
 
-        // Trigger on distance OR velocity (quick flicks)
-        const distanceThreshold = Math.abs(dx) > 50;
-        const velocityThreshold = velocity > 0.3 && Math.abs(dx) > 20;
-        const isHorizontal = Math.abs(dx) > Math.abs(dy) * 1.3;
+        // Clean up drag state
+        if (gestureType === 'swipe-v') {
+          lightbox.classList.remove('lightbox--dragging');
+          const backdrop = lightbox.querySelector('.lightbox__backdrop') as HTMLElement;
 
-        if ((distanceThreshold || velocityThreshold) && isHorizontal) {
-          // Haptic feedback if available
-          if (navigator.vibrate) navigator.vibrate(10);
-          if (dx < 0) goNext();
-          if (dx > 0) goPrev();
+          // Close if dragged far enough or fast enough
+          const velocity = dragY / dt;
+          if (dragY > 100 || velocity > 0.5) {
+            if (navigator.vibrate) navigator.vibrate(10);
+            cleanupGestureState();
+            closeLightbox();
+          } else {
+            // Snap back
+            lbStage.style.transition = 'transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease';
+            lbStage.style.transform = '';
+            lbStage.style.opacity = '';
+            if (backdrop) {
+              backdrop.style.transition = 'opacity 0.3s ease';
+              backdrop.style.opacity = '';
+            }
+            setTimeout(() => {
+              lbStage.style.transition = '';
+              if (backdrop) backdrop.style.transition = '';
+            }, 300);
+          }
+          gestureType = 'none';
+          return;
         }
+
+        // Pinch end - snap to 1x if close
+        if (gestureType === 'pinch') {
+          if (zoomScale < 1.1) {
+            resetZoom(true);
+          } else {
+            clampPan();
+            applyZoom(true);
+          }
+          gestureType = 'none';
+          return;
+        }
+
+        // Pan end
+        if (gestureType === 'pan') {
+          clampPan();
+          applyZoom(true);
+          gestureType = 'none';
+          return;
+        }
+
+        // Horizontal swipe for navigation (only when not zoomed)
+        if (gestureType === 'swipe-h' && !isZoomed()) {
+          const velocity = Math.abs(dx) / dt;
+          const distanceThreshold = Math.abs(dx) > 50;
+          const velocityThreshold = velocity > 0.3 && Math.abs(dx) > 20;
+
+          if (distanceThreshold || velocityThreshold) {
+            if (navigator.vibrate) navigator.vibrate(10);
+            if (dx < 0) goNext();
+            if (dx > 0) goPrev();
+          }
+          gestureType = 'none';
+          return;
+        }
+
+        // Tap detection (no significant movement)
+        if (Math.abs(dx) < 10 && Math.abs(dy) < 10 && dt < 300) {
+          // Double-tap to zoom
+          if (now - lastTapTime < 300) {
+            lastTapTime = 0;
+            if (isZoomed()) {
+              resetZoom(true);
+            } else {
+              // Zoom to 2.5x centered on tap point
+              const rect = lbImg.getBoundingClientRect();
+              const tapX = e.changedTouches[0].clientX - rect.left - rect.width / 2;
+              const tapY = e.changedTouches[0].clientY - rect.top - rect.height / 2;
+              zoomScale = 2.5;
+              zoomX = -tapX * 0.6;
+              zoomY = -tapY * 0.6;
+              clampPan();
+              applyZoom(true);
+              if (navigator.vibrate) navigator.vibrate(10);
+            }
+          } else {
+            // Single tap - toggle UI (with delay to check for double-tap)
+            lastTapTime = now;
+            setTimeout(() => {
+              if (lastTapTime === now) {
+                toggleUI();
+              }
+            }, 300);
+          }
+        }
+
+        gestureType = 'none';
       }, { passive: true });
+
+      // Reset gesture state on any close trigger
+      // (close buttons already have handlers attached, so we add cleanup handlers too)
+      function cleanupGestureState() {
+        resetZoom(false);
+        lightbox.classList.remove('lightbox--ui-hidden', 'lightbox--dragging');
+        lbStage.style.transform = '';
+        lbStage.style.opacity = '';
+        const backdrop = lightbox.querySelector('.lightbox__backdrop') as HTMLElement;
+        if (backdrop) backdrop.style.opacity = '';
+      }
+
+      // Add cleanup to all close triggers (runs alongside existing close handlers)
+      lightbox.querySelectorAll('[data-close]').forEach(el => {
+        el.addEventListener('click', cleanupGestureState);
+      });
+
+      // Also cleanup on Escape (keyboard handler calls closeLightbox inline, but add backup)
+      lightbox.addEventListener('keydown', (e: KeyboardEvent) => {
+        if (e.key === 'Escape') cleanupGestureState();
+      });
     }
 
 
@@ -2374,8 +2628,8 @@ const planOrientation = (() => {
     position: absolute;
     bottom: 0;
     left: -8px;
-    width: 42%;
-    max-width: 220px;
+    width: 32%;
+    max-width: 180px;
     aspect-ratio: 1 / 1.15;
     z-index: 3;
     border-radius: 20px;
@@ -2412,6 +2666,14 @@ const planOrientation = (() => {
     background-image: var(--lqip);
     background-size: cover;
     background-position: center;
+  }
+
+  /* Smaller accent for landscape hero images — desktop only */
+  @media (min-width: 769px) {
+    .hero__accent--landscape {
+      width: 24%;
+      max-width: 150px;
+    }
   }
 
   /* Connector line */
@@ -3006,7 +3268,7 @@ const planOrientation = (() => {
   /* ═══ 3. The Design — Premium ═══ */
   .design {
     padding-block: clamp(80px, 12vw, 120px);
-    background: var(--c-white);
+    background: #f5f5f4;
     border-top: 1px solid var(--c-border);
   }
 
@@ -3129,7 +3391,7 @@ const planOrientation = (() => {
     content: '';
     position: absolute;
     inset: 0;
-    border: 1px solid rgba(55, 58, 54, 0.04);
+    border: 1px solid rgba(55, 58, 54, 0.12);
     border-radius: inherit;
     pointer-events: none;
   }
@@ -4523,23 +4785,45 @@ const planOrientation = (() => {
     display: none;
   }
 
-  .lightbox--plan .lightbox__frame {
-    /* Force plan images to scale up to fill available space */
-    align-items: stretch;
-    justify-content: stretch;
+  .lightbox--plan .lightbox__caption {
+    display: none;
   }
 
-  .lightbox--plan .lightbox__img {
-    position: relative;
-    width: 100%;
-    height: 100%;
-    max-width: none;
-    max-height: none;
-    object-fit: contain;
-    background: #fff;
-    padding: 24px;
-    border-radius: 8px;
-    box-shadow: 0 8px 40px rgba(0, 0, 0, 0.4);
+  /* ── UI Toggle (tap to hide/show) ── */
+  .lightbox--ui-hidden .lightbox__close,
+  .lightbox--ui-hidden .lightbox__nav,
+  .lightbox--ui-hidden .lightbox__counter,
+  .lightbox--ui-hidden .lightbox__caption {
+    opacity: 0 !important;
+    pointer-events: none;
+  }
+
+  /* ── Swipe-to-close drag feedback ── */
+  .lightbox__stage {
+    touch-action: pan-y pinch-zoom;
+  }
+  .lightbox--dragging .lightbox__stage {
+    transition: none !important;
+  }
+  .lightbox--dragging .lightbox__backdrop {
+    transition: opacity 0.1s ease-out;
+  }
+
+  /* ── Pinch-to-zoom ── */
+  .lightbox__img {
+    touch-action: none;
+    transform-origin: center center;
+  }
+  .lightbox--zoomed .lightbox__img {
+    cursor: grab;
+  }
+  .lightbox--zoomed .lightbox__img:active {
+    cursor: grabbing;
+  }
+  .lightbox--zoomed .lightbox__nav,
+  .lightbox--zoomed .lightbox__counter {
+    opacity: 0 !important;
+    pointer-events: none;
   }
 
   .lightbox__counter {
@@ -4598,11 +4882,11 @@ const planOrientation = (() => {
   /* ── Portrait: nav overlays image edges, maximize height ── */
   @media (orientation: portrait) {
     .lightbox__stage {
-      --lb-nav-size: 44px;
-      --lb-nav-gap: 0px;
-      --lb-edge-inset: 8px;
-      --lb-footer-height: 70px;
-      --lb-top-inset: 16px;
+      /* Override width calc — go nearly edge-to-edge */
+      width: calc(100vw - 16px);
+      width: calc(100dvw - 16px);
+      --lb-footer-height: 56px;
+      --lb-top-inset: 12px;
     }
     .lightbox__nav {
       width: 44px;
@@ -4612,31 +4896,34 @@ const planOrientation = (() => {
     .lightbox__nav--next { right: 8px; }
   }
 
-  /* ── Short landscape: compact UI, maximize image ── */
+  /* ── Short landscape (phone rotated): compact UI, maximize image ── */
   @media (orientation: landscape) and (max-height: 600px) {
     .lightbox__stage {
-      --lb-nav-size: 40px;
-      --lb-nav-gap: 12px;
-      --lb-edge-inset: 8px;
-      --lb-footer-height: 36px;
-      --lb-top-inset: 8px;
+      /* In landscape, give more horizontal room but keep nav visible */
+      width: calc(100vw - 120px);
+      width: calc(100dvw - 120px);
+      --lb-footer-height: 32px;
+      --lb-top-inset: 6px;
+      height: calc(100dvh - var(--lb-top-inset) - var(--lb-footer-height) - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
     }
     .lightbox__close {
-      top: 8px;
-      right: 8px;
-      width: 40px;
-      height: 40px;
+      top: 6px;
+      right: max(6px, env(safe-area-inset-right, 6px));
+      width: 36px;
+      height: 36px;
     }
     .lightbox__nav {
       width: 40px;
       height: 40px;
     }
+    .lightbox__nav--prev { left: max(8px, env(safe-area-inset-left, 8px)); }
+    .lightbox__nav--next { right: max(8px, env(safe-area-inset-right, 8px)); }
     .lightbox__counter {
-      font-size: 0.72rem;
-      padding: 5px 10px;
+      font-size: 0.7rem;
+      padding: 4px 10px;
     }
     .lightbox__caption {
-      font-size: 0.85rem;
+      display: none; /* Hide caption in landscape to maximize image */
     }
   }
 
@@ -4940,15 +5227,14 @@ const planOrientation = (() => {
 
     /* Lightbox mobile — nav overlays image, maximize space */
     .lightbox {
-      padding: env(safe-area-inset-top, 8px) env(safe-area-inset-right, 8px) env(safe-area-inset-bottom, 8px) env(safe-area-inset-left, 8px);
+      padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
     }
     .lightbox__stage {
-      --lb-nav-size: 44px;
-      --lb-nav-gap: 0px;
-      --lb-edge-inset: 8px;
-      --lb-footer-height: 56px;
-      --lb-top-inset: 12px;
-      /* Override with safe area aware calculation */
+      /* On mobile, image goes nearly edge-to-edge, nav buttons overlay */
+      width: calc(100vw - 16px);
+      width: calc(100dvw - 16px);
+      --lb-footer-height: 48px;
+      --lb-top-inset: 8px;
       height: calc(100dvh - var(--lb-top-inset) - var(--lb-footer-height) - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
     }
     .lightbox__nav--prev { left: 8px; }
@@ -4967,7 +5253,16 @@ const planOrientation = (() => {
       font-size: 0.72rem;
       padding: 6px 12px;
     }
+    /* Make photos fill the available space on mobile */
     .lightbox__img, .lightbox__placeholder {
+      /* Anchor to frame edges and fill it */
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      max-width: none;
+      max-height: none;
+      object-fit: contain;
       border-radius: 6px;
     }
 
