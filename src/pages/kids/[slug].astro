@@ -4523,6 +4523,25 @@ const planOrientation = (() => {
     display: none;
   }
 
+  .lightbox--plan .lightbox__frame {
+    /* Force plan images to scale up to fill available space */
+    align-items: stretch;
+    justify-content: stretch;
+  }
+
+  .lightbox--plan .lightbox__img {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    max-width: none;
+    max-height: none;
+    object-fit: contain;
+    background: #fff;
+    padding: 24px;
+    border-radius: 8px;
+    box-shadow: 0 8px 40px rgba(0, 0, 0, 0.4);
+  }
+
   .lightbox__counter {
     flex-shrink: 0;
     color: rgba(255, 255, 255, 0.7);
