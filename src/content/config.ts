@@ -9,7 +9,7 @@ const kids = defineCollection({
     diagnosis: z.string().nullable(),
     roomTypes: z.array(z.string()).nullable(),
     year: z.number().nullable(),
-    status: z.enum(['completed', 'in-progress']).default('completed'),
+    status: z.enum(['completed', 'in-progress', 'needs-funding']).default('completed'),
     bio: z.string().nullable(),
     quote: z.string().nullable(),
     heroImage: z.string().nullable(),

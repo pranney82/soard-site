@@ -1058,26 +1058,6 @@
     }
     .rte-counts .rte-para-count { color: var(--color-primary); font-weight: 600; }
 
-    /* ─── Story Photo Picker ──────────── */
-    .story-photo-picker {
-      display: grid; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
-      gap: 0.5rem; margin-top: 0.5rem;
-    }
-    .story-photo-option {
-      position: relative; aspect-ratio: 1; border-radius: 8px; overflow: hidden;
-      cursor: pointer; border: 2px solid transparent; transition: all 0.15s;
-    }
-    .story-photo-option img { width: 100%; height: 100%; object-fit: cover; display: block; }
-    .story-photo-option:hover { border-color: rgba(0,0,0,0.2); }
-    .story-photo-option.selected { border-color: var(--color-primary); box-shadow: 0 0 0 2px var(--color-primary); }
-    .story-photo-option.dimmed { opacity: 0.35; cursor: not-allowed; }
-    .story-photo-badge {
-      position: absolute; top: 4px; right: 4px; width: 22px; height: 22px;
-      background: var(--color-primary); color: #000; font-weight: 700; font-size: 0.75rem;
-      border-radius: 50%; display: flex; align-items: center; justify-content: center;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.3);
-    }
-
     /* ─── Sortable table headers ──────── */
     th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
     th.sortable:hover { color: #2D2E33; }
@@ -4127,7 +4107,6 @@
         heroSummary: '', shortDescription: '', metaDescription: '', fundraisingUrl: '',
         roomCount: 1, childCount: 1,
         bedroomCount: 0, bathroomCount: 0, therapyRoomCount: 0,
-        storyPhotos: [],
         plans: [],
         beforeAfterPhotos: [],
       });
@@ -4441,8 +4420,6 @@
           ...d,
           photos: d.photos.filter((_, i) => i !== index),
           photoCount: d.photoCount - 1,
-          // Also remove from storyPhotos if present
-          storyPhotos: (d.storyPhotos || []).filter(sp => sp.url !== photoUrl),
         }));
         // Delete from Cloudflare Images in the background
         const imageId = extractCfImageId(photoUrl);
@@ -4457,20 +4434,6 @@
       const setAccent = (index) => {
         setDirty(true);
         setData(d => ({ ...d, accentImage: d.photos[index]?.url || '' }));
-      };
-
-      const toggleStoryPhoto = (photo) => {
-        setDirty(true);
-        setData(d => {
-          const current = d.storyPhotos || [];
-          const idx = current.findIndex(sp => sp.url === photo.url);
-          if (idx !== -1) {
-            return { ...d, storyPhotos: current.filter((_, i) => i !== idx) };
-          } else if (current.length < 4) {
-            return { ...d, storyPhotos: [...current, { url: photo.url, alt: photo.alt || '' }] };
-          }
-          return d;
-        });
       };
 
       const handleVideoUpload = async (files) => {
@@ -4521,7 +4484,6 @@
             fundraisingUrl: data.fundraisingUrl || null,
             photos: data.photos.map(({ _tempId, ...p }) => p),
             partnerLogos: (data.partnerLogos || []).map(({ _tempId, ...p }) => p),
-            storyPhotos: (data.storyPhotos || []).map(({ _tempId, ...p }) => p),
             plans: (data.plans || []).map(({ _tempId, ...p }) => p),
             beforeAfterPhotos: (data.beforeAfterPhotos || []).filter(p => p.before && p.after),
             photoCount: data.photos.length,
@@ -4837,38 +4799,8 @@
         </div>
 
         <div class="card">
-          <h3 style="margin-bottom: 0.25rem;">Story Photos</h3>
-          <p class="text-sm text-muted mb-1">
-            Select up to 4 photos to pair with bio paragraphs on the profile page. Photo 1 appears beside paragraph 2, photo 2 beside paragraph 3, etc.
-            ${bioCounts.paragraphs > 1 ? html` Your bio has <strong>${bioCounts.paragraphs} paragraphs</strong> — you can pair up to <strong>${Math.min(bioCounts.paragraphs - 1, 4)}</strong> story photo${Math.min(bioCounts.paragraphs - 1, 4) !== 1 ? 's' : ''}.` : bioCounts.paragraphs === 1 ? html` Your bio has <strong>1 paragraph</strong> — add paragraph breaks to pair photos with text.` : ''}
-          </p>
-          ${(data.photos || []).length > 0 ? html`
-            <div class="story-photo-picker">
-              ${data.photos.map((photo, i) => {
-                const spIndex = (data.storyPhotos || []).findIndex(sp => sp.url === photo.url);
-                const isSelected = spIndex !== -1;
-                const isFull = (data.storyPhotos || []).length >= 4;
-                return html`
-                  <div key=${photo.url || i}
-                    class="story-photo-option ${isSelected ? 'selected' : ''} ${!isSelected && isFull ? 'dimmed' : ''}"
-                    onClick=${() => { if (!isSelected && isFull) return; toggleStoryPhoto(photo); }}>
-                    <img src=${cfThumb(photo.url)} alt=${photo.alt || ''} loading="lazy" />
-                    ${isSelected ? html`<span class="story-photo-badge">${spIndex + 1}</span>` : null}
-                  </div>
-                `;
-              })}
-            </div>
-            ${(data.storyPhotos || []).length > 0 ? html`
-              <p class="text-sm text-muted" style="margin-top: 0.5rem;">
-                ${(data.storyPhotos || []).length} of 4 selected. Click a selected photo to remove it.
-              </p>
-            ` : null}
-          ` : html`<p class="text-sm text-muted">Upload photos first, then select story photos here.</p>`}
-        </div>
-
-        <div class="card">
           <h3 style="margin-bottom: 0.25rem;">Plans</h3>
-          <p class="text-sm text-muted mb-1">Upload as-built and proposed plan images (floor plans, renderings, etc.). Drag to reorder.</p>
+          <p class="text-sm text-muted mb-1">Upload plan images (floor plans, renderings, etc.). First 2 display on the page. Drag to reorder.</p>
           <${DropZone} onFiles=${uploadPlans} label="JPG, PNG, PDF — upload plan images" />
           ${(data.plans || []).length > 0 ? html`
             <div class="photo-grid" style="margin-top: 0.75rem;">
@@ -4882,14 +4814,8 @@
                     </div>
                   </div>
                   <input class="form-input" style="font-size: 0.75rem; padding: 0.3rem 0.4rem; margin-top: 0.25rem; border-radius: 6px;"
-                    value=${plan.label || ''} placeholder="Label (e.g. Master Bath)..."
+                    value=${plan.label || ''} placeholder="Caption (shows in lightbox)..."
                     onInput=${e => { setDirty(true); setData(d => ({ ...d, plans: (d.plans || []).map((p, idx) => idx === i ? { ...p, label: e.target.value } : p) })); }} />
-                  <select class="form-select" style="font-size: 0.75rem; padding: 0.3rem 0.4rem; margin-top: 0.25rem; border-radius: 6px;"
-                    value=${plan.type || 'as-built'}
-                    onChange=${e => { setDirty(true); setData(d => ({ ...d, plans: (d.plans || []).map((p, idx) => idx === i ? { ...p, type: e.target.value } : p) })); }}>
-                    <option value="as-built">As-Built</option>
-                    <option value="proposed">Proposed</option>
-                  </select>
                 </div>
               `)}
             </div>

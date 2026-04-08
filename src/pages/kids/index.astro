@@ -15,10 +15,12 @@ import { getSiteStats } from '../../utils/stats';
 import siteSettings from '../../content/site/settings.json';
 
 const allKids = await getPublishedKids();
+// Sort priority: in-progress (0) > needs-funding (1) > completed (2)
+const statusPriority = (s: string) => s === 'in-progress' ? 0 : s === 'needs-funding' ? 1 : 2;
 const kids = allKids
   .sort((a, b) => {
-    const sA = a.data.status === 'in-progress' ? 0 : 1;
-    const sB = b.data.status === 'in-progress' ? 0 : 1;
+    const sA = statusPriority(a.data.status);
+    const sB = statusPriority(b.data.status);
     if (sA !== sB) return sA - sB;
     return (b.data.year || 0) - (a.data.year || 0);
   });
@@ -332,18 +334,23 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
                 </span>
               </div>
               {kid.data.status === 'in-progress' && (
-                <span class="kid-card__badge">In Progress</span>
+                <span class="kid-card__badge kid-card__badge--building">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 10V5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v5"/><path d="M14 6a6 6 0 0 1 6 6v3"/><path d="M4 15v-3a6 6 0 0 1 6-6"/><rect x="2" y="15" width="20" height="4" rx="1"/></svg>
+                  Building
+                </span>
               )}
-              {(kid.data.roomTypes || []).length > 0 && (
-                <div class="kid-card__tags" aria-hidden="true">
-                  {sortRoomTypes(kid.data.roomTypes || []).map(type => (
-                    <span class="kid-card__tag">{type}</span>
-                  ))}
-                </div>
+              {kid.data.status === 'needs-funding' && (
+                <span class="kid-card__badge kid-card__badge--funding">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
+                  Needs Funding
+                </span>
               )}
-            </div>
-            <div class="kid-card__info">
-              <span class="kid-card__name">{kid.data.name}</span>
+              <div class="kid-card__info">
+                <span class="kid-card__name">{kid.data.name}</span>
+                {(kid.data.roomTypes || []).length > 0 && (
+                  <span class="kid-card__room">{sortRoomTypes(kid.data.roomTypes || [])[0]}</span>
+                )}
+              </div>
             </div>
           </a>
         ))}
@@ -609,8 +616,13 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
       }
       const blurStyle = kid.b ? ` style="background-image:url(${kid.b})"` : '';
       const sortedTypes = sortRoomTypes(kid.t);
-      const tagsHtml = sortedTypes.length > 0 ? `<div class="kid-card__tags" aria-hidden="true">${sortedTypes.map(t => `<span class="kid-card__tag">${escapeHtml(t)}</span>`).join('')}</div>` : '';
-      a.innerHTML = `<div class="kid-card__frame"${blurStyle}>${imgHtml}<div class="kid-card__hover-overlay" aria-hidden="true"><span class="kid-card__cta"><span class="kid-card__cta-text">Read their story</span><svg class="kid-card__cta-arrow" width="14" height="14"><use href="#icon-cta-arrow"/></svg></span></div>${kid.st === 'in-progress' ? '<span class="kid-card__badge">In Progress</span>' : ''}${tagsHtml}</div><div class="kid-card__info"><span class="kid-card__name">${escapeHtml(kid.n)}</span></div>`;
+      const roomHtml = sortedTypes.length > 0 ? `<span class="kid-card__room">${escapeHtml(sortedTypes[0])}</span>` : '';
+      const statusHtml = kid.st === 'in-progress'
+        ? '<span class="kid-card__badge kid-card__badge--building"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 10V5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v5"/><path d="M14 6a6 6 0 0 1 6 6v3"/><path d="M4 15v-3a6 6 0 0 1 6-6"/><rect x="2" y="15" width="20" height="4" rx="1"/></svg>Building</span>'
+        : kid.st === 'needs-funding'
+        ? '<span class="kid-card__badge kid-card__badge--funding"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>Needs Funding</span>'
+        : '';
+      a.innerHTML = `<div class="kid-card__frame"${blurStyle}>${imgHtml}<div class="kid-card__hover-overlay" aria-hidden="true"><span class="kid-card__cta"><span class="kid-card__cta-text">Read their story</span><svg class="kid-card__cta-arrow" width="14" height="14"><use href="#icon-cta-arrow"/></svg></span></div>${statusHtml}<div class="kid-card__info"><span class="kid-card__name">${escapeHtml(kid.n)}</span>${roomHtml}</div></div>`;
       return a;
     }
 
@@ -733,12 +745,17 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
     // ══════════════════════════════════════════
     //  SORT with FLIP
     // ══════════════════════════════════════════
+    // Sort priority: in-progress (0) > needs-funding (1) > completed (2)
+    function statusPriority(s: string | undefined) {
+      return s === 'in-progress' ? 0 : s === 'needs-funding' ? 1 : 2;
+    }
+
     function sortCards(animate = true) {
       const oldPos = animate ? capturePositions() : null;
       cachedCards.sort((a, b) => {
-        // Always show in-progress kids first
-        const sA = a.dataset.status === 'in-progress' ? 0 : 1;
-        const sB = b.dataset.status === 'in-progress' ? 0 : 1;
+        // Priority: in-progress > needs-funding > completed
+        const sA = statusPriority(a.dataset.status);
+        const sB = statusPriority(b.dataset.status);
         if (sA !== sB) return sA - sB;
 
         const yearA = parseInt((a.dataset.year || '').replace('year-', '')) || 0;
@@ -2296,8 +2313,10 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
   .kids-grid {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
-    gap: var(--space-lg);
+    gap: var(--space-xl);
     min-width: 0;
+    max-width: 1400px;
+    margin-inline: auto;
   }
 
   /* ── Card (global: JS creates overflow cards dynamically) ── */
@@ -2355,10 +2374,12 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
   /* ── Card Frame + LQIP blur placeholder ── */
   :global(.kid-card__frame) {
     position: relative;
-    border-radius: var(--border-radius-lg);
+    border-radius: clamp(16px, 2vw, 24px);
     overflow: hidden;
-    aspect-ratio: 3 / 4;
+    aspect-ratio: 4 / 5;
     background: var(--c-warm-gray);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
+    transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.5s ease;
   }
   /* Blurred LQIP pseudo-element — sits behind the img, above the gray bg */
   :global(.kid-card__frame[style*="background-image"])::before {
@@ -2472,15 +2493,15 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
   }
 
   @media (hover: hover) {
+    :global(.kid-card:hover .kid-card__frame) {
+      transform: translateY(-4px);
+      box-shadow: 0 16px 48px rgba(0, 0, 0, 0.12);
+    }
     :global(.kid-card:hover .kid-card__img) {
       transform: scale(1.03);
-      filter: brightness(1.04);
     }
     :global(.kid-card:hover .kid-card__hover-overlay) {
       opacity: 1;
-    }
-    :global(.kid-card:hover .kid-card__tags) {
-      opacity: 0;
     }
     :global(.kid-card:hover .kid-card__cta) {
       opacity: 1;
@@ -2497,55 +2518,100 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
     transform: translateX(-50%) translateY(0);
   }
 
-  /* ── Info Below Photo ── */
+  /* ── Info Overlaid on Photo ── */
   :global(.kid-card__info) {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 48px 16px 16px;
+    background: linear-gradient(to top, rgba(0, 0, 0, 0.6) 0%, rgba(0, 0, 0, 0.3) 50%, transparent 100%);
+    z-index: 2;
     display: flex;
-    align-items: center;
-    gap: var(--space-sm);
-    padding: 14px 4px 4px;
+    flex-direction: column;
+    gap: 4px;
   }
 
   :global(.kid-card__name) {
-    color: var(--c-text);
+    color: var(--c-white);
     font-family: var(--font-display);
-    font-size: 1rem;
+    font-size: clamp(1.25rem, 2.5vw, 1.5rem);
     font-weight: 600;
-    line-height: 1.3;
-    background-image: linear-gradient(var(--c-yellow), var(--c-yellow));
-    background-size: 0% 2.5px;
-    background-repeat: no-repeat;
-    background-position: left bottom;
-    padding-bottom: 2px;
-    transition: background-size 0.35s cubic-bezier(0.16, 1, 0.3, 1), color var(--transition-fast);
+    line-height: 1.2;
+    letter-spacing: -0.01em;
+    text-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    transition: color 0.2s ease;
   }
+
+  :global(.kid-card__room) {
+    display: inline-block;
+    padding: 5px 12px;
+    background: rgba(255, 255, 255, 0.15);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    color: var(--c-yellow);
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    border-radius: 100px;
+    width: fit-content;
+  }
+
 
   @media (hover: hover) {
     :global(.kid-card:hover .kid-card__name) {
-      color: var(--c-dark);
-      background-size: 100% 2.5px;
+      color: rgba(255, 255, 255, 0.85);
     }
   }
 
   /* (kid-card__diagnosis removed — room types now as photo overlay pills) */
 
+
+  /* ── Status badges ── */
   :global(.kid-card__badge) {
     position: absolute;
     top: 8px;
     right: 8px;
-    padding: 4px 11px;
-    background: rgba(0, 0, 0, 0.45);
-    backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
-    color: rgba(255, 255, 255, 0.9);
+    padding: 5px 12px;
     font-size: 0.55rem;
-    font-weight: 500;
+    font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.08em;
     border-radius: 100px;
     white-space: nowrap;
     z-index: 2;
-    box-shadow: none;
     pointer-events: none;
+  }
+
+  :global(.kid-card__badge--funding) {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: rgba(55, 58, 54, 0.9);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    color: var(--c-white);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  }
+
+  :global(.kid-card__badge--funding svg) {
+    flex-shrink: 0;
+  }
+
+  :global(.kid-card__badge--building) {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: rgba(55, 58, 54, 0.9);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    color: var(--c-yellow);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  }
+
+  :global(.kid-card__badge--building svg) {
+    flex-shrink: 0;
   }
 
   /* ── Room Type Tags (overlaid on photo) ── */
@@ -2708,10 +2774,10 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
      RESPONSIVE
      ═══════════════════════════════════════════ */
 
-  /* Large screens */
+  /* Large screens - generous spacing, capped at 4 columns */
   @media (min-width: 1400px) {
     .kids-grid {
-      grid-template-columns: repeat(5, 1fr);
+      gap: var(--space-2xl);
     }
   }
 
@@ -2719,9 +2785,8 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
   @media (max-width: 1100px) {
     .kids-grid {
       grid-template-columns: repeat(3, 1fr);
-      gap: var(--space-md);
+      gap: var(--space-lg);
     }
-
   }
 
   /* Mobile */
@@ -2851,7 +2916,7 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
     /* Grid: 2 columns */
     .kids-grid {
       grid-template-columns: repeat(2, 1fr);
-      gap: var(--space-md) 14px;
+      gap: var(--space-md);
       max-width: 100%;
     }
 
@@ -2872,36 +2937,24 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
     }
 
     :global(.kid-card__info) {
-      padding: 8px 2px 2px;
-      gap: 4px;
-      flex-wrap: wrap;
-    }
-
-    :global(.kid-card__name) {
-      font-size: 0.88rem;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      min-width: 0;
-    }
-
-    :global(.kid-card__tags) {
-      bottom: 6px;
-      left: 6px;
-      right: 40px;
+      padding: 32px 10px 10px;
       gap: 3px;
     }
 
-    :global(.kid-card__tag) {
-      font-size: 0.56rem;
-      padding: 3px 8px;
+    :global(.kid-card__name) {
+      font-size: 0.95rem;
+    }
+
+    :global(.kid-card__room) {
+      font-size: 0.6rem;
+      padding: 4px 10px;
     }
 
     :global(.kid-card__badge) {
-      font-size: 0.55rem;
-      padding: 2px 7px;
-      top: 6px;
-      right: 6px;
+      font-size: 0.5rem;
+      padding: 3px 8px;
+      top: 5px;
+      right: 5px;
     }
 
     /* Bottom CTA tighter on mobile */
@@ -2929,11 +2982,16 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
     }
 
     .kids-grid {
-      gap: var(--space-sm) 10px;
+      gap: var(--space-sm);
     }
 
     :global(.kid-card__name) {
-      font-size: 0.8rem;
+      font-size: 0.85rem;
+    }
+
+    :global(.kid-card__room) {
+      font-size: 0.55rem;
+      padding: 3px 8px;
     }
 
     /* Compact pills for very small screens */
@@ -2968,6 +3026,10 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
       opacity: 1;
       transform: none;
       animation: none;
+      transition: none;
+    }
+
+    :global(.kid-card__frame) {
       transition: none;
     }
 
