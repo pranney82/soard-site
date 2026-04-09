@@ -364,7 +364,7 @@ const planOrientation = (() => {
       <nav class="chapter-nav" id="chapter-nav" aria-label="Page sections">
         <div class="chapter-nav__track">
           <div class="chapter-nav__pill" aria-hidden="true"></div>
-          {chapters.map((ch) => (
+          {chapters.filter(ch => ch.show).map((ch) => (
             <a
               href={`#${ch.id}`}
               class={`chapter-nav__link${ch.id === 'chapter-meet' ? ' is-active' : ''}`}
@@ -732,6 +732,7 @@ const planOrientation = (() => {
                 <div class="village__logo">
                   <img
                     src={cfUrl(logo.url, 'w=200,q=85')}
+                    srcset={`${cfUrl(logo.url, 'w=200,q=85')} 1x, ${cfUrl(logo.url, 'w=400,q=80')} 2x`}
                     alt={logo.name || 'Project partner'}
                     loading="lazy"
                     decoding="async"
@@ -762,10 +763,11 @@ const planOrientation = (() => {
               <a href={`/kids/${rk.slug}/`} class="kid-thumb">
                 <div class="kid-thumb-photo" style={`background-image:url('${lqip(rk.heroImage)}')`}>
                   <img
-                    src={cfUrl(rk.heroImage, 'w=440,h=440,fit=cover,gravity=face,q=65')}
+                    src={cfUrl(rk.heroImage, 'w=320,h=320,fit=cover,gravity=face,q=70')}
+                    srcset={`${cfUrl(rk.heroImage, 'w=320,h=320,fit=cover,gravity=face,q=70')} 1x, ${cfUrl(rk.heroImage, 'w=480,h=480,fit=cover,gravity=face,q=65')} 1.5x, ${cfUrl(rk.heroImage, 'w=640,h=640,fit=cover,gravity=face,q=60')} 2x`}
                     alt={`${rk.name}'s room reveal`}
-                    width="220"
-                    height="220"
+                    width="160"
+                    height="160"
                     loading="lazy"
                     decoding="async"
                     class="lqip-img"
@@ -4150,6 +4152,8 @@ const planOrientation = (() => {
     grid-auto-rows: minmax(140px, 180px);
     gap: 16px;
     margin-top: 16px;
+    content-visibility: auto;
+    contain-intrinsic-size: auto 600px;
   }
 
   .gallery__overflow .gallery__cell {
@@ -4216,6 +4220,8 @@ const planOrientation = (() => {
     padding-block: clamp(80px, 12vw, 120px);
     background: var(--c-white);
     border-top: 1px solid var(--c-border);
+    content-visibility: auto;
+    contain-intrinsic-size: auto 300px;
   }
 
   .village__title {
@@ -4266,6 +4272,8 @@ const planOrientation = (() => {
     padding: 100px 0 80px;
     overflow: hidden;
     contain: layout style;
+    content-visibility: auto;
+    contain-intrinsic-size: auto 450px;
     background: linear-gradient(180deg, var(--c-cream) 0%, var(--c-white) 100%);
     border-top: 1px solid var(--c-border);
   }
@@ -4421,6 +4429,8 @@ const planOrientation = (() => {
   .page-cta {
     padding-block: clamp(80px, 12vw, 120px);
     background: var(--c-dark);
+    content-visibility: auto;
+    contain-intrinsic-size: auto 280px;
   }
 
   .page-cta__inner {
