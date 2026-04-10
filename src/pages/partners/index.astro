@@ -148,7 +148,7 @@ const jsonLd = buildSchemaGraph(
                       <img
                         src={cfRaw(p.data.logo, 'w=400,h=120,fit=contain,q=85')}
                         srcset={cfDensitySrcset(cfId(p.data.logo), 200, 60, { quality: 85, fit: 'contain' })}
-                        alt=""
+                        alt={p.data.name}
                         width="200" height="60"
                         loading="lazy" decoding="async"
                         onerror="this.style.display='none';this.nextElementSibling.style.display=''"
@@ -226,7 +226,7 @@ const jsonLd = buildSchemaGraph(
                       <img
                         src={cfRaw(p.data.logo, 'w=280,h=80,fit=contain,q=80')}
                         srcset={cfDensitySrcset(cfId(p.data.logo), 140, 40, { quality: 80, fit: 'contain' })}
-                        alt=""
+                        alt={p.data.name}
                         width="140" height="40"
                         loading="lazy" decoding="async"
                         onerror="this.style.display='none';this.nextElementSibling.style.display=''"
@@ -323,7 +323,7 @@ const jsonLd = buildSchemaGraph(
                     <img
                       src={cfRaw(p.data.logo, 'w=180,h=64,fit=contain,q=75')}
                       srcset={cfDensitySrcset(cfId(p.data.logo), 90, 32, { quality: 75, fit: 'contain' })}
-                      alt=""
+                      alt={p.data.name}
                       width="90" height="32"
                       loading="lazy" decoding="async"
                       onerror="this.style.display='none';this.nextElementSibling.style.display=''"
