@@ -173,6 +173,8 @@ const heroMobileSizes = '(max-width: 480px) 92vw, 92vw';
 // ── Minimal data detection ────────────────
 const hasDetails = kid.age || (kid.roomTypes && kid.roomTypes.length > 0) || kid.year;
 const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
+// noindex thin profiles (no bio, few photos, no video) to prevent "Crawled — not indexed"
+const isThinPage = !kid.bio && galleryPhotos.length <= 1 && !hasVideo;
 
 // ── Plans ─────────────────────────────────
 const plans = kid.plans || [];
@@ -241,13 +243,14 @@ const planOrientation = (() => {
 ---
 
 <BaseLayout
-  title={`${kid.name}'s Story`}
+  title={`${kid.name}'s Story${kid.roomTypes?.length ? ` — ${kid.roomTypes.join(' & ')}` : ''}`}
   description={metaDesc}
   ogType="article"
   jsonLd={kidSchemas}
   breadcrumbs={breadcrumbs}
   datePublished={kid.year ? `${kid.year}-01-01` : undefined}
   dateModified={dateModified}
+  noindex={isThinPage}
 >
   {kid.heroImage && <link slot="head" rel="preload" as="image" imagesrcset={heroMobileSrcset} imagesizes={heroMobileSizes} fetchpriority="high" media="(max-width: 768px)" />}
   {kid.heroImage && <link slot="head" rel="preload" as="image" imagesrcset={heroSrcset} imagesizes={heroSizes} fetchpriority="high" media="(min-width: 769px)" />}

@@ -179,7 +179,7 @@
 /about-us/  /about/  301
 /about-us/financials/  /about/financials/  301
 /leadership/  /about/leadership/  301
-/what-we-do/  /rooms/  301
+/what-we-do/  /kids/  301
 /meet-the-kids/  /kids/  301
 /meet-the-kids/elizabeth-html/  /kids/elizabeth/  301
 /community-projects/  /community/  301
@@ -187,7 +187,7 @@
 /get-involved/  /partners/  301
 /construction-partners/  /partners/  301
 /featured-designers/  /partners/  301
-/before/  /rooms/before-after/  301
+/before/  /kids/  301
 /application/  /apply/  301
 /faqs/  /faq/  301
 /media-kit/  /publicity/  301
@@ -197,10 +197,10 @@
 /category/meet-the-kids/  /kids/  301
 /category/community-projects/  /community/  301
 /category/construction-partners/  /partners/  301
-/category/construction-projects/  /rooms/  301
+/category/construction-projects/  /kids/  301
 /category/designers/  /partners/  301
 /category/commercial-designers/  /partners/  301
-/category/designer-projects/  /rooms/  301
+/category/designer-projects/  /kids/  301
 /category/artisan-design-studio/  /partners/  301
 /category/bin-there-dump-that-atlanta/  /partners/  301
 /category/cambria/  /partners/  301
@@ -224,12 +224,12 @@
 /category/uncategorized/  /  301
 
 # ─── WP tag archive redirects → nearest equivalent ───────────
-/tag/dream-bedroom/  /rooms/  301
-/tag/accessible-bathroom/  /rooms/  301
-/tag/therapy-room/  /rooms/  301
-/tag/wheelchair-ramp/  /rooms/  301
-/tag/chair-lift/  /rooms/  301
-/tag/concrete-carport/  /rooms/  301
+/tag/dream-bedroom/  /kids/  301
+/tag/accessible-bathroom/  /kids/  301
+/tag/therapy-room/  /kids/  301
+/tag/wheelchair-ramp/  /kids/  301
+/tag/chair-lift/  /kids/  301
+/tag/concrete-carport/  /kids/  301
 /tag/community-project/  /community/  301
 /tag/school/  /community/  301
 /tag/healthcare/  /community/  301

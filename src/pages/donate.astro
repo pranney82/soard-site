@@ -22,7 +22,7 @@ import { getCollection } from 'astro:content';
 import { getPublishedKids } from '../utils/collections';
 import faqData from '../content/site/faq.json';
 import siteSettings from '../content/site/settings.json';
-import { getDonateSchema } from '../utils/schema';
+import { getDonateSchema, getFAQSchema } from '../utils/schema';
 import { getSiteStats } from '../utils/stats';
 import { cfRaw, cfSrcset, CF_BASE, cfLqip } from '../utils/cf-image';
 
@@ -57,7 +57,7 @@ const donateFaqs = faqData.items
   })
   .sort((a, b) => (a.order || 0) - (b.order || 0));
 
-const donateJsonLd = getDonateSchema();
+const donateJsonLd = [getDonateSchema(), getFAQSchema(donateFaqs)];
 const breadcrumbs = [
   { name: 'Home', url: 'https://sunshineonaranneyday.com/' },
   { name: 'Donate', url: 'https://sunshineonaranneyday.com/donate/' },
@@ -65,8 +65,8 @@ const breadcrumbs = [
 ---
 
 <BaseLayout
-  title="Donate — Help Build a Brighter Home"
-  description="Every dollar builds accessible bathrooms, dream bedrooms, and therapy rooms for children with special needs in Atlanta — all at no cost to families."
+  title="Donate — Give a Child Their Dream Room"
+  description="Your gift transforms a child's world. We build free dream bedrooms, accessible bathrooms, and therapy rooms for kids with special needs in Atlanta. 100% goes to the mission."
   jsonLd={donateJsonLd}
   breadcrumbs={breadcrumbs}
 >
@@ -271,8 +271,8 @@ const breadcrumbs = [
         <h2>We're an open book. <em class="highlight">Always.</em></h2>
         <p class="donate-trust-body">You should know exactly where every dollar goes. Our financials are public, our mission is clear, and our track record speaks for itself.</p>
         <div class="donate-trust-links">
-          <a href="/about/financials" class="btn btn-trust">View Our Financials →</a>
-          <a href="/ways-to-give" class="donate-trust-link">More ways to give →</a>
+          <a href="/about/financials/" class="btn btn-trust">View Our Financials →</a>
+          <a href="/ways-to-give/" class="donate-trust-link">More ways to give →</a>
         </div>
       </div>
       <div class="donate-trust-right">
@@ -325,12 +325,12 @@ const breadcrumbs = [
         <div class="way-item">
           <h3>Stock, DAF & More</h3>
           <p>Donate stock, give through your donor-advised fund, or mail a check — all tax-deductible.</p>
-          <a href="/ways-to-give">See All Options →</a>
+          <a href="/ways-to-give/">See All Options →</a>
         </div>
         <div class="way-item">
           <h3>Spread the Word</h3>
           <p>Share our mission with friends and family. A single share can connect us to the next partner or donor.</p>
-          <a href="/about">Learn Our Story →</a>
+          <a href="/about/">Learn Our Story →</a>
         </div>
       </div>
     </div>
@@ -354,7 +354,7 @@ const breadcrumbs = [
       <p data-reveal data-delay="1">You can make that happen today.</p>
       <div class="donate-finale-ctas" data-reveal data-delay="2">
         <a href={ZEFFY_ONETIME} target="_blank" rel="noopener noreferrer" data-zeffy class="btn btn-dark btn-lg">Donate Now →</a>
-        <a href="/kids" class="btn btn-outline-dark">Meet the Kids</a>
+        <a href="/kids/" class="btn btn-outline-dark">Meet the Kids</a>
       </div>
       <p class="donate-finale-note" data-reveal data-delay="3">501(c)(3) · EIN 45-4773997 · All donations tax-deductible</p>
     </div>

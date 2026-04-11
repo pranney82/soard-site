@@ -7,8 +7,22 @@ const isDev = process.argv.includes('dev');
 export default defineConfig({
   site: 'https://sunshineonaranneyday.com',
   output: 'static',
+  trailingSlash: 'always',
   compressHTML: true,
-  integrations: [sitemap(), ...(isDev ? [devSync()] : [])],
+  integrations: [
+    sitemap({
+      filter: (page) =>
+        !page.includes('/branding') &&
+        !page.includes('/terms') &&
+        !page.includes('/privacy-policy'),
+      serialize: (item) => {
+        // Add lastmod to all sitemap entries
+        item.lastmod = new Date().toISOString();
+        return item;
+      },
+    }),
+    ...(isDev ? [devSync()] : []),
+  ],
   prefetch: {
     defaultStrategy: 'hover',
   },

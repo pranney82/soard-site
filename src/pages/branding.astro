@@ -1,4 +1,5 @@
 ---
+/* noindex: brand assets page is for partners/press, not search traffic */
 import BaseLayout from '../layouts/BaseLayout.astro';
 import media from '../content/site/media.json';
 import { getSiteStats } from '../utils/stats';
@@ -42,7 +43,7 @@ const jsonLd = {
   },
 };
 ---
-<BaseLayout title="Brand & Media Kit" description={media.metaDescription} breadcrumbs={breadcrumbs} jsonLd={jsonLd}>
+<BaseLayout title="Brand & Media Kit" description={media.metaDescription} breadcrumbs={breadcrumbs} jsonLd={jsonLd} noindex={true}>
 
   <!-- ═══ DARK HERO ═══ -->
   <section class="brand-hero">

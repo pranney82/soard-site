@@ -39,7 +39,7 @@ const featured = logos;
     <div class="ps__grid" data-reveal data-delay="1" role="list" aria-label="Featured partners">
       {featured.map(p => (
         <div role="listitem" class="ps__item">
-          <a class="ps__cell" href="/partners" aria-label={p.name}>
+          <a class="ps__cell" href="/partners/" aria-label={p.name}>
             <div class="ps__logo-frame">
               <img
                 src={`${CF}/${p.id}/w=180,h=100,fit=contain,trim=20,q=80`}
@@ -59,7 +59,7 @@ const featured = logos;
 
   <div class="ps__inner">
     <div class="ps__footer" data-reveal data-delay="2">
-      <a href="/partners" class="ps__link">
+      <a href="/partners/" class="ps__link">
         Meet all {totalPartners}+ partners
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
           <path d="M3.5 8h9M8.5 4l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>

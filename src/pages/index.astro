@@ -107,13 +107,13 @@ const heroSrcset = `${heroImg320} 320w, ${heroImg480} 480w, ${heroImg640} 640w, 
 /* Photo column: 0.85fr of 1400px grid ≈ 530px. 2× retina → 1060px. 1280w covers 2.4× comfortably. */
 const heroSizes = '(max-width:480px) 80vw, (max-width:768px) 60vw, 530px';
 
-import { getWebSiteSchema } from '../utils/schema';
-const jsonLd = getWebSiteSchema();
+import { getWebSiteSchema, getSiteNavigationSchema } from '../utils/schema';
+const jsonLd = [getWebSiteSchema(), ...getSiteNavigationSchema()];
 ---
 
 <BaseLayout
   title="Home"
-  description="Sunshine on a Ranney Day is a 501(c)(3) nonprofit creating life-changing home makeovers for children with special needs — dream bedrooms, accessible bathrooms, and therapy spaces — all at no cost to families in greater Atlanta."
+  description="We build free dream bedrooms, accessible bathrooms, and therapy rooms for children with special needs in Atlanta. 501(c)(3) nonprofit — donate or apply today."
   ogImage="/og/home.png"
   jsonLd={jsonLd}
 >
@@ -218,7 +218,7 @@ const jsonLd = getWebSiteSchema();
         <div class="section-label">More Stories</div>
         <h2 id="kids-heading">Every room changes a <em class="highlight">life</em></h2>
       </div>
-      <a href="/kids" class="kids-strip-all">See all {stats.totalKids}+ kids →</a>
+      <a href="/kids/" class="kids-strip-all">See all {stats.totalKids}+ kids →</a>
     </div>
     <div class="kids-scroll-wrap">
       <ul class="kids-scroll">
@@ -281,7 +281,7 @@ const jsonLd = getWebSiteSchema();
             </li>
           </ol>
           <div class="process-cta" data-reveal>
-            <a href="/partners" class="btn btn-primary">Become a Partner →</a>
+            <a href="/partners/" class="btn btn-primary">Become a Partner →</a>
           </div>
         </div>
       </div>
@@ -384,7 +384,7 @@ const jsonLd = getWebSiteSchema();
           <p>Registered nonprofit. EIN 45-4773997. All donations are fully tax-deductible.</p>
         </div>
       </div>
-      <div class="trust-cta" data-reveal><a href="/about/financials" class="btn btn-ghost-light">View Our Financials →</a></div>
+      <div class="trust-cta" data-reveal><a href="/about/financials/" class="btn btn-ghost-light">View Our Financials →</a></div>
     </div>
   </section>
 
@@ -398,7 +398,7 @@ const jsonLd = getWebSiteSchema();
       <h2 id="cta-heading" data-reveal>A room can change a child's life.<br/><em>You</em> can make it happen.</h2>
       <p data-reveal data-delay="1">Your donation helps build dream spaces for children with special needs in the Atlanta area. Every gift makes a real difference — for kids, rooms, and community.</p>
       <div class="finale-ctas" data-reveal data-delay="2">
-        <a href="/donate" class="btn btn-dark btn-lg">Donate Today</a>
+        <a href="/donate/" class="btn btn-dark btn-lg">Donate Today</a>
         <a href="/partners/" class="btn btn-outline-dark">Become a Partner</a>
       </div>
       <p class="finale-note" data-reveal data-delay="3">All donations tax-deductible · 501(c)(3) · EIN 45-4773997</p>

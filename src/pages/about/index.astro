@@ -10,9 +10,11 @@
  * - Team photos from CF Images
  */
 import PageLayout from '../../layouts/PageLayout.astro';
-import { getWebPageSchema, getBreadcrumbSchema, buildSchemaGraph } from '../../utils/schema';
+import FAQSection from '../../components/ui/FAQSection.astro';
+import { getWebPageSchema, getBreadcrumbSchema, getFAQSchema, buildSchemaGraph } from '../../utils/schema';
 import { getSiteStats } from '../../utils/stats';
 import page from '../../content/site/our-story.json';
+import faqData from '../../content/site/faq.json';
 
 import { CF_BASE as CF, cfUrl, cfSrcset } from '../../utils/cf-image';
 
@@ -31,19 +33,26 @@ const milestones = page.milestones;
 
 /* ── Schema ── */
 const pageUrl = 'https://sunshineonaranneyday.com/about/';
-const aboutDesc = `How Peter and Holly Ranney founded Sunshine on a Ranney Day in 2012 — and built a movement that has transformed ${stats.totalRooms}+ rooms for children with special needs across greater Atlanta.`;
+const aboutDesc = `From one family's dream to ${stats.totalRooms}+ rooms transformed. See how Sunshine on a Ranney Day builds free bedrooms, bathrooms, and therapy spaces for kids with special needs in Atlanta.`;
 const breadcrumbs = [
   { name: 'Home', url: 'https://sunshineonaranneyday.com/' },
   { name: 'Our Story', url: pageUrl },
 ];
+const aboutFaqs = faqData.items
+  .filter(item => item.category === 'about' || item.category === 'rooms')
+  .sort((a, b) => {
+    if (a.category !== b.category) return a.category === 'about' ? -1 : 1;
+    return (a.order || 0) - (b.order || 0);
+  });
 const jsonLd = buildSchemaGraph(
   getWebPageSchema({ url: pageUrl, title: 'Our Story', description: aboutDesc }),
   getBreadcrumbSchema(breadcrumbs, pageUrl),
+  getFAQSchema(aboutFaqs),
 );
 ---
 
 <PageLayout
-  title="Our Story — How It All Started"
+  title="Our Story — A Family That Builds Dreams"
   description={aboutDesc}
   jsonLd={jsonLd}
   breadcrumbs={breadcrumbs}
@@ -195,22 +204,33 @@ const jsonLd = buildSchemaGraph(
       <h2 id="today-heading" set:html={page.today.heading} />
       <p class="today-body" set:html={page.today.body} />
       <div class="today-links">
-        <a href="/about/leadership" class="btn btn-dark">Meet Our Team →</a>
-        <a href="/about/financials" class="btn btn-outline">View Financials →</a>
+        <a href="/about/leadership/" class="btn btn-dark">Meet Our Team →</a>
+        <a href="/about/financials/" class="btn btn-outline">View Financials →</a>
       </div>
     </div>
   </section>
 
   <!-- ══════ FINAL CTA ══════ -->
+  <!-- ══════ FAQ ══════ -->
+  <FAQSection
+    heading='Common questions about <em class="highlight-dark">our mission</em>.'
+    body="Learn more about who we are, what we build, and how it all works."
+    ctaLabel="See All FAQs →"
+    ctaHref="/faq/"
+    items={aboutFaqs}
+    accordionName="about-faq"
+    id="faq"
+  />
+
   <section class="story-finale">
     <div class="story-finale-inner">
       <h2 data-reveal set:html={page.finale.heading} />
       <p data-reveal data-delay="1" set:html={page.finale.body} />
       <div class="story-finale-ctas" data-reveal data-delay="2">
-        <a href="/donate" class="btn btn-dark btn-lg">Donate Today</a>
-        <a href="/kids" class="btn btn-outline-dark">Meet the Kids</a>
+        <a href="/donate/" class="btn btn-dark btn-lg">Donate Today</a>
+        <a href="/kids/" class="btn btn-outline-dark">Meet the Kids</a>
       </div>
-      <p class="story-finale-note" data-reveal data-delay="3">501(c)(3) · EIN 45-4773997 · All donations tax-deductible</p>
+      <p class="story-finale-note" data-reveal data-delay="3">501(c)(3) · EIN 45-4773997 · All donations tax-deductible · <a href="/publicity/" style="color: inherit; text-decoration: underline;">See our press coverage</a></p>
     </div>
   </section>
 

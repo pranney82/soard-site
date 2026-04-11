@@ -52,12 +52,17 @@ const jsonLd = {
 ---
 
 <PageLayout
-  title="Financials"
-  description="Financial transparency: 990 tax returns, audited financials, and annual reports for Sunshine on a Ranney Day, a 501(c)(3) nonprofit."
+  title="Financials — 990s, Audits & Annual Reports"
+  description="Full financial transparency: 990 tax returns, audited financials, and annual reports. See exactly where your donation goes."
   heroLabel="Transparency"
   heroTitle={'<em class="highlight">Financials</em>'}
   heroSubtitle="Transparency you can trust"
   jsonLd={jsonLd}
+  breadcrumbs={[
+    { name: 'Home', url: 'https://sunshineonaranneyday.com/' },
+    { name: 'Our Story', url: 'https://sunshineonaranneyday.com/about/' },
+    { name: 'Financials', url: 'https://sunshineonaranneyday.com/about/financials/' },
+  ]}
 >
   <!-- Trust Badges -->
   <section class="section section--sm section--gray">

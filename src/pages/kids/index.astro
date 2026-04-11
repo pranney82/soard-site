@@ -49,7 +49,7 @@ const yearRange = startYear ? `Since ${startYear}` : '';
 
 // ── SEO ──────────────────────────────────
 const SITE = 'https://sunshineonaranneyday.com';
-const pageDescription = `Meet ${totalKids} children whose lives were transformed by Sunshine on a Ranney Day — dream bedrooms, accessible bathrooms, therapy rooms, and more. ${siteStats.totalRooms} rooms built${inProgressCount > 0 ? `, ${inProgressCount} in progress` : ''}.`;
+const pageDescription = `Every child deserves a space that feels like home. Meet ${totalKids} kids whose lives changed with a dream bedroom, accessible bathroom, or therapy room — built free by volunteers in Atlanta.`;
 
 const itemListSchema = {
   "@type": "CollectionPage",
@@ -129,7 +129,7 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
 ---
 
 <BaseLayout
-  title="Meet the Kids"
+  title="Meet the Kids We've Helped"
   description={pageDescription}
   jsonLd={[itemListSchema, faqSchema]}
   breadcrumbs={breadcrumbs}
@@ -394,8 +394,9 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
       <p class="bottom-cta__text">Your generosity helps us transform bedrooms, bathrooms, and therapy rooms for children with serious illnesses and disabilities.</p>
       <div class="bottom-cta__buttons">
         <a href="/donate/" class="btn btn-yellow">Donate Now</a>
-        <a href="/about/" class="btn btn-outline-light">Our Story</a>
+        <a href="/apply/" class="btn btn-outline-light">Apply for a Room</a>
       </div>
+      <p class="bottom-cta__sub" style="margin-top: var(--space-lg); font-size: 0.9rem; opacity: 0.7;"><a href="/resources/" style="color: inherit; text-decoration: underline;">Read our guides</a> on accessible home design, sensory bedrooms, and therapy rooms.</p>
     </div>
   </section>
 

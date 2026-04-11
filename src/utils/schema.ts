@@ -285,6 +285,54 @@ export function getKidProfileSchema(kid: {
 }
 
 /**
+ * Reusable VideoObject schema
+ * Works with both Cloudflare Stream and YouTube embeds.
+ */
+export function getVideoSchema(opts: {
+  name: string;
+  description: string;
+  pageUrl: string;
+  streamVideoId?: string;
+  videoUrl?: string;
+  uploadDate?: string;
+}) {
+  const STREAM = 'customer-cuav5h47lgfe96ql.cloudflarestream.com';
+
+  if (opts.streamVideoId) {
+    return {
+      "@type": "VideoObject",
+      "@id": `${opts.pageUrl}#video`,
+      "name": opts.name,
+      "description": opts.description,
+      "thumbnailUrl": `https://${STREAM}/${opts.streamVideoId}/thumbnails/thumbnail.jpg?width=1280&height=720`,
+      "uploadDate": opts.uploadDate,
+      "contentUrl": `https://${STREAM}/${opts.streamVideoId}/watch`,
+      "embedUrl": `https://iframe.videodelivery.net/${opts.streamVideoId}`,
+      "publisher": { "@id": `${SITE_URL}/#organization` },
+    };
+  }
+
+  // YouTube fallback
+  const ytMatch = opts.videoUrl?.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/))([a-zA-Z0-9_-]{11})/);
+  if (ytMatch) {
+    const ytId = ytMatch[1];
+    return {
+      "@type": "VideoObject",
+      "@id": `${opts.pageUrl}#video`,
+      "name": opts.name,
+      "description": opts.description,
+      "thumbnailUrl": `https://i.ytimg.com/vi/${ytId}/maxresdefault.jpg`,
+      "uploadDate": opts.uploadDate,
+      "contentUrl": `https://www.youtube.com/watch?v=${ytId}`,
+      "embedUrl": `https://www.youtube-nocookie.com/embed/${ytId}`,
+      "publisher": { "@id": `${SITE_URL}/#organization` },
+    };
+  }
+
+  return null;
+}
+
+/**
  * FAQPage schema
  */
 export function getFAQSchema(items: { question: string; answer: string }[]) {
@@ -299,6 +347,30 @@ export function getFAQSchema(items: { question: string; answer: string }[]) {
       }
     }))
   };
+}
+
+/**
+ * SiteNavigationElement schema — homepage only
+ * Helps Google understand the site's primary navigation for sitelinks.
+ */
+export function getSiteNavigationSchema() {
+  const navItems = [
+    { name: 'Our Story', url: `${SITE_URL}/about/` },
+    { name: 'Meet the Kids', url: `${SITE_URL}/kids/` },
+    { name: 'Community Projects', url: `${SITE_URL}/community/` },
+    { name: 'Donate', url: `${SITE_URL}/donate/` },
+    { name: 'Apply', url: `${SITE_URL}/apply/` },
+    { name: 'Events', url: `${SITE_URL}/events/` },
+    { name: 'Partners', url: `${SITE_URL}/partners/` },
+    { name: 'Resources', url: `${SITE_URL}/resources/` },
+    { name: 'FAQs', url: `${SITE_URL}/faq/` },
+  ];
+  return navItems.map((item, i) => ({
+    "@type": "SiteNavigationElement",
+    "position": i + 1,
+    "name": item.name,
+    "url": item.url,
+  }));
 }
 
 /**
