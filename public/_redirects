@@ -248,6 +248,23 @@
 /tag/2025/  /kids/  301
 /tag/2026/  /kids/  301
 
+# ─── Google Search Console 404 fixes ────────────────────────
+/board  /  301
+/jack-2016  /kids/  301
+/oliver.html  /kids/  301
+/rachel-buckner-22014.html  /kids/  301
+/briana-112013.html  /kids/  301
+/angel-112015.html  /kids/  301
+/oliver-22015  /kids/  301
+/janiyah-2017  /kids/  301
+/jessie-2017  /kids/  301
+/paige-2018  /kids/  301
+/andrew-2017  /kids/  301
+/ta-alissa-62014  /kids/  301
+/aj-22014.html  /kids/  301
+/tashawn-alissa-62014.html  /kids/  301
+/2016-gala  /  301
+
 # ─── WordPress system URL redirects ──────────────────────────
 # Bots hammer these constantly after a WP migration
 /wp-login.php  /  301
@@ -293,7 +310,10 @@
 # Images now live on Cloudflare Images, so these can't resolve.
 /wp-content/*  /  301
 
-# ─── Catch-all: WP system directories ────────────────────────
+# ─── Catch-all: WP system directories & scripts ──────────────
 /wp-includes/*  /  301
 /wp-admin/*  /  301
 /wp-json/*  /  301
+
+# ─── Catch-all: WP PHP files (wp-login.php, wp-cron.php, etc.) ──
+/wp-*.php  /  301

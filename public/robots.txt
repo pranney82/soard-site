@@ -6,6 +6,7 @@ User-agent: *
 Allow: /
 Disallow: /admin/
 Disallow: /api/
+Disallow: /cdn-cgi/
 Disallow: /_redirects
 Disallow: /.well-known/
 
@@ -14,6 +15,7 @@ User-agent: Googlebot
 Allow: /
 Disallow: /admin/
 Disallow: /api/
+Disallow: /cdn-cgi/
 
 User-agent: Googlebot-Image
 Allow: /images/
