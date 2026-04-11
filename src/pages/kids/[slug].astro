@@ -128,7 +128,7 @@ const breadcrumbs = [
 
 const metaDesc = kid.metaDescription
   || kid.shortDescription
-  || `Meet ${kid.name}${kid.diagnosis ? `, diagnosed with ${kid.diagnosis}` : ''}. Learn how Sunshine on a Ranney Day transformed their space${kid.roomTypes?.length ? ` with a ${kid.roomTypes.join(' & ')}` : ''}.`;
+  || `Meet ${kid.name}${kid.diagnosis ? `, diagnosed with ${kid.diagnosis}` : ''}. Learn how Sunshine on a Ranney Day transformed their space${kid.roomTypes?.length ? ` with ${/^[aeiou]/i.test(kid.roomTypes[0]) ? 'an' : 'a'} ${kid.roomTypes.join(' & ')}` : ''}.`;
 
 const dateModified = kid.year ? `${kid.year}-01-01` : undefined;
 

@@ -179,7 +179,8 @@
 /about-us/  /about/  301
 /about-us/financials/  /about/financials/  301
 /leadership/  /about/leadership/  301
-/what-we-do/  /kids/  301
+/what-we-do/  /resources/  301
+/rooms/  /resources/  301
 /meet-the-kids/  /kids/  301
 /meet-the-kids/elizabeth-html/  /kids/elizabeth/  301
 /community-projects/  /community/  301
@@ -276,7 +277,7 @@
 # ═══════════════════════════════════════════════════════════════
 
 # ─── Catch-all: remaining /blog/ URLs (date archives, etc.) ──
-/blog/*  /kids/  301
+/blog/*  /publicity/  301
 
 # ─── Catch-all: remaining /category/ URLs ────────────────────
 /category/*  /kids/  301

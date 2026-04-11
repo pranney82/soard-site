@@ -8,7 +8,6 @@ Disallow: /admin/
 Disallow: /api/
 Disallow: /_redirects
 Disallow: /.well-known/
-Crawl-delay: 1
 
 # ── Google ────────────────────────────────────────
 User-agent: Googlebot

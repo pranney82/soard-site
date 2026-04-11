@@ -209,7 +209,7 @@ export function getKidProfileSchema(kid: {
     "@type": "Article",
     "@id": `${url}#article`,
     "headline": `${kid.name}'s Story — Sunshine on a Ranney Day`,
-    "description": kid.metaDescription || `Meet ${kid.name}${kid.diagnosis ? `, diagnosed with ${kid.diagnosis}` : ''} — learn how Sunshine on a Ranney Day transformed their space${kid.roomTypes?.length ? ` with a ${kid.roomTypes.join(' & ')}` : ''}.`,
+    "description": kid.metaDescription || `Meet ${kid.name}${kid.diagnosis ? `, diagnosed with ${kid.diagnosis}` : ''} — learn how Sunshine on a Ranney Day transformed their space${kid.roomTypes?.length ? ` with ${/^[aeiou]/i.test(kid.roomTypes[0]) ? 'an' : 'a'} ${kid.roomTypes.join(' & ')}` : ''}.`,
     "url": url,
     "isPartOf": { "@id": `${SITE_URL}/#website` },
     "publisher": { "@id": `${SITE_URL}/#organization` },
