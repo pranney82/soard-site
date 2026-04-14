@@ -8,7 +8,7 @@
   ],
   "year": 2026,
   "status": "in-progress",
-  "bio": "At just 17 years old, Josue, has faced extraordinary challenges from a young age. After overcoming TB meningitis as an infant, he was later diagnosed with cerebral palsy. Josue, who requires intensive, hospital-level care at home, spends most of his time confined to his bedroom. He is unable to sit up without help, depends on g-tube feeding, and is nonverbal. His devoted single mother, a constant source of love and support, dedicates herself to his care, often sleeping in the same room to closely monitor him throughout the night. Josue's world is a small one, centered around his mother and his bedroom.",
+  "bio": "<p>Josue is only 17, but he has faced more challenges than many people do in a lifetime. He survived TB meningitis as a baby and was later diagnosed with cerebral palsy, which means he needs intensive, hospital-level care at home. Josue cannot sit up by himself, does not speak, and uses a feeding tube. Most of his days are spent in the same room because of his medical needs.</p><p>Still, something powerful fills that small space: unwavering love. His mother, a dedicated single parent, always cares for him as his caregiver, advocate, and source of comfort. She hardly ever leaves his side and even sleeps in his room every night so she can watch over him and help whenever he needs it.</p><p>Josue’s world may be small now, but with the right support, it can grow.</p>",
   "quote": null,
   "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/josue/hero/public",
   "photos": [
@@ -96,5 +96,7 @@
   "fundraisingUrl": null,
   "bedroomCount": 1,
   "storyPhotos": [],
-  "plans": []
+  "plans": [],
+  "heroSummary": "Josue, 17, lives with cerebral palsy and requires constant, hospital-level care at home. SOARD is transforming his space to improve comfort, safety, and quality of life for both Josue and his devoted mother.\n",
+  "beforeAfterPhotos": []
 }

@@ -2323,9 +2323,9 @@
               ${template !== 'monthly' ? html`
                 <!-- Kid selector -->
                 <div class="form-group">
-                  <label class="form-label">${template === 'reveal' ? 'Select Completed Kid' : 'Select In-Progress Kid'}</label>
+                  <label class="form-label">${template === 'reveal' ? 'Select Completed Kid' : 'Select In-Build Kid'}</label>
                   <select class="form-input" value=${selectedSlug} onChange=${e => { setSelectedSlug(e.target.value); setHeroImageOverride(''); setResult(null); setPreviewHtml(''); setShowPreview(false); }}>
-                    ${kidOptions.length === 0 ? html`<option value="">No ${template === 'kickoff' ? 'in-progress' : 'completed'} kids</option>` : null}
+                    ${kidOptions.length === 0 ? html`<option value="">No ${template === 'kickoff' ? 'in-build' : 'completed'} kids</option>` : null}
                     ${kidOptions.map(k => html`<option key=${k.slug} value=${k.slug}>${k.name}${k.year ? ` (${k.year})` : ''} — ${k.roomTypes?.join(', ') || 'No rooms'}</option>`)}
                   </select>
                 </div>
@@ -3471,8 +3471,9 @@
           return score < 70;
         });
         const inProgress = kids.filter(k => k.status === 'in-progress');
+        const needsFunding = kids.filter(k => k.status === 'needs-funding');
         const upcomingEvents = (events || []).filter(e => e.status === 'upcoming');
-        return { noPhoto, incomplete, inProgress, upcomingEvents };
+        return { noPhoto, incomplete, inProgress, needsFunding, upcomingEvents };
       }, [kids, events]);
 
       // Content health (average profile completeness)
@@ -3484,6 +3485,7 @@
 
       const completedRooms = kids.filter(k => k.status === 'completed').length;
       const inProgressCount = kids.filter(k => k.status === 'in-progress').length;
+      const needsFundingCount = kids.filter(k => k.status === 'needs-funding').length;
       const upcomingEventsCount = (events || []).filter(e => e.status === 'upcoming').length;
 
       return html`
@@ -3589,8 +3591,15 @@
             <div class="stat-card-icon" style="background: rgba(214,158,46,0.1);">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#D69E2E" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
             </div>
-            <div class="stat-label" style="margin-top: 0; margin-bottom: 0.25rem;">In Progress</div>
+            <div class="stat-label" style="margin-top: 0; margin-bottom: 0.25rem;">In Build</div>
             <div class="stat-number">${inProgressCount}</div>
+          </div>
+          <div class="stat-card" style="--card-accent: #E53E3E; cursor: pointer; text-align: left;" onClick=${() => onNavigate('kids-hub', null, 'kids', 'needs-funding')}>
+            <div class="stat-card-icon" style="background: rgba(229,62,62,0.1);">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#E53E3E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
+            </div>
+            <div class="stat-label" style="margin-top: 0; margin-bottom: 0.25rem;">Awaiting Funding</div>
+            <div class="stat-number">${needsFundingCount}</div>
           </div>
           <div class="stat-card" style="--card-accent: #805AD5; cursor: pointer; text-align: left;" onClick=${() => onNavigate('events', null, null, 'upcoming')}>
             <div class="stat-card-icon" style="background: rgba(128,90,213,0.1);">
@@ -3646,10 +3655,22 @@
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                   </div>
                   <div class="attention-card-body">
-                    <div class="attention-card-title">Rooms In Progress</div>
+                    <div class="attention-card-title">Rooms In Build</div>
                     <div class="attention-card-desc">Awaiting completion</div>
                   </div>
                   <div class="attention-count">${attention.inProgress.length}</div>
+                </div>
+              ` : null}
+              ${attention.needsFunding.length > 0 ? html`
+                <div class="attention-card" onClick=${() => onNavigate('kids-hub', null, 'kids', 'needs-funding')}>
+                  <div class="attention-icon" style="background: rgba(229,62,62,0.1); color: #E53E3E;">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
+                  </div>
+                  <div class="attention-card-body">
+                    <div class="attention-card-title">Rooms Awaiting Funding</div>
+                    <div class="attention-card-desc">Not yet ready to build</div>
+                  </div>
+                  <div class="attention-count">${attention.needsFunding.length}</div>
                 </div>
               ` : null}
               ${attention.upcomingEvents.length > 0 ? html`
@@ -3858,7 +3879,7 @@
                   <td>${k.heroImage ? html`<img class="td-thumb" src="${k.heroImage}" alt="" />` : '—'}</td>
                   <td><strong>${k.name}</strong></td>
                   <td>${k.year || '—'}</td>
-                  <td><span class="badge ${k.status === 'completed' ? 'badge-green' : 'badge-yellow'}">${k.status}</span></td>
+                  <td><span class="badge ${k.status === 'completed' ? 'badge-green' : k.status === 'needs-funding' ? 'badge-red' : 'badge-yellow'}">${k.status === 'in-progress' ? 'in build' : k.status === 'needs-funding' ? 'awaiting funding' : k.status}</span></td>
                   <td>${k.photoCount || 0}</td>
                 </tr>`)}
               </tbody>
@@ -3895,6 +3916,8 @@
           });
         } else if (dashboardFilter === 'in-progress') {
           result = result.filter(k => k.status === 'in-progress');
+        } else if (dashboardFilter === 'needs-funding') {
+          result = result.filter(k => k.status === 'needs-funding');
         } else if (dashboardFilter === 'completed') {
           result = result.filter(k => k.status === 'completed');
         }
@@ -3998,14 +4021,16 @@
               style="padding: 0.45rem 0.75rem; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-bg-card); font-size: 0.85rem; color: var(--color-text); cursor: pointer; ${statusFilter !== 'all' ? 'border-color: var(--color-primary); background: var(--color-primary-bg);' : ''}">
               <option value="all">All Statuses</option>
               <option value="completed">Completed</option>
-              <option value="in-progress">In Progress</option>
+              <option value="in-progress">In Build</option>
+              <option value="needs-funding">Awaiting Funding</option>
             </select>
             ${dashboardFilter ? html`
               <button onClick=${onClearFilter} style="display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.35rem 0.75rem; background: var(--color-primary-bg); border: 1px solid var(--color-primary); border-radius: 20px; font-size: 0.8rem; font-weight: 600; color: var(--color-text); cursor: pointer; white-space: nowrap;">
                 ${{
                   'missing-photos': 'Missing Photos',
                   'incomplete': 'Incomplete Profiles',
-                  'in-progress': 'In Progress',
+                  'in-progress': 'In Build',
+                  'needs-funding': 'Awaiting Funding',
                   'completed': 'Completed',
                 }[dashboardFilter]} (${filtered.length})
                 <span style="font-size: 1rem; line-height: 1;">×</span>
@@ -4073,7 +4098,7 @@
                           ref=${el => el && el.focus()} style="width: 70px;" />`
                       : html`<span onDblClick=${e => startInlineEdit(e, k.slug, 'year', k.year)} style="cursor: text;" title="Double-click to edit">${k.year || '—'}</span>`}
                   </td>
-                  <td><span class="badge ${k.status === 'completed' ? 'badge-green' : 'badge-yellow'}">${k.status}</span>${k.publishStatus === 'draft' ? html` <span class="draft-badge-draft" style="font-size: 0.65rem;">Draft</span>` : ''}</td>
+                  <td><span class="badge ${k.status === 'completed' ? 'badge-green' : k.status === 'needs-funding' ? 'badge-red' : 'badge-yellow'}">${k.status === 'in-progress' ? 'in build' : k.status === 'needs-funding' ? 'awaiting funding' : k.status}</span>${k.publishStatus === 'draft' ? html` <span class="draft-badge-draft" style="font-size: 0.65rem;">Draft</span>` : ''}</td>
                   <td>${k.photoCount || 0}</td>
                   <td style="white-space: nowrap;">
                     <button class="btn btn-ghost btn-sm" style="color: #E53E3E;" onClick=${(e) => { e.stopPropagation(); onDelete(k); }}>Delete</button>
@@ -4649,7 +4674,8 @@
             <select class="form-select" value=${data.status}
               onChange=${e => updateField('status', e.target.value)}>
               <option value="completed">Completed</option>
-              <option value="in-progress">In Progress</option>
+              <option value="in-progress">In Build</option>
+              <option value="needs-funding">Awaiting Funding</option>
             </select>
           </div>
           <div class="form-row">

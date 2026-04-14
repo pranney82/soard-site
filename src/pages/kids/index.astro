@@ -15,8 +15,8 @@ import { getSiteStats } from '../../utils/stats';
 import siteSettings from '../../content/site/settings.json';
 
 const allKids = await getPublishedKids();
-// Sort priority: in-progress (0) > needs-funding (1) > completed (2)
-const statusPriority = (s: string) => s === 'in-progress' ? 0 : s === 'needs-funding' ? 1 : 2;
+// Sort priority: needs-funding (0) > in-progress (1) > completed (2)
+const statusPriority = (s: string) => s === 'needs-funding' ? 0 : s === 'in-progress' ? 1 : 2;
 const kids = allKids
   .sort((a, b) => {
     const sA = statusPriority(a.data.status);
@@ -342,7 +342,7 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
               {kid.data.status === 'needs-funding' && (
                 <span class="kid-card__badge kid-card__badge--funding">
                   <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
-                  Needs Funding
+                  Awaiting Funding
                 </span>
               )}
               <div class="kid-card__info">
@@ -621,7 +621,7 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
       const statusHtml = kid.st === 'in-progress'
         ? '<span class="kid-card__badge kid-card__badge--building"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 10V5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v5"/><path d="M14 6a6 6 0 0 1 6 6v3"/><path d="M4 15v-3a6 6 0 0 1 6-6"/><rect x="2" y="15" width="20" height="4" rx="1"/></svg>Building</span>'
         : kid.st === 'needs-funding'
-        ? '<span class="kid-card__badge kid-card__badge--funding"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>Needs Funding</span>'
+        ? '<span class="kid-card__badge kid-card__badge--funding"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>Awaiting Funding</span>'
         : '';
       a.innerHTML = `<div class="kid-card__frame"${blurStyle}>${imgHtml}<div class="kid-card__hover-overlay" aria-hidden="true"><span class="kid-card__cta"><span class="kid-card__cta-text">Read their story</span><svg class="kid-card__cta-arrow" width="14" height="14"><use href="#icon-cta-arrow"/></svg></span></div>${statusHtml}<div class="kid-card__info"><span class="kid-card__name">${escapeHtml(kid.n)}</span>${roomHtml}</div></div>`;
       return a;
@@ -746,9 +746,9 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
     // ══════════════════════════════════════════
     //  SORT with FLIP
     // ══════════════════════════════════════════
-    // Sort priority: in-progress (0) > needs-funding (1) > completed (2)
+    // Sort priority: needs-funding (0) > in-progress (1) > completed (2)
     function statusPriority(s: string | undefined) {
-      return s === 'in-progress' ? 0 : s === 'needs-funding' ? 1 : 2;
+      return s === 'needs-funding' ? 0 : s === 'in-progress' ? 1 : 2;
     }
 
     function sortCards(animate = true) {

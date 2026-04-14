@@ -46,7 +46,7 @@
     {
       "id": "donate-materials",
       "question": "Can I donate materials or services instead?",
-      "answer": "Yes! We partner with contractors, designers, and suppliers across Atlanta. Visit our <a href=\"/partners/\">Get Involved</a> page to learn about partnership opportunities.",
+      "answer": "Yes! We partner with contractors, designers, and suppliers across Atlanta. Visit our <a href=\"/get-involved\">Get Involved</a> page to learn about partnership opportunities.",
       "category": "donations",
       "order": 4
     },
@@ -74,7 +74,7 @@
     {
       "id": "who-runs",
       "question": "Who runs the organization?",
-      "answer": "SOARD was co-founded by Peter and Kristen Ranney. Our team includes dedicated volunteers, board members, and a network of construction and design partners. Visit our <a href=\"/about/leadership/\">Leadership</a> page to meet the team.",
+      "answer": "SOARD was co-founded by Peter and Kristen Ranney. Our team includes dedicated volunteers, board members, and a network of construction and design partners. Visit our <a href=\"/about/leadership\">Leadership</a> page to meet the team.",
       "category": "about",
       "order": 3
     },
@@ -102,7 +102,7 @@
     {
       "id": "how-apply",
       "question": "How do families apply for a room makeover?",
-      "answer": "Families can apply through our <a href=\"/apply/\">Application</a> page. We accept applications year-round and select children based on need and available resources.",
+      "answer": "Families can apply through our <a href=\"/apply\">Application</a> page. We accept applications year-round and select children based on need and available resources.",
       "category": "families",
       "order": 1
     },
