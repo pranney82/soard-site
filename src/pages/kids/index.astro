@@ -44,6 +44,7 @@ function cfCropSrcset(src: string, widths: number[], hwRatio: number) {
 // ── Stats ────────────────────────────────
 const siteStats = await getSiteStats();
 const inProgressCount = kids.filter(k => k.data.status === 'in-progress').length;
+const awaitingFundingCount = kids.filter(k => k.data.status === 'needs-funding').length;
 const startYear = years.length > 0 ? years[years.length - 1] : '';
 const yearRange = startYear ? `Since ${startYear}` : '';
 
@@ -168,12 +169,12 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
             <span class="kids-hero__stat-num">{siteStats.totalRooms}</span>
             <span class="kids-hero__stat-label">Rooms Built</span>
           </div>
-          {inProgressCount > 0 && (
+          {(awaitingFundingCount + inProgressCount) > 0 && (
             <>
               <span class="kids-hero__stat-div" aria-hidden="true"></span>
-              <div class="kids-hero__stat kids-hero__stat--live">
-                <span class="kids-hero__stat-num">{inProgressCount}</span>
-                <span class="kids-hero__stat-label">In Progress</span>
+              <div class="kids-hero__stat kids-hero__stat--funding">
+                <span class="kids-hero__stat-num">{awaitingFundingCount + inProgressCount}</span>
+                <span class="kids-hero__stat-label">In the Works</span>
               </div>
             </>
           )}
@@ -220,12 +221,12 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
                 </ul>
               </div>
             </div>
-            {inProgressCount > 0 && (
+            {awaitingFundingCount > 0 && (
               <>
                 <span class="pill-divider" aria-hidden="true"></span>
                 <button class="filter-pill filter-pill--status" id="filter-status" data-filter="status" type="button" aria-pressed="false">
                   <span class="filter-pill__dot" aria-hidden="true"></span>
-                  In Progress
+                  Awaiting Funding
                 </button>
               </>
             )}
@@ -691,7 +692,7 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
       searchClear.hidden = false;
 
     }
-    if (params.get('status') === 'in-progress' && statusBtn) {
+    if (params.get('status') === 'needs-funding' && statusBtn) {
       statusActive = true;
       statusBtn.classList.add('is-active');
       statusBtn.setAttribute('aria-pressed', 'true');
@@ -850,7 +851,7 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
           if (filterName === 'year' && kid.year !== val) continue;
           if (filterName === 'type' && currentYear !== 'all' && kid.year !== currentYear) continue;
           if (filterName === 'year' && currentType !== 'all' && !kid.types.split(' ').includes(currentType)) continue;
-          if (statusActive && kid.status !== 'in-progress') continue;
+          if (statusActive && kid.status !== 'needs-funding') continue;
           const yearStr = kid.year.replace('year-', '');
           const typesStr = kid.types.replace(/type-/g, '').replace(/-/g, ' ');
           if (query && fuzzyMatch(query, kid.name, kid.diagnosis, yearStr, typesStr) <= 0) continue;
@@ -911,7 +912,7 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
         cachedCards.forEach(card => {
           const { types, name, diagnosis, status } = card.dataset;
           const matchType = typeFilter === 'all' || (types?.split(' ').includes(typeFilter));
-          const matchStatus = !statusActive || status === 'in-progress';
+          const matchStatus = !statusActive || status === 'needs-funding';
           const matchSearch = !query || fuzzyMatch(query, name, diagnosis) > 0;
           if (matchType && matchStatus && matchSearch) countWithoutYear++;
         });
@@ -929,7 +930,7 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
         cachedCards.forEach(card => {
           const { year, name, diagnosis, status } = card.dataset;
           const matchYear = yearFilter === 'all' || year === yearFilter;
-          const matchStatus = !statusActive || status === 'in-progress';
+          const matchStatus = !statusActive || status === 'needs-funding';
           const matchSearch = !query || fuzzyMatch(query, name, diagnosis) > 0;
           if (matchYear && matchStatus && matchSearch) countWithoutType++;
         });
@@ -980,7 +981,7 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
       if (query) parts.push(`"${query}"`);
       if (yearFilter !== 'all') parts.push(yearFilter.replace('year-', ''));
       if (typeFilter !== 'all') parts.push(typeFilter.replace('type-', '').replace(/-/g, ' '));
-      if (statusActive) parts.push('In Progress');
+      if (statusActive) parts.push('Awaiting Funding');
 
       noResultsHint.textContent = parts.length > 1
         ? `No results matching ${parts.join(' + ')}. Try removing a filter:`
@@ -1033,7 +1034,7 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
         const { year, types, name, diagnosis, status } = card.dataset;
         const matchesYear = yearFilter === 'all' || year === yearFilter;
         const matchesType = typeFilter === 'all' || (types ? types.split(' ').includes(typeFilter) : false);
-        const matchesStatus = !statusActive || status === 'in-progress';
+        const matchesStatus = !statusActive || status === 'needs-funding';
         const yearStr = (year || '').replace('year-', '');
         const typesStr = (types || '').replace(/type-/g, '').replace(/-/g, ' ');
         const matchScore = fuzzyMatch(query, name, diagnosis, yearStr, typesStr);
@@ -1100,7 +1101,7 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
       yearFilter !== 'all' ? url.searchParams.set('year', yearFilter) : url.searchParams.delete('year');
       typeFilter !== 'all' ? url.searchParams.set('type', typeFilter) : url.searchParams.delete('type');
       query ? url.searchParams.set('q', query) : url.searchParams.delete('q');
-      statusActive ? url.searchParams.set('status', 'in-progress') : url.searchParams.delete('status');
+      statusActive ? url.searchParams.set('status', 'needs-funding') : url.searchParams.delete('status');
       currentSort !== 'newest' ? url.searchParams.set('sort', currentSort) : url.searchParams.delete('sort');
       history.replaceState(null, '', url.toString());
     }
@@ -1635,6 +1636,27 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
   @keyframes livePulse {
     0%, 100% { opacity: 1; transform: scale(1); }
     50% { opacity: 0.4; transform: scale(1.4); }
+  }
+
+  /* ── Awaiting funding accent ── */
+  .kids-hero__stat--funding .kids-hero__stat-num {
+    color: var(--c-yellow);
+    position: relative;
+  }
+
+  .kids-hero__stat--funding .kids-hero__stat-num::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    right: -10px;
+    width: 7px;
+    height: 7px;
+    background: var(--c-yellow);
+    border-radius: 50%;
+  }
+
+  .kids-hero__stat--funding .kids-hero__stat-label {
+    color: rgba(255, 218, 36, 0.55);
   }
 
 
