@@ -17,11 +17,18 @@ import siteSettings from '../../content/site/settings.json';
 const allKids = await getPublishedKids();
 // Sort priority: needs-funding (0) > in-progress (1) > completed (2)
 const statusPriority = (s: string) => s === 'needs-funding' ? 0 : s === 'in-progress' ? 1 : 2;
+// Within in-progress/needs-funding, honor admin-set `sortOrder` (ascending); fall back to year desc.
+const NO_ORDER = Number.MAX_SAFE_INTEGER;
 const kids = allKids
   .sort((a, b) => {
     const sA = statusPriority(a.data.status);
     const sB = statusPriority(b.data.status);
     if (sA !== sB) return sA - sB;
+    if (sA < 2) {
+      const oA = typeof a.data.sortOrder === 'number' ? a.data.sortOrder : NO_ORDER;
+      const oB = typeof b.data.sortOrder === 'number' ? b.data.sortOrder : NO_ORDER;
+      if (oA !== oB) return oA - oB;
+    }
     return (b.data.year || 0) - (a.data.year || 0);
   });
 
@@ -114,6 +121,7 @@ const overflowKids = kids.slice(INITIAL_BATCH).map(kid => ({
   t: sortRoomTypes(kid.data.roomTypes || []),
   d: kid.data.diagnosis || '',
   st: kid.data.status || 'completed',
+  o: typeof kid.data.sortOrder === 'number' ? kid.data.sortOrder : null,
 }));
 
 // ── LCP preload: first card's hero image (must match <picture> srcset exactly) ──
@@ -301,6 +309,7 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
             data-name={kid.data.name.toLowerCase()}
             data-diagnosis={(kid.data.diagnosis || '').toLowerCase()}
             data-status={kid.data.status || 'completed'}
+            data-sort={typeof kid.data.sortOrder === 'number' ? String(kid.data.sortOrder) : ''}
           >
             <div class="kid-card__frame" style={kid.data.heroImage && lqip[cfId(kid.data.heroImage)] ? `background-image:url(${lqip[cfId(kid.data.heroImage)]})` : undefined}>
               {kid.data.heroImage ? (
@@ -599,7 +608,7 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
     function cfSS(id: string, widths: number[], ratio: number) {
       return widths.map(w => `${cfCard(id, w, Math.round(w * ratio))} ${w}w`).join(', ');
     }
-    function createCard(kid: { s: string; n: string; i: string; b: string; y: number; t: string[]; d: string; st: string }) {
+    function createCard(kid: { s: string; n: string; i: string; b: string; y: number; t: string[]; d: string; st: string; o: number | null }) {
       const a = document.createElement('a');
       a.href = `/kids/${kid.s}/`;
       a.className = 'kid-card';
@@ -608,6 +617,7 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
       a.dataset.name = kid.n.toLowerCase();
       a.dataset.diagnosis = kid.d.toLowerCase();
       a.dataset.status = kid.st;
+      a.dataset.sort = typeof kid.o === 'number' ? String(kid.o) : '';
       const roomTypes = kid.t.join(', ');
       const alt = escapeHtml(`Photo of ${kid.n}${roomTypes ? ` — ${roomTypes}` : ''} — Sunshine on a Ranney Day`);
       let imgHtml: string;
@@ -632,7 +642,7 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
       if (allCardsLoaded) return;
       const dataEl = document.getElementById('kids-overflow');
       if (!dataEl?.textContent) { allCardsLoaded = true; return; }
-      const overflow: { s: string; n: string; i: string; b: string; y: number; t: string[]; d: string; st: string }[] = JSON.parse(dataEl.textContent);
+      const overflow: { s: string; n: string; i: string; b: string; y: number; t: string[]; d: string; st: string; o: number | null }[] = JSON.parse(dataEl.textContent);
       const frag = document.createDocumentFragment();
       for (const kid of overflow) {
         const card = createCard(kid);
@@ -754,6 +764,7 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
 
     function sortCards(animate = true) {
       const oldPos = animate ? capturePositions() : null;
+      const NO_ORDER = Number.MAX_SAFE_INTEGER;
       cachedCards.sort((a, b) => {
         // Priority: in-progress > needs-funding > completed
         const sA = statusPriority(a.dataset.status);
@@ -764,6 +775,12 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
         const yearB = parseInt((b.dataset.year || '').replace('year-', '')) || 0;
         const nameA = a.dataset.name || '';
         const nameB = b.dataset.name || '';
+        // Within in-progress/needs-funding, honor admin-set sortOrder on default 'newest' view.
+        if (sA < 2 && currentSort === 'newest') {
+          const oA = a.dataset.sort !== '' && a.dataset.sort != null ? parseInt(a.dataset.sort) : NO_ORDER;
+          const oB = b.dataset.sort !== '' && b.dataset.sort != null ? parseInt(b.dataset.sort) : NO_ORDER;
+          if (oA !== oB) return oA - oB;
+        }
         switch (currentSort) {
           case 'oldest': return yearA - yearB;
           case 'name-az': return nameA.localeCompare(nameB);
@@ -821,7 +838,7 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
       const overflowEl = document.getElementById('kids-overflow');
       if (overflowEl?.textContent) {
         try {
-          const overflow: { s: string; n: string; i: string; b: string; y: number; t: string[]; d: string; st: string }[] = JSON.parse(overflowEl.textContent);
+          const overflow: { s: string; n: string; i: string; b: string; y: number; t: string[]; d: string; st: string; o: number | null }[] = JSON.parse(overflowEl.textContent);
           for (const kid of overflow) {
             allKidData.push({
               year: `year-${kid.y}`,

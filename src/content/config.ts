@@ -55,6 +55,7 @@ const kids = defineCollection({
     })).default([]),
     galleryFeatured: z.array(z.string()).default([]),
     storyChapters: z.array(z.string()).default([]),
+    sortOrder: z.number().nullable().optional(),
   }),
 });
 

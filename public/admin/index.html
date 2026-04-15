@@ -3898,12 +3898,179 @@
     // ═══════════════════════════════════════════
     // KIDS LIST
     // ═══════════════════════════════════════════
+    // ═══════════════════════════════════════════
+    // KIDS REORDER PANEL
+    // Drag-to-reorder in-build + awaiting-funding kids on the public "Meet the Kids" grid.
+    // Persists a numeric `sortOrder` on each affected kid JSON.
+    // ═══════════════════════════════════════════
+    function KidsReorderPanel({ kids, onClose, onSaved, addToast }) {
+      const initial = useMemo(() => {
+        const active = (kids || []).filter(k => k.status === 'in-progress' || k.status === 'needs-funding');
+        return [...active].sort((a, b) => {
+          const oA = typeof a.sortOrder === 'number' ? a.sortOrder : Number.MAX_SAFE_INTEGER;
+          const oB = typeof b.sortOrder === 'number' ? b.sortOrder : Number.MAX_SAFE_INTEGER;
+          if (oA !== oB) return oA - oB;
+          return (b.year || 0) - (a.year || 0);
+        });
+      }, [kids]);
+      const [items, setItems] = useState(initial);
+      const [saving, setSaving] = useState(false);
+      const [draggingSlug, setDraggingSlug] = useState(null);
+      const listRef = useRef(null);
+      const itemsRef = useRef(items);
+      const draggingRef = useRef(null);
+      useEffect(() => { itemsRef.current = items; }, [items]);
+
+      // Escape to close + lock body scroll
+      useEffect(() => {
+        document.body.classList.add('modal-open');
+        const onKey = (e) => { if (e.key === 'Escape' && !draggingRef.current && !saving) onClose(); };
+        window.addEventListener('keydown', onKey);
+        return () => { document.body.classList.remove('modal-open'); window.removeEventListener('keydown', onKey); };
+      }, [saving, onClose]);
+
+      const moveIdx = (from, to) => {
+        if (from === to || from < 0 || to < 0) return;
+        setItems(arr => {
+          if (from >= arr.length || to >= arr.length) return arr;
+          const next = [...arr];
+          const [m] = next.splice(from, 1);
+          next.splice(to, 0, m);
+          return next;
+        });
+      };
+
+      // ─── Pointer-based drag (works on mouse + touch) ───
+      const onPointerDown = (e, slug) => {
+        if (e.button != null && e.button !== 0 && e.pointerType === 'mouse') return;
+        try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch {}
+        draggingRef.current = { slug, pointerId: e.pointerId };
+        setDraggingSlug(slug);
+      };
+
+      const onPointerMove = (e) => {
+        const d = draggingRef.current;
+        if (!d || !listRef.current) return;
+        e.preventDefault();
+        const current = itemsRef.current;
+        const fromIdx = current.findIndex(k => k.slug === d.slug);
+        if (fromIdx < 0) return;
+        const rows = listRef.current.querySelectorAll('[data-reorder-row]');
+        const y = e.clientY;
+        let targetIdx = fromIdx;
+        for (let j = 0; j < rows.length; j++) {
+          const r = rows[j].getBoundingClientRect();
+          const mid = r.top + r.height / 2;
+          if (y < mid) { targetIdx = j; break; }
+          targetIdx = j;
+        }
+        if (targetIdx !== fromIdx) moveIdx(fromIdx, targetIdx);
+
+        // Auto-scroll when near top/bottom of list container
+        const lr = listRef.current.getBoundingClientRect();
+        const EDGE = 48;
+        if (y < lr.top + EDGE) listRef.current.scrollTop -= 12;
+        else if (y > lr.bottom - EDGE) listRef.current.scrollTop += 12;
+      };
+
+      const onPointerEnd = (e) => {
+        if (!draggingRef.current) return;
+        try { e.currentTarget.releasePointerCapture?.(e.pointerId); } catch {}
+        draggingRef.current = null;
+        setDraggingSlug(null);
+      };
+
+      const handleSave = async () => {
+        setSaving(true);
+        const tasks = items.map(async (k, i) => {
+          if (k.sortOrder === i) return { ok: true, changed: false };
+          try {
+            const filePath = `src/content/kids/${k.slug}.json`;
+            const fileRes = await api.readContent(filePath);
+            if (!fileRes.success) return { ok: false, name: k.name };
+            const content = typeof fileRes.content === 'string' ? JSON.parse(fileRes.content) : fileRes.content;
+            content.sortOrder = i;
+            const res = await api.saveContent(filePath, JSON.stringify(content, null, 2), `Reorder kid: ${content.name}`, fileRes.sha);
+            return { ok: !!res.success, changed: true, name: content.name };
+          } catch { return { ok: false, name: k.name }; }
+        });
+        const results = await Promise.all(tasks);
+        const changed = results.filter(r => r.ok && r.changed).length;
+        const failed = results.filter(r => !r.ok).length;
+        setSaving(false);
+        if (failed > 0) {
+          addToast?.(`Saved ${changed}, ${failed} failed`, 'error');
+        } else if (changed === 0) {
+          addToast?.('No changes to save', 'info');
+        } else {
+          addToast?.(`Reordered ${changed} kid${changed === 1 ? '' : 's'}`, 'success');
+          try { logActivity('updated', 'kids', `Reordered grid (${changed})`); } catch {}
+        }
+        onSaved?.();
+      };
+
+      return html`
+        <div class="modal-overlay" onClick=${(e) => { if (e.target === e.currentTarget && !saving && !draggingRef.current) onClose(); }}>
+          <div class="modal" style="max-width: 640px; width: 96vw; max-height: 92vh; display: flex; flex-direction: column; padding: 0;" onClick=${e => e.stopPropagation()}>
+            <div style="display: flex; align-items: center; justify-content: space-between; padding: 0.9rem 1.1rem; border-bottom: 1px solid var(--color-border); flex-shrink: 0;">
+              <h3 style="margin: 0; font-size: 1.05rem;">Reorder Grid</h3>
+              <button onClick=${() => !saving && onClose()} disabled=${saving} aria-label="Close"
+                style="background: none; border: none; font-size: 1.6rem; line-height: 1; cursor: pointer; color: var(--color-text-dim); padding: 0.25rem 0.5rem; min-width: 44px; min-height: 44px;">×</button>
+            </div>
+            <div style="padding: 0.65rem 1.1rem; font-size: 0.8rem; color: var(--color-text-dim); border-bottom: 1px solid var(--color-border); flex-shrink: 0;">
+              Drag the handle or tap the arrows to reorder. Only <strong>In Build</strong> and <strong>Awaiting Funding</strong> kids appear here.
+            </div>
+            <div ref=${listRef} style="flex: 1; overflow-y: auto; padding: 0.6rem; -webkit-overflow-scrolling: touch; overscroll-behavior: contain;">
+              ${items.length === 0 ? html`<p style="color: var(--color-text-dim); text-align: center; padding: 2rem 0;">No in-build or awaiting-funding kids right now.</p>` : null}
+              ${items.map((k, i) => {
+                const isDragging = draggingSlug === k.slug;
+                return html`
+                  <div key=${k.slug} data-reorder-row
+                    style=${`display: flex; align-items: center; gap: 0.4rem; padding: 0.5rem 0.45rem; margin-bottom: 0.4rem; background: var(--color-bg-card); border: 1px solid ${isDragging ? 'var(--color-primary, #FFD500)' : 'var(--color-border)'}; border-radius: var(--radius-sm); box-shadow: ${isDragging ? '0 10px 28px rgba(0,0,0,0.22)' : 'none'}; transform: ${isDragging ? 'scale(1.015)' : 'none'}; transition: ${isDragging ? 'none' : 'transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease'}; user-select: none;`}>
+                    <div
+                      onPointerDown=${(e) => onPointerDown(e, k.slug)}
+                      onPointerMove=${onPointerMove}
+                      onPointerUp=${onPointerEnd}
+                      onPointerCancel=${onPointerEnd}
+                      role="button" aria-label=${`Drag to reorder ${k.name}`}
+                      style="touch-action: none; cursor: grab; padding: 0.55rem 0.4rem; color: var(--color-text-dim); font-size: 1.15rem; line-height: 1; min-width: 32px; min-height: 44px; display: flex; align-items: center; justify-content: center;">⋮⋮</div>
+                    <div style="display: flex; flex-direction: column; gap: 3px; flex-shrink: 0;">
+                      <button onClick=${() => moveIdx(i, i - 1)} disabled=${i === 0 || saving} aria-label=${`Move ${k.name} up`}
+                        style="width: 32px; height: 22px; padding: 0; border: 1px solid var(--color-border); background: var(--color-bg-card); border-radius: 4px; cursor: pointer; font-size: 0.65rem; line-height: 1; color: var(--color-text); touch-action: manipulation;">▲</button>
+                      <button onClick=${() => moveIdx(i, i + 1)} disabled=${i === items.length - 1 || saving} aria-label=${`Move ${k.name} down`}
+                        style="width: 32px; height: 22px; padding: 0; border: 1px solid var(--color-border); background: var(--color-bg-card); border-radius: 4px; cursor: pointer; font-size: 0.65rem; line-height: 1; color: var(--color-text); touch-action: manipulation;">▼</button>
+                    </div>
+                    <span style="width: 20px; text-align: right; font-variant-numeric: tabular-nums; font-size: 0.72rem; color: var(--color-text-dim); flex-shrink: 0;">${i + 1}</span>
+                    ${k.heroImage
+                      ? html`<img src=${k.heroImage} alt="" draggable=${false} style="width: 40px; height: 40px; border-radius: 4px; object-fit: cover; flex-shrink: 0; pointer-events: none;" />`
+                      : html`<div style="width: 40px; height: 40px; border-radius: 4px; background: var(--color-border); flex-shrink: 0;"></div>`}
+                    <div style="flex: 1; min-width: 0;">
+                      <div style="font-weight: 600; font-size: 0.88rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${k.name}</div>
+                      <div style="font-size: 0.7rem; color: var(--color-text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${k.year || '—'}${k.diagnosis ? ' · ' + k.diagnosis : ''}</div>
+                    </div>
+                    <span class="badge ${k.status === 'needs-funding' ? 'badge-red' : 'badge-yellow'}" style="font-size: 0.62rem; flex-shrink: 0;">${k.status === 'in-progress' ? 'in build' : 'awaiting'}</span>
+                  </div>
+                `;
+              })}
+            </div>
+            <div style="display: flex; justify-content: flex-end; gap: 0.5rem; padding: 0.75rem 1.1rem; border-top: 1px solid var(--color-border); flex-shrink: 0;">
+              <button class="btn btn-ghost" onClick=${onClose} disabled=${saving}>Cancel</button>
+              <button class="btn btn-primary" onClick=${handleSave} disabled=${saving || items.length === 0}>
+                ${saving ? 'Saving…' : 'Save Order'}
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
     function KidsList({ kids, onEdit, onAdd, onDelete, addToast, onReload, dashboardFilter, onClearFilter }) {
       const [search, setSearch] = useState('');
       const [statusFilter, setStatusFilter] = useState('all');
       const [selected, setSelected] = useState(new Set());
       const [favs, setFavs] = useState(getFavorites());
       const [inlineEdit, setInlineEdit] = useState(null); // { slug, field, value }
+      const [reorderMode, setReorderMode] = useState(false);
       const filtered = useMemo(() => {
         let result = kids;
         // Apply dashboard filter first
@@ -4008,8 +4175,12 @@
         />` : null}
         <div class="page-header">
           <h2>Kids (${kids.length})</h2>
-          <button class="btn btn-primary" onClick=${onAdd}>+ Add Kid</button>
+          <div style="display: flex; gap: 0.5rem;">
+            <button class="btn btn-ghost" onClick=${() => setReorderMode(true)} title="Drag to reorder in-build and awaiting-funding kids on the Meet the Kids grid">Reorder Grid</button>
+            <button class="btn btn-primary" onClick=${onAdd}>+ Add Kid</button>
+          </div>
         </div>
+        ${reorderMode ? html`<${KidsReorderPanel} kids=${kids} onClose=${() => setReorderMode(false)} onSaved=${() => { setReorderMode(false); onReload?.(); }} addToast=${addToast} />` : null}
         <div class="card" style="margin-bottom: 1rem; padding: 0.75rem 1rem;">
           <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
             <div class="search-bar" style="flex: 1; min-width: 200px;">
