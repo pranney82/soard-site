@@ -8918,7 +8918,7 @@
     // ═══════════════════════════════════════════
     // GOLF TOURNAMENT EDITOR
     // ═══════════════════════════════════════════
-    function GolfTournamentEditor({ addToast }) {
+    function GolfTournamentEditor({ addToast, onBack }) {
       const [loading, setLoading] = useState(true);
       const [saving, setSaving] = useState(false);
       const [sha, setSha] = useState(null);
@@ -9021,6 +9021,13 @@
           onClose=${() => { setShowImagePicker(false); setImagePickerTarget(null); }}
         />` : null}
         <div class="editor-page">
+          ${onBack ? html`
+            <nav class="breadcrumb" aria-label="Breadcrumb">
+              <button onClick=${onBack}>Events</button>
+              <span class="sep">›</span>
+              <span>Golf Tournament</span>
+            </nav>
+          ` : null}
           <div class="editor-header">
             <h1 class="editor-title">Golf Tournament Settings</h1>
             <p class="editor-subtitle">Manage sponsorship tiers, testimonials, FAQs, sponsors, and gallery photos for the golf tournament page.</p>
@@ -11661,21 +11668,16 @@
               : html`<${ArticlesList} articles=${articles} onEdit=${s => navigate('articles', s)} onAdd=${() => navigate('articles', '')}
                   onDelete=${a => setDeleteModal({ type: 'article', item: a })} />`;
           case 'events': {
-            const evTab = subTab || 'list';
-            if (editSlug !== null && evTab === 'list') {
+            if (editSlug === 'sunshine-on-a-ranney-fairway') {
+              return html`<${GolfTournamentEditor} addToast=${addToast} onBack=${() => { navigate('events'); loadData(); }} />`;
+            }
+            if (editSlug !== null) {
               return html`<${EventEditor} slug=${editSlug || undefined} onBack=${() => { navigate('events'); loadData(); }} addToast=${addToast} existingSlugs=${events.map(e => e.slug)} />`;
             }
             return html`
-              <div class="hub-tabs">
-                <button class="hub-tab ${evTab === 'list' ? 'active' : ''}" onClick=${() => { setSubTab('list'); setEditSlug(null); }}>All Events</button>
-                <button class="hub-tab ${evTab === 'golf' ? 'active' : ''}" onClick=${() => { setSubTab('golf'); setEditSlug(null); }}>Golf Tournament</button>
-              </div>
-              ${evTab === 'golf'
-                ? html`<${GolfTournamentEditor} addToast=${addToast} />`
-                : html`<${EventsList} events=${events} onEdit=${s => { setSubTab('list'); navigate('events', s); }} onAdd=${() => { setSubTab('list'); navigate('events', ''); }}
-                    onDelete=${e => setDeleteModal({ type: 'event', item: { ...e, name: e.title } })}
-                    dashboardFilter=${dashboardFilter} onClearFilter=${() => setDashboardFilter(null)} />`
-              }
+              <${EventsList} events=${events} onEdit=${s => navigate('events', s)} onAdd=${() => navigate('events', '')}
+                  onDelete=${e => setDeleteModal({ type: 'event', item: { ...e, name: e.title } })}
+                  dashboardFilter=${dashboardFilter} onClearFilter=${() => setDashboardFilter(null)} />
             `;
           }
 
