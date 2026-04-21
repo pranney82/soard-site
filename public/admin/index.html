@@ -9068,39 +9068,66 @@
           ${activeTab === 'tiers' && html`
             <div class="card">
               <h2 class="card-title">Main Sponsorship Tiers</h2>
-              <p class="card-subtitle" style="margin-bottom: 1rem;">Update availability status for each tier. Changes appear on the golf page after saving.</p>
+              <p class="card-subtitle" style="margin-bottom: 1rem;">Update availability and describe what's included in each tier.</p>
               <div style="display: flex; flex-direction: column; gap: 0.75rem;">
                 ${(data.tiers?.main || []).map((tier, i) => html`
-                  <div style="display: flex; align-items: center; gap: 1rem; padding: 0.75rem; background: var(--bg-secondary); border-radius: 8px;">
-                    <div style="flex: 1; min-width: 0;">
-                      <strong style="font-size: 0.88rem;">${tier.name}</strong>
-                      <span style="color: var(--text-secondary); margin-left: 0.5rem; font-size: 0.82rem;">${tier.price}</span>
+                  <div style="padding: 0.85rem 0.9rem; background: var(--bg-secondary); border-radius: 8px;">
+                    <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 0.6rem;">
+                      <div style="flex: 1; min-width: 0;">
+                        <strong style="font-size: 0.9rem;">${tier.name}</strong>
+                        <span style="color: var(--text-secondary); margin-left: 0.5rem; font-size: 0.82rem;">${tier.price}</span>
+                      </div>
+                      <select value=${tier.status || 'available'} onChange=${(e) => updateTier('main', i, 'status', e.target.value)}
+                        class="form-select" style="width: auto; padding: 0.35rem 0.6rem; font-size: 0.82rem;">
+                        <option value="available">Available</option>
+                        <option value="few-left">Few Left</option>
+                        <option value="sold-out">Sold Out</option>
+                      </select>
                     </div>
-                    <select value=${tier.status || 'available'} onChange=${(e) => updateTier('main', i, 'status', e.target.value)}
-                      style="padding: 0.35rem 0.6rem; border-radius: 6px; border: 1px solid var(--border); font-size: 0.82rem; background: var(--bg-primary);">
-                      <option value="available">Available</option>
-                      <option value="few-left">Few Left</option>
-                      <option value="sold-out">Sold Out</option>
-                    </select>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem;">
+                      <div class="form-group" style="margin-bottom: 0;">
+                        <label style="font-size: 0.76rem; color: var(--text-secondary);">Detail (e.g. "1 Foursome (4 Golfers)")</label>
+                        <input class="form-input" style="font-size: 0.85rem;"
+                          value=${tier.detail || ''}
+                          onInput=${(e) => updateTier('main', i, 'detail', e.target.value)} />
+                      </div>
+                      <div class="form-group" style="margin-bottom: 0;">
+                        <label style="font-size: 0.76rem; color: var(--text-secondary);">What's included (perks)</label>
+                        <textarea rows="2" class="form-textarea" style="font-size: 0.85rem; min-height: 44px;"
+                          value=${tier.perk || ''}
+                          onInput=${(e) => updateTier('main', i, 'perk', e.target.value)} />
+                      </div>
+                    </div>
                   </div>
                 `)}
               </div>
             </div>
             <div class="card" style="margin-top: 1.5rem;">
               <h2 class="card-title">Add-On Sponsorships</h2>
+              <p class="card-subtitle" style="margin-bottom: 1rem;">Update availability and describe what's included in each sponsorship.</p>
               <div style="display: flex; flex-direction: column; gap: 0.75rem;">
                 ${(data.tiers?.addons || []).map((tier, i) => html`
-                  <div style="display: flex; align-items: center; gap: 1rem; padding: 0.75rem; background: var(--bg-secondary); border-radius: 8px;">
-                    <div style="flex: 1; min-width: 0;">
-                      <strong style="font-size: 0.88rem;">${tier.name}</strong>
-                      <span style="color: var(--text-secondary); margin-left: 0.5rem; font-size: 0.82rem;">${tier.price}</span>
+                  <div style="padding: 0.85rem 0.9rem; background: var(--bg-secondary); border-radius: 8px;">
+                    <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 0.6rem;">
+                      <div style="flex: 1; min-width: 0;">
+                        <strong style="font-size: 0.9rem;">${tier.name}</strong>
+                        <span style="color: var(--text-secondary); margin-left: 0.5rem; font-size: 0.82rem;">${tier.price}</span>
+                      </div>
+                      <select value=${tier.status || 'available'} onChange=${(e) => updateTier('addons', i, 'status', e.target.value)}
+                        class="form-select" style="width: auto; padding: 0.35rem 0.6rem; font-size: 0.82rem;">
+                        <option value="available">Available</option>
+                        <option value="few-left">Few Left</option>
+                        <option value="sold-out">Sold Out</option>
+                      </select>
                     </div>
-                    <select value=${tier.status || 'available'} onChange=${(e) => updateTier('addons', i, 'status', e.target.value)}
-                      style="padding: 0.35rem 0.6rem; border-radius: 6px; border: 1px solid var(--border); font-size: 0.82rem; background: var(--bg-primary);">
-                      <option value="available">Available</option>
-                      <option value="few-left">Few Left</option>
-                      <option value="sold-out">Sold Out</option>
-                    </select>
+                    <div class="form-group" style="margin-bottom: 0;">
+                      <label style="font-size: 0.76rem; color: var(--text-secondary);">What's included</label>
+                      <textarea rows="2" class="form-textarea"
+                        placeholder="e.g. Logo on all bar signage, two complimentary drinks per golfer, dedicated social media post..."
+                        style="font-size: 0.85rem; min-height: 60px;"
+                        value=${tier.perk || ''}
+                        onInput=${(e) => updateTier('addons', i, 'perk', e.target.value)} />
+                    </div>
                   </div>
                 `)}
               </div>

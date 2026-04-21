@@ -367,6 +367,7 @@ const heroLogoSizes = '(max-width: 767px) 200px, 320px';
               )}
               <h3 class="ev-tier__name">{tier.name}</h3>
               <span class="ev-tier__price">{tier.price}</span>
+              {tier.perk && <p class="ev-tier__addon-perk">{tier.perk}</p>}
             </div>
           ))}
         </div>
@@ -1445,6 +1446,14 @@ const heroLogoSizes = '(max-width: 767px) 200px, 320px';
   .ev-tier--sm .ev-tier__price {
     font-size: 1.15rem;
     font-weight: 700;
+  }
+
+  .ev-tier__addon-perk {
+    font-size: 0.76rem;
+    color: var(--c-text-light);
+    line-height: 1.55;
+    margin-top: 0.5rem;
+    margin-bottom: 0;
   }
 
   /* ─── CTA ───────────────────────────────────────────────────── */
