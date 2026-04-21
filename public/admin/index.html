@@ -8821,8 +8821,9 @@
       const filtered = useMemo(() => {
         let list = allImages;
         if (category === 'kids') list = list.filter(img => img.id.startsWith('kids/'));
+        else if (category === 'partners') list = list.filter(img => img.id.startsWith('partners/'));
         else if (category === 'logos') list = list.filter(img => img.id.startsWith('logos/'));
-        else if (category === 'other') list = list.filter(img => !img.id.startsWith('kids/') && !img.id.startsWith('logos/'));
+        else if (category === 'other') list = list.filter(img => !img.id.startsWith('kids/') && !img.id.startsWith('logos/') && !img.id.startsWith('partners/'));
         if (search.trim()) {
           const q = search.toLowerCase().trim();
           list = list.filter(img => img.id.toLowerCase().includes(q));
@@ -8854,7 +8855,7 @@
 
           <div class="img-picker-toolbar">
             <div style="display: flex; gap: 0.35rem;">
-              ${[['kids', 'Kids'], ['logos', 'Logos'], ['all', 'All'], ['other', 'Other']].map(([id, label]) => html`
+              ${[['kids', 'Kids'], ['partners', 'Partners'], ['logos', 'Logos'], ['all', 'All'], ['other', 'Other']].map(([id, label]) => html`
                 <button key=${id} class="chip" style="${category === id
                   ? 'background: #2D2E33; color: #fff;'
                   : 'background: rgba(45,46,51,0.08); color: #2D2E33; cursor: pointer;'}"
@@ -9079,22 +9080,22 @@
             <div class="card">
               <h2 class="card-title">Testimonial</h2>
               <p class="card-subtitle" style="margin-bottom: 1rem;">A quote displayed above the ticket section. Leave blank to hide.</p>
-              <div class="field-group">
-                <label class="field-label">Quote</label>
-                <textarea rows="3" class="input" placeholder="The best charity golf event in Atlanta..."
+              <div class="form-group">
+                <label>Quote</label>
+                <textarea rows="3" class="form-textarea" placeholder="The best charity golf event in Atlanta..."
                   value=${data.testimonial?.quote || ''}
                   onInput=${(e) => setData(d => ({ ...d, testimonial: { ...d.testimonial, quote: e.target.value } }))} />
               </div>
               <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1rem;">
-                <div class="field-group">
-                  <label class="field-label">Name / Attribution</label>
-                  <input class="input" placeholder="John Smith"
+                <div class="form-group">
+                  <label>Name / Attribution</label>
+                  <input class="form-input" placeholder="John Smith"
                     value=${data.testimonial?.name || ''}
                     onInput=${(e) => setData(d => ({ ...d, testimonial: { ...d.testimonial, name: e.target.value } }))} />
                 </div>
-                <div class="field-group">
-                  <label class="field-label">Title (optional)</label>
-                  <input class="input" placeholder="2025 Gold Sponsor"
+                <div class="form-group">
+                  <label>Title (optional)</label>
+                  <input class="form-input" placeholder="2025 Gold Sponsor"
                     value=${data.testimonial?.title || ''}
                     onInput=${(e) => setData(d => ({ ...d, testimonial: { ...d.testimonial, title: e.target.value } }))} />
                 </div>
@@ -9116,15 +9117,15 @@
                   <div style="padding: 1rem; background: var(--bg-secondary); border-radius: 8px; position: relative;">
                     <button class="btn btn-ghost btn-sm" style="position: absolute; top: 0.5rem; right: 0.5rem; color: var(--text-tertiary);"
                       onClick=${() => removeFaq(i)} title="Remove">✕</button>
-                    <div class="field-group">
-                      <label class="field-label">Question</label>
-                      <input class="input" placeholder="What's included?"
+                    <div class="form-group">
+                      <label>Question</label>
+                      <input class="form-input" placeholder="What's included?"
                         value=${faq.question}
                         onInput=${(e) => updateFaq(i, 'question', e.target.value)} />
                     </div>
-                    <div class="field-group" style="margin-top: 0.75rem;">
-                      <label class="field-label">Answer <span style="color: var(--text-tertiary); font-weight: 400;">(HTML allowed)</span></label>
-                      <textarea rows="2" class="input" placeholder="All packages include..."
+                    <div class="form-group" style="margin-top: 0.75rem;">
+                      <label>Answer <span style="color: var(--text-tertiary); font-weight: 400;">(HTML allowed)</span></label>
+                      <textarea rows="3" class="form-textarea" placeholder="All packages include..."
                         value=${faq.answer}
                         onInput=${(e) => updateFaq(i, 'answer', e.target.value)} />
                     </div>
@@ -9139,87 +9140,86 @@
 
           ${activeTab === 'sponsors' && html`
             <div class="card" style="margin-bottom: 1rem;">
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+              <div style="display: flex; justify-content: space-between; align-items: center;">
                 <div>
                   <h2 class="card-title">2026 Sponsors</h2>
-                  <p class="card-subtitle">Organize sponsors by tier. Each tier is displayed as a group on the golf page. Add a logo or just type a name.</p>
+                  <p class="card-subtitle">Organize sponsors into tiers. Click the logo area to pick an image, or just type a company name.</p>
                 </div>
                 <button class="btn btn-primary btn-sm" onClick=${() => setData(d => ({
                   ...d,
-                  sponsors: [...(d.sponsors || []), { tier: '', size: 'sm', names: [{ name: '' }] }],
+                  sponsors: [...(d.sponsors || []), { tier: '', size: 'md', names: [{ name: '' }] }],
                 }))}>+ Add Tier</button>
               </div>
             </div>
 
             ${(data.sponsors || []).length === 0 && html`
               <div class="card">
-                <p style="text-align: center; color: var(--text-tertiary); padding: 2rem;">No sponsor tiers yet. Add a tier to get started.</p>
+                <p style="text-align: center; color: var(--text-tertiary); padding: 2rem;">No sponsor tiers yet. Click "+ Add Tier" to get started.</p>
               </div>
             `}
 
             ${(data.sponsors || []).map((tier, ti) => html`
               <div class="card" style="margin-bottom: 0.75rem;">
-                <!-- Tier header -->
+                <!-- Tier header row -->
                 <div style="display: flex; gap: 0.75rem; align-items: end; margin-bottom: 1rem; padding-bottom: 0.75rem; border-bottom: 1px solid var(--border);">
-                  <div class="field-group" style="flex: 1;">
-                    <label class="field-label">Tier Name</label>
-                    <input class="input" placeholder="e.g. Title Sponsor, Diamond, Hole Sponsor..." value=${tier.tier}
+                  <div class="form-group" style="flex: 1; margin-bottom: 0;">
+                    <label>Tier Name</label>
+                    <input class="form-input" placeholder="e.g. Title Sponsor, Diamond, Hole Sponsor..." value=${tier.tier}
                       onInput=${(e) => setData(d => ({
                         ...d,
                         sponsors: d.sponsors.map((t, i) => i === ti ? { ...t, tier: e.target.value } : t),
                       }))} />
                   </div>
-                  <div class="field-group" style="width: 140px;">
-                    <label class="field-label">Display Size</label>
-                    <select value=${tier.size || 'sm'}
+                  <div class="form-group" style="width: 160px; margin-bottom: 0;">
+                    <label>Display Size</label>
+                    <select class="form-select" value=${tier.size || 'sm'}
                       onChange=${(e) => setData(d => ({
                         ...d,
                         sponsors: d.sponsors.map((t, i) => i === ti ? { ...t, size: e.target.value } : t),
-                      }))}
-                      style="padding: 0.45rem 0.6rem; border-radius: 6px; border: 1px solid var(--border); font-size: 0.82rem; background: var(--bg-primary); width: 100%;">
-                      <option value="xl">XL — Title</option>
+                      }))}>
+                      <option value="xl">XL — Title Sponsor</option>
                       <option value="lg">Large — Featured</option>
                       <option value="md">Medium — Standard</option>
                       <option value="sm">Small — Activity</option>
                     </select>
                   </div>
                   <div style="display: flex; gap: 0.25rem; flex-shrink: 0; padding-bottom: 2px;">
-                    <button class="btn btn-ghost btn-sm" style="color: var(--text-tertiary); font-size: 1rem; padding: 0.3rem;"
-                      title="Move tier up"
-                      disabled=${ti === 0}
+                    <button class="btn btn-ghost btn-sm" style="color: var(--text-tertiary); font-size: 1.1rem; padding: 0.25rem 0.4rem;"
+                      title="Move tier up" disabled=${ti === 0}
                       onClick=${() => setData(d => {
                         const s = [...d.sponsors];
                         [s[ti - 1], s[ti]] = [s[ti], s[ti - 1]];
                         return { ...d, sponsors: s };
                       })}>↑</button>
-                    <button class="btn btn-ghost btn-sm" style="color: var(--text-tertiary); font-size: 1rem; padding: 0.3rem;"
-                      title="Move tier down"
-                      disabled=${ti === (data.sponsors || []).length - 1}
+                    <button class="btn btn-ghost btn-sm" style="color: var(--text-tertiary); font-size: 1.1rem; padding: 0.25rem 0.4rem;"
+                      title="Move tier down" disabled=${ti === (data.sponsors || []).length - 1}
                       onClick=${() => setData(d => {
                         const s = [...d.sponsors];
                         [s[ti], s[ti + 1]] = [s[ti + 1], s[ti]];
                         return { ...d, sponsors: s };
                       })}>↓</button>
-                    <button class="btn btn-ghost btn-sm" style="color: #c62828; font-size: 0.82rem; padding: 0.3rem 0.5rem;"
-                      title="Remove this tier"
+                    <button class="btn btn-ghost btn-sm" style="color: #c62828; padding: 0.25rem 0.5rem;"
+                      title="Remove this entire tier and all its sponsors"
                       onClick=${() => { if (confirm('Remove tier "' + (tier.tier || 'Untitled') + '" and all its sponsors?')) setData(d => ({ ...d, sponsors: d.sponsors.filter((_, i) => i !== ti) })); }}>✕</button>
                   </div>
                 </div>
 
-                <!-- Sponsors within this tier -->
+                <!-- Sponsor rows within this tier -->
                 <div style="display: flex; flex-direction: column; gap: 0.5rem;">
                   ${(tier.names || []).map((s, ni) => html`
-                    <div style="display: flex; gap: 0.6rem; align-items: center; padding: 0.6rem 0.75rem; background: var(--bg-secondary); border-radius: 8px;">
-                      <div style="flex-shrink: 0; width: 52px; height: 52px; border-radius: 8px; background: var(--bg-primary); border: 1px dashed var(--border); display: flex; align-items: center; justify-content: center; cursor: pointer; overflow: hidden;"
+                    <div style="display: flex; gap: 0.75rem; align-items: center; padding: 0.65rem 0.75rem; background: var(--bg-secondary); border-radius: 8px;">
+                      <!-- Logo thumbnail -->
+                      <div style="flex-shrink: 0; width: 56px; height: 56px; border-radius: 8px; background: var(--bg-primary); border: 1.5px dashed ${s.logo ? 'transparent' : 'var(--border)'}; display: flex; align-items: center; justify-content: center; cursor: pointer; overflow: hidden; transition: border-color 0.15s;"
                         onClick=${() => { setImagePickerTarget('sponsor:' + ti + ':' + ni); setShowImagePicker(true); }}
-                        title="Choose logo image">
+                        title="Click to choose a logo from your image library">
                         ${s.logo
-                          ? html`<img src=${cfThumb(s.logo, 'w=104,h=104,fit=contain')} alt="" style="width: 100%; height: 100%; object-fit: contain;" />`
-                          : html`<span style="font-size: 0.55rem; color: var(--text-tertiary); text-align: center; line-height: 1.2;">Logo</span>`
+                          ? html`<img src=${cfThumb(s.logo, 'w=112,h=112,fit=contain')} alt="" style="width: 100%; height: 100%; object-fit: contain; padding: 4px;" />`
+                          : html`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="color: var(--text-tertiary); opacity: 0.5;"><rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>`
                         }
                       </div>
+                      <!-- Name input -->
                       <div style="flex: 1; min-width: 0;">
-                        <input class="input" placeholder="Company name" value=${s.name} style="font-size: 0.85rem;"
+                        <input class="form-input" placeholder="Company name" value=${s.name}
                           onInput=${(e) => setData(d => ({
                             ...d,
                             sponsors: d.sponsors.map((t, i) => i === ti
@@ -9228,9 +9228,10 @@
                             ),
                           }))} />
                       </div>
+                      <!-- Remove logo button -->
                       ${s.logo && html`
-                        <button class="btn btn-ghost btn-sm" style="color: var(--text-tertiary); font-size: 0.7rem; padding: 0.2rem 0.4rem;"
-                          title="Remove logo"
+                        <button class="btn btn-ghost btn-sm" style="color: var(--text-tertiary); font-size: 0.72rem; padding: 0.2rem 0.5rem; white-space: nowrap;"
+                          title="Remove logo (keep name)"
                           onClick=${() => setData(d => ({
                             ...d,
                             sponsors: d.sponsors.map((t, i) => i === ti
@@ -9239,8 +9240,9 @@
                             ),
                           }))}>✕ logo</button>
                       `}
-                      <button class="btn btn-ghost btn-sm" style="color: var(--text-tertiary); padding: 0.2rem 0.4rem;"
-                        title="Remove sponsor"
+                      <!-- Remove sponsor button -->
+                      <button class="btn btn-ghost btn-sm" style="color: var(--text-tertiary); padding: 0.2rem 0.4rem; font-size: 0.88rem;"
+                        title="Remove this sponsor"
                         onClick=${() => setData(d => ({
                           ...d,
                           sponsors: d.sponsors.map((t, i) => i === ti
@@ -9252,14 +9254,14 @@
                   `)}
                 </div>
 
-                <button class="btn btn-ghost btn-sm" style="margin-top: 0.5rem; font-size: 0.78rem; color: var(--accent);"
+                <button class="btn btn-ghost btn-sm" style="margin-top: 0.6rem; color: var(--color-primary);"
                   onClick=${() => setData(d => ({
                     ...d,
                     sponsors: d.sponsors.map((t, i) => i === ti
                       ? { ...t, names: [...(t.names || []), { name: '' }] }
                       : t
                     ),
-                  }))}>+ Add Sponsor to ${tier.tier || 'this tier'}</button>
+                  }))}>+ Add Sponsor${tier.tier ? ' to ' + tier.tier : ''}</button>
               </div>
             `)}
           `}
@@ -9292,7 +9294,7 @@
                         }
                       </div>
                       <div style="padding: 0.5rem;">
-                        <input class="input" placeholder="Alt text" value=${p.alt || ''} style="font-size: 0.78rem; padding: 0.3rem 0.5rem;"
+                        <input class="form-input" placeholder="Alt text" value=${p.alt || ''} style="font-size: 0.82rem; padding: 0.35rem 0.5rem;"
                           onInput=${(e) => setData(d => ({ ...d, galleryPhotos: d.galleryPhotos.map((ph, j) => j === i ? { ...ph, alt: e.target.value } : ph) }))} />
                       </div>
                       <button style="position: absolute; top: 4px; right: 4px; width: 22px; height: 22px; border-radius: 50%; background: rgba(0,0,0,0.6); color: #fff; border: none; cursor: pointer; font-size: 0.7rem; display: flex; align-items: center; justify-content: center;"
