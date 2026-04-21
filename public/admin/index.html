@@ -8930,7 +8930,7 @@
       });
       const [activeTab, setActiveTab] = useState('tiers');
       const [showImagePicker, setShowImagePicker] = useState(false);
-      const [imagePickerTarget, setImagePickerTarget] = useState(null); // 'sponsor:0' or 'gallery:0'
+      const [imagePickerTarget, setImagePickerTarget] = useState(null); // 'sponsor:tierIdx:nameIdx' or 'gallery:0'
 
       useEffect(() => {
         (async () => {
@@ -8995,11 +8995,19 @@
 
       const handleImageSelect = (id) => {
         if (!imagePickerTarget) return;
-        const [type, idxStr] = imagePickerTarget.split(':');
-        const idx = parseInt(idxStr);
-        if (type === 'sponsor') {
-          setData(d => ({ ...d, sponsors: d.sponsors.map((sp, j) => j === idx ? { ...sp, logo: id } : sp) }));
-        } else if (type === 'gallery') {
+        const parts = imagePickerTarget.split(':');
+        if (parts[0] === 'sponsor') {
+          const tierIdx = parseInt(parts[1]);
+          const nameIdx = parseInt(parts[2]);
+          setData(d => ({
+            ...d,
+            sponsors: d.sponsors.map((tier, ti) => ti === tierIdx
+              ? { ...tier, names: tier.names.map((s, ni) => ni === nameIdx ? { ...s, logo: id } : s) }
+              : tier
+            ),
+          }));
+        } else if (parts[0] === 'gallery') {
+          const idx = parseInt(parts[1]);
           setData(d => ({ ...d, galleryPhotos: d.galleryPhotos.map((ph, j) => j === idx ? { ...ph, id } : ph) }));
         }
         setShowImagePicker(false);
@@ -9130,55 +9138,130 @@
           `}
 
           ${activeTab === 'sponsors' && html`
-            <div class="card">
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <div class="card" style="margin-bottom: 1rem;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
                 <div>
                   <h2 class="card-title">2026 Sponsors</h2>
-                  <p class="card-subtitle">Current sponsors shown on the golf page. Add their name, optional logo (CF Image ID), and sponsorship tier.</p>
+                  <p class="card-subtitle">Organize sponsors by tier. Each tier is displayed as a group on the golf page. Add a logo or just type a name.</p>
                 </div>
-                <button class="btn btn-primary btn-sm" onClick=${() => setData(d => ({ ...d, sponsors: [...(d.sponsors || []), { name: '', logo: '', tier: '' }] }))}>+ Add Sponsor</button>
-              </div>
-              <div style="display: flex; flex-direction: column; gap: 0.75rem;">
-                ${(data.sponsors || []).map((s, i) => html`
-                  <div style="display: flex; gap: 0.75rem; align-items: center; padding: 0.75rem; background: var(--bg-secondary); border-radius: 8px;">
-                    <div style="flex-shrink: 0; width: 64px; height: 64px; border-radius: 8px; background: var(--bg-primary); border: 1px dashed var(--border); display: flex; align-items: center; justify-content: center; cursor: pointer; overflow: hidden;"
-                      onClick=${() => { setImagePickerTarget('sponsor:' + i); setShowImagePicker(true); }}
-                      title="Choose logo image">
-                      ${s.logo
-                        ? html`<img src=${cfThumb(s.logo, 'w=128,h=128,fit=contain')} alt="" style="width: 100%; height: 100%; object-fit: contain;" />`
-                        : html`<span style="font-size: 0.6rem; color: var(--text-tertiary); text-align: center; line-height: 1.3;">Click to<br/>add logo</span>`
-                      }
-                    </div>
-                    <div style="flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; align-items: end;">
-                      <div class="field-group">
-                        <label class="field-label">Name</label>
-                        <input class="input" placeholder="Company Name" value=${s.name}
-                          onInput=${(e) => setData(d => ({ ...d, sponsors: d.sponsors.map((sp, j) => j === i ? { ...sp, name: e.target.value } : sp) }))} />
-                      </div>
-                      <div class="field-group">
-                        <label class="field-label">Tier</label>
-                        <select value=${s.tier || ''} onChange=${(e) => setData(d => ({ ...d, sponsors: d.sponsors.map((sp, j) => j === i ? { ...sp, tier: e.target.value } : sp) }))}
-                          style="padding: 0.45rem 0.6rem; border-radius: 6px; border: 1px solid var(--border); font-size: 0.82rem; background: var(--bg-primary);">
-                          <option value="">No label</option>
-                          <option value="Presenting">Presenting</option>
-                          <option value="Titanium">Titanium</option>
-                          <option value="Diamond">Diamond</option>
-                          <option value="Platinum">Platinum</option>
-                          <option value="Gold">Gold</option>
-                          <option value="Foursome">Foursome</option>
-                          <option value="Add-On">Add-On</option>
-                        </select>
-                      </div>
-                    </div>
-                    <button class="btn btn-ghost btn-sm" style="color: var(--text-tertiary);"
-                      onClick=${() => setData(d => ({ ...d, sponsors: d.sponsors.filter((_, j) => j !== i) }))}>✕</button>
-                  </div>
-                `)}
-                ${(data.sponsors || []).length === 0 && html`
-                  <p style="text-align: center; color: var(--text-tertiary); padding: 2rem;">No sponsors yet. Add sponsors as they register.</p>
-                `}
+                <button class="btn btn-primary btn-sm" onClick=${() => setData(d => ({
+                  ...d,
+                  sponsors: [...(d.sponsors || []), { tier: '', size: 'sm', names: [{ name: '' }] }],
+                }))}>+ Add Tier</button>
               </div>
             </div>
+
+            ${(data.sponsors || []).length === 0 && html`
+              <div class="card">
+                <p style="text-align: center; color: var(--text-tertiary); padding: 2rem;">No sponsor tiers yet. Add a tier to get started.</p>
+              </div>
+            `}
+
+            ${(data.sponsors || []).map((tier, ti) => html`
+              <div class="card" style="margin-bottom: 0.75rem;">
+                <!-- Tier header -->
+                <div style="display: flex; gap: 0.75rem; align-items: end; margin-bottom: 1rem; padding-bottom: 0.75rem; border-bottom: 1px solid var(--border);">
+                  <div class="field-group" style="flex: 1;">
+                    <label class="field-label">Tier Name</label>
+                    <input class="input" placeholder="e.g. Title Sponsor, Diamond, Hole Sponsor..." value=${tier.tier}
+                      onInput=${(e) => setData(d => ({
+                        ...d,
+                        sponsors: d.sponsors.map((t, i) => i === ti ? { ...t, tier: e.target.value } : t),
+                      }))} />
+                  </div>
+                  <div class="field-group" style="width: 140px;">
+                    <label class="field-label">Display Size</label>
+                    <select value=${tier.size || 'sm'}
+                      onChange=${(e) => setData(d => ({
+                        ...d,
+                        sponsors: d.sponsors.map((t, i) => i === ti ? { ...t, size: e.target.value } : t),
+                      }))}
+                      style="padding: 0.45rem 0.6rem; border-radius: 6px; border: 1px solid var(--border); font-size: 0.82rem; background: var(--bg-primary); width: 100%;">
+                      <option value="xl">XL — Title</option>
+                      <option value="lg">Large — Featured</option>
+                      <option value="md">Medium — Standard</option>
+                      <option value="sm">Small — Activity</option>
+                    </select>
+                  </div>
+                  <div style="display: flex; gap: 0.25rem; flex-shrink: 0; padding-bottom: 2px;">
+                    <button class="btn btn-ghost btn-sm" style="color: var(--text-tertiary); font-size: 1rem; padding: 0.3rem;"
+                      title="Move tier up"
+                      disabled=${ti === 0}
+                      onClick=${() => setData(d => {
+                        const s = [...d.sponsors];
+                        [s[ti - 1], s[ti]] = [s[ti], s[ti - 1]];
+                        return { ...d, sponsors: s };
+                      })}>↑</button>
+                    <button class="btn btn-ghost btn-sm" style="color: var(--text-tertiary); font-size: 1rem; padding: 0.3rem;"
+                      title="Move tier down"
+                      disabled=${ti === (data.sponsors || []).length - 1}
+                      onClick=${() => setData(d => {
+                        const s = [...d.sponsors];
+                        [s[ti], s[ti + 1]] = [s[ti + 1], s[ti]];
+                        return { ...d, sponsors: s };
+                      })}>↓</button>
+                    <button class="btn btn-ghost btn-sm" style="color: #c62828; font-size: 0.82rem; padding: 0.3rem 0.5rem;"
+                      title="Remove this tier"
+                      onClick=${() => { if (confirm('Remove tier "' + (tier.tier || 'Untitled') + '" and all its sponsors?')) setData(d => ({ ...d, sponsors: d.sponsors.filter((_, i) => i !== ti) })); }}>✕</button>
+                  </div>
+                </div>
+
+                <!-- Sponsors within this tier -->
+                <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                  ${(tier.names || []).map((s, ni) => html`
+                    <div style="display: flex; gap: 0.6rem; align-items: center; padding: 0.6rem 0.75rem; background: var(--bg-secondary); border-radius: 8px;">
+                      <div style="flex-shrink: 0; width: 52px; height: 52px; border-radius: 8px; background: var(--bg-primary); border: 1px dashed var(--border); display: flex; align-items: center; justify-content: center; cursor: pointer; overflow: hidden;"
+                        onClick=${() => { setImagePickerTarget('sponsor:' + ti + ':' + ni); setShowImagePicker(true); }}
+                        title="Choose logo image">
+                        ${s.logo
+                          ? html`<img src=${cfThumb(s.logo, 'w=104,h=104,fit=contain')} alt="" style="width: 100%; height: 100%; object-fit: contain;" />`
+                          : html`<span style="font-size: 0.55rem; color: var(--text-tertiary); text-align: center; line-height: 1.2;">Logo</span>`
+                        }
+                      </div>
+                      <div style="flex: 1; min-width: 0;">
+                        <input class="input" placeholder="Company name" value=${s.name} style="font-size: 0.85rem;"
+                          onInput=${(e) => setData(d => ({
+                            ...d,
+                            sponsors: d.sponsors.map((t, i) => i === ti
+                              ? { ...t, names: t.names.map((n, j) => j === ni ? { ...n, name: e.target.value } : n) }
+                              : t
+                            ),
+                          }))} />
+                      </div>
+                      ${s.logo && html`
+                        <button class="btn btn-ghost btn-sm" style="color: var(--text-tertiary); font-size: 0.7rem; padding: 0.2rem 0.4rem;"
+                          title="Remove logo"
+                          onClick=${() => setData(d => ({
+                            ...d,
+                            sponsors: d.sponsors.map((t, i) => i === ti
+                              ? { ...t, names: t.names.map((n, j) => j === ni ? { name: n.name } : n) }
+                              : t
+                            ),
+                          }))}>✕ logo</button>
+                      `}
+                      <button class="btn btn-ghost btn-sm" style="color: var(--text-tertiary); padding: 0.2rem 0.4rem;"
+                        title="Remove sponsor"
+                        onClick=${() => setData(d => ({
+                          ...d,
+                          sponsors: d.sponsors.map((t, i) => i === ti
+                            ? { ...t, names: t.names.filter((_, j) => j !== ni) }
+                            : t
+                          ),
+                        }))}>✕</button>
+                    </div>
+                  `)}
+                </div>
+
+                <button class="btn btn-ghost btn-sm" style="margin-top: 0.5rem; font-size: 0.78rem; color: var(--accent);"
+                  onClick=${() => setData(d => ({
+                    ...d,
+                    sponsors: d.sponsors.map((t, i) => i === ti
+                      ? { ...t, names: [...(t.names || []), { name: '' }] }
+                      : t
+                    ),
+                  }))}>+ Add Sponsor to ${tier.tier || 'this tier'}</button>
+              </div>
+            `)}
           `}
 
           ${activeTab === 'gallery' && html`

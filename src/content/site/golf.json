@@ -30,7 +30,101 @@
       "answer": "Standard golf attire is required. Collared shirts, golf shorts or pants, and soft-spike golf shoes."
     }
   ],
-  "sponsors": [],
+  "sponsors": [
+    {
+      "tier": "Title Sponsor",
+      "size": "xl",
+      "names": [
+        { "name": "Real Floors Commercial", "logo": "partners/real-floors-commercial/1774544840079" }
+      ]
+    },
+    {
+      "tier": "Presenting",
+      "size": "lg",
+      "names": [
+        { "name": "Spartan Surfaces", "logo": "partners/spartan-surfaces/1774982141004" },
+        { "name": "ASM" }
+      ]
+    },
+    {
+      "tier": "Diamond",
+      "size": "lg",
+      "names": [
+        { "name": "Morrow Construction", "logo": "partners/morrow-construction/1774981060323" },
+        { "name": "MSI", "logo": "partners/msi" },
+        { "name": "Shaw", "logo": "partners/shaw-floors/1774981017203" }
+      ]
+    },
+    {
+      "tier": "Gold",
+      "size": "md",
+      "names": [
+        { "name": "Happy Feet International" },
+        { "name": "Schluter", "logo": "partners/schluter-systems" },
+        { "name": "CR Home" },
+        { "name": "Bishop & Brogdon" },
+        { "name": "AHF Products / Armstrong / AHF Contract / Crossville Studios" },
+        { "name": "TEC" },
+        { "name": "Fishman Flooring" },
+        { "name": "Heat Transfers of Georgia" },
+        { "name": "Engineered Floors" },
+        { "name": "Maepi" },
+        { "name": "Crossville", "logo": "partners/crossville-tile" }
+      ]
+    },
+    {
+      "tier": "Bloody Mary Bar Sponsor",
+      "size": "sm",
+      "names": [
+        { "name": "Crosby Design Group", "logo": "partners/crosby-design-group" }
+      ]
+    },
+    {
+      "tier": "Beverage Cart",
+      "size": "sm",
+      "names": [
+        { "name": "Southern Wholesale Flooring" },
+        { "name": "Bishop & Brogdon" }
+      ]
+    },
+    {
+      "tier": "Closest to the Pin",
+      "size": "sm",
+      "names": [
+        { "name": "Speciality Tile" },
+        { "name": "Choate Construction" },
+        { "name": "Trinity Surfaces" }
+      ]
+    },
+    {
+      "tier": "Putting Contest",
+      "size": "sm",
+      "names": [
+        { "name": "Real Floors - Brad Shaull" },
+        { "name": "Schluter" }
+      ]
+    },
+    {
+      "tier": "Golf Ball Sponsor",
+      "size": "sm",
+      "names": [
+        { "name": "Randall Brothers", "logo": "partners/randall-brothers" }
+      ]
+    },
+    {
+      "tier": "Hole Sponsor",
+      "size": "sm",
+      "names": [
+        { "name": "Swoz Consulting LLC" },
+        { "name": "BMO" },
+        { "name": "Tilebar" },
+        { "name": "Highland Building Group" },
+        { "name": "Stone Source" },
+        { "name": "Daltile", "logo": "partners/daltile" },
+        { "name": "Patcraft" }
+      ]
+    }
+  ],
   "galleryPhotos": [],
   "tiers": {
     "main": [

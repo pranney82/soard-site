@@ -46,5 +46,6 @@
   "bathroomCount": 1,
   "heroSummary": "Max has a rare genetic disorder often called childhood dementia, causing progressive loss of skills. Now fully dependent on care, he needs a safe, accessible bathroom to support his comfort, dignity, and daily needs.",
   "plans": [],
-  "beforeAfterPhotos": []
+  "beforeAfterPhotos": [],
+  "sortOrder": 10
 }

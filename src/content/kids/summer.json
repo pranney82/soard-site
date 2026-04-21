@@ -19,6 +19,14 @@
       "cfImageId": "kids/summer/1774457749073-Summer-28.jpg"
     },
     {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/summer/photo-09/public",
+      "alt": ""
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/summer/photo-08/public",
+      "alt": ""
+    },
+    {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/summer/photo-11/public",
       "alt": ""
     },
@@ -32,14 +40,6 @@
     },
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/summer/photo-07/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/summer/photo-08/public",
-      "alt": ""
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/summer/photo-09/public",
       "alt": ""
     },
     {
@@ -290,5 +290,6 @@
       "afterAlt": ""
     }
   ],
-  "heroSummary": "Summer is a resilient young girl with complex medical needs. SOARD created a fully accessible bedroom and bathroom—beautifully designed by Lindsay Ellington of Randall-Paulson—giving her a safe, supportive space to thrive."
+  "heroSummary": "Summer is a resilient young girl with complex medical needs. SOARD created a fully accessible bedroom and bathroom beautifully designed by Lindsay Ellington of Randall-Paulson, giving her a safe, supportive space. ",
+  "accentImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/summer/photo-09/public"
 }

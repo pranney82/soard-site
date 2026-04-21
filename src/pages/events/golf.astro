@@ -30,7 +30,11 @@ const addOnTiers: Tier[] = cms.tiers?.addons ?? [];
 const testimonial = cms.testimonial ?? { quote: '', name: '', title: '' };
 const faqs = cms.faqs ?? [];
 const galleryPhotos: { id: string; alt: string }[] = cms.galleryPhotos ?? [];
-const sponsors: { name: string; logo: string; tier: string }[] = cms.sponsors ?? [];
+interface SponsorEntry { name: string; logo?: string; website?: string }
+interface SponsorTierGroup { tier: string; size: 'xl' | 'lg' | 'md' | 'sm'; names: SponsorEntry[] }
+const sponsorTiers: SponsorTierGroup[] = cms.sponsors ?? [];
+const majorTiers = sponsorTiers.filter(t => t.size !== 'sm');
+const activityTiers = sponsorTiers.filter(t => t.size === 'sm');
 
 const eventJsonLd = {
   "@type": "Event",
@@ -383,31 +387,101 @@ const heroLogoSizes = '(max-width: 767px) 200px, 320px';
   </section>
 
   <!-- ═══ SPONSORS ═══ -->
-  {sponsors.length > 0 && (
-    <section class="ev-sponsors">
-      <div class="container ev-sponsors__inner" data-reveal>
-        <span class="ev-sponsors__label">2026 Sponsors</span>
-        <h2 class="ev-sponsors__heading">Thank You to Our Sponsors</h2>
-        <div class="ev-sponsors__grid">
-          {sponsors.map(sponsor => (
-            <div class={`ev-sponsors__card ${sponsor.logo ? '' : 'ev-sponsors__card--text'}`}>
-              {sponsor.logo ? (
-                <img
-                  src={cfRaw(sponsor.logo, 'w=200,h=100,fit=contain,q=85')}
-                  alt={sponsor.name}
-                  width="200"
-                  height="100"
-                  loading="lazy"
-                  decoding="async"
-                  class="ev-sponsors__logo-img"
-                />
-              ) : (
-                <span class="ev-sponsors__name">{sponsor.name}</span>
-              )}
-              {sponsor.tier && <span class="ev-sponsors__tier">{sponsor.tier}</span>}
+  {sponsorTiers.length > 0 && (
+    <section class="ev-sponsors" id="sponsors">
+      <div class="container ev-sponsors__inner">
+        <span class="ev-sponsors__label" data-reveal>2026 Sponsors</span>
+        <h2 class="ev-sponsors__heading" data-reveal>Thank You to Our Sponsors</h2>
+        <p class="ev-sponsors__sub" data-reveal>None of this is possible without the incredible generosity of our sponsors.</p>
+
+        {/* ── Major tiers (Title / Presenting / Diamond / Gold) ── */}
+        {majorTiers.map((group) => (
+          <div class={`ev-sp-tier ev-sp-tier--${group.size}`} data-reveal>
+            {/* Title sponsor gets the dark premium banner */}
+            {group.size === 'xl' ? (
+              <div class="ev-sp-title-wrap">
+                <span class="ev-sp-title-wrap__label">{group.tier}</span>
+                <div class="ev-sp-title-wrap__inner">
+                  {group.names.map(s => (
+                    <Fragment>
+                      {s.logo ? (
+                        <img src={cfRaw(s.logo, 'w=360,h=180,fit=contain,q=85')} alt={s.name} width="360" height="180" loading="lazy" decoding="async" class="ev-sp-title-wrap__logo" />
+                      ) : (
+                        <span class="ev-sp-title-wrap__name">{s.name}</span>
+                      )}
+                    </Fragment>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <Fragment>
+                <div class="ev-sp-tier__header">
+                  <span class="ev-sp-tier__line" aria-hidden="true"></span>
+                  <h3 class="ev-sp-tier__label">{group.tier}</h3>
+                  <span class="ev-sp-tier__line" aria-hidden="true"></span>
+                </div>
+                <div class={`ev-sp-tier__grid ev-sp-tier__grid--${group.size}`}>
+                  {group.names.map(s => {
+                    const Tag = s.website ? 'a' : 'div';
+                    return (
+                      <Tag
+                        class={`ev-sp-card ev-sp-card--${group.size}`}
+                        {...(s.website ? { href: s.website, target: '_blank', rel: 'noopener noreferrer' } : {})}
+                      >
+                        {s.logo ? (
+                          <img
+                            src={cfRaw(s.logo, `w=${group.size === 'lg' ? 260 : 200},h=${group.size === 'lg' ? 130 : 100},fit=contain,q=85`)}
+                            alt={s.name}
+                            width={group.size === 'lg' ? 260 : 200}
+                            height={group.size === 'lg' ? 130 : 100}
+                            loading="lazy"
+                            decoding="async"
+                            class="ev-sp-card__logo"
+                          />
+                        ) : (
+                          <span class="ev-sp-card__name">{s.name}</span>
+                        )}
+                        {s.website && (
+                          <svg class="ev-sp-card__ext" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
+                        )}
+                      </Tag>
+                    );
+                  })}
+                </div>
+              </Fragment>
+            )}
+          </div>
+        ))}
+
+        {/* ── Activity sponsors (compact grouped layout) ── */}
+        {activityTiers.length > 0 && (
+          <div class="ev-sp-activity" data-reveal>
+            <div class="ev-sp-activity__header">
+              <span class="ev-sp-activity__line" aria-hidden="true"></span>
+              <h3 class="ev-sp-activity__title">Event Sponsors</h3>
+              <span class="ev-sp-activity__line" aria-hidden="true"></span>
             </div>
-          ))}
-        </div>
+            <div class="ev-sp-activity__list">
+              {activityTiers.map(group => (
+                <div class="ev-sp-activity__row">
+                  <span class="ev-sp-activity__label">{group.tier}</span>
+                  <div class="ev-sp-activity__names">
+                    {group.names.map((s, i) => (
+                      <Fragment>
+                        {s.website ? (
+                          <a href={s.website} target="_blank" rel="noopener noreferrer" class="ev-sp-activity__name ev-sp-activity__name--link">{s.name}</a>
+                        ) : (
+                          <span class="ev-sp-activity__name">{s.name}</span>
+                        )}
+                        {i < group.names.length - 1 && <span class="ev-sp-activity__sep" aria-hidden="true">&middot;</span>}
+                      </Fragment>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </section>
   )}
@@ -1560,12 +1634,14 @@ const heroLogoSizes = '(max-width: 767px) 200px, 320px';
 
   /* ─── Sponsors ──────────────────────────────────────────────── */
   .ev-sponsors {
-    padding: var(--space-4xl) 0;
+    padding: var(--space-4xl) 0 var(--space-5xl);
     background: var(--c-cream);
     border-top: 1px solid var(--c-border);
   }
   .ev-sponsors__inner {
     text-align: center;
+    max-width: 960px;
+    margin: 0 auto;
   }
   .ev-sponsors__label {
     display: inline-block;
@@ -1583,65 +1659,297 @@ const heroLogoSizes = '(max-width: 767px) 200px, 320px';
     font-family: var(--font-display);
     font-size: clamp(1.7rem, 3.5vw, 2.6rem);
     color: var(--c-dark);
+    margin-bottom: var(--space-sm);
+  }
+  .ev-sponsors__sub {
+    font-size: 0.95rem;
+    color: var(--c-text-muted);
+    line-height: 1.7;
+    max-width: 48ch;
+    margin: 0 auto var(--space-3xl);
+  }
+
+  /* ══ Major tier wrapper ══ */
+  .ev-sp-tier {
     margin-bottom: var(--space-2xl);
   }
-  .ev-sponsors__grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
+  .ev-sp-tier:last-of-type {
+    margin-bottom: var(--space-3xl);
+  }
+
+  /* ── Title Sponsor — dark premium banner ── */
+  .ev-sp-title-wrap {
+    position: relative;
+    background: linear-gradient(160deg, #0d2818 0%, #1a472a 40%, #1e5a30 100%);
+    border-radius: 20px;
+    padding: 2.75rem 2rem 2.5rem;
+    overflow: hidden;
+    box-shadow:
+      0 4px 20px rgba(13, 40, 24, 0.18),
+      0 8px 40px rgba(0, 0, 0, 0.06);
+  }
+  /* Subtle radial glow */
+  .ev-sp-title-wrap::before {
+    content: '';
+    position: absolute;
+    top: -30%;
+    right: -10%;
+    width: 50%;
+    height: 160%;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(255, 218, 36, 0.06) 0%, transparent 65%);
+    pointer-events: none;
+  }
+  /* Gold accent line at top */
+  .ev-sp-title-wrap::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 80px;
+    height: 3px;
+    border-radius: 0 0 3px 3px;
+    background: linear-gradient(90deg, transparent, var(--c-yellow), transparent);
+  }
+  .ev-sp-title-wrap__label {
+    display: inline-block;
+    font-size: 0.6rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.22em;
+    color: var(--c-yellow);
+    margin-bottom: var(--space-lg);
+    background: rgba(255, 218, 36, 0.08);
+    padding: 0.3rem 0.85rem;
+    border-radius: 100px;
+    border: 1px solid rgba(255, 218, 36, 0.12);
+    position: relative;
+  }
+  .ev-sp-title-wrap__inner {
+    position: relative;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    gap: var(--space-xl);
+  }
+  .ev-sp-title-wrap__name {
+    font-family: var(--font-display);
+    font-size: clamp(1.6rem, 4vw, 2.4rem);
+    color: #fff;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+    text-align: center;
+  }
+  .ev-sp-title-wrap__logo {
+    max-height: 100px;
+    width: auto;
+    max-width: 80%;
+    object-fit: contain;
+    filter: brightness(0) invert(1);
+  }
+
+  /* ── Tier header (line — label — line) ── */
+  .ev-sp-tier__header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: var(--space-lg);
+  }
+  .ev-sp-tier__line {
+    flex: 1;
+    height: 1px;
+    background: var(--c-border);
+  }
+  .ev-sp-tier__label {
+    font-family: var(--font-display);
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    color: var(--c-text-light);
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  /* ── Sponsor card grids ── */
+  .ev-sp-tier__grid {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
     gap: var(--space-md);
-    max-width: 800px;
-    margin: 0 auto;
   }
-  @media (min-width: 640px) {
-    .ev-sponsors__grid { grid-template-columns: repeat(3, 1fr); }
-  }
-  @media (min-width: 900px) {
-    .ev-sponsors__grid { grid-template-columns: repeat(4, 1fr); }
-  }
-  .ev-sponsors__card {
+  .ev-sp-tier__grid--lg { gap: var(--space-lg); }
+
+  /* ── Shared sponsor card ── */
+  .ev-sp-card {
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 0.5rem;
-    padding: 1.25rem 1rem;
+    gap: 0.35rem;
     background: var(--c-white);
-    border: 1px solid rgba(0, 0, 0, 0.05);
+    border: 1px solid rgba(0, 0, 0, 0.06);
     border-radius: 14px;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+    text-decoration: none;
+    position: relative;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03), 0 4px 12px rgba(0, 0, 0, 0.02);
     transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1),
-                box-shadow 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-    min-height: 100px;
+                box-shadow 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+                border-color 0.3s;
   }
-  .ev-sponsors__card:hover {
-    transform: translateY(-3px);
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.06);
+  .ev-sp-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.07), 0 2px 8px rgba(0, 0, 0, 0.04);
+    border-color: rgba(46, 125, 50, 0.15);
   }
-  .ev-sponsors__logo-img {
-    max-height: 50px;
+  a.ev-sp-card:hover {
+    border-color: rgba(46, 125, 50, 0.25);
+  }
+  .ev-sp-card__ext {
+    position: absolute;
+    top: 0.6rem;
+    right: 0.6rem;
+    color: var(--c-text-light);
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+  a.ev-sp-card:hover .ev-sp-card__ext { opacity: 0.5; }
+  .ev-sp-card__logo {
     width: auto;
     max-width: 100%;
     object-fit: contain;
   }
-  .ev-sponsors__name {
+  .ev-sp-card__name {
     font-family: var(--font-display);
-    font-size: 0.95rem;
     color: var(--c-dark);
     text-align: center;
     line-height: 1.3;
   }
-  .ev-sponsors__card--text {
-    justify-content: center;
+
+  /* ── LG cards (Presenting / Diamond) ── */
+  .ev-sp-card--lg {
+    padding: 1.75rem 2.25rem;
+    min-height: 110px;
+    min-width: 240px;
   }
-  .ev-sponsors__tier {
-    font-size: 0.6rem;
+  .ev-sp-card--lg .ev-sp-card__name {
+    font-size: 1.15rem;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+  }
+  .ev-sp-card--lg .ev-sp-card__logo { max-height: 65px; }
+
+  /* ── MD cards (Gold) ── */
+  .ev-sp-card--md {
+    padding: 1.25rem 1.5rem;
+    min-height: 80px;
+    min-width: 170px;
+  }
+  .ev-sp-card--md .ev-sp-card__name { font-size: 0.88rem; }
+  .ev-sp-card--md .ev-sp-card__logo { max-height: 44px; }
+
+  /* ══ Activity sponsors — compact grouped layout ══ */
+  .ev-sp-activity {
+    margin-top: var(--space-xl);
+  }
+  .ev-sp-activity__header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: var(--space-xl);
+  }
+  .ev-sp-activity__line {
+    flex: 1;
+    height: 1px;
+    background: var(--c-border);
+  }
+  .ev-sp-activity__title {
+    font-family: var(--font-display);
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    color: var(--c-text-light);
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .ev-sp-activity__list {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+  .ev-sp-activity__row {
+    display: grid;
+    grid-template-columns: 160px 1fr;
+    gap: var(--space-md);
+    align-items: baseline;
+    padding: 0.9rem 0;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+    text-align: left;
+  }
+  .ev-sp-activity__row:first-child {
+    border-top: 1px solid rgba(0, 0, 0, 0.05);
+  }
+  .ev-sp-activity__label {
+    font-size: 0.72rem;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.1em;
+    color: #2e7d32;
+    line-height: 1.5;
+  }
+  .ev-sp-activity__names {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.25rem 0;
+  }
+  .ev-sp-activity__name {
+    font-size: 0.88rem;
+    color: var(--c-dark);
+    line-height: 1.6;
+  }
+  .ev-sp-activity__name--link {
+    color: #2e7d32;
+    text-decoration: underline;
+    text-decoration-color: rgba(46, 125, 50, 0.3);
+    text-underline-offset: 2px;
+    transition: text-decoration-color 0.2s;
+  }
+  .ev-sp-activity__name--link:hover {
+    text-decoration-color: #2e7d32;
+  }
+  .ev-sp-activity__sep {
     color: var(--c-text-light);
-    background: rgba(0, 0, 0, 0.04);
-    padding: 0.15rem 0.5rem;
-    border-radius: 4px;
+    margin: 0 0.4rem;
+    user-select: none;
+  }
+
+  /* ── Activity responsive ── */
+  @media (max-width: 640px) {
+    .ev-sp-activity__row {
+      grid-template-columns: 1fr;
+      gap: 0.25rem;
+      padding: 0.75rem 0;
+    }
+    .ev-sp-title-wrap {
+      padding: 2rem 1.25rem 1.75rem;
+      border-radius: 16px;
+    }
+    .ev-sp-title-wrap__name {
+      font-size: clamp(1.3rem, 5vw, 1.8rem);
+    }
+    .ev-sp-card--lg {
+      min-width: 0;
+      width: 100%;
+      padding: 1.35rem 1.5rem;
+    }
+    .ev-sp-card--md {
+      min-width: 0;
+      flex: 1 1 calc(50% - var(--space-sm));
+    }
   }
 
   /* ─── FAQ ───────────────────────────────────────────────────── */

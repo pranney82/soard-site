@@ -68,5 +68,6 @@
   "bathroomCount": 1,
   "plans": [],
   "beforeAfterPhotos": [],
-  "heroSummary": "Junailiz lives with the effects of a Type III stroke and hydrocephalus, requiring lifelong care. SOARD is building a wheelchair-accessible bathroom with a zero-entry shower to improve safety and ease daily caregiving."
+  "heroSummary": "Junailiz lives with the effects of a Type III stroke and hydrocephalus, requiring lifelong care. SOARD is building a wheelchair-accessible bathroom with a zero-entry shower to improve safety and ease daily caregiving.",
+  "sortOrder": 2
 }
