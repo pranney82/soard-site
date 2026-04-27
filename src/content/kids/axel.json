@@ -22,20 +22,7 @@
   "photoCount": 1,
   "videoUrl": null,
   "photographer": null,
-  "partnerLogos": [
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/kids-r-kids/public",
-      "name": "Kids R Kids Foundation"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/real-floors-commercial/1774544840079/public",
-      "name": "Real Floors Commercial"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/wyp-logo/1774544592070/public",
-      "name": "WYP Construction"
-    }
-  ],
+  "partnerLogos": [],
   "shortDescription": null,
   "metaDescription": null,
   "altTexts": null,

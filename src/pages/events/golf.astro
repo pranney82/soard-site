@@ -406,7 +406,9 @@ const heroLogoSizes = '(max-width: 767px) 200px, 320px';
                   {group.names.map(s => (
                     <Fragment>
                       {s.logo ? (
-                        <img src={cfRaw(s.logo, 'w=360,h=180,fit=contain,q=85')} alt={s.name} width="360" height="180" loading="lazy" decoding="async" class="ev-sp-title-wrap__logo" />
+                        <div class="ev-sp-title-wrap__card">
+                          <img src={cfRaw(s.logo, 'w=440,h=220,fit=contain,q=90')} alt={s.name} width="440" height="220" loading="lazy" decoding="async" class="ev-sp-title-wrap__logo" />
+                        </div>
                       ) : (
                         <span class="ev-sp-title-wrap__name">{s.name}</span>
                       )}
@@ -1751,12 +1753,27 @@ const heroLogoSizes = '(max-width: 767px) 200px, 320px';
     line-height: 1.2;
     text-align: center;
   }
+  .ev-sp-title-wrap__card {
+    background: #fff;
+    border-radius: 14px;
+    padding: 1.75rem 2.5rem;
+    box-shadow:
+      0 2px 12px rgba(0, 0, 0, 0.18),
+      0 0 0 1px rgba(255, 218, 36, 0.18);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    max-width: 100%;
+  }
   .ev-sp-title-wrap__logo {
-    max-height: 100px;
+    max-height: 110px;
     width: auto;
-    max-width: 80%;
+    max-width: 100%;
     object-fit: contain;
-    filter: brightness(0) invert(1);
+  }
+  @media (max-width: 600px) {
+    .ev-sp-title-wrap__card { padding: 1.25rem 1.5rem; }
+    .ev-sp-title-wrap__logo { max-height: 80px; }
   }
 
   /* ── Tier header (line — label — line) ── */

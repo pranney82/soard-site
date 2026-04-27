@@ -1,6 +1,6 @@
 {
   "testimonial": {
-    "quote": "The best charity golf event in Atlanta — incredible cause, incredible people. We'll be back every year.",
+    "quote": "The best charity golf event in Atlanta!  Incredible cause, incredible people. We'll be back every year.",
     "name": "2025 Gold Sponsor",
     "title": ""
   },
@@ -35,93 +35,213 @@
       "tier": "Title Sponsor",
       "size": "xl",
       "names": [
-        { "name": "Real Floors Commercial", "logo": "partners/real-floors-commercial/1774544840079" }
+        {
+          "name": "Real Floors Commercial",
+          "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/real-floors-commercial/1776866485009/public"
+        }
       ]
     },
     {
-      "tier": "Presenting",
+      "tier": "Presenting Sponsor",
       "size": "lg",
       "names": [
-        { "name": "Spartan Surfaces", "logo": "partners/spartan-surfaces/1774982141004" },
-        { "name": "ASM" }
+        {
+          "name": "Spartan Surfaces",
+          "logo": "partners/spartan-surfaces/1774982141004"
+        },
+        {
+          "name": "ASM"
+        },
+        {
+          "name": "Acro"
+        }
       ]
     },
     {
-      "tier": "Diamond",
+      "tier": "Diamond Sponsor",
       "size": "lg",
       "names": [
-        { "name": "Morrow Construction", "logo": "partners/morrow-construction/1774981060323" },
-        { "name": "MSI", "logo": "partners/msi" },
-        { "name": "Shaw", "logo": "partners/shaw-floors/1774981017203" }
+        {
+          "name": "Morrow Construction",
+          "logo": "partners/morrow-construction/1774981060323"
+        },
+        {
+          "name": "MSI",
+          "logo": "partners/msi"
+        },
+        {
+          "name": "Shaw",
+          "logo": "partners/shaw-floors/1774981017203"
+        }
       ]
     },
     {
-      "tier": "Gold",
-      "size": "md",
+      "tier": "Gold Sponsor",
+      "size": "lg",
       "names": [
-        { "name": "Happy Feet International" },
-        { "name": "Schluter", "logo": "partners/schluter-systems" },
-        { "name": "CR Home" },
-        { "name": "Bishop & Brogdon" },
-        { "name": "AHF Products / Armstrong / AHF Contract / Crossville Studios" },
-        { "name": "TEC" },
-        { "name": "Fishman Flooring" },
-        { "name": "Heat Transfers of Georgia" },
-        { "name": "Engineered Floors" },
-        { "name": "Maepi" },
-        { "name": "Crossville", "logo": "partners/crossville-tile" }
+        {
+          "name": "Happy Feet International",
+          "logo": "partners/happy-feet-international/1776801488866"
+        },
+        {
+          "name": "Schluter",
+          "logo": "partners/schluter-systems"
+        },
+        {
+          "name": "Construction Resources",
+          "logo": "partners/construction-resources"
+        },
+        {
+          "name": "AHF Products/Armstrong/AHF Contract/Crossville Studios",
+          "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/ahf-products-armstrong-ahf-contract-crossville-studios/1776802243898/public"
+        },
+        {
+          "name": "Fishman Flooring",
+          "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/fishman-flooring/1776802279949/public"
+        },
+        {
+          "name": "Heat Transfers of Georgia",
+          "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/heat-transfers-of-georgia/1776802379208/public"
+        },
+        {
+          "name": "Engineered Floors",
+          "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/engineered-floors/1776802421657/public"
+        },
+        {
+          "name": "Maepi",
+          "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/maepi/1776802470583/public"
+        },
+        {
+          "name": "UCX",
+          "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/ucx/1776803776649/public"
+        },
+        {
+          "name": "Bishop & Brogdon"
+        },
+        {
+          "name": "TEC",
+          "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/tec/1777297609232/public"
+        },
+        {
+          "name": "Maxxon",
+          "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/maxxon/1777041355510/public"
+        }
       ]
     },
     {
       "tier": "Bloody Mary Bar Sponsor",
       "size": "sm",
       "names": [
-        { "name": "Crosby Design Group", "logo": "partners/crosby-design-group" }
+        {
+          "name": "Cosby Design Group",
+          "logo": "partners/crosby-design-group"
+        }
       ]
     },
     {
-      "tier": "Beverage Cart",
+      "tier": "Beverage Cart Sponsor",
       "size": "sm",
       "names": [
-        { "name": "Southern Wholesale Flooring" },
-        { "name": "Bishop & Brogdon" }
+        {
+          "name": "Southern Wholesale Flooring",
+          "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/southern-wholesale-flooring/1776802668043/public"
+        }
       ]
     },
     {
-      "tier": "Closest to the Pin",
+      "tier": "Banquet Sponsor",
       "size": "sm",
       "names": [
-        { "name": "Speciality Tile" },
-        { "name": "Choate Construction" },
-        { "name": "Trinity Surfaces" }
+        {
+          "name": "Pella",
+          "logo": "partners/pella/1774379889033"
+        }
       ]
     },
     {
-      "tier": "Putting Contest",
+      "tier": "Closest to the Pin Sponsor",
       "size": "sm",
       "names": [
-        { "name": "Real Floors - Brad Shaull" },
-        { "name": "Schluter" }
+        {
+          "name": "Speciality Tile",
+          "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/speciality-tile/1776802729609/public"
+        },
+        {
+          "name": "Choate Construction",
+          "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/choate-construction/1776802764536/public"
+        },
+        {
+          "name": "Trinity Surfaces",
+          "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/trinity-surfaces/1776802791466/public"
+        }
       ]
     },
     {
-      "tier": "Golf Ball Sponsor",
+      "tier": "Putting Contest Sponsors",
       "size": "sm",
       "names": [
-        { "name": "Randall Brothers", "logo": "partners/randall-brothers" }
+        {
+          "name": "Real Floors Commercial",
+          "logo": "partners/real-floors-commercial/1774544840079"
+        },
+        {
+          "name": "Schluter",
+          "logo": "partners/schluter-systems"
+        },
+        {
+          "name": "Adro & Paul Nielsen"
+        }
+      ]
+    },
+    {
+      "tier": "Titlest Golf Ball Sponsor",
+      "size": "sm",
+      "names": [
+        {
+          "name": "Randall Brothers",
+          "logo": "partners/randall-brothers"
+        }
       ]
     },
     {
       "tier": "Hole Sponsor",
       "size": "sm",
       "names": [
-        { "name": "Swoz Consulting LLC" },
-        { "name": "BMO" },
-        { "name": "Tilebar" },
-        { "name": "Highland Building Group" },
-        { "name": "Stone Source" },
-        { "name": "Daltile", "logo": "partners/daltile" },
-        { "name": "Patcraft" }
+        {
+          "name": "Swoz Consulting LLC",
+          "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/swoz-consulting-llc/1776802943923/public"
+        },
+        {
+          "name": "BMO",
+          "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/bmo/1776802964736/public"
+        },
+        {
+          "name": "Tilebar",
+          "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/tilebar/1776802989049/public"
+        },
+        {
+          "name": "Highland Building Group",
+          "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/highland-building-group/1776803017893/public"
+        },
+        {
+          "name": "Stone Source",
+          "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/stone-source/1776803040499/public"
+        },
+        {
+          "name": "Daltile",
+          "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/daltile/1776803064611/public"
+        },
+        {
+          "name": "Pella",
+          "logo": "partners/pella/1774379889033"
+        },
+        {
+          "name": "Patcraft "
+        },
+        {
+          "name": "Brady Ware",
+          "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/sponsor/1777037698847/public"
+        }
       ]
     }
   ],
@@ -181,57 +301,68 @@
       {
         "name": "Tournament Coin Sponsor",
         "price": "$4,000",
-        "status": "available"
+        "status": "available",
+        "perk": "Signage on the Winner's Board\nMultiple Social Media Posts Tagging Your Company"
       },
       {
         "name": "Lunch Sponsor",
         "price": "$2,500",
-        "status": "available"
+        "status": "available",
+        "perk": "Logo on Lunches \nMultiple Social Media Posts Tagging Your Company"
       },
       {
         "name": "Putting Contest Sponsor",
         "price": "$2,500",
-        "status": "available"
+        "status": "few-left",
+        "perk": "Signage on the Putting Green\nMultiple Social Media Posts Tagging Your Company"
       },
       {
         "name": "Beverage Cart Sponsor",
         "price": "$2,000",
-        "status": "available"
+        "status": "few-left",
+        "perk": "Signage on Cart\nMultiple Social Media Posts Tagging Your Company"
       },
       {
         "name": "Bloody Mary Bar Sponsor",
         "price": "$2,000",
-        "status": "available"
+        "status": "sold-out",
+        "perk": "Signage on Bar \nMultiple Social Media Posts Tagging Your Company\n"
       },
       {
         "name": "Banquet Bar Sponsor",
         "price": "$2,000",
-        "status": "available"
+        "status": "few-left",
+        "perk": "Signage on Bar \nMultiple Social Media Posts Tagging Your Company"
       },
       {
         "name": "Raffle Sponsor",
         "price": "$2,000",
-        "status": "available"
+        "status": "available",
+        "perk": "Signage on Winner's Board \nMultiple Social Media Posts Tagging Your Company"
       },
       {
         "name": "Titleist Golf Ball Sponsor",
         "price": "$1,750",
-        "status": "available"
+        "status": "few-left",
+        "perk": "Signage on Winner's Board \nMultiple Social Media Posts Tagging Your Company"
       },
       {
         "name": "Banquet Sponsor",
         "price": "$1,500",
-        "status": "available"
+        "status": "few-left",
+        "perk": "Signage at Food Table \nMultiple Social Media Posts Tagging Your Company"
       },
       {
         "name": "Closest to the Pin",
         "price": "$1,500",
-        "status": "available"
+        "status": "sold-out",
+        "perk": "Signage on the Contest Hole \nMultiple Social Media Posts Tagging Your Company"
       },
       {
         "name": "Hole Sponsor",
         "price": "$1,000",
-        "status": "available"
+        "status": "available",
+        "perk": "Signage on the Sponsored Hole \nMultiple Social Media Posts Tagging Your Company"
       }
     ]
   }
