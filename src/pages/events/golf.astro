@@ -4,6 +4,7 @@
  * Ported from sunnyandranney.com/events/ and adapted for SOARD design system
  */
 import BaseLayout from '../../layouts/BaseLayout.astro';
+import FAQAccordion from '../../components/ui/FAQAccordion.astro';
 import { cfRaw, cfSrcset, cfLqip, cfAbsolute } from '../../utils/cf-image';
 import { getEntry } from 'astro:content';
 
@@ -492,42 +493,20 @@ const heroLogoSizes = '(max-width: 767px) 200px, 320px';
   <!-- ═══ FAQ ═══ -->
   {faqs.length > 0 && (
     <section class="ev-faq">
-      <div class="container ev-faq__inner">
-        <span class="ev-faq__label" data-reveal>Questions?</span>
-        <h2 class="ev-faq__heading" data-reveal>Frequently Asked</h2>
-        <p class="ev-faq__sub" data-reveal>Everything you need to know about the tournament.</p>
-        <div class="ev-faq__list">
-          {faqs.map((faq, i) => (
-            <details class="ev-faq__item" data-reveal style={`--faq-i:${i}`}>
-              <summary class="ev-faq__question">
-                <div class="ev-faq__q-left">
-                  <span class="ev-faq__num">{String(i + 1).padStart(2, '0')}</span>
-                  <span class="ev-faq__q-text">{faq.question}</span>
-                </div>
-                <span class="ev-faq__icon" aria-hidden="true">
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path class="ev-faq__icon-h" d="M1 8h14"/><path class="ev-faq__icon-v" d="M8 1v14"/></svg>
-                </span>
-              </summary>
-              <div class="ev-faq__body">
-                <div class="ev-faq__answer" set:html={faq.answer} />
-              </div>
-            </details>
-          ))}
-        </div>
+      <div class="container">
+        <FAQAccordion
+          items={faqs}
+          eyebrow="Questions?"
+          heading="Frequently Asked"
+          subtitle="Everything you need to know about the tournament."
+          accent="#2e7d32"
+          accentTint="rgba(46, 125, 50, 0.1)"
+          idPrefix="golf-faq"
+          footerLabel="Still have a question?"
+          footerCta="Email our tournament team"
+          footerHref="mailto:info@soardcharity.com?subject=Sunshine%20on%20a%20Ranney%20Fairway%20Tournament"
+        />
       </div>
-      <!-- FAQ structured data for Google rich results -->
-      <script type="application/ld+json" set:html={JSON.stringify({
-        "@context": "https://schema.org",
-        "@type": "FAQPage",
-        "mainEntity": faqs.map(faq => ({
-          "@type": "Question",
-          "name": faq.question,
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": faq.answer,
-          },
-        })),
-      })} />
     </section>
   )}
 
@@ -1978,208 +1957,15 @@ const heroLogoSizes = '(max-width: 767px) 200px, 320px';
     }
   }
 
-  /* ─── FAQ ───────────────────────────────────────────────────── */
+  /* ─── FAQ section wrapper (the accordion itself lives in <FAQAccordion>) ─── */
   .ev-faq {
     padding: var(--space-4xl) 0;
     background: linear-gradient(180deg, transparent 0%, rgba(46, 125, 50, 0.02) 40%, rgba(46, 125, 50, 0.04) 100%);
   }
-  .ev-faq__inner {
-    max-width: 740px;
-    margin: 0 auto;
-    text-align: center;
-  }
-  .ev-faq__label {
-    display: inline-block;
-    font-size: 0.65rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.18em;
-    color: #2e7d32;
-    margin-bottom: var(--space-sm);
-    background: rgba(46, 125, 50, 0.08);
-    padding: 0.3rem 0.85rem;
-    border-radius: 100px;
-  }
-  .ev-faq__heading {
-    font-family: var(--font-display);
-    font-size: clamp(1.7rem, 3.5vw, 2.6rem);
-    color: var(--c-dark);
-    margin-bottom: 0.5rem;
-  }
-  .ev-faq__sub {
-    font-size: 0.95rem;
-    color: var(--c-text-muted);
-    margin-bottom: var(--space-2xl);
-    line-height: 1.6;
-  }
-  .ev-faq__list {
-    text-align: left;
-    display: flex;
-    flex-direction: column;
-    gap: 0;
-  }
-  .ev-faq__item {
-    border-bottom: 1px solid var(--c-border);
-    transition: background 0.35s ease;
-    position: relative;
-  }
-  .ev-faq__item:first-child {
-    border-top: 1px solid var(--c-border);
-  }
-  /* Active left accent bar */
-  .ev-faq__item::before {
-    content: '';
-    position: absolute;
-    left: 0;
-    top: 0;
-    bottom: 0;
-    width: 3px;
-    background: #2e7d32;
-    border-radius: 0 3px 3px 0;
-    transform: scaleY(0);
-    transform-origin: center;
-    transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
-  }
-  .ev-faq__item[open]::before {
-    transform: scaleY(1);
-  }
-  .ev-faq__item[open] {
-    background: rgba(46, 125, 50, 0.03);
-  }
-  .ev-faq__question {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-md);
-    padding: 1.35rem 0.75rem 1.35rem 1rem;
-    font-size: 1rem;
-    font-weight: 600;
-    color: var(--c-dark);
-    cursor: pointer;
-    list-style: none;
-    transition: color 0.2s;
-    border-radius: 2px;
-    -webkit-tap-highlight-color: transparent;
-  }
-  .ev-faq__question::-webkit-details-marker { display: none; }
-  .ev-faq__question::marker { content: ''; }
-  .ev-faq__question:hover { color: #2e7d32; }
-  .ev-faq__question:focus-visible {
-    outline: 2px solid #2e7d32;
-    outline-offset: -2px;
-    background: rgba(46, 125, 50, 0.04);
-  }
-  .ev-faq__question:active {
-    background: rgba(46, 125, 50, 0.05);
-  }
-  .ev-faq__q-left {
-    display: flex;
-    align-items: baseline;
-    gap: 0.85rem;
-  }
-  .ev-faq__q-text {
-    line-height: 1.5;
-  }
-  .ev-faq__num {
-    font-family: var(--font-display);
-    font-size: 0.72rem;
-    font-weight: 700;
-    color: rgba(46, 125, 50, 0.25);
-    min-width: 1.5rem;
-    transition: color 0.35s;
-    flex-shrink: 0;
-  }
-  .ev-faq__item[open] .ev-faq__num {
-    color: #2e7d32;
-  }
-  .ev-faq__icon {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 2rem;
-    height: 2rem;
-    border-radius: 50%;
-    background: rgba(46, 125, 50, 0.06);
-    flex-shrink: 0;
-    transition: background 0.3s, transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
-  }
-  .ev-faq__icon svg {
-    color: #2e7d32;
-  }
-  .ev-faq__icon-h,
-  .ev-faq__icon-v {
-    transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s;
-    transform-origin: center;
-  }
-  .ev-faq__item[open] .ev-faq__icon {
-    background: #2e7d32;
-    transform: scale(1.05);
-  }
-  .ev-faq__item[open] .ev-faq__icon svg {
-    color: #fff;
-  }
-  .ev-faq__item[open] .ev-faq__icon-v {
-    transform: rotate(90deg);
-    opacity: 0;
-  }
-  .ev-faq__question:hover .ev-faq__icon {
-    background: rgba(46, 125, 50, 0.12);
-  }
-  .ev-faq__item[open] .ev-faq__question:hover .ev-faq__icon {
-    background: #256d29;
-  }
-  /* ── Animated expand / collapse ── */
-  .ev-faq__body {
-    display: grid;
-    grid-template-rows: 0fr;
-    transition: grid-template-rows 0.45s cubic-bezier(0.16, 1, 0.3, 1),
-                opacity 0.35s ease;
-    opacity: 0;
-  }
-  .ev-faq__item[open] .ev-faq__body {
-    grid-template-rows: 1fr;
-    opacity: 1;
-  }
-  .ev-faq__answer {
-    overflow: hidden;
-    padding: 0 0.75rem 0 calc(1.5rem + 0.85rem + 1rem); /* align with question text past the number */
-    font-size: 0.92rem;
-    line-height: 1.75;
-    color: var(--c-text-muted);
-    transform: translateY(6px);
-    transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-  }
-  .ev-faq__item[open] .ev-faq__answer {
-    padding-bottom: 1.5rem;
-    transform: translateY(0);
-  }
-  .ev-faq__answer a {
-    color: #2e7d32;
-    text-decoration: underline;
-    text-decoration-color: rgba(46, 125, 50, 0.3);
-    text-underline-offset: 2px;
-    transition: text-decoration-color 0.2s;
-  }
-  .ev-faq__answer a:hover {
-    text-decoration-color: #2e7d32;
-  }
-  @media (max-width: 640px) {
-    .ev-faq__answer {
-      padding-left: 1rem;
-      padding-right: 0.5rem;
-    }
-    .ev-faq__question {
-      padding: 1.1rem 0.5rem 1.1rem 0.75rem;
-    }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .ev-faq__body { transition: none; }
-    .ev-faq__answer { transition: none; transform: none; }
-    .ev-faq__icon-h, .ev-faq__icon-v { transition: none; }
-    .ev-faq__icon { transition: none; }
-    .ev-faq__item { transition: none; }
-    .ev-faq__item::before { transition: none; }
-    .ev-faq__num { transition: none; }
+  /* On mobile the sticky CTA (~70px) sits above the bottom of the page.
+     Pad the FAQ section so the last items can scroll above the bar. */
+  @media (max-width: 768px) {
+    .ev-faq { padding-bottom: calc(var(--space-4xl) + 80px); }
   }
 
   /* ─── Sticky Mobile CTA ────────────────────────────────────── */
@@ -2310,86 +2096,11 @@ const heroLogoSizes = '(max-width: 767px) 200px, 320px';
     observer.observe(hero);
   }
 
-  /* ── Animated FAQ accordion ── */
-  function initFaqAccordion() {
-    const allDetails = document.querySelectorAll<HTMLDetailsElement>('.ev-faq__item');
-    const closingSet = new WeakSet<HTMLDetailsElement>();
-    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
-
-    function closeItem(detail: HTMLDetailsElement) {
-      if (!detail.open || closingSet.has(detail)) return;
-      const body = detail.querySelector<HTMLElement>('.ev-faq__body')!;
-
-      // Instant close when reduced motion
-      if (prefersReducedMotion.matches) {
-        detail.open = false;
-        return;
-      }
-
-      closingSet.add(detail);
-
-      // Force the open-state value so the browser sees a transition to 0fr
-      body.style.gridTemplateRows = '1fr';
-      body.style.opacity = '1';
-      body.getBoundingClientRect(); // force reflow
-
-      body.style.gridTemplateRows = '0fr';
-      body.style.opacity = '0';
-
-      function finish() {
-        detail.open = false;
-        body.style.removeProperty('grid-template-rows');
-        body.style.removeProperty('opacity');
-        closingSet.delete(detail);
-      }
-
-      let done = false;
-      body.addEventListener('transitionend', (e) => {
-        if (done || e.target !== body) return;
-        done = true;
-        finish();
-      }, { once: true });
-      setTimeout(() => {
-        if (done) return;
-        done = true;
-        finish();
-      }, 500);
-    }
-
-    allDetails.forEach(detail => {
-      const summary = detail.querySelector('summary')!;
-
-      summary.addEventListener('click', (e) => {
-        e.preventDefault();
-        if (closingSet.has(detail)) return;
-
-        if (detail.open) {
-          closeItem(detail);
-        } else {
-          // Close any other open items first
-          allDetails.forEach(other => { if (other !== detail) closeItem(other); });
-          detail.open = true;
-
-          // Scroll the opened question into view if it's near the edge
-          requestAnimationFrame(() => {
-            const rect = detail.getBoundingClientRect();
-            const headerOffset = 100; // clear any sticky header
-            if (rect.top < headerOffset) {
-              window.scrollBy({
-                top: rect.top - headerOffset,
-                behavior: prefersReducedMotion.matches ? 'auto' : 'smooth',
-              });
-            }
-          });
-        }
-      });
-    });
-  }
+  /* FAQ accordion behavior is handled by the <faq-accordion> custom element */
 
   document.addEventListener('astro:page-load', () => {
     initGolfScroll();
     initCountdown();
     initStickyCta();
-    initFaqAccordion();
   });
 </script>

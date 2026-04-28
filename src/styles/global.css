@@ -8,6 +8,7 @@
   /* Brand Colors — per official brand guidelines */
   --c-yellow: #FFDA24;
   --c-yellow-soft: rgba(255, 218, 36, 0.3);
+  --c-yellow-mark: rgba(255, 218, 36, 0.5);
   --c-yellow-hover: #E6C400;
   --c-yellow-glow: rgba(255, 218, 36, 0.35);
   --c-accent: #373A36;

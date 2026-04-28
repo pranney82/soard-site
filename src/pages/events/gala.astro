@@ -1,0 +1,1906 @@
+---
+/**
+ * Evening of Sunshine — Annual fundraising gala for Sunshine on a Ranney Day.
+ * Theme rotates yearly (currently Havana Nights). Event details come from
+ * the latest /content/events/{year}-evening-of-sunshine.json entry.
+ */
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import FAQAccordion from '../../components/ui/FAQAccordion.astro';
+import { cfRaw, cfSrcset, cfLqip, cfAbsolute } from '../../utils/cf-image';
+import { getEntry } from 'astro:content';
+
+/* ── Event content (admin-editable via /content/events/2026-evening-of-sunshine.json) ── */
+const eventEntry = await getEntry('events', '2026-evening-of-sunshine');
+const ev = eventEntry?.data ?? {} as any;
+
+/* ── Gala-specific CMS data (admin-editable via gala.json) ── */
+const galaData = await getEntry('site', 'gala');
+const cms: any = galaData?.data ?? {};
+
+interface Tier {
+  name: string;
+  price: string;
+  detail?: string;
+  perk?: string;
+  badge?: string;
+  badgeStyle?: 'gold' | 'green';
+  highlight?: 'featured' | 'popular';
+  status?: 'available' | 'few-left' | 'sold-out';
+}
+
+const mainTiers: Tier[] = cms.tiers?.main ?? [];
+const addOnTiers: Tier[] = cms.tiers?.addons ?? [];
+const testimonial = cms.testimonial ?? { quote: '', name: '', title: '' };
+const faqs: { question: string; answer: string }[] = cms.faqs ?? [];
+const auctionItems: { name: string; detail: string }[] = cms.auctionItems ?? [];
+const evening: { time: string; title: string; detail: string }[] = cms.evening ?? [];
+
+/* ── Hero image: use event image (admin-uploaded) ── */
+const heroImageId = ev.image
+  ? ev.image.replace('https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/', '').replace(/\/(public|w=.*)$/, '')
+  : 'events/2026-evening-of-sunshine/1776780555974-evening-of-sunshine-2.jpg';
+
+const heroSrcset = cfSrcset(heroImageId, [480, 720, 960], { fit: 'cover', gravity: 'auto', aspectRatio: 5 / 4 });
+const heroSizes = '(max-width: 767px) 90vw, 480px';
+
+/* ── Date/time helpers ── */
+const dateISO = ev.date || '2026-08-22';
+const dateLong = new Date(dateISO + 'T00:00:00').toLocaleDateString('en-US', {
+  weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
+});
+
+/* ── JSON-LD ── */
+const eventJsonLd = {
+  "@type": "Event",
+  "@id": "https://sunshineonaranneyday.com/events/gala/#event",
+  "name": ev.title || "Evening of Sunshine — Havana Nights",
+  "description": "Annual fundraising gala benefiting children with special needs. Havana Nights theme — Latin music, dancing, and live auction.",
+  "startDate": `${dateISO}T18:00:00-04:00`,
+  "endDate": `${dateISO}T23:00:00-04:00`,
+  "eventAttendanceMode": "https://schema.org/OfflineEventAttendanceMode",
+  "eventStatus": "https://schema.org/EventScheduled",
+  "location": {
+    "@type": "Place",
+    "name": ev.location || "You42 Studios",
+    "address": {
+      "@type": "PostalAddress",
+      "streetAddress": "11000 Alpharetta Hwy, Unit 4",
+      "addressLocality": "Roswell",
+      "addressRegion": "GA",
+      "postalCode": "30076",
+      "addressCountry": "US",
+    },
+  },
+  "organizer": { "@id": "https://sunshineonaranneyday.com/#organization" },
+  "image": cfAbsolute(heroImageId),
+  "offers": {
+    "@type": "Offer",
+    "url": ev.ticketUrl || "https://www.zeffy.com/en-US/ticketing/2026-evening-of-sunshine",
+    "availability": "https://schema.org/InStock",
+    "validFrom": "2026-01-01",
+    "priceCurrency": "USD",
+  },
+};
+---
+
+<BaseLayout
+  title="Evening of Sunshine — Havana Nights Gala"
+  description="Join us for Havana Nights at the Evening of Sunshine Gala — a vibrant evening of music, dancing, and impact benefiting children with special needs."
+  jsonLd={eventJsonLd}
+  breadcrumbs={[
+    { name: 'Events', url: '/events/' },
+    { name: 'Evening of Sunshine Gala', url: '/events/gala/' },
+  ]}
+>
+  <link slot="head" rel="preload" as="image" imagesrcset={heroSrcset} imagesizes={heroSizes} fetchpriority="high" />
+
+  <!-- ═══ HERO ═══ -->
+  <section class="gv-hero">
+    <div class="gv-hero__bg" aria-hidden="true">
+      <div class="gv-hero__sky"></div>
+      <div class="gv-hero__sunset"></div>
+      <div class="gv-hero__noise"></div>
+      <div class="gv-hero__palms gv-hero__palms--left">
+        <svg viewBox="0 0 240 320" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <path d="M120 320 V160" stroke="currentColor" stroke-width="4" stroke-linecap="round"/>
+          <path d="M120 160 C 60 140 30 80 20 30 C 70 60 110 110 120 160" fill="currentColor"/>
+          <path d="M120 160 C 180 140 210 80 220 30 C 170 60 130 110 120 160" fill="currentColor"/>
+          <path d="M120 168 C 50 168 12 200 0 250 C 60 220 110 200 120 168" fill="currentColor"/>
+          <path d="M120 168 C 190 168 228 200 240 250 C 180 220 130 200 120 168" fill="currentColor"/>
+          <path d="M120 162 C 80 130 50 90 30 50 C 70 50 110 100 120 160" fill="currentColor" opacity="0.7"/>
+        </svg>
+      </div>
+      <div class="gv-hero__palms gv-hero__palms--right">
+        <svg viewBox="0 0 240 320" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <path d="M120 320 V160" stroke="currentColor" stroke-width="4" stroke-linecap="round"/>
+          <path d="M120 160 C 60 140 30 80 20 30 C 70 60 110 110 120 160" fill="currentColor"/>
+          <path d="M120 160 C 180 140 210 80 220 30 C 170 60 130 110 120 160" fill="currentColor"/>
+          <path d="M120 168 C 50 168 12 200 0 250 C 60 220 110 200 120 168" fill="currentColor"/>
+          <path d="M120 168 C 190 168 228 200 240 250 C 180 220 130 200 120 168" fill="currentColor"/>
+        </svg>
+      </div>
+    </div>
+
+    <div class="container gv-hero__inner">
+      <div class="gv-hero__content">
+        <span class="gv-hero__eyebrow" data-reveal>Annual Fundraising Gala</span>
+        <h1 class="gv-hero__title" data-reveal transition:name="event-title">
+          Evening of <span class="gv-hero__title-accent">Sunshine</span>
+        </h1>
+        <p class="gv-hero__theme-line" data-reveal>
+          <span class="gv-hero__theme-tag">This Year's Theme</span>
+          <em>Havana Nights</em>
+        </p>
+        <p class="gv-hero__subtitle" data-reveal>
+          A vibrant evening of Latin music, festive cocktails, and dancing — all to fund life-changing home renovations for children with special needs.
+        </p>
+        <div class="gv-hero__meta" data-reveal>
+          <div class="gv-hero__meta-item">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg>
+            <time datetime={dateISO}>{dateLong}</time>
+          </div>
+          {ev.time && (
+            <div class="gv-hero__meta-item">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+              {ev.time}
+            </div>
+          )}
+          <div class="gv-hero__meta-item">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/></svg>
+            {ev.location || 'You42 Studios, Roswell GA'}
+          </div>
+        </div>
+        <div class="gv-hero__actions" data-reveal>
+          <a href={ev.ticketUrl || '#tickets'} target={ev.ticketUrl ? '_blank' : undefined} rel={ev.ticketUrl ? 'noopener' : undefined} class="gv-btn gv-btn--coral gv-btn--hero">
+            Reserve Your Seat
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+          </a>
+          <a href="#evening" class="gv-hero__scroll">
+            See the Evening
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg>
+          </a>
+        </div>
+
+        <div class="gv-countdown" data-reveal data-event-date={`${dateISO}T18:00:00-04:00`}>
+          <div class="gv-countdown__unit">
+            <span class="gv-countdown__num" data-days>--</span>
+            <span class="gv-countdown__label">Days</span>
+          </div>
+          <span class="gv-countdown__sep" aria-hidden="true">·</span>
+          <div class="gv-countdown__unit">
+            <span class="gv-countdown__num" data-hours>--</span>
+            <span class="gv-countdown__label">Hours</span>
+          </div>
+          <span class="gv-countdown__sep" aria-hidden="true">·</span>
+          <div class="gv-countdown__unit">
+            <span class="gv-countdown__num" data-mins>--</span>
+            <span class="gv-countdown__label">Minutes</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="gv-hero__visual" data-reveal>
+        <div class="gv-hero__frame">
+          <div class="gv-hero__frame-glow" aria-hidden="true"></div>
+          <div class="gv-hero__photo-wrap" style={`background-image:url('${cfLqip(heroImageId)}')`}>
+            <img
+              src={cfRaw(heroImageId, 'w=720,h=576,fit=cover,gravity=auto,q=82')}
+              srcset={heroSrcset}
+              sizes={heroSizes}
+              alt="Evening of Sunshine — Havana Nights gala"
+              class="gv-hero__photo lqip-img"
+              width="720"
+              height="576"
+              loading="eager"
+              decoding="async"
+              fetchpriority="high"
+              transition:name="event-hero"
+            />
+          </div>
+          <div class="gv-hero__date-card">
+            <span class="gv-hero__date-month">{new Date(dateISO + 'T00:00:00').toLocaleDateString('en-US', { month: 'short' }).toUpperCase()}</span>
+            <span class="gv-hero__date-day">{new Date(dateISO + 'T00:00:00').getDate()}</span>
+            <span class="gv-hero__date-year">{new Date(dateISO + 'T00:00:00').getFullYear()}</span>
+          </div>
+          <div class="gv-hero__sticker" aria-hidden="true">
+            <svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <path id="gv-circle" d="M 60,60 m -44,0 a 44,44 0 1,1 88,0 a 44,44 0 1,1 -88,0" />
+              </defs>
+              <text font-family="Georgia, serif" font-size="11" fill="currentColor" letter-spacing="3">
+                <textPath href="#gv-circle">HAVANA NIGHTS · EVENING OF SUNSHINE · HAVANA NIGHTS · </textPath>
+              </text>
+            </svg>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Layered horizon — two overlapping waves create depth into the cream section -->
+    <div class="gv-hero__bottom" aria-hidden="true">
+      <svg class="gv-hero__sweep" viewBox="0 0 1440 240" preserveAspectRatio="none">
+        <defs>
+          <linearGradient id="gv-stripe" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#d4a017" stop-opacity="0"/>
+            <stop offset="35%" stop-color="#d4a017" stop-opacity="0.7"/>
+            <stop offset="65%" stop-color="#e8a87c" stop-opacity="0.65"/>
+            <stop offset="100%" stop-color="#c75d4a" stop-opacity="0"/>
+          </linearGradient>
+          <linearGradient id="gv-back" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#e8d6b3" stop-opacity="0"/>
+            <stop offset="100%" stop-color="#e8d6b3" stop-opacity="0.95"/>
+          </linearGradient>
+        </defs>
+        <!-- Back wave: warmer sand tone, peaks higher, creates the horizon -->
+        <path d="M0,240 L0,140 C 200,80 460,170 720,110 C 980,50 1240,170 1440,100 L1440,240 Z" fill="url(#gv-back)"/>
+        <!-- Gold accent line riding the back wave's crest -->
+        <path d="M0,140 C 200,80 460,170 720,110 C 980,50 1240,170 1440,100" stroke="url(#gv-stripe)" stroke-width="1.6" fill="none"/>
+        <!-- Front wave: solid cream paper, lower peaks, foreground feel -->
+        <path d="M0,240 L0,200 C 200,160 460,220 720,180 C 980,140 1240,220 1440,180 L1440,240 Z" fill="var(--gv-paper)"/>
+      </svg>
+    </div>
+  </section>
+
+  <!-- ═══ EVENT DETAILS ═══ -->
+  <section class="gv-details" id="details">
+    <div class="container gv-details__inner">
+      <div class="gv-details__grid">
+        <div class="gv-details__card" data-reveal>
+          <div class="gv-details__icon" aria-hidden="true">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg>
+          </div>
+          <h2 class="gv-details__card-title">When</h2>
+          <p class="gv-details__card-date"><time datetime={dateISO}>{dateLong}</time></p>
+          {ev.time && <p class="gv-details__card-text">{ev.time}</p>}
+        </div>
+        <div class="gv-details__card" data-reveal>
+          <div class="gv-details__icon" aria-hidden="true">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/></svg>
+          </div>
+          <h2 class="gv-details__card-title">Where</h2>
+          <p class="gv-details__card-text">
+            <strong>{ev.location || 'You42 Studios'}</strong><br/>
+            <a href={`https://maps.google.com/?q=${encodeURIComponent(ev.address || '11000 Alpharetta Hwy, Unit 4, Roswell, GA 30076')}`} target="_blank" rel="noopener" class="gv-details__map-link">
+              {ev.address || '11000 Alpharetta Hwy, Unit 4, Roswell, GA 30076'}
+            </a>
+          </p>
+        </div>
+        <div class="gv-details__card" data-reveal>
+          <div class="gv-details__icon" aria-hidden="true">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v6"/><path d="m4.93 10.93 4.24 4.24"/><path d="M2 18h2"/><path d="M20 18h2"/><path d="m19.07 10.93-4.24 4.24"/><path d="M12 22a4 4 0 0 0 4-4H8a4 4 0 0 0 4 4z"/></svg>
+          </div>
+          <h2 class="gv-details__card-title">Dress Code</h2>
+          <p class="gv-details__card-text">Festive cocktail attire — Havana flair. Tropical colors, linen, summer florals, panama hats.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ THE THEME ═══ -->
+  <section class="gv-theme">
+    <div class="gv-theme__bg" aria-hidden="true"></div>
+    <div class="container gv-theme__inner">
+      <div class="gv-theme__text" data-reveal>
+        <span class="gv-theme__eyebrow">This Year's Theme</span>
+        <h2 class="gv-theme__heading">Havana Nights</h2>
+        <p class="gv-theme__lead">
+          Step into Old Havana — colorful, alive, and full of soul. Cuban rhythms drift across the room, bartenders mix mojitos and rum punches, and the dance floor glows under string lights.
+        </p>
+        <p class="gv-theme__body">
+          <strong>COT Latin Band</strong> takes the stage with professional dancers leading guests onto the floor. Hand-rolled cigars, hibiscus blooms, and aged-paper menus set the scene — every detail nods to the warmth and color of Cuba's capital.
+        </p>
+        <ul class="gv-theme__list">
+          <li><span class="gv-theme__bullet" aria-hidden="true">·</span> Live Latin band &amp; professional dancers</li>
+          <li><span class="gv-theme__bullet" aria-hidden="true">·</span> Hand-crafted Havana cocktails &amp; cigar lounge</li>
+          <li><span class="gv-theme__bullet" aria-hidden="true">·</span> Live &amp; silent auctions with bucket-list experiences</li>
+          <li><span class="gv-theme__bullet" aria-hidden="true">·</span> Stories from the families &amp; kids your dollars serve</li>
+        </ul>
+      </div>
+
+      <aside class="gv-theme__card" data-reveal>
+        <div class="gv-theme__card-stamp" aria-hidden="true">
+          <svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg"><circle cx="40" cy="40" r="36" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="40" cy="40" r="30" fill="none" stroke="currentColor" stroke-width="0.8"/><text x="40" y="36" text-anchor="middle" font-family="Georgia, serif" font-size="9" fill="currentColor" letter-spacing="1">VIVA</text><text x="40" y="50" text-anchor="middle" font-family="Georgia, serif" font-size="9" fill="currentColor" letter-spacing="1">HAVANA</text></svg>
+        </div>
+        <span class="gv-theme__card-label">A Note on Style</span>
+        <h3 class="gv-theme__card-title">Dress to Celebrate</h3>
+        <p class="gv-theme__card-text">
+          Bring out the bright florals, the linen suits, the guayaberas. Throw on a panama hat. Wear the dress you love. The more spirited the room, the better the night — every ounce of color helps tell the story.
+        </p>
+        <div class="gv-theme__palette" aria-hidden="true">
+          <span style="--c:#0d3b4f"></span>
+          <span style="--c:#c75d4a"></span>
+          <span style="--c:#e8a87c"></span>
+          <span style="--c:#d4a017"></span>
+          <span style="--c:#2d6a4f"></span>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ═══ THE EVENING ═══ -->
+  {evening.length > 0 && (
+    <section class="gv-evening">
+      <div class="container gv-evening__inner" id="evening">
+        <div class="gv-evening__header">
+          <span class="gv-evening__label" data-reveal>The Evening</span>
+          <h2 class="gv-evening__heading" data-reveal>How the Night Unfolds</h2>
+          <p class="gv-evening__sub" data-reveal>From the first cocktail to the last dance — here's what to expect.</p>
+        </div>
+        <ol class="gv-timeline">
+          {evening.map((step, i) => (
+            <li class="gv-timeline__item" data-reveal style={`--gv-i:${i}`}>
+              <div class="gv-timeline__marker" aria-hidden="true">
+                <span class="gv-timeline__dot"></span>
+              </div>
+              <div class="gv-timeline__card">
+                <span class="gv-timeline__time">{step.time}</span>
+                <h3 class="gv-timeline__title">{step.title}</h3>
+                <p class="gv-timeline__detail">{step.detail}</p>
+              </div>
+            </li>
+          ))}
+        </ol>
+      </div>
+    </section>
+  )}
+
+  <!-- ═══ AUCTION HIGHLIGHTS ═══ -->
+  {auctionItems.length > 0 && (
+    <section class="gv-auction">
+      <div class="container gv-auction__inner">
+        <div class="gv-auction__header">
+          <span class="gv-auction__label" data-reveal>Live &amp; Silent Auction</span>
+          <h2 class="gv-auction__heading" data-reveal>Once-in-a-Lifetime Experiences</h2>
+          <p class="gv-auction__sub" data-reveal>
+            A taste of what's hit our auction block in years past. Every winning bid funds a child's room — and you'd be surprised how often the underdogs steal the show.
+          </p>
+        </div>
+        <div class="gv-auction__grid">
+          {auctionItems.map((item, i) => (
+            <article class="gv-auction__card" data-reveal style={`--gv-i:${i}`}>
+              <div class="gv-auction__paddle" aria-hidden="true">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m14.5 2 7.5 7.5-7.5 7.5"/><path d="M2 22 14.5 9.5"/><path d="m2 13 9 9"/></svg>
+              </div>
+              <h3 class="gv-auction__name">{item.name}</h3>
+              <p class="gv-auction__detail">{item.detail}</p>
+            </article>
+          ))}
+        </div>
+        <p class="gv-auction__footnote" data-reveal>
+          Want to donate an item or experience?
+          <a href="mailto:info@soardcharity.com?subject=Gala%20Auction%20Donation"> Reach out to our gala team.</a>
+        </p>
+      </div>
+    </section>
+  )}
+
+  <!-- ═══ TESTIMONIAL ═══ -->
+  {testimonial.quote && (
+    <section class="gv-testimonial">
+      <div class="container gv-testimonial__inner" data-reveal>
+        <svg class="gv-testimonial__mark" width="40" height="32" viewBox="0 0 40 32" fill="none" aria-hidden="true"><path d="M0 20.8C0 27.2 3.6 32 9.6 32c4.4 0 7.6-3.2 7.6-7.2 0-4.4-3.2-7.2-6.8-7.2-.8 0-1.6.2-2 .4C9.2 12.4 13.6 6 18.4 3.2L14.8 0C6 4.4 0 12.8 0 20.8Zm22 0C22 27.2 25.6 32 31.6 32c4.4 0 7.6-3.2 7.6-7.2 0-4.4-3.2-7.2-6.8-7.2-.8 0-1.6.2-2 .4C31.2 12.4 35.6 6 40.4 3.2L36.8 0C28 4.4 22 12.8 22 20.8Z" fill="currentColor"/></svg>
+        <blockquote class="gv-testimonial__quote">{testimonial.quote}</blockquote>
+        <cite class="gv-testimonial__cite">
+          <span class="gv-testimonial__name">{testimonial.name}</span>
+          {testimonial.title && <span class="gv-testimonial__title">{testimonial.title}</span>}
+        </cite>
+      </div>
+    </section>
+  )}
+
+  <!-- ═══ TICKETS ═══ -->
+  <section class="gv-tickets" id="tickets">
+    <div class="container gv-tickets__inner">
+      <span class="gv-tickets__label" data-reveal>Reserve Your Seat</span>
+      <h2 class="gv-tickets__heading" data-reveal>Tables &amp; Tickets</h2>
+      <p class="gv-tickets__sub" data-reveal>
+        Sponsor a table, grab individual seats, or back a piece of the night — every dollar lights another room.
+      </p>
+
+      {mainTiers.length > 0 && (
+        <div class="gv-tiers" data-reveal>
+          {mainTiers.map(tier => (
+            <div class={`gv-tier ${tier.highlight === 'featured' ? 'gv-tier--featured' : tier.highlight === 'popular' ? 'gv-tier--popular' : ''} ${tier.status === 'sold-out' ? 'gv-tier--sold-out' : ''}`}>
+              {tier.status === 'sold-out' && (
+                <span class="gv-tier__badge gv-tier__badge--sold-out">Sold Out</span>
+              )}
+              {tier.status === 'few-left' && (
+                <span class="gv-tier__badge gv-tier__badge--few-left">Few Left</span>
+              )}
+              {tier.status !== 'sold-out' && tier.status !== 'few-left' && tier.badge && (
+                <span class={`gv-tier__badge ${tier.badgeStyle === 'gold' ? 'gv-tier__badge--gold' : ''}`}>{tier.badge}</span>
+              )}
+              <div class="gv-tier__head">
+                <h3 class="gv-tier__name">{tier.name}</h3>
+                <span class="gv-tier__price">{tier.price}</span>
+              </div>
+              <div class="gv-tier__divider" aria-hidden="true"></div>
+              <div class="gv-tier__body">
+                {tier.detail && (
+                  <span class="gv-tier__detail">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                    {tier.detail}
+                  </span>
+                )}
+                {tier.perk && (
+                  <span class="gv-tier__perk">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+                    {tier.perk}
+                  </span>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {addOnTiers.length > 0 && (
+        <details class="gv-more" data-reveal>
+          <summary class="gv-more__toggle">
+            <span>Add-On Sponsorships</span>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+          </summary>
+          <div class="gv-more__grid">
+            {addOnTiers.map(tier => (
+              <div class={`gv-tier gv-tier--sm ${tier.status === 'sold-out' ? 'gv-tier--sold-out' : ''}`}>
+                {tier.status === 'sold-out' && (
+                  <span class="gv-tier__status-tag gv-tier__status-tag--sold-out">Sold Out</span>
+                )}
+                {tier.status === 'few-left' && (
+                  <span class="gv-tier__status-tag gv-tier__status-tag--few-left">Few Left</span>
+                )}
+                <h3 class="gv-tier__name">{tier.name}</h3>
+                <span class="gv-tier__price">{tier.price}</span>
+                {tier.perk && <p class="gv-tier__addon-perk">{tier.perk}</p>}
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
+
+      <div class="gv-tickets__cta" data-reveal>
+        <a href={ev.ticketUrl || 'https://www.zeffy.com/en-US/ticketing/2026-evening-of-sunshine'} target="_blank" rel="noopener" class="gv-btn gv-btn--coral gv-btn--hero">
+          Reserve &amp; Choose Your Package
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
+        </a>
+        <p class="gv-tickets__secure-note">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          Secure checkout via Zeffy &middot; Zero platform fees
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ FAQ ═══ -->
+  {faqs.length > 0 && (
+    <section class="gv-faq">
+      <div class="container">
+        <FAQAccordion
+          items={faqs}
+          eyebrow="Good to Know"
+          heading="Frequently Asked"
+          subtitle="Everything you might want to know before the night."
+          accent="#c75d4a"
+          accentTint="rgba(199, 93, 74, 0.1)"
+          idPrefix="gala-faq"
+          footerLabel="Still have a question?"
+          footerCta="Email our gala team"
+          footerHref="mailto:info@soardcharity.com?subject=Evening%20of%20Sunshine%20Gala"
+        />
+      </div>
+    </section>
+  )}
+
+  <!-- ═══ CTA ═══ -->
+  <section class="gv-cta">
+    <div class="container gv-cta__inner">
+      <div class="gv-cta__card" data-reveal>
+        <div class="gv-cta__glow" aria-hidden="true"></div>
+        <span class="gv-cta__eyebrow">Can't Make It?</span>
+        <h2>Bid From Anywhere.<br/>Help From Everywhere.</h2>
+        <p>The silent auction goes online ahead of the gala — and a direct donation goes the same place every dollar at the gala goes: into a child's room.</p>
+        <div class="gv-cta__actions">
+          <a href={ev.ticketUrl || 'https://www.zeffy.com/en-US/ticketing/2026-evening-of-sunshine'} target="_blank" rel="noopener" class="gv-btn gv-btn--coral">Reserve a Seat</a>
+          <a href="/donate/" class="gv-btn gv-btn--outline-white">Donate Directly</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ STICKY MOBILE CTA ═══ -->
+  <div class="gv-sticky-cta" aria-hidden="true">
+    <a href={ev.ticketUrl || 'https://www.zeffy.com/en-US/ticketing/2026-evening-of-sunshine'} target="_blank" rel="noopener" class="gv-sticky-cta__btn">
+      Reserve Your Seat
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+    </a>
+  </div>
+</BaseLayout>
+
+<style>
+  /* ═══════════════════════════════════════════════════════════════
+     EVENING OF SUNSHINE GALA — Havana Nights
+     ═══════════════════════════════════════════════════════════════ */
+
+  /* Local theme tokens */
+  :root {
+    --gv-midnight: #0d2f3f;
+    --gv-deep-teal: #1a4759;
+    --gv-coral: #c75d4a;
+    --gv-sunset: #e89870;
+    --gv-gold: #d4a017;
+    --gv-sand: #f5e9d3;
+    --gv-palm: #2d6a4f;
+    --gv-paper: #faf3e0;
+  }
+
+  [id] { scroll-margin-top: calc(var(--header-height, 84px) + 1.5rem); }
+
+  [data-reveal] {
+    opacity: 0;
+    transform: translateY(28px);
+    transition: opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1),
+                transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  [data-reveal].is-visible { opacity: 1; transform: translateY(0); }
+  @media (prefers-reduced-motion: reduce) {
+    [data-reveal] { transition: none; opacity: 1; transform: none; }
+  }
+
+  /* ─── Buttons ─── */
+  .gv-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0.8rem 1.75rem;
+    border-radius: 100px;
+    font-size: 0.88rem;
+    font-weight: 600;
+    text-decoration: none;
+    border: 1.5px solid transparent;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .gv-btn:active { transform: scale(0.97); }
+  .gv-btn--hero { padding: 0.9rem 2.2rem; font-size: 0.92rem; }
+  .gv-btn--coral {
+    background: linear-gradient(135deg, var(--gv-coral), var(--gv-sunset));
+    color: #fff;
+    box-shadow: 0 4px 16px rgba(199, 93, 74, 0.3);
+  }
+  .gv-btn--coral:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 30px rgba(199, 93, 74, 0.4);
+  }
+  .gv-btn--outline-white {
+    background: rgba(255, 255, 255, 0.06);
+    color: #fff;
+    border-color: rgba(255, 255, 255, 0.3);
+    backdrop-filter: blur(4px);
+  }
+  .gv-btn--outline-white:hover {
+    background: rgba(255, 255, 255, 0.14);
+    border-color: rgba(255, 255, 255, 0.55);
+    transform: translateY(-2px);
+  }
+
+  /* ─── Hero ─── */
+  .gv-hero {
+    position: relative;
+    overflow: hidden;
+    padding: var(--space-5xl) 0 calc(var(--space-3xl) + 90px);
+    min-height: 600px;
+    display: flex;
+    align-items: center;
+  }
+  .gv-hero__bg {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+  }
+  .gv-hero__sky {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(170deg, var(--gv-midnight) 0%, var(--gv-deep-teal) 35%, #4a5670 60%, var(--gv-coral) 92%, var(--gv-sunset) 100%);
+  }
+  .gv-hero__sunset {
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(ellipse 70% 55% at 50% 100%, rgba(232, 152, 112, 0.55) 0%, transparent 60%),
+      radial-gradient(ellipse 40% 30% at 75% 90%, rgba(212, 160, 23, 0.35) 0%, transparent 60%),
+      radial-gradient(circle 200px at 80% 75%, rgba(255, 230, 180, 0.25) 0%, transparent 70%);
+  }
+  .gv-hero__noise {
+    position: absolute;
+    inset: 0;
+    opacity: 0.04;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-size: 256px 256px;
+    mix-blend-mode: overlay;
+  }
+  .gv-hero__palms {
+    position: absolute;
+    bottom: -20px;
+    width: 200px;
+    height: 280px;
+    color: rgba(13, 47, 63, 0.55);
+    pointer-events: none;
+  }
+  .gv-hero__palms svg { width: 100%; height: 100%; }
+  .gv-hero__palms--left {
+    left: -40px;
+    transform: rotate(-12deg);
+  }
+  .gv-hero__palms--right {
+    right: -50px;
+    transform: rotate(14deg) scaleX(-1);
+    color: rgba(13, 47, 63, 0.4);
+  }
+  @media (max-width: 767px) {
+    .gv-hero__palms { width: 140px; height: 200px; }
+    .gv-hero__palms--left { left: -50px; }
+    .gv-hero__palms--right { right: -55px; }
+  }
+
+  .gv-hero__inner {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: var(--space-2xl);
+    align-items: center;
+  }
+  @media (min-width: 768px) {
+    .gv-hero { min-height: 680px; padding: var(--space-5xl) 0 calc(var(--space-3xl) + 120px); }
+    .gv-hero__inner { grid-template-columns: 1.05fr 0.95fr; gap: var(--space-3xl); }
+  }
+
+  .gv-hero__content { color: #fff; }
+
+  .gv-hero__eyebrow {
+    display: inline-block;
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.22em;
+    color: var(--gv-gold);
+    margin-bottom: var(--space-md);
+    background: rgba(212, 160, 23, 0.12);
+    padding: 0.4rem 1rem;
+    border-radius: 100px;
+    border: 1px solid rgba(212, 160, 23, 0.25);
+  }
+
+  .gv-hero__title {
+    font-family: var(--font-display);
+    color: #fff;
+    font-size: clamp(2.6rem, 6.5vw, 4.6rem);
+    line-height: 1.02;
+    letter-spacing: -0.02em;
+    margin-bottom: var(--space-sm);
+    text-shadow: 0 2px 24px rgba(0, 0, 0, 0.25);
+  }
+  .gv-hero__title-accent {
+    display: inline-block;
+    background: linear-gradient(135deg, var(--gv-gold) 20%, var(--gv-sunset) 60%, var(--gv-coral) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    font-style: italic;
+  }
+
+  .gv-hero__theme-line {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    margin-bottom: var(--space-lg);
+    font-family: var(--font-display);
+    font-size: clamp(1.2rem, 2vw, 1.55rem);
+    font-style: italic;
+    color: rgba(255, 255, 255, 0.9);
+  }
+  .gv-hero__theme-tag {
+    display: inline-block;
+    font-family: var(--font-sans, system-ui);
+    font-size: 0.6rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    font-style: normal;
+    color: var(--gv-sunset);
+    background: rgba(232, 152, 112, 0.14);
+    padding: 0.3rem 0.7rem;
+    border-radius: 100px;
+    border: 1px solid rgba(232, 152, 112, 0.3);
+  }
+  .gv-hero__theme-line em {
+    background: linear-gradient(135deg, #ffe6c0 0%, var(--gv-sunset) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    font-style: italic;
+  }
+
+  .gv-hero__subtitle {
+    color: rgba(255, 255, 255, 0.82);
+    font-size: clamp(0.95rem, 1.2vw, 1.08rem);
+    max-width: 50ch;
+    line-height: 1.75;
+    margin-bottom: var(--space-xl);
+  }
+
+  .gv-hero__meta {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+    margin-bottom: var(--space-xl);
+  }
+  .gv-hero__meta-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    font-size: 0.92rem;
+    color: rgba(255, 255, 255, 0.85);
+    line-height: 1.5;
+  }
+  .gv-hero__meta-item svg {
+    color: var(--gv-gold);
+    flex-shrink: 0;
+    margin-top: 3px;
+  }
+
+  .gv-hero__actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-lg);
+    flex-wrap: wrap;
+    margin-bottom: var(--space-xl);
+  }
+  .gv-hero__scroll {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    color: rgba(255, 255, 255, 0.78);
+    font-size: 0.88rem;
+    font-weight: 500;
+    text-decoration: none;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.18);
+    transition: color 0.2s, gap 0.2s, border-bottom-color 0.2s;
+  }
+  .gv-hero__scroll:hover {
+    color: #fff;
+    gap: 0.65rem;
+    border-bottom-color: rgba(255, 255, 255, 0.55);
+  }
+
+  .gv-countdown {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.85rem;
+    padding: 0.85rem 1.25rem;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 14px;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
+  .gv-countdown__unit {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-width: 44px;
+  }
+  .gv-countdown__num {
+    font-family: var(--font-display);
+    font-size: 1.6rem;
+    line-height: 1;
+    color: #fff;
+    font-weight: 600;
+  }
+  .gv-countdown__label {
+    font-size: 0.55rem;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.55);
+    margin-top: 4px;
+  }
+  .gv-countdown__sep {
+    color: var(--gv-gold);
+    font-size: 1.1rem;
+    line-height: 1;
+  }
+
+  /* Hero visual */
+  .gv-hero__visual {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+  }
+  .gv-hero__frame {
+    position: relative;
+    width: 100%;
+    max-width: 480px;
+  }
+  .gv-hero__frame-glow {
+    position: absolute;
+    inset: -16px;
+    background: radial-gradient(ellipse 70% 70% at 50% 50%, rgba(232, 152, 112, 0.35) 0%, transparent 70%);
+    pointer-events: none;
+    filter: blur(24px);
+  }
+  .gv-hero__photo-wrap {
+    position: relative;
+    aspect-ratio: 5 / 4;
+    border-radius: 14px;
+    overflow: hidden;
+    background-size: cover;
+    background-position: center;
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.4),
+                0 0 0 6px rgba(255, 255, 255, 0.04),
+                0 0 0 7px rgba(212, 160, 23, 0.5);
+    transform: rotate(-1.2deg);
+    transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .gv-hero__photo-wrap:hover { transform: rotate(0deg); }
+  .gv-hero__photo {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  .gv-hero__date-card {
+    position: absolute;
+    top: -12px;
+    left: -12px;
+    z-index: 2;
+    background: var(--gv-paper);
+    color: var(--gv-midnight);
+    border-radius: 10px;
+    padding: 0.6rem 0.85rem;
+    text-align: center;
+    min-width: 70px;
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.3);
+    transform: rotate(-4deg);
+    border: 1px solid rgba(0, 0, 0, 0.05);
+  }
+  .gv-hero__date-month {
+    display: block;
+    font-size: 0.62rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+    color: var(--gv-coral);
+    line-height: 1;
+  }
+  .gv-hero__date-day {
+    display: block;
+    font-family: var(--font-display);
+    font-size: 2rem;
+    line-height: 1;
+    margin: 4px 0;
+    font-weight: 700;
+  }
+  .gv-hero__date-year {
+    display: block;
+    font-size: 0.6rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    color: var(--c-text-muted);
+  }
+  .gv-hero__sticker {
+    position: absolute;
+    bottom: -28px;
+    right: -20px;
+    width: 110px;
+    height: 110px;
+    color: var(--gv-paper);
+    background: var(--gv-coral);
+    border-radius: 50%;
+    box-shadow: 0 12px 32px rgba(199, 93, 74, 0.4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transform: rotate(8deg);
+    animation: gv-spin 24s linear infinite;
+  }
+  .gv-hero__sticker svg { width: 100%; height: 100%; }
+  @keyframes gv-spin {
+    from { transform: rotate(8deg); }
+    to { transform: rotate(368deg); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .gv-hero__sticker { animation: none; }
+    .gv-hero__photo-wrap { transition: none; }
+  }
+  @media (max-width: 767px) {
+    .gv-hero__sticker { width: 84px; height: 84px; bottom: -20px; right: -10px; }
+    .gv-hero__date-card { transform: rotate(-3deg) scale(0.9); top: -8px; left: -8px; }
+    .gv-hero__visual { margin-top: var(--space-md); }
+  }
+
+  /* ─── Hero Bottom: layered horizon ─── */
+  .gv-hero__bottom {
+    position: absolute;
+    bottom: -1px;
+    left: 0;
+    right: 0;
+    height: 200px;
+    line-height: 0;
+    pointer-events: none;
+    z-index: 3;
+  }
+  @media (min-width: 768px) {
+    .gv-hero__bottom { height: 260px; }
+  }
+  .gv-hero__sweep {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+
+  /* ─── Event Details ─── */
+  .gv-details {
+    background: var(--gv-paper);
+    padding: var(--space-3xl) 0 var(--space-4xl);
+    position: relative;
+  }
+  .gv-details__grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: var(--space-lg);
+  }
+  @media (min-width: 640px) {
+    .gv-details__grid { grid-template-columns: repeat(3, 1fr); }
+  }
+  .gv-details__card {
+    text-align: center;
+    padding: 2rem 1.5rem 1.75rem;
+    background: #fff;
+    border: 1px solid rgba(13, 47, 63, 0.08);
+    border-radius: 16px;
+    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+                box-shadow 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    box-shadow: 0 1px 3px rgba(13, 47, 63, 0.04), 0 4px 14px rgba(13, 47, 63, 0.04);
+  }
+  .gv-details__card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 10px 32px rgba(13, 47, 63, 0.1);
+  }
+  .gv-details__icon {
+    width: 58px;
+    height: 58px;
+    margin: 0 auto var(--space-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(145deg, rgba(212, 160, 23, 0.15), rgba(199, 93, 74, 0.15));
+    color: var(--gv-coral);
+    border-radius: 14px;
+  }
+  .gv-details__card-title {
+    font-family: var(--font-display);
+    font-size: 1.3rem;
+    color: var(--gv-midnight);
+    margin-bottom: 0.5rem;
+  }
+  .gv-details__card-date {
+    font-family: var(--font-display);
+    font-size: 1.05rem;
+    color: var(--gv-midnight);
+    margin-bottom: var(--space-sm);
+  }
+  .gv-details__card-text {
+    font-size: 0.9rem;
+    color: var(--c-text-muted);
+    line-height: 1.7;
+  }
+  .gv-details__map-link {
+    color: var(--gv-coral);
+    text-decoration: underline;
+    text-decoration-color: rgba(199, 93, 74, 0.35);
+    text-underline-offset: 3px;
+    transition: text-decoration-color 0.2s;
+  }
+  .gv-details__map-link:hover { text-decoration-color: var(--gv-coral); }
+
+  /* ─── Theme Section ─── */
+  .gv-theme {
+    position: relative;
+    background: var(--gv-sand);
+    padding: var(--space-5xl) 0;
+    overflow: hidden;
+  }
+  .gv-theme__bg {
+    position: absolute;
+    inset: 0;
+    opacity: 0.06;
+    background-image:
+      radial-gradient(circle at 20% 80%, var(--gv-palm) 1.5px, transparent 2px),
+      radial-gradient(circle at 80% 20%, var(--gv-coral) 1.5px, transparent 2px);
+    background-size: 80px 80px, 60px 60px;
+    pointer-events: none;
+  }
+  .gv-theme__inner {
+    position: relative;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: var(--space-2xl);
+    align-items: center;
+  }
+  @media (min-width: 900px) {
+    .gv-theme__inner { grid-template-columns: 1.2fr 0.8fr; gap: var(--space-3xl); }
+  }
+  .gv-theme__eyebrow {
+    display: inline-block;
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    color: var(--gv-coral);
+    background: rgba(199, 93, 74, 0.1);
+    padding: 0.35rem 0.9rem;
+    border-radius: 100px;
+    margin-bottom: var(--space-md);
+  }
+  .gv-theme__heading {
+    font-family: var(--font-display);
+    font-size: clamp(2.4rem, 5vw, 3.8rem);
+    line-height: 1;
+    letter-spacing: -0.02em;
+    color: var(--gv-midnight);
+    margin-bottom: var(--space-lg);
+    background: linear-gradient(135deg, var(--gv-midnight) 0%, var(--gv-coral) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .gv-theme__lead {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-size: clamp(1.1rem, 1.6vw, 1.3rem);
+    line-height: 1.55;
+    color: var(--gv-midnight);
+    margin-bottom: var(--space-md);
+    max-width: 52ch;
+  }
+  .gv-theme__body {
+    font-size: 1rem;
+    line-height: 1.8;
+    color: var(--c-text-muted);
+    margin-bottom: var(--space-lg);
+    max-width: 56ch;
+  }
+  .gv-theme__list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    gap: 0.55rem;
+  }
+  .gv-theme__list li {
+    font-size: 0.95rem;
+    color: var(--gv-midnight);
+    line-height: 1.6;
+  }
+  .gv-theme__bullet {
+    color: var(--gv-coral);
+    font-weight: 800;
+    margin-right: 0.5rem;
+  }
+
+  .gv-theme__card {
+    position: relative;
+    background: var(--gv-paper);
+    border-radius: 18px;
+    padding: var(--space-2xl);
+    box-shadow: 0 18px 48px rgba(13, 47, 63, 0.12),
+                0 0 0 1px rgba(199, 93, 74, 0.12),
+                inset 0 0 0 6px rgba(212, 160, 23, 0.08);
+    border: 1px solid rgba(199, 93, 74, 0.12);
+    transform: rotate(0.8deg);
+  }
+  .gv-theme__card-stamp {
+    position: absolute;
+    top: -22px;
+    right: -22px;
+    width: 90px;
+    height: 90px;
+    color: var(--gv-coral);
+    transform: rotate(-12deg);
+    filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.1));
+  }
+  .gv-theme__card-stamp svg { width: 100%; height: 100%; }
+  .gv-theme__card-label {
+    display: inline-block;
+    font-size: 0.6rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    color: var(--gv-palm);
+    background: rgba(45, 106, 79, 0.1);
+    padding: 0.3rem 0.75rem;
+    border-radius: 100px;
+    margin-bottom: var(--space-sm);
+  }
+  .gv-theme__card-title {
+    font-family: var(--font-display);
+    font-size: 1.6rem;
+    color: var(--gv-midnight);
+    margin-bottom: var(--space-md);
+    letter-spacing: -0.01em;
+  }
+  .gv-theme__card-text {
+    font-size: 0.92rem;
+    line-height: 1.75;
+    color: var(--c-text-muted);
+    margin-bottom: var(--space-lg);
+  }
+  .gv-theme__palette {
+    display: flex;
+    gap: 0.45rem;
+    align-items: center;
+  }
+  .gv-theme__palette span {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: var(--c);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12), inset 0 0 0 2px rgba(255, 255, 255, 0.4);
+  }
+  @media (max-width: 899px) {
+    .gv-theme__card { transform: none; }
+  }
+
+  /* ─── Evening Timeline ─── */
+  .gv-evening {
+    background: #fff;
+    padding: var(--space-5xl) 0;
+  }
+  .gv-evening__header {
+    text-align: center;
+    max-width: 640px;
+    margin: 0 auto var(--space-3xl);
+  }
+  .gv-evening__label {
+    display: inline-block;
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    color: var(--gv-coral);
+    background: rgba(199, 93, 74, 0.1);
+    padding: 0.35rem 0.85rem;
+    border-radius: 100px;
+    margin-bottom: var(--space-sm);
+  }
+  .gv-evening__heading {
+    font-family: var(--font-display);
+    font-size: clamp(1.8rem, 4vw, 2.6rem);
+    color: var(--gv-midnight);
+    margin-bottom: var(--space-md);
+    letter-spacing: -0.02em;
+  }
+  .gv-evening__sub {
+    font-size: 1rem;
+    line-height: 1.7;
+    color: var(--c-text-muted);
+  }
+
+  .gv-timeline {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    position: relative;
+    max-width: 720px;
+    margin-inline: auto;
+  }
+  .gv-timeline::before {
+    content: '';
+    position: absolute;
+    left: 18px;
+    top: 8px;
+    bottom: 8px;
+    width: 2px;
+    background: linear-gradient(180deg, var(--gv-coral), var(--gv-gold), var(--gv-palm));
+    opacity: 0.35;
+    border-radius: 2px;
+  }
+  @media (min-width: 640px) {
+    .gv-timeline::before { left: 24px; }
+  }
+  .gv-timeline__item {
+    position: relative;
+    display: grid;
+    grid-template-columns: 40px 1fr;
+    gap: var(--space-md);
+    margin-bottom: var(--space-lg);
+    transition-delay: calc(var(--gv-i, 0) * 80ms);
+  }
+  @media (min-width: 640px) {
+    .gv-timeline__item { grid-template-columns: 56px 1fr; gap: var(--space-lg); }
+  }
+  .gv-timeline__marker {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding-top: 18px;
+  }
+  .gv-timeline__dot {
+    display: block;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--gv-coral), var(--gv-sunset));
+    box-shadow: 0 0 0 4px rgba(199, 93, 74, 0.15),
+                0 0 0 8px rgba(199, 93, 74, 0.06);
+    z-index: 1;
+  }
+  .gv-timeline__card {
+    padding: 1.5rem 1.5rem;
+    background: var(--gv-paper);
+    border: 1px solid rgba(13, 47, 63, 0.08);
+    border-radius: 14px;
+    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+                box-shadow 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .gv-timeline__card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(13, 47, 63, 0.08);
+  }
+  .gv-timeline__time {
+    display: inline-block;
+    font-family: var(--font-display);
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--gv-coral);
+    margin-bottom: 0.35rem;
+    letter-spacing: 0.02em;
+  }
+  .gv-timeline__title {
+    font-family: var(--font-display);
+    font-size: 1.3rem;
+    color: var(--gv-midnight);
+    margin-bottom: 0.4rem;
+    letter-spacing: -0.01em;
+  }
+  .gv-timeline__detail {
+    font-size: 0.92rem;
+    line-height: 1.7;
+    color: var(--c-text-muted);
+    margin: 0;
+  }
+
+  /* ─── Auction Highlights ─── */
+  .gv-auction {
+    background: var(--gv-midnight);
+    padding: var(--space-5xl) 0;
+    position: relative;
+    overflow: hidden;
+  }
+  .gv-auction::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(ellipse 50% 40% at 15% 20%, rgba(199, 93, 74, 0.18) 0%, transparent 60%),
+      radial-gradient(ellipse 50% 40% at 85% 80%, rgba(212, 160, 23, 0.12) 0%, transparent 60%);
+    pointer-events: none;
+  }
+  .gv-auction__inner { position: relative; }
+  .gv-auction__header {
+    text-align: center;
+    max-width: 640px;
+    margin: 0 auto var(--space-3xl);
+  }
+  .gv-auction__label {
+    display: inline-block;
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    color: var(--gv-gold);
+    background: rgba(212, 160, 23, 0.12);
+    padding: 0.35rem 0.85rem;
+    border-radius: 100px;
+    margin-bottom: var(--space-sm);
+    border: 1px solid rgba(212, 160, 23, 0.2);
+  }
+  .gv-auction__heading {
+    font-family: var(--font-display);
+    font-size: clamp(1.8rem, 4vw, 2.6rem);
+    color: #fff;
+    margin-bottom: var(--space-md);
+    letter-spacing: -0.02em;
+  }
+  .gv-auction__sub {
+    font-size: 0.98rem;
+    line-height: 1.75;
+    color: rgba(255, 255, 255, 0.65);
+  }
+
+  .gv-auction__grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: var(--space-lg);
+  }
+  @media (min-width: 640px) {
+    .gv-auction__grid { grid-template-columns: repeat(2, 1fr); }
+  }
+  @media (min-width: 960px) {
+    .gv-auction__grid { grid-template-columns: repeat(4, 1fr); }
+  }
+
+  .gv-auction__card {
+    position: relative;
+    padding: 1.75rem 1.5rem;
+    background: rgba(255, 255, 255, 0.045);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 14px;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+                border-color 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+                background 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+    transition-delay: calc(var(--gv-i, 0) * 80ms);
+  }
+  .gv-auction__card:hover {
+    transform: translateY(-4px);
+    background: rgba(255, 255, 255, 0.07);
+    border-color: rgba(212, 160, 23, 0.4);
+  }
+  .gv-auction__paddle {
+    width: 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, var(--gv-coral), var(--gv-sunset));
+    color: #fff;
+    border-radius: 12px;
+    margin-bottom: var(--space-md);
+    box-shadow: 0 4px 14px rgba(199, 93, 74, 0.4);
+  }
+  .gv-auction__name {
+    font-family: var(--font-display);
+    font-size: 1.15rem;
+    color: #fff;
+    margin-bottom: 0.6rem;
+    line-height: 1.3;
+  }
+  .gv-auction__detail {
+    font-size: 0.88rem;
+    line-height: 1.7;
+    color: rgba(255, 255, 255, 0.65);
+    margin: 0;
+  }
+  .gv-auction__footnote {
+    text-align: center;
+    margin-top: var(--space-2xl);
+    font-size: 0.9rem;
+    color: rgba(255, 255, 255, 0.55);
+  }
+  .gv-auction__footnote a {
+    color: var(--gv-gold);
+    text-decoration: underline;
+    text-decoration-color: rgba(212, 160, 23, 0.4);
+    text-underline-offset: 3px;
+    margin-left: 4px;
+  }
+  .gv-auction__footnote a:hover { text-decoration-color: var(--gv-gold); }
+
+  /* ─── Testimonial ─── */
+  .gv-testimonial {
+    padding: var(--space-4xl) 0;
+    background: var(--gv-sand);
+    position: relative;
+  }
+  .gv-testimonial__inner {
+    position: relative;
+    max-width: 720px;
+    margin: 0 auto;
+    text-align: center;
+    padding: var(--space-2xl) var(--space-xl);
+  }
+  .gv-testimonial__mark {
+    color: var(--gv-coral);
+    margin-bottom: var(--space-md);
+  }
+  .gv-testimonial__quote {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-size: clamp(1.1rem, 2vw, 1.4rem);
+    line-height: 1.6;
+    color: var(--gv-midnight);
+    margin: 0 0 var(--space-lg);
+    text-wrap: pretty;
+  }
+  .gv-testimonial__cite {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-style: normal;
+  }
+  .gv-testimonial__name {
+    font-size: 0.92rem;
+    font-weight: 600;
+    color: var(--gv-midnight);
+  }
+  .gv-testimonial__title {
+    font-size: 0.78rem;
+    color: var(--c-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+  }
+
+  /* ─── Tickets ─── */
+  .gv-tickets {
+    padding: var(--space-5xl) 0;
+    background: #fff;
+  }
+  .gv-tickets__inner {
+    text-align: center;
+    max-width: 1080px;
+    margin: 0 auto;
+  }
+  .gv-tickets__label {
+    display: inline-block;
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    color: var(--gv-coral);
+    background: rgba(199, 93, 74, 0.1);
+    padding: 0.35rem 0.85rem;
+    border-radius: 100px;
+    margin-bottom: var(--space-sm);
+  }
+  .gv-tickets__heading {
+    font-family: var(--font-display);
+    font-size: clamp(1.8rem, 4vw, 2.6rem);
+    color: var(--gv-midnight);
+    margin-bottom: var(--space-md);
+    letter-spacing: -0.02em;
+  }
+  .gv-tickets__sub {
+    margin: 0 auto var(--space-3xl);
+    max-width: 56ch;
+    font-size: 0.95rem;
+    color: var(--c-text-muted);
+    line-height: 1.7;
+  }
+  .gv-tickets__cta {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-md);
+    margin-top: var(--space-3xl);
+  }
+  .gv-tickets__secure-note {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.78rem;
+    color: var(--c-text-light);
+  }
+  .gv-tickets__secure-note svg {
+    color: var(--gv-palm);
+    flex-shrink: 0;
+  }
+
+  .gv-tiers {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: var(--space-lg);
+    text-align: left;
+  }
+  @media (min-width: 640px) { .gv-tiers { grid-template-columns: repeat(2, 1fr); } }
+  @media (min-width: 900px) { .gv-tiers { grid-template-columns: repeat(3, 1fr); } }
+
+  .gv-tier {
+    display: flex;
+    flex-direction: column;
+    padding: 1.85rem 1.5rem;
+    background: var(--gv-paper);
+    border: 1px solid rgba(13, 47, 63, 0.08);
+    border-radius: 16px;
+    color: var(--gv-midnight);
+    position: relative;
+    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+                box-shadow 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    box-shadow: 0 1px 3px rgba(13, 47, 63, 0.04), 0 4px 12px rgba(13, 47, 63, 0.04);
+  }
+  .gv-tier:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 10px 32px rgba(13, 47, 63, 0.1);
+  }
+  .gv-tier__badge {
+    position: absolute;
+    top: -1px;
+    right: 1.25rem;
+    background: var(--gv-coral);
+    color: #fff;
+    font-size: 0.6rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    padding: 0.32rem 0.8rem;
+    border-radius: 0 0 8px 8px;
+    box-shadow: 0 2px 8px rgba(199, 93, 74, 0.35);
+  }
+  .gv-tier__badge--gold {
+    background: linear-gradient(135deg, var(--gv-gold), #f1c43d);
+    color: var(--gv-midnight);
+    box-shadow: 0 2px 8px rgba(212, 160, 23, 0.4);
+  }
+  .gv-tier__badge--sold-out {
+    background: linear-gradient(135deg, #c62828, #e53935);
+    color: #fff;
+    box-shadow: 0 2px 8px rgba(198, 40, 40, 0.3);
+  }
+  .gv-tier__badge--few-left {
+    background: linear-gradient(135deg, #e65100, #ff6d00);
+    color: #fff;
+    box-shadow: 0 2px 8px rgba(230, 81, 0, 0.3);
+  }
+  .gv-tier--sold-out {
+    opacity: 0.45;
+    pointer-events: none;
+    filter: grayscale(0.3);
+  }
+  .gv-tier--sold-out .gv-tier__price {
+    text-decoration: line-through;
+    text-decoration-thickness: 2px;
+  }
+  .gv-tier__status-tag {
+    display: inline-block;
+    font-size: 0.58rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 0.2rem 0.55rem;
+    border-radius: 6px;
+    margin-bottom: 0.4rem;
+  }
+  .gv-tier__status-tag--sold-out { background: linear-gradient(135deg, #c62828, #e53935); color: #fff; }
+  .gv-tier__status-tag--few-left { background: linear-gradient(135deg, #e65100, #ff6d00); color: #fff; }
+
+  .gv-tier--popular {
+    border-color: rgba(199, 93, 74, 0.3);
+    box-shadow: 0 1px 3px rgba(13, 47, 63, 0.04),
+                0 4px 12px rgba(13, 47, 63, 0.04),
+                inset 0 0 0 1px rgba(199, 93, 74, 0.1);
+    background: linear-gradient(180deg, rgba(199, 93, 74, 0.04) 0%, var(--gv-paper) 100%);
+  }
+  .gv-tier--featured {
+    border: none;
+    background: linear-gradient(160deg, var(--gv-midnight) 0%, var(--gv-deep-teal) 60%, #2a5d70 100%);
+    color: #fff;
+    padding: 2.1rem 1.85rem;
+    box-shadow: 0 6px 26px rgba(13, 47, 63, 0.25),
+                0 16px 48px rgba(13, 47, 63, 0.18);
+  }
+  .gv-tier--featured .gv-tier__name { color: #fff; }
+  .gv-tier--featured .gv-tier__price { color: var(--gv-gold); }
+  .gv-tier--featured .gv-tier__divider { background: rgba(255, 255, 255, 0.12); }
+  .gv-tier--featured .gv-tier__detail,
+  .gv-tier--featured .gv-tier__perk { color: rgba(255, 255, 255, 0.85); }
+  .gv-tier--featured .gv-tier__perk svg { color: var(--gv-gold); }
+
+  .gv-tier__head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-sm);
+    margin-bottom: var(--space-sm);
+  }
+  .gv-tier__name {
+    font-family: var(--font-display);
+    font-size: 1.2rem;
+    line-height: 1.2;
+    color: var(--gv-midnight);
+    letter-spacing: -0.005em;
+  }
+  .gv-tier__price {
+    font-family: var(--font-display);
+    font-size: 1.35rem;
+    font-weight: 700;
+    color: var(--gv-coral);
+    white-space: nowrap;
+  }
+  .gv-tier__divider {
+    height: 1px;
+    background: rgba(13, 47, 63, 0.08);
+    margin: var(--space-sm) 0 var(--space-md);
+  }
+  .gv-tier__body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+    flex: 1;
+  }
+  .gv-tier__detail,
+  .gv-tier__perk {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    font-size: 0.85rem;
+    line-height: 1.6;
+    color: var(--c-text-muted);
+  }
+  .gv-tier__detail svg,
+  .gv-tier__perk svg {
+    color: var(--gv-coral);
+    flex-shrink: 0;
+    margin-top: 4px;
+  }
+
+  /* Add-on tiers */
+  .gv-more {
+    margin-top: var(--space-2xl);
+    text-align: left;
+  }
+  .gv-more__toggle {
+    list-style: none;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1.25rem;
+    background: rgba(13, 47, 63, 0.04);
+    border: 1px solid rgba(13, 47, 63, 0.08);
+    color: var(--gv-midnight);
+    font-size: 0.85rem;
+    font-weight: 600;
+    border-radius: 100px;
+    transition: background 0.2s, border-color 0.2s;
+  }
+  .gv-more__toggle::-webkit-details-marker { display: none; }
+  .gv-more__toggle:hover {
+    background: rgba(13, 47, 63, 0.08);
+    border-color: rgba(13, 47, 63, 0.16);
+  }
+  .gv-more[open] .gv-more__toggle svg { transform: rotate(180deg); }
+  .gv-more__toggle svg { transition: transform 0.3s; }
+
+  .gv-more__grid {
+    margin-top: var(--space-lg);
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: var(--space-md);
+  }
+  @media (min-width: 640px) { .gv-more__grid { grid-template-columns: repeat(2, 1fr); } }
+  @media (min-width: 900px) { .gv-more__grid { grid-template-columns: repeat(3, 1fr); } }
+
+  .gv-tier--sm { padding: 1.25rem 1.25rem; }
+  .gv-tier--sm .gv-tier__name { font-size: 1.02rem; margin-bottom: 0.25rem; }
+  .gv-tier--sm .gv-tier__price { font-size: 1.1rem; display: block; margin-bottom: 0.5rem; }
+  .gv-tier__addon-perk {
+    font-size: 0.82rem;
+    line-height: 1.6;
+    color: var(--c-text-muted);
+    margin: 0;
+    white-space: pre-line;
+  }
+
+  /* ─── FAQ section wrapper (the accordion itself lives in <FAQAccordion>) ─── */
+  .gv-faq {
+    padding: var(--space-5xl) 0;
+    background: var(--gv-paper);
+  }
+  /* On mobile the sticky CTA (~70px) sits above the bottom of the page.
+     Pad the FAQ section so the last items can scroll above the bar. */
+  @media (max-width: 768px) {
+    .gv-faq { padding: var(--space-4xl) 0 calc(var(--space-4xl) + 80px); }
+  }
+
+  /* ─── CTA ─── */
+  .gv-cta {
+    padding: var(--space-4xl) 0;
+    background: var(--gv-paper);
+  }
+  .gv-cta__inner {
+    max-width: 1080px;
+    margin: 0 auto;
+  }
+  .gv-cta__card {
+    position: relative;
+    padding: var(--space-3xl) var(--space-2xl);
+    background: linear-gradient(160deg, var(--gv-midnight) 0%, var(--gv-deep-teal) 60%, var(--gv-coral) 130%);
+    border-radius: 24px;
+    overflow: hidden;
+    text-align: center;
+    color: #fff;
+  }
+  .gv-cta__glow {
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(ellipse 70% 60% at 80% 110%, rgba(232, 152, 112, 0.4) 0%, transparent 60%),
+      radial-gradient(ellipse 60% 50% at 20% -10%, rgba(212, 160, 23, 0.18) 0%, transparent 60%);
+    pointer-events: none;
+  }
+  .gv-cta__eyebrow {
+    display: inline-block;
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    color: var(--gv-gold);
+    margin-bottom: var(--space-md);
+    background: rgba(212, 160, 23, 0.14);
+    padding: 0.35rem 0.85rem;
+    border-radius: 100px;
+    border: 1px solid rgba(212, 160, 23, 0.25);
+    position: relative;
+  }
+  .gv-cta__card h2 {
+    position: relative;
+    font-family: var(--font-display);
+    font-size: clamp(1.8rem, 4.5vw, 2.8rem);
+    color: #fff;
+    margin-bottom: var(--space-md);
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+  }
+  .gv-cta__card p {
+    position: relative;
+    font-size: 1rem;
+    line-height: 1.7;
+    color: rgba(255, 255, 255, 0.78);
+    max-width: 52ch;
+    margin: 0 auto var(--space-xl);
+  }
+  .gv-cta__actions {
+    position: relative;
+    display: flex;
+    gap: var(--space-md);
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  /* ─── Sticky mobile CTA ─── */
+  .gv-sticky-cta {
+    display: none;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 0.75rem 1rem;
+    background: rgba(13, 47, 63, 0.95);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    z-index: 80;
+    transform: translateY(100%);
+    transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .gv-sticky-cta.is-visible { transform: translateY(0); }
+  .gv-sticky-cta__btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    width: 100%;
+    padding: 0.85rem;
+    border-radius: 12px;
+    font-size: 0.92rem;
+    font-weight: 700;
+    text-decoration: none;
+    background: linear-gradient(135deg, var(--gv-coral), var(--gv-sunset));
+    color: #fff;
+    box-shadow: 0 4px 14px rgba(199, 93, 74, 0.4);
+  }
+  @media (max-width: 768px) {
+    .gv-sticky-cta { display: block; }
+    /* Push the last fixed area's worth of content up so the sticky CTA never covers it */
+    .gv-cta { padding-bottom: calc(var(--space-4xl) + 70px); }
+  }
+
+  /* Mobile polish */
+  @media (max-width: 640px) {
+    .gv-btn { min-height: 44px; }
+    .gv-hero { min-height: auto; padding: var(--space-4xl) 0 calc(var(--space-2xl) + 90px); }
+    .gv-cta__card { padding: var(--space-2xl) var(--space-lg); border-radius: 18px; }
+    .gv-countdown { gap: 0.6rem; padding: 0.7rem 1rem; }
+    .gv-countdown__num { font-size: 1.3rem; }
+
+    /* Tighter hero rhythm */
+    .gv-hero__title { font-size: clamp(2.2rem, 9vw, 2.8rem); }
+    .gv-hero__theme-line { flex-wrap: wrap; gap: 0.5rem 0.75rem; }
+    .gv-hero__subtitle { font-size: 0.95rem; }
+    .gv-hero__actions { gap: var(--space-md); }
+    .gv-hero__inner { gap: var(--space-xl); }
+
+    /* Theme section: card stamp should never push out of viewport */
+    .gv-theme { padding: var(--space-4xl) 0; }
+    .gv-theme__card { padding: var(--space-xl); }
+    .gv-theme__card-stamp { width: 70px; height: 70px; top: -16px; right: -10px; }
+
+    /* Auction grid: keep cards from running too narrow */
+    .gv-auction { padding: var(--space-4xl) 0; }
+    .gv-auction__card { padding: 1.5rem 1.25rem; }
+
+    /* Tickets/tiers section */
+    .gv-tickets { padding: var(--space-4xl) 0; }
+    .gv-tier { padding: 1.5rem 1.25rem; }
+    .gv-tier--featured { padding: 1.75rem 1.4rem; }
+
+    /* Timeline: tighter cards on small phones */
+    .gv-evening { padding: var(--space-4xl) 0; }
+    .gv-timeline__card { padding: 1.25rem 1.25rem; }
+    .gv-timeline__title { font-size: 1.15rem; }
+
+    /* FAQ section: trim padding so it doesn't feel oversized on phones,
+       but keep extra bottom space so last items clear the sticky CTA bar. */
+    .gv-faq { padding: var(--space-4xl) 0 calc(var(--space-4xl) + 80px); }
+
+    /* Details cards stack: keep them comfortable */
+    .gv-details { padding: var(--space-2xl) 0 var(--space-3xl); }
+    .gv-details__card { padding: 1.75rem 1.25rem 1.5rem; }
+  }
+
+  /* Prevent decorative elements from creating horizontal overflow */
+  .gv-hero { contain: paint; }
+</style>
+
+<script>
+  function initGala() {
+    const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    /* Smooth scroll for in-page anchors */
+    document.querySelectorAll<HTMLAnchorElement>('a[href^="#"]').forEach(link => {
+      link.addEventListener('click', e => {
+        const href = link.getAttribute('href');
+        if (!href || href === '#') return;
+        const target = document.querySelector(href);
+        if (target) {
+          e.preventDefault();
+          target.scrollIntoView({
+            behavior: prefersReduced ? 'auto' : 'smooth',
+            block: 'start',
+          });
+        }
+      });
+    });
+
+    /* Countdown timer */
+    const cd = document.querySelector<HTMLElement>('.gv-countdown');
+    if (cd && cd.dataset.eventDate) {
+      const target = new Date(cd.dataset.eventDate).getTime();
+      const daysEl = cd.querySelector('[data-days]');
+      const hoursEl = cd.querySelector('[data-hours]');
+      const minsEl = cd.querySelector('[data-mins]');
+      const tick = () => {
+        const diff = Math.max(0, target - Date.now());
+        const d = Math.floor(diff / 86400000);
+        const h = Math.floor((diff % 86400000) / 3600000);
+        const m = Math.floor((diff % 3600000) / 60000);
+        if (daysEl) daysEl.textContent = String(d);
+        if (hoursEl) hoursEl.textContent = String(h).padStart(2, '0');
+        if (minsEl) minsEl.textContent = String(m).padStart(2, '0');
+        if (diff <= 0) cd.style.display = 'none';
+      };
+      tick();
+      setInterval(tick, 60000);
+    }
+
+    /* Sticky mobile CTA */
+    const sticky = document.querySelector<HTMLElement>('.gv-sticky-cta');
+    const hero = document.querySelector<HTMLElement>('.gv-hero');
+    if (sticky && hero) {
+      const observer = new IntersectionObserver(([entry]) => {
+        sticky.classList.toggle('is-visible', !entry.isIntersecting);
+      }, { threshold: 0 });
+      observer.observe(hero);
+    }
+
+    /* FAQ accordion behavior is handled by the <faq-accordion> custom element */
+  }
+
+  document.addEventListener('astro:page-load', initGala);
+</script>

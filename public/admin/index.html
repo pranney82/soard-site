@@ -9389,6 +9389,614 @@
     }
 
     // ═══════════════════════════════════════════
+    // EVENING OF SUNSHINE GALA — admin editor
+    // Loads + saves both the event JSON (date/location/ticket URL/etc.)
+    // and gala.json (tiers/testimonial/FAQs/auction items/evening/sponsors)
+    // ═══════════════════════════════════════════
+    function GalaEditor({ slug, addToast, onBack }) {
+      const eventPath = 'src/content/events/' + slug + '.json';
+      const galaPath = 'src/content/site/gala.json';
+
+      const [loading, setLoading] = useState(true);
+      const [saving, setSaving] = useState(false);
+      const [eventSha, setEventSha] = useState(null);
+      const [galaSha, setGalaSha] = useState(null);
+      const [eventData, setEventData] = useState(null);
+      const [data, setData] = useState({
+        testimonial: { quote: '', name: '', title: '' },
+        faqs: [],
+        sponsors: [],
+        auctionItems: [],
+        evening: [],
+        galleryPhotos: [],
+        tiers: { main: [], addons: [] },
+      });
+      const [activeTab, setActiveTab] = useState('event');
+      const [showImagePicker, setShowImagePicker] = useState(false);
+      const [imagePickerTarget, setImagePickerTarget] = useState(null);
+
+      useEffect(() => {
+        (async () => {
+          try {
+            const [evRes, galaRes] = await Promise.all([
+              api.readContent(eventPath),
+              api.readContent(galaPath),
+            ]);
+            if (evRes.success) {
+              setEventData(JSON.parse(evRes.content));
+              setEventSha(evRes.sha);
+            }
+            if (galaRes.success) {
+              setData(prev => ({ ...prev, ...JSON.parse(galaRes.content) }));
+              setGalaSha(galaRes.sha);
+            }
+          } catch {}
+          setLoading(false);
+        })();
+      }, [slug]);
+
+      const handleSave = async () => {
+        setSaving(true);
+        try {
+          // Save both files in parallel; report combined result
+          const [evRes, galaRes] = await Promise.all([
+            eventData
+              ? api.saveContent(eventPath, JSON.stringify(eventData, null, 2),
+                  'Update gala event details', eventSha)
+              : Promise.resolve({ success: true }),
+            api.saveContent(galaPath, JSON.stringify(data, null, 2),
+              'Update gala settings', galaSha),
+          ]);
+          if (evRes.success && evRes.sha) setEventSha(evRes.sha);
+          if (galaRes.success && galaRes.sha) setGalaSha(galaRes.sha);
+          if (evRes.success && galaRes.success) {
+            addToast('Gala settings saved!', 'success');
+            logActivity('updated', 'Gala Settings', '');
+          } else {
+            const err = evRes.error || galaRes.error || 'Unknown error';
+            addToast('Save failed: ' + err, 'error');
+          }
+        } catch (err) {
+          addToast('Error: ' + err.message, 'error');
+        }
+        setSaving(false);
+      };
+
+      const updateEvent = (field, value) => setEventData(d => ({ ...(d || {}), [field]: value }));
+
+      const updateTier = (type, idx, field, value) => {
+        setData(d => ({
+          ...d,
+          tiers: {
+            ...d.tiers,
+            [type]: d.tiers[type].map((t, i) => i === idx ? { ...t, [field]: value } : t),
+          },
+        }));
+      };
+
+      const addFaq = () => setData(d => ({ ...d, faqs: [...(d.faqs || []), { question: '', answer: '' }] }));
+      const updateFaq = (idx, field, value) => setData(d => ({
+        ...d,
+        faqs: (d.faqs || []).map((f, i) => i === idx ? { ...f, [field]: value } : f),
+      }));
+      const removeFaq = idx => setData(d => ({ ...d, faqs: (d.faqs || []).filter((_, i) => i !== idx) }));
+
+      const addAuctionItem = () => setData(d => ({ ...d, auctionItems: [...(d.auctionItems || []), { name: '', detail: '' }] }));
+      const updateAuctionItem = (idx, field, value) => setData(d => ({
+        ...d,
+        auctionItems: (d.auctionItems || []).map((a, i) => i === idx ? { ...a, [field]: value } : a),
+      }));
+      const removeAuctionItem = idx => setData(d => ({ ...d, auctionItems: (d.auctionItems || []).filter((_, i) => i !== idx) }));
+
+      const addEveningStep = () => setData(d => ({ ...d, evening: [...(d.evening || []), { time: '', title: '', detail: '' }] }));
+      const updateEveningStep = (idx, field, value) => setData(d => ({
+        ...d,
+        evening: (d.evening || []).map((s, i) => i === idx ? { ...s, [field]: value } : s),
+      }));
+      const removeEveningStep = idx => setData(d => ({ ...d, evening: (d.evening || []).filter((_, i) => i !== idx) }));
+      const moveEveningStep = (from, to) => setData(d => {
+        const arr = [...(d.evening || [])];
+        if (to < 0 || to >= arr.length) return d;
+        const [item] = arr.splice(from, 1);
+        arr.splice(to, 0, item);
+        return { ...d, evening: arr };
+      });
+
+      const handleImageSelect = (id) => {
+        if (!imagePickerTarget) return;
+        const parts = imagePickerTarget.split(':');
+        if (parts[0] === 'sponsor') {
+          const tierIdx = parseInt(parts[1]);
+          const nameIdx = parseInt(parts[2]);
+          setData(d => ({
+            ...d,
+            sponsors: (d.sponsors || []).map((tier, ti) => ti === tierIdx
+              ? { ...tier, names: tier.names.map((s, ni) => ni === nameIdx ? { ...s, logo: id } : s) }
+              : tier
+            ),
+          }));
+        } else if (parts[0] === 'event-hero') {
+          updateEvent('image', id);
+        }
+        setShowImagePicker(false);
+        setImagePickerTarget(null);
+      };
+
+      const handleSponsorLogoUpload = async (file, tierIdx, nameIdx) => {
+        const sponsorName = data.sponsors?.[tierIdx]?.names?.[nameIdx]?.name || 'sponsor';
+        const sl = sponsorName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+        const cfId = 'partners/' + sl + '/' + Date.now();
+        try {
+          const res = await api.uploadImage(file, cfId);
+          if (res.success) {
+            const logoId = res.imageUrl || cfId;
+            setData(d => ({
+              ...d,
+              sponsors: d.sponsors.map((tier, ti) => ti === tierIdx
+                ? { ...tier, names: tier.names.map((s, ni) => ni === nameIdx ? { ...s, logo: logoId } : s) }
+                : tier
+              ),
+            }));
+            addToast('Logo uploaded!', 'success');
+          } else {
+            addToast('Upload failed: ' + (res.error || 'Unknown error'), 'error');
+          }
+        } catch (err) {
+          addToast('Upload error: ' + err.message, 'error');
+        }
+      };
+
+      if (loading) return html`<div class="loading-state"><span class="spinner" /> Loading gala settings...</div>`;
+
+      return html`
+        ${showImagePicker ? html`<${ImagePicker}
+          onSelect=${handleImageSelect}
+          onClose=${() => { setShowImagePicker(false); setImagePickerTarget(null); }}
+        />` : null}
+        <div class="editor-page">
+          ${onBack ? html`
+            <nav class="breadcrumb" aria-label="Breadcrumb">
+              <button onClick=${onBack}>Events</button>
+              <span class="sep">›</span>
+              <span>Evening of Sunshine Gala</span>
+            </nav>
+          ` : null}
+          <div class="editor-header">
+            <h1 class="editor-title">Evening of Sunshine Gala</h1>
+            <p class="editor-subtitle">Edit event details, this year's theme schedule, sponsorship tiers, auction items, FAQs, sponsors, and the testimonial that appear on the gala page.</p>
+          </div>
+
+          <div class="hub-tabs" style="margin-bottom: 1.5rem;">
+            <button class="hub-tab ${activeTab === 'event' ? 'active' : ''}" onClick=${() => setActiveTab('event')}>Event Details</button>
+            <button class="hub-tab ${activeTab === 'tiers' ? 'active' : ''}" onClick=${() => setActiveTab('tiers')}>Tiers & Status</button>
+            <button class="hub-tab ${activeTab === 'evening' ? 'active' : ''}" onClick=${() => setActiveTab('evening')}>Evening Schedule</button>
+            <button class="hub-tab ${activeTab === 'auction' ? 'active' : ''}" onClick=${() => setActiveTab('auction')}>Auction Items</button>
+            <button class="hub-tab ${activeTab === 'testimonial' ? 'active' : ''}" onClick=${() => setActiveTab('testimonial')}>Testimonial</button>
+            <button class="hub-tab ${activeTab === 'faqs' ? 'active' : ''}" onClick=${() => setActiveTab('faqs')}>FAQs</button>
+            <button class="hub-tab ${activeTab === 'sponsors' ? 'active' : ''}" onClick=${() => setActiveTab('sponsors')}>Sponsors</button>
+          </div>
+
+          ${activeTab === 'event' && eventData && html`
+            <div class="card">
+              <h2 class="card-title">Event Details</h2>
+              <p class="card-subtitle" style="margin-bottom: 1rem;">Date, time, location, ticket URL, and the long-form description that appears in event listings.</p>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                <div class="form-group">
+                  <label>Title</label>
+                  <input class="form-input" value=${eventData.title || ''}
+                    onInput=${e => updateEvent('title', e.target.value)} />
+                </div>
+                <div class="form-group">
+                  <label>Theme (this year)</label>
+                  <input class="form-input" placeholder="e.g. Havana Nights" value=${eventData.theme || ''}
+                    onInput=${e => updateEvent('theme', e.target.value)} />
+                </div>
+                <div class="form-group">
+                  <label>Date</label>
+                  <input type="date" class="form-input" value=${eventData.date || ''}
+                    onInput=${e => updateEvent('date', e.target.value)} />
+                </div>
+                <div class="form-group">
+                  <label>Time</label>
+                  <input class="form-input" placeholder="e.g. 6:00 to 11:00 p.m." value=${eventData.time || ''}
+                    onInput=${e => updateEvent('time', e.target.value)} />
+                </div>
+                <div class="form-group">
+                  <label>Location Name</label>
+                  <input class="form-input" placeholder="e.g. You42 Studios" value=${eventData.location || ''}
+                    onInput=${e => updateEvent('location', e.target.value)} />
+                </div>
+                <div class="form-group">
+                  <label>Address</label>
+                  <input class="form-input" value=${eventData.address || ''}
+                    onInput=${e => updateEvent('address', e.target.value)} />
+                </div>
+                <div class="form-group" style="grid-column: 1 / -1;">
+                  <label>Ticket URL</label>
+                  <input class="form-input" placeholder="https://www.zeffy.com/..." value=${eventData.ticketUrl || ''}
+                    onInput=${e => updateEvent('ticketUrl', e.target.value)} />
+                </div>
+                <div class="form-group" style="grid-column: 1 / -1;">
+                  <label>Description <span style="color: var(--text-tertiary); font-weight: 400;">(used on the events index card)</span></label>
+                  <textarea rows="6" class="form-textarea" value=${eventData.description || ''}
+                    onInput=${e => updateEvent('description', e.target.value)} />
+                </div>
+                <div class="form-group" style="grid-column: 1 / -1;">
+                  <label>Hero Image</label>
+                  <div style="display: flex; gap: 0.75rem; align-items: center;">
+                    <div style="width: 120px; height: 96px; border-radius: 8px; background: var(--bg-secondary); border: 1.5px dashed var(--border); overflow: hidden; cursor: pointer; display: flex; align-items: center; justify-content: center;"
+                      onClick=${() => { setImagePickerTarget('event-hero'); setShowImagePicker(true); }}>
+                      ${eventData.image
+                        ? html`<img src=${cfThumb(eventData.image, 'w=240,h=192,fit=cover')} alt="" style="width: 100%; height: 100%; object-fit: cover;" />`
+                        : html`<span style="font-size: 0.7rem; color: var(--text-tertiary); text-align: center;">Click to choose</span>`
+                      }
+                    </div>
+                    <button class="btn btn-ghost btn-sm" onClick=${() => { setImagePickerTarget('event-hero'); setShowImagePicker(true); }}>Browse images</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          `}
+
+          ${activeTab === 'tiers' && html`
+            <div class="card">
+              <h2 class="card-title">Tables & Tickets</h2>
+              <p class="card-subtitle" style="margin-bottom: 1rem;">Update availability and describe what's included with each table or ticket.</p>
+              <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                ${(data.tiers?.main || []).map((tier, i) => html`
+                  <div style="padding: 0.85rem 0.9rem; background: var(--bg-secondary); border-radius: 8px;">
+                    <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 0.6rem;">
+                      <div style="flex: 1; min-width: 0;">
+                        <strong style="font-size: 0.9rem;">${tier.name}</strong>
+                        <span style="color: var(--text-secondary); margin-left: 0.5rem; font-size: 0.82rem;">${tier.price}</span>
+                      </div>
+                      <select value=${tier.status || 'available'} onChange=${(e) => updateTier('main', i, 'status', e.target.value)}
+                        class="form-select" style="width: auto; padding: 0.35rem 0.6rem; font-size: 0.82rem;">
+                        <option value="available">Available</option>
+                        <option value="few-left">Few Left</option>
+                        <option value="sold-out">Sold Out</option>
+                      </select>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem;">
+                      <div class="form-group" style="margin-bottom: 0;">
+                        <label style="font-size: 0.76rem; color: var(--text-secondary);">Detail (e.g. "Table for 10")</label>
+                        <input class="form-input" style="font-size: 0.85rem;"
+                          value=${tier.detail || ''}
+                          onInput=${(e) => updateTier('main', i, 'detail', e.target.value)} />
+                      </div>
+                      <div class="form-group" style="margin-bottom: 0;">
+                        <label style="font-size: 0.76rem; color: var(--text-secondary);">What's included (perks)</label>
+                        <textarea rows="2" class="form-textarea" style="font-size: 0.85rem; min-height: 44px;"
+                          value=${tier.perk || ''}
+                          onInput=${(e) => updateTier('main', i, 'perk', e.target.value)} />
+                      </div>
+                    </div>
+                  </div>
+                `)}
+              </div>
+            </div>
+            <div class="card" style="margin-top: 1.5rem;">
+              <h2 class="card-title">Add-On Sponsorships</h2>
+              <p class="card-subtitle" style="margin-bottom: 1rem;">Cocktail hour, music, auction, cigar lounge, and other named sponsorships shown after the main tiers.</p>
+              <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                ${(data.tiers?.addons || []).map((tier, i) => html`
+                  <div style="padding: 0.85rem 0.9rem; background: var(--bg-secondary); border-radius: 8px;">
+                    <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 0.6rem;">
+                      <div style="flex: 1; min-width: 0;">
+                        <strong style="font-size: 0.9rem;">${tier.name}</strong>
+                        <span style="color: var(--text-secondary); margin-left: 0.5rem; font-size: 0.82rem;">${tier.price}</span>
+                      </div>
+                      <select value=${tier.status || 'available'} onChange=${(e) => updateTier('addons', i, 'status', e.target.value)}
+                        class="form-select" style="width: auto; padding: 0.35rem 0.6rem; font-size: 0.82rem;">
+                        <option value="available">Available</option>
+                        <option value="few-left">Few Left</option>
+                        <option value="sold-out">Sold Out</option>
+                      </select>
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0;">
+                      <label style="font-size: 0.76rem; color: var(--text-secondary);">What's included</label>
+                      <textarea rows="2" class="form-textarea"
+                        placeholder="e.g. Signage on cocktail bar, named signature drink, social media posts..."
+                        style="font-size: 0.85rem; min-height: 60px;"
+                        value=${tier.perk || ''}
+                        onInput=${(e) => updateTier('addons', i, 'perk', e.target.value)} />
+                    </div>
+                  </div>
+                `)}
+              </div>
+            </div>
+          `}
+
+          ${activeTab === 'evening' && html`
+            <div class="card">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <div>
+                  <h2 class="card-title">Evening Schedule</h2>
+                  <p class="card-subtitle">The timeline shown in the "How the Night Unfolds" section.</p>
+                </div>
+                <button class="btn btn-primary btn-sm" onClick=${addEveningStep}>+ Add Step</button>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                ${(data.evening || []).map((step, i) => html`
+                  <div style="padding: 0.85rem; background: var(--bg-secondary); border-radius: 8px; position: relative;">
+                    <div style="position: absolute; top: 0.5rem; right: 0.5rem; display: flex; gap: 0.2rem;">
+                      <button class="btn btn-ghost btn-sm" style="color: var(--text-tertiary); padding: 0.15rem 0.4rem;"
+                        title="Move up" disabled=${i === 0}
+                        onClick=${() => moveEveningStep(i, i - 1)}>↑</button>
+                      <button class="btn btn-ghost btn-sm" style="color: var(--text-tertiary); padding: 0.15rem 0.4rem;"
+                        title="Move down" disabled=${i === (data.evening || []).length - 1}
+                        onClick=${() => moveEveningStep(i, i + 1)}>↓</button>
+                      <button class="btn btn-ghost btn-sm" style="color: var(--text-tertiary); padding: 0.15rem 0.4rem;"
+                        title="Remove" onClick=${() => removeEveningStep(i)}>✕</button>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 130px 1fr; gap: 0.6rem; padding-right: 100px;">
+                      <div class="form-group" style="margin-bottom: 0;">
+                        <label style="font-size: 0.76rem; color: var(--text-secondary);">Time</label>
+                        <input class="form-input" placeholder="e.g. 6:00 PM" style="font-size: 0.85rem;"
+                          value=${step.time || ''} onInput=${e => updateEveningStep(i, 'time', e.target.value)} />
+                      </div>
+                      <div class="form-group" style="margin-bottom: 0;">
+                        <label style="font-size: 0.76rem; color: var(--text-secondary);">Title</label>
+                        <input class="form-input" placeholder="e.g. Cocktail Hour" style="font-size: 0.85rem;"
+                          value=${step.title || ''} onInput=${e => updateEveningStep(i, 'title', e.target.value)} />
+                      </div>
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0; margin-top: 0.6rem; padding-right: 100px;">
+                      <label style="font-size: 0.76rem; color: var(--text-secondary);">Detail</label>
+                      <textarea rows="2" class="form-textarea" style="font-size: 0.85rem; min-height: 50px;"
+                        placeholder="What happens at this point in the evening..."
+                        value=${step.detail || ''} onInput=${e => updateEveningStep(i, 'detail', e.target.value)} />
+                    </div>
+                  </div>
+                `)}
+                ${(data.evening || []).length === 0 && html`
+                  <p style="text-align: center; color: var(--text-tertiary); padding: 2rem;">No schedule steps yet. Click "+ Add Step" to start building the evening timeline.</p>
+                `}
+              </div>
+            </div>
+          `}
+
+          ${activeTab === 'auction' && html`
+            <div class="card">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <div>
+                  <h2 class="card-title">Auction Highlights</h2>
+                  <p class="card-subtitle">Featured items shown in the dark "Once-in-a-Lifetime Experiences" grid.</p>
+                </div>
+                <button class="btn btn-primary btn-sm" onClick=${addAuctionItem}>+ Add Item</button>
+              </div>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
+                ${(data.auctionItems || []).map((item, i) => html`
+                  <div style="padding: 0.85rem; background: var(--bg-secondary); border-radius: 8px; position: relative;">
+                    <button class="btn btn-ghost btn-sm" style="position: absolute; top: 0.4rem; right: 0.4rem; color: var(--text-tertiary);"
+                      onClick=${() => removeAuctionItem(i)} title="Remove">✕</button>
+                    <div class="form-group" style="margin-bottom: 0.5rem; padding-right: 28px;">
+                      <label style="font-size: 0.76rem; color: var(--text-secondary);">Item Name</label>
+                      <input class="form-input" placeholder="e.g. Luxury 30A Beach Getaway" style="font-size: 0.85rem;"
+                        value=${item.name || ''} onInput=${e => updateAuctionItem(i, 'name', e.target.value)} />
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0;">
+                      <label style="font-size: 0.76rem; color: var(--text-secondary);">Description</label>
+                      <textarea rows="2" class="form-textarea" style="font-size: 0.85rem; min-height: 50px;"
+                        placeholder="Short description that runs under the item name..."
+                        value=${item.detail || ''} onInput=${e => updateAuctionItem(i, 'detail', e.target.value)} />
+                    </div>
+                  </div>
+                `)}
+                ${(data.auctionItems || []).length === 0 && html`
+                  <p style="grid-column: 1 / -1; text-align: center; color: var(--text-tertiary); padding: 2rem;">No auction items yet. Click "+ Add Item" to add the first one.</p>
+                `}
+              </div>
+            </div>
+          `}
+
+          ${activeTab === 'testimonial' && html`
+            <div class="card">
+              <h2 class="card-title">Testimonial</h2>
+              <p class="card-subtitle" style="margin-bottom: 1rem;">A quote displayed between the auction items and ticket section. Leave blank to hide.</p>
+              <div class="form-group">
+                <label>Quote</label>
+                <textarea rows="3" class="form-textarea" placeholder="The gala was one of the most moving evenings..."
+                  value=${data.testimonial?.quote || ''}
+                  onInput=${(e) => setData(d => ({ ...d, testimonial: { ...(d.testimonial || {}), quote: e.target.value } }))} />
+              </div>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1rem;">
+                <div class="form-group">
+                  <label>Name / Attribution</label>
+                  <input class="form-input" placeholder="Sarah Mitchell"
+                    value=${data.testimonial?.name || ''}
+                    onInput=${(e) => setData(d => ({ ...d, testimonial: { ...(d.testimonial || {}), name: e.target.value } }))} />
+                </div>
+                <div class="form-group">
+                  <label>Title (optional)</label>
+                  <input class="form-input" placeholder="2025 Gala Attendee"
+                    value=${data.testimonial?.title || ''}
+                    onInput=${(e) => setData(d => ({ ...d, testimonial: { ...(d.testimonial || {}), title: e.target.value } }))} />
+                </div>
+              </div>
+            </div>
+          `}
+
+          ${activeTab === 'faqs' && html`
+            <div class="card">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <div>
+                  <h2 class="card-title">FAQs</h2>
+                  <p class="card-subtitle">Questions displayed in the FAQ section on the gala page.</p>
+                </div>
+                <button class="btn btn-primary btn-sm" onClick=${addFaq}>+ Add FAQ</button>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 1rem;">
+                ${(data.faqs || []).map((faq, i) => html`
+                  <div style="padding: 1rem; background: var(--bg-secondary); border-radius: 8px; position: relative;">
+                    <button class="btn btn-ghost btn-sm" style="position: absolute; top: 0.5rem; right: 0.5rem; color: var(--text-tertiary);"
+                      onClick=${() => removeFaq(i)} title="Remove">✕</button>
+                    <div class="form-group">
+                      <label>Question</label>
+                      <input class="form-input" placeholder="What's the dress code?"
+                        value=${faq.question}
+                        onInput=${(e) => updateFaq(i, 'question', e.target.value)} />
+                    </div>
+                    <div class="form-group" style="margin-top: 0.75rem;">
+                      <label>Answer <span style="color: var(--text-tertiary); font-weight: 400;">(HTML allowed)</span></label>
+                      <textarea rows="3" class="form-textarea" placeholder="Festive cocktail attire with a Havana flair..."
+                        value=${faq.answer}
+                        onInput=${(e) => updateFaq(i, 'answer', e.target.value)} />
+                    </div>
+                  </div>
+                `)}
+                ${(data.faqs || []).length === 0 && html`
+                  <p style="text-align: center; color: var(--text-tertiary); padding: 2rem;">No FAQs yet. Click "Add FAQ" to create one.</p>
+                `}
+              </div>
+            </div>
+          `}
+
+          ${activeTab === 'sponsors' && html`
+            <div class="card" style="margin-bottom: 1rem;">
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                  <h2 class="card-title">Sponsors</h2>
+                  <p class="card-subtitle">Organize sponsors into tiers. Click the logo area to pick an image, or just type a company name.</p>
+                </div>
+                <button class="btn btn-primary btn-sm" onClick=${() => setData(d => ({
+                  ...d,
+                  sponsors: [...(d.sponsors || []), { tier: '', size: 'md', names: [{ name: '' }] }],
+                }))}>+ Add Tier</button>
+              </div>
+            </div>
+
+            ${(data.sponsors || []).length === 0 && html`
+              <div class="card">
+                <p style="text-align: center; color: var(--text-tertiary); padding: 2rem;">No sponsor tiers yet. Click "+ Add Tier" to get started.</p>
+              </div>
+            `}
+
+            ${(data.sponsors || []).map((tier, ti) => html`
+              <div class="card" style="margin-bottom: 0.75rem;">
+                <div style="display: flex; gap: 0.75rem; align-items: end; margin-bottom: 1rem; padding-bottom: 0.75rem; border-bottom: 1px solid var(--border);">
+                  <div class="form-group" style="flex: 1; margin-bottom: 0;">
+                    <label>Tier Name</label>
+                    <input class="form-input" placeholder="e.g. Title Sponsor, Diamond Table, Cocktail Sponsor..." value=${tier.tier}
+                      onInput=${(e) => setData(d => ({
+                        ...d,
+                        sponsors: d.sponsors.map((t, i) => i === ti ? { ...t, tier: e.target.value } : t),
+                      }))} />
+                  </div>
+                  <div class="form-group" style="width: 160px; margin-bottom: 0;">
+                    <label>Display Size</label>
+                    <select class="form-select" value=${tier.size || 'sm'}
+                      onChange=${(e) => setData(d => ({
+                        ...d,
+                        sponsors: d.sponsors.map((t, i) => i === ti ? { ...t, size: e.target.value } : t),
+                      }))}>
+                      <option value="xl">XL — Title Sponsor</option>
+                      <option value="lg">Large — Featured</option>
+                      <option value="md">Medium — Standard</option>
+                      <option value="sm">Small — Add-on</option>
+                    </select>
+                  </div>
+                  <div style="display: flex; gap: 0.25rem; flex-shrink: 0; padding-bottom: 2px;">
+                    <button class="btn btn-ghost btn-sm" style="color: var(--text-tertiary); font-size: 1.1rem; padding: 0.25rem 0.4rem;"
+                      title="Move tier up" disabled=${ti === 0}
+                      onClick=${() => setData(d => {
+                        const s = [...d.sponsors];
+                        [s[ti - 1], s[ti]] = [s[ti], s[ti - 1]];
+                        return { ...d, sponsors: s };
+                      })}>↑</button>
+                    <button class="btn btn-ghost btn-sm" style="color: var(--text-tertiary); font-size: 1.1rem; padding: 0.25rem 0.4rem;"
+                      title="Move tier down" disabled=${ti === (data.sponsors || []).length - 1}
+                      onClick=${() => setData(d => {
+                        const s = [...d.sponsors];
+                        [s[ti], s[ti + 1]] = [s[ti + 1], s[ti]];
+                        return { ...d, sponsors: s };
+                      })}>↓</button>
+                    <button class="btn btn-ghost btn-sm" style="color: #c62828; padding: 0.25rem 0.5rem;"
+                      title="Remove this entire tier and all its sponsors"
+                      onClick=${() => { if (confirm('Remove tier "' + (tier.tier || 'Untitled') + '" and all its sponsors?')) setData(d => ({ ...d, sponsors: d.sponsors.filter((_, i) => i !== ti) })); }}>✕</button>
+                  </div>
+                </div>
+
+                <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                  ${(tier.names || []).map((s, ni) => html`
+                    <div style="display: flex; gap: 0.75rem; align-items: center; padding: 0.65rem 0.75rem; background: var(--bg-secondary); border-radius: 8px;">
+                      <div style="flex-shrink: 0; display: flex; flex-direction: column; align-items: center; gap: 0.3rem;">
+                        <div style="width: 56px; height: 56px; border-radius: 8px; background: var(--bg-primary); border: 1.5px dashed ${s.logo ? 'transparent' : 'var(--border)'}; display: flex; align-items: center; justify-content: center; cursor: pointer; overflow: hidden; transition: border-color 0.15s;"
+                          onClick=${() => { setImagePickerTarget('sponsor:' + ti + ':' + ni); setShowImagePicker(true); }}
+                          title="Browse existing images">
+                          ${s.logo
+                            ? html`<img src=${cfThumb(s.logo, 'w=112,h=112,fit=contain')} alt="" style="width: 100%; height: 100%; object-fit: contain; padding: 4px;" />`
+                            : html`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="color: var(--text-tertiary); opacity: 0.5;"><rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>`
+                          }
+                        </div>
+                        <div style="display: flex; gap: 0.2rem;">
+                          <button class="btn btn-ghost btn-sm" style="font-size: 0.6rem; padding: 0.1rem 0.35rem; color: var(--color-primary);"
+                            title="Browse existing images"
+                            onClick=${() => { setImagePickerTarget('sponsor:' + ti + ':' + ni); setShowImagePicker(true); }}>browse</button>
+                          <label style="font-size: 0.6rem; padding: 0.1rem 0.35rem; color: var(--color-primary); cursor: pointer; font-weight: 600;" title="Upload a new logo">
+                            upload
+                            <input type="file" accept="image/*" style="display:none"
+                              onChange=${(e) => { const f = e.target.files[0]; if (f) handleSponsorLogoUpload(f, ti, ni); e.target.value = ''; }} />
+                          </label>
+                        </div>
+                      </div>
+                      <div style="flex: 1; min-width: 0;">
+                        <input class="form-input" placeholder="Company name" value=${s.name}
+                          onInput=${(e) => setData(d => ({
+                            ...d,
+                            sponsors: d.sponsors.map((t, i) => i === ti
+                              ? { ...t, names: t.names.map((n, j) => j === ni ? { ...n, name: e.target.value } : n) }
+                              : t
+                            ),
+                          }))} />
+                      </div>
+                      ${s.logo && html`
+                        <button class="btn btn-ghost btn-sm" style="color: var(--text-tertiary); font-size: 0.72rem; padding: 0.2rem 0.5rem; white-space: nowrap;"
+                          title="Remove logo (keep name)"
+                          onClick=${() => setData(d => ({
+                            ...d,
+                            sponsors: d.sponsors.map((t, i) => i === ti
+                              ? { ...t, names: t.names.map((n, j) => j === ni ? { name: n.name } : n) }
+                              : t
+                            ),
+                          }))}>✕ logo</button>
+                      `}
+                      <button class="btn btn-ghost btn-sm" style="color: var(--text-tertiary); padding: 0.2rem 0.4rem; font-size: 0.88rem;"
+                        title="Remove this sponsor"
+                        onClick=${() => setData(d => ({
+                          ...d,
+                          sponsors: d.sponsors.map((t, i) => i === ti
+                            ? { ...t, names: t.names.filter((_, j) => j !== ni) }
+                            : t
+                          ),
+                        }))}>✕</button>
+                    </div>
+                  `)}
+                </div>
+
+                <button class="btn btn-ghost btn-sm" style="margin-top: 0.6rem; color: var(--color-primary);"
+                  onClick=${() => setData(d => ({
+                    ...d,
+                    sponsors: d.sponsors.map((t, i) => i === ti
+                      ? { ...t, names: [...(t.names || []), { name: '' }] }
+                      : t
+                    ),
+                  }))}>+ Add Sponsor${tier.tier ? ' to ' + tier.tier : ''}</button>
+              </div>
+            `)}
+          `}
+
+          <div class="editor-save-footer">
+            <button class="btn btn-primary" onClick=${handleSave} disabled=${saving}>
+              ${saving ? html`<span class="spinner" />` : null}
+              ${saving ? 'Saving...' : 'Save & Publish'}
+            </button>
+          </div>
+        </div>
+      `;
+    }
+
+    // ═══════════════════════════════════════════
     // SITE SETTINGS
     // ═══════════════════════════════════════════
     // ═══════════════════════════════════════════
@@ -11733,6 +12341,9 @@
           case 'events': {
             if (editSlug === 'sunshine-on-a-ranney-fairway') {
               return html`<${GolfTournamentEditor} addToast=${addToast} onBack=${() => { navigate('events'); loadData(); }} />`;
+            }
+            if (editSlug && /evening-of-sunshine/.test(editSlug)) {
+              return html`<${GalaEditor} slug=${editSlug} addToast=${addToast} onBack=${() => { navigate('events'); loadData(); }} />`;
             }
             if (editSlug !== null) {
               return html`<${EventEditor} slug=${editSlug || undefined} onBack=${() => { navigate('events'); loadData(); }} addToast=${addToast} existingSlugs=${events.map(e => e.slug)} />`;

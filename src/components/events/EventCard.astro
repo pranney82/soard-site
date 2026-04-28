@@ -67,6 +67,13 @@ function fmtDay(d: string) {
 ---
 
 <article class="ev-card" data-reveal data-delay={String(Math.min(index, 3))}>
+  {/* Full-card click target — sits below interactive children via z-index */}
+  {detailUrl ? (
+    <a class="ev-card__overlay" href={detailUrl} aria-label={`View details for ${event.title}`} tabindex="-1"></a>
+  ) : event.ticketUrl ? (
+    <a class="ev-card__overlay" href={event.ticketUrl} target="_blank" rel="noopener noreferrer" aria-label={`Get tickets for ${event.title}`} tabindex="-1"></a>
+  ) : null}
+
   {/* Card header: event image with gradient overlay, or gradient-only fallback */}
   <div
     class={`ev-card__hero ${event.image ? 'ev-card__hero--img' : ''}`}
@@ -151,6 +158,7 @@ function fmtDay(d: string) {
 <style>
   .ev-card {
     position: relative;
+    isolation: isolate;
     background: var(--c-white);
     border: 1px solid var(--c-border);
     border-radius: var(--border-radius-lg);
@@ -162,6 +170,8 @@ function fmtDay(d: string) {
                 box-shadow 0.4s cubic-bezier(0.16, 1, 0.3, 1),
                 border-color 0.4s cubic-bezier(0.16, 1, 0.3, 1);
   }
+  /* Card-wide cursor hint when there's a clickable target */
+  .ev-card:has(.ev-card__btn) { cursor: pointer; }
   .ev-card:hover {
     transform: translateY(-6px);
     box-shadow: 0 20px 56px rgba(0, 0, 0, 0.12);
@@ -215,6 +225,7 @@ function fmtDay(d: string) {
     text-align: center;
     min-width: 52px;
     z-index: 2;
+    pointer-events: none;
   }
   .ev-card__hero-month {
     display: block;
@@ -249,6 +260,7 @@ function fmtDay(d: string) {
     padding: 0.25rem 0.65rem;
     border-radius: 100px;
     z-index: 2;
+    pointer-events: none;
   }
 
   /* Price badge */
@@ -265,6 +277,7 @@ function fmtDay(d: string) {
     padding: 0.25rem 0.65rem;
     border-radius: 100px;
     z-index: 2;
+    pointer-events: none;
   }
 
   /* Image-backed card hero */
@@ -351,8 +364,24 @@ function fmtDay(d: string) {
     gap: var(--space-sm);
   }
 
-  /* Primary CTA button */
+  /* Full-card click overlay — covers entire card, sits below interactive children */
+  .ev-card__overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    text-indent: -9999px;
+    overflow: hidden;
+  }
+  .ev-card__overlay:focus-visible {
+    outline: 3px solid var(--c-yellow);
+    outline-offset: -3px;
+    border-radius: var(--border-radius-lg);
+  }
+
+  /* Primary CTA button — sits above the overlay */
   .ev-card__btn {
+    position: relative;
+    z-index: 3;
     display: inline-flex;
     align-items: center;
     gap: 6px;
@@ -372,8 +401,10 @@ function fmtDay(d: string) {
   }
   .ev-card__btn:active { transform: scale(0.97); }
 
-  /* Calendar icon button */
+  /* Calendar icon button — sits above the overlay */
   .ev-card__cal {
+    position: relative;
+    z-index: 3;
     display: inline-flex;
     align-items: center;
     justify-content: center;
