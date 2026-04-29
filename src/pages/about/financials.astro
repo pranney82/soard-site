@@ -115,40 +115,25 @@ const jsonLd = {
   <section class="section section--dark" id="snapshot">
     <div class="container">
       <div class="snapshot-header">
+        <span class="snapshot-eyebrow">FY {snapshot.year} &middot; From our IRS Form 990</span>
         <h2 class="snapshot-title">Where Your Money Goes</h2>
-        <span class="snapshot-year">FY {snapshot.year} &middot; From our IRS Form 990</span>
       </div>
-      
-      <div class="expense-breakdown">
-        <div class="expense-bar">
-          <div class="expense-bar__header">
-            <span class="expense-bar__name">Programs &amp; Room Makeovers</span>
-            <span class="expense-bar__pct">{snapshot.programPct}¢</span>
-          </div>
-          <div class="expense-bar__track">
-            <div class="expense-bar__fill expense-bar__fill--program" style={`width: ${snapshot.programPct}%`}></div>
-          </div>
-          <span class="expense-bar__amount">${(snapshot.programExpenses / 1000000).toFixed(1)}M of every dollar</span>
+
+      <div class="impact-hero">
+        <div class="impact-hero__figure" aria-hidden="true">
+          <span class="impact-hero__cents">{snapshot.programPct}<span class="impact-hero__cents-symbol">¢</span></span>
+          <span class="impact-hero__of">of every dollar</span>
         </div>
-        <div class="expense-bar">
-          <div class="expense-bar__header">
-            <span class="expense-bar__name">Management &amp; General</span>
-            <span class="expense-bar__pct">{snapshot.managementPct}¢</span>
-          </div>
-          <div class="expense-bar__track">
-            <div class="expense-bar__fill expense-bar__fill--mgmt" style={`width: ${snapshot.managementPct}%`}></div>
-          </div>
-          <span class="expense-bar__amount">${(snapshot.managementExpenses / 1000).toFixed(0)}K</span>
-        </div>
-        <div class="expense-bar">
-          <div class="expense-bar__header">
-            <span class="expense-bar__name">Fundraising</span>
-            <span class="expense-bar__pct">{snapshot.fundraisingPct}¢</span>
-          </div>
-          <div class="expense-bar__track">
-            <div class="expense-bar__fill expense-bar__fill--fund" style={`width: ${snapshot.fundraisingPct}%`}></div>
-          </div>
-          <span class="expense-bar__amount">${(snapshot.fundraisingExpenses / 1000).toFixed(0)}K</span>
+        <div class="impact-hero__copy">
+          <p class="impact-hero__lede">
+            <span class="highlight">${(snapshot.programExpenses / 1000000).toFixed(1)} million</span> goes directly
+            to building rooms, funding programs, and serving children with critical illnesses and disabilities.
+          </p>
+          <p class="impact-hero__note">
+            The remaining {100 - snapshot.programPct}¢ covers operations and fundraising —
+            our <a href="#our-model">stores cover much of that overhead</a> so donor dollars stay focused on the mission.
+            See our <a href="#990s">990</a> for the full breakdown.
+          </p>
         </div>
       </div>
 
@@ -420,61 +405,94 @@ const jsonLd = {
   /* ─── Snapshot (Dark) ──────────────────── */
   .snapshot-header {
     text-align: center;
-    margin-bottom: var(--space-2xl);
+    margin-bottom: var(--space-3xl);
+  }
+  .snapshot-eyebrow {
+    display: inline-block;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: rgba(255,255,255,0.55);
+    font-weight: 600;
+    margin-bottom: var(--space-md);
   }
   .snapshot-title {
     color: var(--c-white);
-    font-size: clamp(1.6rem, 3vw, 2.2rem);
+    font-size: clamp(1.8rem, 3.5vw, 2.4rem);
+    margin: 0;
   }
-  .snapshot-year {
-    display: inline-block;
-    margin-top: var(--space-sm);
-    font-size: 0.85rem;
-    color: rgba(255,255,255,0.7);
-    font-weight: 500;
-  }
-  .expense-breakdown {
-    max-width: 640px;
+
+  /* ─── Impact Hero (80¢ focal) ──────────── */
+  .impact-hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+    align-items: center;
+    gap: clamp(var(--space-xl), 5vw, var(--space-3xl));
+    max-width: 960px;
     margin-inline: auto;
+    padding: var(--space-2xl) 0;
+    border-top: 1px solid rgba(255,255,255,0.08);
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+  }
+  .impact-hero__figure {
     display: flex;
     flex-direction: column;
-    gap: var(--space-lg);
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    line-height: 0.9;
   }
-  .expense-bar__header {
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    margin-bottom: var(--space-xs);
-  }
-  .expense-bar__name {
-    font-size: 0.95rem;
-    font-weight: 600;
-    color: var(--c-white);
-  }
-  .expense-bar__pct {
+  .impact-hero__cents {
     font-family: var(--font-display);
-    font-size: 1.4rem;
     font-weight: 700;
     color: var(--c-yellow);
+    font-size: clamp(7rem, 18vw, 13rem);
+    letter-spacing: -0.04em;
+    display: inline-flex;
+    align-items: flex-start;
   }
-  .expense-bar__track {
-    height: 12px;
-    background: rgba(255,255,255,0.1);
-    border-radius: 100px;
-    overflow: hidden;
+  .impact-hero__cents-symbol {
+    font-size: 0.55em;
+    margin-left: 0.04em;
+    margin-top: 0.18em;
+    font-weight: 600;
   }
-  .expense-bar__fill {
-    height: 100%;
-    border-radius: 100px;
+  .impact-hero__of {
+    margin-top: var(--space-md);
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+    color: rgba(255,255,255,0.65);
+    font-weight: 600;
   }
-  .expense-bar__fill--program { background: var(--c-yellow); }
-  .expense-bar__fill--mgmt { background: rgba(255,255,255,0.4); }
-  .expense-bar__fill--fund { background: rgba(255,255,255,0.25); }
-  .expense-bar__amount {
-    font-size: 0.8rem;
-    color: rgba(255,255,255,0.55);
-    margin-top: 0.2rem;
-    display: block;
+  .impact-hero__copy {
+    color: var(--c-white);
+  }
+  .impact-hero__lede {
+    font-size: clamp(1.15rem, 1.9vw, 1.5rem);
+    line-height: 1.45;
+    color: var(--c-white);
+    margin: 0;
+  }
+  .impact-hero__lede .highlight {
+    color: var(--c-yellow);
+    font-weight: 600;
+  }
+  .impact-hero__note {
+    margin-top: var(--space-lg);
+    font-size: 0.9rem;
+    line-height: 1.65;
+    color: rgba(255,255,255,0.6);
+  }
+  .impact-hero__note a {
+    color: rgba(255,255,255,0.85);
+    text-decoration: underline;
+    text-decoration-color: rgba(255,213,0,0.4);
+    text-underline-offset: 3px;
+  }
+  .impact-hero__note a:hover {
+    color: var(--c-yellow);
+    text-decoration-color: var(--c-yellow);
   }
   .stats-grid {
     display: grid;
@@ -726,6 +744,13 @@ const jsonLd = {
     .trust-row { gap: var(--space-md); }
     .trust-badge { padding: var(--space-md); min-width: 120px; }
     .trust-badge img { width: 64px; height: 64px; }
+    .impact-hero {
+      grid-template-columns: 1fr;
+      gap: var(--space-xl);
+      text-align: center;
+      padding: var(--space-xl) 0;
+    }
+    .impact-hero__copy { text-align: center; }
   }
   @media (max-width: 600px) {
     .doc-grid { grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: var(--space-sm); }
@@ -733,6 +758,5 @@ const jsonLd = {
     .doc-card__year { font-size: 1.1rem; }
     .doc-section-header { flex-direction: column; gap: var(--space-md); }
     .report-grid { grid-template-columns: repeat(auto-fill, minmax(min(260px, 100%), 1fr)); gap: var(--space-md); }
-    .expense-bar__pct { font-size: 1.1rem; }
   }
 </style>

@@ -9515,6 +9515,9 @@
               : tier
             ),
           }));
+        } else if (parts[0] === 'gallery') {
+          const idx = parseInt(parts[1]);
+          setData(d => ({ ...d, galleryPhotos: (d.galleryPhotos || []).map((ph, j) => j === idx ? { ...ph, id } : ph) }));
         } else if (parts[0] === 'event-hero') {
           updateEvent('image', id);
         }
@@ -9574,6 +9577,7 @@
             <button class="hub-tab ${activeTab === 'testimonial' ? 'active' : ''}" onClick=${() => setActiveTab('testimonial')}>Testimonial</button>
             <button class="hub-tab ${activeTab === 'faqs' ? 'active' : ''}" onClick=${() => setActiveTab('faqs')}>FAQs</button>
             <button class="hub-tab ${activeTab === 'sponsors' ? 'active' : ''}" onClick=${() => setActiveTab('sponsors')}>Sponsors</button>
+            <button class="hub-tab ${activeTab === 'gallery' ? 'active' : ''}" onClick=${() => setActiveTab('gallery')}>Gallery</button>
           </div>
 
           ${activeTab === 'event' && eventData && html`
@@ -9984,6 +9988,47 @@
                   }))}>+ Add Sponsor${tier.tier ? ' to ' + tier.tier : ''}</button>
               </div>
             `)}
+          `}
+
+          ${activeTab === 'gallery' && html`
+            <div class="card">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <div>
+                  <h2 class="card-title">Photo Gallery</h2>
+                  <p class="card-subtitle">Photos shown in the "Room Comes Alive" gallery section on the gala page.</p>
+                </div>
+                <button class="btn btn-primary btn-sm" onClick=${() => {
+                  setData(d => ({ ...d, galleryPhotos: [...(d.galleryPhotos || []), { id: '', alt: '' }] }));
+                  setTimeout(() => {
+                    setImagePickerTarget('gallery:' + (data.galleryPhotos || []).length);
+                    setShowImagePicker(true);
+                  }, 50);
+                }}>+ Add Photo</button>
+              </div>
+              ${(data.galleryPhotos || []).length > 0 ? html`
+                <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 0.75rem;">
+                  ${(data.galleryPhotos || []).map((p, i) => html`
+                    <div style="position: relative; border-radius: 10px; overflow: hidden; background: var(--bg-secondary); border: 1px solid var(--border);">
+                      <div style="aspect-ratio: 4/3; cursor: pointer; display: flex; align-items: center; justify-content: center; background: var(--bg-primary);"
+                        onClick=${() => { setImagePickerTarget('gallery:' + i); setShowImagePicker(true); }}>
+                        ${p.id
+                          ? html`<img src=${cfThumb(p.id, 'w=320,h=240,fit=cover')} alt=${p.alt || ''} style="width: 100%; height: 100%; object-fit: cover;" />`
+                          : html`<span style="font-size: 0.7rem; color: var(--text-tertiary); text-align: center; padding: 0.5rem;">Click to<br/>choose image</span>`
+                        }
+                      </div>
+                      <div style="padding: 0.5rem;">
+                        <input class="form-input" placeholder="Alt text" value=${p.alt || ''} style="font-size: 0.82rem; padding: 0.35rem 0.5rem;"
+                          onInput=${(e) => setData(d => ({ ...d, galleryPhotos: d.galleryPhotos.map((ph, j) => j === i ? { ...ph, alt: e.target.value } : ph) }))} />
+                      </div>
+                      <button style="position: absolute; top: 4px; right: 4px; width: 22px; height: 22px; border-radius: 50%; background: rgba(0,0,0,0.6); color: #fff; border: none; cursor: pointer; font-size: 0.7rem; display: flex; align-items: center; justify-content: center;"
+                        onClick=${() => setData(d => ({ ...d, galleryPhotos: d.galleryPhotos.filter((_, j) => j !== i) }))}>✕</button>
+                    </div>
+                  `)}
+                </div>
+              ` : html`
+                <p style="text-align: center; color: var(--text-tertiary); padding: 2rem;">No gallery photos yet. Click "+ Add Photo" to browse and select images.</p>
+              `}
+            </div>
           `}
 
           <div class="editor-save-footer">
