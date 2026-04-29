@@ -6,10 +6,11 @@
  */
 import PageLayout from '../../layouts/PageLayout.astro';
 import financialsData from '../../content/site/financials.json';
-import { getCollection } from 'astro:content';
+import { getSiteStats } from '../../utils/stats';
+import { cfUrl, cfSrcset } from '../../utils/cf-image';
 
-const allTeam = await getCollection('team');
-const boardMemberCount = allTeam.filter(t => t.data.group === 'board').length;
+const stats = await getSiteStats();
+const storefrontImg = 'about/sunny-ranney-storefront';
 
 // Sort documents by year descending
 const docs990 = financialsData.documents
@@ -29,7 +30,7 @@ const annualReports = (financialsData.annualReports || [])
 
 // Financial snapshot — editable from admin panel
 import snapshotData from '../../content/site/financial-snapshot.json';
-const snapshot = { ...snapshotData, boardMembers: boardMemberCount };
+const snapshot = snapshotData;
 
 // JSON-LD
 const jsonLd = {
@@ -115,44 +116,38 @@ const jsonLd = {
   <section class="section section--dark" id="snapshot">
     <div class="container">
       <div class="snapshot-header">
-        <span class="snapshot-eyebrow">FY {snapshot.year} &middot; From our IRS Form 990</span>
-        <h2 class="snapshot-title">Where Your Money Goes</h2>
+        <span class="snapshot-eyebrow">Where Your Money Goes &middot; FY {snapshot.year}</span>
+        <h2 class="impact-hero__premise">Our store covers most of our overhead.</h2>
       </div>
 
       <div class="impact-hero">
-        <div class="impact-hero__figure" aria-hidden="true">
-          <span class="impact-hero__cents">{snapshot.programPct}<span class="impact-hero__cents-symbol">¢</span></span>
-          <span class="impact-hero__of">of every dollar</span>
-        </div>
-        <div class="impact-hero__copy">
-          <p class="impact-hero__lede">
-            <span class="highlight">${(snapshot.programExpenses / 1000000).toFixed(1)} million</span> goes directly
-            to building rooms, funding programs, and serving children with critical illnesses and disabilities.
-          </p>
-          <p class="impact-hero__note">
-            The remaining {100 - snapshot.programPct}¢ covers operations and fundraising —
-            our <a href="#our-model">stores cover much of that overhead</a> so donor dollars stay focused on the mission.
-            See our <a href="#990s">990</a> for the full breakdown.
-          </p>
-        </div>
+        <span class="impact-hero__pct" aria-hidden="true">
+          {snapshot.programPct}<span class="impact-hero__pct-symbol">%</span>
+        </span>
+        <p class="impact-hero__lede">
+          of every donated dollar goes directly to <span class="highlight">building rooms and serving children</span> with critical illnesses and disabilities.
+        </p>
       </div>
 
-      <div class="stats-grid">
-        <div class="stat-card">
-          <span class="stat-card__number">${(snapshot.totalRevenue / 1000000).toFixed(1)}M</span>
-          <span class="stat-card__label">Total Revenue</span>
-        </div>
-        <div class="stat-card">
-          <span class="stat-card__number">{snapshot.volunteers}+</span>
-          <span class="stat-card__label">Volunteers</span>
-        </div>
-        <div class="stat-card">
-          <span class="stat-card__number">{boardMemberCount}</span>
-          <span class="stat-card__label">Board Members</span>
-        </div>
-        <div class="stat-card">
-          <span class="stat-card__number">${(snapshot.netAssets / 1000).toFixed(0)}K</span>
-          <span class="stat-card__label">Net Assets</span>
+      <div class="impact-stats">
+        <span class="impact-stats__label">Cumulative impact since 2012</span>
+        <div class="stats-grid">
+          <div class="stat-card">
+            <span class="stat-card__number">{stats.totalRooms}</span>
+            <span class="stat-card__label">Rooms Built</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-card__number">{stats.totalKids}</span>
+            <span class="stat-card__label">Kids Served</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-card__number">{stats.years}</span>
+            <span class="stat-card__label">Years Serving</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-card__number">{snapshot.volunteers}+</span>
+            <span class="stat-card__label">Volunteers</span>
+          </div>
         </div>
       </div>
     </div>
@@ -160,20 +155,26 @@ const jsonLd = {
 
   <!-- Our Model -->
   <section class="section" id="our-model">
-    <div class="container container--narrow">
+    <div class="container">
       <div class="model-block">
-        <div class="model-block__icon" aria-hidden="true">
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>
-          </svg>
+        <div class="model-block__media">
+          <img
+            src={cfUrl(storefrontImg, { w: 900, h: 700, fit: 'cover', q: 80 })}
+            srcset={cfSrcset(storefrontImg, [600, 900, 1200], { fit: 'cover', aspectRatio: 700/900, quality: 80 })}
+            sizes="(max-width: 900px) 90vw, 45vw"
+            alt="Sunny &amp; Ranney storefront in Roswell, Georgia"
+            width="900" height="700"
+            loading="lazy" decoding="async"
+          />
         </div>
         <div class="model-block__content">
-          <h2>Our stores fund our overhead</h2>
+          <span class="model-block__eyebrow">The store behind the model</span>
+          <h2>Meet Sunny &amp; Ranney</h2>
           <p>
             In 2020, SOARD founders Peter and Holly Ranney opened
             <a href="https://sunnyandranney.com" target="_blank" rel="noopener noreferrer">Sunny &amp; Ranney</a>,
-            a designer home furnishings store in Roswell, GA. The goal of the store is to cover
-            <span class="highlight">the majority of overhead</span> — rent, utilities, and employee salaries —
+            a designer home furnishings store in Roswell, GA. Every purchase helps cover
+            <span class="highlight">the majority of our overhead</span> — rent, utilities, and most salaries —
             so that donor dollars go directly to building rooms for kids.
           </p>
           <a href="/sunny-and-ranney/" class="model-store-link">
@@ -416,89 +417,67 @@ const jsonLd = {
     font-weight: 600;
     margin-bottom: var(--space-md);
   }
-  .snapshot-title {
-    color: var(--c-white);
-    font-size: clamp(1.8rem, 3.5vw, 2.4rem);
-    margin: 0;
-  }
-
-  /* ─── Impact Hero (80¢ focal) ──────────── */
+  /* ─── Impact Hero ──────────────────────── */
   .impact-hero {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
-    align-items: center;
-    gap: clamp(var(--space-xl), 5vw, var(--space-3xl));
-    max-width: 960px;
+    max-width: 720px;
     margin-inline: auto;
-    padding: var(--space-2xl) 0;
-    border-top: 1px solid rgba(255,255,255,0.08);
-    border-bottom: 1px solid rgba(255,255,255,0.08);
-  }
-  .impact-hero__figure {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
     text-align: center;
-    line-height: 0.9;
+    padding: var(--space-2xl) 0;
   }
-  .impact-hero__cents {
+  .impact-hero__premise {
+    font-family: var(--font-display);
+    font-size: clamp(2rem, 4.5vw, 3.2rem);
+    font-weight: 600;
+    color: var(--c-white);
+    line-height: 1.15;
+    letter-spacing: -0.01em;
+    margin: 0 auto;
+    max-width: 720px;
+    text-align: center;
+  }
+  .impact-hero__pct {
+    display: block;
     font-family: var(--font-display);
     font-weight: 700;
     color: var(--c-yellow);
-    font-size: clamp(7rem, 18vw, 13rem);
-    letter-spacing: -0.04em;
-    display: inline-flex;
-    align-items: flex-start;
+    font-size: clamp(8rem, 22vw, 16rem);
+    letter-spacing: -0.05em;
+    line-height: 0.9;
   }
-  .impact-hero__cents-symbol {
-    font-size: 0.55em;
+  .impact-hero__pct-symbol {
+    font-size: 0.5em;
+    font-weight: 600;
     margin-left: 0.04em;
-    margin-top: 0.18em;
-    font-weight: 600;
-  }
-  .impact-hero__of {
-    margin-top: var(--space-md);
-    font-size: 0.85rem;
-    text-transform: uppercase;
-    letter-spacing: 0.16em;
-    color: rgba(255,255,255,0.65);
-    font-weight: 600;
-  }
-  .impact-hero__copy {
-    color: var(--c-white);
+    vertical-align: 0.35em;
   }
   .impact-hero__lede {
-    font-size: clamp(1.15rem, 1.9vw, 1.5rem);
-    line-height: 1.45;
-    color: var(--c-white);
-    margin: 0;
+    margin: var(--space-lg) auto 0;
+    max-width: 560px;
+    font-size: clamp(1.05rem, 1.7vw, 1.25rem);
+    line-height: 1.55;
+    color: rgba(255,255,255,0.8);
   }
   .impact-hero__lede .highlight {
-    color: var(--c-yellow);
+    color: var(--c-white);
     font-weight: 600;
   }
-  .impact-hero__note {
-    margin-top: var(--space-lg);
-    font-size: 0.9rem;
-    line-height: 1.65;
-    color: rgba(255,255,255,0.6);
+  .impact-stats {
+    margin-top: var(--space-3xl);
+    text-align: center;
   }
-  .impact-hero__note a {
-    color: rgba(255,255,255,0.85);
-    text-decoration: underline;
-    text-decoration-color: rgba(255,213,0,0.4);
-    text-underline-offset: 3px;
-  }
-  .impact-hero__note a:hover {
-    color: var(--c-yellow);
-    text-decoration-color: var(--c-yellow);
+  .impact-stats__label {
+    display: inline-block;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    color: rgba(255,255,255,0.45);
+    font-weight: 600;
+    margin-bottom: var(--space-lg);
   }
   .stats-grid {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
     gap: var(--space-md);
-    margin-top: var(--space-3xl);
     max-width: 720px;
     margin-inline: auto;
   }
@@ -523,35 +502,46 @@ const jsonLd = {
     font-weight: 500;
   }
 
-  /* ─── Our Model ────────────────────────── */
+  /* ─── Our Model (editorial split) ──────── */
   .model-block {
-    display: flex;
-    gap: var(--space-xl);
-    align-items: flex-start;
-    padding: var(--space-2xl);
-    background: var(--c-warm-gray);
-    border-radius: var(--border-radius-lg);
-    border-left: 4px solid var(--c-yellow);
-  }
-  .model-block__icon {
-    flex-shrink: 0;
-    width: 56px;
-    height: 56px;
-    display: flex;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
     align-items: center;
-    justify-content: center;
-    background: var(--c-yellow);
-    color: var(--c-dark);
+    gap: clamp(var(--space-xl), 5vw, var(--space-3xl));
+    max-width: 1080px;
+    margin-inline: auto;
+  }
+  .model-block__media {
+    position: relative;
+    aspect-ratio: 9 / 7;
+    overflow: hidden;
     border-radius: var(--border-radius-lg);
+    background: var(--c-warm-gray);
+  }
+  .model-block__media img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  .model-block__eyebrow {
+    display: inline-block;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--c-text-muted);
+    font-weight: 600;
+    margin-bottom: var(--space-sm);
   }
   .model-block__content h2 {
-    font-size: 1.35rem;
-    margin-bottom: var(--space-md);
+    font-size: clamp(1.6rem, 2.8vw, 2.1rem);
+    margin: 0 0 var(--space-md);
+    line-height: 1.2;
   }
   .model-block__content p {
     color: var(--c-text-muted);
     line-height: 1.7;
-    font-size: 1.02rem;
+    font-size: 1.05rem;
   }
   .model-store-link {
     display: inline-block;
@@ -740,17 +730,12 @@ const jsonLd = {
   /* ─── Responsive ───────────────────────── */
   @media (max-width: 768px) {
     .stats-grid { grid-template-columns: repeat(2, 1fr); gap: var(--space-sm); }
-    .model-block { flex-direction: column; gap: var(--space-md); padding: var(--space-xl); }
+    .model-block { grid-template-columns: 1fr; gap: var(--space-xl); }
+    .model-block__media { aspect-ratio: 4 / 3; }
     .trust-row { gap: var(--space-md); }
     .trust-badge { padding: var(--space-md); min-width: 120px; }
     .trust-badge img { width: 64px; height: 64px; }
-    .impact-hero {
-      grid-template-columns: 1fr;
-      gap: var(--space-xl);
-      text-align: center;
-      padding: var(--space-xl) 0;
-    }
-    .impact-hero__copy { text-align: center; }
+    .impact-hero { padding: var(--space-xl) 0; }
   }
   @media (max-width: 600px) {
     .doc-grid { grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: var(--space-sm); }

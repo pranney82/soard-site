@@ -42,6 +42,15 @@ const galleryPhotos: { id: string; alt?: string }[] = (cms.galleryPhotos ?? [])
   .map((p: any) => typeof p === 'string' ? { id: p } : p)
   .filter((p: any) => p?.id);
 
+/* ── Save-the-date video: Cloudflare Stream id or YouTube URL on the event entry ── */
+function getYouTubeId(url: string): string | null {
+  const m = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|v\/|shorts\/))([\w-]{11})/);
+  return m ? m[1] : null;
+}
+const streamVideoId: string | null = ev.streamVideoId || null;
+const videoYtId: string | null = ev.videoUrl ? getYouTubeId(ev.videoUrl) : null;
+const hasVideo = Boolean(streamVideoId || videoYtId);
+
 /* ── Split a comma- or newline-delimited perk string into checklist items ── */
 function perkToInclusions(perk?: string): string[] {
   if (!perk) return [];
@@ -298,7 +307,7 @@ const eventJsonLd = {
         </a>
         <div class="gv-details__card" data-reveal>
           <div class="gv-details__icon" aria-hidden="true">
-            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v6"/><path d="m4.93 10.93 4.24 4.24"/><path d="M2 18h2"/><path d="M20 18h2"/><path d="m19.07 10.93-4.24 4.24"/><path d="M12 22a4 4 0 0 0 4-4H8a4 4 0 0 0 4 4z"/></svg>
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20.38 3.46 16 2a4 4 0 0 1-8 0L3.62 3.46a2 2 0 0 0-1.34 2.23l.58 3.47a1 1 0 0 0 .99.84H6v10c0 1.1.9 2 2 2h8a2 2 0 0 0 2-2V10h2.15a1 1 0 0 0 .99-.84l.58-3.47a2 2 0 0 0-1.34-2.23z"/></svg>
           </div>
           <h2 class="gv-details__card-title">Dress Code</h2>
           <p class="gv-details__card-text">Festive cocktail attire — Havana flair. Tropical colors, linen, summer florals, panama hats.</p>
@@ -422,30 +431,81 @@ const eventJsonLd = {
     </section>
   )}
 
-  <!-- ═══ GALLERY — past gala photos ═══ -->
-  {galleryPhotos.length > 0 && (
-    <section class="gv-gallery" aria-labelledby="gv-gallery-heading">
+  <!-- ═══ GALLERY — save-the-date video + past gala photos ═══ -->
+  {(hasVideo || galleryPhotos.length > 0) && (
+    <section class="gv-gallery" aria-labelledby={galleryPhotos.length > 0 ? 'gv-gallery-heading' : 'gv-video-heading'}>
       <div class="container gv-gallery__inner">
-        <div class="gv-gallery__header">
-          <span class="gv-gallery__label" data-reveal>From Past Galas</span>
-          <h2 id="gv-gallery-heading" class="gv-gallery__heading" data-reveal>The Room Comes Alive</h2>
-          <p class="gv-gallery__sub" data-reveal>Real moments from years past — guests, families, reveals, and the kind of nights everyone keeps coming back for.</p>
-        </div>
-        <div class="gv-gallery__strip" role="list">
-          {galleryPhotos.map((p, i) => (
-            <div class="gv-gallery__item" role="listitem" data-reveal style={`--gv-i:${i}`}>
-              <img
-                src={cfRaw(p.id, 'w=480,h=320,fit=cover,gravity=auto,q=80')}
-                srcset={`${cfRaw(p.id, 'w=480,h=320,fit=cover,gravity=auto,q=80')} 1x, ${cfRaw(p.id, 'w=960,h=640,fit=cover,gravity=auto,q=80')} 2x`}
-                alt={p.alt || 'Evening of Sunshine gala moment'}
-                width="480"
-                height="320"
-                loading="lazy"
-                decoding="async"
-              />
+        {hasVideo && (
+          <div class="gv-video">
+            <div class="gv-video__header">
+              <span class="gv-video__label" data-reveal>Save the Date</span>
+              <h2 id="gv-video-heading" class="gv-video__heading" data-reveal>An Invitation to Havana Nights</h2>
             </div>
-          ))}
-        </div>
+            <div class="gv-video__frame" data-reveal>
+              {streamVideoId ? (
+                <button class="gv-video__facade" type="button" data-stream-id={streamVideoId} aria-label="Play save-the-date video">
+                  <img
+                    src={`https://videodelivery.net/${streamVideoId}/thumbnails/thumbnail.jpg?time=2s&width=1600&height=900&fit=crop`}
+                    alt="Save-the-date video preview"
+                    class="gv-video__thumb"
+                    loading="lazy"
+                    decoding="async"
+                    width="1600"
+                    height="900"
+                  />
+                  <span class="gv-video__play" aria-hidden="true">
+                    <svg viewBox="0 0 24 28" fill="none" width="28" height="32">
+                      <path d="M2 1.5v25l20-12.5L2 1.5z" fill="currentColor"/>
+                    </svg>
+                  </span>
+                </button>
+              ) : (
+                <button class="gv-video__facade" type="button" data-yt-id={videoYtId} aria-label="Play save-the-date video">
+                  <picture>
+                    <source type="image/webp" srcset={`https://i.ytimg.com/vi_webp/${videoYtId}/maxresdefault.webp`} />
+                    <img
+                      src={`https://i.ytimg.com/vi/${videoYtId}/maxresdefault.jpg`}
+                      alt="Save-the-date video preview"
+                      class="gv-video__thumb"
+                      loading="lazy"
+                      decoding="async"
+                    />
+                  </picture>
+                  <span class="gv-video__play" aria-hidden="true">
+                    <svg viewBox="0 0 24 28" fill="none" width="28" height="32">
+                      <path d="M2 1.5v25l20-12.5L2 1.5z" fill="currentColor"/>
+                    </svg>
+                  </span>
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {galleryPhotos.length > 0 && (
+          <>
+            <div class="gv-gallery__header">
+              <span class="gv-gallery__label" data-reveal>From Past Galas</span>
+              <h2 id="gv-gallery-heading" class="gv-gallery__heading" data-reveal>The Room Comes Alive</h2>
+              <p class="gv-gallery__sub" data-reveal>Real moments from years past — guests, families, reveals, and the kind of nights everyone keeps coming back for.</p>
+            </div>
+            <div class="gv-gallery__strip" role="list">
+              {galleryPhotos.map((p, i) => (
+                <div class="gv-gallery__item" role="listitem" data-reveal style={`--gv-i:${i}`}>
+                  <img
+                    src={cfRaw(p.id, 'w=480,h=320,fit=cover,gravity=auto,q=80')}
+                    srcset={`${cfRaw(p.id, 'w=480,h=320,fit=cover,gravity=auto,q=80')} 1x, ${cfRaw(p.id, 'w=960,h=640,fit=cover,gravity=auto,q=80')} 2x`}
+                    alt={p.alt || 'Evening of Sunshine gala moment'}
+                    width="480"
+                    height="320"
+                    loading="lazy"
+                    decoding="async"
+                  />
+                </div>
+              ))}
+            </div>
+          </>
+        )}
       </div>
     </section>
   )}
@@ -1637,6 +1697,87 @@ const eventJsonLd = {
     display: block;
   }
 
+  /* ─── Save-the-date video ─── */
+  .gv-video {
+    max-width: 880px;
+    margin: 0 auto var(--space-3xl);
+  }
+  .gv-video__header {
+    text-align: center;
+    margin-bottom: var(--space-xl);
+  }
+  .gv-video__label {
+    display: inline-block;
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    color: var(--gv-coral);
+    background: rgba(199, 93, 74, 0.1);
+    padding: 0.35rem 0.85rem;
+    border-radius: 100px;
+    margin-bottom: var(--space-sm);
+  }
+  .gv-video__heading {
+    font-family: var(--font-display);
+    font-size: clamp(1.8rem, 4vw, 2.6rem);
+    color: var(--gv-midnight);
+    letter-spacing: -0.02em;
+    margin: 0;
+  }
+  .gv-video__frame {
+    position: relative;
+    aspect-ratio: 16 / 9;
+    border-radius: 16px;
+    overflow: hidden;
+    background: var(--gv-midnight);
+    box-shadow: 0 18px 40px rgba(13, 47, 63, 0.18);
+  }
+  .gv-video__facade {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+    display: block;
+  }
+  .gv-video__thumb {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .gv-video__facade:hover .gv-video__thumb { transform: scale(1.02); }
+  .gv-video__play {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 84px;
+    height: 84px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.95);
+    color: var(--gv-coral);
+    display: grid;
+    place-items: center;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), background 0.3s ease;
+  }
+  .gv-video__facade:hover .gv-video__play,
+  .gv-video__facade:focus-visible .gv-video__play {
+    transform: translate(-50%, -50%) scale(1.08);
+    background: #fff;
+  }
+  .gv-video__play svg { margin-left: 4px; }
+  .gv-video__facade:focus-visible {
+    outline: 3px solid var(--gv-coral);
+    outline-offset: 4px;
+  }
+
   /* ─── Sponsors strip ─── */
   .gv-sponsors {
     padding: var(--space-4xl) 0;
@@ -2259,6 +2400,30 @@ const eventJsonLd = {
       }, { threshold: 0.15 });
       if (tickets) inViewObserver.observe(tickets);
       if (finalCta) inViewObserver.observe(finalCta);
+    }
+
+    /* Save-the-date video facade — load iframe only on click */
+    const videoFacade = document.querySelector<HTMLButtonElement>('.gv-video__facade');
+    if (videoFacade) {
+      const activate = () => {
+        const streamId = videoFacade.dataset.streamId;
+        const ytId = videoFacade.dataset.ytId;
+        const iframe = document.createElement('iframe');
+        iframe.title = 'Save-the-date video';
+        iframe.allowFullscreen = true;
+        iframe.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border:0';
+        if (streamId) {
+          iframe.src = `https://iframe.videodelivery.net/${streamId}?autoplay=true&preload=true`;
+          iframe.allow = 'accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture';
+        } else if (ytId) {
+          iframe.src = `https://www.youtube-nocookie.com/embed/${ytId}?autoplay=1&rel=0`;
+          iframe.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture';
+        } else {
+          return;
+        }
+        videoFacade.replaceWith(iframe);
+      };
+      videoFacade.addEventListener('click', activate);
     }
 
     /* FAQ accordion behavior is handled by the <faq-accordion> custom element */
