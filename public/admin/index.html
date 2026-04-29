@@ -9468,11 +9468,32 @@
         setData(d => ({
           ...d,
           tiers: {
-            ...d.tiers,
-            [type]: d.tiers[type].map((t, i) => i === idx ? { ...t, [field]: value } : t),
+            ...(d.tiers || { main: [], addons: [] }),
+            [type]: (d.tiers?.[type] || []).map((t, i) => i === idx ? { ...t, [field]: value } : t),
           },
         }));
       };
+      const addTier = (type) => setData(d => ({
+        ...d,
+        tiers: {
+          ...(d.tiers || { main: [], addons: [] }),
+          [type]: [...(d.tiers?.[type] || []), { name: '', price: '', status: 'available' }],
+        },
+      }));
+      const removeTier = (type, idx) => setData(d => ({
+        ...d,
+        tiers: {
+          ...(d.tiers || { main: [], addons: [] }),
+          [type]: (d.tiers?.[type] || []).filter((_, i) => i !== idx),
+        },
+      }));
+      const moveTier = (type, from, to) => setData(d => {
+        const arr = [...(d.tiers?.[type] || [])];
+        if (to < 0 || to >= arr.length) return d;
+        const [item] = arr.splice(from, 1);
+        arr.splice(to, 0, item);
+        return { ...d, tiers: { ...(d.tiers || { main: [], addons: [] }), [type]: arr } };
+      });
 
       const addFaq = () => setData(d => ({ ...d, faqs: [...(d.faqs || []), { question: '', answer: '' }] }));
       const updateFaq = (idx, field, value) => setData(d => ({
@@ -9644,24 +9665,50 @@
 
           ${activeTab === 'tiers' && html`
             <div class="card">
-              <h2 class="card-title">Tables & Tickets</h2>
-              <p class="card-subtitle" style="margin-bottom: 1rem;">Update availability and describe what's included with each table or ticket.</p>
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <div>
+                  <h2 class="card-title">Tables & Tickets</h2>
+                  <p class="card-subtitle">Sponsor tables and individual seats shown in the main "Tables & Tickets" section.</p>
+                </div>
+                <button class="btn btn-primary btn-sm" onClick=${() => addTier('main')}>+ Add Tier</button>
+              </div>
               <div style="display: flex; flex-direction: column; gap: 0.75rem;">
                 ${(data.tiers?.main || []).map((tier, i) => html`
-                  <div style="padding: 0.85rem 0.9rem; background: var(--bg-secondary); border-radius: 8px;">
-                    <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 0.6rem;">
-                      <div style="flex: 1; min-width: 0;">
-                        <strong style="font-size: 0.9rem;">${tier.name}</strong>
-                        <span style="color: var(--text-secondary); margin-left: 0.5rem; font-size: 0.82rem;">${tier.price}</span>
-                      </div>
-                      <select value=${tier.status || 'available'} onChange=${(e) => updateTier('main', i, 'status', e.target.value)}
-                        class="form-select" style="width: auto; padding: 0.35rem 0.6rem; font-size: 0.82rem;">
-                        <option value="available">Available</option>
-                        <option value="few-left">Few Left</option>
-                        <option value="sold-out">Sold Out</option>
-                      </select>
+                  <div style="padding: 0.85rem 0.9rem; background: var(--bg-secondary); border-radius: 8px; position: relative;">
+                    <div style="position: absolute; top: 0.5rem; right: 0.5rem; display: flex; gap: 0.2rem;">
+                      <button class="btn btn-ghost btn-sm" style="color: var(--text-tertiary); padding: 0.15rem 0.4rem;"
+                        title="Move up" disabled=${i === 0}
+                        onClick=${() => moveTier('main', i, i - 1)}>↑</button>
+                      <button class="btn btn-ghost btn-sm" style="color: var(--text-tertiary); padding: 0.15rem 0.4rem;"
+                        title="Move down" disabled=${i === (data.tiers?.main || []).length - 1}
+                        onClick=${() => moveTier('main', i, i + 1)}>↓</button>
+                      <button class="btn btn-ghost btn-sm" style="color: var(--text-tertiary); padding: 0.15rem 0.4rem;"
+                        title="Remove" onClick=${() => removeTier('main', i)}>✕</button>
                     </div>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem;">
+                    <div style="display: grid; grid-template-columns: 2fr 1fr auto; gap: 0.6rem; padding-right: 100px; margin-bottom: 0.6rem;">
+                      <div class="form-group" style="margin-bottom: 0;">
+                        <label style="font-size: 0.76rem; color: var(--text-secondary);">Name</label>
+                        <input class="form-input" placeholder='e.g. "Sunshine Sponsor"' style="font-size: 0.85rem;"
+                          value=${tier.name || ''}
+                          onInput=${(e) => updateTier('main', i, 'name', e.target.value)} />
+                      </div>
+                      <div class="form-group" style="margin-bottom: 0;">
+                        <label style="font-size: 0.76rem; color: var(--text-secondary);">Price</label>
+                        <input class="form-input" placeholder='e.g. "$10,000"' style="font-size: 0.85rem;"
+                          value=${tier.price || ''}
+                          onInput=${(e) => updateTier('main', i, 'price', e.target.value)} />
+                      </div>
+                      <div class="form-group" style="margin-bottom: 0;">
+                        <label style="font-size: 0.76rem; color: var(--text-secondary);">Status</label>
+                        <select value=${tier.status || 'available'} onChange=${(e) => updateTier('main', i, 'status', e.target.value)}
+                          class="form-select" style="font-size: 0.82rem;">
+                          <option value="available">Available</option>
+                          <option value="few-left">Few Left</option>
+                          <option value="sold-out">Sold Out</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; margin-bottom: 0.6rem;">
                       <div class="form-group" style="margin-bottom: 0;">
                         <label style="font-size: 0.76rem; color: var(--text-secondary);">Detail (e.g. "Table for 10")</label>
                         <input class="form-input" style="font-size: 0.85rem;"
@@ -9669,33 +9716,88 @@
                           onInput=${(e) => updateTier('main', i, 'detail', e.target.value)} />
                       </div>
                       <div class="form-group" style="margin-bottom: 0;">
-                        <label style="font-size: 0.76rem; color: var(--text-secondary);">What's included (perks)</label>
+                        <label style="font-size: 0.76rem; color: var(--text-secondary);">What's included (one perk per line or comma-separated)</label>
                         <textarea rows="2" class="form-textarea" style="font-size: 0.85rem; min-height: 44px;"
                           value=${tier.perk || ''}
                           onInput=${(e) => updateTier('main', i, 'perk', e.target.value)} />
                       </div>
                     </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.6rem;">
+                      <div class="form-group" style="margin-bottom: 0;">
+                        <label style="font-size: 0.76rem; color: var(--text-secondary);">Highlight</label>
+                        <select value=${tier.highlight || ''} onChange=${(e) => updateTier('main', i, 'highlight', e.target.value || undefined)}
+                          class="form-select" style="font-size: 0.82rem;">
+                          <option value="">None</option>
+                          <option value="featured">Featured</option>
+                          <option value="popular">Popular</option>
+                        </select>
+                      </div>
+                      <div class="form-group" style="margin-bottom: 0;">
+                        <label style="font-size: 0.76rem; color: var(--text-secondary);">Badge text (optional)</label>
+                        <input class="form-input" placeholder='e.g. "Most Popular"' style="font-size: 0.85rem;"
+                          value=${tier.badge || ''}
+                          onInput=${(e) => updateTier('main', i, 'badge', e.target.value)} />
+                      </div>
+                      <div class="form-group" style="margin-bottom: 0;">
+                        <label style="font-size: 0.76rem; color: var(--text-secondary);">Badge style</label>
+                        <select value=${tier.badgeStyle || ''} onChange=${(e) => updateTier('main', i, 'badgeStyle', e.target.value || undefined)}
+                          class="form-select" style="font-size: 0.82rem;">
+                          <option value="">Default</option>
+                          <option value="gold">Gold</option>
+                          <option value="green">Green</option>
+                        </select>
+                      </div>
+                    </div>
                   </div>
                 `)}
+                ${(data.tiers?.main || []).length === 0 && html`
+                  <p style="text-align: center; color: var(--text-tertiary); padding: 2rem;">No tiers yet. Click "+ Add Tier" to create the first sponsor table or ticket.</p>
+                `}
               </div>
             </div>
             <div class="card" style="margin-top: 1.5rem;">
-              <h2 class="card-title">Add-On Sponsorships</h2>
-              <p class="card-subtitle" style="margin-bottom: 1rem;">Cocktail hour, music, auction, cigar lounge, and other named sponsorships shown after the main tiers.</p>
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <div>
+                  <h2 class="card-title">Add-On Sponsorships</h2>
+                  <p class="card-subtitle">Cocktail hour, music, auction, cigar lounge, and other named sponsorships shown after the main tiers.</p>
+                </div>
+                <button class="btn btn-primary btn-sm" onClick=${() => addTier('addons')}>+ Add Add-On</button>
+              </div>
               <div style="display: flex; flex-direction: column; gap: 0.75rem;">
                 ${(data.tiers?.addons || []).map((tier, i) => html`
-                  <div style="padding: 0.85rem 0.9rem; background: var(--bg-secondary); border-radius: 8px;">
-                    <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 0.6rem;">
-                      <div style="flex: 1; min-width: 0;">
-                        <strong style="font-size: 0.9rem;">${tier.name}</strong>
-                        <span style="color: var(--text-secondary); margin-left: 0.5rem; font-size: 0.82rem;">${tier.price}</span>
+                  <div style="padding: 0.85rem 0.9rem; background: var(--bg-secondary); border-radius: 8px; position: relative;">
+                    <div style="position: absolute; top: 0.5rem; right: 0.5rem; display: flex; gap: 0.2rem;">
+                      <button class="btn btn-ghost btn-sm" style="color: var(--text-tertiary); padding: 0.15rem 0.4rem;"
+                        title="Move up" disabled=${i === 0}
+                        onClick=${() => moveTier('addons', i, i - 1)}>↑</button>
+                      <button class="btn btn-ghost btn-sm" style="color: var(--text-tertiary); padding: 0.15rem 0.4rem;"
+                        title="Move down" disabled=${i === (data.tiers?.addons || []).length - 1}
+                        onClick=${() => moveTier('addons', i, i + 1)}>↓</button>
+                      <button class="btn btn-ghost btn-sm" style="color: var(--text-tertiary); padding: 0.15rem 0.4rem;"
+                        title="Remove" onClick=${() => removeTier('addons', i)}>✕</button>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 2fr 1fr auto; gap: 0.6rem; padding-right: 100px; margin-bottom: 0.6rem;">
+                      <div class="form-group" style="margin-bottom: 0;">
+                        <label style="font-size: 0.76rem; color: var(--text-secondary);">Name</label>
+                        <input class="form-input" placeholder='e.g. "Cocktail Hour Sponsor"' style="font-size: 0.85rem;"
+                          value=${tier.name || ''}
+                          onInput=${(e) => updateTier('addons', i, 'name', e.target.value)} />
                       </div>
-                      <select value=${tier.status || 'available'} onChange=${(e) => updateTier('addons', i, 'status', e.target.value)}
-                        class="form-select" style="width: auto; padding: 0.35rem 0.6rem; font-size: 0.82rem;">
-                        <option value="available">Available</option>
-                        <option value="few-left">Few Left</option>
-                        <option value="sold-out">Sold Out</option>
-                      </select>
+                      <div class="form-group" style="margin-bottom: 0;">
+                        <label style="font-size: 0.76rem; color: var(--text-secondary);">Price</label>
+                        <input class="form-input" placeholder='e.g. "$5,000"' style="font-size: 0.85rem;"
+                          value=${tier.price || ''}
+                          onInput=${(e) => updateTier('addons', i, 'price', e.target.value)} />
+                      </div>
+                      <div class="form-group" style="margin-bottom: 0;">
+                        <label style="font-size: 0.76rem; color: var(--text-secondary);">Status</label>
+                        <select value=${tier.status || 'available'} onChange=${(e) => updateTier('addons', i, 'status', e.target.value)}
+                          class="form-select" style="font-size: 0.82rem;">
+                          <option value="available">Available</option>
+                          <option value="few-left">Few Left</option>
+                          <option value="sold-out">Sold Out</option>
+                        </select>
+                      </div>
                     </div>
                     <div class="form-group" style="margin-bottom: 0;">
                       <label style="font-size: 0.76rem; color: var(--text-secondary);">What's included</label>
@@ -9707,6 +9809,9 @@
                     </div>
                   </div>
                 `)}
+                ${(data.tiers?.addons || []).length === 0 && html`
+                  <p style="text-align: center; color: var(--text-tertiary); padding: 2rem;">No add-on sponsorships yet. Click "+ Add Add-On" to create one.</p>
+                `}
               </div>
             </div>
           `}
