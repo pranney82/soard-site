@@ -33,9 +33,12 @@ export async function onRequestPost(context) {
       );
     }
 
-    // Build TUS Upload-Metadata header (base64-encode each value per spec)
+    // Build TUS Upload-Metadata header (base64-encode each value per spec).
+    // btoa() only handles Latin1 — encode UTF-8 first so names with em-dashes,
+    // smart quotes, emoji, etc. don't crash the request.
+    const b64Utf8 = (s) => btoa(String.fromCharCode(...new TextEncoder().encode(s)));
     const metaParts = [];
-    if (name) metaParts.push(`name ${btoa(name)}`);
+    if (name) metaParts.push(`name ${b64Utf8(name)}`);
 
     const response = await fetch(
       `https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/stream?direct_user=true`,
@@ -53,8 +56,15 @@ export async function onRequestPost(context) {
     if (!response.ok) {
       const text = await response.text();
       console.error('[upload-video] Stream API error:', response.status, text);
+      let detail = '';
+      try {
+        const parsed = JSON.parse(text);
+        detail = parsed?.errors?.[0]?.message || parsed?.error || '';
+      } catch {
+        detail = text.slice(0, 200);
+      }
       return Response.json(
-        { success: false, error: `Stream API error: ${response.status}` },
+        { success: false, error: `Stream API error ${response.status}${detail ? `: ${detail}` : ''}` },
         { status: 502 }
       );
     }

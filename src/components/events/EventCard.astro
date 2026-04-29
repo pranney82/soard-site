@@ -83,12 +83,12 @@ function fmtDay(d: string) {
   >
     {event.image ? (
       <img
-        src={cfRaw(event.image, 'w=600,h=380,fit=cover,q=80')}
-        srcset={cfSrcset(event.image, [400, 600], { fit: 'cover', aspectRatio: 380/600 })}
+        src={cfRaw(event.image, 'w=600,h=558,fit=cover,q=80')}
+        srcset={cfSrcset(event.image, [400, 600, 800], { fit: 'cover', aspectRatio: 768/826 })}
         sizes="(max-width: 639px) 100vw, (max-width: 959px) 50vw, 33vw"
         alt={event.title}
         class="ev-card__hero-img lqip-img"
-        width="600" height="380"
+        width="826" height="768"
         loading="lazy" decoding="async"
       />
     ) : (
@@ -186,6 +186,11 @@ function fmtDay(d: string) {
     align-items: center;
     justify-content: center;
     overflow: hidden;
+  }
+  /* Image-backed heroes match the source aspect ratio so the full image shows */
+  .ev-card__hero--img {
+    height: auto;
+    aspect-ratio: 826 / 768;
   }
   .ev-card__hero-pattern {
     position: absolute;

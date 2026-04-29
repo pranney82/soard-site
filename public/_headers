@@ -12,7 +12,7 @@
 
 ## Admin panel — more permissive CSP (behind Cloudflare Access auth)
 /admin/*
-  Content-Security-Policy: default-src 'none'; script-src 'self' 'unsafe-inline' https://esm.sh https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' https://imagedelivery.net data: blob:; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://imagedelivery.net https://api.github.com https://api.cloudflare.com https://api.anthropic.com https://esm.sh https://cloudflareinsights.com; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'; manifest-src 'self'
+  Content-Security-Policy: default-src 'none'; script-src 'self' 'unsafe-inline' https://esm.sh https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' https://imagedelivery.net data: blob:; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://imagedelivery.net https://api.github.com https://api.cloudflare.com https://api.anthropic.com https://esm.sh https://cloudflareinsights.com https://upload.videodelivery.net; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'; manifest-src 'self'
 
 ## Cache financial PDFs (rarely change, large files)
 /financials/*

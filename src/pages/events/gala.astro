@@ -28,19 +28,46 @@ interface Tier {
   status?: 'available' | 'few-left' | 'sold-out';
 }
 
+interface SponsorEntry { name: string; logo?: string }
+interface SponsorTierGroup { tier: string; size?: string; names: SponsorEntry[] }
+
 const mainTiers: Tier[] = cms.tiers?.main ?? [];
 const addOnTiers: Tier[] = cms.tiers?.addons ?? [];
 const testimonial = cms.testimonial ?? { quote: '', name: '', title: '' };
 const faqs: { question: string; answer: string }[] = cms.faqs ?? [];
 const auctionItems: { name: string; detail: string }[] = cms.auctionItems ?? [];
 const evening: { time: string; title: string; detail: string }[] = cms.evening ?? [];
+const sponsorTiers: SponsorTierGroup[] = cms.sponsors ?? [];
+const galleryPhotos: { id: string; alt?: string }[] = (cms.galleryPhotos ?? [])
+  .map((p: any) => typeof p === 'string' ? { id: p } : p)
+  .filter((p: any) => p?.id);
+
+/* ── Split a comma- or newline-delimited perk string into checklist items ── */
+function perkToInclusions(perk?: string): string[] {
+  if (!perk) return [];
+  return perk
+    .split(/[\n,]+/)
+    .map(s => s.trim())
+    .filter(Boolean);
+}
+
+/* ── Pick an evocative icon for an auction item ── */
+type IconKey = 'beach' | 'fish' | 'grill' | 'music' | 'ticket';
+function iconForAuction(name: string): IconKey {
+  const n = name.toLowerCase();
+  if (/beach|getaway|vacation|trip|resort|villa|island/.test(n)) return 'beach';
+  if (/fish/.test(n)) return 'fish';
+  if (/burger|cookout|bbq|smashburger|party|dinner|tasting/.test(n)) return 'grill';
+  if (/concert|music|sphere|band|tickets|vip/.test(n)) return 'music';
+  return 'ticket';
+}
 
 /* ── Hero image: use event image (admin-uploaded) ── */
 const heroImageId = ev.image
   ? ev.image.replace('https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/', '').replace(/\/(public|w=.*)$/, '')
   : 'events/2026-evening-of-sunshine/1776780555974-evening-of-sunshine-2.jpg';
 
-const heroSrcset = cfSrcset(heroImageId, [480, 720, 960], { fit: 'cover', gravity: 'auto', aspectRatio: 5 / 4 });
+const heroSrcset = cfSrcset(heroImageId, [480, 720, 960], { fit: 'contain', aspectRatio: 5 / 4 });
 const heroSizes = '(max-width: 767px) 90vw, 480px';
 
 /* ── Date/time helpers ── */
@@ -48,6 +75,17 @@ const dateISO = ev.date || '2026-08-22';
 const dateLong = new Date(dateISO + 'T00:00:00').toLocaleDateString('en-US', {
   weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
 });
+const eventStartIso = `${dateISO}T18:00:00-04:00`;
+
+/* ── SSR countdown so users don't see "--" flicker ── */
+const _now = Date.now();
+const _diff = Math.max(0, new Date(eventStartIso).getTime() - _now);
+const ssrDays = Math.floor(_diff / 86400000);
+const ssrHours = String(Math.floor((_diff % 86400000) / 3600000)).padStart(2, '0');
+const ssrMins = String(Math.floor((_diff % 3600000) / 60000)).padStart(2, '0');
+
+/* ── OG share image: use the gala poster art at OG dimensions ── */
+const ogImage = cfRaw(heroImageId, 'w=1200,h=630,fit=cover,gravity=auto,q=82');
 
 /* ── JSON-LD ── */
 const eventJsonLd = {
@@ -86,6 +124,7 @@ const eventJsonLd = {
 <BaseLayout
   title="Evening of Sunshine — Havana Nights Gala"
   description="Join us for Havana Nights at the Evening of Sunshine Gala — a vibrant evening of music, dancing, and impact benefiting children with special needs."
+  ogImage={ogImage}
   jsonLd={eventJsonLd}
   breadcrumbs={[
     { name: 'Events', url: '/events/' },
@@ -161,19 +200,19 @@ const eventJsonLd = {
           </a>
         </div>
 
-        <div class="gv-countdown" data-reveal data-event-date={`${dateISO}T18:00:00-04:00`}>
+        <div class="gv-countdown" data-reveal data-event-date={eventStartIso}>
           <div class="gv-countdown__unit">
-            <span class="gv-countdown__num" data-days>--</span>
+            <span class="gv-countdown__num" data-days>{ssrDays}</span>
             <span class="gv-countdown__label">Days</span>
           </div>
           <span class="gv-countdown__sep" aria-hidden="true">·</span>
           <div class="gv-countdown__unit">
-            <span class="gv-countdown__num" data-hours>--</span>
+            <span class="gv-countdown__num" data-hours>{ssrHours}</span>
             <span class="gv-countdown__label">Hours</span>
           </div>
           <span class="gv-countdown__sep" aria-hidden="true">·</span>
           <div class="gv-countdown__unit">
-            <span class="gv-countdown__num" data-mins>--</span>
+            <span class="gv-countdown__num" data-mins>{ssrMins}</span>
             <span class="gv-countdown__label">Minutes</span>
           </div>
         </div>
@@ -184,7 +223,7 @@ const eventJsonLd = {
           <div class="gv-hero__frame-glow" aria-hidden="true"></div>
           <div class="gv-hero__photo-wrap" style={`background-image:url('${cfLqip(heroImageId)}')`}>
             <img
-              src={cfRaw(heroImageId, 'w=720,h=576,fit=cover,gravity=auto,q=82')}
+              src={cfRaw(heroImageId, 'w=720,h=576,fit=contain,q=82')}
               srcset={heroSrcset}
               sizes={heroSizes}
               alt="Evening of Sunshine — Havana Nights gala"
@@ -201,16 +240,6 @@ const eventJsonLd = {
             <span class="gv-hero__date-month">{new Date(dateISO + 'T00:00:00').toLocaleDateString('en-US', { month: 'short' }).toUpperCase()}</span>
             <span class="gv-hero__date-day">{new Date(dateISO + 'T00:00:00').getDate()}</span>
             <span class="gv-hero__date-year">{new Date(dateISO + 'T00:00:00').getFullYear()}</span>
-          </div>
-          <div class="gv-hero__sticker" aria-hidden="true">
-            <svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
-              <defs>
-                <path id="gv-circle" d="M 60,60 m -44,0 a 44,44 0 1,1 88,0 a 44,44 0 1,1 -88,0" />
-              </defs>
-              <text font-family="Georgia, serif" font-size="11" fill="currentColor" letter-spacing="3">
-                <textPath href="#gv-circle">HAVANA NIGHTS · EVENING OF SUNSHINE · HAVANA NIGHTS · </textPath>
-              </text>
-            </svg>
           </div>
         </div>
       </div>
@@ -253,18 +282,20 @@ const eventJsonLd = {
           <p class="gv-details__card-date"><time datetime={dateISO}>{dateLong}</time></p>
           {ev.time && <p class="gv-details__card-text">{ev.time}</p>}
         </div>
-        <div class="gv-details__card" data-reveal>
+        <a href={`https://maps.google.com/?q=${encodeURIComponent(ev.address || '11000 Alpharetta Hwy, Unit 4, Roswell, GA 30076')}`} target="_blank" rel="noopener" class="gv-details__card gv-details__card--link" data-reveal aria-label={`Open ${ev.location || 'You42 Studios'} in Google Maps`}>
           <div class="gv-details__icon" aria-hidden="true">
             <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/></svg>
           </div>
           <h2 class="gv-details__card-title">Where</h2>
           <p class="gv-details__card-text">
             <strong>{ev.location || 'You42 Studios'}</strong><br/>
-            <a href={`https://maps.google.com/?q=${encodeURIComponent(ev.address || '11000 Alpharetta Hwy, Unit 4, Roswell, GA 30076')}`} target="_blank" rel="noopener" class="gv-details__map-link">
-              {ev.address || '11000 Alpharetta Hwy, Unit 4, Roswell, GA 30076'}
-            </a>
+            {ev.address || '11000 Alpharetta Hwy, Unit 4, Roswell, GA 30076'}
           </p>
-        </div>
+          <span class="gv-details__map-cta">
+            Open in Google Maps
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
+          </span>
+        </a>
         <div class="gv-details__card" data-reveal>
           <div class="gv-details__icon" aria-hidden="true">
             <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v6"/><path d="m4.93 10.93 4.24 4.24"/><path d="M2 18h2"/><path d="M20 18h2"/><path d="m19.07 10.93-4.24 4.24"/><path d="M12 22a4 4 0 0 0 4-4H8a4 4 0 0 0 4 4z"/></svg>
@@ -330,7 +361,7 @@ const eventJsonLd = {
           {evening.map((step, i) => (
             <li class="gv-timeline__item" data-reveal style={`--gv-i:${i}`}>
               <div class="gv-timeline__marker" aria-hidden="true">
-                <span class="gv-timeline__dot"></span>
+                <span class="gv-timeline__num">{String(i + 1).padStart(2, '0')}</span>
               </div>
               <div class="gv-timeline__card">
                 <span class="gv-timeline__time">{step.time}</span>
@@ -356,20 +387,65 @@ const eventJsonLd = {
           </p>
         </div>
         <div class="gv-auction__grid">
-          {auctionItems.map((item, i) => (
-            <article class="gv-auction__card" data-reveal style={`--gv-i:${i}`}>
-              <div class="gv-auction__paddle" aria-hidden="true">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m14.5 2 7.5 7.5-7.5 7.5"/><path d="M2 22 14.5 9.5"/><path d="m2 13 9 9"/></svg>
-              </div>
-              <h3 class="gv-auction__name">{item.name}</h3>
-              <p class="gv-auction__detail">{item.detail}</p>
-            </article>
-          ))}
+          {auctionItems.map((item, i) => {
+            const icon = iconForAuction(item.name);
+            return (
+              <article class="gv-auction__card" data-reveal style={`--gv-i:${i}`}>
+                <div class="gv-auction__paddle" aria-hidden="true">
+                  {icon === 'beach' && (
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22V8"/><path d="M12 8c-3-3-7-2-9 1 3-1 6 0 9 0z"/><path d="M12 8c3-3 7-2 9 1-3-1-6 0-9 0z"/><path d="M3 22h18"/></svg>
+                  )}
+                  {icon === 'fish' && (
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 12c.94-3.46 4.94-6 8.5-6 3.56 0 6.06 2.54 7 6-.94 3.47-3.44 6-7 6s-7.56-2.53-8.5-6Z"/><path d="M18 12v.5"/><path d="M16 19c-3.85.5-6-1-7-3.5"/><path d="M2 9.5c1.5.5 3 .5 4.5 0"/></svg>
+                  )}
+                  {icon === 'grill' && (
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11h18l-1.5 7a3 3 0 0 1-3 2.4H7.5A3 3 0 0 1 4.5 18z"/><path d="M7 11V8a5 5 0 0 1 10 0v3"/><path d="M9 21l-1 2"/><path d="M15 21l1 2"/></svg>
+                  )}
+                  {icon === 'music' && (
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+                  )}
+                  {icon === 'ticket' && (
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2z"/><path d="M13 5v2"/><path d="M13 17v2"/><path d="M13 11v2"/></svg>
+                  )}
+                </div>
+                <h3 class="gv-auction__name">{item.name}</h3>
+                <p class="gv-auction__detail">{item.detail}</p>
+              </article>
+            );
+          })}
         </div>
         <p class="gv-auction__footnote" data-reveal>
           Want to donate an item or experience?
           <a href="mailto:info@soardcharity.com?subject=Gala%20Auction%20Donation"> Reach out to our gala team.</a>
         </p>
+      </div>
+    </section>
+  )}
+
+  <!-- ═══ GALLERY — past gala photos ═══ -->
+  {galleryPhotos.length > 0 && (
+    <section class="gv-gallery" aria-labelledby="gv-gallery-heading">
+      <div class="container gv-gallery__inner">
+        <div class="gv-gallery__header">
+          <span class="gv-gallery__label" data-reveal>From Past Galas</span>
+          <h2 id="gv-gallery-heading" class="gv-gallery__heading" data-reveal>The Room Comes Alive</h2>
+          <p class="gv-gallery__sub" data-reveal>Real moments from years past — guests, families, reveals, and the kind of nights everyone keeps coming back for.</p>
+        </div>
+        <div class="gv-gallery__strip" role="list">
+          {galleryPhotos.map((p, i) => (
+            <div class="gv-gallery__item" role="listitem" data-reveal style={`--gv-i:${i}`}>
+              <img
+                src={cfRaw(p.id, 'w=480,h=320,fit=cover,gravity=auto,q=80')}
+                srcset={`${cfRaw(p.id, 'w=480,h=320,fit=cover,gravity=auto,q=80')} 1x, ${cfRaw(p.id, 'w=960,h=640,fit=cover,gravity=auto,q=80')} 2x`}
+                alt={p.alt || 'Evening of Sunshine gala moment'}
+                width="480"
+                height="320"
+                loading="lazy"
+                decoding="async"
+              />
+            </div>
+          ))}
+        </div>
       </div>
     </section>
   )}
@@ -388,6 +464,41 @@ const eventJsonLd = {
     </section>
   )}
 
+  <!-- ═══ SPONSORS — flat partner row ═══ -->
+  {sponsorTiers.length > 0 && (
+    <section class="gv-sponsors" aria-labelledby="gv-sponsors-heading">
+      <div class="container gv-sponsors__inner">
+        <span class="gv-sponsors__label" data-reveal>In Partnership With</span>
+        <h2 id="gv-sponsors-heading" class="gv-sponsors__heading" data-reveal>Made Possible By</h2>
+        <div class="gv-sponsors__grid" data-reveal>
+          {sponsorTiers.flatMap(group =>
+            group.names.map(s => (
+              <div class="gv-sponsors__cell" title={`${s.name} — ${group.tier}`}>
+                {s.logo ? (
+                  <img
+                    src={cfRaw(s.logo, 'w=200,h=100,fit=contain,trim=20,q=85')}
+                    srcset={`${cfRaw(s.logo, 'w=200,h=100,fit=contain,trim=20,q=85')} 1x, ${cfRaw(s.logo, 'w=400,h=200,fit=contain,trim=20,q=85')} 2x`}
+                    alt={s.name}
+                    width="200"
+                    height="100"
+                    loading="lazy"
+                    decoding="async"
+                  />
+                ) : (
+                  <span class="gv-sponsors__name">{s.name}</span>
+                )}
+              </div>
+            ))
+          )}
+        </div>
+        <p class="gv-sponsors__footnote" data-reveal>
+          Interested in sponsoring?
+          <a href="mailto:info@soardcharity.com?subject=Evening%20of%20Sunshine%20Sponsorship"> Reach out to our gala team.</a>
+        </p>
+      </div>
+    </section>
+  )}
+
   <!-- ═══ TICKETS ═══ -->
   <section class="gv-tickets" id="tickets">
     <div class="container gv-tickets__inner">
@@ -397,40 +508,58 @@ const eventJsonLd = {
         Sponsor a table, grab individual seats, or back a piece of the night — every dollar lights another room.
       </p>
 
+      <div class="gv-impact" data-reveal>
+        <div class="gv-impact__stat">
+          <span class="gv-impact__num">$25K</span>
+          <span class="gv-impact__copy">funds one full bedroom or therapy-room build for a child with special needs.</span>
+        </div>
+        <div class="gv-impact__stat">
+          <span class="gv-impact__num">100%</span>
+          <span class="gv-impact__copy">of every gala dollar goes to home renovations — Zeffy charges zero platform fees.</span>
+        </div>
+      </div>
+
       {mainTiers.length > 0 && (
         <div class="gv-tiers" data-reveal>
-          {mainTiers.map(tier => (
-            <div class={`gv-tier ${tier.highlight === 'featured' ? 'gv-tier--featured' : tier.highlight === 'popular' ? 'gv-tier--popular' : ''} ${tier.status === 'sold-out' ? 'gv-tier--sold-out' : ''}`}>
-              {tier.status === 'sold-out' && (
-                <span class="gv-tier__badge gv-tier__badge--sold-out">Sold Out</span>
-              )}
-              {tier.status === 'few-left' && (
-                <span class="gv-tier__badge gv-tier__badge--few-left">Few Left</span>
-              )}
-              {tier.status !== 'sold-out' && tier.status !== 'few-left' && tier.badge && (
-                <span class={`gv-tier__badge ${tier.badgeStyle === 'gold' ? 'gv-tier__badge--gold' : ''}`}>{tier.badge}</span>
-              )}
-              <div class="gv-tier__head">
-                <h3 class="gv-tier__name">{tier.name}</h3>
-                <span class="gv-tier__price">{tier.price}</span>
-              </div>
-              <div class="gv-tier__divider" aria-hidden="true"></div>
-              <div class="gv-tier__body">
-                {tier.detail && (
-                  <span class="gv-tier__detail">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                    {tier.detail}
-                  </span>
+          {mainTiers.map(tier => {
+            const inclusions = perkToInclusions(tier.perk);
+            return (
+              <div class={`gv-tier ${tier.highlight === 'featured' ? 'gv-tier--featured' : tier.highlight === 'popular' ? 'gv-tier--popular' : ''} ${tier.status === 'sold-out' ? 'gv-tier--sold-out' : ''}`}>
+                {tier.status === 'sold-out' && (
+                  <span class="gv-tier__badge gv-tier__badge--sold-out">Sold Out</span>
                 )}
-                {tier.perk && (
-                  <span class="gv-tier__perk">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
-                    {tier.perk}
-                  </span>
+                {tier.status === 'few-left' && (
+                  <span class="gv-tier__badge gv-tier__badge--few-left">Few Left</span>
                 )}
+                {tier.status !== 'sold-out' && tier.status !== 'few-left' && tier.badge && (
+                  <span class={`gv-tier__badge ${tier.badgeStyle === 'gold' ? 'gv-tier__badge--gold' : ''}`}>{tier.badge}</span>
+                )}
+                <div class="gv-tier__head">
+                  <h3 class="gv-tier__name">{tier.name}</h3>
+                  <span class="gv-tier__price">{tier.price}</span>
+                </div>
+                <div class="gv-tier__divider" aria-hidden="true"></div>
+                <div class="gv-tier__body">
+                  {tier.detail && (
+                    <span class="gv-tier__detail">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                      {tier.detail}
+                    </span>
+                  )}
+                  {inclusions.length > 0 && (
+                    <ul class="gv-tier__inclusions">
+                      {inclusions.map(item => (
+                        <li>
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+                          <span>{item}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -466,6 +595,9 @@ const eventJsonLd = {
         <p class="gv-tickets__secure-note">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
           Secure checkout via Zeffy &middot; Zero platform fees
+        </p>
+        <p class="gv-tickets__trust-note">
+          Sunshine on a Ranney Day is a registered 501(c)(3) nonprofit (EIN 45-4773997). Your contribution is tax-deductible to the fullest extent allowed by law.
         </p>
       </div>
     </div>
@@ -853,8 +985,8 @@ const eventJsonLd = {
   }
   .gv-hero__date-card {
     position: absolute;
-    top: -12px;
-    left: -12px;
+    bottom: -14px;
+    right: -14px;
     z-index: 2;
     background: var(--gv-paper);
     color: var(--gv-midnight);
@@ -863,7 +995,7 @@ const eventJsonLd = {
     text-align: center;
     min-width: 70px;
     box-shadow: 0 10px 28px rgba(0, 0, 0, 0.3);
-    transform: rotate(-4deg);
+    transform: rotate(-3deg);
     border: 1px solid rgba(0, 0, 0, 0.05);
   }
   .gv-hero__date-month {
@@ -890,34 +1022,11 @@ const eventJsonLd = {
     letter-spacing: 0.1em;
     color: var(--c-text-muted);
   }
-  .gv-hero__sticker {
-    position: absolute;
-    bottom: -28px;
-    right: -20px;
-    width: 110px;
-    height: 110px;
-    color: var(--gv-paper);
-    background: var(--gv-coral);
-    border-radius: 50%;
-    box-shadow: 0 12px 32px rgba(199, 93, 74, 0.4);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transform: rotate(8deg);
-    animation: gv-spin 24s linear infinite;
-  }
-  .gv-hero__sticker svg { width: 100%; height: 100%; }
-  @keyframes gv-spin {
-    from { transform: rotate(8deg); }
-    to { transform: rotate(368deg); }
-  }
   @media (prefers-reduced-motion: reduce) {
-    .gv-hero__sticker { animation: none; }
     .gv-hero__photo-wrap { transition: none; }
   }
   @media (max-width: 767px) {
-    .gv-hero__sticker { width: 84px; height: 84px; bottom: -20px; right: -10px; }
-    .gv-hero__date-card { transform: rotate(-3deg) scale(0.9); top: -8px; left: -8px; }
+    .gv-hero__date-card { transform: rotate(-2deg) scale(0.92); bottom: -10px; right: -8px; }
     .gv-hero__visual { margin-top: var(--space-md); }
   }
 
@@ -1008,6 +1117,28 @@ const eventJsonLd = {
   }
   .gv-details__map-link:hover { text-decoration-color: var(--gv-coral); }
 
+  /* ── Linkable details card (Where) ── */
+  .gv-details__card--link {
+    text-decoration: none;
+    color: inherit;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .gv-details__map-cta {
+    margin-top: auto;
+    padding-top: var(--space-md);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--gv-coral);
+    letter-spacing: 0.01em;
+    transition: gap 0.2s ease;
+  }
+  .gv-details__card--link:hover .gv-details__map-cta { gap: 0.55rem; }
+
   /* ─── Theme Section ─── */
   .gv-theme {
     position: relative;
@@ -1050,10 +1181,11 @@ const eventJsonLd = {
   .gv-theme__heading {
     font-family: var(--font-display);
     font-size: clamp(2.4rem, 5vw, 3.8rem);
-    line-height: 1;
+    line-height: 1.15;
     letter-spacing: -0.02em;
     color: var(--gv-midnight);
     margin-bottom: var(--space-lg);
+    padding-bottom: 0.1em;
     background: linear-gradient(135deg, var(--gv-midnight) 0%, var(--gv-coral) 100%);
     -webkit-background-clip: text;
     background-clip: text;
@@ -1202,16 +1334,15 @@ const eventJsonLd = {
   .gv-timeline::before {
     content: '';
     position: absolute;
-    left: 18px;
+    left: 19px;
     top: 8px;
     bottom: 8px;
-    width: 2px;
-    background: linear-gradient(180deg, var(--gv-coral), var(--gv-gold), var(--gv-palm));
-    opacity: 0.35;
-    border-radius: 2px;
+    width: 1px;
+    background: rgba(13, 47, 63, 0.14);
+    border-radius: 1px;
   }
   @media (min-width: 640px) {
-    .gv-timeline::before { left: 24px; }
+    .gv-timeline::before { left: 27px; }
   }
   .gv-timeline__item {
     position: relative;
@@ -1226,19 +1357,30 @@ const eventJsonLd = {
   }
   .gv-timeline__marker {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: center;
     padding-top: 18px;
   }
-  .gv-timeline__dot {
-    display: block;
-    width: 14px;
-    height: 14px;
+  .gv-timeline__num {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
     border-radius: 50%;
-    background: linear-gradient(135deg, var(--gv-coral), var(--gv-sunset));
-    box-shadow: 0 0 0 4px rgba(199, 93, 74, 0.15),
-                0 0 0 8px rgba(199, 93, 74, 0.06);
+    background: #fff;
+    border: 1px solid rgba(13, 47, 63, 0.15);
+    color: var(--gv-midnight);
+    font-family: var(--font-display);
+    font-size: 0.78rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    box-shadow: 0 1px 2px rgba(13, 47, 63, 0.04);
     z-index: 1;
+    flex-shrink: 0;
+  }
+  @media (min-width: 640px) {
+    .gv-timeline__num { width: 44px; height: 44px; font-size: 0.86rem; }
   }
   .gv-timeline__card {
     padding: 1.5rem 1.5rem;
@@ -1282,15 +1424,7 @@ const eventJsonLd = {
     position: relative;
     overflow: hidden;
   }
-  .gv-auction::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background:
-      radial-gradient(ellipse 50% 40% at 15% 20%, rgba(199, 93, 74, 0.18) 0%, transparent 60%),
-      radial-gradient(ellipse 50% 40% at 85% 80%, rgba(212, 160, 23, 0.12) 0%, transparent 60%);
-    pointer-events: none;
-  }
+  .gv-auction::before { display: none; }
   .gv-auction__inner { position: relative; }
   .gv-auction__header {
     text-align: center;
@@ -1354,16 +1488,16 @@ const eventJsonLd = {
     border-color: rgba(212, 160, 23, 0.4);
   }
   .gv-auction__paddle {
-    width: 44px;
-    height: 44px;
+    width: 40px;
+    height: 40px;
     display: flex;
     align-items: center;
     justify-content: center;
-    background: linear-gradient(135deg, var(--gv-coral), var(--gv-sunset));
-    color: #fff;
-    border-radius: 12px;
+    background: transparent;
+    color: var(--gv-gold);
+    border: 1px solid rgba(212, 160, 23, 0.3);
+    border-radius: 10px;
     margin-bottom: var(--space-md);
-    box-shadow: 0 4px 14px rgba(199, 93, 74, 0.4);
   }
   .gv-auction__name {
     font-family: var(--font-display);
@@ -1437,6 +1571,153 @@ const eventJsonLd = {
     letter-spacing: 0.12em;
   }
 
+  /* ─── Gallery (past gala photos) ─── */
+  .gv-gallery {
+    padding: var(--space-5xl) 0;
+    background: #fff;
+  }
+  .gv-gallery__header {
+    text-align: center;
+    max-width: 640px;
+    margin: 0 auto var(--space-2xl);
+  }
+  .gv-gallery__label {
+    display: inline-block;
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    color: var(--gv-coral);
+    background: rgba(199, 93, 74, 0.1);
+    padding: 0.35rem 0.85rem;
+    border-radius: 100px;
+    margin-bottom: var(--space-sm);
+  }
+  .gv-gallery__heading {
+    font-family: var(--font-display);
+    font-size: clamp(1.8rem, 4vw, 2.6rem);
+    color: var(--gv-midnight);
+    margin-bottom: var(--space-md);
+    letter-spacing: -0.02em;
+  }
+  .gv-gallery__sub {
+    font-size: 1rem;
+    line-height: 1.7;
+    color: var(--c-text-muted);
+  }
+  .gv-gallery__strip {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--space-md);
+  }
+  @media (min-width: 700px) {
+    .gv-gallery__strip { grid-template-columns: repeat(3, 1fr); gap: var(--space-lg); }
+  }
+  @media (min-width: 1000px) {
+    .gv-gallery__strip { grid-template-columns: repeat(6, 1fr); }
+  }
+  .gv-gallery__item {
+    aspect-ratio: 3 / 2;
+    overflow: hidden;
+    border-radius: 12px;
+    background: var(--gv-paper);
+    box-shadow: 0 6px 18px rgba(13, 47, 63, 0.08);
+    transition-delay: calc(var(--gv-i, 0) * 60ms);
+    transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+                box-shadow 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .gv-gallery__item:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 14px 30px rgba(13, 47, 63, 0.14);
+  }
+  .gv-gallery__item img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  /* ─── Sponsors strip ─── */
+  .gv-sponsors {
+    padding: var(--space-4xl) 0;
+    background: var(--gv-paper);
+    border-top: 1px solid rgba(13, 47, 63, 0.06);
+  }
+  .gv-sponsors__inner { text-align: center; }
+  .gv-sponsors__label {
+    display: inline-block;
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    color: var(--gv-coral);
+    background: rgba(199, 93, 74, 0.1);
+    padding: 0.35rem 0.85rem;
+    border-radius: 100px;
+    margin-bottom: var(--space-sm);
+  }
+  .gv-sponsors__heading {
+    font-family: var(--font-display);
+    font-size: clamp(1.5rem, 3vw, 2.1rem);
+    color: var(--gv-midnight);
+    margin-bottom: var(--space-xl);
+    letter-spacing: -0.02em;
+  }
+  .gv-sponsors__grid {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.75rem;
+    max-width: 960px;
+    margin: 0 auto;
+  }
+  .gv-sponsors__cell {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: clamp(120px, 16vw, 168px);
+    height: 80px;
+    padding: 0.85rem 1rem;
+    background: #fff;
+    border: 1px solid rgba(13, 47, 63, 0.08);
+    border-radius: 12px;
+    transition: border-color 0.3s, box-shadow 0.3s, transform 0.3s;
+  }
+  .gv-sponsors__cell:hover {
+    border-color: rgba(199, 93, 74, 0.3);
+    box-shadow: 0 6px 18px rgba(13, 47, 63, 0.06);
+    transform: translateY(-2px);
+  }
+  .gv-sponsors__cell img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    opacity: 0.75;
+    filter: grayscale(0.4);
+    transition: opacity 0.3s, filter 0.3s;
+  }
+  .gv-sponsors__cell:hover img { opacity: 1; filter: grayscale(0); }
+  .gv-sponsors__name {
+    font-family: var(--font-display);
+    font-size: 0.95rem;
+    color: var(--gv-midnight);
+    text-align: center;
+    line-height: 1.25;
+  }
+  .gv-sponsors__footnote {
+    margin: var(--space-xl) auto 0;
+    font-size: 0.85rem;
+    color: var(--c-text-muted);
+  }
+  .gv-sponsors__footnote a {
+    color: var(--gv-coral);
+    text-decoration: underline;
+    text-decoration-color: rgba(199, 93, 74, 0.35);
+    text-underline-offset: 3px;
+    margin-left: 4px;
+  }
+  .gv-sponsors__footnote a:hover { text-decoration-color: var(--gv-coral); }
+
   /* ─── Tickets ─── */
   .gv-tickets {
     padding: var(--space-5xl) 0;
@@ -1491,6 +1772,75 @@ const eventJsonLd = {
     color: var(--gv-palm);
     flex-shrink: 0;
   }
+  .gv-tickets__trust-note {
+    max-width: 56ch;
+    margin: 0 auto;
+    text-align: center;
+    font-size: 0.74rem;
+    line-height: 1.6;
+    color: var(--c-text-light);
+    opacity: 0.85;
+  }
+
+  /* ── Impact stats row above the tier grid ── */
+  .gv-impact {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: var(--space-md);
+    max-width: 720px;
+    margin: 0 auto var(--space-2xl);
+    padding: 1.25rem 1.5rem;
+    background: linear-gradient(135deg, rgba(212, 160, 23, 0.08), rgba(199, 93, 74, 0.06));
+    border: 1px solid rgba(212, 160, 23, 0.16);
+    border-radius: 14px;
+    text-align: left;
+  }
+  @media (min-width: 640px) {
+    .gv-impact { grid-template-columns: 1fr 1fr; gap: var(--space-xl); padding: 1.5rem 1.75rem; }
+  }
+  .gv-impact__stat {
+    display: flex;
+    align-items: baseline;
+    gap: 0.85rem;
+  }
+  .gv-impact__num {
+    font-family: var(--font-display);
+    font-size: clamp(1.7rem, 3.4vw, 2.2rem);
+    font-weight: 700;
+    color: var(--gv-coral);
+    line-height: 1;
+    letter-spacing: -0.01em;
+    flex-shrink: 0;
+  }
+  .gv-impact__copy {
+    font-size: 0.86rem;
+    line-height: 1.55;
+    color: var(--gv-midnight);
+  }
+
+  /* ── Tier inclusions checklist ── */
+  .gv-tier__inclusions {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 0.55rem;
+  }
+  .gv-tier__inclusions li {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.55rem;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    color: var(--c-text-muted);
+  }
+  .gv-tier__inclusions svg {
+    color: var(--gv-coral);
+    flex-shrink: 0;
+    margin-top: 4px;
+  }
+  .gv-tier--featured .gv-tier__inclusions li { color: rgba(255, 255, 255, 0.85); }
+  .gv-tier--featured .gv-tier__inclusions svg { color: var(--gv-gold); }
 
   .gv-tiers {
     display: grid;
@@ -1587,9 +1937,8 @@ const eventJsonLd = {
   .gv-tier--featured .gv-tier__name { color: #fff; }
   .gv-tier--featured .gv-tier__price { color: var(--gv-gold); }
   .gv-tier--featured .gv-tier__divider { background: rgba(255, 255, 255, 0.12); }
-  .gv-tier--featured .gv-tier__detail,
-  .gv-tier--featured .gv-tier__perk { color: rgba(255, 255, 255, 0.85); }
-  .gv-tier--featured .gv-tier__perk svg { color: var(--gv-gold); }
+  .gv-tier--featured .gv-tier__detail { color: rgba(255, 255, 255, 0.85); }
+  .gv-tier--featured .gv-tier__detail svg { color: var(--gv-gold); }
 
   .gv-tier__head {
     display: flex;
@@ -1623,8 +1972,7 @@ const eventJsonLd = {
     gap: 0.65rem;
     flex: 1;
   }
-  .gv-tier__detail,
-  .gv-tier__perk {
+  .gv-tier__detail {
     display: flex;
     align-items: flex-start;
     gap: 0.5rem;
@@ -1632,8 +1980,7 @@ const eventJsonLd = {
     line-height: 1.6;
     color: var(--c-text-muted);
   }
-  .gv-tier__detail svg,
-  .gv-tier__perk svg {
+  .gv-tier__detail svg {
     color: var(--gv-coral);
     flex-shrink: 0;
     margin-top: 4px;
@@ -1889,14 +2236,29 @@ const eventJsonLd = {
       setInterval(tick, 60000);
     }
 
-    /* Sticky mobile CTA */
+    /* Sticky mobile CTA — show after hero, hide once user is on tickets/CTA */
     const sticky = document.querySelector<HTMLElement>('.gv-sticky-cta');
     const hero = document.querySelector<HTMLElement>('.gv-hero');
+    const tickets = document.querySelector<HTMLElement>('#tickets');
+    const finalCta = document.querySelector<HTMLElement>('.gv-cta');
     if (sticky && hero) {
-      const observer = new IntersectionObserver(([entry]) => {
-        sticky.classList.toggle('is-visible', !entry.isIntersecting);
+      let pastHero = false;
+      let onTicketsOrCta = false;
+      const update = () => {
+        sticky.classList.toggle('is-visible', pastHero && !onTicketsOrCta);
+      };
+      const heroObserver = new IntersectionObserver(([entry]) => {
+        pastHero = !entry.isIntersecting;
+        update();
       }, { threshold: 0 });
-      observer.observe(hero);
+      heroObserver.observe(hero);
+
+      const inViewObserver = new IntersectionObserver((entries) => {
+        onTicketsOrCta = entries.some(e => e.isIntersecting);
+        update();
+      }, { threshold: 0.15 });
+      if (tickets) inViewObserver.observe(tickets);
+      if (finalCta) inViewObserver.observe(finalCta);
     }
 
     /* FAQ accordion behavior is handled by the <faq-accordion> custom element */
