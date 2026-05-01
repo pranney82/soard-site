@@ -1,9 +1,11 @@
 /**
  * POST /api/create-broadcast
  *
- * Generates an on-brand email from a template + kid/data, then creates
- * a Resend broadcast draft. Returns the broadcast ID so the admin can
- * link to Resend to review and send.
+ * Renders a block-based email template and creates a Resend broadcast draft.
+ * The admin always reviews & sends from the Resend dashboard.
+ *
+ *   { preview: true, data: { blocks }, opts }   → returns rendered HTML, no draft
+ *   { data: { blocks }, opts }                  → creates draft in Resend
  *
  * GET /api/create-broadcast
  *
@@ -14,7 +16,7 @@
  * Required env vars: RESEND_API_KEY, RESEND_AUDIENCE_ID
  */
 
-import { projectReveal, projectKickoff, monthlyImpact } from './_email-templates.js';
+import { customTemplate } from './_email-templates.js';
 import { logAudit } from './_audit.js';
 
 export async function onRequestPost(context) {
@@ -27,43 +29,18 @@ export async function onRequestPost(context) {
   const audienceId = RESEND_AUDIENCE_ID || '02c95b02-54d6-4d45-851b-90058fd81f4d';
 
   const body = await context.request.json();
-  const { template, kid, data, opts = {} } = body;
+  const { data, opts = {}, preview } = body;
 
-  if (!template) {
-    return Response.json({ ok: false, error: 'Missing "template" field.' }, { status: 400 });
+  if (!data || !Array.isArray(data.blocks)) {
+    return Response.json({ ok: false, error: 'Missing "data.blocks" — expected an array of block descriptors.' }, { status: 400 });
   }
 
-  let tpl;
-  switch (template) {
-    case 'reveal':
-      if (!kid) return Response.json({ ok: false, error: 'Missing "kid" for reveal template.' }, { status: 400 });
-      tpl = projectReveal(kid, opts);
-      break;
-    case 'kickoff':
-      if (!kid) return Response.json({ ok: false, error: 'Missing "kid" for kickoff template.' }, { status: 400 });
-      tpl = projectKickoff(kid, opts);
-      break;
-    case 'monthly':
-      if (!data) return Response.json({ ok: false, error: 'Missing "data" for monthly template.' }, { status: 400 });
-      tpl = monthlyImpact(data, opts);
-      break;
-    default:
-      return Response.json({ ok: false, error: `Unknown template: ${template}` }, { status: 400 });
-  }
-
-  // Build a friendly name for the broadcast
-  const name = template === 'monthly'
-    ? `Monthly Update — ${data.month || 'Unknown'}`
-    : `${kid.name} — ${template === 'reveal' ? 'Project Reveal' : 'Project Kickoff'}`;
+  const tpl = customTemplate(data, opts);
+  const name = opts.name || tpl.subject || 'Custom Broadcast';
 
   // Preview mode: return HTML without creating broadcast
-  if (body.preview) {
-    return Response.json({
-      ok: true,
-      name,
-      subject: tpl.subject,
-      previewHtml: tpl.html,
-    });
+  if (preview) {
+    return Response.json({ ok: true, name, subject: tpl.subject, previewHtml: tpl.html });
   }
 
   try {
@@ -92,7 +69,6 @@ export async function onRequestPost(context) {
       );
     }
 
-    // Log to audit trail
     const userEmail = context.data?.userEmail || 'unknown';
     if (DB) {
       await logAudit(DB, {
@@ -102,9 +78,8 @@ export async function onRequestPost(context) {
         entitySlug: result.id,
         entityName: name,
         changes: [
-          { field: 'template', from: null, to: template },
           { field: 'subject', from: null, to: tpl.subject },
-          { field: 'kid', from: null, to: kid?.name || data?.month || null },
+          { field: 'blocks', from: null, to: `${data.blocks.length}` },
         ],
         path: null,
         gitStatus: 'draft',
@@ -143,7 +118,6 @@ export async function onRequestGet(context) {
       return Response.json({ ok: false, error: result.message || 'Failed to fetch broadcasts.' }, { status: res.status });
     }
 
-    // Resend returns { data: [...] }
     const broadcasts = (result.data || []).map(b => ({
       id: b.id,
       name: b.name || '(untitled)',

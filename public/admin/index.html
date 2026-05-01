@@ -210,6 +210,7 @@
       /* Stat cards */
       .stat-card .stat-number { font-size: 1.75rem; }
       .stat-grid { grid-template-columns: repeat(2, 1fr) !important; gap: 0.75rem !important; margin-bottom: 1.25rem !important; }
+      .email-tpl-grid { grid-template-columns: repeat(2, 1fr) !important; }
       .chart-panel { min-width: 0 !important; width: 100% !important; }
 
       /* Dashboard Recent Kids — grid layout per row */
@@ -2034,95 +2035,763 @@
     }
 
     // ─── Full Audit Log Page ──────────────────────
+    // ─── Email block helpers ────────────────
+    const BLOCK_LIBRARY = [
+      { type: 'hero',         label: 'Hero Image',       icon: icons.camera,   group: 'media' },
+      { type: 'photo',        label: 'Photo',            icon: icons.camera,   group: 'media' },
+      { type: 'photoGrid',    label: 'Photo Grid',       icon: icons.camera,   group: 'media' },
+      { type: 'headline',     label: 'Headline',         icon: icons.fileText, group: 'text' },
+      { type: 'subheadline',  label: 'Sub-headline',     icon: icons.fileText, group: 'text' },
+      { type: 'sectionLabel', label: 'Section Label',    icon: icons.fileText, group: 'text' },
+      { type: 'paragraph',    label: 'Paragraph',        icon: icons.fileText, group: 'text' },
+      { type: 'quote',        label: 'Pull Quote',       icon: icons.fileText, group: 'text' },
+      { type: 'button',       label: 'Button (CTA)',     icon: icons.diamond,  group: 'action' },
+      { type: 'kidCard',      label: 'Kid Card',         icon: icons.kids,     group: 'content' },
+      { type: 'eventCard',    label: 'Event Card',       icon: icons.events,   group: 'content' },
+      { type: 'stats',        label: 'Stats (3-up)',     icon: icons.barChart, group: 'content' },
+      { type: 'signature',    label: 'Founder Signature',icon: icons.user,     group: 'content' },
+      { type: 'divider',      label: 'Divider',          icon: icons.menu,     group: 'layout' },
+      { type: 'spacer',       label: 'Spacer',           icon: icons.menu,     group: 'layout' },
+    ];
+
+    const PERSONALIZATION_TOKENS = [
+      { token: '{{{FIRST_NAME|there}}}', label: 'First Name' },
+      { token: '{{{LAST_NAME}}}',         label: 'Last Name' },
+      { token: '{{{EMAIL}}}',             label: 'Email' },
+      { token: '{{{RESEND_UNSUBSCRIBE_URL}}}', label: 'Unsubscribe URL' },
+    ];
+
+    function newBlockId() { return 'b' + Math.random().toString(36).slice(2, 9); }
+
+    function makeBlock(type) {
+      const id = newBlockId();
+      switch (type) {
+        case 'hero':         return { id, type, src: '', alt: '', link: '', fullBleed: false };
+        case 'photo':        return { id, type, src: '', alt: '', caption: '' };
+        case 'photoGrid':    return { id, type, items: [{ src: '', alt: '' }, { src: '', alt: '' }] };
+        case 'headline':     return { id, type, text: 'Your headline here', align: 'left', size: 'large' };
+        case 'subheadline':  return { id, type, text: 'A supporting subhead', align: 'left' };
+        case 'sectionLabel': return { id, type, text: 'Section', variant: 'dark' };
+        case 'paragraph':    return { id, type, text: 'Write your message. **Bold**, *italic*, and [links](https://example.com) work via markdown.', align: 'left', style: 'normal', muted: false };
+        case 'quote':        return { id, type, text: 'A quote from a family or partner.', cite: '' };
+        case 'button':       return { id, type, label: 'Donate Now', href: 'https://sunshineonaranneyday.com/donate', variant: 'primary', align: 'center' };
+        case 'kidCard':      return { id, type, slug: '', label: '', linkLabel: '' };
+        case 'eventCard':    return { id, type, name: '', date: '', url: '', description: '' };
+        case 'stats':        return { id, type, items: [{ value: '182', label: 'Kids Served' }, { value: '247', label: 'Rooms Built' }, { value: '13', label: 'Years' }] };
+        case 'signature':    return { id, type, note: '', from: 'Peter & Holly Ranney', title: 'Founders, Sunshine on a Ranney Day' };
+        case 'divider':      return { id, type, size: 'small' };
+        case 'spacer':       return { id, type, height: 24 };
+        default:             return { id, type };
+      }
+    }
+
+    function defaultCustomBlocks() {
+      return [
+        { ...makeBlock('headline'), text: 'A note from Sunshine on a Ranney Day' },
+        { ...makeBlock('paragraph') },
+        { ...makeBlock('button') },
+        { ...makeBlock('signature') },
+      ];
+    }
+
+    // ─── Block editor (per-type prop forms) ──
+    function BlockEditor({ block, onChange, onPickImage, kids, events, focusInput, setFocusInput }) {
+      const update = (patch) => onChange({ ...block, ...patch });
+      const updateItem = (idx, patch) => {
+        const items = [...(block.items || [])];
+        items[idx] = { ...items[idx], ...patch };
+        update({ items });
+      };
+      const insertToken = (token) => {
+        // Insert into the focused input within this block, if any
+        if (!focusInput || focusInput.blockId !== block.id) return;
+        const key = focusInput.key;
+        const cur = block[key] || '';
+        const el = focusInput.el;
+        if (el && typeof el.selectionStart === 'number') {
+          const s = el.selectionStart, e = el.selectionEnd;
+          const next = cur.slice(0, s) + token + cur.slice(e);
+          update({ [key]: next });
+          requestAnimationFrame(() => { el.focus(); el.setSelectionRange(s + token.length, s + token.length); });
+        } else {
+          update({ [key]: cur + token });
+        }
+      };
+      const trackFocus = (key) => (e) => setFocusInput({ blockId: block.id, key, el: e.target });
+
+      const tokenBar = (visible) => visible ? html`
+        <div style="display: flex; flex-wrap: wrap; gap: 0.25rem; margin-top: 0.35rem;">
+          <span style="font-size: 0.7rem; color: var(--color-text-muted); align-self: center; margin-right: 0.25rem;">Insert:</span>
+          ${PERSONALIZATION_TOKENS.map(t => html`
+            <button key=${t.token} type="button" onClick=${() => insertToken(t.token)}
+              style="font-size: 0.7rem; padding: 0.15rem 0.45rem; border-radius: 4px; border: 1px solid var(--color-border); background: var(--color-bg-card); cursor: pointer; color: var(--color-text);">
+              ${t.label}
+            </button>
+          `)}
+        </div>
+      ` : null;
+
+      const isFocused = (key) => focusInput && focusInput.blockId === block.id && focusInput.key === key;
+
+      switch (block.type) {
+        case 'hero':
+        case 'photo': {
+          const isHero = block.type === 'hero';
+          return html`<div>
+            <div class="form-group" style="margin-bottom: 0.6rem;">
+              <label class="form-label">Image</label>
+              ${block.src ? html`
+                <div style="display: flex; gap: 0.5rem; align-items: flex-start;">
+                  <img src=${cfThumb(block.src, 'w=200,h=140,fit=cover,q=70')} style="width: 96px; height: 64px; object-fit: cover; border-radius: 6px; border: 1px solid var(--color-border);" />
+                  <div style="flex: 1; display: flex; flex-direction: column; gap: 0.35rem;">
+                    <button class="btn btn-sm btn-ghost" type="button" onClick=${() => onPickImage({ blockId: block.id, key: 'src' })}>Replace</button>
+                    <button class="btn btn-sm btn-ghost" type="button" onClick=${() => update({ src: '' })} style="color: #c00;">Remove</button>
+                  </div>
+                </div>
+              ` : html`
+                <button class="btn btn-ghost btn-sm" type="button" onClick=${() => onPickImage({ blockId: block.id, key: 'src' })}>Browse Image Library</button>
+              `}
+            </div>
+            <div class="form-group" style="margin-bottom: 0.6rem;">
+              <label class="form-label" style="font-size: 0.78rem;">Alt Text</label>
+              <input class="form-input" type="text" value=${block.alt || ''} onInput=${e => update({ alt: e.target.value })} placeholder="Describe the image (for accessibility)" />
+            </div>
+            ${isHero ? html`
+              <div class="form-group" style="margin-bottom: 0.6rem;">
+                <label class="form-label" style="font-size: 0.78rem;">Click-Through URL <span style="font-weight: 400; color: var(--color-text-muted);">(optional)</span></label>
+                <input class="form-input" type="url" value=${block.link || ''} onInput=${e => update({ link: e.target.value })} placeholder="https://..." />
+              </div>
+              <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; cursor: pointer;">
+                <input type="checkbox" checked=${!!block.fullBleed} onChange=${e => update({ fullBleed: e.target.checked })} />
+                Full-bleed (no side margins)
+              </label>
+            ` : html`
+              <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label" style="font-size: 0.78rem;">Caption <span style="font-weight: 400; color: var(--color-text-muted);">(optional)</span></label>
+                <input class="form-input" type="text" value=${block.caption || ''} onInput=${e => update({ caption: e.target.value })} />
+              </div>
+            `}
+          </div>`;
+        }
+
+        case 'photoGrid': {
+          const items = block.items || [];
+          return html`<div>
+            <div class="form-group" style="margin-bottom: 0.5rem;">
+              <label class="form-label" style="font-size: 0.78rem;">Columns</label>
+              <div style="display: flex; gap: 0.4rem;">
+                ${[2, 3].map(n => html`
+                  <button key=${n} type="button" onClick=${() => {
+                    const cur = items.slice();
+                    while (cur.length < n) cur.push({ src: '', alt: '' });
+                    while (cur.length > n) cur.pop();
+                    update({ items: cur });
+                  }}
+                    style="padding: 0.4rem 0.8rem; border-radius: 6px; border: 1.5px solid ${items.length === n ? 'var(--color-primary)' : 'var(--color-border)'}; background: ${items.length === n ? 'var(--color-primary-bg)' : 'var(--color-bg-card)'}; cursor: pointer; font-size: 0.85rem; font-weight: 600;">
+                    ${n}-up
+                  </button>
+                `)}
+              </div>
+            </div>
+            ${items.map((it, i) => html`
+              <div key=${i} style="display: flex; gap: 0.5rem; padding: 0.6rem; background: var(--color-bg-secondary); border-radius: 6px; margin-bottom: 0.5rem;">
+                ${it.src ? html`<img src=${cfThumb(it.src, 'w=200,h=140,fit=cover,q=70')} style="width: 64px; height: 48px; object-fit: cover; border-radius: 4px;" />` : html`<div style="width: 64px; height: 48px; background: var(--color-border); border-radius: 4px;"></div>`}
+                <div style="flex: 1; display: flex; flex-direction: column; gap: 0.3rem;">
+                  <button class="btn btn-sm btn-ghost" type="button" onClick=${() => onPickImage({ blockId: block.id, key: 'items', idx: i })} style="justify-content: flex-start;">${it.src ? 'Replace' : 'Pick image'}</button>
+                  <input class="form-input" type="text" value=${it.alt || ''} onInput=${e => updateItem(i, { alt: e.target.value })} placeholder="Alt text" style="font-size: 0.8rem;" />
+                </div>
+              </div>
+            `)}
+          </div>`;
+        }
+
+        case 'headline':
+        case 'subheadline': {
+          return html`<div>
+            <div class="form-group" style="margin-bottom: 0.6rem;">
+              <label class="form-label" style="font-size: 0.78rem;">Text</label>
+              <input class="form-input" type="text" value=${block.text || ''} onInput=${e => update({ text: e.target.value })}
+                onFocus=${trackFocus('text')} />
+              ${tokenBar(isFocused('text'))}
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr ${block.type === 'headline' ? '1fr' : ''}; gap: 0.5rem;">
+              <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label" style="font-size: 0.78rem;">Align</label>
+                <select class="form-input" value=${block.align || 'left'} onChange=${e => update({ align: e.target.value })}>
+                  <option value="left">Left</option><option value="center">Center</option><option value="right">Right</option>
+                </select>
+              </div>
+              ${block.type === 'headline' ? html`
+                <div class="form-group" style="margin-bottom: 0;">
+                  <label class="form-label" style="font-size: 0.78rem;">Size</label>
+                  <select class="form-input" value=${block.size || 'large'} onChange=${e => update({ size: e.target.value })}>
+                    <option value="small">Small</option><option value="medium">Medium</option><option value="large">Large</option>
+                  </select>
+                </div>
+              ` : null}
+            </div>
+          </div>`;
+        }
+
+        case 'sectionLabel': {
+          return html`<div>
+            <div class="form-group" style="margin-bottom: 0.6rem;">
+              <label class="form-label" style="font-size: 0.78rem;">Label Text</label>
+              <input class="form-input" type="text" value=${block.text || ''} onInput=${e => update({ text: e.target.value })} />
+            </div>
+            <div class="form-group" style="margin-bottom: 0;">
+              <label class="form-label" style="font-size: 0.78rem;">Variant</label>
+              <select class="form-input" value=${block.variant || 'dark'} onChange=${e => update({ variant: e.target.value })}>
+                <option value="dark">Dark on cream</option>
+                <option value="yellow">Yellow accent</option>
+                <option value="light">Light on dark</option>
+              </select>
+            </div>
+          </div>`;
+        }
+
+        case 'paragraph': {
+          return html`<div>
+            <div class="form-group" style="margin-bottom: 0.4rem;">
+              <label class="form-label" style="font-size: 0.78rem;">Body <span style="font-weight: 400; color: var(--color-text-muted);">— **bold**, *italic*, [link](url)</span></label>
+              <textarea class="form-input" rows="4" value=${block.text || ''} onInput=${e => update({ text: e.target.value })}
+                onFocus=${trackFocus('text')} style="resize: vertical; font-family: inherit;" />
+              ${tokenBar(isFocused('text'))}
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-bottom: 0.4rem;">
+              <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label" style="font-size: 0.78rem;">Align</label>
+                <select class="form-input" value=${block.align || 'left'} onChange=${e => update({ align: e.target.value })}>
+                  <option value="left">Left</option><option value="center">Center</option><option value="right">Right</option>
+                </select>
+              </div>
+              <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label" style="font-size: 0.78rem;">Style</label>
+                <select class="form-input" value=${block.style || 'normal'} onChange=${e => update({ style: e.target.value })}>
+                  <option value="normal">Body</option>
+                  <option value="lede">Lede (serif, larger)</option>
+                </select>
+              </div>
+            </div>
+            <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.8rem; cursor: pointer;">
+              <input type="checkbox" checked=${!!block.muted} onChange=${e => update({ muted: e.target.checked })} />
+              Muted (lighter color)
+            </label>
+          </div>`;
+        }
+
+        case 'button': {
+          return html`<div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-bottom: 0.6rem;">
+              <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label" style="font-size: 0.78rem;">Label</label>
+                <input class="form-input" type="text" value=${block.label || ''} onInput=${e => update({ label: e.target.value })} />
+              </div>
+              <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label" style="font-size: 0.78rem;">Variant</label>
+                <select class="form-input" value=${block.variant || 'primary'} onChange=${e => update({ variant: e.target.value })}>
+                  <option value="primary">Primary (yellow)</option>
+                  <option value="dark">Dark</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-group" style="margin-bottom: 0.6rem;">
+              <label class="form-label" style="font-size: 0.78rem;">Link URL</label>
+              <input class="form-input" type="url" value=${block.href || ''} onInput=${e => update({ href: e.target.value })} placeholder="https://..." />
+            </div>
+            <div class="form-group" style="margin-bottom: 0;">
+              <label class="form-label" style="font-size: 0.78rem;">Align</label>
+              <select class="form-input" value=${block.align || 'center'} onChange=${e => update({ align: e.target.value })}>
+                <option value="left">Left</option><option value="center">Center</option><option value="right">Right</option>
+              </select>
+            </div>
+          </div>`;
+        }
+
+        case 'kidCard': {
+          const allKids = (kids || []).slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+          return html`<div>
+            <div class="form-group" style="margin-bottom: 0.6rem;">
+              <label class="form-label" style="font-size: 0.78rem;">Featured Kid</label>
+              <select class="form-input" value=${block.slug || ''} onChange=${e => update({ slug: e.target.value })}>
+                <option value="">— Select a kid —</option>
+                ${allKids.map(k => html`<option key=${k.slug} value=${k.slug}>${k.name}${k.year ? ` (${k.year})` : ''} — ${k.status}</option>`)}
+              </select>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
+              <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label" style="font-size: 0.78rem;">Label Override</label>
+                <input class="form-input" type="text" value=${block.label || ''} onInput=${e => update({ label: e.target.value })} placeholder="Auto" />
+              </div>
+              <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label" style="font-size: 0.78rem;">Link Label</label>
+                <input class="form-input" type="text" value=${block.linkLabel || ''} onInput=${e => update({ linkLabel: e.target.value })} placeholder="Auto" />
+              </div>
+            </div>
+          </div>`;
+        }
+
+        case 'eventCard': {
+          const eventOptions = (events || []).filter(e => e.status === 'published');
+          return html`<div>
+            ${eventOptions.length > 0 ? html`
+              <div class="form-group" style="margin-bottom: 0.6rem;">
+                <label class="form-label" style="font-size: 0.78rem;">Pick from existing events</label>
+                <select class="form-input" value="" onChange=${e => {
+                  const ev = eventOptions.find(x => x.slug === e.target.value);
+                  if (ev) update({ name: ev.name || ev.title || '', date: ev.date || '', url: ev.url || `https://sunshineonaranneyday.com/events/${ev.slug}`, description: ev.description || '' });
+                }}>
+                  <option value="">— Auto-fill from event —</option>
+                  ${eventOptions.map(ev => html`<option key=${ev.slug} value=${ev.slug}>${ev.name || ev.title}</option>`)}
+                </select>
+              </div>
+            ` : null}
+            <div class="form-group" style="margin-bottom: 0.5rem;">
+              <label class="form-label" style="font-size: 0.78rem;">Event Name</label>
+              <input class="form-input" type="text" value=${block.name || ''} onInput=${e => update({ name: e.target.value })} />
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1.5fr; gap: 0.5rem; margin-bottom: 0.5rem;">
+              <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label" style="font-size: 0.78rem;">Date Display</label>
+                <input class="form-input" type="text" value=${block.date || ''} onInput=${e => update({ date: e.target.value })} placeholder="May 15, 2026" />
+              </div>
+              <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label" style="font-size: 0.78rem;">URL</label>
+                <input class="form-input" type="url" value=${block.url || ''} onInput=${e => update({ url: e.target.value })} />
+              </div>
+            </div>
+            <div class="form-group" style="margin-bottom: 0;">
+              <label class="form-label" style="font-size: 0.78rem;">Description <span style="font-weight: 400; color: var(--color-text-muted);">(optional)</span></label>
+              <input class="form-input" type="text" value=${block.description || ''} onInput=${e => update({ description: e.target.value })} />
+            </div>
+          </div>`;
+        }
+
+        case 'stats': {
+          const items = block.items || [];
+          return html`<div>
+            ${items.map((it, i) => html`
+              <div key=${i} style="display: grid; grid-template-columns: 1fr 2fr auto; gap: 0.5rem; margin-bottom: 0.4rem; align-items: end;">
+                <div>
+                  <label class="form-label" style="font-size: 0.72rem; ${i > 0 ? 'visibility: hidden;' : ''}">Number</label>
+                  <input class="form-input" type="text" value=${it.value || ''} onInput=${e => updateItem(i, { value: e.target.value })} />
+                </div>
+                <div>
+                  <label class="form-label" style="font-size: 0.72rem; ${i > 0 ? 'visibility: hidden;' : ''}">Label</label>
+                  <input class="form-input" type="text" value=${it.label || ''} onInput=${e => updateItem(i, { label: e.target.value })} />
+                </div>
+                <button class="btn btn-sm btn-ghost" type="button" onClick=${() => {
+                  const next = items.slice(); next.splice(i, 1); update({ items: next });
+                }} disabled=${items.length <= 1} title="Remove">${icons.x}</button>
+              </div>
+            `)}
+            ${items.length < 3 ? html`
+              <button class="btn btn-sm btn-ghost" type="button" onClick=${() => update({ items: [...items, { value: '', label: '' }] })} style="margin-top: 0.25rem;">+ Add stat</button>
+            ` : null}
+          </div>`;
+        }
+
+        case 'quote': {
+          return html`<div>
+            <div class="form-group" style="margin-bottom: 0.5rem;">
+              <label class="form-label" style="font-size: 0.78rem;">Quote</label>
+              <textarea class="form-input" rows="3" value=${block.text || ''} onInput=${e => update({ text: e.target.value })} style="resize: vertical;" />
+            </div>
+            <div class="form-group" style="margin-bottom: 0;">
+              <label class="form-label" style="font-size: 0.78rem;">Cite (name)</label>
+              <input class="form-input" type="text" value=${block.cite || ''} onInput=${e => update({ cite: e.target.value })} placeholder="Optional" />
+            </div>
+          </div>`;
+        }
+
+        case 'signature': {
+          return html`<div>
+            <div class="form-group" style="margin-bottom: 0.5rem;">
+              <label class="form-label" style="font-size: 0.78rem;">Personal note <span style="font-weight: 400; color: var(--color-text-muted);">(optional)</span></label>
+              <textarea class="form-input" rows="3" value=${block.note || ''} onInput=${e => update({ note: e.target.value })} onFocus=${trackFocus('note')} style="resize: vertical;" />
+              ${tokenBar(isFocused('note'))}
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
+              <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label" style="font-size: 0.78rem;">Signed by</label>
+                <input class="form-input" type="text" value=${block.from || ''} onInput=${e => update({ from: e.target.value })} />
+              </div>
+              <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label" style="font-size: 0.78rem;">Title</label>
+                <input class="form-input" type="text" value=${block.title || ''} onInput=${e => update({ title: e.target.value })} />
+              </div>
+            </div>
+          </div>`;
+        }
+
+        case 'divider':
+          return html`<div class="form-group" style="margin-bottom: 0;">
+            <label class="form-label" style="font-size: 0.78rem;">Spacing</label>
+            <select class="form-input" value=${block.size || 'small'} onChange=${e => update({ size: e.target.value })}>
+              <option value="small">Compact</option><option value="large">Spacious</option>
+            </select>
+          </div>`;
+
+        case 'spacer':
+          return html`<div class="form-group" style="margin-bottom: 0;">
+            <label class="form-label" style="font-size: 0.78rem;">Height (px) — ${block.height || 24}</label>
+            <input type="range" min="8" max="96" step="4" value=${block.height || 24} onInput=${e => update({ height: parseInt(e.target.value, 10) })} style="width: 100%;" />
+          </div>`;
+
+        default:
+          return html`<div style="font-size: 0.85rem; color: var(--color-text-muted);">No editor for ${block.type}</div>`;
+      }
+    }
+
+    // ─── Starter templates (block stacks) ───
+    const EMAIL_STARTERS = [
+      {
+        slug: 'reveal',
+        name: 'Project Reveal',
+        description: 'Completed project — announce a kid’s room transformation.',
+        icon: 'star',
+        subject: '[Kid Name]’s Dream Room is Complete — See the Transformation',
+        preheader: '',
+        blocks: [
+          { type: 'kidCard', label: 'Project Reveal' },
+          { type: 'sectionLabel', text: 'Project Complete', variant: 'dark' },
+          { type: 'headline', text: 'Meet [Kid Name]', size: 'large', align: 'left' },
+          { type: 'paragraph', text: 'Replace this with the kid’s lede — the opening paragraph from their bio.', style: 'lede' },
+          { type: 'photoGrid', items: [{ src: '', alt: '' }, { src: '', alt: '' }] },
+          { type: 'paragraph', text: 'The full story — what daily life looks like, what their family went through, what changed.' },
+          { type: 'quote', text: '', cite: '' },
+          { type: 'headline', text: 'That all changed.', align: 'center', size: 'medium' },
+          { type: 'stats', items: [{ value: '2', label: 'Rooms Built' }, { value: '8', label: 'Partners' }, { value: '1', label: 'Dream' }] },
+          { type: 'sectionLabel', text: 'What We Built', variant: 'yellow' },
+          { type: 'headline', text: 'Two rooms, one purpose', size: 'medium' },
+          { type: 'paragraph', text: 'Safety, independence, and joy — at the center of every decision.', muted: true },
+          { type: 'paragraph', text: '**01 — Dream Bedroom**\n\nDescribe the bedroom transformation here.' },
+          { type: 'paragraph', text: '**02 — Accessible Bathroom**\n\nDescribe the bathroom transformation here.' },
+          { type: 'sectionLabel', text: 'The Transformation', variant: 'dark' },
+          { type: 'headline', text: 'From struggle to sunshine', size: 'medium' },
+          { type: 'photoGrid', items: [{ src: '', alt: 'Before' }, { src: '', alt: 'After' }] },
+          { type: 'photo', src: '', alt: 'The reveal moment', caption: 'The big reveal — the moment everything changed' },
+          { type: 'button', label: 'See [Kid Name]’s Full Story', href: 'https://sunshineonaranneyday.com/kids/', variant: 'primary' },
+          { type: 'divider', size: 'large' },
+          { type: 'signature', note: 'A short founder note — what this project meant to you.' },
+          { type: 'button', label: 'Donate Now', href: 'https://sunshineonaranneyday.com/donate', variant: 'dark' },
+        ],
+      },
+      {
+        slug: 'kickoff',
+        name: 'Project Kickoff',
+        description: 'Upcoming kid — introduce them and rally support for the build.',
+        icon: 'sparkle',
+        subject: 'Meet [Kid Name] — Our Next Dream Room Project',
+        preheader: 'Meet [Kid Name] — our next dream room project. Here’s their story and how you can help.',
+        blocks: [
+          { type: 'kidCard', label: 'Coming Soon' },
+          { type: 'sectionLabel', text: 'Introducing', variant: 'dark' },
+          { type: 'headline', text: 'Meet [Kid Name]', size: 'large' },
+          { type: 'paragraph', text: 'The lede — first impression of the child and family.', style: 'lede' },
+          { type: 'paragraph', text: 'More of the story.' },
+          { type: 'quote', text: '', cite: '' },
+          { type: 'sectionLabel', text: 'The Plan', variant: 'yellow' },
+          { type: 'headline', text: 'What we’re building', size: 'medium' },
+          { type: 'paragraph', text: 'Here’s what [Kid Name]’s renovation will include:', muted: true },
+          { type: 'paragraph', text: '**01 — Room Type**\n\nDescribe what we’re building here.' },
+          { type: 'sectionLabel', text: 'How You Can Help', variant: 'yellow' },
+          { type: 'headline', text: 'Help us build [Kid Name]’s dream', size: 'medium' },
+          { type: 'paragraph', text: 'Every dollar goes directly to materials, labor, and design for [Kid Name]’s new space. Zero platform fees.', muted: true },
+          { type: 'button', label: 'Donate for [Kid Name]', href: 'https://sunshineonaranneyday.com/donate', variant: 'primary' },
+          { type: 'divider', size: 'large' },
+          { type: 'signature', note: 'A note about getting started on this project.' },
+          { type: 'button', label: 'See [Kid Name]’s Story', href: 'https://sunshineonaranneyday.com/kids/', variant: 'dark' },
+        ],
+      },
+      {
+        slug: 'monthly',
+        name: 'Monthly Impact',
+        description: 'Recurring update — stats, recent work, current project, events.',
+        icon: 'barChart',
+        subject: 'SOARD [Month] Update — Building Dreams, Changing Lives',
+        preheader: 'Your [Month] SOARD update: stats, stories, and how you’re changing lives.',
+        blocks: [
+          { type: 'sectionLabel', text: 'Monthly Update', variant: 'dark' },
+          { type: 'headline', text: '[Month] update — building dreams, changing lives', size: 'large' },
+          { type: 'paragraph', text: 'A welcome paragraph for the month — where we are, what’s ahead.', style: 'lede' },
+          { type: 'sectionLabel', text: 'Impact So Far', variant: 'yellow' },
+          { type: 'stats', items: [{ value: '182', label: 'Kids Served' }, { value: '247', label: 'Rooms Built' }, { value: '13', label: 'Years' }] },
+          { type: 'divider' },
+          { type: 'sectionLabel', text: 'Recent Reveal', variant: 'dark' },
+          { type: 'kidCard', label: 'Just Completed' },
+          { type: 'sectionLabel', text: 'In Progress', variant: 'dark' },
+          { type: 'kidCard', label: 'Coming Soon' },
+          { type: 'sectionLabel', text: 'Upcoming Events', variant: 'yellow' },
+          { type: 'eventCard' },
+          { type: 'eventCard' },
+          { type: 'divider', size: 'large' },
+          { type: 'signature', note: 'A note for this month.' },
+          { type: 'button', label: 'Donate Now', href: 'https://sunshineonaranneyday.com/donate', variant: 'primary' },
+        ],
+      },
+    ];
+
+    const STARTER_ICONS = { star: 'star', sparkle: 'sparkle', barChart: 'barChart' };
+
+    function withBlockIds(blocks) {
+      return (blocks || []).map(b => ({ ...b, id: b.id || newBlockId() }));
+    }
+
+    function blockSummary(b, kids) {
+      switch (b.type) {
+        case 'hero':         return b.src ? 'Hero image set' : 'No image yet';
+        case 'photo':        return b.src ? (b.caption || 'Photo') : 'No image yet';
+        case 'photoGrid':    return `${(b.items || []).filter(i => i.src).length}/${(b.items || []).length} images`;
+        case 'headline':     return (b.text || '').slice(0, 60) || '(empty)';
+        case 'subheadline':  return (b.text || '').slice(0, 60) || '(empty)';
+        case 'sectionLabel': return (b.text || '').slice(0, 40) || '(empty)';
+        case 'paragraph':    return (b.text || '').slice(0, 70).replace(/\s+/g, ' ') || '(empty)';
+        case 'quote':        return (b.text || '').slice(0, 60) || '(empty)';
+        case 'button':       return `${b.label || '(no label)'} → ${b.href ? new URL(b.href, 'https://x').pathname : '(no link)'}`;
+        case 'kidCard':      { const k = (kids || []).find(x => x.slug === b.slug); return k ? k.name : '(pick a kid)'; }
+        case 'eventCard':    return b.name || '(pick an event)';
+        case 'stats':        return (b.items || []).map(i => i.value).filter(Boolean).join(' · ') || '(empty)';
+        case 'signature':    return b.from || 'Signature';
+        case 'divider':      return 'Divider';
+        case 'spacer':       return `${b.height || 24}px`;
+        default:             return b.type;
+      }
+    }
+
     // ─── Email Composer ─────────────────────
     function EmailComposer({ kids, events, addToast }) {
-      const [template, setTemplate] = useState('reveal');
-      const [selectedSlug, setSelectedSlug] = useState('');
-      const [subject, setSubject] = useState('');
-      const [preheader, setPreheader] = useState('');
-      const [headline, setHeadline] = useState('');
-      const [founderNote, setFounderNote] = useState('');
-      const [monthlyMonth, setMonthlyMonth] = useState('');
-      const [monthlyNote, setMonthlyNote] = useState('');
-      const [monthlyRevealSlug, setMonthlyRevealSlug] = useState('');
-      const [monthlyCurrentSlug, setMonthlyCurrentSlug] = useState('');
-      const [heroImageOverride, setHeroImageOverride] = useState('');
-      const [sending, setSending] = useState(false);
-      const [result, setResult] = useState(null);
-      const [previewHtml, setPreviewHtml] = useState('');
-      const [emailTab, setEmailTab] = useState('compose');
+      const [view, setView] = useState('list'); // 'list' | 'editor'
+      const [emailTab, setEmailTab] = useState('templates'); // 'templates' | 'history'
+      const [templates, setTemplates] = useState([]);
+      const [loading, setLoading] = useState(true);
       const [broadcasts, setBroadcasts] = useState([]);
       const [historyLoading, setHistoryLoading] = useState(false);
+
+      // Editor state
+      const [editing, setEditing] = useState(null); // currently-open template { slug, isStarter }
+      const [eName, setEName] = useState('');
+      const [eSubject, setESubject] = useState('');
+      const [ePreheader, setEPreheader] = useState('');
+      const [eBlocks, setEBlocks] = useState([]);
+      const [eDirty, setEDirty] = useState(false);
+      const [eSelected, setESelected] = useState(null);
+      const [showAddBlock, setShowAddBlock] = useState(false);
+      const [imgPickerFor, setImgPickerFor] = useState(null);
+      const [focusInput, setFocusInput] = useState(null);
       const [showPreview, setShowPreview] = useState(false);
+      const [previewHtml, setPreviewHtml] = useState('');
+      const [previewMode, setPreviewMode] = useState('desktop');
       const previewRef = useRef(null);
 
-      const completedKids = (kids || []).filter(k => k.status === 'completed').sort((a, b) => (b.year || 0) - (a.year || 0));
-      const inProgressKids = (kids || []).filter(k => k.status === 'in-progress');
-      const kidOptions = template === 'kickoff' ? inProgressKids : completedKids;
+      // Action state
+      const [saving, setSaving] = useState(false);
+      const [pushing, setPushing] = useState(false);
+      const [sendingTest, setSendingTest] = useState(false);
+      const [testEmail, setTestEmail] = useState('');
+      const [pushResult, setPushResult] = useState(null);
+      const [confirmDelete, setConfirmDelete] = useState(null);
 
-      // Auto-select & reset when template changes
-      useEffect(() => {
-        setSelectedSlug(kidOptions[0]?.slug || '');
-        setSubject(''); setPreheader(''); setHeadline(''); setFounderNote(''); setHeroImageOverride('');
-        setResult(null); setPreviewHtml(''); setShowPreview(false);
-        if (!monthlyRevealSlug) setMonthlyRevealSlug(completedKids[0]?.slug || '');
-        if (!monthlyCurrentSlug) setMonthlyCurrentSlug(inProgressKids[0]?.slug || '');
-      }, [template]);
-
-      useEffect(() => {
-        if (!monthlyMonth) {
-          const d = new Date();
-          setMonthlyMonth(d.toLocaleString('en-US', { month: 'long', year: 'numeric' }));
+      // Load templates from site_config (merged with starters)
+      const loadTemplates = useCallback(async () => {
+        setLoading(true);
+        try {
+          const res = await api.listContent('src/content/site');
+          const items = (res.items || []).filter(it => (it.name || '').startsWith('email-template-'));
+          const saved = items.map(it => {
+            const slug = it.name.replace(/^email-template-/, '').replace(/\.json$/, '');
+            const c = it.content || {};
+            return { ...c, slug };
+          });
+          const savedSlugs = new Set(saved.map(t => t.slug));
+          const starters = EMAIL_STARTERS.filter(s => !savedSlugs.has(s.slug)).map(s => ({ ...s, isStarter: true }));
+          setTemplates([...saved, ...starters]);
+        } catch (e) {
+          addToast?.('Failed to load templates', 'error');
         }
+        setLoading(false);
       }, []);
 
-      // Write preview HTML into iframe
-      useEffect(() => {
-        if (previewRef.current && previewHtml) {
-          const doc = previewRef.current.contentDocument;
-          doc.open(); doc.write(previewHtml); doc.close();
+      const loadHistory = async () => {
+        setHistoryLoading(true);
+        try {
+          const res = await fetch('/api/create-broadcast');
+          const data = await res.json();
+          if (data.ok) setBroadcasts(data.broadcasts || []);
+        } catch (e) {
+          addToast?.('Failed to load broadcast history', 'error');
         }
-      }, [previewHtml, showPreview]);
+        setHistoryLoading(false);
+      };
 
-      const selectedKid = (kids || []).find(k => k.slug === selectedSlug);
-      const monthlyRevealKid = (kids || []).find(k => k.slug === monthlyRevealSlug);
-      const monthlyCurrentKid = (kids || []).find(k => k.slug === monthlyCurrentSlug);
+      useEffect(() => { loadTemplates(); }, []);
+      useEffect(() => { if (emailTab === 'history') loadHistory(); }, [emailTab]);
 
+      // Open / close editor
+      const openEditor = (tpl) => {
+        setEditing({ slug: tpl.slug, isStarter: !!tpl.isStarter });
+        setEName(tpl.name || '');
+        setESubject(tpl.subject || '');
+        setEPreheader(tpl.preheader || '');
+        setEBlocks(withBlockIds(tpl.blocks));
+        setEDirty(false);
+        setESelected(null);
+        setShowAddBlock(false);
+        setShowPreview(false);
+        setPreviewHtml('');
+        setPushResult(null);
+        setView('editor');
+      };
+
+      const newTemplate = () => {
+        openEditor({ slug: '', name: 'Untitled Template', subject: '', preheader: '', blocks: defaultCustomBlocks() });
+      };
+
+      const closeEditor = () => {
+        if (eDirty && !confirm('You have unsaved changes. Discard them?')) return;
+        setView('list');
+        setEditing(null);
+        setShowPreview(false);
+        setPushResult(null);
+      };
+
+      const updateBlocks = (next) => {
+        setEBlocks(typeof next === 'function' ? next(eBlocks) : next);
+        setEDirty(true);
+      };
+
+      // Build broadcast body (resolves kid slugs)
       const buildBody = async () => {
-        if (template === 'monthly') {
-          const totalKids = completedKids.length;
-          const totalRooms = completedKids.reduce((s, k) => s + (k.roomCount || 1), 0);
-          const rv = monthlyRevealKid;
-          const cp = monthlyCurrentKid;
-          return {
-            template: 'monthly',
-            data: {
-              month: monthlyMonth,
-              totalKids, totalRooms,
-              years: new Date().getFullYear() - 2012,
-              recentReveal: rv ? { name: rv.name, slug: rv.slug, heroImage: rv.heroImage, diagnosis: rv.diagnosis, roomTypes: rv.roomTypes } : null,
-              currentProject: cp ? { name: cp.name, slug: cp.slug, heroImage: cp.heroImage, diagnosis: cp.diagnosis, roomTypes: cp.roomTypes } : null,
-              upcomingEvents: (events || []).filter(e => e.status === 'published').slice(0, 3).map(e => ({ name: e.name || e.title, date: e.date || '', url: e.url || (e.slug ? `https://sunshineonaranneyday.com/events/${e.slug}` : '') })),
-              founderNote: monthlyNote || undefined,
-            },
-            opts: { ...(subject ? { subject } : {}), ...(preheader ? { preheader } : {}) },
+        if (!eBlocks.length) throw new Error('Add at least one block.');
+        if (!eSubject.trim()) throw new Error('Subject is required.');
+        const resolved = await Promise.all(eBlocks.map(async (b) => {
+          if (b.type === 'kidCard' && b.slug) {
+            try {
+              const r = await api.readContent(`src/content/kids/${b.slug}.json`);
+              if (r.success) {
+                const kid = typeof r.content === 'string' ? JSON.parse(r.content) : r.content;
+                return { ...b, kid };
+              }
+            } catch (_) { /* fall through */ }
+            const k = (kids || []).find(x => x.slug === b.slug);
+            return { ...b, kid: k || null };
+          }
+          return b;
+        }));
+        return {
+          template: 'custom',
+          data: { blocks: resolved },
+          opts: {
+            subject: eSubject,
+            ...(ePreheader ? { preheader: ePreheader } : {}),
+            ...(eName ? { name: eName } : {}),
+          },
+        };
+      };
+
+      const slugify = (s) => (s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+
+      const saveTemplate = async () => {
+        if (!eName.trim()) { addToast?.('Name is required', 'error'); return; }
+        if (!eSubject.trim()) { addToast?.('Subject is required', 'error'); return; }
+        setSaving(true);
+        try {
+          let slug = editing.slug;
+          if (!slug) {
+            slug = slugify(eName) || `template-${Date.now().toString(36)}`;
+            const existing = templates.map(t => t.slug);
+            let i = 1, base = slug;
+            while (existing.includes(slug)) slug = `${base}-${++i}`;
+          }
+          const data = {
+            name: eName.trim(),
+            subject: eSubject.trim(),
+            preheader: ePreheader.trim(),
+            blocks: eBlocks,
+            updatedAt: new Date().toISOString(),
           };
+          const res = await api.saveContent(
+            `src/content/site/email-template-${slug}.json`,
+            JSON.stringify(data),
+            `Update email template: ${data.name}`
+          );
+          if (res.success) {
+            addToast?.('Template saved', 'success');
+            setEditing({ slug, isStarter: false });
+            setEDirty(false);
+            await loadTemplates();
+          } else {
+            addToast?.(res.error || 'Save failed', 'error');
+          }
+        } catch (e) {
+          addToast?.(e.message || 'Save failed', 'error');
         }
-        if (!selectedKid) throw new Error('Please select a kid');
-        const kidData = await api.readContent('src/content/kids/' + selectedSlug + '.json');
-        if (!kidData.success) throw new Error('Failed to load kid data');
-        const kid = typeof kidData.content === 'string' ? JSON.parse(kidData.content) : kidData.content;
-        const opts = {};
-        if (founderNote) opts.founderNote = founderNote;
-        if (headline) opts.headline = headline;
-        if (subject) opts.subject = subject;
-        if (preheader) opts.preheader = preheader;
-        if (heroImageOverride) opts.heroImage = heroImageOverride;
-        return { template, kid, opts };
+        setSaving(false);
+      };
+
+      const deleteTemplate = async (tpl) => {
+        try {
+          const path = `src/content/site/email-template-${tpl.slug}.json`;
+          const res = await api.deleteContent(path, '', `Delete email template: ${tpl.name}`);
+          if (res.success) {
+            addToast?.('Template deleted', 'success');
+            await loadTemplates();
+          } else {
+            addToast?.(res.error || 'Delete failed', 'error');
+          }
+        } catch (e) {
+          addToast?.(e.message || 'Delete failed', 'error');
+        }
+        setConfirmDelete(null);
+      };
+
+      const pushToResend = async () => {
+        setPushing(true); setPushResult(null);
+        try {
+          const body = await buildBody();
+          const res = await fetch('/api/create-broadcast', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          });
+          const data = await res.json();
+          if (data.ok) {
+            setPushResult(data);
+            setPreviewHtml(data.previewHtml || '');
+            setShowPreview(true);
+            addToast?.('Draft pushed to Resend!', 'success');
+          } else {
+            addToast?.(data.error || 'Push failed', 'error');
+          }
+        } catch (e) {
+          addToast?.(e.message || 'Push failed', 'error');
+        }
+        setPushing(false);
+      };
+
+      const handleTestSend = async () => {
+        if (!testEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(testEmail)) {
+          addToast?.('Enter a valid test email address', 'error');
+          return;
+        }
+        setSendingTest(true);
+        try {
+          const body = await buildBody();
+          const res = await fetch('/api/send-test-email', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ...body, testEmail }),
+          });
+          const data = await res.json();
+          if (data.ok) addToast?.(`Test sent to ${testEmail}`, 'success');
+          else addToast?.(data.error || 'Test send failed', 'error');
+        } catch (e) {
+          addToast?.(e.message || 'Test send failed', 'error');
+        }
+        setSendingTest(false);
       };
 
       const handlePreview = async () => {
-        setSending(true);
         try {
           const body = await buildBody();
           const res = await fetch('/api/create-broadcast', {
@@ -2140,353 +2809,351 @@
         } catch (e) {
           addToast?.(e.message || 'Something went wrong', 'error');
         }
-        setSending(false);
       };
 
-      const handleCreate = async () => {
-        setSending(true); setResult(null);
-        try {
-          const body = await buildBody();
-          const res = await fetch('/api/create-broadcast', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
-          });
-          const data = await res.json();
-          if (data.ok) {
-            setResult(data);
-            setPreviewHtml(data.previewHtml || '');
-            setShowPreview(true);
-            addToast?.('Broadcast draft created in Resend!', 'success');
-          } else {
-            addToast?.(data.error || 'Failed to create broadcast', 'error');
-          }
-        } catch (e) {
-          addToast?.(e.message || 'Something went wrong', 'error');
-        }
-        setSending(false);
-      };
-
-      const loadHistory = useCallback(async () => {
-        setHistoryLoading(true);
-        try {
-          const res = await fetch('/api/create-broadcast');
-          const data = await res.json();
-          if (data.ok) setBroadcasts(data.broadcasts || []);
-        } catch (e) {
-          addToast?.('Failed to load email history', 'error');
-        }
-        setHistoryLoading(false);
-      }, []);
-
+      // Live preview — debounced refresh while editing
       useEffect(() => {
-        if (emailTab === 'history') loadHistory();
-      }, [emailTab]);
+        if (view !== 'editor' || !showPreview) return;
+        if (!eBlocks.length || !eSubject) return;
+        const t = setTimeout(async () => {
+          try {
+            const body = await buildBody();
+            const r = await fetch('/api/create-broadcast', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ ...body, preview: true }),
+            });
+            const d = await r.json();
+            if (d.ok) setPreviewHtml(d.previewHtml || '');
+          } catch (_) { /* swallow */ }
+        }, 600);
+        return () => clearTimeout(t);
+      }, [view, showPreview, eBlocks, eSubject, ePreheader]);
 
-      // Also refresh history after creating a broadcast
+      // Update iframe contents when previewHtml changes
       useEffect(() => {
-        if (result) loadHistory();
-      }, [result]);
+        if (previewRef.current && previewHtml) {
+          const doc = previewRef.current.contentDocument;
+          doc.open(); doc.write(previewHtml); doc.close();
+        }
+      }, [previewHtml, showPreview]);
 
-      const statusColors = {
+      const broadcastStatusColor = {
         draft: { bg: '#FEFCBF', color: '#744210' },
         sent: { bg: '#C6F6D5', color: '#22543D' },
         queued: { bg: '#BEE3F8', color: '#2A4365' },
         cancelled: { bg: '#FED7D7', color: '#742A2A' },
       };
 
-      const templateCards = [
-        { id: 'reveal', label: 'Project Reveal', desc: 'Completed project — announce the room transformation to donors & partners.', icon: icons.star },
-        { id: 'kickoff', label: 'Project Kickoff', desc: 'Upcoming kid — introduce them and rally support for the build.', icon: icons.sparkle },
-        { id: 'monthly', label: 'Monthly Impact', desc: 'Recurring update — stats, recent work, current project, events.', icon: icons.barChart },
-      ];
+      const renderList = () => html`
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
+          <div>
+            <h2 style="margin: 0 0 0.25rem; display: flex; align-items: center; gap: 0.5rem;">${icons.mail} Email</h2>
+            <p style="margin: 0; color: var(--color-text-secondary); font-size: 0.9rem;">Edit on-brand templates here, then push them to Resend as drafts.</p>
+          </div>
+          <a href="https://resend.com/broadcasts" target="_blank" rel="noopener noreferrer" class="btn btn-ghost" style="font-size: 0.8rem; padding: 0.4rem 0.8rem; gap: 0.35rem;">
+            ${icons.mail} Resend Dashboard ↗
+          </a>
+        </div>
 
-      const KidCard = ({ kid: k, size = 'md' }) => {
-        if (!k) return null;
-        const imgSize = size === 'sm' ? '48px' : '72px';
-        return html`
-          <div style="display: flex; gap: ${size === 'sm' ? '0.75rem' : '1rem'}; padding: ${size === 'sm' ? '0.75rem' : '1rem'}; background: var(--color-bg-secondary); border-radius: var(--radius-sm); align-items: center;">
-            ${k.heroImage ? html`<img src="${k.heroImage}" alt="" style="width: ${imgSize}; height: ${imgSize}; border-radius: 8px; object-fit: cover; flex-shrink: 0;" />` : html`
-              <div style="width: ${imgSize}; height: ${imgSize}; border-radius: 8px; background: var(--color-border); display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: var(--color-text-muted);">${icons.user}</div>
-            `}
+        <div class="hub-tabs" style="margin-bottom: 1.5rem;">
+          <button class="hub-tab ${emailTab === 'templates' ? 'active' : ''}" onClick=${() => setEmailTab('templates')}>Templates</button>
+          <button class="hub-tab ${emailTab === 'history' ? 'active' : ''}" onClick=${() => setEmailTab('history')}>
+            History${broadcasts.length > 0 ? html` <span style="margin-left: 0.35rem; min-width: 18px; height: 18px; border-radius: 9px; background: var(--color-bg); font-size: 0.7rem; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; padding: 0 5px; color: var(--color-text-muted);">${broadcasts.length}</span>` : null}
+          </button>
+        </div>
+
+        ${emailTab === 'history' ? html`
+          ${historyLoading ? html`
+            <div style="text-align: center; padding: 3rem;">
+              <div class="spinner" style="margin: 0 auto 1rem;" />
+              <p style="color: var(--color-text-muted); font-size: 0.85rem;">Loading broadcast history...</p>
+            </div>
+          ` : broadcasts.length === 0 ? html`
+            <div class="card" style="padding: 3rem; text-align: center;">
+              <div style="margin-bottom: 0.75rem; color: var(--color-text-muted);">${icons.mail}</div>
+              <p style="font-weight: 600; margin: 0 0 0.25rem;">No broadcasts yet</p>
+              <p style="font-size: 0.85rem; color: var(--color-text-muted); margin: 0;">Push a template to Resend to see it here.</p>
+            </div>
+          ` : html`
+            <div class="card" style="padding: 0;">
+              <div class="table-wrap">
+                <table style="width: 100%; border-collapse: collapse;">
+                  <thead><tr>
+                    <th style="text-align: left; padding: 0.75rem 1rem; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-muted); border-bottom: 1px solid var(--color-border);">Name</th>
+                    <th style="text-align: left; padding: 0.75rem 1rem; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-muted); border-bottom: 1px solid var(--color-border);">Status</th>
+                    <th style="text-align: left; padding: 0.75rem 1rem; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-muted); border-bottom: 1px solid var(--color-border);">Created</th>
+                    <th style="text-align: left; padding: 0.75rem 1rem; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-muted); border-bottom: 1px solid var(--color-border);">Sent</th>
+                  </tr></thead>
+                  <tbody>
+                    ${broadcasts.map(b => {
+                      const sc = broadcastStatusColor[b.status] || broadcastStatusColor.draft;
+                      const created = b.createdAt ? new Date(b.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—';
+                      const sent = b.sentAt ? new Date(b.sentAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—';
+                      return html`<tr key=${b.id} style="border-bottom: 1px solid var(--color-bg);">
+                        <td style="padding: 0.75rem 1rem;">
+                          <div style="font-weight: 600; font-size: 0.9rem;">${b.name}</div>
+                          ${b.subject ? html`<div style="font-size: 0.78rem; color: var(--color-text-muted); margin-top: 0.15rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 300px;">${b.subject}</div>` : null}
+                        </td>
+                        <td style="padding: 0.75rem 1rem;">
+                          <span style="display: inline-block; padding: 0.2rem 0.6rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600; text-transform: capitalize; background: ${sc.bg}; color: ${sc.color};">${b.status}</span>
+                        </td>
+                        <td style="padding: 0.75rem 1rem; font-size: 0.85rem; color: var(--color-text-secondary); white-space: nowrap;">${created}</td>
+                        <td style="padding: 0.75rem 1rem; font-size: 0.85rem; color: var(--color-text-secondary); white-space: nowrap;">${sent}</td>
+                      </tr>`;
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div style="margin-top: 0.75rem; text-align: right;">
+              <button class="btn btn-sm btn-ghost" onClick=${loadHistory} disabled=${historyLoading}>${historyLoading ? html`<div class="spinner" style="width: 12px; height: 12px; border-width: 2px;" />` : 'Refresh'}</button>
+            </div>
+          `}
+        ` : html`
+          ${loading ? html`
+            <div style="text-align: center; padding: 3rem;">
+              <div class="spinner" style="margin: 0 auto 1rem;" />
+              <p style="color: var(--color-text-muted); font-size: 0.85rem;">Loading templates...</p>
+            </div>
+          ` : html`
+            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem;">
+              ${templates.map(t => {
+                const iconEl = t.isStarter ? icons[STARTER_ICONS[t.icon] || 'star'] : icons.fileText;
+                return html`
+                  <div key=${t.slug} class="card" style="padding: 1.25rem; cursor: pointer; display: flex; flex-direction: column; gap: 0.6rem; min-height: 180px; transition: transform 0.15s;"
+                    onClick=${() => openEditor(t)}>
+                    <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 0.5rem;">
+                      <span style="color: var(--color-text-muted); display: inline-flex; padding: 0.4rem; background: var(--color-bg-secondary); border-radius: 8px;">${iconEl}</span>
+                      ${t.isStarter ? html`<span style="font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; padding: 0.2rem 0.5rem; background: rgba(255, 218, 36, 0.25); color: #6B5B00; border-radius: 4px;">Starter</span>` : html`
+                        <button class="btn btn-sm btn-ghost" type="button" title="Delete"
+                          onClick=${e => { e.stopPropagation(); setConfirmDelete(t); }}
+                          style="padding: 0.25rem 0.4rem; color: #c00;">${icons.trash}</button>
+                      `}
+                    </div>
+                    <div>
+                      <div style="font-weight: 700; font-size: 1rem; line-height: 1.25;">${t.name || '(Untitled)'}</div>
+                      <div style="font-size: 0.78rem; color: var(--color-text-muted); margin-top: 0.25rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${t.subject || 'No subject'}</div>
+                    </div>
+                    <div style="font-size: 0.72rem; color: var(--color-text-muted); margin-top: auto; display: flex; justify-content: space-between;">
+                      <span>${(t.blocks || []).length} block${(t.blocks || []).length === 1 ? '' : 's'}</span>
+                      ${t.updatedAt ? html`<span title=${new Date(t.updatedAt).toLocaleString()}>Updated ${new Date(t.updatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>` : null}
+                    </div>
+                  </div>
+                `;
+              })}
+
+              <button class="card" type="button" onClick=${newTemplate}
+                style="padding: 1.25rem; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.5rem; min-height: 180px; border: 2px dashed var(--color-border); background: transparent; color: var(--color-text-muted); transition: all 0.15s;">
+                <span style="font-size: 1.5rem; line-height: 1;">+</span>
+                <span style="font-size: 0.9rem; font-weight: 600;">New template</span>
+                <span style="font-size: 0.75rem;">Start from a blank canvas</span>
+              </button>
+            </div>
+          `}
+        `}
+
+        ${confirmDelete ? html`<${ConfirmModal}
+          title="Delete template?"
+          message=${`This will permanently delete "${confirmDelete.name}". The starter version will return.`}
+          danger=${true}
+          onCancel=${() => setConfirmDelete(null)}
+          onConfirm=${() => deleteTemplate(confirmDelete)} />` : null}
+      `;
+
+      const renderEditor = () => html`
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.25rem; gap: 1rem; flex-wrap: wrap;">
+          <div style="display: flex; align-items: center; gap: 0.75rem; min-width: 0;">
+            <button class="btn btn-ghost btn-sm" onClick=${closeEditor}>${icons.arrowLeft} Back</button>
             <div style="min-width: 0;">
-              <div style="font-weight: 600; font-size: ${size === 'sm' ? '0.85rem' : '1rem'};">${k.name}${k.age ? html`<span style="font-weight: 400; color: var(--color-text-muted);">${', '}${Array.isArray(k.age) ? 'ages ' + k.age.join(', ') : 'age ' + k.age}</span>` : null}</div>
-              ${k.diagnosis ? html`<div style="font-size: ${size === 'sm' ? '0.78rem' : '0.85rem'}; color: var(--color-text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${k.diagnosis}</div>` : null}
-              ${k.roomTypes?.length ? html`<div style="display: flex; gap: 0.35rem; margin-top: 0.35rem; flex-wrap: wrap;">
-                ${k.roomTypes.map(t => html`<span style="padding: 0.15rem 0.5rem; background: rgba(45,46,51,0.08); border-radius: 100px; font-size: 0.72rem; font-weight: 500; color: var(--color-text-secondary);">${t}</span>`)}
-              </div>` : null}
+              <h2 style="margin: 0; font-size: 1.15rem; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${eName || 'Untitled Template'}${editing?.isStarter ? html` <span style="font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; padding: 0.15rem 0.45rem; background: rgba(255, 218, 36, 0.25); color: #6B5B00; border-radius: 4px; vertical-align: middle; margin-left: 0.4rem;">Starter</span>` : null}</h2>
+              <p style="margin: 0; font-size: 0.78rem; color: var(--color-text-muted);">${eDirty ? 'Unsaved changes' : (editing?.isStarter ? 'Save to create your editable copy' : 'All changes saved')}</p>
             </div>
           </div>
-        `;
-      };
-
-      return html`
-        <div>
-          <!-- Header -->
-          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
-            <div>
-              <h2 style="margin: 0 0 0.25rem; display: flex; align-items: center; gap: 0.5rem;">${icons.mail} Email</h2>
-              <p style="margin: 0; color: var(--color-text-secondary); font-size: 0.9rem;">Create on-brand email broadcasts. Drafts go to Resend for review before sending.</p>
-            </div>
-            <a href="https://resend.com/broadcasts" target="_blank" rel="noopener noreferrer" class="btn btn-ghost" style="font-size: 0.8rem; padding: 0.4rem 0.8rem; gap: 0.35rem;">
-              ${icons.mail} Resend Dashboard ↗
-            </a>
-          </div>
-
-          <!-- Tabs: Compose / History -->
-          <div class="hub-tabs" style="margin-bottom: 1.75rem;">
-            <button class="hub-tab ${emailTab === 'compose' ? 'active' : ''}" onClick=${() => setEmailTab('compose')}>Compose</button>
-            <button class="hub-tab ${emailTab === 'history' ? 'active' : ''}" onClick=${() => setEmailTab('history')}>
-              History${broadcasts.length > 0 ? html` <span style="margin-left: 0.35rem; min-width: 18px; height: 18px; border-radius: 9px; background: var(--color-bg); font-size: 0.7rem; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; padding: 0 5px; color: var(--color-text-muted);">${broadcasts.length}</span>` : null}
+          <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+            <button class="btn btn-ghost" onClick=${handlePreview} disabled=${!eBlocks.length || !eSubject}>${icons.search} Preview</button>
+            <button class="btn btn-secondary" onClick=${saveTemplate} disabled=${saving || !eName || !eSubject}>
+              ${saving ? html`<div class="spinner" style="width: 14px; height: 14px; border-width: 2px;" />` : 'Save'}
+            </button>
+            <button class="btn btn-primary" onClick=${pushToResend} disabled=${pushing || !eBlocks.length || !eSubject}>
+              ${pushing ? html`<div class="spinner" style="width: 14px; height: 14px; border-width: 2px; border-top-color: var(--color-text);" />` : 'Push to Resend ↗'}
             </button>
           </div>
+        </div>
 
-          ${emailTab === 'history' ? html`
-            <!-- ═══ HISTORY TAB ═══ -->
-            ${historyLoading ? html`
-              <div style="text-align: center; padding: 3rem;">
-                <div class="spinner" style="margin: 0 auto 1rem;" />
-                <p style="color: var(--color-text-muted); font-size: 0.85rem;">Loading broadcast history...</p>
-              </div>
-            ` : broadcasts.length === 0 ? html`
-              <div class="card" style="padding: 3rem; text-align: center;">
-                <div style="margin-bottom: 0.75rem; color: var(--color-text-muted);">${icons.mail}</div>
-                <p style="font-weight: 600; margin: 0 0 0.25rem;">No broadcasts yet</p>
-                <p style="font-size: 0.85rem; color: var(--color-text-muted); margin: 0;">Create your first broadcast in the Compose tab.</p>
-              </div>
-            ` : html`
-              <div class="card" style="padding: 0;">
-                <div class="table-wrap">
-                  <table style="width: 100%; border-collapse: collapse;">
-                    <thead>
-                      <tr>
-                        <th style="text-align: left; padding: 0.75rem 1rem; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-muted); border-bottom: 1px solid var(--color-border);">Name</th>
-                        <th style="text-align: left; padding: 0.75rem 1rem; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-muted); border-bottom: 1px solid var(--color-border);">Status</th>
-                        <th style="text-align: left; padding: 0.75rem 1rem; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-muted); border-bottom: 1px solid var(--color-border);">Created</th>
-                        <th style="text-align: left; padding: 0.75rem 1rem; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-muted); border-bottom: 1px solid var(--color-border);">Sent</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      ${broadcasts.map(b => {
-                        const sc = statusColors[b.status] || statusColors.draft;
-                        const created = b.createdAt ? new Date(b.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—';
-                        const sent = b.sentAt ? new Date(b.sentAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—';
-                        return html`
-                          <tr key=${b.id} style="border-bottom: 1px solid var(--color-bg);">
-                            <td style="padding: 0.75rem 1rem;">
-                              <div style="font-weight: 600; font-size: 0.9rem;">${b.name}</div>
-                              ${b.subject ? html`<div style="font-size: 0.78rem; color: var(--color-text-muted); margin-top: 0.15rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 300px;">${b.subject}</div>` : null}
-                            </td>
-                            <td style="padding: 0.75rem 1rem;">
-                              <span style="display: inline-block; padding: 0.2rem 0.6rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600; text-transform: capitalize; background: ${sc.bg}; color: ${sc.color};">${b.status}</span>
-                            </td>
-                            <td style="padding: 0.75rem 1rem; font-size: 0.85rem; color: var(--color-text-secondary); white-space: nowrap;">${created}</td>
-                            <td style="padding: 0.75rem 1rem; font-size: 0.85rem; color: var(--color-text-secondary); white-space: nowrap;">${sent}</td>
-                          </tr>
-                        `;
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-              <div style="margin-top: 0.75rem; text-align: right;">
-                <button class="btn btn-sm btn-ghost" onClick=${loadHistory} disabled=${historyLoading}>
-                  ${historyLoading ? html`<div class="spinner" style="width: 12px; height: 12px; border-width: 2px;" />` : 'Refresh'}
+        <div style="display: grid; grid-template-columns: ${showPreview ? '420px 1fr' : '1fr'}; gap: 1.5rem; align-items: start;">
+          <div class="card" style="padding: 1.5rem;">
+            <div style="margin-bottom: 1rem; padding: 0.85rem 1rem; border: 1px dashed var(--color-border); border-radius: var(--radius-sm); background: var(--color-bg-secondary);">
+              <div style="font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-muted); margin-bottom: 0.5rem;">Send a Test</div>
+              <div style="display: flex; gap: 0.5rem;">
+                <input class="form-input" type="email" placeholder="you@example.com"
+                  value=${testEmail} onInput=${e => setTestEmail(e.target.value)} style="flex: 1; font-size: 0.85rem;" />
+                <button class="btn btn-ghost" onClick=${handleTestSend}
+                  disabled=${sendingTest || !eBlocks.length || !eSubject}
+                  style="font-size: 0.85rem; padding: 0.5rem 1rem;">
+                  ${sendingTest ? html`<div class="spinner" style="width: 12px; height: 12px; border-width: 2px;" />` : 'Send Test'}
                 </button>
               </div>
-            `}
-          ` : html`
-          <!-- ═══ COMPOSE TAB ═══ -->
+              <div class="form-hint" style="margin-top: 0.4rem;">Sends a one-off email so you can preview in your inbox. Subject is prefixed [TEST].</div>
+            </div>
 
-          <!-- Template picker -->
-          <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem; margin-bottom: 1.75rem;">
-            ${templateCards.map(t => html`
-              <button key=${t.id}
-                onClick=${() => setTemplate(t.id)}
-                style="padding: 1.25rem 1rem; border-radius: var(--radius-md); border: 2px solid ${template === t.id ? 'var(--color-primary)' : 'var(--color-border)'}; background: ${template === t.id ? 'var(--color-primary-bg)' : 'var(--color-bg-card)'}; cursor: pointer; text-align: left; transition: all 0.15s; position: relative; overflow: hidden;">
-                <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.35rem;">
-                  <span style="color: ${template === t.id ? 'var(--color-primary-hover)' : 'var(--color-text-muted)'}; transition: color 0.15s;">${t.icon}</span>
-                  <span style="font-weight: 600; font-size: 0.95rem; color: var(--color-text);">${t.label}</span>
-                </div>
-                <div style="font-size: 0.78rem; line-height: 1.4; color: var(--color-text-muted);">${t.desc}</div>
-                ${template === t.id ? html`<div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: var(--color-primary);"></div>` : null}
-              </button>
-            `)}
-          </div>
+            <div class="form-group">
+              <label class="form-label">Template Name <span style="color: #c00;">*</span></label>
+              <input class="form-input" type="text" value=${eName} onInput=${e => { setEName(e.target.value); setEDirty(true); }} placeholder="What this template is for" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Subject Line <span style="color: #c00;">*</span></label>
+              <input class="form-input" type="text" value=${eSubject} onInput=${e => { setESubject(e.target.value); setEDirty(true); }} placeholder="What recipients see in their inbox" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Preview Text <span style="font-weight: 400; color: var(--color-text-muted);">(optional)</span></label>
+              <input class="form-input" type="text" value=${ePreheader} onInput=${e => { setEPreheader(e.target.value); setEDirty(true); }} placeholder="Inbox snippet shown after the subject (90-150 chars)" maxlength="160" />
+            </div>
 
-          <!-- Main layout: controls + preview -->
-          <div style="display: grid; grid-template-columns: ${showPreview ? '380px 1fr' : '1fr'}; gap: 1.5rem; align-items: start;">
+            <div style="margin: 1.25rem 0 0.5rem; display: flex; align-items: center; justify-content: space-between;">
+              <label class="form-label" style="margin: 0;">Blocks <span style="font-weight: 400; color: var(--color-text-muted);">— ${eBlocks.length} block${eBlocks.length === 1 ? '' : 's'}</span></label>
+            </div>
 
-            <!-- Controls panel -->
-            <div class="card" style="padding: 1.5rem;">
-
-              ${template !== 'monthly' ? html`
-                <!-- Kid selector -->
-                <div class="form-group">
-                  <label class="form-label">${template === 'reveal' ? 'Select Completed Kid' : 'Select In-Build Kid'}</label>
-                  <select class="form-input" value=${selectedSlug} onChange=${e => { setSelectedSlug(e.target.value); setHeroImageOverride(''); setResult(null); setPreviewHtml(''); setShowPreview(false); }}>
-                    ${kidOptions.length === 0 ? html`<option value="">No ${template === 'kickoff' ? 'in-build' : 'completed'} kids</option>` : null}
-                    ${kidOptions.map(k => html`<option key=${k.slug} value=${k.slug}>${k.name}${k.year ? ` (${k.year})` : ''} — ${k.roomTypes?.join(', ') || 'No rooms'}</option>`)}
-                  </select>
-                </div>
-
-                ${selectedKid ? html`<div style="margin-bottom: 1.25rem;"><${KidCard} kid=${selectedKid} /></div>` : null}
-
-                <!-- Hero photo picker -->
-                ${selectedKid?.photos?.length > 1 ? html`
-                  <div class="form-group">
-                    <label class="form-label">Hero Photo <span style="font-weight: 400; color: var(--color-text-muted);">(click to change)</span></label>
-                    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: 6px;">
-                      ${selectedKid.photos.map(p => {
-                        const isSelected = heroImageOverride ? p.url === heroImageOverride : p.url === selectedKid.heroImage;
-                        return html`
-                          <div onClick=${() => setHeroImageOverride(p.url === heroImageOverride || (!heroImageOverride && p.url === selectedKid.heroImage) ? '' : p.url)}
-                            style="cursor: pointer; border-radius: 8px; overflow: hidden; aspect-ratio: 1; border: 2.5px solid ${isSelected ? '#FFDA24' : 'transparent'}; opacity: ${isSelected ? 1 : 0.6}; transition: all 0.15s;">
-                            <img src="${p.url}" alt="" style="width: 100%; height: 100%; object-fit: cover; display: block;" />
-                          </div>
-                        `;
-                      })}
+            <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+              ${eBlocks.map((b, i) => {
+                const lib = BLOCK_LIBRARY.find(x => x.type === b.type);
+                const expanded = eSelected === b.id;
+                return html`
+                  <div key=${b.id} style="border: 1.5px solid ${expanded ? 'var(--color-primary)' : 'var(--color-border)'}; border-radius: 8px; background: var(--color-bg-card); overflow: hidden;">
+                    <div onClick=${() => setESelected(expanded ? null : b.id)}
+                      style="display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 0.6rem; padding: 0.6rem 0.75rem; cursor: pointer; ${expanded ? 'border-bottom: 1px solid var(--color-border);' : ''}">
+                      <span style="color: var(--color-text-muted); display: inline-flex;">${lib?.icon || icons.menu}</span>
+                      <div style="min-width: 0;">
+                        <div style="font-weight: 600; font-size: 0.85rem;">${lib?.label || b.type}</div>
+                        <div style="font-size: 0.75rem; color: var(--color-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${blockSummary(b, kids)}</div>
+                      </div>
+                      <div style="display: flex; gap: 0.15rem;" onClick=${e => e.stopPropagation()}>
+                        <button class="btn btn-sm btn-ghost" type="button" title="Move up" disabled=${i === 0}
+                          onClick=${() => { const next = eBlocks.slice(); [next[i - 1], next[i]] = [next[i], next[i - 1]]; updateBlocks(next); }}
+                          style="padding: 0.25rem 0.4rem; font-size: 0.85rem;">↑</button>
+                        <button class="btn btn-sm btn-ghost" type="button" title="Move down" disabled=${i === eBlocks.length - 1}
+                          onClick=${() => { const next = eBlocks.slice(); [next[i + 1], next[i]] = [next[i], next[i + 1]]; updateBlocks(next); }}
+                          style="padding: 0.25rem 0.4rem; font-size: 0.85rem;">↓</button>
+                        <button class="btn btn-sm btn-ghost" type="button" title="Duplicate"
+                          onClick=${() => { const next = eBlocks.slice(); next.splice(i + 1, 0, { ...b, id: newBlockId() }); updateBlocks(next); }}
+                          style="padding: 0.25rem 0.4rem;">⧉</button>
+                        <button class="btn btn-sm btn-ghost" type="button" title="Delete"
+                          onClick=${() => { updateBlocks(eBlocks.filter(x => x.id !== b.id)); if (eSelected === b.id) setESelected(null); }}
+                          style="padding: 0.25rem 0.4rem; color: #c00;">${icons.x}</button>
+                      </div>
                     </div>
-                    <div class="form-hint">${heroImageOverride ? 'Custom photo selected for email.' : 'Using default hero photo.'}</div>
+                    ${expanded ? html`
+                      <div style="padding: 0.85rem 0.85rem 1rem;">
+                        <${BlockEditor}
+                          block=${b}
+                          onChange=${(updated) => updateBlocks(eBlocks.map(x => x.id === b.id ? updated : x))}
+                          onPickImage=${(target) => setImgPickerFor(target)}
+                          kids=${kids}
+                          events=${events}
+                          focusInput=${focusInput}
+                          setFocusInput=${setFocusInput} />
+                      </div>
+                    ` : null}
                   </div>
-                ` : null}
-
-                <!-- Subject line -->
-                <div class="form-group">
-                  <label class="form-label">Subject Line <span style="font-weight: 400; color: var(--color-text-muted);">(optional override)</span></label>
-                  <input class="form-input" type="text" value=${subject} onInput=${e => setSubject(e.target.value)}
-                    placeholder=${selectedKid ? `${selectedKid.name}'s Dream Room is ${template === 'reveal' ? 'Complete' : 'Coming Soon'} — See the ${template === 'reveal' ? 'Transformation' : 'Plan'}` : 'Auto-generated from kid data'} />
-                  <div class="form-hint">Leave blank to auto-generate from kid data.</div>
-                </div>
-
-                <!-- Preview text -->
-                <div class="form-group">
-                  <label class="form-label">Preview Text <span style="font-weight: 400; color: var(--color-text-muted);">(optional)</span></label>
-                  <input class="form-input" type="text" value=${preheader} onInput=${e => setPreheader(e.target.value)}
-                    placeholder="Shown in inbox before opening. Auto-generated from bio if blank." maxlength="150" />
-                  <div class="form-hint">The snippet shown in inbox previews. ~90-150 characters ideal.</div>
-                </div>
-
-                <!-- Headline -->
-                <div class="form-group">
-                  <label class="form-label">Headline <span style="font-weight: 400; color: var(--color-text-muted);">(optional)</span></label>
-                  <input class="form-input" type="text" value=${headline} onInput=${e => setHeadline(e.target.value)}
-                    placeholder=${selectedKid ? `Meet ${selectedKid.name}` : 'Auto-generated'} />
-                </div>
-
-                <!-- Founder note -->
-                <div class="form-group">
-                  <label class="form-label">Founder Note <span style="font-weight: 400; color: var(--color-text-muted);">(optional)</span></label>
-                  <textarea class="form-input" rows="3" placeholder="Personal message from Peter & Holly. Leave blank for auto-generated note." value=${founderNote} onInput=${e => setFounderNote(e.target.value)} style="resize: vertical;" />
-                </div>
-              ` : html`
-                <!-- Monthly: month -->
-                <div class="form-group">
-                  <label class="form-label">Month</label>
-                  <input class="form-input" type="text" value=${monthlyMonth} onInput=${e => setMonthlyMonth(e.target.value)} placeholder="e.g. April 2026" />
-                </div>
-
-                <!-- Monthly: subject override -->
-                <div class="form-group">
-                  <label class="form-label">Subject Line <span style="font-weight: 400; color: var(--color-text-muted);">(optional)</span></label>
-                  <input class="form-input" type="text" value=${subject} onInput=${e => setSubject(e.target.value)}
-                    placeholder=${`SOARD ${monthlyMonth} Update — Building Dreams, Changing Lives`} />
-                </div>
-
-                <!-- Monthly: preview text -->
-                <div class="form-group">
-                  <label class="form-label">Preview Text <span style="font-weight: 400; color: var(--color-text-muted);">(optional)</span></label>
-                  <input class="form-input" type="text" value=${preheader} onInput=${e => setPreheader(e.target.value)}
-                    placeholder=${`Your ${monthlyMonth} SOARD update: stats, stories, and how you're changing lives.`} maxlength="150" />
-                  <div class="form-hint">The snippet shown in inbox previews. ~90-150 characters ideal.</div>
-                </div>
-
-                <!-- Monthly: featured reveal kid -->
-                <div class="form-group">
-                  <label class="form-label">Featured Reveal</label>
-                  <select class="form-input" value=${monthlyRevealSlug} onChange=${e => setMonthlyRevealSlug(e.target.value)}>
-                    <option value="">None</option>
-                    ${completedKids.map(k => html`<option key=${k.slug} value=${k.slug}>${k.name}${k.year ? ` (${k.year})` : ''}</option>`)}
-                  </select>
-                  ${monthlyRevealKid ? html`<div style="margin-top: 0.5rem;"><${KidCard} kid=${monthlyRevealKid} size="sm" /></div>` : null}
-                </div>
-
-                <!-- Monthly: current project kid -->
-                <div class="form-group">
-                  <label class="form-label">Current Project</label>
-                  <select class="form-input" value=${monthlyCurrentSlug} onChange=${e => setMonthlyCurrentSlug(e.target.value)}>
-                    <option value="">None</option>
-                    ${inProgressKids.map(k => html`<option key=${k.slug} value=${k.slug}>${k.name} — ${k.roomTypes?.join(', ') || ''}</option>`)}
-                  </select>
-                  ${monthlyCurrentKid ? html`<div style="margin-top: 0.5rem;"><${KidCard} kid=${monthlyCurrentKid} size="sm" /></div>` : null}
-                </div>
-
-                <!-- Monthly: founder note -->
-                <div class="form-group">
-                  <label class="form-label">Founder Note <span style="font-weight: 400; color: var(--color-text-muted);">(optional)</span></label>
-                  <textarea class="form-input" rows="3" placeholder="Personal monthly note. Leave blank for default." value=${monthlyNote} onInput=${e => setMonthlyNote(e.target.value)} style="resize: vertical;" />
-                </div>
-
-                <!-- Auto-populated info -->
-                <div style="padding: 0.75rem 1rem; background: var(--color-primary-bg); border-radius: var(--radius-sm); margin-bottom: 1.25rem; font-size: 0.8rem; color: var(--color-text-secondary);">
-                  Stats (${completedKids.length} kids, ${completedKids.reduce((s, k) => s + (k.roomCount || 1), 0)} rooms, ${new Date().getFullYear() - 2012} years) and upcoming events are auto-populated.
-                </div>
-              `}
-
-              <!-- Action buttons -->
-              <div style="display: flex; gap: 0.75rem;">
-                <button class="btn btn-ghost" style="flex: 1;"
-                  onClick=${handlePreview}
-                  disabled=${sending || (template !== 'monthly' && !selectedSlug)}>
-                  ${sending && !result ? html`<div class="spinner" style="width: 14px; height: 14px; border-width: 2px;" />` : 'Preview'}
-                </button>
-                <button class="btn btn-primary" style="flex: 2;"
-                  onClick=${handleCreate}
-                  disabled=${sending || (template !== 'monthly' && !selectedSlug)}>
-                  ${sending ? html`<div class="spinner" style="width: 14px; height: 14px; border-width: 2px; border-top-color: var(--color-text);" />` : 'Create Broadcast Draft'}
-                </button>
-              </div>
-
-              <!-- Success result -->
-              ${result ? html`
-                <div style="margin-top: 1.25rem; padding: 1rem 1.25rem; background: rgba(56, 161, 105, 0.06); border: 1px solid rgba(56, 161, 105, 0.2); border-radius: var(--radius-sm);">
-                  <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
-                    <span style="color: var(--color-success);">${icons.check}</span>
-                    <span style="font-weight: 600; color: var(--color-success); font-size: 0.9rem;">Draft Created in Resend</span>
-                  </div>
-                  <p style="margin: 0 0 0.75rem; font-size: 0.8rem; color: var(--color-text-secondary); line-height: 1.5;">
-                    <strong>${result.name}</strong><br/>
-                    Subject: ${result.subject}
-                  </p>
-                  <a href="https://resend.com/broadcasts" target="_blank" rel="noopener noreferrer"
-                    class="btn btn-secondary" style="width: 100%; font-size: 0.85rem; padding: 0.6rem; justify-content: center;">
-                    Review & Send in Resend ↗
-                  </a>
+                `;
+              })}
+              ${eBlocks.length === 0 ? html`
+                <div style="padding: 2rem 1rem; text-align: center; border: 1px dashed var(--color-border); border-radius: 8px; color: var(--color-text-muted); font-size: 0.85rem;">
+                  No blocks yet. Add one to get started.
                 </div>
               ` : null}
             </div>
 
-            <!-- Preview panel -->
-            ${showPreview ? html`
-              <div class="card" style="padding: 0; overflow: hidden; position: sticky; top: 1rem;">
-                <div style="padding: 0.75rem 1.25rem; border-bottom: 1px solid var(--color-border); display: flex; align-items: center; justify-content: space-between;">
-                  <div style="font-weight: 600; font-size: 0.85rem;">Email Preview</div>
-                  <div style="display: flex; gap: 0.5rem;">
-                    <button class="btn btn-sm btn-ghost" onClick=${() => {
-                      const w = window.open('', '_blank');
-                      w.document.write(previewHtml);
-                      w.document.close();
-                    }}>Open in Tab ↗</button>
-                    <button class="btn btn-sm btn-ghost" onClick=${() => { setShowPreview(false); setPreviewHtml(''); }}>${icons.x}</button>
-                  </div>
+            <div style="margin-top: 0.75rem;">
+              <button class="btn btn-secondary" style="width: 100%; justify-content: center;" type="button"
+                onClick=${() => setShowAddBlock(!showAddBlock)}>
+                ${showAddBlock ? '× Cancel' : '+ Add Block'}
+              </button>
+              ${showAddBlock ? html`
+                <div style="margin-top: 0.5rem; padding: 0.75rem; background: var(--color-bg-secondary); border: 1px solid var(--color-border); border-radius: 8px;">
+                  ${['media', 'text', 'action', 'content', 'layout'].map(group => {
+                    const items = BLOCK_LIBRARY.filter(b => b.group === group);
+                    if (!items.length) return null;
+                    return html`
+                      <div key=${group} style="margin-bottom: 0.65rem;">
+                        <div style="font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 700; color: var(--color-text-muted); margin-bottom: 0.35rem;">${group}</div>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 0.35rem;">
+                          ${items.map(it => html`
+                            <button key=${it.type} type="button"
+                              onClick=${() => { const nb = makeBlock(it.type); updateBlocks([...eBlocks, nb]); setESelected(nb.id); setShowAddBlock(false); }}
+                              style="display: flex; flex-direction: column; align-items: center; gap: 0.25rem; padding: 0.6rem 0.4rem; border-radius: 6px; border: 1px solid var(--color-border); background: var(--color-bg-card); cursor: pointer; font-size: 0.75rem; font-weight: 600;">
+                              <span style="color: var(--color-text-muted);">${it.icon}</span>
+                              ${it.label}
+                            </button>
+                          `)}
+                        </div>
+                      </div>
+                    `;
+                  })}
                 </div>
-                <iframe ref=${previewRef} style="width: 100%; height: calc(100vh - 180px); border: none; background: #F5F4F0;" title="Email preview" />
+              ` : null}
+            </div>
+
+            ${pushResult ? html`
+              <div style="margin-top: 1.25rem; padding: 1rem 1.25rem; background: rgba(56, 161, 105, 0.06); border: 1px solid rgba(56, 161, 105, 0.2); border-radius: var(--radius-sm);">
+                <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
+                  <span style="color: var(--color-success);">${icons.check}</span>
+                  <span style="font-weight: 600; color: var(--color-success); font-size: 0.9rem;">Draft pushed to Resend</span>
+                </div>
+                <p style="margin: 0 0 0.75rem; font-size: 0.8rem; color: var(--color-text-secondary); line-height: 1.5;">
+                  <strong>${pushResult.name}</strong><br/>
+                  Subject: ${pushResult.subject}
+                </p>
+                <a href="https://resend.com/broadcasts" target="_blank" rel="noopener noreferrer"
+                  class="btn btn-secondary" style="width: 100%; font-size: 0.85rem; padding: 0.6rem; justify-content: center;">
+                  Review & Send in Resend ↗
+                </a>
               </div>
             ` : null}
           </div>
-          `}
+
+          ${showPreview ? html`
+            <div class="card" style="padding: 0; overflow: hidden; position: sticky; top: 1rem;">
+              <div style="padding: 0.75rem 1.25rem; border-bottom: 1px solid var(--color-border); display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; flex-wrap: wrap;">
+                <div style="font-weight: 600; font-size: 0.85rem;">Preview</div>
+                <div style="display: flex; gap: 0.5rem; align-items: center;">
+                  <div style="display: inline-flex; border: 1px solid var(--color-border); border-radius: 6px; overflow: hidden;">
+                    ${[['desktop', 'Desktop'], ['mobile', 'Mobile']].map(([id, label]) => html`
+                      <button key=${id} type="button" onClick=${() => setPreviewMode(id)}
+                        style="padding: 0.3rem 0.65rem; font-size: 0.78rem; border: none; background: ${previewMode === id ? 'var(--color-text)' : 'transparent'}; color: ${previewMode === id ? '#fff' : 'var(--color-text)'}; cursor: pointer;">${label}</button>
+                    `)}
+                  </div>
+                  <button class="btn btn-sm btn-ghost" onClick=${() => { const w = window.open('', '_blank'); w.document.write(previewHtml); w.document.close(); }}>Open in Tab ↗</button>
+                  <button class="btn btn-sm btn-ghost" onClick=${() => { setShowPreview(false); setPreviewHtml(''); }}>${icons.x}</button>
+                </div>
+              </div>
+              <div style="background: #E5E4E0; padding: ${previewMode === 'mobile' ? '1rem' : '0'}; display: flex; justify-content: center;">
+                <iframe ref=${previewRef}
+                  style="width: ${previewMode === 'mobile' ? '380px' : '100%'}; max-width: 100%; height: calc(100vh - 200px); border: none; background: #F5F4F0; ${previewMode === 'mobile' ? 'border-radius: 16px; box-shadow: 0 8px 32px rgba(0,0,0,0.15);' : ''}"
+                  title="Email preview" />
+              </div>
+            </div>
+          ` : null}
         </div>
+
+        ${imgPickerFor ? html`<${ImagePicker}
+          onSelect=${(id) => {
+            const target = imgPickerFor;
+            updateBlocks(eBlocks.map(b => {
+              if (b.id !== target.blockId) return b;
+              if (target.idx != null) {
+                const items = (b.items || []).slice();
+                items[target.idx] = { ...items[target.idx], src: id };
+                return { ...b, items };
+              }
+              return { ...b, [target.key]: id };
+            }));
+            setImgPickerFor(null);
+          }}
+          onClose=${() => setImgPickerFor(null)} />` : null}
       `;
+
+      return html`<div>${view === 'list' ? renderList() : renderEditor()}</div>`;
     }
 
     function AuditLogPage({ addToast }) {
@@ -6250,23 +6917,82 @@
     // ═══════════════════════════════════════════
     // TEAM LIST
     // ═══════════════════════════════════════════
-    function TeamList({ team, group, onEdit, onAdd, onDelete }) {
+    function TeamList({ team, group, onEdit, onAdd, onDelete, addToast, onReload }) {
       const [search, setSearch] = useState('');
-      const members = useMemo(() => {
-        const byGroup = team.filter(t => t.group === group);
-        if (!search) return byGroup;
+      const [savingOrder, setSavingOrder] = useState(false);
+      const [localSlugs, setLocalSlugs] = useState(null);
+      const label = group === 'board' ? 'Board' : 'Team';
+
+      const sortedByOrder = useMemo(() => {
+        return team.filter(t => t.group === group).slice().sort((a, b) => {
+          const oA = typeof a.order === 'number' ? a.order : 999;
+          const oB = typeof b.order === 'number' ? b.order : 999;
+          if (oA !== oB) return oA - oB;
+          return (a.name || '').localeCompare(b.name || '');
+        });
+      }, [team, group]);
+
+      useEffect(() => { setLocalSlugs(sortedByOrder.map(t => t.slug)); }, [sortedByOrder]);
+
+      const ordered = useMemo(() => {
+        if (!localSlugs) return sortedByOrder;
+        const map = new Map(sortedByOrder.map(t => [t.slug, t]));
+        const arr = localSlugs.map(s => map.get(s)).filter(Boolean);
+        // Append any new members not yet in localSlugs
+        sortedByOrder.forEach(m => { if (!localSlugs.includes(m.slug)) arr.push(m); });
+        return arr;
+      }, [localSlugs, sortedByOrder]);
+
+      const filtered = useMemo(() => {
+        if (!search) return ordered;
         const q = search.toLowerCase();
-        return byGroup.filter(t =>
+        return ordered.filter(t =>
           t.name.toLowerCase().includes(q) ||
           (t.title || '').toLowerCase().includes(q) ||
           (t.organization || '').toLowerCase().includes(q)
         );
-      }, [team, group, search]);
-      const label = group === 'board' ? 'Board' : 'Team';
+      }, [ordered, search]);
+
+      const move = async (slug, direction) => {
+        if (savingOrder) return;
+        const idx = ordered.findIndex(t => t.slug === slug);
+        if (idx < 0) return;
+        const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
+        if (targetIdx < 0 || targetIdx >= ordered.length) return;
+
+        const reordered = ordered.slice();
+        [reordered[idx], reordered[targetIdx]] = [reordered[targetIdx], reordered[idx]];
+        setLocalSlugs(reordered.map(t => t.slug));
+        setSavingOrder(true);
+
+        const commitLabel = group === 'board' ? 'board member' : 'team member';
+        const tasks = reordered.map(async (member, newOrder) => {
+          if ((member.order || 0) === newOrder) return { ok: true, changed: false };
+          try {
+            const filePath = `src/content/team/${member.slug}.json`;
+            const fileRes = await api.readContent(filePath);
+            if (!fileRes.success) return { ok: false, name: member.name };
+            const content = typeof fileRes.content === 'string' ? JSON.parse(fileRes.content) : fileRes.content;
+            content.order = newOrder;
+            const res = await api.saveContent(filePath, JSON.stringify(content, null, 2), `Reorder ${commitLabel}: ${content.name}`, fileRes.sha);
+            return { ok: !!res.success, changed: true, name: content.name };
+          } catch { return { ok: false, name: member.name }; }
+        });
+        const results = await Promise.all(tasks);
+        setSavingOrder(false);
+        const failed = results.filter(r => !r.ok).length;
+        if (failed > 0) {
+          addToast?.(`Reorder: ${failed} failed to save`, 'error');
+        } else {
+          addToast?.(`${label} reordered`, 'success');
+          try { logActivity('updated', 'team', `Reordered ${label.toLowerCase()}`); } catch {}
+        }
+        onReload?.();
+      };
 
       return html`
         <div class="page-header">
-          <h2>${label} (${members.length})</h2>
+          <h2>${label} (${ordered.length})</h2>
           <button class="btn btn-primary" onClick=${onAdd}>+ Add Member</button>
         </div>
         <div class="card" style="margin-bottom: 1rem; padding: 0.75rem 1rem;">
@@ -6277,22 +7003,41 @@
           </div>
         </div>
         <div class="card" style="margin-bottom: 1rem;">
-          ${members.length === 0 ? html`
+          ${filtered.length === 0 ? html`
             <p class="text-sm text-muted">No ${label.toLowerCase()} members ${search ? 'match your search' : 'added yet'}.</p>
           ` : html`
             <div class="table-wrap"><table>
-              <thead><tr><th></th><th>Name</th><th>Title</th><th>Organization</th><th>Order</th><th></th></tr></thead>
+              <thead><tr><th style="width: 80px;">Order</th><th></th><th>Name</th><th>Title</th><th>Organization</th><th></th></tr></thead>
               <tbody>
-                ${members.map(t => html`<tr key=${t.slug} onClick=${() => onEdit(t.slug)} style="cursor: pointer;">
-                  <td>${t.photo ? html`<img class="td-thumb" src="${t.photo}" alt="" style="border-radius: 50%;" />` : html`<div class="td-thumb" style="border-radius: 50%; background: #E5E4E0; display: flex; align-items: center; justify-content: center; font-size: 1.2rem;">${icons.user}</div>`}</td>
-                  <td><strong>${t.name}</strong><span class="team-title-sub text-sm" style="display: none; color: var(--color-text-secondary);">${t.title || ''}</span></td>
-                  <td class="text-sm td-hide-mobile">${t.title || '—'}</td>
-                  <td class="text-sm td-hide-mobile">${t.organization || '—'}</td>
-                  <td class="td-hide-mobile">${t.order || 0}</td>
-                  <td style="white-space: nowrap;">
-                    <button class="btn btn-ghost btn-sm" style="color: #E53E3E;" onClick=${(e) => { e.stopPropagation(); onDelete(t); }}>Delete</button>
-                  </td>
-                </tr>`)}
+                ${filtered.map(t => {
+                  const idx = ordered.findIndex(m => m.slug === t.slug);
+                  const isFirst = idx === 0;
+                  const isLast = idx === ordered.length - 1;
+                  const disabled = savingOrder || !!search;
+                  const upTitle = search ? 'Clear search to reorder' : 'Move up';
+                  const downTitle = search ? 'Clear search to reorder' : 'Move down';
+                  return html`<tr key=${t.slug} onClick=${() => onEdit(t.slug)} style="cursor: pointer;">
+                    <td onClick=${e => e.stopPropagation()} style="white-space: nowrap;">
+                      <div style="display: inline-flex; flex-direction: column; gap: 2px;">
+                        <button type="button" aria-label=${`Move ${t.name} up`} title=${upTitle}
+                          disabled=${disabled || isFirst}
+                          onClick=${() => move(t.slug, 'up')}
+                          style="width: 28px; height: 20px; padding: 0; border: 1px solid var(--color-border); background: var(--color-bg-card); border-radius: 4px; cursor: pointer; font-size: 0.65rem; line-height: 1; color: var(--color-text);">▲</button>
+                        <button type="button" aria-label=${`Move ${t.name} down`} title=${downTitle}
+                          disabled=${disabled || isLast}
+                          onClick=${() => move(t.slug, 'down')}
+                          style="width: 28px; height: 20px; padding: 0; border: 1px solid var(--color-border); background: var(--color-bg-card); border-radius: 4px; cursor: pointer; font-size: 0.65rem; line-height: 1; color: var(--color-text);">▼</button>
+                      </div>
+                    </td>
+                    <td>${t.photo ? html`<img class="td-thumb" src="${t.photo}" alt="" style="border-radius: 50%;" />` : html`<div class="td-thumb" style="border-radius: 50%; background: #E5E4E0; display: flex; align-items: center; justify-content: center; font-size: 1.2rem;">${icons.user}</div>`}</td>
+                    <td><strong>${t.name}</strong><span class="team-title-sub text-sm" style="display: none; color: var(--color-text-secondary);">${t.title || ''}</span></td>
+                    <td class="text-sm td-hide-mobile">${t.title || '—'}</td>
+                    <td class="text-sm td-hide-mobile">${t.organization || '—'}</td>
+                    <td style="white-space: nowrap;">
+                      <button class="btn btn-ghost btn-sm" style="color: #E53E3E;" onClick=${(e) => { e.stopPropagation(); onDelete(t); }}>Delete</button>
+                    </td>
+                  </tr>`;
+                })}
               </tbody>
             </table></div>
           `}
@@ -12445,9 +13190,9 @@
               </div>
               ${pTab === 'board'
                 ? html`<${TeamList} team=${team} group=${'board'} onEdit=${s => { setSubTab('board'); setEditSlug(s); }} onAdd=${() => { setSubTab('board'); setEditSlug(''); }}
-                    onDelete=${t => setDeleteModal({ type: 'board member', item: t })} />`
+                    onDelete=${t => setDeleteModal({ type: 'board member', item: t })} addToast=${addToast} onReload=${loadData} />`
                 : html`<${TeamList} team=${team} group=${'team'} onEdit=${s => { setSubTab('team'); setEditSlug(s); }} onAdd=${() => { setSubTab('team'); setEditSlug(''); }}
-                    onDelete=${t => setDeleteModal({ type: 'team member', item: t })} />`
+                    onDelete=${t => setDeleteModal({ type: 'team member', item: t })} addToast=${addToast} onReload=${loadData} />`
               }
             `;
           }

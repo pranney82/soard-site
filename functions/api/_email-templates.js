@@ -194,760 +194,285 @@ function emailWrap(preheader, body) {
 const FROM = 'Sunshine on a Ranney Day <sunshine@comms.soardcharity.com>';
 
 // ═══════════════════════════════════════════════════════════════════
-// 1. PROJECT REVEAL — Completed project announcement
+// CUSTOM — Block-based composer (only template type)
 // ═══════════════════════════════════════════════════════════════════
 
 /**
- * @param {object} kid — Kid JSON data
- * @param {object} [opts]
- * @param {string} [opts.founderNote]
- * @param {string[]} [opts.roomDescriptions]
- * @param {string} [opts.preheader]
- * @param {string} [opts.subject]
- * @param {string} [opts.headline]
- */
-export function projectReveal(kid, opts = {}) {
-  const subject = opts.subject || `${kid.name}'s Dream Room is Complete — See the Transformation`;
-  const html = buildRevealHtml(kid, opts);
-  return { from: FROM, subject, html };
-}
-
-// Keep old name as alias
-export const kidProjectComplete = projectReveal;
-
-// ═══════════════════════════════════════════════════════════════════
-// 2. PROJECT KICKOFF — Introducing an upcoming kid
-// ═══════════════════════════════════════════════════════════════════
-
-/**
- * @param {object} kid — Kid JSON data (status: 'in-progress')
- * @param {object} [opts]
- * @param {string} [opts.founderNote]
- * @param {string} [opts.preheader]
- * @param {string} [opts.subject]
- * @param {string} [opts.headline]
- */
-export function projectKickoff(kid, opts = {}) {
-  const subject = opts.subject || `Meet ${kid.name} — Our Next Dream Room Project`;
-  const html = buildKickoffHtml(kid, opts);
-  return { from: FROM, subject, html };
-}
-
-// ═══════════════════════════════════════════════════════════════════
-// 3. MONTHLY IMPACT — Recurring update for donors/partners
-// ═══════════════════════════════════════════════════════════════════
-
-/**
- * @param {object} data
- * @param {string} data.month — Display month (e.g. "March 2026")
- * @param {number} data.totalKids — Total kids served to date
- * @param {number} data.totalRooms — Total rooms built to date
- * @param {number} data.years — Years of impact
- * @param {object} [data.recentReveal] — A recently completed kid { name, slug, heroImage, diagnosis, roomTypes }
- * @param {object} [data.currentProject] — An in-progress kid { name, slug, heroImage, diagnosis, roomTypes }
- * @param {object[]} [data.upcomingEvents] — Array of { name, date, url }
- * @param {string} [data.founderNote] — Monthly personal note
+ * @param {object} blockData
+ * @param {object[]} blockData.blocks — Array of block descriptors
  * @param {object} [opts]
  * @param {string} [opts.subject]
  * @param {string} [opts.preheader]
+ * @param {string} [opts.from]
  */
-export function monthlyImpact(data, opts = {}) {
-  const subject = opts.subject || `SOARD ${data.month} Update — Building Dreams, Changing Lives`;
-  const html = buildMonthlyHtml(data, opts);
-  return { from: FROM, subject, html };
+export function customTemplate(blockData, opts = {}) {
+  const blocks = (blockData && blockData.blocks) || [];
+  const subject = opts.subject || 'A note from Sunshine on a Ranney Day';
+  const preheader = opts.preheader || '';
+  const body = blocks.map(b => renderBlock(b)).filter(Boolean).join('\n');
+  return {
+    from: opts.from || FROM,
+    subject,
+    html: emailHead(subject) + emailWrap(preheader, body),
+  };
 }
 
-// ─── REVEAL HTML builder ─────────────────────────────────────────
+// ─── Markdown-lite parser ──────────────────────────────────────────
+// Safe inline-only subset: **bold**, *italic*, [text](url). Newlines
+// collapse into <br>; double-newline starts a new <p>. HTML in the
+// input is fully escaped — nothing else can sneak through.
 
-function buildRevealHtml(kid, opts) {
-  const name = kid.name;
-  const slug = kid.slug;
-  const age = Array.isArray(kid.age) ? kid.age.join(', ') : kid.age;
-  const ageLabel = Array.isArray(kid.age) && kid.age.length > 1 ? 'Ages' : 'Age';
-  const diagnosis = kid.diagnosis || '';
-  const year = kid.year || new Date().getFullYear();
-  const roomTypes = kid.roomTypes || [];
-  const roomCount = kid.roomCount || roomTypes.length;
-  const quote = kid.quote || null;
-  const photographer = kid.photographer || null;
-  const partnerLogos = kid.partnerLogos || [];
-  const photos = kid.photos || [];
+function escapeHtml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
 
-  const profileUrl = `${SITE_URL}/kids/${slug}`;
-  const donateUrl = `${SITE_URL}/donate`;
+function escapeAttr(s) {
+  return escapeHtml(s);
+}
 
-  // ── Image selection ──
-  const heroSrc = opts.heroImage || kid.heroImage || (photos[0] && photos[0].url) || '';
-  const heroImg = cfImg(heroSrc, 'w=1200,h=900,fit=cover,gravity=face,q=80');
+function inlineMd(text) {
+  let s = escapeHtml(text || '');
+  // [text](url)
+  s = s.replace(/\[([^\]]+)\]\((https?:[^\s)]+)\)/g,
+    `<a href="$2" target="_blank" style="color:${D};text-decoration:underline;text-underline-offset:2px;">$1</a>`);
+  // **bold**
+  s = s.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
+  // *italic* — only single asterisks not adjacent to another asterisk
+  s = s.replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g, '$1<em>$2</em>');
+  return s;
+}
 
-  // Pick duo photos (2nd and 3rd from gallery, skipping hero)
-  const galleryPhotos = photos.filter(p => cfId(p.url) !== cfId(heroSrc));
-  const duoPhoto1 = galleryPhotos[0] ? cfImg(galleryPhotos[0].url, 'w=500,fit=cover,q=75') : null;
-  const duoPhoto2 = galleryPhotos[1] ? cfImg(galleryPhotos[1].url, 'w=500,fit=cover,q=75') : null;
+function paragraphMd(text, paraStyle) {
+  const blocks = String(text || '').split(/\n{2,}/).map(p => p.trim()).filter(Boolean);
+  return blocks
+    .map(p => `<p style="${paraStyle}">${inlineMd(p).replace(/\n/g, '<br>')}</p>`)
+    .join('');
+}
 
-  // Before/after: pick from mid-gallery
-  const midIdx = Math.floor(galleryPhotos.length / 2);
-  const beforePhoto = galleryPhotos[midIdx] ? cfImg(galleryPhotos[midIdx].url, 'w=560,fit=cover,q=70') : null;
-  const afterPhoto = galleryPhotos[midIdx + 1] ? cfImg(galleryPhotos[midIdx + 1].url, 'w=560,fit=cover,q=70') : null;
+// ─── Block renderers ───────────────────────────────────────────────
 
-  // Reveal: pick a later photo for the cinematic moment
-  const revealIdx = Math.min(galleryPhotos.length - 1, Math.floor(galleryPhotos.length * 0.75));
-  const revealPhoto = galleryPhotos[revealIdx] ? cfImg(galleryPhotos[revealIdx].url, 'w=1100,fit=cover,gravity=face,q=80') : null;
+const BLOCKS = {
+  hero(p) {
+    const src = p.src || '';
+    if (!src) return '';
+    const url = src.startsWith('http') ? cfImg(src, 'w=1200,fit=cover,q=80') : src;
+    const alt = escapeAttr(p.alt || '');
+    const inner = `<div style="border-radius:${p.rounded === false ? '0' : '20px'};overflow:hidden;${p.shadow !== false ? 'box-shadow:0 24px 64px rgba(0,0,0,0.1),0 4px 16px rgba(0,0,0,0.06);' : ''}"><img src="${url}" width="${p.fullBleed ? '600' : '552'}" alt="${alt}" class="fl hero-img" style="width:100%;display:block;" /></div>`;
+    const wrap = p.link
+      ? `<a href="${escapeAttr(p.link)}" target="_blank" style="display:block;text-decoration:none;">${inner}</a>`
+      : inner;
+    const sidePad = p.fullBleed ? '0' : '24px';
+    return `<tr><td style="background:${CR};padding:0 ${sidePad};">${wrap}</td></tr>`;
+  },
 
-  // ── Story text ──
-  const paras = kid.bio ? bioParagraphs(kid.bio) : [];
-  const lede = paras[0] || '';
-  const bodyParas = paras.slice(1);
+  headline(p) {
+    const text = inlineMd(p.text || '');
+    const align = p.align || 'left';
+    const size = p.size === 'small' ? 26 : p.size === 'medium' ? 30 : 34;
+    const mobileClass = size >= 30 ? 'h1m' : 'h2m';
+    return `<tr>
+      <td style="background:${CR};padding:32px 48px 0;text-align:${align};" class="pd">
+        <h1 class="${mobileClass}" style="margin:0;font-family:${SERIF};font-size:${size}px;font-weight:700;line-height:1.18;color:${D};letter-spacing:-0.02em;">${text}</h1>
+      </td></tr>`;
+  },
 
-  // ── Partner names ──
-  const partnerNames = partnerLogos.map(p => p.name).filter(Boolean);
-  const partnerList = partnerNames.join(' &middot; ');
+  subheadline(p) {
+    const text = inlineMd(p.text || '');
+    const align = p.align || 'left';
+    return `<tr>
+      <td style="background:${CR};padding:24px 48px 0;text-align:${align};" class="pd">
+        <h2 class="h2m" style="margin:0;font-family:${SERIF};font-size:22px;font-weight:700;line-height:1.3;color:${D};">${text}</h2>
+      </td></tr>`;
+  },
 
-  // ── Room labels ──
-  const roomLabel = roomTypes.join(' + ');
+  sectionLabel(p) {
+    const variant = p.variant === 'yellow' ? 'yellow' : p.variant === 'light' ? 'light' : 'dark';
+    return `<tr>
+      <td style="background:${variant === 'light' ? DD : CR};padding:32px 48px 0;" class="pd">
+        ${sLabel(escapeHtml(p.text || ''), variant)}
+      </td></tr>`;
+  },
 
-  // ── Headline ──
-  const headline = opts.headline || `Meet ${name}`;
+  paragraph(p) {
+    const align = p.align || 'left';
+    const isLede = p.style === 'lede';
+    const family = isLede ? SERIF : SANS;
+    const size = isLede ? 18 : (p.size === 'small' ? 14 : 16);
+    const lh = isLede ? 1.7 : 1.75;
+    const color = p.muted ? TM : D;
+    const paraStyle = `margin:0 0 16px;font-family:${family};font-size:${size}px;line-height:${lh};color:${color};text-align:${align};`;
+    const html = paragraphMd(p.text || '', paraStyle);
+    if (!html) return '';
+    return `<tr>
+      <td style="background:${CR};padding:20px 48px 0;" class="pd">${html.replace(/<p style="([^"]+)margin:0 0 16px;/, '<p style="$1margin:0;')}</td>
+    </tr>`;
+  },
 
-  // ── Preheader ──
-  const preheader = opts.preheader || (lede.length > 40 ? lede.slice(0, 140) + '...' : `${name}'s dream room is complete — see the transformation.`);
+  button(p) {
+    const label = inlineMd(p.label || 'Donate Now');
+    const href = escapeAttr(p.href || `${SITE_URL}/donate`);
+    const variant = p.variant === 'dark' ? 'dark' : 'primary';
+    const align = p.align || 'center';
+    return `<tr>
+      <td style="background:${CR};padding:28px 48px 0;text-align:${align};" class="pd">
+        ${pillBtn(label, href, variant)}
+      </td></tr>`;
+  },
 
-  // ── Founder note ──
-  const founderNote = opts.founderNote || `${name} reminded us why we started SOARD. Every room we build is a promise that these kids and their families aren't alone. Thank you for making this possible.`;
+  kidCard(p) {
+    const k = p.kid;
+    if (!k || !k.name) return '';
+    const slug = k.slug || '';
+    const profileUrl = `${SITE_URL}/kids/${slug}`;
+    const heroSrc = k.heroImage || (k.photos && k.photos[0] && k.photos[0].url) || '';
+    const heroImg = heroSrc ? cfImg(heroSrc, 'w=600,h=400,fit=cover,gravity=face,q=80') : '';
+    const ageLabel = Array.isArray(k.age) && k.age.length > 1 ? 'Ages' : 'Age';
+    const ageStr = Array.isArray(k.age) ? k.age.join(', ') : k.age;
+    const diagnosis = k.diagnosis ? `<p style="margin:0 0 6px;font-family:${SANS};font-size:13px;color:${TM};"><strong style="color:${D};font-weight:600;">${escapeHtml(k.diagnosis)}</strong></p>` : '';
+    const rooms = (k.roomTypes || []).map(t => `<span style="display:inline-block;padding:4px 10px;margin:0 4px 4px 0;background:${WG};border-radius:100px;font-family:${SANS};font-size:11px;font-weight:600;color:${TM};">${escapeHtml(t)}</span>`).join('');
+    const labelText = p.label || (k.status === 'completed' ? 'Project Reveal' : 'Coming Soon');
+    return `<tr>
+      <td style="background:${CR};padding:24px 48px 0;" class="pd">
+        ${sLabel(labelText)}
+        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-top:16px;background:${WG};border-radius:14px;overflow:hidden;"><tr>
+          ${heroImg ? `<td width="40%" class="st" valign="top" style="vertical-align:top;">
+            <a href="${profileUrl}" target="_blank" style="display:block;"><img src="${heroImg}" width="220" alt="${escapeAttr(k.name)}" class="fl" style="width:100%;display:block;" /></a>
+          </td>` : ''}
+          <td class="st" valign="top" style="padding:20px 22px;">
+            <p style="margin:0 0 6px;font-family:${SERIF};font-size:20px;font-weight:700;color:${D};line-height:1.2;">${escapeHtml(k.name)}${ageStr ? `<span style="font-family:${SANS};font-size:13px;font-weight:400;color:${TM};">, ${ageLabel.toLowerCase()} ${escapeHtml(ageStr)}</span>` : ''}</p>
+            ${diagnosis}
+            ${rooms ? `<div style="margin:8px 0 12px;">${rooms}</div>` : ''}
+            <a href="${profileUrl}" target="_blank" style="font-family:${SANS};font-size:13px;font-weight:600;color:${D};text-decoration:underline;text-underline-offset:3px;">${escapeHtml(p.linkLabel || `See ${k.name}'s story`)} &rarr;</a>
+          </td>
+        </tr></table>
+      </td></tr>`;
+  },
 
-  // ── Room descriptions ──
-  const roomDescs = roomTypes.map((type, i) => {
-    if (opts.roomDescriptions && opts.roomDescriptions[i]) return opts.roomDescriptions[i];
-    return ROOM_DESCRIPTIONS[type] || `A custom ${type.toLowerCase()} designed around ${name}'s unique needs.`;
-  });
+  stats(p) {
+    const items = (p.items || []).slice(0, 3);
+    if (!items.length) return '';
+    const cols = items.map((it, i) => `
+      ${i > 0 ? `<td width="5%"><div style="width:1px;height:36px;background:rgba(255,255,255,0.08);margin:0 auto;"></div></td>` : ''}
+      <td width="${items.length === 3 ? '30%' : '47%'}" style="text-align:center;">
+        <span style="font-family:${SERIF};font-size:36px;font-weight:700;color:${Y};line-height:1;display:block;">${escapeHtml(String(it.value))}</span>
+        <span style="font-family:${SANS};font-size:11px;font-weight:600;color:rgba(255,255,255,0.6);text-transform:uppercase;letter-spacing:0.12em;display:block;margin-top:6px;">${escapeHtml(it.label || '')}</span>
+      </td>
+    `).join('');
+    return `<tr>
+      <td style="background:${CR};padding:32px 0 0;">
+        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background:${DD};"><tr>
+          <td style="padding:36px 48px;" class="pd">
+            <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%"><tr>${cols}</tr></table>
+          </td>
+        </tr></table>
+      </td></tr>`;
+  },
 
-  const body = `<!-- HERO PHOTO -->
-      <tr>
-        <td style="background:${CR};padding:0;">
-          <a href="${profileUrl}" target="_blank" style="display:block;text-decoration:none;">
-            <div style="margin:0 24px;border-radius:20px;overflow:hidden;box-shadow:0 24px 64px rgba(0,0,0,0.1),0 4px 16px rgba(0,0,0,0.06);">
-              <img src="${heroImg}" width="552" alt="${name} in their dream room" class="fl hero-img" style="width:100%;display:block;" />
+  photo(p) {
+    const src = p.src || '';
+    if (!src) return '';
+    const url = src.startsWith('http') ? cfImg(src, 'w=1100,fit=cover,q=80') : src;
+    const caption = p.caption ? `<p style="margin:10px 0 0;text-align:center;font-family:${SANS};font-size:12px;color:${TL};letter-spacing:0.02em;font-style:italic;">${escapeHtml(p.caption)}</p>` : '';
+    return `<tr>
+      <td style="background:${CR};padding:24px 48px 0;" class="pd">
+        <img src="${url}" width="552" alt="${escapeAttr(p.alt || '')}" class="fl" style="width:100%;border-radius:12px;display:block;" />
+        ${caption}
+      </td></tr>`;
+  },
+
+  photoGrid(p) {
+    const items = (p.items || []).filter(i => i.src).slice(0, 3);
+    if (items.length < 2) return '';
+    const cols = items.length === 3 ? items : items.slice(0, 2);
+    const colW = Math.floor(94 / cols.length);
+    const cells = cols.map((it, i) => {
+      const url = it.src.startsWith('http') ? cfImg(it.src, 'w=500,fit=cover,q=75') : it.src;
+      return `${i > 0 ? `<td width="2%" class="hm">&nbsp;</td>` : ''}
+        <td width="${colW}%" class="st ${i > 0 ? 'mob-stack' : ''}" valign="top">
+          <img src="${url}" width="244" alt="${escapeAttr(it.alt || '')}" class="fl" style="width:100%;border-radius:12px;display:block;" />
+          ${it.caption ? `<p style="margin:8px 0 0;font-family:${SANS};font-size:11px;color:${TL};letter-spacing:0.02em;">${escapeHtml(it.caption)}</p>` : ''}
+        </td>`;
+    }).join('');
+    return `<tr>
+      <td style="background:${CR};padding:24px 48px 0;" class="pd">
+        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%"><tr>${cells}</tr></table>
+      </td></tr>`;
+  },
+
+  quote(p) {
+    const text = inlineMd(p.text || '');
+    const cite = p.cite ? `<p style="margin:16px 0 0;font-family:${SANS};font-size:12px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:${TL};">— ${escapeHtml(p.cite)}</p>` : '';
+    return `<tr>
+      <td style="background:${CR};padding:32px 48px 0;" class="pd">
+        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background:${WG};border-radius:16px;"><tr>
+          <td style="padding:32px;">
+            <div style="margin-bottom:12px;">
+              <svg width="32" height="32" viewBox="0 0 48 48" fill="none" style="display:block;"><path d="M14 28c-2.2 0-4-1.8-4-4 0-6.6 5.4-12 12-12v4c-4.4 0-8 3.6-8 8h4c2.2 0 4 1.8 4 4s-1.8 4-4 4h-4zm20 0c-2.2 0-4-1.8-4-4 0-6.6 5.4-12 12-12v4c-4.4 0-8 3.6-8 8h4c2.2 0 4 1.8 4 4s-1.8 4-4 4h-4z" fill="${Y}"/></svg>
             </div>
-          </a>
-        </td>
-      </tr>
+            <p style="margin:0;font-family:${SERIF};font-size:20px;font-style:italic;line-height:1.5;color:${D};">${text}</p>
+            ${cite}
+          </td></tr></table>
+      </td></tr>`;
+  },
 
-      <!-- NAME PILL -->
-      <tr>
-        <td style="background:${CR};padding:0 48px;" class="pd">
-          <div style="margin-top:-22px;position:relative;z-index:2;">
-            <table role="presentation" cellspacing="0" cellpadding="0" border="0"><tr>
-              <td style="padding:10px 22px;background:rgba(30,31,37,0.85);border-radius:100px;font-family:${SANS};font-size:13px;font-weight:600;color:#fff;letter-spacing:0.01em;">
-                ${name}${age ? `, ${ageLabel.toLowerCase()} ${age}` : ''}
-              </td>
-            </tr></table>
-          </div>
-        </td>
-      </tr>
+  divider(p) {
+    return `<tr>
+      <td style="background:${CR};padding:${p.size === 'large' ? '40' : '24'}px 48px;" class="pd">
+        <div style="height:1px;background:${BD};"></div>
+      </td></tr>`;
+  },
 
-      <!-- DETAIL CHIPS -->
-      <tr>
-        <td style="background:${CR};padding:16px 48px 0;" class="pd">
-          <table role="presentation" cellspacing="0" cellpadding="0" border="0"><tr>
-            ${diagnosis ? `<td style="padding:7px 16px;background:${WG};border-radius:100px;font-family:${SANS};font-size:12px;color:${TL};"><span style="font-weight:400;">Diagnosis</span>&nbsp;&nbsp;<strong style="color:${D};">${diagnosis}</strong></td><td width="8"></td>` : ''}
-            ${roomLabel ? `<td style="padding:7px 16px;background:${WG};border-radius:100px;font-family:${SANS};font-size:12px;color:${TL};"><span style="font-weight:400;">Rooms</span>&nbsp;&nbsp;<strong style="color:${D};">${roomLabel}</strong></td><td width="8"></td>` : ''}
-            <td style="padding:7px 16px;background:${WG};border-radius:100px;font-family:${SANS};font-size:12px;color:${TL};"><span style="font-weight:400;">Year</span>&nbsp;&nbsp;<strong style="color:${D};">${year}</strong></td>
-          </tr></table>
-        </td>
-      </tr>
+  signature(p) {
+    const note = inlineMd(p.note || '');
+    const from = escapeHtml(p.from || 'Peter & Holly Ranney');
+    const title = escapeHtml(p.title || 'Founders, Sunshine on a Ranney Day');
+    return `<tr>
+      <td style="background:${CR};padding:32px 48px 0;" class="pd">
+        <div style="height:1px;background:${BD};margin-bottom:28px;"></div>
+        ${note ? `<p style="margin:0 0 18px;font-family:${SERIF};font-size:17px;font-style:italic;line-height:1.7;color:${D};">${note}</p>` : ''}
+        <p style="margin:0 0 2px;font-family:${SANS};font-size:14px;font-weight:700;color:${D};">${from}</p>
+        <p style="margin:0;font-family:${SANS};font-size:13px;color:${TM};">${title}</p>
+      </td></tr>`;
+  },
 
-      <!-- HEADLINE -->
-      <tr>
-        <td style="background:${CR};padding:32px 48px 0;" class="pd">
-          ${sLabel('Project Complete &middot; ' + year)}
-          <h1 class="h1m" style="margin:20px 0 0;font-family:${SERIF};font-size:34px;font-weight:700;line-height:1.18;color:${D};letter-spacing:-0.025em;">
-            ${headline}
-          </h1>
-        </td>
-      </tr>
+  spacer(p) {
+    const h = Math.max(8, Math.min(96, parseInt(p.height, 10) || 24));
+    return `<tr><td style="background:${CR};padding:${h}px 0;line-height:0;font-size:0;">&nbsp;</td></tr>`;
+  },
 
-      <!-- LEDE -->
-      ${lede ? `<tr>
-        <td style="background:${CR};padding:24px 48px 0;" class="pd">
-          <p style="margin:0;font-family:${SERIF};font-size:18px;line-height:1.7;color:${D};font-weight:400;">${lede}</p>
-        </td>
-      </tr>` : ''}
+  eventCard(p) {
+    const name = escapeHtml(p.name || 'Upcoming Event');
+    const date = p.date ? escapeHtml(p.date) : '';
+    const url = escapeAttr(p.url || `${SITE_URL}/events`);
+    const desc = p.description ? `<p style="margin:6px 0 0;font-family:${SANS};font-size:13px;line-height:1.6;color:${TM};">${escapeHtml(p.description)}</p>` : '';
+    return `<tr>
+      <td style="background:${CR};padding:16px 48px 0;" class="pd">
+        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%"><tr>
+          <td style="padding:18px 22px;background:${WG};border-radius:12px;border-left:3px solid ${Y};">
+            <p style="margin:0 0 2px;font-family:${SANS};font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.12em;color:${TL};">${date || 'Save the date'}</p>
+            <p style="margin:0;font-family:${SERIF};font-size:18px;font-weight:700;color:${D};line-height:1.3;"><a href="${url}" target="_blank" style="color:${D};text-decoration:none;">${name} &rarr;</a></p>
+            ${desc}
+          </td></tr></table>
+      </td></tr>`;
+  },
+};
 
-      <!-- DUO PHOTOS -->
-      ${duoPhoto1 && duoPhoto2 ? `<tr>
-        <td style="background:${CR};padding:32px 48px 0;" class="pd">
-          <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%"><tr>
-            <td width="49%" class="st" valign="top">
-              <img src="${duoPhoto1}" width="244" alt="${name}" style="width:100%;border-radius:12px;display:block;" class="fl" />
-            </td>
-            <td width="2%" class="hm">&nbsp;</td>
-            <td width="49%" class="st mob-stack" valign="top">
-              <img src="${duoPhoto2}" width="244" alt="${name}" style="width:100%;border-radius:12px;display:block;" class="fl" />
-            </td>
-          </tr></table>
-          ${photographer ? `<p style="margin:8px 0 0;font-family:${SANS};font-size:11px;color:${TL};letter-spacing:0.02em;">Photos by ${photographer}</p>` : ''}
-        </td>
-      </tr>` : ''}
-
-      <!-- STORY BODY -->
-      ${bodyParas.length > 0 ? `<tr>
-        <td style="background:${CR};padding:28px 48px 0;" class="pd">
-          ${bodyParas.map(p => `<p style="margin:0 0 20px;font-family:${SANS};font-size:16px;line-height:1.75;color:${D};">${p}</p>`).join('')}
-        </td>
-      </tr>` : ''}
-
-      <!-- QUOTE -->
-      ${quote ? `<tr>
-        <td style="background:${CR};padding:40px 48px;" class="pd">
-          <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background:${WG};border-radius:16px;"><tr>
-            <td style="padding:36px 32px 32px;">
-              <div style="margin-bottom:12px;">
-                <svg width="36" height="36" viewBox="0 0 48 48" fill="none" style="display:block;"><path d="M14 28c-2.2 0-4-1.8-4-4 0-6.6 5.4-12 12-12v4c-4.4 0-8 3.6-8 8h4c2.2 0 4 1.8 4 4s-1.8 4-4 4h-4zm20 0c-2.2 0-4-1.8-4-4 0-6.6 5.4-12 12-12v4c-4.4 0-8 3.6-8 8h4c2.2 0 4 1.8 4 4s-1.8 4-4 4h-4z" fill="${Y}"/></svg>
-              </div>
-              <p style="margin:0;font-family:${SERIF};font-size:22px;font-style:italic;line-height:1.45;color:${D};">${quote}</p>
-              <p style="margin:16px 0 0;font-family:${SANS};font-size:12px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:${TL};">— ${name}</p>
-            </td>
-          </tr></table>
-        </td>
-      </tr>` : ''}
-
-      <!-- TRANSITION -->
-      <tr>
-        <td style="background:${CR};padding:${quote ? '0' : '40px'} 48px;text-align:center;" class="pd">
-          <p style="margin:0;font-family:${SERIF};font-size:24px;font-weight:700;line-height:1.3;color:${D};">
-            That all ${hl('changed')}.
-          </p>
-        </td>
-      </tr>
-
-      <!-- IMPACT RIBBON -->
-      <tr>
-        <td style="background:${CR};padding:40px 0 0;">
-          <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background:${DD};"><tr>
-            <td style="padding:36px 48px;" class="pd">
-              <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%"><tr>
-                <td width="30%" style="text-align:center;">
-                  <span style="font-family:${SERIF};font-size:36px;font-weight:700;color:${Y};line-height:1;display:block;">${roomCount}</span>
-                  <span style="font-family:${SANS};font-size:11px;font-weight:600;color:rgba(255,255,255,0.6);text-transform:uppercase;letter-spacing:0.12em;display:block;margin-top:6px;">Room${roomCount !== 1 ? 's' : ''} Built</span>
-                </td>
-                <td width="5%"><div style="width:1px;height:36px;background:rgba(255,255,255,0.08);margin:0 auto;"></div></td>
-                <td width="30%" style="text-align:center;">
-                  <span style="font-family:${SERIF};font-size:36px;font-weight:700;color:${Y};line-height:1;display:block;">${partnerNames.length}</span>
-                  <span style="font-family:${SANS};font-size:11px;font-weight:600;color:rgba(255,255,255,0.6);text-transform:uppercase;letter-spacing:0.12em;display:block;margin-top:6px;">Partners</span>
-                </td>
-                <td width="5%"><div style="width:1px;height:36px;background:rgba(255,255,255,0.08);margin:0 auto;"></div></td>
-                <td width="30%" style="text-align:center;">
-                  <span style="font-family:${SERIF};font-size:36px;font-weight:700;color:${Y};line-height:1;display:block;">1</span>
-                  <span style="font-family:${SANS};font-size:11px;font-weight:600;color:rgba(255,255,255,0.6);text-transform:uppercase;letter-spacing:0.12em;display:block;margin-top:6px;">Dream</span>
-                </td>
-              </tr></table>
-            </td>
-          </tr></table>
-        </td>
-      </tr>
-
-      <!-- WHAT WE BUILT -->
-      ${roomTypes.length > 0 ? `<tr>
-        <td style="background:${CR};padding:44px 48px 0;" class="pd">
-          ${sLabel('What We Built', 'yellow')}
-          <h2 class="h2m" style="margin:20px 0 8px;font-family:${SERIF};font-size:26px;font-weight:700;line-height:1.25;color:${D};letter-spacing:-0.01em;">
-            ${roomTypes.length === 1 ? `One room, one ${hl('purpose')}` : roomTypes.length === 2 ? `Two rooms, one ${hl('purpose')}` : `${roomTypes.length} rooms, one ${hl('purpose')}`}
-          </h2>
-          <p style="margin:0 0 28px;font-family:${SANS};font-size:15px;line-height:1.7;color:${TM};">
-            Safety, independence, and joy — at the center of every decision.
-          </p>
-        </td>
-      </tr>
-      ${roomTypes.map((type, i) => `<tr>
-        <td style="background:${CR};padding:0 48px ${i < roomTypes.length - 1 ? '12px' : '0'};" class="pd">
-          <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%"><tr>
-            <td style="padding:24px;background:${WG};border-radius:12px;">
-              <span style="font-family:${SERIF};font-size:26px;font-weight:700;color:${BD};line-height:1;display:block;margin-bottom:6px;">${String(i + 1).padStart(2, '0')}</span>
-              <p style="margin:0 0 6px;font-family:${SANS};font-size:16px;font-weight:700;color:${D};">${type}</p>
-              <div style="width:32px;height:2px;background:${Y};margin-bottom:14px;"></div>
-              <p style="margin:0;font-family:${SANS};font-size:14px;line-height:1.7;color:${TM};">${roomDescs[i]}</p>
-            </td>
-          </tr></table>
-        </td>
-      </tr>`).join('')}` : ''}
-
-      <!-- THE TRANSFORMATION -->
-      ${beforePhoto && afterPhoto ? `<tr>
-        <td style="background:${CR};padding:40px 48px 0;" class="pd">
-          ${sLabel('The Transformation')}
-          <h2 class="h2m" style="margin:20px 0 24px;font-family:${SERIF};font-size:26px;font-weight:700;line-height:1.25;color:${D};">
-            From struggle to ${hl('sunshine')}
-          </h2>
-        </td>
-      </tr>
-      <tr>
-        <td style="background:${CR};padding:0 48px;" class="pd">
-          <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%"><tr>
-            <td width="49%" class="st" valign="top">
-              <p style="margin:0 0 8px;font-family:${SANS};font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.14em;color:${TL};">Before</p>
-              <img src="${beforePhoto}" width="244" alt="${name}'s space before renovation" style="width:100%;border-radius:12px;display:block;" class="fl">
-            </td>
-            <td width="2%" class="hm">&nbsp;</td>
-            <td width="49%" class="st mob-stack" valign="top">
-              <p style="margin:0 0 8px;font-family:${SANS};font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.14em;color:${TL};">After</p>
-              <img src="${afterPhoto}" width="244" alt="${name}'s beautiful new space" style="width:100%;border-radius:12px;display:block;" class="fl">
-            </td>
-          </tr></table>
-        </td>
-      </tr>` : ''}
-
-      <!-- REVEAL PHOTO -->
-      ${revealPhoto ? `<tr>
-        <td style="background:${CR};padding:28px 24px 0;">
-          <div style="border-radius:16px;overflow:hidden;box-shadow:0 16px 48px rgba(0,0,0,0.1);">
-            <img src="${revealPhoto}" width="552" alt="${name} seeing their new room for the first time" style="width:100%;display:block;" class="fl" />
-          </div>
-          <p style="margin:10px 0 0;text-align:center;font-family:${SANS};font-size:12px;color:${TL};letter-spacing:0.02em;font-style:italic;">The big reveal — the moment everything changed</p>
-        </td>
-      </tr>` : ''}
-
-      <!-- PRIMARY CTA -->
-      <tr>
-        <td style="background:${CR};padding:40px 48px 0;text-align:center;" class="pd">
-          ${pillBtn(`See ${name}'s Full Story &rarr;`, profileUrl)}
-        </td>
-      </tr>
-
-      <!-- PARTNERS -->
-      ${partnerNames.length > 0 ? `<tr>
-        <td style="background:${CR};padding:48px 0 0;">
-          <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background:${DD};"><tr>
-            <td style="padding:44px 48px;" class="pd">
-              ${sLabel('Our Partners', 'light')}
-              <h2 class="h2m" style="margin:20px 0 12px;font-family:${SERIF};font-size:24px;font-weight:700;line-height:1.3;color:#fff;">
-                Made possible by ${hl('incredible', 'dark')} partners
-              </h2>
-              <p style="margin:0 0 24px;font-family:${SANS};font-size:15px;line-height:1.7;color:rgba(255,255,255,0.6);">
-                This project wouldn't exist without the generosity of partners who show up, project after project, with heart and hands ready to build.
-              </p>
-              <p style="margin:0;font-family:${SANS};font-size:13px;line-height:2.2;color:rgba(255,255,255,0.35);">${partnerList}</p>
-            </td>
-          </tr></table>
-        </td>
-      </tr>` : ''}
-
-      <!-- IMPACT TIERS -->
-      <tr>
-        <td style="background:${CR};padding:48px 48px 0;" class="pd">
-          ${sLabel('Your Impact', 'yellow')}
-          <h2 class="h2m" style="margin:20px 0 8px;font-family:${SERIF};font-size:24px;font-weight:700;line-height:1.25;color:${D};">
-            Every dollar has a ${hl('purpose')}
-          </h2>
-          <p style="margin:0 0 28px;font-family:${SANS};font-size:15px;line-height:1.7;color:${TM};">
-            Families are on our waitlist right now. Your gift brings us closer to saying ${hl('yes')} to the next child.
-          </p>
-        </td>
-      </tr>
-      <tr>
-        <td style="background:${CR};padding:0 48px 12px;" class="pd">
-          <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%"><tr>
-            <td style="padding:28px;background:${D};border-radius:12px;text-align:center;">
-              <span style="display:inline-block;padding:5px 14px;background:${Y};border-radius:100px;font-family:${SANS};font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:${D};margin-bottom:14px;">Most Popular</span>
-              <p style="margin:0 0 4px;font-family:${SERIF};font-size:34px;font-weight:700;color:#fff;">$500</p>
-              <p style="margin:0 0 8px;font-family:${SANS};font-size:14px;font-weight:600;color:${Y};">Furniture &amp; Flooring</p>
-              <p style="margin:0 0 22px;font-family:${SANS};font-size:13px;line-height:1.6;color:rgba(255,255,255,0.55);">Adaptive furniture or accessible flooring — the structural pieces that change a child's daily life.</p>
-              ${pillBtn('Give $500 &rarr;', ZEFFY_BASE + '?amount=500')}
-            </td>
-          </tr></table>
-        </td>
-      </tr>
-      <tr>
-        <td style="background:${CR};padding:0 48px;" class="pd">
-          <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%"><tr>
-            <td width="49%" class="st" valign="top">
-              <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%"><tr>
-                <td style="padding:22px;background:${WG};border-radius:12px;text-align:center;">
-                  <p style="margin:0 0 2px;font-family:${SERIF};font-size:26px;font-weight:700;color:${D};">$60</p>
-                  <p style="margin:0 0 8px;font-family:${SANS};font-size:13px;font-weight:600;color:${TM};">Paint &amp; Supplies</p>
-                  <p style="margin:0 0 16px;font-family:${SANS};font-size:12px;line-height:1.6;color:${TL};">Transforms walls into a child's dream canvas.</p>
-                  <a href="${ZEFFY_BASE}?amount=60" target="_blank" style="font-family:${SANS};font-size:13px;font-weight:600;color:${D};text-decoration:underline;text-underline-offset:3px;">Give $60 &rarr;</a>
-                </td>
-              </tr></table>
-            </td>
-            <td width="2%" class="hm">&nbsp;</td>
-            <td width="49%" class="st mob-stack" valign="top">
-              <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%"><tr>
-                <td style="padding:22px;background:${WG};border-radius:12px;text-align:center;">
-                  <p style="margin:0 0 2px;font-family:${SERIF};font-size:26px;font-weight:700;color:${D};">$125</p>
-                  <p style="margin:0 0 8px;font-family:${SANS};font-size:13px;font-weight:600;color:${TM};">Bedding &amp; Decor</p>
-                  <p style="margin:0 0 16px;font-family:${SANS};font-size:12px;line-height:1.6;color:${TL};">The details that make a room feel like home.</p>
-                  <a href="${ZEFFY_BASE}?amount=125" target="_blank" style="font-family:${SANS};font-size:13px;font-weight:600;color:${D};text-decoration:underline;text-underline-offset:3px;">Give $125 &rarr;</a>
-                </td>
-              </tr></table>
-            </td>
-          </tr></table>
-        </td>
-      </tr>
-
-      <!-- TRUST SIGNALS -->
-      <tr>
-        <td style="background:${CR};padding:24px 48px 0;text-align:center;" class="pd">
-          <p style="margin:0;font-family:${SANS};font-size:12px;color:${TL};">
-            <span style="vertical-align:middle;display:inline-block;margin-right:4px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" style="vertical-align:middle;"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" stroke="${TL}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="m9 12 2 2 4-4" stroke="${TL}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
-            Tax-Deductible<span style="padding:0 10px;color:${BD};">&middot;</span>Zero Platform Fees<span style="padding:0 10px;color:${BD};">&middot;</span>501(c)(3)
-          </p>
-        </td>
-      </tr>
-
-      <!-- FOUNDER NOTE -->
-      <tr>
-        <td style="background:${CR};padding:40px 48px 0;" class="pd">
-          <div style="height:1px;background:${BD};margin-bottom:36px;"></div>
-          <p style="margin:0 0 20px;font-family:${SERIF};font-size:17px;font-style:italic;line-height:1.7;color:${D};">${founderNote}</p>
-          <p style="margin:0 0 2px;font-family:${SANS};font-size:14px;font-weight:700;color:${D};">Peter &amp; Holly Ranney</p>
-          <p style="margin:0;font-family:${SANS};font-size:13px;color:${TM};">Founders, Sunshine on a Ranney Day</p>
-        </td>
-      </tr>
-
-      <!-- FINAL CTA -->
-      <tr>
-        <td style="background:${CR};padding:40px 48px 48px;text-align:center;" class="pd">
-          ${pillBtn('Donate Now &rarr;', donateUrl, 'dark')}
-        </td>
-      </tr>
-
-`;
-
-  return emailHead(`${name}'s Dream Room is Complete`) + emailWrap(preheader, body);
+function renderBlock(b) {
+  if (!b || !b.type) return '';
+  const fn = BLOCKS[b.type];
+  if (!fn) return '';
+  try {
+    return fn(b.props || b) || '';
+  } catch (e) {
+    console.error(`Block render error (${b.type}):`, e);
+    return '';
+  }
 }
 
-// ─── KICKOFF HTML builder ────────────────────────────────────────
-
-function buildKickoffHtml(kid, opts) {
-  const name = kid.name;
-  const slug = kid.slug;
-  const age = Array.isArray(kid.age) ? kid.age.join(', ') : kid.age;
-  const ageLabel = Array.isArray(kid.age) && kid.age.length > 1 ? 'Ages' : 'Age';
-  const diagnosis = kid.diagnosis || '';
-  const year = kid.year || new Date().getFullYear();
-  const roomTypes = kid.roomTypes || [];
-  const quote = kid.quote || null;
-  const photos = kid.photos || [];
-
-  const profileUrl = `${SITE_URL}/kids/${slug}`;
-  const donateUrl = kid.fundraisingUrl || `${SITE_URL}/donate`;
-  const roomLabel = roomTypes.join(' + ');
-
-  const heroSrc = opts.heroImage || kid.heroImage || (photos[0] && photos[0].url) || '';
-  const heroImg = heroSrc ? cfImg(heroSrc, 'w=1200,h=900,fit=cover,gravity=face,q=80') : '';
-
-  const paras = kid.bio ? bioParagraphs(kid.bio) : [];
-  const lede = paras[0] || '';
-  const bodyParas = paras.slice(1, 3); // Keep it shorter for kickoff
-
-  const headline = opts.headline || `Meet ${name}`;
-  const preheader = opts.preheader || `Meet ${name} — our next dream room project. Here's their story and how you can help.`;
-  const founderNote = opts.founderNote || `We can't wait to get started on ${name}'s project. With your help, we'll transform their space into something that changes daily life for ${name} and their entire family.`;
-
-  const body = `<!-- HERO PHOTO -->
-      ${heroImg ? `<tr>
-        <td style="background:${CR};padding:0;">
-          <a href="${profileUrl}" target="_blank" style="display:block;text-decoration:none;">
-            <div style="margin:0 24px;border-radius:20px;overflow:hidden;box-shadow:0 24px 64px rgba(0,0,0,0.1),0 4px 16px rgba(0,0,0,0.06);">
-              <img src="${heroImg}" width="552" alt="${name}" class="fl hero-img" style="width:100%;display:block;" />
-            </div>
-          </a>
-        </td>
-      </tr>` : ''}
-
-      <!-- NAME PILL + BADGE -->
-      <tr>
-        <td style="background:${CR};padding:0 48px;" class="pd">
-          <div style="margin-top:${heroImg ? '-22px' : '24px'};position:relative;z-index:2;">
-            <table role="presentation" cellspacing="0" cellpadding="0" border="0"><tr>
-              <td style="padding:10px 22px;background:rgba(30,31,37,0.85);border-radius:100px;font-family:${SANS};font-size:13px;font-weight:600;color:#fff;letter-spacing:0.01em;">
-                ${name}${age ? `, ${ageLabel.toLowerCase()} ${age}` : ''}
-              </td>
-              <td width="8"></td>
-              <td style="padding:8px 16px;background:${Y};border-radius:100px;font-family:${SANS};font-size:11px;font-weight:700;color:${D};letter-spacing:0.08em;text-transform:uppercase;">
-                Coming Soon
-              </td>
-            </tr></table>
-          </div>
-        </td>
-      </tr>
-
-      <!-- DETAIL CHIPS -->
-      <tr>
-        <td style="background:${CR};padding:16px 48px 0;" class="pd">
-          <table role="presentation" cellspacing="0" cellpadding="0" border="0"><tr>
-            ${diagnosis ? `<td style="padding:7px 16px;background:${WG};border-radius:100px;font-family:${SANS};font-size:12px;color:${TL};"><span style="font-weight:400;">Diagnosis</span>&nbsp;&nbsp;<strong style="color:${D};">${diagnosis}</strong></td><td width="8"></td>` : ''}
-            ${roomLabel ? `<td style="padding:7px 16px;background:${WG};border-radius:100px;font-family:${SANS};font-size:12px;color:${TL};"><span style="font-weight:400;">Rooms</span>&nbsp;&nbsp;<strong style="color:${D};">${roomLabel}</strong></td><td width="8"></td>` : ''}
-            <td style="padding:7px 16px;background:${WG};border-radius:100px;font-family:${SANS};font-size:12px;color:${TL};"><span style="font-weight:400;">Year</span>&nbsp;&nbsp;<strong style="color:${D};">${year}</strong></td>
-          </tr></table>
-        </td>
-      </tr>
-
-      <!-- HEADLINE -->
-      <tr>
-        <td style="background:${CR};padding:32px 48px 0;" class="pd">
-          ${sLabel('Introducing &middot; ' + year)}
-          <h1 class="h1m" style="margin:20px 0 0;font-family:${SERIF};font-size:34px;font-weight:700;line-height:1.18;color:${D};letter-spacing:-0.025em;">
-            ${headline}
-          </h1>
-        </td>
-      </tr>
-
-      <!-- LEDE -->
-      ${lede ? `<tr>
-        <td style="background:${CR};padding:24px 48px 0;" class="pd">
-          <p style="margin:0;font-family:${SERIF};font-size:18px;line-height:1.7;color:${D};font-weight:400;">${lede}</p>
-        </td>
-      </tr>` : ''}
-
-      <!-- STORY BODY -->
-      ${bodyParas.length > 0 ? `<tr>
-        <td style="background:${CR};padding:24px 48px 0;" class="pd">
-          ${bodyParas.map(p => `<p style="margin:0 0 20px;font-family:${SANS};font-size:16px;line-height:1.75;color:${D};">${p}</p>`).join('')}
-        </td>
-      </tr>` : ''}
-
-      <!-- QUOTE -->
-      ${quote ? `<tr>
-        <td style="background:${CR};padding:36px 48px;" class="pd">
-          <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background:${WG};border-radius:16px;"><tr>
-            <td style="padding:36px 32px 32px;">
-              <div style="margin-bottom:12px;">
-                <svg width="36" height="36" viewBox="0 0 48 48" fill="none" style="display:block;"><path d="M14 28c-2.2 0-4-1.8-4-4 0-6.6 5.4-12 12-12v4c-4.4 0-8 3.6-8 8h4c2.2 0 4 1.8 4 4s-1.8 4-4 4h-4zm20 0c-2.2 0-4-1.8-4-4 0-6.6 5.4-12 12-12v4c-4.4 0-8 3.6-8 8h4c2.2 0 4 1.8 4 4s-1.8 4-4 4h-4z" fill="${Y}"/></svg>
-              </div>
-              <p style="margin:0;font-family:${SERIF};font-size:22px;font-style:italic;line-height:1.45;color:${D};">${quote}</p>
-              <p style="margin:16px 0 0;font-family:${SANS};font-size:12px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:${TL};">— ${name}</p>
-            </td>
-          </tr></table>
-        </td>
-      </tr>` : ''}
-
-      <!-- THE PLAN -->
-      ${roomTypes.length > 0 ? `<tr>
-        <td style="background:${CR};padding:${quote ? '0' : '36px'} 48px 0;" class="pd">
-          ${sLabel('The Plan', 'yellow')}
-          <h2 class="h2m" style="margin:20px 0 8px;font-family:${SERIF};font-size:26px;font-weight:700;line-height:1.25;color:${D};">
-            What we're ${hl('building')}
-          </h2>
-          <p style="margin:0 0 28px;font-family:${SANS};font-size:15px;line-height:1.7;color:${TM};">
-            Here's what ${name}'s renovation will include:
-          </p>
-        </td>
-      </tr>
-      ${roomTypes.map((type, i) => {
-        const desc = ROOM_DESCRIPTIONS[type] || `A custom ${type.toLowerCase()} designed around ${name}'s unique needs.`;
-        return `<tr>
-        <td style="background:${CR};padding:0 48px ${i < roomTypes.length - 1 ? '12px' : '0'};" class="pd">
-          <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%"><tr>
-            <td style="padding:24px;background:${WG};border-radius:12px;">
-              <span style="font-family:${SERIF};font-size:26px;font-weight:700;color:${BD};line-height:1;display:block;margin-bottom:6px;">${String(i + 1).padStart(2, '0')}</span>
-              <p style="margin:0 0 6px;font-family:${SANS};font-size:16px;font-weight:700;color:${D};">${type}</p>
-              <div style="width:32px;height:2px;background:${Y};margin-bottom:14px;"></div>
-              <p style="margin:0;font-family:${SANS};font-size:14px;line-height:1.7;color:${TM};">${desc}</p>
-            </td>
-          </tr></table>
-        </td>
-      </tr>`;
-      }).join('')}` : ''}
-
-      <!-- HOW TO HELP -->
-      <tr>
-        <td style="background:${CR};padding:44px 48px 0;" class="pd">
-          ${sLabel('How You Can Help', 'yellow')}
-          <h2 class="h2m" style="margin:20px 0 12px;font-family:${SERIF};font-size:26px;font-weight:700;line-height:1.25;color:${D};">
-            Help us build ${name}'s ${hl('dream')}
-          </h2>
-          <p style="margin:0 0 28px;font-family:${SANS};font-size:15px;line-height:1.7;color:${TM};">
-            Every dollar goes directly to materials, labor, and design for ${name}'s new space. Zero platform fees.
-          </p>
-        </td>
-      </tr>
-
-      <!-- DONATE CTA -->
-      <tr>
-        <td style="background:${CR};padding:0 48px;text-align:center;" class="pd">
-          ${pillBtn(`Donate for ${name} &rarr;`, donateUrl)}
-        </td>
-      </tr>
-
-      <!-- TRUST -->
-      <tr>
-        <td style="background:${CR};padding:24px 48px 0;text-align:center;" class="pd">
-          <p style="margin:0;font-family:${SANS};font-size:12px;color:${TL};">
-            <span style="vertical-align:middle;display:inline-block;margin-right:4px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" style="vertical-align:middle;"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" stroke="${TL}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="m9 12 2 2 4-4" stroke="${TL}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
-            Tax-Deductible<span style="padding:0 10px;color:${BD};">&middot;</span>Zero Platform Fees<span style="padding:0 10px;color:${BD};">&middot;</span>501(c)(3)
-          </p>
-        </td>
-      </tr>
-
-      <!-- FOUNDER NOTE -->
-      <tr>
-        <td style="background:${CR};padding:40px 48px 0;" class="pd">
-          <div style="height:1px;background:${BD};margin-bottom:36px;"></div>
-          <p style="margin:0 0 20px;font-family:${SERIF};font-size:17px;font-style:italic;line-height:1.7;color:${D};">${founderNote}</p>
-          <p style="margin:0 0 2px;font-family:${SANS};font-size:14px;font-weight:700;color:${D};">Peter &amp; Holly Ranney</p>
-          <p style="margin:0;font-family:${SANS};font-size:13px;color:${TM};">Founders, Sunshine on a Ranney Day</p>
-        </td>
-      </tr>
-
-      <!-- FINAL CTA -->
-      <tr>
-        <td style="background:${CR};padding:40px 48px 48px;text-align:center;" class="pd">
-          ${pillBtn(`See ${name}'s Story &rarr;`, profileUrl, 'dark')}
-        </td>
-      </tr>
-`;
-
-  return emailHead(`Meet ${name} — Our Next Project`) + emailWrap(preheader, body);
-}
-
-// ─── MONTHLY IMPACT HTML builder ─────────────────────────────────
-
-function buildMonthlyHtml(data, opts) {
-  const { month, totalKids, totalRooms, years } = data;
-  const reveal = data.recentReveal || null;
-  const current = data.currentProject || null;
-  const events = data.upcomingEvents || [];
-  const founderNote = data.founderNote || `Another month of building dreams. Thank you for being part of the SOARD family — none of this happens without you.`;
-
-  const preheader = opts.preheader || `Your ${month} SOARD update: ${totalRooms}+ rooms built, ${totalKids}+ kids served, and we're just getting started.`;
-  const donateUrl = `${SITE_URL}/donate`;
-
-  const body = `<!-- IMPACT RIBBON -->
-      <tr>
-        <td style="background:${DD};padding:40px 48px;" class="pd">
-          <p style="margin:0 0 20px;font-family:${SANS};font-size:12px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:rgba(255,255,255,0.5);">${month} Update</p>
-          <h1 class="h1m" style="margin:0 0 8px;font-family:${SERIF};font-size:30px;font-weight:700;line-height:1.2;color:#fff;">
-            Building dreams, changing ${hl('lives', 'dark')}
-          </h1>
-          <p style="margin:0;font-family:${SANS};font-size:15px;line-height:1.7;color:rgba(255,255,255,0.6);">
-            Here's what your support made possible this month.
-          </p>
-        </td>
-      </tr>
-
-      <!-- STATS -->
-      <tr>
-        <td style="background:${CR};padding:40px 48px;" class="pd">
-          <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%"><tr>
-            <td width="30%" style="text-align:center;">
-              <span style="font-family:${SERIF};font-size:36px;font-weight:700;color:${D};line-height:1;display:block;">${totalRooms}+</span>
-              <span style="font-family:${SANS};font-size:11px;font-weight:600;color:${TM};text-transform:uppercase;letter-spacing:0.12em;display:block;margin-top:6px;">Rooms Built</span>
-            </td>
-            <td width="5%"><div style="width:1px;height:36px;background:${BD};margin:0 auto;"></div></td>
-            <td width="30%" style="text-align:center;">
-              <span style="font-family:${SERIF};font-size:36px;font-weight:700;color:${D};line-height:1;display:block;">${totalKids}+</span>
-              <span style="font-family:${SANS};font-size:11px;font-weight:600;color:${TM};text-transform:uppercase;letter-spacing:0.12em;display:block;margin-top:6px;">Kids Served</span>
-            </td>
-            <td width="5%"><div style="width:1px;height:36px;background:${BD};margin:0 auto;"></div></td>
-            <td width="30%" style="text-align:center;">
-              <span style="font-family:${SERIF};font-size:36px;font-weight:700;color:${D};line-height:1;display:block;">${years}</span>
-              <span style="font-family:${SANS};font-size:11px;font-weight:600;color:${TM};text-transform:uppercase;letter-spacing:0.12em;display:block;margin-top:6px;">Years of Impact</span>
-            </td>
-          </tr></table>
-        </td>
-      </tr>
-
-      ${reveal ? `<!-- RECENT REVEAL -->
-      <tr>
-        <td style="background:${CR};padding:0 48px;" class="pd">
-          ${sLabel('Recently Completed', 'yellow')}
-          <h2 class="h2m" style="margin:20px 0 20px;font-family:${SERIF};font-size:24px;font-weight:700;line-height:1.25;color:${D};">
-            ${reveal.name}'s room is ${hl('complete')}
-          </h2>
-        </td>
-      </tr>
-      <tr>
-        <td style="background:${CR};padding:0 48px;" class="pd">
-          <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.06);"><tr>
-            ${reveal.heroImage ? `<td width="40%" valign="top" class="st">
-              <img src="${cfImg(reveal.heroImage, 'w=500,h=400,fit=cover,gravity=face,q=75')}" width="200" alt="${reveal.name}" style="width:100%;height:auto;display:block;" class="fl" />
-            </td>` : ''}
-            <td ${reveal.heroImage ? '' : 'width="100%"'} valign="middle" style="padding:24px 28px;" class="st">
-              <p style="margin:0 0 4px;font-family:${SANS};font-size:16px;font-weight:700;color:${D};">${reveal.name}</p>
-              ${reveal.diagnosis ? `<p style="margin:0 0 8px;font-family:${SANS};font-size:13px;color:${TM};">${reveal.diagnosis}</p>` : ''}
-              ${reveal.roomTypes ? `<p style="margin:0 0 16px;font-family:${SANS};font-size:12px;color:${TL};">${reveal.roomTypes.join(' &amp; ')}</p>` : ''}
-              <a href="${SITE_URL}/kids/${reveal.slug}" target="_blank" style="font-family:${SANS};font-size:14px;font-weight:600;color:${D};text-decoration:underline;text-underline-offset:3px;">Read ${reveal.name}'s story &rarr;</a>
-            </td>
-          </tr></table>
-        </td>
-      </tr>` : ''}
-
-      ${current ? `<!-- CURRENT PROJECT -->
-      <tr>
-        <td style="background:${CR};padding:${reveal ? '36px' : '0'} 48px 0;" class="pd">
-          ${sLabel('In Progress')}
-          <h2 class="h2m" style="margin:20px 0 20px;font-family:${SERIF};font-size:24px;font-weight:700;line-height:1.25;color:${D};">
-            Up next: ${current.name}'s ${hl('dream room')}
-          </h2>
-        </td>
-      </tr>
-      <tr>
-        <td style="background:${CR};padding:0 48px;" class="pd">
-          <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.06);"><tr>
-            ${current.heroImage ? `<td width="40%" valign="top" class="st">
-              <img src="${cfImg(current.heroImage, 'w=500,h=400,fit=cover,gravity=face,q=75')}" width="200" alt="${current.name}" style="width:100%;height:auto;display:block;" class="fl" />
-            </td>` : ''}
-            <td ${current.heroImage ? '' : 'width="100%"'} valign="middle" style="padding:24px 28px;" class="st">
-              <p style="margin:0 0 4px;font-family:${SANS};font-size:16px;font-weight:700;color:${D};">${current.name}</p>
-              ${current.diagnosis ? `<p style="margin:0 0 8px;font-family:${SANS};font-size:13px;color:${TM};">${current.diagnosis}</p>` : ''}
-              ${current.roomTypes ? `<p style="margin:0 0 16px;font-family:${SANS};font-size:12px;color:${TL};">${current.roomTypes.join(' &amp; ')}</p>` : ''}
-              <a href="${SITE_URL}/kids/${current.slug}" target="_blank" style="font-family:${SANS};font-size:14px;font-weight:600;color:${D};text-decoration:underline;text-underline-offset:3px;">Meet ${current.name} &rarr;</a>
-            </td>
-          </tr></table>
-        </td>
-      </tr>` : ''}
-
-      ${events.length > 0 ? `<!-- UPCOMING EVENTS -->
-      <tr>
-        <td style="background:${CR};padding:36px 48px 0;" class="pd">
-          ${sLabel('Upcoming Events')}
-          <h2 class="h2m" style="margin:20px 0 20px;font-family:${SERIF};font-size:24px;font-weight:700;line-height:1.25;color:${D};">
-            Mark your ${hl('calendar')}
-          </h2>
-        </td>
-      </tr>
-      ${events.map(ev => `<tr>
-        <td style="background:${CR};padding:0 48px 12px;" class="pd">
-          <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%"><tr>
-            <td style="padding:20px 24px;background:${WG};border-radius:12px;">
-              <p style="margin:0 0 4px;font-family:${SANS};font-size:15px;font-weight:700;color:${D};">${ev.name}</p>
-              <p style="margin:0 0 8px;font-family:${SANS};font-size:13px;color:${TM};">${ev.date}</p>
-              ${ev.url ? `<a href="${ev.url}" target="_blank" style="font-family:${SANS};font-size:13px;font-weight:600;color:${D};text-decoration:underline;text-underline-offset:3px;">Learn more &rarr;</a>` : ''}
-            </td>
-          </tr></table>
-        </td>
-      </tr>`).join('')}` : ''}
-
-      <!-- DONATE CTA -->
-      <tr>
-        <td style="background:${CR};padding:36px 48px 0;" class="pd">
-          <div style="height:1px;background:${BD};margin-bottom:36px;"></div>
-          <h2 class="h2m" style="margin:0 0 12px;font-family:${SERIF};font-size:22px;font-weight:700;line-height:1.3;color:${D};text-align:center;">
-            Help us build the ${hl('next')} dream room
-          </h2>
-          <p style="margin:0 0 28px;font-family:${SANS};font-size:15px;line-height:1.65;color:${TM};text-align:center;">
-            Every dollar goes directly to building life-changing spaces — at no cost to families.
-          </p>
-          <div style="text-align:center;">
-            ${pillBtn('Donate Now &rarr;', donateUrl)}
-          </div>
-        </td>
-      </tr>
-
-      <!-- FOUNDER NOTE -->
-      <tr>
-        <td style="background:${CR};padding:40px 48px 0;" class="pd">
-          <div style="height:1px;background:${BD};margin-bottom:36px;"></div>
-          <p style="margin:0 0 20px;font-family:${SERIF};font-size:17px;font-style:italic;line-height:1.7;color:${D};">${founderNote}</p>
-          <p style="margin:0 0 2px;font-family:${SANS};font-size:14px;font-weight:700;color:${D};">Peter &amp; Holly Ranney</p>
-          <p style="margin:0;font-family:${SANS};font-size:13px;color:${TM};">Founders, Sunshine on a Ranney Day</p>
-        </td>
-      </tr>
-
-      <!-- SPACER -->
-      <tr><td style="background:${CR};padding:24px 0;"></td></tr>
-`;
-
-  return emailHead(`SOARD ${month} Update`) + emailWrap(preheader, body);
-}
+// Expose the list of available block types so the admin can render a palette.
+export const BLOCK_TYPES = Object.keys(BLOCKS);

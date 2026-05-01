@@ -50,10 +50,16 @@
           "logo": "partners/spartan-surfaces/1774982141004"
         },
         {
-          "name": "ASM"
+          "name": "ASM",
+          "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/asm/1777573800708/public"
         },
         {
-          "name": "Acro"
+          "name": "Acro",
+          "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/acro/1777573860163/public"
+        },
+        {
+          "name": "The Garret Companies",
+          "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/the-garret-companies/1777573868885/public"
         }
       ]
     },
@@ -116,7 +122,8 @@
           "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/ucx/1776803776649/public"
         },
         {
-          "name": "Bishop & Brogdon"
+          "name": "Bishop & Brogdon",
+          "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/bishop-brogdon/1777573883012/public"
         },
         {
           "name": "TEC",
@@ -125,6 +132,14 @@
         {
           "name": "Maxxon",
           "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/maxxon/1777041355510/public"
+        },
+        {
+          "name": "Emser",
+          "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/emser/1777573900023/public"
+        },
+        {
+          "name": "STAG Partners",
+          "logo": "partners/stag-partners"
         }
       ]
     },
@@ -155,6 +170,16 @@
         {
           "name": "Pella",
           "logo": "partners/pella/1774379889033"
+        }
+      ]
+    },
+    {
+      "tier": "Banquet Bar Sponsor",
+      "size": "sm",
+      "names": [
+        {
+          "name": "CB Flooring",
+          "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/cb-flooring/1777574011483/public"
         }
       ]
     },
@@ -236,7 +261,8 @@
           "logo": "partners/pella/1774379889033"
         },
         {
-          "name": "Patcraft "
+          "name": "Patcraft ",
+          "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/patcraft/1777573934414/public"
         },
         {
           "name": "Brady Ware",
@@ -256,35 +282,35 @@
         "badge": "Top Sponsor",
         "badgeStyle": "gold",
         "highlight": "featured",
-        "status": "available"
+        "status": "sold-out"
       },
       {
         "name": "Titanium Sponsor",
         "price": "$15,000",
         "detail": "2 Foursomes (8 Golfers)",
         "perk": "Oakley sunglasses or Footjoy shoes, video interview, logo placement",
-        "status": "available"
+        "status": "sold-out"
       },
       {
         "name": "Diamond Sponsor",
         "price": "$10,000",
         "detail": "1 Foursome (4 Golfers)",
         "perk": "Video interview, logo on social media & signage",
-        "status": "available"
+        "status": "sold-out"
       },
       {
         "name": "Platinum Sponsor",
         "price": "$7,500",
         "detail": "1 Foursome (4 Golfers)",
         "perk": "Signage, multiple social media posts",
-        "status": "available"
+        "status": "sold-out"
       },
       {
         "name": "Gold Sponsor",
         "price": "$5,000",
         "detail": "1 Foursome (4 Golfers)",
         "perk": "Signage, social media posts",
-        "status": "available"
+        "status": "sold-out"
       },
       {
         "name": "Foursome",
@@ -294,7 +320,7 @@
         "badge": "Most Popular",
         "badgeStyle": "green",
         "highlight": "popular",
-        "status": "available"
+        "status": "sold-out"
       }
     ],
     "addons": [
