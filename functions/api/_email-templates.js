@@ -247,6 +247,20 @@ function inlineMd(text) {
   return s;
 }
 
+// Display-class markdown — same as inlineMd but renders *italic* with the
+// brand's yellow highlight bar (used in headlines, transition lines, and
+// partner-section heads). Body copy keeps plain italic via inlineMd().
+function displayMd(text, variant = 'light') {
+  let s = escapeHtml(text || '');
+  s = s.replace(/\[([^\]]+)\]\((https?:[^\s)]+)\)/g,
+    `<a href="$2" target="_blank" style="color:${D};text-decoration:underline;text-underline-offset:2px;">$1</a>`);
+  s = s.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
+  const bg = variant === 'dark' ? YG : YS;
+  s = s.replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g,
+    `$1<em style="font-style:italic;background-image:linear-gradient(transparent 55%,${bg} 55%);background-repeat:no-repeat;background-size:100% 100%;padding:0 .1em;">$2</em>`);
+  return s;
+}
+
 function paragraphMd(text, paraStyle) {
   const blocks = String(text || '').split(/\n{2,}/).map(p => p.trim()).filter(Boolean);
   return blocks
@@ -271,7 +285,7 @@ const BLOCKS = {
   },
 
   headline(p) {
-    const text = inlineMd(p.text || '');
+    const text = displayMd(p.text || '');
     const align = p.align || 'left';
     const size = p.size === 'small' ? 26 : p.size === 'medium' ? 30 : 34;
     const mobileClass = size >= 30 ? 'h1m' : 'h2m';
@@ -282,7 +296,7 @@ const BLOCKS = {
   },
 
   subheadline(p) {
-    const text = inlineMd(p.text || '');
+    const text = displayMd(p.text || '');
     const align = p.align || 'left';
     return `<tr>
       <td style="background:${CR};padding:24px 48px 0;text-align:${align};" class="pd">
@@ -378,6 +392,15 @@ const BLOCKS = {
     if (!src) return '';
     const url = src.startsWith('http') ? cfImg(src, 'w=1100,fit=cover,q=80') : src;
     const caption = p.caption ? `<p style="margin:10px 0 0;text-align:center;font-family:${SANS};font-size:12px;color:${TL};letter-spacing:0.02em;font-style:italic;">${escapeHtml(p.caption)}</p>` : '';
+    if (p.variant === 'reveal') {
+      return `<tr>
+        <td style="background:${CR};padding:24px 24px 0;">
+          <div style="border-radius:16px;overflow:hidden;box-shadow:0 16px 48px rgba(0,0,0,0.1);">
+            <img src="${url}" width="552" alt="${escapeAttr(p.alt || '')}" class="fl" style="width:100%;display:block;" />
+          </div>
+          ${caption}
+        </td></tr>`;
+    }
     return `<tr>
       <td style="background:${CR};padding:24px 48px 0;" class="pd">
         <img src="${url}" width="552" alt="${escapeAttr(p.alt || '')}" class="fl" style="width:100%;border-radius:12px;display:block;" />
@@ -408,13 +431,13 @@ const BLOCKS = {
     const text = inlineMd(p.text || '');
     const cite = p.cite ? `<p style="margin:16px 0 0;font-family:${SANS};font-size:12px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:${TL};">— ${escapeHtml(p.cite)}</p>` : '';
     return `<tr>
-      <td style="background:${CR};padding:32px 48px 0;" class="pd">
+      <td style="background:${CR};padding:40px 48px 0;" class="pd">
         <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background:${WG};border-radius:16px;"><tr>
-          <td style="padding:32px;">
+          <td style="padding:36px 32px 32px;">
             <div style="margin-bottom:12px;">
-              <svg width="32" height="32" viewBox="0 0 48 48" fill="none" style="display:block;"><path d="M14 28c-2.2 0-4-1.8-4-4 0-6.6 5.4-12 12-12v4c-4.4 0-8 3.6-8 8h4c2.2 0 4 1.8 4 4s-1.8 4-4 4h-4zm20 0c-2.2 0-4-1.8-4-4 0-6.6 5.4-12 12-12v4c-4.4 0-8 3.6-8 8h4c2.2 0 4 1.8 4 4s-1.8 4-4 4h-4z" fill="${Y}"/></svg>
+              <svg width="36" height="36" viewBox="0 0 48 48" fill="none" style="display:block;"><path d="M14 28c-2.2 0-4-1.8-4-4 0-6.6 5.4-12 12-12v4c-4.4 0-8 3.6-8 8h4c2.2 0 4 1.8 4 4s-1.8 4-4 4h-4zm20 0c-2.2 0-4-1.8-4-4 0-6.6 5.4-12 12-12v4c-4.4 0-8 3.6-8 8h4c2.2 0 4 1.8 4 4s-1.8 4-4 4h-4z" fill="${Y}"/></svg>
             </div>
-            <p style="margin:0;font-family:${SERIF};font-size:20px;font-style:italic;line-height:1.5;color:${D};">${text}</p>
+            <p style="margin:0;font-family:${SERIF};font-size:22px;font-style:italic;line-height:1.45;color:${D};">${text}</p>
             ${cite}
           </td></tr></table>
       </td></tr>`;
@@ -430,13 +453,18 @@ const BLOCKS = {
   signature(p) {
     const note = inlineMd(p.note || '');
     const from = escapeHtml(p.from || 'Peter & Holly Ranney');
+    // Team line falls back to "Sunshine Team" when not explicitly set.
+    // Pass team:"" (empty string) to suppress.
+    const team = p.team === undefined ? 'Sunshine Team' : p.team;
+    const teamHtml = team ? `<p style="margin:2px 0 0;font-family:${SANS};font-size:14px;font-weight:600;color:${D};">${escapeHtml(team)}</p>` : '';
     const title = escapeHtml(p.title || 'Founders, Sunshine on a Ranney Day');
     return `<tr>
       <td style="background:${CR};padding:32px 48px 0;" class="pd">
         <div style="height:1px;background:${BD};margin-bottom:28px;"></div>
         ${note ? `<p style="margin:0 0 18px;font-family:${SERIF};font-size:17px;font-style:italic;line-height:1.7;color:${D};">${note}</p>` : ''}
-        <p style="margin:0 0 2px;font-family:${SANS};font-size:14px;font-weight:700;color:${D};">${from}</p>
-        <p style="margin:0;font-family:${SANS};font-size:13px;color:${TM};">${title}</p>
+        <p style="margin:0;font-family:${SANS};font-size:14px;font-weight:700;color:${D};">${from}</p>
+        ${teamHtml}
+        <p style="margin:6px 0 0;font-family:${SANS};font-size:13px;color:${TM};">${title}</p>
       </td></tr>`;
   },
 
@@ -460,7 +488,454 @@ const BLOCKS = {
           </td></tr></table>
       </td></tr>`;
   },
+
+  // Hero photo with floating name pill + optional status badge
+  // Used for kid project announcements (kickoff, reveal)
+  heroPortrait(p) {
+    const src = p.src || '';
+    if (!src) return '';
+    const url = src.startsWith('http') ? cfImg(src, 'w=1200,h=900,fit=cover,gravity=face,q=80') : src;
+    const alt = escapeAttr(p.alt || '');
+    const link = escapeAttr(p.link || '');
+    const inner = `<div style="border-radius:20px;overflow:hidden;box-shadow:0 24px 64px rgba(0,0,0,0.1),0 4px 16px rgba(0,0,0,0.06);"><img src="${url}" width="552" alt="${alt}" class="fl hero-img" style="width:100%;display:block;" /></div>`;
+    const wrap = link ? `<a href="${link}" target="_blank" style="display:block;text-decoration:none;">${inner}</a>` : inner;
+
+    const namePill = p.name ? `<td style="padding:10px 22px;background:rgba(30,31,37,0.85);border-radius:100px;font-family:${SANS};font-size:13px;font-weight:600;color:#fff;letter-spacing:0.01em;">${escapeHtml(p.name)}${p.age ? `, age ${escapeHtml(String(p.age))}` : ''}</td>` : '';
+    const badgeBg = p.badgeVariant === 'dark' ? D : Y;
+    const badgeColor = p.badgeVariant === 'dark' ? Y : D;
+    const badgePill = p.badge ? `<td width="8"></td><td style="padding:8px 16px;background:${badgeBg};border-radius:100px;font-family:${SANS};font-size:11px;font-weight:700;color:${badgeColor};letter-spacing:0.08em;text-transform:uppercase;">${escapeHtml(p.badge)}</td>` : '';
+    const overlay = (namePill || badgePill) ? `
+      <tr><td style="background:${CR};padding:0 48px;" class="pd">
+        <div style="margin-top:-22px;position:relative;z-index:2;">
+          <table role="presentation" cellspacing="0" cellpadding="0" border="0"><tr>
+            ${namePill}${badgePill}
+          </tr></table>
+        </div>
+      </td></tr>` : '';
+
+    return `<tr><td style="background:${CR};padding:0 24px;">${wrap}</td></tr>${overlay}`;
+  },
+
+  // Row of detail chips (Diagnosis, Rooms, Year, etc) — auto-wraps on mobile
+  detailChips(p) {
+    const items = (p.items || []).filter(i => i.value);
+    if (!items.length) return '';
+    const cells = items.map((it, i) => `${i > 0 ? '<td width="8" class="hm">&nbsp;</td>' : ''}<td class="st" valign="top" style="padding-bottom:8px;"><table role="presentation" cellspacing="0" cellpadding="0" border="0"><tr><td style="padding:7px 16px;background:${WG};border-radius:100px;font-family:${SANS};font-size:12px;color:${TL};">${it.label ? `<span style="font-weight:400;">${escapeHtml(it.label)}</span>&nbsp;&nbsp;` : ''}<strong style="color:${D};">${escapeHtml(it.value)}</strong></td></tr></table></td>`).join('');
+    return `<tr>
+      <td style="background:${CR};padding:16px 48px 0;" class="pd">
+        <table role="presentation" cellspacing="0" cellpadding="0" border="0"><tr>${cells}</tr></table>
+      </td></tr>`;
+  },
+
+  // Numbered editorial card (01, 02, ...) with serif numeral, yellow underline, body
+  // Used for "What we built" sections
+  numberedCard(p) {
+    const number = escapeHtml(p.number || '01');
+    const title = escapeHtml(p.title || '');
+    const body = inlineMd(p.body || '');
+    return `<tr>
+      <td style="background:${CR};padding:0 48px 12px;" class="pd">
+        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%"><tr>
+          <td style="padding:24px;background:${WG};border-radius:12px;">
+            <span style="font-family:${SERIF};font-size:26px;font-weight:700;color:${BD};line-height:1;display:block;margin-bottom:6px;">${number}</span>
+            ${title ? `<p style="margin:0 0 6px;font-family:${SANS};font-size:16px;font-weight:700;color:${D};">${title}</p>` : ''}
+            <div style="width:32px;height:2px;background:${Y};margin-bottom:14px;"></div>
+            ${body ? `<p style="margin:0;font-family:${SANS};font-size:14px;line-height:1.7;color:${TM};">${body}</p>` : ''}
+          </td>
+        </tr></table>
+      </td></tr>`;
+  },
+
+  // Side-by-side before/after photos with eyebrow labels
+  beforeAfter(p) {
+    const before = p.before || {};
+    const after = p.after || {};
+    if (!before.src || !after.src) return '';
+    const beforeUrl = before.src.startsWith('http') ? cfImg(before.src, 'w=560,fit=cover,q=70') : before.src;
+    const afterUrl = after.src.startsWith('http') ? cfImg(after.src, 'w=560,fit=cover,q=70') : after.src;
+    const eyebrow = `font-family:${SANS};font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.14em;color:${TL};`;
+    return `<tr>
+      <td style="background:${CR};padding:24px 48px 0;" class="pd">
+        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%"><tr>
+          <td width="49%" class="st" valign="top">
+            <p style="margin:0 0 8px;${eyebrow}">${escapeHtml(p.beforeLabel || 'Before')}</p>
+            <img src="${beforeUrl}" width="244" alt="${escapeAttr(before.alt || 'Before')}" class="fl" style="width:100%;border-radius:12px;display:block;" />
+          </td>
+          <td width="2%" class="hm">&nbsp;</td>
+          <td width="49%" class="st mob-stack" valign="top">
+            <p style="margin:0 0 8px;${eyebrow}">${escapeHtml(p.afterLabel || 'After')}</p>
+            <img src="${afterUrl}" width="244" alt="${escapeAttr(after.alt || 'After')}" class="fl" style="width:100%;border-radius:12px;display:block;" />
+          </td>
+        </tr></table>
+      </td></tr>`;
+  },
+
+  // Centered transition line — single phrase with yellow highlight on key word
+  // e.g. "That all *changed*."
+  transitionLine(p) {
+    const text = displayMd(p.text || '');
+    if (!text) return '';
+    return `<tr>
+      <td style="background:${CR};padding:32px 48px;text-align:center;" class="pd">
+        <p style="margin:0;font-family:${SERIF};font-size:24px;font-weight:700;line-height:1.3;color:${D};">${text}</p>
+      </td></tr>`;
+  },
+
+  // Donation tiers — featured "Most Popular" card + up to 2 small tiers
+  donationTiers(p) {
+    const featured = p.featured;
+    const small = (p.small || []).slice(0, 2);
+    let html = '';
+    if (featured && featured.amount) {
+      const ftBadge = featured.badge !== false ? `<span style="display:inline-block;padding:5px 14px;background:${Y};border-radius:100px;font-family:${SANS};font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:${D};margin-bottom:14px;">${escapeHtml(featured.badge || 'Most Popular')}</span>` : '';
+      const href = escapeAttr(featured.href || `${ZEFFY_BASE}?amount=${featured.amount}`);
+      html += `<tr>
+        <td style="background:${CR};padding:0 48px 12px;" class="pd">
+          <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%"><tr>
+            <td style="padding:28px;background:${D};border-radius:12px;text-align:center;">
+              ${ftBadge}
+              <p style="margin:0 0 4px;font-family:${SERIF};font-size:34px;font-weight:700;color:#fff;">$${escapeHtml(String(featured.amount))}</p>
+              ${featured.label ? `<p style="margin:0 0 8px;font-family:${SANS};font-size:14px;font-weight:600;color:${Y};">${escapeHtml(featured.label)}</p>` : ''}
+              ${featured.description ? `<p style="margin:0 0 22px;font-family:${SANS};font-size:13px;line-height:1.6;color:rgba(255,255,255,0.55);">${escapeHtml(featured.description)}</p>` : ''}
+              <a href="${href}" target="_blank" style="display:inline-block;padding:16px 40px;background:${Y};color:${D};font-family:${SANS};font-size:15px;font-weight:600;text-decoration:none;border-radius:100px;letter-spacing:0.01em;">Give $${escapeHtml(String(featured.amount))} &rarr;</a>
+            </td>
+          </tr></table>
+        </td></tr>`;
+    }
+    if (small.length === 2) {
+      const cell = (t) => {
+        const href = escapeAttr(t.href || `${ZEFFY_BASE}?amount=${t.amount}`);
+        return `<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%"><tr>
+          <td style="padding:22px;background:${WG};border-radius:12px;text-align:center;">
+            <p style="margin:0 0 2px;font-family:${SERIF};font-size:26px;font-weight:700;color:${D};">$${escapeHtml(String(t.amount))}</p>
+            ${t.label ? `<p style="margin:0 0 8px;font-family:${SANS};font-size:13px;font-weight:600;color:${TM};">${escapeHtml(t.label)}</p>` : ''}
+            ${t.description ? `<p style="margin:0 0 16px;font-family:${SANS};font-size:12px;line-height:1.6;color:${TL};">${escapeHtml(t.description)}</p>` : ''}
+            <a href="${href}" target="_blank" style="font-family:${SANS};font-size:13px;font-weight:600;color:${D};text-decoration:underline;text-underline-offset:3px;">Give $${escapeHtml(String(t.amount))} &rarr;</a>
+          </td></tr></table>`;
+      };
+      html += `<tr>
+        <td style="background:${CR};padding:0 48px;" class="pd">
+          <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%"><tr>
+            <td width="49%" class="st" valign="top">${cell(small[0])}</td>
+            <td width="2%" class="hm">&nbsp;</td>
+            <td width="49%" class="st mob-stack" valign="top">${cell(small[1])}</td>
+          </tr></table>
+        </td></tr>`;
+    } else if (small.length === 1) {
+      const t = small[0];
+      const href = escapeAttr(t.href || `${ZEFFY_BASE}?amount=${t.amount}`);
+      html += `<tr>
+        <td style="background:${CR};padding:0 48px;" class="pd">
+          <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%"><tr>
+            <td style="padding:22px;background:${WG};border-radius:12px;text-align:center;">
+              <p style="margin:0 0 2px;font-family:${SERIF};font-size:26px;font-weight:700;color:${D};">$${escapeHtml(String(t.amount))}</p>
+              ${t.label ? `<p style="margin:0 0 8px;font-family:${SANS};font-size:13px;font-weight:600;color:${TM};">${escapeHtml(t.label)}</p>` : ''}
+              ${t.description ? `<p style="margin:0 0 16px;font-family:${SANS};font-size:12px;line-height:1.6;color:${TL};">${escapeHtml(t.description)}</p>` : ''}
+              <a href="${href}" target="_blank" style="font-family:${SANS};font-size:13px;font-weight:600;color:${D};text-decoration:underline;text-underline-offset:3px;">Give $${escapeHtml(String(t.amount))} &rarr;</a>
+            </td>
+          </tr></table>
+        </td></tr>`;
+    }
+    return html;
+  },
+
+  // Dark partners section — eyebrow, headline, intro, comma-separated list
+  partnersList(p) {
+    const partners = (p.partners || []).filter(Boolean);
+    if (!partners.length && !p.headline) return '';
+    const headlineHtml = displayMd(p.headline || 'Made possible by *incredible* partners', 'dark');
+    const intro = p.intro ? `<p style="margin:0 0 24px;font-family:${SANS};font-size:15px;line-height:1.7;color:rgba(255,255,255,0.6);">${inlineMd(p.intro)}</p>` : '';
+    const list = partners.length ? `<p style="margin:0;font-family:${SANS};font-size:13px;line-height:2.2;color:rgba(255,255,255,0.4);">${partners.map(escapeHtml).join(' &middot; ')}</p>` : '';
+    return `<tr>
+      <td style="background:${CR};padding:32px 0 0;">
+        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background:${DD};"><tr>
+          <td style="padding:44px 48px;" class="pd">
+            ${sLabel(escapeHtml(p.label || 'Our Partners'), 'light')}
+            <h2 class="h2m" style="margin:20px 0 12px;font-family:${SERIF};font-size:24px;font-weight:700;line-height:1.3;color:#fff;">${headlineHtml}</h2>
+            ${intro}
+            ${list}
+          </td>
+        </tr></table>
+      </td></tr>`;
+  },
+
+  // Trust signal row — Tax-Deductible · Zero Platform Fees · 501(c)(3) with shield icon
+  trustSignals(p) {
+    const items = (p.items && p.items.length ? p.items : ['Tax-Deductible', 'Zero Platform Fees', '501(c)(3)']);
+    const sep = `<span style="padding:0 10px;color:${BD};">&middot;</span>`;
+    const list = items.map((it, i) => `${i > 0 ? sep : ''}${escapeHtml(it)}`).join('');
+    return `<tr>
+      <td style="background:${CR};padding:24px 48px 0;text-align:center;" class="pd">
+        <p style="margin:0;font-family:${SANS};font-size:12px;color:${TL};">
+          <span style="vertical-align:middle;display:inline-block;margin-right:4px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" style="vertical-align:middle;"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" stroke="${TL}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="m9 12 2 2 4-4" stroke="${TL}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+          ${list}
+        </p>
+      </td></tr>`;
+  },
+
+  revealInvite(p) {
+    const k = p.kid || {};
+    const name = k.name || p.kidName || '';
+    const slug = k.slug || p.slug || '';
+    const profileUrl = slug ? `${SITE_URL}/kids/${slug}` : '';
+
+    const customSrc = p.image || p.src || '';
+    const kidSrc = k.heroImage || (k.photos && k.photos[0] && k.photos[0].url) || '';
+    const heroSrc = customSrc || kidSrc;
+    const heroImg = heroSrc ? cfImg(heroSrc, 'w=1200,h=750,fit=cover,gravity=face,q=80') : '';
+    const heroAlt = escapeAttr(p.alt || (name ? `${name}'s reveal day` : 'Reveal day'));
+
+    const headline = p.headline || (name ? `You're Invited to ${name}'s Reveal Day` : `You're Invited to a Reveal Day`);
+    const intro = p.intro || (name
+      ? `After months of planning and building, the day is almost here. ${name} and the family haven't seen the finished room yet — come be there for that first reaction.`
+      : `After months of planning and building, the day is almost here. The family hasn't seen the finished room yet — come be there for that first reaction.`);
+
+    const tz = p.tz || 'America/New_York';
+    const dateDisplay = p.dateDisplay || formatRevealDate(p.date, p.time, tz);
+    const location = p.location || '';
+    const address = p.address || '';
+
+    const cal = buildCalLinks({
+      title: p.calendarTitle || (name ? `${name}'s Reveal Day — Sunshine on a Ranney Day` : 'Reveal Day — Sunshine on a Ranney Day'),
+      date: p.date || '',
+      time: p.time || '',
+      endDate: p.endDate || '',
+      endTime: p.endTime || '',
+      location: [location, address].filter(Boolean).join(', '),
+      details: p.calendarDetails || stripHtml(intro || ''),
+      url: profileUrl,
+      tz,
+      uid: slug && p.date ? `reveal-${slug}-${p.date.replace(/-/g, '')}@sunshineonaranneyday.com` : '',
+    });
+
+    const detailRows = [];
+    if (dateDisplay) {
+      detailRows.push(`
+        <tr>
+          <td style="padding:14px 0;border-bottom:1px solid ${BD};vertical-align:top;width:84px;">
+            <span style="font-family:${SANS};font-size:11px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:${TL};">When</span>
+          </td>
+          <td style="padding:14px 0;border-bottom:1px solid ${BD};vertical-align:top;">
+            <span style="font-family:${SERIF};font-size:16px;font-weight:700;color:${D};line-height:1.4;">${escapeHtml(dateDisplay)}</span>
+          </td>
+        </tr>`);
+    }
+    if (location || address) {
+      detailRows.push(`
+        <tr>
+          <td style="padding:14px 0;vertical-align:top;width:84px;">
+            <span style="font-family:${SANS};font-size:11px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:${TL};">Where</span>
+          </td>
+          <td style="padding:14px 0;vertical-align:top;">
+            ${location ? `<span style="font-family:${SERIF};font-size:16px;font-weight:700;color:${D};display:block;line-height:1.4;">${escapeHtml(location)}</span>` : ''}
+            ${address ? `<span style="font-family:${SANS};font-size:13px;color:${TM};display:block;margin-top:3px;line-height:1.5;">${escapeHtml(address)}</span>` : ''}
+          </td>
+        </tr>`);
+    }
+
+    const heroBlock = heroImg
+      ? `<tr><td style="padding:0 0 28px;">
+          ${profileUrl
+            ? `<a href="${profileUrl}" target="_blank" style="display:block;text-decoration:none;">`
+            : ''}
+            <div style="border-radius:20px;overflow:hidden;box-shadow:0 24px 64px rgba(0,0,0,0.1),0 4px 16px rgba(0,0,0,0.06);">
+              <img src="${heroImg}" width="552" alt="${heroAlt}" class="fl hero-img" style="width:100%;display:block;" />
+            </div>
+          ${profileUrl ? `</a>` : ''}
+        </td></tr>`
+      : '';
+
+    const calPill = (label, href) => `<a href="${escapeAttr(href)}" target="_blank" style="display:inline-block;padding:11px 20px;background:#FFFFFF;border:1.5px solid ${BD};border-radius:100px;font-family:${SANS};font-size:13px;font-weight:600;color:${D};text-decoration:none;letter-spacing:0.01em;margin:0 3px 8px;">${label}</a>`;
+    const calRow = (cal.google || cal.outlook || cal.ical) ? `
+      <tr><td style="padding:24px 0 4px;text-align:center;">
+        <p style="margin:0 0 12px;font-family:${SANS};font-size:11px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:${TL};">Add to Calendar</p>
+        ${cal.google ? calPill('Google', cal.google) : ''}
+        ${cal.ical ? calPill('Apple', cal.ical) : ''}
+        ${cal.outlook ? calPill('Outlook', cal.outlook) : ''}
+      </td></tr>` : '';
+
+    const profileBtn = profileUrl
+      ? `<tr><td style="padding:18px 0 0;text-align:center;">
+          <a href="${profileUrl}" target="_blank" style="display:inline-block;padding:16px 36px;background:${Y};color:${D};font-family:${SANS};font-size:15px;font-weight:600;text-decoration:none;border-radius:100px;letter-spacing:0.01em;">${escapeHtml(p.profileLabel || (name ? `See ${name}'s Story` : `See the Story`))} &rarr;</a>
+        </td></tr>`
+      : '';
+
+    return `<tr>
+      <td style="background:${CR};padding:8px 48px 0;" class="pd">
+        ${sLabel(p.label || "You're Invited", 'yellow')}
+        <h1 class="h1m" style="margin:18px 0 12px;font-family:${SERIF};font-size:30px;font-weight:700;line-height:1.2;color:${D};letter-spacing:-0.02em;">${displayMd(headline)}</h1>
+        <p style="margin:0 0 28px;font-family:${SERIF};font-size:17px;line-height:1.7;color:${D};">${inlineMd(intro)}</p>
+        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+          ${heroBlock}
+          ${detailRows.length ? `<tr><td style="padding:0;">
+            <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background:${WG};border-radius:14px;">
+              <tr><td style="padding:4px 22px;"><table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">${detailRows.join('')}</table></td></tr>
+            </table>
+          </td></tr>` : ''}
+          ${calRow}
+          ${profileBtn}
+        </table>
+      </td></tr>`;
+  },
 };
+
+// ─── Reveal-invite calendar helpers ─────────────────────────────────
+// Build Google Calendar, Outlook web, and .ics download URLs for a given
+// event. All times are converted to UTC server-side using Intl.DateTimeFormat
+// so daylight-saving transitions in the source timezone are handled correctly.
+
+/** Format a date+time for human display in the email body. */
+function formatRevealDate(dateStr, timeStr, tz) {
+  if (!dateStr) return '';
+  try {
+    const d = new Date(`${dateStr}T12:00:00Z`); // noon UTC keeps us on the right day
+    if (isNaN(d.getTime())) return timeStr ? `${dateStr} · ${timeStr}` : dateStr;
+    const datePart = d.toLocaleDateString('en-US', {
+      weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
+      timeZone: tz || 'America/New_York',
+    });
+    return timeStr ? `${datePart} · ${timeStr}` : datePart;
+  } catch {
+    return timeStr ? `${dateStr} · ${timeStr}` : dateStr;
+  }
+}
+
+/** Parse "3:00 PM", "3 PM", "15:00" → { h, m }, or null. */
+function parseTime(t) {
+  if (!t) return null;
+  const s = String(t).trim();
+  const m12 = s.match(/^(\d{1,2})(?::(\d{2}))?\s*(AM|PM)$/i);
+  if (m12) {
+    let h = parseInt(m12[1], 10) % 12;
+    if (m12[3].toUpperCase() === 'PM') h += 12;
+    return { h, m: parseInt(m12[2] || '0', 10) };
+  }
+  const m24 = s.match(/^(\d{1,2}):(\d{2})$/);
+  if (m24) return { h: parseInt(m24[1], 10), m: parseInt(m24[2], 10) };
+  return null;
+}
+
+/**
+ * Convert a wall-clock time in the given IANA timezone to the matching UTC
+ * Date instant. Iteratively converges in 1–2 rounds; correct across DST
+ * transitions because Intl.DateTimeFormat applies the active offset.
+ */
+function localInTzToUTC(year, month, day, hour, min, tz) {
+  let t = Date.UTC(year, month - 1, day, hour, min);
+  for (let i = 0; i < 3; i++) {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz, hourCycle: 'h23',
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit',
+    }).formatToParts(new Date(t));
+    const v = (k) => parseInt(parts.find(p => p.type === k).value, 10);
+    let h = v('hour'); if (h === 24) h = 0;
+    const observed = Date.UTC(v('year'), v('month') - 1, v('day'), h, v('minute'));
+    const wanted = Date.UTC(year, month - 1, day, hour, min);
+    const diff = wanted - observed;
+    if (diff === 0) break;
+    t += diff;
+  }
+  return new Date(t);
+}
+
+/** Format Date as compact UTC for Google: "20260615T190000Z". */
+function utcCompact(d) {
+  return d.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+}
+
+/** Format a YYYY-MM-DD string as "YYYYMMDD" for all-day Google events. */
+function ymdCompact(s) { return String(s).replace(/-/g, ''); }
+
+/**
+ * Build the three calendar URLs (Google, Outlook web, .ics download).
+ * Returns { google, outlook, ical } — any field empty if `date` is missing.
+ *
+ * For timed events, all three URLs encode UTC instants so recipients in any
+ * timezone see the correct local time. For all-day events (no `time`), Google
+ * uses inclusive/exclusive YYYYMMDD pairs and the .ics endpoint emits
+ * VALUE=DATE entries.
+ */
+function buildCalLinks({ title, date, time, endDate, endTime, location, details, url, tz, uid }) {
+  if (!date) return { google: '', outlook: '', ical: '' };
+  const TZ = tz || 'America/New_York';
+  const start = parseTime(time);
+  const isAllDay = !start;
+
+  let googleDates, outlookStart, outlookEnd, icsStart, icsEnd, icsAllDay = false;
+
+  if (isAllDay) {
+    icsAllDay = true;
+    const startYmd = ymdCompact(date);
+    let endYmdInclusive = endDate ? ymdCompact(endDate) : startYmd;
+    // Google + iCal both use exclusive end for all-day → bump by one day
+    const d = new Date(`${endYmdInclusive.slice(0, 4)}-${endYmdInclusive.slice(4, 6)}-${endYmdInclusive.slice(6, 8)}T00:00:00Z`);
+    d.setUTCDate(d.getUTCDate() + 1);
+    const endYmdExclusive = utcCompact(d).slice(0, 8);
+    googleDates = `${startYmd}/${endYmdExclusive}`;
+    outlookStart = `${date}T00:00:00`;
+    outlookEnd = `${endDate || date}T23:59:59`;
+    icsStart = startYmd;
+    icsEnd = endYmdExclusive;
+  } else {
+    const [sy, smo, sd] = date.split('-').map(Number);
+    const startUtc = localInTzToUTC(sy, smo, sd, start.h, start.m, TZ);
+    let endParsed = parseTime(endTime);
+    let endUtc;
+    if (endParsed) {
+      const ed = endDate || date;
+      const [ey, emo, edd] = ed.split('-').map(Number);
+      endUtc = localInTzToUTC(ey, emo, edd, endParsed.h, endParsed.m, TZ);
+    } else {
+      endUtc = new Date(startUtc.getTime() + 2 * 60 * 60 * 1000); // +2h default
+    }
+    googleDates = `${utcCompact(startUtc)}/${utcCompact(endUtc)}`;
+    outlookStart = startUtc.toISOString().replace(/\.\d{3}Z$/, 'Z');
+    outlookEnd = endUtc.toISOString().replace(/\.\d{3}Z$/, 'Z');
+    icsStart = utcCompact(startUtc);
+    icsEnd = utcCompact(endUtc);
+  }
+
+  const safeTitle = title || '';
+  const safeLocation = location || '';
+  const safeDetails = (details || '') + (url ? `\n\n${url}` : '');
+
+  const googleParams = new URLSearchParams({
+    action: 'TEMPLATE',
+    text: safeTitle,
+    dates: googleDates,
+    location: safeLocation,
+    details: safeDetails,
+    ctz: TZ,
+  });
+  const google = `https://calendar.google.com/calendar/render?${googleParams}`;
+
+  const outlookParams = new URLSearchParams({
+    path: '/calendar/action/compose',
+    rru: 'addevent',
+    subject: safeTitle,
+    startdt: outlookStart,
+    enddt: outlookEnd,
+    body: safeDetails,
+    location: safeLocation,
+    allday: isAllDay ? 'true' : 'false',
+  });
+  const outlook = `https://outlook.live.com/calendar/0/deeplink/compose?${outlookParams}`;
+
+  const icalParams = new URLSearchParams({
+    title: safeTitle,
+    start: icsStart,
+    end: icsEnd,
+    location: safeLocation,
+    details: safeDetails,
+  });
+  if (icsAllDay) icalParams.set('allday', '1');
+  if (uid) icalParams.set('uid', uid);
+  if (url) icalParams.set('url', url);
+  const ical = `${SITE_URL}/api/calendar.ics?${icalParams}`;
+
+  return { google, outlook, ical };
+}
 
 function renderBlock(b) {
   if (!b || !b.type) return '';

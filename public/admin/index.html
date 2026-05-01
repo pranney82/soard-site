@@ -2037,21 +2037,30 @@
     // ─── Full Audit Log Page ──────────────────────
     // ─── Email block helpers ────────────────
     const BLOCK_LIBRARY = [
-      { type: 'hero',         label: 'Hero Image',       icon: icons.camera,   group: 'media' },
-      { type: 'photo',        label: 'Photo',            icon: icons.camera,   group: 'media' },
-      { type: 'photoGrid',    label: 'Photo Grid',       icon: icons.camera,   group: 'media' },
-      { type: 'headline',     label: 'Headline',         icon: icons.fileText, group: 'text' },
-      { type: 'subheadline',  label: 'Sub-headline',     icon: icons.fileText, group: 'text' },
-      { type: 'sectionLabel', label: 'Section Label',    icon: icons.fileText, group: 'text' },
-      { type: 'paragraph',    label: 'Paragraph',        icon: icons.fileText, group: 'text' },
-      { type: 'quote',        label: 'Pull Quote',       icon: icons.fileText, group: 'text' },
-      { type: 'button',       label: 'Button (CTA)',     icon: icons.diamond,  group: 'action' },
-      { type: 'kidCard',      label: 'Kid Card',         icon: icons.kids,     group: 'content' },
-      { type: 'eventCard',    label: 'Event Card',       icon: icons.events,   group: 'content' },
-      { type: 'stats',        label: 'Stats (3-up)',     icon: icons.barChart, group: 'content' },
-      { type: 'signature',    label: 'Founder Signature',icon: icons.user,     group: 'content' },
-      { type: 'divider',      label: 'Divider',          icon: icons.menu,     group: 'layout' },
-      { type: 'spacer',       label: 'Spacer',           icon: icons.menu,     group: 'layout' },
+      { type: 'hero',           label: 'Hero Image',       icon: icons.camera,   group: 'media' },
+      { type: 'heroPortrait',   label: 'Hero Portrait',    icon: icons.camera,   group: 'media' },
+      { type: 'photo',          label: 'Photo',            icon: icons.camera,   group: 'media' },
+      { type: 'photoGrid',      label: 'Photo Grid',       icon: icons.camera,   group: 'media' },
+      { type: 'beforeAfter',    label: 'Before / After',   icon: icons.camera,   group: 'media' },
+      { type: 'headline',       label: 'Headline',         icon: icons.fileText, group: 'text' },
+      { type: 'subheadline',    label: 'Sub-headline',     icon: icons.fileText, group: 'text' },
+      { type: 'sectionLabel',   label: 'Section Label',    icon: icons.fileText, group: 'text' },
+      { type: 'paragraph',      label: 'Paragraph',        icon: icons.fileText, group: 'text' },
+      { type: 'transitionLine', label: 'Transition Line',  icon: icons.fileText, group: 'text' },
+      { type: 'quote',          label: 'Pull Quote',       icon: icons.fileText, group: 'text' },
+      { type: 'detailChips',    label: 'Detail Chips',     icon: icons.fileText, group: 'text' },
+      { type: 'numberedCard',   label: 'Numbered Card',    icon: icons.fileText, group: 'text' },
+      { type: 'button',         label: 'Button (CTA)',     icon: icons.diamond,  group: 'action' },
+      { type: 'donationTiers',  label: 'Donation Tiers',   icon: icons.diamond,  group: 'action' },
+      { type: 'trustSignals',   label: 'Trust Signals',    icon: icons.diamond,  group: 'action' },
+      { type: 'kidCard',        label: 'Kid Card',         icon: icons.kids,     group: 'content' },
+      { type: 'revealInvite',   label: 'Reveal Invite',    icon: icons.kids,     group: 'content' },
+      { type: 'eventCard',      label: 'Event Card',       icon: icons.events,   group: 'content' },
+      { type: 'stats',          label: 'Stats (3-up)',     icon: icons.barChart, group: 'content' },
+      { type: 'partnersList',   label: 'Partners List',    icon: icons.user,     group: 'content' },
+      { type: 'signature',      label: 'Founder Signature',icon: icons.user,     group: 'content' },
+      { type: 'divider',        label: 'Divider',          icon: icons.menu,     group: 'layout' },
+      { type: 'spacer',         label: 'Spacer',           icon: icons.menu,     group: 'layout' },
     ];
 
     const PERSONALIZATION_TOKENS = [
@@ -2066,22 +2075,31 @@
     function makeBlock(type) {
       const id = newBlockId();
       switch (type) {
-        case 'hero':         return { id, type, src: '', alt: '', link: '', fullBleed: false };
-        case 'photo':        return { id, type, src: '', alt: '', caption: '' };
-        case 'photoGrid':    return { id, type, items: [{ src: '', alt: '' }, { src: '', alt: '' }] };
-        case 'headline':     return { id, type, text: 'Your headline here', align: 'left', size: 'large' };
-        case 'subheadline':  return { id, type, text: 'A supporting subhead', align: 'left' };
-        case 'sectionLabel': return { id, type, text: 'Section', variant: 'dark' };
-        case 'paragraph':    return { id, type, text: 'Write your message. **Bold**, *italic*, and [links](https://example.com) work via markdown.', align: 'left', style: 'normal', muted: false };
-        case 'quote':        return { id, type, text: 'A quote from a family or partner.', cite: '' };
-        case 'button':       return { id, type, label: 'Donate Now', href: 'https://sunshineonaranneyday.com/donate', variant: 'primary', align: 'center' };
-        case 'kidCard':      return { id, type, slug: '', label: '', linkLabel: '' };
-        case 'eventCard':    return { id, type, name: '', date: '', url: '', description: '' };
-        case 'stats':        return { id, type, items: [{ value: '182', label: 'Kids Served' }, { value: '247', label: 'Rooms Built' }, { value: '13', label: 'Years' }] };
-        case 'signature':    return { id, type, note: '', from: 'Peter & Holly Ranney', title: 'Founders, Sunshine on a Ranney Day' };
-        case 'divider':      return { id, type, size: 'small' };
-        case 'spacer':       return { id, type, height: 24 };
-        default:             return { id, type };
+        case 'hero':           return { id, type, src: '', alt: '', link: '', fullBleed: false };
+        case 'heroPortrait':   return { id, type, src: '', alt: '', link: '', name: '', age: '', badge: '', badgeVariant: 'yellow' };
+        case 'photo':          return { id, type, src: '', alt: '', caption: '', variant: 'normal' };
+        case 'photoGrid':      return { id, type, items: [{ src: '', alt: '' }, { src: '', alt: '' }] };
+        case 'beforeAfter':    return { id, type, before: { src: '', alt: '' }, after: { src: '', alt: '' }, beforeLabel: 'Before', afterLabel: 'After' };
+        case 'headline':       return { id, type, text: 'Your headline here', align: 'left', size: 'large' };
+        case 'subheadline':    return { id, type, text: 'A supporting subhead', align: 'left' };
+        case 'sectionLabel':   return { id, type, text: 'Section', variant: 'dark' };
+        case 'paragraph':      return { id, type, text: 'Write your message. **Bold**, *italic*, and [links](https://example.com) work via markdown.', align: 'left', style: 'normal', muted: false };
+        case 'transitionLine': return { id, type, text: 'That all *changed*.' };
+        case 'quote':          return { id, type, text: 'A quote from a family or partner.', cite: '' };
+        case 'detailChips':    return { id, type, items: [{ label: 'Diagnosis', value: '' }, { label: 'Rooms', value: '' }, { label: 'Year', value: '' }] };
+        case 'numberedCard':   return { id, type, number: '01', title: 'Room Type', body: 'Describe what we built or are building here.' };
+        case 'button':         return { id, type, label: 'Donate Now', href: 'https://sunshineonaranneyday.com/donate', variant: 'primary', align: 'center' };
+        case 'donationTiers':  return { id, type, featured: { amount: '500', label: 'Furniture & Flooring', description: 'Adaptive furniture or accessible flooring — the structural pieces that change a child’s daily life.', badge: 'Most Popular', href: '' }, small: [ { amount: '60', label: 'Paint & Supplies', description: 'Transforms walls into a child’s dream canvas.', href: '' }, { amount: '125', label: 'Bedding & Decor', description: 'The details that make a room feel like home.', href: '' } ] };
+        case 'trustSignals':   return { id, type, items: ['Tax-Deductible', 'Zero Platform Fees', '501(c)(3)'] };
+        case 'kidCard':        return { id, type, slug: '', label: '', linkLabel: '' };
+        case 'revealInvite':   return { id, type, slug: '', image: '', headline: '', intro: '', date: '', time: '', endTime: '', location: '', address: '', tz: 'America/New_York', label: '', profileLabel: '' };
+        case 'eventCard':      return { id, type, name: '', date: '', url: '', description: '' };
+        case 'stats':          return { id, type, items: [{ value: '182', label: 'Kids Served' }, { value: '247', label: 'Rooms Built' }, { value: '13', label: 'Years' }] };
+        case 'partnersList':   return { id, type, label: 'Our Partners', headline: 'Made possible by *incredible* partners', intro: 'This project wouldn’t exist without the generosity of partners who show up, project after project, with heart and hands ready to build.', partners: [] };
+        case 'signature':      return { id, type, note: '', from: 'Peter & Holly Ranney', team: 'Sunshine Team', title: 'Founders, Sunshine on a Ranney Day' };
+        case 'divider':        return { id, type, size: 'small' };
+        case 'spacer':         return { id, type, height: 24 };
+        default:               return { id, type };
       }
     }
 
@@ -2331,6 +2349,87 @@
           </div>`;
         }
 
+        case 'revealInvite': {
+          const allKids = (kids || []).slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+          return html`<div>
+            <div class="form-group" style="margin-bottom: 0.6rem;">
+              <label class="form-label" style="font-size: 0.78rem;">Featured Kid <span style="font-weight: 400; color: var(--color-text-muted);">(links to profile, fills hero photo)</span></label>
+              <select class="form-input" value=${block.slug || ''} onChange=${e => update({ slug: e.target.value })}>
+                <option value="">— Select a kid —</option>
+                ${allKids.map(k => html`<option key=${k.slug} value=${k.slug}>${k.name}${k.year ? ` (${k.year})` : ''} — ${k.status}</option>`)}
+              </select>
+            </div>
+            <div class="form-group" style="margin-bottom: 0.6rem;">
+              <label class="form-label" style="font-size: 0.78rem;">Hero Image <span style="font-weight: 400; color: var(--color-text-muted);">(optional — defaults to kid's hero)</span></label>
+              ${block.image ? html`
+                <div style="display: flex; gap: 0.5rem; align-items: flex-start;">
+                  <img src=${cfThumb(block.image, 'w=200,h=140,fit=cover,q=70')} style="width: 96px; height: 64px; object-fit: cover; border-radius: 6px; border: 1px solid var(--color-border);" />
+                  <div style="flex: 1; display: flex; flex-direction: column; gap: 0.35rem;">
+                    <button class="btn btn-sm btn-ghost" type="button" onClick=${() => onPickImage({ blockId: block.id, key: 'image' })}>Replace</button>
+                    <button class="btn btn-sm btn-ghost" type="button" onClick=${() => update({ image: '' })} style="color: #c00;">Remove</button>
+                  </div>
+                </div>
+              ` : html`
+                <button class="btn btn-ghost btn-sm" type="button" onClick=${() => onPickImage({ blockId: block.id, key: 'image' })}>Browse Image Library</button>
+              `}
+            </div>
+            <div class="form-group" style="margin-bottom: 0.5rem;">
+              <label class="form-label" style="font-size: 0.78rem;">Headline <span style="font-weight: 400; color: var(--color-text-muted);">(optional)</span></label>
+              <input class="form-input" type="text" value=${block.headline || ''} onInput=${e => update({ headline: e.target.value })} placeholder="You're Invited to [Name]'s Reveal Day" />
+            </div>
+            <div class="form-group" style="margin-bottom: 0.5rem;">
+              <label class="form-label" style="font-size: 0.78rem;">Intro <span style="font-weight: 400; color: var(--color-text-muted);">(optional)</span></label>
+              <textarea class="form-input" rows="2" onInput=${e => update({ intro: e.target.value })} placeholder="Auto">${block.intro || ''}</textarea>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.5rem; margin-bottom: 0.5rem;">
+              <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label" style="font-size: 0.78rem;">Date</label>
+                <input class="form-input" type="date" value=${block.date || ''} onInput=${e => update({ date: e.target.value })} />
+              </div>
+              <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label" style="font-size: 0.78rem;">Start Time <span style="font-weight: 400; color: var(--color-text-muted);">(blank = all-day)</span></label>
+                <input class="form-input" type="text" value=${block.time || ''} onInput=${e => update({ time: e.target.value })} placeholder="3:00 PM" />
+              </div>
+              <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label" style="font-size: 0.78rem;">End Time</label>
+                <input class="form-input" type="text" value=${block.endTime || ''} onInput=${e => update({ endTime: e.target.value })} placeholder="5:00 PM" />
+              </div>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-bottom: 0.5rem;">
+              <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label" style="font-size: 0.78rem;">Location Name</label>
+                <input class="form-input" type="text" value=${block.location || ''} onInput=${e => update({ location: e.target.value })} placeholder="The Smith Family Home" />
+              </div>
+              <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label" style="font-size: 0.78rem;">Timezone</label>
+                <select class="form-input" value=${block.tz || 'America/New_York'} onChange=${e => update({ tz: e.target.value })}>
+                  <option value="America/New_York">Eastern (New York)</option>
+                  <option value="America/Chicago">Central (Chicago)</option>
+                  <option value="America/Denver">Mountain (Denver)</option>
+                  <option value="America/Phoenix">Arizona (no DST)</option>
+                  <option value="America/Los_Angeles">Pacific (Los Angeles)</option>
+                  <option value="America/Anchorage">Alaska</option>
+                  <option value="Pacific/Honolulu">Hawaii</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-group" style="margin-bottom: 0.5rem;">
+              <label class="form-label" style="font-size: 0.78rem;">Address <span style="font-weight: 400; color: var(--color-text-muted);">(used in calendar invite)</span></label>
+              <input class="form-input" type="text" value=${block.address || ''} onInput=${e => update({ address: e.target.value })} placeholder="123 Main St, Roswell, GA 30076" />
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
+              <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label" style="font-size: 0.78rem;">Section Label</label>
+                <input class="form-input" type="text" value=${block.label || ''} onInput=${e => update({ label: e.target.value })} placeholder="You're Invited" />
+              </div>
+              <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label" style="font-size: 0.78rem;">Profile Button Label</label>
+                <input class="form-input" type="text" value=${block.profileLabel || ''} onInput=${e => update({ profileLabel: e.target.value })} placeholder="See [Name]'s Story" />
+              </div>
+            </div>
+          </div>`;
+        }
+
         case 'eventCard': {
           const eventOptions = (events || []).filter(e => e.status === 'published');
           return html`<div>
@@ -2411,15 +2510,19 @@
               <textarea class="form-input" rows="3" value=${block.note || ''} onInput=${e => update({ note: e.target.value })} onFocus=${trackFocus('note')} style="resize: vertical;" />
               ${tokenBar(isFocused('note'))}
             </div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-bottom: 0.5rem;">
               <div class="form-group" style="margin-bottom: 0;">
                 <label class="form-label" style="font-size: 0.78rem;">Signed by</label>
                 <input class="form-input" type="text" value=${block.from || ''} onInput=${e => update({ from: e.target.value })} />
               </div>
               <div class="form-group" style="margin-bottom: 0;">
-                <label class="form-label" style="font-size: 0.78rem;">Title</label>
-                <input class="form-input" type="text" value=${block.title || ''} onInput=${e => update({ title: e.target.value })} />
+                <label class="form-label" style="font-size: 0.78rem;">Team line <span style="font-weight: 400; color: var(--color-text-muted);">(blank to hide)</span></label>
+                <input class="form-input" type="text" value=${block.team ?? 'Sunshine Team'} onInput=${e => update({ team: e.target.value })} placeholder="Sunshine Team" />
               </div>
+            </div>
+            <div class="form-group" style="margin-bottom: 0;">
+              <label class="form-label" style="font-size: 0.78rem;">Title</label>
+              <input class="form-input" type="text" value=${block.title || ''} onInput=${e => update({ title: e.target.value })} />
             </div>
           </div>`;
         }
@@ -2438,6 +2541,211 @@
             <input type="range" min="8" max="96" step="4" value=${block.height || 24} onInput=${e => update({ height: parseInt(e.target.value, 10) })} style="width: 100%;" />
           </div>`;
 
+        case 'heroPortrait': {
+          return html`<div>
+            <div class="form-group" style="margin-bottom: 0.6rem;">
+              <label class="form-label">Image</label>
+              ${block.src ? html`
+                <div style="display: flex; gap: 0.5rem; align-items: flex-start;">
+                  <img src=${cfThumb(block.src, 'w=200,h=140,fit=cover,q=70')} style="width: 96px; height: 64px; object-fit: cover; border-radius: 6px; border: 1px solid var(--color-border);" />
+                  <div style="flex: 1; display: flex; flex-direction: column; gap: 0.35rem;">
+                    <button class="btn btn-sm btn-ghost" type="button" onClick=${() => onPickImage({ blockId: block.id, key: 'src' })}>Replace</button>
+                    <button class="btn btn-sm btn-ghost" type="button" onClick=${() => update({ src: '' })} style="color: #c00;">Remove</button>
+                  </div>
+                </div>
+              ` : html`
+                <button class="btn btn-ghost btn-sm" type="button" onClick=${() => onPickImage({ blockId: block.id, key: 'src' })}>Browse Image Library</button>
+              `}
+            </div>
+            <div class="form-group" style="margin-bottom: 0.5rem;">
+              <label class="form-label" style="font-size: 0.78rem;">Alt Text</label>
+              <input class="form-input" type="text" value=${block.alt || ''} onInput=${e => update({ alt: e.target.value })} placeholder="Describe the image" />
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 0.6fr; gap: 0.5rem; margin-bottom: 0.5rem;">
+              <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label" style="font-size: 0.78rem;">Name</label>
+                <input class="form-input" type="text" value=${block.name || ''} onInput=${e => update({ name: e.target.value })} placeholder="Adrian" />
+              </div>
+              <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label" style="font-size: 0.78rem;">Age</label>
+                <input class="form-input" type="text" value=${block.age || ''} onInput=${e => update({ age: e.target.value })} placeholder="11" />
+              </div>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 0.6fr; gap: 0.5rem; margin-bottom: 0.5rem;">
+              <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label" style="font-size: 0.78rem;">Badge <span style="font-weight: 400; color: var(--color-text-muted);">(optional)</span></label>
+                <input class="form-input" type="text" value=${block.badge || ''} onInput=${e => update({ badge: e.target.value })} placeholder="Coming Soon" />
+              </div>
+              <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label" style="font-size: 0.78rem;">Badge Color</label>
+                <select class="form-input" value=${block.badgeVariant || 'yellow'} onChange=${e => update({ badgeVariant: e.target.value })}>
+                  <option value="yellow">Yellow</option><option value="dark">Dark</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-group" style="margin-bottom: 0;">
+              <label class="form-label" style="font-size: 0.78rem;">Click-Through URL <span style="font-weight: 400; color: var(--color-text-muted);">(optional)</span></label>
+              <input class="form-input" type="url" value=${block.link || ''} onInput=${e => update({ link: e.target.value })} placeholder="https://..." />
+            </div>
+          </div>`;
+        }
+
+        case 'beforeAfter': {
+          const before = block.before || { src: '', alt: '' };
+          const after = block.after || { src: '', alt: '' };
+          const setBefore = (patch) => update({ before: { ...before, ...patch } });
+          const setAfter = (patch) => update({ after: { ...after, ...patch } });
+          const pane = (label, side, set) => html`
+            <div style="padding: 0.6rem; background: var(--color-bg-secondary); border-radius: 6px;">
+              <p style="margin: 0 0 0.4rem; font-size: 0.78rem; font-weight: 600; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 0.06em;">${label}</p>
+              ${side.src ? html`
+                <div style="display: flex; gap: 0.5rem; align-items: flex-start; margin-bottom: 0.4rem;">
+                  <img src=${cfThumb(side.src, 'w=200,h=140,fit=cover,q=70')} style="width: 64px; height: 48px; object-fit: cover; border-radius: 4px;" />
+                  <div style="flex: 1; display: flex; flex-direction: column; gap: 0.3rem;">
+                    <button class="btn btn-sm btn-ghost" type="button" onClick=${() => onPickImage({ blockId: block.id, key: label === 'Before' ? 'before' : 'after' })} style="justify-content: flex-start;">Replace</button>
+                    <button class="btn btn-sm btn-ghost" type="button" onClick=${() => set({ src: '' })} style="color: #c00; justify-content: flex-start;">Remove</button>
+                  </div>
+                </div>
+              ` : html`
+                <button class="btn btn-ghost btn-sm" type="button" onClick=${() => onPickImage({ blockId: block.id, key: label === 'Before' ? 'before' : 'after' })} style="margin-bottom: 0.4rem;">Pick image</button>
+              `}
+              <input class="form-input" type="text" value=${side.alt || ''} onInput=${e => set({ alt: e.target.value })} placeholder="Alt text" style="font-size: 0.8rem;" />
+            </div>`;
+          return html`<div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-bottom: 0.5rem;">
+              ${pane('Before', before, setBefore)}
+              ${pane('After', after, setAfter)}
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
+              <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label" style="font-size: 0.78rem;">Before Label</label>
+                <input class="form-input" type="text" value=${block.beforeLabel || 'Before'} onInput=${e => update({ beforeLabel: e.target.value })} />
+              </div>
+              <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label" style="font-size: 0.78rem;">After Label</label>
+                <input class="form-input" type="text" value=${block.afterLabel || 'After'} onInput=${e => update({ afterLabel: e.target.value })} />
+              </div>
+            </div>
+          </div>`;
+        }
+
+        case 'transitionLine': {
+          return html`<div class="form-group" style="margin-bottom: 0;">
+            <label class="form-label" style="font-size: 0.78rem;">Text <span style="font-weight: 400; color: var(--color-text-muted);">— wrap a word in *italics* for the yellow highlight</span></label>
+            <input class="form-input" type="text" value=${block.text || ''} onInput=${e => update({ text: e.target.value })} placeholder="That all *changed*." />
+          </div>`;
+        }
+
+        case 'detailChips': {
+          const items = block.items || [];
+          return html`<div>
+            ${items.map((it, i) => html`
+              <div key=${i} style="display: grid; grid-template-columns: 1fr 1.5fr auto; gap: 0.5rem; margin-bottom: 0.4rem; align-items: end;">
+                <div>
+                  <label class="form-label" style="font-size: 0.72rem; ${i > 0 ? 'visibility: hidden;' : ''}">Label</label>
+                  <input class="form-input" type="text" value=${it.label || ''} onInput=${e => updateItem(i, { label: e.target.value })} placeholder="Diagnosis" />
+                </div>
+                <div>
+                  <label class="form-label" style="font-size: 0.72rem; ${i > 0 ? 'visibility: hidden;' : ''}">Value</label>
+                  <input class="form-input" type="text" value=${it.value || ''} onInput=${e => updateItem(i, { value: e.target.value })} placeholder="Cerebral Palsy" />
+                </div>
+                <button class="btn btn-sm btn-ghost" type="button" onClick=${() => {
+                  const next = items.slice(); next.splice(i, 1); update({ items: next });
+                }} disabled=${items.length <= 1} title="Remove">${icons.x}</button>
+              </div>
+            `)}
+            ${items.length < 4 ? html`
+              <button class="btn btn-sm btn-ghost" type="button" onClick=${() => update({ items: [...items, { label: '', value: '' }] })} style="margin-top: 0.25rem;">+ Add chip</button>
+            ` : null}
+          </div>`;
+        }
+
+        case 'numberedCard': {
+          return html`<div>
+            <div style="display: grid; grid-template-columns: 0.4fr 1fr; gap: 0.5rem; margin-bottom: 0.5rem;">
+              <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label" style="font-size: 0.78rem;">Number</label>
+                <input class="form-input" type="text" value=${block.number || ''} onInput=${e => update({ number: e.target.value })} placeholder="01" />
+              </div>
+              <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label" style="font-size: 0.78rem;">Title</label>
+                <input class="form-input" type="text" value=${block.title || ''} onInput=${e => update({ title: e.target.value })} placeholder="Accessible Bathroom" />
+              </div>
+            </div>
+            <div class="form-group" style="margin-bottom: 0;">
+              <label class="form-label" style="font-size: 0.78rem;">Body</label>
+              <textarea class="form-input" rows="3" value=${block.body || ''} onInput=${e => update({ body: e.target.value })} style="resize: vertical;"></textarea>
+            </div>
+          </div>`;
+        }
+
+        case 'donationTiers': {
+          const featured = block.featured || { amount: '', label: '', description: '', badge: '', href: '' };
+          const small = block.small || [];
+          const setFeatured = (patch) => update({ featured: { ...featured, ...patch } });
+          const setSmall = (i, patch) => {
+            const next = small.map((t, idx) => idx === i ? { ...t, ...patch } : t);
+            update({ small: next });
+          };
+          const tierEditor = (t, i) => html`
+            <div key=${i} style="display: grid; grid-template-columns: 0.5fr 1fr 1.5fr auto; gap: 0.4rem; margin-bottom: 0.4rem; align-items: end;">
+              <div><label class="form-label" style="font-size: 0.72rem; ${i > 0 ? 'visibility: hidden;' : ''}">$</label><input class="form-input" type="text" value=${t.amount || ''} onInput=${e => setSmall(i, { amount: e.target.value })} /></div>
+              <div><label class="form-label" style="font-size: 0.72rem; ${i > 0 ? 'visibility: hidden;' : ''}">Label</label><input class="form-input" type="text" value=${t.label || ''} onInput=${e => setSmall(i, { label: e.target.value })} /></div>
+              <div><label class="form-label" style="font-size: 0.72rem; ${i > 0 ? 'visibility: hidden;' : ''}">Description</label><input class="form-input" type="text" value=${t.description || ''} onInput=${e => setSmall(i, { description: e.target.value })} /></div>
+              <button class="btn btn-sm btn-ghost" type="button" onClick=${() => update({ small: small.filter((_, idx) => idx !== i) })} title="Remove">${icons.x}</button>
+            </div>`;
+          return html`<div>
+            <p style="margin: 0 0 0.5rem; font-size: 0.78rem; font-weight: 600; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 0.06em;">Featured tier</p>
+            <div style="display: grid; grid-template-columns: 0.5fr 1fr 1fr; gap: 0.4rem; margin-bottom: 0.4rem;">
+              <div class="form-group" style="margin-bottom: 0;"><label class="form-label" style="font-size: 0.72rem;">Amount</label><input class="form-input" type="text" value=${featured.amount || ''} onInput=${e => setFeatured({ amount: e.target.value })} placeholder="500" /></div>
+              <div class="form-group" style="margin-bottom: 0;"><label class="form-label" style="font-size: 0.72rem;">Label</label><input class="form-input" type="text" value=${featured.label || ''} onInput=${e => setFeatured({ label: e.target.value })} /></div>
+              <div class="form-group" style="margin-bottom: 0;"><label class="form-label" style="font-size: 0.72rem;">Badge</label><input class="form-input" type="text" value=${featured.badge || ''} onInput=${e => setFeatured({ badge: e.target.value })} placeholder="Most Popular" /></div>
+            </div>
+            <div class="form-group" style="margin-bottom: 0.4rem;"><label class="form-label" style="font-size: 0.72rem;">Description</label><textarea class="form-input" rows="2" value=${featured.description || ''} onInput=${e => setFeatured({ description: e.target.value })} style="resize: vertical;"></textarea></div>
+            <div class="form-group" style="margin-bottom: 0.8rem;"><label class="form-label" style="font-size: 0.72rem;">Donate URL <span style="font-weight: 400; color: var(--color-text-muted);">(auto-fills with Zeffy if blank)</span></label><input class="form-input" type="url" value=${featured.href || ''} onInput=${e => setFeatured({ href: e.target.value })} placeholder="https://..." /></div>
+            <p style="margin: 0 0 0.4rem; font-size: 0.78rem; font-weight: 600; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 0.06em;">Smaller tiers (max 2)</p>
+            ${small.map(tierEditor)}
+            ${small.length < 2 ? html`<button class="btn btn-sm btn-ghost" type="button" onClick=${() => update({ small: [...small, { amount: '', label: '', description: '', href: '' }] })}>+ Add tier</button>` : null}
+          </div>`;
+        }
+
+        case 'trustSignals': {
+          const items = (block.items && block.items.length) ? block.items : ['Tax-Deductible', 'Zero Platform Fees', '501(c)(3)'];
+          const setItem = (i, val) => update({ items: items.map((x, idx) => idx === i ? val : x) });
+          return html`<div>
+            ${items.map((it, i) => html`
+              <div key=${i} style="display: grid; grid-template-columns: 1fr auto; gap: 0.5rem; margin-bottom: 0.4rem; align-items: center;">
+                <input class="form-input" type="text" value=${it} onInput=${e => setItem(i, e.target.value)} />
+                <button class="btn btn-sm btn-ghost" type="button" onClick=${() => update({ items: items.filter((_, idx) => idx !== i) })} disabled=${items.length <= 1} title="Remove">${icons.x}</button>
+              </div>
+            `)}
+            ${items.length < 5 ? html`<button class="btn btn-sm btn-ghost" type="button" onClick=${() => update({ items: [...items, ''] })}>+ Add signal</button>` : null}
+          </div>`;
+        }
+
+        case 'partnersList': {
+          const partners = block.partners || [];
+          const partnersText = partners.join('\n');
+          return html`<div>
+            <div class="form-group" style="margin-bottom: 0.5rem;">
+              <label class="form-label" style="font-size: 0.78rem;">Section Label</label>
+              <input class="form-input" type="text" value=${block.label || ''} onInput=${e => update({ label: e.target.value })} placeholder="Our Partners" />
+            </div>
+            <div class="form-group" style="margin-bottom: 0.5rem;">
+              <label class="form-label" style="font-size: 0.78rem;">Headline <span style="font-weight: 400; color: var(--color-text-muted);">(*italic* for highlight)</span></label>
+              <input class="form-input" type="text" value=${block.headline || ''} onInput=${e => update({ headline: e.target.value })} placeholder="Made possible by *incredible* partners" />
+            </div>
+            <div class="form-group" style="margin-bottom: 0.5rem;">
+              <label class="form-label" style="font-size: 0.78rem;">Intro</label>
+              <textarea class="form-input" rows="2" value=${block.intro || ''} onInput=${e => update({ intro: e.target.value })} style="resize: vertical;"></textarea>
+            </div>
+            <div class="form-group" style="margin-bottom: 0;">
+              <label class="form-label" style="font-size: 0.78rem;">Partners <span style="font-weight: 400; color: var(--color-text-muted);">(one per line)</span></label>
+              <textarea class="form-input" rows="6" value=${partnersText} onInput=${e => update({ partners: e.target.value.split('\n').map(s => s.trim()).filter(Boolean) })} style="resize: vertical; font-size: 0.85rem;"></textarea>
+            </div>
+          </div>`;
+        }
+
         default:
           return html`<div style="font-size: 0.85rem; color: var(--color-text-muted);">No editor for ${block.type}</div>`;
       }
@@ -2453,28 +2761,35 @@
         subject: '[Kid Name]’s Dream Room is Complete — See the Transformation',
         preheader: '',
         blocks: [
-          { type: 'kidCard', label: 'Project Reveal' },
-          { type: 'sectionLabel', text: 'Project Complete', variant: 'dark' },
-          { type: 'headline', text: 'Meet [Kid Name]', size: 'large', align: 'left' },
+          { type: 'heroPortrait', src: '', alt: '[Kid Name] in their dream room', name: '[Kid Name]', age: '', badge: '', link: '' },
+          { type: 'detailChips', items: [{ label: 'Diagnosis', value: '' }, { label: 'Rooms', value: 'Accessible Bathroom + Dream Bedroom' }, { label: 'Year', value: String(new Date().getFullYear()) }] },
+          { type: 'sectionLabel', text: `Project Complete · ${new Date().getFullYear()}`, variant: 'dark' },
+          { type: 'headline', text: 'Meet [Kid Name] — our little *miracle*', size: 'large', align: 'left' },
           { type: 'paragraph', text: 'Replace this with the kid’s lede — the opening paragraph from their bio.', style: 'lede' },
           { type: 'photoGrid', items: [{ src: '', alt: '' }, { src: '', alt: '' }] },
           { type: 'paragraph', text: 'The full story — what daily life looks like, what their family went through, what changed.' },
-          { type: 'quote', text: '', cite: '' },
-          { type: 'headline', text: 'That all changed.', align: 'center', size: 'medium' },
-          { type: 'stats', items: [{ value: '2', label: 'Rooms Built' }, { value: '8', label: 'Partners' }, { value: '1', label: 'Dream' }] },
+          { type: 'quote', text: 'A direct quote from the family or child.', cite: '[Family member name]' },
+          { type: 'transitionLine', text: 'That all *changed*.' },
+          { type: 'stats', items: [{ value: '2', label: 'Rooms Built' }, { value: '20', label: 'Partners' }, { value: '1', label: 'Dream' }] },
           { type: 'sectionLabel', text: 'What We Built', variant: 'yellow' },
-          { type: 'headline', text: 'Two rooms, one purpose', size: 'medium' },
+          { type: 'headline', text: 'Two rooms, one *purpose*', size: 'medium' },
           { type: 'paragraph', text: 'Safety, independence, and joy — at the center of every decision.', muted: true },
-          { type: 'paragraph', text: '**01 — Dream Bedroom**\n\nDescribe the bedroom transformation here.' },
-          { type: 'paragraph', text: '**02 — Accessible Bathroom**\n\nDescribe the bathroom transformation here.' },
+          { type: 'numberedCard', number: '01', title: 'Accessible Bathroom', body: 'A fully redesigned, wheelchair-accessible bathroom — roll-in shower, safe maneuvering space, and features built for independence and dignity.' },
+          { type: 'numberedCard', number: '02', title: 'Dream Bedroom', body: 'A one-of-a-kind bedroom designed around this child’s personality, interests, and unique needs — their own space to dream big.' },
           { type: 'sectionLabel', text: 'The Transformation', variant: 'dark' },
-          { type: 'headline', text: 'From struggle to sunshine', size: 'medium' },
-          { type: 'photoGrid', items: [{ src: '', alt: 'Before' }, { src: '', alt: 'After' }] },
-          { type: 'photo', src: '', alt: 'The reveal moment', caption: 'The big reveal — the moment everything changed' },
+          { type: 'headline', text: 'From struggle to *sunshine*', size: 'medium' },
+          { type: 'beforeAfter', before: { src: '', alt: 'Before renovation' }, after: { src: '', alt: 'After renovation' }, beforeLabel: 'Before', afterLabel: 'After' },
+          { type: 'photo', src: '', alt: 'The reveal moment', caption: 'The big reveal — the moment everything changed', variant: 'reveal' },
           { type: 'button', label: 'See [Kid Name]’s Full Story', href: 'https://sunshineonaranneyday.com/kids/', variant: 'primary' },
-          { type: 'divider', size: 'large' },
+          { type: 'partnersList', label: 'Our Partners', headline: 'Made possible by *incredible* partners', intro: 'This project wouldn’t exist without the generosity of partners who show up, project after project, with heart and hands ready to build.', partners: [] },
+          { type: 'sectionLabel', text: 'Your Impact', variant: 'yellow' },
+          { type: 'headline', text: 'Every dollar has a *purpose*', size: 'medium' },
+          { type: 'paragraph', text: 'Families are on our waitlist right now. Your gift brings us closer to saying *yes* to the next child.', muted: true },
+          { type: 'donationTiers', featured: { amount: '500', label: 'Furniture & Flooring', description: 'Adaptive furniture or accessible flooring — the structural pieces that change a child’s daily life.', badge: 'Most Popular', href: '' }, small: [{ amount: '60', label: 'Paint & Supplies', description: 'Transforms walls into a child’s dream canvas.', href: '' }, { amount: '125', label: 'Bedding & Decor', description: 'The details that make a room feel like home.', href: '' }] },
+          { type: 'trustSignals', items: ['Tax-Deductible', 'Zero Platform Fees', '501(c)(3)'] },
           { type: 'signature', note: 'A short founder note — what this project meant to you.' },
-          { type: 'button', label: 'Donate Now', href: 'https://sunshineonaranneyday.com/donate', variant: 'dark' },
+          { type: 'button', label: 'Donate Now', href: 'https://sunshineonaranneyday.com/donate', variant: 'dark', align: 'center' },
+          { type: 'spacer', height: 16 },
         ],
       },
       {
@@ -2485,18 +2800,19 @@
         subject: 'Meet [Kid Name] — Our Next Dream Room Project',
         preheader: 'Meet [Kid Name] — our next dream room project. Here’s their story and how you can help.',
         blocks: [
-          { type: 'kidCard', label: 'Coming Soon' },
-          { type: 'sectionLabel', text: 'Introducing', variant: 'dark' },
+          { type: 'heroPortrait', src: '', alt: '[Kid Name]', name: '[Kid Name]', age: '', badge: 'Coming Soon', badgeVariant: 'yellow', link: '' },
+          { type: 'detailChips', items: [{ label: 'Diagnosis', value: '' }, { label: 'Rooms', value: '' }, { label: 'Year', value: String(new Date().getFullYear()) }] },
+          { type: 'sectionLabel', text: `Introducing · ${new Date().getFullYear()}`, variant: 'dark' },
           { type: 'headline', text: 'Meet [Kid Name]', size: 'large' },
           { type: 'paragraph', text: 'The lede — first impression of the child and family.', style: 'lede' },
           { type: 'paragraph', text: 'More of the story.' },
-          { type: 'quote', text: '', cite: '' },
+          { type: 'quote', text: 'A quote from the family.', cite: '' },
           { type: 'sectionLabel', text: 'The Plan', variant: 'yellow' },
-          { type: 'headline', text: 'What we’re building', size: 'medium' },
+          { type: 'headline', text: 'What we’re *building*', size: 'medium' },
           { type: 'paragraph', text: 'Here’s what [Kid Name]’s renovation will include:', muted: true },
-          { type: 'paragraph', text: '**01 — Room Type**\n\nDescribe what we’re building here.' },
+          { type: 'numberedCard', number: '01', title: 'Room Type', body: 'Describe what we’re building here.' },
           { type: 'sectionLabel', text: 'How You Can Help', variant: 'yellow' },
-          { type: 'headline', text: 'Help us build [Kid Name]’s dream', size: 'medium' },
+          { type: 'headline', text: 'Help us build [Kid Name]’s *dream*', size: 'medium' },
           { type: 'paragraph', text: 'Every dollar goes directly to materials, labor, and design for [Kid Name]’s new space. Zero platform fees.', muted: true },
           { type: 'button', label: 'Donate for [Kid Name]', href: 'https://sunshineonaranneyday.com/donate', variant: 'primary' },
           { type: 'divider', size: 'large' },
@@ -2512,22 +2828,25 @@
         subject: 'SOARD [Month] Update — Building Dreams, Changing Lives',
         preheader: 'Your [Month] SOARD update: stats, stories, and how you’re changing lives.',
         blocks: [
-          { type: 'sectionLabel', text: 'Monthly Update', variant: 'dark' },
-          { type: 'headline', text: '[Month] update — building dreams, changing lives', size: 'large' },
-          { type: 'paragraph', text: 'A welcome paragraph for the month — where we are, what’s ahead.', style: 'lede' },
+          { type: 'sectionLabel', text: '[Month] Update', variant: 'dark' },
+          { type: 'headline', text: 'Building dreams, changing *lives*', size: 'large' },
+          { type: 'paragraph', text: 'Here’s what your support made possible this month.', style: 'lede' },
           { type: 'sectionLabel', text: 'Impact So Far', variant: 'yellow' },
-          { type: 'stats', items: [{ value: '182', label: 'Kids Served' }, { value: '247', label: 'Rooms Built' }, { value: '13', label: 'Years' }] },
+          { type: 'stats', items: [{ value: '182', label: 'Kids Served' }, { value: '247', label: 'Rooms Built' }, { value: '13', label: 'Years of Impact' }] },
           { type: 'divider' },
-          { type: 'sectionLabel', text: 'Recent Reveal', variant: 'dark' },
+          { type: 'sectionLabel', text: 'Recently Completed', variant: 'yellow' },
           { type: 'kidCard', label: 'Just Completed' },
           { type: 'sectionLabel', text: 'In Progress', variant: 'dark' },
           { type: 'kidCard', label: 'Coming Soon' },
-          { type: 'sectionLabel', text: 'Upcoming Events', variant: 'yellow' },
+          { type: 'sectionLabel', text: 'Upcoming Events', variant: 'dark' },
           { type: 'eventCard' },
           { type: 'eventCard' },
           { type: 'divider', size: 'large' },
-          { type: 'signature', note: 'A note for this month.' },
+          { type: 'headline', text: 'Help us build the *next* dream room', size: 'medium', align: 'center' },
+          { type: 'paragraph', text: 'Every dollar goes directly to building life-changing spaces — at no cost to families.', muted: true, align: 'center' },
           { type: 'button', label: 'Donate Now', href: 'https://sunshineonaranneyday.com/donate', variant: 'primary' },
+          { type: 'trustSignals', items: ['Tax-Deductible', 'Zero Platform Fees', '501(c)(3)'] },
+          { type: 'signature', note: 'A note for this month.' },
         ],
       },
     ];
@@ -2540,22 +2859,31 @@
 
     function blockSummary(b, kids) {
       switch (b.type) {
-        case 'hero':         return b.src ? 'Hero image set' : 'No image yet';
-        case 'photo':        return b.src ? (b.caption || 'Photo') : 'No image yet';
-        case 'photoGrid':    return `${(b.items || []).filter(i => i.src).length}/${(b.items || []).length} images`;
-        case 'headline':     return (b.text || '').slice(0, 60) || '(empty)';
-        case 'subheadline':  return (b.text || '').slice(0, 60) || '(empty)';
-        case 'sectionLabel': return (b.text || '').slice(0, 40) || '(empty)';
-        case 'paragraph':    return (b.text || '').slice(0, 70).replace(/\s+/g, ' ') || '(empty)';
-        case 'quote':        return (b.text || '').slice(0, 60) || '(empty)';
-        case 'button':       return `${b.label || '(no label)'} → ${b.href ? new URL(b.href, 'https://x').pathname : '(no link)'}`;
-        case 'kidCard':      { const k = (kids || []).find(x => x.slug === b.slug); return k ? k.name : '(pick a kid)'; }
-        case 'eventCard':    return b.name || '(pick an event)';
-        case 'stats':        return (b.items || []).map(i => i.value).filter(Boolean).join(' · ') || '(empty)';
-        case 'signature':    return b.from || 'Signature';
-        case 'divider':      return 'Divider';
-        case 'spacer':       return `${b.height || 24}px`;
-        default:             return b.type;
+        case 'hero':           return b.src ? 'Hero image set' : 'No image yet';
+        case 'heroPortrait':   return b.src ? `${b.name || 'Portrait'}${b.badge ? ` · ${b.badge}` : ''}` : 'No image yet';
+        case 'photo':          return b.src ? (b.caption || (b.variant === 'reveal' ? 'Reveal photo' : 'Photo')) : 'No image yet';
+        case 'photoGrid':      return `${(b.items || []).filter(i => i.src).length}/${(b.items || []).length} images`;
+        case 'beforeAfter':    return (b.before?.src && b.after?.src) ? 'Before / After set' : 'Add both images';
+        case 'headline':       return (b.text || '').slice(0, 60) || '(empty)';
+        case 'subheadline':    return (b.text || '').slice(0, 60) || '(empty)';
+        case 'sectionLabel':   return (b.text || '').slice(0, 40) || '(empty)';
+        case 'paragraph':      return (b.text || '').slice(0, 70).replace(/\s+/g, ' ') || '(empty)';
+        case 'transitionLine': return (b.text || '').slice(0, 60) || '(empty)';
+        case 'quote':          return (b.text || '').slice(0, 60) || '(empty)';
+        case 'detailChips':    return (b.items || []).filter(i => i.value).map(i => i.value).join(' · ') || '(empty)';
+        case 'numberedCard':   return `${b.number || '?'} · ${b.title || '(no title)'}`;
+        case 'button':         return `${b.label || '(no label)'} → ${b.href ? new URL(b.href, 'https://x').pathname : '(no link)'}`;
+        case 'donationTiers':  return `$${b.featured?.amount || '?'} featured + ${(b.small || []).filter(t => t.amount).length} tiers`;
+        case 'trustSignals':   return (b.items || []).join(' · ') || 'Tax-Deductible · Zero Platform Fees · 501(c)(3)';
+        case 'kidCard':        { const k = (kids || []).find(x => x.slug === b.slug); return k ? k.name : '(pick a kid)'; }
+        case 'revealInvite':   { const k = (kids || []).find(x => x.slug === b.slug); const who = k ? k.name : '(pick a kid)'; return b.date ? `${who} · ${b.date}` : who; }
+        case 'eventCard':      return b.name || '(pick an event)';
+        case 'stats':          return (b.items || []).map(i => i.value).filter(Boolean).join(' · ') || '(empty)';
+        case 'partnersList':   return `${(b.partners || []).length} partners`;
+        case 'signature':      return b.from || 'Signature';
+        case 'divider':        return 'Divider';
+        case 'spacer':         return `${b.height || 24}px`;
+        default:               return b.type;
       }
     }
 
@@ -2590,6 +2918,8 @@
       const [pushing, setPushing] = useState(false);
       const [sendingTest, setSendingTest] = useState(false);
       const [testEmail, setTestEmail] = useState('');
+      const [sendingDirect, setSendingDirect] = useState(false);
+      const [directRecipients, setDirectRecipients] = useState('');
       const [pushResult, setPushResult] = useState(null);
       const [confirmDelete, setConfirmDelete] = useState(null);
 
@@ -2666,7 +2996,7 @@
         if (!eBlocks.length) throw new Error('Add at least one block.');
         if (!eSubject.trim()) throw new Error('Subject is required.');
         const resolved = await Promise.all(eBlocks.map(async (b) => {
-          if (b.type === 'kidCard' && b.slug) {
+          if ((b.type === 'kidCard' || b.type === 'revealInvite') && b.slug) {
             try {
               const r = await api.readContent(`src/content/kids/${b.slug}.json`);
               if (r.success) {
@@ -2790,6 +3120,50 @@
           addToast?.(e.message || 'Test send failed', 'error');
         }
         setSendingTest(false);
+      };
+
+      // Parse the recipients textarea: split on commas/semicolons/newlines/whitespace,
+      // dedupe, drop empties. Returns the cleaned list.
+      const parseRecipients = (raw) => {
+        return Array.from(new Set(
+          String(raw || '')
+            .split(/[\s,;]+/)
+            .map(s => s.trim().toLowerCase())
+            .filter(Boolean)
+        ));
+      };
+      const directList = parseRecipients(directRecipients);
+      const directInvalid = directList.filter(e => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e));
+
+      const handleDirectSend = async () => {
+        if (!directList.length) {
+          addToast?.('Add at least one recipient', 'error');
+          return;
+        }
+        if (directInvalid.length) {
+          addToast?.(`Invalid: ${directInvalid.slice(0, 3).join(', ')}`, 'error');
+          return;
+        }
+        if (!confirm(`Send "${eSubject}" to ${directList.length} recipient${directList.length === 1 ? '' : 's'}?\n\nThis sends real emails immediately.`)) return;
+        setSendingDirect(true);
+        try {
+          const body = await buildBody();
+          const res = await fetch('/api/send-direct', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ...body, recipients: directList }),
+          });
+          const data = await res.json();
+          if (data.ok) {
+            addToast?.(`Sent to ${data.count} recipient${data.count === 1 ? '' : 's'}`, 'success');
+            setDirectRecipients('');
+          } else {
+            addToast?.(data.error || 'Send failed', 'error');
+          }
+        } catch (e) {
+          addToast?.(e.message || 'Send failed', 'error');
+        }
+        setSendingDirect(false);
       };
 
       const handlePreview = async () => {
@@ -3003,6 +3377,29 @@
               <div class="form-hint" style="margin-top: 0.4rem;">Sends a one-off email so you can preview in your inbox. Subject is prefixed [TEST].</div>
             </div>
 
+            <div style="margin-bottom: 1rem; padding: 0.85rem 1rem; border: 1px dashed var(--color-border); border-radius: var(--radius-sm); background: var(--color-bg-secondary);">
+              <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;">
+                <div style="font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-muted);">Send to Specific People</div>
+                ${directList.length ? html`
+                  <span style="font-size: 0.72rem; color: ${directInvalid.length ? '#c00' : 'var(--color-text-muted)'}; font-weight: 600;">
+                    ${directInvalid.length ? `${directInvalid.length} invalid` : `${directList.length} recipient${directList.length === 1 ? '' : 's'}`}
+                  </span>
+                ` : null}
+              </div>
+              <textarea class="form-input" rows="3" style="font-size: 0.85rem; font-family: inherit; resize: vertical;"
+                placeholder="Paste or type emails — one per line, or comma-separated"
+                value=${directRecipients}
+                onInput=${e => setDirectRecipients(e.target.value)} />
+              <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 0.5rem; gap: 0.5rem;">
+                <div class="form-hint" style="margin: 0; flex: 1;">For invites to a known list (family, sponsors). Each recipient gets their own copy. Up to 100.</div>
+                <button class="btn btn-secondary" onClick=${handleDirectSend}
+                  disabled=${sendingDirect || !directList.length || !!directInvalid.length || !eBlocks.length || !eSubject}
+                  style="font-size: 0.85rem; padding: 0.5rem 1rem; white-space: nowrap;">
+                  ${sendingDirect ? html`<div class="spinner" style="width: 12px; height: 12px; border-width: 2px;" />` : (directList.length ? `Send to ${directList.length}` : 'Send')}
+                </button>
+              </div>
+            </div>
+
             <div class="form-group">
               <label class="form-label">Template Name <span style="color: #c00;">*</span></label>
               <input class="form-input" type="text" value=${eName} onInput=${e => { setEName(e.target.value); setEDirty(true); }} placeholder="What this template is for" />
@@ -3159,6 +3556,10 @@
                 const items = (b.items || []).slice();
                 items[target.idx] = { ...items[target.idx], src: id };
                 return { ...b, items };
+              }
+              if (target.key === 'before' || target.key === 'after') {
+                const cur = b[target.key] || { src: '', alt: '' };
+                return { ...b, [target.key]: { ...cur, src: id } };
               }
               return { ...b, [target.key]: id };
             }));
@@ -13130,6 +13531,7 @@
         ourstory: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" /><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" /></svg>`,
         mediakit: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" /><path d="M14 2v4a2 2 0 0 0 2 2h4" /><path d="M10 9H8" /><path d="M16 13H8" /><path d="M16 17H8" /></svg>`,
         press: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2" /><path d="M18 14h-8" /><path d="M15 18h-5" /><path d="M10 6h8v4h-8V6Z" /></svg>`,
+        mail: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="20" height="16" x="2" y="4" rx="2" /><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" /></svg>`,
         auditLog: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>`,
         pressMonitor: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M2 12a10 10 0 1 0 10-10" /><path d="M2 16.1A5 5 0 0 1 5.9 20" /><path d="M2 12.05A10 10 0 0 1 9.95 20" /><path d="M2 8.05A15 15 0 0 1 13.95 20" /><circle cx="2" cy="20" r="2" /></svg>`,
         menu: html`<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/></svg>`,
