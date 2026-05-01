@@ -2353,8 +2353,19 @@
           const allKids = (kids || []).slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''));
           return html`<div>
             <div class="form-group" style="margin-bottom: 0.6rem;">
-              <label class="form-label" style="font-size: 0.78rem;">Featured Kid <span style="font-weight: 400; color: var(--color-text-muted);">(links to profile, fills hero photo)</span></label>
-              <select class="form-input" value=${block.slug || ''} onChange=${e => update({ slug: e.target.value })}>
+              <label class="form-label" style="font-size: 0.78rem;">Featured Kid <span style="font-weight: 400; color: var(--color-text-muted);">(auto-fills headline, intro, hero photo)</span></label>
+              <select class="form-input" value=${block.slug || ''} onChange=${e => {
+                const slug = e.target.value;
+                const k = (kids || []).find(x => x.slug === slug);
+                if (!k) { update({ slug }); return; }
+                const kidHero = k.heroImage || (k.photos && k.photos[0] && k.photos[0].url) || '';
+                const next = { slug };
+                if (!block.headline) next.headline = `You're Invited to ${k.name}'s Reveal Day`;
+                if (!block.intro)    next.intro = `After months of planning and building, the day is almost here. ${k.name} and the family haven't seen the finished room yet — come be there for that first reaction.`;
+                if (!block.image && kidHero) next.image = kidHero;
+                if (!block.profileLabel) next.profileLabel = `See ${k.name}'s Story`;
+                update(next);
+              }}>
                 <option value="">— Select a kid —</option>
                 ${allKids.map(k => html`<option key=${k.slug} value=${k.slug}>${k.name}${k.year ? ` (${k.year})` : ''} — ${k.status}</option>`)}
               </select>
