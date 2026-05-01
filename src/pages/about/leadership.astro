@@ -7,7 +7,6 @@
 import PageLayout from '../../layouts/PageLayout.astro';
 import { getCollection } from 'astro:content';
 import { cfUrl, cfSrcset, cfLqip } from '../../utils/cf-image';
-import { getWebPageSchema, getBreadcrumbSchema, buildSchemaGraph } from '../../utils/schema';
 import { getSiteStats } from '../../utils/stats';
 
 const PLACEHOLDER = 'brand-logo-circle-display';
@@ -26,24 +25,18 @@ const boardMembers = allTeam
 /* ── Stats ── */
 const computed = await getSiteStats();
 
-/* ── Schema ── */
-const pageUrl = 'https://sunshineonaranneyday.com/about/leadership/';
+/* ── Breadcrumbs (BaseLayout emits WebPage + BreadcrumbList schema) ── */
 const pageDesc = `Meet the team and board of directors behind Sunshine on a Ranney Day — the people who make dream rooms possible for ${computed.totalKids}+ children with special needs in the greater Atlanta area.`;
 const breadcrumbs = [
   { name: 'Home', url: 'https://sunshineonaranneyday.com/' },
   { name: 'About', url: 'https://sunshineonaranneyday.com/about/' },
-  { name: 'Leadership', url: pageUrl },
+  { name: 'Leadership', url: 'https://sunshineonaranneyday.com/about/leadership/' },
 ];
-const jsonLd = buildSchemaGraph(
-  getWebPageSchema({ url: pageUrl, title: 'Leadership', description: pageDesc }),
-  getBreadcrumbSchema(breadcrumbs, pageUrl),
-);
 ---
 
 <PageLayout
   title="Our Team & Board of Directors"
   description={pageDesc}
-  jsonLd={jsonLd}
   breadcrumbs={breadcrumbs}
   heroLabel="About"
   heroTitle={'Our <em class="highlight">Leadership</em>'}

@@ -2793,6 +2793,19 @@
         ],
       },
       {
+        slug: 'reveal-invite',
+        name: 'Reveal Invite',
+        description: 'Invite supporters to a kid’s Reveal Day — date, location, and calendar links.',
+        icon: 'events',
+        subject: 'You’re Invited — [Kid Name]’s Reveal Day',
+        preheader: 'Be there for the moment [Kid Name] sees their finished room for the first time.',
+        blocks: [
+          { type: 'revealInvite', slug: '', image: '', headline: '', intro: '', date: '', time: '', endTime: '', location: '', address: '', tz: 'America/New_York', label: '', profileLabel: '' },
+          { type: 'divider' },
+          { type: 'signature', note: 'Hope to see you there.' },
+        ],
+      },
+      {
         slug: 'kickoff',
         name: 'Project Kickoff',
         description: 'Upcoming kid — introduce them and rally support for the build.',
@@ -2851,7 +2864,7 @@
       },
     ];
 
-    const STARTER_ICONS = { star: 'star', sparkle: 'sparkle', barChart: 'barChart' };
+    const STARTER_ICONS = { star: 'star', sparkle: 'sparkle', barChart: 'barChart', events: 'events' };
 
     function withBlockIds(blocks) {
       return (blocks || []).map(b => ({ ...b, id: b.id || newBlockId() }));

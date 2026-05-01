@@ -23,7 +23,6 @@
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import { getCollection } from 'astro:content';
 import { cfRaw, cfId, cfDensitySrcset, cfSrcset, cfLqip } from '../../utils/cf-image';
-import { getWebPageSchema, getBreadcrumbSchema, buildSchemaGraph } from '../../utils/schema';
 import { getSiteStats } from '../../utils/stats';
 
 /* ── Site settings (editable from admin) ── */
@@ -65,23 +64,17 @@ const catCounts = {
   community: directory.filter(p => p.data.category.includes('community')).length,
 };
 
-/* ── Schema ── */
-const pageUrl = 'https://sunshineonaranneyday.com/partners/';
+/* ── Breadcrumbs (BaseLayout emits WebPage + BreadcrumbList schema) ── */
 const pageDesc = `Meet the ${allPartners.length}+ partners who donate materials, labor, design, and funding to build life-changing rooms for children with special needs — all at no cost to families.`;
 const breadcrumbs = [
   { name: 'Home', url: 'https://sunshineonaranneyday.com/' },
-  { name: 'Partners', url: pageUrl },
+  { name: 'Partners', url: 'https://sunshineonaranneyday.com/partners/' },
 ];
-const jsonLd = buildSchemaGraph(
-  getWebPageSchema({ url: pageUrl, title: 'Our Partners', description: pageDesc }),
-  getBreadcrumbSchema(breadcrumbs, pageUrl),
-);
 ---
 
 <BaseLayout
   title="Our Partners — Who Makes It Happen"
   description={pageDesc}
-  jsonLd={jsonLd}
   breadcrumbs={breadcrumbs}
 >
 

@@ -18,7 +18,7 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
 import Button from '../../components/ui/Button.astro';
 import CFImage from '../../components/ui/CFImage.astro';
 import { getCollection } from 'astro:content';
-import { getWebPageSchema, getBreadcrumbSchema, getVideoSchema, buildSchemaGraph } from '../../utils/schema';
+import { getVideoSchema } from '../../utils/schema';
 import { cfRaw, cfLqip, isCF } from '../../utils/cf-image';
 
 
@@ -68,15 +68,7 @@ const videoSchema = hasVideo ? getVideoSchema({
   videoUrl: project.videoUrl || undefined,
   uploadDate: project.year ? `${project.year}-01-01` : undefined,
 }) : null;
-const jsonLd = buildSchemaGraph(
-  getWebPageSchema({
-    url: pageUrl,
-    title: project.name,
-    description: project.metaDescription || project.description,
-  }),
-  getBreadcrumbSchema(breadcrumbs, pageUrl),
-  ...(videoSchema ? [videoSchema] : []),
-);
+const jsonLd = videoSchema ? [videoSchema] : undefined;
 ---
 
 <BaseLayout

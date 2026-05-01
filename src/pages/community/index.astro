@@ -18,7 +18,6 @@
  */
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import CFImage from '../../components/ui/CFImage.astro';
-import { getWebPageSchema, getBreadcrumbSchema, buildSchemaGraph } from '../../utils/schema';
 import { getCollection } from 'astro:content';
 import { cfRaw, cfSrcset, cfLqip, cfId, cfDensitySrcset } from '../../utils/cf-image';
 import { getSiteStats } from '../../utils/stats';
@@ -48,26 +47,16 @@ const heroAccentPhotoId = siteSettings.communityPhotos?.accent || 'kids/summit-c
 /* ── Spotlight ── */
 const spotlightPhoto = 'community/the-drake-house/after-01';
 
-/* ── Schema ── */
-const pageUrl = 'https://sunshineonaranneyday.com/community/';
+/* ── Breadcrumbs (BaseLayout emits WebPage + BreadcrumbList schema) ── */
 const breadcrumbs = [
   { name: 'Home', url: 'https://sunshineonaranneyday.com/' },
-  { name: 'Community Projects', url: pageUrl },
+  { name: 'Community Projects', url: 'https://sunshineonaranneyday.com/community/' },
 ];
-const jsonLd = buildSchemaGraph(
-  getWebPageSchema({
-    url: pageUrl,
-    title: 'Community Projects',
-    description: 'Sunshine on a Ranney Day partners with nonprofits, schools, and camps to complete large-scale renovation projects that impact thousands of children with special needs each year. Meet our nonprofit partners.',
-  }),
-  getBreadcrumbSchema(breadcrumbs, pageUrl),
-);
 ---
 
 <BaseLayout
   title="Community Projects — Large-Scale Renovations"
   description="Sunshine on a Ranney Day partners with nonprofits, schools, and camps to complete large-scale renovation projects that impact thousands of children with special needs each year."
-  jsonLd={jsonLd}
   breadcrumbs={breadcrumbs}
 >
   <!-- Preload hero LCP image -->
