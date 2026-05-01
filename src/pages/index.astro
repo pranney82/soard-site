@@ -276,7 +276,6 @@ const jsonLd = [getWebSiteSchema(), ...getSiteNavigationSchema()];
         </figure>
         <div class="story-content" data-reveal>
           <div class="section-label">Featured Story</div>
-          <span class="story-type">{fd?.roomTypes?.[0] || 'Dream Bedroom'}</span>
           <h2 id="story-heading">{siteSettings.featuredStoryHeadline || `${fd?.name || 'Zyah'}'s new space gave them independence — and their family peace of mind.`}</h2>
           <p>{siteSettings.featuredStoryDescription || `${fd?.name || 'Zyah'}, ${Array.isArray(fd?.age) ? `ages ${fd.age.join(', ')}` : `age ${fd?.age || 7}`}, lives with ${fd?.diagnosis || 'Spinal Muscular Atrophy'}. Our team transformed their space into an accessible, joyful haven — with custom features designed around their unique needs and personality.`}</p>
           <a href={`/kids/${featuredSlug}`} class="btn btn-dark btn-lg story-cta">Read {fd?.name || 'Zyah'}'s Full Story →</a>

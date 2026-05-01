@@ -2583,6 +2583,7 @@
       const [previewHtml, setPreviewHtml] = useState('');
       const [previewMode, setPreviewMode] = useState('desktop');
       const previewRef = useRef(null);
+      const firstPreviewRef = useRef(true); // 0ms on first show, 600ms on subsequent edits
 
       // Action state
       const [saving, setSaving] = useState(false);
@@ -2627,7 +2628,7 @@
       useEffect(() => { loadTemplates(); }, []);
       useEffect(() => { if (emailTab === 'history') loadHistory(); }, [emailTab]);
 
-      // Open / close editor
+      // Open / close editor — preview opens by default so editing is WYSIWYG
       const openEditor = (tpl) => {
         setEditing({ slug: tpl.slug, isStarter: !!tpl.isStarter });
         setEName(tpl.name || '');
@@ -2637,7 +2638,7 @@
         setEDirty(false);
         setESelected(null);
         setShowAddBlock(false);
-        setShowPreview(false);
+        setShowPreview(true);
         setPreviewHtml('');
         setPushResult(null);
         setView('editor');
@@ -2811,10 +2812,15 @@
         }
       };
 
-      // Live preview — debounced refresh while editing
+      // Live preview — fires immediately on editor open, then debounced while editing
       useEffect(() => {
-        if (view !== 'editor' || !showPreview) return;
+        if (view !== 'editor' || !showPreview) {
+          firstPreviewRef.current = true;
+          return;
+        }
         if (!eBlocks.length || !eSubject) return;
+        const delay = firstPreviewRef.current ? 0 : 600;
+        firstPreviewRef.current = false;
         const t = setTimeout(async () => {
           try {
             const body = await buildBody();
@@ -2826,7 +2832,7 @@
             const d = await r.json();
             if (d.ok) setPreviewHtml(d.previewHtml || '');
           } catch (_) { /* swallow */ }
-        }, 600);
+        }, delay);
         return () => clearTimeout(t);
       }, [view, showPreview, eBlocks, eSubject, ePreheader]);
 
@@ -3127,10 +3133,18 @@
                   <button class="btn btn-sm btn-ghost" onClick=${() => { setShowPreview(false); setPreviewHtml(''); }}>${icons.x}</button>
                 </div>
               </div>
-              <div style="background: #E5E4E0; padding: ${previewMode === 'mobile' ? '1rem' : '0'}; display: flex; justify-content: center;">
+              <div style="background: #E5E4E0; padding: ${previewMode === 'mobile' ? '1rem' : '0'}; display: flex; justify-content: center; position: relative;">
                 <iframe ref=${previewRef}
                   style="width: ${previewMode === 'mobile' ? '380px' : '100%'}; max-width: 100%; height: calc(100vh - 200px); border: none; background: #F5F4F0; ${previewMode === 'mobile' ? 'border-radius: 16px; box-shadow: 0 8px 32px rgba(0,0,0,0.15);' : ''}"
                   title="Email preview" />
+                ${!previewHtml ? html`
+                  <div style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; color: var(--color-text-muted); font-size: 0.85rem;">
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                      <div class="spinner" style="width: 14px; height: 14px; border-width: 2px;" />
+                      Loading preview...
+                    </div>
+                  </div>
+                ` : null}
               </div>
             </div>
           ` : null}

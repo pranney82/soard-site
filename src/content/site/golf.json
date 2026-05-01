@@ -278,7 +278,7 @@
         "name": "Presenting Sponsor",
         "price": "$20,000",
         "detail": "2 Foursomes (8 Golfers)",
-        "perk": "Oakley sunglasses + Footjoy shoes per player, video interview, logo on all signage & social media",
+        "perk": "We may have more spaces available! Please contact us if you would like to become a Presenting Sponsor.",
         "badge": "Top Sponsor",
         "badgeStyle": "gold",
         "highlight": "featured",
@@ -288,28 +288,28 @@
         "name": "Titanium Sponsor",
         "price": "$15,000",
         "detail": "2 Foursomes (8 Golfers)",
-        "perk": "Oakley sunglasses or Footjoy shoes, video interview, logo placement",
+        "perk": "We may have more spaces available! Please contact us if you would like to become a Titanium Sponsor.",
         "status": "sold-out"
       },
       {
         "name": "Diamond Sponsor",
         "price": "$10,000",
         "detail": "1 Foursome (4 Golfers)",
-        "perk": "Video interview, logo on social media & signage",
+        "perk": "We may have more spaces available! Please contact us if you would like to become a Diamond Sponsor.",
         "status": "sold-out"
       },
       {
         "name": "Platinum Sponsor",
         "price": "$7,500",
         "detail": "1 Foursome (4 Golfers)",
-        "perk": "Signage, multiple social media posts",
+        "perk": "We may have more spaces available! Please contact us if you would like to become a Platinum Sponsor.",
         "status": "sold-out"
       },
       {
         "name": "Gold Sponsor",
         "price": "$5,000",
         "detail": "1 Foursome (4 Golfers)",
-        "perk": "Signage, social media posts",
+        "perk": "We may have more spaces available! Please contact us if you would like to become a Gold Sponsor.",
         "status": "sold-out"
       },
       {

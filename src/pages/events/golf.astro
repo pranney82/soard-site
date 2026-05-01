@@ -1216,26 +1216,35 @@ const heroLogoSizes = '(max-width: 767px) 200px, 320px';
   }
 
   .ev-tier__badge--sold-out {
-    background: linear-gradient(135deg, #c62828, #e53935);
-    color: #fff;
-    box-shadow: 0 2px 8px rgba(198, 40, 40, 0.3);
+    background: var(--c-dark);
+    color: var(--c-cream);
+    box-shadow: 0 2px 8px rgba(55, 58, 54, 0.25);
+  }
+  .ev-tier--featured .ev-tier__badge--sold-out {
+    background: var(--c-yellow);
+    color: var(--c-dark);
+    box-shadow: 0 2px 8px rgba(255, 218, 36, 0.35);
   }
 
   .ev-tier__badge--few-left {
-    background: linear-gradient(135deg, #e65100, #ff6d00);
-    color: #fff;
-    box-shadow: 0 2px 8px rgba(230, 81, 0, 0.3);
+    background: var(--c-yellow);
+    color: var(--c-dark);
+    box-shadow: 0 2px 8px rgba(255, 218, 36, 0.4);
   }
 
   /* ── Status states ── */
   .ev-tier--sold-out {
-    opacity: 0.45;
     pointer-events: none;
-    filter: grayscale(0.3);
+    cursor: default;
+  }
+  .ev-tier--sold-out:hover {
+    transform: none;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 4px 12px rgba(0, 0, 0, 0.03);
   }
   .ev-tier--sold-out .ev-tier__price {
     text-decoration: line-through;
     text-decoration-thickness: 2px;
+    text-decoration-color: rgba(55, 58, 54, 0.4);
   }
 
   /* Inline status tag for add-on (small) tier cards */
@@ -1250,12 +1259,12 @@ const heroLogoSizes = '(max-width: 767px) 200px, 320px';
     margin-bottom: 0.35rem;
   }
   .ev-tier__status-tag--sold-out {
-    background: linear-gradient(135deg, #c62828, #e53935);
-    color: #fff;
+    background: var(--c-dark);
+    color: var(--c-cream);
   }
   .ev-tier__status-tag--few-left {
-    background: linear-gradient(135deg, #e65100, #ff6d00);
-    color: #fff;
+    background: var(--c-yellow);
+    color: var(--c-dark);
   }
 
   /* ── Highlight variants ── */

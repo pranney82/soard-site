@@ -2029,23 +2029,32 @@ const eventJsonLd = {
     box-shadow: 0 2px 8px rgba(212, 160, 23, 0.4);
   }
   .gv-tier__badge--sold-out {
-    background: linear-gradient(135deg, #c62828, #e53935);
-    color: #fff;
-    box-shadow: 0 2px 8px rgba(198, 40, 40, 0.3);
+    background: var(--gv-midnight);
+    color: var(--gv-paper);
+    box-shadow: 0 2px 8px rgba(13, 47, 63, 0.25);
+  }
+  .gv-tier--featured .gv-tier__badge--sold-out {
+    background: var(--gv-gold);
+    color: var(--gv-midnight);
+    box-shadow: 0 2px 8px rgba(212, 160, 23, 0.35);
   }
   .gv-tier__badge--few-left {
-    background: linear-gradient(135deg, #e65100, #ff6d00);
-    color: #fff;
-    box-shadow: 0 2px 8px rgba(230, 81, 0, 0.3);
+    background: var(--gv-gold);
+    color: var(--gv-midnight);
+    box-shadow: 0 2px 8px rgba(212, 160, 23, 0.35);
   }
   .gv-tier--sold-out {
-    opacity: 0.45;
     pointer-events: none;
-    filter: grayscale(0.3);
+    cursor: default;
+  }
+  .gv-tier--sold-out:hover {
+    transform: none;
+    box-shadow: 0 1px 3px rgba(13, 47, 63, 0.04), 0 4px 12px rgba(13, 47, 63, 0.04);
   }
   .gv-tier--sold-out .gv-tier__price {
     text-decoration: line-through;
     text-decoration-thickness: 2px;
+    text-decoration-color: rgba(13, 47, 63, 0.4);
   }
   .gv-tier__status-tag {
     display: inline-block;
@@ -2057,8 +2066,8 @@ const eventJsonLd = {
     border-radius: 6px;
     margin-bottom: 0.4rem;
   }
-  .gv-tier__status-tag--sold-out { background: linear-gradient(135deg, #c62828, #e53935); color: #fff; }
-  .gv-tier__status-tag--few-left { background: linear-gradient(135deg, #e65100, #ff6d00); color: #fff; }
+  .gv-tier__status-tag--sold-out { background: var(--gv-midnight); color: var(--gv-paper); }
+  .gv-tier__status-tag--few-left { background: var(--gv-gold); color: var(--gv-midnight); }
 
   .gv-tier--popular {
     border-color: rgba(199, 93, 74, 0.3);
