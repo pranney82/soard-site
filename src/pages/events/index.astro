@@ -120,7 +120,7 @@ function googleCalUrl(ev: { title: string; date: string; endDate?: string; locat
 
 /* ── Impact stats for trust section ── */
 const computed = await getSiteStats();
-const totalEventsHosted = past.length;
+const yearsOfImpact = computed.years;
 const totalKidsServed = computed.totalKids;
 const totalPartners = (await getCollection('partners')).length;
 
@@ -319,11 +319,11 @@ const fallbackSizes = '(max-width: 768px) 85vw, (max-width: 1200px) 38vw, 420px'
         <div class="ev-impact__stats" data-reveal data-delay="1">
           <div class="ev-impact__card">
             <div class="ev-impact__card-icon" aria-hidden="true">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg>
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
             </div>
-            <span class="ev-impact__big">{totalEventsHosted}+</span>
-            <span class="ev-impact__label">Events Hosted</span>
-            <p>Galas, build days, reveals, and community gatherings</p>
+            <span class="ev-impact__big">{yearsOfImpact}+</span>
+            <span class="ev-impact__label">Years of Impact</span>
+            <p>Hosting galas, build days, and reveals since 2012</p>
           </div>
           <div class="ev-impact__card">
             <div class="ev-impact__card-icon" aria-hidden="true">
