@@ -191,7 +191,7 @@ function emailWrap(preheader, body) {
 </html>`;
 }
 
-const FROM = 'Sunshine on a Ranney Day <sunshine@comms.soardcharity.com>';
+const FROM = 'Sunshine on a Ranney Day <sunshine@comms.sunshineonaranneyday.com>';
 
 // ═══════════════════════════════════════════════════════════════════
 // CUSTOM — Block-based composer (only template type)
