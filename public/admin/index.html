@@ -2988,9 +2988,13 @@
         setEName(tpl.name || '');
         setESubject(tpl.subject || '');
         setEPreheader(tpl.preheader || '');
-        setEBlocks(withBlockIds(tpl.blocks));
+        const blocksWithIds = withBlockIds(tpl.blocks);
+        setEBlocks(blocksWithIds);
         setEDirty(false);
-        setESelected(null);
+        // Auto-expand the first "feature" block (revealInvite, kidCard, eventCard) so
+        // the kid/event picker is visible immediately instead of buried behind a click.
+        const featured = blocksWithIds.find(b => b.type === 'revealInvite' || b.type === 'kidCard' || b.type === 'eventCard');
+        setESelected(featured ? featured.id : null);
         setShowAddBlock(false);
         setShowPreview(true);
         setPreviewHtml('');
