@@ -2350,94 +2350,8 @@
         }
 
         case 'revealInvite': {
-          const allKids = (kids || []).slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-          return html`<div>
-            <div class="form-group" style="margin-bottom: 0.6rem;">
-              <label class="form-label" style="font-size: 0.78rem;">Featured Kid <span style="font-weight: 400; color: var(--color-text-muted);">(auto-fills headline, intro, hero photo)</span></label>
-              <select class="form-input" value=${block.slug || ''} onChange=${e => {
-                const slug = e.target.value;
-                const k = (kids || []).find(x => x.slug === slug);
-                if (!k) { update({ slug }); return; }
-                const kidHero = k.heroImage || (k.photos && k.photos[0] && k.photos[0].url) || '';
-                const next = { slug };
-                if (!block.headline) next.headline = `You're Invited to ${k.name}'s Reveal Day`;
-                if (!block.intro)    next.intro = `After months of planning and building, the day is almost here. ${k.name} and the family haven't seen the finished room yet — come be there for that first reaction.`;
-                if (!block.image && kidHero) next.image = kidHero;
-                if (!block.profileLabel) next.profileLabel = `See ${k.name}'s Story`;
-                update(next);
-              }}>
-                <option value="">— Select a kid —</option>
-                ${allKids.map(k => html`<option key=${k.slug} value=${k.slug}>${k.name}${k.year ? ` (${k.year})` : ''} — ${k.status}</option>`)}
-              </select>
-            </div>
-            <div class="form-group" style="margin-bottom: 0.6rem;">
-              <label class="form-label" style="font-size: 0.78rem;">Hero Image <span style="font-weight: 400; color: var(--color-text-muted);">(optional — defaults to kid's hero)</span></label>
-              ${block.image ? html`
-                <div style="display: flex; gap: 0.5rem; align-items: flex-start;">
-                  <img src=${cfThumb(block.image, 'w=200,h=140,fit=cover,q=70')} style="width: 96px; height: 64px; object-fit: cover; border-radius: 6px; border: 1px solid var(--color-border);" />
-                  <div style="flex: 1; display: flex; flex-direction: column; gap: 0.35rem;">
-                    <button class="btn btn-sm btn-ghost" type="button" onClick=${() => onPickImage({ blockId: block.id, key: 'image' })}>Replace</button>
-                    <button class="btn btn-sm btn-ghost" type="button" onClick=${() => update({ image: '' })} style="color: #c00;">Remove</button>
-                  </div>
-                </div>
-              ` : html`
-                <button class="btn btn-ghost btn-sm" type="button" onClick=${() => onPickImage({ blockId: block.id, key: 'image' })}>Browse Image Library</button>
-              `}
-            </div>
-            <div class="form-group" style="margin-bottom: 0.5rem;">
-              <label class="form-label" style="font-size: 0.78rem;">Headline <span style="font-weight: 400; color: var(--color-text-muted);">(optional)</span></label>
-              <input class="form-input" type="text" value=${block.headline || ''} onInput=${e => update({ headline: e.target.value })} placeholder="You're Invited to [Name]'s Reveal Day" />
-            </div>
-            <div class="form-group" style="margin-bottom: 0.5rem;">
-              <label class="form-label" style="font-size: 0.78rem;">Intro <span style="font-weight: 400; color: var(--color-text-muted);">(optional)</span></label>
-              <textarea class="form-input" rows="2" onInput=${e => update({ intro: e.target.value })} placeholder="Auto">${block.intro || ''}</textarea>
-            </div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.5rem; margin-bottom: 0.5rem;">
-              <div class="form-group" style="margin-bottom: 0;">
-                <label class="form-label" style="font-size: 0.78rem;">Date</label>
-                <input class="form-input" type="date" value=${block.date || ''} onInput=${e => update({ date: e.target.value })} />
-              </div>
-              <div class="form-group" style="margin-bottom: 0;">
-                <label class="form-label" style="font-size: 0.78rem;">Start Time <span style="font-weight: 400; color: var(--color-text-muted);">(blank = all-day)</span></label>
-                <input class="form-input" type="text" value=${block.time || ''} onInput=${e => update({ time: e.target.value })} placeholder="3:00 PM" />
-              </div>
-              <div class="form-group" style="margin-bottom: 0;">
-                <label class="form-label" style="font-size: 0.78rem;">End Time</label>
-                <input class="form-input" type="text" value=${block.endTime || ''} onInput=${e => update({ endTime: e.target.value })} placeholder="5:00 PM" />
-              </div>
-            </div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-bottom: 0.5rem;">
-              <div class="form-group" style="margin-bottom: 0;">
-                <label class="form-label" style="font-size: 0.78rem;">Location Name</label>
-                <input class="form-input" type="text" value=${block.location || ''} onInput=${e => update({ location: e.target.value })} placeholder="The Smith Family Home" />
-              </div>
-              <div class="form-group" style="margin-bottom: 0;">
-                <label class="form-label" style="font-size: 0.78rem;">Timezone</label>
-                <select class="form-input" value=${block.tz || 'America/New_York'} onChange=${e => update({ tz: e.target.value })}>
-                  <option value="America/New_York">Eastern (New York)</option>
-                  <option value="America/Chicago">Central (Chicago)</option>
-                  <option value="America/Denver">Mountain (Denver)</option>
-                  <option value="America/Phoenix">Arizona (no DST)</option>
-                  <option value="America/Los_Angeles">Pacific (Los Angeles)</option>
-                  <option value="America/Anchorage">Alaska</option>
-                  <option value="Pacific/Honolulu">Hawaii</option>
-                </select>
-              </div>
-            </div>
-            <div class="form-group" style="margin-bottom: 0.5rem;">
-              <label class="form-label" style="font-size: 0.78rem;">Address <span style="font-weight: 400; color: var(--color-text-muted);">(used in calendar invite)</span></label>
-              <input class="form-input" type="text" value=${block.address || ''} onInput=${e => update({ address: e.target.value })} placeholder="123 Main St, Roswell, GA 30076" />
-            </div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
-              <div class="form-group" style="margin-bottom: 0;">
-                <label class="form-label" style="font-size: 0.78rem;">Section Label</label>
-                <input class="form-input" type="text" value=${block.label || ''} onInput=${e => update({ label: e.target.value })} placeholder="You're Invited" />
-              </div>
-              <div class="form-group" style="margin-bottom: 0;">
-                <label class="form-label" style="font-size: 0.78rem;">Profile Button Label</label>
-                <input class="form-input" type="text" value=${block.profileLabel || ''} onInput=${e => update({ profileLabel: e.target.value })} placeholder="See [Name]'s Story" />
-              </div>
-            </div>
+          return html`<div style="padding: 0.75rem; background: var(--color-bg-secondary); border-radius: 6px; font-size: 0.85rem; color: var(--color-text-muted); line-height: 1.5;">
+            Edit reveal details (kid, date, time, location) in the <strong style="color: var(--color-text);">Reveal Details</strong> panel above. Story, photos, quote, and sponsors are pulled automatically from the kid's profile at send time.
           </div>`;
         }
 
@@ -2806,13 +2720,12 @@
       {
         slug: 'reveal-invite',
         name: 'Reveal Invite',
-        description: 'Invite supporters to a kid’s Reveal Day — date, location, and calendar links.',
+        description: 'Pick a kid + reveal date — auto-fills story, photos, quote, sponsors, and calendar invites.',
         icon: 'events',
         subject: 'You’re Invited — [Kid Name]’s Reveal Day',
         preheader: 'Be there for the moment [Kid Name] sees their finished room for the first time.',
         blocks: [
           { type: 'revealInvite', slug: '', image: '', headline: '', intro: '', date: '', time: '', endTime: '', location: '', address: '', tz: 'America/New_York', label: '', profileLabel: '' },
-          { type: 'divider' },
           { type: 'signature', note: 'Hope to see you there.' },
         ],
       },
@@ -2988,13 +2901,9 @@
         setEName(tpl.name || '');
         setESubject(tpl.subject || '');
         setEPreheader(tpl.preheader || '');
-        const blocksWithIds = withBlockIds(tpl.blocks);
-        setEBlocks(blocksWithIds);
+        setEBlocks(withBlockIds(tpl.blocks));
         setEDirty(false);
-        // Auto-expand the first "feature" block (revealInvite, kidCard, eventCard) so
-        // the kid/event picker is visible immediately instead of buried behind a click.
-        const featured = blocksWithIds.find(b => b.type === 'revealInvite' || b.type === 'kidCard' || b.type === 'eventCard');
-        setESelected(featured ? featured.id : null);
+        setESelected(null);
         setShowAddBlock(false);
         setShowPreview(true);
         setPreviewHtml('');
@@ -3440,6 +3349,70 @@
               <label class="form-label">Preview Text <span style="font-weight: 400; color: var(--color-text-muted);">(optional)</span></label>
               <input class="form-input" type="text" value=${ePreheader} onInput=${e => { setEPreheader(e.target.value); setEDirty(true); }} placeholder="Inbox snippet shown after the subject (90-150 chars)" maxlength="160" />
             </div>
+
+            ${(() => {
+              const ri = eBlocks.find(b => b.type === 'revealInvite');
+              if (!ri) return null;
+              const updateRi = (patch) => updateBlocks(eBlocks.map(x => x.id === ri.id ? { ...x, ...patch } : x));
+              const allKids = (kids || []).slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+              const pickedKid = (kids || []).find(x => x.slug === ri.slug);
+              return html`
+                <div style="margin: 1.25rem 0 0.5rem; padding: 1rem; border: 1.5px solid var(--color-primary); border-radius: 8px; background: var(--color-primary-bg);">
+                  <div style="font-size: 0.85rem; font-weight: 700; margin-bottom: 0.75rem; display: flex; align-items: center; gap: 0.4rem;">
+                    <span style="display: inline-flex; color: var(--color-primary);">${icons.events}</span>
+                    Reveal Details
+                  </div>
+                  <div class="form-group" style="margin-bottom: 0.6rem;">
+                    <label class="form-label" style="font-size: 0.78rem;">Featured Kid <span style="font-weight: 400; color: var(--color-text-muted);">(auto-fills name, hero, story, quote, photos, sponsors)</span></label>
+                    <select class="form-input" value=${ri.slug || ''} onChange=${e => {
+                      const slug = e.target.value;
+                      updateRi({ slug });
+                      setEDirty(true);
+                    }}>
+                      <option value="">— Select a kid —</option>
+                      ${allKids.map(k => html`<option key=${k.slug} value=${k.slug}>${k.name}${k.year ? ` (${k.year})` : ''} — ${k.status}</option>`)}
+                    </select>
+                    ${pickedKid ? html`<div class="form-hint" style="margin-top: 0.4rem;">${pickedKid.name}'s story, quote, photos, and sponsors will be pulled from their profile at send time.</div>` : null}
+                  </div>
+                  <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.5rem; margin-bottom: 0.5rem;">
+                    <div class="form-group" style="margin-bottom: 0;">
+                      <label class="form-label" style="font-size: 0.78rem;">Date</label>
+                      <input class="form-input" type="date" value=${ri.date || ''} onInput=${e => { updateRi({ date: e.target.value }); setEDirty(true); }} />
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0;">
+                      <label class="form-label" style="font-size: 0.78rem;">Start Time <span style="font-weight: 400; color: var(--color-text-muted);">(blank = all-day)</span></label>
+                      <input class="form-input" type="text" value=${ri.time || ''} onInput=${e => { updateRi({ time: e.target.value }); setEDirty(true); }} placeholder="3:00 PM" />
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0;">
+                      <label class="form-label" style="font-size: 0.78rem;">End Time</label>
+                      <input class="form-input" type="text" value=${ri.endTime || ''} onInput=${e => { updateRi({ endTime: e.target.value }); setEDirty(true); }} placeholder="5:00 PM" />
+                    </div>
+                  </div>
+                  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-bottom: 0.5rem;">
+                    <div class="form-group" style="margin-bottom: 0;">
+                      <label class="form-label" style="font-size: 0.78rem;">Location Name</label>
+                      <input class="form-input" type="text" value=${ri.location || ''} onInput=${e => { updateRi({ location: e.target.value }); setEDirty(true); }} placeholder="The Smith Family Home" />
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0;">
+                      <label class="form-label" style="font-size: 0.78rem;">Timezone</label>
+                      <select class="form-input" value=${ri.tz || 'America/New_York'} onChange=${e => { updateRi({ tz: e.target.value }); setEDirty(true); }}>
+                        <option value="America/New_York">Eastern (New York)</option>
+                        <option value="America/Chicago">Central (Chicago)</option>
+                        <option value="America/Denver">Mountain (Denver)</option>
+                        <option value="America/Phoenix">Arizona (no DST)</option>
+                        <option value="America/Los_Angeles">Pacific (Los Angeles)</option>
+                        <option value="America/Anchorage">Alaska</option>
+                        <option value="Pacific/Honolulu">Hawaii</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div class="form-group" style="margin-bottom: 0;">
+                    <label class="form-label" style="font-size: 0.78rem;">Address <span style="font-weight: 400; color: var(--color-text-muted);">(used in calendar invite)</span></label>
+                    <input class="form-input" type="text" value=${ri.address || ''} onInput=${e => { updateRi({ address: e.target.value }); setEDirty(true); }} placeholder="123 Main St, Roswell, GA 30076" />
+                  </div>
+                </div>
+              `;
+            })()}
 
             <div style="margin: 1.25rem 0 0.5rem; display: flex; align-items: center; justify-content: space-between;">
               <label class="form-label" style="margin: 0;">Blocks <span style="font-weight: 400; color: var(--color-text-muted);">— ${eBlocks.length} block${eBlocks.length === 1 ? '' : 's'}</span></label>

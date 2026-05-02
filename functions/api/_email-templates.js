@@ -754,8 +754,68 @@ const BLOCKS = {
         ${cal.outlook ? calPill('Outlook', cal.outlook) : ''}
       </td></tr>` : '';
 
+    // ── Auto-pulled kid sections ────────────────────────────────
+    // Story, quote, photo grid, and sponsors are all derived from the kid
+    // record so the user only has to pick a kid + enter date/time/location.
+    let storySection = '';
+    if (k.bio || k.heroSummary) {
+      const paras = k.bio ? bioParagraphs(k.bio) : [k.heroSummary];
+      const paraHtml = paras.slice(0, 3).map(t => `<p style="margin:0 0 16px;font-family:${SANS};font-size:16px;line-height:1.75;color:${D};">${escapeHtml(t)}</p>`).join('');
+      storySection = `<tr><td style="background:${CR};padding:32px 48px 0;" class="pd">
+        ${sLabel(name ? `${name}'s Story` : 'The Story')}
+        <div style="height:8px;"></div>
+        ${paraHtml}
+      </td></tr>`;
+    }
+
+    let quoteSection = '';
+    if (k.quote) {
+      quoteSection = `<tr><td style="background:${CR};padding:24px 48px 0;" class="pd">
+        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background:${WG};border-radius:16px;"><tr>
+          <td style="padding:32px;">
+            <div style="margin-bottom:12px;">
+              <svg width="32" height="32" viewBox="0 0 48 48" fill="none" style="display:block;"><path d="M14 28c-2.2 0-4-1.8-4-4 0-6.6 5.4-12 12-12v4c-4.4 0-8 3.6-8 8h4c2.2 0 4 1.8 4 4s-1.8 4-4 4h-4zm20 0c-2.2 0-4-1.8-4-4 0-6.6 5.4-12 12-12v4c-4.4 0-8 3.6-8 8h4c2.2 0 4 1.8 4 4s-1.8 4-4 4h-4z" fill="${Y}"/></svg>
+            </div>
+            <p style="margin:0;font-family:${SERIF};font-size:20px;font-style:italic;line-height:1.45;color:${D};">${escapeHtml(k.quote)}</p>
+            ${name ? `<p style="margin:14px 0 0;font-family:${SANS};font-size:12px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:${TL};">— ${escapeHtml(name)}</p>` : ''}
+          </td></tr></table>
+      </td></tr>`;
+    }
+
+    let photoGridSection = '';
+    const kidPhotos = (k.photos || []).filter(ph => ph && ph.url).slice(1, 4); // skip hero, take next 3
+    if (kidPhotos.length >= 2) {
+      const cols = kidPhotos.slice(0, 3);
+      const colW = Math.floor(94 / cols.length);
+      const cells = cols.map((it, i) => {
+        const url = cfImg(it.url, 'w=500,fit=cover,q=75');
+        return `${i > 0 ? `<td width="2%" class="hm">&nbsp;</td>` : ''}
+          <td width="${colW}%" class="st ${i > 0 ? 'mob-stack' : ''}" valign="top">
+            <img src="${url}" width="244" alt="${escapeAttr(it.alt || (name ? `${name}` : ''))}" class="fl" style="width:100%;border-radius:12px;display:block;" />
+          </td>`;
+      }).join('');
+      photoGridSection = `<tr><td style="background:${CR};padding:24px 48px 0;" class="pd">
+        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%"><tr>${cells}</tr></table>
+      </td></tr>`;
+    }
+
+    let partnersSection = '';
+    const partnerNames = (k.partnerLogos || []).map(pp => pp && pp.name).filter(Boolean);
+    if (partnerNames.length) {
+      const list = partnerNames.map(escapeHtml).join(' &middot; ');
+      partnersSection = `<tr><td style="background:${CR};padding:32px 0 0;">
+        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background:${DD};"><tr>
+          <td style="padding:40px 48px;" class="pd">
+            ${sLabel('Made Possible By', 'light')}
+            <h2 class="h2m" style="margin:18px 0 14px;font-family:${SERIF};font-size:22px;font-weight:700;line-height:1.3;color:#fff;">A reveal day made possible by these <em style="font-style:italic;background-image:linear-gradient(transparent 55%,${YG} 55%);background-repeat:no-repeat;background-size:100% 100%;padding:0 .1em;">incredible</em> partners.</h2>
+            <p style="margin:0;font-family:${SANS};font-size:13px;line-height:2.2;color:rgba(255,255,255,0.55);">${list}</p>
+          </td>
+        </tr></table>
+      </td></tr>`;
+    }
+
     const profileBtn = profileUrl
-      ? `<tr><td style="padding:18px 0 0;text-align:center;">
+      ? `<tr><td style="background:${CR};padding:32px 48px 0;text-align:center;" class="pd">
           <a href="${profileUrl}" target="_blank" style="display:inline-block;padding:16px 36px;background:${Y};color:${D};font-family:${SANS};font-size:15px;font-weight:600;text-decoration:none;border-radius:100px;letter-spacing:0.01em;">${escapeHtml(p.profileLabel || (name ? `See ${name}'s Story` : `See the Story`))} &rarr;</a>
         </td></tr>`
       : '';
@@ -773,9 +833,13 @@ const BLOCKS = {
             </table>
           </td></tr>` : ''}
           ${calRow}
-          ${profileBtn}
         </table>
-      </td></tr>`;
+      </td></tr>
+      ${storySection}
+      ${quoteSection}
+      ${photoGridSection}
+      ${partnersSection}
+      ${profileBtn}`;
   },
 };
 
