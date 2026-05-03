@@ -2843,6 +2843,7 @@
       const [eSelected, setESelected] = useState(null);
       const [showAddBlock, setShowAddBlock] = useState(false);
       const [imgPickerFor, setImgPickerFor] = useState(null);
+      const [revealHeroUploading, setRevealHeroUploading] = useState(false);
       const [focusInput, setFocusInput] = useState(null);
       const [showPreview, setShowPreview] = useState(false);
       const [previewHtml, setPreviewHtml] = useState('');
@@ -3376,22 +3377,46 @@
                   </div>
                   <div class="form-group" style="margin-bottom: 0.6rem;">
                     <label class="form-label" style="font-size: 0.78rem;">Hero Image <span style="font-weight: 400; color: var(--color-text-muted);">(${ri.image ? 'overriding kid\'s hero' : pickedKid ? 'using kid\'s hero — override below' : 'pick a kid first'})</span></label>
-                    ${ri.image ? html`
-                      <div style="display: flex; gap: 0.5rem; align-items: flex-start;">
-                        <img src=${cfThumb(ri.image, 'w=200,h=140,fit=cover,q=70')} style="width: 96px; height: 64px; object-fit: cover; border-radius: 6px; border: 1px solid var(--color-border);" />
-                        <div style="flex: 1; display: flex; flex-direction: column; gap: 0.35rem;">
-                          <button class="btn btn-sm btn-ghost" type="button" onClick=${() => setImgPickerFor({ blockId: ri.id, key: 'image' })}>Replace</button>
-                          <button class="btn btn-sm btn-ghost" type="button" onClick=${() => { updateRi({ image: '' }); setEDirty(true); }} style="color: #c00;">Use kid's hero</button>
+                    <div style="display: flex; gap: 0.5rem; align-items: flex-start;">
+                      ${ri.image
+                        ? html`<img src=${cfThumb(ri.image, 'w=200,h=140,fit=cover,q=70')} style="width: 96px; height: 64px; object-fit: cover; border-radius: 6px; border: 1px solid var(--color-border);" />`
+                        : (pickedKid && (pickedKid.heroImage || (pickedKid.photos && pickedKid.photos[0] && pickedKid.photos[0].url))
+                            ? html`<img src=${cfThumb(pickedKid.heroImage || pickedKid.photos[0].url, 'w=200,h=140,fit=cover,q=70')} style="width: 96px; height: 64px; object-fit: cover; border-radius: 6px; border: 1px dashed var(--color-border); opacity: 0.7;" />`
+                            : html`<div style="width: 96px; height: 64px; border-radius: 6px; border: 1px dashed var(--color-border); display: flex; align-items: center; justify-content: center; font-size: 0.7rem; color: var(--color-text-muted);">No image</div>`)}
+                      <div style="flex: 1; display: flex; flex-direction: column; gap: 0.35rem;">
+                        <div style="display: flex; gap: 0.35rem;">
+                          <button class="btn btn-sm btn-ghost" type="button" onClick=${() => setImgPickerFor({ blockId: ri.id, key: 'image' })}>Browse Library</button>
+                          <label class="btn btn-sm btn-ghost" style="cursor: pointer; margin: 0;">
+                            ${revealHeroUploading ? html`<span class="spinner" style="width: 12px; height: 12px; border-width: 2px;" /> Uploading…` : html`Upload`}
+                            <input type="file" accept="image/*" style="display: none;" disabled=${revealHeroUploading}
+                              onChange=${async (e) => {
+                                const file = e.target.files && e.target.files[0];
+                                e.target.value = '';
+                                if (!file) return;
+                                if (file.size > 10 * 1024 * 1024) { addToast?.('Image too large (max 10 MB)', 'error'); return; }
+                                setRevealHeroUploading(true);
+                                try {
+                                  const slugSafe = (ri.slug || 'reveal').replace(/[^a-z0-9-]/gi, '-').toLowerCase();
+                                  const baseName = (file.name || 'hero').replace(/\.[^.]+$/, '').replace(/[^a-z0-9-]/gi, '-').toLowerCase().slice(0, 40);
+                                  const cfId = `emails/reveal-invite/${slugSafe}-${Date.now()}-${baseName}`;
+                                  const res = await api.uploadImage(file, cfId);
+                                  if (res && res.success && res.imageId) {
+                                    updateRi({ image: res.imageId });
+                                    setEDirty(true);
+                                    addToast?.('Hero image uploaded', 'success');
+                                  } else {
+                                    addToast?.(res?.error || 'Upload failed', 'error');
+                                  }
+                                } catch (err) {
+                                  addToast?.('Upload error: ' + err.message, 'error');
+                                }
+                                setRevealHeroUploading(false);
+                              }} />
+                          </label>
+                          ${ri.image ? html`<button class="btn btn-sm btn-ghost" type="button" onClick=${() => { updateRi({ image: '' }); setEDirty(true); }} style="color: #c00;">Use kid's hero</button>` : null}
                         </div>
                       </div>
-                    ` : html`
-                      <div style="display: flex; gap: 0.5rem; align-items: center;">
-                        ${pickedKid && (pickedKid.heroImage || (pickedKid.photos && pickedKid.photos[0] && pickedKid.photos[0].url))
-                          ? html`<img src=${cfThumb(pickedKid.heroImage || pickedKid.photos[0].url, 'w=200,h=140,fit=cover,q=70')} style="width: 96px; height: 64px; object-fit: cover; border-radius: 6px; border: 1px dashed var(--color-border); opacity: 0.7;" />`
-                          : null}
-                        <button class="btn btn-ghost btn-sm" type="button" onClick=${() => setImgPickerFor({ blockId: ri.id, key: 'image' })}>Upload / Browse Image Library</button>
-                      </div>
-                    `}
+                    </div>
                   </div>
                   <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.5rem; margin-bottom: 0.5rem;">
                     <div class="form-group" style="margin-bottom: 0;">
