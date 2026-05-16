@@ -682,7 +682,7 @@ const BLOCKS = {
     const customSrc = p.image || p.src || '';
     const kidSrc = k.heroImage || (k.photos && k.photos[0] && k.photos[0].url) || '';
     const heroSrc = customSrc || kidSrc;
-    const heroImg = heroSrc ? cfImg(heroSrc, 'w=1200,h=750,fit=cover,gravity=face,q=80') : '';
+    const heroImg = heroSrc ? cfImg(heroSrc, 'w=1200,fit=scale-down,q=85') : '';
     const heroAlt = escapeAttr(p.alt || (name ? `${name}'s reveal day` : 'Reveal day'));
 
     const headline = p.headline || (name ? `You're Invited to ${name}'s Reveal Day` : `You're Invited to a Reveal Day`);
@@ -739,7 +739,7 @@ const BLOCKS = {
             ? `<a href="${profileUrl}" target="_blank" style="display:block;text-decoration:none;">`
             : ''}
             <div style="border-radius:20px;overflow:hidden;box-shadow:0 24px 64px rgba(0,0,0,0.1),0 4px 16px rgba(0,0,0,0.06);">
-              <img src="${heroImg}" width="552" alt="${heroAlt}" class="fl hero-img" style="width:100%;display:block;" />
+              <img src="${heroImg}" width="552" alt="${heroAlt}" class="fl" style="width:100%;height:auto;display:block;" />
             </div>
           ${profileUrl ? `</a>` : ''}
         </td></tr>`

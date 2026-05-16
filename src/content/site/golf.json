@@ -58,7 +58,7 @@
           "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/acro/1777573860163/public"
         },
         {
-          "name": "The Garret Companies",
+          "name": "The Garrett Companies/The Garret Family Foundation",
           "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/the-garret-companies/1777573868885/public"
         }
       ]
@@ -140,12 +140,24 @@
         {
           "name": "STAG Partners",
           "logo": "partners/stag-partners"
+        },
+        {
+          "name": "Trashtastic ",
+          "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/trashtastic/1778009801063/public"
+        },
+        {
+          "name": "Carlos Ramirez Family",
+          "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/carlos-ramirez/1778009808652/public"
+        },
+        {
+          "name": "Mohawk ",
+          "logo": "partners/mohawk"
         }
       ]
     },
     {
       "tier": "Bloody Mary Bar Sponsor",
-      "size": "sm",
+      "size": "md",
       "names": [
         {
           "name": "Cosby Design Group",
@@ -155,17 +167,25 @@
     },
     {
       "tier": "Beverage Cart Sponsor",
-      "size": "sm",
+      "size": "md",
       "names": [
         {
           "name": "Southern Wholesale Flooring",
           "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/southern-wholesale-flooring/1776802668043/public"
+        },
+        {
+          "name": "Bishop & Brogdon",
+          "logo": "partners/bishop-brogdon/1777573883012"
+        },
+        {
+          "name": "The Baldwin Group",
+          "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/the-baldwin-group/1778784928953/public"
         }
       ]
     },
     {
       "tier": "Banquet Sponsor",
-      "size": "sm",
+      "size": "md",
       "names": [
         {
           "name": "Pella",
@@ -175,7 +195,7 @@
     },
     {
       "tier": "Banquet Bar Sponsor",
-      "size": "sm",
+      "size": "md",
       "names": [
         {
           "name": "CB Flooring",
@@ -184,8 +204,18 @@
       ]
     },
     {
+      "tier": "Lunch Sponsor",
+      "size": "md",
+      "names": [
+        {
+          "name": "Uzin-Utz",
+          "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/uzin-utz/1778009838521/public"
+        }
+      ]
+    },
+    {
       "tier": "Closest to the Pin Sponsor",
-      "size": "sm",
+      "size": "md",
       "names": [
         {
           "name": "Speciality Tile",
@@ -203,24 +233,25 @@
     },
     {
       "tier": "Putting Contest Sponsors",
-      "size": "sm",
+      "size": "md",
       "names": [
         {
-          "name": "Real Floors Commercial",
-          "logo": "partners/real-floors-commercial/1774544840079"
+          "name": "Real Floors Inc. ",
+          "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/real-floors-inc/1778785255310/public"
         },
         {
           "name": "Schluter",
           "logo": "partners/schluter-systems"
         },
         {
-          "name": "Adro & Paul Nielsen"
+          "name": "Adro & Paul Nielsen",
+          "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/adro-paul-nielsen/1778785339661/public"
         }
       ]
     },
     {
       "tier": "Titlest Golf Ball Sponsor",
-      "size": "sm",
+      "size": "md",
       "names": [
         {
           "name": "Randall Brothers",
@@ -230,7 +261,7 @@
     },
     {
       "tier": "Hole Sponsor",
-      "size": "sm",
+      "size": "md",
       "names": [
         {
           "name": "Swoz Consulting LLC",
@@ -267,6 +298,26 @@
         {
           "name": "Brady Ware",
           "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/sponsor/1777037698847/public"
+        },
+        {
+          "name": "The Roof",
+          "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/the-roof/1778009927165/public"
+        },
+        {
+          "name": "CLA",
+          "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/cla/1778009939901/public"
+        },
+        {
+          "name": "Overstreet Grading",
+          "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/overstreet-grading/1778009960631/public"
+        },
+        {
+          "name": "The Conlan Company",
+          "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/the-conlan-company/1778784997216/public"
+        },
+        {
+          "name": "Talona Ridge RV Resort",
+          "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/talona-ridge-rv-resort/1778785014549/public"
         }
       ]
     }
@@ -333,7 +384,7 @@
       {
         "name": "Lunch Sponsor",
         "price": "$2,500",
-        "status": "available",
+        "status": "sold-out",
         "perk": "Logo on Lunches \nMultiple Social Media Posts Tagging Your Company"
       },
       {
