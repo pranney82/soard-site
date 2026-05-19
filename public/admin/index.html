@@ -7899,8 +7899,9 @@
     const PRESS_CATEGORIES = ['national-tv', 'local-tv', 'print', 'magazine', 'entertainment'];
     const PRESS_CAT_LABELS = { 'national-tv': 'National TV', 'local-tv': 'Local TV', 'print': 'Print & News', 'magazine': 'Magazine', 'entertainment': 'Entertainment' };
 
-    function EventsList({ events, onEdit, onAdd, onDelete, dashboardFilter, onClearFilter }) {
+    function EventsList({ events, onEdit, onAdd, onDelete, onToggleFeatured, dashboardFilter, onClearFilter }) {
       const [search, setSearch] = useState('');
+      const [togglingSlug, setTogglingSlug] = useState(null);
       const filtered = useMemo(() => {
         let result = events;
         if (dashboardFilter === 'upcoming') {
@@ -7951,7 +7952,20 @@
                 <td class="text-sm td-hide-mobile">${(e.location || '—').slice(0, 30)}${(e.location || '').length > 30 ? '…' : ''}</td>
                 <td class="td-hide-mobile"><span class="badge badge-accent">${EVENT_CAT_LABELS[e.category] || e.category}</span></td>
                 <td><span class="badge ${e.status === 'upcoming' ? 'badge-green' : e.status === 'cancelled' ? 'badge-red' : 'badge-gray'}">${e.status}</span></td>
-                <td class="td-hide-mobile">${e.featured ? icons.star : '—'}</td>
+                <td class="td-hide-mobile">
+                  <button class="btn btn-ghost btn-sm" type="button"
+                    title=${e.featured ? 'Click to unfeature' : 'Click to feature'}
+                    style="padding: 0.2rem 0.5rem; color: ${e.featured ? '#D69E2E' : 'var(--color-text-secondary)'}; cursor: pointer; opacity: ${togglingSlug === e.slug ? '0.5' : '1'};"
+                    disabled=${togglingSlug === e.slug}
+                    onClick=${async (ev) => {
+                      ev.stopPropagation();
+                      if (!onToggleFeatured) return;
+                      setTogglingSlug(e.slug);
+                      try { await onToggleFeatured(e); } finally { setTogglingSlug(null); }
+                    }}>
+                    ${e.featured ? icons.star : '☆'}
+                  </button>
+                </td>
                 <td style="white-space: nowrap;">
                   <button class="btn btn-ghost btn-sm" style="color: #E53E3E;" onClick=${(ev) => { ev.stopPropagation(); onDelete(e); }}>Delete</button>
                 </td>
@@ -10867,6 +10881,13 @@
                   <input class="form-input" placeholder="https://www.zeffy.com/..." value=${eventData.ticketUrl || ''}
                     onInput=${e => updateEvent('ticketUrl', e.target.value)} />
                 </div>
+                <div class="form-group" style="grid-column: 1 / -1; display: flex; align-items: center;">
+                  <label class="checkbox-label" style="display: inline-flex; align-items: center; gap: 0.5rem;">
+                    <input type="checkbox" checked=${!!eventData.featured}
+                      onChange=${e => updateEvent('featured', e.target.checked)} />
+                    Featured event <span style="color: var(--text-tertiary); font-weight: 400;">(hero spot on the events page)</span>
+                  </label>
+                </div>
                 <div class="form-group" style="grid-column: 1 / -1;">
                   <label>Description <span style="color: var(--text-tertiary); font-weight: 400;">(used on the events index card)</span></label>
                   <textarea rows="6" class="form-textarea" value=${eventData.description || ''}
@@ -13751,6 +13772,35 @@
             return html`
               <${EventsList} events=${events} onEdit=${s => navigate('events', s)} onAdd=${() => navigate('events', '')}
                   onDelete=${e => setDeleteModal({ type: 'event', item: { ...e, name: e.title } })}
+                  onToggleFeatured=${async (target) => {
+                    try {
+                      const willFeature = !target.featured;
+                      // If turning ON, also unfeature any other currently-featured event(s)
+                      const toUpdate = [];
+                      if (willFeature) {
+                        for (const other of events) {
+                          if (other.slug !== target.slug && other.featured) toUpdate.push(other.slug);
+                        }
+                      }
+                      const updateOne = async (slug, featured) => {
+                        const res = await api.readContent(`src/content/events/${slug}.json`);
+                        if (!res.success) throw new Error(res.error || 'Read failed');
+                        const data = typeof res.content === 'string' ? JSON.parse(res.content) : res.content;
+                        data.featured = featured;
+                        const path = `src/content/events/${slug}.json`;
+                        const content = JSON.stringify(data, null, 2);
+                        const message = featured ? `Feature event: ${data.title}` : `Unfeature event: ${data.title}`;
+                        const save = await api.saveContent(path, content, message, res.sha);
+                        if (!save.success) throw new Error(save.error || 'Save failed');
+                      };
+                      await updateOne(target.slug, willFeature);
+                      for (const slug of toUpdate) await updateOne(slug, false);
+                      addToast(willFeature ? `Featured: ${target.title}` : `Unfeatured: ${target.title}`, 'success');
+                      loadData();
+                    } catch (err) {
+                      addToast(`Toggle failed: ${err.message}`, 'error');
+                    }
+                  }}
                   dashboardFilter=${dashboardFilter} onClearFilter=${() => setDashboardFilter(null)} />
             `;
           }

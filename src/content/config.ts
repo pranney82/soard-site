@@ -143,6 +143,7 @@ const events = defineCollection({
     description: z.string(),
     body: z.string().optional(),
     image: z.string().nullable().optional(),
+    dressCodeImage: z.string().nullable().optional(),
     streamVideoId: z.string().nullable().optional(),
     videoUrl: z.string().nullable().optional(),
     photos: z.array(z.object({
