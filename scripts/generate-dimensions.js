@@ -158,6 +158,7 @@ async function main() {
         fetched++;
       } else {
         failed++;
+        console.warn(`\n  ✗ dimensions failed: ${id}`);
       }
     }));
     const done = Math.min(i + BATCH, allIds.length);

@@ -141,6 +141,7 @@ const events = defineCollection({
     location: z.string(),
     address: z.string().optional(),
     description: z.string(),
+    shortDescription: z.string().optional(),
     body: z.string().optional(),
     image: z.string().nullable().optional(),
     dressCodeImage: z.string().nullable().optional(),

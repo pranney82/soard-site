@@ -159,7 +159,7 @@ const fallbackSizes = '(max-width: 768px) 85vw, (max-width: 1200px) 38vw, 420px'
             <span class="hero-countdown" data-countdown={flagshipEvent.data.date} aria-live="polite"></span>
           </div>
           <h1 class="hero-headline">{flagshipEvent.data.title}</h1>
-          <p class="hero-sub">{flagshipEvent.data.description}</p>
+          <p class="hero-sub">{flagshipEvent.data.shortDescription || flagshipEvent.data.description}</p>
           <div class="hero-meta">
             <div class="hero-meta__item">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg>
