@@ -10889,7 +10889,13 @@
                   </label>
                 </div>
                 <div class="form-group" style="grid-column: 1 / -1;">
-                  <label>Description <span style="color: var(--text-tertiary); font-weight: 400;">(used on the events index card)</span></label>
+                  <label>Short Description <span style="color: var(--text-tertiary); font-weight: 400;">(used on the events index hero — keep it to ~1 sentence)</span></label>
+                  <textarea rows="2" class="form-textarea" value=${eventData.shortDescription || ''}
+                    onInput=${e => updateEvent('shortDescription', e.target.value)} />
+                  <span class="form-hint">${(eventData.shortDescription || '').length}/200 characters</span>
+                </div>
+                <div class="form-group" style="grid-column: 1 / -1;">
+                  <label>Description <span style="color: var(--text-tertiary); font-weight: 400;">(long-form, shown on the gala detail page)</span></label>
                   <textarea rows="6" class="form-textarea" value=${eventData.description || ''}
                     onInput=${e => updateEvent('description', e.target.value)} />
                 </div>

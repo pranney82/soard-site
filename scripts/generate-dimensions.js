@@ -30,27 +30,12 @@ function gcd(a, b) {
   return a;
 }
 
-/**
- * Fetch a 1px-wide image from CF and read the actual pixel dimensions
- * from the response. CF returns the image at its natural aspect ratio
- * when only width is constrained.
- *
- * We use w=32 instead of w=1 because some CF image pipelines quantize
- * to minimum sizes. 32px is still tiny (~200 bytes) but reliable.
- */
-async function fetchDimensions(imageId) {
-  const url = `${CF_BASE}/${imageId}/w=32,q=1`;
+async function probe(url) {
   try {
     const res = await fetch(url);
     if (!res.ok) return null;
 
     const buf = Buffer.from(await res.arrayBuffer());
-
-    // Try to extract dimensions from the image header directly
-    // JPEG: look for SOF0/SOF2 marker
-    // PNG: dimensions at fixed offset
-    // WebP/AVIF: use content-type hint + binary parsing
-
     const ct = (res.headers.get('content-type') || '').toLowerCase();
 
     let w = 0, h = 0;
@@ -100,6 +85,24 @@ async function fetchDimensions(imageId) {
   } catch {
     return null;
   }
+}
+
+/**
+ * Fetch a tiny version of the image and read its pixel dimensions.
+ * CF returns the image at its natural aspect ratio when only width is constrained.
+ *
+ * We use w=32 (not w=1) because some CF pipelines quantize to a minimum size.
+ * Fallback to format=jpeg covers a CF encoder bug where palette PNGs fail
+ * to re-encode at w=32 (ERROR 9516); forcing JPEG output sidesteps it without
+ * burdening the 99.97% case that works fine on the fast path.
+ */
+async function fetchDimensions(imageId) {
+  const variants = ['w=32,q=1', 'w=32,q=1,format=jpeg'];
+  for (const v of variants) {
+    const dims = await probe(`${CF_BASE}/${imageId}/${v}`);
+    if (dims) return dims;
+  }
+  return null;
 }
 
 async function main() {

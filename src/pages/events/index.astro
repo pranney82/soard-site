@@ -82,6 +82,11 @@ const catIcon: Record<string, string> = {
   other:      '<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg>',
 };
 
+/* ── Cover image for past event cards (poster → first gallery photo → none) ── */
+function coverImage(ev: { image?: string | null; photos?: Array<{ id: string }> }): string | null {
+  return ev.image || ev.photos?.[0]?.id || null;
+}
+
 /* ── Date helpers ── */
 function fmtDate(d: string) {
   return new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
@@ -124,9 +129,17 @@ const yearsOfImpact = computed.years;
 const totalKidsServed = computed.totalKids;
 const totalPartners = (await getCollection('partners')).length;
 
-/* ── Hero LCP preload — flagship logo or fallback kid photo ── */
-const flagshipLogoSrcset = cfSrcset('golf-logo-dark', [280, 400]);
-const flagshipLogoSizes = '(max-width: 767px) 200px, 320px';
+/* ── Hero LCP preload — flagship event image (poster) or fallback to golf logo ── */
+const flagshipHasImage = !!flagshipEvent?.data.image;
+const flagshipImageSrc = flagshipEvent?.data.image || 'golf-logo-dark';
+const flagshipSrcset = flagshipHasImage
+  ? cfSrcset(flagshipImageSrc, [400, 600, 800], { fit: 'contain' })
+  : cfSrcset(flagshipImageSrc, [280, 400]);
+const flagshipSizes = flagshipHasImage
+  ? '(max-width: 767px) 280px, 440px'
+  : '(max-width: 767px) 200px, 320px';
+const flagshipAlt = flagshipEvent?.data.title || 'Featured event';
+const flagshipGradient = flagshipEvent ? catGradient[flagshipEvent.data.category] : catGradient.other;
 
 /* Fallback hero photo when no flagship event */
 const sp = siteSettings.sectionPhotos || {};
@@ -142,7 +155,7 @@ const fallbackSizes = '(max-width: 768px) 85vw, (max-width: 1200px) 38vw, 420px'
 >
   {/* LCP preload */}
   {flagshipEvent ? (
-    <link slot="head" rel="preload" as="image" imagesrcset={flagshipLogoSrcset} imagesizes={flagshipLogoSizes} fetchpriority="high" />
+    <link slot="head" rel="preload" as="image" imagesrcset={flagshipSrcset} imagesizes={flagshipSizes} fetchpriority="high" />
   ) : (
     <link slot="head" rel="preload" as="image" imagesrcset={fallbackSrcset} imagesizes={fallbackSizes} fetchpriority="high" />
   )}
@@ -188,19 +201,22 @@ const fallbackSizes = '(max-width: 768px) 85vw, (max-width: 1200px) 38vw, 420px'
           </div>
         </div>
         <a href={detailPages[flagshipEvent.data.slug]} class="hero-frame">
-          <div class="hero-event-card">
+          <div class="hero-event-card" style={`--hero-card-gradient: ${flagshipGradient}`}>
             <div class="hero-event-card__bg" aria-hidden="true"></div>
             <div class="hero-event-card__gradient" aria-hidden="true"></div>
             <div class="hero-event-card__pattern" aria-hidden="true"></div>
             <img
-              src={cfRaw('golf-logo-dark', 'w=400,q=85')}
-              srcset={flagshipLogoSrcset}
-              sizes={flagshipLogoSizes}
-              alt="Sunshine on a Ranney Fairway"
+              src={flagshipHasImage
+                ? cfRaw(flagshipImageSrc, 'w=600,fit=contain,q=85')
+                : cfRaw(flagshipImageSrc, 'w=400,q=85')}
+              srcset={flagshipSrcset}
+              sizes={flagshipSizes}
+              alt={flagshipAlt}
               transition:name="event-hero"
-              width="400" height="400"
+              width={flagshipHasImage ? 600 : 400}
+              height={flagshipHasImage ? 600 : 400}
               loading="eager" decoding="async" fetchpriority="high"
-              class="hero-event-card__logo"
+              class={flagshipHasImage ? 'hero-event-card__photo' : 'hero-event-card__logo'}
             />
             {/* Mini date card overlay */}
             <div class="hero-date-card">
@@ -362,9 +378,23 @@ const fallbackSizes = '(max-width: 768px) 85vw, (max-width: 1200px) 38vw, 420px'
         {past.length > 0 && (
           <article class="ev-highlight" data-reveal>
             <div class="ev-highlight__visual" style={`background: ${catGradient[past[0].data.category]}`}>
-              <div class="ev-highlight__pattern" aria-hidden="true"></div>
-              <div class="ev-highlight__glow" aria-hidden="true"></div>
-              <div class="ev-highlight__icon" set:html={catIcon[past[0].data.category]} />
+              {coverImage(past[0].data) ? (
+                <img
+                  src={cfRaw(coverImage(past[0].data)!, 'w=720,h=720,fit=cover,q=82')}
+                  srcset={cfSrcset(coverImage(past[0].data)!, [400, 600, 800], { height: 720, fit: 'cover' })}
+                  sizes="(max-width: 767px) 100vw, 360px"
+                  alt={past[0].data.title}
+                  width="720" height="720"
+                  loading="lazy" decoding="async"
+                  class="ev-highlight__img"
+                />
+              ) : (
+                <>
+                  <div class="ev-highlight__pattern" aria-hidden="true"></div>
+                  <div class="ev-highlight__glow" aria-hidden="true"></div>
+                  <div class="ev-highlight__icon" set:html={catIcon[past[0].data.category]} />
+                </>
+              )}
             </div>
             <div class="ev-highlight__content">
               <div class="ev-highlight__top">
@@ -393,9 +423,23 @@ const fallbackSizes = '(max-width: 768px) 85vw, (max-width: 1200px) 38vw, 420px'
             {past.slice(1).map((event, i) => (
               <article class="ev-memory" data-reveal data-delay={String(Math.min(i, 3))}>
                 <div class="ev-memory__visual" style={`background: ${catGradient[event.data.category]}`}>
-                  <div class="ev-memory__pattern" aria-hidden="true"></div>
-                  <div class="ev-memory__glow" aria-hidden="true"></div>
-                  <div class="ev-memory__icon" set:html={catIcon[event.data.category]} />
+                  {coverImage(event.data) ? (
+                    <img
+                      src={cfRaw(coverImage(event.data)!, 'w=520,h=260,fit=cover,q=82')}
+                      srcset={cfSrcset(coverImage(event.data)!, [360, 520, 720], { height: 260, fit: 'cover' })}
+                      sizes="(max-width: 639px) 100vw, (max-width: 959px) 50vw, 33vw"
+                      alt={event.data.title}
+                      width="520" height="260"
+                      loading="lazy" decoding="async"
+                      class="ev-memory__img"
+                    />
+                  ) : (
+                    <>
+                      <div class="ev-memory__pattern" aria-hidden="true"></div>
+                      <div class="ev-memory__glow" aria-hidden="true"></div>
+                      <div class="ev-memory__icon" set:html={catIcon[event.data.category]} />
+                    </>
+                  )}
                   <div class="ev-memory__date-badge">
                     <span class="ev-memory__month">{fmtMonth(event.data.date)}</span>
                     <span class="ev-memory__day">{fmtDay(event.data.date)}</span>
@@ -735,7 +779,7 @@ const fallbackSizes = '(max-width: 768px) 85vw, (max-width: 1200px) 38vw, 420px'
   .hero-event-card__bg {
     position: absolute;
     inset: 0;
-    background: linear-gradient(135deg, #1a472a 0%, #2e7d32 40%, #388e3c 70%, #43a047 100%);
+    background: var(--hero-card-gradient, linear-gradient(135deg, #1a472a 0%, #2e7d32 40%, #388e3c 70%, #43a047 100%));
   }
   .hero-event-card__gradient {
     position: absolute;
@@ -761,6 +805,32 @@ const fallbackSizes = '(max-width: 768px) 85vw, (max-width: 1200px) 38vw, 420px'
   }
   @media (min-width: 768px) {
     .hero-event-card__logo { width: 320px; }
+  }
+  /* Photo variant — poster mounted on the gradient like framed art */
+  .hero-event-card__photo {
+    position: absolute;
+    inset: 5%;
+    z-index: 1;
+    width: 90%;
+    height: 90%;
+    object-fit: contain;
+    border-radius: 4px;
+    filter:
+      drop-shadow(0 1px 0 rgba(255, 255, 255, 0.18))
+      drop-shadow(0 14px 32px rgba(0, 0, 0, 0.38))
+      drop-shadow(0 4px 10px rgba(0, 0, 0, 0.22));
+  }
+  /* Subtle inner bevel on the mat — sells the "frame" illusion */
+  .hero-event-card:has(.hero-event-card__photo)::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    pointer-events: none;
+    border-radius: inherit;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.18),
+      inset 0 -1px 0 rgba(0, 0, 0, 0.22);
   }
   @keyframes ev-float {
     0%, 100% { transform: translateY(0); }
@@ -1115,6 +1185,14 @@ const fallbackSizes = '(max-width: 768px) 85vw, (max-width: 1200px) 38vw, 420px'
     color: rgba(255, 255, 255, 0.15);
     z-index: 1;
   }
+  .ev-highlight__img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
   .ev-highlight__content {
     padding: var(--space-xl) var(--space-lg);
     display: flex;
@@ -1237,6 +1315,20 @@ const fallbackSizes = '(max-width: 768px) 85vw, (max-width: 1200px) 38vw, 420px'
   .ev-memory:hover .ev-memory__icon {
     transform: scale(1.15);
     color: rgba(255, 255, 255, 0.3);
+  }
+  .ev-memory__img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .ev-memory:hover .ev-memory__img { transform: scale(1.04); }
+  @media (prefers-reduced-motion: reduce) {
+    .ev-memory__img { transition: none; }
+    .ev-memory:hover .ev-memory__img { transform: none; }
   }
   .ev-memory__date-badge {
     position: absolute;
