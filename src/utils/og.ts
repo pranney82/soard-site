@@ -12,10 +12,30 @@ import satori from 'satori';
 import sharp from 'sharp';
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { CF_HASH } from './cf-image';
 
 // imagedelivery.net works at build time regardless of host (unlike the /cdn-cgi/ proxy)
 const CF_DIRECT = `https://imagedelivery.net/${CF_HASH}`;
+
+// Bump when any template function below changes, to invalidate the on-disk cache.
+const OG_CACHE_VERSION = 1;
+const OG_CACHE_DIR = path.resolve('./src/data/og-cache');
+
+function ogCacheKey(opts: unknown): string {
+  const payload = JSON.stringify({ v: OG_CACHE_VERSION, opts });
+  return crypto.createHash('sha256').update(payload).digest('hex').slice(0, 16);
+}
+
+function ogCacheGet(key: string): Buffer | null {
+  const p = path.join(OG_CACHE_DIR, `${key}.png`);
+  return fs.existsSync(p) ? fs.readFileSync(p) : null;
+}
+
+function ogCacheSet(key: string, png: Buffer): void {
+  if (!fs.existsSync(OG_CACHE_DIR)) fs.mkdirSync(OG_CACHE_DIR, { recursive: true });
+  fs.writeFileSync(path.join(OG_CACHE_DIR, `${key}.png`), png);
+}
 
 // ── Brand tokens ──────────────────────────────────
 const YELLOW = '#FFDA24';
@@ -1216,6 +1236,10 @@ export interface OgOptions {
 }
 
 export async function generateOgImage(opts: OgOptions): Promise<Buffer> {
+  const cacheKey = ogCacheKey(opts);
+  const cached = ogCacheGet(cacheKey);
+  if (cached) return cached;
+
   const fonts = loadFonts();
   await getLogo();
 
@@ -1315,8 +1339,9 @@ export async function generateOgImage(opts: OgOptions): Promise<Buffer> {
   });
 
   const png = await sharp(Buffer.from(svg))
-    .png({ compressionLevel: 9, adaptiveFiltering: true, palette: true })
+    .png({ compressionLevel: 9, adaptiveFiltering: true, palette: true, quality: 70, colors: 128 })
     .toBuffer();
 
+  ogCacheSet(cacheKey, png);
   return png;
 }
