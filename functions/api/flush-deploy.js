@@ -7,18 +7,23 @@
  * from D1 via prebuild, so GitHub being stale doesn't affect the deployed site.
  * The warning surfaces VCS hygiene issues for the admin.
  *
- * Env vars: CF_PAGES_DEPLOY_HOOK (CF Pages deploy hook URL)
+ * Env vars (any one of these, checked in order — canonical first):
+ *   CF_PAGES_DEPLOY_HOOK  — preferred
+ *   CF_DEPLOY_HOOK        — legacy alias (kept so old setups keep working)
+ *   DEPLOY_HOOK_URL       — generic alias
  */
 
 import { logAudit } from './_audit.js';
 
+const HOOK_ENV_VARS = ['CF_PAGES_DEPLOY_HOOK', 'CF_DEPLOY_HOOK', 'DEPLOY_HOOK_URL'];
+
 export async function onRequestPost(context) {
   try {
     const { DB } = context.env;
-    const hook = context.env.CF_PAGES_DEPLOY_HOOK;
+    const hook = HOOK_ENV_VARS.map((k) => context.env[k]).find(Boolean);
     if (!hook) {
       return Response.json(
-        { success: false, error: 'Deploy hook not configured — set CF_PAGES_DEPLOY_HOOK env var' },
+        { success: false, error: `Deploy hook not configured — set one of: ${HOOK_ENV_VARS.join(', ')}` },
         { status: 503 }
       );
     }
