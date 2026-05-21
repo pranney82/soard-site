@@ -2055,7 +2055,10 @@
       { type: 'trustSignals',   label: 'Trust Signals',    icon: icons.diamond,  group: 'action' },
       { type: 'kidCard',        label: 'Kid Card',         icon: icons.kids,     group: 'content' },
       { type: 'revealInvite',   label: 'Reveal Invite',    icon: icons.kids,     group: 'content' },
+      { type: 'projectReveal',  label: 'Project Reveal',   icon: icons.kids,     group: 'content' },
+      { type: 'projectKickoff', label: 'Project Kickoff',  icon: icons.kids,     group: 'content' },
       { type: 'eventCard',      label: 'Event Card',       icon: icons.events,   group: 'content' },
+      { type: 'eventRecap',     label: 'Event Recap',      icon: icons.events,   group: 'content' },
       { type: 'stats',          label: 'Stats (3-up)',     icon: icons.barChart, group: 'content' },
       { type: 'partnersList',   label: 'Partners List',    icon: icons.user,     group: 'content' },
       { type: 'signature',      label: 'Founder Signature',icon: icons.user,     group: 'content' },
@@ -2093,7 +2096,10 @@
         case 'trustSignals':   return { id, type, items: ['Tax-Deductible', 'Zero Platform Fees', '501(c)(3)'] };
         case 'kidCard':        return { id, type, slug: '', label: '', linkLabel: '' };
         case 'revealInvite':   return { id, type, slug: '', image: '', headline: '', intro: '', date: '', time: '', endTime: '', location: '', address: '', tz: 'America/New_York', label: '', profileLabel: '' };
+        case 'projectReveal':  return { id, type, slug: '', image: '', label: '', headline: '', profileLabel: '', ctaLabel: '', ctaHref: '', signatureNote: '' };
+        case 'projectKickoff': return { id, type, slug: '', image: '', label: '', headline: '', badge: 'Coming Soon', badgeVariant: 'yellow', ctaLabel: '', ctaHref: '', profileLabel: '', signatureNote: '' };
         case 'eventCard':      return { id, type, name: '', date: '', url: '', description: '' };
+        case 'eventRecap':     return { id, type, slug: '', image: '', label: '', headline: '', intro: '', stats: [{ label: 'Raised', value: '' }, { label: 'Guests', value: '' }, { label: 'Kids Funded', value: '' }], sponsors: [], sponsorsHeadline: '', sponsorsIntro: '', ctaHeadline: '', ctaIntro: '', ctaLabel: '', ctaHref: '', signatureNote: '' };
         case 'stats':          return { id, type, items: [{ value: '182', label: 'Kids Served' }, { value: '247', label: 'Rooms Built' }, { value: '13', label: 'Years' }] };
         case 'partnersList':   return { id, type, label: 'Our Partners', headline: 'Made possible by *incredible* partners', intro: 'This project wouldn’t exist without the generosity of partners who show up, project after project, with heart and hands ready to build.', partners: [] };
         case 'signature':      return { id, type, note: '', from: 'Peter & Holly Ranney', team: 'Sunshine Team', title: 'Founders, Sunshine on a Ranney Day' };
@@ -2355,6 +2361,86 @@
           </div>`;
         }
 
+        case 'projectReveal':
+        case 'projectKickoff': {
+          const isKickoff = block.type === 'projectKickoff';
+          const allKids = (kids || []).slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+          const filtered = isKickoff
+            ? allKids.filter(k => k.status !== 'completed')
+            : allKids.filter(k => k.status === 'completed' || k.status === 'in-progress');
+          const kidsForPicker = filtered.length ? filtered : allKids;
+          const pickedKid = (kids || []).find(x => x.slug === block.slug);
+          const heroPreview = block.image || (pickedKid && (pickedKid.heroImage || (pickedKid.photos && pickedKid.photos[0] && pickedKid.photos[0].url)));
+          return html`<div>
+            <div style="padding: 0.6rem 0.75rem; background: var(--color-primary-bg); border-radius: 6px; font-size: 0.8rem; color: var(--color-text-muted); line-height: 1.5; margin-bottom: 0.75rem;">
+              Pick a kid — name, age, diagnosis, room types, hero image, bio, quote${isKickoff ? '' : ', photos, and partner list'} are pulled from their profile at send time. Override any field below.
+            </div>
+            <div class="form-group" style="margin-bottom: 0.6rem;">
+              <label class="form-label" style="font-size: 0.78rem;">Featured Kid</label>
+              <select class="form-input" value=${block.slug || ''} onChange=${e => update({ slug: e.target.value })}>
+                <option value="">— Select a kid —</option>
+                ${kidsForPicker.map(k => html`<option key=${k.slug} value=${k.slug}>${k.name}${k.year ? ` (${k.year})` : ''} — ${k.status}</option>`)}
+              </select>
+              ${pickedKid ? html`<div class="form-hint" style="margin-top: 0.4rem;">Pulling from ${pickedKid.name}'s profile.</div>` : null}
+            </div>
+            <div class="form-group" style="margin-bottom: 0.6rem;">
+              <label class="form-label" style="font-size: 0.78rem;">Hero Image <span style="font-weight: 400; color: var(--color-text-muted);">(${block.image ? "overriding kid's hero" : pickedKid ? "using kid's hero" : 'pick a kid first'})</span></label>
+              <div style="display: flex; gap: 0.5rem; align-items: flex-start;">
+                ${heroPreview
+                  ? html`<img src=${cfThumb(heroPreview, 'w=200,h=140,fit=cover,q=70')} style="width: 96px; height: 64px; object-fit: cover; border-radius: 6px; border: 1px ${block.image ? 'solid' : 'dashed'} var(--color-border); ${block.image ? '' : 'opacity: 0.7;'}" />`
+                  : html`<div style="width: 96px; height: 64px; border-radius: 6px; border: 1px dashed var(--color-border); display: flex; align-items: center; justify-content: center; font-size: 0.7rem; color: var(--color-text-muted);">No image</div>`}
+                <div style="flex: 1; display: flex; gap: 0.35rem;">
+                  <button class="btn btn-sm btn-ghost" type="button" onClick=${() => onPickImage({ blockId: block.id, key: 'image' })}>${block.image ? 'Replace' : 'Browse Library'}</button>
+                  ${block.image ? html`<button class="btn btn-sm btn-ghost" type="button" onClick=${() => update({ image: '' })} style="color: #c00;">Use kid's hero</button>` : null}
+                </div>
+              </div>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-bottom: 0.5rem;">
+              <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label" style="font-size: 0.78rem;">Top Label <span style="font-weight: 400; color: var(--color-text-muted);">(auto)</span></label>
+                <input class="form-input" type="text" value=${block.label || ''} onInput=${e => update({ label: e.target.value })} placeholder=${isKickoff ? 'Introducing · 2026' : 'Project Complete · 2026'} />
+              </div>
+              <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label" style="font-size: 0.78rem;">Headline <span style="font-weight: 400; color: var(--color-text-muted);">(auto)</span></label>
+                <input class="form-input" type="text" value=${block.headline || ''} onInput=${e => update({ headline: e.target.value })} placeholder=${isKickoff ? 'Meet [Name]' : 'Meet [Name] — our little *miracle*'} />
+              </div>
+            </div>
+            ${isKickoff ? html`
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-bottom: 0.5rem;">
+                <div class="form-group" style="margin-bottom: 0;">
+                  <label class="form-label" style="font-size: 0.78rem;">Badge</label>
+                  <input class="form-input" type="text" value=${block.badge || ''} onInput=${e => update({ badge: e.target.value })} placeholder="Coming Soon" />
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                  <label class="form-label" style="font-size: 0.78rem;">Badge Style</label>
+                  <select class="form-input" value=${block.badgeVariant || 'yellow'} onChange=${e => update({ badgeVariant: e.target.value })}>
+                    <option value="yellow">Yellow</option>
+                    <option value="dark">Dark</option>
+                  </select>
+                </div>
+              </div>
+            ` : null}
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-bottom: 0.5rem;">
+              <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label" style="font-size: 0.78rem;">CTA Label <span style="font-weight: 400; color: var(--color-text-muted);">(auto)</span></label>
+                <input class="form-input" type="text" value=${block.ctaLabel || ''} onInput=${e => update({ ctaLabel: e.target.value })} placeholder=${isKickoff ? 'Donate for [Name]' : 'Donate Now'} />
+              </div>
+              <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label" style="font-size: 0.78rem;">CTA URL <span style="font-weight: 400; color: var(--color-text-muted);">(auto)</span></label>
+                <input class="form-input" type="text" value=${block.ctaHref || ''} onInput=${e => update({ ctaHref: e.target.value })} placeholder="https://sunshineonaranneyday.com/donate" />
+              </div>
+            </div>
+            <div class="form-group" style="margin-bottom: 0.5rem;">
+              <label class="form-label" style="font-size: 0.78rem;">Story Button Label <span style="font-weight: 400; color: var(--color-text-muted);">(auto)</span></label>
+              <input class="form-input" type="text" value=${block.profileLabel || ''} onInput=${e => update({ profileLabel: e.target.value })} placeholder=${isKickoff ? "See [Name]'s Story" : "See [Name]'s Full Story"} />
+            </div>
+            <div class="form-group" style="margin-bottom: 0;">
+              <label class="form-label" style="font-size: 0.78rem;">Signature Note <span style="font-weight: 400; color: var(--color-text-muted);">(optional)</span></label>
+              <textarea class="form-input" rows="2" value=${block.signatureNote || ''} onInput=${e => update({ signatureNote: e.target.value })} placeholder=${isKickoff ? 'A note about getting started on this project.' : "A short founder note — what this project meant to you."}></textarea>
+            </div>
+          </div>`;
+        }
+
         case 'eventCard': {
           const eventOptions = (events || []).filter(e => e.status === 'published');
           return html`<div>
@@ -2387,6 +2473,129 @@
             <div class="form-group" style="margin-bottom: 0;">
               <label class="form-label" style="font-size: 0.78rem;">Description <span style="font-weight: 400; color: var(--color-text-muted);">(optional)</span></label>
               <input class="form-input" type="text" value=${block.description || ''} onInput=${e => update({ description: e.target.value })} />
+            </div>
+          </div>`;
+        }
+
+        case 'eventRecap': {
+          const allEvents = (events || []).slice().sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+          const pickedEvent = (events || []).find(x => x.slug === block.slug);
+          const firstEvPhoto = pickedEvent && (pickedEvent.photos || []).find(ph => ph && (ph.id || ph.url));
+          const heroPreview = block.image || (pickedEvent && (pickedEvent.image || (firstEvPhoto && (firstEvPhoto.id || firstEvPhoto.url))));
+          const stats = block.stats || [];
+          const sponsors = block.sponsors || [];
+          return html`<div>
+            <div style="padding: 0.6rem 0.75rem; background: var(--color-primary-bg); border-radius: 6px; font-size: 0.8rem; color: var(--color-text-muted); line-height: 1.5; margin-bottom: 0.75rem;">
+              Pick an event — title, date, location, hero image, and photo gallery are pulled from the event record at send time. Add impact stats and sponsors below.
+            </div>
+            <div class="form-group" style="margin-bottom: 0.6rem;">
+              <label class="form-label" style="font-size: 0.78rem;">Featured Event</label>
+              <select class="form-input" value=${block.slug || ''} onChange=${e => update({ slug: e.target.value })}>
+                <option value="">— Select an event —</option>
+                ${allEvents.map(ev => html`<option key=${ev.slug} value=${ev.slug}>${ev.title || ev.name}${ev.date ? ` (${ev.date})` : ''}</option>`)}
+              </select>
+              ${pickedEvent ? html`<div class="form-hint" style="margin-top: 0.4rem;">Pulling from ${pickedEvent.title || pickedEvent.name}. ${(pickedEvent.photos || []).length} photo${(pickedEvent.photos || []).length === 1 ? '' : 's'} on record.</div>` : null}
+            </div>
+            <div class="form-group" style="margin-bottom: 0.6rem;">
+              <label class="form-label" style="font-size: 0.78rem;">Hero Image <span style="font-weight: 400; color: var(--color-text-muted);">(${block.image ? "overriding event hero" : pickedEvent ? "using event hero" : 'pick an event first'})</span></label>
+              <div style="display: flex; gap: 0.5rem; align-items: flex-start;">
+                ${heroPreview
+                  ? html`<img src=${cfThumb(heroPreview, 'w=200,h=140,fit=cover,q=70')} style="width: 96px; height: 64px; object-fit: cover; border-radius: 6px; border: 1px ${block.image ? 'solid' : 'dashed'} var(--color-border); ${block.image ? '' : 'opacity: 0.7;'}" />`
+                  : html`<div style="width: 96px; height: 64px; border-radius: 6px; border: 1px dashed var(--color-border); display: flex; align-items: center; justify-content: center; font-size: 0.7rem; color: var(--color-text-muted);">No image</div>`}
+                <div style="flex: 1; display: flex; gap: 0.35rem;">
+                  <button class="btn btn-sm btn-ghost" type="button" onClick=${() => onPickImage({ blockId: block.id, key: 'image' })}>${block.image ? 'Replace' : 'Browse Library'}</button>
+                  ${block.image ? html`<button class="btn btn-sm btn-ghost" type="button" onClick=${() => update({ image: '' })} style="color: #c00;">Use event hero</button>` : null}
+                </div>
+              </div>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-bottom: 0.5rem;">
+              <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label" style="font-size: 0.78rem;">Top Label <span style="font-weight: 400; color: var(--color-text-muted);">(auto)</span></label>
+                <input class="form-input" type="text" value=${block.label || ''} onInput=${e => update({ label: e.target.value })} placeholder="Event Recap · 2026" />
+              </div>
+              <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label" style="font-size: 0.78rem;">Headline <span style="font-weight: 400; color: var(--color-text-muted);">(auto)</span></label>
+                <input class="form-input" type="text" value=${block.headline || ''} onInput=${e => update({ headline: e.target.value })} placeholder="An evening to *remember*" />
+              </div>
+            </div>
+            <div class="form-group" style="margin-bottom: 0.6rem;">
+              <label class="form-label" style="font-size: 0.78rem;">Intro paragraph <span style="font-weight: 400; color: var(--color-text-muted);">(auto from event description)</span></label>
+              <textarea class="form-input" rows="2" value=${block.intro || ''} onInput=${e => update({ intro: e.target.value })} placeholder="Override the auto-pulled intro from the event description."></textarea>
+            </div>
+
+            <div style="border-top: 1px solid var(--color-border); margin: 0.75rem 0 0.6rem; padding-top: 0.6rem;">
+              <label class="form-label" style="font-size: 0.78rem; margin-bottom: 0.4rem; display: block;">Impact Stats <span style="font-weight: 400; color: var(--color-text-muted);">(up to 3)</span></label>
+              ${stats.map((it, i) => html`
+                <div key=${i} style="display: grid; grid-template-columns: 1fr 1.5fr auto; gap: 0.5rem; margin-bottom: 0.4rem; align-items: center;">
+                  <input class="form-input" type="text" value=${it.value || ''} onInput=${e => {
+                    const next = stats.slice(); next[i] = { ...next[i], value: e.target.value }; update({ stats: next });
+                  }} placeholder="$125K" />
+                  <input class="form-input" type="text" value=${it.label || ''} onInput=${e => {
+                    const next = stats.slice(); next[i] = { ...next[i], label: e.target.value }; update({ stats: next });
+                  }} placeholder="Raised" />
+                  <button class="btn btn-sm btn-ghost" type="button" onClick=${() => {
+                    const next = stats.slice(); next.splice(i, 1); update({ stats: next });
+                  }} title="Remove">${icons.x}</button>
+                </div>
+              `)}
+              ${stats.length < 3 ? html`
+                <button class="btn btn-sm btn-ghost" type="button" onClick=${() => update({ stats: [...stats, { value: '', label: '' }] })} style="margin-top: 0.15rem;">+ Add stat</button>
+              ` : null}
+              <div class="form-hint" style="margin-top: 0.3rem;">Leave all values blank to hide the stats row.</div>
+            </div>
+
+            <div style="border-top: 1px solid var(--color-border); margin: 0.75rem 0 0.6rem; padding-top: 0.6rem;">
+              <label class="form-label" style="font-size: 0.78rem; margin-bottom: 0.4rem; display: block;">Sponsors / Partners</label>
+              ${sponsors.map((s, i) => html`
+                <div key=${i} style="display: grid; grid-template-columns: 1fr auto; gap: 0.5rem; margin-bottom: 0.4rem; align-items: center;">
+                  <input class="form-input" type="text" value=${s || ''} onInput=${e => {
+                    const next = sponsors.slice(); next[i] = e.target.value; update({ sponsors: next });
+                  }} placeholder="Sponsor name" />
+                  <button class="btn btn-sm btn-ghost" type="button" onClick=${() => {
+                    const next = sponsors.slice(); next.splice(i, 1); update({ sponsors: next });
+                  }} title="Remove">${icons.x}</button>
+                </div>
+              `)}
+              <button class="btn btn-sm btn-ghost" type="button" onClick=${() => update({ sponsors: [...sponsors, ''] })} style="margin-top: 0.15rem;">+ Add sponsor</button>
+              ${sponsors.length ? html`
+                <div style="display: grid; grid-template-columns: 1fr; gap: 0.5rem; margin-top: 0.6rem;">
+                  <div class="form-group" style="margin-bottom: 0;">
+                    <label class="form-label" style="font-size: 0.72rem;">Sponsors headline <span style="font-weight: 400; color: var(--color-text-muted);">(auto)</span></label>
+                    <input class="form-input" type="text" value=${block.sponsorsHeadline || ''} onInput=${e => update({ sponsorsHeadline: e.target.value })} placeholder="Made possible by *incredible* sponsors" />
+                  </div>
+                  <div class="form-group" style="margin-bottom: 0;">
+                    <label class="form-label" style="font-size: 0.72rem;">Sponsors intro <span style="font-weight: 400; color: var(--color-text-muted);">(auto)</span></label>
+                    <textarea class="form-input" rows="2" value=${block.sponsorsIntro || ''} onInput=${e => update({ sponsorsIntro: e.target.value })}></textarea>
+                  </div>
+                </div>
+              ` : null}
+            </div>
+
+            <div style="border-top: 1px solid var(--color-border); margin: 0.75rem 0 0.6rem; padding-top: 0.6rem;">
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-bottom: 0.5rem;">
+                <div class="form-group" style="margin-bottom: 0;">
+                  <label class="form-label" style="font-size: 0.78rem;">CTA Headline <span style="font-weight: 400; color: var(--color-text-muted);">(auto)</span></label>
+                  <input class="form-input" type="text" value=${block.ctaHeadline || ''} onInput=${e => update({ ctaHeadline: e.target.value })} placeholder="Help us build the *next* dream room" />
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                  <label class="form-label" style="font-size: 0.78rem;">CTA Intro <span style="font-weight: 400; color: var(--color-text-muted);">(auto)</span></label>
+                  <input class="form-input" type="text" value=${block.ctaIntro || ''} onInput=${e => update({ ctaIntro: e.target.value })} placeholder="Every dollar raised goes directly to building life-changing spaces..." />
+                </div>
+              </div>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-bottom: 0.5rem;">
+                <div class="form-group" style="margin-bottom: 0;">
+                  <label class="form-label" style="font-size: 0.78rem;">CTA Label <span style="font-weight: 400; color: var(--color-text-muted);">(auto)</span></label>
+                  <input class="form-input" type="text" value=${block.ctaLabel || ''} onInput=${e => update({ ctaLabel: e.target.value })} placeholder="Donate Now" />
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                  <label class="form-label" style="font-size: 0.78rem;">CTA URL <span style="font-weight: 400; color: var(--color-text-muted);">(auto)</span></label>
+                  <input class="form-input" type="text" value=${block.ctaHref || ''} onInput=${e => update({ ctaHref: e.target.value })} placeholder="https://sunshineonaranneyday.com/donate" />
+                </div>
+              </div>
+              <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label" style="font-size: 0.78rem;">Signature Note <span style="font-weight: 400; color: var(--color-text-muted);">(optional)</span></label>
+                <textarea class="form-input" rows="2" value=${block.signatureNote || ''} onInput=${e => update({ signatureNote: e.target.value })} placeholder="Thank you for showing up — for the kids, for the families, for the mission."></textarea>
+              </div>
             </div>
           </div>`;
         }
@@ -2681,40 +2890,12 @@
       {
         slug: 'reveal',
         name: 'Project Reveal',
-        description: 'Completed project — announce a kid’s room transformation.',
+        description: 'Pick a completed kid — auto-fills hero, story, photos, quote, room types, and partner list.',
         icon: 'star',
         subject: '[Kid Name]’s Dream Room is Complete — See the Transformation',
         preheader: '',
         blocks: [
-          { type: 'heroPortrait', src: '', alt: '[Kid Name] in their dream room', name: '[Kid Name]', age: '', badge: '', link: '' },
-          { type: 'detailChips', items: [{ label: 'Diagnosis', value: '' }, { label: 'Rooms', value: 'Accessible Bathroom + Dream Bedroom' }, { label: 'Year', value: String(new Date().getFullYear()) }] },
-          { type: 'sectionLabel', text: `Project Complete · ${new Date().getFullYear()}`, variant: 'dark' },
-          { type: 'headline', text: 'Meet [Kid Name] — our little *miracle*', size: 'large', align: 'left' },
-          { type: 'paragraph', text: 'Replace this with the kid’s lede — the opening paragraph from their bio.', style: 'lede' },
-          { type: 'photoGrid', items: [{ src: '', alt: '' }, { src: '', alt: '' }] },
-          { type: 'paragraph', text: 'The full story — what daily life looks like, what their family went through, what changed.' },
-          { type: 'quote', text: 'A direct quote from the family or child.', cite: '[Family member name]' },
-          { type: 'transitionLine', text: 'That all *changed*.' },
-          { type: 'stats', items: [{ value: '2', label: 'Rooms Built' }, { value: '20', label: 'Partners' }, { value: '1', label: 'Dream' }] },
-          { type: 'sectionLabel', text: 'What We Built', variant: 'yellow' },
-          { type: 'headline', text: 'Two rooms, one *purpose*', size: 'medium' },
-          { type: 'paragraph', text: 'Safety, independence, and joy — at the center of every decision.', muted: true },
-          { type: 'numberedCard', number: '01', title: 'Accessible Bathroom', body: 'A fully redesigned, wheelchair-accessible bathroom — roll-in shower, safe maneuvering space, and features built for independence and dignity.' },
-          { type: 'numberedCard', number: '02', title: 'Dream Bedroom', body: 'A one-of-a-kind bedroom designed around this child’s personality, interests, and unique needs — their own space to dream big.' },
-          { type: 'sectionLabel', text: 'The Transformation', variant: 'dark' },
-          { type: 'headline', text: 'From struggle to *sunshine*', size: 'medium' },
-          { type: 'beforeAfter', before: { src: '', alt: 'Before renovation' }, after: { src: '', alt: 'After renovation' }, beforeLabel: 'Before', afterLabel: 'After' },
-          { type: 'photo', src: '', alt: 'The reveal moment', caption: 'The big reveal — the moment everything changed', variant: 'reveal' },
-          { type: 'button', label: 'See [Kid Name]’s Full Story', href: 'https://sunshineonaranneyday.com/kids/', variant: 'primary' },
-          { type: 'partnersList', label: 'Our Partners', headline: 'Made possible by *incredible* partners', intro: 'This project wouldn’t exist without the generosity of partners who show up, project after project, with heart and hands ready to build.', partners: [] },
-          { type: 'sectionLabel', text: 'Your Impact', variant: 'yellow' },
-          { type: 'headline', text: 'Every dollar has a *purpose*', size: 'medium' },
-          { type: 'paragraph', text: 'Families are on our waitlist right now. Your gift brings us closer to saying *yes* to the next child.', muted: true },
-          { type: 'donationTiers', featured: { amount: '500', label: 'Furniture & Flooring', description: 'Adaptive furniture or accessible flooring — the structural pieces that change a child’s daily life.', badge: 'Most Popular', href: '' }, small: [{ amount: '60', label: 'Paint & Supplies', description: 'Transforms walls into a child’s dream canvas.', href: '' }, { amount: '125', label: 'Bedding & Decor', description: 'The details that make a room feel like home.', href: '' }] },
-          { type: 'trustSignals', items: ['Tax-Deductible', 'Zero Platform Fees', '501(c)(3)'] },
-          { type: 'signature', note: 'A short founder note — what this project meant to you.' },
-          { type: 'button', label: 'Donate Now', href: 'https://sunshineonaranneyday.com/donate', variant: 'dark', align: 'center' },
-          { type: 'spacer', height: 16 },
+          { type: 'projectReveal', slug: '', image: '', label: '', headline: '', profileLabel: '', ctaLabel: '', ctaHref: '', signatureNote: '' },
         ],
       },
       {
@@ -2732,29 +2913,23 @@
       {
         slug: 'kickoff',
         name: 'Project Kickoff',
-        description: 'Upcoming kid — introduce them and rally support for the build.',
+        description: 'Pick an upcoming kid — auto-fills hero, story, quote, and room types.',
         icon: 'sparkle',
         subject: 'Meet [Kid Name] — Our Next Dream Room Project',
         preheader: 'Meet [Kid Name] — our next dream room project. Here’s their story and how you can help.',
         blocks: [
-          { type: 'heroPortrait', src: '', alt: '[Kid Name]', name: '[Kid Name]', age: '', badge: 'Coming Soon', badgeVariant: 'yellow', link: '' },
-          { type: 'detailChips', items: [{ label: 'Diagnosis', value: '' }, { label: 'Rooms', value: '' }, { label: 'Year', value: String(new Date().getFullYear()) }] },
-          { type: 'sectionLabel', text: `Introducing · ${new Date().getFullYear()}`, variant: 'dark' },
-          { type: 'headline', text: 'Meet [Kid Name]', size: 'large' },
-          { type: 'paragraph', text: 'The lede — first impression of the child and family.', style: 'lede' },
-          { type: 'paragraph', text: 'More of the story.' },
-          { type: 'quote', text: 'A quote from the family.', cite: '' },
-          { type: 'sectionLabel', text: 'The Plan', variant: 'yellow' },
-          { type: 'headline', text: 'What we’re *building*', size: 'medium' },
-          { type: 'paragraph', text: 'Here’s what [Kid Name]’s renovation will include:', muted: true },
-          { type: 'numberedCard', number: '01', title: 'Room Type', body: 'Describe what we’re building here.' },
-          { type: 'sectionLabel', text: 'How You Can Help', variant: 'yellow' },
-          { type: 'headline', text: 'Help us build [Kid Name]’s *dream*', size: 'medium' },
-          { type: 'paragraph', text: 'Every dollar goes directly to materials, labor, and design for [Kid Name]’s new space. Zero platform fees.', muted: true },
-          { type: 'button', label: 'Donate for [Kid Name]', href: 'https://sunshineonaranneyday.com/donate', variant: 'primary' },
-          { type: 'divider', size: 'large' },
-          { type: 'signature', note: 'A note about getting started on this project.' },
-          { type: 'button', label: 'See [Kid Name]’s Story', href: 'https://sunshineonaranneyday.com/kids/', variant: 'dark' },
+          { type: 'projectKickoff', slug: '', image: '', label: '', headline: '', badge: 'Coming Soon', badgeVariant: 'yellow', ctaLabel: '', ctaHref: '', profileLabel: '', signatureNote: '' },
+        ],
+      },
+      {
+        slug: 'event-recap',
+        name: 'Event Recap',
+        description: 'Pick a past event — auto-fills hero, date, location, and photo gallery. Add impact stats and sponsors.',
+        icon: 'events',
+        subject: '[Event Name] Recap — Thank You for an Unforgettable Night',
+        preheader: 'A look back at [Event Name] — and what your support made possible.',
+        blocks: [
+          { type: 'eventRecap', slug: '', image: '', label: '', headline: '', intro: '', stats: [{ label: 'Raised', value: '' }, { label: 'Guests', value: '' }, { label: 'Kids Funded', value: '' }], sponsors: [], sponsorsHeadline: '', sponsorsIntro: '', ctaHeadline: '', ctaIntro: '', ctaLabel: '', ctaHref: '', signatureNote: '' },
         ],
       },
       {
@@ -2814,7 +2989,10 @@
         case 'trustSignals':   return (b.items || []).join(' · ') || 'Tax-Deductible · Zero Platform Fees · 501(c)(3)';
         case 'kidCard':        { const k = (kids || []).find(x => x.slug === b.slug); return k ? k.name : '(pick a kid)'; }
         case 'revealInvite':   { const k = (kids || []).find(x => x.slug === b.slug); const who = k ? k.name : '(pick a kid)'; return b.date ? `${who} · ${b.date}` : who; }
+        case 'projectReveal':  { const k = (kids || []).find(x => x.slug === b.slug); return k ? `${k.name} — auto-filled reveal` : '(pick a kid)'; }
+        case 'projectKickoff': { const k = (kids || []).find(x => x.slug === b.slug); return k ? `${k.name} — auto-filled kickoff` : '(pick a kid)'; }
         case 'eventCard':      return b.name || '(pick an event)';
+        case 'eventRecap':     { const e = (events || []).find(x => x.slug === b.slug); return e ? `${e.title || e.name} — auto-filled recap` : '(pick an event)'; }
         case 'stats':          return (b.items || []).map(i => i.value).filter(Boolean).join(' · ') || '(empty)';
         case 'partnersList':   return `${(b.partners || []).length} partners`;
         case 'signature':      return b.from || 'Signature';
@@ -2934,7 +3112,7 @@
         if (!eBlocks.length) throw new Error('Add at least one block.');
         if (!eSubject.trim()) throw new Error('Subject is required.');
         const resolved = await Promise.all(eBlocks.map(async (b) => {
-          if ((b.type === 'kidCard' || b.type === 'revealInvite') && b.slug) {
+          if ((b.type === 'kidCard' || b.type === 'revealInvite' || b.type === 'projectReveal' || b.type === 'projectKickoff') && b.slug) {
             try {
               const r = await api.readContent(`src/content/kids/${b.slug}.json`);
               if (r.success) {
@@ -2944,6 +3122,17 @@
             } catch (_) { /* fall through */ }
             const k = (kids || []).find(x => x.slug === b.slug);
             return { ...b, kid: k || null };
+          }
+          if (b.type === 'eventRecap' && b.slug) {
+            try {
+              const r = await api.readContent(`src/content/events/${b.slug}.json`);
+              if (r.success) {
+                const event = typeof r.content === 'string' ? JSON.parse(r.content) : r.content;
+                return { ...b, event };
+              }
+            } catch (_) { /* fall through */ }
+            const e = (events || []).find(x => x.slug === b.slug);
+            return { ...b, event: e || null };
           }
           return b;
         }));

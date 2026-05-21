@@ -841,6 +841,224 @@ const BLOCKS = {
       ${partnersSection}
       ${profileBtn}`;
   },
+
+  // Auto-filled completed-project email body. Pick a kid; the renderer pulls
+  // hero image, name/age, diagnosis, room types, bio, photos, quote, and
+  // partner list from the kid record. Overrides on `p`: image, label,
+  // headline, profileLabel, ctaHref, signatureNote.
+  projectReveal(p) {
+    const k = p.kid || {};
+    const name = k.name || '';
+    if (!name) return '';
+    const slug = k.slug || '';
+    const profileUrl = slug ? `${SITE_URL}/kids/${slug}` : `${SITE_URL}/kids/`;
+    const heroSrc = p.image || k.heroImage || (k.photos && k.photos[0] && k.photos[0].url) || '';
+    const year = k.year || new Date().getFullYear();
+    const rooms = Array.isArray(k.roomTypes) ? k.roomTypes.filter(Boolean) : [];
+    const partners = (k.partnerLogos || []).map(pp => pp && pp.name).filter(Boolean);
+    const bio = k.bio ? bioParagraphs(k.bio) : [];
+
+    const out = [];
+    out.push(renderBlock({ type: 'heroPortrait', src: heroSrc, alt: `${name} in their dream room`, name, age: k.age || '', link: profileUrl }));
+    out.push(renderBlock({ type: 'detailChips', items: [
+      { label: 'Diagnosis', value: k.diagnosis || '' },
+      { label: 'Rooms', value: rooms.join(' + ') },
+      { label: 'Year', value: String(year) },
+    ] }));
+    out.push(renderBlock({ type: 'sectionLabel', text: p.label || `Project Complete · ${year}`, variant: 'dark' }));
+    out.push(renderBlock({ type: 'headline', text: p.headline || `Meet ${name} — our little *miracle*`, size: 'large', align: 'left' }));
+
+    if (bio[0]) out.push(renderBlock({ type: 'paragraph', text: bio[0], style: 'lede' }));
+
+    const kidPhotos = (k.photos || []).filter(ph => ph && ph.url).slice(1, 4);
+    if (kidPhotos.length >= 2) {
+      out.push(renderBlock({ type: 'photoGrid', items: kidPhotos.map(ph => ({ src: ph.url, alt: ph.alt || name })) }));
+    }
+    for (const para of bio.slice(1, 4)) out.push(renderBlock({ type: 'paragraph', text: para }));
+
+    if (k.quote) out.push(renderBlock({ type: 'quote', text: k.quote, cite: p.quoteCite || '' }));
+
+    const roomsWord = rooms.length === 1 ? 'One room' : rooms.length === 2 ? 'Two rooms' : rooms.length ? `${rooms.length} rooms` : '';
+    out.push(renderBlock({ type: 'stats', items: [
+      { value: String(rooms.length || 2), label: rooms.length === 1 ? 'Room Built' : 'Rooms Built' },
+      { value: String(partners.length || 20), label: 'Partners' },
+      { value: '1', label: 'Dream' },
+    ] }));
+
+    if (rooms.length) {
+      out.push(renderBlock({ type: 'sectionLabel', text: 'What We Built', variant: 'yellow' }));
+      out.push(renderBlock({ type: 'headline', text: `${roomsWord}, one *purpose*`, size: 'medium' }));
+      out.push(renderBlock({ type: 'paragraph', text: 'Safety, independence, and joy — at the center of every decision.', muted: true }));
+      rooms.forEach((rt, i) => {
+        out.push(renderBlock({ type: 'numberedCard', number: String(i + 1).padStart(2, '0'), title: rt, body: '' }));
+      });
+    }
+
+    out.push(renderBlock({ type: 'button', label: p.profileLabel || `See ${name}'s Full Story`, href: profileUrl, variant: 'primary' }));
+
+    if (partners.length) {
+      out.push(renderBlock({
+        type: 'partnersList',
+        label: 'Our Partners',
+        headline: 'Made possible by *incredible* partners',
+        intro: `This project wouldn't exist without the generosity of partners who show up, project after project, with heart and hands ready to build.`,
+        partners,
+      }));
+    }
+
+    out.push(renderBlock({ type: 'sectionLabel', text: 'Your Impact', variant: 'yellow' }));
+    out.push(renderBlock({ type: 'headline', text: 'Every dollar has a *purpose*', size: 'medium' }));
+    out.push(renderBlock({ type: 'paragraph', text: 'Families are on our waitlist right now. Your gift brings us closer to saying *yes* to the next child.', muted: true }));
+    out.push(renderBlock({ type: 'donationTiers',
+      featured: { amount: '500', label: 'Furniture & Flooring', description: `Adaptive furniture or accessible flooring — the structural pieces that change a child's daily life.`, badge: 'Most Popular' },
+      small: [
+        { amount: '60', label: 'Paint & Supplies', description: `Transforms walls into a child's dream canvas.` },
+        { amount: '125', label: 'Bedding & Decor', description: 'The details that make a room feel like home.' },
+      ],
+    }));
+    out.push(renderBlock({ type: 'trustSignals', items: ['Tax-Deductible', 'Zero Platform Fees', '501(c)(3)'] }));
+
+    if (p.signatureNote !== '') {
+      out.push(renderBlock({ type: 'signature', note: p.signatureNote || `What ${name}'s story meant to us — and to the partners who built alongside us.` }));
+    }
+    out.push(renderBlock({ type: 'button', label: p.ctaLabel || 'Donate Now', href: p.ctaHref || `${SITE_URL}/donate`, variant: 'dark', align: 'center' }));
+    out.push(renderBlock({ type: 'spacer', height: 16 }));
+
+    return out.filter(Boolean).join('\n');
+  },
+
+  // Auto-filled upcoming-project email body. Same kid-record pull as
+  // projectReveal but framed for a project that's just getting started.
+  // Overrides on `p`: image, label, headline, badge, badgeVariant, ctaLabel,
+  // ctaHref, profileLabel, signatureNote.
+  projectKickoff(p) {
+    const k = p.kid || {};
+    const name = k.name || '';
+    if (!name) return '';
+    const slug = k.slug || '';
+    const profileUrl = slug ? `${SITE_URL}/kids/${slug}` : `${SITE_URL}/kids/`;
+    const heroSrc = p.image || k.heroImage || (k.photos && k.photos[0] && k.photos[0].url) || '';
+    const year = k.year || new Date().getFullYear();
+    const rooms = Array.isArray(k.roomTypes) ? k.roomTypes.filter(Boolean) : [];
+    const bio = k.bio ? bioParagraphs(k.bio) : [];
+
+    const out = [];
+    out.push(renderBlock({ type: 'heroPortrait', src: heroSrc, alt: name, name, age: k.age || '', badge: p.badge || 'Coming Soon', badgeVariant: p.badgeVariant || 'yellow', link: profileUrl }));
+    out.push(renderBlock({ type: 'detailChips', items: [
+      { label: 'Diagnosis', value: k.diagnosis || '' },
+      { label: 'Rooms', value: rooms.join(' + ') },
+      { label: 'Year', value: String(year) },
+    ] }));
+    out.push(renderBlock({ type: 'sectionLabel', text: p.label || `Introducing · ${year}`, variant: 'dark' }));
+    out.push(renderBlock({ type: 'headline', text: p.headline || `Meet ${name}`, size: 'large' }));
+
+    if (bio[0]) out.push(renderBlock({ type: 'paragraph', text: bio[0], style: 'lede' }));
+    for (const para of bio.slice(1, 4)) out.push(renderBlock({ type: 'paragraph', text: para }));
+
+    if (k.quote) out.push(renderBlock({ type: 'quote', text: k.quote, cite: p.quoteCite || '' }));
+
+    if (rooms.length) {
+      out.push(renderBlock({ type: 'sectionLabel', text: 'The Plan', variant: 'yellow' }));
+      out.push(renderBlock({ type: 'headline', text: `What we're *building*`, size: 'medium' }));
+      out.push(renderBlock({ type: 'paragraph', text: `Here's what ${name}'s renovation will include:`, muted: true }));
+      rooms.forEach((rt, i) => {
+        out.push(renderBlock({ type: 'numberedCard', number: String(i + 1).padStart(2, '0'), title: rt, body: '' }));
+      });
+    }
+
+    out.push(renderBlock({ type: 'sectionLabel', text: 'How You Can Help', variant: 'yellow' }));
+    out.push(renderBlock({ type: 'headline', text: `Help us build ${name}'s *dream*`, size: 'medium' }));
+    out.push(renderBlock({ type: 'paragraph', text: `Every dollar goes directly to materials, labor, and design for ${name}'s new space. Zero platform fees.`, muted: true }));
+    out.push(renderBlock({ type: 'button', label: p.ctaLabel || `Donate for ${name}`, href: p.ctaHref || `${SITE_URL}/donate`, variant: 'primary' }));
+    out.push(renderBlock({ type: 'divider', size: 'large' }));
+    if (p.signatureNote !== '') {
+      out.push(renderBlock({ type: 'signature', note: p.signatureNote || 'A note about getting started on this project.' }));
+    }
+    out.push(renderBlock({ type: 'button', label: p.profileLabel || `See ${name}'s Story`, href: profileUrl, variant: 'dark' }));
+
+    return out.filter(Boolean).join('\n');
+  },
+
+  // Auto-filled post-event recap. Pick an event; the renderer pulls hero image,
+  // title, date, location, and photo gallery from the event record. Overrides
+  // on `p`: image, label, headline, intro, stats[], photos[], sponsors[],
+  // sponsorsHeadline, sponsorsIntro, ctaHeadline, ctaIntro, ctaLabel, ctaHref,
+  // signatureNote.
+  eventRecap(p) {
+    const ev = p.event || {};
+    const name = ev.title || ev.name || p.eventName || '';
+    if (!name) return '';
+    const slug = ev.slug || '';
+    const eventUrl = slug ? `${SITE_URL}/events/${slug}` : `${SITE_URL}/events`;
+    const firstPhoto = (ev.photos || []).find(ph => ph && (ph.id || ph.url || ph.src));
+    const firstPhotoSrc = firstPhoto ? (firstPhoto.id || firstPhoto.url || firstPhoto.src) : '';
+    const heroSrc = p.image || ev.image || firstPhotoSrc || '';
+    const year = (ev.date || '').slice(0, 4) || String(new Date().getFullYear());
+    const dateDisplay = ev.date ? formatRevealDate(ev.date, '', 'America/New_York') : '';
+    const location = ev.location || '';
+
+    const out = [];
+
+    if (heroSrc) {
+      out.push(renderBlock({ type: 'hero', src: heroSrc, alt: `${name} recap`, link: eventUrl }));
+    }
+
+    const chips = [];
+    if (dateDisplay) chips.push({ label: 'Event', value: dateDisplay });
+    if (location) chips.push({ label: 'Where', value: location });
+    if (chips.length) {
+      out.push(renderBlock({ type: 'detailChips', items: chips }));
+    }
+
+    out.push(renderBlock({ type: 'sectionLabel', text: p.label || `Event Recap · ${year}`, variant: 'dark' }));
+    out.push(renderBlock({ type: 'headline', text: p.headline || `An evening to *remember*`, size: 'large', align: 'left' }));
+
+    const intro = p.intro || (ev.description ? bioParagraphs(ev.description)[0] : '');
+    if (intro) {
+      out.push(renderBlock({ type: 'paragraph', text: intro, style: 'lede' }));
+    }
+
+    const stats = (p.stats || []).filter(s => s && s.value);
+    if (stats.length) {
+      out.push(renderBlock({ type: 'stats', items: stats.slice(0, 3) }));
+    }
+
+    const overridePhotos = (p.photos || [])
+      .map(ph => (typeof ph === 'string' ? { src: ph } : { src: ph.src || ph.url || ph.id, alt: ph.alt || '' }))
+      .filter(ph => ph.src);
+    const eventPhotos = (ev.photos || [])
+      .map(ph => ({ src: ph.id || ph.url || ph.src, alt: ph.alt || '' }))
+      .filter(ph => ph.src);
+    const photos = overridePhotos.length ? overridePhotos : eventPhotos;
+    if (photos.length >= 2) {
+      out.push(renderBlock({ type: 'sectionLabel', text: p.galleryLabel || 'Through Your Lens', variant: 'yellow' }));
+      out.push(renderBlock({ type: 'photoGrid', items: photos.slice(0, 3) }));
+    }
+
+    const sponsors = (p.sponsors || []).filter(Boolean);
+    if (sponsors.length) {
+      out.push(renderBlock({
+        type: 'partnersList',
+        label: p.sponsorsLabel || 'Our Sponsors',
+        headline: p.sponsorsHeadline || 'Made possible by *incredible* sponsors',
+        intro: p.sponsorsIntro || `An unforgettable night made possible by partners who believe in this mission.`,
+        partners: sponsors,
+      }));
+    }
+
+    out.push(renderBlock({ type: 'sectionLabel', text: p.ctaLabelTop || 'Keep the Momentum', variant: 'yellow' }));
+    out.push(renderBlock({ type: 'headline', text: p.ctaHeadline || `Help us build the *next* dream room`, size: 'medium' }));
+    out.push(renderBlock({ type: 'paragraph', text: p.ctaIntro || `Every dollar raised goes directly to building life-changing spaces for kids on our waitlist.`, muted: true }));
+    out.push(renderBlock({ type: 'button', label: p.ctaLabel || 'Donate Now', href: p.ctaHref || `${SITE_URL}/donate`, variant: 'primary' }));
+    out.push(renderBlock({ type: 'trustSignals', items: ['Tax-Deductible', 'Zero Platform Fees', '501(c)(3)'] }));
+
+    if (p.signatureNote !== '') {
+      out.push(renderBlock({ type: 'signature', note: p.signatureNote || `Thank you for showing up — for the kids, for the families, for the mission.` }));
+    }
+    out.push(renderBlock({ type: 'spacer', height: 16 }));
+
+    return out.filter(Boolean).join('\n');
+  },
 };
 
 // ─── Reveal-invite calendar helpers ─────────────────────────────────

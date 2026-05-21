@@ -82,9 +82,24 @@ const catIcon: Record<string, string> = {
   other:      '<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg>',
 };
 
-/* ── Cover image for past event cards (poster → first gallery photo → none) ── */
-function coverImage(ev: { image?: string | null; photos?: Array<{ id: string }> }): string | null {
-  return ev.image || ev.photos?.[0]?.id || null;
+/* ── Per-event branding (matches dedicated event detail page accents).
+   logo: shown when event has no poster/photos yet — a branded stand-in. */
+const slugBrand: Record<string, { gradient: string; logo?: string }> = {
+  'sunshine-on-a-ranney-fairway': {
+    gradient: 'linear-gradient(145deg, #0d2818 0%, #1a472a 30%, #2e7d32 60%, #1b5e20 100%)',
+    logo: 'golf-logo-dark',
+  },
+};
+function eventGradient(ev: { slug: string; category: string }): string {
+  return slugBrand[ev.slug]?.gradient || catGradient[ev.category];
+}
+/* Cover image precedence: explicit poster → first gallery photo → branded logo fallback → none */
+function coverImage(ev: { slug: string; image?: string | null; photos?: Array<{ id: string }> }): string | null {
+  return ev.image || ev.photos?.[0]?.id || slugBrand[ev.slug]?.logo || null;
+}
+/* Is the cover image a branded logo (render with contain) vs a real photo (render with cover)? */
+function coverIsLogo(ev: { slug: string; image?: string | null; photos?: Array<{ id: string }> }): boolean {
+  return !ev.image && !ev.photos?.length && !!slugBrand[ev.slug]?.logo;
 }
 
 /* ── Date helpers ── */
@@ -139,7 +154,7 @@ const flagshipSizes = flagshipHasImage
   ? '(max-width: 767px) 280px, 440px'
   : '(max-width: 767px) 200px, 320px';
 const flagshipAlt = flagshipEvent?.data.title || 'Featured event';
-const flagshipGradient = flagshipEvent ? catGradient[flagshipEvent.data.category] : catGradient.other;
+const flagshipGradient = flagshipEvent ? eventGradient(flagshipEvent.data) : catGradient.other;
 
 /* Fallback hero photo when no flagship event */
 const sp = siteSettings.sectionPhotos || {};
@@ -377,24 +392,33 @@ const fallbackSizes = '(max-width: 768px) 85vw, (max-width: 1200px) 38vw, 420px'
         {/* Highlight card for most recent past event */}
         {past.length > 0 && (
           <article class="ev-highlight" data-reveal>
-            <div class="ev-highlight__visual" style={`background: ${catGradient[past[0].data.category]}`}>
-              {coverImage(past[0].data) ? (
-                <img
-                  src={cfRaw(coverImage(past[0].data)!, 'w=720,h=720,fit=cover,q=82')}
-                  srcset={cfSrcset(coverImage(past[0].data)!, [400, 600, 800], { height: 720, fit: 'cover' })}
-                  sizes="(max-width: 767px) 100vw, 360px"
-                  alt={past[0].data.title}
-                  width="720" height="720"
-                  loading="lazy" decoding="async"
-                  class="ev-highlight__img"
-                />
-              ) : (
-                <>
-                  <div class="ev-highlight__pattern" aria-hidden="true"></div>
-                  <div class="ev-highlight__glow" aria-hidden="true"></div>
-                  <div class="ev-highlight__icon" set:html={catIcon[past[0].data.category]} />
-                </>
-              )}
+            <div class="ev-highlight__visual" style={`background: ${eventGradient(past[0].data)}`}>
+              <div class="ev-highlight__pattern" aria-hidden="true"></div>
+              <div class="ev-highlight__glow" aria-hidden="true"></div>
+              {(() => {
+                const cov = coverImage(past[0].data);
+                const isLogo = coverIsLogo(past[0].data);
+                if (!cov) {
+                  return (
+                    <div class="ev-highlight__placeholder">
+                      <div class="ev-highlight__icon" set:html={catIcon[past[0].data.category]} />
+                      <span class="ev-highlight__placeholder-label">Photos Coming Soon</span>
+                    </div>
+                  );
+                }
+                const fit = isLogo ? 'contain' : 'cover';
+                return (
+                  <img
+                    src={cfRaw(cov, `w=720,fit=${fit},q=85`)}
+                    srcset={cfSrcset(cov, [400, 600, 800], { fit })}
+                    sizes="(max-width: 767px) 100vw, 360px"
+                    alt={past[0].data.title}
+                    width="720" height="720"
+                    loading="lazy" decoding="async"
+                    class={isLogo ? 'ev-highlight__img ev-highlight__img--logo' : 'ev-highlight__img'}
+                  />
+                );
+              })()}
             </div>
             <div class="ev-highlight__content">
               <div class="ev-highlight__top">
@@ -422,24 +446,47 @@ const fallbackSizes = '(max-width: 768px) 85vw, (max-width: 1200px) 38vw, 420px'
           <div class="ev-memories">
             {past.slice(1).map((event, i) => (
               <article class="ev-memory" data-reveal data-delay={String(Math.min(i, 3))}>
-                <div class="ev-memory__visual" style={`background: ${catGradient[event.data.category]}`}>
-                  {coverImage(event.data) ? (
-                    <img
-                      src={cfRaw(coverImage(event.data)!, 'w=520,h=260,fit=cover,q=82')}
-                      srcset={cfSrcset(coverImage(event.data)!, [360, 520, 720], { height: 260, fit: 'cover' })}
-                      sizes="(max-width: 639px) 100vw, (max-width: 959px) 50vw, 33vw"
-                      alt={event.data.title}
-                      width="520" height="260"
-                      loading="lazy" decoding="async"
-                      class="ev-memory__img"
-                    />
-                  ) : (
-                    <>
-                      <div class="ev-memory__pattern" aria-hidden="true"></div>
-                      <div class="ev-memory__glow" aria-hidden="true"></div>
-                      <div class="ev-memory__icon" set:html={catIcon[event.data.category]} />
-                    </>
-                  )}
+                <div class="ev-memory__visual" style={`background: ${eventGradient(event.data)}`}>
+                  {(() => {
+                    const cov = coverImage(event.data);
+                    const isLogo = coverIsLogo(event.data);
+                    if (!cov) {
+                      return (
+                        <>
+                          <div class="ev-memory__pattern" aria-hidden="true"></div>
+                          <div class="ev-memory__glow" aria-hidden="true"></div>
+                          <div class="ev-memory__placeholder">
+                            <div class="ev-memory__icon" set:html={catIcon[event.data.category]} />
+                            <span class="ev-memory__placeholder-label">Photos Coming Soon</span>
+                          </div>
+                        </>
+                      );
+                    }
+                    if (isLogo) {
+                      return (
+                        <img
+                          src={cfRaw(cov, 'w=520,fit=contain,q=85')}
+                          srcset={cfSrcset(cov, [360, 520, 720], { fit: 'contain' })}
+                          sizes="(max-width: 639px) 100vw, (max-width: 959px) 50vw, 33vw"
+                          alt={event.data.title}
+                          width="520" height="260"
+                          loading="lazy" decoding="async"
+                          class="ev-memory__img ev-memory__img--logo"
+                        />
+                      );
+                    }
+                    return (
+                      <img
+                        src={cfRaw(cov, 'w=520,h=260,fit=cover,q=82')}
+                        srcset={cfSrcset(cov, [360, 520, 720], { height: 260, fit: 'cover' })}
+                        sizes="(max-width: 639px) 100vw, (max-width: 959px) 50vw, 33vw"
+                        alt={event.data.title}
+                        width="520" height="260"
+                        loading="lazy" decoding="async"
+                        class="ev-memory__img"
+                      />
+                    );
+                  })()}
                   <div class="ev-memory__date-badge">
                     <span class="ev-memory__month">{fmtMonth(event.data.date)}</span>
                     <span class="ev-memory__day">{fmtDay(event.data.date)}</span>
@@ -1185,6 +1232,26 @@ const fallbackSizes = '(max-width: 768px) 85vw, (max-width: 1200px) 38vw, 420px'
     color: rgba(255, 255, 255, 0.15);
     z-index: 1;
   }
+  .ev-highlight__placeholder {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-md);
+    color: rgba(255, 255, 255, 0.55);
+  }
+  .ev-highlight__placeholder .ev-highlight__icon {
+    color: inherit;
+    transform: scale(1.5);
+  }
+  .ev-highlight__placeholder-label {
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.7);
+  }
   .ev-highlight__img {
     position: absolute;
     inset: 0;
@@ -1192,6 +1259,15 @@ const fallbackSizes = '(max-width: 768px) 85vw, (max-width: 1200px) 38vw, 420px'
     height: 100%;
     object-fit: cover;
     display: block;
+    z-index: 1;
+  }
+  .ev-highlight__img--logo {
+    position: relative;
+    inset: auto;
+    width: calc(100% - var(--space-xl) * 2);
+    height: calc(100% - var(--space-xl) * 2);
+    object-fit: contain;
+    filter: drop-shadow(0 12px 32px rgba(0, 0, 0, 0.28));
   }
   .ev-highlight__content {
     padding: var(--space-xl) var(--space-lg);
@@ -1316,6 +1392,30 @@ const fallbackSizes = '(max-width: 768px) 85vw, (max-width: 1200px) 38vw, 420px'
     transform: scale(1.15);
     color: rgba(255, 255, 255, 0.3);
   }
+  .ev-memory__placeholder {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-xs);
+    color: rgba(255, 255, 255, 0.55);
+  }
+  .ev-memory__placeholder .ev-memory__icon {
+    color: inherit;
+    transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .ev-memory:hover .ev-memory__placeholder .ev-memory__icon {
+    transform: scale(1.1);
+    color: rgba(255, 255, 255, 0.7);
+  }
+  .ev-memory__placeholder-label {
+    font-size: 0.58rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.65);
+  }
   .ev-memory__img {
     position: absolute;
     inset: 0;
@@ -1324,6 +1424,15 @@ const fallbackSizes = '(max-width: 768px) 85vw, (max-width: 1200px) 38vw, 420px'
     object-fit: cover;
     display: block;
     transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .ev-memory__img--logo {
+    position: relative;
+    inset: auto;
+    width: calc(100% - var(--space-lg) * 2);
+    height: calc(100% - var(--space-md) * 2);
+    object-fit: contain;
+    filter: drop-shadow(0 6px 18px rgba(0, 0, 0, 0.28));
+    z-index: 1;
   }
   .ev-memory:hover .ev-memory__img { transform: scale(1.04); }
   @media (prefers-reduced-motion: reduce) {

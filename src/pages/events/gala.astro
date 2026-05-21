@@ -86,7 +86,7 @@ const heroImageId = ev.image
   ? ev.image.replace('https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/', '').replace(/\/(public|w=.*)$/, '')
   : 'events/2026-evening-of-sunshine/1776780555974-evening-of-sunshine-2.jpg';
 
-const heroSrcset = cfSrcset(heroImageId, [480, 720, 960], { fit: 'contain', aspectRatio: 5 / 4 });
+const heroSrcset = cfSrcset(heroImageId, [480, 720, 960], { fit: 'cover', gravity: 'top', aspectRatio: 4 / 5, quality: 82 });
 const heroSizes = '(max-width: 767px) 90vw, 480px';
 
 /* ── Dress code lookbook image (admin-uploaded via Gala editor) ── */
@@ -249,7 +249,7 @@ const eventJsonLd = {
           <div class="gv-hero__frame-glow" aria-hidden="true"></div>
           <div class="gv-hero__photo-wrap" style={`background-image:url('${cfLqip(heroImageId)}')`}>
             <img
-              src={cfRaw(heroImageId, 'w=720,h=576,fit=contain,q=82')}
+              src={cfRaw(heroImageId, 'w=720,h=576,fit=cover,gravity=top,q=82')}
               srcset={heroSrcset}
               sizes={heroSizes}
               alt="Evening of Sunshine — Havana Nights gala"
@@ -409,8 +409,11 @@ const eventJsonLd = {
           <img
             src={dressCodeThumb}
             alt="Dress code lookbook: outfit examples, color palette, fabrics and accessories."
-            loading="lazy"
+            loading="eager"
+            fetchpriority="low"
             decoding="async"
+            width="800"
+            height="1000"
             class="gv-dresscode__img"
           />
           <span class="gv-dresscode__zoom-hint" aria-hidden="true">
@@ -1528,6 +1531,9 @@ const eventJsonLd = {
     display: block;
     width: 100%;
     height: auto;
+    aspect-ratio: 4 / 5;
+    object-fit: contain;
+    background: var(--gv-paper);
     border-radius: 3px;
   }
   .gv-dresscode__tape {
@@ -2660,21 +2666,78 @@ const eventJsonLd = {
   function initGala() {
     const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-    /* Smooth scroll for in-page anchors */
+    /* Smooth scroll for in-page anchors — measures live header height and
+       re-corrects after the scroll settles in case images / fonts shift layout
+       mid-animation. */
+    const ANCHOR_PAD = 24; /* matches the visual breathing room in CSS */
+
+    const getHeaderH = (): number => {
+      const v = getComputedStyle(document.documentElement)
+        .getPropertyValue('--header-height').trim();
+      const n = parseFloat(v);
+      return Number.isFinite(n) && n > 0 ? n : 84;
+    };
+
+    const targetTopFor = (el: Element): number => {
+      const rect = el.getBoundingClientRect();
+      return Math.max(0, rect.top + window.scrollY - getHeaderH() - ANCHOR_PAD);
+    };
+
+    const scrollToAnchor = (el: Element, smooth: boolean) => {
+      const top = targetTopFor(el);
+      window.scrollTo({ top, behavior: smooth ? 'smooth' : 'auto' });
+      if (!smooth) return;
+
+      /* After the scroll animation completes, recompute the target's position
+         and snap if layout shifted (lazy image load, font swap, etc.). */
+      const correct = () => {
+        const desired = targetTopFor(el);
+        if (Math.abs(desired - window.scrollY) > 2) {
+          window.scrollTo({ top: desired, behavior: 'auto' });
+        }
+      };
+
+      if ('onscrollend' in window) {
+        window.addEventListener('scrollend', correct, { once: true });
+      } else {
+        let lastY = window.scrollY;
+        let stable = 0;
+        const id = window.setInterval(() => {
+          if (Math.abs(window.scrollY - lastY) < 1) {
+            if (++stable >= 3) { window.clearInterval(id); correct(); }
+          } else { stable = 0; lastY = window.scrollY; }
+        }, 80);
+        window.setTimeout(() => { window.clearInterval(id); correct(); }, 1500);
+      }
+    };
+
     document.querySelectorAll<HTMLAnchorElement>('a[href^="#"]').forEach(link => {
       link.addEventListener('click', e => {
         const href = link.getAttribute('href');
         if (!href || href === '#') return;
         const target = document.querySelector(href);
-        if (target) {
-          e.preventDefault();
-          target.scrollIntoView({
-            behavior: prefersReduced ? 'auto' : 'smooth',
-            block: 'start',
-          });
+        if (!(target instanceof HTMLElement)) return;
+        e.preventDefault();
+        scrollToAnchor(target, !prefersReduced);
+        if (history.pushState) history.pushState(null, '', href);
+        /* Move focus for keyboard / screen-reader users without re-scrolling. */
+        const hadTabindex = target.hasAttribute('tabindex');
+        if (!hadTabindex) target.setAttribute('tabindex', '-1');
+        target.focus({ preventScroll: true });
+        if (!hadTabindex) {
+          target.addEventListener('blur', () => target.removeAttribute('tabindex'), { once: true });
         }
       });
     });
+
+    /* Honor an initial #hash on page load (after layout settles) so deep links
+       land on the right pixel even with reveal animations + lazy media. */
+    if (location.hash && location.hash.length > 1) {
+      const initial = document.querySelector(location.hash);
+      if (initial instanceof HTMLElement) {
+        requestAnimationFrame(() => scrollToAnchor(initial, false));
+      }
+    }
 
     /* Countdown timer */
     const cd = document.querySelector<HTMLElement>('.gv-countdown');
