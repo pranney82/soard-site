@@ -11,7 +11,11 @@
   Content-Security-Policy: default-src 'none'; script-src 'self' 'unsafe-inline' data: https://esm.sh https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' https://imagedelivery.net https://i.ytimg.com https://cdn.charitynavigator.org https://widgets.guidestar.org https://videodelivery.net data: blob:; font-src 'self' https://fonts.gstatic.com; frame-src https://www.youtube-nocookie.com https://iframe.videodelivery.net https://www.zeffy.com; connect-src 'self' https://imagedelivery.net https://api.github.com https://api.cloudflare.com https://api.anthropic.com https://cloudflareinsights.com https://esm.sh; media-src 'self' https://videodelivery.net; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'; worker-src 'self'; manifest-src 'self'
 
 ## Admin panel — more permissive CSP (behind Cloudflare Access auth)
+## `! Content-Security-Policy` strips the inherited /* CSP so only the admin
+## policy applies. Without this, browsers receive both headers and enforce
+## the intersection, which blocks admin-only hosts like upload.cloudflarestream.com.
 /admin/*
+  ! Content-Security-Policy
   Content-Security-Policy: default-src 'none'; script-src 'self' 'unsafe-inline' https://esm.sh https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' https://imagedelivery.net data: blob:; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://imagedelivery.net https://api.github.com https://api.cloudflare.com https://api.anthropic.com https://esm.sh https://cloudflareinsights.com https://upload.videodelivery.net https://upload.cloudflarestream.com; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'; manifest-src 'self'
 
 ## Cache financial PDFs (rarely change, large files)
