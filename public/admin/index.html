@@ -1918,6 +1918,12 @@
             chunkSize: 50 * 1024 * 1024, // 50 MB chunks
             retryDelays: [0, 1000, 3000, 5000, 10000],
             metadata: { filename: file.name, filetype: file.type },
+            // Each upload gets a fresh one-time URL from /api/upload-video, so
+            // don't let tus-js-client try to resume a previous attempt's URL
+            // from localStorage — that's what causes "failed to resume upload"
+            // with response code n/a on retries.
+            storeFingerprintForResuming: false,
+            removeFingerprintOnSuccess: true,
             onError(err) { reject(err); },
             onProgress(bytesUploaded, bytesTotal) {
               if (onProgress) onProgress(Math.round((bytesUploaded / bytesTotal) * 100));

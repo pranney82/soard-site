@@ -29,4 +29,9 @@ export default defineConfig({
   build: {
     inlineStylesheets: 'always',
   },
+  vite: {
+    server: {
+      allowedHosts: ['.trycloudflare.com'],
+    },
+  },
 });

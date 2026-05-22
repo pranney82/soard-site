@@ -40,6 +40,19 @@ export async function onRequestPost(context) {
     const metaParts = [];
     if (name) metaParts.push(`name ${b64Utf8(name)}`);
 
+    // Stream restricts which origins can upload to the one-time URL via CORS.
+    // Without `allowedorigins`, the browser's HEAD/PATCH gets blocked at preflight
+    // and tus-js-client reports "failed to resume upload" with response code n/a.
+    // Derive the hostname from the request Origin so the browser is allowed.
+    const origin = context.request.headers.get('origin') || '';
+    let allowedHost = '';
+    try {
+      if (origin) allowedHost = new URL(origin).host;
+    } catch {
+      allowedHost = '';
+    }
+    if (allowedHost) metaParts.push(`allowedorigins ${b64Utf8(allowedHost)}`);
+
     const response = await fetch(
       `https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/stream?direct_user=true`,
       {
