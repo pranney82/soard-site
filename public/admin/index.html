@@ -10453,6 +10453,35 @@
         }
       };
 
+      const [galleryUploading, setGalleryUploading] = useState(false);
+      const handleGalleryUpload = async (files, replaceIdx = null) => {
+        const list = Array.from(files || []);
+        if (list.length === 0) return;
+        setGalleryUploading(true);
+        let successCount = 0;
+        for (const file of list) {
+          const cfId = 'gallery/golf/' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+          try {
+            const res = await api.uploadImage(file, cfId);
+            if (res.success) {
+              const photoId = res.imageUrl || cfId;
+              if (replaceIdx !== null) {
+                setData(d => ({ ...d, galleryPhotos: (d.galleryPhotos || []).map((ph, j) => j === replaceIdx ? { ...ph, id: photoId } : ph) }));
+              } else {
+                setData(d => ({ ...d, galleryPhotos: [...(d.galleryPhotos || []), { id: photoId, alt: '' }] }));
+              }
+              successCount++;
+            } else {
+              addToast('Upload failed: ' + (res.error || 'Unknown error'), 'error');
+            }
+          } catch (err) {
+            addToast('Upload error: ' + err.message, 'error');
+          }
+        }
+        if (successCount > 0) addToast(successCount + ' photo' + (successCount === 1 ? '' : 's') + ' uploaded!', 'success');
+        setGalleryUploading(false);
+      };
+
       return html`
         ${showImagePicker ? html`<${ImagePicker}
           onSelect=${handleImageSelect}
@@ -10752,19 +10781,25 @@
 
           ${activeTab === 'gallery' && html`
             <div class="card">
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; gap: 0.5rem; flex-wrap: wrap;">
                 <div>
                   <h2 class="card-title">Photo Gallery</h2>
                   <p class="card-subtitle">Photos shown in the scrolling gallery strip on the golf page.</p>
                 </div>
-                <button class="btn btn-primary btn-sm" onClick=${() => {
-                  setData(d => ({ ...d, galleryPhotos: [...(d.galleryPhotos || []), { id: '', alt: '' }] }));
-                  // Open picker for the newly added photo
-                  setTimeout(() => {
-                    setImagePickerTarget('gallery:' + (data.galleryPhotos || []).length);
-                    setShowImagePicker(true);
-                  }, 50);
-                }}>+ Add Photo</button>
+                <div style="display: flex; gap: 0.4rem; align-items: center;">
+                  <label class="btn btn-primary btn-sm" style="cursor: pointer; ${galleryUploading ? 'opacity:0.6; pointer-events:none;' : ''}">
+                    ${galleryUploading ? html`<span class="spinner" style="width:12px;height:12px;margin-right:6px;"/>Uploading...` : '+ Upload Photo'}
+                    <input type="file" accept="image/*" multiple style="display:none"
+                      onChange=${(e) => { handleGalleryUpload(e.target.files); e.target.value = ''; }} />
+                  </label>
+                  <button class="btn btn-ghost btn-sm" onClick=${() => {
+                    setData(d => ({ ...d, galleryPhotos: [...(d.galleryPhotos || []), { id: '', alt: '' }] }));
+                    setTimeout(() => {
+                      setImagePickerTarget('gallery:' + (data.galleryPhotos || []).length);
+                      setShowImagePicker(true);
+                    }, 50);
+                  }}>+ Browse Existing</button>
+                </div>
               </div>
               ${(data.galleryPhotos || []).length > 0 ? html`
                 <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 0.75rem;">
@@ -10777,9 +10812,18 @@
                           : html`<span style="font-size: 0.7rem; color: var(--text-tertiary); text-align: center; padding: 0.5rem;">Click to<br/>choose image</span>`
                         }
                       </div>
-                      <div style="padding: 0.5rem;">
+                      <div style="padding: 0.5rem; display: flex; flex-direction: column; gap: 0.35rem;">
                         <input class="form-input" placeholder="Alt text" value=${p.alt || ''} style="font-size: 0.82rem; padding: 0.35rem 0.5rem;"
                           onInput=${(e) => setData(d => ({ ...d, galleryPhotos: d.galleryPhotos.map((ph, j) => j === i ? { ...ph, alt: e.target.value } : ph) }))} />
+                        <div style="display: flex; gap: 0.3rem; justify-content: center;">
+                          <label style="font-size: 0.68rem; padding: 0.15rem 0.4rem; color: var(--color-primary); cursor: pointer; font-weight: 600;" title="Replace with uploaded image">
+                            upload
+                            <input type="file" accept="image/*" style="display:none"
+                              onChange=${(e) => { if (e.target.files[0]) handleGalleryUpload([e.target.files[0]], i); e.target.value = ''; }} />
+                          </label>
+                          <button class="btn btn-ghost btn-sm" style="font-size: 0.68rem; padding: 0.15rem 0.4rem; color: var(--color-primary);"
+                            onClick=${() => { setImagePickerTarget('gallery:' + i); setShowImagePicker(true); }}>browse</button>
+                        </div>
                       </div>
                       <button style="position: absolute; top: 4px; right: 4px; width: 22px; height: 22px; border-radius: 50%; background: rgba(0,0,0,0.6); color: #fff; border: none; cursor: pointer; font-size: 0.7rem; display: flex; align-items: center; justify-content: center;"
                         onClick=${() => setData(d => ({ ...d, galleryPhotos: d.galleryPhotos.filter((_, j) => j !== i) }))}>✕</button>
@@ -10787,7 +10831,7 @@
                   `)}
                 </div>
               ` : html`
-                <p style="text-align: center; color: var(--text-tertiary); padding: 2rem;">No gallery photos yet. Click "+ Add Photo" to browse and select images.</p>
+                <p style="text-align: center; color: var(--text-tertiary); padding: 2rem;">No gallery photos yet. Click "+ Upload Photo" to add new images, or "+ Browse Existing" to pick from the library.</p>
               `}
             </div>
           `}

@@ -44,5 +44,8 @@
   "videoUrl": null,
   "fundraisingUrl": null,
   "photoCount": 5,
-  "bedroomCount": 1
+  "bedroomCount": 1,
+  "partnerLogos": [],
+  "plans": [],
+  "beforeAfterPhotos": []
 }
