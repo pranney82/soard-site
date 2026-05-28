@@ -11025,6 +11025,25 @@
         setDressCodeUploading(false);
       };
 
+      const [eventHeroUploading, setEventHeroUploading] = useState(false);
+      const handleEventHeroUpload = async (file) => {
+        if (!file) return;
+        setEventHeroUploading(true);
+        try {
+          const cfId = 'events/' + (slug || 'gala') + '/hero-' + Date.now();
+          const res = await api.uploadImage(file, cfId);
+          if (res.success) {
+            updateEvent('image', res.imageUrl || cfId);
+            addToast('Hero image uploaded!', 'success');
+          } else {
+            addToast('Upload failed: ' + (res.error || 'Unknown error'), 'error');
+          }
+        } catch (err) {
+          addToast('Upload error: ' + err.message, 'error');
+        }
+        setEventHeroUploading(false);
+      };
+
       const handleSponsorLogoUpload = async (file, tierIdx, nameIdx) => {
         const sponsorName = data.sponsors?.[tierIdx]?.names?.[nameIdx]?.name || 'sponsor';
         const sl = sponsorName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
@@ -11140,7 +11159,7 @@
                 </div>
                 <div class="form-group" style="grid-column: 1 / -1;">
                   <label>Hero Image</label>
-                  <div style="display: flex; gap: 0.75rem; align-items: center;">
+                  <div style="display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap;">
                     <div style="width: 120px; height: 96px; border-radius: 8px; background: var(--bg-secondary); border: 1.5px dashed var(--border); overflow: hidden; cursor: pointer; display: flex; align-items: center; justify-content: center;"
                       onClick=${() => { setImagePickerTarget('event-hero'); setShowImagePicker(true); }}>
                       ${eventData.image
@@ -11148,7 +11167,17 @@
                         : html`<span style="font-size: 0.7rem; color: var(--text-tertiary); text-align: center;">Click to choose</span>`
                       }
                     </div>
-                    <button class="btn btn-ghost btn-sm" onClick=${() => { setImagePickerTarget('event-hero'); setShowImagePicker(true); }}>Browse images</button>
+                    <label class="btn btn-primary btn-sm" style="cursor: pointer; ${eventHeroUploading ? 'opacity: 0.6; pointer-events: none;' : ''}">
+                      ${eventHeroUploading ? 'Uploading…' : 'Upload from computer'}
+                      <input type="file" accept="image/*" style="display: none;"
+                        onChange=${e => { handleEventHeroUpload(e.target.files?.[0]); e.target.value = ''; }} />
+                    </label>
+                    <button class="btn btn-ghost btn-sm" type="button"
+                      onClick=${() => { setImagePickerTarget('event-hero'); setShowImagePicker(true); }}>Browse existing</button>
+                    ${eventData.image ? html`
+                      <button class="btn btn-ghost btn-sm" type="button"
+                        onClick=${() => updateEvent('image', null)}>Remove</button>
+                    ` : null}
                   </div>
                 </div>
                 <div class="form-group" style="grid-column: 1 / -1;">
