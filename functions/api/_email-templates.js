@@ -1229,7 +1229,7 @@ const BLOCKS = {
         out.push(renderBlock({
           type: 'button',
           label: p.galleryButtonLabel || (themed && T.galleryButtonLabel) || 'See the full gallery',
-          href: eventUrl,
+          href: p.galleryButtonHref || eventUrl,
           variant: buttonVariant,
         }));
       }

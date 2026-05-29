@@ -237,23 +237,90 @@ const heroLogoSizes = '(max-width: 767px) 200px, 320px';
   <!-- ═══ PHOTO GALLERY ═══ -->
   {galleryPhotos.length > 0 && (
     <section class="ev-gallery" aria-label="Past tournament photos">
-      <div class="ev-gallery__track">
-        {[...galleryPhotos, ...galleryPhotos].map((photo, i) => (
-          <div class="ev-gallery__item">
-            <img
-              src={cfRaw(photo.id, 'w=400,h=280,fit=cover,q=80')}
-              srcset={cfSrcset(photo.id, [300, 400], { height: 280, fit: 'cover' })}
-              sizes="280px"
-              alt={photo.alt || 'Past tournament photo'}
-              width="400"
-              height="280"
-              loading="lazy"
-              decoding="async"
-            />
+      <div class="container ev-gallery__inner">
+        <div class="ev-gallery__header">
+          <span class="ev-gallery__label" data-reveal>Past Tournaments</span>
+          <h2 class="ev-gallery__heading" data-reveal>Memories from the Fairway</h2>
+          <p class="ev-gallery__sub" data-reveal>
+            <span data-gallery-total>{galleryPhotos.length}</span> moments from years of swings, smiles, and stories.
+          </p>
+        </div>
+        <div
+          class="ev-gallery__bento"
+          id="golf-gallery"
+          data-initial={Math.min(16, galleryPhotos.length)}
+          data-step="16"
+          data-total={galleryPhotos.length}
+        >
+          {galleryPhotos.map((photo, i) => {
+            const isBig = i % 8 === 0;
+            const isWide = i % 8 === 5;
+            const tileClasses = [
+              'ev-gallery__tile',
+              isBig ? 'ev-gallery__tile--big' : '',
+              isWide ? 'ev-gallery__tile--wide' : '',
+              i >= 16 ? 'is-hidden' : '',
+            ].filter(Boolean).join(' ');
+            const w = isBig ? 1000 : isWide ? 900 : 500;
+            const h = isBig ? 1000 : isWide ? 450 : 500;
+            return (
+              <button
+                type="button"
+                class={tileClasses}
+                data-lb-index={i}
+                data-full={cfRaw(photo.id, 'w=1800,q=85')}
+                data-alt={photo.alt || `Past tournament photo ${i + 1}`}
+                aria-label={`View photo ${i + 1} of ${galleryPhotos.length}`}
+              >
+                <img
+                  src={cfRaw(photo.id, `w=${w},h=${h},fit=cover,q=80`)}
+                  srcset={cfSrcset(photo.id, isBig ? [600, 900, 1200] : isWide ? [500, 700, 1000] : [400, 500, 700], { height: h, fit: 'cover' })}
+                  sizes={isBig ? '(max-width: 720px) 92vw, (max-width: 1024px) 60vw, 480px' : isWide ? '(max-width: 720px) 92vw, (max-width: 1024px) 60vw, 480px' : '(max-width: 720px) 46vw, (max-width: 1024px) 30vw, 240px'}
+                  alt={photo.alt || `Past tournament photo ${i + 1}`}
+                  width={w}
+                  height={h}
+                  loading={i < 6 ? 'eager' : 'lazy'}
+                  decoding="async"
+                />
+                <span class="ev-gallery__tile-overlay" aria-hidden="true">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+        {galleryPhotos.length > 16 && (
+          <div class="ev-gallery__more">
+            <button type="button" class="ev-gallery__more-btn" id="golf-gallery-more">
+              <span class="ev-gallery__more-label">Load More</span>
+              <span class="ev-gallery__more-count">
+                <span id="golf-gallery-remaining">{galleryPhotos.length - 16}</span> more
+              </span>
+            </button>
           </div>
-        ))}
+        )}
       </div>
     </section>
+  )}
+
+  <!-- ═══ GALLERY LIGHTBOX ═══ -->
+  {galleryPhotos.length > 0 && (
+    <div class="golf-lb" id="golf-lightbox" role="dialog" aria-modal="true" aria-label="Photo viewer" hidden>
+      <div class="golf-lb__backdrop" data-lb-close aria-hidden="true"></div>
+      <button class="golf-lb__close" data-lb-close type="button" aria-label="Close photo viewer">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+      </button>
+      <button class="golf-lb__nav golf-lb__nav--prev" id="golf-lb-prev" type="button" aria-label="Previous photo">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+      </button>
+      <button class="golf-lb__nav golf-lb__nav--next" id="golf-lb-next" type="button" aria-label="Next photo">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+      </button>
+      <figure class="golf-lb__stage">
+        <img class="golf-lb__img" id="golf-lb-img" src="" alt="" />
+        <figcaption class="golf-lb__counter" id="golf-lb-counter" aria-live="polite"></figcaption>
+      </figure>
+    </div>
   )}
 
   <!-- ═══ HOW IT HELPS ═══ -->
@@ -1557,39 +1624,289 @@ const heroLogoSizes = '(max-width: 767px) 200px, 320px';
     margin-top: -0.6rem;
   }
 
-  /* ─── Photo Gallery Strip ──────────────────────────────────── */
+  /* ─── Photo Gallery — Bento ────────────────────────────────── */
   .ev-gallery {
-    overflow: hidden;
-    padding: var(--space-xl) 0;
+    padding: var(--space-4xl) 0;
     background: var(--c-warm-gray);
     border-top: 1px solid var(--c-border);
     border-bottom: 1px solid var(--c-border);
   }
-  .ev-gallery__track {
-    display: flex;
-    gap: var(--space-md);
-    animation: galleryScroll 30s linear infinite;
-    width: max-content;
+  .ev-gallery__header {
+    text-align: center;
+    margin-bottom: var(--space-2xl);
   }
-  .ev-gallery__item {
-    flex-shrink: 0;
-    width: 280px;
-    height: 200px;
-    border-radius: 12px;
+  .ev-gallery__label {
+    display: inline-block;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--c-green);
+    margin-bottom: 0.75rem;
+  }
+  .ev-gallery__heading {
+    font-family: var(--font-display);
+    font-size: clamp(1.75rem, 4vw, 2.5rem);
+    line-height: 1.15;
+    color: var(--c-dark);
+    margin: 0;
+  }
+  .ev-gallery__sub {
+    margin: 0.75rem auto 0;
+    max-width: 540px;
+    color: var(--c-muted, #555);
+    font-size: 0.98rem;
+    line-height: 1.55;
+  }
+
+  /* Bento grid: 2 cols mobile → 3 tablet → 4 desktop. Pattern cycles every 8 tiles. */
+  .ev-gallery__bento {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    grid-auto-flow: row dense;
+    gap: 6px;
+  }
+  @media (min-width: 720px) {
+    .ev-gallery__bento { grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  }
+  @media (min-width: 1024px) {
+    .ev-gallery__bento { grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  }
+
+  .ev-gallery__tile {
+    position: relative;
+    aspect-ratio: 1 / 1;
+    padding: 0;
+    margin: 0;
+    border: 0;
+    background: var(--c-border, #e5e5e5);
+    border-radius: 10px;
     overflow: hidden;
+    cursor: zoom-in;
+    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.3s ease;
   }
-  .ev-gallery__item img {
+  .ev-gallery__tile.is-hidden { display: none; }
+  .ev-gallery__tile.is-revealing {
+    animation: galleryTileIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+  }
+  @keyframes galleryTileIn {
+    from { opacity: 0; transform: translateY(12px) scale(0.98); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+  }
+
+  /* Bento sizing — apply 2x2 to first item of each 8-cycle, 2x1 wide to 6th */
+  .ev-gallery__tile--wide {
+    grid-column: span 2;
+    aspect-ratio: 2 / 1;
+  }
+  @media (min-width: 720px) {
+    .ev-gallery__tile--big {
+      grid-column: span 2;
+      grid-row: span 2;
+      aspect-ratio: 1 / 1;
+      border-radius: 14px;
+    }
+  }
+
+  .ev-gallery__tile img {
     width: 100%;
     height: 100%;
     object-fit: cover;
-    transition: transform 0.4s ease;
+    display: block;
+    transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
   }
-  .ev-gallery__item:hover img {
-    transform: scale(1.05);
+  .ev-gallery__tile-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(180deg, rgba(0,0,0,0) 50%, rgba(0,0,0,0.4));
+    color: #fff;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    pointer-events: none;
   }
-  @keyframes galleryScroll {
-    0% { transform: translateX(0); }
-    100% { transform: translateX(-50%); }
+  .ev-gallery__tile-overlay svg {
+    background: rgba(255, 255, 255, 0.95);
+    color: var(--c-dark);
+    border-radius: 50%;
+    padding: 10px;
+    width: 44px;
+    height: 44px;
+    transform: translateY(8px) scale(0.9);
+    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  @media (hover: hover) {
+    .ev-gallery__tile:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 14px 32px rgba(0, 0, 0, 0.16);
+    }
+    .ev-gallery__tile:hover img { transform: scale(1.08); }
+    .ev-gallery__tile:hover .ev-gallery__tile-overlay { opacity: 1; }
+    .ev-gallery__tile:hover .ev-gallery__tile-overlay svg { transform: translateY(0) scale(1); }
+  }
+  .ev-gallery__tile:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--c-yellow, #ffda24);
+  }
+
+  /* Load more */
+  .ev-gallery__more {
+    display: flex;
+    justify-content: center;
+    margin-top: var(--space-xl);
+  }
+  .ev-gallery__more-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0.85rem 1.75rem;
+    border-radius: 100px;
+    border: 1.5px solid var(--c-dark);
+    background: transparent;
+    color: var(--c-dark);
+    font-size: 0.9rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    cursor: pointer;
+    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .ev-gallery__more-btn:hover {
+    background: var(--c-dark);
+    color: #fff;
+    transform: translateY(-2px);
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+  }
+  .ev-gallery__more-btn:active { transform: translateY(0); }
+  .ev-gallery__more-btn:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--c-yellow, #ffda24);
+  }
+  .ev-gallery__more-count {
+    opacity: 0.6;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+  }
+  .ev-gallery__more-btn:hover .ev-gallery__more-count { opacity: 0.85; }
+  .ev-gallery__more.is-done { display: none; }
+
+  /* ─── Gallery Lightbox ─────────────────────────────────────── */
+  .golf-lb[hidden] { display: none; }
+  .golf-lb {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: env(safe-area-inset-top, 0) env(safe-area-inset-right, 0) env(safe-area-inset-bottom, 0) env(safe-area-inset-left, 0);
+    -webkit-tap-highlight-color: transparent;
+  }
+  .golf-lb__backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(8, 8, 10, 0.94);
+    backdrop-filter: blur(16px) saturate(160%);
+    -webkit-backdrop-filter: blur(16px) saturate(160%);
+    opacity: 0;
+    transition: opacity 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .golf-lb--open .golf-lb__backdrop { opacity: 1; }
+  .golf-lb__close,
+  .golf-lb__nav {
+    position: absolute;
+    z-index: 10;
+    width: 48px;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 50%;
+    color: var(--c-white, #fff);
+    cursor: pointer;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    opacity: 0;
+    transition: opacity 0.2s ease, background 0.2s ease, border-color 0.2s ease, transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .golf-lb--open .golf-lb__close,
+  .golf-lb--open .golf-lb__nav { opacity: 1; }
+  .golf-lb__close { top: 20px; right: 24px; }
+  .golf-lb__nav { top: 50%; transform: translateY(-50%); }
+  .golf-lb__nav--prev { left: 24px; }
+  .golf-lb__nav--next { right: 24px; }
+  .golf-lb__close:hover,
+  .golf-lb__nav:hover {
+    background: rgba(255, 255, 255, 0.18);
+    border-color: rgba(255, 255, 255, 0.28);
+  }
+  .golf-lb__close:hover { transform: scale(1.06); }
+  .golf-lb__nav:hover { transform: translateY(-50%) scale(1.06); }
+  .golf-lb__close:focus-visible,
+  .golf-lb__nav:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(255, 218, 36, 0.45);
+  }
+  .golf-lb__stage {
+    position: relative;
+    z-index: 5;
+    margin: 0;
+    width: min(94vw, calc(100vw - 192px));
+    height: calc(100dvh - 96px);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    transform: scale(0.94) translateY(8px);
+    opacity: 0;
+    transition: transform 0.36s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.28s ease;
+    will-change: transform, opacity;
+  }
+  .golf-lb--open .golf-lb__stage {
+    transform: scale(1) translateY(0);
+    opacity: 1;
+  }
+  .golf-lb__img {
+    max-width: 100%;
+    max-height: calc(100% - 36px);
+    width: auto;
+    height: auto;
+    object-fit: contain;
+    border-radius: 8px;
+    filter: drop-shadow(0 8px 30px rgba(0, 0, 0, 0.4));
+  }
+  .golf-lb__counter {
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 0.78rem;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-variant-numeric: tabular-nums;
+    padding: 6px 14px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 100px;
+  }
+  @media (max-width: 600px) {
+    .golf-lb__stage {
+      width: 100vw;
+      height: 100dvh;
+      gap: 10px;
+    }
+    .golf-lb__close { top: 14px; right: 14px; width: 42px; height: 42px; }
+    .golf-lb__nav { width: 42px; height: 42px; }
+    .golf-lb__nav--prev { left: 10px; }
+    .golf-lb__nav--next { right: 10px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .golf-lb__backdrop,
+    .golf-lb__stage,
+    .golf-lb__close,
+    .golf-lb__nav { transition-duration: 0.01ms !important; }
   }
 
   /* ─── Testimonial ──────────────────────────────────────────── */
@@ -2033,7 +2350,6 @@ const heroLogoSizes = '(max-width: 767px) 200px, 320px';
     [data-reveal] { transition: none; opacity: 1; transform: none; }
     .ev-details__card, .ev-tier, .ev-impact__step, .ev-btn { transition: none; }
     .ev-chair__photo.lqip-pending { opacity: 1; }
-    .ev-gallery__track { animation: none; }
   }
 </style>
 
@@ -2107,9 +2423,149 @@ const heroLogoSizes = '(max-width: 767px) 200px, 320px';
 
   /* FAQ accordion behavior is handled by the <faq-accordion> custom element */
 
+  /* ── Gallery: bento + load more + lightbox ── */
+  let _galleryAc: AbortController | null = null;
+
+  function initGolfGallery() {
+    _galleryAc?.abort();
+    const gallery = document.getElementById('golf-gallery');
+    const lb = document.getElementById('golf-lightbox') as HTMLElement | null;
+    const lbImg = document.getElementById('golf-lb-img') as HTMLImageElement | null;
+    const lbCounter = document.getElementById('golf-lb-counter');
+    const lbPrev = document.getElementById('golf-lb-prev');
+    const lbNext = document.getElementById('golf-lb-next');
+    if (!gallery || !lb || !lbImg || !lbCounter || !lbPrev || !lbNext) return;
+
+    _galleryAc = new AbortController();
+    const { signal } = _galleryAc;
+
+    const tiles = Array.from(gallery.querySelectorAll<HTMLButtonElement>('.ev-gallery__tile'));
+    if (tiles.length === 0) return;
+
+    /* ── Load more ── */
+    const moreWrap = document.querySelector<HTMLElement>('.ev-gallery__more');
+    const moreBtn = document.getElementById('golf-gallery-more') as HTMLButtonElement | null;
+    const remainingEl = document.getElementById('golf-gallery-remaining');
+    const step = Math.max(1, parseInt(gallery.dataset.step || '16', 10));
+    let visibleCount = tiles.filter(t => !t.classList.contains('is-hidden')).length;
+
+    const updateMore = () => {
+      const remaining = tiles.length - visibleCount;
+      if (remainingEl) remainingEl.textContent = String(remaining);
+      if (moreWrap) moreWrap.classList.toggle('is-done', remaining <= 0);
+    };
+    updateMore();
+
+    moreBtn?.addEventListener('click', () => {
+      const end = Math.min(tiles.length, visibleCount + step);
+      for (let i = visibleCount; i < end; i++) {
+        const t = tiles[i];
+        t.classList.remove('is-hidden');
+        t.classList.add('is-revealing');
+        (t as HTMLElement).style.animationDelay = `${(i - visibleCount) * 35}ms`;
+        t.addEventListener('animationend', () => {
+          t.classList.remove('is-revealing');
+          (t as HTMLElement).style.animationDelay = '';
+        }, { once: true });
+      }
+      visibleCount = end;
+      updateMore();
+      if (visibleCount >= tiles.length) moreBtn.blur();
+    }, { signal });
+
+    let current = 0;
+    let lastFocus: HTMLElement | null = null;
+
+    const show = (i: number) => {
+      current = (i + tiles.length) % tiles.length;
+      const tile = tiles[current];
+      const full = tile.getAttribute('data-full') || '';
+      const alt = tile.getAttribute('data-alt') || '';
+      lbImg.src = full;
+      lbImg.alt = alt;
+      lbCounter.textContent = `${current + 1} / ${tiles.length}`;
+      // Preload neighbors
+      const preload = (idx: number) => {
+        const t = tiles[(idx + tiles.length) % tiles.length];
+        const src = t?.getAttribute('data-full');
+        if (src) { const im = new Image(); im.src = src; }
+      };
+      preload(current + 1);
+      preload(current - 1);
+    };
+
+    const open = (i: number) => {
+      lastFocus = document.activeElement as HTMLElement;
+      show(i);
+      lb.hidden = false;
+      document.body.style.overflow = 'hidden';
+      requestAnimationFrame(() => lb.classList.add('golf-lb--open'));
+      (lb.querySelector('.golf-lb__close') as HTMLElement)?.focus();
+    };
+
+    const close = () => {
+      lb.classList.remove('golf-lb--open');
+      const finish = () => {
+        lb.hidden = true;
+        document.body.style.overflow = '';
+        lastFocus?.focus?.();
+      };
+      const onEnd = (e: TransitionEvent) => {
+        if (e.target !== lb.querySelector('.golf-lb__backdrop')) return;
+        lb.removeEventListener('transitionend', onEnd);
+        finish();
+      };
+      lb.addEventListener('transitionend', onEnd);
+      // Fallback in case transitionend doesn't fire
+      setTimeout(() => { if (!lb.hidden && !lb.classList.contains('golf-lb--open')) finish(); }, 400);
+    };
+
+    tiles.forEach((tile, i) => {
+      tile.addEventListener('click', () => open(i), { signal });
+    });
+
+    lbPrev.addEventListener('click', () => show(current - 1), { signal });
+    lbNext.addEventListener('click', () => show(current + 1), { signal });
+
+    lb.querySelectorAll('[data-lb-close]').forEach(el => {
+      el.addEventListener('click', close, { signal });
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (lb.hidden) return;
+      if (e.key === 'Escape') { e.preventDefault(); close(); }
+      else if (e.key === 'ArrowRight') { e.preventDefault(); show(current + 1); }
+      else if (e.key === 'ArrowLeft') { e.preventDefault(); show(current - 1); }
+    }, { signal });
+
+    // Swipe nav on touch devices
+    let touchStartX = 0;
+    let touchStartY = 0;
+    lb.addEventListener('touchstart', (e) => {
+      if (e.touches.length !== 1) return;
+      touchStartX = e.touches[0].clientX;
+      touchStartY = e.touches[0].clientY;
+    }, { signal, passive: true });
+    lb.addEventListener('touchend', (e) => {
+      if (e.changedTouches.length !== 1) return;
+      const dx = e.changedTouches[0].clientX - touchStartX;
+      const dy = e.changedTouches[0].clientY - touchStartY;
+      if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy)) {
+        show(current + (dx < 0 ? 1 : -1));
+      }
+    }, { signal, passive: true });
+  }
+
   document.addEventListener('astro:page-load', () => {
     initGolfScroll();
     initCountdown();
     initStickyCta();
+    initGolfGallery();
+  });
+
+  document.addEventListener('astro:before-swap', () => {
+    _galleryAc?.abort();
+    _galleryAc = null;
+    document.body.style.overflow = '';
   });
 </script>
