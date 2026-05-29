@@ -2975,7 +2975,7 @@
       return (blocks || []).map(b => ({ ...b, id: b.id || newBlockId() }));
     }
 
-    function blockSummary(b, kids) {
+    function blockSummary(b, kids, events) {
       switch (b.type) {
         case 'hero':           return b.src ? 'Hero image set' : 'No image yet';
         case 'heroPortrait':   return b.src ? `${b.name || 'Portrait'}${b.badge ? ` · ${b.badge}` : ''}` : 'No image yet';
@@ -3668,7 +3668,7 @@
                       <span style="color: var(--color-text-muted); display: inline-flex;">${lib?.icon || icons.menu}</span>
                       <div style="min-width: 0;">
                         <div style="font-weight: 600; font-size: 0.85rem;">${lib?.label || b.type}</div>
-                        <div style="font-size: 0.75rem; color: var(--color-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${blockSummary(b, kids)}</div>
+                        <div style="font-size: 0.75rem; color: var(--color-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${blockSummary(b, kids, events)}</div>
                       </div>
                       <div style="display: flex; gap: 0.15rem;" onClick=${e => e.stopPropagation()}>
                         <button class="btn btn-sm btn-ghost" type="button" title="Move up" disabled=${i === 0}
