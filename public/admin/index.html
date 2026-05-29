@@ -2492,7 +2492,7 @@
           const sponsors = block.sponsors || [];
           return html`<div>
             <div style="padding: 0.6rem 0.75rem; background: var(--color-primary-bg); border-radius: 6px; font-size: 0.8rem; color: var(--color-text-muted); line-height: 1.5; margin-bottom: 0.75rem;">
-              Pick an event — title, date, location, hero image, and photo gallery are pulled from the event record at send time. Add impact stats and sponsors below.
+              Pick an event — title, date, location, hero image, and photo gallery are pulled from the event record at send time. For the golf event, the gallery photos and tiered sponsor logos also auto-pull from the golf page CMS. Add impact stats and override anything below.
             </div>
             <div class="form-group" style="margin-bottom: 0.6rem;">
               <label class="form-label" style="font-size: 0.78rem;">Featured Event</label>
@@ -2514,6 +2514,38 @@
                 </div>
               </div>
             </div>
+            ${(() => {
+              // Gallery override — when empty, the recap auto-pulls from the
+              // event record's photos and (for golf) from the page's gallery.
+              const photos = block.photos || [];
+              return html`<div class="form-group" style="margin-bottom: 0.6rem;">
+                <label class="form-label" style="font-size: 0.78rem;">Gallery Photos <span style="font-weight: 400; color: var(--color-text-muted);">(${photos.length ? `${photos.length} override${photos.length === 1 ? '' : 's'}` : 'auto-pulled from event at send time'})</span></label>
+                ${photos.length === 0
+                  ? html`<div style="padding: 0.5rem 0.75rem; background: var(--color-bg-secondary); border-radius: 6px; font-size: 0.78rem; color: var(--color-text-muted); margin-bottom: 0.4rem;">Leave empty to auto-pull from the event record (and, for the golf event, from the golf page gallery). Add photos here to pick a specific set.</div>`
+                  : null}
+                ${photos.map((ph, i) => html`
+                  <div key=${i} style="display: flex; gap: 0.5rem; padding: 0.5rem; background: var(--color-bg-secondary); border-radius: 6px; margin-bottom: 0.4rem;">
+                    ${ph.src
+                      ? html`<img src=${cfThumb(ph.src, 'w=160,h=120,fit=cover,q=70')} style="width: 56px; height: 42px; object-fit: cover; border-radius: 4px;" />`
+                      : html`<div style="width: 56px; height: 42px; background: var(--color-border); border-radius: 4px;"></div>`}
+                    <div style="flex: 1; display: flex; gap: 0.3rem; align-items: center;">
+                      <button class="btn btn-sm btn-ghost" type="button" onClick=${() => onPickImage({ blockId: block.id, key: 'photos', idx: i })}>${ph.src ? 'Replace' : 'Pick image'}</button>
+                      <input class="form-input" type="text" value=${ph.alt || ''} onInput=${e => {
+                        const next = photos.slice(); next[i] = { ...next[i], alt: e.target.value }; update({ photos: next });
+                      }} placeholder="Alt text (optional)" style="font-size: 0.78rem; flex: 1;" />
+                      <button class="btn btn-sm btn-ghost" type="button" onClick=${() => {
+                        const next = photos.slice(); next.splice(i, 1); update({ photos: next });
+                      }} title="Remove">${icons.x}</button>
+                    </div>
+                  </div>
+                `)}
+                <div style="display: flex; gap: 0.35rem;">
+                  <button class="btn btn-sm btn-ghost" type="button" onClick=${() => update({ photos: [...photos, { src: '', alt: '' }] })}>+ Add photo</button>
+                  ${photos.length ? html`<button class="btn btn-sm btn-ghost" type="button" onClick=${() => update({ photos: [] })} style="color: #c00;">Clear override</button>` : null}
+                </div>
+                ${photos.length ? html`<div class="form-hint" style="margin-top: 0.3rem;">Themed recaps (e.g. golf) show up to 6 photos in two rows.</div>` : null}
+              </div>`;
+            })()}
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-bottom: 0.5rem;">
               <div class="form-group" style="margin-bottom: 0;">
                 <label class="form-label" style="font-size: 0.78rem;">Top Label <span style="font-weight: 400; color: var(--color-text-muted);">(auto)</span></label>
@@ -3130,15 +3162,38 @@
             return { ...b, kid: k || null };
           }
           if (b.type === 'eventRecap' && b.slug) {
+            let event = null;
             try {
               const r = await api.readContent(`src/content/events/${b.slug}.json`);
               if (r.success) {
-                const event = typeof r.content === 'string' ? JSON.parse(r.content) : r.content;
-                return { ...b, event };
+                event = typeof r.content === 'string' ? JSON.parse(r.content) : r.content;
               }
             } catch (_) { /* fall through */ }
-            const e = (events || []).find(x => x.slug === b.slug);
-            return { ...b, event: e || null };
+            if (!event) event = (events || []).find(x => x.slug === b.slug) || null;
+
+            // For events whose gallery + sponsors live on the page CMS (not
+            // the event record), merge that page data in so the recap email
+            // auto-renders the same gallery/sponsors as the page itself.
+            // Today this covers golf — extend the map to cover gala etc.
+            const PAGE_DATA_BY_SLUG = {
+              'sunshine-on-a-ranney-fairway': 'src/content/site/golf.json',
+            };
+            const pageDataPath = PAGE_DATA_BY_SLUG[b.slug];
+            if (event && pageDataPath) {
+              try {
+                const r2 = await api.readContent(pageDataPath);
+                if (r2.success) {
+                  const pageData = typeof r2.content === 'string' ? JSON.parse(r2.content) : r2.content;
+                  if (Array.isArray(pageData.galleryPhotos) && !(event.photos || []).length) {
+                    event = { ...event, galleryPhotos: pageData.galleryPhotos };
+                  }
+                  if (Array.isArray(pageData.sponsors) && pageData.sponsors.length) {
+                    event = { ...event, sponsorTiers: pageData.sponsors };
+                  }
+                }
+              } catch (_) { /* fall through silently */ }
+            }
+            return { ...b, event };
           }
           return b;
         }));
@@ -3793,9 +3848,12 @@
             updateBlocks(eBlocks.map(b => {
               if (b.id !== target.blockId) return b;
               if (target.idx != null) {
-                const items = (b.items || []).slice();
-                items[target.idx] = { ...items[target.idx], src: id };
-                return { ...b, items };
+                // 'photos' is the eventRecap gallery override; everything
+                // else (photoGrid items, etc.) uses the same 'items' shape.
+                const arrKey = target.key === 'photos' ? 'photos' : 'items';
+                const arr = (b[arrKey] || []).slice();
+                arr[target.idx] = { ...(arr[target.idx] || {}), src: id };
+                return { ...b, [arrKey]: arr };
               }
               if (target.key === 'before' || target.key === 'after') {
                 const cur = b[target.key] || { src: '', alt: '' };

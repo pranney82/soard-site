@@ -7,11 +7,15 @@
  */
 
 import { customTemplate, BLOCK_TYPES } from '../functions/api/_email-templates.js';
-import { writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+
+// Load real golf page CMS data so the recap preview exercises the same
+// auto-merge the admin does at send time.
+const golfData = JSON.parse(readFileSync(resolve(root, 'src/content/site/golf.json'), 'utf8'));
 
 const adrianBlocks = [
   { type: 'heroPortrait',
@@ -179,11 +183,37 @@ const revealInviteBlocks = [
   { type: 'spacer', height: 16 },
 ];
 
+// Golf event recap — exercises EVENT_THEMES['sunshine-on-a-ranney-fairway']
+// so the entire recap renders in emerald + gold instead of the default
+// yellow + dark palette. Mirrors the runtime admin merge: event record +
+// golf.json gallery/sponsors get folded into a single `event` object.
+const golfRecapBlocks = [
+  { type: 'eventRecap',
+    event: {
+      slug: 'sunshine-on-a-ranney-fairway',
+      title: 'Sunshine on a Ranney Fairway 2026',
+      date: '2026-05-18',
+      location: 'Indian Hills Country Club',
+      description: 'A picture-perfect day at Indian Hills Country Club — 100+ players, 22 sponsors, and one shared mission: building dream rooms for kids with special needs.',
+      image: golfData.galleryPhotos && golfData.galleryPhotos[0] && golfData.galleryPhotos[0].id,
+      photos: [],
+      galleryPhotos: golfData.galleryPhotos || [],
+      sponsorTiers: golfData.sponsors || [],
+    },
+    stats: [
+      { value: '$185K', label: 'Raised' },
+      { value: '26', label: 'Foursomes' },
+      { value: '3', label: 'Dream Rooms' },
+    ],
+  },
+];
+
 const fixtures = [
   { file: 'email-preview-adrian-2025.html',     subject: "Adrian's Dream Room is Complete", preheader: "Adrian's story is one of perseverance, love, and joy. See the transformation.", blocks: adrianBlocks },
   { file: 'email-preview-kickoff-axel.html',    subject: 'Meet Axel — Our Next Project',     preheader: "Meet Axel — our next dream room project. Here's their story and how you can help.", blocks: axelBlocks },
   { file: 'email-preview-monthly-march.html',   subject: 'SOARD March 2026 Update',          preheader: "Your March 2026 SOARD update: 187+ rooms built, 108+ kids served, and we're just getting started.", blocks: monthlyBlocks },
   { file: 'email-preview-reveal-invite.html',   subject: "You're invited to Adrian's reveal day", preheader: "Save the date — Sunday, June 15, 2026 · 3:00 PM. Come celebrate Adrian.", blocks: revealInviteBlocks },
+  { file: 'email-preview-golf-recap.html',      subject: 'Sunshine on a Ranney Fairway 2026 — Recap', preheader: "$185K raised, 26 foursomes, 3 dream rooms funded. Thank you for an incredible day on the course.", blocks: golfRecapBlocks },
 ];
 
 console.log(`Rendering ${fixtures.length} previews · ${BLOCK_TYPES.length} block types available`);

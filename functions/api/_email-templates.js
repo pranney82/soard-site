@@ -29,6 +29,34 @@ const TM = '#5A5B61';
 const TL = '#6D6E74';
 const BD = '#E5E4E0';
 
+// Golf event theming — emerald palette mirrors the golf page hero
+// (#0d2818 → #2e7d32 gradient). Email clients won't render the gradient,
+// so we use solid emerald bands as the fallback.
+const EM = '#2e7d32';      // primary emerald (matches golf-page accent)
+const EM_DK = '#1b5e20';   // deep emerald (hero band, button bg)
+const EM_VD = '#0d2818';   // very dark emerald (stats container)
+
+// Per-event theme map for eventRecap(). Keyed by event slug. Add a new
+// entry to give a new event its own palette + copy defaults without
+// touching the recap render logic.
+const EVENT_THEMES = {
+  'sunshine-on-a-ranney-fairway': {
+    sectionVariant: 'emerald',
+    buttonVariant: 'emerald',
+    partnersTheme: 'emerald',
+    heroBg: EM_DK,
+    statsBg: EM_VD,
+    label: (year) => `Fairway Recap · ${year}`,
+    headline: `Back on the *fairway*`,
+    galleryLabel: 'Through Your Scorecard',
+    galleryButtonLabel: 'See the full gallery',
+    ctaLabelTop: 'Keep the Drive Going',
+    ctaHeadline: `Tee up the *next* dream room`,
+    ctaIntro: `Every dollar raised on the course goes directly to building life-changing spaces for kids on our waitlist.`,
+    signatureNote: `Thank you for showing up on the course — for the kids, for the families, for the mission.`,
+  },
+};
+
 const SERIF = "'Libre Baskerville',Georgia,'Times New Roman',serif";
 const SANS = "'Outfit',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif";
 
@@ -37,8 +65,13 @@ const ZEFFY_BASE = 'https://www.zeffy.com/en-US/donation-form/help-build-a-brigh
 // ─── Shared HTML helpers ─────────────────────────────────────────
 
 function sLabel(text, variant = 'dark') {
-  const lc = variant === 'light' ? 'rgba(255,255,255,0.35)' : variant === 'yellow' ? Y : D;
-  const tc = variant === 'light' ? 'rgba(255,255,255,0.6)' : D;
+  const lc = variant === 'light' ? 'rgba(255,255,255,0.35)'
+    : variant === 'yellow' ? Y
+    : variant === 'emerald' ? EM
+    : D;
+  const tc = variant === 'light' ? 'rgba(255,255,255,0.6)'
+    : variant === 'emerald' ? EM_DK
+    : D;
   return `<table role="presentation" cellspacing="0" cellpadding="0" border="0"><tr>
     <td style="width:28px;height:2px;background:${lc};vertical-align:middle;"></td>
     <td style="padding-left:12px;font-family:${SANS};font-size:12px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:${tc};vertical-align:middle;">${text}</td>
@@ -50,7 +83,9 @@ function hl(text, v = 'light') {
 }
 
 function pillBtn(text, href, v = 'primary') {
-  const bg = v === 'primary' ? Y : D;
+  // 'emerald' = deep-emerald bg + yellow text (matches the gold-on-green
+  // CTA on the golf event page hero).
+  const bg = v === 'primary' ? Y : v === 'emerald' ? EM_DK : D;
   const c = v === 'primary' ? D : Y;
   return `<a href="${href}" target="_blank" style="display:inline-block;padding:16px 40px;background:${bg};color:${c};font-family:${SANS};font-size:15px;font-weight:600;text-decoration:none;border-radius:100px;letter-spacing:0.01em;">${text}</a>`;
 }
@@ -276,12 +311,16 @@ const BLOCKS = {
     if (!src) return '';
     const url = src.startsWith('http') ? cfImg(src, 'w=1200,fit=cover,q=80') : src;
     const alt = escapeAttr(p.alt || '');
+    // bgColor lets a themed event (e.g. golf) put the hero photo on a
+    // tinted band — emerald for the golf recap, cream by default.
+    const bg = p.bgColor || CR;
+    const verticalPad = p.bgColor ? '20px' : '0';
     const inner = `<div style="border-radius:${p.rounded === false ? '0' : '20px'};overflow:hidden;${p.shadow !== false ? 'box-shadow:0 24px 64px rgba(0,0,0,0.1),0 4px 16px rgba(0,0,0,0.06);' : ''}"><img src="${url}" width="${p.fullBleed ? '600' : '552'}" alt="${alt}" class="fl hero-img" style="width:100%;display:block;" /></div>`;
     const wrap = p.link
       ? `<a href="${escapeAttr(p.link)}" target="_blank" style="display:block;text-decoration:none;">${inner}</a>`
       : inner;
     const sidePad = p.fullBleed ? '0' : '24px';
-    return `<tr><td style="background:${CR};padding:0 ${sidePad};">${wrap}</td></tr>`;
+    return `<tr><td style="background:${bg};padding:${verticalPad} ${sidePad};">${wrap}</td></tr>`;
   },
 
   headline(p) {
@@ -305,7 +344,7 @@ const BLOCKS = {
   },
 
   sectionLabel(p) {
-    const variant = p.variant === 'yellow' ? 'yellow' : p.variant === 'light' ? 'light' : 'dark';
+    const variant = ['yellow', 'light', 'emerald', 'dark'].includes(p.variant) ? p.variant : 'dark';
     return `<tr>
       <td style="background:${variant === 'light' ? DD : CR};padding:32px 48px 0;" class="pd">
         ${sLabel(escapeHtml(p.text || ''), variant)}
@@ -330,7 +369,7 @@ const BLOCKS = {
   button(p) {
     const label = inlineMd(p.label || 'Donate Now');
     const href = escapeAttr(p.href || `${SITE_URL}/donate`);
-    const variant = p.variant === 'dark' ? 'dark' : 'primary';
+    const variant = ['dark', 'emerald'].includes(p.variant) ? p.variant : 'primary';
     const align = p.align || 'center';
     return `<tr>
       <td style="background:${CR};padding:28px 48px 0;text-align:${align};" class="pd">
@@ -370,6 +409,9 @@ const BLOCKS = {
   stats(p) {
     const items = (p.items || []).slice(0, 3);
     if (!items.length) return '';
+    // bgColor lets a themed event (e.g. golf) swap the dark stats container
+    // for emerald-very-dark, keeping the yellow numerals on-brand.
+    const bgColor = p.bgColor || DD;
     const cols = items.map((it, i) => `
       ${i > 0 ? `<td width="5%"><div style="width:1px;height:36px;background:rgba(255,255,255,0.08);margin:0 auto;"></div></td>` : ''}
       <td width="${items.length === 3 ? '30%' : '47%'}" style="text-align:center;">
@@ -379,7 +421,7 @@ const BLOCKS = {
     `).join('');
     return `<tr>
       <td style="background:${CR};padding:32px 0 0;">
-        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background:${DD};"><tr>
+        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background:${bgColor};"><tr>
           <td style="padding:36px 48px;" class="pd">
             <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%"><tr>${cols}</tr></table>
           </td>
@@ -639,16 +681,117 @@ const BLOCKS = {
     return html;
   },
 
-  // Dark partners section — eyebrow, headline, intro, comma-separated list
+  // Tiered sponsor section that mirrors the golf event page sponsor layout.
+  // Accepts the same data structure as the golf.json sponsor tree:
+  //   [{ tier: 'Title Sponsor', size: 'xl', names: [{name, logo, website?}] }]
+  // - size 'xl' → emerald premium card with a single large logo
+  // - size 'lg' → tier header + 2-col logo grid (logos shown)
+  // - size 'md' or 'sm' → grouped "Event Sponsors" section, name list only
+  // theme='emerald' = golf palette; default = brand yellow/dark.
+  sponsorTiers(p) {
+    const tiers = (p.tiers || []).filter(t => t && (t.names || []).length);
+    if (!tiers.length) return '';
+    const emerald = p.theme === 'emerald';
+    const headerBg = emerald ? EM_VD : DD;
+    const tierAccent = emerald ? EM : Y;
+
+    const sectionHeader = `<tr>
+      <td style="background:${CR};padding:32px 0 0;">
+        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background:${headerBg};"><tr>
+          <td style="padding:44px 48px 28px;" class="pd">
+            ${sLabel(escapeHtml(p.label || `${(p.year || '')} Sponsors`).trim(), 'light')}
+            <h2 class="h2m" style="margin:20px 0 12px;font-family:${SERIF};font-size:24px;font-weight:700;line-height:1.3;color:#fff;">${displayMd(p.headline || 'Thank you to our *incredible* sponsors', 'dark')}</h2>
+            ${p.intro ? `<p style="margin:0;font-family:${SANS};font-size:15px;line-height:1.7;color:rgba(255,255,255,0.65);">${inlineMd(p.intro)}</p>` : ''}
+          </td></tr></table>
+      </td></tr>`;
+
+    // Title sponsor (xl) — premium card with single large logo on emerald.
+    const titleTier = tiers.find(t => t.size === 'xl');
+    const titleBlock = titleTier ? (() => {
+      const s = titleTier.names[0] || {};
+      const logo = s.logo ? cfImg(s.logo, 'w=440,h=180,fit=contain,q=90,background=%231b5e20') : '';
+      return `<tr>
+        <td style="background:${headerBg};padding:0 48px 36px;" class="pd">
+          <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:14px;"><tr>
+            <td style="padding:28px;text-align:center;">
+              <p style="margin:0 0 14px;font-family:${SANS};font-size:11px;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;color:${tierAccent};">${escapeHtml(titleTier.tier)}</p>
+              ${logo
+                ? `<img src="${logo}" width="320" alt="${escapeAttr(s.name)}" class="fl" style="max-width:320px;height:auto;display:block;margin:0 auto;" />`
+                : `<p style="margin:0;font-family:${SERIF};font-size:24px;font-weight:700;color:#fff;line-height:1.3;">${escapeHtml(s.name || '')}</p>`}
+            </td></tr></table>
+        </td></tr>`;
+    })() : '';
+
+    // Major logo tiers (lg) — tier header bar + 2-col logo grid on cream.
+    const majorTiers = tiers.filter(t => t.size === 'lg');
+    const tierGrid = (group) => {
+      // Logos rendered 2 per row (email-safe table layout).
+      const rows = [];
+      const list = group.names.slice(0, 12); // hard cap to keep email length sane
+      for (let i = 0; i < list.length; i += 2) {
+        const cellA = list[i];
+        const cellB = list[i + 1];
+        const cell = (s) => {
+          if (!s) return '<td width="48%" class="st">&nbsp;</td>';
+          const logo = s.logo
+            ? cfImg(s.logo, 'w=300,h=120,fit=contain,q=85')
+            : '';
+          return `<td width="48%" class="st" valign="middle" style="padding:8px;text-align:center;background:${WG};border-radius:10px;">
+            ${logo
+              ? `<img src="${logo}" width="220" alt="${escapeAttr(s.name)}" class="fl" style="max-width:220px;height:auto;display:block;margin:0 auto;" />`
+              : `<p style="margin:0;font-family:${SANS};font-size:14px;font-weight:600;color:${D};">${escapeHtml(s.name)}</p>`}
+          </td>`;
+        };
+        rows.push(`<tr>${cell(cellA)}<td width="4%" class="hm">&nbsp;</td>${cell(cellB)}</tr><tr><td colspan="3" style="height:8px;line-height:8px;font-size:0;">&nbsp;</td></tr>`);
+      }
+      return `<tr>
+        <td style="background:${CR};padding:24px 48px 0;" class="pd">
+          <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom:8px;"><tr>
+            <td style="vertical-align:middle;width:28px;"><div style="height:2px;background:${tierAccent};"></div></td>
+            <td style="padding:0 12px;font-family:${SANS};font-size:12px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:${D};white-space:nowrap;">${escapeHtml(group.tier)}</td>
+            <td style="vertical-align:middle;"><div style="height:2px;background:${BD};"></div></td>
+          </tr></table>
+          <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">${rows.join('')}</table>
+        </td></tr>`;
+    };
+    const majorBlock = majorTiers.map(tierGrid).join('');
+
+    // Activity / small tiers (md, sm) — name list grouped by tier.
+    const minorTiers = tiers.filter(t => t.size === 'md' || t.size === 'sm');
+    const minorRows = minorTiers.map(group => {
+      const names = group.names.map(s => escapeHtml(s.name || '')).filter(Boolean).join(' &middot; ');
+      if (!names) return '';
+      return `<tr>
+        <td style="padding:14px 0;border-bottom:1px solid rgba(255,255,255,0.08);">
+          <p style="margin:0 0 6px;font-family:${SANS};font-size:11px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:${tierAccent};">${escapeHtml(group.tier)}</p>
+          <p style="margin:0;font-family:${SANS};font-size:13px;line-height:1.7;color:rgba(255,255,255,0.7);">${names}</p>
+        </td></tr>`;
+    }).join('');
+    const minorBlock = minorRows ? `<tr>
+      <td style="background:${CR};padding:24px 0 0;">
+        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background:${headerBg};"><tr>
+          <td style="padding:36px 48px;" class="pd">
+            <p style="margin:0 0 18px;font-family:${SANS};font-size:12px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:rgba(255,255,255,0.5);">Event Sponsors</p>
+            <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">${minorRows}</table>
+          </td></tr></table>
+      </td></tr>` : '';
+
+    return sectionHeader + titleBlock + majorBlock + minorBlock;
+  },
+
+  // Dark partners section — eyebrow, headline, intro, comma-separated list.
+  // theme='emerald' swaps the dark container for emerald-very-dark to match
+  // a themed event recap (e.g. golf).
   partnersList(p) {
     const partners = (p.partners || []).filter(Boolean);
     if (!partners.length && !p.headline) return '';
+    const bgColor = p.theme === 'emerald' ? EM_VD : DD;
     const headlineHtml = displayMd(p.headline || 'Made possible by *incredible* partners', 'dark');
     const intro = p.intro ? `<p style="margin:0 0 24px;font-family:${SANS};font-size:15px;line-height:1.7;color:rgba(255,255,255,0.6);">${inlineMd(p.intro)}</p>` : '';
     const list = partners.length ? `<p style="margin:0;font-family:${SANS};font-size:13px;line-height:2.2;color:rgba(255,255,255,0.4);">${partners.map(escapeHtml).join(' &middot; ')}</p>` : '';
     return `<tr>
       <td style="background:${CR};padding:32px 0 0;">
-        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background:${DD};"><tr>
+        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background:${bgColor};"><tr>
           <td style="padding:44px 48px;" class="pd">
             ${sLabel(escapeHtml(p.label || 'Our Partners'), 'light')}
             <h2 class="h2m" style="margin:20px 0 12px;font-family:${SERIF};font-size:24px;font-weight:700;line-height:1.3;color:#fff;">${headlineHtml}</h2>
@@ -984,6 +1127,10 @@ const BLOCKS = {
   // on `p`: image, label, headline, intro, stats[], photos[], sponsors[],
   // sponsorsHeadline, sponsorsIntro, ctaHeadline, ctaIntro, ctaLabel, ctaHref,
   // signatureNote.
+  //
+  // Per-event theming: when the event slug matches an entry in EVENT_THEMES,
+  // the recap auto-switches palette + copy defaults so the email visually
+  // matches that event's page (e.g. golf → emerald, Havana gala → tropical).
   eventRecap(p) {
     const ev = p.event || {};
     const name = ev.title || ev.name || p.eventName || '';
@@ -997,10 +1144,22 @@ const BLOCKS = {
     const dateDisplay = ev.date ? formatRevealDate(ev.date, '', 'America/New_York') : '';
     const location = ev.location || '';
 
+    const T = EVENT_THEMES[slug] || null;
+    const themed = !!T;
+    const sectionVariant = themed ? T.sectionVariant : 'dark';
+    const accentVariant = themed ? T.sectionVariant : 'yellow';
+    const buttonVariant = themed ? T.buttonVariant : 'primary';
+
     const out = [];
 
     if (heroSrc) {
-      out.push(renderBlock({ type: 'hero', src: heroSrc, alt: `${name} recap`, link: eventUrl }));
+      out.push(renderBlock({
+        type: 'hero',
+        src: heroSrc,
+        alt: `${name} recap`,
+        link: eventUrl,
+        bgColor: themed ? T.heroBg : undefined,
+      }));
     }
 
     const chips = [];
@@ -1010,8 +1169,17 @@ const BLOCKS = {
       out.push(renderBlock({ type: 'detailChips', items: chips }));
     }
 
-    out.push(renderBlock({ type: 'sectionLabel', text: p.label || `Event Recap · ${year}`, variant: 'dark' }));
-    out.push(renderBlock({ type: 'headline', text: p.headline || `An evening to *remember*`, size: 'large', align: 'left' }));
+    out.push(renderBlock({
+      type: 'sectionLabel',
+      text: p.label || (themed && T.label ? T.label(year) : `Event Recap · ${year}`),
+      variant: sectionVariant,
+    }));
+    out.push(renderBlock({
+      type: 'headline',
+      text: p.headline || (themed && T.headline) || `An evening to *remember*`,
+      size: 'large',
+      align: 'left',
+    }));
 
     const intro = p.intro || (ev.description ? bioParagraphs(ev.description)[0] : '');
     if (intro) {
@@ -1020,7 +1188,11 @@ const BLOCKS = {
 
     const stats = (p.stats || []).filter(s => s && s.value);
     if (stats.length) {
-      out.push(renderBlock({ type: 'stats', items: stats.slice(0, 3) }));
+      out.push(renderBlock({
+        type: 'stats',
+        items: stats.slice(0, 3),
+        bgColor: themed ? T.statsBg : undefined,
+      }));
     }
 
     const overridePhotos = (p.photos || [])
@@ -1029,31 +1201,95 @@ const BLOCKS = {
     const eventPhotos = (ev.photos || [])
       .map(ph => ({ src: ph.id || ph.url || ph.src, alt: ph.alt || '' }))
       .filter(ph => ph.src);
-    const photos = overridePhotos.length ? overridePhotos : eventPhotos;
+    // Themed events can also carry `galleryPhotos` merged in from the site
+    // page data (e.g. golf.json) so the recap mirrors what's on the event
+    // page without duplicate admin work.
+    const galleryPhotos = (ev.galleryPhotos || [])
+      .map(ph => ({ src: ph.id || ph.url || ph.src, alt: ph.alt || '' }))
+      .filter(ph => ph.src);
+    const photos = overridePhotos.length ? overridePhotos
+      : eventPhotos.length ? eventPhotos
+      : galleryPhotos;
     if (photos.length >= 2) {
-      out.push(renderBlock({ type: 'sectionLabel', text: p.galleryLabel || 'Through Your Lens', variant: 'yellow' }));
-      out.push(renderBlock({ type: 'photoGrid', items: photos.slice(0, 3) }));
+      out.push(renderBlock({
+        type: 'sectionLabel',
+        text: p.galleryLabel || (themed && T.galleryLabel) || 'Through Your Lens',
+        variant: accentVariant,
+      }));
+      // Themed recaps show up to 6 photos (two rows of 3) — galleries are
+      // the centerpiece of an event recap and a 3-photo cap undersells the
+      // event. Untheme recaps keep the original 3-photo behavior.
+      const maxPhotos = themed ? 6 : 3;
+      const slice = photos.slice(0, maxPhotos);
+      out.push(renderBlock({ type: 'photoGrid', items: slice.slice(0, 3) }));
+      if (slice.length > 3) {
+        out.push(renderBlock({ type: 'photoGrid', items: slice.slice(3, 6) }));
+      }
+      if (photos.length > maxPhotos) {
+        out.push(renderBlock({
+          type: 'button',
+          label: p.galleryButtonLabel || (themed && T.galleryButtonLabel) || 'See the full gallery',
+          href: eventUrl,
+          variant: buttonVariant,
+        }));
+      }
     }
 
+    // Sponsors: prefer rich tier data (logos + tier names from the site page
+    // data, e.g. golf.json merged in as ev.sponsorTiers) over the flat name
+    // list typed in the recap composer.
+    const sponsorTiers = (p.sponsorTiers && p.sponsorTiers.length ? p.sponsorTiers
+      : (ev.sponsorTiers && ev.sponsorTiers.length ? ev.sponsorTiers : []));
     const sponsors = (p.sponsors || []).filter(Boolean);
-    if (sponsors.length) {
+    if (sponsorTiers.length) {
+      out.push(renderBlock({
+        type: 'sponsorTiers',
+        label: p.sponsorsLabel || `${year} Sponsors`,
+        year,
+        headline: p.sponsorsHeadline || 'Thank you to our *incredible* sponsors',
+        intro: p.sponsorsIntro || `None of this would be possible without the partners who showed up.`,
+        tiers: sponsorTiers,
+        theme: themed ? T.partnersTheme : undefined,
+      }));
+    } else if (sponsors.length) {
       out.push(renderBlock({
         type: 'partnersList',
         label: p.sponsorsLabel || 'Our Sponsors',
         headline: p.sponsorsHeadline || 'Made possible by *incredible* sponsors',
         intro: p.sponsorsIntro || `An unforgettable night made possible by partners who believe in this mission.`,
         partners: sponsors,
+        theme: themed ? T.partnersTheme : undefined,
       }));
     }
 
-    out.push(renderBlock({ type: 'sectionLabel', text: p.ctaLabelTop || 'Keep the Momentum', variant: 'yellow' }));
-    out.push(renderBlock({ type: 'headline', text: p.ctaHeadline || `Help us build the *next* dream room`, size: 'medium' }));
-    out.push(renderBlock({ type: 'paragraph', text: p.ctaIntro || `Every dollar raised goes directly to building life-changing spaces for kids on our waitlist.`, muted: true }));
-    out.push(renderBlock({ type: 'button', label: p.ctaLabel || 'Donate Now', href: p.ctaHref || `${SITE_URL}/donate`, variant: 'primary' }));
+    out.push(renderBlock({
+      type: 'sectionLabel',
+      text: p.ctaLabelTop || (themed && T.ctaLabelTop) || 'Keep the Momentum',
+      variant: accentVariant,
+    }));
+    out.push(renderBlock({
+      type: 'headline',
+      text: p.ctaHeadline || (themed && T.ctaHeadline) || `Help us build the *next* dream room`,
+      size: 'medium',
+    }));
+    out.push(renderBlock({
+      type: 'paragraph',
+      text: p.ctaIntro || (themed && T.ctaIntro) || `Every dollar raised goes directly to building life-changing spaces for kids on our waitlist.`,
+      muted: true,
+    }));
+    out.push(renderBlock({
+      type: 'button',
+      label: p.ctaLabel || 'Donate Now',
+      href: p.ctaHref || `${SITE_URL}/donate`,
+      variant: buttonVariant,
+    }));
     out.push(renderBlock({ type: 'trustSignals', items: ['Tax-Deductible', 'Zero Platform Fees', '501(c)(3)'] }));
 
     if (p.signatureNote !== '') {
-      out.push(renderBlock({ type: 'signature', note: p.signatureNote || `Thank you for showing up — for the kids, for the families, for the mission.` }));
+      out.push(renderBlock({
+        type: 'signature',
+        note: p.signatureNote || (themed && T.signatureNote) || `Thank you for showing up — for the kids, for the families, for the mission.`,
+      }));
     }
     out.push(renderBlock({ type: 'spacer', height: 16 }));
 
