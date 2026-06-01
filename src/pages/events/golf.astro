@@ -244,6 +244,16 @@ const heroLogoSizes = '(max-width: 767px) 200px, 320px';
           <p class="ev-gallery__sub" data-reveal>
             <span data-gallery-total>{galleryPhotos.length}</span> moments from years of swings, smiles, and stories.
           </p>
+          <a
+            class="ev-gallery__download"
+            href="https://www.dropbox.com/scl/fo/dh29kk8xjgloo5132bo6e/AO7WdbXwMEP9XxoPEaD1MEA?rlkey=q22xgsirxacra69ouuxw1902v&e=1&st=yp3itz2c&dl=0"
+            target="_blank"
+            rel="noopener noreferrer"
+            data-reveal
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            <span>Download photos &amp; videos</span>
+          </a>
         </div>
         <div
           class="ev-gallery__bento"
@@ -1657,6 +1667,42 @@ const heroLogoSizes = '(max-width: 767px) 200px, 320px';
     color: var(--c-muted, #555);
     font-size: 0.98rem;
     line-height: 1.55;
+  }
+  .ev-gallery__download {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 1.1rem;
+    padding: 0.5rem 0.95rem;
+    border-radius: 100px;
+    border: 1px solid var(--c-border, #e2e2e2);
+    background: transparent;
+    color: var(--c-dark);
+    font-size: 0.85rem;
+    font-weight: 500;
+    letter-spacing: 0.01em;
+    text-decoration: none;
+    transition: border-color 0.2s ease, color 0.2s ease, background 0.2s ease, transform 0.2s ease;
+  }
+  .ev-gallery__download svg {
+    flex: none;
+    opacity: 0.7;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+  }
+  @media (hover: hover) {
+    .ev-gallery__download:hover {
+      border-color: var(--c-green);
+      color: var(--c-green);
+      transform: translateY(-1px);
+    }
+    .ev-gallery__download:hover svg {
+      opacity: 1;
+      transform: translateY(1px);
+    }
+  }
+  .ev-gallery__download:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--c-yellow, #ffda24);
   }
 
   /* Bento grid: 2 cols mobile → 3 tablet → 4 desktop. Pattern cycles every 8 tiles. */
