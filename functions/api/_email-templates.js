@@ -309,7 +309,7 @@ const BLOCKS = {
   hero(p) {
     const src = p.src || '';
     if (!src) return '';
-    const url = src.startsWith('http') ? cfImg(src, 'w=1200,fit=cover,q=80') : src;
+    const url = (src.startsWith('http') && !src.includes('imagedelivery.net')) ? src : cfImg(src, 'w=1200,fit=cover,q=80');
     const alt = escapeAttr(p.alt || '');
     // bgColor lets a themed event (e.g. golf) put the hero photo on a
     // tinted band — emerald for the golf recap, cream by default.
@@ -432,7 +432,7 @@ const BLOCKS = {
   photo(p) {
     const src = p.src || '';
     if (!src) return '';
-    const url = src.startsWith('http') ? cfImg(src, 'w=1100,fit=cover,q=80') : src;
+    const url = (src.startsWith('http') && !src.includes('imagedelivery.net')) ? src : cfImg(src, 'w=1100,fit=cover,q=80');
     const caption = p.caption ? `<p style="margin:10px 0 0;text-align:center;font-family:${SANS};font-size:12px;color:${TL};letter-spacing:0.02em;font-style:italic;">${escapeHtml(p.caption)}</p>` : '';
     if (p.variant === 'reveal') {
       return `<tr>
@@ -456,7 +456,7 @@ const BLOCKS = {
     const cols = items.length === 3 ? items : items.slice(0, 2);
     const colW = Math.floor(94 / cols.length);
     const cells = cols.map((it, i) => {
-      const url = it.src.startsWith('http') ? cfImg(it.src, 'w=500,fit=cover,q=75') : it.src;
+      const url = (it.src.startsWith('http') && !it.src.includes('imagedelivery.net')) ? it.src : cfImg(it.src, 'w=500,fit=cover,q=75');
       return `${i > 0 ? `<td width="2%" class="hm">&nbsp;</td>` : ''}
         <td width="${colW}%" class="st ${i > 0 ? 'mob-stack' : ''}" valign="top">
           <img src="${url}" width="244" alt="${escapeAttr(it.alt || '')}" class="fl" style="width:100%;border-radius:12px;display:block;" />
@@ -536,7 +536,7 @@ const BLOCKS = {
   heroPortrait(p) {
     const src = p.src || '';
     if (!src) return '';
-    const url = src.startsWith('http') ? cfImg(src, 'w=1200,h=900,fit=cover,gravity=face,q=80') : src;
+    const url = (src.startsWith('http') && !src.includes('imagedelivery.net')) ? src : cfImg(src, 'w=1200,h=900,fit=cover,gravity=face,q=80');
     const alt = escapeAttr(p.alt || '');
     const link = escapeAttr(p.link || '');
     const inner = `<div style="border-radius:20px;overflow:hidden;box-shadow:0 24px 64px rgba(0,0,0,0.1),0 4px 16px rgba(0,0,0,0.06);"><img src="${url}" width="552" alt="${alt}" class="fl hero-img" style="width:100%;display:block;" /></div>`;
@@ -593,8 +593,8 @@ const BLOCKS = {
     const before = p.before || {};
     const after = p.after || {};
     if (!before.src || !after.src) return '';
-    const beforeUrl = before.src.startsWith('http') ? cfImg(before.src, 'w=560,fit=cover,q=70') : before.src;
-    const afterUrl = after.src.startsWith('http') ? cfImg(after.src, 'w=560,fit=cover,q=70') : after.src;
+    const beforeUrl = (before.src.startsWith('http') && !before.src.includes('imagedelivery.net')) ? before.src : cfImg(before.src, 'w=560,fit=cover,q=70');
+    const afterUrl = (after.src.startsWith('http') && !after.src.includes('imagedelivery.net')) ? after.src : cfImg(after.src, 'w=560,fit=cover,q=70');
     const eyebrow = `font-family:${SANS};font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.14em;color:${TL};`;
     return `<tr>
       <td style="background:${CR};padding:24px 48px 0;" class="pd">
