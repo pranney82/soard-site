@@ -706,10 +706,14 @@ const BLOCKS = {
       </td></tr>`;
 
     // Title sponsor (xl) — premium card with single large logo on emerald.
+    // Source rendered at 2× display size so Retina screens stay sharp;
+    // letterbox background matches the very-dark-emerald section so the
+    // `fit=contain` padding bars are invisible against the card.
     const titleTier = tiers.find(t => t.size === 'xl');
     const titleBlock = titleTier ? (() => {
       const s = titleTier.names[0] || {};
-      const logo = s.logo ? cfImg(s.logo, 'w=440,h=180,fit=contain,q=90,background=%231b5e20') : '';
+      const titleBgHex = emerald ? '0d2818' : '1E1F25';
+      const logo = s.logo ? cfImg(s.logo, `w=880,h=360,fit=contain,q=90,background=%23${titleBgHex}`) : '';
       return `<tr>
         <td style="background:${headerBg};padding:0 48px 36px;" class="pd">
           <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:14px;"><tr>
@@ -733,8 +737,12 @@ const BLOCKS = {
         const cellB = list[i + 1];
         const cell = (s) => {
           if (!s) return '<td width="48%" class="st">&nbsp;</td>';
+          // Source at 2× display size so Retina renders crisp logos. The
+          // `fit=contain` letterbox uses the WG cream behind the logo so
+          // the padding bars blend into the card background.
+          const wgHex = WG.replace('#', '');
           const logo = s.logo
-            ? cfImg(s.logo, 'w=300,h=120,fit=contain,q=85')
+            ? cfImg(s.logo, `w=600,h=240,fit=contain,q=88,background=%23${wgHex}`)
             : '';
           return `<td width="48%" class="st" valign="middle" style="padding:8px;text-align:center;background:${WG};border-radius:10px;">
             ${logo
