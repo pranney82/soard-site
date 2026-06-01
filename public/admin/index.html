@@ -10561,6 +10561,11 @@
       const [showImagePicker, setShowImagePicker] = useState(false);
       const [imagePickerTarget, setImagePickerTarget] = useState(null); // 'sponsor:tierIdx:nameIdx' or 'gallery:0'
 
+      // Drag-to-reorder for the gallery — this editor doesn't track a dirty
+      // flag, so stub setDirty as a no-op; setData itself triggers a re-render
+      // and Save & Publish always writes the current state.
+      const { dragHandlers: galleryDragHandlers } = useDragReorder({ setData, setDirty: () => {}, arrayKey: 'galleryPhotos' });
+
       useEffect(() => {
         (async () => {
           try {
@@ -11037,9 +11042,13 @@
                 </div>
               </div>
               ${(data.galleryPhotos || []).length > 0 ? html`
+                <div style="font-size: 0.78rem; color: var(--text-tertiary); margin-bottom: 0.5rem;">Drag any photo to reorder. The order here is the order shown on the golf page and pulled into the event recap email.</div>
                 <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 0.75rem;">
                   ${(data.galleryPhotos || []).map((p, i) => html`
-                    <div style="position: relative; border-radius: 10px; overflow: hidden; background: var(--bg-secondary); border: 1px solid var(--border);">
+                    <div key=${p.id || i}
+                      class="photo-grid-item"
+                      ...${galleryDragHandlers(i)}
+                      style="position: relative; border-radius: 10px; overflow: hidden; background: var(--bg-secondary); border: 1px solid var(--border);">
                       <div style="aspect-ratio: 4/3; cursor: pointer; display: flex; align-items: center; justify-content: center; background: var(--bg-primary);"
                         onClick=${() => { setImagePickerTarget('gallery:' + i); setShowImagePicker(true); }}>
                         ${p.id
@@ -11050,7 +11059,27 @@
                       <div style="padding: 0.5rem; display: flex; flex-direction: column; gap: 0.35rem;">
                         <input class="form-input" placeholder="Alt text" value=${p.alt || ''} style="font-size: 0.82rem; padding: 0.35rem 0.5rem;"
                           onInput=${(e) => setData(d => ({ ...d, galleryPhotos: d.galleryPhotos.map((ph, j) => j === i ? { ...ph, alt: e.target.value } : ph) }))} />
-                        <div style="display: flex; gap: 0.3rem; justify-content: center;">
+                        <div style="display: flex; gap: 0.3rem; justify-content: center; align-items: center;">
+                          <button class="btn btn-ghost btn-sm" type="button"
+                            disabled=${i === 0}
+                            onClick=${() => setData(d => {
+                              const arr = [...(d.galleryPhotos || [])];
+                              if (i === 0) return d;
+                              [arr[i - 1], arr[i]] = [arr[i], arr[i - 1]];
+                              return { ...d, galleryPhotos: arr };
+                            })}
+                            style="font-size: 0.78rem; padding: 0.15rem 0.4rem; ${i === 0 ? 'opacity:0.3;' : ''}"
+                            title="Move left">←</button>
+                          <button class="btn btn-ghost btn-sm" type="button"
+                            disabled=${i === (data.galleryPhotos || []).length - 1}
+                            onClick=${() => setData(d => {
+                              const arr = [...(d.galleryPhotos || [])];
+                              if (i === arr.length - 1) return d;
+                              [arr[i], arr[i + 1]] = [arr[i + 1], arr[i]];
+                              return { ...d, galleryPhotos: arr };
+                            })}
+                            style="font-size: 0.78rem; padding: 0.15rem 0.4rem; ${i === (data.galleryPhotos || []).length - 1 ? 'opacity:0.3;' : ''}"
+                            title="Move right">→</button>
                           <label style="font-size: 0.68rem; padding: 0.15rem 0.4rem; color: var(--color-primary); cursor: pointer; font-weight: 600;" title="Replace with uploaded image">
                             upload
                             <input type="file" accept="image/*" style="display:none"
@@ -11107,6 +11136,10 @@
       const [activeTab, setActiveTab] = useState('event');
       const [showImagePicker, setShowImagePicker] = useState(false);
       const [imagePickerTarget, setImagePickerTarget] = useState(null);
+
+      // Drag-to-reorder for the gala gallery — setDirty is a no-op here
+      // because this editor doesn't track a separate dirty flag.
+      const { dragHandlers: galleryDragHandlers } = useDragReorder({ setData, setDirty: () => {}, arrayKey: 'galleryPhotos' });
 
       useEffect(() => {
         (async () => {
@@ -11914,9 +11947,13 @@
                 }}>+ Add Photo</button>
               </div>
               ${(data.galleryPhotos || []).length > 0 ? html`
+                <div style="font-size: 0.78rem; color: var(--text-tertiary); margin-bottom: 0.5rem;">Drag any photo to reorder. The order here is the order shown on the gala page.</div>
                 <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 0.75rem;">
                   ${(data.galleryPhotos || []).map((p, i) => html`
-                    <div style="position: relative; border-radius: 10px; overflow: hidden; background: var(--bg-secondary); border: 1px solid var(--border);">
+                    <div key=${p.id || i}
+                      class="photo-grid-item"
+                      ...${galleryDragHandlers(i)}
+                      style="position: relative; border-radius: 10px; overflow: hidden; background: var(--bg-secondary); border: 1px solid var(--border);">
                       <div style="aspect-ratio: 4/3; cursor: pointer; display: flex; align-items: center; justify-content: center; background: var(--bg-primary);"
                         onClick=${() => { setImagePickerTarget('gallery:' + i); setShowImagePicker(true); }}>
                         ${p.id
@@ -11924,9 +11961,31 @@
                           : html`<span style="font-size: 0.7rem; color: var(--text-tertiary); text-align: center; padding: 0.5rem;">Click to<br/>choose image</span>`
                         }
                       </div>
-                      <div style="padding: 0.5rem;">
+                      <div style="padding: 0.5rem; display: flex; flex-direction: column; gap: 0.35rem;">
                         <input class="form-input" placeholder="Alt text" value=${p.alt || ''} style="font-size: 0.82rem; padding: 0.35rem 0.5rem;"
                           onInput=${(e) => setData(d => ({ ...d, galleryPhotos: d.galleryPhotos.map((ph, j) => j === i ? { ...ph, alt: e.target.value } : ph) }))} />
+                        <div style="display: flex; gap: 0.3rem; justify-content: center;">
+                          <button class="btn btn-ghost btn-sm" type="button"
+                            disabled=${i === 0}
+                            onClick=${() => setData(d => {
+                              const arr = [...(d.galleryPhotos || [])];
+                              if (i === 0) return d;
+                              [arr[i - 1], arr[i]] = [arr[i], arr[i - 1]];
+                              return { ...d, galleryPhotos: arr };
+                            })}
+                            style="font-size: 0.78rem; padding: 0.15rem 0.4rem; ${i === 0 ? 'opacity:0.3;' : ''}"
+                            title="Move left">←</button>
+                          <button class="btn btn-ghost btn-sm" type="button"
+                            disabled=${i === (data.galleryPhotos || []).length - 1}
+                            onClick=${() => setData(d => {
+                              const arr = [...(d.galleryPhotos || [])];
+                              if (i === arr.length - 1) return d;
+                              [arr[i], arr[i + 1]] = [arr[i + 1], arr[i]];
+                              return { ...d, galleryPhotos: arr };
+                            })}
+                            style="font-size: 0.78rem; padding: 0.15rem 0.4rem; ${i === (data.galleryPhotos || []).length - 1 ? 'opacity:0.3;' : ''}"
+                            title="Move right">→</button>
+                        </div>
                       </div>
                       <button style="position: absolute; top: 4px; right: 4px; width: 22px; height: 22px; border-radius: 50%; background: rgba(0,0,0,0.6); color: #fff; border: none; cursor: pointer; font-size: 0.7rem; display: flex; align-items: center; justify-content: center;"
                         onClick=${() => setData(d => ({ ...d, galleryPhotos: d.galleryPhotos.filter((_, j) => j !== i) }))}>✕</button>
