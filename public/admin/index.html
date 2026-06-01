@@ -2536,6 +2536,26 @@
                       <input class="form-input" type="text" value=${ph.alt || ''} onInput=${e => {
                         const next = photos.slice(); next[i] = { ...next[i], alt: e.target.value }; update({ photos: next });
                       }} placeholder="Alt text (optional)" style="font-size: 0.78rem; flex: 1;" />
+                      <button class="btn btn-sm btn-ghost" type="button"
+                        disabled=${i === 0}
+                        onClick=${() => {
+                          if (i === 0) return;
+                          const next = photos.slice();
+                          [next[i - 1], next[i]] = [next[i], next[i - 1]];
+                          update({ photos: next });
+                        }}
+                        style=${i === 0 ? 'opacity:0.3;' : ''}
+                        title="Move up">↑</button>
+                      <button class="btn btn-sm btn-ghost" type="button"
+                        disabled=${i === photos.length - 1}
+                        onClick=${() => {
+                          if (i === photos.length - 1) return;
+                          const next = photos.slice();
+                          [next[i], next[i + 1]] = [next[i + 1], next[i]];
+                          update({ photos: next });
+                        }}
+                        style=${i === photos.length - 1 ? 'opacity:0.3;' : ''}
+                        title="Move down">↓</button>
                       <button class="btn btn-sm btn-ghost" type="button" onClick=${() => {
                         const next = photos.slice(); next.splice(i, 1); update({ photos: next });
                       }} title="Remove">${icons.x}</button>
