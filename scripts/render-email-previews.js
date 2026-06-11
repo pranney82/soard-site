@@ -181,6 +181,13 @@ const revealInviteBlocks = [
   { type: 'spacer', height: 16 },
 ];
 
+// Completed-project reveal email — single auto-filled block that pulls room
+// types, hero summary, photos, partner logos, and the photos/video CTA straight
+// from the kid record (same kid auto-merge the admin does at send time).
+const projectRevealBlocks = [
+  { type: 'projectReveal', kid: revealKid },
+];
+
 // Golf event recap — exercises EVENT_THEMES['sunshine-on-a-ranney-fairway']
 // so the entire recap renders in emerald + gold instead of the default
 // yellow + dark palette. Mirrors the runtime admin merge: event record +
@@ -211,6 +218,7 @@ const fixtures = [
   { file: 'email-preview-kickoff-axel.html',    subject: 'Meet Axel — Our Next Project',     preheader: "Meet Axel — our next dream room project. Here's their story and how you can help.", blocks: axelBlocks },
   { file: 'email-preview-monthly-march.html',   subject: 'SOARD March 2026 Update',          preheader: "Your March 2026 SOARD update: 187+ rooms built, 108+ kids served, and we're just getting started.", blocks: monthlyBlocks },
   { file: 'email-preview-reveal-invite.html',   subject: "You're invited to Adrian's reveal day", preheader: "Save the date — Sunday, June 15, 2026 · 3:00 PM. Come celebrate Adrian.", blocks: revealInviteBlocks },
+  { file: 'email-preview-project-reveal.html',  subject: `${revealKid.name}'s Dream Room is Complete`, preheader: `See ${revealKid.name}'s transformation — photos, video, and the partners who made it possible.`, blocks: projectRevealBlocks },
   { file: 'email-preview-golf-recap.html',      subject: 'Sunshine on a Ranney Fairway 2026 — Recap', preheader: "$185K raised, 26 foursomes, 3 dream rooms funded. Thank you for an incredible day on the course.", blocks: golfRecapBlocks },
 ];
 

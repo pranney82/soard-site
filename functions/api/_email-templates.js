@@ -132,6 +132,47 @@ function bioParagraphs(bio) {
   return [sentences.slice(0, mid).join(' '), sentences.slice(mid).join(' ')];
 }
 
+/**
+ * Renders a kid's partner logos as a 3-up grid on the dark band. Each logo
+ * sits on a white chip (background=ffffff matches the contain letterbox) so
+ * both dark and light marks stay legible. Returns a full `<tr>` section, or
+ * '' when there are no logos. Shared by revealInvite and projectReveal.
+ */
+function renderPartnerLogos(partnerLogos, opts = {}) {
+  const logos = (partnerLogos || []).filter(pp => pp && pp.url);
+  if (!logos.length) return '';
+  const perRow = 3;
+  const logoRows = [];
+  for (let i = 0; i < logos.length; i += perRow) {
+    const group = logos.slice(i, i + perRow);
+    const cells = [];
+    for (let c = 0; c < perRow; c++) {
+      const s = group[c];
+      if (s) {
+        const logo = cfImg(s.url, 'w=400,h=160,fit=contain,q=88,background=%23ffffff');
+        cells.push(`<td width="33.33%" valign="middle" style="padding:5px;">
+          <div style="background:#ffffff;border-radius:10px;padding:14px 10px;text-align:center;">
+            <img src="${logo}" alt="${escapeAttr(s.name || '')}" class="fl" style="max-width:100%;max-height:42px;width:auto;height:auto;display:inline-block;vertical-align:middle;" />
+          </div>
+        </td>`);
+      } else {
+        cells.push(`<td width="33.33%" style="padding:5px;">&nbsp;</td>`);
+      }
+    }
+    logoRows.push(`<tr>${cells.join('')}</tr>`);
+  }
+  const headlineHtml = opts.headlineHtml || `Made possible by these <em style="font-style:italic;background-image:linear-gradient(transparent 55%,${YG} 55%);background-repeat:no-repeat;background-size:100% 100%;padding:0 .1em;">incredible</em> partners.`;
+  return `<tr><td style="background:${CR};padding:32px 0 0;">
+        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background:${DD};"><tr>
+          <td style="padding:40px 48px;" class="pd">
+            ${sLabel(opts.label || 'Made Possible By', 'light')}
+            <h2 class="h2m" style="margin:18px 0 20px;font-family:${SERIF};font-size:22px;font-weight:700;line-height:1.3;color:#fff;">${headlineHtml}</h2>
+            <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">${logoRows.join('')}</table>
+          </td>
+        </tr></table>
+      </td></tr>`;
+}
+
 /** Generic room description fallbacks */
 const ROOM_DESCRIPTIONS = {
   'Accessible Bathroom': 'A fully redesigned, wheelchair-accessible bathroom — roll-in shower, safe maneuvering space, and features built for independence and dignity.',
@@ -949,42 +990,9 @@ const BLOCKS = {
       </td></tr>`;
     }
 
-    let partnersSection = '';
-    const partnerLogos = (k.partnerLogos || []).filter(pp => pp && pp.url);
-    if (partnerLogos.length) {
-      // Render the kid's partner logos as a 3-up grid. Each logo sits on a white
-      // chip (background=ffffff matches the contain letterbox) so dark and light
-      // marks stay legible against the dark section.
-      const perRow = 3;
-      const logoRows = [];
-      for (let i = 0; i < partnerLogos.length; i += perRow) {
-        const group = partnerLogos.slice(i, i + perRow);
-        const cells = [];
-        for (let c = 0; c < perRow; c++) {
-          const s = group[c];
-          if (s) {
-            const logo = cfImg(s.url, 'w=400,h=160,fit=contain,q=88,background=%23ffffff');
-            cells.push(`<td width="33.33%" valign="middle" style="padding:5px;">
-              <div style="background:#ffffff;border-radius:10px;padding:14px 10px;text-align:center;">
-                <img src="${logo}" alt="${escapeAttr(s.name || '')}" class="fl" style="max-width:100%;max-height:42px;width:auto;height:auto;display:inline-block;vertical-align:middle;" />
-              </div>
-            </td>`);
-          } else {
-            cells.push(`<td width="33.33%" style="padding:5px;">&nbsp;</td>`);
-          }
-        }
-        logoRows.push(`<tr>${cells.join('')}</tr>`);
-      }
-      partnersSection = `<tr><td style="background:${CR};padding:32px 0 0;">
-        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background:${DD};"><tr>
-          <td style="padding:40px 48px;" class="pd">
-            ${sLabel('Made Possible By', 'light')}
-            <h2 class="h2m" style="margin:18px 0 20px;font-family:${SERIF};font-size:22px;font-weight:700;line-height:1.3;color:#fff;">A reveal day made possible by these <em style="font-style:italic;background-image:linear-gradient(transparent 55%,${YG} 55%);background-repeat:no-repeat;background-size:100% 100%;padding:0 .1em;">incredible</em> partners.</h2>
-            <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">${logoRows.join('')}</table>
-          </td>
-        </tr></table>
-      </td></tr>`;
-    }
+    const partnersSection = renderPartnerLogos(k.partnerLogos, {
+      headlineHtml: `A reveal day made possible by these <em style="font-style:italic;background-image:linear-gradient(transparent 55%,${YG} 55%);background-repeat:no-repeat;background-size:100% 100%;padding:0 .1em;">incredible</em> partners.`,
+    });
 
     const profileBtn = profileUrl
       ? `<tr><td style="background:${CR};padding:32px 48px 0;text-align:center;" class="pd">
@@ -1040,13 +1048,18 @@ const BLOCKS = {
     out.push(renderBlock({ type: 'sectionLabel', text: p.label || `Project Complete · ${year}`, variant: 'dark' }));
     out.push(renderBlock({ type: 'headline', text: p.headline || `Meet ${name} — our little *miracle*`, size: 'large', align: 'left' }));
 
-    if (bio[0]) out.push(renderBlock({ type: 'paragraph', text: bio[0], style: 'lede' }));
+    // Prefer the short hero summary so the recap stays brief; fall back to the bio.
+    const lede = k.heroSummary || bio[0] || '';
+    if (lede) out.push(renderBlock({ type: 'paragraph', text: lede, style: 'lede' }));
 
     const kidPhotos = (k.photos || []).filter(ph => ph && ph.url).slice(1, 4);
     if (kidPhotos.length >= 2) {
       out.push(renderBlock({ type: 'photoGrid', items: kidPhotos.map(ph => ({ src: ph.url, alt: ph.alt || name })) }));
     }
-    for (const para of bio.slice(1, 4)) out.push(renderBlock({ type: 'paragraph', text: para }));
+    // Only include the longer bio paragraphs when there's no short hero summary.
+    if (!k.heroSummary) {
+      for (const para of bio.slice(1, 4)) out.push(renderBlock({ type: 'paragraph', text: para }));
+    }
 
     if (k.quote) out.push(renderBlock({ type: 'quote', text: k.quote, cite: p.quoteCite || '' }));
 
@@ -1066,17 +1079,17 @@ const BLOCKS = {
       });
     }
 
-    out.push(renderBlock({ type: 'button', label: p.profileLabel || `See ${name}'s Full Story`, href: profileUrl, variant: 'primary' }));
+    // CTA to the kid's story page, where the full photo gallery and reveal video live.
+    out.push(renderBlock({ type: 'sectionLabel', text: 'Photos & Video', variant: 'yellow' }));
+    out.push(renderBlock({ type: 'headline', text: `See ${name}'s reveal — *every* moment`, size: 'medium' }));
+    out.push(renderBlock({ type: 'paragraph', text: `The full photo gallery and reveal video are live on the website.`, muted: true }));
+    out.push(renderBlock({ type: 'button', label: p.profileLabel || `Watch the Video & See the Photos`, href: p.ctaPhotosHref || profileUrl, variant: 'primary' }));
 
-    if (partners.length) {
-      out.push(renderBlock({
-        type: 'partnersList',
-        label: 'Our Partners',
-        headline: 'Made possible by *incredible* partners',
-        intro: `This project wouldn't exist without the generosity of partners who show up, project after project, with heart and hands ready to build.`,
-        partners,
-      }));
-    }
+    // Partner logos pulled from the kid record (logos, not just names).
+    out.push(renderPartnerLogos(k.partnerLogos, {
+      label: 'Our Partners',
+      headlineHtml: `Made possible by these <em style="font-style:italic;background-image:linear-gradient(transparent 55%,${YG} 55%);background-repeat:no-repeat;background-size:100% 100%;padding:0 .1em;">incredible</em> partners.`,
+    }));
 
     out.push(renderBlock({ type: 'sectionLabel', text: 'Your Impact', variant: 'yellow' }));
     out.push(renderBlock({ type: 'headline', text: 'Every dollar has a *purpose*', size: 'medium' }));
