@@ -158,28 +158,26 @@ const monthlyBlocks = [
   { type: 'signature', note: "March was a big month — Adrian's reveal brought us to tears, and we're already deep into planning Axel's project. Thank you for making every single room possible." },
 ];
 
+// Load the real kid record so the invite exercises the same auto-merge the
+// admin does at send time (room types, hero summary, quote, photos, and
+// partner logos are all pulled from the kid profile).
+const revealKid = JSON.parse(readFileSync(resolve(root, 'src/content/kids/leland.json'), 'utf8'));
+
 const revealInviteBlocks = [
   { type: 'revealInvite',
     label: 'Save the Date',
-    kid: { name: 'Adrian', slug: 'adrian-2025', heroImage: 'kids/adrian/photo-18' },
-    headline: "You're invited to Adrian's *reveal day*",
-    intro: "We're thrilled to invite you to a special reveal of Adrian's newly renovated accessible bathroom and dream bedroom.",
+    kid: revealKid,
+    headline: `You're invited to ${revealKid.name}'s *reveal day*`,
+    intro: `We're thrilled to invite you to celebrate the reveal of ${revealKid.name}'s newly renovated space.`,
     date: '2026-06-15',
     time: '3:00 PM',
     endTime: '5:00 PM',
-    location: 'The Ramirez Family Home',
+    location: 'The Family Home',
     address: '1234 Sunshine Lane, Roswell, GA 30076',
-    profileLabel: "See Adrian's Story",
+    parking: "Park along the street — we'll have signs out front.",
+    profileLabel: `See ${revealKid.name}'s Story`,
   },
-  { type: 'sectionLabel', text: 'About Adrian', variant: 'yellow' },
-  { type: 'paragraph', text: "Adrian was born prematurely at 27 weeks during Hurricane Katrina. Today, at 19, he requires total physical care — and his current bathroom is unsafe and exhausting for him and his mom. His new spaces will bring safety, dignity, and joy to daily life." },
-  { type: 'sectionLabel', text: 'Made Possible By', variant: 'yellow' },
-  { type: 'paragraph', text: "**The Myfifident Foundation** and our in-kind partners — including new partner **Bell Cabinets**, plus WYP Construction, Pella, Real Floors, MSI, Sherwin Williams, and so many more. Thank you for changing the lives of Atlanta's children." },
-  { type: 'sectionLabel', text: 'A Few Details', variant: 'dark' },
-  { type: 'numberedCard', number: '01', title: 'Hold your photos until after', body: "The family hasn't seen the finished room yet. Please hold all reveal photos until we say it's safe to share." },
-  { type: 'numberedCard', number: '02', title: 'Arrive 15 minutes early', body: "We want everyone in place before Adrian arrives. Park along the street — we'll have signs." },
-  { type: 'numberedCard', number: '03', title: 'Bring your tissues', body: 'No really. These reveals are emotional in the best way.' },
-  { type: 'signature', note: "We hope you'll join us to celebrate Adrian and his new space." },
+  { type: 'signature', note: `We hope you'll join us to celebrate ${revealKid.name} and this new space.` },
   { type: 'spacer', height: 16 },
 ];
 

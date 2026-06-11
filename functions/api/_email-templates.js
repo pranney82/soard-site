@@ -845,6 +845,13 @@ const BLOCKS = {
     const dateDisplay = p.dateDisplay || formatRevealDate(p.date, p.time, tz);
     const location = p.location || '';
     const address = p.address || '';
+    const rooms = Array.isArray(k.roomTypes) ? k.roomTypes.filter(Boolean) : [];
+    const roomDisplay = p.roomType || rooms.join(' + ');
+    const parking = p.parking || '';
+    const arriveMin = p.arriveMinutes != null ? p.arriveMinutes : 15;
+    const arriveNote = p.arriveNote || (arriveMin
+      ? `Please arrive ${arriveMin} minutes early so everyone's in place before ${name || 'the family'} arrives.`
+      : '');
 
     const cal = buildCalLinks({
       title: p.calendarTitle || (name ? `${name}'s Reveal Day — Sunshine on a Ranney Day` : 'Reveal Day — Sunshine on a Ranney Day'),
@@ -859,30 +866,25 @@ const BLOCKS = {
       uid: slug && p.date ? `reveal-${slug}-${p.date.replace(/-/g, '')}@sunshineonaranneyday.com` : '',
     });
 
-    const detailRows = [];
-    if (dateDisplay) {
-      detailRows.push(`
+    const detailItems = [];
+    if (dateDisplay) detailItems.push({ label: 'When', main: escapeHtml(dateDisplay) });
+    if (location || address) detailItems.push({ label: 'Where', main: location ? escapeHtml(location) : '', sub: address ? escapeHtml(address) : '' });
+    if (roomDisplay) detailItems.push({ label: 'Room', main: escapeHtml(roomDisplay) });
+    if (parking) detailItems.push({ label: 'Parking', main: escapeHtml(parking) });
+
+    const detailRows = detailItems.map((r, i) => {
+      const border = i === detailItems.length - 1 ? '' : `border-bottom:1px solid ${BD};`;
+      return `
         <tr>
-          <td style="padding:14px 0;border-bottom:1px solid ${BD};vertical-align:top;width:84px;">
-            <span style="font-family:${SANS};font-size:11px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:${TL};">When</span>
+          <td style="padding:14px 0;${border}vertical-align:top;width:84px;">
+            <span style="font-family:${SANS};font-size:11px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:${TL};">${r.label}</span>
           </td>
-          <td style="padding:14px 0;border-bottom:1px solid ${BD};vertical-align:top;">
-            <span style="font-family:${SERIF};font-size:16px;font-weight:700;color:${D};line-height:1.4;">${escapeHtml(dateDisplay)}</span>
+          <td style="padding:14px 0;${border}vertical-align:top;">
+            ${r.main ? `<span style="font-family:${SERIF};font-size:16px;font-weight:700;color:${D};display:block;line-height:1.4;">${r.main}</span>` : ''}
+            ${r.sub ? `<span style="font-family:${SANS};font-size:13px;color:${TM};display:block;margin-top:3px;line-height:1.5;">${r.sub}</span>` : ''}
           </td>
-        </tr>`);
-    }
-    if (location || address) {
-      detailRows.push(`
-        <tr>
-          <td style="padding:14px 0;vertical-align:top;width:84px;">
-            <span style="font-family:${SANS};font-size:11px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:${TL};">Where</span>
-          </td>
-          <td style="padding:14px 0;vertical-align:top;">
-            ${location ? `<span style="font-family:${SERIF};font-size:16px;font-weight:700;color:${D};display:block;line-height:1.4;">${escapeHtml(location)}</span>` : ''}
-            ${address ? `<span style="font-family:${SANS};font-size:13px;color:${TM};display:block;margin-top:3px;line-height:1.5;">${escapeHtml(address)}</span>` : ''}
-          </td>
-        </tr>`);
-    }
+        </tr>`;
+    });
 
     const heroBlock = heroImg
       ? `<tr><td style="padding:0 0 28px;">
@@ -905,12 +907,23 @@ const BLOCKS = {
         ${cal.outlook ? calPill('Outlook', cal.outlook) : ''}
       </td></tr>` : '';
 
+    const arriveRow = arriveNote ? `
+      <tr><td style="padding:16px 0 0;">
+        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background:#FFF8DB;border-radius:12px;">
+          <tr><td style="padding:14px 18px;">
+            <span style="font-family:${SANS};font-size:11px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:${TL};display:block;margin-bottom:4px;">Before you come</span>
+            <span style="font-family:${SANS};font-size:14px;font-weight:600;color:${D};line-height:1.5;">${escapeHtml(arriveNote)}</span>
+          </td></tr>
+        </table>
+      </td></tr>` : '';
+
     // ── Auto-pulled kid sections ────────────────────────────────
     // Story, quote, photo grid, and sponsors are all derived from the kid
     // record so the user only has to pick a kid + enter date/time/location.
     let storySection = '';
-    if (k.bio || k.heroSummary) {
-      const paras = k.bio ? bioParagraphs(k.bio) : [k.heroSummary];
+    if (k.heroSummary || k.bio) {
+      // Prefer the short hero summary so the invite stays brief; fall back to the bio.
+      const paras = k.heroSummary ? [k.heroSummary] : bioParagraphs(k.bio);
       const paraHtml = paras.slice(0, 3).map(t => `<p style="margin:0 0 16px;font-family:${SANS};font-size:16px;line-height:1.75;color:${D};">${escapeHtml(t)}</p>`).join('');
       storySection = `<tr><td style="background:${CR};padding:32px 48px 0;" class="pd">
         ${sLabel(name ? `${name}'s Story` : 'The Story')}
@@ -951,15 +964,37 @@ const BLOCKS = {
     }
 
     let partnersSection = '';
-    const partnerNames = (k.partnerLogos || []).map(pp => pp && pp.name).filter(Boolean);
-    if (partnerNames.length) {
-      const list = partnerNames.map(escapeHtml).join(' &middot; ');
+    const partnerLogos = (k.partnerLogos || []).filter(pp => pp && pp.url);
+    if (partnerLogos.length) {
+      // Render the kid's partner logos as a 3-up grid. Each logo sits on a white
+      // chip (background=ffffff matches the contain letterbox) so dark and light
+      // marks stay legible against the dark section.
+      const perRow = 3;
+      const logoRows = [];
+      for (let i = 0; i < partnerLogos.length; i += perRow) {
+        const group = partnerLogos.slice(i, i + perRow);
+        const cells = [];
+        for (let c = 0; c < perRow; c++) {
+          const s = group[c];
+          if (s) {
+            const logo = cfImg(s.url, 'w=400,h=160,fit=contain,q=88,background=%23ffffff');
+            cells.push(`<td width="33.33%" valign="middle" style="padding:5px;">
+              <div style="background:#ffffff;border-radius:10px;padding:14px 10px;text-align:center;">
+                <img src="${logo}" alt="${escapeAttr(s.name || '')}" class="fl" style="max-width:100%;max-height:42px;width:auto;height:auto;display:inline-block;vertical-align:middle;" />
+              </div>
+            </td>`);
+          } else {
+            cells.push(`<td width="33.33%" style="padding:5px;">&nbsp;</td>`);
+          }
+        }
+        logoRows.push(`<tr>${cells.join('')}</tr>`);
+      }
       partnersSection = `<tr><td style="background:${CR};padding:32px 0 0;">
         <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background:${DD};"><tr>
           <td style="padding:40px 48px;" class="pd">
             ${sLabel('Made Possible By', 'light')}
-            <h2 class="h2m" style="margin:18px 0 14px;font-family:${SERIF};font-size:22px;font-weight:700;line-height:1.3;color:#fff;">A reveal day made possible by these <em style="font-style:italic;background-image:linear-gradient(transparent 55%,${YG} 55%);background-repeat:no-repeat;background-size:100% 100%;padding:0 .1em;">incredible</em> partners.</h2>
-            <p style="margin:0;font-family:${SANS};font-size:13px;line-height:2.2;color:rgba(255,255,255,0.55);">${list}</p>
+            <h2 class="h2m" style="margin:18px 0 20px;font-family:${SERIF};font-size:22px;font-weight:700;line-height:1.3;color:#fff;">A reveal day made possible by these <em style="font-style:italic;background-image:linear-gradient(transparent 55%,${YG} 55%);background-repeat:no-repeat;background-size:100% 100%;padding:0 .1em;">incredible</em> partners.</h2>
+            <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">${logoRows.join('')}</table>
           </td>
         </tr></table>
       </td></tr>`;
@@ -983,6 +1018,7 @@ const BLOCKS = {
               <tr><td style="padding:4px 22px;"><table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">${detailRows.join('')}</table></td></tr>
             </table>
           </td></tr>` : ''}
+          ${arriveRow}
           ${calRow}
         </table>
       </td></tr>
