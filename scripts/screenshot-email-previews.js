@@ -18,6 +18,7 @@ const files = [
   'email-preview-kickoff-axel.html',
   'email-preview-monthly-march.html',
   'email-preview-reveal-invite.html',
+  'email-preview-project-reveal.html',
   'email-preview-golf-recap.html',
 ];
 
