@@ -932,20 +932,6 @@ const BLOCKS = {
       </td></tr>`;
     }
 
-    let quoteSection = '';
-    if (k.quote) {
-      quoteSection = `<tr><td style="background:${CR};padding:24px 48px 0;" class="pd">
-        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background:${WG};border-radius:16px;"><tr>
-          <td style="padding:32px;">
-            <div style="margin-bottom:12px;">
-              <svg width="32" height="32" viewBox="0 0 48 48" fill="none" style="display:block;"><path d="M14 28c-2.2 0-4-1.8-4-4 0-6.6 5.4-12 12-12v4c-4.4 0-8 3.6-8 8h4c2.2 0 4 1.8 4 4s-1.8 4-4 4h-4zm20 0c-2.2 0-4-1.8-4-4 0-6.6 5.4-12 12-12v4c-4.4 0-8 3.6-8 8h4c2.2 0 4 1.8 4 4s-1.8 4-4 4h-4z" fill="${Y}"/></svg>
-            </div>
-            <p style="margin:0;font-family:${SERIF};font-size:20px;font-style:italic;line-height:1.45;color:${D};">${escapeHtml(k.quote)}</p>
-            ${name ? `<p style="margin:14px 0 0;font-family:${SANS};font-size:12px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:${TL};">— ${escapeHtml(name)}</p>` : ''}
-          </td></tr></table>
-      </td></tr>`;
-    }
-
     let photoGridSection = '';
     const kidPhotos = (k.photos || []).filter(ph => ph && ph.url).slice(1, 4); // skip hero, take next 3
     if (kidPhotos.length >= 2) {
@@ -1023,7 +1009,6 @@ const BLOCKS = {
         </table>
       </td></tr>
       ${storySection}
-      ${quoteSection}
       ${photoGridSection}
       ${partnersSection}
       ${profileBtn}`;
