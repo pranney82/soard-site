@@ -2104,7 +2104,7 @@
         case 'donationTiers':  return { id, type, featured: { amount: '500', label: 'Furniture & Flooring', description: 'Adaptive furniture or accessible flooring — the structural pieces that change a child’s daily life.', badge: 'Most Popular', href: '' }, small: [ { amount: '60', label: 'Paint & Supplies', description: 'Transforms walls into a child’s dream canvas.', href: '' }, { amount: '125', label: 'Bedding & Decor', description: 'The details that make a room feel like home.', href: '' } ] };
         case 'trustSignals':   return { id, type, items: ['Tax-Deductible', 'Zero Platform Fees', '501(c)(3)'] };
         case 'kidCard':        return { id, type, slug: '', label: '', linkLabel: '' };
-        case 'revealInvite':   return { id, type, slug: '', image: '', headline: '', intro: '', date: '', time: '', endTime: '', location: '', address: '', tz: 'America/New_York', label: '', profileLabel: '' };
+        case 'revealInvite':   return { id, type, slug: '', image: '', headline: '', intro: '', date: '', time: '', endTime: '', location: '', address: '', parking: '', tz: 'America/New_York', label: '', profileLabel: '' };
         case 'projectReveal':  return { id, type, slug: '', image: '', label: '', headline: '', profileLabel: '', ctaLabel: '', ctaHref: '', signatureNote: '' };
         case 'projectKickoff': return { id, type, slug: '', image: '', label: '', headline: '', badge: 'Coming Soon', badgeVariant: 'yellow', ctaLabel: '', ctaHref: '', profileLabel: '', signatureNote: '' };
         case 'eventCard':      return { id, type, name: '', date: '', url: '', description: '' };
@@ -2972,7 +2972,7 @@
         subject: 'You’re Invited — [Kid Name]’s Reveal Day',
         preheader: 'Be there for the moment [Kid Name] sees their finished room for the first time.',
         blocks: [
-          { type: 'revealInvite', slug: '', image: '', headline: '', intro: '', date: '', time: '', endTime: '', location: '', address: '', tz: 'America/New_York', label: '', profileLabel: '' },
+          { type: 'revealInvite', slug: '', image: '', headline: '', intro: '', date: '', time: '', endTime: '', location: '', address: '', parking: '', tz: 'America/New_York', label: '', profileLabel: '' },
           { type: 'signature', note: 'Hope to see you there.' },
         ],
       },
@@ -3728,9 +3728,13 @@
                       </select>
                     </div>
                   </div>
-                  <div class="form-group" style="margin-bottom: 0;">
+                  <div class="form-group" style="margin-bottom: 0.5rem;">
                     <label class="form-label" style="font-size: 0.78rem;">Address <span style="font-weight: 400; color: var(--color-text-muted);">(used in calendar invite)</span></label>
                     <input class="form-input" type="text" value=${ri.address || ''} onInput=${e => { updateRi({ address: e.target.value }); setEDirty(true); }} placeholder="123 Main St, Roswell, GA 30076" />
+                  </div>
+                  <div class="form-group" style="margin-bottom: 0;">
+                    <label class="form-label" style="font-size: 0.78rem;">Parking <span style="font-weight: 400; color: var(--color-text-muted);">(shown in the email · optional)</span></label>
+                    <input class="form-input" type="text" value=${ri.parking || ''} onInput=${e => { updateRi({ parking: e.target.value }); setEDirty(true); }} placeholder="Park along the street — we'll have signs" />
                   </div>
                 </div>
               `;
