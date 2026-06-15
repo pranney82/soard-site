@@ -1063,10 +1063,13 @@ const BLOCKS = {
 
     if (k.quote) out.push(renderBlock({ type: 'quote', text: k.quote, cite: p.quoteCite || '' }));
 
-    const roomsWord = rooms.length === 1 ? 'One room' : rooms.length === 2 ? 'Two rooms' : rooms.length ? `${rooms.length} rooms` : '';
+    // Match the website's hero stats: count comes from the explicit roomCount
+    // field (not the roomTypes list length), falling back to the list size.
+    const roomCount = Number(k.roomCount) || rooms.length || 1;
+    const roomsWord = roomCount === 1 ? 'One room' : roomCount === 2 ? 'Two rooms' : `${roomCount} rooms`;
     out.push(renderBlock({ type: 'stats', items: [
-      { value: String(rooms.length || 2), label: rooms.length === 1 ? 'Room Built' : 'Rooms Built' },
-      { value: String(partners.length || 20), label: 'Partners' },
+      { value: String(roomCount), label: roomCount === 1 ? 'Room Built' : 'Rooms Built' },
+      { value: String(partners.length), label: partners.length === 1 ? 'Partner' : 'Partners' },
       { value: '1', label: 'Dream' },
     ] }));
 
