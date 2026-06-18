@@ -81,6 +81,18 @@ function iconForAuction(name: string): IconKey {
   return 'ticket';
 }
 
+/* ── Pick an evocative icon for an add-on sponsorship ── */
+type AddonIconKey = 'music' | 'cocktail' | 'cigar' | 'paddle' | 'ticket' | 'gift';
+function iconForAddon(name: string): AddonIconKey {
+  const n = name.toLowerCase();
+  if (/band|salsa|danc|music|dj/.test(n)) return 'music';
+  if (/cocktail|drink|bar|beverage|spirit/.test(n)) return 'cocktail';
+  if (/cigar|smoke/.test(n)) return 'cigar';
+  if (/paddle|bid|auction|gavel/.test(n)) return 'paddle';
+  if (/ticket|seat|admission/.test(n)) return 'ticket';
+  return 'gift';
+}
+
 /* ── Hero image: use event image (admin-uploaded) ── */
 const heroImageId = ev.image
   ? ev.image.replace('https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/', '').replace(/\/(public|w=.*)$/, '')
@@ -347,6 +359,202 @@ const eventJsonLd = {
     </div>
   </section>
 
+  <!-- ═══ SPONSORS — flat partner row ═══ -->
+  {sponsorTiers.length > 0 && (
+    <section class="gv-sponsors" aria-labelledby="gv-sponsors-heading">
+      <div class="container gv-sponsors__inner">
+        <span class="gv-sponsors__label" data-reveal>In Partnership With</span>
+        <h2 id="gv-sponsors-heading" class="gv-sponsors__heading" data-reveal>Made Possible By</h2>
+        <div class="gv-sponsors__grid" data-reveal>
+          {sponsorTiers.flatMap(group =>
+            group.names.map(s => (
+              <div class="gv-sponsors__cell" title={`${s.name} — ${group.tier}`}>
+                {s.logo ? (
+                  <img
+                    src={cfRaw(s.logo, 'w=200,h=100,fit=contain,trim=20,q=85')}
+                    srcset={`${cfRaw(s.logo, 'w=200,h=100,fit=contain,trim=20,q=85')} 1x, ${cfRaw(s.logo, 'w=400,h=200,fit=contain,trim=20,q=85')} 2x`}
+                    alt={s.name}
+                    width="200"
+                    height="100"
+                    loading="lazy"
+                    decoding="async"
+                  />
+                ) : (
+                  <span class="gv-sponsors__name">{s.name}</span>
+                )}
+              </div>
+            ))
+          )}
+        </div>
+        <p class="gv-sponsors__footnote" data-reveal>
+          Interested in sponsoring?
+          <a href="mailto:info@soardcharity.com?subject=Evening%20of%20Sunshine%20Sponsorship"> Reach out to our gala team.</a>
+        </p>
+      </div>
+    </section>
+  )}
+
+  <!-- ═══ TICKETS ═══ -->
+  <section class="gv-tickets" id="tickets">
+    <div class="container gv-tickets__inner">
+      <span class="gv-tickets__label" data-reveal>Reserve Your Seat</span>
+      <h2 class="gv-tickets__heading" data-reveal>Tables &amp; Tickets</h2>
+      <p class="gv-tickets__sub" data-reveal>
+        Sponsor a table, grab individual seats, or back a piece of the night — every dollar lights another room.
+      </p>
+
+      <div class="gv-impact" data-reveal>
+        <div class="gv-impact__stat">
+          <span class="gv-impact__num">$25K</span>
+          <span class="gv-impact__copy">funds one full bedroom or therapy-room build for a child with special needs.</span>
+        </div>
+        <div class="gv-impact__stat">
+          <span class="gv-impact__num">100%</span>
+          <span class="gv-impact__copy">of every gala dollar goes to home renovations — Zeffy charges zero platform fees.</span>
+        </div>
+      </div>
+
+      {mainTiers.length > 0 && (
+        <div class="gv-tiers" data-reveal>
+          {mainTiers.map(tier => {
+            const inclusions = perkToInclusions(tier.perk);
+            const isSoldOut = tier.status === 'sold-out';
+            const TierTag = isSoldOut ? 'div' : 'a';
+            const tierLink = isSoldOut ? {} : {
+              href: ev.ticketUrl || 'https://www.zeffy.com/en-US/ticketing/2026-evening-of-sunshine',
+              target: '_blank',
+              rel: 'noopener',
+              'aria-label': `Purchase the ${tier.name} package — opens ticketing in a new tab`,
+            };
+            return (
+              <TierTag class={`gv-tier ${tier.highlight === 'featured' ? 'gv-tier--featured' : tier.highlight === 'popular' ? 'gv-tier--popular' : ''} ${isSoldOut ? 'gv-tier--sold-out' : 'gv-tier--link'}`} {...tierLink}>
+                {tier.status === 'sold-out' && (
+                  <span class="gv-tier__badge gv-tier__badge--sold-out">Sold Out</span>
+                )}
+                {tier.status === 'few-left' && (
+                  <span class="gv-tier__badge gv-tier__badge--few-left">Few Left</span>
+                )}
+                {tier.status !== 'sold-out' && tier.status !== 'few-left' && tier.badge && (
+                  <span class={`gv-tier__badge ${tier.badgeStyle === 'gold' ? 'gv-tier__badge--gold' : ''}`}>{tier.badge}</span>
+                )}
+                <div class="gv-tier__head">
+                  <h3 class="gv-tier__name">{tier.name}</h3>
+                  <span class="gv-tier__price">{formatPrice(tier.price)}</span>
+                </div>
+                <div class="gv-tier__divider" aria-hidden="true"></div>
+                <div class="gv-tier__body">
+                  {tier.detail && (
+                    <span class="gv-tier__detail">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                      {tier.detail}
+                    </span>
+                  )}
+                  {inclusions.length > 0 && (
+                    <ul class="gv-tier__inclusions">
+                      {inclusions.map(item => (
+                        <li>
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+                          <span>{item}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+                {!isSoldOut && (
+                  <span class="gv-tier__cta" aria-hidden="true">
+                    Purchase
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+                  </span>
+                )}
+              </TierTag>
+            );
+          })}
+        </div>
+      )}
+
+      {addOnTiers.length > 0 && (
+        <div class="gv-addons" data-reveal>
+          <div class="gv-addons__header">
+            <span class="gv-addons__eyebrow">À la Carte</span>
+            <h3 class="gv-addons__title">Add-On Sponsorships</h3>
+            <p class="gv-addons__sub">Put your name on a signature moment of the night — every add-on funds another child's room.</p>
+          </div>
+          <ul class="gv-addons__list">
+            {addOnTiers.map(tier => {
+              const icon = iconForAddon(tier.name);
+              const isSoldOut = tier.status === 'sold-out';
+              const AddonTag = isSoldOut ? 'div' : 'a';
+              const addonLink = isSoldOut ? {} : {
+                href: ev.ticketUrl || 'https://www.zeffy.com/en-US/ticketing/2026-evening-of-sunshine',
+                target: '_blank',
+                rel: 'noopener',
+                'aria-label': `Purchase the ${tier.name} — opens ticketing in a new tab`,
+              };
+              return (
+                <li class="gv-addon-row">
+                  <AddonTag class={`gv-addon ${isSoldOut ? 'gv-addon--sold-out' : ''}`} {...addonLink}>
+                  <span class="gv-addon__icon" aria-hidden="true">
+                    {icon === 'music' && (
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+                    )}
+                    {icon === 'cocktail' && (
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 22h8"/><path d="M12 11v11"/><path d="m19 3-7 8-7-8Z"/></svg>
+                    )}
+                    {icon === 'cigar' && (
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>
+                    )}
+                    {icon === 'paddle' && (
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m14.5 12.5-8 8a2.119 2.119 0 1 1-3-3l8-8"/><path d="m16 16 6-6"/><path d="m8 8 6-6"/><path d="m9 7 8 8"/><path d="m21 11-8-8"/></svg>
+                    )}
+                    {icon === 'ticket' && (
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2z"/><path d="M13 5v2"/><path d="M13 17v2"/><path d="M13 11v2"/></svg>
+                    )}
+                    {icon === 'gift' && (
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="8" width="18" height="4" rx="1"/><path d="M12 8v13"/><path d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7"/><path d="M7.5 8a2.5 2.5 0 0 1 0-5A4.8 8 0 0 1 12 8a4.8 8 0 0 1 4.5-5 2.5 2.5 0 0 1 0 5"/></svg>
+                    )}
+                  </span>
+                  <div class="gv-addon__info">
+                    <h4 class="gv-addon__name">
+                      <span class="gv-addon__name-text">{tier.name}</span>
+                      {tier.status === 'sold-out' && (
+                        <span class="gv-tier__status-tag gv-tier__status-tag--sold-out">Sold Out</span>
+                      )}
+                      {tier.status === 'few-left' && (
+                        <span class="gv-tier__status-tag gv-tier__status-tag--few-left">Few Left</span>
+                      )}
+                    </h4>
+                    {tier.perk && <p class="gv-addon__perk">{tier.perk}</p>}
+                  </div>
+                  <span class="gv-addon__price">{formatPrice(tier.price)}</span>
+                  {!isSoldOut && (
+                    <span class="gv-addon__go" aria-hidden="true">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+                    </span>
+                  )}
+                  </AddonTag>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+
+      <div class="gv-tickets__cta" data-reveal>
+        <a href={ev.ticketUrl || 'https://www.zeffy.com/en-US/ticketing/2026-evening-of-sunshine'} target="_blank" rel="noopener" class="gv-btn gv-btn--coral gv-btn--hero">
+          Reserve &amp; Choose Your Package
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
+        </a>
+        <p class="gv-tickets__secure-note">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          Secure checkout via Zeffy &middot; Zero platform fees
+        </p>
+        <p class="gv-tickets__trust-note">
+          Sunshine on a Ranney Day is a registered 501(c)(3) nonprofit (EIN 45-4773997). Your contribution is tax-deductible to the fullest extent allowed by law.
+        </p>
+      </div>
+    </div>
+  </section>
+
   <!-- ═══ THE THEME ═══ -->
   <section class="gv-theme">
     <div class="gv-theme__bg" aria-hidden="true"></div>
@@ -609,145 +817,6 @@ const eventJsonLd = {
       </div>
     </section>
   )}
-
-  <!-- ═══ SPONSORS — flat partner row ═══ -->
-  {sponsorTiers.length > 0 && (
-    <section class="gv-sponsors" aria-labelledby="gv-sponsors-heading">
-      <div class="container gv-sponsors__inner">
-        <span class="gv-sponsors__label" data-reveal>In Partnership With</span>
-        <h2 id="gv-sponsors-heading" class="gv-sponsors__heading" data-reveal>Made Possible By</h2>
-        <div class="gv-sponsors__grid" data-reveal>
-          {sponsorTiers.flatMap(group =>
-            group.names.map(s => (
-              <div class="gv-sponsors__cell" title={`${s.name} — ${group.tier}`}>
-                {s.logo ? (
-                  <img
-                    src={cfRaw(s.logo, 'w=200,h=100,fit=contain,trim=20,q=85')}
-                    srcset={`${cfRaw(s.logo, 'w=200,h=100,fit=contain,trim=20,q=85')} 1x, ${cfRaw(s.logo, 'w=400,h=200,fit=contain,trim=20,q=85')} 2x`}
-                    alt={s.name}
-                    width="200"
-                    height="100"
-                    loading="lazy"
-                    decoding="async"
-                  />
-                ) : (
-                  <span class="gv-sponsors__name">{s.name}</span>
-                )}
-              </div>
-            ))
-          )}
-        </div>
-        <p class="gv-sponsors__footnote" data-reveal>
-          Interested in sponsoring?
-          <a href="mailto:info@soardcharity.com?subject=Evening%20of%20Sunshine%20Sponsorship"> Reach out to our gala team.</a>
-        </p>
-      </div>
-    </section>
-  )}
-
-  <!-- ═══ TICKETS ═══ -->
-  <section class="gv-tickets" id="tickets">
-    <div class="container gv-tickets__inner">
-      <span class="gv-tickets__label" data-reveal>Reserve Your Seat</span>
-      <h2 class="gv-tickets__heading" data-reveal>Tables &amp; Tickets</h2>
-      <p class="gv-tickets__sub" data-reveal>
-        Sponsor a table, grab individual seats, or back a piece of the night — every dollar lights another room.
-      </p>
-
-      <div class="gv-impact" data-reveal>
-        <div class="gv-impact__stat">
-          <span class="gv-impact__num">$25K</span>
-          <span class="gv-impact__copy">funds one full bedroom or therapy-room build for a child with special needs.</span>
-        </div>
-        <div class="gv-impact__stat">
-          <span class="gv-impact__num">100%</span>
-          <span class="gv-impact__copy">of every gala dollar goes to home renovations — Zeffy charges zero platform fees.</span>
-        </div>
-      </div>
-
-      {mainTiers.length > 0 && (
-        <div class="gv-tiers" data-reveal>
-          {mainTiers.map(tier => {
-            const inclusions = perkToInclusions(tier.perk);
-            return (
-              <div class={`gv-tier ${tier.highlight === 'featured' ? 'gv-tier--featured' : tier.highlight === 'popular' ? 'gv-tier--popular' : ''} ${tier.status === 'sold-out' ? 'gv-tier--sold-out' : ''}`}>
-                {tier.status === 'sold-out' && (
-                  <span class="gv-tier__badge gv-tier__badge--sold-out">Sold Out</span>
-                )}
-                {tier.status === 'few-left' && (
-                  <span class="gv-tier__badge gv-tier__badge--few-left">Few Left</span>
-                )}
-                {tier.status !== 'sold-out' && tier.status !== 'few-left' && tier.badge && (
-                  <span class={`gv-tier__badge ${tier.badgeStyle === 'gold' ? 'gv-tier__badge--gold' : ''}`}>{tier.badge}</span>
-                )}
-                <div class="gv-tier__head">
-                  <h3 class="gv-tier__name">{tier.name}</h3>
-                  <span class="gv-tier__price">{formatPrice(tier.price)}</span>
-                </div>
-                <div class="gv-tier__divider" aria-hidden="true"></div>
-                <div class="gv-tier__body">
-                  {tier.detail && (
-                    <span class="gv-tier__detail">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                      {tier.detail}
-                    </span>
-                  )}
-                  {inclusions.length > 0 && (
-                    <ul class="gv-tier__inclusions">
-                      {inclusions.map(item => (
-                        <li>
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
-                          <span>{item}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {addOnTiers.length > 0 && (
-        <details class="gv-more" data-reveal>
-          <summary class="gv-more__toggle">
-            <span>Add-On Sponsorships</span>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
-          </summary>
-          <div class="gv-more__grid">
-            {addOnTiers.map(tier => (
-              <div class={`gv-tier gv-tier--sm ${tier.status === 'sold-out' ? 'gv-tier--sold-out' : ''}`}>
-                {tier.status === 'sold-out' && (
-                  <span class="gv-tier__status-tag gv-tier__status-tag--sold-out">Sold Out</span>
-                )}
-                {tier.status === 'few-left' && (
-                  <span class="gv-tier__status-tag gv-tier__status-tag--few-left">Few Left</span>
-                )}
-                <h3 class="gv-tier__name">{tier.name}</h3>
-                <span class="gv-tier__price">{formatPrice(tier.price)}</span>
-                {tier.perk && <p class="gv-tier__addon-perk">{tier.perk}</p>}
-              </div>
-            ))}
-          </div>
-        </details>
-      )}
-
-      <div class="gv-tickets__cta" data-reveal>
-        <a href={ev.ticketUrl || 'https://www.zeffy.com/en-US/ticketing/2026-evening-of-sunshine'} target="_blank" rel="noopener" class="gv-btn gv-btn--coral gv-btn--hero">
-          Reserve &amp; Choose Your Package
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
-        </a>
-        <p class="gv-tickets__secure-note">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-          Secure checkout via Zeffy &middot; Zero platform fees
-        </p>
-        <p class="gv-tickets__trust-note">
-          Sunshine on a Ranney Day is a registered 501(c)(3) nonprofit (EIN 45-4773997). Your contribution is tax-deductible to the fullest extent allowed by law.
-        </p>
-      </div>
-    </div>
-  </section>
 
   <!-- ═══ FAQ ═══ -->
   {faqs.length > 0 && (
@@ -2452,51 +2521,132 @@ const eventJsonLd = {
   }
 
   /* Add-on tiers */
-  .gv-more {
+  /* ─── Add-on sponsorships (à la carte rows) ─── */
+  .gv-addons {
     margin-top: var(--space-2xl);
-    text-align: left;
   }
-  .gv-more__toggle {
-    list-style: none;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.75rem 1.25rem;
-    background: rgba(13, 47, 63, 0.04);
-    border: 1px solid rgba(13, 47, 63, 0.08);
+  .gv-addons__header {
+    text-align: center;
+    margin-bottom: var(--space-lg);
+  }
+  .gv-addons__eyebrow {
+    display: inline-block;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--gv-coral);
+    margin-bottom: 0.5rem;
+  }
+  .gv-addons__title {
+    font-size: clamp(1.4rem, 3vw, 1.8rem);
     color: var(--gv-midnight);
-    font-size: 0.85rem;
-    font-weight: 600;
-    border-radius: 100px;
-    transition: background 0.2s, border-color 0.2s;
+    margin: 0 0 0.5rem;
   }
-  .gv-more__toggle::-webkit-details-marker { display: none; }
-  .gv-more__toggle:hover {
-    background: rgba(13, 47, 63, 0.08);
-    border-color: rgba(13, 47, 63, 0.16);
-  }
-  .gv-more[open] .gv-more__toggle svg { transform: rotate(180deg); }
-  .gv-more__toggle svg { transition: transform 0.3s; }
-
-  .gv-more__grid {
-    margin-top: var(--space-lg);
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: var(--space-md);
-  }
-  @media (min-width: 640px) { .gv-more__grid { grid-template-columns: repeat(2, 1fr); } }
-  @media (min-width: 900px) { .gv-more__grid { grid-template-columns: repeat(3, 1fr); } }
-
-  .gv-tier--sm { padding: 1.25rem 1.25rem; }
-  .gv-tier--sm .gv-tier__name { font-size: 1.02rem; margin-bottom: 0.25rem; }
-  .gv-tier--sm .gv-tier__price { font-size: 1.1rem; display: block; margin-bottom: 0.5rem; }
-  .gv-tier__addon-perk {
-    font-size: 0.82rem;
+  .gv-addons__sub {
+    font-size: 0.92rem;
     line-height: 1.6;
     color: var(--c-text-muted);
+    max-width: 44ch;
+    margin: 0 auto;
+  }
+  .gv-addons__list {
+    list-style: none;
+    margin: var(--space-lg) auto 0;
+    padding: 0;
+    display: grid;
+    gap: 0.75rem;
+    max-width: 720px;
+  }
+  .gv-addon {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem 1.25rem;
+    background: var(--gv-paper);
+    border: 1px solid rgba(13, 47, 63, 0.08);
+    border-radius: 14px;
+    box-shadow: 0 1px 3px rgba(13, 47, 63, 0.04);
+    transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+                box-shadow 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+                border-color 0.25s;
+  }
+  .gv-addon:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 26px rgba(13, 47, 63, 0.09);
+    border-color: rgba(199, 93, 74, 0.3);
+  }
+  .gv-addon__icon {
+    flex-shrink: 0;
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    background: linear-gradient(135deg, rgba(199, 93, 74, 0.12), rgba(212, 160, 23, 0.12));
+    color: var(--gv-coral);
+  }
+  .gv-addon__info { flex: 1; min-width: 0; }
+  .gv-addon__name {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--gv-midnight);
     margin: 0;
+  }
+  .gv-addon__name .gv-tier__status-tag { margin: 0; }
+  .gv-addon__perk {
+    font-size: 0.82rem;
+    line-height: 1.5;
+    color: var(--c-text-muted);
+    margin: 0.25rem 0 0;
     white-space: pre-line;
+  }
+  .gv-addon__price {
+    flex-shrink: 0;
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: var(--gv-coral);
+    font-variant-numeric: tabular-nums;
+  }
+  .gv-addon--sold-out { opacity: 0.55; }
+  .gv-addon--sold-out .gv-addon__price { color: var(--c-text-muted); }
+
+  /* ─── Clickable cards → Zeffy ticketing ─── */
+  .gv-tier--link { text-decoration: none; cursor: pointer; }
+  .gv-tier__cta {
+    margin-top: auto;
+    padding-top: 1.1rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.82rem;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    color: var(--gv-coral);
+  }
+  .gv-tier__cta svg { transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1); }
+  .gv-tier--link:hover .gv-tier__cta svg { transform: translateX(4px); }
+
+  .gv-addon { text-decoration: none; color: inherit; }
+  a.gv-addon { cursor: pointer; }
+  .gv-addon__go {
+    flex-shrink: 0;
+    display: grid;
+    place-items: center;
+    color: var(--gv-coral);
+    opacity: 0.45;
+    transition: opacity 0.25s, transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  a.gv-addon:hover .gv-addon__go { opacity: 1; transform: translateX(3px); }
+
+  @media (max-width: 420px) {
+    .gv-addon { gap: 0.75rem; padding: 0.9rem 1rem; }
+    .gv-addon__icon { width: 38px; height: 38px; }
+    .gv-addon__price { font-size: 1.05rem; }
   }
 
   /* ─── FAQ section wrapper (the accordion itself lives in <FAQAccordion>) ─── */
