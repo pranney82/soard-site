@@ -43,6 +43,10 @@ const storyPhotoId = ap.story || 'kids/eli/photo-01';
 const selectionPhotoId = ap.selection || 'kids/georgia/photo-01';
 const processPhotoId = siteSettings.sectionPhotos?.process || 'kids/oakley/photo-15';
 
+/* ── Service area map (Cloudflare Images) ──
+   Native size 938×768. While empty, the "Where We Serve" section is hidden. */
+const serviceMapId = 'd993cd7c-7863-4a1b-ea5e-50602623cb00';
+
 /* ── Featured kid (dynamic from collection, like donate page) ── */
 const featuredSlug = siteSettings.featuredKidSlug || 'amari';
 const featuredKid = allKids.find(k => k.data.slug === featuredSlug);
@@ -159,6 +163,31 @@ const faqJsonLd = faqs.length ? getFAQSchema(faqs) : undefined;
       )}
     </div>
   </div>
+
+  <!-- ══════ WHERE WE SERVE — Service area map (editorial split) ══════ -->
+  {serviceMapId && (
+    <section class="serve-area section">
+      <div class="serve-area-inner">
+        <div class="serve-area-text" data-reveal>
+          <div class="section-label">Where We Serve</div>
+          <h2>Built close to <em class="highlight">home</em></h2>
+          <p class="serve-area-lead">Every makeover happens in the greater Atlanta area. Staying local means our designers, volunteers, and construction partners can be hands-on from the first home visit to the final reveal — and your family stays close to the care and community you already know.</p>
+          <p class="serve-area-note">Not sure if your home is in our service area? <a href={`mailto:${siteSettings.email}`}>Reach out</a> — we'd love to hear your story.</p>
+        </div>
+        <figure class="serve-area-map" data-reveal data-delay="1" style={`background-image:url('${cfLqip(serviceMapId)}')`}>
+          <img
+            src={cfRaw(serviceMapId, 'w=900,q=85')}
+            srcset={cfSrcset(serviceMapId, [500, 700, 938])}
+            sizes="(max-width: 960px) 90vw, 540px"
+            alt="Map of the greater Atlanta area communities served by Sunshine on a Ranney Day"
+            width="938" height="768"
+            class="lqip-img" loading="lazy" decoding="async"
+          />
+          <figcaption class="serve-area-caption">The communities we serve across greater Atlanta.</figcaption>
+        </figure>
+      </div>
+    </section>
+  )}
 
   <!-- ══════ FEATURED FAMILY STORY — Real child, real data ══════ -->
   <section class="story section">
@@ -1000,6 +1029,59 @@ const faqJsonLd = faqs.length ? getFAQSchema(faqs) : undefined;
   }
 
   /* ══════════════════════════════════════════
+     WHERE WE SERVE — Service area map
+     ══════════════════════════════════════════ */
+  .serve-area { background: var(--c-cream); }
+  .serve-area-inner {
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding: 0 var(--space-xl);
+    display: grid;
+    grid-template-columns: 0.8fr 1fr;
+    gap: clamp(40px, 5vw, 80px);
+    align-items: center;
+  }
+  .serve-area-text h2 {
+    font-size: clamp(1.625rem, 3vw + 0.5rem, 2.5rem);
+    letter-spacing: -0.02em;
+    line-height: 1.15;
+    margin-bottom: 16px;
+  }
+  .serve-area-lead {
+    font-size: 16px;
+    line-height: 1.75;
+    color: var(--c-text-muted);
+    margin-bottom: 20px;
+  }
+  .serve-area-note { font-size: 14px; color: var(--c-text-light); line-height: 1.65; }
+  .serve-area-note a {
+    color: var(--c-dark);
+    font-weight: 600;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .serve-area-note a:hover { color: var(--c-yellow-hover); }
+  .serve-area-map {
+    margin: 0;
+    border-radius: var(--border-radius-lg);
+    overflow: hidden;
+    background-size: cover;
+    background-position: center;
+    box-shadow:
+      0 4px 6px rgba(0, 0, 0, 0.04),
+      0 12px 40px rgba(0, 0, 0, 0.08);
+  }
+  .serve-area-map img { width: 100%; height: auto; display: block; }
+  .serve-area-caption {
+    font-size: 12px;
+    color: var(--c-text-light);
+    text-align: center;
+    padding: 12px 16px;
+    background: #fff;
+    border-top: 1px solid var(--c-border);
+  }
+
+  /* ══════════════════════════════════════════
      SCROLL REVEALS
      ══════════════════════════════════════════ */
   [data-reveal] {
@@ -1035,6 +1117,8 @@ const faqJsonLd = faqs.length ? getFAQSchema(faqs) : undefined;
     .reveal-content p { margin-inline: auto; }
 
     .criteria-inner { grid-template-columns: 1fr; gap: 40px; }
+
+    .serve-area-inner { grid-template-columns: 1fr; gap: 32px; }
   }
 
   @media (max-width: 768px) {

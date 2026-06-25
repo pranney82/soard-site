@@ -45,7 +45,7 @@ const manualPages: Record<string, string> = {
 };
 const detailPages: Record<string, string> = { ...manualPages };
 for (const e of allEvents) {
-  if (!detailPages[e.data.slug] && (e.data.body || e.data.photos.length > 0)) {
+  if (!detailPages[e.data.slug] && (e.data.body || e.data.photos.length > 0 || e.data.streamVideoId || e.data.videoUrl)) {
     detailPages[e.data.slug] = `/events/${e.data.slug}/`;
   }
 }

@@ -174,24 +174,28 @@
       "name": "Pulley & Associates"
     },
     {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/top-knobs/public",
-      "name": "Top Knobs"
-    },
-    {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/wyp/public",
       "name": "WYP Construction"
     },
     {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/brookfield/1774385359724/public",
-      "name": "Brookfield"
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/therapy-gyms/1774382179878/public",
+      "name": "Therapy Gyms"
     },
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/tko-plumbing/public",
       "name": "TKO Plumbing Services"
     },
     {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/therapy-gyms/1774382179878/public",
-      "name": "Therapy Gyms"
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/scansource-charitable-foundation/1775745488136/public",
+      "name": "ScanSource Charitable Foundation"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/brookfield/1774385359724/public",
+      "name": "Brookfield"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/nicole-photography/public",
+      "name": "Nicole W Photography"
     },
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/bin-there-dump-that-atlanta/1774627292526/public",
@@ -200,10 +204,6 @@
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/kids-r-kids/public",
       "name": "Kids R Kids Foundation"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/nicole-photography/public",
-      "name": "Nicole W Photography"
     }
   ],
   "shortDescription": null,
@@ -212,10 +212,10 @@
   "jsonLd": null,
   "roomCount": 1,
   "publishStatus": "published",
-  "streamVideoId": null,
+  "streamVideoId": "4310202d9522832959ca36602f5d29d7",
   "fundraisingUrl": null,
   "bathroomCount": 1,
-  "heroSummary": "Leland was born with myelomeningocele, the most severe form f spina bifida. With the generous support of the Myfifident Foundation, SOARD provided Leland with a wheelchair-accessible bathroom and special toilet room. ",
+  "heroSummary": "Leland was born with myelomeningocele, the most severe form of spina bifida. With the generous support of the Myfifident Foundation, SOARD provided Leland with a wheelchair-accessible bathroom and special toilet room. ",
   "plans": [
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/leland/plan-1778007884205-Leland-2025-Design-Board.PNG/public",
