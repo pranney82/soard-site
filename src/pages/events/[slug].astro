@@ -16,9 +16,9 @@ import { cfRaw, cfSrcset, cfLqip } from '../../utils/cf-image';
 
 export async function getStaticPaths() {
   const events = await getCollection('events');
-  // Only generate pages for events with body content or photos
+  // Only generate pages for events with body content, photos, or a video
   return events
-    .filter(e => e.data.body || e.data.photos.length > 0)
+    .filter(e => e.data.body || e.data.photos.length > 0 || e.data.streamVideoId || e.data.videoUrl)
     .map(e => ({
       params: { slug: e.data.slug },
       props: { event: e },
@@ -27,6 +27,15 @@ export async function getStaticPaths() {
 
 const { event } = Astro.props;
 const ev = event.data;
+
+/* ── Video: Cloudflare Stream id or YouTube URL on the event entry ── */
+function getYouTubeId(url: string): string | null {
+  const m = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|v\/|shorts\/))([\w-]{11})/);
+  return m ? m[1] : null;
+}
+const streamVideoId: string | null = ev.streamVideoId || null;
+const videoYtId: string | null = ev.videoUrl ? getYouTubeId(ev.videoUrl) : null;
+const hasVideo = Boolean(streamVideoId || videoYtId);
 
 const catLabel: Record<string, string> = {
   fundraiser: 'Fundraiser', volunteer: 'Volunteer',
@@ -139,6 +148,53 @@ const eventJsonLd = {
     <section class="ev-body">
       <div class="container">
         <div class="ev-body__content" data-reveal set:html={ev.body} />
+      </div>
+    </section>
+  )}
+
+  <!-- ═══ VIDEO ═══ -->
+  {hasVideo && (
+    <section class="ev-video" id="video">
+      <div class="container">
+        <h2 class="ev-video__heading" data-reveal>Video</h2>
+        <div class="ev-video__frame" data-reveal>
+          {streamVideoId ? (
+            <button class="ev-video__facade" type="button" data-stream-id={streamVideoId} aria-label={`Play ${ev.title} video`}>
+              <img
+                src={`https://videodelivery.net/${streamVideoId}/thumbnails/thumbnail.jpg?time=2s&width=1600&height=900&fit=crop`}
+                alt={`Video preview for ${ev.title}`}
+                class="ev-video__thumb"
+                loading="lazy"
+                decoding="async"
+                width="1600"
+                height="900"
+              />
+              <span class="ev-video__play" aria-hidden="true">
+                <svg viewBox="0 0 24 28" fill="none" width="28" height="32">
+                  <path d="M2 1.5v25l20-12.5L2 1.5z" fill="currentColor"/>
+                </svg>
+              </span>
+            </button>
+          ) : (
+            <button class="ev-video__facade" type="button" data-yt-id={videoYtId} aria-label={`Play ${ev.title} video`}>
+              <picture>
+                <source type="image/webp" srcset={`https://i.ytimg.com/vi_webp/${videoYtId}/maxresdefault.webp`} />
+                <img
+                  src={`https://i.ytimg.com/vi/${videoYtId}/maxresdefault.jpg`}
+                  alt={`Video preview for ${ev.title}`}
+                  class="ev-video__thumb"
+                  loading="lazy"
+                  decoding="async"
+                />
+              </picture>
+              <span class="ev-video__play" aria-hidden="true">
+                <svg viewBox="0 0 24 28" fill="none" width="28" height="32">
+                  <path d="M2 1.5v25l20-12.5L2 1.5z" fill="currentColor"/>
+                </svg>
+              </span>
+            </button>
+          )}
+        </div>
       </div>
     </section>
   )}
@@ -357,6 +413,81 @@ const eventJsonLd = {
     margin-top: var(--space-md);
   }
 
+  /* ═══ VIDEO ═══ */
+  .ev-video {
+    padding: var(--space-3xl) 0 0;
+  }
+  .ev-video__heading {
+    font-family: var(--font-display);
+    font-size: clamp(1.4rem, 3vw, 1.9rem);
+    color: var(--c-dark);
+    margin-bottom: var(--space-2xl);
+  }
+  .ev-video__heading::after {
+    content: '';
+    display: block;
+    width: 48px;
+    height: 3px;
+    background: var(--c-yellow);
+    margin-top: var(--space-sm);
+    border-radius: 2px;
+  }
+  .ev-video__frame {
+    position: relative;
+    aspect-ratio: 16 / 9;
+    border-radius: var(--border-radius-lg);
+    overflow: hidden;
+    background: var(--c-dark-deep);
+    max-width: 900px;
+  }
+  .ev-video__facade {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+    display: block;
+  }
+  .ev-video__thumb {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .ev-video__facade:hover .ev-video__thumb { transform: scale(1.02); }
+  .ev-video__play {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 84px;
+    height: 84px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.95);
+    color: var(--c-dark);
+    display: grid;
+    place-items: center;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), background 0.3s ease;
+  }
+  .ev-video__facade:hover .ev-video__play,
+  .ev-video__facade:focus-visible .ev-video__play {
+    transform: translate(-50%, -50%) scale(1.08);
+    background: var(--c-yellow);
+  }
+  .ev-video__play svg { margin-left: 4px; }
+  .ev-video__facade:focus-visible {
+    outline: 3px solid var(--c-yellow);
+    outline-offset: 4px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .ev-video__thumb, .ev-video__play { transition: none; }
+  }
+
   /* ═══ GALLERY ═══ */
   .ev-gallery {
     padding: var(--space-3xl) 0;
@@ -462,3 +593,31 @@ const eventJsonLd = {
     .ev-cta__card { padding: var(--space-2xl) var(--space-md); }
   }
 </style>
+
+<script>
+  /* Video facade — load the player iframe only on click */
+  function initEventVideo() {
+    const facade = document.querySelector<HTMLButtonElement>('.ev-video__facade');
+    if (!facade) return;
+    facade.addEventListener('click', () => {
+      const streamId = facade.dataset.streamId;
+      const ytId = facade.dataset.ytId;
+      const iframe = document.createElement('iframe');
+      iframe.title = 'Event video';
+      iframe.allowFullscreen = true;
+      iframe.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border:0';
+      if (streamId) {
+        iframe.src = `https://iframe.videodelivery.net/${streamId}?autoplay=true&preload=true`;
+        iframe.allow = 'accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture';
+      } else if (ytId) {
+        iframe.src = `https://www.youtube-nocookie.com/embed/${ytId}?autoplay=1&rel=0`;
+        iframe.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture';
+      } else {
+        return;
+      }
+      facade.replaceWith(iframe);
+    });
+  }
+
+  document.addEventListener('astro:page-load', initEventVideo);
+</script>
