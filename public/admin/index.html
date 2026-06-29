@@ -7314,6 +7314,8 @@
       const [showAddReport, setShowAddReport] = useState(false);
       const [newDoc, setNewDoc] = useState({ title: '', year: new Date().getFullYear(), type: '990', url: '', source: 'local' });
       const [newReport, setNewReport] = useState({ title: '', year: new Date().getFullYear(), url: '', coverImage: '', description: '' });
+      const [modalUploading, setModalUploading] = useState(false); // upload inside the Add Document modal
+      const [showLinkInput, setShowLinkInput] = useState(false);   // "paste a link instead" toggle
 
       const loadAll = async () => {
         setLoading(true);
@@ -7379,17 +7381,58 @@
         if (lastUploaded && fileList.length === 1) {
           const cleanName = lastUploaded.name.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ');
           const yearMatch = lastUploaded.name.match(/\d{4}/);
-          setNewDoc({ title: cleanName, year: parseInt(yearMatch?.[0]) || new Date().getFullYear(), type: '990', url: lastUploaded.downloadUrl, source: 'r2' });
+          setNewDoc({ title: cleanName, year: parseInt(yearMatch?.[0]) || new Date().getFullYear(), type: '990', url: lastUploaded.downloadUrl, source: 'local', fileName: lastUploaded.name });
+          setShowLinkInput(false);
           setTab('documents');
           setShowAddDoc(true);
         }
       };
 
+      // Upload a PDF from inside the Add Document modal — fills in the URL
+      // (and guesses title/year) so the whole thing saves in one step.
+      const handleDocUpload = async (fileList) => {
+        const file = fileList[0];
+        if (!file) return;
+        setModalUploading(true);
+        const safeName = file.name.replace(/[^a-z0-9._-]/gi, '-');
+        const path = 'public/financials/' + safeName;
+        try {
+          const res = await api.uploadFile(file, path, 'Upload financial doc: ' + file.name);
+          if (res.success) {
+            const url = 'https://files.sunshineonaranneyday.com/financials/' + safeName;
+            const cleanName = safeName.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ');
+            const yearFromName = parseInt(safeName.match(/\d{4}/)?.[0]);
+            setNewDoc(prev => ({
+              ...prev,
+              url,
+              source: 'local',
+              fileName: safeName,
+              title: prev.title && prev.title.trim() ? prev.title : cleanName,
+              year: yearFromName || prev.year,
+            }));
+            addToast('Uploaded ' + file.name, 'success');
+          } else {
+            addToast('Failed: ' + (res.error || 'Unknown'), 'error');
+          }
+        } catch (err) {
+          addToast('Error: ' + err.message, 'error');
+        }
+        setModalUploading(false);
+      };
+
+      // Open a fresh Add Document modal for the given type
+      const openAddDoc = (type) => {
+        setNewDoc({ title: '', year: new Date().getFullYear(), type, url: '', source: 'local', fileName: '' });
+        setShowLinkInput(false);
+        setShowAddDoc(true);
+      };
+
       const addDocument = () => {
-        if (!newDoc.title || !newDoc.url) { addToast('Title and URL required', 'error'); return; }
+        if (!newDoc.title || !newDoc.url) { addToast('Add a file (or link) and a title', 'error'); return; }
         const updated = { ...data, documents: [...data.documents, { ...newDoc }] };
         saveData(updated);
         setNewDoc({ title: '', year: new Date().getFullYear(), type: '990', url: '', source: 'local' });
+        setShowLinkInput(false);
         setShowAddDoc(false);
       };
 
@@ -7453,7 +7496,7 @@
           <div class="card">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
               <h3>990 Tax Returns (${docs990.length})</h3>
-              <button class="btn btn-primary btn-sm" onClick=${() => { setNewDoc({...newDoc, type: '990'}); setShowAddDoc(true); }}>+ Add 990</button>
+              <button class="btn btn-primary btn-sm" onClick=${() => openAddDoc('990')}>+ Add 990</button>
             </div>
             ${docs990.length === 0 ? html`<p class="text-sm text-muted">No 990s yet.</p>` : html`
               <div class="table-wrap"><table>
@@ -7477,7 +7520,7 @@
           <div class="card mt-2">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
               <h3>Audited Financials (${docsAudit.length})</h3>
-              <button class="btn btn-primary btn-sm" onClick=${() => { setNewDoc({...newDoc, type: 'audit'}); setShowAddDoc(true); }}>+ Add Audit</button>
+              <button class="btn btn-primary btn-sm" onClick=${() => openAddDoc('audit')}>+ Add Audit</button>
             </div>
             ${docsAudit.length === 0 ? html`<p class="text-sm text-muted">No audits yet.</p>` : html`
               <div class="table-wrap"><table>
@@ -7502,7 +7545,7 @@
             <div class="card mt-2">
               <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
                 <h3>Other Documents (${docsOther.length})</h3>
-                <button class="btn btn-primary btn-sm" onClick=${() => { setNewDoc({...newDoc, type: 'other'}); setShowAddDoc(true); }}>+ Add</button>
+                <button class="btn btn-primary btn-sm" onClick=${() => openAddDoc('other')}>+ Add</button>
               </div>
               <div class="table-wrap"><table>
                 <thead><tr><th>Title</th><th>Source</th><th></th></tr></thead>
@@ -7521,11 +7564,43 @@
             </div>
           ` : null}
 
-          <!-- Add Document Modal -->
+          <!-- Add Document Modal — upload + details in one step -->
           ${showAddDoc ? html`
-            <div class="modal-overlay" onClick=${() => setShowAddDoc(false)}>
+            <div class="modal-overlay" onClick=${() => { if (!modalUploading && !saving) setShowAddDoc(false); }}>
               <div class="modal-content" onClick=${e => e.stopPropagation()}>
-                <h3 style="margin-bottom:1rem;">Add Financial Document</h3>
+                <h3 style="margin-bottom:0.25rem;">Add ${newDoc.type === '990' ? '990 Tax Return' : newDoc.type === 'audit' ? 'Audited Financials' : 'Document'}</h3>
+                <p class="text-sm text-muted" style="margin-bottom:1.25rem;">Drop the PDF and fill in the details — it all saves together.</p>
+
+                <!-- 1. The file -->
+                <div class="form-group">
+                  <label>PDF File</label>
+                  ${newDoc.url ? html`
+                    <div style="display:flex;align-items:center;gap:0.6rem;padding:0.7rem 0.85rem;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:8px;">
+                      <span style="color:#16A34A;flex-shrink:0;display:flex;">${icons.check}</span>
+                      <span class="text-sm" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${newDoc.fileName || newDoc.url}</span>
+                      <a href=${newDoc.url} target="_blank" class="btn btn-ghost btn-sm">View ↗</a>
+                      <button class="btn btn-ghost btn-sm" onClick=${() => { setNewDoc({...newDoc, url: '', fileName: '', source: 'local'}); setShowLinkInput(false); }}>Change</button>
+                    </div>
+                  ` : modalUploading ? html`
+                    <div class="dropzone" style="cursor:default;flex-direction:row;gap:0.6rem;">
+                      <span class="spinner" /> <span class="text-sm">Uploading…</span>
+                    </div>
+                  ` : html`
+                    <${DropZone} onFiles=${handleDocUpload} multiple=${false} accept=".pdf,.doc,.docx"
+                      label="990s, audits, or other PDFs" />
+                    <small class="text-sm text-muted" style="display:block;margin-top:0.4rem;">
+                      Already uploaded earlier?
+                      <a href="#" onClick=${e => { e.preventDefault(); setShowLinkInput(s => !s); }}>Paste a link instead</a>
+                    </small>
+                    ${showLinkInput ? html`
+                      <input type="text" style="margin-top:0.5rem;" placeholder="https://files.sunshineonaranneyday.com/financials/…"
+                        value=${newDoc.url}
+                        onChange=${e => setNewDoc({...newDoc, url: e.target.value, source: e.target.value.startsWith('http') ? 'external' : 'local'})} />
+                    ` : null}
+                  `}
+                </div>
+
+                <!-- 2. The details -->
                 <div class="form-group">
                   <label>Type</label>
                   <select value=${newDoc.type} onChange=${e => setNewDoc({...newDoc, type: e.target.value})}>
@@ -7544,18 +7619,14 @@
                   <input type="text" placeholder="e.g. 2024 990 Tax Return" value=${newDoc.title}
                     onChange=${e => setNewDoc({...newDoc, title: e.target.value})} />
                 </div>
-                <div class="form-group">
-                  <label>URL / Path</label>
-                  <input type="text" placeholder="Auto-filled from upload, or paste a URL" value=${newDoc.url}
-                    onChange=${e => setNewDoc({...newDoc, url: e.target.value, source: e.target.value.startsWith('http') ? 'external' : 'local'})} />
-                  <small class="text-sm text-muted">This is auto-filled when you upload a file. You can also paste an external URL.</small>
-                </div>
+
                 <div style="display:flex;gap:0.75rem;margin-top:1.25rem;">
-                  <button class="btn btn-primary btn-sm" onClick=${addDocument} disabled=${saving}>
-                    ${saving ? html`<span class="spinner" />` : 'Add Document'}
+                  <button class="btn btn-primary btn-sm" onClick=${addDocument} disabled=${saving || modalUploading || !newDoc.url || !newDoc.title}>
+                    ${saving ? html`<span class="spinner" /> Saving…` : 'Save Document'}
                   </button>
-                  <button class="btn btn-ghost btn-sm" onClick=${() => setShowAddDoc(false)}>Cancel</button>
+                  <button class="btn btn-ghost btn-sm" onClick=${() => setShowAddDoc(false)} disabled=${modalUploading || saving}>Cancel</button>
                 </div>
+                <p class="text-sm text-muted" style="margin-top:0.85rem;">After saving, click <strong>Deploy Now</strong> in the sidebar to put it live.</p>
               </div>
             </div>
           ` : null}
@@ -7659,7 +7730,7 @@
                     <td class="text-sm" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><code>${f.name}</code></td>
                     <td style="display:flex;gap:0.25rem;">
                       <a href=${'https://files.sunshineonaranneyday.com/financials/' + f.name} target="_blank" class="btn btn-ghost btn-sm">View ↗</a>
-                      <button class="btn btn-primary btn-sm" onClick=${() => { setNewDoc({title: f.name.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' '), year: parseInt(f.name.match(/\d{4}/)?.[0]) || new Date().getFullYear(), type: '990', url: 'https://files.sunshineonaranneyday.com/financials/' + f.name, source: 'local'}); setTab('documents'); setShowAddDoc(true); }}>+ Create Entry</button>
+                      <button class="btn btn-primary btn-sm" onClick=${() => { setNewDoc({title: f.name.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' '), year: parseInt(f.name.match(/\d{4}/)?.[0]) || new Date().getFullYear(), type: '990', url: 'https://files.sunshineonaranneyday.com/financials/' + f.name, source: 'local', fileName: f.name}); setShowLinkInput(false); setTab('documents'); setShowAddDoc(true); }}>+ Create Entry</button>
                     </td>
                   </tr>`)}
                 </tbody>
