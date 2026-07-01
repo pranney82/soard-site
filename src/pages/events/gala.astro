@@ -38,6 +38,8 @@ const faqs: { question: string; answer: string }[] = cms.faqs ?? [];
 const auctionItems: { name: string; detail: string }[] = cms.auctionItems ?? [];
 const evening: { time: string; title: string; detail: string }[] = cms.evening ?? [];
 const sponsorTiers: SponsorTierGroup[] = cms.sponsors ?? [];
+const majorTiers = sponsorTiers.filter(t => (t.size ?? 'md') !== 'sm');
+const activityTiers = sponsorTiers.filter(t => t.size === 'sm');
 const galleryPhotos: { id: string; alt?: string }[] = (cms.galleryPhotos ?? [])
   .map((p: any) => typeof p === 'string' ? { id: p } : p)
   .filter((p: any) => p?.id);
@@ -359,33 +361,94 @@ const eventJsonLd = {
     </div>
   </section>
 
-  <!-- ═══ SPONSORS — flat partner row ═══ -->
+  <!-- ═══ SPONSORS — tiered ═══ -->
   {sponsorTiers.length > 0 && (
     <section class="gv-sponsors" aria-labelledby="gv-sponsors-heading">
       <div class="container gv-sponsors__inner">
         <span class="gv-sponsors__label" data-reveal>In Partnership With</span>
         <h2 id="gv-sponsors-heading" class="gv-sponsors__heading" data-reveal>Made Possible By</h2>
-        <div class="gv-sponsors__grid" data-reveal>
-          {sponsorTiers.flatMap(group =>
-            group.names.map(s => (
-              <div class="gv-sponsors__cell" title={`${s.name} — ${group.tier}`}>
-                {s.logo ? (
-                  <img
-                    src={cfRaw(s.logo, 'w=200,h=100,fit=contain,trim=20,q=85')}
-                    srcset={`${cfRaw(s.logo, 'w=200,h=100,fit=contain,trim=20,q=85')} 1x, ${cfRaw(s.logo, 'w=400,h=200,fit=contain,trim=20,q=85')} 2x`}
-                    alt={s.name}
-                    width="200"
-                    height="100"
-                    loading="lazy"
-                    decoding="async"
-                  />
-                ) : (
-                  <span class="gv-sponsors__name">{s.name}</span>
-                )}
-              </div>
-            ))
-          )}
-        </div>
+
+        {/* ── Major tiers (Presenting / Diamond / Platinum / Gold …) ── */}
+        {majorTiers.map((group) => {
+          const size = group.size ?? 'md';
+          return (
+            <div class={`gv-sp-tier gv-sp-tier--${size}`} data-reveal>
+              {/* Top tier gets the dark premium banner */}
+              {size === 'xl' ? (
+                <div class="gv-sp-title-wrap">
+                  <span class="gv-sp-title-wrap__label">{group.tier}</span>
+                  <div class="gv-sp-title-wrap__inner">
+                    {group.names.map(s => (
+                      <Fragment>
+                        {s.logo ? (
+                          <div class="gv-sp-title-wrap__card">
+                            <img src={cfRaw(s.logo, 'w=440,h=220,fit=contain,q=90')} alt={s.name} width="440" height="220" loading="lazy" decoding="async" class="gv-sp-title-wrap__logo" />
+                          </div>
+                        ) : (
+                          <span class="gv-sp-title-wrap__name">{s.name}</span>
+                        )}
+                      </Fragment>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <Fragment>
+                  <div class="gv-sp-tier__header">
+                    <span class="gv-sp-tier__line" aria-hidden="true"></span>
+                    <h3 class="gv-sp-tier__label">{group.tier}</h3>
+                    <span class="gv-sp-tier__line" aria-hidden="true"></span>
+                  </div>
+                  <div class={`gv-sp-tier__grid gv-sp-tier__grid--${size}`}>
+                    {group.names.map(s => (
+                      <div class={`gv-sp-card gv-sp-card--${size}`}>
+                        {s.logo ? (
+                          <img
+                            src={cfRaw(s.logo, `w=${size === 'lg' ? 260 : 200},h=${size === 'lg' ? 130 : 100},fit=contain,q=85`)}
+                            alt={s.name}
+                            width={size === 'lg' ? 260 : 200}
+                            height={size === 'lg' ? 130 : 100}
+                            loading="lazy"
+                            decoding="async"
+                            class="gv-sp-card__logo"
+                          />
+                        ) : (
+                          <span class="gv-sp-card__name">{s.name}</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </Fragment>
+              )}
+            </div>
+          );
+        })}
+
+        {/* ── Event sponsors (compact grouped layout) ── */}
+        {activityTiers.length > 0 && (
+          <div class="gv-sp-activity" data-reveal>
+            <div class="gv-sp-activity__header">
+              <span class="gv-sp-activity__line" aria-hidden="true"></span>
+              <h3 class="gv-sp-activity__title">Event Sponsors</h3>
+              <span class="gv-sp-activity__line" aria-hidden="true"></span>
+            </div>
+            <div class="gv-sp-activity__list">
+              {activityTiers.map(group => (
+                <div class="gv-sp-activity__row">
+                  <span class="gv-sp-activity__label">{group.tier}</span>
+                  <div class="gv-sp-activity__names">
+                    {group.names.map((s, i) => (
+                      <Fragment>
+                        <span class="gv-sp-activity__name">{s.name}</span>
+                        {i < group.names.length - 1 && <span class="gv-sp-activity__sep" aria-hidden="true">&middot;</span>}
+                      </Fragment>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         <p class="gv-sponsors__footnote" data-reveal>
           Interested in sponsoring?
           <a href="mailto:info@soardcharity.com?subject=Evening%20of%20Sunshine%20Sponsorship"> Reach out to our gala team.</a>
@@ -2185,50 +2248,283 @@ const eventJsonLd = {
     font-family: var(--font-display);
     font-size: clamp(1.5rem, 3vw, 2.1rem);
     color: var(--gv-midnight);
-    margin-bottom: var(--space-xl);
+    margin-bottom: var(--space-3xl);
     letter-spacing: -0.02em;
   }
-  .gv-sponsors__grid {
+
+  /* ══ Major tier wrapper ══ */
+  .gv-sp-tier {
+    max-width: 960px;
+    margin: 0 auto var(--space-2xl);
+  }
+  .gv-sp-tier:last-of-type {
+    margin-bottom: var(--space-3xl);
+  }
+
+  /* ── Top tier — dark premium banner ── */
+  .gv-sp-title-wrap {
+    position: relative;
+    background: linear-gradient(160deg, var(--gv-midnight) 0%, var(--gv-deep-teal) 45%, #2b5c6e 100%);
+    border-radius: 20px;
+    padding: 2.75rem 2rem 2.5rem;
+    overflow: hidden;
+    box-shadow: 0 4px 20px rgba(13, 47, 63, 0.18), 0 8px 40px rgba(0, 0, 0, 0.06);
+  }
+  /* Subtle radial glow */
+  .gv-sp-title-wrap::before {
+    content: '';
+    position: absolute;
+    top: -30%;
+    right: -10%;
+    width: 50%;
+    height: 160%;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(212, 160, 23, 0.08) 0%, transparent 65%);
+    pointer-events: none;
+  }
+  /* Gold accent line at top */
+  .gv-sp-title-wrap::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 80px;
+    height: 3px;
+    border-radius: 0 0 3px 3px;
+    background: linear-gradient(90deg, transparent, var(--gv-gold), transparent);
+  }
+  .gv-sp-title-wrap__label {
+    display: inline-block;
+    font-size: 0.6rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.22em;
+    color: var(--gv-gold);
+    margin-bottom: var(--space-lg);
+    background: rgba(212, 160, 23, 0.1);
+    padding: 0.3rem 0.85rem;
+    border-radius: 100px;
+    border: 1px solid rgba(212, 160, 23, 0.15);
+    position: relative;
+  }
+  .gv-sp-title-wrap__inner {
+    position: relative;
     display: flex;
     flex-wrap: wrap;
     justify-content: center;
-    gap: 0.75rem;
-    max-width: 960px;
-    margin: 0 auto;
+    align-items: center;
+    gap: var(--space-xl);
   }
-  .gv-sponsors__cell {
+  .gv-sp-title-wrap__name {
+    font-family: var(--font-display);
+    font-size: clamp(1.6rem, 4vw, 2.4rem);
+    color: #fff;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+    text-align: center;
+  }
+  .gv-sp-title-wrap__card {
+    background: #fff;
+    border-radius: 14px;
+    padding: 1.75rem 2.5rem;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.18), 0 0 0 1px rgba(212, 160, 23, 0.2);
     display: flex;
     align-items: center;
     justify-content: center;
-    width: clamp(120px, 16vw, 168px);
-    height: 80px;
-    padding: 0.85rem 1rem;
+    max-width: 100%;
+  }
+  .gv-sp-title-wrap__logo {
+    max-height: 110px;
+    width: auto;
+    max-width: 100%;
+    object-fit: contain;
+  }
+  @media (max-width: 600px) {
+    .gv-sp-title-wrap__card { padding: 1.25rem 1.5rem; }
+    .gv-sp-title-wrap__logo { max-height: 80px; }
+  }
+
+  /* ── Tier header (line — label — line) ── */
+  .gv-sp-tier__header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: var(--space-lg);
+  }
+  .gv-sp-tier__line {
+    flex: 1;
+    height: 1px;
+    background: rgba(13, 47, 63, 0.1);
+  }
+  .gv-sp-tier__label {
+    font-family: var(--font-display);
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    color: var(--gv-coral);
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  /* ── Sponsor card grids ── */
+  .gv-sp-tier__grid {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: var(--space-md);
+  }
+  .gv-sp-tier__grid--lg { gap: var(--space-lg); }
+
+  /* ── Shared sponsor card ── */
+  .gv-sp-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
     background: #fff;
     border: 1px solid rgba(13, 47, 63, 0.08);
-    border-radius: 12px;
-    transition: border-color 0.3s, box-shadow 0.3s, transform 0.3s;
+    border-radius: 14px;
+    position: relative;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03), 0 4px 12px rgba(0, 0, 0, 0.02);
+    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+                box-shadow 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+                border-color 0.3s;
   }
-  .gv-sponsors__cell:hover {
-    border-color: rgba(199, 93, 74, 0.3);
-    box-shadow: 0 6px 18px rgba(13, 47, 63, 0.06);
-    transform: translateY(-2px);
+  .gv-sp-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 28px rgba(13, 47, 63, 0.09), 0 2px 8px rgba(0, 0, 0, 0.04);
+    border-color: rgba(199, 93, 74, 0.2);
   }
-  .gv-sponsors__cell img {
+  .gv-sp-card__logo {
+    width: auto;
     max-width: 100%;
-    max-height: 100%;
     object-fit: contain;
-    opacity: 0.75;
-    filter: grayscale(0.4);
-    transition: opacity 0.3s, filter 0.3s;
   }
-  .gv-sponsors__cell:hover img { opacity: 1; filter: grayscale(0); }
-  .gv-sponsors__name {
+  .gv-sp-card__name {
     font-family: var(--font-display);
-    font-size: 0.95rem;
     color: var(--gv-midnight);
     text-align: center;
-    line-height: 1.25;
+    line-height: 1.3;
   }
+
+  /* ── LG cards (Diamond / Platinum) ── */
+  .gv-sp-card--lg {
+    padding: 1.75rem 2.25rem;
+    min-height: 110px;
+    min-width: 240px;
+  }
+  .gv-sp-card--lg .gv-sp-card__name {
+    font-size: 1.15rem;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+  }
+  .gv-sp-card--lg .gv-sp-card__logo { max-height: 65px; }
+
+  /* ── MD cards (Gold / Silver) ── */
+  .gv-sp-card--md {
+    padding: 1.25rem 1.5rem;
+    min-height: 80px;
+    min-width: 170px;
+  }
+  .gv-sp-card--md .gv-sp-card__name { font-size: 0.88rem; }
+  .gv-sp-card--md .gv-sp-card__logo { max-height: 44px; }
+
+  /* ══ Event sponsors — compact grouped layout ══ */
+  .gv-sp-activity {
+    max-width: 960px;
+    margin: var(--space-xl) auto 0;
+  }
+  .gv-sp-activity__header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: var(--space-xl);
+  }
+  .gv-sp-activity__line {
+    flex: 1;
+    height: 1px;
+    background: rgba(13, 47, 63, 0.1);
+  }
+  .gv-sp-activity__title {
+    font-family: var(--font-display);
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    color: var(--gv-coral);
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .gv-sp-activity__list {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+  .gv-sp-activity__row {
+    display: grid;
+    grid-template-columns: 200px 1fr;
+    gap: var(--space-md);
+    align-items: baseline;
+    padding: 0.9rem 0;
+    border-bottom: 1px solid rgba(13, 47, 63, 0.06);
+    text-align: left;
+  }
+  .gv-sp-activity__row:first-child {
+    border-top: 1px solid rgba(13, 47, 63, 0.06);
+  }
+  .gv-sp-activity__label {
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--gv-coral);
+    line-height: 1.5;
+  }
+  .gv-sp-activity__names {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.25rem 0;
+  }
+  .gv-sp-activity__name {
+    font-size: 0.9rem;
+    color: var(--gv-midnight);
+    line-height: 1.6;
+  }
+  .gv-sp-activity__sep {
+    color: var(--c-text-light);
+    margin: 0 0.4rem;
+    user-select: none;
+  }
+
+  /* ── Sponsor responsive ── */
+  @media (max-width: 640px) {
+    .gv-sp-activity__row {
+      grid-template-columns: 1fr;
+      gap: 0.25rem;
+      padding: 0.75rem 0;
+    }
+    .gv-sp-title-wrap {
+      padding: 2rem 1.25rem 1.75rem;
+      border-radius: 16px;
+    }
+    .gv-sp-title-wrap__name {
+      font-size: clamp(1.3rem, 5vw, 1.8rem);
+    }
+    .gv-sp-card--lg {
+      min-width: 0;
+      width: 100%;
+      padding: 1.35rem 1.5rem;
+    }
+    .gv-sp-card--md {
+      min-width: 0;
+      flex: 1 1 calc(50% - var(--space-sm));
+    }
+  }
+
   .gv-sponsors__footnote {
     margin: var(--space-xl) auto 0;
     font-size: 0.85rem;
