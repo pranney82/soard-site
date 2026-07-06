@@ -222,15 +222,15 @@
       "url": "https://files.sunshineonaranneyday.com/financials/ga-contractor-license.pdf",
       "source": "local",
       "fileName": "ga-contractor-license.pdf"
-    },
-    {
-      "title": "2025 SOARD Impact Report",
-      "year": 2025,
-      "type": "other",
-      "url": "https://files.sunshineonaranneyday.com/financials/2025-SOARD-Impact-Report.pdf",
-      "source": "local",
-      "fileName": "2025-SOARD-Impact-Report.pdf"
     }
   ],
-  "annualReports": []
+  "annualReports": [
+    {
+      "title": "2025",
+      "year": 2025,
+      "url": "https://files.sunshineonaranneyday.com/financials/2025-SOARD-Impact-Report.pdf",
+      "coverImage": "https://sunshineonaranneyday.com/cdn-cgi/imagedelivery/ROYFuPmfN2vPS6mt5sCkZQ/gallery/golf/1783349797998-2025-impact-report.png/w=360,h=360,fit=cover,gravity=auto,q=82",
+      "description": ""
+    }
+  ]
 }
