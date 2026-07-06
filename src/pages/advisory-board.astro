@@ -5,13 +5,13 @@
  * DESIGN: Editorial split hero (standardized hero-* naming, matches
  * home/apply/donate/ways-to-give), numbered sections, yellow finale.
  *
- * ┌─────────────────────────────────────────────────────────────┐
- * │ PLACEHOLDERS — replace before launch:                       │
- * │  1. PDF_URL — upload the overview PDF to the soard-files    │
- * │     R2 bucket so it serves at this path (like financials)   │
- * │  2. Commitment specifics (term, cadence, give/get) — every  │
- * │     unconfirmed detail is marked with a [PLACEHOLDER] note  │
- * └─────────────────────────────────────────────────────────────┘
+ * Copy is sourced from the Advisory Board Overview PDF (2026 cycle).
+ * NOTE: Application-cycle dates are hardcoded — applications open
+ * July 1, close July 31, notified August, first meeting September.
+ * Update these each recruiting cycle.
+ *
+ * The overview PDF lives in the repo at
+ * public/advisory-board/soard-advisory-board-overview.pdf
  */
 import BaseLayout from '../layouts/BaseLayout.astro';
 import siteSettings from '../content/site/settings.json';
@@ -25,8 +25,7 @@ const orgName = siteSettings.name;
 const email = siteSettings.email;
 
 const APPLY_URL = 'https://form.jotform.com/261805783731058';
-/* [PLACEHOLDER] Upload the PDF to R2 (soard-files) at this path, or update it */
-const PDF_URL = '/files/advisory-board/soard-advisory-board-overview.pdf';
+const PDF_URL = '/advisory-board/soard-advisory-board-overview.pdf';
 
 /* ── Photos (from admin settings, with fallbacks) ── */
 const ab = (siteSettings as any).advisoryBoardPhotos || {};
@@ -41,7 +40,7 @@ const jsonLd = {
   "@type": "WebPage",
   "@id": `${SITE_URL}/advisory-board/#webpage`,
   "name": "Advisory Board — Sunshine on a Ranney Day",
-  "description": "Join the SOARD Advisory Board — lend your expertise, open doors, and help us build more dream rooms for children with special needs.",
+  "description": "Join the SOARD Advisory Board — advocates, connectors, and fundraisers who work together to fund a SOARD room makeover every year.",
   "url": `${SITE_URL}/advisory-board/`,
   "isPartOf": { "@id": `${SITE_URL}/#website` },
   "about": { "@id": `${SITE_URL}/#organization` },
@@ -52,7 +51,7 @@ const jsonLd = {
 
 <BaseLayout
   title="Advisory Board — Lend Your Expertise"
-  description="Join the SOARD Advisory Board. Champion the mission, open doors, and guide what's next as we build dream rooms for children with special needs."
+  description="Join the SOARD Advisory Board — advocates, connectors, and fundraisers working together to fund a room makeover every year. Applications close July 31."
   jsonLd={jsonLd}
   breadcrumbs={breadcrumbs}
 >
@@ -66,16 +65,15 @@ const jsonLd = {
       <div class="hero-text">
         <p class="hero-eyebrow">Advisory Board</p>
         <h1 class="hero-headline">Lend your expertise. Build more <em>dreams</em>.</h1>
-        <p class="hero-lead">We're assembling a group of leaders who believe every child deserves a space of their own — and who can help us reach more families than ever. Pull up a seat at the table.</p>
+        <p class="hero-lead">We're building a team of advocates, connectors, and ambassadors who believe every child deserves a space that makes them feel safe, seen, and loved — and who work together to fund a SOARD makeover every year. Applications are open through <strong>July 31</strong>.</p>
         <div class="hero-ctas">
           <a href={APPLY_URL} target="_blank" rel="noopener noreferrer" class="btn btn-primary btn-glow btn-lg">Apply to Join →</a>
           <a href={PDF_URL} target="_blank" rel="noopener noreferrer" class="btn btn-outline-dark btn-lg">Download the Overview (PDF)</a>
         </div>
         <div class="hero-trust">
           <span class="hero-trust-item"><svg class="hero-trust-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="9" cy="7" r="4" stroke="currentColor" stroke-width="1.5"/><path d="M22 21v-2a4 4 0 0 0-3-3.87" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M16 3.13a4 4 0 0 1 0 7.75" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>Volunteer Leadership</span>
-          <!-- [PLACEHOLDER] Confirm meeting cadence + term length -->
-          <span class="hero-trust-item"><svg class="hero-trust-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect width="18" height="18" x="3" y="4" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M16 2v4M8 2v4M3 10h18" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>Meets Quarterly</span>
-          <span class="hero-trust-item"><svg class="hero-trust-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.5"/><path d="M12 6v6l4 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>Two-Year Term</span>
+          <span class="hero-trust-item"><svg class="hero-trust-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect width="18" height="18" x="3" y="4" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M16 2v4M8 2v4M3 10h18" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>Four Meetings a Year</span>
+          <span class="hero-trust-item"><svg class="hero-trust-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.5"/><path d="M12 6v6l4 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>One-Year Renewable Term</span>
         </div>
       </div>
       <div class="hero-photo-wrap">
@@ -107,7 +105,7 @@ const jsonLd = {
       <div class="ab-sh" data-reveal data-num="01">
         <div class="ab-sh-text">
           <h2>What advisors <em>do</em></h2>
-          <p>Three ways board members move the mission forward.</p>
+          <p>Advocates, connectors, fundraisers, and ambassadors — with one shared goal.</p>
         </div>
       </div>
 
@@ -120,7 +118,7 @@ const jsonLd = {
               </div>
             </div>
             <h3>Champion the Mission</h3>
-            <p>Be a visible ambassador for SOARD in your company, industry, and community — sharing our story with the people who need to hear it.</p>
+            <p>Raise awareness of SOARD in your company, industry, and community — and show up for events, campaigns, and room reveals.</p>
           </div>
         </div>
 
@@ -128,11 +126,11 @@ const jsonLd = {
           <div class="ab-role-inner">
             <div class="ab-role-badge-wrap" aria-hidden="true">
               <div class="ab-role-badge">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m11 17 2 2a1 1 0 1 0 3-3"/><path d="m14 14 2.5 2.5a1 1 0 1 0 3-3l-3.88-3.88a3 3 0 0 0-4.24 0l-.88.88a1 1 0 1 1-3-3l2.81-2.81a5.79 5.79 0 0 1 7.06-.87l.47.28a2 2 0 0 0 1.42.25L21 4"/><path d="m21 3 1 11h-2"/><path d="M3 3 2 14l6.5 6.5a1 1 0 1 0 3-3"/><path d="M3 4h8"/></svg>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
               </div>
             </div>
-            <h3>Open Doors</h3>
-            <p>Introduce us to corporate partners, donors, skilled trades, and media — the connections that turn one room into ten.</p>
+            <h3>Fund a Makeover Every Year</h3>
+            <p>The board's shared goal: collectively raise the funds for one SOARD makeover each year — a real room, for a real child, that exists because of this group.</p>
           </div>
         </div>
 
@@ -140,11 +138,11 @@ const jsonLd = {
           <div class="ab-role-inner">
             <div class="ab-role-badge-wrap" aria-hidden="true">
               <div class="ab-role-badge">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m11 17 2 2a1 1 0 1 0 3-3"/><path d="m14 14 2.5 2.5a1 1 0 1 0 3-3l-3.88-3.88a3 3 0 0 0-4.24 0l-.88.88a1 1 0 1 1-3-3l2.81-2.81a5.79 5.79 0 0 1 7.06-.87l.47.28a2 2 0 0 0 1.42.25L21 4"/><path d="m21 3 1 11h-2"/><path d="M3 3 2 14l6.5 6.5a1 1 0 1 0 3-3"/><path d="M3 4h8"/></svg>
               </div>
             </div>
-            <h3>Guide What's Next</h3>
-            <p>Bring your professional judgment to the questions ahead — growth, fundraising, programs, and how we serve more kids without losing what makes SOARD special.</p>
+            <h3>Open Doors</h3>
+            <p>Introduce us to potential donors, sponsors, partners, and volunteers — and share your professional insight and strategic guidance when we need it.</p>
           </div>
         </div>
       </div>
@@ -162,40 +160,36 @@ const jsonLd = {
       </div>
 
       <div class="ab-commit" data-reveal>
-        <!-- [PLACEHOLDER] Confirm every specific below (term, cadence, give/get) -->
         <ul class="ab-commit-list">
           <li>
             <span class="ab-commit-check" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>
-            <div><strong>Serve a two-year term</strong><span>Renewable by mutual agreement.</span></div>
+            <div><strong>Serve a one-year term</strong><span>Renewable at the end of each year.</span></div>
           </li>
           <li>
             <span class="ab-commit-check" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>
-            <div><strong>Attend quarterly meetings</strong><span>A mix of in-person and virtual — about four per year.</span></div>
+            <div><strong>Attend four meetings a year</strong><span>At least four per year, plus ad hoc support as needed.</span></div>
           </li>
           <li>
             <span class="ab-commit-check" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>
-            <div><strong>Champion one event or campaign each year</strong><span>The gala, the golf tournament, a build day — whatever fits you best.</span></div>
+            <div><strong>Help fund one makeover each year</strong><span>A collective goal — through personal gifts, sponsorships, donor introductions, event support, peer-to-peer campaigns, employer matching, or member-hosted fundraisers.</span></div>
           </li>
           <li>
             <span class="ab-commit-check" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>
-            <div><strong>Make a personally meaningful annual gift</strong><span>Every board member gives at a level that's significant to them.</span></div>
+            <div><strong>Be an ambassador</strong><span>Represent SOARD and the families it serves — and share professional or strategic insight when needed.</span></div>
           </li>
         </ul>
-        <p class="ab-commit-note">Full details — including responsibilities, expectations, and FAQs — are in the <a href={PDF_URL} target="_blank" rel="noopener noreferrer" class="ab-link">Advisory Board Overview (PDF)</a>.</p>
+        <p class="ab-commit-note">The Advisory Board is advisory and ambassadorial in nature — members don't hold fiduciary, governance, or voting authority. Full details are in the <a href={PDF_URL} target="_blank" rel="noopener noreferrer" class="ab-link">Advisory Board Overview (PDF)</a>.</p>
       </div>
 
       <div class="ab-seek" data-reveal data-delay="1">
-        <h3>Who we're looking for</h3>
-        <p>We're building a board as varied as the work itself. If your expertise lives in one of these worlds — or one we haven't thought of — we'd love to meet you.</p>
+        <h3>Who should apply</h3>
+        <p>The board is open to anyone passionate about SOARD's mission and willing to actively help it grow — people who care deeply about the children and families we serve. We're building a group with a diverse mix of perspectives, experiences, networks, and talents. Strong candidates are ready to use their:</p>
         <div class="ab-pills">
-          <span class="ab-pill">Construction & Trades</span>
-          <span class="ab-pill">Healthcare & Pediatric Therapy</span>
-          <span class="ab-pill">Finance & Accounting</span>
-          <span class="ab-pill">Legal</span>
-          <span class="ab-pill">Marketing & Media</span>
-          <span class="ab-pill">Fundraising & Events</span>
-          <span class="ab-pill">HR & Leadership</span>
-          <span class="ab-pill">Community Connectors</span>
+          <span class="ab-pill">Time</span>
+          <span class="ab-pill">Relationships</span>
+          <span class="ab-pill">Creativity</span>
+          <span class="ab-pill">Resources</span>
+          <span class="ab-pill">Influence</span>
         </div>
       </div>
     </div>
@@ -207,7 +201,7 @@ const jsonLd = {
       <div class="ab-sh" data-reveal data-num="03">
         <div class="ab-sh-text">
           <h2>How to <em>join</em></h2>
-          <p>Three steps from interested to seated.</p>
+          <p>Three steps from interested to seated — applications close July 31.</p>
         </div>
       </div>
 
@@ -221,13 +215,13 @@ const jsonLd = {
         <li class="ab-step ab-step--featured" data-reveal data-delay="1">
           <span class="ab-step-num" aria-hidden="true">2</span>
           <h3>Submit your application</h3>
-          <p>A short form — tell us who you are, what you bring, and why the mission speaks to you. It takes about ten minutes.</p>
+          <p>A short form — tell us who you are, what you bring, and why the mission speaks to you. Applications close <strong>July 31</strong>.</p>
           <a href={APPLY_URL} target="_blank" rel="noopener noreferrer" class="ab-step-cta">Apply to Join →</a>
         </li>
         <li class="ab-step" data-reveal data-delay="2">
           <span class="ab-step-num" aria-hidden="true">3</span>
-          <h3>Have a conversation</h3>
-          <p>We'll follow up to talk about fit, answer your questions, and find the seat where you'll make the biggest difference.</p>
+          <h3>Take your seat</h3>
+          <p>Applicants are notified in August, and the new board gathers for its first meeting in September.</p>
           <a href={`mailto:${email}?subject=Advisory Board Question`} class="ab-step-cta">Questions? Email us →</a>
         </li>
       </ol>
@@ -243,7 +237,7 @@ const jsonLd = {
         <a href={APPLY_URL} target="_blank" rel="noopener noreferrer" class="btn btn-dark btn-lg">Apply to Join →</a>
         <a href={PDF_URL} target="_blank" rel="noopener noreferrer" class="btn btn-outline-dark btn-lg">Download the Overview</a>
       </div>
-      <p class="ab-finale-note" data-reveal data-delay="3">Questions? Reach us at <a href={`mailto:${email}`}>{email}</a> · {orgName} is a 501(c)(3) nonprofit</p>
+      <p class="ab-finale-note" data-reveal data-delay="3">Applications close July 31 · Questions? Reach us at <a href={`mailto:${email}`}>{email}</a> · {orgName} is a 501(c)(3) nonprofit</p>
     </div>
   </section>
 
