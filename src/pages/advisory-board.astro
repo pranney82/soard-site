@@ -10,8 +10,7 @@
  * July 1, close July 31, notified August, first meeting September.
  * Update these each recruiting cycle.
  *
- * The overview PDF lives in the repo at
- * public/advisory-board/soard-advisory-board-overview.pdf
+ * The overview PDF is hosted on R2 (files.sunshineonaranneyday.com)
  */
 import BaseLayout from '../layouts/BaseLayout.astro';
 import siteSettings from '../content/site/settings.json';
@@ -25,7 +24,7 @@ const orgName = siteSettings.name;
 const email = siteSettings.email;
 
 const APPLY_URL = 'https://form.jotform.com/261805783731058';
-const PDF_URL = '/advisory-board/soard-advisory-board-overview.pdf';
+const PDF_URL = 'https://files.sunshineonaranneyday.com/advisory/SOARD_Advisory%20Board%20Overview.docx.pdf';
 
 /* ── Photos (from admin settings, with fallbacks) ── */
 const ab = (siteSettings as any).advisoryBoardPhotos || {};
@@ -71,7 +70,7 @@ const jsonLd = {
           <a href={PDF_URL} target="_blank" rel="noopener noreferrer" class="btn btn-outline-dark btn-lg">Download the Overview (PDF)</a>
         </div>
         <div class="hero-trust">
-          <span class="hero-trust-item"><svg class="hero-trust-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="9" cy="7" r="4" stroke="currentColor" stroke-width="1.5"/><path d="M22 21v-2a4 4 0 0 0-3-3.87" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M16 3.13a4 4 0 0 1 0 7.75" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>Volunteer Leadership</span>
+          <span class="hero-trust-item"><svg class="hero-trust-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="9" cy="7" r="4" stroke="currentColor" stroke-width="1.5"/><path d="M22 21v-2a4 4 0 0 0-3-3.87" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M16 3.13a4 4 0 0 1 0 7.75" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>Advisory & Ambassadorial</span>
           <span class="hero-trust-item"><svg class="hero-trust-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect width="18" height="18" x="3" y="4" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M16 2v4M8 2v4M3 10h18" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>Four Meetings a Year</span>
           <span class="hero-trust-item"><svg class="hero-trust-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.5"/><path d="M12 6v6l4 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>One-Year Renewable Term</span>
         </div>
@@ -178,7 +177,7 @@ const jsonLd = {
             <div><strong>Be an ambassador</strong><span>Represent SOARD and the families it serves — and share professional or strategic insight when needed.</span></div>
           </li>
         </ul>
-        <p class="ab-commit-note">The Advisory Board is advisory and ambassadorial in nature — members don't hold fiduciary, governance, or voting authority. Full details are in the <a href={PDF_URL} target="_blank" rel="noopener noreferrer" class="ab-link">Advisory Board Overview (PDF)</a>.</p>
+        <p class="ab-commit-note">The Advisory Board is advisory and ambassadorial in nature — members don't hold fiduciary, governance, operational, budgetary, staffing, or voting authority. Full details are in the <a href={PDF_URL} target="_blank" rel="noopener noreferrer" class="ab-link">Advisory Board Overview (PDF)</a>.</p>
       </div>
 
       <div class="ab-seek" data-reveal data-delay="1">
@@ -209,13 +208,13 @@ const jsonLd = {
         <li class="ab-step" data-reveal>
           <span class="ab-step-num" aria-hidden="true">1</span>
           <h3>Read the overview</h3>
-          <p>Everything about the board — purpose, expectations, and answers to common questions — in one document.</p>
+          <p>Everything about the board — its purpose, the commitment, the timeline, and who should apply — in one document.</p>
           <a href={PDF_URL} target="_blank" rel="noopener noreferrer" class="ab-step-cta">Download the PDF →</a>
         </li>
         <li class="ab-step ab-step--featured" data-reveal data-delay="1">
           <span class="ab-step-num" aria-hidden="true">2</span>
           <h3>Submit your application</h3>
-          <p>A short form — tell us who you are, what you bring, and why the mission speaks to you. Applications close <strong>July 31</strong>.</p>
+          <p>Tell us who you are, what you'd bring, and why the mission speaks to you — plan for about 20 minutes, and have a reference in mind. Applications close <strong>July 31</strong>.</p>
           <a href={APPLY_URL} target="_blank" rel="noopener noreferrer" class="ab-step-cta">Apply to Join →</a>
         </li>
         <li class="ab-step" data-reveal data-delay="2">

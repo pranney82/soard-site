@@ -42,12 +42,8 @@
       "name": "Jackson Healthcare"
     },
     {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/wyp/public",
-      "name": "WYP Construction"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/kids-r-kids/public",
-      "name": "Kids R Kids Foundation"
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/mohawk/public",
+      "name": "Mohawk"
     },
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/real-floors-commercial/1774544840079/public",
@@ -58,24 +54,64 @@
       "name": "Msi"
     },
     {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/cambria-black/public",
+      "name": "Cambria"
+    },
+    {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/construction-resources/public",
       "name": "Construction Resources"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/pulleyassociates/public",
+      "name": "Pulley & Associates"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/randall-brothers/public",
+      "name": "Randall Brothers"
     },
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/sherwin-williams/public",
       "name": "Sherwin-Williams"
     },
     {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/cambria-black/public",
-      "name": "Cambria"
-    },
-    {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/top-knobs/public",
       "name": "Top Knobs"
     },
     {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/pulleyassociates/public",
-      "name": "Pulley & Associates"
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/lee-hainer/1774382155560/public",
+      "name": "Lee Hainer"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/legacy-lighting/public",
+      "name": "Legacy Lighting"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/wyp/public",
+      "name": "WYP Construction"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/junializ/partner-1783359526838-27576835-152912888755798-7916046483726532608-n.jpg/public",
+      "name": "27576835_152912888755798_7916046483726532608_n"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/tko-plumbing/public",
+      "name": "TKO Plumbing Services"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/iframe-media/public",
+      "name": "iFrame Media"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/nicole-photography/public",
+      "name": "Nicole W Photography"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/bin-there-dump-that-atlanta/1774627292526/public",
+      "name": "Bin There Dump That Atlanta"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/kids-r-kids/public",
+      "name": "Kids R Kids Foundation"
     }
   ],
   "shortDescription": null,
@@ -89,7 +125,7 @@
   "bathroomCount": 1,
   "plans": [],
   "beforeAfterPhotos": [],
-  "heroSummary": "Junailiz lives with the effects of a Type III stroke and hydrocephalus, requiring lifelong care. SOARD is building a wheelchair-accessible bathroom with a zero-entry shower to improve safety and ease daily caregiving.",
+  "heroSummary": "Junailiz lives with the effects of a Type III stroke and hydrocephalus. Thanks to Jackson Healthcare, SOARD created a wheelchair-accessible bathroom with a zero-entry shower to improve safety and daily caregiving.",
   "sortOrder": 2,
   "accentImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/junializ/1777567844646-IMG-3326.JPG/public"
 }
