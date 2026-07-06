@@ -907,11 +907,26 @@ const BLOCKS = {
       uid: slug && p.date ? `reveal-${slug}-${p.date.replace(/-/g, '')}@sunshineonaranneyday.com` : '',
     });
 
-    const detailItems = [];
-    if (dateDisplay) detailItems.push({ label: 'When', main: escapeHtml(dateDisplay) });
-    if (location || address) detailItems.push({ label: 'Where', main: location ? escapeHtml(location) : '', sub: address ? escapeHtml(address) : '' });
-    if (roomDisplay) detailItems.push({ label: 'Room', main: escapeHtml(roomDisplay) });
-    if (parking) detailItems.push({ label: 'Parking', main: escapeHtml(parking) });
+    // Detail-box rows. Each known row is only shown if it has a value. The
+    // admin controls which rows appear and in what order via `p.detailOrder`
+    // (an array of keys) and can suppress any via `p.hiddenDetails`. When
+    // neither is set the box falls back to the original When/Where/Room/Parking.
+    const detailDefs = {
+      when: dateDisplay ? { label: 'When', main: escapeHtml(dateDisplay) } : null,
+      where: (location || address) ? { label: 'Where', main: location ? escapeHtml(location) : '', sub: address ? escapeHtml(address) : '' } : null,
+      room: roomDisplay ? { label: 'Room', main: escapeHtml(roomDisplay) } : null,
+      parking: parking ? { label: 'Parking', main: escapeHtml(parking) } : null,
+    };
+    const defaultDetailOrder = ['when', 'where', 'room', 'parking'];
+    const detailOrder = (Array.isArray(p.detailOrder) && p.detailOrder.length
+      ? p.detailOrder.filter(k => defaultDetailOrder.includes(k))
+      : defaultDetailOrder.slice());
+    for (const k of defaultDetailOrder) if (!detailOrder.includes(k)) detailOrder.push(k);
+    const hiddenDetails = Array.isArray(p.hiddenDetails) ? p.hiddenDetails : [];
+    const detailItems = detailOrder
+      .filter(k => !hiddenDetails.includes(k))
+      .map(k => detailDefs[k])
+      .filter(Boolean);
 
     const detailRows = detailItems.map((r, i) => {
       const border = i === detailItems.length - 1 ? '' : `border-bottom:1px solid ${BD};`;

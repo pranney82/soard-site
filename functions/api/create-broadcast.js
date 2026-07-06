@@ -4,8 +4,12 @@
  * Renders a block-based email template and creates a Resend broadcast draft.
  * The admin always reviews & sends from the Resend dashboard.
  *
- *   { preview: true, data: { blocks }, opts }   → returns rendered HTML, no draft
- *   { data: { blocks }, opts }                  → creates draft in Resend
+ *   { preview: true, data: { blocks }, opts }         → returns rendered HTML, no draft
+ *   { audienceId, data: { blocks }, opts }            → creates draft in Resend
+ *
+ * The audience comes from the request body (picked in the admin editor),
+ * falling back to the RESEND_AUDIENCE_ID env var. Audience IDs go stale when
+ * audiences are deleted/recreated in Resend, so never hardcode one here.
  *
  * GET /api/create-broadcast
  *
@@ -13,7 +17,7 @@
  *
  * Authenticated endpoint (behind CF Access).
  *
- * Required env vars: RESEND_API_KEY, RESEND_AUDIENCE_ID
+ * Required env vars: RESEND_API_KEY
  */
 
 import { customTemplate } from './_email-templates.js';
@@ -25,8 +29,6 @@ export async function onRequestPost(context) {
   if (!RESEND_API_KEY) {
     return Response.json({ ok: false, error: 'RESEND_API_KEY is not configured.' }, { status: 503 });
   }
-
-  const audienceId = RESEND_AUDIENCE_ID || '02c95b02-54d6-4d45-851b-90058fd81f4d';
 
   const body = await context.request.json();
   const { data, opts = {}, preview } = body;
@@ -41,6 +43,11 @@ export async function onRequestPost(context) {
   // Preview mode: return HTML without creating broadcast
   if (preview) {
     return Response.json({ ok: true, name, subject: tpl.subject, previewHtml: tpl.html });
+  }
+
+  const audienceId = body.audienceId || RESEND_AUDIENCE_ID;
+  if (!audienceId) {
+    return Response.json({ ok: false, error: 'No audience selected. Pick an audience in the editor before pushing to Resend.' }, { status: 400 });
   }
 
   try {
@@ -80,6 +87,7 @@ export async function onRequestPost(context) {
         changes: [
           { field: 'subject', from: null, to: tpl.subject },
           { field: 'blocks', from: null, to: `${data.blocks.length}` },
+          { field: 'audience', from: null, to: audienceId },
         ],
         path: null,
         gitStatus: 'draft',
