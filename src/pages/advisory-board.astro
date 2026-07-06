@@ -1,0 +1,682 @@
+---
+/**
+ * Advisory Board — Recruiting page (Get Involved)
+ *
+ * DESIGN: Editorial split hero (standardized hero-* naming, matches
+ * home/apply/donate/ways-to-give), numbered sections, yellow finale.
+ *
+ * ┌─────────────────────────────────────────────────────────────┐
+ * │ PLACEHOLDERS — replace before launch:                       │
+ * │  1. PDF_URL — upload the overview PDF to the soard-files    │
+ * │     R2 bucket so it serves at this path (like financials)   │
+ * │  2. Commitment specifics (term, cadence, give/get) — every  │
+ * │     unconfirmed detail is marked with a [PLACEHOLDER] note  │
+ * └─────────────────────────────────────────────────────────────┘
+ */
+import BaseLayout from '../layouts/BaseLayout.astro';
+import siteSettings from '../content/site/settings.json';
+import { getSiteStats } from '../utils/stats';
+import { cfRaw, cfLqip } from '../utils/cf-image';
+
+const computed = await getSiteStats();
+
+const SITE_URL = 'https://sunshineonaranneyday.com';
+const orgName = siteSettings.name;
+const email = siteSettings.email;
+
+const APPLY_URL = 'https://form.jotform.com/261805783731058';
+/* [PLACEHOLDER] Upload the PDF to R2 (soard-files) at this path, or update it */
+const PDF_URL = '/files/advisory-board/soard-advisory-board-overview.pdf';
+
+/* ── Photos (from admin settings, with fallbacks) ── */
+const ab = (siteSettings as any).advisoryBoardPhotos || {};
+const heroPhotoId = ab.hero || 'kids/karter/1774384957640-Karter-Reveal-People-9.jpg';
+
+const breadcrumbs = [
+  { name: 'Home', url: `${SITE_URL}/` },
+  { name: 'Advisory Board', url: `${SITE_URL}/advisory-board/` },
+];
+
+const jsonLd = {
+  "@type": "WebPage",
+  "@id": `${SITE_URL}/advisory-board/#webpage`,
+  "name": "Advisory Board — Sunshine on a Ranney Day",
+  "description": "Join the SOARD Advisory Board — lend your expertise, open doors, and help us build more dream rooms for children with special needs.",
+  "url": `${SITE_URL}/advisory-board/`,
+  "isPartOf": { "@id": `${SITE_URL}/#website` },
+  "about": { "@id": `${SITE_URL}/#organization` },
+  "inLanguage": "en-US",
+  "breadcrumb": { "@id": `${SITE_URL}/advisory-board/#breadcrumb` }
+};
+---
+
+<BaseLayout
+  title="Advisory Board — Lend Your Expertise"
+  description="Join the SOARD Advisory Board. Champion the mission, open doors, and guide what's next as we build dream rooms for children with special needs."
+  jsonLd={jsonLd}
+  breadcrumbs={breadcrumbs}
+>
+
+  <!-- Preload hero LCP image — srcset/sizes must match the <img> -->
+  <link slot="head" rel="preload" as="image" imagesrcset={`${cfRaw(heroPhotoId, 'w=400,h=500,fit=cover,gravity=face,q=65')} 400w, ${cfRaw(heroPhotoId, 'w=560,h=700,fit=cover,gravity=face,q=65')} 560w, ${cfRaw(heroPhotoId, 'w=800,h=1000,fit=cover,gravity=face,q=65')} 800w`} imagesizes="(max-width:768px) 85vw, 420px" fetchpriority="high" />
+
+  <!-- ══════ HERO — Editorial Split ══════ -->
+  <section class="hero">
+    <div class="hero-inner">
+      <div class="hero-text">
+        <p class="hero-eyebrow">Advisory Board</p>
+        <h1 class="hero-headline">Lend your expertise. Build more <em>dreams</em>.</h1>
+        <p class="hero-lead">We're assembling a group of leaders who believe every child deserves a space of their own — and who can help us reach more families than ever. Pull up a seat at the table.</p>
+        <div class="hero-ctas">
+          <a href={APPLY_URL} target="_blank" rel="noopener noreferrer" class="btn btn-primary btn-glow btn-lg">Apply to Join →</a>
+          <a href={PDF_URL} target="_blank" rel="noopener noreferrer" class="btn btn-outline-dark btn-lg">Download the Overview (PDF)</a>
+        </div>
+        <div class="hero-trust">
+          <span class="hero-trust-item"><svg class="hero-trust-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="9" cy="7" r="4" stroke="currentColor" stroke-width="1.5"/><path d="M22 21v-2a4 4 0 0 0-3-3.87" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M16 3.13a4 4 0 0 1 0 7.75" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>Volunteer Leadership</span>
+          <!-- [PLACEHOLDER] Confirm meeting cadence + term length -->
+          <span class="hero-trust-item"><svg class="hero-trust-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect width="18" height="18" x="3" y="4" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M16 2v4M8 2v4M3 10h18" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>Meets Quarterly</span>
+          <span class="hero-trust-item"><svg class="hero-trust-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.5"/><path d="M12 6v6l4 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>Two-Year Term</span>
+        </div>
+      </div>
+      <div class="hero-photo-wrap">
+        <div class="hero-frame" style={`background-image:url('${cfLqip(heroPhotoId)}')`}>
+          <img
+            src={cfRaw(heroPhotoId, 'w=800,h=1000,fit=cover,gravity=face,q=65')}
+            srcset={`${cfRaw(heroPhotoId, 'w=400,h=500,fit=cover,gravity=face,q=65')} 400w, ${cfRaw(heroPhotoId, 'w=560,h=700,fit=cover,gravity=face,q=65')} 560w, ${cfRaw(heroPhotoId, 'w=800,h=1000,fit=cover,gravity=face,q=65')} 800w`}
+            sizes="(max-width:768px) 85vw, 420px"
+            alt="Volunteers and family celebrating at a SOARD room reveal"
+            width="800" height="1000"
+            fetchpriority="high"
+            loading="eager"
+            decoding="sync"
+            class="hero-img lqip-img"
+          />
+        </div>
+        <div class="hero-accent" aria-hidden="true"></div>
+        <div class="hero-stat">
+          <span class="hero-stat-num">{computed.totalRooms}+</span>
+          <span class="hero-stat-label">rooms built —<br/>help us reach more</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════ 01 · THE ROLE ══════ -->
+  <section class="ab-section" id="the-role">
+    <div class="ab-container">
+      <div class="ab-sh" data-reveal data-num="01">
+        <div class="ab-sh-text">
+          <h2>What advisors <em>do</em></h2>
+          <p>Three ways board members move the mission forward.</p>
+        </div>
+      </div>
+
+      <div class="ab-roles">
+        <div class="ab-role" data-reveal>
+          <div class="ab-role-inner">
+            <div class="ab-role-badge-wrap" aria-hidden="true">
+              <div class="ab-role-badge">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg>
+              </div>
+            </div>
+            <h3>Champion the Mission</h3>
+            <p>Be a visible ambassador for SOARD in your company, industry, and community — sharing our story with the people who need to hear it.</p>
+          </div>
+        </div>
+
+        <div class="ab-role ab-role--featured" data-reveal data-delay="1">
+          <div class="ab-role-inner">
+            <div class="ab-role-badge-wrap" aria-hidden="true">
+              <div class="ab-role-badge">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m11 17 2 2a1 1 0 1 0 3-3"/><path d="m14 14 2.5 2.5a1 1 0 1 0 3-3l-3.88-3.88a3 3 0 0 0-4.24 0l-.88.88a1 1 0 1 1-3-3l2.81-2.81a5.79 5.79 0 0 1 7.06-.87l.47.28a2 2 0 0 0 1.42.25L21 4"/><path d="m21 3 1 11h-2"/><path d="M3 3 2 14l6.5 6.5a1 1 0 1 0 3-3"/><path d="M3 4h8"/></svg>
+              </div>
+            </div>
+            <h3>Open Doors</h3>
+            <p>Introduce us to corporate partners, donors, skilled trades, and media — the connections that turn one room into ten.</p>
+          </div>
+        </div>
+
+        <div class="ab-role" data-reveal data-delay="2">
+          <div class="ab-role-inner">
+            <div class="ab-role-badge-wrap" aria-hidden="true">
+              <div class="ab-role-badge">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>
+              </div>
+            </div>
+            <h3>Guide What's Next</h3>
+            <p>Bring your professional judgment to the questions ahead — growth, fundraising, programs, and how we serve more kids without losing what makes SOARD special.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════ 02 · THE COMMITMENT ══════ -->
+  <section class="ab-section ab-section--alt" id="the-commitment">
+    <div class="ab-container">
+      <div class="ab-sh" data-reveal data-num="02">
+        <div class="ab-sh-text">
+          <h2>What we <em>ask</em></h2>
+          <p>A meaningful commitment, designed for busy leaders.</p>
+        </div>
+      </div>
+
+      <div class="ab-commit" data-reveal>
+        <!-- [PLACEHOLDER] Confirm every specific below (term, cadence, give/get) -->
+        <ul class="ab-commit-list">
+          <li>
+            <span class="ab-commit-check" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>
+            <div><strong>Serve a two-year term</strong><span>Renewable by mutual agreement.</span></div>
+          </li>
+          <li>
+            <span class="ab-commit-check" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>
+            <div><strong>Attend quarterly meetings</strong><span>A mix of in-person and virtual — about four per year.</span></div>
+          </li>
+          <li>
+            <span class="ab-commit-check" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>
+            <div><strong>Champion one event or campaign each year</strong><span>The gala, the golf tournament, a build day — whatever fits you best.</span></div>
+          </li>
+          <li>
+            <span class="ab-commit-check" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>
+            <div><strong>Make a personally meaningful annual gift</strong><span>Every board member gives at a level that's significant to them.</span></div>
+          </li>
+        </ul>
+        <p class="ab-commit-note">Full details — including responsibilities, expectations, and FAQs — are in the <a href={PDF_URL} target="_blank" rel="noopener noreferrer" class="ab-link">Advisory Board Overview (PDF)</a>.</p>
+      </div>
+
+      <div class="ab-seek" data-reveal data-delay="1">
+        <h3>Who we're looking for</h3>
+        <p>We're building a board as varied as the work itself. If your expertise lives in one of these worlds — or one we haven't thought of — we'd love to meet you.</p>
+        <div class="ab-pills">
+          <span class="ab-pill">Construction & Trades</span>
+          <span class="ab-pill">Healthcare & Pediatric Therapy</span>
+          <span class="ab-pill">Finance & Accounting</span>
+          <span class="ab-pill">Legal</span>
+          <span class="ab-pill">Marketing & Media</span>
+          <span class="ab-pill">Fundraising & Events</span>
+          <span class="ab-pill">HR & Leadership</span>
+          <span class="ab-pill">Community Connectors</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════ 03 · HOW TO JOIN ══════ -->
+  <section class="ab-section" id="how-to-join">
+    <div class="ab-container">
+      <div class="ab-sh" data-reveal data-num="03">
+        <div class="ab-sh-text">
+          <h2>How to <em>join</em></h2>
+          <p>Three steps from interested to seated.</p>
+        </div>
+      </div>
+
+      <ol class="ab-steps">
+        <li class="ab-step" data-reveal>
+          <span class="ab-step-num" aria-hidden="true">1</span>
+          <h3>Read the overview</h3>
+          <p>Everything about the board — purpose, expectations, and answers to common questions — in one document.</p>
+          <a href={PDF_URL} target="_blank" rel="noopener noreferrer" class="ab-step-cta">Download the PDF →</a>
+        </li>
+        <li class="ab-step ab-step--featured" data-reveal data-delay="1">
+          <span class="ab-step-num" aria-hidden="true">2</span>
+          <h3>Submit your application</h3>
+          <p>A short form — tell us who you are, what you bring, and why the mission speaks to you. It takes about ten minutes.</p>
+          <a href={APPLY_URL} target="_blank" rel="noopener noreferrer" class="ab-step-cta">Apply to Join →</a>
+        </li>
+        <li class="ab-step" data-reveal data-delay="2">
+          <span class="ab-step-num" aria-hidden="true">3</span>
+          <h3>Have a conversation</h3>
+          <p>We'll follow up to talk about fit, answer your questions, and find the seat where you'll make the biggest difference.</p>
+          <a href={`mailto:${email}?subject=Advisory Board Question`} class="ab-step-cta">Questions? Email us →</a>
+        </li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- ══════ FINALE — Centered emotional CTA ══════ -->
+  <section class="ab-finale">
+    <div class="ab-finale-inner">
+      <h2 data-reveal>Ready to pull up a <em>seat</em>?</h2>
+      <p data-reveal data-delay="1">Your experience could be the reason the next child walks into a room built just for them.</p>
+      <div class="ab-finale-ctas" data-reveal data-delay="2">
+        <a href={APPLY_URL} target="_blank" rel="noopener noreferrer" class="btn btn-dark btn-lg">Apply to Join →</a>
+        <a href={PDF_URL} target="_blank" rel="noopener noreferrer" class="btn btn-outline-dark btn-lg">Download the Overview</a>
+      </div>
+      <p class="ab-finale-note" data-reveal data-delay="3">Questions? Reach us at <a href={`mailto:${email}`}>{email}</a> · {orgName} is a 501(c)(3) nonprofit</p>
+    </div>
+  </section>
+
+</BaseLayout>
+
+<style>
+  /* ══════════════════════════════════════════
+     TOKENS & SHARED
+     ══════════════════════════════════════════ */
+  :is(h1, h2, h3) em {
+    font-style: italic;
+    background-image: linear-gradient(transparent 52%, var(--c-yellow-soft) 52%);
+  }
+
+  /* ── Buttons ── */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    font-family: var(--font-body);
+    font-weight: 600;
+    font-size: 15px;
+    padding: 14px 32px;
+    border: none;
+    border-radius: 100px;
+    cursor: pointer;
+    text-decoration: none;
+    transition: transform 0.35s cubic-bezier(0.16,1,0.3,1), box-shadow 0.35s cubic-bezier(0.16,1,0.3,1), background 0.25s ease, color 0.25s ease;
+    min-height: 48px;
+  }
+  .btn:hover { transform: translateY(-3px); }
+  .btn:active { transform: translateY(0); }
+  .btn-lg { font-size: 17px; padding: 18px 44px; }
+  .btn-primary { background: var(--c-yellow); color: var(--c-dark); }
+  .btn-primary:hover { box-shadow: 0 8px 24px var(--c-yellow-glow); }
+  .btn-dark { background: var(--c-dark); color: #fff; }
+  .btn-dark:hover { box-shadow: 0 8px 24px rgba(0,0,0,0.2); }
+  .btn-outline-dark {
+    background: transparent;
+    color: var(--c-dark);
+    border: 2px solid var(--c-dark);
+  }
+  .btn-outline-dark:hover { background: var(--c-dark); color: var(--c-yellow); }
+
+  @keyframes pulseGlow {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(255,218,36,0.3); }
+    50% { box-shadow: 0 0 0 10px rgba(255,218,36,0); }
+  }
+  .btn-glow { animation: pulseGlow 3s ease-in-out infinite; }
+  .btn-glow:hover { animation: none; box-shadow: 0 8px 24px var(--c-yellow-glow); }
+
+  /* ══════════════════════════════════════════
+     HERO — Editorial Split
+     Standardized hero-* naming (matches home/apply/donate)
+     ══════════════════════════════════════════ */
+  .hero {
+    position: relative;
+    background: var(--c-cream);
+    contain: layout style;
+    padding: clamp(40px, 8vh, 100px) 0 40px;
+    overflow: hidden;
+  }
+
+  .hero-inner {
+    max-width: var(--max-width-wide, 1400px);
+    margin: 0 auto;
+    padding: 0 var(--page-padding);
+    display: grid;
+    grid-template-columns: 1.15fr 0.85fr;
+    gap: clamp(32px, 5vw, 80px);
+    align-items: center;
+    min-height: clamp(480px, 70vh, 720px);
+  }
+
+  .hero-eyebrow {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--c-text-muted);
+    margin-bottom: 28px;
+    opacity: 0;
+    animation: heroUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.05s both;
+  }
+
+  .hero-headline {
+    font-size: clamp(42px, 6.5vw, 88px);
+    line-height: 1.04;
+    letter-spacing: -0.035em;
+    color: var(--c-dark);
+    margin-bottom: 28px;
+    /* NO opacity:0 — this is the LCP element, must paint immediately */
+    animation: heroSlide 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  .hero-headline em {
+    font-style: italic;
+    background-image: linear-gradient(transparent 52%, var(--c-yellow-soft) 52%);
+    background-repeat: no-repeat;
+    background-size: 100% 100%;
+    padding: 0 0.05em;
+  }
+
+  .hero-lead {
+    font-size: clamp(16px, 1.3vw, 19px);
+    line-height: 1.7;
+    color: var(--c-text);
+    max-width: 480px;
+    margin-bottom: 36px;
+    opacity: 0;
+    animation: heroUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.15s both;
+  }
+
+  .hero-ctas {
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+    opacity: 0;
+    animation: heroUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.25s both;
+  }
+
+  .hero-trust {
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+    margin-top: 24px;
+    opacity: 0;
+    animation: heroUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.35s both;
+  }
+  .hero-trust-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--c-text-muted);
+    letter-spacing: 0.01em;
+  }
+  .hero-trust-icon {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    color: var(--c-text-muted);
+  }
+
+  .hero-photo-wrap {
+    position: relative;
+    animation: heroPhotoIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  .hero-frame {
+    display: block;
+    position: relative;
+    border-radius: 24px;
+    overflow: hidden;
+    aspect-ratio: 4 / 5;
+    box-shadow: 0 32px 80px rgba(0, 0, 0, 0.12), 0 8px 24px rgba(0, 0, 0, 0.06);
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+  }
+
+  .hero-frame img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    transition: transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .hero-frame:hover img {
+    transform: scale(1.03);
+  }
+
+  .hero-accent {
+    position: absolute;
+    z-index: -1;
+    bottom: -16px;
+    right: -16px;
+    width: 55%;
+    height: 55%;
+    border-radius: 20px;
+    background: var(--c-yellow);
+    opacity: 0.35;
+  }
+
+  .hero-stat {
+    position: absolute;
+    bottom: -24px;
+    left: -24px;
+    background: var(--c-dark);
+    color: #fff;
+    border-radius: 16px;
+    padding: 20px 28px;
+    text-align: center;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.15);
+    opacity: 0;
+    animation: heroUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.4s both;
+  }
+
+  .hero-stat-num {
+    font-family: var(--font-display);
+    font-size: 40px;
+    font-weight: 700;
+    color: var(--c-yellow);
+    line-height: 1;
+    display: block;
+  }
+
+  .hero-stat-label {
+    display: block;
+    font-size: 12px;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.85);
+    margin-top: 4px;
+    line-height: 1.4;
+  }
+
+  @keyframes heroUp {
+    from { opacity: 0; transform: translateY(24px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes heroSlide {
+    from { transform: translateY(20px); }
+    to { transform: translateY(0); }
+  }
+  @keyframes heroPhotoIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .hero-eyebrow, .hero-lead, .hero-ctas, .hero-trust,
+    .hero-photo-wrap, .hero-stat { opacity: 1; transform: none; animation: none; }
+  }
+
+  /* ══════════════════════════════════════════
+     SECTIONS — Shared
+     ══════════════════════════════════════════ */
+  .ab-section { padding: 100px 0; contain: layout style; scroll-margin-top: calc(var(--header-height, 84px) + 24px); }
+  .ab-section--alt { background: var(--c-warm-gray); }
+  .ab-container { max-width: var(--max-width); margin: 0 auto; padding: 0 var(--space-xl); }
+  .ab-sh { display: flex; align-items: flex-start; gap: 24px; margin-bottom: 56px; position: relative; }
+  .ab-sh[data-num]::before { content: attr(data-num); font-family: var(--font-display); font-size: clamp(56px, 6vw, 80px); font-weight: 700; color: #c8a96e; opacity: 0.38; line-height: 0.85; letter-spacing: -0.04em; flex-shrink: 0; }
+  .ab-sh-text h2 { font-size: clamp(24px, 3vw, 36px); line-height: 1.25; margin-bottom: 6px; }
+  .ab-sh-text p { font-size: 16px; color: var(--c-text); line-height: 1.6; }
+
+  /* ══════════════════════════════════════════
+     01 · THE ROLE — Three cards
+     ══════════════════════════════════════════ */
+  .ab-roles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; align-items: stretch; }
+  .ab-role {
+    background: #fff;
+    border-radius: 20px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    transition: transform 0.5s cubic-bezier(0.16,1,0.3,1), box-shadow 0.5s cubic-bezier(0.16,1,0.3,1);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .ab-role:hover { transform: translateY(-4px); box-shadow: 0 16px 48px rgba(0,0,0,0.08); }
+  .ab-role--featured {
+    box-shadow: 0 2px 12px rgba(0,0,0,0.04), 0 12px 40px rgba(0,0,0,0.03);
+  }
+  .ab-role--featured::before {
+    content: '';
+    display: block;
+    height: 4px;
+    background: var(--c-yellow);
+    flex-shrink: 0;
+  }
+  .ab-role--featured:hover { box-shadow: 0 20px 60px rgba(0,0,0,0.08); }
+  .ab-role-inner { padding: 36px 32px 32px; display: flex; flex-direction: column; flex: 1; }
+  .ab-role-badge-wrap { margin-bottom: 20px; }
+  .ab-role-badge {
+    width: 48px;
+    height: 48px;
+    border-radius: 14px;
+    background: rgba(255,218,36,0.1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--c-yellow-hover);
+  }
+  .ab-role-badge svg { width: 24px; height: 24px; }
+  .ab-role h3 { font-size: 19px; margin-bottom: 10px; }
+  .ab-role p { font-size: 15px; line-height: 1.7; color: var(--c-text); margin-bottom: 0; }
+
+  /* ══════════════════════════════════════════
+     02 · THE COMMITMENT
+     ══════════════════════════════════════════ */
+  .ab-commit {
+    background: #fff;
+    border-radius: 24px;
+    padding: 44px 40px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    margin-bottom: 24px;
+  }
+  .ab-commit-list { list-style: none; padding: 0; margin: 0 0 24px; display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px 32px; }
+  .ab-commit-list li { display: flex; gap: 14px; align-items: flex-start; }
+  .ab-commit-check {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: rgba(255,218,36,0.15);
+    color: var(--c-dark);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+  .ab-commit-check svg { width: 14px; height: 14px; }
+  .ab-commit-list strong { display: block; font-size: 16px; color: var(--c-dark); margin-bottom: 4px; }
+  .ab-commit-list span:not(.ab-commit-check) { font-size: 14px; color: var(--c-text); line-height: 1.6; }
+  .ab-commit-note { font-size: 14px; color: var(--c-text-muted); line-height: 1.6; margin: 0; padding-top: 20px; border-top: 1px solid var(--c-border); }
+  .ab-link { color: var(--c-dark); font-weight: 600; text-decoration: underline; text-decoration-color: var(--c-yellow); text-underline-offset: 3px; transition: text-decoration-color 0.2s ease; }
+  .ab-link:hover { text-decoration-color: var(--c-dark); }
+
+  .ab-seek {
+    background: #fff;
+    border-radius: 24px;
+    padding: 44px 40px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  }
+  .ab-seek h3 { font-size: 19px; margin-bottom: 10px; }
+  .ab-seek p { font-size: 15px; line-height: 1.7; color: var(--c-text); margin-bottom: 20px; max-width: 640px; }
+  .ab-pills { display: flex; flex-wrap: wrap; gap: 8px; }
+  .ab-pill { font-size: 13px; font-weight: 600; color: var(--c-dark); background: rgba(255,218,36,0.1); padding: 8px 18px; border-radius: 50px; }
+
+  /* ══════════════════════════════════════════
+     03 · HOW TO JOIN — Steps
+     ══════════════════════════════════════════ */
+  .ab-steps { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; align-items: stretch; counter-reset: none; }
+  .ab-step {
+    position: relative;
+    background: #fff;
+    border-radius: 20px;
+    padding: 36px 32px 32px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    transition: transform 0.5s cubic-bezier(0.16,1,0.3,1), box-shadow 0.5s cubic-bezier(0.16,1,0.3,1);
+    display: flex;
+    flex-direction: column;
+  }
+  .ab-step:hover { transform: translateY(-4px); box-shadow: 0 16px 48px rgba(0,0,0,0.08); }
+  .ab-step--featured { border-top: 4px solid var(--c-yellow); box-shadow: 0 2px 12px rgba(0,0,0,0.04), 0 12px 40px rgba(0,0,0,0.03); }
+  .ab-step--featured:hover { box-shadow: 0 20px 60px rgba(0,0,0,0.08); }
+  .ab-step-num {
+    font-family: var(--font-display);
+    font-size: 40px;
+    font-weight: 700;
+    color: #c8a96e;
+    opacity: 0.45;
+    line-height: 1;
+    display: block;
+    margin-bottom: 16px;
+  }
+  .ab-step h3 { font-size: 19px; margin-bottom: 10px; }
+  .ab-step p { font-size: 15px; line-height: 1.7; color: var(--c-text); margin-bottom: 20px; }
+  .ab-step-cta {
+    margin-top: auto;
+    display: inline-flex;
+    align-items: center;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--c-dark);
+    text-decoration: none;
+    transition: color 0.2s ease;
+    padding-top: 20px;
+    border-top: 1px solid var(--c-border);
+  }
+  .ab-step-cta:hover { color: var(--c-accent); }
+
+  /* ══════════════════════════════════════════
+     FINALE — Centered emotional CTA
+     ══════════════════════════════════════════ */
+  .ab-finale { padding: 120px 0; background: var(--c-yellow); text-align: center; position: relative; overflow: hidden; contain: layout style; }
+  .ab-finale-inner { max-width: 640px; margin: 0 auto; padding: 0 var(--space-xl); position: relative; z-index: 2; }
+  .ab-finale h2 { font-size: clamp(28px, 4vw, 40px); line-height: 1.25; margin-bottom: 20px; }
+  .ab-finale h2 em { background-image: linear-gradient(transparent 52%, rgba(55,58,54,0.15) 52%); font-style: italic; }
+  .ab-finale-inner > p { font-size: 18px; color: var(--c-dark); line-height: 1.7; margin-bottom: 36px; }
+  .ab-finale-ctas { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; margin-bottom: 24px; }
+  .ab-finale-note { font-size: 13px; color: rgba(45,46,51,0.88); margin-bottom: 0; }
+  .ab-finale-note a { color: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+
+  /* ══════════════════════════════════════════
+     SCROLL REVEALS
+     ══════════════════════════════════════════ */
+  [data-reveal] { opacity: 0; visibility: hidden; transform: translateY(28px); transition: opacity 0.7s cubic-bezier(0.16,1,0.3,1), transform 0.7s cubic-bezier(0.16,1,0.3,1), visibility 0s 0.7s; }
+  [data-reveal].is-visible { opacity: 1; visibility: visible; transform: translateY(0); transition: opacity 0.7s cubic-bezier(0.16,1,0.3,1), transform 0.7s cubic-bezier(0.16,1,0.3,1), visibility 0s 0s; }
+  [data-delay="1"] { transition-delay: 0.12s; }
+  [data-delay="2"] { transition-delay: 0.24s; }
+  [data-delay="3"] { transition-delay: 0.36s; }
+
+  /* ══════════════════════════════════════════
+     RESPONSIVE
+     ══════════════════════════════════════════ */
+  @media (max-width: 960px) {
+    .ab-roles { grid-template-columns: 1fr; }
+    .ab-steps { grid-template-columns: 1fr; }
+    .ab-commit-list { grid-template-columns: 1fr; }
+  }
+
+  @media (max-width: 768px) {
+    .hero { padding: clamp(32px, 6vh, 64px) 0 32px; }
+    .hero-inner { grid-template-columns: 1fr; gap: var(--space-2xl); min-height: auto; }
+    .hero-headline { font-size: clamp(36px, 9vw, 52px); }
+    .hero-ctas { flex-direction: column; }
+    .hero-ctas .btn { width: 100%; }
+    .hero-trust { gap: 12px; }
+    .hero-accent { bottom: -12px; right: -12px; }
+    .hero-stat { left: 16px; bottom: -16px; padding: 16px 22px; }
+    .hero-stat-num { font-size: 32px; }
+    .ab-section { padding: 64px 0; }
+    .ab-sh { gap: 16px; }
+    .ab-sh[data-num]::before { font-size: 48px; }
+    .ab-commit { padding: 32px 24px; }
+    .ab-seek { padding: 32px 24px; }
+    .ab-finale { padding: 80px 0; }
+    .ab-finale-ctas { flex-direction: column; }
+    .ab-finale-ctas .btn { width: 100%; min-width: 160px; }
+  }
+
+  @media (pointer: coarse) {
+    .btn:hover { transform: none; }
+    .ab-role:hover, .ab-step:hover { transform: none; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    [data-reveal] { opacity: 1; visibility: visible; transform: none; transition: none; }
+    .btn:hover { transform: none; }
+    .btn-glow { animation: none; }
+    .ab-role:hover, .ab-step:hover { transform: none; }
+  }
+</style>
