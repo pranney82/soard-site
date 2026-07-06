@@ -2104,7 +2104,7 @@
         case 'donationTiers':  return { id, type, featured: { amount: '500', label: 'Furniture & Flooring', description: 'Adaptive furniture or accessible flooring — the structural pieces that change a child’s daily life.', badge: 'Most Popular', href: '' }, small: [ { amount: '60', label: 'Paint & Supplies', description: 'Transforms walls into a child’s dream canvas.', href: '' }, { amount: '125', label: 'Bedding & Decor', description: 'The details that make a room feel like home.', href: '' } ] };
         case 'trustSignals':   return { id, type, items: ['Tax-Deductible', 'Zero Platform Fees', '501(c)(3)'] };
         case 'kidCard':        return { id, type, slug: '', label: '', linkLabel: '' };
-        case 'revealInvite':   return { id, type, slug: '', image: '', headline: '', intro: '', date: '', time: '', endTime: '', location: '', address: '', parking: '', tz: 'America/New_York', label: '', profileLabel: '' };
+        case 'revealInvite':   return { id, type, slug: '', image: '', headline: '', intro: '', date: '', time: '', endTime: '', location: '', address: '', parking: '', roomType: '', tz: 'America/New_York', label: '', profileLabel: '', detailOrder: ['when', 'where', 'room', 'parking'], hiddenDetails: [] };
         case 'projectReveal':  return { id, type, slug: '', image: '', label: '', headline: '', profileLabel: '', ctaLabel: '', ctaHref: '', signatureNote: '' };
         case 'projectKickoff': return { id, type, slug: '', image: '', label: '', headline: '', badge: 'Coming Soon', badgeVariant: 'yellow', ctaLabel: '', ctaHref: '', profileLabel: '', signatureNote: '' };
         case 'eventCard':      return { id, type, name: '', date: '', url: '', description: '' };
@@ -2972,7 +2972,7 @@
         subject: 'You’re Invited — [Kid Name]’s Reveal Day',
         preheader: 'Be there for the moment [Kid Name] sees their finished room for the first time.',
         blocks: [
-          { type: 'revealInvite', slug: '', image: '', headline: '', intro: '', date: '', time: '', endTime: '', location: '', address: '', parking: '', tz: 'America/New_York', label: '', profileLabel: '' },
+          { type: 'revealInvite', slug: '', image: '', headline: '', intro: '', date: '', time: '', endTime: '', location: '', address: '', parking: '', roomType: '', tz: 'America/New_York', label: '', profileLabel: '', detailOrder: ['when', 'where', 'room', 'parking'], hiddenDetails: [] },
           { type: 'signature', note: 'Hope to see you there.' },
         ],
       },
@@ -3105,6 +3105,11 @@
       const [pushResult, setPushResult] = useState(null);
       const [confirmDelete, setConfirmDelete] = useState(null);
 
+      // Resend audiences for the broadcast push — fetched live so stale IDs
+      // can never be baked in. The admin must pick one before pushing.
+      const [audiences, setAudiences] = useState(null); // null = not loaded yet
+      const [audienceId, setAudienceId] = useState('');
+
       // Load templates from site_config (merged with starters)
       const loadTemplates = useCallback(async () => {
         setLoading(true);
@@ -3139,6 +3144,28 @@
 
       useEffect(() => { loadTemplates(); }, []);
       useEffect(() => { if (emailTab === 'history') loadHistory(); }, [emailTab]);
+
+      // Load audiences from Resend the first time the editor opens
+      useEffect(() => {
+        if (view !== 'editor' || audiences !== null) return;
+        (async () => {
+          try {
+            const res = await fetch('/api/newsletter-lists');
+            const data = await res.json();
+            if (data.ok) {
+              setAudiences(data.lists || []);
+              // Auto-select when there's only one — nothing to choose
+              if ((data.lists || []).length === 1) setAudienceId(data.lists[0].id);
+            } else {
+              setAudiences([]);
+              addToast?.(data.error || 'Failed to load Resend audiences', 'error');
+            }
+          } catch (e) {
+            setAudiences([]);
+            addToast?.('Failed to load Resend audiences', 'error');
+          }
+        })();
+      }, [view]);
 
       // Open / close editor — preview opens by default so editing is WYSIWYG
       const openEditor = (tpl) => {
@@ -3293,17 +3320,22 @@
       };
 
       const pushToResend = async () => {
+        if (!audienceId) {
+          addToast?.('Pick an audience first — the dropdown next to Push', 'error');
+          return;
+        }
+        const audienceName = (audiences || []).find(a => a.id === audienceId)?.name || audienceId;
         setPushing(true); setPushResult(null);
         try {
           const body = await buildBody();
           const res = await fetch('/api/create-broadcast', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
+            body: JSON.stringify({ ...body, audienceId }),
           });
           const data = await res.json();
           if (data.ok) {
-            setPushResult(data);
+            setPushResult({ ...data, audienceName });
             setPreviewHtml(data.previewHtml || '');
             setShowPreview(true);
             addToast?.('Draft pushed to Resend!', 'success');
@@ -3571,9 +3603,18 @@
             <button class="btn btn-secondary" onClick=${saveTemplate} disabled=${saving || !eName || !eSubject}>
               ${saving ? html`<div class="spinner" style="width: 14px; height: 14px; border-width: 2px;" />` : 'Save'}
             </button>
-            <button class="btn btn-primary" onClick=${pushToResend} disabled=${pushing || !eBlocks.length || !eSubject}>
-              ${pushing ? html`<div class="spinner" style="width: 14px; height: 14px; border-width: 2px; border-top-color: var(--color-text);" />` : 'Push to Resend ↗'}
-            </button>
+            <div style="display: inline-flex; align-items: stretch;">
+              <select class="form-input" value=${audienceId} onChange=${e => setAudienceId(e.target.value)}
+                title="Which Resend audience this broadcast goes to"
+                style="width: auto; max-width: 180px; font-size: 0.85rem; border-top-right-radius: 0; border-bottom-right-radius: 0; border-right: none; ${audienceId ? '' : 'color: var(--color-text-muted);'}">
+                <option value="">${audiences === null ? 'Loading audiences…' : (audiences.length ? 'Audience…' : 'No audiences found')}</option>
+                ${(audiences || []).map(a => html`<option key=${a.id} value=${a.id}>${a.name}</option>`)}
+              </select>
+              <button class="btn btn-primary" onClick=${pushToResend} disabled=${pushing || !eBlocks.length || !eSubject}
+                style="border-top-left-radius: 0; border-bottom-left-radius: 0;">
+                ${pushing ? html`<div class="spinner" style="width: 14px; height: 14px; border-width: 2px; border-top-color: var(--color-text);" />` : 'Push to Resend ↗'}
+              </button>
+            </div>
           </div>
         </div>
 
@@ -3635,6 +3676,102 @@
               const updateRi = (patch) => updateBlocks(eBlocks.map(x => x.id === ri.id ? { ...x, ...patch } : x));
               const allKids = (kids || []).slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''));
               const pickedKid = (kids || []).find(x => x.slug === ri.slug);
+
+              // Ordered, editable detail rows shown in the email's detail box.
+              const DETAIL_DEFAULT_ORDER = ['when', 'where', 'room', 'parking'];
+              const DETAIL_LABELS = { when: 'When', where: 'Where', room: 'Room', parking: 'Parking' };
+              const detailOrder = (Array.isArray(ri.detailOrder) && ri.detailOrder.length
+                ? ri.detailOrder.filter(k => DETAIL_DEFAULT_ORDER.includes(k))
+                : DETAIL_DEFAULT_ORDER.slice());
+              for (const k of DETAIL_DEFAULT_ORDER) if (!detailOrder.includes(k)) detailOrder.push(k);
+              const hiddenDetails = Array.isArray(ri.hiddenDetails) ? ri.hiddenDetails : [];
+              const moveDetail = (idx, dir) => {
+                const next = detailOrder.slice();
+                const j = idx + dir;
+                if (j < 0 || j >= next.length) return;
+                [next[idx], next[j]] = [next[j], next[idx]];
+                updateRi({ detailOrder: next }); setEDirty(true);
+              };
+              const toggleDetailHidden = (k) => {
+                const next = hiddenDetails.includes(k) ? hiddenDetails.filter(x => x !== k) : [...hiddenDetails, k];
+                updateRi({ hiddenDetails: next }); setEDirty(true);
+              };
+              const arrowBtn = (label, disabled, onClick) => html`<button type="button" title=${label} disabled=${disabled} onClick=${onClick}
+                style="border: 1px solid var(--color-border); background: var(--color-bg); border-radius: 4px; width: 22px; height: 18px; line-height: 1; font-size: 0.6rem; padding: 0; cursor: ${disabled ? 'default' : 'pointer'}; opacity: ${disabled ? 0.35 : 1}; color: var(--color-text-secondary);">${label}</button>`;
+
+              const detailBody = (k) => {
+                if (k === 'when') return html`
+                  <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.5rem; margin-bottom: 0.4rem;">
+                    <div class="form-group" style="margin-bottom: 0;">
+                      <label class="form-label" style="font-size: 0.72rem;">Date</label>
+                      <input class="form-input" type="date" value=${ri.date || ''} onInput=${e => { updateRi({ date: e.target.value }); setEDirty(true); }} />
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0;">
+                      <label class="form-label" style="font-size: 0.72rem;">Start Time <span style="font-weight: 400; color: var(--color-text-muted);">(blank = all-day)</span></label>
+                      <input class="form-input" type="text" value=${ri.time || ''} onInput=${e => { updateRi({ time: e.target.value }); setEDirty(true); }} placeholder="3:00 PM" />
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0;">
+                      <label class="form-label" style="font-size: 0.72rem;">End Time</label>
+                      <input class="form-input" type="text" value=${ri.endTime || ''} onInput=${e => { updateRi({ endTime: e.target.value }); setEDirty(true); }} placeholder="5:00 PM" />
+                    </div>
+                  </div>
+                  <div class="form-group" style="margin-bottom: 0;">
+                    <label class="form-label" style="font-size: 0.72rem;">Timezone</label>
+                    <select class="form-input" value=${ri.tz || 'America/New_York'} onChange=${e => { updateRi({ tz: e.target.value }); setEDirty(true); }}>
+                      <option value="America/New_York">Eastern (New York)</option>
+                      <option value="America/Chicago">Central (Chicago)</option>
+                      <option value="America/Denver">Mountain (Denver)</option>
+                      <option value="America/Phoenix">Arizona (no DST)</option>
+                      <option value="America/Los_Angeles">Pacific (Los Angeles)</option>
+                      <option value="America/Anchorage">Alaska</option>
+                      <option value="Pacific/Honolulu">Hawaii</option>
+                    </select>
+                  </div>`;
+                if (k === 'where') return html`
+                  <div class="form-group" style="margin-bottom: 0.4rem;">
+                    <label class="form-label" style="font-size: 0.72rem;">Location Name</label>
+                    <input class="form-input" type="text" value=${ri.location || ''} onInput=${e => { updateRi({ location: e.target.value }); setEDirty(true); }} placeholder="The Smith Family Home" />
+                  </div>
+                  <div class="form-group" style="margin-bottom: 0;">
+                    <label class="form-label" style="font-size: 0.72rem;">Address <span style="font-weight: 400; color: var(--color-text-muted);">(shown as sub-line · also used in calendar invite)</span></label>
+                    <input class="form-input" type="text" value=${ri.address || ''} onInput=${e => { updateRi({ address: e.target.value }); setEDirty(true); }} placeholder="123 Main St, Roswell, GA 30076" />
+                  </div>`;
+                if (k === 'room') {
+                  const kidRooms = pickedKid && Array.isArray(pickedKid.roomTypes) ? pickedKid.roomTypes.filter(Boolean).join(' + ') : '';
+                  return html`
+                  <div class="form-group" style="margin-bottom: 0;">
+                    <label class="form-label" style="font-size: 0.72rem;">Room ${kidRooms ? html`<span style="font-weight: 400; color: var(--color-text-muted);">(pulled from kid: ${kidRooms} — override below)</span>` : html`<span style="font-weight: 400; color: var(--color-text-muted);">(pulled from kid's room types)</span>`}</label>
+                    <input class="form-input" type="text" value=${ri.roomType || ''} onInput=${e => { updateRi({ roomType: e.target.value }); setEDirty(true); }} placeholder=${kidRooms || 'Bedroom + Bathroom'} />
+                  </div>`;
+                }
+                if (k === 'parking') return html`
+                  <div class="form-group" style="margin-bottom: 0;">
+                    <label class="form-label" style="font-size: 0.72rem;">Parking <span style="font-weight: 400; color: var(--color-text-muted);">(optional)</span></label>
+                    <input class="form-input" type="text" value=${ri.parking || ''} onInput=${e => { updateRi({ parking: e.target.value }); setEDirty(true); }} placeholder="Park along the street — we'll have signs" />
+                  </div>`;
+                return null;
+              };
+
+              const detailRow = (k, idx) => {
+                const isHidden = hiddenDetails.includes(k);
+                return html`
+                  <div key=${k} style="border: 1px solid var(--color-border); border-radius: 6px; padding: 0.55rem 0.6rem; background: var(--color-bg-card); ${isHidden ? 'opacity: 0.55;' : ''}">
+                    <div style="display: flex; align-items: center; gap: 0.45rem; margin-bottom: ${isHidden ? '0' : '0.45rem'};">
+                      <div style="display: flex; flex-direction: column; gap: 2px;">
+                        ${arrowBtn('▲', idx === 0, () => moveDetail(idx, -1))}
+                        ${arrowBtn('▼', idx === detailOrder.length - 1, () => moveDetail(idx, 1))}
+                      </div>
+                      <span style="font-size: 0.72rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-text-secondary);">${DETAIL_LABELS[k]}</span>
+                      ${isHidden ? html`<span style="font-size: 0.68rem; color: var(--color-text-muted); font-style: italic;">— hidden from email</span>` : null}
+                      <button type="button" onClick=${() => toggleDetailHidden(k)}
+                        style="margin-left: auto; border: 1px solid var(--color-border); background: var(--color-bg); border-radius: 4px; padding: 0.15rem 0.5rem; font-size: 0.7rem; cursor: pointer; color: var(--color-text-secondary);">
+                        ${isHidden ? 'Show' : 'Hide'}
+                      </button>
+                    </div>
+                    ${isHidden ? null : detailBody(k)}
+                  </div>`;
+              };
+
               return html`
                 <div style="margin: 1.25rem 0 0.5rem; padding: 1rem; border: 1.5px solid var(--color-primary); border-radius: 8px; background: var(--color-primary-bg);">
                   <div style="font-size: 0.85rem; font-weight: 700; margin-bottom: 0.75rem; display: flex; align-items: center; gap: 0.4rem;">
@@ -3696,45 +3833,12 @@
                       </div>
                     </div>
                   </div>
-                  <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.5rem; margin-bottom: 0.5rem;">
-                    <div class="form-group" style="margin-bottom: 0;">
-                      <label class="form-label" style="font-size: 0.78rem;">Date</label>
-                      <input class="form-input" type="date" value=${ri.date || ''} onInput=${e => { updateRi({ date: e.target.value }); setEDirty(true); }} />
-                    </div>
-                    <div class="form-group" style="margin-bottom: 0;">
-                      <label class="form-label" style="font-size: 0.78rem;">Start Time <span style="font-weight: 400; color: var(--color-text-muted);">(blank = all-day)</span></label>
-                      <input class="form-input" type="text" value=${ri.time || ''} onInput=${e => { updateRi({ time: e.target.value }); setEDirty(true); }} placeholder="3:00 PM" />
-                    </div>
-                    <div class="form-group" style="margin-bottom: 0;">
-                      <label class="form-label" style="font-size: 0.78rem;">End Time</label>
-                      <input class="form-input" type="text" value=${ri.endTime || ''} onInput=${e => { updateRi({ endTime: e.target.value }); setEDirty(true); }} placeholder="5:00 PM" />
-                    </div>
+                  <div style="display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 0.5rem;">
+                    <label class="form-label" style="font-size: 0.78rem; margin: 0;">Details Shown in the Email</label>
+                    <span style="font-size: 0.7rem; color: var(--color-text-muted);">Reorder with ▲▼ · Hide any row</span>
                   </div>
-                  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-bottom: 0.5rem;">
-                    <div class="form-group" style="margin-bottom: 0;">
-                      <label class="form-label" style="font-size: 0.78rem;">Location Name</label>
-                      <input class="form-input" type="text" value=${ri.location || ''} onInput=${e => { updateRi({ location: e.target.value }); setEDirty(true); }} placeholder="The Smith Family Home" />
-                    </div>
-                    <div class="form-group" style="margin-bottom: 0;">
-                      <label class="form-label" style="font-size: 0.78rem;">Timezone</label>
-                      <select class="form-input" value=${ri.tz || 'America/New_York'} onChange=${e => { updateRi({ tz: e.target.value }); setEDirty(true); }}>
-                        <option value="America/New_York">Eastern (New York)</option>
-                        <option value="America/Chicago">Central (Chicago)</option>
-                        <option value="America/Denver">Mountain (Denver)</option>
-                        <option value="America/Phoenix">Arizona (no DST)</option>
-                        <option value="America/Los_Angeles">Pacific (Los Angeles)</option>
-                        <option value="America/Anchorage">Alaska</option>
-                        <option value="Pacific/Honolulu">Hawaii</option>
-                      </select>
-                    </div>
-                  </div>
-                  <div class="form-group" style="margin-bottom: 0.5rem;">
-                    <label class="form-label" style="font-size: 0.78rem;">Address <span style="font-weight: 400; color: var(--color-text-muted);">(used in calendar invite)</span></label>
-                    <input class="form-input" type="text" value=${ri.address || ''} onInput=${e => { updateRi({ address: e.target.value }); setEDirty(true); }} placeholder="123 Main St, Roswell, GA 30076" />
-                  </div>
-                  <div class="form-group" style="margin-bottom: 0;">
-                    <label class="form-label" style="font-size: 0.78rem;">Parking <span style="font-weight: 400; color: var(--color-text-muted);">(shown in the email · optional)</span></label>
-                    <input class="form-input" type="text" value=${ri.parking || ''} onInput=${e => { updateRi({ parking: e.target.value }); setEDirty(true); }} placeholder="Park along the street — we'll have signs" />
+                  <div style="display: flex; flex-direction: column; gap: 0.4rem;">
+                    ${detailOrder.map((k, idx) => detailRow(k, idx))}
                   </div>
                 </div>
               `;
@@ -3832,7 +3936,7 @@
                 </div>
                 <p style="margin: 0 0 0.75rem; font-size: 0.8rem; color: var(--color-text-secondary); line-height: 1.5;">
                   <strong>${pushResult.name}</strong><br/>
-                  Subject: ${pushResult.subject}
+                  Subject: ${pushResult.subject}${pushResult.audienceName ? html`<br/>Audience: ${pushResult.audienceName}` : null}
                 </p>
                 <a href="https://resend.com/broadcasts" target="_blank" rel="noopener noreferrer"
                   class="btn btn-secondary" style="width: 100%; font-size: 0.85rem; padding: 0.6rem; justify-content: center;">
@@ -12437,7 +12541,7 @@
             </div>
           </div>
         </div>
-        <${NewsletterSettings} listId=${data.newsletter?.audienceId || ''} onSelect=${(id) => updateField('newsletter.audienceId', id)} />
+        <${NewsletterSettings} listId=${data.newsletter?.audienceId || data.newsletter?.listId || ''} onSelect=${(id) => updateField('newsletter.audienceId', id)} />
 
         <div class="card">
           <h3 style="margin-bottom: 1rem;">Social Links</h3>

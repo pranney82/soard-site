@@ -88,7 +88,7 @@ export const SETTINGS_DEFAULTS = {
 
   /* ── Newsletter ── */
   newsletter: {
-    listId: '',
+    audienceId: '',
   },
 
   /* ── Sunny & Ranney ── */
