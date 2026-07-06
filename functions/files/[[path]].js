@@ -10,7 +10,7 @@
 const CACHE_CONTROL = 'public, max-age=31536000, immutable';
 
 // Only allow these R2 prefixes to be served publicly
-const ALLOWED_PREFIXES = ['financials/'];
+const ALLOWED_PREFIXES = ['financials/', 'advisory-board/'];
 
 export async function onRequestGet(context) {
   const { FILES } = context.env;
