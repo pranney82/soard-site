@@ -361,103 +361,6 @@ const eventJsonLd = {
     </div>
   </section>
 
-  <!-- ═══ SPONSORS — tiered ═══ -->
-  {sponsorTiers.length > 0 && (
-    <section class="gv-sponsors" aria-labelledby="gv-sponsors-heading">
-      <div class="container gv-sponsors__inner">
-        <span class="gv-sponsors__label" data-reveal>In Partnership With</span>
-        <h2 id="gv-sponsors-heading" class="gv-sponsors__heading" data-reveal>Made Possible By</h2>
-
-        {/* ── Major tiers (Presenting / Diamond / Platinum / Gold …) ── */}
-        {majorTiers.map((group) => {
-          const size = group.size ?? 'md';
-          return (
-            <div class={`gv-sp-tier gv-sp-tier--${size}`} data-reveal>
-              {/* Top tier gets the dark premium banner */}
-              {size === 'xl' ? (
-                <div class="gv-sp-title-wrap">
-                  <span class="gv-sp-title-wrap__label">{group.tier}</span>
-                  <div class="gv-sp-title-wrap__inner">
-                    {group.names.map(s => (
-                      <Fragment>
-                        {s.logo ? (
-                          <div class="gv-sp-title-wrap__card">
-                            <img src={cfRaw(s.logo, 'w=440,h=220,fit=contain,q=90')} alt={s.name} width="440" height="220" loading="lazy" decoding="async" class="gv-sp-title-wrap__logo" style={s.scale ? `--logo-scale:${s.scale}` : undefined} />
-                          </div>
-                        ) : (
-                          <span class="gv-sp-title-wrap__name">{s.name}</span>
-                        )}
-                      </Fragment>
-                    ))}
-                  </div>
-                </div>
-              ) : (
-                <Fragment>
-                  <div class="gv-sp-tier__header">
-                    <span class="gv-sp-tier__line" aria-hidden="true"></span>
-                    <h3 class="gv-sp-tier__label">{group.tier}</h3>
-                    <span class="gv-sp-tier__line" aria-hidden="true"></span>
-                  </div>
-                  <div class={`gv-sp-tier__grid gv-sp-tier__grid--${size}`}>
-                    {group.names.map(s => (
-                      <div class={`gv-sp-card gv-sp-card--${size}`}>
-                        {s.logo ? (
-                          <img
-                            src={cfRaw(s.logo, `w=${size === 'lg' ? 680 : 480},h=${size === 'lg' ? 340 : 240},fit=contain,q=85`)}
-                            alt={s.name}
-                            width={size === 'lg' ? 680 : 480}
-                            height={size === 'lg' ? 340 : 240}
-                            loading="lazy"
-                            decoding="async"
-                            class="gv-sp-card__logo"
-                            style={s.scale ? `--logo-scale:${s.scale}` : undefined}
-                          />
-                        ) : (
-                          <span class="gv-sp-card__name">{s.name}</span>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </Fragment>
-              )}
-            </div>
-          );
-        })}
-
-        {/* ── Event sponsors (compact grouped layout) ── */}
-        {activityTiers.length > 0 && (
-          <div class="gv-sp-activity" data-reveal>
-            <div class="gv-sp-activity__header">
-              <span class="gv-sp-activity__line" aria-hidden="true"></span>
-              <h3 class="gv-sp-activity__title">Event Sponsors</h3>
-              <span class="gv-sp-activity__line" aria-hidden="true"></span>
-            </div>
-            <div class="gv-sp-activity__list">
-              {activityTiers.map(group => (
-                <div class="gv-sp-activity__row">
-                  <span class="gv-sp-activity__label">{group.tier}</span>
-                  <div class="gv-sp-activity__names">
-                    {group.names.map((s, i) => (
-                      <Fragment>
-                        <span class="gv-sp-activity__name">{s.name}</span>
-                        {i < group.names.length - 1 && <span class="gv-sp-activity__sep" aria-hidden="true">&middot;</span>}
-                      </Fragment>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        <p class="gv-sponsors__footnote" data-reveal>
-          Interested in sponsoring?
-          <a href="mailto:info@soardcharity.com?subject=Evening%20of%20Sunshine%20Sponsorship"> Reach out to our gala team.</a>
-        </p>
-      </div>
-    </section>
-  )}
-
   <!-- ═══ TICKETS ═══ -->
   <section class="gv-tickets" id="tickets">
     <div class="container gv-tickets__inner">
@@ -618,6 +521,103 @@ const eventJsonLd = {
       </div>
     </div>
   </section>
+
+  <!-- ═══ SPONSORS — tiered ═══ -->
+  {sponsorTiers.length > 0 && (
+    <section class="gv-sponsors" aria-labelledby="gv-sponsors-heading">
+      <div class="container gv-sponsors__inner">
+        <span class="gv-sponsors__label" data-reveal>In Partnership With</span>
+        <h2 id="gv-sponsors-heading" class="gv-sponsors__heading" data-reveal>Made Possible By</h2>
+
+        {/* ── Major tiers (Presenting / Diamond / Platinum / Gold …) ── */}
+        {majorTiers.map((group) => {
+          const size = group.size ?? 'md';
+          return (
+            <div class={`gv-sp-tier gv-sp-tier--${size}`} data-reveal>
+              {/* Top tier gets the dark premium banner */}
+              {size === 'xl' ? (
+                <div class="gv-sp-title-wrap">
+                  <span class="gv-sp-title-wrap__label">{group.tier}</span>
+                  <div class="gv-sp-title-wrap__inner">
+                    {group.names.map(s => (
+                      <Fragment>
+                        {s.logo ? (
+                          <div class="gv-sp-title-wrap__card">
+                            <img src={cfRaw(s.logo, 'w=440,h=220,fit=contain,q=90')} alt={s.name} width="440" height="220" loading="lazy" decoding="async" class="gv-sp-title-wrap__logo" style={s.scale ? `--logo-scale:${s.scale}` : undefined} />
+                          </div>
+                        ) : (
+                          <span class="gv-sp-title-wrap__name">{s.name}</span>
+                        )}
+                      </Fragment>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <Fragment>
+                  <div class="gv-sp-tier__header">
+                    <span class="gv-sp-tier__line" aria-hidden="true"></span>
+                    <h3 class="gv-sp-tier__label">{group.tier}</h3>
+                    <span class="gv-sp-tier__line" aria-hidden="true"></span>
+                  </div>
+                  <div class={`gv-sp-tier__grid gv-sp-tier__grid--${size}`}>
+                    {group.names.map(s => (
+                      <div class={`gv-sp-card gv-sp-card--${size}`}>
+                        {s.logo ? (
+                          <img
+                            src={cfRaw(s.logo, `w=${size === 'lg' ? 680 : 480},h=${size === 'lg' ? 340 : 240},fit=contain,q=85`)}
+                            alt={s.name}
+                            width={size === 'lg' ? 680 : 480}
+                            height={size === 'lg' ? 340 : 240}
+                            loading="lazy"
+                            decoding="async"
+                            class="gv-sp-card__logo"
+                            style={s.scale ? `--logo-scale:${s.scale}` : undefined}
+                          />
+                        ) : (
+                          <span class="gv-sp-card__name">{s.name}</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </Fragment>
+              )}
+            </div>
+          );
+        })}
+
+        {/* ── Event sponsors (compact grouped layout) ── */}
+        {activityTiers.length > 0 && (
+          <div class="gv-sp-activity" data-reveal>
+            <div class="gv-sp-activity__header">
+              <span class="gv-sp-activity__line" aria-hidden="true"></span>
+              <h3 class="gv-sp-activity__title">Event Sponsors</h3>
+              <span class="gv-sp-activity__line" aria-hidden="true"></span>
+            </div>
+            <div class="gv-sp-activity__list">
+              {activityTiers.map(group => (
+                <div class="gv-sp-activity__row">
+                  <span class="gv-sp-activity__label">{group.tier}</span>
+                  <div class="gv-sp-activity__names">
+                    {group.names.map((s, i) => (
+                      <Fragment>
+                        <span class="gv-sp-activity__name">{s.name}</span>
+                        {i < group.names.length - 1 && <span class="gv-sp-activity__sep" aria-hidden="true">&middot;</span>}
+                      </Fragment>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <p class="gv-sponsors__footnote" data-reveal>
+          Interested in sponsoring?
+          <a href="mailto:info@soardcharity.com?subject=Evening%20of%20Sunshine%20Sponsorship"> Reach out to our gala team.</a>
+        </p>
+      </div>
+    </section>
+  )}
 
   <!-- ═══ THE THEME ═══ -->
   <section class="gv-theme">
