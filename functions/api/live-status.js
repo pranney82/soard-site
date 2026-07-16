@@ -50,7 +50,7 @@ const MAX_DURATION_HOURS = 12;
 
 const OFF_STATE = { live: false, upcoming: false, message: '', url: DEFAULT_URL, startsAt: null, endsAt: null, id: null };
 
-const FB_GRAPH = 'https://graph.facebook.com/v23.0';
+const FB_GRAPH = 'https://graph.facebook.com/v25.0';
 const FB_CHECK_INTERVAL_MS = 55 * 1000; // just under the site's 60s poll
 
 async function writeStatus(DB, record, nowIso) {
