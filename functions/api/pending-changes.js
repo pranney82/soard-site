@@ -97,11 +97,14 @@ export async function onRequestGet(context) {
 
     const since = lastDeploy?.at || '1970-01-01 00:00:00';
 
-    // Get audit log entries since the last deploy
+    // Get audit log entries since the last deploy.
+    // live-status is D1-only (the Go Live banner) — it takes effect
+    // immediately and never needs a deploy, so it isn't "pending".
     const changesResult = await DB.prepare(
       `SELECT user_email, action, entity_type, entity_slug, entity_name, created_at
        FROM audit_log
        WHERE action != 'deployed'
+         AND entity_type != 'live-status'
          AND created_at > ?
        ORDER BY created_at DESC
        LIMIT 200`

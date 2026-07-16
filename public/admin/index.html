@@ -4016,6 +4016,218 @@
       return html`<div>${view === 'list' ? renderList() : renderEditor()}</div>`;
     }
 
+    // ─── Go Live (Facebook Live banner) ─────────
+    // Controls the floating "We're live" pill on the public site.
+    // Writes straight to D1 via /api/live-status — no deploy involved,
+    // the site picks it up within its 60-second poll.
+    function GoLive({ addToast }) {
+      const DEFAULT_FB_URL = 'https://www.facebook.com/SunshineOnaRanneyDay';
+      const DEFAULT_MESSAGE = "It's reveal day! Watch the big reveal happening right now.";
+
+      const [status, setStatus] = useState(null);
+      const [loading, setLoading] = useState(true);
+      const [busy, setBusy] = useState(false);
+      const [message, setMessage] = useState(DEFAULT_MESSAGE);
+      const [url, setUrl] = useState(DEFAULT_FB_URL);
+      const [durationHours, setDurationHours] = useState(6);
+      const [scheduleMode, setScheduleMode] = useState('now');
+      const [startsAt, setStartsAt] = useState('');
+
+      const load = async () => {
+        try {
+          const r = await fetch('/api/live-status');
+          setStatus(await r.json());
+        } catch (e) {
+          addToast(`Could not load live status: ${e.message}`, 'error');
+        }
+        setLoading(false);
+      };
+      useEffect(() => { load(); }, []);
+
+      // While a broadcast is up, edit what's actually showing
+      useEffect(() => {
+        if (status && (status.live || status.upcoming)) {
+          setMessage(status.message || DEFAULT_MESSAGE);
+          setUrl(status.url || DEFAULT_FB_URL);
+        }
+      }, [status && status.id]);
+
+      const post = async (body) => {
+        setBusy(true);
+        try {
+          const r = await fetch('/api/live-status', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          });
+          const data = await r.json();
+          if (data.success) { setStatus(data.state); setBusy(false); return true; }
+          addToast(`Failed: ${data.error}`, 'error');
+        } catch (e) {
+          addToast(`Error: ${e.message}`, 'error');
+        }
+        setBusy(false);
+        return false;
+      };
+
+      const handleStart = async () => {
+        const body = { action: 'start', message, url, durationHours: Number(durationHours) };
+        if (scheduleMode === 'later') {
+          if (!startsAt) { addToast('Pick a start time first', 'error'); return; }
+          body.startsAt = new Date(startsAt).toISOString();
+        }
+        if (await post(body)) {
+          addToast(scheduleMode === 'later'
+            ? 'Scheduled! The banner shows now and flips to LIVE at start time.'
+            : "You're live! The banner is up across the whole site.", 'success');
+        }
+      };
+
+      const handleStop = async () => {
+        if (await post({ action: 'stop' })) addToast('Broadcast ended — banner removed from the site.', 'success');
+      };
+
+      const handleUpdate = async () => {
+        if (await post({ action: 'update', message, url })) addToast('Banner updated — on the site within a minute.', 'success');
+      };
+
+      const fmtTime = (iso) => iso ? new Date(iso).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
+
+      if (loading) return html`<div style="text-align:center;padding:3rem"><span class="spinner" /></div>`;
+
+      const isActive = status && (status.live || status.upcoming);
+
+      return html`
+        <div class="page-header">
+          <div>
+            <h2 style="margin:0">Go Live</h2>
+            <p style="margin:4px 0 0;color:var(--muted);font-size:14px">
+              Puts a "We're live on Facebook" banner in the corner of every page on the site.
+              Takes effect within a minute — no deploy needed.
+            </p>
+          </div>
+        </div>
+
+        <div class="card" style="margin-bottom:1.5rem">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap">
+            <div style="display:flex;align-items:center;gap:0.75rem">
+              <span style="width:12px;height:12px;border-radius:50%;flex-shrink:0;background:${status?.live ? '#E53E3E' : status?.upcoming ? '#D69E2E' : '#A0AEC0'};${status?.live ? 'box-shadow:0 0 0 4px rgba(229,62,62,0.2);' : ''}"></span>
+              <div>
+                <strong style="font-size:1.05rem">
+                  ${status?.live ? 'LIVE NOW' : status?.upcoming ? 'Scheduled' : 'Off'}
+                </strong>
+                <div style="color:var(--muted);font-size:13px">
+                  ${status?.live ? `Banner is showing · auto-ends ${fmtTime(status.endsAt)}`
+                    : status?.upcoming ? `Goes live ${fmtTime(status.startsAt)} · banner already shows "starting soon"`
+                    : 'No banner on the site'}
+                </div>
+                ${isActive ? html`<div style="color:var(--muted);font-size:13px;margin-top:2px">"${status.message}"</div>` : null}
+              </div>
+            </div>
+            ${isActive ? html`
+              <button class="btn btn-danger" onClick=${handleStop} disabled=${busy}>
+                ${busy ? html`<span class="spinner" />` : null}
+                ${status?.live ? 'End Broadcast' : 'Cancel'}
+              </button>
+            ` : null}
+          </div>
+        </div>
+
+        ${isActive ? html`
+          <div class="card" style="margin-bottom:1.5rem">
+            <h3 style="margin:0 0 0.35rem">Update the banner</h3>
+            <p style="margin:0 0 1rem;color:var(--muted);font-size:13px">
+              ${status?.auto
+                ? html`<strong style="color:var(--color-text)">Auto-detect is on</strong> — once the stream starts, the link upgrades
+                    to the live video automatically within a minute. Paste a link below only to override it.`
+                : html`Once the stream starts, open the live video on Facebook, tap <strong>Share → Copy link</strong>,
+                    and paste it below — "Watch" then takes people straight into the video instead of the page.`}
+            </p>
+            <div class="form-group">
+              <label class="form-label">Banner message</label>
+              <input class="form-input" type="text" maxlength="140" value=${message}
+                onInput=${e => setMessage(e.target.value)} />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Link (Facebook live video or page)</label>
+              <input class="form-input" type="url" value=${url}
+                onInput=${e => setUrl(e.target.value)} />
+            </div>
+            <button class="btn btn-primary" onClick=${handleUpdate} disabled=${busy}>
+              ${busy ? html`<span class="spinner" />` : null}
+              ${busy ? 'Saving...' : 'Update Banner'}
+            </button>
+          </div>
+        ` : null}
+
+        ${!isActive ? html`
+          <div class="card">
+            <h3 style="margin:0 0 1rem">Start a broadcast banner</h3>
+
+            <div class="form-group">
+              <label class="form-label">Banner message (what visitors see)</label>
+              <input class="form-input" type="text" maxlength="140" value=${message}
+                onInput=${e => setMessage(e.target.value)}
+                placeholder=${DEFAULT_MESSAGE} />
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Link (where "Watch" goes)</label>
+              <input class="form-input" type="url" value=${url}
+                onInput=${e => setUrl(e.target.value)} />
+              <span style="font-size:12px;color:var(--muted)">The Facebook page works — viewers see the live video pinned at the top while you're broadcasting.</span>
+            </div>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;max-width:520px">
+              <div class="form-group">
+                <label class="form-label">When</label>
+                <select class="form-select" value=${scheduleMode} onChange=${e => setScheduleMode(e.target.value)}>
+                  <option value="now">Go live right now</option>
+                  <option value="later">Schedule for later</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Auto-end after</label>
+                <select class="form-select" value=${durationHours} onChange=${e => setDurationHours(e.target.value)}>
+                  <option value="2">2 hours</option>
+                  <option value="4">4 hours</option>
+                  <option value="6">6 hours</option>
+                  <option value="8">8 hours</option>
+                </select>
+              </div>
+            </div>
+
+            ${scheduleMode === 'later' ? html`
+              <div class="form-group" style="max-width:250px">
+                <label class="form-label">Start time</label>
+                <input class="form-input" type="datetime-local" value=${startsAt}
+                  onInput=${e => setStartsAt(e.target.value)} />
+                <span style="font-size:12px;color:var(--muted)">Until then the banner reads "Reveal day — we go live at ..."</span>
+              </div>
+            ` : null}
+
+            <button class="btn btn-primary" onClick=${handleStart} disabled=${busy} style="margin-top:0.5rem">
+              ${busy ? html`<span class="spinner" />` : null}
+              ${busy ? 'Saving...' : scheduleMode === 'later' ? 'Schedule Banner' : 'Go Live Now'}
+            </button>
+          </div>
+        ` : null}
+
+        <div class="card" style="margin-top:1.5rem;background:var(--bg-alt)">
+          <h3 style="margin:0 0 0.5rem;font-size:0.95rem">How it works</h3>
+          <ul style="margin:0;padding-left:1.2rem;color:var(--muted);font-size:13px;line-height:1.7">
+            <li>The banner auto-expires (default 6 hours), so a forgotten toggle never leaves a stale LIVE badge up.</li>
+            <li>The Facebook page link works out of the box — the live video shows pinned at the top while you broadcast. For a direct jump into the video, copy the live post's link (Share → Copy link) once you're streaming and paste it via "Update the banner". If you schedule the broadcast in Facebook Live Producer, you get that link in advance.</li>
+            <li>Automatic video link: ${status?.auto
+              ? html`<strong>on</strong> — while the banner is live, the site checks Facebook once a minute and swaps the link to the running broadcast by itself.`
+              : html`<strong>off</strong> — to enable, set <code>FB_PAGE_ID</code> and <code>FB_PAGE_TOKEN</code> (a page access token) in Cloudflare Pages → Settings → Environment Variables.`}</li>
+            <li>Visitors can dismiss it; it stays dismissed for their browsing session.</li>
+            <li>Site pages check for changes every 60 seconds — going live, updating, and ending all propagate within about a minute.</li>
+          </ul>
+        </div>
+      `;
+    }
+
     function AuditLogPage({ addToast }) {
       const [entries, setEntries] = useState([]);
       const [total, setTotal] = useState(0);
@@ -13941,6 +14153,7 @@
           { type: 'page', label: 'Financials', id: 'site-hub', subTab: 'financials', section: 'Pages' },
           { type: 'page', label: 'Site Settings', id: 'site-hub', subTab: 'settings', section: 'Pages' },
           { type: 'page', label: 'Deploys', id: 'deploys', section: 'Pages' },
+          { type: 'page', label: 'Go Live (Facebook)', id: 'go-live', section: 'Pages' },
         ];
         const actions = [
           { type: 'action', label: 'Add New Kid', id: 'kids-hub', slug: '', section: 'Actions' },
@@ -14437,6 +14650,7 @@
         mediakit: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" /><path d="M14 2v4a2 2 0 0 0 2 2h4" /><path d="M10 9H8" /><path d="M16 13H8" /><path d="M16 17H8" /></svg>`,
         press: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2" /><path d="M18 14h-8" /><path d="M15 18h-5" /><path d="M10 6h8v4h-8V6Z" /></svg>`,
         mail: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="20" height="16" x="2" y="4" rx="2" /><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" /></svg>`,
+        goLive: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4.9 19.1C1 15.2 1 8.8 4.9 4.9" /><path d="M7.8 16.2c-2.3-2.3-2.3-6.1 0-8.5" /><circle cx="12" cy="12" r="2" /><path d="M16.2 7.8c2.3 2.3 2.3 6.1 0 8.5" /><path d="M19.1 4.9C23 8.8 23 15.1 19.1 19" /></svg>`,
         auditLog: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>`,
         pressMonitor: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M2 12a10 10 0 1 0 10-10" /><path d="M2 16.1A5 5 0 0 1 5.9 20" /><path d="M2 12.05A10 10 0 0 1 9.95 20" /><path d="M2 8.05A15 15 0 0 1 13.95 20" /><circle cx="2" cy="20" r="2" /></svg>`,
         menu: html`<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/></svg>`,
@@ -14457,6 +14671,7 @@
         ]},
         { label: 'Comms', items: [
           { id: 'email', icon: icons.mail, label: 'Email' },
+          { id: 'go-live', icon: icons.goLive, label: 'Go Live' },
         ]},
         { label: 'Site', items: [
           { id: 'site-hub', icon: icons.settings, label: 'Site Config' },
@@ -14628,6 +14843,9 @@
 
           case 'email':
             return html`<${EmailComposer} kids=${kids} events=${events} addToast=${addToast} />`;
+
+          case 'go-live':
+            return html`<${GoLive} addToast=${addToast} />`;
 
           case 'deploys':
             return html`<${Deploys} addToast=${addToast} />`;

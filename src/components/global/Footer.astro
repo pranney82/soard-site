@@ -57,7 +57,7 @@ const mapsUrl = `https://maps.google.com/?q=${encodeURIComponent(`${address.stre
         </div>
         <!-- Honeypot — hidden field that bots fill out, humans don't see -->
         <div aria-hidden="true" style="position:absolute;left:-9999px;top:-9999px;"><input type="text" name="website" tabindex="-1" autocomplete="off" /></div>
-        <p class="newsletter-note" id="newsletter-note">No spam, ever. Unsubscribe anytime.</p>
+        <p class="newsletter-note" id="newsletter-note" role="status" aria-live="polite">No spam, ever. Unsubscribe anytime.</p>
       </form>
     </div>
   </div>
@@ -241,6 +241,7 @@ const mapsUrl = `https://maps.google.com/?q=${encodeURIComponent(`${address.stre
         const messages = {
           invalid_email: 'Please enter a valid email address.',
           not_configured: 'Newsletter signup is temporarily unavailable. Please try again later.',
+          rate_limited: 'Too many attempts — please wait a minute and try again.',
           server: 'Something went wrong. Please try again.',
         };
         note.textContent = messages[err] || messages.server;
@@ -275,17 +276,20 @@ const mapsUrl = `https://maps.google.com/?q=${encodeURIComponent(`${address.stre
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email, hp }),
           });
-          const data = await res.json();
+          // Body may not be JSON (e.g. Cloudflare error pages) — don't throw on parse
+          const data = await res.json().catch(() => null);
 
           btn.classList.remove('is-sending');
 
-          if (data.ok) {
+          if (data && data.ok) {
             btn.classList.add('is-done');
             input.value = '';
             note.textContent = "You're in! Welcome to the Sunshine family.";
             note.classList.add('newsletter-note--success');
           } else {
-            note.textContent = data.error || 'Something went wrong. Please try again.';
+            note.textContent = res.status === 429
+              ? 'Too many attempts — please wait a minute and try again.'
+              : (data && data.error) || 'Something went wrong. Please try again.';
             note.classList.add('newsletter-note--error');
             btn.disabled = false;
             input.disabled = false;

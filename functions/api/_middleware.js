@@ -48,6 +48,9 @@ function authedCors(request) {
 // Public API routes that don't require authentication
 const PUBLIC_ROUTES = ['/api/newsletter', '/api/kids.json', '/api/download-logo', '/api/download-branding-photos', '/api/calendar.ics'];
 
+// Routes public for reads only — GET/HEAD skip auth, mutations still require Access
+const PUBLIC_GET_ROUTES = ['/api/live-status'];
+
 // ─── Rate Limiting (in-memory, per-isolate) ─────────────────────────
 // Limits POST /api/newsletter to 5 requests per IP per 60 seconds.
 // Resets when the Workers isolate recycles — good enough for spam prevention.
@@ -80,7 +83,9 @@ function isRateLimited(ip) {
 
 export async function onRequest(context) {
   const url = new URL(context.request.url);
-  const isPublic = PUBLIC_ROUTES.some(route => url.pathname === route);
+  const isPublic = PUBLIC_ROUTES.some(route => url.pathname === route)
+    || (PUBLIC_GET_ROUTES.some(route => url.pathname === route)
+        && (context.request.method === 'GET' || context.request.method === 'HEAD'));
 
   // Preflight: return CORS headers immediately — downstream handlers don't implement OPTIONS
   if (context.request.method === 'OPTIONS') {
@@ -92,8 +97,20 @@ export async function onRequest(context) {
   if (RATE_LIMITED_ROUTES.has(url.pathname) && context.request.method === 'POST') {
     const ip = context.request.headers.get('CF-Connecting-IP') || 'unknown';
     if (isRateLimited(ip)) {
+      // No-JS form posts get a redirect back with an error param, not raw JSON
+      const contentType = context.request.headers.get('Content-Type') || '';
+      if (!contentType.includes('application/json')) {
+        const back = new URL('/', url.origin);
+        try {
+          const ref = new URL(context.request.headers.get('Referer') || '');
+          if (ref.origin === url.origin) back.pathname = ref.pathname;
+        } catch { /* invalid Referer, redirect to home */ }
+        back.searchParams.set('newsletter_error', 'rate_limited');
+        back.hash = 'newsletter-form';
+        return Response.redirect(back.toString(), 302);
+      }
       return Response.json(
-        { ok: false, error: 'Too many requests. Please try again later.' },
+        { ok: false, error: 'Too many attempts — please wait a minute and try again.' },
         { status: 429, headers: { ...publicCors, 'Retry-After': '60' } }
       );
     }

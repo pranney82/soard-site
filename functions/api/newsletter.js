@@ -66,6 +66,7 @@ export async function onRequestPost(context) {
       return jsonOk({ ok: true });
     }
 
+    email = String(email || '').trim().toLowerCase();
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       if (isFormPost) return redirect(origin, redirectPath, { newsletter_error: 'invalid_email' });
       return jsonOk({ ok: false, error: 'Please enter a valid email address.' }, 400);
@@ -114,16 +115,35 @@ export async function onRequestPost(context) {
       return jsonOk({ ok: true });
     }
 
-    // Resend returns 409 if contact already exists — still a success for the user
+    // Resend returns 409 if contact already exists. Re-subscribe them in case
+    // they previously unsubscribed — best-effort, still a success for the user.
     if (res.status === 409) {
+      try {
+        await fetch(`https://api.resend.com/audiences/${audienceId}/contacts/${encodeURIComponent(email)}`, {
+          method: 'PATCH',
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ unsubscribed: false }),
+        });
+      } catch (e) {
+        console.error('Resend re-subscribe PATCH failed:', e);
+      }
       if (isFormPost) return redirect(origin, redirectPath, { subscribed: '1' });
       return jsonOk({ ok: true });
     }
 
     const errBody = await res.text();
-    console.error(`Resend API error ${res.status}: ${errBody}`);
+    if (res.status === 404) {
+      console.error(`Resend audience ${audienceId} not found — it was likely deleted/recreated. Re-select the newsletter audience in the admin panel.`);
+    } else {
+      console.error(`Resend API error ${res.status}: ${errBody}`);
+    }
+    // 503, not 502: Cloudflare replaces 502/504 bodies with its own error page,
+    // which would hide this JSON from the client.
     if (isFormPost) return redirect(origin, redirectPath, { newsletter_error: 'server' });
-    return jsonOk({ ok: false, error: 'Something went wrong. Please try again.' }, 502);
+    return jsonOk({ ok: false, error: 'Something went wrong. Please try again.' }, 503);
   } catch (err) {
     console.error('Newsletter handler error:', err);
     if (isFormPost) return redirect(origin, redirectPath, { newsletter_error: 'server' });
