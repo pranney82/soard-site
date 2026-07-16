@@ -4032,6 +4032,8 @@
       const [durationHours, setDurationHours] = useState(6);
       const [scheduleMode, setScheduleMode] = useState('now');
       const [startsAt, setStartsAt] = useState('');
+      const [fbTesting, setFbTesting] = useState(false);
+      const [fbResult, setFbResult] = useState(null);
 
       const load = async () => {
         try {
@@ -4089,6 +4091,18 @@
 
       const handleUpdate = async () => {
         if (await post({ action: 'update', message, url })) addToast('Banner updated — on the site within a minute.', 'success');
+      };
+
+      const handleTestFb = async () => {
+        setFbTesting(true);
+        setFbResult(null);
+        try {
+          const r = await fetch('/api/fb-live-videos');
+          setFbResult(await r.json());
+        } catch (e) {
+          setFbResult({ success: false, error: e.message });
+        }
+        setFbTesting(false);
       };
 
       const fmtTime = (iso) => iso ? new Date(iso).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
@@ -4212,6 +4226,45 @@
             </button>
           </div>
         ` : null}
+
+        <div class="card" style="margin-top:1.5rem">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap">
+            <div>
+              <h3 style="margin:0 0 0.25rem;font-size:0.95rem">Facebook connection</h3>
+              <p style="margin:0;color:var(--muted);font-size:13px">
+                ${status?.auto
+                  ? 'Auto video-link detection is configured. Fetch the page’s recent live videos to prove the whole chain works.'
+                  : 'Not configured — set FB_PAGE_ID and FB_PAGE_TOKEN in Cloudflare Pages env vars.'}
+              </p>
+            </div>
+            ${status?.auto ? html`
+              <button class="btn btn-secondary" onClick=${handleTestFb} disabled=${fbTesting}>
+                ${fbTesting ? html`<span class="spinner" />` : null}
+                ${fbTesting ? 'Checking...' : 'Test connection'}
+              </button>
+            ` : null}
+          </div>
+          ${fbResult ? (
+            !fbResult.success
+              ? html`<div style="margin-top:1rem;font-size:13px;color:#C53030">Connection failed: ${fbResult.error}</div>`
+              : fbResult.videos.length === 0
+                ? html`<div style="margin-top:1rem;font-size:13px;color:var(--muted)">Connected ✓ — the token works, but no live videos were found on the page yet. After your first broadcast they’ll show here.</div>`
+                : html`
+                  <div style="margin-top:1rem;display:flex;flex-direction:column;gap:0.5rem">
+                    <div style="font-size:13px;color:var(--muted)">Connected ✓ — most recent live videos:</div>
+                    ${fbResult.videos.map(v => html`
+                      <div style="display:flex;align-items:center;gap:0.75rem;font-size:13px;padding:0.5rem 0.75rem;background:var(--bg-alt);border-radius:8px">
+                        <span class="badge ${v.status === 'LIVE' ? 'badge-yellow' : ''}">${v.status}</span>
+                        <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+                          ${v.title || 'Untitled broadcast'}
+                          ${v.createdAt ? html`<span style="color:var(--muted)"> · ${new Date(v.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</span>` : null}
+                        </span>
+                        ${v.url ? html`<a href=${v.url} target="_blank" rel="noopener" style="color:var(--color-primary);white-space:nowrap">Open ↗</a>` : null}
+                      </div>
+                    `)}
+                  </div>`
+          ) : null}
+        </div>
 
         <div class="card" style="margin-top:1.5rem;background:var(--bg-alt)">
           <h3 style="margin:0 0 0.5rem;font-size:0.95rem">How it works</h3>
