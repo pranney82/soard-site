@@ -46,7 +46,7 @@ function authedCors(request) {
 }
 
 // Public API routes that don't require authentication
-const PUBLIC_ROUTES = ['/api/newsletter', '/api/kids.json', '/api/download-logo', '/api/download-branding-photos', '/api/calendar.ics'];
+const PUBLIC_ROUTES = ['/api/newsletter', '/api/kids.json', '/api/download-logo', '/api/download-branding-photos', '/api/calendar.ics', '/api/live-click'];
 
 // Routes public for reads only — GET/HEAD skip auth, mutations still require Access
 const PUBLIC_GET_ROUTES = ['/api/live-status'];
@@ -56,7 +56,7 @@ const PUBLIC_GET_ROUTES = ['/api/live-status'];
 // Resets when the Workers isolate recycles — good enough for spam prevention.
 const RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const RATE_LIMIT_MAX = 5;
-const RATE_LIMITED_ROUTES = new Set(['/api/newsletter']);
+const RATE_LIMITED_ROUTES = new Set(['/api/newsletter', '/api/live-click']);
 const _rateLimitMap = new Map(); // ip → { count, resetAt }
 let _lastPrune = 0;
 const PRUNE_INTERVAL_MS = 5 * 60 * 1000; // prune stale entries every 5 min

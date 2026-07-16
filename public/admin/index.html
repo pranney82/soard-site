@@ -4111,7 +4111,7 @@
         <div class="card" style="margin-bottom:1.5rem">
           <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap">
             <div style="display:flex;align-items:center;gap:0.75rem">
-              <span style="width:12px;height:12px;border-radius:50%;flex-shrink:0;background:${status?.live ? '#E53E3E' : status?.upcoming ? '#D69E2E' : '#A0AEC0'};${status?.live ? 'box-shadow:0 0 0 4px rgba(229,62,62,0.2);' : ''}"></span>
+              <span style="width:12px;height:12px;border-radius:50%;flex-shrink:0;background:${status?.live ? '#FFD500' : status?.upcoming ? '#D69E2E' : '#A0AEC0'};${status?.live ? 'box-shadow:0 0 0 4px rgba(255,213,0,0.25);' : ''}"></span>
               <div>
                 <strong style="font-size:1.05rem">
                   ${status?.live ? 'LIVE NOW' : status?.upcoming ? 'Scheduled' : 'Off'}
@@ -4121,7 +4121,7 @@
                     : status?.upcoming ? `Goes live ${fmtTime(status.startsAt)} · banner already shows "starting soon"`
                     : 'No banner on the site'}
                 </div>
-                ${isActive ? html`<div style="color:var(--muted);font-size:13px;margin-top:2px">"${status.message}"</div>` : null}
+                ${isActive ? html`<div style="color:var(--muted);font-size:13px;margin-top:2px">"${status.message}" · ${status.clicks ?? 0} banner ${(status.clicks ?? 0) === 1 ? 'click' : 'clicks'} to Facebook</div>` : null}
               </div>
             </div>
             ${isActive ? html`
