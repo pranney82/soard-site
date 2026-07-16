@@ -65,6 +65,22 @@ function isPlainPageUrl(url) {
 }
 
 /**
+ * Banner photo: a Cloudflare Images id ("kids/adrian/hero") or a full
+ * imagedelivery.net URL. Returns null for absent/empty (no photo),
+ * undefined for anything invalid (caller responds 400).
+ */
+function sanitizeImage(val) {
+  if (val === undefined || val === null) return null;
+  if (typeof val !== 'string') return undefined;
+  const img = val.trim();
+  if (!img) return null;
+  if (img.length > 300) return undefined;
+  if (/^https:\/\/imagedelivery\.net\/[\w\-./%]+$/.test(img)) return img;
+  if (/^[\w][\w\-./%]*$/.test(img)) return img;
+  return undefined;
+}
+
+/**
  * If a broadcast is live and the banner still links to the plain page,
  * ask the Graph API for the running video's permalink and store it.
  * Throttled via fbCheckedAt in the record; never throws.
@@ -133,6 +149,7 @@ function computeState(stored, now) {
     endsAt: stored.endsAt,
     id: stored.id || stored.updatedAt || null,
     clicks: stored.clicks || 0,
+    image: stored.image || null,
   };
 }
 
@@ -193,10 +210,16 @@ export async function onRequestPost(context) {
       const base = startsAt || now;
       const endsAt = new Date(base.getTime() + hours * 3600 * 1000);
 
+      const image = sanitizeImage(body.image);
+      if (image === undefined) {
+        return Response.json({ success: false, error: 'image must be a Cloudflare image id or imagedelivery.net URL' }, { status: 400 });
+      }
+
       record = {
         enabled: true,
         message: typeof body.message === 'string' && body.message.trim() ? body.message.trim().slice(0, 140) : DEFAULT_MESSAGE,
         url,
+        image,
         startsAt: startsAt ? startsAt.toISOString() : null,
         endsAt: endsAt.toISOString(),
         id: `live-${now.getTime()}`,
@@ -222,11 +245,21 @@ export async function onRequestPost(context) {
         }
       }
 
+      // image key present → set/clear it; absent → keep what's there
+      let image = existing.image || null;
+      if ('image' in body) {
+        image = sanitizeImage(body.image);
+        if (image === undefined) {
+          return Response.json({ success: false, error: 'image must be a Cloudflare image id or imagedelivery.net URL' }, { status: 400 });
+        }
+      }
+
       // Same broadcast window and id — only the banner content changes
       record = {
         ...existing,
         message: typeof body.message === 'string' && body.message.trim() ? body.message.trim().slice(0, 140) : existing.message,
         url,
+        image,
         updatedAt: now.toISOString(),
         updatedBy: userEmail,
       };

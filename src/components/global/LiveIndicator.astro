@@ -20,6 +20,7 @@
 
 <div id="live-indicator" class="live-pill" hidden transition:persist="live-indicator" role="status">
   <a class="live-pill__link" href="https://www.facebook.com/SunshineOnaRanneyDay" target="_blank" rel="noopener">
+    <img class="live-pill__photo" alt="" width="44" height="44" loading="lazy" hidden />
     <span class="live-pill__dot" aria-hidden="true"></span>
     <span class="live-pill__text">
       <strong class="live-pill__label">Live on Facebook</strong>
@@ -71,6 +72,18 @@
     outline: 2px solid var(--c-yellow);
     outline-offset: -2px;
   }
+
+  /* Kid photo — circular, yellow-ringed; only shown when the admin picked one */
+  .live-pill__photo {
+    flex-shrink: 0;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid var(--c-yellow);
+    background: var(--c-dark);
+  }
+  .live-pill__photo[hidden] { display: none; }
 
   /* Dot — brand yellow; pulses when live, steady when upcoming */
   .live-pill__dot {
@@ -171,6 +184,8 @@
 </style>
 
 <script>
+  import { cfRaw } from '../../utils/cf-image';
+
   const POLL_MS = 60_000;
   const NEAR_START_POLL_MS = 20_000; // faster cadence just before a scheduled start
   const NEAR_START_WINDOW_MS = 3 * 60_000;
@@ -183,6 +198,7 @@
     url: string;
     startsAt: string | null;
     id: string | null;
+    image: string | null;
   } | null = null;
 
   let pollTimer: ReturnType<typeof setTimeout> | undefined;
@@ -227,6 +243,14 @@
     const live = isLiveNow();
     el.dataset.state = live ? 'live' : 'upcoming';
     link.href = status.url;
+
+    const photo = el.querySelector('.live-pill__photo') as HTMLImageElement;
+    if (status.image) {
+      photo.src = cfRaw(status.image, 'w=96,h=96,fit=cover,q=85');
+      photo.hidden = false;
+    } else {
+      photo.hidden = true;
+    }
 
     if (live) {
       label.textContent = 'Live on Facebook';

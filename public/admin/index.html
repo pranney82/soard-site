@@ -4020,7 +4020,7 @@
     // Controls the floating "We're live" pill on the public site.
     // Writes straight to D1 via /api/live-status — no deploy involved,
     // the site picks it up within its 60-second poll.
-    function GoLive({ addToast }) {
+    function GoLive({ addToast, kids = [] }) {
       const DEFAULT_FB_URL = 'https://www.facebook.com/SunshineOnaRanneyDay';
       const DEFAULT_MESSAGE = "It's reveal day! Watch the big reveal happening right now.";
 
@@ -4034,6 +4034,8 @@
       const [startsAt, setStartsAt] = useState('');
       const [fbTesting, setFbTesting] = useState(false);
       const [fbResult, setFbResult] = useState(null);
+      const [kidSlug, setKidSlug] = useState('');
+      const [kidImage, setKidImage] = useState(null);
 
       const load = async () => {
         try {
@@ -4051,8 +4053,46 @@
         if (status && (status.live || status.upcoming)) {
           setMessage(status.message || DEFAULT_MESSAGE);
           setUrl(status.url || DEFAULT_FB_URL);
+          setKidImage(status.image || null);
         }
       }, [status && status.id]);
+
+      const SUGGESTED_MSG = /^Watch .+'s room reveal — live right now!$/;
+      const handleKidSelect = async (slug) => {
+        setKidSlug(slug);
+        if (!slug) { setKidImage(null); return; }
+        try {
+          const r = await api.readContent(`src/content/kids/${slug}.json`);
+          if (!r.success) { addToast(`Could not load kid: ${r.error}`, 'error'); return; }
+          const d = typeof r.content === 'string' ? JSON.parse(r.content) : r.content;
+          const img = d.heroImage || d.photos?.[0]?.cfImageId || d.photos?.[0]?.url || null;
+          setKidImage(img);
+          if (!img) { addToast(`${d.name} has no photos yet — banner will show without one`, 'error'); return; }
+          // Personalize the message unless the admin already wrote their own
+          if (message === DEFAULT_MESSAGE || SUGGESTED_MSG.test(message)) {
+            setMessage(`Watch ${d.name}'s room reveal — live right now!`);
+          }
+        } catch (e) {
+          addToast(`Could not load kid: ${e.message}`, 'error');
+        }
+      };
+
+      const kidPicker = html`
+        <div class="form-group">
+          <label class="form-label">Kid photo (optional)</label>
+          <div style="display:flex;align-items:center;gap:0.75rem">
+            ${kidImage ? html`<img src=${cfThumb(extractCfId(kidImage), 'w=80,h=80,fit=cover')} alt=""
+              style="width:40px;height:40px;border-radius:50%;object-fit:cover;flex-shrink:0;border:2px solid #FFD500" />` : null}
+            <select class="form-select" value=${kidSlug} onChange=${e => handleKidSelect(e.target.value)} style="max-width:280px">
+              <option value="">No photo</option>
+              ${[...kids].sort((a, b) => (a.name || '').localeCompare(b.name || '')).map(k => html`
+                <option value=${k.slug}>${k.name}${k.year ? ` (${k.year})` : ''}</option>
+              `)}
+            </select>
+          </div>
+          <span style="font-size:12px;color:var(--muted)">Shows the kid's face on the banner — faces get clicked.</span>
+        </div>
+      `;
 
       const post = async (body) => {
         setBusy(true);
@@ -4073,7 +4113,7 @@
       };
 
       const handleStart = async () => {
-        const body = { action: 'start', message, url, durationHours: Number(durationHours) };
+        const body = { action: 'start', message, url, durationHours: Number(durationHours), image: kidImage || '' };
         if (scheduleMode === 'later') {
           if (!startsAt) { addToast('Pick a start time first', 'error'); return; }
           body.startsAt = new Date(startsAt).toISOString();
@@ -4090,7 +4130,7 @@
       };
 
       const handleUpdate = async () => {
-        if (await post({ action: 'update', message, url })) addToast('Banner updated — on the site within a minute.', 'success');
+        if (await post({ action: 'update', message, url, image: kidImage || '' })) addToast('Banner updated — on the site within a minute.', 'success');
       };
 
       const handleTestFb = async () => {
@@ -4167,6 +4207,7 @@
               <input class="form-input" type="url" value=${url}
                 onInput=${e => setUrl(e.target.value)} />
             </div>
+            ${kidPicker}
             <button class="btn btn-primary" onClick=${handleUpdate} disabled=${busy}>
               ${busy ? html`<span class="spinner" />` : null}
               ${busy ? 'Saving...' : 'Update Banner'}
@@ -4191,6 +4232,8 @@
                 onInput=${e => setUrl(e.target.value)} />
               <span style="font-size:12px;color:var(--muted)">The Facebook page works — viewers see the live video pinned at the top while you're broadcasting.</span>
             </div>
+
+            ${kidPicker}
 
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;max-width:520px">
               <div class="form-group">
@@ -4260,6 +4303,9 @@
                           ${v.createdAt ? html`<span style="color:var(--muted)"> · ${new Date(v.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</span>` : null}
                         </span>
                         ${v.url ? html`<a href=${v.url} target="_blank" rel="noopener" style="color:var(--color-primary);white-space:nowrap">Open ↗</a>` : null}
+                        ${v.url ? html`<button class="btn btn-secondary" style="padding:2px 10px;font-size:12px;white-space:nowrap"
+                          onClick=${() => { setUrl(v.url); addToast('Banner link set to this video — hit Update Banner (or Go Live) to apply.', 'success'); }}>
+                          Use as banner link</button>` : null}
                       </div>
                     `)}
                   </div>`
@@ -14898,7 +14944,7 @@
             return html`<${EmailComposer} kids=${kids} events=${events} addToast=${addToast} />`;
 
           case 'go-live':
-            return html`<${GoLive} addToast=${addToast} />`;
+            return html`<${GoLive} addToast=${addToast} kids=${kids} />`;
 
           case 'deploys':
             return html`<${Deploys} addToast=${addToast} />`;
