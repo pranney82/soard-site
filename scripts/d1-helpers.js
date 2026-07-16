@@ -145,11 +145,16 @@ export function writeCollection(dir, rows, { deleteRemoved = false } = {}) {
   }
 }
 
+// Runtime-only site_config keys — served live from D1 (never read at build
+// time), so writing them to src/content would just churn git on every build.
+const RUNTIME_ONLY_KEYS = new Set(['live-status']);
+
 // ── Write site config to disk ──────────────────────────────────────
 export function writeSiteConfig(siteRows) {
   const siteDir = join(CONTENT, 'site');
   ensureDir(siteDir);
   for (const row of siteRows) {
+    if (RUNTIME_ONLY_KEYS.has(row.key)) continue;
     const filePath = join(siteDir, `${row.key}.json`);
     let data = safeParse(row.data);
     if (row.key === 'settings') data = deepMerge(SETTINGS_DEFAULTS, data);

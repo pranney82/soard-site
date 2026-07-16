@@ -1,0 +1,271 @@
+---
+/**
+ * LiveIndicator.astro
+ * Floating bottom-corner pill that appears when a Facebook Live reveal is
+ * happening (or scheduled for later today). Driven at runtime by
+ * GET /api/live-status — the admin toggles it from /admin → Go Live,
+ * no build or deploy involved.
+ *
+ * States:
+ *   live     — pulsing red dot, links to the Facebook page
+ *   upcoming — steady yellow dot, shows the scheduled start time
+ *
+ * Behavior:
+ *   - Polls every 60s; also re-checks when the tab regains focus
+ *   - Dismissable; stays dismissed for the session (per broadcast id)
+ *   - transition:persist keeps it mounted across view transitions
+ *   - Respects prefers-reduced-motion (no pulse, no slide-in)
+ */
+---
+
+<div id="live-indicator" class="live-pill" hidden transition:persist="live-indicator" role="status">
+  <a class="live-pill__link" href="https://www.facebook.com/SunshineOnaRanneyDay" target="_blank" rel="noopener">
+    <span class="live-pill__dot" aria-hidden="true"></span>
+    <span class="live-pill__text">
+      <strong class="live-pill__label">Live on Facebook</strong>
+      <span class="live-pill__msg"></span>
+    </span>
+    <span class="live-pill__cta" aria-hidden="true">Watch&nbsp;→</span>
+  </a>
+  <button class="live-pill__dismiss" type="button" aria-label="Dismiss live notification">
+    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+  </button>
+</div>
+
+<style>
+  .live-pill {
+    position: fixed;
+    left: calc(1rem + env(safe-area-inset-left, 0px));
+    bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+    z-index: 900; /* under the sticky header (1000) and its mobile menu */
+    display: flex;
+    align-items: stretch;
+    max-width: min(24rem, calc(100vw - 2rem));
+    background: var(--c-dark-deep);
+    color: var(--c-cream);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: var(--border-radius-lg);
+    box-shadow: var(--shadow-xl);
+    opacity: 0;
+    transform: translateY(0.75rem);
+    transition: opacity 350ms ease, transform 350ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .live-pill.is-visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  .live-pill[hidden] { display: none; }
+
+  .live-pill__link {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem 0.25rem 0.75rem 1rem;
+    color: inherit;
+    text-decoration: none;
+    font-family: var(--font-body);
+    border-radius: var(--border-radius-lg) 0 0 var(--border-radius-lg);
+    min-width: 0;
+  }
+  .live-pill__link:focus-visible {
+    outline: 2px solid var(--c-yellow);
+    outline-offset: -2px;
+  }
+
+  /* Dot — pulsing red when live, steady yellow when upcoming */
+  .live-pill__dot {
+    position: relative;
+    flex-shrink: 0;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #FF4438;
+  }
+  .live-pill__dot::after {
+    content: '';
+    position: absolute;
+    inset: -4px;
+    border-radius: 50%;
+    border: 2px solid #FF4438;
+    opacity: 0;
+    animation: live-ping 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
+  }
+  @keyframes live-ping {
+    0%   { transform: scale(0.6); opacity: 0.9; }
+    70%  { transform: scale(1.5); opacity: 0; }
+    100% { transform: scale(1.5); opacity: 0; }
+  }
+  .live-pill[data-state='upcoming'] .live-pill__dot {
+    background: var(--c-yellow);
+  }
+  .live-pill[data-state='upcoming'] .live-pill__dot::after {
+    animation: none;
+    opacity: 0;
+  }
+
+  .live-pill__text {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    min-width: 0;
+  }
+  .live-pill__label {
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #FF6B61;
+  }
+  .live-pill[data-state='upcoming'] .live-pill__label {
+    color: var(--c-yellow);
+  }
+  .live-pill__msg {
+    font-size: 0.875rem;
+    line-height: 1.35;
+    color: rgba(254, 252, 245, 0.85);
+  }
+  .live-pill__cta {
+    flex-shrink: 0;
+    align-self: center;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--c-yellow);
+    white-space: nowrap;
+    padding-left: 0.25rem;
+    transition: transform var(--transition-fast);
+  }
+  .live-pill__link:hover .live-pill__cta {
+    transform: translateX(2px);
+  }
+  .live-pill[data-state='upcoming'] .live-pill__cta {
+    display: none;
+  }
+
+  .live-pill__dismiss {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.25rem;
+    margin: 0;
+    padding: 0;
+    background: none;
+    border: none;
+    border-left: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 0 var(--border-radius-lg) var(--border-radius-lg) 0;
+    color: rgba(254, 252, 245, 0.5);
+    cursor: pointer;
+    transition: color var(--transition-fast), background var(--transition-fast);
+  }
+  .live-pill__dismiss:hover {
+    color: var(--c-cream);
+    background: rgba(255, 255, 255, 0.06);
+  }
+  .live-pill__dismiss:focus-visible {
+    outline: 2px solid var(--c-yellow);
+    outline-offset: -2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .live-pill {
+      transition: opacity 350ms ease;
+      transform: none;
+    }
+    .live-pill__dot::after { animation: none; }
+    .live-pill__link:hover .live-pill__cta { transform: none; }
+  }
+</style>
+
+<script>
+  const POLL_MS = 60_000;
+  const DISMISS_KEY = 'soard-live-dismissed';
+
+  let status: {
+    live: boolean;
+    upcoming: boolean;
+    message: string;
+    url: string;
+    startsAt: string | null;
+    id: string | null;
+  } | null = null;
+
+  function formatStart(iso: string): string {
+    const d = new Date(iso);
+    const time = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).format(d);
+    const today = new Date();
+    const isToday = d.toDateString() === today.toDateString();
+    if (isToday) return `today at ${time}`;
+    const day = new Intl.DateTimeFormat(undefined, { weekday: 'long', month: 'short', day: 'numeric' }).format(d);
+    return `${day} at ${time}`;
+  }
+
+  function render() {
+    const el = document.getElementById('live-indicator');
+    if (!el) return;
+
+    const show = status && (status.live || status.upcoming)
+      && sessionStorage.getItem(DISMISS_KEY) !== String(status.id);
+
+    if (!show || !status) {
+      el.classList.remove('is-visible');
+      el.hidden = true;
+      return;
+    }
+
+    const link = el.querySelector('.live-pill__link') as HTMLAnchorElement;
+    const label = el.querySelector('.live-pill__label') as HTMLElement;
+    const msg = el.querySelector('.live-pill__msg') as HTMLElement;
+    const dismiss = el.querySelector('.live-pill__dismiss') as HTMLButtonElement;
+
+    el.dataset.state = status.live ? 'live' : 'upcoming';
+    link.href = status.url;
+
+    if (status.live) {
+      label.textContent = 'Live on Facebook';
+      msg.textContent = status.message;
+      link.setAttribute('aria-label', `${status.message} — watch live on Facebook (opens in new tab)`);
+    } else {
+      label.textContent = 'Reveal day';
+      const when = status.startsAt ? ` We go live ${formatStart(status.startsAt)}.` : '';
+      msg.textContent = `${status.message}${when}`;
+      link.setAttribute('aria-label', `${status.message}${when} Follow along on Facebook (opens in new tab)`);
+    }
+
+    dismiss.onclick = () => {
+      sessionStorage.setItem(DISMISS_KEY, String(status?.id));
+      el.classList.remove('is-visible');
+      // Let the fade-out finish before removing from the tree
+      setTimeout(() => { el.hidden = true; }, 400);
+    };
+
+    if (el.hidden) {
+      el.hidden = false;
+      // Two frames so the transition from the hidden state actually runs
+      requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('is-visible')));
+    } else {
+      el.classList.add('is-visible');
+    }
+  }
+
+  async function check() {
+    try {
+      const res = await fetch('/api/live-status');
+      if (!res.ok) return;
+      status = await res.json();
+      render();
+    } catch {
+      /* offline or blocked — pill just stays as-is */
+    }
+  }
+
+  check();
+  setInterval(check, POLL_MS);
+
+  // Fresh state the moment someone returns to the tab — matters on reveal day
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') check();
+  });
+
+  // Re-apply state after view transitions in case the node was swapped
+  document.addEventListener('astro:page-load', render);
+</script>
