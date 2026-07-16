@@ -132,6 +132,7 @@ function computeState(stored, now) {
     startsAt: stored.startsAt || null,
     endsAt: stored.endsAt,
     id: stored.id || stored.updatedAt || null,
+    clicks: stored.clicks || 0,
   };
 }
 
@@ -199,6 +200,7 @@ export async function onRequestPost(context) {
         startsAt: startsAt ? startsAt.toISOString() : null,
         endsAt: endsAt.toISOString(),
         id: `live-${now.getTime()}`,
+        clicks: 0,
         updatedAt: now.toISOString(),
         updatedBy: userEmail,
       };
@@ -254,7 +256,8 @@ export async function onRequestPost(context) {
       stop: {
         action: 'updated',
         name: 'Ended Facebook Live',
-        changes: [{ field: 'status', from: 'live', to: 'off' }],
+        // Final click count lands in the audit trail — readable long after the broadcast
+        changes: [{ field: 'status', from: 'live', to: 'off' }, { field: 'banner clicks', from: null, to: record.clicks || 0 }],
       },
     };
     const audit = auditByAction[action];
