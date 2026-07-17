@@ -48,8 +48,10 @@ function authedCors(request) {
 // Public API routes that don't require authentication
 const PUBLIC_ROUTES = ['/api/newsletter', '/api/kids.json', '/api/download-logo', '/api/download-branding-photos', '/api/calendar.ics', '/api/live-click'];
 
-// Routes public for reads only — GET/HEAD skip auth, mutations still require Access
-const PUBLIC_GET_ROUTES = ['/api/live-status'];
+// Routes public for reads only — GET/HEAD skip auth, mutations still require Access.
+// fb-live-videos returns only the page's public video permalinks (never the token),
+// so it's safe to read anonymously; responses are cached in the function.
+const PUBLIC_GET_ROUTES = ['/api/live-status', '/api/fb-live-videos'];
 
 // ─── Rate Limiting (in-memory, per-isolate) ─────────────────────────
 // Limits POST /api/newsletter to 5 requests per IP per 60 seconds.

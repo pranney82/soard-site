@@ -4137,7 +4137,7 @@
         setFbTesting(true);
         setFbResult(null);
         try {
-          const r = await fetch('/api/fb-live-videos');
+          const r = await fetch('/api/fb-live-videos?fresh=1');
           setFbResult(await r.json());
         } catch (e) {
           setFbResult({ success: false, error: e.message });
