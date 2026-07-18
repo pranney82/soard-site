@@ -592,6 +592,9 @@ const breadcrumbs = [
   [data-delay="1"] { transition-delay: 0.12s; }
   [data-delay="2"] { transition-delay: 0.24s; }
   [data-delay="3"] { transition-delay: 0.36s; }
+  @media (prefers-reduced-motion: reduce) {
+    [data-reveal] { opacity: 1; transform: none; transition: none; }
+  }
 
   /* ══════════════════════════════════════════
      PAGE-SPECIFIC OVERRIDES
@@ -1176,10 +1179,10 @@ const breadcrumbs = [
     color: var(--c-text-muted);
   }
 
-  /* ── Filter Bar (tabs + search) — sticky ── */
+  /* ── Filter Bar (tabs + search) — sticky below the site header ── */
   .filter-bar {
     position: sticky;
-    top: 0;
+    top: var(--header-height);
     z-index: 20;
     display: flex;
     align-items: center;

@@ -401,7 +401,13 @@ const mapsUrl = `https://maps.google.com/?q=${encodeURIComponent(`${address.stre
     transition: color 0.3s ease;
   }
   .newsletter-note--success { color: #22c55e; }
-  .newsletter-note--error { color: #ef4444; }
+  /* Error state stays on-brand (no red): dark weight + yellow highlight */
+  .newsletter-note--error {
+    color: var(--c-dark);
+    font-weight: 600;
+    background-image: linear-gradient(transparent 60%, rgba(255, 213, 0, 0.35) 60%);
+    display: inline-block;
+  }
 
   /* Button states */
   .newsletter-btn { position: relative; }

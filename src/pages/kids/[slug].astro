@@ -20,7 +20,6 @@
  */
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import Button from '../../components/ui/Button.astro';
-import { getCollection } from 'astro:content';
 import { getPublishedKids } from '../../utils/collections';
 import { getKidProfileSchema } from '../../utils/schema';
 import { getSiteStats } from '../../utils/stats';
@@ -1356,20 +1355,14 @@ const planOrientation = (() => {
     }
 
     // ── Gallery expand button ─────────────────
+    // Overflow items are in the DOM from the start (hidden container), so the
+    // lightbox wiring below already covers them — revealing is all we do here.
     const expandBtn = document.getElementById('gallery-expand');
     const overflowEl = document.getElementById('gallery-overflow');
     if (expandBtn && overflowEl) {
       expandBtn.addEventListener('click', () => {
         overflowEl.hidden = false;
         expandBtn.style.display = 'none';
-        // Re-wire lightbox for new items
-        const newItems = overflowEl.querySelectorAll<HTMLButtonElement>('.masonry__item');
-        newItems.forEach((item) => {
-          item.addEventListener('click', () => {
-            const idx = parseInt(item.dataset.index || '0', 10);
-            openLightboxAtIndex(idx);
-          });
-        });
       });
     }
 
@@ -1454,12 +1447,6 @@ const planOrientation = (() => {
     const lbMeta = document.getElementById('lb-meta');
     const galleryCount = parseInt(lbMeta?.dataset.galleryCount || '0', 10);
     const planCount = parseInt(lbMeta?.dataset.planCount || '0', 10);
-
-    // Expose for gallery expand
-    function openLightboxAtIndex(index: number) {
-      openLightbox(index);
-    }
-    (window as any).__openLightbox = openLightboxAtIndex;
 
     if (lightbox && galleryItems.length > 0) {
       let currentIndex = 0;

@@ -35,23 +35,13 @@ const breadcrumbs = [
   { name: 'Advisory Board', url: `${SITE_URL}/advisory-board/` },
 ];
 
-const jsonLd = {
-  "@type": "WebPage",
-  "@id": `${SITE_URL}/advisory-board/#webpage`,
-  "name": "Advisory Board — Sunshine on a Ranney Day",
-  "description": "Join the SOARD Advisory Board — advocates, connectors, and fundraisers who work together to fund a SOARD room makeover every year.",
-  "url": `${SITE_URL}/advisory-board/`,
-  "isPartOf": { "@id": `${SITE_URL}/#website` },
-  "about": { "@id": `${SITE_URL}/#organization` },
-  "inLanguage": "en-US",
-  "breadcrumb": { "@id": `${SITE_URL}/advisory-board/#breadcrumb` }
-};
+// No custom WebPage node here — BaseLayout already emits one with the same
+// @id from the title/description props; duplicating it corrupts the @graph.
 ---
 
 <BaseLayout
   title="Advisory Board — Lend Your Expertise"
   description="Join the SOARD Advisory Board — advocates, connectors, and fundraisers working together to fund a room makeover every year. Applications close July 31."
-  jsonLd={jsonLd}
   breadcrumbs={breadcrumbs}
 >
 

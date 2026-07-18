@@ -249,7 +249,7 @@ const jsonLd = {
               </div>
             </div>
             <h3>IRA Distribution</h3>
-            <p>If you're 70&frac12;+, donate up to $105,000/year directly from your IRA — <strong>tax-free</strong>. Counts toward your RMD.</p>
+            <p>If you're 70&frac12;+, donate up to $111,000 for 2026 (indexed annually) directly from your IRA — <strong>tax-free</strong>. Counts toward your RMD.</p>
             <div class="wtg-pills">
               <span class="wtg-pill">Tax-free transfer</span>
               <span class="wtg-pill">Satisfies RMD</span>
@@ -295,7 +295,7 @@ const jsonLd = {
         </div>
       </div>
       <blockquote class="wtg-break-quote" data-reveal data-delay="3">
-        <p>Last year, stock gifts and DAF grants funded <strong>one in five</strong> room makeovers — proving that tax-smart giving isn't just efficient, it's <em>transformative</em>.</p>
+        <p>Stock gifts and DAF grants have funded as many as <strong>one in five</strong> room makeovers in a single year — proving that tax-smart giving isn't just efficient, it's <em>transformative</em>.</p>
       </blockquote>
     </div>
   </section>
@@ -1356,13 +1356,35 @@ const jsonLd = {
 </style>
 
 <script>
-  const nav = document.querySelector<HTMLElement>('.wtg-nav');
-  const links = document.querySelectorAll<HTMLAnchorElement>('.wtg-nav-link');
-  const targets = document.querySelectorAll<HTMLElement>('.wtg-section');
-  const track = document.querySelector<HTMLElement>('.wtg-nav-track');
-  const pill = document.querySelector<HTMLElement>('.wtg-nav-pill');
+  /* Sticky section-nav — runs per astro:page-load so it survives client-side
+     navigation (as a module-scope script it only ran on the first hard load),
+     with an AbortController + observer cleanup on astro:before-swap so window
+     listeners never accumulate (mirrors about/index.astro's timeline pattern). */
+  let _wtgAC: AbortController | null = null;
+  let _wtgObservers: IntersectionObserver[] = [];
+  let _wtgSentinel: HTMLElement | null = null;
 
-  if (nav && links.length && targets.length && track && pill) {
+  function cleanupWtgNav() {
+    _wtgAC?.abort();
+    _wtgAC = null;
+    _wtgObservers.forEach(o => o.disconnect());
+    _wtgObservers = [];
+    _wtgSentinel?.remove();
+    _wtgSentinel = null;
+  }
+
+  function initWtgNav() {
+    cleanupWtgNav();
+
+    const nav = document.querySelector<HTMLElement>('.wtg-nav');
+    const links = document.querySelectorAll<HTMLAnchorElement>('.wtg-nav-link');
+    const targets = document.querySelectorAll<HTMLElement>('.wtg-section');
+    const track = document.querySelector<HTMLElement>('.wtg-nav-track');
+    const pill = document.querySelector<HTMLElement>('.wtg-nav-pill');
+    if (!nav || !links.length || !targets.length || !track || !pill) return;
+
+    _wtgAC = new AbortController();
+    const signal = _wtgAC.signal;
 
     /* ── Move pill behind a link ── */
     function movePill(link: HTMLElement, instant = false) {
@@ -1399,12 +1421,14 @@ const jsonLd = {
     }
 
     /* ── Stuck shadow ── */
-    const sentinel = document.createElement('div');
-    sentinel.style.cssText = 'height:1px;width:1px;pointer-events:none;position:absolute;';
-    nav.before(sentinel);
-    new IntersectionObserver(([e]) => {
+    _wtgSentinel = document.createElement('div');
+    _wtgSentinel.style.cssText = 'height:1px;width:1px;pointer-events:none;position:absolute;';
+    nav.before(_wtgSentinel);
+    const stuckObs = new IntersectionObserver(([e]) => {
       nav.classList.toggle('is-stuck', !e.isIntersecting);
-    }, { threshold: 0 }).observe(sentinel);
+    }, { threshold: 0 });
+    stuckObs.observe(_wtgSentinel);
+    _wtgObservers.push(stuckObs);
 
     /* ── Scroll-spy ── */
     let clickScrolling = false;
@@ -1418,11 +1442,12 @@ const jsonLd = {
       }
     }, { rootMargin: '-20% 0px -75% 0px' });
     targets.forEach(t => { if (t.id) io.observe(t); });
+    _wtgObservers.push(io);
 
     /* ── Scroll offset ── */
     function getOffset() {
       const headerH = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--header-height')) || 84;
-      return headerH + nav.offsetHeight + 20;
+      return headerH + nav!.offsetHeight + 20;
     }
 
     /* ── Click ── */
@@ -1443,17 +1468,20 @@ const jsonLd = {
         let timer: ReturnType<typeof setTimeout>;
         const done = () => { clickScrolling = false; window.removeEventListener('scroll', onScroll); };
         const onScroll = () => { clearTimeout(timer); timer = setTimeout(done, 100); };
-        window.addEventListener('scroll', onScroll, { passive: true });
+        window.addEventListener('scroll', onScroll, { passive: true, signal });
         timer = setTimeout(done, 800);
 
         history.pushState(null, '', hash);
-      });
+      }, { signal });
     });
 
     /* ── Resize ── */
     window.addEventListener('resize', () => {
       const active = track.querySelector<HTMLAnchorElement>('.wtg-nav-link.is-active');
       if (active) movePill(active, true);
-    });
+    }, { signal });
   }
+
+  document.addEventListener('astro:page-load', initWtgNav);
+  document.addEventListener('astro:before-swap', cleanupWtgNav);
 </script>

@@ -73,10 +73,10 @@ const breadcrumbs = [
           </div>
           <div class="faq-list">
             {items.map((item, idx) => (
-              <details class="faq-card" name={`faq-${cat.id}`} data-reveal data-delay={String(Math.min(idx, 3))}>
+              <details class="faq-card" id={`${cat.id}-q${idx + 1}`} name={`faq-${cat.id}`} data-reveal data-delay={String(Math.min(idx, 3))}>
                 <summary>
                   <span class="faq-num">{String(idx + 1).padStart(2, '0')}</span>
-                  <span class="faq-q">{item.question}</span>
+                  <h3 class="faq-q">{item.question}</h3>
                   <span class="faq-toggle" aria-hidden="true"></span>
                 </summary>
                 <div class="faq-answer">
@@ -106,14 +106,7 @@ const breadcrumbs = [
   </section>
 </PageLayout>
 
-<!-- Scroll reveal observer — tiny, GPU-friendly -->
-<script>
-  const io = new IntersectionObserver(
-    (entries) => entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('is-visible'); io.unobserve(e.target); } }),
-    { rootMargin: '0px 0px -60px 0px', threshold: 0.1 }
-  );
-  document.querySelectorAll('[data-reveal]').forEach(el => io.observe(el));
-</script>
+<!-- Reveal animation handled by the global ScrollReveal observer (BaseLayout) -->
 
 <style>
   /* ══════════════════════════════════════════
@@ -263,6 +256,7 @@ const breadcrumbs = [
   }
   .faq-q {
     flex: 1;
+    margin: 0;
     font-family: var(--font-body);
     font-size: 15px;
     font-weight: 600;
@@ -270,6 +264,9 @@ const breadcrumbs = [
     line-height: 1.4;
     transition: color 0.2s ease;
   }
+  /* Anchor targets land below the sticky header + category nav */
+  .faq-section { scroll-margin-top: calc(var(--header-height, 64px) + 56px); }
+  .faq-card { scroll-margin-top: calc(var(--header-height, 64px) + 64px); }
   .faq-toggle {
     width: 28px;
     height: 28px;

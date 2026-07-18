@@ -19,7 +19,6 @@
  */
 import BaseLayout from '../layouts/BaseLayout.astro';
 import FAQSection from '../components/ui/FAQSection.astro';
-import { getCollection } from 'astro:content';
 import { getPublishedKids } from '../utils/collections';
 import { getSiteStats } from '../utils/stats';
 import { cfRaw, cfSrcset, cfLqip, cfId } from '../utils/cf-image';
@@ -156,12 +155,49 @@ const faqJsonLd = faqs.length ? getFAQSchema(faqs) : undefined;
       <div class={`status-dot ${isOpen ? 'status-dot--open' : ''}`} aria-hidden="true"></div>
       <div class="status-text">
         <p class="status-headline">{isOpen ? `The ${appYear} application is now open!` : closedMessage}</p>
-        <p class="status-sub">{isOpen ? "We're accepting applications for room makeovers in the greater Atlanta area." : 'Follow us on social media to be the first to know when applications reopen.'}</p>
+        <p class="status-sub">{isOpen ? "We're accepting applications for room makeovers in the greater Atlanta area." : "Leave your email and we'll let you know the moment applications reopen."}</p>
       </div>
       {isOpen && appFormUrl && (
         <a href={appFormUrl} target="_blank" rel="noopener noreferrer" class="btn btn-primary">Apply Now &rarr;</a>
       )}
     </div>
+    {!isOpen && (
+      <div class="status-notify">
+        {/* Same contract as the footer form: /api/newsletter accepts a plain
+            form POST (no-JS fallback — redirects back with ?subscribed=1) or
+            a JSON fetch { email, hp }. Honeypot field name is `website`. */}
+        <form class="notify-form" id="notify-form" action="/api/newsletter" method="POST">
+          <div class="notify-fields">
+            <input
+              type="email"
+              name="email"
+              id="notify-email"
+              placeholder="Your email address"
+              required
+              autocomplete="email"
+              aria-label="Email address — get notified when applications open"
+              class="notify-input"
+            />
+            <button type="submit" class="notify-btn" id="notify-btn">Notify Me</button>
+          </div>
+          <div aria-hidden="true" style="position:absolute;left:-9999px;top:-9999px;"><input type="text" name="website" tabindex="-1" autocomplete="off" /></div>
+          <p class="notify-note" id="notify-note" role="status" aria-live="polite">One email when applications open. No spam, ever.</p>
+        </form>
+        <div class="notify-social">
+          <span class="notify-social-label">Or follow along:</span>
+          {siteSettings.social?.facebook && (
+            <a href={siteSettings.social.facebook} target="_blank" rel="noopener noreferrer" aria-label="Follow us on Facebook" class="notify-social-link">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+            </a>
+          )}
+          {siteSettings.social?.instagram && (
+            <a href={siteSettings.social.instagram} target="_blank" rel="noopener noreferrer" aria-label="Follow us on Instagram" class="notify-social-link">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/></svg>
+            </a>
+          )}
+        </div>
+      </div>
+    )}
   </div>
 
   <!-- ══════ WHERE WE SERVE — Service area map (editorial split) ══════ -->
@@ -401,6 +437,86 @@ const faqJsonLd = faqs.length ? getFAQSchema(faqs) : undefined;
 
 </BaseLayout>
 
+<!-- "Notify me" form — JS-enhanced submit (same /api/newsletter contract as the
+     footer form). Without JS the plain form POST works: the endpoint accepts
+     form-encoded bodies and 302s back with ?subscribed=1 / ?newsletter_error=. -->
+<script>
+  document.addEventListener('astro:page-load', () => {
+    const form = document.getElementById('notify-form') as HTMLFormElement | null;
+    if (!form) return; // banner only renders the form while applications are closed
+    const note = document.getElementById('notify-note');
+    const btn = document.getElementById('notify-btn') as HTMLButtonElement | null;
+    const input = document.getElementById('notify-email') as HTMLInputElement | null;
+    if (!note || !btn || !input) return;
+
+    const IDLE_LABEL = btn.textContent || 'Notify Me';
+    const SUCCESS_MSG = "You're on the list — we'll email you the moment applications open.";
+
+    function setNote(text: string, state?: 'success' | 'error') {
+      note!.textContent = text;
+      note!.classList.toggle('notify-note--success', state === 'success');
+      note!.classList.toggle('notify-note--error', state === 'error');
+    }
+
+    // No-JS fallback landed back here with query params — reflect them inline.
+    // (The footer form's script may also display/clean these; both are harmless.)
+    const params = new URLSearchParams(window.location.search);
+    if (params.has('subscribed')) {
+      setNote(SUCCESS_MSG, 'success');
+      btn.disabled = true;
+      btn.textContent = 'Done';
+    } else if (params.has('newsletter_error')) {
+      setNote('Something went wrong — please try again.', 'error');
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = input.value.trim();
+      if (!email) return;
+
+      // Honeypot — bots fill hidden fields, humans don't
+      const honeypot = form.querySelector<HTMLInputElement>('[name="website"]');
+      const hp = honeypot ? honeypot.value : '';
+
+      setNote('One email when applications open. No spam, ever.');
+      btn.disabled = true;
+      btn.textContent = 'Sending…';
+      input.disabled = true;
+
+      try {
+        const res = await fetch('/api/newsletter', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, hp }),
+        });
+        // Body may not be JSON (e.g. Cloudflare error pages) — don't throw on parse
+        const data = await res.json().catch(() => null);
+
+        if (data && data.ok) {
+          input.value = '';
+          input.disabled = false;
+          btn.textContent = 'Done';
+          setNote(SUCCESS_MSG, 'success');
+        } else {
+          btn.disabled = false;
+          btn.textContent = IDLE_LABEL;
+          input.disabled = false;
+          setNote(
+            res.status === 429
+              ? 'Too many attempts — please wait a minute and try again.'
+              : (data && data.error) || 'Something went wrong — please try again.',
+            'error',
+          );
+        }
+      } catch {
+        btn.disabled = false;
+        btn.textContent = IDLE_LABEL;
+        input.disabled = false;
+        setNote('Something went wrong — please try again.', 'error');
+      }
+    });
+  });
+</script>
 
 <style>
   /* ══════════════════════════════════════════
@@ -649,6 +765,138 @@ const faqJsonLd = faqs.length ? getFAQSchema(faqs) : undefined;
     border-bottom-color: rgba(56,161,105,0.15);
   }
 
+  /* ── Closed state: inline "notify me" capture + social follow ── */
+  .status-notify {
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding: 0 var(--space-xl) 24px;
+    display: flex;
+    align-items: flex-start;
+    gap: 16px 32px;
+    flex-wrap: wrap;
+  }
+  .notify-form {
+    position: relative;
+    flex: 1 1 340px;
+    max-width: 480px;
+  }
+  .notify-fields {
+    display: flex;
+    gap: 8px;
+  }
+  .notify-input {
+    flex: 1;
+    min-width: 0;
+    min-height: 48px;
+    padding: 12px 20px;
+    border: 2px solid var(--c-border);
+    border-radius: 60px;
+    background: var(--c-white);
+    font-family: var(--font-body);
+    font-size: 15px;
+    transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+  }
+  .notify-input:focus {
+    outline: none;
+    border-color: var(--c-yellow);
+    box-shadow: 0 0 0 3px rgba(255, 218, 36, 0.25);
+  }
+  .notify-input:focus-visible {
+    outline: 3px solid var(--c-yellow);
+    outline-offset: 2px;
+  }
+  .notify-btn {
+    padding: 12px 24px;
+    min-height: 48px;
+    background: var(--c-yellow);
+    color: var(--c-dark);
+    font-family: var(--font-body);
+    font-weight: 700;
+    font-size: 14px;
+    border: none;
+    border-radius: 60px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background var(--transition-fast), transform var(--transition-fast), box-shadow var(--transition-fast);
+  }
+  .notify-btn:hover {
+    background: var(--c-yellow-hover);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 16px var(--c-yellow-glow);
+  }
+  .notify-btn:disabled {
+    cursor: default;
+    opacity: 0.7;
+    transform: none;
+    box-shadow: none;
+  }
+  .notify-btn:focus-visible {
+    outline: 2px solid var(--c-dark);
+    outline-offset: 2px;
+  }
+  .notify-note {
+    font-size: 12px;
+    color: var(--c-text-light);
+    margin-top: 8px;
+    padding-left: 20px;
+  }
+  /* Success/error states — brand palette only (dark text, yellow accent; no red) */
+  .notify-note--success {
+    color: var(--c-dark);
+    font-weight: 600;
+    background-image: linear-gradient(transparent 55%, var(--c-yellow-soft) 55%);
+    background-repeat: no-repeat;
+    background-size: 100% 100%;
+    display: inline-block;
+    padding: 0 4px 0 20px;
+  }
+  .notify-note--error {
+    color: var(--c-dark);
+    font-weight: 600;
+    text-decoration: underline;
+    text-decoration-color: var(--c-yellow);
+    text-decoration-thickness: 2px;
+    text-underline-offset: 3px;
+  }
+  .notify-social {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 48px;
+  }
+  .notify-social-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--c-text-muted);
+    white-space: nowrap;
+  }
+  .notify-social-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
+    background: rgba(55, 58, 54, 0.06);
+    color: var(--c-dark);
+    transition: background var(--transition-fast), transform var(--transition-fast);
+  }
+  .notify-social-link:hover {
+    background: var(--c-yellow);
+    transform: translateY(-2px);
+  }
+  .notify-social-link:focus-visible {
+    outline: 2px solid var(--c-dark);
+    outline-offset: 2px;
+  }
+  @media (max-width: 640px) {
+    .status-notify { padding-bottom: 20px; }
+    .notify-form { flex-basis: 100%; max-width: 100%; }
+    .notify-fields { flex-direction: column; }
+    .notify-note { padding-left: 4px; }
+    .notify-note--success { padding-left: 4px; }
+  }
+
   /* ══════════════════════════════════════════
      FEATURED FAMILY STORY
      ══════════════════════════════════════════ */
@@ -738,7 +986,8 @@ const faqJsonLd = faqs.length ? getFAQSchema(faqs) : undefined;
     align-items: center;
     transition: color var(--transition-fast);
   }
-  .story-link:hover { color: var(--c-yellow-hover); }
+  /* #8A7200 (not the brighter #E6C400) — keeps 4.5:1 contrast on cream */
+  .story-link:hover { color: #8A7200; }
 
   /* ══════════════════════════════════════════
      JOURNEY — Narrative blocks
@@ -1060,7 +1309,8 @@ const faqJsonLd = faqs.length ? getFAQSchema(faqs) : undefined;
     text-decoration: underline;
     text-underline-offset: 2px;
   }
-  .serve-area-note a:hover { color: var(--c-yellow-hover); }
+  /* #8A7200 (not the brighter #E6C400) — keeps 4.5:1 contrast on cream */
+  .serve-area-note a:hover { color: #8A7200; }
   .serve-area-map {
     margin: 0;
     border-radius: var(--border-radius-lg);
