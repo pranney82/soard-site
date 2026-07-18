@@ -198,6 +198,25 @@ const structuredData = buildSchemaGraph(...graphSchemas);
 
   <!-- Self-hosted fonts for Lighthouse performance -->
   <style is:inline>
+    /* Metric-matched fallback faces — Georgia/Arial resized to the webfonts'
+       exact advance widths and vertical metrics (measured from the woff2s),
+       so the swap when the real fonts arrive causes zero layout shift. */
+    @font-face {
+      font-family: 'Libre Baskerville Fallback';
+      src: local('Georgia');
+      size-adjust: 116.09%;
+      ascent-override: 83.56%;
+      descent-override: 23.26%;
+      line-gap-override: 0%;
+    }
+    @font-face {
+      font-family: 'Outfit Fallback';
+      src: local('Arial');
+      size-adjust: 96.89%;
+      ascent-override: 103.21%;
+      descent-override: 26.83%;
+      line-gap-override: 0%;
+    }
     @font-face {
       font-family: 'Libre Baskerville';
       font-style: normal;
