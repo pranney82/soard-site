@@ -4360,9 +4360,14 @@
                               onClick=${() => handleArchive(v)}>
                               ${archiving === v.id ? 'Archiving...' : 'Save to Stream now'}</button>` : null}
                       </div>
-                      ${v.streamUid ? html`
+                      ${v.streamUid && v.attachedTo ? html`
+                        <div style="font-size:12px;color:#22543D">
+                          ▶ Watchable on <a href="/kids/${v.attachedTo}/" target="_blank" rel="noopener" style="color:inherit;font-weight:600">${v.attachedTo}'s page</a> (after next deploy)
+                        </div>
+                      ` : null}
+                      ${v.streamUid && !v.attachedTo ? html`
                         <div style="display:flex;align-items:center;gap:0.5rem;font-size:12px;flex-wrap:wrap">
-                          <span style="color:var(--muted)">Make it watchable on a kid's page:</span>
+                          <span style="color:var(--muted)">Auto-attach couldn't match a kid — pick one:</span>
                           <select class="form-select" style="max-width:200px;padding:2px 6px;font-size:12px" value=${attachSel[v.id] || ''}
                             onChange=${e => setAttachSel({ ...attachSel, [v.id]: e.target.value })}>
                             <option value="">Choose kid...</option>
@@ -4392,7 +4397,7 @@
               : html`<strong>off</strong> — to enable, set <code>FB_PAGE_ID</code> and <code>FB_PAGE_TOKEN</code> (a page access token) in Cloudflare Pages → Settings → Environment Variables.`}</li>
             <li>Visitors can dismiss it; it stays dismissed for their browsing session.</li>
             <li>Site pages check for changes every 60 seconds — going live, updating, and ending all propagate within about a minute.</li>
-            <li>Live replays are <strong>automatically saved to Cloudflare Stream</strong> within a few hours of the broadcast ending (Facebook deletes them after 30 days). Archived ones show "✓ In Stream" above; "Save to Stream now" archives one immediately.</li>
+            <li>Live replays are <strong>automatically saved to Cloudflare Stream</strong> within a few hours of the broadcast ending (Facebook deletes them after 30 days), and <strong>automatically attached to the kid's page</strong> when the broadcast title names exactly one kid. If the kid's record doesn't exist yet, it keeps retrying — add the kid and it attaches by itself. Ambiguous matches wait for the picker above. Videos appear on pages at the next deploy.</li>
           </ul>
         </div>
       `;
