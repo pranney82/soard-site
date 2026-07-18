@@ -73,6 +73,7 @@ export async function onRequestGet(context) {
           ? (v.permalink_url.startsWith('http') ? v.permalink_url : `https://www.facebook.com${v.permalink_url}`)
           : null,
         streamUid: (v.id && archived[v.id]?.uid) || null,
+        attachedTo: (v.id && archived[v.id]?.attachedTo) || null,
       }));
 
     const body = { success: true, configured: true, videos };

@@ -84,6 +84,73 @@ export async function recordArchived(DB, videoId, { uid, name }) {
   await writeArchiveState(DB, state);
 }
 
+function escapeRegex(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Find the kid a broadcast belongs to by name match against the kids table.
+ * Only returns a kid when EXACTLY ONE name matches — two kids named Adrian,
+ * or no match at all, mean human judgment is needed (admin picker).
+ */
+async function findKidByName(DB, text) {
+  if (!text) return null;
+  const res = await DB.prepare('SELECT slug, name FROM kids').all();
+  const rows = (res && res.results) || [];
+  const matches = rows.filter(k => k.name && new RegExp(`\\b${escapeRegex(k.name)}\\b`, 'i').test(text));
+  return matches.length === 1 ? matches[0] : null;
+}
+
+/**
+ * Write the Stream UID onto a kid's record so their page shows the video
+ * after the next deploy. Never overwrites an existing video. D1 only —
+ * D1 is the source of truth for builds; GitHub re-syncs on the kid's next
+ * admin save. Returns the slug on success, null if skipped.
+ */
+export async function attachToKid(env, slug, uid, videoName, by = 'auto-archive') {
+  const { DB } = env;
+  const row = await DB.prepare('SELECT data FROM kids WHERE slug = ?').bind(slug).first();
+  if (!row) return null;
+  const data = JSON.parse(row.data);
+  if (data.streamVideoId) return null; // a kid's existing video is never replaced automatically
+  data.streamVideoId = uid;
+  await DB.prepare('UPDATE kids SET data = ?, updated_at = ? WHERE slug = ?')
+    .bind(JSON.stringify(data), new Date().toISOString(), slug).run();
+  await logAudit(DB, {
+    userEmail: by,
+    action: 'updated',
+    entityType: 'kid',
+    entitySlug: slug,
+    entityName: data.name || slug,
+    changes: [{ field: 'streamVideoId', from: null, to: uid }],
+    gitStatus: 'ok',
+  });
+  return slug;
+}
+
+/**
+ * Try to attach archived-but-unattached videos to kids. D1-only (no Facebook
+ * calls), so it runs on every sweep attempt — this is what picks up a kid
+ * whose record was created AFTER their broadcast was archived.
+ * Mutates state entries; returns true if anything changed.
+ */
+async function retroAttach(env, state) {
+  const pending = Object.entries(state.archived).filter(([, e]) => !e.attachedTo && !e.attachSkipped);
+  if (!pending.length) return false;
+  let changed = false;
+  for (const [, entry] of pending.slice(0, 3)) {
+    try {
+      const kid = await findKidByName(env.DB, entry.name || '');
+      if (!kid) continue; // no record yet (or ambiguous) — retry next sweep
+      const ok = await attachToKid(env, kid.slug, entry.uid, entry.name);
+      if (ok) entry.attachedTo = kid.slug;
+      else entry.attachSkipped = true; // kid already has a video — stop retrying
+      changed = true;
+    } catch { /* retry next sweep */ }
+  }
+  return changed;
+}
+
 /**
  * The auto sweep. Safe to call on every request — exits instantly unless the
  * sweep interval has elapsed. Never throws.
@@ -94,6 +161,10 @@ export async function sweepArchives(env) {
     if (!archiveConfigured(env)) return;
 
     const state = await readArchiveState(DB);
+
+    // Retro-attach runs on every attempt (cheap, no Facebook quota)
+    if (await retroAttach(env, state)) await writeArchiveState(DB, state);
+
     if (state.checkedAt && Date.now() - Date.parse(state.checkedAt) < SWEEP_INTERVAL_MS) return;
 
     // Stamp before the slow work so concurrent requests don't double-sweep
@@ -118,7 +189,16 @@ export async function sweepArchives(env) {
     for (const v of candidates) {
       try {
         const done = await archiveOne(env, v.id);
-        state.archived[v.id] = { uid: done.uid, name: done.name, at: new Date().toISOString() };
+        const entry = { uid: done.uid, name: done.name, at: new Date().toISOString() };
+        // Attach to the kid's page immediately when the name match is unambiguous
+        try {
+          const kid = await findKidByName(DB, `${v.title || ''} ${v.description || ''}`);
+          if (kid) {
+            const ok = await attachToKid(env, kid.slug, done.uid, done.name);
+            if (ok) entry.attachedTo = kid.slug; else entry.attachSkipped = true;
+          }
+        } catch { /* retroAttach retries on later sweeps */ }
+        state.archived[v.id] = entry;
         await logAudit(DB, {
           userEmail: 'auto-archive',
           action: 'created',
