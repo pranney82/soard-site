@@ -12,11 +12,12 @@
 
 ## Admin panel — its own CSP (behind Cloudflare Access auth).
 ## `! Content-Security-Policy` detaches the /* CSP above so this policy
-## fully replaces it — admin-only hosts (esm.sh, api.*) live ONLY here,
-## keeping the public policy tight.
+## fully replaces it — admin-only hosts (api.*) live ONLY here,
+## keeping the public policy tight. Third-party JS is bundled locally in
+## /admin/vendor.js, so no CDN (esm.sh) appears in script-src/connect-src.
 /admin/*
   ! Content-Security-Policy
-  Content-Security-Policy: default-src 'none'; script-src 'self' 'unsafe-inline' https://esm.sh https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' https://imagedelivery.net data: blob:; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://imagedelivery.net https://api.github.com https://api.cloudflare.com https://api.anthropic.com https://esm.sh https://cloudflareinsights.com https://upload.videodelivery.net https://upload.cloudflarestream.com; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'; manifest-src 'self'
+  Content-Security-Policy: default-src 'none'; script-src 'self' 'unsafe-inline' https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' https://imagedelivery.net data: blob:; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://imagedelivery.net https://api.github.com https://api.cloudflare.com https://api.anthropic.com https://cloudflareinsights.com https://upload.videodelivery.net https://upload.cloudflarestream.com; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'; manifest-src 'self'
 
 ## Cache financial PDFs (rarely change, large files)
 /financials/*
