@@ -30,6 +30,8 @@ const kids = defineCollection({
     photoCount: z.number().default(0),
     videoUrl: z.string().nullable().optional(),
     streamVideoId: z.string().nullable().optional(),
+    /** "Watch the live reveal" hero link — written by the FB live auto-archiver */
+    revealVideoUrl: z.string().nullable().optional(),
     photographer: z.string().nullable().optional(),
     partnerLogos: z.array(z.object({
       url: z.string(),
