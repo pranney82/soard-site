@@ -90,7 +90,7 @@ const breadcrumbs = [
         <p class="hero-lead">Every room we build is a community effort. These incredible partners donate their time, talent, materials, and funding to transform the lives of children with special needs.</p>
         <div class="hero-ctas">
           <a href="#signature" class="btn btn-primary btn-lg">Meet Our Partners &darr;</a>
-          <a href="mailto:info@soardcharity.com" class="btn btn-outline-dark btn-lg">Become a Partner &rarr;</a>
+          <a href="mailto:info@soardcharity.com?subject=Partnership%20Inquiry" class="btn btn-outline-dark btn-lg">Become a Partner &rarr;</a>
         </div>
       </div>
       <div class="hero-photo-wrap">
@@ -362,6 +362,7 @@ const breadcrumbs = [
           </div>
           <h3 class="way-card__title">Donate Materials</h3>
           <p class="way-card__desc">Flooring, paint, furniture, windows, countertops — every material makes a room possible.</p>
+          <a href="mailto:info@soardcharity.com?subject=Material%20Donation%20Offer" class="way-card__link" aria-label="Email us about donating materials">Start the conversation &rarr;</a>
         </div>
         <div class="way-card">
           <div class="way-card__icon" aria-hidden="true">
@@ -369,6 +370,7 @@ const breadcrumbs = [
           </div>
           <h3 class="way-card__title">Volunteer Your Skills</h3>
           <p class="way-card__desc">Construction, design, photography, media — bring your expertise to a build day.</p>
+          <a href="mailto:info@soardcharity.com?subject=Volunteer%20Inquiry" class="way-card__link" aria-label="Email us about volunteering your skills">Start the conversation &rarr;</a>
         </div>
         <div class="way-card">
           <div class="way-card__icon" aria-hidden="true">
@@ -376,6 +378,7 @@ const breadcrumbs = [
           </div>
           <h3 class="way-card__title">Sponsor a Room</h3>
           <p class="way-card__desc">A gift of $10,000+ funds a complete room build for a child with special needs.</p>
+          <a href="mailto:info@soardcharity.com?subject=Room%20Sponsorship%20Inquiry" class="way-card__link" aria-label="Email us about sponsoring a room">Start the conversation &rarr;</a>
         </div>
         <div class="way-card">
           <div class="way-card__icon" aria-hidden="true">
@@ -383,6 +386,7 @@ const breadcrumbs = [
           </div>
           <h3 class="way-card__title">Corporate Partnership</h3>
           <p class="way-card__desc">Year-round programs for companies who want to make a lasting, visible impact.</p>
+          <a href="mailto:info@soardcharity.com?subject=Corporate%20Partnership%20Inquiry" class="way-card__link" aria-label="Email us about a corporate partnership">Start the conversation &rarr;</a>
         </div>
       </div>
     </div>
@@ -395,7 +399,7 @@ const breadcrumbs = [
         <h2 id="cta-heading">Every dream room starts with a partner who says <em>yes</em>.</h2>
         <p>Join {allPartners.length}+ organizations building something bigger than any one of us.</p>
         <div class="partners-cta-btns">
-          <a href="mailto:info@soardcharity.com" class="btn btn-primary btn-cta">Become a Partner &rarr;</a>
+          <a href="mailto:info@soardcharity.com?subject=Partnership%20Inquiry" class="btn btn-primary btn-cta">Become a Partner &rarr;</a>
           <a href="/donate/" class="btn btn-dark">Donate Today &rarr;</a>
         </div>
         <p class="partners-cta-note">501(c)(3) &middot; EIN 45-4773997 &middot; All donations tax-deductible</p>
@@ -1268,11 +1272,11 @@ const breadcrumbs = [
 
   .search-clear {
     position: absolute;
-    right: 8px;
+    right: 6px;
     top: 50%;
     transform: translateY(-50%);
-    width: 24px;
-    height: 24px;
+    width: 32px;
+    height: 32px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1304,6 +1308,7 @@ const breadcrumbs = [
     display: inline-flex;
     align-items: center;
     gap: 6px;
+    min-height: 44px;             /* touch target */
     padding: 8px 18px;
     font-size: 0.8125rem;
     font-weight: 600;
@@ -1322,10 +1327,6 @@ const breadcrumbs = [
     color: var(--c-text);
   }
 
-  .filter-tab:focus-visible {
-    outline: 2px solid var(--c-yellow);
-    outline-offset: 2px;
-  }
 
   .filter-tab.is-active {
     background: var(--c-dark);
@@ -1569,6 +1570,19 @@ const breadcrumbs = [
                 transform 0.35s cubic-bezier(0.16,1,0.3,1);
     will-change: transform;
   }
+
+  .way-card__link {
+    display: inline-flex;
+    align-items: center;
+    margin-top: 14px;
+    padding: 10px 0;              /* comfortable touch target */
+    font-size: 0.8125rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: var(--c-yellow);
+    text-decoration: none;
+  }
+  .way-card__link:hover { text-decoration: underline; text-underline-offset: 3px; }
 
   .way-card:hover {
     background: rgba(255, 255, 255, 0.08);
