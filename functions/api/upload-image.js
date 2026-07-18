@@ -33,6 +33,22 @@ export async function onRequestPost(context) {
       );
     }
 
+    // Validate the optional custom image id. CF Images allows path-style ids
+    // (e.g. "kids/amari/photo-1"); constrain charset + length and forbid ".."
+    // so a crafted id can't smuggle control characters or traversal-looking
+    // segments into the upstream request.
+    if (customId != null && customId !== '') {
+      if (typeof customId !== 'string'
+          || customId.length > 256
+          || customId.includes('..')
+          || !/^[A-Za-z0-9][A-Za-z0-9/_.-]*$/.test(customId)) {
+        return Response.json(
+          { success: false, error: 'Invalid image id. Use letters, numbers, and / _ . - only (max 256 chars).' },
+          { status: 400 }
+        );
+      }
+    }
+
     // 10 MB max for images
     if (file.size > 10 * 1024 * 1024) {
       return Response.json(

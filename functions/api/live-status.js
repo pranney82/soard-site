@@ -42,6 +42,7 @@
 
 import { logAudit } from './_audit.js';
 import { sweepArchives } from './_fb-archive.js';
+import { isAuthenticated } from './_middleware.js';
 
 // Per-isolate throttle so most polls skip even the D1 sweep-state read
 let _lastSweepAttempt = 0;
@@ -173,11 +174,15 @@ export async function onRequestGet(context) {
 
     // Auto-archive ended broadcasts to Cloudflare Stream — piggybacks on this
     // public poll, runs after the response is sent, throttled inside the sweep.
-    // ?sweep=1 runs it synchronously and returns its diagnostic summary —
-    // safe publicly, since the expensive Facebook check stays throttled in D1.
+    // ?sweep=1 runs it synchronously and returns its diagnostic summary, but
+    // that summary exposes internal archive state/errors and drives extra work,
+    // so it is admin-only: honored only when the request carries a valid
+    // Cloudflare Access JWT. Anonymous callers (including anonymous ?sweep=1)
+    // get the normal banner payload with the usual throttled background sweep —
+    // and never receive a sweep summary/error.
     const forceSweep = new URL(context.request.url).searchParams.get('sweep') === '1';
     let sweepSummary;
-    if (forceSweep) {
+    if (forceSweep && await isAuthenticated(context.request, context.env)) {
       sweepSummary = await sweepArchives(context.env);
     } else if (Date.now() - _lastSweepAttempt > SWEEP_ATTEMPT_INTERVAL_MS) {
       _lastSweepAttempt = Date.now();

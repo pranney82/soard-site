@@ -67,9 +67,16 @@ export async function onRequestPost(context) {
               continue;
             }
 
-            const imgBuffer = await imgResponse.arrayBuffer();
-            const imgArray = [...new Uint8Array(imgBuffer)];
-            const base64 = btoa(String.fromCharCode(...imgArray));
+            // Base64-encode in 32KB chunks. Spreading a whole multi-MB image
+            // into String.fromCharCode(...) can blow the call stack, so walk
+            // the byte array with apply() over bounded subarrays instead.
+            const imgBytes = new Uint8Array(await imgResponse.arrayBuffer());
+            let binary = '';
+            const CHUNK = 0x8000;
+            for (let i = 0; i < imgBytes.length; i += CHUNK) {
+              binary += String.fromCharCode.apply(null, imgBytes.subarray(i, i + CHUNK));
+            }
+            const base64 = btoa(binary);
 
             const visionResult = await ai.run(
               '@cf/llava-hf/llava-1.5-7b-hf',
