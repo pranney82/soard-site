@@ -4037,6 +4037,8 @@
       const [kidSlug, setKidSlug] = useState('');
       const [kidImage, setKidImage] = useState(null);
       const [archiving, setArchiving] = useState(null);
+      const [attaching, setAttaching] = useState(null);
+      const [attachSel, setAttachSel] = useState({});
 
       const load = async () => {
         try {
@@ -4152,6 +4154,29 @@
           addToast(`Archive error: ${e.message}`, 'error');
         }
         setArchiving(null);
+      };
+
+      const handleAttach = async (v) => {
+        const slug = attachSel[v.id];
+        if (!slug) return;
+        setAttaching(v.id);
+        try {
+          const r = await api.readContent(`src/content/kids/${slug}.json`);
+          if (!r.success) throw new Error(r.error || 'could not read kid record');
+          const d = typeof r.content === 'string' ? JSON.parse(r.content) : r.content;
+          d.streamVideoId = v.streamUid;
+          const save = await api.saveContent(
+            `src/content/kids/${slug}.json`,
+            JSON.stringify(d, null, 2),
+            `Attach reveal video to ${d.name}`,
+            r.sha
+          );
+          if (!save.success) throw new Error(save.error || 'save failed');
+          addToast(`Reveal video attached to ${d.name}'s page! Hit Deploy Now to publish.`, 'success');
+        } catch (e) {
+          addToast(`Attach failed: ${e.message}`, 'error');
+        }
+        setAttaching(null);
       };
 
       const handleTestFb = async () => {
@@ -4317,7 +4342,8 @@
                   <div style="margin-top:1rem;display:flex;flex-direction:column;gap:0.5rem">
                     <div style="font-size:13px;color:var(--muted)">Connected ✓ — most recent live videos:</div>
                     ${fbResult.videos.map(v => html`
-                      <div style="display:flex;align-items:center;gap:0.75rem;font-size:13px;padding:0.5rem 0.75rem;background:var(--bg-alt);border-radius:8px">
+                      <div style="display:flex;flex-direction:column;gap:0.4rem;padding:0.5rem 0.75rem;background:var(--bg-alt);border-radius:8px">
+                      <div style="display:flex;align-items:center;gap:0.75rem;font-size:13px">
                         <span class="badge ${v.status === 'LIVE' ? 'badge-yellow' : ''}">${v.status}</span>
                         <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
                           ${v.title || 'Untitled broadcast'}
@@ -4333,6 +4359,23 @@
                               disabled=${archiving === v.id}
                               onClick=${() => handleArchive(v)}>
                               ${archiving === v.id ? 'Archiving...' : 'Save to Stream now'}</button>` : null}
+                      </div>
+                      ${v.streamUid ? html`
+                        <div style="display:flex;align-items:center;gap:0.5rem;font-size:12px;flex-wrap:wrap">
+                          <span style="color:var(--muted)">Make it watchable on a kid's page:</span>
+                          <select class="form-select" style="max-width:200px;padding:2px 6px;font-size:12px" value=${attachSel[v.id] || ''}
+                            onChange=${e => setAttachSel({ ...attachSel, [v.id]: e.target.value })}>
+                            <option value="">Choose kid...</option>
+                            ${[...kids].sort((a, b) => (a.name || '').localeCompare(b.name || '')).map(k => html`
+                              <option value=${k.slug}>${k.name}${k.year ? ` (${k.year})` : ''}</option>
+                            `)}
+                          </select>
+                          <button class="btn btn-secondary" style="padding:2px 10px;font-size:12px"
+                            disabled=${!attachSel[v.id] || attaching === v.id}
+                            onClick=${() => handleAttach(v)}>
+                            ${attaching === v.id ? 'Attaching...' : 'Attach'}</button>
+                        </div>
+                      ` : null}
                       </div>
                     `)}
                   </div>`
