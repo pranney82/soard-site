@@ -172,13 +172,19 @@ export async function onRequestGet(context) {
     }
 
     // Auto-archive ended broadcasts to Cloudflare Stream — piggybacks on this
-    // public poll, runs after the response is sent, throttled inside the sweep
-    if (Date.now() - _lastSweepAttempt > SWEEP_ATTEMPT_INTERVAL_MS) {
+    // public poll, runs after the response is sent, throttled inside the sweep.
+    // ?sweep=1 runs it synchronously and returns its diagnostic summary —
+    // safe publicly, since the expensive Facebook check stays throttled in D1.
+    const forceSweep = new URL(context.request.url).searchParams.get('sweep') === '1';
+    let sweepSummary;
+    if (forceSweep) {
+      sweepSummary = await sweepArchives(context.env);
+    } else if (Date.now() - _lastSweepAttempt > SWEEP_ATTEMPT_INTERVAL_MS) {
       _lastSweepAttempt = Date.now();
       const sweep = sweepArchives(context.env);
       if (context.waitUntil) context.waitUntil(sweep); else await sweep;
     }
-    return Response.json({ ...state, auto }, {
+    return Response.json({ ...state, auto, ...(sweepSummary ? { sweep: sweepSummary } : {}) }, {
       // Polled by every visitor — always serve fresh so "go live" and
       // "end broadcast" propagate within one poll interval.
       headers: { 'Cache-Control': 'no-store' },
