@@ -1718,38 +1718,16 @@
 <body>
   <div id="app"></div>
 
-  <script type="importmap">
-  {
-    "imports": {
-      "@tiptap/pm/state": "https://esm.sh/@tiptap/pm@2.11.5/state",
-      "@tiptap/pm/view": "https://esm.sh/@tiptap/pm@2.11.5/view",
-      "@tiptap/pm/model": "https://esm.sh/@tiptap/pm@2.11.5/model",
-      "@tiptap/pm/transform": "https://esm.sh/@tiptap/pm@2.11.5/transform",
-      "@tiptap/pm/commands": "https://esm.sh/@tiptap/pm@2.11.5/commands",
-      "@tiptap/pm/keymap": "https://esm.sh/@tiptap/pm@2.11.5/keymap",
-      "@tiptap/pm/history": "https://esm.sh/@tiptap/pm@2.11.5/history",
-      "@tiptap/pm/dropcursor": "https://esm.sh/@tiptap/pm@2.11.5/dropcursor",
-      "@tiptap/pm/gapcursor": "https://esm.sh/@tiptap/pm@2.11.5/gapcursor",
-      "@tiptap/pm/schema-list": "https://esm.sh/@tiptap/pm@2.11.5/schema-list",
-      "@tiptap/pm/inputrules": "https://esm.sh/@tiptap/pm@2.11.5/inputrules",
-      "@tiptap/pm/tables": "https://esm.sh/@tiptap/pm@2.11.5/tables"
-    }
-  }
-  </script>
-
   <script type="module">
-    import { h, render, Component } from 'https://esm.sh/preact@10.25.4';
-    import { useState, useEffect, useCallback, useRef, useMemo } from 'https://esm.sh/preact@10.25.4/hooks';
-    import htm from 'https://esm.sh/htm@3.1.1';
-    import * as tus from 'https://esm.sh/tus-js-client@4.3.1/lib.esm/browser/index.js';
-    import DOMPurify from 'https://esm.sh/dompurify@3.2.4';
-    import Sortable from 'https://esm.sh/sortablejs@1.15.6';
-    import { Editor } from 'https://esm.sh/@tiptap/core@2.11.5?external=@tiptap/pm';
-    import StarterKit from 'https://esm.sh/@tiptap/starter-kit@2.11.5?external=@tiptap/pm';
-    import TiptapUnderline from 'https://esm.sh/@tiptap/extension-underline@2.11.5?external=@tiptap/pm';
-    import TiptapLink from 'https://esm.sh/@tiptap/extension-link@2.11.5?external=@tiptap/pm';
-    import Placeholder from 'https://esm.sh/@tiptap/extension-placeholder@2.11.5?external=@tiptap/pm';
-    import CharacterCount from 'https://esm.sh/@tiptap/extension-character-count@2.11.5?external=@tiptap/pm';
+    // All third-party code is bundled locally in vendor.js (built from exact
+    // pinned npm versions by scripts/build-admin-vendor.mjs) — no runtime
+    // dependency on esm.sh or any external CDN.
+    import {
+      h, render, Component,
+      useState, useEffect, useCallback, useRef, useMemo,
+      htm, tus, DOMPurify, Sortable,
+      Editor, StarterKit, TiptapUnderline, TiptapLink, Placeholder, CharacterCount,
+    } from './vendor.js';
     const html = htm.bind(h);
 
     // ─── Constants ────────────────────────────
