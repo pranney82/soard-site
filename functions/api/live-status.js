@@ -99,16 +99,19 @@ async function maybeUpgradeToVideoUrl(env, stored, state, nowMs) {
   await writeStatus(DB, stamped, nowIso);
 
   try {
+    // /videos + live_status, NOT /live_videos — the live_videos edge is
+    // gated behind Facebook App Review ("Live Video API") even for reading
+    // your own page. The plain videos edge carries live_status and needs
+    // only pages_read_engagement. (Learned the hard way, error #10.)
     const qs = new URLSearchParams({
-      fields: 'status,permalink_url',
-      broadcast_status: '["LIVE"]',
-      limit: '1',
+      fields: 'live_status,permalink_url',
+      limit: '5',
       access_token: FB_PAGE_TOKEN,
     });
-    const res = await fetch(`${FB_GRAPH}/${FB_PAGE_ID}/live_videos?${qs}`);
+    const res = await fetch(`${FB_GRAPH}/${FB_PAGE_ID}/videos?${qs}`);
     if (!res.ok) return state;
     const data = await res.json();
-    const vid = (data.data || []).find(v => v.status === 'LIVE' && v.permalink_url);
+    const vid = (data.data || []).find(v => v.live_status === 'LIVE' && v.permalink_url);
     if (!vid) return state;
 
     const videoUrl = vid.permalink_url.startsWith('http')

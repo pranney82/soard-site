@@ -31,12 +31,16 @@ export async function onRequestGet(context) {
   }
 
   try {
+    // /videos + live_status filter, NOT /live_videos — see live-status.js:
+    // the live_videos edge requires Facebook App Review even for your own
+    // page; the videos edge doesn't. Fetch a wider window since reels and
+    // regular uploads (no live_status) get filtered out below.
     const qs = new URLSearchParams({
-      fields: 'status,permalink_url,title,creation_time',
-      limit: '5',
+      fields: 'live_status,permalink_url,title,description,created_time',
+      limit: '25',
       access_token: FB_PAGE_TOKEN,
     });
-    const res = await fetch(`${FB_GRAPH}/${FB_PAGE_ID}/live_videos?${qs}`);
+    const res = await fetch(`${FB_GRAPH}/${FB_PAGE_ID}/videos?${qs}`);
     const data = await res.json();
 
     if (!res.ok || data.error) {
@@ -49,14 +53,17 @@ export async function onRequestGet(context) {
       });
     }
 
-    const videos = (data.data || []).map(v => ({
-      status: v.status,
-      title: v.title || null,
-      createdAt: v.creation_time || null,
-      url: v.permalink_url
-        ? (v.permalink_url.startsWith('http') ? v.permalink_url : `https://www.facebook.com${v.permalink_url}`)
-        : null,
-    }));
+    const videos = (data.data || [])
+      .filter(v => v.live_status) // only broadcasts — reels/uploads have no live_status
+      .slice(0, 5)
+      .map(v => ({
+        status: v.live_status,
+        title: v.title || (v.description ? v.description.slice(0, 80) : null),
+        createdAt: v.created_time || null,
+        url: v.permalink_url
+          ? (v.permalink_url.startsWith('http') ? v.permalink_url : `https://www.facebook.com${v.permalink_url}`)
+          : null,
+      }));
 
     const body = { success: true, configured: true, videos };
     _cache = { at: Date.now(), body };
