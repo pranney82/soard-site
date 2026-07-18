@@ -6,6 +6,8 @@
 const CACHE_NAME = 'soard-v2';
 const IMAGE_CACHE_NAME = 'soard-images-v1';
 const IMAGE_CACHE_MAX_ENTRIES = 300;
+const PAGE_CACHE_NAME = 'soard-pages-v1';
+const PAGE_CACHE_MAX_ENTRIES = 60;
 
 const PRECACHE_URLS = [
   '/fonts/outfit-latin-variable.woff2',
@@ -22,7 +24,7 @@ self.addEventListener('install', (event) => {
 
 // Activate: clean up old caches
 self.addEventListener('activate', (event) => {
-  const keep = new Set([CACHE_NAME, IMAGE_CACHE_NAME]);
+  const keep = new Set([CACHE_NAME, IMAGE_CACHE_NAME, PAGE_CACHE_NAME]);
   event.waitUntil(
     caches.keys().then((keys) =>
       Promise.all(keys.filter((k) => !keep.has(k)).map((k) => caches.delete(k)))
@@ -44,8 +46,10 @@ self.addEventListener('fetch', (event) => {
 
   if (!isSameOrigin && !isCFImage) return;
 
-  // CF Images: separate cache with eviction limit
-  if (isCFImage) {
+  // CF Images: separate cache with eviction limit.
+  // The site serves these same-origin via /cdn-cgi/imagedelivery/ —
+  // that path has no file extension, so it must be matched explicitly.
+  if (isCFImage || url.pathname.startsWith('/cdn-cgi/imagedelivery/')) {
     event.respondWith(cacheFirstWithLimit(request, IMAGE_CACHE_NAME, IMAGE_CACHE_MAX_ENTRIES));
     return;
   }
@@ -114,8 +118,13 @@ async function networkFirst(request) {
   try {
     const response = await fetch(request);
     if (response.ok) {
-      const cache = await caches.open(CACHE_NAME);
+      const cache = await caches.open(PAGE_CACHE_NAME);
       cache.put(request, response.clone());
+      // Bound the offline-page cache so it can't grow forever
+      const keys = await cache.keys();
+      if (keys.length > PAGE_CACHE_MAX_ENTRIES) {
+        await cache.delete(keys[0]);
+      }
     }
     return response;
   } catch {

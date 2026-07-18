@@ -1,4 +1,3 @@
-import { getCollection } from 'astro:content';
 import { getPublishedKids } from '../../utils/collections';
 
 export async function GET() {
@@ -19,11 +18,11 @@ export async function GET() {
         || truncate(k.data.bio as string | null, 160),
     }));
 
+  // Static output: custom headers here are dropped at build time — Pages
+  // serves the file with its defaults (Access-Control-Allow-Origin: *).
+  // The payload is already-public site content, so that's fine.
   return new Response(JSON.stringify(kids), {
-    headers: {
-      'Content-Type': 'application/json',
-      'Access-Control-Allow-Origin': 'https://www.sunnyandranney.com',
-    },
+    headers: { 'Content-Type': 'application/json' },
   });
 }
 

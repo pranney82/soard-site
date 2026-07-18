@@ -1,7 +1,6 @@
 import type { APIRoute, GetStaticPaths } from 'astro';
 import { generateOgImage } from '../../utils/og';
 import { getSiteStats } from '../../utils/stats';
-import { getPublishedKids } from '../../utils/collections';
 import siteSettings from '../../content/site/settings.json';
 import ourStory from '../../content/site/our-story.json';
 
@@ -24,17 +23,10 @@ const getPages = async () => {
   // Leadership: founders photo (same org page, no unique hero)
   // Financials: founders photo (about sub-page, no images)
   // Kids index: hero kid
-  // Rooms: first featured kid's hero image
-  const allKids = await getPublishedKids();
-  const firstFeatured = allKids.find(k => k.data.featured && k.data.caseStudy && k.data.heroImage);
-  const roomsHero = firstFeatured?.data.heroImage || s.sectionPhotos?.roomBedroom || 'kids/bryce/photo-22';
-  // Before & After: same as rooms
   // Community index: community hero (community/index.astro line 45)
   const communityHero = s.communityPhotos?.hero || 'community/summit-counseling-center/hero';
   // Partners: partner photo (partners/index.astro line 37)
   const partnerPhoto = s.partnerPhoto || 'kids/bryce/photo-22';
-  // Construction/Design: process photo (used on those pages)
-  const processPhoto = s.sectionPhotos?.process || 'kids/oakley/photo-15';
   // Apply: apply hero (apply.astro line 41)
   const applyHero = s.applyPhotos?.hero || 'kids/griffin/hero';
   // Ways to Give: ways-to-give hero (ways-to-give.astro line 34)
@@ -50,13 +42,10 @@ const getPages = async () => {
   { slug: 'leadership', title: 'Leadership', subtitle: 'The team and board behind Sunshine on a Ranney Day.', heroImage: foundersPhoto },
   { slug: 'financials', title: 'Financials', subtitle: 'Transparency you can trust. 990 filings and annual reports.', heroImage: foundersPhoto },
   { slug: 'kids', title: 'Meet the Kids', subtitle: `${stats.totalKids}+ children whose lives have been transformed by a room makeover.`, heroImage: homeHero },
-  { slug: 'rooms', title: 'Featured Rooms', subtitle: 'Dream bedrooms, accessible bathrooms, and therapy rooms we\'ve built.', heroImage: roomsHero },
-  { slug: 'before-after', title: 'Before & After', subtitle: 'See the dramatic transformations in our room makeovers.', heroImage: roomsHero },
   { slug: 'community', title: 'Community Projects', subtitle: 'Large-scale projects serving thousands of children with special needs.', heroImage: communityHero },
   { slug: 'partners', title: 'Our Partners', subtitle: 'The companies and organizations that make our work possible.', heroImage: partnerPhoto },
-  { slug: 'construction', title: 'Construction Partners', subtitle: 'The builders who donate their skills to transform children\'s homes.', heroImage: processPhoto },
-  { slug: 'design', title: 'Design Partners', subtitle: 'The designers who create beautiful, functional spaces for our kids.', heroImage: processPhoto },
   { slug: 'apply', title: 'Apply for a Makeover', subtitle: 'Families of children with special needs can apply for a no-cost home renovation.', heroImage: applyHero },
+  { slug: 'advisory-board', title: 'Advisory Board', subtitle: 'Lend your time and expertise to help transform children\'s lives.', heroImage: foundersPhoto },
   { slug: 'faq', title: 'Frequently Asked Questions', subtitle: 'Everything you need to know about donating, volunteering, and applying.', heroImage: homeHero },
   { slug: 'resources', title: 'Resources', subtitle: 'Guides, tools, and information for families of children with special needs.', heroImage: homeHero },
   { slug: 'publicity', title: 'Publicity', subtitle: 'Media coverage and press mentions of Sunshine on a Ranney Day.', heroImage: 'press-braves-community-heroes' },

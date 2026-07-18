@@ -111,12 +111,14 @@ const breadcrumbs = [
 const INITIAL_BATCH = 10;
 const totalKidsCount = kids.length;
 
-// JSON manifest for overflow cards (created client-side on demand)
+// JSON manifest for overflow cards (created client-side on demand).
+// No inline LQIP data URIs here — the client builds a tiny blurred CF Images
+// URL from the image id instead (same w=30,q=30,blur=20 pattern as cfLqip in
+// utils/cf-image.ts), which keeps this island ~130 KB lighter.
 const overflowKids = kids.slice(INITIAL_BATCH).map(kid => ({
   s: kid.data.slug,
   n: kid.data.name,
   i: kid.data.heroImage ? cfId(kid.data.heroImage) : '',
-  b: kid.data.heroImage ? (lqip[cfId(kid.data.heroImage)] || '') : '',
   y: kid.data.year || 0,
   t: sortRoomTypes(kid.data.roomTypes || []),
   d: kid.data.diagnosis || '',
@@ -608,7 +610,11 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
     function cfSS(id: string, widths: number[], ratio: number) {
       return widths.map(w => `${cfCard(id, w, Math.round(w * ratio))} ${w}w`).join(', ');
     }
-    function createCard(kid: { s: string; n: string; i: string; b: string; y: number; t: string[]; d: string; st: string; o: number | null }) {
+    /* Blur-up placeholder URL — mirrors cfLqip() in utils/cf-image.ts */
+    function cfBlur(id: string) {
+      return `${CF}/${id}/w=30,q=30,blur=20`;
+    }
+    function createCard(kid: { s: string; n: string; i: string; y: number; t: string[]; d: string; st: string; o: number | null }) {
       const a = document.createElement('a');
       a.href = `/kids/${kid.s}/`;
       a.className = 'kid-card';
@@ -626,7 +632,7 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
       } else {
         imgHtml = `<div class="kid-card__placeholder" aria-hidden="true"><svg width="48" height="48"><use href="#icon-placeholder"/></svg></div>`;
       }
-      const blurStyle = kid.b ? ` style="background-image:url(${kid.b})"` : '';
+      const blurStyle = kid.i ? ` style="background-image:url(${cfBlur(kid.i)})"` : '';
       const sortedTypes = sortRoomTypes(kid.t);
       const roomHtml = sortedTypes.length > 0 ? `<span class="kid-card__room">${escapeHtml(sortedTypes[0])}</span>` : '';
       const statusHtml = kid.st === 'in-progress'
@@ -642,7 +648,7 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
       if (allCardsLoaded) return;
       const dataEl = document.getElementById('kids-overflow');
       if (!dataEl?.textContent) { allCardsLoaded = true; return; }
-      const overflow: { s: string; n: string; i: string; b: string; y: number; t: string[]; d: string; st: string; o: number | null }[] = JSON.parse(dataEl.textContent);
+      const overflow: { s: string; n: string; i: string; y: number; t: string[]; d: string; st: string; o: number | null }[] = JSON.parse(dataEl.textContent);
       const frag = document.createDocumentFragment();
       for (const kid of overflow) {
         const card = createCard(kid);
@@ -838,7 +844,7 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
       const overflowEl = document.getElementById('kids-overflow');
       if (overflowEl?.textContent) {
         try {
-          const overflow: { s: string; n: string; i: string; b: string; y: number; t: string[]; d: string; st: string; o: number | null }[] = JSON.parse(overflowEl.textContent);
+          const overflow: { s: string; n: string; i: string; y: number; t: string[]; d: string; st: string; o: number | null }[] = JSON.parse(overflowEl.textContent);
           for (const kid of overflow) {
             allKidData.push({
               year: `year-${kid.y}`,
