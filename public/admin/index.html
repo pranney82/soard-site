@@ -4164,15 +4164,15 @@
           const r = await api.readContent(`src/content/kids/${slug}.json`);
           if (!r.success) throw new Error(r.error || 'could not read kid record');
           const d = typeof r.content === 'string' ? JSON.parse(r.content) : r.content;
-          d.streamVideoId = v.streamUid;
+          d.revealVideoUrl = `https://watch.cloudflarestream.com/${v.streamUid}`;
           const save = await api.saveContent(
             `src/content/kids/${slug}.json`,
             JSON.stringify(d, null, 2),
-            `Attach reveal video to ${d.name}`,
+            `Attach reveal video link to ${d.name}`,
             r.sha
           );
           if (!save.success) throw new Error(save.error || 'save failed');
-          addToast(`Reveal video attached to ${d.name}'s page! Hit Deploy Now to publish.`, 'success');
+          addToast(`"Watch the live reveal" link added to ${d.name}'s page! Hit Deploy Now to publish.`, 'success');
         } catch (e) {
           addToast(`Attach failed: ${e.message}`, 'error');
         }
