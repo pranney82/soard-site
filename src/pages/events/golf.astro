@@ -147,6 +147,10 @@ const heroLogoSizes = '(max-width: 767px) 200px, 320px';
             <span class="ev-countdown__label">Min</span>
           </div>
         </div>
+        <!-- Shown by the countdown script once the event date passes -->
+        <p class="ev-countdown-done" hidden>
+          This year's tournament is a wrap — thank you for making it shine! Stay tuned for next year's date.
+        </p>
       </div>
       <div class="ev-hero__visual" data-reveal>
         <img
@@ -1627,6 +1631,16 @@ const heroLogoSizes = '(max-width: 767px) 200px, 320px';
     color: rgba(255, 255, 255, 0.5);
     margin-top: 0.2rem;
   }
+  .ev-countdown-done {
+    font-size: 0.9375rem;
+    font-weight: 600;
+    color: var(--c-dark);
+    background-image: linear-gradient(transparent 62%, rgba(255, 213, 0, 0.35) 62%);
+    display: inline-block;
+    margin-top: 0.5rem;
+  }
+  .ev-countdown-done[hidden] { display: none; }
+
   .ev-countdown__sep {
     font-size: 1.2rem;
     font-weight: 700;
@@ -2434,6 +2448,7 @@ const heroLogoSizes = '(max-width: 767px) 200px, 320px';
     const hoursEl = el.querySelector('[data-hours]')!;
     const minsEl = el.querySelector('[data-mins]')!;
 
+    let timer: ReturnType<typeof setInterval> | undefined;
     function tick() {
       const diff = Math.max(0, target - Date.now());
       const d = Math.floor(diff / 86400000);
@@ -2444,10 +2459,13 @@ const heroLogoSizes = '(max-width: 767px) 200px, 320px';
       minsEl.textContent = String(m).padStart(2, '0');
       if (diff <= 0) {
         el.style.display = 'none';
+        const done = document.querySelector<HTMLElement>('.ev-countdown-done');
+        if (done) done.hidden = false;
+        if (timer) clearInterval(timer);
       }
     }
     tick();
-    setInterval(tick, 60000);
+    timer = setInterval(tick, 60000);
   }
 
   /* ── Sticky mobile CTA (show after scrolling past hero) ── */

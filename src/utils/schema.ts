@@ -195,13 +195,10 @@ export function getKidProfileSchema(kid: {
     "name": kid.name,
     ...(kid.heroImage ? { "image": cfAbsolute(kid.heroImage) } : {}),
   };
-  if (kid.age) person.age = Array.isArray(kid.age) ? kid.age.join(', ') : kid.age;
-  if (kid.diagnosis) {
-    person.health = {
-      "@type": "MedicalCondition",
-      "name": kid.diagnosis,
-    };
-  }
+  // Note: "age"/"health" are not schema.org Person properties — validators
+  // ignore them, so we emit only valid fields. The diagnosis appears in the
+  // Article body/description instead.
+  if (kid.diagnosis) person.description = kid.diagnosis;
   schemas.push(person);
 
   // Article schema for the profile page

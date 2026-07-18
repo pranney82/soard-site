@@ -47,10 +47,14 @@ const readingTime = Math.max(1, Math.round(wordCount / 238));
 const h2Regex = /<h2>(.*?)<\/h2>/g;
 let match: RegExpExecArray | null;
 const tocItems: { text: string; id: string }[] = [];
+/* Dedupe ids for repeated heading text (-2, -3, …) so every anchor is unique */
+const seenIds = new Map<string, number>();
 while ((match = h2Regex.exec(article.body)) !== null) {
   const text = match[1].replace(/<[^>]+>/g, '');
-  const id = text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-  tocItems.push({ text, id });
+  const base = text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  const n = (seenIds.get(base) ?? 0) + 1;
+  seenIds.set(base, n);
+  tocItems.push({ text, id: n === 1 ? base : `${base}-${n}` });
 }
 
 /* ── Inject IDs into h2 headings for anchor links ── */
@@ -248,17 +252,30 @@ const tagColors: Record<string, string> = {
   </article>
 </BaseLayout>
 
-<!-- Reading progress bar script (~150 bytes) -->
+<!-- Reading progress bar — re-binds per astro:page-load so it keeps working
+     after client-side navigation (module scripts only execute once, and the
+     old #reading-progress element is swapped out with the page). -->
 <script>
-  const bar = document.getElementById('reading-progress');
-  if (bar) {
+  let _progressCleanup: (() => void) | null = null;
+
+  function initReadingProgress() {
+    _progressCleanup?.();
+    _progressCleanup = null;
+
+    const bar = document.getElementById('reading-progress');
+    if (!bar) return;
+
     const update = () => {
       const h = document.documentElement.scrollHeight - window.innerHeight;
       bar.style.transform = `scaleX(${h > 0 ? Math.min(window.scrollY / h, 1) : 0})`;
     };
     window.addEventListener('scroll', update, { passive: true });
+    _progressCleanup = () => window.removeEventListener('scroll', update);
     update();
   }
+
+  document.addEventListener('astro:page-load', initReadingProgress);
+  document.addEventListener('astro:before-swap', () => { _progressCleanup?.(); _progressCleanup = null; });
 </script>
 
 <style>

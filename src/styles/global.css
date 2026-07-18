@@ -386,9 +386,12 @@ h4, .h4 {
 }
 
 /* ─── Focus Styles ──────────────────────── */
+/* Two-tone ring: dark outline reads on light sections, yellow shadow
+   reads on dark sections (yellow alone is 1.34:1 on cream). */
 :focus-visible {
-  outline: 3px solid var(--c-yellow);
+  outline: 2px solid var(--c-dark);
   outline-offset: 2px;
+  box-shadow: 0 0 0 5px var(--c-yellow);
 }
 
 /* ─── Animations ────────────────────────── */
@@ -623,7 +626,8 @@ h4, .h4 {
 }
 
 .legal-page a:hover {
-  color: var(--c-yellow-hover);
+  /* Darkened yellow — raw --c-yellow-hover is 1.67:1 on light backgrounds */
+  color: #8A7200;
 }
 
 /* Editorial section numbers — matches Ways-to-Give pattern */

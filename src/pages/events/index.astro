@@ -122,12 +122,15 @@ function fmtYear(d: string) {
 /* ── Google Calendar link builder ── */
 function googleCalUrl(ev: { title: string; date: string; endDate?: string; location: string; address?: string; description: string }) {
   const start = ev.date.replace(/-/g, '');
-  const endDate = ev.endDate || (() => {
-    const d = new Date(ev.date + 'T00:00:00');
+  // Google all-day ranges use an EXCLUSIVE end date, so the day after the
+  // event's last day — for both single-day and explicit-endDate events.
+  const lastDay = ev.endDate || ev.date;
+  const endExclusive = (() => {
+    const d = new Date(lastDay + 'T00:00:00');
     d.setDate(d.getDate() + 1);
     return d.toISOString().split('T')[0];
   })();
-  const end = endDate.replace(/-/g, '');
+  const end = endExclusive.replace(/-/g, '');
   const params = new URLSearchParams({
     action: 'TEMPLATE',
     text: ev.title,

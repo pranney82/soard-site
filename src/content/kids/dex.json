@@ -108,12 +108,12 @@
   "jsonLd": null,
   "roomCount": 1,
   "publishStatus": "published",
-  "streamVideoId": null,
   "fundraisingUrl": "https://www.zeffy.com/en-US/donation-form/help-build-dexs-dream-teenage-bedroom",
   "bedroomCount": 1,
   "heroSummary": "Dex is a joyful teen with big dreams of becoming a teacher. Thanks to Beazer Homes, he will now have a space of his own, allowing him build independence, confidence, and life skills as he enters high school. ",
   "plans": [],
   "beforeAfterPhotos": [],
   "sortOrder": 5,
-  "accentImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/dex/1784041629981-IMG-5145.JPG/public"
+  "accentImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/dex/1784041629981-IMG-5145.JPG/public",
+  "revealVideoUrl": "https://watch.cloudflarestream.com/3c4870d03df31ec3d07f0085ffb3de01"
 }
