@@ -348,28 +348,31 @@ const planOrientation = (() => {
             {kid.year && <span class="hero__meta-item">{kid.year}</span>}
           </div>
 
-          {kid.fundraisingUrl && (
-            <a href={kid.fundraisingUrl} target="_blank" rel="noopener noreferrer" class="hero__cta" data-reveal="actions">
-              Support {kid.name}
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-            </a>
-          )}
-
-          {kid.revealVideoUrl && (
-            <a
-              href={kid.revealVideoUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              class="hero__reveal-link"
-              id="reveal-link"
-              data-reveal-uid={kid.revealVideoUrl.split('/').filter(Boolean).pop()}
-              data-reveal="actions"
-            >
-              <span class="hero__reveal-play" aria-hidden="true">
-                <svg viewBox="0 0 24 28" fill="currentColor"><path d="M2 1.5v25l20-12.5L2 1.5z"/></svg>
-              </span>
-              Watch the live reveal
-            </a>
+          {(kid.fundraisingUrl || kid.revealVideoUrl) && (
+            <div class="hero__actions" data-reveal="actions">
+              {kid.fundraisingUrl && (
+                <a href={kid.fundraisingUrl} target="_blank" rel="noopener noreferrer" class="hero__cta" data-reveal="actions">
+                  Support {kid.name}
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+                </a>
+              )}
+              {kid.revealVideoUrl && (
+                <a
+                  href={kid.revealVideoUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="hero__reveal-link"
+                  id="reveal-link"
+                  data-reveal-uid={kid.revealVideoUrl.split('/').filter(Boolean).pop()}
+                  data-reveal="actions"
+                >
+                  <span class="hero__reveal-play" aria-hidden="true">
+                    <svg viewBox="0 0 24 28" fill="currentColor"><path d="M2 1.5v25l20-12.5L2 1.5z"/></svg>
+                  </span>
+                  Watch the live reveal
+                </a>
+              )}
+            </div>
           )}
         </div>
       </div>
@@ -3116,13 +3119,22 @@ const planOrientation = (() => {
   }
 
   /* Premium Hero CTA */
+  /* Action row — primary CTA + quiet reveal link side by side, wraps on mobile */
+  .hero__actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 16px 32px;
+    margin-top: 32px;
+  }
+  .hero__actions .hero__cta { margin-top: 0; }
+
   /* Reveal link — deliberately quieter than the Support CTA */
   .hero__reveal-link {
     display: flex;
     align-items: center;
     gap: 10px;
     width: fit-content;
-    margin-top: 18px;
     font-size: 0.72rem;
     font-weight: 600;
     letter-spacing: 0.12em;
