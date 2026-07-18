@@ -14,6 +14,8 @@
  * Env bindings: none beyond env vars FB_PAGE_ID, FB_PAGE_TOKEN
  */
 
+import { readArchiveState } from './_fb-archive.js';
+
 const FB_GRAPH = 'https://graph.facebook.com/v25.0';
 const CACHE_TTL_MS = 2 * 60 * 1000;
 let _cache = { at: 0, body: null };
@@ -53,16 +55,24 @@ export async function onRequestGet(context) {
       });
     }
 
+    // Annotate which broadcasts the auto-archiver has already saved to Stream
+    let archived = {};
+    try {
+      archived = (await readArchiveState(context.env.DB)).archived;
+    } catch { /* annotation only */ }
+
     const videos = (data.data || [])
       .filter(v => v.live_status) // only broadcasts — reels/uploads have no live_status
       .slice(0, 5)
       .map(v => ({
+        id: v.id || null,
         status: v.live_status,
         title: v.title || (v.description ? v.description.slice(0, 80) : null),
         createdAt: v.created_time || null,
         url: v.permalink_url
           ? (v.permalink_url.startsWith('http') ? v.permalink_url : `https://www.facebook.com${v.permalink_url}`)
           : null,
+        streamUid: (v.id && archived[v.id]?.uid) || null,
       }));
 
     const body = { success: true, configured: true, videos };

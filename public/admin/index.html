@@ -4036,6 +4036,7 @@
       const [fbResult, setFbResult] = useState(null);
       const [kidSlug, setKidSlug] = useState('');
       const [kidImage, setKidImage] = useState(null);
+      const [archiving, setArchiving] = useState(null);
 
       const load = async () => {
         try {
@@ -4131,6 +4132,26 @@
 
       const handleUpdate = async () => {
         if (await post({ action: 'update', message, url, image: kidImage || '' })) addToast('Banner updated — on the site within a minute.', 'success');
+      };
+
+      const handleArchive = async (v) => {
+        setArchiving(v.id);
+        try {
+          const r = await fetch('/api/fb-archive-video', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ videoId: v.id }),
+          });
+          const data = await r.json();
+          if (data.success) {
+            addToast(`Saved to Cloudflare Stream! Processing now — it'll appear in your Stream library as "${data.name}".`, 'success');
+          } else {
+            addToast(`Archive failed: ${data.error}`, 'error');
+          }
+        } catch (e) {
+          addToast(`Archive error: ${e.message}`, 'error');
+        }
+        setArchiving(null);
       };
 
       const handleTestFb = async () => {
@@ -4306,6 +4327,12 @@
                         ${v.url ? html`<button class="btn btn-secondary" style="padding:2px 10px;font-size:12px;white-space:nowrap"
                           onClick=${() => { setUrl(v.url); addToast('Banner link set to this video — hit Update Banner (or Go Live) to apply.', 'success'); }}>
                           Use as banner link</button>` : null}
+                        ${v.streamUid
+                          ? html`<span style="font-size:12px;color:#22543D;background:#C6F6D5;padding:2px 8px;border-radius:8px;white-space:nowrap">✓ In Stream</span>`
+                          : v.id ? html`<button class="btn btn-secondary" style="padding:2px 10px;font-size:12px;white-space:nowrap"
+                              disabled=${archiving === v.id}
+                              onClick=${() => handleArchive(v)}>
+                              ${archiving === v.id ? 'Archiving...' : 'Save to Stream now'}</button>` : null}
                       </div>
                     `)}
                   </div>`
@@ -4322,6 +4349,7 @@
               : html`<strong>off</strong> — to enable, set <code>FB_PAGE_ID</code> and <code>FB_PAGE_TOKEN</code> (a page access token) in Cloudflare Pages → Settings → Environment Variables.`}</li>
             <li>Visitors can dismiss it; it stays dismissed for their browsing session.</li>
             <li>Site pages check for changes every 60 seconds — going live, updating, and ending all propagate within about a minute.</li>
+            <li>Live replays are <strong>automatically saved to Cloudflare Stream</strong> within a few hours of the broadcast ending (Facebook deletes them after 30 days). Archived ones show "✓ In Stream" above; "Save to Stream now" archives one immediately.</li>
           </ul>
         </div>
       `;
