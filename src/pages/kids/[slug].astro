@@ -356,14 +356,37 @@ const planOrientation = (() => {
           )}
 
           {kid.revealVideoUrl && (
-            <a href={kid.revealVideoUrl} target="_blank" rel="noopener noreferrer" class="hero__cta" data-reveal="actions">
-              <svg width="11" height="13" viewBox="0 0 24 28" fill="currentColor" aria-hidden="true"><path d="M2 1.5v25l20-12.5L2 1.5z"/></svg>
+            <a
+              href={kid.revealVideoUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              class="hero__reveal-link"
+              id="reveal-link"
+              data-reveal-uid={kid.revealVideoUrl.split('/').filter(Boolean).pop()}
+              data-reveal="actions"
+            >
+              <span class="hero__reveal-play" aria-hidden="true">
+                <svg viewBox="0 0 24 28" fill="currentColor"><path d="M2 1.5v25l20-12.5L2 1.5z"/></svg>
+              </span>
               Watch the live reveal
             </a>
           )}
         </div>
       </div>
     </section>
+
+    <!-- ═══ Live Reveal Video Modal ═══ -->
+    {kid.revealVideoUrl && (
+      <div class="reveal-modal" id="reveal-modal" hidden>
+        <div class="reveal-modal__backdrop" data-reveal-close></div>
+        <div class="reveal-modal__dialog" role="dialog" aria-modal="true" aria-label={`${kid.name}'s live reveal video`}>
+          <button class="reveal-modal__close" type="button" aria-label="Close video" data-reveal-close>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+          </button>
+          <div class="reveal-modal__frame" id="reveal-modal-frame"></div>
+        </div>
+      </div>
+    )}
 
     <!-- ═══ Sticky Chapter Nav ═══ -->
     {chapters.length > 1 && (
@@ -2125,6 +2148,49 @@ const planOrientation = (() => {
       });
     }
 
+    // ── Live reveal modal ───────────────────
+    // The hero link opens the archived reveal in an in-page modal; the
+    // href (Stream watch page) remains the no-JS / new-tab fallback.
+    const revealLink = document.getElementById('reveal-link');
+    const revealModal = document.getElementById('reveal-modal');
+    if (revealLink && revealModal) {
+      const modalFrame = document.getElementById('reveal-modal-frame');
+      const closeBtn = revealModal.querySelector('.reveal-modal__close') as HTMLElement | null;
+
+      const openModal = (e: Event) => {
+        e.preventDefault();
+        revealModal.hidden = false;
+        document.body.classList.add('reveal-modal-open');
+        if (modalFrame && !modalFrame.querySelector('iframe')) {
+          const iframe = document.createElement('iframe');
+          iframe.src = `https://iframe.videodelivery.net/${(revealLink as HTMLElement).dataset.revealUid}?autoplay=true`;
+          iframe.allow = 'accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture';
+          iframe.allowFullscreen = true;
+          iframe.title = 'Live reveal video';
+          modalFrame.appendChild(iframe);
+        }
+        closeBtn?.focus();
+      };
+
+      const closeModal = () => {
+        revealModal.hidden = true;
+        document.body.classList.remove('reveal-modal-open');
+        if (modalFrame) modalFrame.innerHTML = ''; // removes the iframe → stops playback
+        (revealLink as HTMLElement).focus();
+      };
+
+      revealLink.addEventListener('click', openModal);
+      revealModal.querySelectorAll('[data-reveal-close]').forEach((el) => el.addEventListener('click', closeModal));
+      const onRevealKey = (e: KeyboardEvent) => {
+        if (e.key === 'Escape' && !revealModal.hidden) closeModal();
+      };
+      document.addEventListener('keydown', onRevealKey);
+      _cleanupFns.push(() => {
+        document.removeEventListener('keydown', onRevealKey);
+        document.body.classList.remove('reveal-modal-open');
+      });
+    }
+
   } // end initKidPage
 
   document.addEventListener('astro:page-load', initKidPage);
@@ -3020,7 +3086,97 @@ const planOrientation = (() => {
   }
 
   /* Premium Hero CTA */
-  .hero__cta + .hero__cta { margin-left: 12px; }
+  /* Reveal link — deliberately quieter than the Support CTA */
+  .hero__reveal-link {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: fit-content;
+    margin-top: 18px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--c-text-muted);
+    text-decoration: none;
+    transition: color var(--transition-fast);
+  }
+  .hero__reveal-play {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    flex-shrink: 0;
+    border-radius: 50%;
+    border: 1.5px solid rgba(0, 0, 0, 0.18);
+    transition: background var(--transition-fast), border-color var(--transition-fast);
+  }
+  .hero__reveal-play svg { width: 9px; height: 11px; margin-left: 2px; }
+  .hero__reveal-link:hover { color: var(--c-dark); }
+  .hero__reveal-link:hover .hero__reveal-play { background: var(--c-yellow); border-color: var(--c-yellow); }
+  .hero__reveal-link:focus-visible { outline: 2px solid var(--c-yellow); outline-offset: 3px; border-radius: 4px; }
+
+  /* Reveal video modal */
+  .reveal-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 1200; /* above header (1000) and live pill (900) */
+    display: grid;
+    place-items: center;
+    padding: 1.25rem;
+  }
+  .reveal-modal[hidden] { display: none; }
+  .reveal-modal__backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(30, 31, 37, 0.88);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    animation: rvm-fade 200ms ease both;
+  }
+  .reveal-modal__dialog {
+    position: relative;
+    width: min(1080px, 100%);
+    animation: rvm-pop 240ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  .reveal-modal__frame {
+    aspect-ratio: 16 / 9;
+    background: #000;
+    border-radius: var(--border-radius-lg);
+    overflow: hidden;
+    box-shadow: var(--shadow-xl);
+  }
+  .reveal-modal__frame iframe {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border: 0;
+  }
+  .reveal-modal__close {
+    position: absolute;
+    top: -3rem;
+    right: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    background: transparent;
+    border: 0;
+    border-radius: 50%;
+    color: var(--c-cream);
+    cursor: pointer;
+    transition: background var(--transition-fast);
+  }
+  .reveal-modal__close:hover { background: rgba(255, 255, 255, 0.12); }
+  .reveal-modal__close:focus-visible { outline: 2px solid var(--c-yellow); outline-offset: 2px; }
+  :global(body.reveal-modal-open) { overflow: hidden; }
+  @keyframes rvm-fade { from { opacity: 0; } }
+  @keyframes rvm-pop { from { opacity: 0; transform: translateY(10px) scale(0.98); } }
+  @media (prefers-reduced-motion: reduce) {
+    .reveal-modal__backdrop, .reveal-modal__dialog { animation: none; }
+  }
 
   .hero__cta {
     display: inline-flex;
