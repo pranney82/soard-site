@@ -13,7 +13,7 @@ interface Props {
 const { theme = 'dark', linked = true } = Astro.props;
 import { getCollection } from 'astro:content';
 import { CF_BASE as CF, cfSrcset, cfId } from '../../utils/cf-image';
-const href = linked ? '/publicity' : undefined;
+const href = linked ? '/publicity/' : undefined;
 
 const allLogos = await getCollection('medialogos');
 const logos = allLogos

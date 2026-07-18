@@ -18,7 +18,7 @@ export const GET: APIRoute = async ({ props }) => {
   const png = await generateOgImage({
     template: 'community',
     title: project.name,
-    heroImage: project.imageId || project.photos?.[0]?.cfImageId || null,
+    heroImage: project.imageId || project.photos?.[0]?.url || null,
     year: project.year,
     impact: project.impact,
     impactLabel: project.impactLabel,

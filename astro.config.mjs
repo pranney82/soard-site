@@ -15,11 +15,8 @@ export default defineConfig({
         !page.includes('/branding') &&
         !page.includes('/terms') &&
         !page.includes('/privacy-policy'),
-      serialize: (item) => {
-        // Add lastmod to all sitemap entries
-        item.lastmod = new Date().toISOString();
-        return item;
-      },
+      // No lastmod: stamping every URL with the build time makes the field
+      // meaningless and Google ignores (or distrusts) uniform values.
     }),
     ...(isDev ? [devSync()] : []),
   ],
@@ -27,7 +24,10 @@ export default defineConfig({
     defaultStrategy: 'hover',
   },
   build: {
-    inlineStylesheets: 'always',
+    // 'auto' inlines only small sheets; big page styles (the ~120 KB kid
+    // template CSS) become cached external files instead of shipping
+    // inside every HTML response.
+    inlineStylesheets: 'auto',
   },
   vite: {
     server: {
