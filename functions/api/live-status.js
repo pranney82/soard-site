@@ -41,6 +41,11 @@
  */
 
 import { logAudit } from './_audit.js';
+import { sweepArchives } from './_fb-archive.js';
+
+// Per-isolate throttle so most polls skip even the D1 sweep-state read
+let _lastSweepAttempt = 0;
+const SWEEP_ATTEMPT_INTERVAL_MS = 15 * 60 * 1000;
 
 const CONFIG_KEY = 'live-status';
 const DEFAULT_URL = 'https://www.facebook.com/SunshineOnaRanneyDay';
@@ -164,6 +169,14 @@ export async function onRequestGet(context) {
     let state = computeState(stored, Date.now());
     if (state.live) {
       state = await maybeUpgradeToVideoUrl(context.env, stored, state, Date.now());
+    }
+
+    // Auto-archive ended broadcasts to Cloudflare Stream — piggybacks on this
+    // public poll, runs after the response is sent, throttled inside the sweep
+    if (Date.now() - _lastSweepAttempt > SWEEP_ATTEMPT_INTERVAL_MS) {
+      _lastSweepAttempt = Date.now();
+      const sweep = sweepArchives(context.env);
+      if (context.waitUntil) context.waitUntil(sweep); else await sweep;
     }
     return Response.json({ ...state, auto }, {
       // Polled by every visitor — always serve fresh so "go live" and
