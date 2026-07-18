@@ -23,6 +23,25 @@ const STATE_KEY = 'fb-archive';
 const SWEEP_INTERVAL_MS = 6 * 60 * 60 * 1000;  // one sweep per 6h is plenty vs a 30-day window
 const MIN_AGE_MS = 3 * 60 * 60 * 1000;          // let Facebook finish processing the VOD first
 const MAX_PER_SWEEP = 2;                        // bound subrequests per invocation
+const DEPLOY_COOLDOWN_MS = 10 * 60 * 1000;      // at most one auto-deploy per 10 min
+const HOOK_ENV_VARS = ['CF_PAGES_DEPLOY_HOOK', 'CF_DEPLOY_HOOK', 'DEPLOY_HOOK_URL'];
+
+/**
+ * Kid pages are static — a change to a kid's record only shows after a
+ * rebuild. When the sweep writes a kid record (attach or migration), it
+ * fires the same deploy hook the admin's Deploy Now button uses, so the
+ * video link appears on the page with zero human involvement.
+ */
+async function triggerDeploy(env, state) {
+  const hook = HOOK_ENV_VARS.map((k) => env[k]).find(Boolean);
+  if (!hook) return false;
+  const last = state.lastAutoDeployAt ? Date.parse(state.lastAutoDeployAt) : 0;
+  if (Date.now() - last < DEPLOY_COOLDOWN_MS) return false;
+  const res = await fetch(hook, { method: 'POST' });
+  if (!res.ok) return false;
+  state.lastAutoDeployAt = new Date().toISOString();
+  return true;
+}
 
 export function archiveConfigured(env) {
   return !!(env.FB_PAGE_ID && env.FB_PAGE_TOKEN && env.CF_ACCOUNT_ID && env.CF_STREAM_TOKEN);
@@ -140,7 +159,7 @@ export async function attachToKid(env, slug, uid, videoName, by = 'auto-archive'
  * player) before Peter asked for a link instead. Move those to
  * revealVideoUrl. No-ops once every entry is migrated.
  */
-async function migrateEmbedsToLinks(env, state) {
+async function migrateEmbedsToLinks(env, state, stats) {
   let changed = false;
   for (const entry of Object.values(state.archived)) {
     if (!entry.attachedTo || entry.migrated) continue;
@@ -153,6 +172,7 @@ async function migrateEmbedsToLinks(env, state) {
           data.revealVideoUrl = watchUrl(entry.uid);
           await env.DB.prepare('UPDATE kids SET data = ?, updated_at = ? WHERE slug = ?')
             .bind(JSON.stringify(data), new Date().toISOString(), entry.attachedTo).run();
+          if (stats) stats.kidWrites++;
         }
       }
       entry.migrated = true;
@@ -168,7 +188,7 @@ async function migrateEmbedsToLinks(env, state) {
  * whose record was created AFTER their broadcast was archived.
  * Mutates state entries; returns true if anything changed.
  */
-async function retroAttach(env, state) {
+async function retroAttach(env, state, stats) {
   const pending = Object.entries(state.archived).filter(([, e]) => !e.attachedTo && !e.attachSkipped);
   if (!pending.length) return false;
   let changed = false;
@@ -177,7 +197,7 @@ async function retroAttach(env, state) {
       const kid = await findKidByName(env.DB, entry.name || '');
       if (!kid) continue; // no record yet (or ambiguous) — retry next sweep
       const ok = await attachToKid(env, kid.slug, entry.uid, entry.name);
-      if (ok) entry.attachedTo = kid.slug;
+      if (ok) { entry.attachedTo = kid.slug; if (stats) stats.kidWrites++; }
       else entry.attachSkipped = true; // kid already has a video — stop retrying
       changed = true;
     } catch { /* retry next sweep */ }
@@ -191,21 +211,27 @@ async function retroAttach(env, state) {
  * (surfaced by /api/live-status?sweep=1 so archive health is observable).
  */
 export async function sweepArchives(env) {
-  const summary = { configured: false, migrated: 0, attached: 0, archived: 0, fbChecked: false, error: null };
+  const summary = { configured: false, migrated: 0, attached: 0, archived: 0, fbChecked: false, autoDeployed: false, error: null };
   try {
     const { DB } = env;
     if (!archiveConfigured(env)) return summary;
     summary.configured = true;
 
     const state = await readArchiveState(DB);
+    const stats = { kidWrites: 0 }; // kid-record changes → pages are stale → auto-deploy
 
     // Retro-attach + embed→link migration run on every attempt (cheap, no Facebook quota)
     let dirty = false;
-    if (await migrateEmbedsToLinks(env, state)) { dirty = true; summary.migrated++; }
-    if (await retroAttach(env, state)) { dirty = true; summary.attached++; }
-    if (dirty) await writeArchiveState(DB, state);
+    if (await migrateEmbedsToLinks(env, state, stats)) { dirty = true; summary.migrated++; }
+    if (await retroAttach(env, state, stats)) { dirty = true; summary.attached++; }
 
-    if (state.checkedAt && Date.now() - Date.parse(state.checkedAt) < SWEEP_INTERVAL_MS) return summary;
+    const due = !state.checkedAt || Date.now() - Date.parse(state.checkedAt) >= SWEEP_INTERVAL_MS;
+    if (!due) {
+      if (stats.kidWrites > 0 && await triggerDeploy(env, state)) { summary.autoDeployed = true; dirty = true; }
+      if (dirty) await writeArchiveState(DB, state);
+      return summary;
+    }
+    if (dirty) await writeArchiveState(DB, state);
     summary.fbChecked = true;
 
     // Stamp before the slow work so concurrent requests don't double-sweep
@@ -237,7 +263,7 @@ export async function sweepArchives(env) {
           const kid = await findKidByName(DB, `${v.title || ''} ${v.description || ''}`);
           if (kid) {
             const ok = await attachToKid(env, kid.slug, done.uid, done.name);
-            if (ok) entry.attachedTo = kid.slug; else entry.attachSkipped = true;
+            if (ok) { entry.attachedTo = kid.slug; stats.kidWrites++; } else entry.attachSkipped = true;
           }
         } catch { /* retroAttach retries on later sweeps */ }
         state.archived[v.id] = entry;
@@ -254,7 +280,8 @@ export async function sweepArchives(env) {
         // e.g. source not ready yet — next sweep retries automatically
       }
     }
-    if (candidates.length) await writeArchiveState(DB, state);
+    if (stats.kidWrites > 0 && await triggerDeploy(env, state)) summary.autoDeployed = true;
+    if (candidates.length || summary.autoDeployed) await writeArchiveState(DB, state);
   } catch (err) {
     // sweep must never break the caller — but the error is observable via ?sweep=1
     summary.error = err.message || String(err);
