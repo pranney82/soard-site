@@ -69,9 +69,11 @@ export async function onRequestPost(context) {
     const result = await res.json();
 
     if (!res.ok) {
+      // Log the upstream detail server-side; return a generic message so raw
+      // Resend error bodies never reach the client.
       console.error(`Resend broadcast error ${res.status}:`, JSON.stringify(result));
       return Response.json(
-        { ok: false, error: result.message || 'Failed to create broadcast.', details: result },
+        { ok: false, error: 'Failed to create broadcast. Please try again.' },
         { status: res.status }
       );
     }
@@ -123,7 +125,8 @@ export async function onRequestGet(context) {
     const result = await res.json();
 
     if (!res.ok) {
-      return Response.json({ ok: false, error: result.message || 'Failed to fetch broadcasts.' }, { status: res.status });
+      console.error(`Resend list broadcasts error ${res.status}:`, JSON.stringify(result));
+      return Response.json({ ok: false, error: 'Failed to fetch broadcasts.' }, { status: res.status });
     }
 
     const broadcasts = (result.data || []).map(b => ({

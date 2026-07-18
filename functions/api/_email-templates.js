@@ -87,7 +87,7 @@ function pillBtn(text, href, v = 'primary') {
   // CTA on the golf event page hero).
   const bg = v === 'primary' ? Y : v === 'emerald' ? EM_DK : D;
   const c = v === 'primary' ? D : Y;
-  return `<a href="${href}" target="_blank" style="display:inline-block;padding:16px 40px;background:${bg};color:${c};font-family:${SANS};font-size:15px;font-weight:600;text-decoration:none;border-radius:100px;letter-spacing:0.01em;">${text}</a>`;
+  return `<a href="${escapeAttr(safeHref(href))}" target="_blank" style="display:inline-block;padding:16px 40px;background:${bg};color:${c};font-family:${SANS};font-size:15px;font-weight:600;text-decoration:none;border-radius:100px;letter-spacing:0.01em;">${text}</a>`;
 }
 
 /** Extract CF image ID from a full URL */
@@ -152,7 +152,7 @@ function renderPartnerLogos(partnerLogos, opts = {}) {
         const logo = cfImg(s.url, 'w=400,h=160,fit=contain,q=88,background=%23ffffff');
         cells.push(`<td width="33.33%" valign="middle" style="padding:5px;">
           <div style="background:#ffffff;border-radius:10px;padding:14px 10px;text-align:center;">
-            <img src="${logo}" alt="${escapeAttr(s.name || '')}" class="fl" style="max-width:100%;max-height:42px;width:auto;height:auto;display:inline-block;vertical-align:middle;" />
+            <img src="${escapeAttr(logo)}" alt="${escapeAttr(s.name || '')}" class="fl" style="max-width:100%;max-height:42px;width:auto;height:auto;display:inline-block;vertical-align:middle;" />
           </div>
         </td>`);
       } else {
@@ -224,7 +224,7 @@ function emailHeader() {
   return `<tr>
     <td style="background:${DD};padding:28px 48px;text-align:center;" class="pd">
       <a href="${SITE_URL}" target="_blank" style="display:inline-block;">
-        <img src="${logo}" width="160" alt="Sunshine on a Ranney Day" style="width:160px;height:auto;" />
+        <img src="${escapeAttr(logo)}" width="160" alt="Sunshine on a Ranney Day" style="width:160px;height:auto;" />
       </a>
     </td>
   </tr>`;
@@ -235,7 +235,7 @@ function emailFooter() {
   return `<tr>
     <td style="background:${DD};padding:36px 48px;text-align:center;" class="pd">
       <a href="${SITE_URL}" target="_blank" style="display:inline-block;margin-bottom:16px;">
-        <img src="${logo}" width="120" alt="Sunshine on a Ranney Day" style="width:120px;height:auto;" />
+        <img src="${escapeAttr(logo)}" width="120" alt="Sunshine on a Ranney Day" style="width:120px;height:auto;" />
       </a>
       <p style="margin:0 0 8px;font-family:${SANS};font-size:13px;color:rgba(255,255,255,0.45);line-height:1.6;">250 Hembree Park Drive, Suite 106 &middot; Roswell, GA 30076</p>
       <p style="margin:0 0 16px;font-family:${SANS};font-size:12px;color:rgba(255,255,255,0.3);">501(c)(3) Nonprofit &middot; EIN 45-4773997</p>
@@ -311,6 +311,25 @@ function escapeAttr(s) {
   return escapeHtml(s);
 }
 
+/**
+ * Validate a URL for use in an href. Allows only http:, https:, and mailto:
+ * schemes; scheme-relative (//host), root/relative (/path, ?q) and anchor
+ * (#id) URLs are kept as-is. Anything else (javascript:, data:, vbscript:, ...)
+ * or a value containing control characters (CR/LF/tab) collapses to "#".
+ * Returns the RAW url -- callers must still wrap it in escapeAttr for output.
+ */
+function safeHref(url) {
+  const raw = String(url == null ? '' : url).trim();
+  if (!raw) return '#';
+  if (/[\u0000-\u001F\u007F]/.test(raw)) return '#';
+  const scheme = raw.match(/^([a-zA-Z][a-zA-Z0-9+.-]*):/);
+  if (scheme) {
+    const s = scheme[1].toLowerCase();
+    if (s !== 'http' && s !== 'https' && s !== 'mailto') return '#';
+  }
+  return raw;
+}
+
 function inlineMd(text) {
   let s = escapeHtml(text || '');
   // [text](url)
@@ -356,9 +375,9 @@ const BLOCKS = {
     // tinted band — emerald for the golf recap, cream by default.
     const bg = p.bgColor || CR;
     const verticalPad = p.bgColor ? '20px' : '0';
-    const inner = `<div style="border-radius:${p.rounded === false ? '0' : '20px'};overflow:hidden;${p.shadow !== false ? 'box-shadow:0 24px 64px rgba(0,0,0,0.1),0 4px 16px rgba(0,0,0,0.06);' : ''}"><img src="${url}" width="${p.fullBleed ? '600' : '552'}" alt="${alt}" class="fl hero-img" style="width:100%;display:block;" /></div>`;
+    const inner = `<div style="border-radius:${p.rounded === false ? '0' : '20px'};overflow:hidden;${p.shadow !== false ? 'box-shadow:0 24px 64px rgba(0,0,0,0.1),0 4px 16px rgba(0,0,0,0.06);' : ''}"><img src="${escapeAttr(url)}" width="${p.fullBleed ? '600' : '552'}" alt="${alt}" class="fl hero-img" style="width:100%;display:block;" /></div>`;
     const wrap = p.link
-      ? `<a href="${escapeAttr(p.link)}" target="_blank" style="display:block;text-decoration:none;">${inner}</a>`
+      ? `<a href="${escapeAttr(safeHref(p.link))}" target="_blank" style="display:block;text-decoration:none;">${inner}</a>`
       : inner;
     const sidePad = p.fullBleed ? '0' : '24px';
     return `<tr><td style="background:${bg};padding:${verticalPad} ${sidePad};">${wrap}</td></tr>`;
@@ -409,7 +428,8 @@ const BLOCKS = {
 
   button(p) {
     const label = inlineMd(p.label || 'Donate Now');
-    const href = escapeAttr(p.href || `${SITE_URL}/donate`);
+    // Raw here — pillBtn() validates the scheme and escapes for output.
+    const href = p.href || `${SITE_URL}/donate`;
     const variant = ['dark', 'emerald'].includes(p.variant) ? p.variant : 'primary';
     const align = p.align || 'center';
     return `<tr>
@@ -422,7 +442,7 @@ const BLOCKS = {
     const k = p.kid;
     if (!k || !k.name) return '';
     const slug = k.slug || '';
-    const profileUrl = `${SITE_URL}/kids/${slug}`;
+    const profileUrl = escapeAttr(safeHref(`${SITE_URL}/kids/${slug}`));
     const heroSrc = k.heroImage || (k.photos && k.photos[0] && k.photos[0].url) || '';
     const heroImg = heroSrc ? cfImg(heroSrc, 'w=600,h=400,fit=cover,gravity=face,q=80') : '';
     const ageLabel = Array.isArray(k.age) && k.age.length > 1 ? 'Ages' : 'Age';
@@ -435,7 +455,7 @@ const BLOCKS = {
         ${sLabel(labelText)}
         <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-top:16px;background:${WG};border-radius:14px;overflow:hidden;"><tr>
           ${heroImg ? `<td width="40%" class="st" valign="top" style="vertical-align:top;">
-            <a href="${profileUrl}" target="_blank" style="display:block;"><img src="${heroImg}" width="220" alt="${escapeAttr(k.name)}" class="fl" style="width:100%;display:block;" /></a>
+            <a href="${profileUrl}" target="_blank" style="display:block;"><img src="${escapeAttr(heroImg)}" width="220" alt="${escapeAttr(k.name)}" class="fl" style="width:100%;display:block;" /></a>
           </td>` : ''}
           <td class="st" valign="top" style="padding:20px 22px;">
             <p style="margin:0 0 6px;font-family:${SERIF};font-size:20px;font-weight:700;color:${D};line-height:1.2;">${escapeHtml(k.name)}${ageStr ? `<span style="font-family:${SANS};font-size:13px;font-weight:400;color:${TM};">, ${ageLabel.toLowerCase()} ${escapeHtml(ageStr)}</span>` : ''}</p>
@@ -479,14 +499,14 @@ const BLOCKS = {
       return `<tr>
         <td style="background:${CR};padding:24px 24px 0;">
           <div style="border-radius:16px;overflow:hidden;box-shadow:0 16px 48px rgba(0,0,0,0.1);">
-            <img src="${url}" width="552" alt="${escapeAttr(p.alt || '')}" class="fl" style="width:100%;display:block;" />
+            <img src="${escapeAttr(url)}" width="552" alt="${escapeAttr(p.alt || '')}" class="fl" style="width:100%;display:block;" />
           </div>
           ${caption}
         </td></tr>`;
     }
     return `<tr>
       <td style="background:${CR};padding:24px 48px 0;" class="pd">
-        <img src="${url}" width="552" alt="${escapeAttr(p.alt || '')}" class="fl" style="width:100%;border-radius:12px;display:block;" />
+        <img src="${escapeAttr(url)}" width="552" alt="${escapeAttr(p.alt || '')}" class="fl" style="width:100%;border-radius:12px;display:block;" />
         ${caption}
       </td></tr>`;
   },
@@ -500,7 +520,7 @@ const BLOCKS = {
       const url = (it.src.startsWith('http') && !it.src.includes('imagedelivery.net')) ? it.src : cfImg(it.src, 'w=500,fit=cover,q=75');
       return `${i > 0 ? `<td width="2%" class="hm">&nbsp;</td>` : ''}
         <td width="${colW}%" class="st ${i > 0 ? 'mob-stack' : ''}" valign="top">
-          <img src="${url}" width="244" alt="${escapeAttr(it.alt || '')}" class="fl" style="width:100%;border-radius:12px;display:block;" />
+          <img src="${escapeAttr(url)}" width="244" alt="${escapeAttr(it.alt || '')}" class="fl" style="width:100%;border-radius:12px;display:block;" />
           ${it.caption ? `<p style="margin:8px 0 0;font-family:${SANS};font-size:11px;color:${TL};letter-spacing:0.02em;">${escapeHtml(it.caption)}</p>` : ''}
         </td>`;
     }).join('');
@@ -559,7 +579,7 @@ const BLOCKS = {
   eventCard(p) {
     const name = escapeHtml(p.name || 'Upcoming Event');
     const date = p.date ? escapeHtml(p.date) : '';
-    const url = escapeAttr(p.url || `${SITE_URL}/events`);
+    const url = escapeAttr(safeHref(p.url || `${SITE_URL}/events`));
     const desc = p.description ? `<p style="margin:6px 0 0;font-family:${SANS};font-size:13px;line-height:1.6;color:${TM};">${escapeHtml(p.description)}</p>` : '';
     return `<tr>
       <td style="background:${CR};padding:16px 48px 0;" class="pd">
@@ -579,8 +599,8 @@ const BLOCKS = {
     if (!src) return '';
     const url = (src.startsWith('http') && !src.includes('imagedelivery.net')) ? src : cfImg(src, 'w=1200,h=900,fit=cover,gravity=face,q=80');
     const alt = escapeAttr(p.alt || '');
-    const link = escapeAttr(p.link || '');
-    const inner = `<div style="border-radius:20px;overflow:hidden;box-shadow:0 24px 64px rgba(0,0,0,0.1),0 4px 16px rgba(0,0,0,0.06);"><img src="${url}" width="552" alt="${alt}" class="fl hero-img" style="width:100%;display:block;" /></div>`;
+    const link = p.link ? escapeAttr(safeHref(p.link)) : '';
+    const inner = `<div style="border-radius:20px;overflow:hidden;box-shadow:0 24px 64px rgba(0,0,0,0.1),0 4px 16px rgba(0,0,0,0.06);"><img src="${escapeAttr(url)}" width="552" alt="${alt}" class="fl hero-img" style="width:100%;display:block;" /></div>`;
     const wrap = link ? `<a href="${link}" target="_blank" style="display:block;text-decoration:none;">${inner}</a>` : inner;
 
     const namePill = p.name ? `<td style="padding:10px 22px;background:rgba(30,31,37,0.85);border-radius:100px;font-family:${SANS};font-size:13px;font-weight:600;color:#fff;letter-spacing:0.01em;">${escapeHtml(p.name)}${p.age ? `, age ${escapeHtml(String(p.age))}` : ''}</td>` : '';
@@ -642,12 +662,12 @@ const BLOCKS = {
         <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%"><tr>
           <td width="49%" class="st" valign="top">
             <p style="margin:0 0 8px;${eyebrow}">${escapeHtml(p.beforeLabel || 'Before')}</p>
-            <img src="${beforeUrl}" width="244" alt="${escapeAttr(before.alt || 'Before')}" class="fl" style="width:100%;border-radius:12px;display:block;" />
+            <img src="${escapeAttr(beforeUrl)}" width="244" alt="${escapeAttr(before.alt || 'Before')}" class="fl" style="width:100%;border-radius:12px;display:block;" />
           </td>
           <td width="2%" class="hm">&nbsp;</td>
           <td width="49%" class="st mob-stack" valign="top">
             <p style="margin:0 0 8px;${eyebrow}">${escapeHtml(p.afterLabel || 'After')}</p>
-            <img src="${afterUrl}" width="244" alt="${escapeAttr(after.alt || 'After')}" class="fl" style="width:100%;border-radius:12px;display:block;" />
+            <img src="${escapeAttr(afterUrl)}" width="244" alt="${escapeAttr(after.alt || 'After')}" class="fl" style="width:100%;border-radius:12px;display:block;" />
           </td>
         </tr></table>
       </td></tr>`;
@@ -671,7 +691,7 @@ const BLOCKS = {
     let html = '';
     if (featured && featured.amount) {
       const ftBadge = featured.badge !== false ? `<span style="display:inline-block;padding:5px 14px;background:${Y};border-radius:100px;font-family:${SANS};font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:${D};margin-bottom:14px;">${escapeHtml(featured.badge || 'Most Popular')}</span>` : '';
-      const href = escapeAttr(featured.href || `${ZEFFY_BASE}?amount=${featured.amount}`);
+      const href = escapeAttr(safeHref(featured.href || `${ZEFFY_BASE}?amount=${featured.amount}`));
       html += `<tr>
         <td style="background:${CR};padding:0 48px 12px;" class="pd">
           <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%"><tr>
@@ -687,7 +707,7 @@ const BLOCKS = {
     }
     if (small.length === 2) {
       const cell = (t) => {
-        const href = escapeAttr(t.href || `${ZEFFY_BASE}?amount=${t.amount}`);
+        const href = escapeAttr(safeHref(t.href || `${ZEFFY_BASE}?amount=${t.amount}`));
         return `<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%"><tr>
           <td style="padding:22px;background:${WG};border-radius:12px;text-align:center;">
             <p style="margin:0 0 2px;font-family:${SERIF};font-size:26px;font-weight:700;color:${D};">$${escapeHtml(String(t.amount))}</p>
@@ -706,7 +726,7 @@ const BLOCKS = {
         </td></tr>`;
     } else if (small.length === 1) {
       const t = small[0];
-      const href = escapeAttr(t.href || `${ZEFFY_BASE}?amount=${t.amount}`);
+      const href = escapeAttr(safeHref(t.href || `${ZEFFY_BASE}?amount=${t.amount}`));
       html += `<tr>
         <td style="background:${CR};padding:0 48px;" class="pd">
           <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%"><tr>
@@ -761,7 +781,7 @@ const BLOCKS = {
             <td style="padding:28px;text-align:center;">
               <p style="margin:0 0 14px;font-family:${SANS};font-size:11px;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;color:${tierAccent};">${escapeHtml(titleTier.tier)}</p>
               ${logo
-                ? `<img src="${logo}" width="320" alt="${escapeAttr(s.name)}" class="fl" style="max-width:320px;height:auto;display:block;margin:0 auto;" />`
+                ? `<img src="${escapeAttr(logo)}" width="320" alt="${escapeAttr(s.name)}" class="fl" style="max-width:320px;height:auto;display:block;margin:0 auto;" />`
                 : `<p style="margin:0;font-family:${SERIF};font-size:24px;font-weight:700;color:#fff;line-height:1.3;">${escapeHtml(s.name || '')}</p>`}
             </td></tr></table>
         </td></tr>`;
@@ -787,7 +807,7 @@ const BLOCKS = {
             : '';
           return `<td width="48%" class="st" valign="middle" style="padding:8px;text-align:center;background:${WG};border-radius:10px;">
             ${logo
-              ? `<img src="${logo}" width="220" alt="${escapeAttr(s.name)}" class="fl" style="max-width:220px;height:auto;display:block;margin:0 auto;" />`
+              ? `<img src="${escapeAttr(logo)}" width="220" alt="${escapeAttr(s.name)}" class="fl" style="max-width:220px;height:auto;display:block;margin:0 auto;" />`
               : `<p style="margin:0;font-family:${SANS};font-size:14px;font-weight:600;color:${D};">${escapeHtml(s.name)}</p>`}
           </td>`;
         };
@@ -945,16 +965,16 @@ const BLOCKS = {
     const heroBlock = heroImg
       ? `<tr><td style="padding:0 0 28px;">
           ${profileUrl
-            ? `<a href="${profileUrl}" target="_blank" style="display:block;text-decoration:none;">`
+            ? `<a href="${escapeAttr(safeHref(profileUrl))}" target="_blank" style="display:block;text-decoration:none;">`
             : ''}
             <div style="border-radius:20px;overflow:hidden;box-shadow:0 24px 64px rgba(0,0,0,0.1),0 4px 16px rgba(0,0,0,0.06);">
-              <img src="${heroImg}" width="552" alt="${heroAlt}" class="fl" style="width:100%;height:auto;display:block;" />
+              <img src="${escapeAttr(heroImg)}" width="552" alt="${heroAlt}" class="fl" style="width:100%;height:auto;display:block;" />
             </div>
           ${profileUrl ? `</a>` : ''}
         </td></tr>`
       : '';
 
-    const calPill = (label, href) => `<a href="${escapeAttr(href)}" target="_blank" style="display:inline-block;padding:11px 20px;background:#FFFFFF;border:1.5px solid ${BD};border-radius:100px;font-family:${SANS};font-size:13px;font-weight:600;color:${D};text-decoration:none;letter-spacing:0.01em;margin:0 3px 8px;">${label}</a>`;
+    const calPill = (label, href) => `<a href="${escapeAttr(safeHref(href))}" target="_blank" style="display:inline-block;padding:11px 20px;background:#FFFFFF;border:1.5px solid ${BD};border-radius:100px;font-family:${SANS};font-size:13px;font-weight:600;color:${D};text-decoration:none;letter-spacing:0.01em;margin:0 3px 8px;">${label}</a>`;
     const calRow = (cal.google || cal.outlook || cal.ical) ? `
       <tr><td style="padding:24px 0 4px;text-align:center;">
         <p style="margin:0 0 12px;font-family:${SANS};font-size:11px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:${TL};">Add to Calendar</p>
@@ -997,7 +1017,7 @@ const BLOCKS = {
         const url = cfImg(it.url, 'w=500,fit=cover,q=75');
         return `${i > 0 ? `<td width="2%" class="hm">&nbsp;</td>` : ''}
           <td width="${colW}%" class="st ${i > 0 ? 'mob-stack' : ''}" valign="top">
-            <img src="${url}" width="244" alt="${escapeAttr(it.alt || (name ? `${name}` : ''))}" class="fl" style="width:100%;border-radius:12px;display:block;" />
+            <img src="${escapeAttr(url)}" width="244" alt="${escapeAttr(it.alt || (name ? `${name}` : ''))}" class="fl" style="width:100%;border-radius:12px;display:block;" />
           </td>`;
       }).join('');
       photoGridSection = `<tr><td style="background:${CR};padding:24px 48px 0;" class="pd">
@@ -1011,7 +1031,7 @@ const BLOCKS = {
 
     const profileBtn = profileUrl
       ? `<tr><td style="background:${CR};padding:32px 48px 0;text-align:center;" class="pd">
-          <a href="${profileUrl}" target="_blank" style="display:inline-block;padding:16px 36px;background:${Y};color:${D};font-family:${SANS};font-size:15px;font-weight:600;text-decoration:none;border-radius:100px;letter-spacing:0.01em;">${escapeHtml(p.profileLabel || (name ? `See ${name}'s Story` : `See the Story`))} &rarr;</a>
+          <a href="${escapeAttr(safeHref(profileUrl))}" target="_blank" style="display:inline-block;padding:16px 36px;background:${Y};color:${D};font-family:${SANS};font-size:15px;font-weight:600;text-decoration:none;border-radius:100px;letter-spacing:0.01em;">${escapeHtml(p.profileLabel || (name ? `See ${name}'s Story` : `See the Story`))} &rarr;</a>
         </td></tr>`
       : '';
 

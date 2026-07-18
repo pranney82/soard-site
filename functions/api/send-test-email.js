@@ -56,9 +56,11 @@ export async function onRequestPost(context) {
     const result = await res.json();
 
     if (!res.ok) {
+      // Log the upstream detail server-side; return a generic message so raw
+      // Resend error bodies never reach the client.
       console.error(`Resend test send error ${res.status}:`, JSON.stringify(result));
       return Response.json(
-        { ok: false, error: result.message || 'Failed to send test email.', details: result },
+        { ok: false, error: 'Failed to send test email. Please try again.' },
         { status: res.status }
       );
     }

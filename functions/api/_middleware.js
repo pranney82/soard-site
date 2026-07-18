@@ -22,10 +22,26 @@ const publicCors = {
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type',
 };
-function isAllowedOrigin(origin) {
+/**
+ * The team's own Cloudflare Access origin (e.g. https://soard.cloudflareaccess.com),
+ * derived from CF_ACCESS_ISS (issuer URL). Falls back to CF_ACCESS_TEAM_DOMAIN
+ * so a single configured var still works. Returns '' if neither is set.
+ */
+function accessOrigin(env) {
+  const iss = (env && env.CF_ACCESS_ISS)
+    || (env && env.CF_ACCESS_TEAM_DOMAIN ? `https://${env.CF_ACCESS_TEAM_DOMAIN}.cloudflareaccess.com` : '');
+  try {
+    return iss ? new URL(iss).origin : '';
+  } catch {
+    return '';
+  }
+}
+
+function isAllowedOrigin(origin, teamOrigin) {
   if (!origin) return false;
   if (origin === ALLOWED_ORIGIN) return true;
-  if (origin.endsWith('.cloudflareaccess.com')) return true;
+  // Only the team's own Access domain — not any *.cloudflareaccess.com tenant.
+  if (teamOrigin && origin === teamOrigin) return true;
   // Strict localhost check — only exact hostname, not localhost.evil.com
   try {
     const url = new URL(origin);
@@ -34,10 +50,11 @@ function isAllowedOrigin(origin) {
   return false;
 }
 
-function authedCors(request) {
+function authedCors(request, env) {
   const origin = request.headers.get('Origin') || '';
+  const teamOrigin = accessOrigin(env);
   return {
-    'Access-Control-Allow-Origin': isAllowedOrigin(origin) ? origin : ALLOWED_ORIGIN,
+    'Access-Control-Allow-Origin': isAllowedOrigin(origin, teamOrigin) ? origin : ALLOWED_ORIGIN,
     'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, CF-Access-JWT-Assertion',
     'Access-Control-Allow-Credentials': 'true',
@@ -58,7 +75,10 @@ const PUBLIC_GET_ROUTES = ['/api/live-status', '/api/fb-live-videos'];
 // Resets when the Workers isolate recycles — good enough for spam prevention.
 const RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const RATE_LIMIT_MAX = 5;
-const RATE_LIMITED_ROUTES = new Set(['/api/newsletter', '/api/live-click']);
+// Abuse-prone POST routes (newsletter signup, live-banner click beacon).
+const RATE_LIMITED_POST_ROUTES = new Set(['/api/newsletter', '/api/live-click']);
+// Public GET routes that fan out to paid upstreams / build large responses.
+const RATE_LIMITED_GET_ROUTES = new Set(['/api/download-branding-photos']);
 const _rateLimitMap = new Map(); // ip → { count, resetAt }
 let _lastPrune = 0;
 const PRUNE_INTERVAL_MS = 5 * 60 * 1000; // prune stale entries every 5 min
@@ -91,25 +111,32 @@ export async function onRequest(context) {
 
   // Preflight: return CORS headers immediately — downstream handlers don't implement OPTIONS
   if (context.request.method === 'OPTIONS') {
-    const headers = isPublic ? publicCors : authedCors(context.request);
+    const headers = isPublic ? publicCors : authedCors(context.request, context.env);
     return new Response(null, { status: 204, headers });
   }
 
-  // Rate limit abuse-prone public endpoints
-  if (RATE_LIMITED_ROUTES.has(url.pathname) && context.request.method === 'POST') {
+  // Rate limit abuse-prone public endpoints (POST forms/beacons + GET fan-outs)
+  const method = context.request.method;
+  const rateLimitThisRoute =
+    (method === 'POST' && RATE_LIMITED_POST_ROUTES.has(url.pathname)) ||
+    (method === 'GET' && RATE_LIMITED_GET_ROUTES.has(url.pathname));
+  if (rateLimitThisRoute) {
     const ip = context.request.headers.get('CF-Connecting-IP') || 'unknown';
     if (isRateLimited(ip)) {
-      // No-JS form posts get a redirect back with an error param, not raw JSON
-      const contentType = context.request.headers.get('Content-Type') || '';
-      if (!contentType.includes('application/json')) {
-        const back = new URL('/', url.origin);
-        try {
-          const ref = new URL(context.request.headers.get('Referer') || '');
-          if (ref.origin === url.origin) back.pathname = ref.pathname;
-        } catch { /* invalid Referer, redirect to home */ }
-        back.searchParams.set('newsletter_error', 'rate_limited');
-        back.hash = 'newsletter-form';
-        return Response.redirect(back.toString(), 302);
+      // No-JS newsletter form posts get a friendly redirect back with an error
+      // param instead of raw JSON. Everything else gets a plain 429.
+      if (url.pathname === '/api/newsletter') {
+        const contentType = context.request.headers.get('Content-Type') || '';
+        if (!contentType.includes('application/json')) {
+          const back = new URL('/', url.origin);
+          try {
+            const ref = new URL(context.request.headers.get('Referer') || '');
+            if (ref.origin === url.origin) back.pathname = ref.pathname;
+          } catch { /* invalid Referer, redirect to home */ }
+          back.searchParams.set('newsletter_error', 'rate_limited');
+          back.hash = 'newsletter-form';
+          return Response.redirect(back.toString(), 302);
+        }
       }
       return Response.json(
         { ok: false, error: 'Too many attempts — please wait a minute and try again.' },
@@ -124,7 +151,7 @@ export async function onRequest(context) {
   }
 
   const { CF_ACCESS_TEAM_DOMAIN, CF_ACCESS_AUD } = context.env;
-  const cors = authedCors(context.request);
+  const cors = authedCors(context.request, context.env);
 
   // Fail closed: if Access env vars aren't configured, reject all authenticated requests.
   // This prevents accidental public exposure of admin APIs in production.
@@ -232,6 +259,25 @@ async function verifyJwt(token, teamDomain, expectedAud) {
   if (!valid) throw new Error('invalid signature');
 
   return payload;
+}
+
+/**
+ * Reusable auth check for public handlers that expose an admin-only branch
+ * (e.g. live-status ?sweep=1). Returns true only when the request carries a
+ * valid Cloudflare Access JWT. Never throws; fails closed when the Access env
+ * vars are unset or the token is missing/invalid.
+ */
+export async function isAuthenticated(request, env) {
+  const { CF_ACCESS_TEAM_DOMAIN, CF_ACCESS_AUD } = env || {};
+  if (!CF_ACCESS_TEAM_DOMAIN || !CF_ACCESS_AUD) return false;
+  const jwt = request.headers.get('CF-Access-JWT-Assertion') || getCookieValue(request, 'CF_Authorization');
+  if (!jwt) return false;
+  try {
+    await verifyJwt(jwt, CF_ACCESS_TEAM_DOMAIN, CF_ACCESS_AUD);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function getPublicKeys(teamDomain) {

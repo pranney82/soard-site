@@ -17,6 +17,12 @@
 
 const CF_IMAGES_HASH = 'ROYFuPmfN2vPS6mt5sCkZQ';
 
+// Cap how many photos a single ZIP bundles. This is a public, unauthenticated
+// endpoint that fetches each photo full-res from CF Images and buffers the ZIP
+// in memory, so an unbounded selection could amplify egress cost and memory.
+// Typical branding selections are ~8; 24 is generous headroom.
+const MAX_ZIP_PHOTOS = 24;
+
 // ─── CRC32 ───────────────────────────────────────────────
 const crcTable = new Uint32Array(256);
 for (let n = 0; n < 256; n++) {
@@ -230,8 +236,12 @@ export async function onRequestGet(context) {
 
   // ─── ZIP download (all photos) ───
 
+  // Bound the number of photos bundled (memory + upstream fetch fan-out).
+  // kids[] is index-aligned with brandingPhotos, so kids[i] stays valid.
+  const zipPhotos = brandingPhotos.slice(0, MAX_ZIP_PHOTOS);
+
   // 3. Fetch all images in parallel
-  const imagePromises = brandingPhotos.map(async (bp, i) => {
+  const imagePromises = zipPhotos.map(async (bp, i) => {
     const cfId = extractCfId(bp.cfId);
     if (!cfId) return null;
     const imageUrl = `https://imagedelivery.net/${CF_IMAGES_HASH}/${cfId}/w=2400,q=95,fit=scale-down`;
@@ -265,7 +275,7 @@ export async function onRequestGet(context) {
   }
 
   // 5. Build credits.txt
-  const creditsData = buildCredits(brandingPhotos, kids);
+  const creditsData = buildCredits(zipPhotos, kids);
   const allFiles = [
     ...images,
     { filename: 'credits.txt', data: creditsData },
@@ -312,23 +322,10 @@ export async function onRequestGet(context) {
   zipBuffer.set(eocd, pos);
   pos += eocd.length;
 
-  // Log download (non-blocking)
-  try {
-    const { logAudit } = await import('./_audit.js');
-    const userIp = context.request.headers.get('CF-Connecting-IP') || 'unknown';
-    context.waitUntil(logAudit(DB, {
-      userEmail: `public:${userIp}`,
-      action: 'download',
-      entityType: 'branding-photos',
-      entitySlug: 'zip',
-      entityName: `${images.length} photos`,
-      changes: null,
-      path: '/api/download-branding-photos',
-      gitStatus: null,
-    }));
-  } catch {}
-
-  return new Response(zipBuffer.slice(0, pos), {
+  // zipBuffer is pre-sized to exactly totalSize and fully written, so it needs
+  // no trailing slice() copy — return it directly. (Per-request audit logging
+  // was intentionally removed: this is a public analytics-free download.)
+  return new Response(zipBuffer, {
     headers: {
       'Content-Type': 'application/zip',
       'Content-Disposition': 'attachment; filename="SOARD-Press-Photos.zip"',

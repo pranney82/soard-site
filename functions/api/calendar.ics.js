@@ -59,7 +59,10 @@ export async function onRequestGet(context) {
   const location = q.get('location') || '';
   const details = q.get('details') || '';
   const eventUrl = q.get('url') || '';
-  const uid = q.get('uid') || `evt-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@sunshineonaranneyday.com`;
+  // Sanitize any caller-supplied uid to a safe token — strips CR/LF and any
+  // other character that could inject extra iCal lines or property params.
+  const rawUid = (q.get('uid') || '').replace(/[^A-Za-z0-9@._-]/g, '');
+  const uid = rawUid || `evt-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@sunshineonaranneyday.com`;
 
   // Validate format matches the allDay flag
   const validStart = allDay ? isCompactDate(start) : isCompactDateTime(start);
@@ -85,7 +88,7 @@ export async function onRequestGet(context) {
   ];
   if (location) lines.push(`LOCATION:${ical(location)}`);
   if (details) lines.push(`DESCRIPTION:${ical(details)}`);
-  if (eventUrl) lines.push(`URL:${eventUrl}`);
+  if (eventUrl) lines.push(`URL:${ical(eventUrl)}`);
   lines.push('END:VEVENT', 'END:VCALENDAR');
 
   const body = lines.map(fold).join('\r\n') + '\r\n';

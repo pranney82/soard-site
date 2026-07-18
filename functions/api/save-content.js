@@ -25,7 +25,7 @@ export async function onRequestPost(context) {
   try {
     const { DB } = context.env;
     const userEmail = context.data?.userEmail || 'unknown';
-    const { path, content, message } = await context.request.json();
+    const { path, content, message, sha: clientSha } = await context.request.json();
 
     if (!path || content === undefined || !message) {
       return Response.json(
@@ -47,18 +47,34 @@ export async function onRequestPost(context) {
     const prettyJson = JSON.stringify(data, null, 2);
     const now = new Date().toISOString();
 
-    // 0. Read old value for diffing
+    // 0. Read old value for diffing + optimistic-concurrency check
     let oldData = null;
+    let oldRaw = null;
     let isCreate = true;
     try {
       if (parsed.type === 'site') {
         const row = await DB.prepare('SELECT data FROM site_config WHERE key = ?').bind(parsed.key).first();
-        if (row) { oldData = JSON.parse(row.data); isCreate = false; }
+        if (row) { oldRaw = row.data; oldData = JSON.parse(row.data); isCreate = false; }
       } else {
         const row = await DB.prepare(`SELECT data FROM ${parsed.table} WHERE slug = ?`).bind(parsed.slug).first();
-        if (row) { oldData = JSON.parse(row.data); isCreate = false; }
+        if (row) { oldRaw = row.data; oldData = JSON.parse(row.data); isCreate = false; }
       }
     } catch (e) { /* first save — no old data */ }
+
+    // Optimistic concurrency: if the client sent the sha it loaded and the row
+    // still exists, reject when the stored content changed since. The client's
+    // sha comes from read-content, which hashes the stored JSON string with
+    // generateSha() — so compare against generateSha(oldRaw). No sha, or no
+    // existing row (a create) → proceed as before.
+    if (clientSha && oldRaw !== null) {
+      const currentSha = await generateSha(oldRaw);
+      if (currentSha !== clientSha) {
+        return Response.json(
+          { success: false, error: 'Conflict: this item was changed since you loaded it. Reload to get the latest version.' },
+          { status: 409 }
+        );
+      }
+    }
 
     // 1. Write to D1 FIRST (source of truth — prebuild reads from D1, not GitHub)
     if (parsed.type === 'site') {

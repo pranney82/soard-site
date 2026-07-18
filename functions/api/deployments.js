@@ -9,7 +9,7 @@
  *   CF_PAGES_TOKEN (optional — API token with Pages:Read permission)
  */
 
-const REPO = 'pranney82/soard';
+const REPO = 'pranney82/soard-site';
 const CF_PROJECT = 'soard-site';
 
 export async function onRequestGet(context) {
