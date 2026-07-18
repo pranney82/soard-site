@@ -1778,6 +1778,48 @@
       return `${CF}/${src}/${transforms}`;
     };
 
+    /** Only allow http/https URLs into href attributes (external data can't inject javascript: links). */
+    const safeHref = (u) => {
+      if (typeof u !== 'string' || !u) return '';
+      try {
+        const p = new URL(u, window.location.origin);
+        return (p.protocol === 'http:' || p.protocol === 'https:') ? u : '';
+      } catch { return ''; }
+    };
+
+    // ─── Global dirty-state registry ─────────────────────────
+    // Editors register their unsaved-changes state here so App.navigate()
+    // (sidebar, command palette, dashboard cards) can warn before an
+    // in-app view switch silently discards edits. beforeunload only
+    // covers browser close — this covers SPA navigation.
+    const _dirtyState = { dirty: false, reason: '' };
+    function setGlobalDirty(dirty, reason = '') {
+      _dirtyState.dirty = !!dirty;
+      _dirtyState.reason = dirty ? reason : '';
+    }
+    function isGlobalDirty() { return _dirtyState.dirty; }
+    function globalDirtyReason() { return _dirtyState.reason; }
+    /** Hook: mirror a component's dirty flag into the global registry. */
+    function useGlobalDirty(dirty, reason) {
+      useEffect(() => {
+        setGlobalDirty(dirty, reason);
+        return () => setGlobalDirty(false);
+      }, [dirty]);
+    }
+
+    // ─── Cmd/Ctrl+S save event ───────────────────────────────
+    // App dispatches 'soard-save'; the active editor runs its OWN save
+    // (never a synthesized click on some .btn-primary).
+    function useSaveShortcut(saveFn) {
+      const ref = useRef();
+      ref.current = saveFn;
+      useEffect(() => {
+        const fn = () => { if (ref.current) ref.current(); };
+        window.addEventListener('soard-save', fn);
+        return () => window.removeEventListener('soard-save', fn);
+      }, []);
+    }
+
     // ─── Error Boundary ─────────────────────────
     class ErrorBoundary extends Component {
       constructor(props) { super(props); this.state = { error: null }; }
@@ -1968,7 +2010,9 @@
     };
 
     function auditTimeAgo(isoStr) {
-      const diff = Date.now() - new Date(isoStr + 'Z').getTime();
+      // D1 stores naive UTC timestamps — append Z only when no timezone is present
+      const ts = /Z$|[+-]\d\d:?\d\d$/.test(isoStr || '') ? isoStr : isoStr + 'Z';
+      const diff = Date.now() - new Date(ts).getTime();
       const mins = Math.floor(diff / 60000);
       if (mins < 1) return 'just now';
       if (mins < 60) return mins + 'm ago';
@@ -1976,7 +2020,7 @@
       if (hrs < 24) return hrs + 'h ago';
       const days = Math.floor(hrs / 24);
       if (days < 30) return days + 'd ago';
-      return new Date(isoStr + 'Z').toLocaleDateString();
+      return new Date(ts).toLocaleDateString();
     }
 
     function userInitials(email) {
@@ -1991,18 +2035,32 @@
     function ActivityLog({ onViewAll }) {
       const [log, setLog] = useState([]);
       const [loading, setLoading] = useState(true);
+      const [error, setError] = useState(null);
 
-      useEffect(() => {
+      const load = () => {
+        setLoading(true);
+        setError(null);
         fetch('/api/audit-log?limit=15')
           .then(r => r.json())
-          .then(data => { if (data.success) setLog(data.entries); })
-          .catch(() => {})
+          .then(data => {
+            if (data.success) setLog(data.entries);
+            else setError(data.error || 'Failed to load activity');
+          })
+          .catch((e) => setError(e.message || 'Failed to load activity'))
           .finally(() => setLoading(false));
-      }, []);
+      };
+      useEffect(() => { load(); }, []);
 
       if (loading) return html`
         <div class="card" style="text-align: center; color: var(--text-secondary); padding: 2rem;">
           Loading activity...
+        </div>
+      `;
+
+      if (error) return html`
+        <div class="card" style="text-align: center; padding: 2rem;">
+          <p style="color: var(--color-danger); margin-bottom: 0.75rem; font-size: 0.88rem;">Couldn't load activity: ${error}</p>
+          <button class="btn btn-ghost btn-sm" onClick=${load}>Retry</button>
         </div>
       `;
 
@@ -3050,7 +3108,11 @@
         case 'quote':          return (b.text || '').slice(0, 60) || '(empty)';
         case 'detailChips':    return (b.items || []).filter(i => i.value).map(i => i.value).join(' · ') || '(empty)';
         case 'numberedCard':   return `${b.number || '?'} · ${b.title || '(no title)'}`;
-        case 'button':         return `${b.label || '(no label)'} → ${b.href ? new URL(b.href, 'https://x').pathname : '(no link)'}`;
+        case 'button': {
+          let linkPath = '(no link)';
+          if (b.href) { try { linkPath = new URL(b.href, 'https://x').pathname; } catch { linkPath = b.href; } }
+          return `${b.label || '(no label)'} → ${linkPath}`;
+        }
         case 'donationTiers':  return `$${b.featured?.amount || '?'} featured + ${(b.small || []).filter(t => t.amount).length} tiers`;
         case 'trustSignals':   return (b.items || []).join(' · ') || 'Tax-Deductible · Zero Platform Fees · 501(c)(3)';
         case 'kidCard':        { const k = (kids || []).find(x => x.slug === b.slug); return k ? k.name : '(pick a kid)'; }
@@ -3092,7 +3154,6 @@
       const [showPreview, setShowPreview] = useState(false);
       const [previewHtml, setPreviewHtml] = useState('');
       const [previewMode, setPreviewMode] = useState('desktop');
-      const previewRef = useRef(null);
       const firstPreviewRef = useRef(true); // 0ms on first show, 600ms on subsequent edits
 
       // Action state
@@ -3109,6 +3170,10 @@
       // can never be baked in. The admin must pick one before pushing.
       const [audiences, setAudiences] = useState(null); // null = not loaded yet
       const [audienceId, setAudienceId] = useState('');
+
+      // Warn on in-app navigation with unsaved template edits; Cmd+S saves (never pushes)
+      useGlobalDirty(view === 'editor' && eDirty, 'the email template editor');
+      useSaveShortcut(() => { if (view === 'editor' && !saving) saveTemplate(); });
 
       // Load templates from site_config (merged with starters)
       const loadTemplates = useCallback(async () => {
@@ -3189,6 +3254,7 @@
 
       const closeEditor = () => {
         if (eDirty && !confirm('You have unsaved changes. Discard them?')) return;
+        setEDirty(false);
         setView('list');
         setEditing(null);
         setShowPreview(false);
@@ -3458,13 +3524,17 @@
         return () => clearTimeout(t);
       }, [view, showPreview, eBlocks, eSubject, ePreheader]);
 
-      // Update iframe contents when previewHtml changes
-      useEffect(() => {
-        if (previewRef.current && previewHtml) {
-          const doc = previewRef.current.contentDocument;
-          doc.open(); doc.write(previewHtml); doc.close();
-        }
-      }, [previewHtml, showPreview]);
+      // Preview renders via a fully sandboxed srcdoc iframe (no scripts, no
+      // same-origin access) — never document.write into an admin-origin doc.
+      // Open-in-tab goes through DOMPurify + a text/html Blob URL.
+      const openPreviewTab = () => {
+        if (!previewHtml) return;
+        const safe = DOMPurify.sanitize(previewHtml, { WHOLE_DOCUMENT: true });
+        const blobUrl = URL.createObjectURL(new Blob([safe], { type: 'text/html' }));
+        const w = window.open(blobUrl, '_blank');
+        if (!w) addToast?.('Popup blocked — allow popups for this site to open the preview in a tab', 'error');
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+      };
 
       const broadcastStatusColor = {
         draft: { bg: '#FEFCBF', color: '#744210' },
@@ -3957,12 +4027,12 @@
                         style="padding: 0.3rem 0.65rem; font-size: 0.78rem; border: none; background: ${previewMode === id ? 'var(--color-text)' : 'transparent'}; color: ${previewMode === id ? '#fff' : 'var(--color-text)'}; cursor: pointer;">${label}</button>
                     `)}
                   </div>
-                  <button class="btn btn-sm btn-ghost" onClick=${() => { const w = window.open('', '_blank'); w.document.write(previewHtml); w.document.close(); }}>Open in Tab ↗</button>
+                  <button class="btn btn-sm btn-ghost" onClick=${openPreviewTab} disabled=${!previewHtml}>Open in Tab ↗</button>
                   <button class="btn btn-sm btn-ghost" onClick=${() => { setShowPreview(false); setPreviewHtml(''); }}>${icons.x}</button>
                 </div>
               </div>
               <div style="background: #E5E4E0; padding: ${previewMode === 'mobile' ? '1rem' : '0'}; display: flex; justify-content: center; position: relative;">
-                <iframe ref=${previewRef}
+                <iframe srcdoc=${previewHtml} sandbox=""
                   style="width: ${previewMode === 'mobile' ? '380px' : '100%'}; max-width: 100%; height: calc(100vh - 200px); border: none; background: #F5F4F0; ${previewMode === 'mobile' ? 'border-radius: 16px; box-shadow: 0 8px 32px rgba(0,0,0,0.15);' : ''}"
                   title="Email preview" />
                 ${!previewHtml ? html`
@@ -4349,7 +4419,7 @@
                           ${v.title || 'Untitled broadcast'}
                           ${v.createdAt ? html`<span style="color:var(--muted)"> · ${new Date(v.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</span>` : null}
                         </span>
-                        ${v.url ? html`<a href=${v.url} target="_blank" rel="noopener" style="color:var(--color-primary);white-space:nowrap">Open ↗</a>` : null}
+                        ${safeHref(v.url) ? html`<a href=${safeHref(v.url)} target="_blank" rel="noopener" style="color:var(--color-primary);white-space:nowrap">Open ↗</a>` : null}
                         ${v.url ? html`<button class="btn btn-secondary" style="padding:2px 10px;font-size:12px;white-space:nowrap"
                           onClick=${() => { setUrl(v.url); addToast('Banner link set to this video — hit Update Banner (or Go Live) to apply.', 'success'); }}>
                           Use as banner link</button>` : null}
@@ -4814,13 +4884,19 @@
         return () => { editor.destroy(); editorRef.current = null; };
       }, []);
 
-      // Sync external value (e.g. loading from API)
+      // Sync external value (API load, draft restore) — apply whenever the
+      // external value differs from the editor, unless the change came from
+      // the editor itself or the admin is actively typing in it.
       useEffect(() => {
-        if (isUpdating.current || !editorRef.current) return;
-        if (value && editorRef.current.isEmpty) {
-          editorRef.current.commands.setContent(value);
-          updateCounts(editorRef.current);
-        }
+        const ed = editorRef.current;
+        if (isUpdating.current || !ed) return;
+        if (ed.isFocused) return; // don't clobber active typing
+        const current = ed.getHTML();
+        const next = value || '';
+        if (next === current) return;
+        if (!next && ed.isEmpty) return; // '' vs '<p></p>' — both empty
+        ed.commands.setContent(next, false);
+        updateCounts(ed);
       }, [value]);
 
       const cmd = (fn) => () => { fn(editorRef.current?.chain().focus())?.run(); };
@@ -4952,10 +5028,25 @@
       const [data, setData] = useState({ ...defaults });
       const [sha, setSha] = useState(null);
       const [loading, setLoading] = useState(isSlugBased ? !!slug : true);
+      const [loadError, setLoadError] = useState(null);
       const [saving, setSaving] = useState(false);
       const [dirty, setDirty] = useState(false);
       const [deleting, setDeleting] = useState(false);
       const [showDeleteModal, setShowDeleteModal] = useState(false);
+
+      // Deferred CF image deletion — "Remove" queues the ID; only a successful
+      // save actually deletes from Cloudflare Images. Abandoning edits keeps
+      // the images intact so live pages never reference deleted assets.
+      const pendingImageDeletes = useRef([]);
+      const queueImageDelete = (urlOrId) => {
+        const id = extractCfImageId(urlOrId);
+        if (id) pendingImageDeletes.current.push(id);
+      };
+      const flushImageDeletes = () => {
+        const ids = pendingImageDeletes.current;
+        pendingImageDeletes.current = [];
+        ids.forEach(id => api.deleteImage(id).catch(() => {}));
+      };
 
       const filePath = isSlugBased
         ? `src/content/${type}/${slug || data.slug}.json`
@@ -4976,20 +5067,23 @@
         return `${withYear}-${n}`;
       };
 
-      // Warn on unsaved changes
+      // Warn on unsaved changes (browser close/refresh — applies to slug-based
+      // AND site-config editors) and register with the global dirty registry
+      // so in-app navigation warns too. Cmd+S runs this editor's own save.
       useEffect(() => {
-        if (!isSlugBased) return;
         const handler = (e) => { if (dirty) { e.preventDefault(); e.returnValue = ''; } };
         window.addEventListener('beforeunload', handler);
         return () => window.removeEventListener('beforeunload', handler);
       }, [dirty]);
+      useGlobalDirty(dirty, label || prefix || type);
+      useSaveShortcut(() => { if (!saving && !loading) handleSave(); });
 
       // Load data
       const mountedRef = useRef(true);
       useEffect(() => () => { mountedRef.current = false; }, []);
-      useEffect(() => {
-        if (isSlugBased && !slug) return;
-        (async () => {
+      const loadContent = async () => {
+        setLoadError(null);
+        try {
           const res = await api.readContent(isSlugBased ? `src/content/${type}/${slug}.json` : fixedPath);
           if (!mountedRef.current) return; // prevent stale updates on rapid navigation
           if (res.success) {
@@ -4997,9 +5091,22 @@
             setData(onLoad ? onLoad(parsed) : parsed);
             setSha(res.sha);
             setDirty(false);
+          } else if (isSlugBased) {
+            // Editing an existing item that failed to load — surface it rather
+            // than presenting an empty form that would overwrite on save.
+            setLoadError(res.error || 'Failed to load');
           }
-          setLoading(false);
-        })();
+          // site-config editors treat a missing row as "start from defaults"
+        } catch (err) {
+          if (mountedRef.current) setLoadError(err.message || 'Failed to load');
+        } finally {
+          if (mountedRef.current) setLoading(false);
+        }
+      };
+      const reloadContent = () => { setLoading(true); loadContent(); };
+      useEffect(() => {
+        if (isSlugBased && !slug) return;
+        loadContent();
       }, isSlugBased ? [slug] : []);
 
       // Flat field update (most editors)
@@ -5044,6 +5151,7 @@
           if (res.success) {
             setSha(res.sha);
             setDirty(false);
+            flushImageDeletes();
             addToast(`${displayName()} saved!`, 'success');
             logActivity(slug ? 'updated' : 'created', prefix, displayName());
             setSaving(false);
@@ -5084,10 +5192,18 @@
       };
 
       return {
-        data, setData, sha, loading, saving, dirty, setDirty, deleting,
-        showDeleteModal, setShowDeleteModal, slugExists,
+        data, setData, sha, loading, loadError, reloadContent, saving, dirty, setDirty, deleting,
+        showDeleteModal, setShowDeleteModal, slugExists, queueImageDelete,
         updateField, updateNestedField, handleSave, handleDelete, safeBack,
       };
+    }
+
+    // ─── Load Error Card ────────────────────
+    function LoadErrorCard({ error, onRetry }) {
+      return html`<div class="card" style="text-align: center; padding: 2.5rem;">
+        <p style="color: var(--color-danger); margin-bottom: 1rem;">${icons.warning} Failed to load: ${error}</p>
+        ${onRetry ? html`<button class="btn btn-primary" onClick=${onRetry}>Retry</button>` : null}
+      </div>`;
     }
 
     // ─── Toast System ───────────────────────
@@ -5234,7 +5350,7 @@
     // ─── useSingleUpload hook ────────────────
     // For editors that upload a single image (partner logo, team photo, etc.)
     // Returns { uploading, preview, upload, clear } — preview holds blob URL during upload, then real URL.
-    function useSingleUpload({ setData, setDirty, addToast, buildCfId, field }) {
+    function useSingleUpload({ setData, setDirty, addToast, buildCfId, field, deferDelete }) {
       const [uploading, setUploading] = useState(false);
       const [preview, setPreview] = useState(null);
 
@@ -5272,12 +5388,16 @@
         const currentUrl = preview;
         setPreview(null);
         setData(d => ({ ...d, [field]: '' }));
-        // Try to delete from Cloudflare Images
         const imageId = extractCfImageId(currentUrl);
         if (imageId) {
-          try { await api.deleteImage(imageId); } catch {}
+          if (deferDelete) {
+            // Deferred: queued now, actually deleted only after a successful save
+            deferDelete(imageId);
+          } else {
+            try { await api.deleteImage(imageId); } catch {}
+          }
         }
-        addToast('Image removed', 'success');
+        addToast(deferDelete ? 'Image removed — deleted for good when you save' : 'Image removed', 'success');
       };
 
       // Sync preview with loaded data
@@ -5901,19 +6021,20 @@
           try {
             const filePath = `src/content/kids/${k.slug}.json`;
             const fileRes = await api.readContent(filePath);
-            if (!fileRes.success) return { ok: false, name: k.name };
+            if (!fileRes.success) return { ok: false, name: k.name, error: fileRes.error };
             const content = typeof fileRes.content === 'string' ? JSON.parse(fileRes.content) : fileRes.content;
             content.sortOrder = i;
             const res = await api.saveContent(filePath, JSON.stringify(content, null, 2), `Reorder kid: ${content.name}`, fileRes.sha);
-            return { ok: !!res.success, changed: true, name: content.name };
-          } catch { return { ok: false, name: k.name }; }
+            return { ok: !!res.success, changed: true, name: content.name, error: res.error };
+          } catch (e) { return { ok: false, name: k.name, error: e.message }; }
         });
         const results = await Promise.all(tasks);
         const changed = results.filter(r => r.ok && r.changed).length;
         const failed = results.filter(r => !r.ok).length;
         setSaving(false);
         if (failed > 0) {
-          addToast?.(`Saved ${changed}, ${failed} failed`, 'error');
+          const firstErr = results.find(r => !r.ok)?.error;
+          addToast?.(`Saved ${changed}, ${failed} failed${firstErr ? ` — ${firstErr}` : ''}`, 'error');
         } else if (changed === 0) {
           addToast?.('No changes to save', 'info');
         } else {
@@ -6228,6 +6349,24 @@
       const [showPreview, setShowPreview] = useState(false);
       const [previewDevice, setPreviewDevice] = useState('desktop');
       const [lastSaved, setLastSaved] = useState(null);
+      const [loadError, setLoadError] = useState(null);
+
+      // Deferred CF image deletion — removals are queued and only executed
+      // after a successful save, so abandoning edits never breaks live pages.
+      const pendingImageDeletes = useRef([]);
+      const queueImageDelete = (urlOrId) => {
+        const id = extractCfImageId(urlOrId);
+        if (id) pendingImageDeletes.current.push(id);
+      };
+      const flushImageDeletes = () => {
+        const ids = pendingImageDeletes.current;
+        pendingImageDeletes.current = [];
+        ids.forEach(id => api.deleteImage(id).catch(() => {}));
+      };
+
+      // Global dirty registry (in-app navigation warning) + Cmd/Ctrl+S save
+      useGlobalDirty(dirty, slug ? `kid "${slug}"` : 'a new kid');
+      useSaveShortcut(() => { if (!saving && !loading) handleSave(false); });
 
       // ─── Photo upload + reorder hooks ──────
       const { uploading, upload: uploadPhotos } = useImageUpload({
@@ -6263,8 +6402,7 @@
         const planUrl = (data.plans || [])[index]?.url;
         setDirty(true);
         setData(d => ({ ...d, plans: (d.plans || []).filter((_, i) => i !== index) }));
-        const imageId = extractCfImageId(planUrl);
-        if (imageId) { api.deleteImage(imageId).catch(() => {}); }
+        queueImageDelete(planUrl); // deleted from CF only after a successful save
       };
 
       // ─── Before/After photo helpers ──────
@@ -6277,7 +6415,8 @@
         const pair = (data.beforeAfterPhotos || [])[index];
         setData(d => ({ ...d, beforeAfterPhotos: (d.beforeAfterPhotos || []).filter((_, i) => i !== index) }));
         if (pair) {
-          [pair.before, pair.after].forEach(url => { const id = extractCfImageId(url); if (id) api.deleteImage(id).catch(() => {}); });
+          // Deleted from CF only after a successful save
+          [pair.before, pair.after].forEach(url => queueImageDelete(url));
         }
       };
       const updateBeforeAfterField = (index, field, value) => {
@@ -6477,20 +6616,28 @@
         setShowDeleteModal(false);
       };
 
-      // Load existing kid
-      useEffect(() => {
-        if (!slug) return;
-        (async () => {
+      // Load existing kid — guarded so a malformed row or network failure
+      // shows an error card with Retry instead of a stuck skeleton.
+      const loadKid = async () => {
+        setLoadError(null);
+        try {
           const res = await api.readContent(`src/content/kids/${slug}.json`);
           if (res.success) {
-            const parsed = JSON.parse(res.content);
+            const parsed = typeof res.content === 'string' ? JSON.parse(res.content) : res.content;
             setData(parsed);
             setSha(res.sha);
           } else {
-            addToast('Failed to load kid data', 'error');
+            setLoadError(res.error || 'Failed to load kid data');
           }
+        } catch (err) {
+          setLoadError(err.message || 'Failed to load kid data');
+        } finally {
           setLoading(false);
-        })();
+        }
+      };
+      useEffect(() => {
+        if (!slug) return;
+        loadKid();
       }, [slug]);
 
       const dedupeSlug = (base) => {
@@ -6531,9 +6678,7 @@
           photos: d.photos.filter((_, i) => i !== index),
           photoCount: d.photoCount - 1,
         }));
-        // Delete from Cloudflare Images in the background
-        const imageId = extractCfImageId(photoUrl);
-        if (imageId) { api.deleteImage(imageId).catch(() => {}); }
+        queueImageDelete(photoUrl); // deleted from CF only after a successful save
       };
 
       const setHero = (index) => {
@@ -6608,6 +6753,7 @@
             setSha(res.sha);
             setDirty(false);
             clearDraft();
+            flushImageDeletes();
             setData(d => ({ ...d, publishStatus: asDraft ? 'draft' : 'published' }));
             addToast(asDraft ? `${data.name} saved as draft` : `${data.name} published! Site rebuilding...`, 'success');
             logActivity(asDraft ? 'drafted' : (slug ? 'updated' : 'created'), 'kid', data.name);
@@ -6622,6 +6768,13 @@
       };
 
       if (loading) return html`<${EditorSkeleton} />`;
+      if (loadError) return html`
+        <nav class="breadcrumb" aria-label="Breadcrumb">
+          <button onClick=${onBack}>Kids</button>
+          <span class="sep">›</span>
+          <span class="current">${slug}</span>
+        </nav>
+        <${LoadErrorCard} error=${loadError} onRetry=${() => { setLoading(true); loadKid(); }} />`;
 
       return html`
         ${showDeleteModal ? html`<${ConfirmModal}
@@ -6727,7 +6880,7 @@
               <label class="form-label">Slug</label>
               <input class="form-input ${!slug && data.slug && existingSlugs.includes(data.slug) ? 'is-invalid' : ''}" value=${data.slug}
                 onInput=${e => { setDirty(true); setData(d => ({ ...d, slug: slugify(e.target.value) })); }}
-                placeholder="auto-generated" ${slug ? 'disabled' : ''} />
+                placeholder="auto-generated" disabled=${!!slug} />
               <div class="form-hint">URL path: /kids/${data.slug || '...'}</div>
               ${!slug && data.slug && existingSlugs.includes(data.slug) ? html`<div class="form-error">A kid with this slug already exists — saving will be blocked</div>` : null}
             </div>
@@ -7102,9 +7255,9 @@
                 </div>
               </div>
               <div class="preview-frame" style="width: ${previewDevice === 'mobile' ? '375px' : previewDevice === 'tablet' ? '768px' : '100%'}; ${previewDevice !== 'desktop' ? 'box-shadow: 0 4px 24px rgba(0,0,0,0.12);' : ''}">
-                ${data.photos?.[0] ? html`
+                ${data.photos?.[0]?.url ? html`
                   <div style="position: relative; padding-top: 56.25%; background: #f0f0f0;">
-                    <img src=${data.photos[0]} alt=${data.name} style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover;" />
+                    <img src=${cfThumb(data.heroImage || data.photos[0].url, 'w=1200,q=80')} alt=${data.name} style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover;" />
                   </div>
                 ` : html`<div style="padding-top: 56.25%; background: #f5f5f5;"></div>`}
                 <div style="padding: ${previewDevice === 'mobile' ? '1rem' : '1.5rem'};">
@@ -7114,7 +7267,7 @@
                   ${data.bio ? html`<div style="line-height: 1.6;" dangerouslySetInnerHTML=${{ __html: DOMPurify.sanitize(data.bio) }}></div>` : null}
                   ${data.photos?.length > 1 ? html`
                     <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(${previewDevice === 'mobile' ? '80px' : '120px'}, 1fr)); gap: 0.5rem; margin-top: 1rem;">
-                      ${data.photos.slice(1).map(p => html`<img src=${p} style="width: 100%; border-radius: 8px; aspect-ratio: 1; object-fit: cover;" />`)}
+                      ${data.photos.slice(1).map(p => html`<img src=${cfThumb(p.url, 'w=300,q=80')} alt=${p.alt || ''} style="width: 100%; border-radius: 8px; aspect-ratio: 1; object-fit: cover;" />`)}
                     </div>
                   ` : null}
                 </div>
@@ -7196,8 +7349,8 @@
     // ═══════════════════════════════════════════
     function PartnerEditor({ slug, onBack, addToast, existingSlugs = [] }) {
       const {
-        data, setData, loading, saving, dirty, setDirty, deleting,
-        showDeleteModal, setShowDeleteModal, slugExists, updateField, handleSave, handleDelete, safeBack,
+        data, setData, loading, loadError, reloadContent, saving, dirty, setDirty, deleting,
+        showDeleteModal, setShowDeleteModal, slugExists, queueImageDelete, updateField, handleSave, handleDelete, safeBack,
       } = useEditor({
         slug, type: 'partners', addToast, onBack, existingSlugs,
         defaults: { name: '', slug: '', logo: '', website: '', level: 'friend', category: ['build'], featured: false, order: 0, tagline: '' },
@@ -7209,12 +7362,13 @@
         },
       });
       const { uploading, preview: logoPreview, upload: handleLogoUpload, clear: clearLogo, syncPreview: syncLogo } = useSingleUpload({
-        setData, setDirty, addToast, field: 'logo',
+        setData, setDirty, addToast, field: 'logo', deferDelete: queueImageDelete,
         buildCfId: (file) => `partners/${data.slug || slugify(data.name) || 'new'}/${Date.now()}`,
       });
       useEffect(() => { syncLogo(data.logo); }, [data.logo]);
 
       if (loading) return html`<${EditorSkeleton} />`;
+      if (loadError) return html`<${LoadErrorCard} error=${loadError} onRetry=${reloadContent} />`;
 
       return html`
         ${showDeleteModal ? html`<${ConfirmModal}
@@ -7250,7 +7404,7 @@
             <div class="form-group">
               <label class="form-label">Slug</label>
               <input class="form-input" value=${data.slug}
-                onInput=${e => updateField('slug', e.target.value)} ${slug ? 'disabled' : ''} />
+                onInput=${e => updateField('slug', e.target.value)} disabled=${!!slug} />
             </div>
           </div>
           <div class="form-group">
@@ -7387,19 +7541,20 @@
     // ═══════════════════════════════════════════
     function CommunityPartnerEditor({ slug, onBack, addToast, existingSlugs = [] }) {
       const {
-        data, setData, loading, saving, dirty, setDirty, deleting,
-        showDeleteModal, setShowDeleteModal, slugExists, updateField, handleSave, handleDelete, safeBack,
+        data, setData, loading, loadError, reloadContent, saving, dirty, setDirty, deleting,
+        showDeleteModal, setShowDeleteModal, slugExists, queueImageDelete, updateField, handleSave, handleDelete, safeBack,
       } = useEditor({
         slug, type: 'communityPartners', addToast, onBack, existingSlugs,
         defaults: { name: '', slug: '', logo: '', website: '', description: '', category: 'community', impact: '', impactLabel: '', location: '', featured: false, order: 0 },
       });
       const { uploading, preview: logoPreview, upload: handleLogoUpload, clear: clearLogo, syncPreview: syncLogo } = useSingleUpload({
-        setData, setDirty, addToast, field: 'logo',
+        setData, setDirty, addToast, field: 'logo', deferDelete: queueImageDelete,
         buildCfId: (file) => `community-partners/${data.slug || slugify(data.name) || 'new'}/${Date.now()}`,
       });
       useEffect(() => { syncLogo(data.logo); }, [data.logo]);
 
       if (loading) return html`<${EditorSkeleton} />`;
+      if (loadError) return html`<${LoadErrorCard} error=${loadError} onRetry=${reloadContent} />`;
 
       return html`
         ${showDeleteModal ? html`<${ConfirmModal}
@@ -7435,7 +7590,7 @@
             <div class="form-group">
               <label class="form-label">Slug</label>
               <input class="form-input" value=${data.slug}
-                onInput=${e => updateField('slug', e.target.value)} ${slug ? 'disabled' : ''} />
+                onInput=${e => updateField('slug', e.target.value)} disabled=${!!slug} />
             </div>
           </div>
           <div class="form-group">
@@ -7567,19 +7722,20 @@
     // ═══════════════════════════════════════════
     function MediaLogoEditor({ slug, onBack, addToast, existingSlugs = [] }) {
       const {
-        data, setData, loading, saving, dirty, setDirty, deleting,
-        showDeleteModal, setShowDeleteModal, slugExists, updateField, handleSave, handleDelete, safeBack,
+        data, setData, loading, loadError, reloadContent, saving, dirty, setDirty, deleting,
+        showDeleteModal, setShowDeleteModal, slugExists, queueImageDelete, updateField, handleSave, handleDelete, safeBack,
       } = useEditor({
         slug, type: 'medialogos', commitPrefix: 'media logo', addToast, onBack, existingSlugs,
         defaults: { name: '', slug: '', logo: '', order: 0 },
       });
       const { uploading, preview: logoPreview, upload: handleLogoUpload, clear: clearLogo, syncPreview: syncLogo } = useSingleUpload({
-        setData, setDirty, addToast, field: 'logo',
+        setData, setDirty, addToast, field: 'logo', deferDelete: queueImageDelete,
         buildCfId: (file) => `medialogos/${data.slug || slugify(data.name) || 'new'}/${Date.now()}`,
       });
       useEffect(() => { syncLogo(data.logo); }, [data.logo]);
 
       if (loading) return html`<${EditorSkeleton} />`;
+      if (loadError) return html`<${LoadErrorCard} error=${loadError} onRetry=${reloadContent} />`;
 
       return html`
         ${showDeleteModal ? html`<${ConfirmModal}
@@ -7615,7 +7771,7 @@
             <div class="form-group">
               <label class="form-label">Slug</label>
               <input class="form-input" value=${data.slug}
-                onInput=${e => updateField('slug', e.target.value)} ${slug ? 'disabled' : ''} />
+                onInput=${e => updateField('slug', e.target.value)} disabled=${!!slug} />
             </div>
           </div>
           <div class="form-group">
@@ -7659,7 +7815,7 @@
         programPct: 0, managementPct: 0, fundraisingPct: 0,
       };
       const {
-        data, setData, loading, saving, handleSave, updateField: update,
+        data, setData, loading, loadError, reloadContent, saving, setDirty, handleSave, updateField: update,
       } = useEditor({
         path: 'src/content/site/financial-snapshot.json', label: 'financial snapshot',
         commitPrefix: 'financials', addToast, defaults: snapshotDefaults,
@@ -7674,6 +7830,7 @@
       const recalcPcts = (prog, mgmt, fund) => {
         const total = prog + mgmt + fund;
         if (total === 0) return;
+        setDirty(true);
         setData(d => ({
           ...d,
           programExpenses: prog, managementExpenses: mgmt, fundraisingExpenses: fund,
@@ -7685,6 +7842,7 @@
       };
 
       if (loading) return html`<div style="text-align:center;padding:3rem"><span class="spinner" /></div>`;
+      if (loadError) return html`<${LoadErrorCard} error=${loadError} onRetry=${reloadContent} />`;
 
       const fmt = (n) => n ? '$' + n.toLocaleString() : '$0';
 
@@ -7808,21 +7966,25 @@
       const [modalUploading, setModalUploading] = useState(false); // upload inside the Add Document modal
       const [showLinkInput, setShowLinkInput] = useState(false);   // "paste a link instead" toggle
 
+      const [loadError, setLoadError] = useState(null);
       const loadAll = async () => {
         setLoading(true);
+        setLoadError(null);
         try {
           // Load uploaded files
           const filesRes = await api.listContent('public/financials');
           if (filesRes.success) setFiles(filesRes.files);
           else setFiles([]);
-          // Load JSON metadata
+          // Load JSON metadata (a 404 is fine — starts from defaults)
           const jsonRes = await api.readContent('src/content/site/financials.json');
           if (jsonRes.success) {
             const parsed = JSON.parse(jsonRes.content);
             setData(parsed);
             setDataSha(jsonRes.sha);
           }
-        } catch { /* ignore */ }
+        } catch (err) {
+          setLoadError(err.message || 'Failed to load financial documents');
+        }
         setLoading(false);
       };
 
@@ -7958,6 +8120,7 @@
       const reports = (data.annualReports || []).sort((a, b) => b.year - a.year);
 
       if (loading) return html`<${EditorSkeleton} />`;
+      if (loadError) return html`<${LoadErrorCard} error=${loadError} onRetry=${loadAll} />`;
 
       return html`
         ${pendingRemove ? html`<${ConfirmModal}
@@ -8289,18 +8452,19 @@
           try {
             const filePath = `src/content/team/${member.slug}.json`;
             const fileRes = await api.readContent(filePath);
-            if (!fileRes.success) return { ok: false, name: member.name };
+            if (!fileRes.success) return { ok: false, name: member.name, error: fileRes.error };
             const content = typeof fileRes.content === 'string' ? JSON.parse(fileRes.content) : fileRes.content;
             content.order = newOrder;
             const res = await api.saveContent(filePath, JSON.stringify(content, null, 2), `Reorder ${commitLabel}: ${content.name}`, fileRes.sha);
-            return { ok: !!res.success, changed: true, name: content.name };
-          } catch { return { ok: false, name: member.name }; }
+            return { ok: !!res.success, changed: true, name: content.name, error: res.error };
+          } catch (e) { return { ok: false, name: member.name, error: e.message }; }
         });
         const results = await Promise.all(tasks);
         setSavingOrder(false);
         const failed = results.filter(r => !r.ok).length;
         if (failed > 0) {
-          addToast?.(`Reorder: ${failed} failed to save`, 'error');
+          const firstErr = results.find(r => !r.ok)?.error;
+          addToast?.(`Reorder: ${failed} failed to save${firstErr ? ` — ${firstErr}` : ''}`, 'error');
         } else {
           addToast?.(`${label} reordered`, 'success');
           try { logActivity('updated', 'team', `Reordered ${label.toLowerCase()}`); } catch {}
@@ -8368,14 +8532,14 @@
     // ═══════════════════════════════════════════
     function TeamEditor({ slug, onBack, addToast, defaultGroup, existingSlugs = [] }) {
       const {
-        data, setData, loading, saving, dirty, setDirty, deleting,
-        showDeleteModal, setShowDeleteModal, slugExists, updateField, handleSave, handleDelete, safeBack,
+        data, setData, loading, loadError, reloadContent, saving, dirty, setDirty, deleting,
+        showDeleteModal, setShowDeleteModal, slugExists, queueImageDelete, updateField, handleSave, handleDelete, safeBack,
       } = useEditor({
         slug, type: 'team', commitPrefix: 'team member', addToast, onBack, existingSlugs,
         defaults: { name: '', slug: '', title: '', organization: '', photo: '', bio: '', quote: '', group: defaultGroup || 'team', order: 0 },
       });
       const { uploading, preview: photoPreview, upload: handlePhotoUpload, clear: clearPhoto, syncPreview: syncPhoto } = useSingleUpload({
-        setData, setDirty, addToast, field: 'photo',
+        setData, setDirty, addToast, field: 'photo', deferDelete: queueImageDelete,
         buildCfId: (file) => `team/${data.slug || slugify(data.name) || 'new'}/${Date.now()}`,
       });
       useEffect(() => { syncPhoto(data.photo); }, [data.photo]);
@@ -8386,6 +8550,7 @@
       };
 
       if (loading) return html`<${EditorSkeleton} />`;
+      if (loadError) return html`<${LoadErrorCard} error=${loadError} onRetry=${reloadContent} />`;
 
       return html`
         ${showDeleteModal ? html`<${ConfirmModal}
@@ -8419,7 +8584,7 @@
             <div class="form-group">
               <label class="form-label">Slug</label>
               <input class="form-input" value=${data.slug}
-                onInput=${e => updateField('slug', e.target.value)} ${slug ? 'disabled' : ''} />
+                onInput=${e => updateField('slug', e.target.value)} disabled=${!!slug} />
             </div>
           </div>
           <div class="form-row">
@@ -8564,6 +8729,9 @@
         ctaSecondaryLink: '/donate/', ctaSecondaryLabel: 'Support Our Mission',
         featured: false, order: 0,
       });
+
+      useGlobalDirty(dirty, slug ? `article "${slug}"` : 'a new article');
+      useSaveShortcut(() => { if (!saving) handleSave(); });
 
       useEffect(() => {
         if (!slug) return;
@@ -8856,6 +9024,21 @@
         category: 'other', featured: false, status: 'upcoming', order: 0,
       });
 
+      useGlobalDirty(dirty, slug ? `event "${slug}"` : 'a new event');
+      useSaveShortcut(() => { if (!saving) handleSave(); });
+
+      // Deferred CF image deletion — executed only after a successful save
+      const pendingImageDeletes = useRef([]);
+      const queueImageDelete = (urlOrId) => {
+        const id = extractCfImageId(urlOrId);
+        if (id) pendingImageDeletes.current.push(id);
+      };
+      const flushImageDeletes = () => {
+        const ids = pendingImageDeletes.current;
+        pendingImageDeletes.current = [];
+        ids.forEach(id => api.deleteImage(id).catch(() => {}));
+      };
+
       useEffect(() => {
         if (!slug) return;
         (async () => {
@@ -8943,11 +9126,12 @@
       };
 
       const removePhoto = (index) => {
-        const photoUrl = (data.photos || [])[index]?.url;
+        // Event photos store the CF ID in `.id` (not `.url`); deletion is
+        // deferred until a successful save so live pages never break.
+        const photoId = (data.photos || [])[index]?.id;
         setDirty(true);
         setData(d => ({ ...d, photos: (d.photos || []).filter((_, i) => i !== index) }));
-        const imageId = extractCfImageId(photoUrl);
-        if (imageId) { api.deleteImage(imageId).catch(() => {}); }
+        if (photoId && !photoId.startsWith('blob:')) queueImageDelete(photoId);
       };
 
       const handleSave = async () => {
@@ -8978,6 +9162,7 @@
           if (res.success) {
             setSha(res.sha);
             setDirty(false);
+            flushImageDeletes();
             addToast('Event saved & published!', 'success');
             logActivity(slug ? 'published' : 'created', 'event', data.title);
           } else {
@@ -9020,7 +9205,7 @@
           onClose=${() => setShowImagePicker(false)}
         />` : null}
         <nav class="breadcrumb" aria-label="Breadcrumb">
-          <button onClick=${() => { if (dirty && !confirm('You have unsaved changes. Leave?')) return; onBack(); }}>Events</button>
+          <button onClick=${onBack}>Events</button>
           <span class="sep">›</span>
           <span class="current">${slug ? data.title || 'Edit' : 'New Event'}</span>
         </nav>
@@ -9293,7 +9478,7 @@
                 actionLabel=${search ? null : 'Add Press Article'} onAction=${onAdd} /></td></tr>` : null}
               ${filtered.map(p => html`<tr key=${p.slug} onClick=${() => onEdit(p.slug)} style="cursor: pointer;">
                 <td style="width: 64px; padding: 0.4rem 0.5rem;">
-                  ${p.image ? html`<img src=${p.image + '/nav'}
+                  ${p.image ? html`<img src=${cfThumb(p.image, 'w=112,h=72,fit=cover,q=80')}
                     alt="" style="width: 56px; height: 36px; object-fit: cover; border-radius: 4px; display: block;" />` : html`<div style="width: 56px; height: 36px; background: #eee; border-radius: 4px;" />`}
                 </td>
                 <td><strong>${p.title.length > 55 ? p.title.slice(0, 55) + '…' : p.title}</strong><span class="team-title-sub text-sm" style="display: none; color: var(--color-text-secondary);">${p.outlet || ''}${p.date ? ` · ${p.date}` : ''}</span></td>
@@ -9336,6 +9521,9 @@
           videoId: null, featuredHeadline: null, featuredDescription: null,
         };
       });
+
+      useGlobalDirty(dirty, slug ? `press article "${slug}"` : 'a new press article');
+      useSaveShortcut(() => { if (!saving) handleSave(); });
 
       useEffect(() => {
         if (!slug) return;
@@ -9505,7 +9693,7 @@
             <span class="form-hint">Cloudflare Images ID (e.g. press/11alive-2025). Leave blank for no image.</span>
             ${data.image ? html`
               <div style="margin-top: 0.75rem; border-radius: 8px; overflow: hidden; max-width: 400px;">
-                <img src=${data.image + '/public'}
+                <img src=${cfThumb(data.image, 'w=800,q=80')}
                   alt="Article image preview" style="width: 100%; height: 200px; object-fit: cover; display: block;"
                   onError=${e => { e.target.style.display = 'none'; }} />
               </div>
@@ -9622,7 +9810,18 @@
             const now = new Date().toLocaleString();
             setLastScan(now);
             localStorage.setItem('soard-press-last-scan', now);
-            addToast(`Found ${data.mentions.length} results, ${filteredMentions.length || '—'} new`, 'success');
+            // Compute the "new" count from the fresh results (state hasn't updated yet)
+            const isNew = (m) => {
+              for (const u of [m.link, m.resolvedUrl].filter(Boolean)) {
+                try {
+                  const parsed = new URL(u);
+                  const norm = parsed.hostname.replace(/^www\./, '') + parsed.pathname.replace(/\/$/, '');
+                  if (existingUrls.has(norm) || dismissedSet.has(norm)) return false;
+                } catch {}
+              }
+              return true;
+            };
+            addToast(`Found ${data.mentions.length} results, ${data.mentions.filter(isNew).length} new`, 'success');
           } else {
             addToast(`Scan failed: ${data.error}`, 'error');
           }
@@ -9735,7 +9934,7 @@
               <tbody>
                 ${filteredMentions.map(m => html`<tr key=${m.link}>
                   <td>
-                    <a href=${m.resolvedUrl || m.link} target="_blank" rel="noopener" style="color: var(--c-dark); text-decoration: underline; text-underline-offset: 2px;">
+                    <a href=${safeHref(m.resolvedUrl || m.link) || '#'} target="_blank" rel="noopener" style="color: var(--c-dark); text-decoration: underline; text-underline-offset: 2px;">
                       ${m.title.length > 70 ? m.title.slice(0, 70) + '…' : m.title}
                     </a>
                     ${m.resolvedUrl ? html`<br /><span class="text-sm text-muted" style="word-break: break-all;">${(() => { try { const u = new URL(m.resolvedUrl); return u.hostname + u.pathname; } catch { return ''; } })()}</span>` : m.description ? html`<br /><span class="text-sm text-muted">${m.description.length > 100 ? m.description.slice(0, 100) + '…' : m.description}</span>` : null}
@@ -10045,6 +10244,23 @@
       const [videoUploading, setVideoUploading] = useState(false);
       const [videoProgress, setVideoProgress] = useState(0);
       const [generatingAlt, setGeneratingAlt] = useState(false);
+      const [loadError, setLoadError] = useState(null);
+
+      // Deferred CF image deletion — executed only after a successful save
+      const pendingImageDeletes = useRef([]);
+      const queueImageDelete = (urlOrId) => {
+        const id = extractCfImageId(urlOrId);
+        if (id) pendingImageDeletes.current.push(id);
+      };
+      const flushImageDeletes = () => {
+        const ids = pendingImageDeletes.current;
+        pendingImageDeletes.current = [];
+        ids.forEach(id => api.deleteImage(id).catch(() => {}));
+      };
+
+      // Global dirty registry + Cmd/Ctrl+S save
+      useGlobalDirty(dirty, slug ? `community project "${slug}"` : 'a new community project');
+      useSaveShortcut(() => { if (!saving && !loading) handleSave(); });
 
       // ─── Photo upload + reorder hooks ──────
       const { uploading, upload: uploadCommunityPhotos } = useImageUpload({
@@ -10134,8 +10350,7 @@
             imageId: newPhotos.length === 0 ? '' : d.imageId,
           };
         });
-        const imageId = extractCfImageId(photoUrl);
-        if (imageId) { api.deleteImage(imageId).catch(() => {}); }
+        queueImageDelete(photoUrl); // deleted from CF only after a successful save
       };
       const setHero = (index) => {
         setDirty(true);
@@ -10193,13 +10408,14 @@
         setShowDeleteModal(false);
       };
 
-      // Load existing project
-      useEffect(() => {
-        if (!slug) return;
-        (async () => {
+      // Load existing project — guarded so malformed rows / network failures
+      // show an error card with Retry instead of a stuck skeleton.
+      const loadProject = async () => {
+        setLoadError(null);
+        try {
           const res = await api.readContent(`src/content/community/${slug}.json`);
           if (res.success) {
-            const parsed = JSON.parse(res.content);
+            const parsed = typeof res.content === 'string' ? JSON.parse(res.content) : res.content;
             if (parsed.imageId && (!parsed.photos || parsed.photos.length === 0)) {
               parsed.photos = [{ url: parsed.imageId, alt: parsed.imageAlt || '' }];
               parsed.heroImage = parsed.heroImage || parsed.imageId;
@@ -10208,9 +10424,18 @@
             if (!parsed.partnerLogos) parsed.partnerLogos = [];
             setData(d => ({ ...d, ...parsed }));
             setSha(res.sha);
-          } else { addToast('Failed to load project data', 'error'); }
+          } else {
+            setLoadError(res.error || 'Failed to load project data');
+          }
+        } catch (err) {
+          setLoadError(err.message || 'Failed to load project data');
+        } finally {
           setLoading(false);
-        })();
+        }
+      };
+      useEffect(() => {
+        if (!slug) return;
+        loadProject();
       }, [slug]);
 
       const dedupeSlug = (base) => {
@@ -10277,6 +10502,7 @@
             setSha(res.sha);
             setDirty(false);
             clearDraft();
+            flushImageDeletes();
             addToast(`${data.name} published! Site rebuilding...`, 'success');
             logActivity(slug ? 'updated' : 'created', 'community project', data.name);
             setLastSaved(new Date());
@@ -10286,6 +10512,13 @@
       };
 
       if (loading) return html`<${EditorSkeleton} />`;
+      if (loadError) return html`
+        <nav class="breadcrumb" aria-label="Breadcrumb">
+          <button onClick=${onBack}>Community Projects</button>
+          <span class="sep">›</span>
+          <span class="current">${slug}</span>
+        </nav>
+        <${LoadErrorCard} error=${loadError} onRetry=${() => { setLoading(true); loadProject(); }} />`;
 
       return html`
         ${showDeleteModal ? html`<${ConfirmModal}
@@ -10350,7 +10583,7 @@
               <label class="form-label">Slug</label>
               <input class="form-input ${!slug && data.slug && existingSlugs.includes(data.slug) ? 'is-invalid' : ''}" type="text" value=${data.slug}
                 onInput=${e => { setDirty(true); setData(d => ({ ...d, slug: slugify(e.target.value) })); }}
-                placeholder="camp-twin-lakes" ${slug ? 'disabled' : ''} />
+                placeholder="camp-twin-lakes" disabled=${!!slug} />
               <div class="form-hint">URL path: /community/${data.slug || '...'}</div>
               ${!slug && data.slug && existingSlugs.includes(data.slug) ? html`<div class="form-error">A project with this slug already exists</div>` : null}
             </div>
@@ -10593,17 +10826,24 @@
       const [loading, setLoading] = useState(true);
       const [saving, setSaving] = useState(false);
       const [sha, setSha] = useState(null);
-      const [data, setData] = useState({ categories: [], items: [] });
+      const [data, _setData] = useState({ categories: [], items: [] });
+      const [dirty, setDirty] = useState(false);
       const [editItem, setEditItem] = useState(null); // null=list, 'new'=new, {id}=editing
       const [editCat, setEditCat] = useState(null);
       const [dragIdx, setDragIdx] = useState(null);
+      const [confirmFaqDelete, setConfirmFaqDelete] = useState(null); // { kind: 'item'|'category', id }
+
+      // Every edit marks the editor dirty; the raw setter is only for loading
+      const setData = (updater) => { setDirty(true); _setData(updater); };
+      useGlobalDirty(dirty, 'the FAQ editor');
+      useSaveShortcut(() => { if (!saving && !loading) handleSave(); });
 
       useEffect(() => {
         (async () => {
           try {
             const res = await api.readContent('src/content/site/faq.json');
             if (res.success) {
-              setData(JSON.parse(res.content));
+              _setData(JSON.parse(res.content));
               setSha(res.sha);
             }
           } catch {}
@@ -10627,6 +10867,7 @@
           );
           if (res.success) {
             setSha(res.sha);
+            setDirty(false);
             addToast('FAQs saved & published!', 'success');
             logActivity('updated', 'FAQs', '');
           } else {
@@ -10720,11 +10961,26 @@
 
       if (loading) return html`<${EditorSkeleton} />`;
 
+      // Shared delete-confirmation modal (deletes persist on Save & Publish)
+      const faqDeleteModal = confirmFaqDelete ? html`<${ConfirmModal}
+        title=${confirmFaqDelete.kind === 'category' ? 'Delete this category?' : 'Delete this FAQ?'}
+        message=${confirmFaqDelete.kind === 'category'
+          ? 'This removes the category from the editor. The change becomes permanent when you Save & Publish.'
+          : 'This removes the question from the editor. The change becomes permanent when you Save & Publish.'}
+        danger=${true}
+        onConfirm=${() => {
+          if (confirmFaqDelete.kind === 'category') deleteCategory(confirmFaqDelete.id);
+          else deleteItem(confirmFaqDelete.id);
+          setConfirmFaqDelete(null);
+        }}
+        onCancel=${() => setConfirmFaqDelete(null)} />` : null;
+
       // ── Edit single FAQ item ──
       if (editItem) {
         const item = data.items.find(i => i.id === editItem);
         if (!item) { setEditItem(null); return null; }
         return html`
+          ${faqDeleteModal}
           <div class="page-header">
             <div style="display: flex; align-items: center; gap: 0.75rem;">
               <button class="btn btn-ghost btn-sm" onClick=${() => setEditItem(null)}>${icons.arrowLeft} Back</button>
@@ -10757,7 +11013,7 @@
             </div>
           </div>
           <div style="margin-top: 1rem;">
-            <button class="btn btn-ghost" style="color: #e53e3e;" onClick=${() => { deleteItem(item.id); }}>
+            <button class="btn btn-ghost" style="color: #e53e3e;" onClick=${() => setConfirmFaqDelete({ kind: 'item', id: item.id })}>
               ${icons.trash} Delete this FAQ
             </button>
           </div>
@@ -10766,6 +11022,7 @@
 
       // ── Main FAQ list view ──
       return html`
+        ${faqDeleteModal}
         <div class="page-header">
           <h2>FAQs</h2>
           <div style="display: flex; gap: 0.5rem;">
@@ -10796,7 +11053,13 @@
                       Show on Donate page
                     </label>
                     <button class="btn btn-ghost btn-sm" onClick=${() => setEditCat(null)}>Done</button>
-                    <button class="btn btn-ghost btn-sm" style="color: #e53e3e;" onClick=${() => deleteCategory(cat.id)}>Delete</button>
+                    <button class="btn btn-ghost btn-sm" style="color: #e53e3e;" onClick=${() => {
+                      if (data.items.some(i => i.category === cat.id)) {
+                        addToast('Move or delete all FAQs in this category first.', 'error');
+                        return;
+                      }
+                      setConfirmFaqDelete({ kind: 'category', id: cat.id });
+                    }}>Delete</button>
                   </div>
                 ` : html`
                   <div style="display: flex; align-items: center; gap: 0.5rem;">
@@ -10835,7 +11098,7 @@
                         </td>
                         <td>
                           <div style="display: flex; gap: 0.25rem;">
-                            <button class="btn btn-ghost btn-sm" style="color: #e53e3e;" onClick=${(e) => { e.stopPropagation(); deleteItem(item.id); }}>${icons.trash}</button>
+                            <button class="btn btn-ghost btn-sm" style="color: #e53e3e;" onClick=${(e) => { e.stopPropagation(); setConfirmFaqDelete({ kind: 'item', id: item.id }); }}>${icons.trash}</button>
                           </div>
                         </td>
                       </tr>
@@ -10862,6 +11125,11 @@
     // ═══════════════════════════════════════════
     // IMAGE PICKER MODAL
     // ═══════════════════════════════════════════
+    // Module-level cache of the CF image library — shared across picker opens
+    // so each "Browse" click doesn't refetch thousands of records. Kept in
+    // sync on in-picker uploads; the ↻ button forces a full reload.
+    let _imageLibraryCache = null;
+
     function ImagePicker({ onSelect, onClose, value, uploadPrefix }) {
       const [allImages, setAllImages] = useState([]);
       const [loading, setLoading] = useState(true);
@@ -10887,21 +11155,30 @@
         return () => { document.body.classList.remove('modal-open'); document.removeEventListener('keydown', onKey); };
       }, [onClose]);
 
-      // Load ALL images via CF v2 API (paginated)
+      // Load ALL images via CF v2 API (paginated) — served from the shared
+      // module-level cache when available.
+      const [reloadKey, setReloadKey] = useState(0);
       useEffect(() => {
         let cancelled = false;
+        if (_imageLibraryCache) {
+          setAllImages(_imageLibraryCache);
+          setLoading(false);
+          return;
+        }
         (async () => {
+          let ok = true;
           try {
             let collected = [];
             let token = '';
             do {
               const res = await api.listImages(10000, token);
               if (cancelled) return;
-              if (!res.success) { setError(res.error || 'Failed to load images'); break; }
+              if (!res.success) { setError(res.error || 'Failed to load images'); ok = false; break; }
               collected = collected.concat(res.images || []);
               token = res.continuation_token || '';
               setAllImages([...collected]);
             } while (token);
+            if (!cancelled && ok) _imageLibraryCache = collected;
           } catch (err) {
             console.error('Image load error', err);
             if (!cancelled) setError('Network error loading images');
@@ -10909,7 +11186,15 @@
           if (!cancelled) setLoading(false);
         })();
         return () => { cancelled = true; };
-      }, []);
+      }, [reloadKey]);
+
+      const refreshLibrary = () => {
+        _imageLibraryCache = null;
+        setAllImages([]);
+        setError(null);
+        setLoading(true);
+        setReloadKey(k => k + 1);
+      };
 
       // Sort by uploaded desc (newest first)
       const sorted = useMemo(() => {
@@ -11003,7 +11288,9 @@
             const res = await api.uploadImage(file, cfId);
             if (res.success) {
               lastId = res.imageId || cfId;
-              setAllImages(prev => [{ id: lastId, uploaded: new Date().toISOString(), filename: file.name }, ...prev]);
+              const entry = { id: lastId, uploaded: new Date().toISOString(), filename: file.name };
+              setAllImages(prev => [entry, ...prev]);
+              if (_imageLibraryCache) _imageLibraryCache = [entry, ..._imageLibraryCache];
             } else {
               setUploadErr(res.error || 'Upload failed');
             }
@@ -11053,6 +11340,9 @@
                 onClick=${() => fileInputRef.current && fileInputRef.current.click()}>
                 ${uploading ? html`<span class="spinner" style="width:14px;height:14px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:6px;"></span>Uploading...` : 'Upload new'}
               </button>
+              <button class="btn btn-sm btn-ghost" type="button" disabled=${loading || uploading}
+                title="Reload the image library" aria-label="Reload the image library"
+                onClick=${refreshLibrary}>↻</button>
             </div>
           </div>
 
@@ -11136,28 +11426,31 @@
       const [loading, setLoading] = useState(true);
       const [saving, setSaving] = useState(false);
       const [sha, setSha] = useState(null);
-      const [data, setData] = useState({
+      const [dirty, setDirty] = useState(false);
+      const [data, _setData] = useState({
         testimonial: { quote: '', name: '', title: '' },
         faqs: [],
         sponsors: [],
         galleryPhotos: [],
         tiers: { main: [], addons: [] },
       });
+      // Every edit marks the editor dirty; the raw setter is only for loading
+      const setData = (updater) => { setDirty(true); _setData(updater); };
+      useGlobalDirty(dirty, 'the golf tournament editor');
+      useSaveShortcut(() => { if (!saving && !loading) handleSave(); });
       const [activeTab, setActiveTab] = useState('tiers');
       const [showImagePicker, setShowImagePicker] = useState(false);
       const [imagePickerTarget, setImagePickerTarget] = useState(null); // 'sponsor:tierIdx:nameIdx' or 'gallery:0'
+      const [confirmTierDelete, setConfirmTierDelete] = useState(null); // sponsor-tier index
 
-      // Drag-to-reorder for the gallery — this editor doesn't track a dirty
-      // flag, so stub setDirty as a no-op; setData itself triggers a re-render
-      // and Save & Publish always writes the current state.
-      const { dragHandlers: galleryDragHandlers } = useDragReorder({ setData, setDirty: () => {}, arrayKey: 'galleryPhotos' });
+      const { dragHandlers: galleryDragHandlers } = useDragReorder({ setData, setDirty, arrayKey: 'galleryPhotos' });
 
       useEffect(() => {
         (async () => {
           try {
             const res = await api.readContent('src/content/site/golf.json');
             if (res.success) {
-              setData(JSON.parse(res.content));
+              _setData(JSON.parse(res.content));
               setSha(res.sha);
             }
           } catch {}
@@ -11175,6 +11468,7 @@
           );
           if (res.success) {
             setSha(res.sha);
+            setDirty(false);
             addToast('Golf settings saved!', 'success');
             logActivity('updated', 'Golf Tournament Settings', '');
           } else {
@@ -11313,6 +11607,12 @@
           onSelect=${handleImageSelect}
           onClose=${() => { setShowImagePicker(false); setImagePickerTarget(null); }}
         />` : null}
+        ${confirmTierDelete !== null ? html`<${ConfirmModal}
+          title=${`Remove tier "${data.sponsors?.[confirmTierDelete]?.tier || 'Untitled'}"?`}
+          message="This removes the tier and all its sponsors from the editor. The change becomes permanent when you Save & Publish."
+          danger=${true}
+          onConfirm=${() => { const ti = confirmTierDelete; setConfirmTierDelete(null); setData(d => ({ ...d, sponsors: d.sponsors.filter((_, i) => i !== ti) })); }}
+          onCancel=${() => setConfirmTierDelete(null)} />` : null}
         <div class="editor-page">
           ${onBack ? html`
             <nav class="breadcrumb" aria-label="Breadcrumb">
@@ -11527,7 +11827,7 @@
                       })}>↓</button>
                     <button class="btn btn-ghost btn-sm" style="color: #c62828; padding: 0.25rem 0.5rem;"
                       title="Remove this entire tier and all its sponsors"
-                      onClick=${() => { if (confirm('Remove tier "' + (tier.tier || 'Untitled') + '" and all its sponsors?')) setData(d => ({ ...d, sponsors: d.sponsors.filter((_, i) => i !== ti) })); }}>✕</button>
+                      onClick=${() => setConfirmTierDelete(ti)}>✕</button>
                   </div>
                 </div>
 
@@ -11707,10 +12007,11 @@
 
       const [loading, setLoading] = useState(true);
       const [saving, setSaving] = useState(false);
+      const [dirty, setDirty] = useState(false);
       const [eventSha, setEventSha] = useState(null);
       const [galaSha, setGalaSha] = useState(null);
-      const [eventData, setEventData] = useState(null);
-      const [data, setData] = useState({
+      const [eventData, _setEventData] = useState(null);
+      const [data, _setData] = useState({
         testimonial: { quote: '', name: '', title: '' },
         faqs: [],
         sponsors: [],
@@ -11722,10 +12023,16 @@
       const [activeTab, setActiveTab] = useState('event');
       const [showImagePicker, setShowImagePicker] = useState(false);
       const [imagePickerTarget, setImagePickerTarget] = useState(null);
+      const [confirmTierDelete, setConfirmTierDelete] = useState(null); // sponsor-tier index
 
-      // Drag-to-reorder for the gala gallery — setDirty is a no-op here
-      // because this editor doesn't track a separate dirty flag.
-      const { dragHandlers: galleryDragHandlers } = useDragReorder({ setData, setDirty: () => {}, arrayKey: 'galleryPhotos' });
+      // Every edit (gala config OR event details) marks the editor dirty;
+      // the raw setters are only used when loading.
+      const setData = (updater) => { setDirty(true); _setData(updater); };
+      const setEventData = (updater) => { setDirty(true); _setEventData(updater); };
+      useGlobalDirty(dirty, 'the gala editor');
+      useSaveShortcut(() => { if (!saving && !loading) handleSave(); });
+
+      const { dragHandlers: galleryDragHandlers } = useDragReorder({ setData, setDirty, arrayKey: 'galleryPhotos' });
 
       useEffect(() => {
         (async () => {
@@ -11735,11 +12042,11 @@
               api.readContent(galaPath),
             ]);
             if (evRes.success) {
-              setEventData(JSON.parse(evRes.content));
+              _setEventData(JSON.parse(evRes.content));
               setEventSha(evRes.sha);
             }
             if (galaRes.success) {
-              setData(prev => ({ ...prev, ...JSON.parse(galaRes.content) }));
+              _setData(prev => ({ ...prev, ...JSON.parse(galaRes.content) }));
               setGalaSha(galaRes.sha);
             }
           } catch {}
@@ -11762,6 +12069,7 @@
           if (evRes.success && evRes.sha) setEventSha(evRes.sha);
           if (galaRes.success && galaRes.sha) setGalaSha(galaRes.sha);
           if (evRes.success && galaRes.success) {
+            setDirty(false);
             addToast('Gala settings saved!', 'success');
             logActivity('updated', 'Gala Settings', '');
           } else {
@@ -11953,6 +12261,12 @@
           onSelect=${handleImageSelect}
           onClose=${() => { setShowImagePicker(false); setImagePickerTarget(null); }}
         />` : null}
+        ${confirmTierDelete !== null ? html`<${ConfirmModal}
+          title=${`Remove tier "${data.sponsors?.[confirmTierDelete]?.tier || 'Untitled'}"?`}
+          message="This removes the tier and all its sponsors from the editor. The change becomes permanent when you Save & Publish."
+          danger=${true}
+          onConfirm=${() => { const ti = confirmTierDelete; setConfirmTierDelete(null); setData(d => ({ ...d, sponsors: d.sponsors.filter((_, i) => i !== ti) })); }}
+          onCancel=${() => setConfirmTierDelete(null)} />` : null}
         <div class="editor-page">
           ${onBack ? html`
             <nav class="breadcrumb" aria-label="Breadcrumb">
@@ -12444,7 +12758,7 @@
                       })}>↓</button>
                     <button class="btn btn-ghost btn-sm" style="color: #c62828; padding: 0.25rem 0.5rem;"
                       title="Remove this entire tier and all its sponsors"
-                      onClick=${() => { if (confirm('Remove tier "' + (tier.tier || 'Untitled') + '" and all its sponsors?')) setData(d => ({ ...d, sponsors: d.sponsors.filter((_, i) => i !== ti) })); }}>✕</button>
+                      onClick=${() => setConfirmTierDelete(ti)}>✕</button>
                   </div>
                 </div>
 
@@ -12707,9 +13021,16 @@
 
     function SiteSettings({ addToast, kids: allKids = [], partners: allPartners = [] }) {
       const [loading, setLoading] = useState(true);
+      const [loadError, setLoadError] = useState(null);
       const [saving, setSaving] = useState(false);
       const [sha, setSha] = useState(null);
-      const [data, setData] = useState({});
+      const [dirty, setDirty] = useState(false);
+      const [data, _setData] = useState({});
+
+      // Every edit marks the editor dirty; the raw setter is only for loading
+      const setData = (updater) => { setDirty(true); _setData(updater); };
+      useGlobalDirty(dirty, 'Site Settings');
+      useSaveShortcut(() => { if (!saving && !loading) handleSave(); });
 
       // Sorted partners for dropdown
       const sortedPartners = useMemo(() =>
@@ -12725,16 +13046,23 @@
         });
       };
 
-      useEffect(() => {
-        (async () => {
+      const loadSettings = async () => {
+        setLoadError(null);
+        try {
           const res = await api.readContent('src/content/site/settings.json');
           if (res.success) {
-            setData(JSON.parse(res.content));
+            _setData(JSON.parse(res.content));
             setSha(res.sha);
+          } else {
+            setLoadError(res.error || 'Failed to load settings');
           }
+        } catch (err) {
+          setLoadError(err.message || 'Failed to load settings');
+        } finally {
           setLoading(false);
-        })();
-      }, []);
+        }
+      };
+      useEffect(() => { loadSettings(); }, []);
 
       const updateField = (path, value) => {
         setData(d => {
@@ -12782,6 +13110,7 @@
           );
           if (res.success) {
             setSha(res.sha);
+            setDirty(false);
             addToast('Settings saved!', 'success');
             logActivity('updated', 'site settings', '');
           } else {
@@ -12794,7 +13123,7 @@
       };
 
       if (loading) return html`<${EditorSkeleton} />`;
-
+      if (loadError) return html`<${LoadErrorCard} error=${loadError} onRetry=${() => { setLoading(true); loadSettings(); }} />`;
 
       return html`
         <div class="page-header">
@@ -13069,27 +13398,41 @@
     // ═══════════════════════════════════════════
     function KidsOnSite({ addToast, kids: allKids = [] }) {
       const [loading, setLoading] = useState(true);
+      const [loadError, setLoadError] = useState(null);
       const [saving, setSaving] = useState(false);
       const [sha, setSha] = useState(null);
-      const [data, setData] = useState({});
+      const [dirty, setDirty] = useState(false);
+      const [data, _setData] = useState({});
       const [showImagePicker, setShowImagePicker] = useState(false);
       const [imagePickerTarget, setImagePickerTarget] = useState(null);
+
+      // Every edit marks the editor dirty; the raw setter is only for loading
+      const setData = (updater) => { setDirty(true); _setData(updater); };
+      useGlobalDirty(dirty, 'Kids on Site');
+      useSaveShortcut(() => { if (!saving && !loading) handleSave(); });
 
       const sortedKids = useMemo(() =>
         [...allKids].sort((a, b) => (a.name || '').localeCompare(b.name || '')),
         [allKids]
       );
 
-      useEffect(() => {
-        (async () => {
+      const loadSettings = async () => {
+        setLoadError(null);
+        try {
           const res = await api.readContent('src/content/site/settings.json');
           if (res.success) {
-            setData(JSON.parse(res.content));
+            _setData(JSON.parse(res.content));
             setSha(res.sha);
+          } else {
+            setLoadError(res.error || 'Failed to load settings');
           }
+        } catch (err) {
+          setLoadError(err.message || 'Failed to load settings');
+        } finally {
           setLoading(false);
-        })();
-      }, []);
+        }
+      };
+      useEffect(() => { loadSettings(); }, []);
 
       const TRACKED_PHOTO_FIELDS = ['heroKidSlug', 'heroKidPhotoId', 'featuredKidSlug', 'featuredStoryImage',
         'sectionPhotos.missionMain', 'sectionPhotos.missionAccent', 'sectionPhotos.process',
@@ -13174,6 +13517,7 @@
           );
           if (res.success) {
             setSha(res.sha);
+            setDirty(false);
             addToast('Kids on Site saved!', 'success');
             logActivity('updated', 'kids on site', '');
           } else {
@@ -13186,6 +13530,7 @@
       };
 
       if (loading) return html`<${EditorSkeleton} />`;
+      if (loadError) return html`<${LoadErrorCard} error=${loadError} onRetry=${() => { setLoading(true); loadSettings(); }} />`;
 
       const pts = data.photoTimestamps || {};
       const fSummary = photoFreshnessSummary(pts);
@@ -13489,10 +13834,12 @@
     // ═══════════════════════════════════════════
     function OurStory({ addToast }) {
       const {
-        data, setData, loading, saving, handleSave, updateNestedField: updateField,
+        data, setData: _setData, loading, loadError, reloadContent, saving, setDirty, handleSave, updateNestedField: updateField,
       } = useEditor({
         path: 'src/content/site/our-story.json', label: 'Our Story page', addToast,
       });
+      // Local helpers below mutate via setData — route through a dirty-marking wrapper
+      const setData = (updater) => { setDirty(true); _setData(updater); };
       const [showImagePicker, setShowImagePicker] = useState(false);
       const [imagePickerTarget, setImagePickerTarget] = useState(null);
 
@@ -13559,6 +13906,7 @@
       };
 
       if (loading) return html`<${EditorSkeleton} />`;
+      if (loadError) return html`<${LoadErrorCard} error=${loadError} onRetry=${reloadContent} />`;
 
       const renderImageField = (label, fieldPath, currentId) => html`
         <div class="form-group">
@@ -13797,7 +14145,7 @@
     // ═══════════════════════════════════════════
     function MediaKit({ addToast, kids: allKids = [] }) {
       const {
-        data, loading, saving, dirty, setDirty, handleSave, updateNestedField: updateField, setData,
+        data, loading, loadError, reloadContent, saving, dirty, setDirty, handleSave, updateNestedField: updateField, setData,
       } = useEditor({
         path: 'src/content/site/media.json', label: 'Media Kit', addToast,
       });
@@ -13850,6 +14198,7 @@
       };
 
       if (loading) return html`<${EditorSkeleton} />`;
+      if (loadError) return html`<${LoadErrorCard} error=${loadError} onRetry=${reloadContent} />`;
 
       return html`
         <div class="page-header">
@@ -14009,7 +14358,7 @@
     // ═══════════════════════════════════════════
     // DEPLOYS
     // ═══════════════════════════════════════════
-    function Deploys({ addToast }) {
+    function Deploys({ addToast, onDeploy }) {
       const [deploys, setDeploys] = useState([]);
       const [source, setSource] = useState(null);
       const [loading, setLoading] = useState(true);
@@ -14133,6 +14482,7 @@
             ${source === 'github' ? html`<span class="badge badge-gray" style="font-size: 0.72rem;">via GitHub commits</span>` : null}
             ${source === 'cloudflare' ? html`<span class="badge badge-blue" style="font-size: 0.72rem;">via Cloudflare Pages</span>` : null}
             <button class="btn btn-ghost btn-sm" onClick=${() => { loadDeploys(); loadPendingChanges(); }}>↻ Refresh</button>
+            ${onDeploy ? html`<button class="btn btn-primary btn-sm" onClick=${onDeploy} title="Trigger a production deploy — always available, even when no changes are tracked">Deploy Now</button>` : null}
           </div>
         </div>
 
@@ -14648,77 +14998,60 @@
         setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), action ? 8000 : 4000);
       };
 
-      // Load all content
+      // Which collections failed to load — lists render an error card (with
+      // Retry) instead of a misleading "No items yet" empty state.
+      const [loadFailures, setLoadFailures] = useState(new Set());
+
+      // Load all content — bulk fetches run in parallel; per-collection
+      // failures are tracked and surfaced instead of silently skipped.
       const loadData = async () => {
         setLoading(true);
-        try {
-          // Load kids (bulk — one API call)
-          const kidsRes = await api.bulkListContent('src/content/kids');
-          if (kidsRes.success) {
-            setKids(kidsRes.items.map(i => i.content).filter(Boolean)
-              .sort((a, b) => (b.year || 0) - (a.year || 0)));
-          }
-
-          // Load partners (bulk — one API call)
-          const partRes = await api.bulkListContent('src/content/partners');
-          if (partRes.success) {
-            setPartners(partRes.items.map(i => i.content).filter(Boolean)
-              .sort((a, b) => (a.order || 0) - (b.order || 0) || a.name.localeCompare(b.name)));
-          }
-
-          // Load team (bulk — one API call)
-          const teamRes = await api.bulkListContent('src/content/team');
-          if (teamRes.success) {
-            setTeam(teamRes.items.map(i => i.content).filter(Boolean)
-              .sort((a, b) => (a.order || 0) - (b.order || 0)));
-          }
-
-          // Load articles (bulk — one API call)
-          const artRes = await api.bulkListContent('src/content/articles');
-          if (artRes.success) {
-            setArticles(artRes.items.map(i => i.content).filter(Boolean)
-              .sort((a, b) => (a.order || 0) - (b.order || 0)));
-          }
-
-          // Load events (bulk — one API call)
-          const evRes = await api.bulkListContent('src/content/events');
-          if (evRes.success) {
-            setEvents(evRes.items.map(i => i.content).filter(Boolean)
-              .sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0)));
-          }
-
-          // Load community projects (bulk — one API call)
-          const cpRes = await api.bulkListContent('src/content/community');
-          if (cpRes.success) {
-            setCommunityProjects(cpRes.items.map(i => i.content).filter(Boolean)
-              .sort((a, b) => (a.order || 0) - (b.order || 0)));
-          }
-
-          // Load press (bulk — one API call)
-          const pressRes = await api.bulkListContent('src/content/press');
-          if (pressRes.success) {
-            setPress(pressRes.items.map(i => {
+        const collections = [
+          { key: 'kids', label: 'Kids', dir: 'src/content/kids',
+            set: (items) => setKids(items.map(i => i.content).filter(Boolean)
+              .sort((a, b) => (b.year || 0) - (a.year || 0))) },
+          { key: 'partners', label: 'Partners', dir: 'src/content/partners',
+            set: (items) => setPartners(items.map(i => i.content).filter(Boolean)
+              .sort((a, b) => (a.order || 0) - (b.order || 0) || a.name.localeCompare(b.name))) },
+          { key: 'team', label: 'Team', dir: 'src/content/team',
+            set: (items) => setTeam(items.map(i => i.content).filter(Boolean)
+              .sort((a, b) => (a.order || 0) - (b.order || 0))) },
+          { key: 'articles', label: 'Articles', dir: 'src/content/articles',
+            set: (items) => setArticles(items.map(i => i.content).filter(Boolean)
+              .sort((a, b) => (a.order || 0) - (b.order || 0))) },
+          { key: 'events', label: 'Events', dir: 'src/content/events',
+            set: (items) => setEvents(items.map(i => i.content).filter(Boolean)
+              .sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0))) },
+          { key: 'community', label: 'Community Projects', dir: 'src/content/community',
+            set: (items) => setCommunityProjects(items.map(i => i.content).filter(Boolean)
+              .sort((a, b) => (a.order || 0) - (b.order || 0))) },
+          { key: 'press', label: 'Press', dir: 'src/content/press',
+            set: (items) => setPress(items.map(i => {
               const c = i.content;
               if (c && !c.slug) c.slug = i.name.replace(/\.json$/, '');
               return c;
             }).filter(Boolean)
-              .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0)));
+              .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0))) },
+          { key: 'medialogos', label: 'Media Logos', dir: 'src/content/medialogos',
+            set: (items) => setMediaLogos(items.map(i => i.content).filter(Boolean)
+              .sort((a, b) => (a.order || 0) - (b.order || 0) || a.name.localeCompare(b.name))) },
+          { key: 'communityPartners', label: 'Community Partners', dir: 'src/content/communityPartners',
+            set: (items) => setCommunityPartners(items.map(i => i.content).filter(Boolean)
+              .sort((a, b) => (a.order || 0) - (b.order || 0) || a.name.localeCompare(b.name))) },
+        ];
+        const results = await Promise.all(collections.map(async (c) => {
+          try {
+            const res = await api.bulkListContent(c.dir);
+            if (res.success) { c.set(res.items || []); return { key: c.key, label: c.label, ok: true }; }
+            return { key: c.key, label: c.label, ok: false, error: res.error };
+          } catch (err) {
+            return { key: c.key, label: c.label, ok: false, error: err.message };
           }
-          // Load media logos (bulk — one API call)
-          const mlRes = await api.bulkListContent('src/content/medialogos');
-          if (mlRes.success) {
-            setMediaLogos(mlRes.items.map(i => i.content).filter(Boolean)
-              .sort((a, b) => (a.order || 0) - (b.order || 0) || a.name.localeCompare(b.name)));
-          }
-
-          // Load community partners (bulk — one API call)
-          const cpRes2 = await api.bulkListContent('src/content/communityPartners');
-          if (cpRes2.success) {
-            setCommunityPartners(cpRes2.items.map(i => i.content).filter(Boolean)
-              .sort((a, b) => (a.order || 0) - (b.order || 0) || a.name.localeCompare(b.name)));
-          }
-        } catch (err) {
-          addToast('Failed to load content. Check API settings.', 'error');
+        }));
+        const failures = results.filter(r => !r.ok);
+        setLoadFailures(new Set(failures.map(f => f.key)));
+        if (failures.length) {
+          addToast(`Failed to load: ${failures.map(f => f.label).join(', ')} — open the page and hit Retry`, 'error');
         }
         setLoading(false);
       };
@@ -14736,11 +15069,12 @@
             setCmdPaletteOpen(o => !o);
             return;
           }
-          // Cmd/Ctrl+S — save
+          // Cmd/Ctrl+S — the active editor listens for this event and runs
+          // its OWN save (never a synthesized click on some .btn-primary,
+          // which used to hit "Push to Resend" / "+ Add ..." buttons).
           if ((e.metaKey || e.ctrlKey) && e.key === 's') {
             e.preventDefault();
-            const btns = document.querySelectorAll('.btn-primary:not(:disabled)');
-            if (btns.length) btns[btns.length - 1].click();
+            window.dispatchEvent(new CustomEvent('soard-save'));
             return;
           }
           // ? — keyboard shortcuts (only when not typing in an input)
@@ -14754,13 +15088,25 @@
       }, []);
 
       const [dashboardFilter, setDashboardFilter] = useState(null);
+      // Confirm before an in-app view/tab switch discards unsaved edits.
+      // Editors register their dirty state via useGlobalDirty().
+      const confirmDiscard = () => {
+        if (!isGlobalDirty()) return true;
+        const reason = globalDirtyReason();
+        if (!confirm(`You have unsaved changes${reason ? ` in ${reason}` : ''}. Leave without saving?`)) return false;
+        setGlobalDirty(false);
+        return true;
+      };
       const navigate = (v, slug = null, tab = null, filter = null) => {
+        if (!confirmDiscard()) return;
         setView(v);
         setEditSlug(slug);
         setSubTab(tab);
         setDashboardFilter(filter);
         setSidebarOpen(false);
       };
+      // Site Config tabs keep editors mounted side by side — guard those too
+      const switchSiteTab = (t) => { if (!confirmDiscard()) return; setSubTab(t); };
 
       // Delete from list view
       const [deleteModal, setDeleteModal] = useState(null);
@@ -14854,6 +15200,15 @@
         ]},
       ];
 
+      // Render a list only when its collection actually loaded — a failed
+      // fetch shows an error card with Retry, never a fake "No items yet".
+      const listOrError = (key, label, listHtml) => loadFailures.has(key)
+        ? html`<div class="card" style="padding: 2.5rem; text-align: center;">
+            <p style="color: var(--color-danger); margin-bottom: 1rem;">Couldn't load ${label} — the list can't be shown right now.</p>
+            <button class="btn btn-primary" onClick=${loadData}>Retry</button>
+          </div>`
+        : listHtml;
+
       const renderView = () => {
         if (loading && view === 'dashboard') {
           return html`<${SkeletonDashboard} />`;
@@ -14879,11 +15234,11 @@
                 <button class="hub-tab ${tab === 'community' ? 'active' : ''}" onClick=${() => { setSubTab('community'); setEditSlug(null); }}>Community Projects</button>
               </div>
               ${tab === 'community'
-                ? html`<${CommunityList} projects=${communityProjects} onEdit=${s => { setSubTab('community'); setEditSlug(s); }} onAdd=${() => { setSubTab('community'); setEditSlug(''); }}
-                    onDelete=${p => setDeleteModal({ type: 'community project', item: p })} addToast=${addToast} onReload=${loadData} />`
-                : html`<${KidsList} kids=${kids} onEdit=${s => { setSubTab('kids'); setEditSlug(s); }} onAdd=${() => { setSubTab('kids'); setEditSlug(''); }}
+                ? listOrError('community', 'community projects', html`<${CommunityList} projects=${communityProjects} onEdit=${s => { setSubTab('community'); setEditSlug(s); }} onAdd=${() => { setSubTab('community'); setEditSlug(''); }}
+                    onDelete=${p => setDeleteModal({ type: 'community project', item: p })} addToast=${addToast} onReload=${loadData} />`)
+                : listOrError('kids', 'kids', html`<${KidsList} kids=${kids} onEdit=${s => { setSubTab('kids'); setEditSlug(s); }} onAdd=${() => { setSubTab('kids'); setEditSlug(''); }}
                     onDelete=${k => setDeleteModal({ type: 'kid', item: k })} addToast=${addToast} onReload=${loadData}
-                    dashboardFilter=${dashboardFilter} onClearFilter=${() => setDashboardFilter(null)} />`
+                    dashboardFilter=${dashboardFilter} onClearFilter=${() => setDashboardFilter(null)} />`)
               }
             `;
           }
@@ -14900,10 +15255,10 @@
                 <button class="hub-tab ${pTab === 'board' ? 'active' : ''}" onClick=${() => { setSubTab('board'); setEditSlug(null); }}>Board</button>
               </div>
               ${pTab === 'board'
-                ? html`<${TeamList} team=${team} group=${'board'} onEdit=${s => { setSubTab('board'); setEditSlug(s); }} onAdd=${() => { setSubTab('board'); setEditSlug(''); }}
-                    onDelete=${t => setDeleteModal({ type: 'board member', item: t })} addToast=${addToast} onReload=${loadData} />`
-                : html`<${TeamList} team=${team} group=${'team'} onEdit=${s => { setSubTab('team'); setEditSlug(s); }} onAdd=${() => { setSubTab('team'); setEditSlug(''); }}
-                    onDelete=${t => setDeleteModal({ type: 'team member', item: t })} addToast=${addToast} onReload=${loadData} />`
+                ? listOrError('team', 'board members', html`<${TeamList} team=${team} group=${'board'} onEdit=${s => { setSubTab('board'); setEditSlug(s); }} onAdd=${() => { setSubTab('board'); setEditSlug(''); }}
+                    onDelete=${t => setDeleteModal({ type: 'board member', item: t })} addToast=${addToast} onReload=${loadData} />`)
+                : listOrError('team', 'team members', html`<${TeamList} team=${team} group=${'team'} onEdit=${s => { setSubTab('team'); setEditSlug(s); }} onAdd=${() => { setSubTab('team'); setEditSlug(''); }}
+                    onDelete=${t => setDeleteModal({ type: 'team member', item: t })} addToast=${addToast} onReload=${loadData} />`)
               }
             `;
           }
@@ -14927,13 +15282,13 @@
                 <button class="hub-tab ${pTab === 'medialogos' ? 'active' : ''}" onClick=${() => { setSubTab('medialogos'); setEditSlug(null); }}>Media Logos</button>
               </div>
               ${pTab === 'community-partners'
-                ? html`<${CommunityPartnersList} partners=${communityPartners} onEdit=${s => { setSubTab('community-partners'); setEditSlug(s); }} onAdd=${() => { setSubTab('community-partners'); setEditSlug(''); }}
-                    onDelete=${p => setDeleteModal({ type: 'community partner', item: p })} />`
+                ? listOrError('communityPartners', 'community partners', html`<${CommunityPartnersList} partners=${communityPartners} onEdit=${s => { setSubTab('community-partners'); setEditSlug(s); }} onAdd=${() => { setSubTab('community-partners'); setEditSlug(''); }}
+                    onDelete=${p => setDeleteModal({ type: 'community partner', item: p })} />`)
                 : pTab === 'medialogos'
-                ? html`<${MediaLogosList} logos=${mediaLogos} onEdit=${s => { setSubTab('medialogos'); setEditSlug(s); }} onAdd=${() => { setSubTab('medialogos'); setEditSlug(''); }}
-                    onDelete=${m => setDeleteModal({ type: 'media logo', item: m })} />`
-                : html`<${PartnersList} partners=${partners} onEdit=${s => { setSubTab('partners'); setEditSlug(s); }} onAdd=${() => { setSubTab('partners'); setEditSlug(''); }}
-                    onDelete=${p => setDeleteModal({ type: 'partner', item: p })} />`
+                ? listOrError('medialogos', 'media logos', html`<${MediaLogosList} logos=${mediaLogos} onEdit=${s => { setSubTab('medialogos'); setEditSlug(s); }} onAdd=${() => { setSubTab('medialogos'); setEditSlug(''); }}
+                    onDelete=${m => setDeleteModal({ type: 'media logo', item: m })} />`)
+                : listOrError('partners', 'partners', html`<${PartnersList} partners=${partners} onEdit=${s => { setSubTab('partners'); setEditSlug(s); }} onAdd=${() => { setSubTab('partners'); setEditSlug(''); }}
+                    onDelete=${p => setDeleteModal({ type: 'partner', item: p })} />`)
               }
             `;
           }
@@ -14942,8 +15297,8 @@
           case 'articles':
             return editSlug !== null
               ? html`<${ArticleEditor} slug=${editSlug || undefined} onBack=${() => { navigate('articles'); loadData(); }} addToast=${addToast} existingSlugs=${articles.map(a => a.slug)} />`
-              : html`<${ArticlesList} articles=${articles} onEdit=${s => navigate('articles', s)} onAdd=${() => navigate('articles', '')}
-                  onDelete=${a => setDeleteModal({ type: 'article', item: a })} />`;
+              : listOrError('articles', 'articles', html`<${ArticlesList} articles=${articles} onEdit=${s => navigate('articles', s)} onAdd=${() => navigate('articles', '')}
+                  onDelete=${a => setDeleteModal({ type: 'article', item: a })} />`);
           case 'events': {
             if (editSlug === 'sunshine-on-a-ranney-fairway') {
               return html`<${GolfTournamentEditor} addToast=${addToast} onBack=${() => { navigate('events'); loadData(); }} />`;
@@ -14954,7 +15309,7 @@
             if (editSlug !== null) {
               return html`<${EventEditor} slug=${editSlug || undefined} onBack=${() => { navigate('events'); loadData(); }} addToast=${addToast} existingSlugs=${events.map(e => e.slug)} />`;
             }
-            return html`
+            return listOrError('events', 'events', html`
               <${EventsList} events=${events} onEdit=${s => navigate('events', s)} onAdd=${() => navigate('events', '')}
                   onDelete=${e => setDeleteModal({ type: 'event', item: { ...e, name: e.title } })}
                   onToggleFeatured=${async (target) => {
@@ -14987,7 +15342,7 @@
                     }
                   }}
                   dashboardFilter=${dashboardFilter} onClearFilter=${() => setDashboardFilter(null)} />
-            `;
+            `);
           }
 
           // ─── Press Hub (tabs: Press & Media | Press Monitor) ───
@@ -15007,8 +15362,8 @@
                     setSubTab('press');
                     setEditSlug('');
                   }} />`
-                : html`<${PressList} press=${press} onEdit=${s => { setSubTab('press'); setEditSlug(s); }} onAdd=${() => { setSubTab('press'); setEditSlug(''); }}
-                    onDelete=${p => setDeleteModal({ type: 'press article', item: p })} />`
+                : listOrError('press', 'press articles', html`<${PressList} press=${press} onEdit=${s => { setSubTab('press'); setEditSlug(s); }} onAdd=${() => { setSubTab('press'); setEditSlug(''); }}
+                    onDelete=${p => setDeleteModal({ type: 'press article', item: p })} />`)
               }
             `;
           }
@@ -15023,20 +15378,20 @@
             return html`<${GoLive} addToast=${addToast} kids=${kids} />`;
 
           case 'deploys':
-            return html`<${Deploys} addToast=${addToast} />`;
+            return html`<${Deploys} addToast=${addToast} onDeploy=${promptDeploy} />`;
 
           // ─── Site Config Hub (tabs: Kids on Site | FAQs | Our Story | Media Kit | Financials | Settings) ───
           case 'site-hub': {
             const sTab = subTab || 'kids-on-site';
             return html`
               <div class="hub-tabs">
-                <button class="hub-tab ${sTab === 'kids-on-site' ? 'active' : ''}" onClick=${() => setSubTab('kids-on-site')}>Kids on Site</button>
-                <button class="hub-tab ${sTab === 'faq' ? 'active' : ''}" onClick=${() => setSubTab('faq')}>FAQs</button>
-                <button class="hub-tab ${sTab === 'ourstory' ? 'active' : ''}" onClick=${() => setSubTab('ourstory')}>Our Story</button>
-                <button class="hub-tab ${sTab === 'mediakit' ? 'active' : ''}" onClick=${() => setSubTab('mediakit')}>Media Kit</button>
-                <button class="hub-tab ${sTab === 'snapshot' ? 'active' : ''}" onClick=${() => setSubTab('snapshot')}>Financial Snapshot</button>
-                <button class="hub-tab ${sTab === 'financials' ? 'active' : ''}" onClick=${() => setSubTab('financials')}>Financials</button>
-                <button class="hub-tab ${sTab === 'settings' ? 'active' : ''}" onClick=${() => setSubTab('settings')}>Settings</button>
+                <button class="hub-tab ${sTab === 'kids-on-site' ? 'active' : ''}" onClick=${() => switchSiteTab('kids-on-site')}>Kids on Site</button>
+                <button class="hub-tab ${sTab === 'faq' ? 'active' : ''}" onClick=${() => switchSiteTab('faq')}>FAQs</button>
+                <button class="hub-tab ${sTab === 'ourstory' ? 'active' : ''}" onClick=${() => switchSiteTab('ourstory')}>Our Story</button>
+                <button class="hub-tab ${sTab === 'mediakit' ? 'active' : ''}" onClick=${() => switchSiteTab('mediakit')}>Media Kit</button>
+                <button class="hub-tab ${sTab === 'snapshot' ? 'active' : ''}" onClick=${() => switchSiteTab('snapshot')}>Financial Snapshot</button>
+                <button class="hub-tab ${sTab === 'financials' ? 'active' : ''}" onClick=${() => switchSiteTab('financials')}>Financials</button>
+                <button class="hub-tab ${sTab === 'settings' ? 'active' : ''}" onClick=${() => switchSiteTab('settings')}>Settings</button>
               </div>
               ${sTab === 'faq' ? html`<${FAQManager} addToast=${addToast} />`
                 : sTab === 'ourstory' ? html`<${OurStory} addToast=${addToast} />`
