@@ -101,19 +101,26 @@ async function findKidByName(DB, text) {
   return matches.length === 1 ? matches[0] : null;
 }
 
+export function watchUrl(uid) {
+  return `https://watch.cloudflarestream.com/${uid}`;
+}
+
 /**
- * Write the Stream UID onto a kid's record so their page shows the video
- * after the next deploy. Never overwrites an existing video. D1 only —
- * D1 is the source of truth for builds; GitHub re-syncs on the kid's next
- * admin save. Returns the slug on success, null if skipped.
+ * Write a "Watch the live reveal" link onto a kid's record — shown as a
+ * hero link on their page after the next deploy (per Peter: a link, not an
+ * embedded player; the streamVideoId player stays reserved for produced
+ * videos). Points at the permanent Stream watch page, never the Facebook
+ * URL, which dies after 30 days. Never overwrites an existing link.
+ * D1 only — D1 is the source of truth for builds; GitHub re-syncs on the
+ * kid's next admin save. Returns the slug on success, null if skipped.
  */
 export async function attachToKid(env, slug, uid, videoName, by = 'auto-archive') {
   const { DB } = env;
   const row = await DB.prepare('SELECT data FROM kids WHERE slug = ?').bind(slug).first();
   if (!row) return null;
   const data = JSON.parse(row.data);
-  if (data.streamVideoId) return null; // a kid's existing video is never replaced automatically
-  data.streamVideoId = uid;
+  if (data.revealVideoUrl) return null; // an existing reveal link is never replaced automatically
+  data.revealVideoUrl = watchUrl(uid);
   await DB.prepare('UPDATE kids SET data = ?, updated_at = ? WHERE slug = ?')
     .bind(JSON.stringify(data), new Date().toISOString(), slug).run();
   await logAudit(DB, {
@@ -122,10 +129,37 @@ export async function attachToKid(env, slug, uid, videoName, by = 'auto-archive'
     entityType: 'kid',
     entitySlug: slug,
     entityName: data.name || slug,
-    changes: [{ field: 'streamVideoId', from: null, to: uid }],
+    changes: [{ field: 'revealVideoUrl', from: null, to: data.revealVideoUrl }],
     gitStatus: 'ok',
   });
   return slug;
+}
+
+/**
+ * One-time migration: early auto-attaches wrote streamVideoId (embedded
+ * player) before Peter asked for a link instead. Move those to
+ * revealVideoUrl. No-ops once every entry is migrated.
+ */
+async function migrateEmbedsToLinks(env, state) {
+  let changed = false;
+  for (const entry of Object.values(state.archived)) {
+    if (!entry.attachedTo || entry.migrated) continue;
+    try {
+      const row = await env.DB.prepare('SELECT data FROM kids WHERE slug = ?').bind(entry.attachedTo).first();
+      if (row) {
+        const data = JSON.parse(row.data);
+        if (data.streamVideoId === entry.uid) {
+          delete data.streamVideoId;
+          data.revealVideoUrl = watchUrl(entry.uid);
+          await env.DB.prepare('UPDATE kids SET data = ?, updated_at = ? WHERE slug = ?')
+            .bind(JSON.stringify(data), new Date().toISOString(), entry.attachedTo).run();
+        }
+      }
+      entry.migrated = true;
+      changed = true;
+    } catch { /* retry next sweep */ }
+  }
+  return changed;
 }
 
 /**
@@ -162,8 +196,11 @@ export async function sweepArchives(env) {
 
     const state = await readArchiveState(DB);
 
-    // Retro-attach runs on every attempt (cheap, no Facebook quota)
-    if (await retroAttach(env, state)) await writeArchiveState(DB, state);
+    // Retro-attach + embed→link migration run on every attempt (cheap, no Facebook quota)
+    let dirty = false;
+    if (await migrateEmbedsToLinks(env, state)) dirty = true;
+    if (await retroAttach(env, state)) dirty = true;
+    if (dirty) await writeArchiveState(DB, state);
 
     if (state.checkedAt && Date.now() - Date.parse(state.checkedAt) < SWEEP_INTERVAL_MS) return;
 
