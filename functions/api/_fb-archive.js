@@ -187,22 +187,26 @@ async function retroAttach(env, state) {
 
 /**
  * The auto sweep. Safe to call on every request — exits instantly unless the
- * sweep interval has elapsed. Never throws.
+ * sweep interval has elapsed. Never throws; returns a diagnostic summary
+ * (surfaced by /api/live-status?sweep=1 so archive health is observable).
  */
 export async function sweepArchives(env) {
+  const summary = { configured: false, migrated: 0, attached: 0, archived: 0, fbChecked: false, error: null };
   try {
     const { DB } = env;
-    if (!archiveConfigured(env)) return;
+    if (!archiveConfigured(env)) return summary;
+    summary.configured = true;
 
     const state = await readArchiveState(DB);
 
     // Retro-attach + embed→link migration run on every attempt (cheap, no Facebook quota)
     let dirty = false;
-    if (await migrateEmbedsToLinks(env, state)) dirty = true;
-    if (await retroAttach(env, state)) dirty = true;
+    if (await migrateEmbedsToLinks(env, state)) { dirty = true; summary.migrated++; }
+    if (await retroAttach(env, state)) { dirty = true; summary.attached++; }
     if (dirty) await writeArchiveState(DB, state);
 
-    if (state.checkedAt && Date.now() - Date.parse(state.checkedAt) < SWEEP_INTERVAL_MS) return;
+    if (state.checkedAt && Date.now() - Date.parse(state.checkedAt) < SWEEP_INTERVAL_MS) return summary;
+    summary.fbChecked = true;
 
     // Stamp before the slow work so concurrent requests don't double-sweep
     state.checkedAt = new Date().toISOString();
@@ -225,6 +229,7 @@ export async function sweepArchives(env) {
 
     for (const v of candidates) {
       try {
+        summary.archived++;
         const done = await archiveOne(env, v.id);
         const entry = { uid: done.uid, name: done.name, at: new Date().toISOString() };
         // Attach to the kid's page immediately when the name match is unambiguous
@@ -250,7 +255,9 @@ export async function sweepArchives(env) {
       }
     }
     if (candidates.length) await writeArchiveState(DB, state);
-  } catch {
-    // sweep must never break the caller
+  } catch (err) {
+    // sweep must never break the caller — but the error is observable via ?sweep=1
+    summary.error = err.message || String(err);
   }
+  return summary;
 }
