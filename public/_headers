@@ -49,9 +49,12 @@
 /*.webmanifest
   Cache-Control: public, max-age=86400
 
-## Cache HTML pages for a short time (Cloudflare will serve stale while revalidating)
+## Cache HTML in browsers briefly, but NOT at the Cloudflare edge (no s-maxage):
+## edge-cached HTML survives deploys for up to an hour, so content updates,
+## video attaches, and admin publishes looked broken while stale copies served.
+## Pages' own asset delivery is already fast without the zone cache.
 /*.html
-  Cache-Control: public, max-age=300, s-maxage=3600, stale-while-revalidate=86400
+  Cache-Control: public, max-age=300, must-revalidate
 
 ## LLM-friendly files
 /llms.txt
