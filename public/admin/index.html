@@ -1756,6 +1756,9 @@
       return `${CF}/${src}/${transforms}`;
     };
 
+    /** A saved photo that still needs alt text (never matches uploads in flight). */
+    const photoNeedsAlt = (p) => !!(p && p.url && !p.alt && !p._tempId && !String(p.url).startsWith('blob:'));
+
     /** Only allow http/https URLs into href attributes (external data can't inject javascript: links). */
     const safeHref = (u) => {
       if (typeof u !== 'string' || !u) return '';
@@ -6077,13 +6080,273 @@
       `;
     }
 
-    function KidsList({ kids, onEdit, onAdd, onDelete, addToast, onReload, dashboardFilter, onClearFilter }) {
+    // ═══════════════════════════════════════════
+    // BULK ALT-TEXT BACKFILL
+    // Scans every kid for photos missing alt text, then generates + saves
+    // sequentially (batches of ≤10 per /api/generate call). Only EMPTY alt
+    // fields are ever written — human-written alts are untouched, so
+    // re-running is always safe/idempotent.
+    // ═══════════════════════════════════════════
+    const ALT_BATCH_SIZE = 10; // each photo is one vision inference; server caps at 20/request
+
+    function AltBackfillTool({ kids, addToast, onClose, onDeploy, onReload }) {
+      const [phase, setPhase] = useState('scanning'); // scanning | ready | running | done
+      const [scan, setScan] = useState(null);         // { targets: [{slug,name,missing}], totalMissing, scanFailures }
+      const [scanError, setScanError] = useState(null);
+      const [scanProgress, setScanProgress] = useState(0);
+      const [log, setLog] = useState([]);             // { line, tone }
+      const [progress, setProgress] = useState({ kidIndex: 0, total: 0, altsWritten: 0 });
+      const [summary, setSummary] = useState(null);
+      const [cancelRequested, setCancelRequested] = useState(false);
+      const cancelRef = useRef(false);
+      const logRef = useRef(null);
+
+      // Lock body scroll; Escape closes (never mid-run)
+      useEffect(() => {
+        document.body.classList.add('modal-open');
+        const onKey = (e) => { if (e.key === 'Escape' && phase !== 'running') onClose(); };
+        window.addEventListener('keydown', onKey);
+        return () => { document.body.classList.remove('modal-open'); window.removeEventListener('keydown', onKey); };
+      }, [phase, onClose]);
+
+      // Auto-scroll the run log
+      useEffect(() => { if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight; }, [log]);
+
+      // ── Scan phase: fresh read of every kid, count photos missing alt ──
+      useEffect(() => {
+        let cancelled = false;
+        (async () => {
+          try {
+            const targets = [];
+            let totalMissing = 0;
+            let scanFailures = 0;
+            for (let i = 0; i < kids.length; i++) {
+              if (cancelled) return;
+              setScanProgress(i + 1);
+              try {
+                const res = await api.readContent(`src/content/kids/${kids[i].slug}.json`);
+                if (!res.success) { scanFailures++; continue; }
+                const d = typeof res.content === 'string' ? JSON.parse(res.content) : res.content;
+                const missing = (d.photos || []).filter(photoNeedsAlt).length;
+                if (missing > 0) {
+                  targets.push({ slug: kids[i].slug, name: d.name || kids[i].slug, missing });
+                  totalMissing += missing;
+                }
+              } catch { scanFailures++; }
+            }
+            if (!cancelled) { setScan({ targets, totalMissing, scanFailures }); setPhase('ready'); }
+          } catch (err) {
+            if (!cancelled) { setScanError(err.message || 'Scan failed'); setPhase('ready'); }
+          }
+        })();
+        return () => { cancelled = true; };
+      }, []);
+
+      // ── Run phase: sequential per-kid generate + save ──
+      const run = async () => {
+        // Never run over someone's unsaved editor state
+        if (isGlobalDirty()) {
+          const reason = globalDirtyReason();
+          addToast(`Save or discard your unsaved changes${reason ? ` in ${reason}` : ''} before running the backfill`, 'error');
+          return;
+        }
+        cancelRef.current = false;
+        setCancelRequested(false);
+        setLog([]);
+        setPhase('running');
+        const targets = scan.targets;
+        const pushLog = (line, tone) => setLog(l => [...l, { line, tone }]);
+        let updated = 0;
+        let altsWritten = 0;
+        const skipped = [];
+        setProgress({ kidIndex: 0, total: targets.length, altsWritten: 0 });
+
+        for (let n = 0; n < targets.length; n++) {
+          if (cancelRef.current) { pushLog('Cancelled — stopped before the next kid.', 'warn'); break; }
+          const t = targets[n];
+          setProgress({ kidIndex: n + 1, total: targets.length, altsWritten });
+          try {
+            // Fresh read: current content + sha for conflict-safe save
+            const readRes = await api.readContent(`src/content/kids/${t.slug}.json`);
+            if (!readRes.success) {
+              skipped.push({ name: t.name, reason: readRes.error || 'read failed' });
+              pushLog(`${t.name} — skipped (${readRes.error || 'read failed'})`, 'error');
+              continue;
+            }
+            const kidData = typeof readRes.content === 'string' ? JSON.parse(readRes.content) : readRes.content;
+            const photos = kidData.photos || [];
+            const missing = photos.filter(photoNeedsAlt);
+            if (!missing.length) { pushLog(`${t.name} — already filled, nothing to do`, 'muted'); continue; }
+
+            // Generate in batches of at most ALT_BATCH_SIZE photos per call
+            const altByUrl = new Map();
+            for (let b = 0; b < missing.length; b += ALT_BATCH_SIZE) {
+              const batch = missing.slice(b, b + ALT_BATCH_SIZE);
+              const genRes = await api.generate('alt-text', {
+                name: kidData.name, diagnosis: kidData.diagnosis, photos: batch,
+              });
+              if (genRes.success && Array.isArray(genRes.altTexts)) {
+                batch.forEach((p, j) => { if (genRes.altTexts[j]) altByUrl.set(p.url, genRes.altTexts[j]); });
+              } else {
+                pushLog(`${t.name} — a batch failed to generate (${genRes.error || 'unknown error'})`, 'warn');
+              }
+            }
+            if (!altByUrl.size) {
+              skipped.push({ name: t.name, reason: 'no alt text generated' });
+              pushLog(`${t.name} — 0 of ${missing.length} alts generated, skipped`, 'warn');
+              continue;
+            }
+
+            // Merge into ONLY empty alt fields — human-written alts untouched
+            const merged = {
+              ...kidData,
+              photos: photos.map(p => (photoNeedsAlt(p) && altByUrl.has(p.url)) ? { ...p, alt: altByUrl.get(p.url) } : p),
+            };
+            const saveRes = await api.saveContent(
+              `src/content/kids/${t.slug}.json`,
+              JSON.stringify(merged, null, 2),
+              `Backfill alt text: ${kidData.name || t.slug}`,
+              readRes.sha
+            );
+            if (saveRes.success) {
+              updated++;
+              altsWritten += altByUrl.size;
+              setProgress({ kidIndex: n + 1, total: targets.length, altsWritten });
+              pushLog(`${kidData.name || t.slug} — ${altByUrl.size} of ${missing.length} alts written`, 'ok');
+            } else {
+              // 409 conflict (someone else edited this kid) or other save failure: skip, keep going
+              skipped.push({ name: t.name, reason: saveRes.error || 'save failed' });
+              pushLog(`${t.name} — save failed (${saveRes.error || 'unknown'}), skipped`, 'error');
+            }
+          } catch (err) {
+            skipped.push({ name: t.name, reason: err.message });
+            pushLog(`${t.name} — error (${err.message}), skipped`, 'error');
+          }
+        }
+        setSummary({ updated, altsWritten, skipped, cancelled: cancelRef.current });
+        setPhase('done');
+        onReload?.();
+      };
+
+      const toneColor = (tone) => tone === 'error' ? 'var(--color-danger)'
+        : tone === 'warn' ? '#B7791F'
+        : tone === 'muted' ? 'var(--color-text-muted)'
+        : tone === 'ok' ? '#22543D'
+        : 'var(--color-text)';
+
+      return html`
+        <div class="modal-overlay" onClick=${(e) => { if (e.target === e.currentTarget && phase !== 'running') onClose(); }}>
+          <div class="modal" style="max-width: 640px; width: 96vw; max-height: 90vh; display: flex; flex-direction: column;" onClick=${e => e.stopPropagation()}>
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.75rem;">
+              <h3 style="margin: 0;">Backfill Alt Text</h3>
+              ${phase !== 'running' ? html`<button class="btn btn-ghost btn-sm" onClick=${onClose} aria-label="Close">${icons.x}</button>` : null}
+            </div>
+
+            ${phase === 'scanning' ? html`
+              <div style="text-align: center; padding: 2rem 1rem;">
+                <div class="spinner" style="margin: 0 auto 0.75rem;" />
+                <p class="text-sm text-muted" style="margin: 0;">Scanning kid profiles for missing alt text… ${scanProgress}/${kids.length}</p>
+              </div>
+            ` : null}
+
+            ${phase === 'ready' ? (scanError ? html`
+              <div style="text-align: center; padding: 1.5rem 1rem;">
+                <p style="color: var(--color-danger); margin: 0 0 1rem;">Scan failed: ${scanError}</p>
+                <button class="btn btn-ghost" onClick=${onClose}>Close</button>
+              </div>
+            ` : scan.targets.length === 0 ? html`
+              <div style="text-align: center; padding: 1.5rem 1rem;">
+                <p style="margin: 0 0 0.35rem; font-weight: 600;">Every photo already has alt text — nothing to do.</p>
+                ${scan.scanFailures ? html`<p class="text-sm text-muted" style="margin: 0 0 0.5rem;">(${scan.scanFailures} profile${scan.scanFailures === 1 ? '' : 's'} could not be read and ${scan.scanFailures === 1 ? 'was' : 'were'} not checked.)</p>` : null}
+                <button class="btn btn-primary" style="margin-top: 0.5rem;" onClick=${onClose}>Done</button>
+              </div>
+            ` : html`
+              <p style="margin: 0 0 0.6rem;">
+                <strong>${scan.targets.length} kid${scan.targets.length === 1 ? ' is' : 's are'}</strong> missing alt text on
+                <strong> ${scan.totalMissing} photo${scan.totalMissing === 1 ? '' : 's'}</strong>.
+              </p>
+              <p class="text-sm text-muted" style="margin: 0 0 0.85rem;">
+                Generation runs on your Cloudflare Workers AI — no external costs. Only empty alt fields are
+                filled; human-written alt text is never touched, so re-running is always safe. Each kid saves
+                as soon as it finishes.
+                ${scan.scanFailures ? html` <span style="color: #B7791F;">(${scan.scanFailures} profile${scan.scanFailures === 1 ? '' : 's'} could not be read and will be skipped.)</span>` : null}
+              </p>
+              <div style="max-height: 220px; overflow-y: auto; border: 1px solid var(--color-border); border-radius: 8px; padding: 0.5rem 0.75rem; margin-bottom: 1rem; font-size: 0.85rem;">
+                ${scan.targets.map(t => html`
+                  <div key=${t.slug} style="display: flex; justify-content: space-between; gap: 0.5rem; padding: 0.15rem 0;">
+                    <span>${t.name}</span>
+                    <span class="text-muted" style="white-space: nowrap;">${t.missing} photo${t.missing === 1 ? '' : 's'}</span>
+                  </div>
+                `)}
+              </div>
+              <div class="modal-buttons">
+                <button class="btn btn-ghost" onClick=${onClose}>Cancel</button>
+                <button class="btn btn-primary" onClick=${run}>Start Backfill</button>
+              </div>
+            `) : null}
+
+            ${phase === 'running' ? html`
+              <div style="display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.5rem;">
+                <div class="spinner" style="flex-shrink: 0;" />
+                <span style="font-size: 0.9rem; font-weight: 600;">
+                  Kid ${progress.kidIndex} of ${progress.total} · ${progress.altsWritten} alt${progress.altsWritten === 1 ? '' : 's'} written so far
+                </span>
+              </div>
+              <div class="health-bar-track" style="margin-bottom: 0.75rem;">
+                <div class="health-bar-fill" style="width: ${progress.total ? Math.round(((progress.kidIndex - 1) / progress.total) * 100) : 0}%; background: var(--color-primary);"></div>
+              </div>
+            ` : null}
+
+            ${(phase === 'running' || phase === 'done') ? html`
+              <div ref=${logRef} style="flex: 1; min-height: 120px; max-height: 260px; overflow-y: auto; background: var(--color-bg-secondary); border: 1px solid var(--color-border); border-radius: 8px; padding: 0.6rem 0.75rem; font-size: 0.82rem; margin-bottom: 0.75rem;">
+                ${log.length === 0 ? html`<div class="text-muted">Starting…</div>` : null}
+                ${log.map((entry, i) => html`<div key=${i} style="padding: 0.12rem 0; color: ${toneColor(entry.tone)};">${entry.line}</div>`)}
+              </div>
+            ` : null}
+
+            ${phase === 'running' ? html`
+              <div class="modal-buttons">
+                <button class="btn btn-ghost" disabled=${cancelRequested}
+                  onClick=${() => { cancelRef.current = true; setCancelRequested(true); }}>
+                  ${cancelRequested ? 'Stopping after the current kid…' : 'Cancel'}
+                </button>
+              </div>
+            ` : null}
+
+            ${phase === 'done' ? html`
+              <div style="padding: 0.75rem 1rem; background: rgba(56,161,105,0.06); border: 1px solid rgba(56,161,105,0.2); border-radius: 8px; margin-bottom: 0.75rem; font-size: 0.9rem;">
+                <strong>${summary.cancelled ? 'Cancelled.' : 'Done!'}</strong>${' '}
+                ${summary.updated} kid${summary.updated === 1 ? '' : 's'} updated ·
+                ${' '}${summary.altsWritten} alt${summary.altsWritten === 1 ? '' : 's'} written${summary.skipped.length ? ` · ${summary.skipped.length} skipped/failed` : ''}
+                ${summary.skipped.length ? html`
+                  <ul style="margin: 0.4rem 0 0; padding-left: 1.1rem; font-size: 0.8rem; color: var(--color-text-secondary);">
+                    ${summary.skipped.map((s, i) => html`<li key=${i}>${s.name} — ${s.reason}</li>`)}
+                  </ul>
+                ` : null}
+              </div>
+              ${summary.altsWritten > 0 ? html`
+                <div style="display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem 1rem; background: rgba(255,213,0,0.1); border: 1.5px solid #FFD500; border-radius: 8px; margin-bottom: 0.75rem; font-size: 0.88rem;">
+                  <span style="flex: 1;"><strong>Deploy needed:</strong> the new alt text is saved to the CMS, but the live site only picks it up on the next deploy.</span>
+                  ${onDeploy ? html`<button class="btn btn-primary btn-sm" style="white-space: nowrap;" onClick=${() => { onClose(); onDeploy(); }}>Deploy Now</button>` : null}
+                </div>
+              ` : null}
+              <div class="modal-buttons">
+                <button class="btn btn-ghost" onClick=${onClose}>Close</button>
+              </div>
+            ` : null}
+          </div>
+        </div>
+      `;
+    }
+
+    function KidsList({ kids, onEdit, onAdd, onDelete, addToast, onReload, onDeploy, dashboardFilter, onClearFilter }) {
       const [search, setSearch] = useState('');
       const [statusFilter, setStatusFilter] = useState('all');
       const [selected, setSelected] = useState(new Set());
       const [favs, setFavs] = useState(getFavorites());
       const [inlineEdit, setInlineEdit] = useState(null); // { slug, field, value }
       const [reorderMode, setReorderMode] = useState(false);
+      const [showAltBackfill, setShowAltBackfill] = useState(false);
       const filtered = useMemo(() => {
         let result = kids;
         // Apply dashboard filter first
@@ -6189,11 +6452,13 @@
         <div class="page-header">
           <h2>Kids (${kids.length})</h2>
           <div style="display: flex; gap: 0.5rem;">
+            <button class="btn btn-ghost" onClick=${() => setShowAltBackfill(true)} title="Scan every kid for photos missing alt text and AI-generate the missing ones in bulk">Backfill Alt Text</button>
             <button class="btn btn-ghost" onClick=${() => setReorderMode(true)} title="Drag to reorder in-build and awaiting-funding kids on the Meet the Kids grid">Reorder Grid</button>
             <button class="btn btn-primary" onClick=${onAdd}>+ Add Kid</button>
           </div>
         </div>
         ${reorderMode ? html`<${KidsReorderPanel} kids=${kids} onClose=${() => setReorderMode(false)} onSaved=${() => { setReorderMode(false); onReload?.(); }} addToast=${addToast} />` : null}
+        ${showAltBackfill ? html`<${AltBackfillTool} kids=${kids} addToast=${addToast} onClose=${() => setShowAltBackfill(false)} onDeploy=${onDeploy} onReload=${onReload} />` : null}
         <div class="card" style="margin-bottom: 1rem; padding: 0.75rem 1rem;">
           <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
             <div class="search-bar" style="flex: 1; min-width: 200px;">
@@ -6444,22 +6709,27 @@
         setGeneratingSeo(false);
       };
 
-      // Generate alt text for all photos with AI
+      // Generate alt text with AI for photos that are MISSING it. Only
+      // empty-alt photos are sent (cheaper, respects the API's 20-photo cap)
+      // and human-written alts are never overwritten.
       const handleGenerateAlt = async () => {
         if (!data.photos?.length) { addToast('Upload photos first', 'error'); return; }
+        const missing = data.photos.filter(photoNeedsAlt);
+        if (!missing.length) { addToast('All photos already have alt text', 'info'); return; }
         setGeneratingAlt(true);
         try {
-          const res = await api.generate('alt-text', data);
+          const res = await api.generate('alt-text', { ...data, photos: missing });
           if (res.success && res.altTexts) {
+            const altByUrl = new Map(missing.map((p, j) => [p.url, res.altTexts[j] || '']));
             setDirty(true);
             setData(d => ({
               ...d,
-              photos: d.photos.map((p, i) => ({
+              photos: d.photos.map(p => ({
                 ...p,
-                alt: res.altTexts[i] || p.alt || '',
+                alt: p.alt || altByUrl.get(p.url) || '',
               })),
             }));
-            addToast(`Generated alt text for ${res.altTexts.filter(Boolean).length} photos`, 'success');
+            addToast(`Generated alt text for ${res.altTexts.filter(Boolean).length} photo${res.altTexts.filter(Boolean).length === 1 ? '' : 's'}`, 'success');
           } else {
             addToast(`Generation failed: ${res.error}`, 'error');
           }
@@ -7011,6 +7281,12 @@
         <div class="card">
           <div class="flex items-center justify-between mb-1">
             <h3>Photos</h3>
+            ${data.photos?.length > 0 ? html`
+              <button class="btn btn-ghost btn-sm" onClick=${handleGenerateAlt} disabled=${generatingAlt}
+                title="AI-generates alt text only for photos that don't have any — existing alts are never touched">
+                ${generatingAlt ? html`<span class="spinner" />` : icons.sparkle} ${generatingAlt ? 'Generating...' : 'Generate missing alt text'}
+              </button>
+            ` : null}
           </div>
           <p class="text-sm text-muted mb-1">Upload photos, click star for hero, diamond for accent.</p>
           <${DropZone} onFiles=${handlePhotoUpload} label="JPG, PNG, WebP — upload as many as you need" />
@@ -10282,19 +10558,23 @@
         setData(d => ({ ...d, partnerLogos: d.partnerLogos.filter((_, i) => i !== index) }));
       };
 
-      // Generate alt text for all photos with AI
+      // Generate alt text with AI for photos MISSING it — only empty-alt
+      // photos are sent, and human-written alts are never overwritten.
       const handleGenerateAlt = async () => {
         if (!data.photos?.length) { addToast('Upload photos first', 'error'); return; }
+        const missing = data.photos.filter(photoNeedsAlt);
+        if (!missing.length) { addToast('All photos already have alt text', 'info'); return; }
         setGeneratingAlt(true);
         try {
-          const res = await api.generate('alt-text', data);
+          const res = await api.generate('alt-text', { ...data, photos: missing });
           if (res.success && res.altTexts) {
+            const altByUrl = new Map(missing.map((p, j) => [p.url, res.altTexts[j] || '']));
             setDirty(true);
             setData(d => ({
               ...d,
-              photos: d.photos.map((p, i) => ({ ...p, alt: res.altTexts[i] || p.alt || '' })),
+              photos: d.photos.map(p => ({ ...p, alt: p.alt || altByUrl.get(p.url) || '' })),
             }));
-            addToast(`Generated alt text for ${res.altTexts.filter(Boolean).length} photos`, 'success');
+            addToast(`Generated alt text for ${res.altTexts.filter(Boolean).length} photo${res.altTexts.filter(Boolean).length === 1 ? '' : 's'}`, 'success');
           } else { addToast(`Generation failed: ${res.error}`, 'error'); }
         } catch (err) { addToast(`Error: ${err.message}`, 'error'); }
         setGeneratingAlt(false);
@@ -10675,8 +10955,9 @@
           <div class="flex items-center justify-between mb-1">
             <h3>Photos</h3>
             ${data.photos?.length > 0 ? html`
-              <button class="btn btn-ghost btn-sm" onClick=${handleGenerateAlt} disabled=${generatingAlt}>
-                ${generatingAlt ? html`<span class="spinner" />` : icons.sparkle} ${generatingAlt ? 'Generating...' : 'AI Alt Text'}
+              <button class="btn btn-ghost btn-sm" onClick=${handleGenerateAlt} disabled=${generatingAlt}
+                title="AI-generates alt text only for photos that don't have any — existing alts are never touched">
+                ${generatingAlt ? html`<span class="spinner" />` : icons.sparkle} ${generatingAlt ? 'Generating...' : 'Generate missing alt text'}
               </button>
             ` : null}
           </div>
@@ -15215,7 +15496,7 @@
                 ? listOrError('community', 'community projects', html`<${CommunityList} projects=${communityProjects} onEdit=${s => { setSubTab('community'); setEditSlug(s); }} onAdd=${() => { setSubTab('community'); setEditSlug(''); }}
                     onDelete=${p => setDeleteModal({ type: 'community project', item: p })} addToast=${addToast} onReload=${loadData} />`)
                 : listOrError('kids', 'kids', html`<${KidsList} kids=${kids} onEdit=${s => { setSubTab('kids'); setEditSlug(s); }} onAdd=${() => { setSubTab('kids'); setEditSlug(''); }}
-                    onDelete=${k => setDeleteModal({ type: 'kid', item: k })} addToast=${addToast} onReload=${loadData}
+                    onDelete=${k => setDeleteModal({ type: 'kid', item: k })} addToast=${addToast} onReload=${loadData} onDeploy=${promptDeploy}
                     dashboardFilter=${dashboardFilter} onClearFilter=${() => setDashboardFilter(null)} />`)
               }
             `;

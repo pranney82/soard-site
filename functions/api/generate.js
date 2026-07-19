@@ -10,9 +10,42 @@
  *   }
  *
  * Models used:
- *   - Vision (alt text): @cf/llava-hf/llava-1.5-7b-hf
+ *   - Vision (alt text): @cf/meta/llama-3.2-11b-vision-instruct, with
+ *     @cf/llava-hf/llava-1.5-7b-hf as fallback
  *   - Text (SEO): @cf/google/gemma-7b-it
  */
+
+const VISION_MODEL = '@cf/meta/llama-3.2-11b-vision-instruct';
+const VISION_FALLBACK = '@cf/llava-hf/llava-1.5-7b-hf';
+
+/** Downscaled imagedelivery.net variant for captioning — full-res isn't
+ *  needed for alt text. Returns null for any non-imagedelivery URL. */
+function captionVariant(rawUrl) {
+  try {
+    const u = new URL(rawUrl);
+    if (u.hostname !== 'imagedelivery.net') return null;
+    const parts = u.pathname.split('/');
+    parts[parts.length - 1] = 'w=800,q=80';
+    u.pathname = parts.join('/');
+    return u.toString();
+  } catch {
+    return null;
+  }
+}
+
+function altPrompt(kid) {
+  return `Write alt text for a photo on the website of Sunshine on a Ranney Day, a nonprofit that builds dream bedrooms, accessible bathrooms, and therapy rooms for children with special needs — at no cost to families.
+
+The child in this photo is ${kid.name}${kid.diagnosis ? `, who has ${kid.diagnosis}` : ''}.
+
+Rules:
+- One sentence, under 125 characters.
+- Describe what is actually visible: people, expressions, actions, room features, colors, furniture.
+- If mobility or medical equipment is visible, mention it plainly and matter-of-factly (e.g. "in his wheelchair") — never with pity language.
+- Do not guess at diagnoses, emotions, or context beyond what the image shows.
+- Do not start with "Image of", "Photo of", or "A picture of".
+- Return ONLY the alt text, nothing else.`;
+}
 
 export async function onRequestPost(context) {
   try {
@@ -46,22 +79,21 @@ export async function onRequestPost(context) {
         // Process up to 20 photos
         const toProcess = photos.slice(0, 20);
 
+        const prompt = altPrompt(kid);
+        let visionModelOk = true; // flips off after a hard failure so we don't retry it per-photo
+
         for (const photo of toProcess) {
           try {
-            // SSRF protection: only fetch from Cloudflare Images
-            try {
-              const photoHost = new URL(photo.url).hostname;
-              if (photoHost !== 'imagedelivery.net') {
-                altTexts.push('');
-                continue;
-              }
-            } catch {
+            // SSRF protection: only fetch from Cloudflare Images (also
+            // swaps in a width-capped variant — full-res isn't needed)
+            const fetchUrl = captionVariant(photo.url);
+            if (!fetchUrl) {
               altTexts.push('');
               continue;
             }
 
             // Fetch the image and convert to base64
-            const imgResponse = await fetch(photo.url);
+            const imgResponse = await fetch(fetchUrl);
             if (!imgResponse.ok) {
               altTexts.push('');
               continue;
@@ -78,29 +110,54 @@ export async function onRequestPost(context) {
             }
             const base64 = btoa(binary);
 
-            const visionResult = await ai.run(
-              '@cf/llava-hf/llava-1.5-7b-hf',
-              {
+            let text = '';
+
+            // Primary: llama-3.2-11b-vision (much better captions than llava).
+            // Documented input shape is top-level { prompt, image }.
+            if (visionModelOk) {
+              try {
+                const visionResult = await ai.run(VISION_MODEL, {
+                  prompt,
+                  image: base64,
+                  max_tokens: 120,
+                });
+                text = (visionResult?.response || '').trim();
+              } catch (visionErr) {
+                // Meta requires a one-time license acknowledgement per account;
+                // send it once and retry if the model asks for it.
+                if (/agree|license|acceptable use/i.test(visionErr.message || '')) {
+                  try {
+                    await ai.run(VISION_MODEL, { prompt: 'agree' });
+                    const retry = await ai.run(VISION_MODEL, { prompt, image: base64, max_tokens: 120 });
+                    text = (retry?.response || '').trim();
+                  } catch {
+                    visionModelOk = false;
+                  }
+                } else {
+                  visionModelOk = false;
+                }
+              }
+            }
+
+            // Fallback: llava (the previous behavior)
+            if (!text) {
+              const llavaResult = await ai.run(VISION_FALLBACK, {
                 messages: [
                   {
                     role: 'user',
                     content: [
-                      {
-                        type: 'text',
-                        text: `Write a concise alt text description (10-25 words) for this photo from a nonprofit that builds dream bedrooms for children with special needs. The child's name is ${kid.name}${kid.diagnosis ? ', who has ' + kid.diagnosis : ''}. Do not start with "Image of" or "Photo of". Focus on what you see: people, expressions, room features, colors, furniture. Return ONLY the alt text, nothing else.`,
-                      },
-                      {
-                        type: 'image',
-                        image: base64,
-                      },
+                      { type: 'text', text: prompt },
+                      { type: 'image', image: base64 },
                     ],
                   },
                 ],
                 max_tokens: 80,
-              }
-            );
+              });
+              text = (llavaResult?.response || '').trim();
+            }
 
-            const text = (visionResult?.response || '').trim().replace(/^["']|["']$/g, '');
+            text = text.replace(/^["']|["']$/g, '');
+            if (text.length > 160) text = text.slice(0, 157).replace(/\s+\S*$/, '') + '…';
             altTexts.push(text);
           } catch (err) {
             console.error('Vision error for photo:', err.message);
