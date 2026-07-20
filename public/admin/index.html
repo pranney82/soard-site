@@ -13700,6 +13700,7 @@
         'applyPhotos.hero', 'applyPhotos.story', 'applyPhotos.selection',
         'communityPhotos.hero', 'communityPhotos.accent',
         'waysToGivePhotos.hero', 'waysToGivePhotos.breakPhoto', 'waysToGivePhotos.legacyPhoto',
+        'financialsPhotos.hero',
         'partnerPhoto'];
 
       const stampPhoto = (copy, path) => {
@@ -14049,6 +14050,14 @@
             ${renderPhotoField('Hero Photo', 'applyPhotos.hero', data.applyPhotos?.hero)}
             ${renderPhotoField('Story Photo', 'applyPhotos.story', data.applyPhotos?.story)}
             ${renderPhotoField('Selection Photo', 'applyPhotos.selection', data.applyPhotos?.selection)}
+          </div>
+        </div>
+
+        <div class="card">
+          <h3 style="margin-bottom: 1rem;">Financials Page</h3>
+          <p class="text-sm text-muted mb-1">Photo featured in the editorial split hero at the top of the financials page.</p>
+          <div class="form-row">
+            ${renderPhotoField('Hero Photo', 'financialsPhotos.hero', data.financialsPhotos?.hero)}
           </div>
         </div>
 

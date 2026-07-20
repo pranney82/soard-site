@@ -244,7 +244,6 @@ const breadcrumbs = [
       </div>
 
       <div class="tiers-footer" data-reveal>
-        <p class="tiers-note">Every amount makes a difference. <a href={ZEFFY_ONETIME} target="_blank" rel="noopener noreferrer" data-zeffy class="tiers-note-link">Give any custom amount →</a></p>
         <p class="tiers-note tiers-note--sub">Right now, families are on our waitlist hoping for a room makeover. Every donation brings us closer to saying <em>yes</em> to the next child.</p>
         <div class="tiers-match">
           <svg class="tiers-match-icon" viewBox="0 0 24 24" fill="none"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -254,11 +253,26 @@ const breadcrumbs = [
     </div>
   </section>
 
-  <!-- ══════ 3b. MAIL A CHECK ══════ -->
+  <!-- ══════ 3b. CHECK & DONOR-ADVISED FUND ══════ -->
   <div class="donate-check-bar">
-    <div class="donate-check-bar-inner" data-reveal>
-      <svg class="donate-check-bar-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect width="20" height="16" x="2" y="4" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      <p><strong>Prefer to mail a check?</strong> Make payable to <strong>{siteSettings.name}</strong> and send to: <span class="donate-check-bar-addr">{siteSettings.address.street}, {siteSettings.address.city}, {siteSettings.address.state} {siteSettings.address.zip}</span></p>
+    <div class="donate-check-bar-inner">
+      <div class="donate-fact" data-reveal>
+        <svg class="donate-fact-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect width="20" height="16" x="2" y="4" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <div class="donate-fact-body">
+          <strong class="donate-fact-title">Prefer to mail a check?</strong>
+          <p>Make payable to <strong>{siteSettings.name}</strong> and send to:</p>
+          <address class="donate-fact-detail">{siteSettings.address.street}<br/>{siteSettings.address.city}, {siteSettings.address.state} {siteSettings.address.zip}</address>
+        </div>
+      </div>
+      <div class="donate-fact" data-reveal data-delay="1">
+        <svg class="donate-fact-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><line x1="3" x2="21" y1="22" y2="22" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="6" x2="6" y1="18" y2="11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="10" x2="10" y1="18" y2="11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="14" x2="14" y1="18" y2="11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="18" x2="18" y1="18" y2="11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><polygon points="12 2 20 7 4 7" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+        <div class="donate-fact-body">
+          <strong class="donate-fact-title">Giving from a Donor-Advised Fund?</strong>
+          <p>Recommend a grant through Fidelity, Schwab, Vanguard, or any DAF sponsor:</p>
+          <p class="donate-fact-detail">Sunshine on a Ranney Day, Inc. · EIN {siteSettings.ein}</p>
+          <a class="donate-fact-link" href="/ways-to-give/#tax-smart">DAF, stock & IRA details →</a>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -281,7 +295,7 @@ const breadcrumbs = [
           </div>
           <span class="dt-big">501(c)(3)</span>
           <span class="dt-label">Tax-Exempt Status</span>
-          <p>Registered nonprofit. EIN 45-4773997. All donations are fully tax-deductible.</p>
+          <p>Registered nonprofit. EIN {siteSettings.ein}. All donations are fully tax-deductible.</p>
         </div>
         <div class="dt-card" data-reveal data-delay="1">
           <div class="dt-card-icon">
@@ -307,10 +321,15 @@ const breadcrumbs = [
   <section class="other-ways">
     <div class="other-ways-inner">
       <div class="other-ways-left" data-reveal>
-        <div class="section-label">More Ways to Help</div>
-        <h2>Can't donate right now? You can still make an <em class="highlight">impact</em>.</h2>
+        <div class="section-label">More Ways to Give</div>
+        <h2>The donate button is just one way to make an <em class="highlight">impact</em>.</h2>
       </div>
       <div class="other-ways-right" data-reveal data-delay="1">
+        <div class="way-item">
+          <h3>Stock, DAF & IRA Gifts</h3>
+          <p>Donate stock, recommend a grant from your donor-advised fund, or give from your IRA — all tax-smart ways to build rooms.</p>
+          <a href="/ways-to-give/">See All Ways to Give →</a>
+        </div>
         <div class="way-item">
           <h3>Shop Our Stores</h3>
           <p>Every purchase at Sunny & Ranney directly funds room makeovers.</p>
@@ -320,11 +339,6 @@ const breadcrumbs = [
           <h3>Volunteer or Partner</h3>
           <p>Contractors, designers, and handy helpers — we need your skills to build these rooms.</p>
           <a href="/partners/">Get Involved →</a>
-        </div>
-        <div class="way-item">
-          <h3>Stock, DAF & More</h3>
-          <p>Donate stock, give through your donor-advised fund, or mail a check — all tax-deductible.</p>
-          <a href="/ways-to-give/">See All Options →</a>
         </div>
         <div class="way-item">
           <h3>Spread the Word</h3>
@@ -355,7 +369,7 @@ const breadcrumbs = [
         <a href={ZEFFY_ONETIME} target="_blank" rel="noopener noreferrer" data-zeffy class="btn btn-dark btn-lg">Donate Now →</a>
         <a href="/kids/" class="btn btn-outline-dark">Meet the Kids</a>
       </div>
-      <p class="donate-finale-note" data-reveal data-delay="3">501(c)(3) · EIN 45-4773997 · All donations tax-deductible</p>
+      <p class="donate-finale-note" data-reveal data-delay="3">501(c)(3) · EIN {siteSettings.ein} · All donations tax-deductible</p>
     </div>
   </section>
 
@@ -925,18 +939,7 @@ const breadcrumbs = [
     font-size: 15px;
     color: var(--c-text-muted);
   }
-  .tiers-note--sub {
-    margin-top: 8px;
-  }
   .tiers-note--sub em { font-style: italic; color: var(--c-dark); }
-  .tiers-note-link {
-    color: var(--c-accent);
-    font-weight: 600;
-    text-decoration: underline;
-    text-underline-offset: 3px;
-    transition: color 0.2s ease;
-  }
-  .tiers-note-link:hover { color: var(--c-dark); }
   .tiers-match {
     display: flex;
     align-items: flex-start;
@@ -965,38 +968,71 @@ const breadcrumbs = [
   .tiers-match p strong { color: var(--c-dark); }
 
   /* ══════════════════════════════════════════
-     3b. MAIL A CHECK BAR
+     3b. CHECK & DAF BAR
      ══════════════════════════════════════════ */
   .donate-check-bar {
     background: var(--c-warm-gray);
-    padding: 24px 0;
+    padding: 40px 0;
   }
   .donate-check-bar-inner {
-    max-width: 900px;
+    max-width: 1000px;
     margin: 0 auto;
     padding: 0 24px;
-    display: flex;
-    align-items: center;
-    gap: 16px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    align-items: stretch;
   }
-  .donate-check-bar-icon {
-    width: 28px;
-    height: 28px;
+  .donate-fact {
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+    background: #fff;
+    border: 1px solid var(--c-border);
+    border-radius: 16px;
+    padding: 24px 28px;
+  }
+  .donate-fact-icon {
+    width: 24px;
+    height: 24px;
     flex-shrink: 0;
     color: var(--c-text-muted);
+    margin-top: 2px;
   }
-  .donate-check-bar-inner p {
-    font-size: 15px;
+  .donate-fact-title {
+    display: block;
+    font-size: 16px;
+    color: var(--c-dark);
+    margin-bottom: 6px;
+  }
+  .donate-fact-body p {
+    font-size: 14px;
     line-height: 1.6;
-    color: var(--c-text);
+    color: var(--c-text-muted);
+    margin: 0 0 6px;
+  }
+  .donate-fact-body p strong { color: var(--c-dark); }
+  .donate-fact-body .donate-fact-detail {
+    display: block;
+    font-style: normal;
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 1.6;
+    color: var(--c-dark);
     margin: 0;
   }
-  .donate-check-bar-addr {
-    white-space: nowrap;
+  .donate-fact-link {
+    display: inline-block;
+    margin-top: 10px;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--c-accent);
+    text-decoration: none;
+    transition: letter-spacing 0.3s ease;
   }
-  @media (max-width: 600px) {
-    .donate-check-bar-inner { flex-direction: column; text-align: center; gap: 10px; }
-    .donate-check-bar-addr { white-space: normal; }
+  .donate-fact-link:hover { letter-spacing: 0.02em; }
+  @media (max-width: 700px) {
+    .donate-check-bar-inner { grid-template-columns: 1fr; }
   }
 
   /* ══════════════════════════════════════════
