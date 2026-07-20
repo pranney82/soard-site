@@ -15,7 +15,6 @@
  * - LQIP blur-up on all images
  */
 import BaseLayout from '../layouts/BaseLayout.astro';
-import MediaLogos from '../components/ui/MediaLogos.astro';
 import siteSettings from '../content/site/settings.json';
 import { getSiteStats } from '../utils/stats';
 import { cfRaw, cfUrl, cfSrcset, cfLqip } from '../utils/cf-image';
@@ -70,7 +69,7 @@ const jsonLd = {
       <div class="hero-text">
         <p class="hero-eyebrow">Ways to Give</p>
         <h1 class="hero-headline">There are many ways to build a <em>dream</em>.</h1>
-        <p class="hero-lead">Whether you give online, through stock, your employer, or your estate — every gift creates life-changing spaces for children with special needs.</p>
+        <p class="hero-lead">Whether you give online, by check, through stock, a donor-advised fund, your employer, or your estate — every gift creates life-changing spaces for children with special needs.</p>
         <div class="hero-ctas">
           <a href="/donate/" class="btn btn-primary btn-glow btn-lg">Donate Now →</a>
           <a href="#give-today" class="btn btn-outline-dark btn-lg">Explore Options ↓</a>
@@ -104,22 +103,6 @@ const jsonLd = {
     </div>
   </section>
 
-  <!-- ══════ DONOR TESTIMONIAL — Social proof before giving options ══════ -->
-  <section class="wtg-testimonial">
-    <div class="wtg-container">
-      <div class="wtg-testimonial-inner" data-reveal>
-        <svg class="wtg-testimonial-qm" viewBox="0 0 40 32" fill="none" aria-hidden="true"><path d="M0 20.8C0 12.267 5.867 5.067 14.4 2.4l1.6 3.2C10.133 8 7.467 12.267 6.933 16H14.4v13.6H0V20.8Zm22.4 0C22.4 12.267 28.267 5.067 36.8 2.4l1.6 3.2C32.533 8 29.867 12.267 29.333 16H36.8v13.6H22.4V20.8Z" fill="currentColor"/></svg>
-        <blockquote class="wtg-testimonial-quote">Seeing the look on a child's face when they walk into their new room — there's nothing like it. We know our money went exactly where it should.</blockquote>
-        <div class="wtg-testimonial-attr">
-          <span class="wtg-testimonial-name">Sarah & Michael T.</span>
-          <span class="wtg-testimonial-role">Monthly donors since 2023</span>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <MediaLogos theme="dark" linked={true} />
-
   <!-- ══════ ANCHOR NAV ══════ -->
   <nav class="wtg-nav" aria-label="Giving options">
     <div class="wtg-nav-track">
@@ -129,6 +112,7 @@ const jsonLd = {
       <a href="#workplace" class="wtg-nav-link"><span>Workplace</span></a>
       <a href="#legacy" class="wtg-nav-link"><span>Legacy</span></a>
       <a href="#in-kind" class="wtg-nav-link"><span>In-Kind</span></a>
+      <a href="#org-details" class="wtg-nav-link"><span>EIN & Address</span></a>
     </div>
   </nav>
 
@@ -213,6 +197,7 @@ const jsonLd = {
             </div>
             <div class="wtg-method-action">
               <a href={`mailto:${email}`} class="wtg-method-cta">Get Started →</a>
+              <span class="wtg-method-ein">EIN {ein}</span>
             </div>
           </div>
         </div>
@@ -228,8 +213,9 @@ const jsonLd = {
             <h3>Donor-Advised Fund</h3>
             <p>Recommend a grant from Fidelity Charitable, Schwab, Vanguard, or any DAF sponsor.</p>
             <div class="wtg-daf-info">
-              <div class="wtg-daf-row"><span>Organization</span><strong>{orgName}</strong></div>
-              <div class="wtg-daf-row"><span>EIN</span><strong>{ein}</strong></div>
+              <div class="wtg-daf-row"><span>Legal Name</span><strong>Sunshine on a Ranney Day, Inc.</strong></div>
+              <div class="wtg-daf-row"><span>EIN / Tax ID</span><span class="wtg-daf-val"><strong class="wtg-daf-ein">{ein}</strong><button type="button" class="wtg-copy" data-copy={ein} aria-label="Copy EIN to clipboard"><svg class="ico-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg><svg class="ico-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></button></span></div>
+              <div class="wtg-daf-row"><span>Mailing Address</span><strong>{address.street}<br/>{address.city}, {address.state} {address.zip}</strong></div>
             </div>
             <div class="wtg-pills">
               <span class="wtg-pill">Immediate deduction</span>
@@ -475,7 +461,7 @@ const jsonLd = {
         </div>
         <div class="wtg-ref-item">
           <span class="wtg-ref-label">EIN / Tax ID</span>
-          <span class="wtg-ref-value">{ein}</span>
+          <span class="wtg-ref-value wtg-ref-value--flex">{ein}<button type="button" class="wtg-copy wtg-copy--dark" data-copy={ein} aria-label="Copy EIN to clipboard"><svg class="ico-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg><svg class="ico-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></button></span>
         </div>
         <div class="wtg-ref-item">
           <span class="wtg-ref-label">Status</span>
@@ -763,34 +749,6 @@ const jsonLd = {
     .hero-photo-wrap, .hero-stat { opacity: 1; transform: none; animation: none; }
   }
 
-  /* ── Testimonial strip between hero and nav ── */
-  .wtg-testimonial {
-    background: var(--c-cream);
-    padding: var(--space-xl) 0 var(--space-lg);
-    border-top: 1px solid var(--c-border);
-  }
-  .wtg-testimonial-inner {
-    display: flex;
-    align-items: center;
-    gap: var(--space-md);
-    max-width: 640px;
-    margin: 0 auto;
-    text-align: center;
-    flex-direction: column;
-  }
-  .wtg-testimonial-qm { width: 28px; height: 22px; color: var(--c-yellow); opacity: 0.4; flex-shrink: 0; }
-  .wtg-testimonial-quote {
-    font-family: var(--font-display);
-    font-size: clamp(17px, 1.8vw, 20px);
-    font-style: italic;
-    line-height: 1.7;
-    color: var(--c-text);
-    margin: 0;
-  }
-  .wtg-testimonial-attr { display: flex; gap: 8px; align-items: center; }
-  .wtg-testimonial-name { font-size: 13px; font-weight: 600; color: var(--c-dark); }
-  .wtg-testimonial-role { font-size: 12px; color: var(--c-text-muted); }
-
   /* ══════════════════════════════════════════
      ANCHOR NAV
      ══════════════════════════════════════════ */
@@ -1058,12 +1016,43 @@ const jsonLd = {
   .wtg-method-hint { display: block; font-size: 13px; color: var(--c-text-muted); line-height: 1.5; }
   .wtg-method-ein { display: block; font-size: 14px; font-weight: 700; color: var(--c-dark); margin-top: 4px; }
 
-  /* DAF info table */
-  .wtg-daf-info { background: var(--c-warm-gray); border-radius: 10px; padding: 14px 16px; margin-bottom: 12px; }
-  .wtg-daf-row { display: flex; justify-content: space-between; align-items: baseline; padding: 5px 0; font-size: 14px; }
+  /* DAF info table — everything a grant form asks for, copy-ready */
+  .wtg-daf-info { background: var(--c-warm-gray); border-radius: 10px; padding: 8px 16px; margin-bottom: 12px; }
+  .wtg-daf-row { display: flex; flex-direction: column; gap: 2px; padding: 9px 0; }
   .wtg-daf-row + .wtg-daf-row { border-top: 1px solid var(--c-border); }
-  .wtg-daf-row span { color: var(--c-text-muted); }
-  .wtg-daf-row strong { color: var(--c-dark); font-size: 14px; }
+  .wtg-daf-row span { color: var(--c-text-muted); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; }
+  .wtg-daf-row strong { color: var(--c-dark); font-size: 14px; line-height: 1.5; }
+  .wtg-daf-ein { font-size: 17px; letter-spacing: 0.01em; }
+  .wtg-daf-val { display: inline-flex; align-items: center; gap: 8px; }
+
+  /* Copy-to-clipboard chip — EIN */
+  .wtg-copy {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    flex-shrink: 0;
+    background: #fff;
+    border: 1px solid var(--c-border);
+    border-radius: 8px;
+    color: var(--c-text-muted);
+    cursor: pointer;
+    transition: color 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+  }
+  .wtg-copy:hover { color: var(--c-dark); border-color: var(--c-dark); }
+  .wtg-copy svg { width: 14px; height: 14px; }
+  .wtg-copy .ico-check { display: none; }
+  .wtg-copy.is-copied { color: var(--c-dark); border-color: var(--c-yellow); background: var(--c-yellow-soft); }
+  .wtg-copy.is-copied .ico-copy { display: none; }
+  .wtg-copy.is-copied .ico-check { display: block; }
+  .wtg-copy--dark { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.16); color: rgba(255,255,255,0.7); }
+  .wtg-copy--dark:hover { color: #fff; border-color: rgba(255,255,255,0.5); background: rgba(255,255,255,0.1); }
+  .wtg-copy--dark.is-copied { color: var(--c-yellow); border-color: var(--c-yellow); background: rgba(255,218,36,0.12); }
+  @media (pointer: coarse) {
+    .wtg-copy { width: 36px; height: 36px; }
+  }
 
   /* ══════════════════════════════════════════
      EDITORIAL BREAK — Photo + Ribbon + Quote
@@ -1266,7 +1255,7 @@ const jsonLd = {
   /* ══════════════════════════════════════════
      QUICK REFERENCE — Dark
      ══════════════════════════════════════════ */
-  .wtg-ref { padding: 100px 0; background: var(--c-dark-deep); color: #fff; contain: layout style; position: relative; overflow: hidden; }
+  .wtg-ref { padding: 100px 0; background: var(--c-dark-deep); color: #fff; contain: layout style; position: relative; overflow: hidden; scroll-margin-top: calc(var(--header-height, 84px) + 60px); }
   .wtg-ref::before { content: ''; position: absolute; top: -40%; right: -10%; width: 500px; height: 500px; background: radial-gradient(circle, rgba(255,218,36,0.06) 0%, transparent 70%); pointer-events: none; }
   .wtg-ref-inner { max-width: var(--max-width-narrow); margin: 0 auto; padding: 0 var(--space-xl); text-align: center; position: relative; }
   .wtg-ref-inner h2 { color: #fff; font-size: clamp(28px, 3.2vw, 40px); margin-bottom: 8px; }
@@ -1276,6 +1265,7 @@ const jsonLd = {
   .wtg-ref-item:hover { transform: translateY(-3px); background: rgba(255,255,255,0.07); border-color: rgba(255,218,36,0.25); }
   .wtg-ref-label { display: block; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: rgba(255,255,255,0.8); margin-bottom: 8px; }
   .wtg-ref-value { font-size: 15px; font-weight: 600; color: #fff; }
+  .wtg-ref-value--flex { display: inline-flex; align-items: center; gap: 8px; }
   .wtg-ref-value a { color: var(--c-yellow); text-decoration: none; }
   .wtg-ref-value a:hover { text-decoration: underline; }
 
@@ -1378,7 +1368,7 @@ const jsonLd = {
 
     const nav = document.querySelector<HTMLElement>('.wtg-nav');
     const links = document.querySelectorAll<HTMLAnchorElement>('.wtg-nav-link');
-    const targets = document.querySelectorAll<HTMLElement>('.wtg-section');
+    const targets = document.querySelectorAll<HTMLElement>('.wtg-section, .wtg-ref');
     const track = document.querySelector<HTMLElement>('.wtg-nav-track');
     const pill = document.querySelector<HTMLElement>('.wtg-nav-pill');
     if (!nav || !links.length || !targets.length || !track || !pill) return;
@@ -1482,6 +1472,23 @@ const jsonLd = {
     }, { signal });
   }
 
-  document.addEventListener('astro:page-load', initWtgNav);
+  /* ── EIN copy-to-clipboard chips ── */
+  function initWtgCopy() {
+    document.querySelectorAll<HTMLButtonElement>('.wtg-copy').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const text = btn.dataset.copy;
+        if (!text) return;
+        try { await navigator.clipboard.writeText(text); } catch { return; }
+        btn.classList.add('is-copied');
+        btn.setAttribute('aria-label', 'Copied');
+        setTimeout(() => {
+          btn.classList.remove('is-copied');
+          btn.setAttribute('aria-label', 'Copy EIN to clipboard');
+        }, 1800);
+      });
+    });
+  }
+
+  document.addEventListener('astro:page-load', () => { initWtgNav(); initWtgCopy(); });
   document.addEventListener('astro:before-swap', cleanupWtgNav);
 </script>

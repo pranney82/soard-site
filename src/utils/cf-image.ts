@@ -16,6 +16,9 @@ export const CF_BASE = `https://sunshineonaranneyday.com/cdn-cgi/imagedelivery/$
 
 const NAMED_VARIANTS = new Set(['public', 'nav', 'footer', 'og']);
 
+/** Same-origin proxied form: https://<any-host>/cdn-cgi/imagedelivery/<hash>/... */
+const CF_PROXY_RE = /^https?:\/\/[^/]+\/cdn-cgi\/imagedelivery\/[^/]+\//;
+
 /**
  * Extract the bare image ID from a full CF Images URL or pass through a bare ID.
  *
@@ -25,9 +28,9 @@ const NAMED_VARIANTS = new Set(['public', 'nav', 'footer', 'og']);
  */
 export function cfId(src: string): string {
   if (!src) return '';
-  if (!src.includes('imagedelivery.net')) return src;
+  if (!src.includes('imagedelivery.net') && !CF_PROXY_RE.test(src)) return src;
 
-  let id = src.replace(`${CF_ORIGIN}/`, '');
+  let id = src.replace(`${CF_ORIGIN}/`, '').replace(CF_PROXY_RE, '');
   const lastSlash = id.lastIndexOf('/');
   if (lastSlash > 0) {
     const suffix = id.slice(lastSlash + 1);
@@ -41,7 +44,7 @@ export function cfId(src: string): string {
 /** Check whether a src string points to Cloudflare Images (full URL or bare image ID) */
 export function isCF(src: string): boolean {
   if (!src) return false;
-  if (src.includes('imagedelivery.net')) return true;
+  if (src.includes('imagedelivery.net') || CF_PROXY_RE.test(src)) return true;
   // Bare image IDs (e.g. "kids/amari/hero") — not an absolute URL or site-relative path
   return !src.startsWith('http') && !src.startsWith('/') && !src.startsWith('data:');
 }
