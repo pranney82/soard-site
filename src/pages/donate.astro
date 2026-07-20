@@ -16,6 +16,7 @@
  * - Monthly/one-time toggle uses tiny JS (~100 bytes) for grid swap
  */
 import BaseLayout from '../layouts/BaseLayout.astro';
+import CopyChip from '../components/ui/CopyChip.astro';
 import MediaLogos from '../components/ui/MediaLogos.astro';
 import FAQSection from '../components/ui/FAQSection.astro';
 import { getPublishedKids } from '../utils/collections';
@@ -44,6 +45,9 @@ const storyRoomTypes = storyKid?.data.roomTypes || [];
 // Build a short 2-sentence excerpt from the bio
 const bioSentences = storyBio.split(/(?<=[.!?])\s+/).filter(Boolean);
 const storyExcerpt = bioSentences.slice(0, 2).join(' ');
+
+const addressLine = `${siteSettings.address.street}, ${siteSettings.address.city}, ${siteSettings.address.state} ${siteSettings.address.zip}`;
+const legalName = 'Sunshine on a Ranney Day, Inc.';
 
 /* ── Zeffy form URLs ── */
 const ZEFFY_ONETIME = 'https://www.zeffy.com/en-US/donation-form/help-build-a-brighter-home';
@@ -87,6 +91,10 @@ const breadcrumbs = [
           <span class="hero-trust-item"><svg class="hero-trust-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="m9 12 2 2 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>Secure & Encrypted</span>
           <span class="hero-trust-item"><svg class="hero-trust-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M14 8H8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M16 12H8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>Tax-Deductible</span>
           <span class="hero-trust-item"><svg class="hero-trust-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.5"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 0 1 0 4H8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M12 18V6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>Zero Platform Fees</span>
+        </div>
+        <div class="hero-org">
+          <span class="hero-org-item"><strong>EIN</strong> {siteSettings.ein}<CopyChip text={siteSettings.ein} label="Copy EIN to clipboard" /></span>
+          <span class="hero-org-item"><strong>Address</strong> {addressLine}<CopyChip text={addressLine} label="Copy mailing address to clipboard" /></span>
         </div>
       </div>
       <div class="hero-photo-wrap">
@@ -261,7 +269,10 @@ const breadcrumbs = [
         <div class="donate-fact-body">
           <strong class="donate-fact-title">Prefer to mail a check?</strong>
           <p>Make payable to <strong>{siteSettings.name}</strong> and send to:</p>
-          <address class="donate-fact-detail">{siteSettings.address.street}<br/>{siteSettings.address.city}, {siteSettings.address.state} {siteSettings.address.zip}</address>
+          <div class="donate-fact-row">
+            <address class="donate-fact-detail">{siteSettings.address.street}<br/>{siteSettings.address.city}, {siteSettings.address.state} {siteSettings.address.zip}</address>
+            <CopyChip text={addressLine} label="Copy mailing address to clipboard" />
+          </div>
         </div>
       </div>
       <div class="donate-fact" data-reveal data-delay="1">
@@ -269,7 +280,14 @@ const breadcrumbs = [
         <div class="donate-fact-body">
           <strong class="donate-fact-title">Giving from a Donor-Advised Fund?</strong>
           <p>Recommend a grant through Fidelity, Schwab, Vanguard, or any DAF sponsor:</p>
-          <p class="donate-fact-detail">Sunshine on a Ranney Day, Inc. · EIN {siteSettings.ein}</p>
+          <div class="donate-fact-row">
+            <p class="donate-fact-detail">{legalName}</p>
+            <CopyChip text={legalName} label="Copy legal name to clipboard" />
+          </div>
+          <div class="donate-fact-row">
+            <p class="donate-fact-detail">EIN {siteSettings.ein}</p>
+            <CopyChip text={siteSettings.ein} label="Copy EIN to clipboard" />
+          </div>
           <a class="donate-fact-link" href="/ways-to-give/#tax-smart">DAF, stock & IRA details →</a>
         </div>
       </div>
@@ -388,7 +406,7 @@ const breadcrumbs = [
       <button class="zeffy-modal-x" id="zeffy-modal-x" type="button" aria-label="Close donation form">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
       </button>
-      <iframe id="zeffy-iframe" title="Donation form powered by Zeffy" allowpaymentrequest></iframe>
+      <iframe id="zeffy-iframe" title="Donation form powered by Zeffy" allow="payment" allowpaymentrequest></iframe>
     </div>
   </div>
 
@@ -464,7 +482,9 @@ const breadcrumbs = [
       document.body.style.overflow = '';
       previousFocus?.focus();
       previousFocus = null;
-      setTimeout(() => { if (!modal.classList.contains('is-open')) iframe.src = ''; }, 350);
+      // 'about:blank' — an empty src string resolves to the page's own URL,
+      // which reloads the whole donate page invisibly inside the iframe
+      setTimeout(() => { if (!modal.classList.contains('is-open')) iframe.src = 'about:blank'; }, 350);
     }
 
     // --- Frequency toggle ---
@@ -600,6 +620,36 @@ const breadcrumbs = [
     flex-shrink: 0;
     color: var(--c-text-muted);
   }
+
+  /* ── Org identity line — EIN + address, copy-ready for DAF donors ── */
+  .hero-org {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 24px;
+    margin-top: 24px;
+    padding-top: 20px;
+    border-top: 1px solid var(--c-border);
+    max-width: 480px;
+    opacity: 0;
+    animation: heroUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.45s both;
+  }
+  .hero-org-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--c-text-muted);
+    line-height: 1.5;
+  }
+  .hero-org-item strong {
+    color: var(--c-dark);
+    font-weight: 700;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
   .hero-photo-wrap {
     position: relative;
     animation: heroPhotoIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
@@ -1021,6 +1071,12 @@ const breadcrumbs = [
     color: var(--c-dark);
     margin: 0;
   }
+  .donate-fact-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .donate-fact-row + .donate-fact-row { margin-top: 6px; }
   .donate-fact-link {
     display: inline-block;
     margin-top: 10px;
@@ -1261,7 +1317,9 @@ const breadcrumbs = [
   .zeffy-modal {
     position: fixed;
     inset: 0;
-    z-index: 200;
+    /* Above the sticky header (1000) and mobile menu (1100) — below only the
+       focus-revealed skip link (9999) */
+    z-index: 1200;
     display: flex;
     align-items: center;
     justify-content: center;
