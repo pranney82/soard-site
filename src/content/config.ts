@@ -210,6 +210,11 @@ const community = defineCollection({
     slug: z.string(),
     impact: z.string(),
     impactLabel: z.string(),
+    /* Up to 3 hero stats; the first mirrors impact/impactLabel */
+    stats: z.array(z.object({
+      value: z.string(),
+      label: z.string(),
+    })).default([]),
     year: z.string(),
     description: z.string(),
     color: z.string().default('#373A36'),

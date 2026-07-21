@@ -10488,6 +10488,7 @@
       const [lastSaved, setLastSaved] = useState(null);
       const [data, setData] = useState({
         name: '', slug: '', impact: '', impactLabel: 'children impacted yearly',
+        stats: [{ value: '', label: 'children impacted yearly' }],
         year: new Date().getFullYear().toString(), description: '',
         color: '#373A36', imageId: '', imageAlt: '', badge: '', order: 0,
         photos: [], heroImage: '', status: 'completed',
@@ -10642,7 +10643,13 @@
       const restoreDraft = () => {
         try {
           const saved = JSON.parse(localStorage.getItem(draftKey));
-          if (saved) { setData(saved); setDirty(true); setHasDraft(false); addToast('Draft restored', 'success'); }
+          if (saved) {
+            if (!Array.isArray(saved.stats) || saved.stats.length === 0) {
+              saved.stats = (saved.impact || saved.impactLabel)
+                ? [{ value: saved.impact || '', label: saved.impactLabel || '' }] : [];
+            }
+            setData(saved); setDirty(true); setHasDraft(false); addToast('Draft restored', 'success');
+          }
         } catch (e) { addToast('Could not restore draft', 'error'); }
       };
       const dismissDraft = () => { localStorage.removeItem(draftKey); setHasDraft(false); };
@@ -10680,6 +10687,10 @@
             }
             if (!parsed.photos) parsed.photos = [];
             if (!parsed.partnerLogos) parsed.partnerLogos = [];
+            if (!Array.isArray(parsed.stats) || parsed.stats.length === 0) {
+              parsed.stats = (parsed.impact || parsed.impactLabel)
+                ? [{ value: parsed.impact || '', label: parsed.impactLabel || '' }] : [];
+            }
             setData(d => ({ ...d, ...parsed }));
             setSha(res.sha);
           } else {
@@ -10737,8 +10748,12 @@
       const handleSave = async () => {
         setTouched({ name: true });
         if (!data.name || !data.slug) { addToast('Name is required', 'error'); return; }
-        if (!data.impact) { addToast('Impact number is required', 'error'); return; }
-        if (!data.impactLabel) { addToast('Impact label is required', 'error'); return; }
+        const cleanStats = (data.stats || [])
+          .map(s => ({ value: (s.value || '').trim(), label: (s.label || '').trim() }))
+          .filter(s => s.value || s.label)
+          .slice(0, 3);
+        if (!cleanStats.length || !cleanStats[0].value) { addToast('Impact stat number is required', 'error'); return; }
+        if (!cleanStats[0].label) { addToast('Impact stat label is required', 'error'); return; }
         if (!data.description) { addToast('Description is required', 'error'); return; }
         if (!slug && existingSlugs.includes(data.slug)) {
           addToast(`A project with the URL slug "${data.slug}" already exists.`, 'error'); return;
@@ -10747,6 +10762,11 @@
         try {
           const saveData = {
             ...data,
+            // First stat mirrors into impact/impactLabel — the card grid,
+            // list table, and completeness scoring still read those fields.
+            stats: cleanStats,
+            impact: cleanStats[0].value,
+            impactLabel: cleanStats[0].label,
             streamVideoId: data.streamVideoId || null,
             videoUrl: data.videoUrl || null,
             photos: (data.photos || []).map(({ _tempId, ...p }) => p),
@@ -10867,19 +10887,25 @@
               <option value="in-progress">In Progress</option>
             </select>
           </div>
-          <div class="form-row">
-            <div class="form-group">
-              <label class="form-label">Impact Number *</label>
-              <input class="form-input" type="text" value=${data.impact}
-                onInput=${e => updateField('impact', e.target.value)} placeholder="10,000" />
-              <div class="form-hint">Big number shown on the card, e.g. "4,800"</div>
-            </div>
-            <div class="form-group">
-              <label class="form-label">Impact Label *</label>
-              <input class="form-input" type="text" value=${data.impactLabel}
-                onInput=${e => updateField('impactLabel', e.target.value)} placeholder="children impacted yearly" />
-              <div class="form-hint">Small text below the number</div>
-            </div>
+          <div class="form-group">
+            <label class="form-label">Impact Stats * <span style="font-weight: 400; color: var(--color-text-muted);">(up to 3)</span></label>
+            ${(data.stats || []).map((st, i) => html`
+              <div key=${i} style="display: grid; grid-template-columns: 1fr 1.5fr auto; gap: 0.5rem; margin-bottom: 0.4rem; align-items: center;">
+                <input class="form-input" type="text" value=${st.value || ''} onInput=${e => {
+                  const next = (data.stats || []).slice(); next[i] = { ...next[i], value: e.target.value }; updateField('stats', next);
+                }} placeholder="10,000" />
+                <input class="form-input" type="text" value=${st.label || ''} onInput=${e => {
+                  const next = (data.stats || []).slice(); next[i] = { ...next[i], label: e.target.value }; updateField('stats', next);
+                }} placeholder="children impacted yearly" />
+                <button class="btn btn-sm btn-ghost" type="button" onClick=${() => {
+                  const next = (data.stats || []).slice(); next.splice(i, 1); updateField('stats', next);
+                }} title="Remove">${icons.x}</button>
+              </div>
+            `)}
+            ${(data.stats || []).length < 3 ? html`
+              <button class="btn btn-sm btn-ghost" type="button" onClick=${() => updateField('stats', [...(data.stats || []), { value: '', label: '' }])} style="margin-top: 0.15rem;">+ Add stat</button>
+            ` : null}
+            <div class="form-hint" style="margin-top: 0.3rem;">First stat is the big number on the community card; the detail page hero shows all of them.</div>
           </div>
         </div>
 
