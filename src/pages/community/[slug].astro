@@ -52,6 +52,12 @@ const streamId = project.streamVideoId || null;
 const hasVideo = streamId || ytId;
 const otherProjects = allProjects.filter((p: any) => p.slug !== project.slug && p.story);
 
+/* ── Hero stats: prefer the stats array, fall back to the single impact pair ── */
+const heroStats = (project.stats?.length
+  ? project.stats
+  : [{ value: project.impact, label: project.impactLabel }]
+).slice(0, 3);
+
 /* ── Schema ── */
 const SITE = 'https://sunshineonaranneyday.com';
 const pageUrl = `${SITE}/community/${project.slug}/`;
@@ -114,10 +120,12 @@ const jsonLd = videoSchema ? [videoSchema] : undefined;
             <p class="cp-detail-hero-founded">Founded in {project.founded}</p>
           )}
           <div class="cp-detail-hero-stats">
-            <div class="cp-detail-stat">
-              <span class="cp-detail-stat-num">{project.impact}</span>
-              <span class="cp-detail-stat-label">{project.impactLabel}</span>
-            </div>
+            {heroStats.map((stat: { value: string; label: string }) => (
+              <div class="cp-detail-stat">
+                <span class="cp-detail-stat-num">{stat.value}</span>
+                <span class="cp-detail-stat-label">{stat.label}</span>
+              </div>
+            ))}
           </div>
           {project.badge && <span class="cp-detail-badge">{project.badge}</span>}
         </div>
@@ -417,7 +425,8 @@ const jsonLd = videoSchema ? [videoSchema] : undefined;
 
   .cp-detail-hero-stats {
     display: flex;
-    gap: var(--space-xl);
+    flex-wrap: wrap;
+    gap: var(--space-md) var(--space-xl);
     margin-bottom: var(--space-md);
   }
 
@@ -425,6 +434,7 @@ const jsonLd = videoSchema ? [videoSchema] : undefined;
     display: flex;
     flex-direction: column;
     gap: 2px;
+    max-width: 200px;
   }
 
   .cp-detail-stat-num {
