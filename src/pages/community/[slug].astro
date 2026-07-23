@@ -37,7 +37,12 @@ export async function getStaticPaths() {
 }
 
 const { project, allProjects } = Astro.props;
-const storyParas = project.story ? project.story.split('\n\n').filter((p: string) => p.trim()) : [];
+// Stories can arrive two ways: legacy plain text (paragraphs split on blank lines)
+// or rich HTML from the admin WYSIWYG "Full Story" editor (<p>/<strong>/<a>/lists).
+// Render HTML with set:html; keep the plain-text split path unchanged for older projects.
+const rawStory = project.story || '';
+const storyIsHtml = /<\/?(p|br|strong|em|b|i|u|ul|ol|li|a|h[1-6]|blockquote)\b/i.test(rawStory);
+const storyParas = storyIsHtml ? [] : rawStory.split('\n\n').filter((p: string) => p.trim());
 const hasPhotos = project.photos?.length > 1;
 const hasPartners = project.partnerLogos?.length > 0;
 
@@ -139,11 +144,15 @@ const jsonLd = videoSchema ? [videoSchema] : undefined;
       <h2 id="story-heading" class="cp-detail-story-heading" data-reveal>
         About <em class="highlight">{project.name}</em>
       </h2>
-      <div class="cp-detail-story-body">
-        {storyParas.map((para: string, i: number) => (
-          <p data-reveal data-delay={String(Math.min(i, 3))}>{para}</p>
-        ))}
-      </div>
+      {storyIsHtml ? (
+        <div class="cp-detail-story-body cp-detail-story-body--rich" data-reveal set:html={rawStory} />
+      ) : (
+        <div class="cp-detail-story-body">
+          {storyParas.map((para: string, i: number) => (
+            <p data-reveal data-delay={String(Math.min(i, 3))}>{para}</p>
+          ))}
+        </div>
+      )}
     </div>
   </section>
 
@@ -506,6 +515,34 @@ const jsonLd = videoSchema ? [videoSchema] : undefined;
   }
 
   .cp-detail-story-body p:last-child { margin-bottom: 0; }
+
+  /* Rich HTML story from the admin WYSIWYG editor: scoped styles don't reach
+     set:html content, so target the injected elements with :global(). */
+  .cp-detail-story-body--rich :global(p) {
+    font-size: 1.05rem;
+    line-height: 1.75;
+    color: var(--c-text);
+    margin-bottom: var(--space-lg);
+  }
+  .cp-detail-story-body--rich :global(p:last-child) { margin-bottom: 0; }
+  .cp-detail-story-body--rich :global(strong) { font-weight: 700; color: var(--c-dark); }
+  .cp-detail-story-body--rich :global(em) { font-style: italic; }
+  .cp-detail-story-body--rich :global(a) {
+    color: var(--c-accent);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .cp-detail-story-body--rich :global(ul),
+  .cp-detail-story-body--rich :global(ol) {
+    margin: 0 0 var(--space-lg);
+    padding-left: 1.5rem;
+  }
+  .cp-detail-story-body--rich :global(li) {
+    font-size: 1.05rem;
+    line-height: 1.75;
+    color: var(--c-text);
+    margin-bottom: var(--space-xs);
+  }
 
   @media (max-width: 768px) {
     .cp-detail-story { padding-block: var(--space-3xl); }
