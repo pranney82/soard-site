@@ -3140,6 +3140,7 @@
       // Action state
       const [saving, setSaving] = useState(false);
       const [pushing, setPushing] = useState(false);
+      const [pushingKit, setPushingKit] = useState(false);
       const [sendingTest, setSendingTest] = useState(false);
       const [testEmail, setTestEmail] = useState('');
       const [sendingDirect, setSendingDirect] = useState(false);
@@ -3176,15 +3177,25 @@
         setLoading(false);
       }, []);
 
+      // Merge Resend + Kit history into one list, newest first. Either
+      // provider being down (or Kit simply not configured — its GET 503s)
+      // must not blank the other's rows.
       const loadHistory = async () => {
         setHistoryLoading(true);
-        try {
-          const res = await fetch('/api/create-broadcast');
-          const data = await res.json();
-          if (data.ok) setBroadcasts(data.broadcasts || []);
-        } catch (e) {
+        const results = await Promise.allSettled([
+          fetch('/api/create-broadcast').then(r => r.json()),
+          fetch('/api/kit-broadcast').then(r => r.json()),
+        ]);
+        const [resend, kit] = results.map(r => (r.status === 'fulfilled' ? r.value : null));
+        const merged = [
+          ...(resend?.ok ? (resend.broadcasts || []).map(b => ({ ...b, provider: 'resend' })) : []),
+          ...(kit?.ok ? (kit.broadcasts || []).map(b => ({ ...b, provider: 'kit' })) : []),
+        ];
+        if (!resend?.ok && !kit?.ok) {
           addToast?.('Failed to load broadcast history', 'error');
         }
+        merged.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+        setBroadcasts(merged);
         setHistoryLoading(false);
       };
 
@@ -3382,7 +3393,7 @@
           });
           const data = await res.json();
           if (data.ok) {
-            setPushResult({ ...data, audienceName });
+            setPushResult({ ...data, audienceName, provider: 'resend' });
             setPreviewHtml(data.previewHtml || '');
             setShowPreview(true);
             addToast?.('Draft pushed to Resend!', 'success');
@@ -3393,6 +3404,32 @@
           addToast?.(e.message || 'Push failed', 'error');
         }
         setPushing(false);
+      };
+
+      // No audience picker for Kit — drafts default to all subscribers and
+      // the audience is narrowed in Kit at send time.
+      const pushToKit = async () => {
+        setPushingKit(true); setPushResult(null);
+        try {
+          const body = await buildBody();
+          const res = await fetch('/api/kit-broadcast', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          });
+          const data = await res.json();
+          if (data.ok) {
+            setPushResult({ ...data, provider: 'kit' });
+            setPreviewHtml(data.previewHtml || '');
+            setShowPreview(true);
+            addToast?.('Draft pushed to Kit!', 'success');
+          } else {
+            addToast?.(data.error || 'Push failed', 'error');
+          }
+        } catch (e) {
+          addToast?.(e.message || 'Push failed', 'error');
+        }
+        setPushingKit(false);
       };
 
       const handleTestSend = async () => {
@@ -3528,11 +3565,16 @@
         <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
           <div>
             <h2 style="margin: 0 0 0.25rem; display: flex; align-items: center; gap: 0.5rem;">${icons.mail} Email</h2>
-            <p style="margin: 0; color: var(--color-text-secondary); font-size: 0.9rem;">Edit on-brand templates here, then push them to Resend as drafts.</p>
+            <p style="margin: 0; color: var(--color-text-secondary); font-size: 0.9rem;">Edit on-brand templates here, then push them to Kit or Resend as drafts.</p>
           </div>
-          <a href="https://resend.com/broadcasts" target="_blank" rel="noopener noreferrer" class="btn btn-ghost" style="font-size: 0.8rem; padding: 0.4rem 0.8rem; gap: 0.35rem;">
-            ${icons.mail} Resend Dashboard ↗
-          </a>
+          <div style="display: flex; gap: 0.5rem;">
+            <a href="https://app.kit.com/broadcasts" target="_blank" rel="noopener noreferrer" class="btn btn-ghost" style="font-size: 0.8rem; padding: 0.4rem 0.8rem; gap: 0.35rem;">
+              ${icons.mail} Kit Dashboard ↗
+            </a>
+            <a href="https://resend.com/broadcasts" target="_blank" rel="noopener noreferrer" class="btn btn-ghost" style="font-size: 0.8rem; padding: 0.4rem 0.8rem; gap: 0.35rem;">
+              ${icons.mail} Resend Dashboard ↗
+            </a>
+          </div>
         </div>
 
         <div class="hub-tabs" style="margin-bottom: 1.5rem;">
@@ -3552,7 +3594,7 @@
             <div class="card" style="padding: 3rem; text-align: center;">
               <div style="margin-bottom: 0.75rem; color: var(--color-text-muted);">${icons.mail}</div>
               <p style="font-weight: 600; margin: 0 0 0.25rem;">No broadcasts yet</p>
-              <p style="font-size: 0.85rem; color: var(--color-text-muted); margin: 0;">Push a template to Resend to see it here.</p>
+              <p style="font-size: 0.85rem; color: var(--color-text-muted); margin: 0;">Push a template to Kit or Resend to see it here.</p>
             </div>
           ` : html`
             <div class="card" style="padding: 0;">
@@ -3569,9 +3611,9 @@
                       const sc = broadcastStatusColor[b.status] || broadcastStatusColor.draft;
                       const created = b.createdAt ? new Date(b.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—';
                       const sent = b.sentAt ? new Date(b.sentAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—';
-                      return html`<tr key=${b.id} style="border-bottom: 1px solid var(--color-bg);">
+                      return html`<tr key=${`${b.provider || 'resend'}-${b.id}`} style="border-bottom: 1px solid var(--color-bg);">
                         <td style="padding: 0.75rem 1rem;">
-                          <div style="font-weight: 600; font-size: 0.9rem;">${b.name}</div>
+                          <div style="font-weight: 600; font-size: 0.9rem;">${b.name}<span style="margin-left: 0.45rem; font-size: 0.62rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; padding: 0.12rem 0.4rem; border-radius: 4px; background: var(--color-bg-secondary); color: var(--color-text-muted); vertical-align: middle;">${b.provider === 'kit' ? 'Kit' : 'Resend'}</span></div>
                           ${b.subject ? html`<div style="font-size: 0.78rem; color: var(--color-text-muted); margin-top: 0.15rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 300px;">${b.subject}</div>` : null}
                         </td>
                         <td style="padding: 0.75rem 1rem;">
@@ -3666,6 +3708,10 @@
                 ${pushing ? html`<div class="spinner" style="width: 14px; height: 14px; border-width: 2px; border-top-color: var(--color-text);" />` : 'Push to Resend ↗'}
               </button>
             </div>
+            <button class="btn btn-primary" onClick=${pushToKit} disabled=${pushingKit || !eBlocks.length || !eSubject}
+              title="Creates a draft broadcast in Kit — pick the audience there when you send">
+              ${pushingKit ? html`<div class="spinner" style="width: 14px; height: 14px; border-width: 2px; border-top-color: var(--color-text);" />` : 'Push to Kit ↗'}
+            </button>
           </div>
         </div>
 
@@ -3983,15 +4029,15 @@
               <div style="margin-top: 1.25rem; padding: 1rem 1.25rem; background: rgba(56, 161, 105, 0.06); border: 1px solid rgba(56, 161, 105, 0.2); border-radius: var(--radius-sm);">
                 <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
                   <span style="color: var(--color-success);">${icons.check}</span>
-                  <span style="font-weight: 600; color: var(--color-success); font-size: 0.9rem;">Draft pushed to Resend</span>
+                  <span style="font-weight: 600; color: var(--color-success); font-size: 0.9rem;">Draft pushed to ${pushResult.provider === 'kit' ? 'Kit' : 'Resend'}</span>
                 </div>
                 <p style="margin: 0 0 0.75rem; font-size: 0.8rem; color: var(--color-text-secondary); line-height: 1.5;">
                   <strong>${pushResult.name}</strong><br/>
-                  Subject: ${pushResult.subject}${pushResult.audienceName ? html`<br/>Audience: ${pushResult.audienceName}` : null}
+                  Subject: ${pushResult.subject}${pushResult.audienceName ? html`<br/>Audience: ${pushResult.audienceName}` : pushResult.provider === 'kit' ? html`<br/>Audience: pick in Kit when you send` : null}
                 </p>
-                <a href="https://resend.com/broadcasts" target="_blank" rel="noopener noreferrer"
+                <a href=${pushResult.provider === 'kit' ? 'https://app.kit.com/broadcasts' : 'https://resend.com/broadcasts'} target="_blank" rel="noopener noreferrer"
                   class="btn btn-secondary" style="width: 100%; font-size: 0.85rem; padding: 0.6rem; justify-content: center;">
-                  Review & Send in Resend ↗
+                  Review & Send in ${pushResult.provider === 'kit' ? 'Kit' : 'Resend'} ↗
                 </a>
               </div>
             ` : null}
@@ -13204,6 +13250,15 @@
       const [loading, setLoading] = useState(false);
       const [error, setError] = useState('');
       const [fetched, setFetched] = useState(false);
+      const [kitStatus, setKitStatus] = useState(null); // null = checking
+
+      // Cheap config check — no Kit API call, just whether KIT_API_KEY is set
+      useEffect(() => {
+        fetch('/api/kit-broadcast?check=1')
+          .then(r => r.json())
+          .then(d => setKitStatus(!!(d.ok && d.configured)))
+          .catch(() => setKitStatus(false));
+      }, []);
 
       const fetchLists = async () => {
         setLoading(true);
@@ -13227,7 +13282,7 @@
 
       return html`
         <div class="card">
-          <h3 style="margin-bottom: 1rem;">Newsletter (Resend)</h3>
+          <h3 style="margin-bottom: 1rem;">Newsletter</h3>
           <p class="text-sm text-muted mb-1">Choose which Resend audience new subscribers are added to.</p>
           <div style="display: flex; gap: 0.5rem; align-items: flex-start; margin-top: 0.75rem;">
             <div class="form-group" style="flex: 1; margin-bottom: 0;">
@@ -13274,6 +13329,14 @@
             </div>
           ` : null}
           ${fetched && lists.length === 0 && !error ? html`<p class="text-sm text-muted" style="margin-top: 0.5rem;">No audiences found in your Resend account.</p>` : null}
+          <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--color-border);">
+            <div style="font-weight: 600; font-size: 0.9rem; margin-bottom: 0.25rem;">Kit sync</div>
+            ${kitStatus === null
+              ? html`<p class="text-sm text-muted" style="margin: 0;">Checking…</p>`
+              : kitStatus
+                ? html`<p class="text-sm" style="margin: 0; color: #22c55e;">✓ Connected — new subscribers are also added to Kit, and templates can be pushed there as draft broadcasts.</p>`
+                : html`<p class="text-sm text-muted" style="margin: 0;">Not configured — set <code>KIT_API_KEY</code> in the Cloudflare Pages dashboard to sync signups and push broadcasts to Kit.</p>`}
+          </div>
         </div>
       `;
     }

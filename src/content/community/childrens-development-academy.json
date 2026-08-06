@@ -1,9 +1,23 @@
 {
   "name": "Children's Development Academy",
   "slug": "childrens-development-academy",
-  "impact": "100+",
-  "impactLabel": "children enrolled",
-  "year": "2025",
+  "impact": "200+",
+  "impactLabel": "children enrolled annually",
+  "stats": [
+    {
+      "value": "200+",
+      "label": "children enrolled annually"
+    },
+    {
+      "value": "60",
+      "label": "years providing education to Roswell's low-income children"
+    },
+    {
+      "value": "93%",
+      "label": "children enrolled are children of color"
+    }
+  ],
+  "year": "2025 - 2026",
   "description": "Founded in 1967, the CDA in Roswell gives young children the best chance to read on grade level by third grade, graduate high school, and break the cycle of generational poverty. SOARD is part of the CDA's Learn.Play.Serve campaign — creating a new toddler classroom and community room with architecture by Randall Paulson, design by Crosby Design Group, and construction by Trident Construction.",
   "color": "#00838F",
   "imageId": "community/childrens-development-academy/1774967308309-IMG-2873.HEIC",
@@ -18,13 +32,51 @@
     }
   ],
   "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/childrens-development-academy/1774967308309-IMG-2873.HEIC/public",
-  "status": "in-progress",
+  "status": "completed",
   "founded": "1967",
-  "story": "In 1967, the Children's Development Academy's founders were driven by the belief that the best way to eradicate generational poverty was to start with the children. Today, the CDA gives young children the very best chance to read on grade level by the third grade, graduate from high school, attend college, and achieve other life-altering goals.\n\nSunshine on a Ranney Day is excited to be part of the CDA's Learn.Play.Serve campaign which will involve an extensive remodel to the CDA's current building. SOARD is organizing amazing partners to help create a new toddler classroom which will allow more children to enter the program, and a new community room which will be used by the CDA for programs and meetings.\n\nSOARD has organized some of our amazing partners to work with the CDA to complete this project. Randall Paulson handled the architecture, Crosby Design Group the design, and Trident Construction will be handling the construction.",
+  "story": "<p>The Children’s Development Academy (CDA) was founded in 1967 with the belief that helping children is the key to ending generational poverty. Today, CDA still follows this mission by giving young children a strong educational start so they can read at grade level by third grade, finish high school, go to college, and reach other important goals.</p><p>Each year, CDA welcomes over 200 children in 11 classrooms for ages one through Pre-K. By offering tuition-assisted childcare, CDA helps children from low-income families get quality early education and lets their parents keep working. The students and families come from many backgrounds: 65% are Hispanic or Latino, 21% African American, 7% Caucasian, 4% Asian, and 3% multiracial.</p><p>The CDA building serves two important purposes. The lower level houses the school and classrooms, while the upper level is home to the Groveway Community Center, the CDA’s administrative offices, and three additional nonprofit organizations: HomeStretch, Family Promise of North Fulton/DeKalb, and the Groveway Community Group.</p><p>Sunshine on a Ranney Day led the construction related to the CDA’s Learn. Play. Serve. campaign, which included a major renovation of their building. SOARD worked with trusted partners to handle the project: <strong>Randall-Paulson Architects</strong> redesigned the inside, <strong>Crosby Design Group</strong> handled the interior design, and <strong>Trident Construction</strong> took care of the building work.</p><p>SOARD brought in an incredible group of partners to provide the materials and finishes that helped bring the renovation to life. <strong>Mohawk </strong>donated the flooring, <strong>MSI </strong>provided the bathroom tile, and <strong>Real Floors Commercial </strong>completed the tile installation. <strong>Construction Resources</strong> and <strong>Cambria</strong> provided the countertops, while SOARD’s own retail store, <strong>Sunny &amp; Ranney</strong>, furnished the new conference room and entryway.</p><p>As part of the renovation, an existing communal space on the classroom level was transformed into a new toddler classroom, doubling the CDA’s capacity to serve toddlers. The classroom can accommodate 12 children and is supported by three full-time teachers.</p><p>The Groveway Community Center also received significant improvements. The existing bathrooms were completely gutted and renovated, and a new ADA-accessible bathroom was</p><p> added. A boardroom was remodeled, and a new community room was created to serve as a hub for trainings, workshops, meetings, family programs, and other activities.</p><p>These new spaces are used by the CDA’s 50 staff members and 25 board members for staff meetings, teacher appreciation events, professional development, and training. They also support family programming for the more than 200 children served by the CDA each year. In addition, HomeStretch, Family Promise of North Fulton/DeKalb, and the Groveway Community Group use the renovated rooms for their own administrative and programming needs, expanding the project’s impact throughout the community.<br></p>",
   "quote": null,
   "metaDescription": "Sunshine on a Ranney Day is partnering with the Children's Development Academy in Roswell to create a new toddler classroom and community room as part of their Learn.Play.Serve campaign.",
   "videoUrl": null,
   "streamVideoId": null,
+  "partnerLogos": [
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/trident-construction-group/1774980108326/public",
+      "name": "Trident Construction Group"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/crosby-design-group/public",
+      "name": "Crosby Design Group"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/randall-paulson/public",
+      "name": "Randall Paulson Architects"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/real-floors-commercial/1774544840079/public",
+      "name": "Real Floors Commercial"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/mohawk/public",
+      "name": "Mohawk"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/construction-resources/public",
+      "name": "Construction Resources"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/msi/public",
+      "name": "Msi"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/cambria-black/public",
+      "name": "Cambria"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/sunny-and-ranney/public",
+      "name": "Sunny & Ranney"
+    }
+  ],
   "beforePhotos": [
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/childrens-development-academy/before-1774974403534-20250619-155230.jpg/public",
@@ -97,35 +149,5 @@
       "cfImageId": "community/childrens-development-academy/before-1774974432668-IMG-5437.HEIC"
     }
   ],
-  "afterPhotos": [],
-  "partnerLogos": [
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/crosby-design-group/public",
-      "name": "Crosby Design Group"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/randall-paulson/public",
-      "name": "Randall Paulson Architects"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/real-floors-commercial/1774544840079/public",
-      "name": "Real Floors Commercial"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/sunny-and-ranney/public",
-      "name": "Sunny & Ranney"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/mohawk/public",
-      "name": "Mohawk"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/construction-resources/public",
-      "name": "Construction Resources"
-    },
-    {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/msi/public",
-      "name": "Msi"
-    }
-  ]
+  "afterPhotos": []
 }
