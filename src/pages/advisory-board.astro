@@ -5,10 +5,8 @@
  * DESIGN: Editorial split hero (standardized hero-* naming, matches
  * home/apply/donate/ways-to-give), numbered sections, yellow finale.
  *
- * Copy is sourced from the Advisory Board Overview PDF (2026 cycle).
- * NOTE: Application-cycle dates are hardcoded — applications open
- * July 1, close July 31, notified August, first meeting September.
- * Update these each recruiting cycle.
+ * Copy is sourced from the Advisory Board Overview PDF.
+ * NOTE: Applications are always open (rolling basis) — no cycle dates.
  *
  * The overview PDF is hosted on R2 (files.sunshineonaranneyday.com)
  */
@@ -41,7 +39,7 @@ const breadcrumbs = [
 
 <BaseLayout
   title="Advisory Board — Lend Your Expertise"
-  description="Join the SOARD Advisory Board — advocates, connectors, and fundraisers working together to fund a room makeover every year. Applications close July 31."
+  description="Join the SOARD Advisory Board — advocates, connectors, and fundraisers working together to fund a room makeover every year. Applications are always open."
   breadcrumbs={breadcrumbs}
 >
 
@@ -54,7 +52,7 @@ const breadcrumbs = [
       <div class="hero-text">
         <p class="hero-eyebrow">Advisory Board</p>
         <h1 class="hero-headline">Lend your expertise. Build more <em>dreams</em>.</h1>
-        <p class="hero-lead">We're building a team of advocates, connectors, and ambassadors who believe every child deserves a space that makes them feel safe, seen, and loved — and who work together to fund a SOARD makeover every year. Applications are open through <strong>July 31</strong>.</p>
+        <p class="hero-lead">We're building a team of advocates, connectors, and ambassadors who believe every child deserves a space that makes them feel safe, seen, and loved — and who work together to fund a SOARD makeover every year. Applications are <strong>always open</strong>.</p>
         <div class="hero-ctas">
           <a href={APPLY_URL} target="_blank" rel="noopener noreferrer" class="btn btn-primary btn-glow btn-lg">Apply to Join →</a>
           <a href={PDF_URL} target="_blank" rel="noopener noreferrer" class="btn btn-outline-dark btn-lg">Download the Overview (PDF)</a>
@@ -190,7 +188,7 @@ const breadcrumbs = [
       <div class="ab-sh" data-reveal data-num="03">
         <div class="ab-sh-text">
           <h2>How to <em>join</em></h2>
-          <p>Three steps from interested to seated — applications close July 31.</p>
+          <p>Three steps from interested to seated — apply whenever you're ready.</p>
         </div>
       </div>
 
@@ -204,13 +202,13 @@ const breadcrumbs = [
         <li class="ab-step ab-step--featured" data-reveal data-delay="1">
           <span class="ab-step-num" aria-hidden="true">2</span>
           <h3>Submit your application</h3>
-          <p>Tell us who you are, what you'd bring, and why the mission speaks to you — plan for about 20 minutes, and have a reference in mind. Applications close <strong>July 31</strong>.</p>
+          <p>Tell us who you are, what you'd bring, and why the mission speaks to you — plan for about 20 minutes, and have a reference in mind. Applications are <strong>always open</strong>.</p>
           <a href={APPLY_URL} target="_blank" rel="noopener noreferrer" class="ab-step-cta">Apply to Join →</a>
         </li>
         <li class="ab-step" data-reveal data-delay="2">
           <span class="ab-step-num" aria-hidden="true">3</span>
           <h3>Take your seat</h3>
-          <p>Applicants are notified in August, and the new board gathers for its first meeting in September.</p>
+          <p>We review applications on a rolling basis and will be in touch soon after you apply.</p>
           <a href={`mailto:${email}?subject=Advisory Board Question`} class="ab-step-cta">Questions? Email us →</a>
         </li>
       </ol>
@@ -226,7 +224,7 @@ const breadcrumbs = [
         <a href={APPLY_URL} target="_blank" rel="noopener noreferrer" class="btn btn-dark btn-lg">Apply to Join →</a>
         <a href={PDF_URL} target="_blank" rel="noopener noreferrer" class="btn btn-outline-dark btn-lg">Download the Overview</a>
       </div>
-      <p class="ab-finale-note" data-reveal data-delay="3">Applications close July 31 · Questions? Reach us at <a href={`mailto:${email}`}>{email}</a> · {orgName} is a 501(c)(3) nonprofit</p>
+      <p class="ab-finale-note" data-reveal data-delay="3">Applications always open · Questions? Reach us at <a href={`mailto:${email}`}>{email}</a> · {orgName} is a 501(c)(3) nonprofit</p>
     </div>
   </section>
 
