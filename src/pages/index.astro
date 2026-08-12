@@ -31,7 +31,7 @@ const heroEyebrow = siteSettings.homeHero?.eyebrow || '501(c)(3) Nonprofit · At
 const heroLine1 = siteSettings.homeHero?.headlineLine1 || 'Building <em>dreams</em>,';
 const heroLine2 = siteSettings.homeHero?.headlineLine2 || 'one room at a time';
 const heroHeadline = `${heroLine1}<br>${heroLine2}`;
-const heroSub = siteSettings.homeHero?.lead || 'Dream bedrooms, accessible bathrooms, and therapy rooms for children with special needs — at no cost to families.';
+const heroSub = siteSettings.homeHero?.lead || 'Dream bedrooms, accessible bathrooms, and therapy rooms for children with special needs, at no cost to families.';
 const heroCta1Label = siteSettings.homeHero?.cta1Label || 'Give Today';
 const heroCta1Link = siteSettings.homeHero?.cta1Link || '/donate';
 const heroCta2Label = siteSettings.homeHero?.cta2Label || 'See Our Work';
@@ -113,7 +113,7 @@ const jsonLd = [getWebSiteSchema(), ...getSiteNavigationSchema()];
 
 <BaseLayout
   title="Home"
-  description="We build free dream bedrooms, accessible bathrooms, and therapy rooms for children with special needs in Atlanta. 501(c)(3) nonprofit — donate or apply today."
+  description="We build free dream bedrooms, accessible bathrooms, and therapy rooms for children with special needs in Atlanta. 501(c)(3) nonprofit. Donate or apply today."
   ogImage="/og/home.png"
   jsonLd={jsonLd}
 >
@@ -178,7 +178,7 @@ const jsonLd = [getWebSiteSchema(), ...getSiteNavigationSchema()];
       <div class="mission-text" data-reveal>
         <div class="section-label">Our Mission</div>
         <h2 id="mission-heading">Every child deserves a space that makes them feel <em class="highlight">safe</em>, <em class="highlight">seen</em>, and <em class="highlight">loved</em>.</h2>
-        <p class="mission-body">A bedroom that feels like theirs. A bathroom that works for them. A therapy room built around who they are. For children with special needs, the right space changes everything — unlocking independence, comfort, and confidence that transforms daily life for the entire family.</p>
+        <p class="mission-body">A bedroom that feels like theirs. A bathroom that works for them. A therapy room built around who they are. For children with special needs, the right space changes everything. It brings independence, comfort, and confidence to daily life for the entire family.</p>
         <p class="mission-body">Since 2012, we've partnered with designers, contractors, and families across Greater Atlanta to create over {stats.totalRooms} life-changing spaces. Every project is unique because every child is unique.</p>
       </div>
       <div class="mission-visual" role="presentation">
@@ -197,7 +197,7 @@ const jsonLd = [getWebSiteSchema(), ...getSiteNavigationSchema()];
     <div class="rooms-inner">
       <div class="rooms-header" data-reveal>
         <div class="section-label">What We Build</div>
-        <h2 id="rooms-heading">Three types of spaces,<br/>one purpose: <em class="highlight">empowering kids</em></h2>
+        <h2 id="rooms-heading">Three types of spaces,<br/>one purpose: <em class="highlight">independence</em></h2>
       </div>
 
       <!-- Three room-type cards -->
@@ -217,7 +217,7 @@ const jsonLd = [getWebSiteSchema(), ...getSiteNavigationSchema()];
               <span class="rm-num" aria-hidden="true">01</span>
               <h3>Accessible Bathrooms</h3>
               <div class="rm-rule"></div>
-              <p>Roll-in showers, grab bars, and lowered vanities — giving children independence and giving families relief from daily struggles.</p>
+              <p>Roll-in showers, grab bars, and lowered vanities that give children independence and give families relief from daily struggles.</p>
               <span class="rm-cta">See our work <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M4 10h12M11 5l5 5-5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
             </div>
           </a>
@@ -237,7 +237,7 @@ const jsonLd = [getWebSiteSchema(), ...getSiteNavigationSchema()];
               <span class="rm-num" aria-hidden="true">02</span>
               <h3>Dream Bedrooms</h3>
               <div class="rm-rule"></div>
-              <p>Personalized sanctuaries where children can escape, imagine, and simply be kids — designed around their unique interests and needs.</p>
+              <p>Personalized sanctuaries where children can escape, imagine, and simply be kids, designed around their unique interests and needs.</p>
               <span class="rm-cta">See our work <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M4 10h12M11 5l5 5-5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
             </div>
           </a>
@@ -257,7 +257,7 @@ const jsonLd = [getWebSiteSchema(), ...getSiteNavigationSchema()];
               <span class="rm-num" aria-hidden="true">03</span>
               <h3>Therapy Rooms</h3>
               <div class="rm-rule"></div>
-              <p>Calming retreats with dimmable lights, swings, crash pads, and textured walls — spaces where children can decompress and develop.</p>
+              <p>Calming retreats with dimmable lights, swings, crash pads, and textured walls, where children can decompress and develop.</p>
               <span class="rm-cta">See our work <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M4 10h12M11 5l5 5-5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
             </div>
           </a>
@@ -276,8 +276,8 @@ const jsonLd = [getWebSiteSchema(), ...getSiteNavigationSchema()];
         </figure>
         <div class="story-content" data-reveal>
           <div class="section-label">Featured Story</div>
-          <h2 id="story-heading">{siteSettings.featuredStoryHeadline || `${fd?.name || 'Zyah'}'s new space gave them independence — and their family peace of mind.`}</h2>
-          <p>{siteSettings.featuredStoryDescription || `${fd?.name || 'Zyah'}, ${Array.isArray(fd?.age) ? `ages ${fd.age.join(', ')}` : `age ${fd?.age || 7}`}, lives with ${fd?.diagnosis || 'Spinal Muscular Atrophy'}. Our team transformed their space into an accessible, joyful haven — with custom features designed around their unique needs and personality.`}</p>
+          <h2 id="story-heading">{siteSettings.featuredStoryHeadline || `${fd?.name || 'Zyah'}'s new space gave them independence, and their family peace of mind.`}</h2>
+          <p>{siteSettings.featuredStoryDescription || `${fd?.name || 'Zyah'}, ${Array.isArray(fd?.age) ? `ages ${fd.age.join(', ')}` : `age ${fd?.age || 7}`}, lives with ${fd?.diagnosis || 'Spinal Muscular Atrophy'}. Our team transformed their space into an accessible, joyful haven with custom features designed around their unique needs and personality.`}</p>
           <a href={`/kids/${featuredSlug}/`} class="btn btn-dark btn-lg story-cta">Read {fd?.name || 'Zyah'}'s Full Story →</a>
         </div>
       </div>
@@ -395,7 +395,7 @@ const jsonLd = [getWebSiteSchema(), ...getSiteNavigationSchema()];
     <div class="finale-inner">
       <img src={`${CF}/brand-logo-nav-circle/w=120,h=120,fit=contain,format=png`} alt="Sunshine on a Ranney Day" class="finale-icon" width="60" height="60" loading="lazy" decoding="async" />
       <h2 id="cta-heading" data-reveal>A room can change a child's life.<br/><em>You</em> can make it happen.</h2>
-      <p data-reveal data-delay="1">Your donation helps build dream spaces for children with special needs in the Atlanta area. Every gift makes a real difference — for kids, rooms, and community.</p>
+      <p data-reveal data-delay="1">Your donation helps build dream spaces for children with special needs in the Atlanta area. Every gift makes a real difference for kids, families, and community.</p>
       <div class="finale-ctas" data-reveal data-delay="2">
         <a href="/donate/" class="btn btn-dark btn-lg">Donate Today</a>
         <a href="/partners/" class="btn btn-outline-dark">Become a Partner</a>

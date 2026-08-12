@@ -76,7 +76,7 @@ const moreGuides = allArticles
 const autoDesc = article.description
   || (article.body
     ? article.body.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 155).replace(/\s\S*$/, '…')
-    : `${article.title} — a resource guide from Sunshine on a Ranney Day.`);
+    : `${article.title}: a resource guide from Sunshine on a Ranney Day.`);
 
 const breadcrumbs = [
   { name: 'Home', url: 'https://sunshineonaranneyday.com/' },

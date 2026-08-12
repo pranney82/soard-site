@@ -74,7 +74,7 @@ const testimonial = adminQuote
     ? {
         // Use Oakley's full bio excerpt — her family's story is incredibly compelling
         quote: "You would never know in her tiny little life that she had ever dealt with anything. She's the one who reminds her family to be grateful, to not forget what they have, and to find the joy even where it seems it shouldn't be.",
-        attribution: `Oakley's family — ${oakleyQuote.data.diagnosis}, ${oakleyQuote.data.year}`
+        attribution: `Oakley's family (${oakleyQuote.data.diagnosis}, ${oakleyQuote.data.year})`
       }
     : fallbackQuotes.length > 0
       ? { quote: fallbackQuotes[0].quote, attribution: `${fallbackQuotes[0].name}'s family` }
@@ -105,7 +105,7 @@ const faqJsonLd = faqs.length ? getFAQSchema(faqs) : undefined;
       <div class="hero-text">
         <p class="hero-eyebrow">For Families</p>
         <h1>Your child deserves a room built just for <em>them</em>.</h1>
-        <p class="hero-lead">Dream bedrooms, accessible bathrooms, and therapy rooms for children with special needs — designed around who they are, built by community, and <strong>always free</strong>.</p>
+        <p class="hero-lead">Dream bedrooms, accessible bathrooms, and therapy rooms for children with special needs. Designed around who they are, built by community, and <strong>always free</strong>.</p>
         <div class="hero-ctas">
           {isOpen && appFormUrl ? (
             <a href={appFormUrl} target="_blank" rel="noopener noreferrer" class="btn btn-primary btn-lg hero-glow">Apply Now &rarr;</a>
@@ -207,8 +207,8 @@ const faqJsonLd = faqs.length ? getFAQSchema(faqs) : undefined;
         <div class="serve-area-text" data-reveal>
           <div class="section-label">Where We Serve</div>
           <h2>Built close to <em class="highlight">home</em></h2>
-          <p class="serve-area-lead">Every makeover happens in the greater Atlanta area. Staying local means our designers, volunteers, and construction partners can be hands-on from the first home visit to the final reveal — and your family stays close to the care and community you already know.</p>
-          <p class="serve-area-note">Not sure if your home is in our service area? <a href={`mailto:${siteSettings.email}`}>Reach out</a> — we'd love to hear your story.</p>
+          <p class="serve-area-lead">Every makeover happens in the greater Atlanta area. Staying local means our designers, volunteers, and construction partners can be hands-on from the first home visit to the final reveal, and your family stays close to the care and community you already know.</p>
+          <p class="serve-area-note">Not sure if your home is in our service area? <a href={`mailto:${siteSettings.email}`}>Reach out</a>. We'd love to hear your story.</p>
         </div>
         <figure class="serve-area-map" data-reveal data-delay="1" style={`background-image:url('${cfLqip(serviceMapId)}')`}>
           <img
@@ -269,7 +269,7 @@ const faqJsonLd = faqs.length ? getFAQSchema(faqs) : undefined;
       <div class="narrative-text">
         <span class="narrative-num" aria-hidden="true">01</span>
         <h3>You Tell Us Your Story</h3>
-        <p>Fill out a short application about your child — their diagnosis, their personality, their dreams, and the way their current space falls short. Every application is read by a real person.</p>
+        <p>Fill out a short application about your child: their diagnosis, their personality, their dreams, and the way their current space falls short. Every application is read by a real person.</p>
       </div>
       <div class="narrative-aside">
         <div class="narrative-callout">
@@ -303,7 +303,7 @@ const faqJsonLd = faqs.length ? getFAQSchema(faqs) : undefined;
       <div class="narrative-text">
         <span class="narrative-num" aria-hidden="true">03</span>
         <h3>Designers Dream It Up</h3>
-        <p>Volunteer designers create a one-of-a-kind concept — your child's favorite colors, characters, and therapeutic needs woven into every surface, every shelf, every detail.</p>
+        <p>Volunteer designers create a one-of-a-kind concept: your child's favorite colors, characters, and therapeutic needs woven into every surface, every shelf, every detail.</p>
       </div>
       <div class="narrative-aside">
         <div class="narrative-callout">
@@ -329,7 +329,7 @@ const faqJsonLd = faqs.length ? getFAQSchema(faqs) : undefined;
       <div class="narrative-text">
         <span class="narrative-num" aria-hidden="true">04</span>
         <h3>The Build Begins</h3>
-        <p>Construction partners bring the design to life over about six weeks. Your family steps away — and when you come back, everything has changed.</p>
+        <p>Construction partners bring the design to life over about six weeks. Your family steps away. When you come back, everything has changed.</p>
       </div>
     </div>
   </section>
@@ -381,7 +381,7 @@ const faqJsonLd = faqs.length ? getFAQSchema(faqs) : undefined;
       <div class="criteria-text" data-reveal>
         <div class="section-label">Who We Serve</div>
         <h2>Every application tells a <em class="highlight">story</em></h2>
-        <p class="criteria-lead">We don't just look at a diagnosis — we look at the whole picture. How would a new space change your child's daily life?</p>
+        <p class="criteria-lead">We don't just look at a diagnosis. We look at the whole picture. How would a new space change your child's daily life?</p>
         <ul class="criteria-list">
           <li>
             <strong>Daily impact & safety</strong>
@@ -400,7 +400,7 @@ const faqJsonLd = faqs.length ? getFAQSchema(faqs) : undefined;
             <span>Can we build the right space within your home's existing footprint?</span>
           </li>
         </ul>
-        <p class="criteria-note">We serve children with special needs in the greater Atlanta area — physical disabilities, autism, sensory processing disorders, chronic illness, and more.</p>
+        <p class="criteria-note">We serve children with special needs in the greater Atlanta area: physical disabilities, autism, sensory processing disorders, chronic illness, and more.</p>
       </div>
       <div class="criteria-stats" data-reveal data-delay="1">
         <div class="criteria-stat-card">
