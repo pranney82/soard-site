@@ -82,7 +82,7 @@ const breadcrumbs = [
       <div class="hero-text">
         <div class="section-label">Give Today</div>
         <h1>A room can change<br/>a child's <em>entire</em> life.</h1>
-        <p class="hero-lead">Your gift builds dream bedrooms, accessible bathrooms, and therapy rooms for children with special needs — at <strong>no cost to families</strong>.</p>
+        <p class="hero-lead">Your gift builds dream bedrooms, accessible bathrooms, and therapy rooms for children with special needs, at <strong>no cost to families</strong>.</p>
         <div class="hero-ctas">
           <a href={ZEFFY_ONETIME} target="_blank" rel="noopener noreferrer" data-zeffy class="btn btn-primary btn-lg btn-hero-glow">Donate Now →</a>
           <a href="#impact" class="btn btn-outline-dark">See Your Impact</a>
@@ -144,8 +144,8 @@ const breadcrumbs = [
         <div class="section-label">Why Your Gift Matters</div>
         <h2>For kids like {donateStoryKidName}, a new room means a <em class="highlight">new beginning</em>.</h2>
         {storyExcerpt ? <p>{storyExcerpt}</p> : <p>{donateStoryKidName} is one of the incredible kids whose life was transformed by a SOARD room makeover.</p>}
-        <p>SOARD transformed {donateStoryKidName}'s home{storyRoomTypes.length > 0 ? ` with a ${storyRoomTypes.join(' and ').toLowerCase()}` : ''} — giving them back independence and a space that's truly <em>theirs</em>.</p>
-        <p><strong>This is what your donation builds.</strong> Not just rooms — but independence, dignity, and joy for kids who deserve it most.</p>
+        <p>SOARD transformed {donateStoryKidName}'s home{storyRoomTypes.length > 0 ? ` with a ${storyRoomTypes.join(' and ').toLowerCase()}` : ''}, giving them back independence and a space that's truly <em>theirs</em>.</p>
+        <p><strong>This is what your donation builds.</strong> Rooms that bring independence, dignity, and joy to kids who deserve it most.</p>
         <a href={`/kids/${donateStoryKidSlug}`} class="btn btn-dark">{`Read ${donateStoryKidName}'s Full Story →`}</a>
         <blockquote class="why-testimonial">
           <p>"Seeing the look on a child's face when they walk into their new room — there's nothing like it. We've been donating to SOARD for three years and every time, we know our money went exactly where it should."</p>
@@ -181,32 +181,32 @@ const breadcrumbs = [
             <span class="tier-feature-amount">$500</span>
             <span class="tier-feature-what">Furniture & Flooring</span>
           </div>
-          <p class="tier-feature-desc">Adaptive furniture or new accessible flooring — the structural pieces that change a child's daily life.</p>
+          <p class="tier-feature-desc">Adaptive furniture or new accessible flooring: the structural pieces that change a child's daily life.</p>
           <a href={`${ZEFFY_ONETIME}?amount=500`} target="_blank" rel="noopener noreferrer" data-zeffy class="btn btn-primary">Give $500 →</a>
         </div>
         <div class="tier-row">
           <div class="tier-item" data-reveal>
             <span class="tier-item-amount">$60</span>
             <strong class="tier-item-what">Paint & Supplies</strong>
-            <p>Transforms a child's walls into their dream canvas — paint, primer, and all materials included.</p>
+            <p>Transforms a child's walls into their dream canvas. Paint, primer, and all materials included.</p>
             <a href={`${ZEFFY_ONETIME}?amount=60`} target="_blank" rel="noopener noreferrer" data-zeffy class="tier-item-cta">Give $60 →</a>
           </div>
           <div class="tier-item" data-reveal data-delay="1">
             <span class="tier-item-amount">$125</span>
             <strong class="tier-item-what">Bedding & Decor</strong>
-            <p>New bedding, curtains, rugs, and wall art — the details that make a room feel like <em>home</em>.</p>
+            <p>New bedding, curtains, rugs, and wall art. The details that make a room feel like <em>home</em>.</p>
             <a href={`${ZEFFY_ONETIME}?amount=125`} target="_blank" rel="noopener noreferrer" data-zeffy class="tier-item-cta">Give $125 →</a>
           </div>
           <div class="tier-item" data-reveal data-delay="2">
             <span class="tier-item-amount">$1,000</span>
             <strong class="tier-item-what">Full Room Sponsor</strong>
-            <p>Funds a complete room transformation — from design to demolition to the big reveal moment.</p>
+            <p>Funds a complete room transformation, from design to demolition to the big reveal moment.</p>
             <a href={`${ZEFFY_ONETIME}?amount=1000`} target="_blank" rel="noopener noreferrer" data-zeffy class="tier-item-cta">Give $1,000 →</a>
           </div>
           <div class="tier-item tier-item--custom" data-reveal data-delay="3">
             <span class="tier-item-amount">Any $</span>
             <strong class="tier-item-what">Your Amount</strong>
-            <p>Every dollar has a purpose. Give whatever feels right — your gift helps build rooms for kids.</p>
+            <p>Every dollar has a purpose. Give whatever feels right. Your gift helps build rooms for kids.</p>
             <a href={`${ZEFFY_ONETIME}?amount=50`} target="_blank" rel="noopener noreferrer" data-zeffy class="tier-item-cta">Choose Your Amount →</a>
           </div>
         </div>
@@ -220,32 +220,32 @@ const breadcrumbs = [
             <span class="tier-feature-amount">$50<span class="tier-freq">/mo</span></span>
             <span class="tier-feature-what">Room Champion</span>
           </div>
-          <p class="tier-feature-desc">$600/year — funds adaptive furniture and flooring that transforms a child's daily life.</p>
+          <p class="tier-feature-desc">$600/year funds adaptive furniture and flooring that transforms a child's daily life.</p>
           <a href={`${ZEFFY_MONTHLY}?amount=50`} target="_blank" rel="noopener noreferrer" data-zeffy class="btn btn-primary">Give $50/mo →</a>
         </div>
         <div class="tier-row">
           <div class="tier-item">
             <span class="tier-item-amount">$10<span class="tier-freq">/mo</span></span>
             <strong class="tier-item-what">Sunshine Starter</strong>
-            <p>Less than 35¢ a day — provides essential supplies for room makeovers all year long.</p>
+            <p>Less than 35¢ a day provides essential supplies for room makeovers all year long.</p>
             <a href={`${ZEFFY_MONTHLY}?amount=10`} target="_blank" rel="noopener noreferrer" data-zeffy class="tier-item-cta">Give $10/mo →</a>
           </div>
           <div class="tier-item">
             <span class="tier-item-amount">$25<span class="tier-freq">/mo</span></span>
             <strong class="tier-item-what">Dream Builder</strong>
-            <p>$300/year — enough to furnish a child's entire dream bedroom with new bedding, decor, and rugs.</p>
+            <p>$300/year is enough to furnish a child's entire dream bedroom with new bedding, decor, and rugs.</p>
             <a href={`${ZEFFY_MONTHLY}?amount=25`} target="_blank" rel="noopener noreferrer" data-zeffy class="tier-item-cta">Give $25/mo →</a>
           </div>
           <div class="tier-item">
             <span class="tier-item-amount">$100<span class="tier-freq">/mo</span></span>
             <strong class="tier-item-what">Legacy Builder</strong>
-            <p>$1,200/year — you're directly sponsoring a complete room transformation for a child in need.</p>
+            <p>At $1,200/year, you're directly sponsoring a complete room transformation for a child in need.</p>
             <a href={`${ZEFFY_MONTHLY}?amount=100`} target="_blank" rel="noopener noreferrer" data-zeffy class="tier-item-cta">Give $100/mo →</a>
           </div>
           <div class="tier-item tier-item--custom">
             <span class="tier-item-amount">Any $</span>
             <strong class="tier-item-what">Your Amount</strong>
-            <p>Set your own monthly amount — your recurring gift helps build rooms for kids who need them most.</p>
+            <p>Set your own monthly amount. Your recurring gift helps build rooms for kids who need them most.</p>
             <a href={`${ZEFFY_MONTHLY}?amount=50`} target="_blank" rel="noopener noreferrer" data-zeffy class="tier-item-cta">Choose Your Amount →</a>
           </div>
         </div>
@@ -255,7 +255,7 @@ const breadcrumbs = [
         <p class="tiers-note tiers-note--sub">Right now, families are on our waitlist hoping for a room makeover. Every donation brings us closer to saying <em>yes</em> to the next child.</p>
         <div class="tiers-match">
           <svg class="tiers-match-icon" viewBox="0 0 24 24" fill="none"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          <p><strong>Double your impact</strong> — many employers match charitable gifts. Check with your HR department to see if your company participates.</p>
+          <p><strong>Double your impact.</strong> Many employers match charitable gifts. Check with your HR department to see if your company participates.</p>
         </div>
       </div>
     </div>
@@ -345,7 +345,7 @@ const breadcrumbs = [
       <div class="other-ways-right" data-reveal data-delay="1">
         <div class="way-item">
           <h3>Stock, DAF & IRA Gifts</h3>
-          <p>Donate stock, recommend a grant from your donor-advised fund, or give from your IRA — all tax-smart ways to build rooms.</p>
+          <p>Donate stock, recommend a grant from your donor-advised fund, or give from your IRA. All tax-smart ways to build rooms.</p>
           <a href="/ways-to-give/">See All Ways to Give →</a>
         </div>
         <div class="way-item">
@@ -355,7 +355,7 @@ const breadcrumbs = [
         </div>
         <div class="way-item">
           <h3>Volunteer or Partner</h3>
-          <p>Contractors, designers, and handy helpers — we need your skills to build these rooms.</p>
+          <p>Contractors, designers, and handy helpers: we need your skills to build these rooms.</p>
           <a href="/partners/">Get Involved →</a>
         </div>
         <div class="way-item">
@@ -370,7 +370,7 @@ const breadcrumbs = [
   <!-- ══════ 6. FAQ — Editorial Split ══════ -->
   <FAQSection
     heading='Everything you need to know before you <em class="highlight-dark">give</em>.'
-    body="We believe in radical transparency. If your question isn't answered here, reach out — we'd love to hear from you."
+    body="We believe in radical transparency. If your question isn't answered here, reach out. We'd love to hear from you."
     ctaLabel="Contact Us →"
     ctaHref="mailto:info@soardcharity.com"
     ctaClass="btn btn-ghost-light"
