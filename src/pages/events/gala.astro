@@ -8,7 +8,7 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
 import FAQAccordion from '../../components/ui/FAQAccordion.astro';
 import { cfRaw, cfSrcset, cfLqip, cfAbsolute } from '../../utils/cf-image';
 import { getEntry } from 'astro:content';
-import { BID_URL, auctionIsOpen } from '../../utils/auction';
+import { BID_URL, auctionIsOpen, bidClosesLabel } from '../../utils/auction';
 
 /* ── Event content (admin-editable via /content/events/2026-evening-of-sunshine.json) ── */
 const eventEntry = await getEntry('events', '2026-evening-of-sunshine');
@@ -17,6 +17,7 @@ const ev = eventEntry?.data ?? {} as any;
 /* ── Online bidding: while it's open, "Bid Now" outranks the ticket CTA
    everywhere on this page. Cutoff lives in utils/auction.ts. ── */
 const auctionOpen = auctionIsOpen();
+const bidClosesAt = bidClosesLabel();
 
 /* ── Gala-specific CMS data (admin-editable via gala.json) ── */
 const galaData = await getEntry('site', 'gala');
@@ -771,6 +772,7 @@ const eventJsonLd = {
             Browse &amp; Bid
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
           </a>
+          <p class="gv-bidnow__deadline">Bidding closes {bidClosesAt}</p>
         </div>
       </div>
     </section>
@@ -2149,6 +2151,14 @@ const eventJsonLd = {
     line-height: 1.65;
     color: rgba(255, 255, 255, 0.78);
   }
+  .gv-bidnow__deadline {
+    margin: 1rem 0 0;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.5);
+  }
 
   /* ─── Testimonial ─── */
   .gv-testimonial {
@@ -3180,6 +3190,15 @@ const eventJsonLd = {
     color: var(--c-dark);
     box-shadow: 0 4px 14px var(--c-yellow-glow);
   }
+  /* The global Facebook Live pill is fixed bottom-left at z-index 900, which
+     lands it right on top of this bar. Both are live on gala night, so lift
+     the pill clear of the bar for as long as the bar is showing. */
+  @media (max-width: 768px) {
+    :global(body:has(.gv-sticky-cta.is-visible)) :global(.live-pill) {
+      bottom: calc(1rem + 76px + env(safe-area-inset-bottom, 0px));
+    }
+  }
+
   @media (max-width: 768px) {
     .gv-sticky-cta { display: block; }
     /* Push the last fixed area's worth of content up so the sticky CTA never covers it */
