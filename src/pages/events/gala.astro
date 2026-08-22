@@ -8,10 +8,15 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
 import FAQAccordion from '../../components/ui/FAQAccordion.astro';
 import { cfRaw, cfSrcset, cfLqip, cfAbsolute } from '../../utils/cf-image';
 import { getEntry } from 'astro:content';
+import { BID_URL, auctionIsOpen } from '../../utils/auction';
 
 /* ── Event content (admin-editable via /content/events/2026-evening-of-sunshine.json) ── */
 const eventEntry = await getEntry('events', '2026-evening-of-sunshine');
 const ev = eventEntry?.data ?? {} as any;
+
+/* ── Online bidding: while it's open, "Bid Now" outranks the ticket CTA
+   everywhere on this page. Cutoff lives in utils/auction.ts. ── */
+const auctionOpen = auctionIsOpen();
 
 /* ── Gala-specific CMS data (admin-editable via gala.json) ── */
 const galaData = await getEntry('site', 'gala');
@@ -230,7 +235,14 @@ const eventJsonLd = {
           </div>
         </div>
         <div class="gv-hero__actions" data-reveal>
-          <a href={ev.ticketUrl || '#tickets'} target={ev.ticketUrl ? '_blank' : undefined} rel={ev.ticketUrl ? 'noopener' : undefined} class="gv-btn gv-btn--coral gv-btn--hero">
+          {auctionOpen && (
+            <a href={BID_URL} target="_blank" rel="noopener" class="gv-btn gv-btn--bid gv-btn--hero">
+              <span class="gv-btn__dot" aria-hidden="true"></span>
+              Bid Now
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+            </a>
+          )}
+          <a href={ev.ticketUrl || '#tickets'} target={ev.ticketUrl ? '_blank' : undefined} rel={ev.ticketUrl ? 'noopener' : undefined} class:list={['gv-btn', 'gv-btn--hero', auctionOpen ? 'gv-btn--outline-white' : 'gv-btn--coral']}>
             Reserve Your Seat
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
           </a>
@@ -743,6 +755,27 @@ const eventJsonLd = {
   )}
 
   <!-- ═══ AUCTION HIGHLIGHTS ═══ -->
+  {auctionOpen && (
+    <section class="gv-bidnow" aria-labelledby="gv-bidnow-heading">
+      <div class="container gv-bidnow__inner">
+        <div class="gv-bidnow__card" data-reveal>
+          <span class="gv-bidnow__label">
+            <span class="gv-btn__dot" aria-hidden="true"></span>
+            Bidding Is Open
+          </span>
+          <h2 id="gv-bidnow-heading" class="gv-bidnow__heading">The Auction Is Live</h2>
+          <p class="gv-bidnow__copy">
+            Browse this year's packages and place a bid from your phone. You do not need a seat in the room to win, and every winning bid funds a child's room.
+          </p>
+          <a href={BID_URL} target="_blank" rel="noopener" class="gv-btn gv-btn--bid gv-btn--hero">
+            Browse &amp; Bid
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+          </a>
+        </div>
+      </div>
+    </section>
+  )}
+
   {auctionItems.length > 0 && (
     <section class="gv-auction">
       <div class="container gv-auction__inner">
@@ -909,9 +942,17 @@ const eventJsonLd = {
         <div class="gv-cta__glow" aria-hidden="true"></div>
         <span class="gv-cta__eyebrow">Can't Make It?</span>
         <h2>Bid From Anywhere.<br/>Help From Everywhere.</h2>
-        <p>The silent auction goes online ahead of the gala, and a direct donation goes the same place every dollar at the gala goes: into a child's room.</p>
+        <p>{auctionOpen
+          ? 'The silent auction is live online, so you can bid from your couch, and a direct donation goes the same place every dollar at the gala goes: into a child\'s room.'
+          : 'The silent auction goes online ahead of the gala, and a direct donation goes the same place every dollar at the gala goes: into a child\'s room.'}</p>
         <div class="gv-cta__actions">
-          <a href={ev.ticketUrl || 'https://www.zeffy.com/en-US/ticketing/2026-evening-of-sunshine'} target="_blank" rel="noopener" class="gv-btn gv-btn--coral">Reserve a Seat</a>
+          {auctionOpen && (
+            <a href={BID_URL} target="_blank" rel="noopener" class="gv-btn gv-btn--bid">
+              <span class="gv-btn__dot" aria-hidden="true"></span>
+              Bid Now
+            </a>
+          )}
+          <a href={ev.ticketUrl || 'https://www.zeffy.com/en-US/ticketing/2026-evening-of-sunshine'} target="_blank" rel="noopener" class:list={['gv-btn', auctionOpen ? 'gv-btn--outline-white' : 'gv-btn--coral']}>Reserve a Seat</a>
           <a href="/donate/" class="gv-btn gv-btn--outline-white">Donate Directly</a>
         </div>
       </div>
@@ -920,8 +961,13 @@ const eventJsonLd = {
 
   <!-- ═══ STICKY MOBILE CTA ═══ -->
   <div class="gv-sticky-cta" aria-hidden="true">
-    <a href={ev.ticketUrl || 'https://www.zeffy.com/en-US/ticketing/2026-evening-of-sunshine'} target="_blank" rel="noopener" class="gv-sticky-cta__btn">
-      Reserve Your Seat
+    <a
+      href={auctionOpen ? BID_URL : (ev.ticketUrl || 'https://www.zeffy.com/en-US/ticketing/2026-evening-of-sunshine')}
+      target="_blank" rel="noopener"
+      class:list={['gv-sticky-cta__btn', { 'gv-sticky-cta__btn--bid': auctionOpen }]}
+    >
+      {auctionOpen && <span class="gv-btn__dot" aria-hidden="true"></span>}
+      {auctionOpen ? 'Bid Now' : 'Reserve Your Seat'}
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
     </a>
   </div>
@@ -955,6 +1001,7 @@ const eventJsonLd = {
   [data-reveal].is-visible { opacity: 1; transform: translateY(0); }
   @media (prefers-reduced-motion: reduce) {
     [data-reveal] { transition: none; opacity: 1; transform: none; }
+    .gv-btn__dot { animation: none; }
   }
 
   /* ─── Buttons ─── */
@@ -982,6 +1029,33 @@ const eventJsonLd = {
     transform: translateY(-2px);
     box-shadow: 0 10px 30px rgba(199, 93, 74, 0.4);
   }
+  /* Bidding CTA — brand yellow, deliberately louder than the coral ticket
+     button so "Bid Now" wins the eye while the auction is open. */
+  .gv-btn--bid {
+    background: var(--c-yellow);
+    color: var(--c-dark);
+    font-weight: 700;
+    box-shadow: 0 4px 16px var(--c-yellow-glow);
+  }
+  .gv-btn--bid:hover {
+    background: var(--c-yellow-hover);
+    transform: translateY(-2px);
+    box-shadow: 0 10px 30px var(--c-yellow-glow);
+  }
+  .gv-btn__dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: currentColor;
+    box-shadow: 0 0 0 0 currentColor;
+    animation: gv-bid-pulse 2s ease-out infinite;
+  }
+  @keyframes gv-bid-pulse {
+    0%   { opacity: 1;   transform: scale(1); }
+    50%  { opacity: 0.35; transform: scale(0.8); }
+    100% { opacity: 1;   transform: scale(1); }
+  }
+
   .gv-btn--outline-white {
     background: rgba(255, 255, 255, 0.06);
     color: #fff;
@@ -2035,6 +2109,47 @@ const eventJsonLd = {
   }
   .gv-auction__footnote a:hover { text-decoration-color: var(--gv-gold); }
 
+  /* ─── Live bidding band ─── */
+  .gv-bidnow {
+    background: var(--gv-sand);
+    padding: var(--space-4xl) 0;
+  }
+  .gv-bidnow__card {
+    max-width: 44rem;
+    margin: 0 auto;
+    text-align: center;
+    background: var(--gv-midnight);
+    color: #fff;
+    border-radius: 22px;
+    padding: var(--space-2xl) var(--space-xl);
+    box-shadow: var(--shadow-lg);
+  }
+  .gv-bidnow__label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--c-yellow);
+    margin-bottom: 1rem;
+  }
+  .gv-bidnow__heading {
+    font-family: var(--font-display);
+    font-size: clamp(1.6rem, 4vw, 2.3rem);
+    line-height: 1.15;
+    margin: 0 0 0.85rem;
+    color: #fff;
+  }
+  .gv-bidnow__copy {
+    max-width: 34rem;
+    margin: 0 auto var(--space-lg);
+    font-size: 1rem;
+    line-height: 1.65;
+    color: rgba(255, 255, 255, 0.78);
+  }
+
   /* ─── Testimonial ─── */
   .gv-testimonial {
     padding: var(--space-4xl) 0;
@@ -3059,6 +3174,11 @@ const eventJsonLd = {
     background: linear-gradient(135deg, var(--gv-coral), var(--gv-sunset));
     color: #fff;
     box-shadow: 0 4px 14px rgba(199, 93, 74, 0.4);
+  }
+  .gv-sticky-cta__btn--bid {
+    background: var(--c-yellow);
+    color: var(--c-dark);
+    box-shadow: 0 4px 14px var(--c-yellow-glow);
   }
   @media (max-width: 768px) {
     .gv-sticky-cta { display: block; }
