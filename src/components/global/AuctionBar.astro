@@ -19,7 +19,7 @@
  * Dismissal is per-session, not permanent — this runs for about a day, and
  * someone returning tomorrow should see it again.
  */
-import { BID_URL, BID_CLOSES_MS, auctionIsOpen, bidClosesLabel } from '../../utils/auction';
+import { BID_URL, BID_CLOSES_MS, auctionIsOpen, bidClosesLabel, AUCTION_ITEM_COUNT, AUCTION_TEASER } from '../../utils/auction';
 
 const show = auctionIsOpen();
 const closesLabel = bidClosesLabel();
@@ -35,6 +35,7 @@ const closesLabel = bidClosesLabel();
           var dead = Date.now() >= closesAt;
           var gone = sessionStorage.getItem('soard-auction-bar') === 'dismissed';
           if (dead || gone) document.documentElement.classList.add('auction-bar-off');
+          else document.documentElement.classList.add('auction-bar-anim');
         } catch (e) {
           /* sessionStorage throws in some private modes; showing the bar is the safe fallback */
         }
@@ -45,8 +46,12 @@ const closesLabel = bidClosesLabel();
       <a class="auction-bar__link" href={BID_URL} target="_blank" rel="noopener">
         <span class="auction-bar__dot" aria-hidden="true"></span>
         <span class="auction-bar__copy">
-          <span class="auction-bar__long">Bidding closes {closesLabel}</span>
-          <span class="auction-bar__short">Closes {closesLabel.replace(/^\w+ at /, '')}</span>
+          <span class="auction-bar__teaser">{AUCTION_TEASER}</span>
+          <span class="auction-bar__meta">
+            <strong class="auction-bar__count">{AUCTION_ITEM_COUNT} items live</strong>
+            <span class="auction-bar__sep" aria-hidden="true">&middot;</span>
+            <span class="auction-bar__time">Closes {closesLabel}</span>
+          </span>
         </span>
         <span class="auction-bar__cta">
           Bid Now
@@ -62,17 +67,14 @@ const closesLabel = bidClosesLabel();
       (function () {
         var HOUR = 3600000, MIN = 60000;
 
-        /* Long form for the desktop strip, short for narrow phones. Both go
+        /* Only the time phrase changes; the item context is static. Goes
            urgent under an hour, which is when hesitant bidders convert. */
-        function phrases(msLeft) {
+        function phrase(msLeft) {
           if (msLeft >= 24 * HOUR) return null; // keep the server-rendered absolute time
           var h = Math.floor(msLeft / HOUR);
           var m = Math.floor((msLeft % HOUR) / MIN);
-          if (msLeft < HOUR) {
-            return { long: 'Final hour to bid, ' + Math.max(m, 1) + 'm left', short: Math.max(m, 1) + 'm left', urgent: true };
-          }
-          var span = m === 0 ? h + 'h' : h + 'h ' + m + 'm';
-          return { long: 'Bidding closes in ' + span, short: 'Closes in ' + span, urgent: false };
+          if (msLeft < HOUR) return { text: 'Final hour, ' + Math.max(m, 1) + 'm left', urgent: true };
+          return { text: 'Closes in ' + (m === 0 ? h + 'h' : h + 'h ' + m + 'm'), urgent: false };
         }
 
         function tick() {
@@ -83,12 +85,10 @@ const closesLabel = bidClosesLabel();
             return;
           }
           if (!bar) return;
-          var p = phrases(left);
+          var p = phrase(left);
           if (!p) return;
-          var lo = bar.querySelector('.auction-bar__long');
-          var sh = bar.querySelector('.auction-bar__short');
-          if (lo) lo.textContent = p.long;
-          if (sh) sh.textContent = p.short;
+          var t = bar.querySelector('.auction-bar__time');
+          if (t) t.textContent = p.text;
           bar.classList.toggle('is-urgent', p.urgent);
         }
 
@@ -105,10 +105,20 @@ const closesLabel = bidClosesLabel();
           }
         }
 
+        /* Let the page settle for a beat, then bring the bar in. */
+        function enter() {
+          var bar = document.querySelector('.auction-bar');
+          if (!bar || bar.classList.contains('is-in')) return;
+          requestAnimationFrame(function () {
+            requestAnimationFrame(function () { bar.classList.add('is-in'); });
+          });
+        }
+
         wire();
         tick();
+        setTimeout(enter, 350);
         setInterval(tick, 30000);
-        document.addEventListener('astro:page-load', function () { wire(); tick(); });
+        document.addEventListener('astro:page-load', function () { wire(); tick(); enter(); });
       })();
     </script>
   </>
@@ -137,16 +147,31 @@ const closesLabel = bidClosesLabel();
   /* Hidden by the inline script when dismissed or past the cutoff. */
   :global(html.auction-bar-off) .auction-bar { display: none; }
 
+  /* Entrance. Only armed when the inline script ran, so no-JS shows in place. */
+  :global(html.auction-bar-anim) .auction-bar {
+    transform: translateY(100%);
+    transition: transform 550ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  :global(html.auction-bar-anim) .auction-bar.is-in { transform: none; }
+
   .auction-bar__link {
-    display: flex;
+    display: grid;
+    grid-template-columns: auto 1fr auto;
     align-items: center;
-    gap: 0.6rem;
+    column-gap: 0.6rem;
+    row-gap: 0.25rem;
     flex: 1;
     min-width: 0;
-    padding: 0.7rem 0.4rem 0.7rem 1rem;
+    padding: 0.6rem 0.4rem 0.6rem 1rem;
     color: inherit;
     text-decoration: none;
   }
+  /* Let the copy's children become grid items so they can be placed. */
+  .auction-bar__copy { display: contents; }
+  .auction-bar__dot    { grid-area: 1 / 1 / 2 / 2; }
+  .auction-bar__teaser { grid-area: 1 / 2 / 2 / 4; }
+  .auction-bar__meta   { grid-area: 2 / 1 / 3 / 3; }
+  .auction-bar__cta    { grid-area: 2 / 3 / 3 / 4; }
   .auction-bar__link:focus-visible {
     outline: 2px solid var(--c-yellow);
     outline-offset: -3px;
@@ -168,10 +193,10 @@ const closesLabel = bidClosesLabel();
   }
   /* Under an hour the dot beats faster and the copy goes yellow. */
   .auction-bar.is-urgent .auction-bar__dot { animation-duration: 1s; }
-  .auction-bar.is-urgent .auction-bar__copy { color: var(--c-yellow); font-weight: 700; }
+  .auction-bar.is-urgent .auction-bar__time { color: var(--c-yellow); font-weight: 700; }
 
-  .auction-bar__copy {
-    min-width: 0;
+  /* What is actually up for grabs. This is the line that earns the tap. */
+  .auction-bar__teaser {
     font-size: 0.8125rem;
     font-weight: 600;
     letter-spacing: 0.01em;
@@ -179,9 +204,18 @@ const closesLabel = bidClosesLabel();
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  /* One phrasing per breakpoint; the script keeps both in sync. */
-  .auction-bar__long { display: none; }
-  .auction-bar__short { display: inline; }
+  .auction-bar__meta {
+    display: flex;
+    align-items: baseline;
+    gap: 0.35rem;
+    font-size: 0.75rem;
+    color: rgba(254, 252, 245, 0.6);
+    white-space: nowrap;
+  }
+  .auction-bar__count { font-weight: 700; color: var(--c-yellow); }
+  .auction-bar__sep { opacity: 0.55; }
+  /* Tabular figures so the minutes ticking down never shift the layout. */
+  .auction-bar__time { font-variant-numeric: tabular-nums; }
 
   .auction-bar__cta {
     display: inline-flex;
@@ -218,7 +252,7 @@ const closesLabel = bidClosesLabel();
 
   /* Keep the page's own content clear of the fixed bar. */
   @media (max-width: 767px) {
-    :global(body) { padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px)); }
+    :global(body) { padding-bottom: calc(86px + env(safe-area-inset-bottom, 0px)); }
     :global(html.auction-bar-off body) { padding-bottom: 0; }
 
     /* The gala page ships its own sticky bid bar; never stack two. */
@@ -247,18 +281,40 @@ const closesLabel = bidClosesLabel();
       gap: 0.75rem;
       padding: 0.6rem 0.5rem 0.6rem 1rem;
     }
-    .auction-bar__copy { font-size: 0.875rem; }
-    .auction-bar__long { display: inline; }
-    .auction-bar__short { display: none; }
+    .auction-bar__link {
+      display: flex;
+      align-items: center;
+      gap: 0.55rem;
+      flex: 0 1 auto;
+    }
+    /* Flatten both wrappers so every part sits on one row. */
+    .auction-bar__copy,
+    .auction-bar__meta { display: contents; }
+    .auction-bar__count { order: -1; font-size: 0.875rem; }
+    .auction-bar__sep { order: -1; }
+    .auction-bar__teaser { order: 0; font-size: 0.875rem; font-weight: 400; color: rgba(254, 252, 245, 0.72); }
+    .auction-bar__time { order: 1; font-size: 0.875rem; color: rgba(254, 252, 245, 0.72); }
+    .auction-bar__time::before { content: '\00B7'; margin-right: 0.55rem; opacity: 0.55; }
     .auction-bar__cta {
       font-size: 0.8125rem;
       padding: 0.3rem 0.7rem;
     }
     .auction-bar__link:hover .auction-bar__cta { transform: translateX(2px); }
     .auction-bar__dismiss { width: 2rem; }
+    /* In flow at the top: slide down into space already reserved, so no shift. */
+    :global(html.auction-bar-anim) .auction-bar { transform: translateY(-100%); }
+    :global(html.auction-bar-anim) .auction-bar.is-in { transform: none; }
+  }
+
+  /* Sub-375px phones: one step down keeps the whole teaser on the line. */
+  @media (max-width: 374px) {
+    .auction-bar__teaser { font-size: 0.75rem; }
+    .auction-bar__meta { font-size: 0.6875rem; }
+    .auction-bar__cta { padding: 0.55rem 0.8rem; }
   }
 
   @media (prefers-reduced-motion: reduce) {
+    :global(html.auction-bar-anim) .auction-bar { transform: none; transition: none; }
     .auction-bar__dot { animation: none; }
     .auction-bar__link:hover .auction-bar__cta { transform: none; }
   }
