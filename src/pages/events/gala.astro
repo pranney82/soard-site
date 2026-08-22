@@ -8,7 +8,7 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
 import FAQAccordion from '../../components/ui/FAQAccordion.astro';
 import { cfRaw, cfSrcset, cfLqip, cfAbsolute } from '../../utils/cf-image';
 import { getEntry } from 'astro:content';
-import { BID_URL, auctionIsOpen, bidClosesLabel } from '../../utils/auction';
+import { BID_URL, auctionIsOpen, bidClosesLabel, AUCTION_ITEM_COUNT, AUCTION_CATEGORIES, AUCTION_HIGHLIGHTS } from '../../utils/auction';
 
 /* ── Event content (admin-editable via /content/events/2026-evening-of-sunshine.json) ── */
 const eventEntry = await getEntry('events', '2026-evening-of-sunshine');
@@ -759,17 +759,67 @@ const eventJsonLd = {
   {auctionOpen && (
     <section class="gv-bidnow" aria-labelledby="gv-bidnow-heading">
       <div class="container gv-bidnow__inner">
-        <div class="gv-bidnow__card" data-reveal>
-          <span class="gv-bidnow__label">
+        <header class="gv-bidnow__header">
+          <span class="gv-bidnow__label" data-reveal>
             <span class="gv-btn__dot" aria-hidden="true"></span>
             Bidding Is Open
           </span>
-          <h2 id="gv-bidnow-heading" class="gv-bidnow__heading">The Auction Is Live</h2>
-          <p class="gv-bidnow__copy">
-            Browse this year's packages and place a bid from your phone. You do not need a seat in the room to win, and every winning bid funds a child's room.
+          <h2 id="gv-bidnow-heading" class="gv-bidnow__heading" data-reveal>
+            {AUCTION_ITEM_COUNT} Items. One Night.
+          </h2>
+          <p class="gv-bidnow__copy" data-reveal>
+            Suite tickets, beach weeks, and a Delta galley cart rebuilt into a bar.
+            Bid from your phone whether or not you have a seat in the room.
           </p>
+        </header>
+
+        <ul class="gv-bidnow__cats" data-reveal>
+          {AUCTION_CATEGORIES.map((c) => (
+            <li class="gv-bidnow__cat">
+              <span class="gv-bidnow__cat-count">{c.count}</span>
+              <span class="gv-bidnow__cat-name">{c.name}</span>
+            </li>
+          ))}
+        </ul>
+
+        <div class="gv-bidnow__grid">
+          {AUCTION_HIGHLIGHTS.map((h, i) => (
+            <article
+              class:list={['gv-bidnow__card', `gv-bidnow__card--${h.tone}`, { 'gv-bidnow__card--hero': h.hero }]}
+              data-reveal
+              style={`--gv-i:${i}`}
+            >
+              <div class="gv-bidnow__art" aria-hidden="true">
+                <span class="gv-bidnow__glyph">
+                  {h.icon === 'trophy' && (
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0z"/></svg>
+                  )}
+                  {h.icon === 'ticket' && (
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2z"/><path d="M13 5v2"/><path d="M13 11v2"/><path d="M13 17v2"/></svg>
+                  )}
+                  {h.icon === 'water' && (
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 6c.6.5 1.2 1 2.5 1C7 7 7 5 9.5 5c2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/><path d="M2 12c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/><path d="M2 18c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/></svg>
+                  )}
+                  {h.icon === 'beach' && (
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22V8"/><path d="M12 8c-3-3-7-2-9 1 3-1 6 0 9 0z"/><path d="M12 8c3-3 7-2 9 1-3-1-6 0-9 0z"/><path d="M3 22h18"/></svg>
+                  )}
+                  {h.icon === 'plane' && (
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17.8 19.2 16 11l3.5-3.5a2.12 2.12 0 0 0-3-3L13 8 4.8 6.2a.5.5 0 0 0-.5.8l3.2 4-2.5 2.5-1.6-.4a.5.5 0 0 0-.5.8l2 2 2 2a.5.5 0 0 0 .8-.5l-.4-1.6L10 13.5l4 3.2a.5.5 0 0 0 .8-.5z"/></svg>
+                  )}
+                </span>
+              </div>
+              <div class="gv-bidnow__body">
+                <span class="gv-bidnow__lot">Lot {h.lot}</span>
+                <h3 class="gv-bidnow__card-name">{h.name}</h3>
+                <p class="gv-bidnow__card-detail">{h.detail}</p>
+              </div>
+            </article>
+          ))}
+        </div>
+
+        <div class="gv-bidnow__foot" data-reveal>
           <a href={BID_URL} target="_blank" rel="noopener" class="gv-btn gv-btn--bid gv-btn--hero">
-            Browse &amp; Bid
+            Browse All {AUCTION_ITEM_COUNT} Items
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
           </a>
           <p class="gv-bidnow__deadline">Bidding closes {bidClosesAt}</p>
@@ -2113,44 +2163,181 @@ const eventJsonLd = {
 
   /* ─── Live bidding band ─── */
   .gv-bidnow {
-    background: var(--gv-sand);
+    background: var(--gv-midnight);
     padding: var(--space-4xl) 0;
   }
-  .gv-bidnow__card {
-    max-width: 44rem;
-    margin: 0 auto;
-    text-align: center;
-    background: var(--gv-midnight);
-    color: #fff;
-    border-radius: 22px;
-    padding: var(--space-2xl) var(--space-xl);
-    box-shadow: var(--shadow-lg);
-  }
+  .gv-bidnow__header { text-align: center; max-width: 46rem; margin: 0 auto; }
   .gv-bidnow__label {
     display: inline-flex;
     align-items: center;
     gap: 0.5rem;
     font-size: 0.75rem;
     font-weight: 700;
-    letter-spacing: 0.12em;
+    letter-spacing: 0.14em;
     text-transform: uppercase;
     color: var(--c-yellow);
     margin-bottom: 1rem;
   }
   .gv-bidnow__heading {
     font-family: var(--font-display);
-    font-size: clamp(1.6rem, 4vw, 2.3rem);
-    line-height: 1.15;
-    margin: 0 0 0.85rem;
+    font-size: clamp(1.7rem, 4.4vw, 2.6rem);
+    line-height: 1.12;
+    margin: 0 0 0.9rem;
     color: #fff;
   }
   .gv-bidnow__copy {
-    max-width: 34rem;
-    margin: 0 auto var(--space-lg);
+    margin: 0 auto;
+    max-width: 36rem;
     font-size: 1rem;
     line-height: 1.65;
-    color: rgba(255, 255, 255, 0.78);
+    color: rgba(255, 255, 255, 0.72);
   }
+
+  /* Category counts: proof of depth at a glance */
+  .gv-bidnow__cats {
+    list-style: none;
+    margin: var(--space-xl) auto 0;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.5rem;
+  }
+  .gv-bidnow__cat {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.45rem;
+    padding: 0.4rem 0.85rem;
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    border-radius: 100px;
+    background: rgba(255, 255, 255, 0.045);
+  }
+  .gv-bidnow__cat-count {
+    font-family: var(--font-display);
+    font-size: 0.95rem;
+    color: var(--c-yellow);
+  }
+  .gv-bidnow__cat-name {
+    font-size: 0.8rem;
+    color: rgba(255, 255, 255, 0.72);
+    white-space: nowrap;
+  }
+
+  /* ─── Marquee lots ───
+     Six cards on a 4-column bed. The two heroes span two columns each, so
+     row one is hero+hero and row two is the four supporting lots: no
+     orphans at any breakpoint. Each lot carries a tinted art panel rather
+     than a photo, following the designed-cover approach used on the
+     financials page, since item photography lives in Qtego, not our CDN. */
+  .gv-bidnow__grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1rem;
+    margin-top: var(--space-xl);
+  }
+  @media (min-width: 620px) {
+    .gv-bidnow__grid { grid-template-columns: repeat(2, 1fr); }
+    .gv-bidnow__card--hero { grid-column: span 2; }
+  }
+  @media (min-width: 1080px) {
+    .gv-bidnow__grid { grid-template-columns: repeat(4, 1fr); }
+  }
+
+  .gv-bidnow__card {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.045);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
+    transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+                border-color 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+                background 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+    transition-delay: calc(var(--gv-i, 0) * 60ms);
+  }
+  .gv-bidnow__card:hover {
+    transform: translateY(-3px);
+    border-color: rgba(255, 218, 36, 0.4);
+    background: rgba(255, 255, 255, 0.07);
+  }
+
+  /* Art panel: a category-tinted wash behind an oversized glyph. */
+  .gv-bidnow__art {
+    position: relative;
+    display: grid;
+    place-items: center;
+    height: 108px;
+    overflow: hidden;
+    /* Same construction as the hero sky: a low sunset glow over a raking
+       gradient, so the lots read as part of this gala rather than as
+       generic tinted tiles. */
+    background:
+      radial-gradient(ellipse 75% 60% at 50% 100%, var(--gv-tone-glow) 0%, transparent 62%),
+      radial-gradient(circle 120px at 78% 18%, rgba(255, 230, 180, 0.22) 0%, transparent 70%),
+      linear-gradient(160deg, var(--gv-tone-a) 0%, var(--gv-tone-b) 100%);
+  }
+  /* The hero's film grain, carried through for texture continuity. */
+  .gv-bidnow__art::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    opacity: 0.05;
+    mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-size: 200px 200px;
+  }
+  .gv-bidnow__glyph {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    place-items: center;
+    /* Per-tone, because gold is a light ground and needs dark ink on it,
+       the same way the brand's yellow buttons carry dark text. */
+    color: var(--gv-glyph, rgba(255, 255, 255, 0.92));
+  }
+  .gv-bidnow__glyph svg { width: 42px; height: 42px; }
+
+  .gv-bidnow__card--sport  { --gv-tone-a: #c75d4a; --gv-tone-b: #7e3327; --gv-tone-glow: rgba(232, 152, 112, 0.6); }
+  .gv-bidnow__card--escape { --gv-tone-a: #2b7f9e; --gv-tone-b: #123c4e; --gv-tone-glow: rgba(120, 200, 216, 0.45); }
+  .gv-bidnow__card--rare   { --gv-tone-a: #d4a017; --gv-tone-b: #a2760c; --gv-tone-glow: rgba(255, 230, 180, 0.55); --gv-glyph: var(--gv-midnight); }
+
+  .gv-bidnow__body { padding: 1.15rem 1.35rem 1.4rem; }
+  .gv-bidnow__lot {
+    display: block;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--gv-gold);
+    padding-bottom: 0.55rem;
+    margin-bottom: 0.6rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+    font-variant-numeric: tabular-nums;
+  }
+  .gv-bidnow__card-name {
+    font-family: var(--font-display);
+    font-size: 1.05rem;
+    line-height: 1.3;
+    color: #fff;
+    margin: 0 0 0.4rem;
+  }
+  .gv-bidnow__card-detail {
+    font-size: 0.85rem;
+    line-height: 1.6;
+    color: rgba(255, 255, 255, 0.62);
+    margin: 0;
+  }
+
+  /* Heroes: taller panel, bigger glyph, larger title. */
+  @media (min-width: 620px) {
+    .gv-bidnow__card--hero .gv-bidnow__art { height: 150px; }
+    .gv-bidnow__card--hero .gv-bidnow__glyph svg { width: 60px; height: 60px; }
+    .gv-bidnow__card--hero .gv-bidnow__card-name { font-size: 1.35rem; }
+    .gv-bidnow__card--hero .gv-bidnow__card-detail { font-size: 0.9rem; }
+    .gv-bidnow__card--hero .gv-bidnow__body { padding: 1.4rem 1.6rem 1.6rem; }
+  }
+
+  .gv-bidnow__foot { text-align: center; margin-top: var(--space-2xl); }
   .gv-bidnow__deadline {
     margin: 1rem 0 0;
     font-size: 0.8125rem;
@@ -2158,7 +2345,122 @@ const eventJsonLd = {
     letter-spacing: 0.06em;
     text-transform: uppercase;
     color: rgba(255, 255, 255, 0.5);
+    font-variant-numeric: tabular-nums;
   }
+
+  @media (prefers-reduced-motion: reduce) {
+    .gv-bidnow__card { transition: none; }
+    .gv-bidnow__card:hover { transform: none; }
+  }
+
+  .gv-auction {
+    background: var(--gv-midnight);
+    padding: var(--space-5xl) 0;
+    position: relative;
+    overflow: hidden;
+  }
+  .gv-auction::before { display: none; }
+  .gv-auction__inner { position: relative; }
+  .gv-auction__header {
+    text-align: center;
+    max-width: 640px;
+    margin: 0 auto var(--space-3xl);
+  }
+  .gv-auction__label {
+    display: inline-block;
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    color: var(--gv-gold);
+    background: rgba(212, 160, 23, 0.12);
+    padding: 0.35rem 0.85rem;
+    border-radius: 100px;
+    margin-bottom: var(--space-sm);
+    border: 1px solid rgba(212, 160, 23, 0.2);
+  }
+  .gv-auction__heading {
+    font-family: var(--font-display);
+    font-size: clamp(1.8rem, 4vw, 2.6rem);
+    color: #fff;
+    margin-bottom: var(--space-md);
+    letter-spacing: -0.02em;
+  }
+  .gv-auction__sub {
+    font-size: 0.98rem;
+    line-height: 1.75;
+    color: rgba(255, 255, 255, 0.65);
+  }
+
+  .gv-auction__grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: var(--space-lg);
+  }
+  @media (min-width: 640px) {
+    .gv-auction__grid { grid-template-columns: repeat(2, 1fr); }
+  }
+  @media (min-width: 960px) {
+    .gv-auction__grid { grid-template-columns: repeat(4, 1fr); }
+  }
+
+  .gv-auction__card {
+    position: relative;
+    padding: 1.75rem 1.5rem;
+    background: rgba(255, 255, 255, 0.045);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 14px;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+                border-color 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+                background 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+    transition-delay: calc(var(--gv-i, 0) * 80ms);
+  }
+  .gv-auction__card:hover {
+    transform: translateY(-4px);
+    background: rgba(255, 255, 255, 0.07);
+    border-color: rgba(212, 160, 23, 0.4);
+  }
+  .gv-auction__paddle {
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    color: var(--gv-gold);
+    border: 1px solid rgba(212, 160, 23, 0.3);
+    border-radius: 10px;
+    margin-bottom: var(--space-md);
+  }
+  .gv-auction__name {
+    font-family: var(--font-display);
+    font-size: 1.15rem;
+    color: #fff;
+    margin-bottom: 0.6rem;
+    line-height: 1.3;
+  }
+  .gv-auction__detail {
+    font-size: 0.88rem;
+    line-height: 1.7;
+    color: rgba(255, 255, 255, 0.65);
+    margin: 0;
+  }
+  .gv-auction__footnote {
+    text-align: center;
+    margin-top: var(--space-2xl);
+    font-size: 0.9rem;
+    color: rgba(255, 255, 255, 0.55);
+  }
+  .gv-auction__footnote a {
+    color: var(--gv-gold);
+    text-decoration: underline;
+    text-decoration-color: rgba(212, 160, 23, 0.4);
+    text-underline-offset: 3px;
+    margin-left: 4px;
+  }
+  .gv-auction__footnote a:hover { text-decoration-color: var(--gv-gold); }
 
   /* ─── Testimonial ─── */
   .gv-testimonial {
