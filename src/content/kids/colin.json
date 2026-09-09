@@ -115,7 +115,7 @@
   ],
   "photoCount": 25,
   "videoUrl": null,
-  "photographer": null,
+  "photographer": "Jacey Verhoef Photography",
   "partnerLogos": [
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/beazer/public",
@@ -126,16 +126,36 @@
       "name": "CPWC"
     },
     {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/kids-r-kids/public",
-      "name": "Kids R Kids Foundation"
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/msi/public",
+      "name": "Msi"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/cambria-black/public",
+      "name": "Cambria"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/construction-resources/public",
+      "name": "Construction Resources"
     },
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/real-floors-commercial/1774544840079/public",
       "name": "Real Floors Commercial"
     },
     {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/pulleyassociates/public",
+      "name": "Pulley & Associates"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/top-knobs/public",
+      "name": "Top Knobs"
+    },
+    {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/wyp-logo/1774544592070/public",
       "name": "WYP Construction"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/kids-r-kids/public",
+      "name": "Kids R Kids Foundation"
     }
   ],
   "shortDescription": null,
@@ -149,7 +169,7 @@
   "bathroomCount": 1,
   "storyPhotos": [],
   "plans": [],
-  "heroSummary": "Colin lives with STXBP1, a rare neurological disorder affecting his movement and independence. SOARD is renovating his bathroom with a roll-under sink and zero-entry shower so he can bathe safely for years to come.",
+  "heroSummary": "Colin lives with STXBP1, a rare neurological disorder affecting his movement and independence. Thanks to Beazer Homes, SOARD is renovating his bathroom with a roll-under sink and zero-entry shower so he can bathe safely.",
   "beforeAfterPhotos": [],
   "sortOrder": 4,
   "accentImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/colin/1781795014805-IMG-0749-Edit.jpeg/public"

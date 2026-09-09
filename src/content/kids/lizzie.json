@@ -160,7 +160,28 @@
   "photoCount": 36,
   "videoUrl": null,
   "photographer": "Jude & Jojos Photography",
-  "partnerLogos": [],
+  "partnerLogos": [
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/the-brian-kari-robbins-family/1788209451287/public",
+      "name": "The Brian & Kari Robbins Family "
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/wyp-logo/1774544592070/public",
+      "name": "WYP Construction"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/real-floors-commercial/1774544840079/public",
+      "name": "Real Floors Commercial"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/lizzie/partner-1788203147857-JJP-Full-Logo-Black.png/public",
+      "name": "JJP Full Logo-Black"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/kids-r-kids/public",
+      "name": "Kids R Kids Foundation"
+    }
+  ],
   "shortDescription": null,
   "metaDescription": null,
   "altTexts": null,

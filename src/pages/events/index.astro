@@ -23,7 +23,8 @@ const events = allEvents.map(e => ({
   ...e,
   data: {
     ...e.data,
-    status: e.data.status === 'cancelled' ? 'cancelled' : e.data.date < today ? 'past' : 'upcoming',
+    // Multi-day events stay "upcoming" through their last day
+    status: e.data.status === 'cancelled' ? 'cancelled' : (e.data.endDate || e.data.date) < today ? 'past' : 'upcoming',
   },
 }));
 
@@ -36,27 +37,56 @@ const past = events
   .sort((a, b) => new Date(b.data.date).getTime() - new Date(a.data.date).getTime());
 
 const featured = upcoming.filter(e => e.data.featured);
-const regular = upcoming.filter(e => !e.data.featured);
 
-/* ── Detail page routing ── */
-const manualPages: Record<string, string> = {
-  'sunshine-on-a-ranney-fairway': '/events/golf/',
-  '2026-evening-of-sunshine': '/events/gala/',
-};
-const detailPages: Record<string, string> = { ...manualPages };
-for (const e of allEvents) {
-  if (!detailPages[e.data.slug] && (e.data.body || e.data.photos.length > 0 || e.data.streamVideoId || e.data.videoUrl)) {
+/* ── Detail page routing ──
+   Perennial pages (gala.astro, golf.astro) are matched by slug pattern so
+   next year's events (e.g. "2027-evening-of-sunshine") route there without
+   code changes. The current upcoming event claims the perennial page first;
+   otherwise the most recent past event of that family keeps it. Events with
+   their own content (body/photos/video) get an auto page via [slug].astro. */
+const perennialPages: Array<{ pattern: RegExp; url: string }> = [
+  { pattern: /evening-of-sunshine|gala/, url: '/events/gala/' },
+  { pattern: /fairway|golf/, url: '/events/golf/' },
+];
+const perennialUrl = (slug: string) => perennialPages.find(p => p.pattern.test(slug))?.url;
+
+const detailPages: Record<string, string> = {};
+const claimed = new Set<string>();
+for (const e of upcoming) {
+  const url = perennialUrl(e.data.slug);
+  if (url && !claimed.has(url)) { detailPages[e.data.slug] = url; claimed.add(url); }
+}
+for (const e of past) {
+  const url = perennialUrl(e.data.slug);
+  if (url && !claimed.has(url)) { detailPages[e.data.slug] = url; claimed.add(url); }
+}
+for (const e of events) {
+  // Auto pages via [slug].astro: events with content, plus every past event —
+  // each past event keeps a permanent archive page even after a newer event
+  // takes over its perennial page.
+  if (!detailPages[e.data.slug] && (e.data.body || e.data.photos.length > 0 || e.data.streamVideoId || e.data.videoUrl || e.data.status === 'past')) {
     detailPages[e.data.slug] = `/events/${e.data.slug}/`;
   }
 }
 
-/* ── Flagship = first featured event with a detail page ── */
-const flagshipSlug = Object.keys(detailPages).find(slug =>
-  featured.some(e => e.data.slug === slug),
-);
-const flagshipEvent = flagshipSlug ? featured.find(e => e.data.slug === flagshipSlug) : undefined;
-const otherFeatured = featured.filter(e => e.data.slug !== flagshipSlug);
-const allOther = [...otherFeatured, ...regular];
+/* Past-card link label: only promise photos when the page actually has media
+   (a perennial page always carries its own CMS gallery) */
+function pastLinkLabel(ev: { slug: string; photos: Array<{ id: string }>; streamVideoId?: string | null; videoUrl?: string | null }): string {
+  const hasMedia = ev.photos.length > 0 || !!ev.streamVideoId || !!ev.videoUrl;
+  const isPerennial = detailPages[ev.slug] && detailPages[ev.slug] !== `/events/${ev.slug}/`;
+  return hasMedia || isPerennial ? 'View Photos & Details' : 'View Details';
+}
+
+/* ── Flagship = soonest featured upcoming event, else soonest upcoming.
+   No detail page required — the hero CTA falls back to tickets/calendar. ── */
+const flagshipEvent = featured[0] ?? upcoming[0];
+const allOther = upcoming.filter(e => e !== flagshipEvent);
+
+/* Hero link target: detail page → ticket link → none */
+const flagshipUrl = flagshipEvent
+  ? detailPages[flagshipEvent.data.slug] || flagshipEvent.data.ticketUrl || null
+  : null;
+const flagshipIsExternal = !!flagshipEvent && !detailPages[flagshipEvent.data.slug] && !!flagshipEvent.data.ticketUrl;
 
 /* ── Labels & colors ── */
 const catLabel: Record<string, string> = {
@@ -82,24 +112,27 @@ const catIcon: Record<string, string> = {
   other:      '<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg>',
 };
 
-/* ── Per-event branding (matches dedicated event detail page accents).
+/* ── Per-family branding (matches dedicated event detail page accents),
+   slug-pattern matched so future years inherit it automatically.
    logo: shown when event has no poster/photos yet — a branded stand-in. */
-const slugBrand: Record<string, { gradient: string; logo?: string }> = {
-  'sunshine-on-a-ranney-fairway': {
+const brandFamilies: Array<{ pattern: RegExp; gradient: string; logo?: string }> = [
+  {
+    pattern: /fairway|golf/,
     gradient: 'linear-gradient(145deg, #0d2818 0%, #1a472a 30%, #2e7d32 60%, #1b5e20 100%)',
     logo: 'golf-logo-dark',
   },
-};
+];
+const slugBrandOf = (slug: string) => brandFamilies.find(b => b.pattern.test(slug));
 function eventGradient(ev: { slug: string; category: string }): string {
-  return slugBrand[ev.slug]?.gradient || catGradient[ev.category];
+  return slugBrandOf(ev.slug)?.gradient || catGradient[ev.category];
 }
 /* Cover image precedence: explicit poster → first gallery photo → branded logo fallback → none */
 function coverImage(ev: { slug: string; image?: string | null; photos?: Array<{ id: string }> }): string | null {
-  return ev.image || ev.photos?.[0]?.id || slugBrand[ev.slug]?.logo || null;
+  return ev.image || ev.photos?.[0]?.id || slugBrandOf(ev.slug)?.logo || null;
 }
 /* Is the cover image a branded logo (render with contain) vs a real photo (render with cover)? */
 function coverIsLogo(ev: { slug: string; image?: string | null; photos?: Array<{ id: string }> }): boolean {
-  return !ev.image && !ev.photos?.length && !!slugBrand[ev.slug]?.logo;
+  return !ev.image && !ev.photos?.length && !!slugBrandOf(ev.slug)?.logo;
 }
 
 /* ── Date helpers ── */
@@ -147,12 +180,16 @@ const yearsOfImpact = computed.years;
 const totalKidsServed = computed.totalKids;
 const totalPartners = (await getCollection('partners')).length;
 
-/* ── Hero LCP preload — flagship event image (poster) or fallback to golf logo ── */
+/* ── Flagship hero visual: poster image → branded logo (slugBrand) → category icon card.
+   LCP preload only when there's an actual image to paint. ── */
 const flagshipHasImage = !!flagshipEvent?.data.image;
-const flagshipImageSrc = flagshipEvent?.data.image || 'golf-logo-dark';
+const flagshipLogo = !flagshipHasImage && flagshipEvent ? slugBrandOf(flagshipEvent.data.slug)?.logo : undefined;
+const flagshipImageSrc = flagshipEvent?.data.image || flagshipLogo || '';
 const flagshipSrcset = flagshipHasImage
   ? cfSrcset(flagshipImageSrc, [400, 600, 800], { fit: 'contain' })
-  : cfSrcset(flagshipImageSrc, [280, 400]);
+  : flagshipLogo
+    ? cfSrcset(flagshipImageSrc, [280, 400])
+    : '';
 const flagshipSizes = flagshipHasImage
   ? '(max-width: 767px) 280px, 440px'
   : '(max-width: 767px) 200px, 320px';
@@ -164,6 +201,12 @@ const sp = siteSettings.sectionPhotos || {};
 const fallbackPhotoId = sp.missionMain || 'kids/eli/photo-01';
 const fallbackSrcset = cfSrcset(fallbackPhotoId, [400, 640, 800], { fit: 'cover', gravity: 'face' });
 const fallbackSizes = '(max-width: 768px) 85vw, (max-width: 1200px) 38vw, 420px';
+
+/* Hero frame is a link when the flagship has somewhere to go */
+const HeroFrame = flagshipUrl ? 'a' : 'div';
+const heroFrameAttrs = flagshipUrl
+  ? { href: flagshipUrl, ...(flagshipIsExternal ? { target: '_blank', rel: 'noopener noreferrer' } : {}) }
+  : {};
 ---
 
 <BaseLayout
@@ -173,7 +216,7 @@ const fallbackSizes = '(max-width: 768px) 85vw, (max-width: 1200px) 38vw, 420px'
 >
   {/* LCP preload */}
   {flagshipEvent ? (
-    <link slot="head" rel="preload" as="image" imagesrcset={flagshipSrcset} imagesizes={flagshipSizes} fetchpriority="high" />
+    flagshipSrcset && <link slot="head" rel="preload" as="image" imagesrcset={flagshipSrcset} imagesizes={flagshipSizes} fetchpriority="high" />
   ) : (
     <link slot="head" rel="preload" as="image" imagesrcset={fallbackSrcset} imagesizes={fallbackSizes} fetchpriority="high" />
   )}
@@ -186,8 +229,8 @@ const fallbackSizes = '(max-width: 768px) 85vw, (max-width: 1200px) 38vw, 420px'
       <div class="hero-inner">
         <div class="hero-text">
           <div class="hero-badges">
-            <p class="hero-eyebrow">Featured Event</p>
-            <span class="hero-countdown" data-countdown={flagshipEvent.data.date} aria-live="polite"></span>
+            <p class="hero-eyebrow">{flagshipEvent.data.featured ? 'Featured Event' : 'Next Up'}</p>
+            <span class="hero-countdown" data-countdown={flagshipEvent.data.date} data-countdown-end={flagshipEvent.data.endDate || flagshipEvent.data.date} aria-live="polite"></span>
           </div>
           <h1 class="hero-headline">{flagshipEvent.data.title}</h1>
           <p class="hero-sub">{flagshipEvent.data.shortDescription || flagshipEvent.data.description}</p>
@@ -208,34 +251,45 @@ const fallbackSizes = '(max-width: 768px) 85vw, (max-width: 1200px) 38vw, 420px'
             )}
           </div>
           <div class="hero-ctas">
-            <a href={detailPages[flagshipEvent.data.slug]} class="btn btn-primary btn-lg">
-              View Details & Register
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-            </a>
-            <a href={googleCalUrl(flagshipEvent.data)} class="btn btn-dark" target="_blank" rel="noopener noreferrer" title="Add to Google Calendar">
+            {detailPages[flagshipEvent.data.slug] ? (
+              <a href={detailPages[flagshipEvent.data.slug]} class="btn btn-primary btn-lg">
+                View Details & Register
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+              </a>
+            ) : flagshipEvent.data.ticketUrl ? (
+              <a href={flagshipEvent.data.ticketUrl} class="btn btn-primary btn-lg" target="_blank" rel="noopener noreferrer">
+                Get Tickets
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M7 7h10v10"/><path d="M7 17 17 7"/></svg>
+              </a>
+            ) : null}
+            <a href={googleCalUrl(flagshipEvent.data)} class={flagshipUrl ? 'btn btn-dark' : 'btn btn-primary btn-lg'} target="_blank" rel="noopener noreferrer" title="Add to Google Calendar">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg>
               Add to Calendar
             </a>
           </div>
         </div>
-        <a href={detailPages[flagshipEvent.data.slug]} class="hero-frame">
+        <HeroFrame class="hero-frame" {...heroFrameAttrs}>
           <div class="hero-event-card" style={`--hero-card-gradient: ${flagshipGradient}`}>
             <div class="hero-event-card__bg" aria-hidden="true"></div>
             <div class="hero-event-card__gradient" aria-hidden="true"></div>
             <div class="hero-event-card__pattern" aria-hidden="true"></div>
-            <img
-              src={flagshipHasImage
-                ? cfRaw(flagshipImageSrc, 'w=600,fit=contain,q=85')
-                : cfRaw(flagshipImageSrc, 'w=400,q=85')}
-              srcset={flagshipSrcset}
-              sizes={flagshipSizes}
-              alt={flagshipAlt}
-              transition:name="event-hero"
-              width={flagshipHasImage ? 600 : 400}
-              height={flagshipHasImage ? 600 : 400}
-              loading="eager" decoding="async" fetchpriority="high"
-              class={flagshipHasImage ? 'hero-event-card__photo' : 'hero-event-card__logo'}
-            />
+            {flagshipHasImage || flagshipLogo ? (
+              <img
+                src={flagshipHasImage
+                  ? cfRaw(flagshipImageSrc, 'w=600,fit=contain,q=85')
+                  : cfRaw(flagshipImageSrc, 'w=400,q=85')}
+                srcset={flagshipSrcset}
+                sizes={flagshipSizes}
+                alt={flagshipAlt}
+                transition:name="event-hero"
+                width={flagshipHasImage ? 600 : 400}
+                height={flagshipHasImage ? 600 : 400}
+                loading="eager" decoding="async" fetchpriority="high"
+                class={flagshipHasImage ? 'hero-event-card__photo' : 'hero-event-card__logo'}
+              />
+            ) : (
+              <div class="hero-event-card__icon" aria-hidden="true" set:html={catIcon[flagshipEvent.data.category]} />
+            )}
             {/* Mini date card overlay */}
             <div class="hero-date-card">
               <time datetime={flagshipEvent.data.date}>
@@ -245,7 +299,7 @@ const fallbackSizes = '(max-width: 768px) 85vw, (max-width: 1200px) 38vw, 420px'
               </time>
             </div>
           </div>
-        </a>
+        </HeroFrame>
       </div>
     </section>
   ) : (
@@ -395,10 +449,33 @@ const fallbackSizes = '(max-width: 768px) 85vw, (max-width: 1200px) 38vw, 420px'
         {/* Highlight card for most recent past event */}
         {past.length > 0 && (
           <article class="ev-highlight" data-reveal>
-            <div class="ev-highlight__visual" style={`background: ${eventGradient(past[0].data)}`}>
+            <div class={`ev-highlight__visual ${past[0].data.photos.length >= 3 ? 'ev-highlight__visual--mosaic' : ''}`} style={`background: ${eventGradient(past[0].data)}`}>
               <div class="ev-highlight__pattern" aria-hidden="true"></div>
               <div class="ev-highlight__glow" aria-hidden="true"></div>
               {(() => {
+                const photos = past[0].data.photos;
+                /* 3+ gallery photos → mini mosaic teaser of the archive page */
+                if (photos.length >= 3) {
+                  return (
+                    <div class="ev-highlight__mosaic">
+                      {photos.slice(0, 3).map((p, i) => (
+                        <div class={i === 0 ? 'ev-highlight__tile ev-highlight__tile--main' : 'ev-highlight__tile'}>
+                          <img
+                            src={cfRaw(p.id, i === 0 ? 'w=500,h=600,fit=cover,q=82' : 'w=400,h=300,fit=cover,q=80')}
+                            srcset={cfSrcset(p.id, i === 0 ? [400, 500, 700] : [300, 400, 500], { fit: 'cover' })}
+                            sizes={i === 0 ? '(max-width: 767px) 62vw, 220px' : '(max-width: 767px) 38vw, 140px'}
+                            alt={p.alt || past[0].data.title}
+                            width={i === 0 ? 500 : 400} height={i === 0 ? 600 : 300}
+                            loading="lazy" decoding="async"
+                          />
+                          {i === 2 && photos.length > 3 && (
+                            <span class="ev-highlight__more">+{photos.length - 3} more</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  );
+                }
                 const cov = coverImage(past[0].data);
                 const isLogo = coverIsLogo(past[0].data);
                 if (!cov) {
@@ -433,10 +510,10 @@ const fallbackSizes = '(max-width: 768px) 85vw, (max-width: 1200px) 38vw, 420px'
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/></svg>
                 {past[0].data.location}
               </p>
-              <p class="ev-highlight__desc">{past[0].data.description}</p>
+              <p class="ev-highlight__desc">{past[0].data.shortDescription || past[0].data.description}</p>
               {detailPages[past[0].data.slug] && (
                 <a href={detailPages[past[0].data.slug]} class="ev-btn ev-btn--gold" style="margin-top: var(--space-lg);">
-                  View Photos & Details
+                  {pastLinkLabel(past[0].data)}
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
                 </a>
               )}
@@ -495,6 +572,12 @@ const fallbackSizes = '(max-width: 768px) 85vw, (max-width: 1200px) 38vw, 420px'
                     <span class="ev-memory__day">{fmtDay(event.data.date)}</span>
                     <span class="ev-memory__year">{fmtYear(event.data.date)}</span>
                   </div>
+                  {event.data.photos.length > 0 && (
+                    <span class="ev-memory__count">
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>
+                      {event.data.photos.length} photos
+                    </span>
+                  )}
                 </div>
                 <div class="ev-memory__content">
                   <div class="ev-memory__top">
@@ -508,7 +591,7 @@ const fallbackSizes = '(max-width: 768px) 85vw, (max-width: 1200px) 38vw, 420px'
                   <p class="ev-memory__desc">{event.data.description}</p>
                   {detailPages[event.data.slug] && (
                     <a href={detailPages[event.data.slug]} class="ev-memory__link">
-                      View Photos & Details
+                      {pastLinkLabel(event.data)}
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
                     </a>
                   )}
@@ -569,18 +652,20 @@ const fallbackSizes = '(max-width: 768px) 85vw, (max-width: 1200px) 38vw, 420px'
   /* ── Live countdown badges ── */
   document.querySelectorAll<HTMLElement>('[data-countdown]').forEach(el => {
     const target = new Date(el.dataset.countdown + 'T00:00:00');
+    const end = new Date((el.dataset.countdownEnd || el.dataset.countdown) + 'T23:59:59');
     const now = new Date();
-    const diff = target.getTime() - now.getTime();
-    const days = Math.ceil(diff / (1000 * 60 * 60 * 24));
+    const days = Math.ceil((target.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
 
-    if (days > 1) {
+    if (now.getTime() > end.getTime()) {
+      el.textContent = 'Recently passed';
+    } else if (days > 1) {
       el.textContent = `${days} days away`;
     } else if (days === 1) {
       el.textContent = 'Tomorrow!';
     } else if (days === 0) {
       el.textContent = 'Today!';
     } else {
-      el.textContent = 'Recently passed';
+      el.textContent = 'Happening now!';
     }
   });
 
@@ -882,12 +967,27 @@ const fallbackSizes = '(max-width: 768px) 85vw, (max-width: 1200px) 38vw, 420px'
       inset 0 1px 0 rgba(255, 255, 255, 0.18),
       inset 0 -1px 0 rgba(0, 0, 0, 0.22);
   }
+  /* Icon fallback — event has no poster or branded logo yet */
+  .hero-event-card__icon {
+    position: relative;
+    z-index: 1;
+    color: rgba(255, 255, 255, 0.22);
+    animation: ev-float 6s ease-in-out infinite;
+  }
+  .hero-event-card__icon :global(svg) {
+    width: 110px;
+    height: 110px;
+  }
+  @media (min-width: 768px) {
+    .hero-event-card__icon :global(svg) { width: 160px; height: 160px; }
+  }
   @keyframes ev-float {
     0%, 100% { transform: translateY(0); }
     50% { transform: translateY(-10px); }
   }
   @media (prefers-reduced-motion: reduce) {
     .hero-event-card__logo { animation: none; }
+    .hero-event-card__icon { animation: none; }
     .hero-event-card { transition: none; }
   }
   /* When view-transition is about to start, JS adds this class so the
@@ -1272,6 +1372,50 @@ const fallbackSizes = '(max-width: 768px) 85vw, (max-width: 1200px) 38vw, 420px'
     object-fit: contain;
     filter: drop-shadow(0 12px 32px rgba(0, 0, 0, 0.28));
   }
+
+  /* Photo mosaic teaser (3+ gallery photos) */
+  .ev-highlight__visual--mosaic { min-height: 280px; }
+  .ev-highlight__mosaic {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    display: grid;
+    grid-template-columns: 1.55fr 1fr;
+    grid-template-rows: 1fr 1fr;
+    gap: 3px;
+  }
+  .ev-highlight__tile {
+    position: relative;
+    overflow: hidden;
+  }
+  .ev-highlight__tile--main { grid-row: 1 / 3; }
+  .ev-highlight__tile img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .ev-highlight:hover .ev-highlight__tile img { transform: scale(1.04); }
+  .ev-highlight__more {
+    position: absolute;
+    bottom: var(--space-sm);
+    right: var(--space-sm);
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    color: #fff;
+    background: rgba(0, 0, 0, 0.45);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    padding: 0.25rem 0.6rem;
+    border-radius: 100px;
+    pointer-events: none;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .ev-highlight__tile img { transition: none; }
+    .ev-highlight:hover .ev-highlight__tile img { transform: none; }
+  }
   .ev-highlight__content {
     padding: var(--space-xl) var(--space-lg);
     display: flex;
@@ -1322,6 +1466,10 @@ const fallbackSizes = '(max-width: 768px) 85vw, (max-width: 1200px) 38vw, 420px'
     line-height: 1.7;
     color: var(--c-text-muted);
     text-wrap: pretty;
+    display: -webkit-box;
+    -webkit-line-clamp: 5;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
   }
   @media (prefers-reduced-motion: reduce) {
     .ev-highlight { transition: none; }
@@ -1477,6 +1625,27 @@ const fallbackSizes = '(max-width: 768px) 85vw, (max-width: 1200px) 38vw, 420px'
     font-weight: 600;
     color: rgba(255, 255, 255, 0.55);
     margin-top: 1px;
+  }
+
+  .ev-memory__count {
+    position: absolute;
+    bottom: var(--space-sm);
+    left: var(--space-sm);
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.58rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.9);
+    background: rgba(0, 0, 0, 0.35);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    padding: 0.22rem 0.55rem;
+    border-radius: 100px;
+    z-index: 2;
+    pointer-events: none;
   }
 
   .ev-memory__content {

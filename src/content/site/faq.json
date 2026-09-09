@@ -32,7 +32,7 @@
     {
       "id": "100-percent",
       "question": "Does 100% of my donation really go to kids?",
-      "answer": "Yes. Zeffy is a 100% free platform for nonprofits — they charge zero processing fees. Your entire donation goes directly to funding room materials, labor, and design for children's spaces.",
+      "answer": "Yes. Zeffy is a 100% free platform for nonprofits and charges zero processing fees. Your entire donation goes directly to funding room materials, labor, and design for children's spaces.",
       "category": "donations",
       "order": 2
     },
@@ -74,7 +74,7 @@
     {
       "id": "who-runs",
       "question": "Who runs the organization?",
-      "answer": "SOARD was co-founded by Peter and Kristen Ranney. Our team includes dedicated volunteers, board members, and a network of construction and design partners. Visit our <a href=\"/about/leadership\">Leadership</a> page to meet the team.",
+      "answer": "SOARD was co-founded by Peter and Holly Ranney. Our team includes dedicated volunteers, board members, and a network of construction and design partners. Visit our <a href=\"/about/leadership\">Leadership</a> page to meet the team.",
       "category": "about",
       "order": 3
     },
@@ -88,7 +88,7 @@
     {
       "id": "how-long-room",
       "question": "How long does a room makeover take?",
-      "answer": "Most rooms are completed in 1–3 days during a scheduled build weekend. The planning and design phase typically takes 4–6 weeks before the build.",
+      "answer": "Most rooms are completed in 8-10 weeks during a scheduled build. The planning and design phase typically takes 4–6 weeks before the build.",
       "category": "rooms",
       "order": 2
     },

@@ -16,9 +16,15 @@ import { cfRaw, cfSrcset, cfLqip } from '../../utils/cf-image';
 
 export async function getStaticPaths() {
   const events = await getCollection('events');
-  // Only generate pages for events with body content, photos, or a video
+  const today = new Date().toISOString().split('T')[0];
+  // Generate pages for events with body content, photos, or a video — plus
+  // every past event, so each one keeps a permanent archive page visitors
+  // can revisit (photos added via admin show up here).
   return events
-    .filter(e => e.data.body || e.data.photos.length > 0 || e.data.streamVideoId || e.data.videoUrl)
+    .filter(e =>
+      e.data.body || e.data.photos.length > 0 || e.data.streamVideoId || e.data.videoUrl ||
+      (e.data.status !== 'cancelled' && (e.data.endDate || e.data.date) < today)
+    )
     .map(e => ({
       params: { slug: e.data.slug },
       props: { event: e },
@@ -27,6 +33,11 @@ export async function getStaticPaths() {
 
 const { event } = Astro.props;
 const ev = event.data;
+
+/* Past events render as an archive: no ticket CTA, photos front and center,
+   and the tighter recap blurb instead of the full pre-event pitch */
+const isPast = (ev.endDate || ev.date) < new Date().toISOString().split('T')[0];
+const heroDesc = isPast ? (ev.shortDescription || ev.description) : ev.description;
 
 /* ── Video: Cloudflare Stream id or YouTube URL on the event entry ── */
 function getYouTubeId(url: string): string | null {
@@ -70,7 +81,7 @@ const eventJsonLd = {
   },
   "organizer": { "@id": "https://sunshineonaranneyday.com/#organization" },
   ...(ev.image && { "image": cfRaw(ev.image, 'w=1200,q=85') }),
-  ...(ev.ticketUrl && {
+  ...(ev.ticketUrl && !isPast && {
     "offers": {
       "@type": "Offer",
       "url": ev.ticketUrl,
@@ -98,7 +109,7 @@ const eventJsonLd = {
     <div class="ev-hero__bg" aria-hidden="true"></div>
     <div class="container ev-hero__inner">
       <div class="ev-hero__text">
-        <span class="ev-hero__eyebrow" data-reveal>{catLabel[ev.category] || 'Event'}</span>
+        <span class="ev-hero__eyebrow" data-reveal>{catLabel[ev.category] || 'Event'}{isPast && ` · ${ev.date.slice(0, 4)}`}</span>
         <h1 class="ev-hero__title" data-reveal transition:name="event-title">{ev.title}</h1>
         <div class="ev-hero__meta" data-reveal>
           <span class="ev-hero__meta-item">
@@ -116,13 +127,29 @@ const eventJsonLd = {
             {ev.location}
           </span>
         </div>
-        <p class="ev-hero__desc" data-reveal>{ev.description}</p>
-        {ev.ticketUrl && (
+        <p class="ev-hero__desc" data-reveal>{heroDesc}</p>
+        {!isPast && ev.ticketUrl && (
           <div class="ev-hero__actions" data-reveal>
             <a href={ev.ticketUrl} class="ev-btn ev-btn--gold" target="_blank" rel="noopener noreferrer">
               {ev.ticketPrice ? `Get Tickets — ${ev.ticketPrice}` : 'Get Tickets'}
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M7 7h10v10"/><path d="M7 17 17 7"/></svg>
             </a>
+          </div>
+        )}
+        {isPast && (ev.photos.length > 0 || hasVideo) && (
+          <div class="ev-hero__actions" data-reveal>
+            {ev.photos.length > 0 && (
+              <a href="#photos" class="ev-btn ev-btn--gold">
+                See the Photos
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg>
+              </a>
+            )}
+            {hasVideo && (
+              <a href="#video" class={ev.photos.length > 0 ? 'ev-btn ev-btn--outline' : 'ev-btn ev-btn--gold'}>
+                Watch the Video
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m10 8 6 4-6 4z"/><circle cx="12" cy="12" r="10"/></svg>
+              </a>
+            )}
           </div>
         )}
       </div>
@@ -223,6 +250,21 @@ const eventJsonLd = {
               />
             </div>
           ))}
+        </div>
+      </div>
+    </section>
+  )}
+
+  <!-- ═══ PHOTOS PENDING (past event, gallery not uploaded yet) ═══ -->
+  {isPast && ev.photos.length === 0 && !hasVideo && (
+    <section class="ev-pending">
+      <div class="container">
+        <div class="ev-pending__box" data-reveal>
+          <div class="ev-pending__icon" aria-hidden="true">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>
+          </div>
+          <h2>Photos on the Way</h2>
+          <p>We're gathering our favorite moments from this event. Check back soon to relive the day.</p>
         </div>
       </div>
     </section>
@@ -537,6 +579,40 @@ const eventJsonLd = {
   }
   .ev-gallery__img.lqip-pending { opacity: 0; }
   .ev-gallery__img.loaded { opacity: 1; transition: opacity 0.4s ease; }
+
+  /* ═══ PHOTOS PENDING ═══ */
+  .ev-pending {
+    padding: var(--space-3xl) 0;
+    background: var(--c-cream);
+  }
+  .ev-pending__box {
+    text-align: center;
+    max-width: 440px;
+    margin: 0 auto;
+  }
+  .ev-pending__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 68px;
+    height: 68px;
+    border-radius: 50%;
+    background: var(--c-warm-gray);
+    color: var(--c-text-muted);
+    margin-bottom: var(--space-md);
+  }
+  .ev-pending__box h2 {
+    font-family: var(--font-display);
+    font-size: 1.35rem;
+    color: var(--c-dark);
+    margin-bottom: var(--space-xs);
+  }
+  .ev-pending__box p {
+    font-size: 0.9rem;
+    color: var(--c-text-muted);
+    line-height: 1.7;
+    margin: 0;
+  }
 
   /* ═══ CTA ═══ */
   .ev-cta {
