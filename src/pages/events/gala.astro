@@ -7,11 +7,15 @@
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import FAQAccordion from '../../components/ui/FAQAccordion.astro';
 import { cfRaw, cfSrcset, cfLqip, cfAbsolute } from '../../utils/cf-image';
-import { getEntry } from 'astro:content';
+import { getCollection, getEntry } from 'astro:content';
 import { BID_URL, auctionIsOpen, bidClosesLabel, AUCTION_ITEM_COUNT, AUCTION_CATEGORIES, AUCTION_HIGHLIGHTS } from '../../utils/auction';
 
-/* ── Event content (admin-editable via /content/events/2026-evening-of-sunshine.json) ── */
-const eventEntry = await getEntry('events', '2026-evening-of-sunshine');
+/* ── Event content: the latest evening-of-sunshine entry, so this page
+   automatically follows next year's gala once it's added in the admin
+   (e.g. "2027-evening-of-sunshine") — no code change needed. ── */
+const eventEntry = (await getCollection('events'))
+  .filter(e => e.data.slug.includes('evening-of-sunshine'))
+  .sort((a, b) => b.data.date.localeCompare(a.data.date))[0];
 const ev = eventEntry?.data ?? {} as any;
 
 /* ── Online bidding: while it's open, "Bid Now" outranks the ticket CTA

@@ -1860,10 +1860,39 @@
     };
 
     // ─── API Helpers ────────────────────────
+    /**
+     * Read an API response as JSON. Cloudflare can answer with an HTML error
+     * page, an Access sign-in redirect or an empty body, and JSON.parse then
+     * throws a message that explains nothing ("The string did not match the
+     * expected pattern." in Safari). Turn those into the { success, error }
+     * shape every caller already handles, naming the endpoint and status.
+     */
+    async function apiJson(response, endpoint) {
+      const text = await response.text();
+      if (!text.trim()) {
+        return {
+          success: false, nonJson: true, status: response.status,
+          error: `${endpoint} returned an empty response (HTTP ${response.status}) — reload the admin and try again.`,
+        };
+      }
+      try {
+        return JSON.parse(text);
+      } catch {
+        const sessionExpired = /cloudflareaccess\.com/i.test(text);
+        const snippet = text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120);
+        return {
+          success: false, nonJson: true, status: response.status,
+          error: sessionExpired
+            ? 'Your admin session expired — reload the page, sign in again, then retry.'
+            : `${endpoint} returned HTTP ${response.status} instead of JSON${snippet ? ` — "${snippet}"` : ''}`,
+        };
+      }
+    }
+
     const api = {
       async listContent(dir) {
         const r = await fetch(`/api/list-content?dir=${encodeURIComponent(dir)}`);
-        return r.json();
+        return apiJson(r, '/api/list-content');
       },
       async bulkListContent(dir) {
         // Fetch all pages — API returns max 45 items per page to stay under subrequest limits
@@ -1872,7 +1901,7 @@
         let totalPages = 1;
         while (page < totalPages) {
           const r = await fetch(`/api/list-content?dir=${encodeURIComponent(dir)}&page=${page}`);
-          const data = await r.json();
+          const data = await apiJson(r, '/api/list-content');
           if (!data.success) return data;
           allItems = allItems.concat(data.items || []);
           totalPages = data.pages || 1;
@@ -1882,7 +1911,7 @@
       },
       async readContent(path) {
         const r = await fetch(`/api/read-content?path=${encodeURIComponent(path)}`);
-        return r.json();
+        return apiJson(r, '/api/read-content');
       },
       async saveContent(path, content, message, sha) {
         const r = await fetch('/api/save-content', {
@@ -1890,7 +1919,7 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ path, content, message, sha }),
         });
-        const data = await r.json();
+        const data = await apiJson(r, '/api/save-content');
         if (data.success) window.dispatchEvent(new CustomEvent('soard-content-changed'));
         return data;
       },
@@ -1900,7 +1929,7 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ path, sha, message }),
         });
-        const data = await r.json();
+        const data = await apiJson(r, '/api/delete-content');
         if (data.success) window.dispatchEvent(new CustomEvent('soard-content-changed'));
         return data;
       },
@@ -1909,7 +1938,7 @@
         form.append('file', file);
         if (id) form.append('id', id);
         const r = await fetch('/api/upload-image', { method: 'POST', body: form });
-        return r.json();
+        return apiJson(r, '/api/upload-image');
       },
       async deleteImage(imageId) {
         const r = await fetch('/api/delete-image', {
@@ -1917,7 +1946,7 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ imageId }),
         });
-        return r.json();
+        return apiJson(r, '/api/delete-image');
       },
       async uploadFile(file, path, message) {
         const form = new FormData();
@@ -1925,17 +1954,31 @@
         form.append('path', path);
         form.append('message', message || `Upload ${file.name}`);
         const r = await fetch('/api/upload-file', { method: 'POST', body: form });
-        return r.json();
+        return apiJson(r, '/api/upload-file');
       },
       async uploadVideo(file, name, { onProgress } = {}) {
-        // Step 1: Get a direct creator upload URL from our backend
-        const r = await fetch('/api/upload-video', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, fileSize: file.size }),
-        });
-        const data = await r.json();
+        if (!file.size) {
+          throw new Error(`"${file.name}" is 0 bytes. If it lives in iCloud or Google Drive, download it to this Mac first, then add it again.`);
+        }
+
+        // Step 1: Get a direct creator upload URL from our backend. A transient
+        // edge failure answers with an HTML error page instead of JSON, so try
+        // twice before giving up.
+        let data;
+        for (let attempt = 0; attempt < 2; attempt++) {
+          const r = await fetch('/api/upload-video', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, fileSize: file.size }),
+          });
+          data = await apiJson(r, '/api/upload-video');
+          if (data.success || !(data.nonJson || r.status >= 500)) break;
+          if (attempt === 0) await new Promise(done => setTimeout(done, 1000));
+        }
         if (!data.success) throw new Error(data.error || 'Failed to get upload URL');
+        if (!/^https:\/\//.test(data.uploadUrl || '')) {
+          throw new Error(`Stream returned an unusable upload URL (${String(data.uploadUrl).slice(0, 60)})`);
+        }
 
         // Step 2: Upload directly to Cloudflare Stream via TUS (resumable)
         return new Promise((resolve, reject) => {
@@ -1967,13 +2010,13 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ type, kid }),
         });
-        return r.json();
+        return apiJson(r, '/api/generate');
       },
       async listImages(perPage = 100, continuationToken = '') {
         let url = `/api/list-images?per_page=${perPage}`;
         if (continuationToken) url += `&continuation_token=${encodeURIComponent(continuationToken)}`;
         const r = await fetch(url);
-        return r.json();
+        return apiJson(r, '/api/list-images');
       },
     };
 

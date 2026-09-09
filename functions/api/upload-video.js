@@ -53,18 +53,40 @@ export async function onRequestPost(context) {
     }
     if (allowedHost) metaParts.push(`allowedorigins ${b64Utf8(allowedHost)}`);
 
-    const response = await fetch(
-      `https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/stream?direct_user=true`,
-      {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${CF_STREAM_TOKEN}`,
-          'Tus-Resumable': '1.0.0',
-          'Upload-Length': String(fileSize),
-          ...(metaParts.length > 0 && { 'Upload-Metadata': metaParts.join(',') }),
-        },
+    // Bounded + retried: an unbounded call here can hang the whole invocation
+    // until the edge gives up and replaces our JSON with an HTML 502 page,
+    // which the admin can only report as an unparseable response.
+    let response;
+    let lastError = '';
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        response = await fetch(
+          `https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/stream?direct_user=true`,
+          {
+            method: 'POST',
+            signal: AbortSignal.timeout(10000),
+            headers: {
+              'Authorization': `Bearer ${CF_STREAM_TOKEN}`,
+              'Tus-Resumable': '1.0.0',
+              'Upload-Length': String(fileSize),
+              ...(metaParts.length > 0 && { 'Upload-Metadata': metaParts.join(',') }),
+            },
+          }
+        );
+      } catch (err) {
+        lastError = err?.name === 'TimeoutError'
+          ? 'Stream API did not respond within 10s'
+          : `Stream API request failed: ${err?.message || err}`;
+        console.error('[upload-video]', lastError);
+        continue;
       }
-    );
+      if (response.status < 500) break;
+      lastError = `Stream API error ${response.status}`;
+    }
+
+    if (!response) {
+      return Response.json({ success: false, error: lastError || 'Stream API unreachable' }, { status: 502 });
+    }
 
     if (!response.ok) {
       const text = await response.text();
@@ -99,5 +121,51 @@ export async function onRequestPost(context) {
       { success: false, error: 'An unexpected error occurred' },
       { status: 500 }
     );
+  }
+}
+
+/**
+ * GET /api/upload-video — health check.
+ * Open this URL in a browser tab while signed in to the admin: it reports
+ * whether the Stream credentials are present and what the Stream API says,
+ * without uploading anything. Returns no secrets, only status codes and
+ * messages, so its output is safe to paste into a bug report.
+ */
+export async function onRequestGet(context) {
+  const { CF_ACCOUNT_ID, CF_STREAM_TOKEN } = context.env;
+  const report = {
+    endpoint: '/api/upload-video',
+    checkedAt: new Date().toISOString(),
+    accountIdSet: !!CF_ACCOUNT_ID,
+    streamTokenSet: !!CF_STREAM_TOKEN,
+  };
+
+  if (!CF_ACCOUNT_ID || !CF_STREAM_TOKEN) {
+    return Response.json({ ...report, ok: false, error: 'Missing CF_ACCOUNT_ID or CF_STREAM_TOKEN' }, { status: 500 });
+  }
+
+  const started = Date.now();
+  try {
+    const res = await fetch(
+      `https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/stream?per_page=1`,
+      { headers: { Authorization: `Bearer ${CF_STREAM_TOKEN}` }, signal: AbortSignal.timeout(10000) }
+    );
+    const text = await res.text();
+    let firstError = '';
+    try { firstError = JSON.parse(text)?.errors?.[0]?.message || ''; } catch { firstError = text.slice(0, 200); }
+    return Response.json({
+      ...report,
+      ok: res.ok,
+      streamApiStatus: res.status,
+      streamApiMs: Date.now() - started,
+      ...(firstError && { streamApiError: firstError }),
+    });
+  } catch (err) {
+    return Response.json({
+      ...report,
+      ok: false,
+      streamApiMs: Date.now() - started,
+      error: err?.name === 'TimeoutError' ? 'Stream API did not respond within 10s' : `Stream API request failed: ${err?.message || err}`,
+    }, { status: 502 });
   }
 }
