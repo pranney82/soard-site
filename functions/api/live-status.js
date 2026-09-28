@@ -331,7 +331,11 @@ export async function onRequestPost(context) {
       gitStatus: 'ok', // D1-only — nothing to commit
     });
 
-    return Response.json({ success: true, state: computeState(record, Date.now()) });
+    // Include `auto` like GET does — the admin replaces its status object with
+    // this response, and without the flag the Facebook connection card
+    // wrongly flips to "Not configured" right after Go Live / Update / Stop.
+    const auto = !!(context.env.FB_PAGE_ID && context.env.FB_PAGE_TOKEN);
+    return Response.json({ success: true, state: { ...computeState(record, Date.now()), auto } });
   } catch (err) {
     return Response.json({ success: false, error: err.message }, { status: 500 });
   }
