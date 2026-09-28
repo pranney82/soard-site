@@ -4246,7 +4246,14 @@
             body: JSON.stringify(body),
           });
           const data = await r.json();
-          if (data.success) { setStatus(data.state); setBusy(false); return true; }
+          if (data.success) {
+            // Keep the Facebook `auto` flag if the response ever lacks it, then
+            // re-fetch so the auto-upgraded video link shows without a reload.
+            setStatus(s => ({ ...data.state, auto: data.state.auto ?? s?.auto }));
+            setBusy(false);
+            load();
+            return true;
+          }
           addToast(`Failed: ${data.error}`, 'error');
         } catch (e) {
           addToast(`Error: ${e.message}`, 'error');
