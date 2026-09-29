@@ -7586,6 +7586,7 @@
           <h3 style="margin-bottom: 0.25rem;">Plans</h3>
           <p class="text-sm text-muted mb-1">Upload plan images (floor plans, renderings, etc.). First 2 display on the page. Drag to reorder.</p>
           <${DropZone} onFiles=${uploadPlans} label="JPG, PNG, PDF — upload plan images" />
+          <p class="form-hint" style="margin-top: 0.5rem;">Floor plans labeled <strong>Before</strong>, <strong>After</strong>, <strong>Existing</strong>, or <strong>Proposed</strong> are shown with the bottom title block cropped off on the public site, so the family's street address on the drawing never goes public. Presentation boards and site photos are shown whole.</p>
           ${(data.plans || []).length > 0 ? html`
             <div class="photo-grid" style="margin-top: 0.75rem;">
               ${(data.plans || []).map((plan, i) => html`
