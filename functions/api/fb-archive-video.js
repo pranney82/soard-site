@@ -37,7 +37,8 @@ export async function onRequestPost(context) {
     try {
       result = await archiveOne(context.env, String(videoId));
     } catch (err) {
-      return Response.json({ success: false, error: err.message }, { status: 502 });
+      // 500, not 502: Cloudflare replaces the body of any 502/504 with its own HTML error page (see upload-video.js).
+      return Response.json({ success: false, error: err.message }, { status: 500 });
     }
 
     await recordArchived(DB, String(videoId), result);
