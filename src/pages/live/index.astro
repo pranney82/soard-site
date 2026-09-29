@@ -1,0 +1,20 @@
+---
+/**
+ * /live/ — the live reveal page for whatever is scheduled, live, or on replay.
+ * Per-kid pages live at /live/[slug]/ and carry that kid's story and share image.
+ */
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import LivePage from '../../components/live/LivePage.astro';
+import siteSettings from '../../content/site/settings.json';
+
+const s = siteSettings as any;
+const fallbackImage = s.heroKidPhotoId || 'kids/braxton/photo-18';
+---
+
+<BaseLayout
+  title="Watch the Reveal Live"
+  description="Room reveals from Sunshine on a Ranney Day stream live right here. Get a reminder, then watch the moment a child sees their new room for the first time."
+  breadcrumbs={[{ name: 'Home', url: '/' }, { name: 'Live', url: '/live/' }]}
+>
+  <LivePage fallbackImage={fallbackImage} />
+</BaseLayout>

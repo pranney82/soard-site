@@ -52,7 +52,7 @@ export async function readArchiveState(DB) {
   if (!row) return { checkedAt: null, archived: {} };
   try {
     const s = JSON.parse(row.data);
-    return { checkedAt: s.checkedAt || null, archived: s.archived || {} };
+    return { checkedAt: s.checkedAt || null, archived: s.archived || {}, ...(s.lastAutoDeployAt ? { lastAutoDeployAt: s.lastAutoDeployAt } : {}) };
   } catch {
     return { checkedAt: null, archived: {} };
   }
@@ -244,7 +244,7 @@ export async function sweepArchives(env) {
       access_token: env.FB_PAGE_TOKEN,
     });
     const res = await fetch(`${FB_GRAPH}/${env.FB_PAGE_ID}/videos?${qs}`);
-    if (!res.ok) return;
+    if (!res.ok) { summary.error = `Graph API returned ${res.status}`; return summary; }
     const data = await res.json();
 
     const candidates = (data.data || [])

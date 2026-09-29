@@ -63,12 +63,16 @@ function authedCors(request, env) {
 }
 
 // Public API routes that don't require authentication
-const PUBLIC_ROUTES = ['/api/newsletter', '/api/kids.json', '/api/download-logo', '/api/download-branding-photos', '/api/calendar.ics', '/api/live-click'];
+const PUBLIC_ROUTES = ['/api/newsletter', '/api/kids.json', '/api/download-logo', '/api/download-branding-photos', '/api/calendar.ics', '/api/live-click',
+  // Live broadcast system (see functions/api/_broadcast.js). stream-webhook and
+  // broadcast-hooks authenticate inside the handler (Stream lifecycle is the
+  // authority; hub ticks carry one-time nonces verified over the DO binding).
+  '/api/stream-webhook', '/api/broadcast-hooks', '/api/live-ws', '/api/reminders', '/api/broadcast-event'];
 
 // Routes public for reads only — GET/HEAD skip auth, mutations still require Access.
 // fb-live-videos returns only the page's public video permalinks (never the token),
 // so it's safe to read anonymously; responses are cached in the function.
-const PUBLIC_GET_ROUTES = ['/api/live-status', '/api/fb-live-videos'];
+const PUBLIC_GET_ROUTES = ['/api/live-status', '/api/fb-live-videos', '/api/broadcast'];
 
 // ─── Rate Limiting (in-memory, per-isolate) ─────────────────────────
 // Limits POST /api/newsletter to 5 requests per IP per 60 seconds.
@@ -76,7 +80,7 @@ const PUBLIC_GET_ROUTES = ['/api/live-status', '/api/fb-live-videos'];
 const RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const RATE_LIMIT_MAX = 5;
 // Abuse-prone POST routes (newsletter signup, live-banner click beacon).
-const RATE_LIMITED_POST_ROUTES = new Set(['/api/newsletter', '/api/live-click']);
+const RATE_LIMITED_POST_ROUTES = new Set(['/api/newsletter', '/api/live-click', '/api/reminders', '/api/broadcast-event']);
 // Public GET routes that fan out to paid upstreams / build large responses.
 const RATE_LIMITED_GET_ROUTES = new Set(['/api/download-branding-photos']);
 const _rateLimitMap = new Map(); // ip → { count, resetAt }

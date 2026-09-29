@@ -35,3 +35,11 @@ bucket_name = "soard-files"
 # [[env.preview.r2_buckets]]
 # binding = "FILES"
 # bucket_name = "soard-files-preview"
+
+# Real-time hub for the live broadcast system. The Durable Object lives in the
+# separate Worker under workers/live-hub (deployed with `wrangler deploy` there);
+# Pages projects can only bind to a DO defined elsewhere.
+[[durable_objects.bindings]]
+name = "LIVE_HUB"
+class_name = "LiveHub"
+script_name = "soard-live-hub"
