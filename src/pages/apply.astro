@@ -40,6 +40,7 @@ const ap = siteSettings.applyPhotos || {};
 const heroPhotoId = ap.hero || 'kids/griffin/hero';
 const storyPhotoId = ap.story || 'kids/eli/photo-01';
 const selectionPhotoId = ap.selection || 'kids/georgia/photo-01';
+const buildPhotoId = ap.build || storyPhotoId; // Step 4 — set in admin → Kids on Site → Apply Page
 const processPhotoId = siteSettings.sectionPhotos?.process || 'kids/oakley/photo-15';
 
 /* ── Service area map (Cloudflare Images) ──
@@ -55,7 +56,8 @@ const featuredRoomTypes = featuredKid?.data.roomTypes || [];
 const featuredBio = featuredKid?.data.bio || '';
 const featuredHero = cfId(featuredKid?.data.heroImage || '') || `kids/${featuredSlug}/hero`;
 // Extract first 2 sentences for excerpt
-const bioSentences = featuredBio.split(/(?<=[.!?])\s+/).filter(Boolean);
+const featuredBioText = featuredBio.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
+const bioSentences = featuredBioText.split(/(?<=[.!?])\s+/).filter(Boolean);
 const featuredExcerpt = bioSentences.slice(0, 2).join(' ');
 
 /* ── Real parent quotes from kid profiles ── */
@@ -181,6 +183,7 @@ const faqJsonLd = faqs.length ? getFAQSchema(faqs) : undefined;
             <button type="submit" class="notify-btn" id="notify-btn">Notify Me</button>
           </div>
           <div aria-hidden="true" style="position:absolute;left:-9999px;top:-9999px;"><input type="text" name="website" tabindex="-1" autocomplete="off" /></div>
+          <input type="hidden" name="source" value="application-waitlist" />
           <p class="notify-note" id="notify-note" role="status" aria-live="polite">One email when applications open. No spam, ever.</p>
         </form>
         <div class="notify-social">
@@ -263,20 +266,21 @@ const faqJsonLd = faqs.length ? getFAQSchema(faqs) : undefined;
     <div class="journey-header" data-reveal>
       <div class="section-label">The Journey</div>
       <h2>From first call to <em class="highlight">big reveal</em></h2>
+      <p class="journey-sub">Every family's timeline looks a little different, and the whole journey often spans several months. Here's what to expect.</p>
     </div>
 
     <div class="narrative-block" data-reveal>
       <div class="narrative-text">
         <span class="narrative-num" aria-hidden="true">01</span>
         <h3>You Tell Us Your Story</h3>
-        <p>Fill out a short application about your child: their diagnosis, their personality, their dreams, and the way their current space falls short. Every application is read by a real person.</p>
+        <p>Fill out a short application about your child: their diagnosis, their personality, their dreams, and the way their current space falls short. As part of the application you'll record a short video walking us through the space, so we can see it the way you do. Every application is read by a real person.</p>
       </div>
       <div class="narrative-aside">
         <div class="narrative-callout">
           <span class="narrative-callout-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
           </span>
-          <p>Applications typically take <strong>10–15 minutes</strong>. You'll need basic medical info and a few photos of the current space.</p>
+          <p>Applications typically take <strong>10–15 minutes</strong>. You'll need basic medical info, a few photos, and a phone to record a quick video of the current space.</p>
         </div>
       </div>
     </div>
@@ -285,7 +289,7 @@ const faqJsonLd = faqs.length ? getFAQSchema(faqs) : undefined;
       <div class="narrative-text">
         <span class="narrative-num" aria-hidden="true">02</span>
         <h3>We Get to Know Your Family</h3>
-        <p>Our team reviews every application with care. Selected families receive a home visit where we meet the child, learn what makes them light up, and assess the space together.</p>
+        <p>Our team reviews every application with care. Families who move forward are invited to a Zoom interview so we can meet you, hear your child's story, and learn what makes them light up. Selected families then receive a home visit where we walk the space together.</p>
       </div>
       <div class="narrative-media" style={`background-image:url('${cfLqip(selectionPhotoId)}')`}>
         <img
@@ -303,23 +307,23 @@ const faqJsonLd = faqs.length ? getFAQSchema(faqs) : undefined;
       <div class="narrative-text">
         <span class="narrative-num" aria-hidden="true">03</span>
         <h3>Designers Dream It Up</h3>
-        <p>Volunteer designers create a one-of-a-kind concept: your child's favorite colors, characters, and therapeutic needs woven into every surface, every shelf, every detail.</p>
+        <p>Volunteer designers create a one-of-a-kind concept: your child's favorite colors, characters, and therapeutic needs woven into every surface, every shelf, every detail. Whether it's a dream bedroom, an accessible bathroom, or a therapy room, every design starts with your child.</p>
       </div>
       <div class="narrative-aside">
         <div class="narrative-callout">
           <span class="narrative-callout-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
           </span>
-          <p>We build <strong>dream bedrooms</strong>, <strong>accessible bathrooms</strong>, and <strong>therapy rooms</strong> with sensory features.</p>
+          <p><strong>Good things take time.</strong> Design, donated materials, and partner schedules all have to line up, so it can be several months between approval, design, and the reveal. We'll keep you posted along the way.</p>
         </div>
       </div>
     </div>
 
     <div class="narrative-block narrative-block--with-photo narrative-block--reversed" data-reveal>
-      <div class="narrative-media" style={`background-image:url('${cfLqip(storyPhotoId)}')`}>
+      <div class="narrative-media" style={`background-image:url('${cfLqip(buildPhotoId)}')`}>
         <img
-          src={cfRaw(storyPhotoId, 'w=560,h=420,fit=cover,gravity=face,q=80')}
-          srcset={cfSrcset(storyPhotoId, [400, 560, 800], { fit: 'cover', gravity: 'face', aspectRatio: 0.75 })}
+          src={cfRaw(buildPhotoId, 'w=560,h=420,fit=cover,gravity=face,q=80')}
+          srcset={cfSrcset(buildPhotoId, [400, 560, 800], { fit: 'cover', gravity: 'face', aspectRatio: 0.75 })}
           sizes="(max-width: 768px) 85vw, 420px"
           alt="Construction volunteers transforming a child's bedroom"
           width="560" height="420"
@@ -329,7 +333,7 @@ const faqJsonLd = faqs.length ? getFAQSchema(faqs) : undefined;
       <div class="narrative-text">
         <span class="narrative-num" aria-hidden="true">04</span>
         <h3>The Build Begins</h3>
-        <p>Construction partners bring the design to life over about six weeks. Your family steps away. When you come back, everything has changed.</p>
+        <p>Once the design is final and materials are in hand, construction partners bring it to life over about six weeks. Your family steps away. When you come back, everything has changed.</p>
       </div>
     </div>
   </section>
@@ -487,7 +491,7 @@ const faqJsonLd = faqs.length ? getFAQSchema(faqs) : undefined;
         const res = await fetch('/api/newsletter', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, hp }),
+          body: JSON.stringify({ email, hp, source: 'application-waitlist' }),
         });
         // Body may not be JSON (e.g. Cloudflare error pages) — don't throw on parse
         const data = await res.json().catch(() => null);
@@ -1006,6 +1010,13 @@ const faqJsonLd = faqs.length ? getFAQSchema(faqs) : undefined;
     letter-spacing: -0.02em;
     line-height: 1.12;
   }
+  .journey-sub {
+    max-width: 560px;
+    margin-top: 14px;
+    font-size: 16px;
+    line-height: 1.7;
+    color: var(--c-text-muted);
+  }
   .narrative-block {
     max-width: var(--max-width);
     margin: 0 auto;
@@ -1021,7 +1032,8 @@ const faqJsonLd = faqs.length ? getFAQSchema(faqs) : undefined;
     font-family: var(--font-display);
     font-size: clamp(48px, 5vw, 72px);
     font-weight: 400;
-    color: #A08300;
+    font-style: italic;
+    color: #E0DDD6;
     line-height: 1;
     margin-bottom: 12px;
   }
@@ -1253,8 +1265,8 @@ const faqJsonLd = faqs.length ? getFAQSchema(faqs) : undefined;
   .criteria-stat-num {
     font-family: var(--font-display);
     font-size: clamp(1.5rem, 2.5vw, 2rem);
-    font-weight: 400;
-    color: #A08300;
+    font-weight: 700;
+    color: var(--c-dark);
     line-height: 1;
     flex-shrink: 0;
   }

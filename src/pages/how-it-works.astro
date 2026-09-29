@@ -1,0 +1,813 @@
+---
+/**
+ * How It Works · /how-it-works/
+ *
+ * The process page for donors, partners, and funders. Instead of a generic
+ * four-step list, it follows ONE real project from application to reveal using
+ * the artifacts that project already has on file: the designer's presentation
+ * boards, the dimensioned floor plans, the partner roster, the site photos,
+ * the reveal video, and the before/after pair.
+ *
+ * Featured project: siteSettings.howItWorks.kidSlug (Admin → Kids on Site),
+ * falling back to the most recent kid that has drawings and a video.
+ *
+ * PERF: hero LCP preload, lazy media below the fold, click-to-load video.
+ * SEO:  HowTo + VideoObject JSON-LD, breadcrumbs.
+ * A11Y: chapter rail is a real nav, video facade and slider are keyboard-operable.
+ */
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { getCollection } from 'astro:content';
+import { getPublishedKids } from '../utils/collections';
+import { getSiteStats } from '../utils/stats';
+import { CF_BASE as CF, cfId, cfRaw, cfSrcset, cfLqip } from '../utils/cf-image';
+import { getVideoSchema } from '../utils/schema';
+import siteSettings from '../content/site/settings.json';
+import financialSnapshot from '../content/site/financial-snapshot.json';
+
+const SITE = 'https://sunshineonaranneyday.com';
+const pageUrl = `${SITE}/how-it-works/`;
+
+/* ── Featured project ── */
+const allKids = await getPublishedKids();
+const hasCaseFile = (k: any) => (k.data.plans?.length || 0) > 0 && (k.data.streamVideoId || k.data.videoUrl);
+const pinnedSlug = (siteSettings as any).howItWorks?.kidSlug || 'amari';
+const kid =
+  allKids.find(k => k.data.slug === pinnedSlug && hasCaseFile(k)) ||
+  allKids.filter(hasCaseFile).sort((a, b) => (b.data.year || 0) - (a.data.year || 0))[0] ||
+  allKids.find(k => k.data.slug === pinnedSlug) ||
+  allKids[0];
+const k = kid.data;
+const name = k.name;
+const year = k.year || new Date().getFullYear();
+const rooms = (k.roomTypes || []).map(r => r.toLowerCase());
+const roomsText = rooms.length > 1 ? `${rooms.slice(0, -1).join(', ')} and ${rooms[rooms.length - 1]}` : (rooms[0] || 'dream room');
+
+const heroId = cfId(k.heroImage || '') || `kids/${k.slug}/hero`;
+const portraitId = cfId(k.accentImage || '') || heroId;
+const bioText = (k.bio || '').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
+const bioSentences = bioText.split(/(?<=[.!?])\s+/).filter(Boolean);
+const storyExcerpt = bioSentences.slice(0, 3).join(' ');
+
+/* ── The drawings ──
+   Designers upload three kinds of files under "plans": presentation boards
+   (PNG), floor plans (PNG, labeled Before/After or Existing/Proposed), and
+   site photos from the build app (JPG). Sort them by those conventions. */
+const plans: Array<{ url: string; label: string; type: string }> = k.plans || [];
+const isPng = (p: { url: string }) => /\.png(\/|$)/i.test(p.url);
+const isFloorPlan = (p: { label: string }) => /^(before|after|existing|proposed)/i.test(p.label || '');
+const floorPlans = plans.filter(p => isPng(p) && isFloorPlan(p));
+const existingPlan = floorPlans.find(p => /^(before|existing)/i.test(p.label)) || null;
+const proposedPlan = floorPlans.find(p => /^(after|proposed)/i.test(p.label)) || null;
+const boards = plans.filter(p => isPng(p) && !isFloorPlan(p));
+const sitePhotos = plans.filter(p => !isPng(p));
+/* Five survey photos spread across the set so one corner doesn't repeat:
+   lead + four small tiles fill the grid exactly at every breakpoint. */
+const pickSpread = (arr: typeof sitePhotos) => {
+  const n = arr.length;
+  if (n <= 5) return arr;
+  const idx = [Math.floor(n * 0.4), 1, Math.floor(n * 0.55), Math.floor(n * 0.7), Math.floor(n * 0.9)];
+  return [...new Set(idx)].map(i => arr[i]);
+};
+const buildPhotos = pickSpread(sitePhotos);
+
+/* ── The crew: match the project's partner logos to the partners collection ── */
+const partnerCollection = await getCollection('partners');
+const byLogo = new Map(partnerCollection.filter(p => p.data.logo).map(p => [cfId(p.data.logo!), p.data]));
+type Crew = { name: string; logo: string; role: string };
+const roleOf = (cats: string[]) =>
+  cats.includes('design') ? 'design' : cats.includes('funding') ? 'funding' : cats.includes('build') ? 'build' : 'community';
+const crew: Crew[] = [];
+for (const pl of k.partnerLogos || []) {
+  const id = cfId(pl.url);
+  let match = byLogo.get(id);
+  if (!match) for (const [lid, data] of byLogo) { if (id.startsWith(lid) || lid.startsWith(id)) { match = data; break; } }
+  if (match) crew.push({ name: match.name, logo: id, role: roleOf(match.category as string[]) });
+  else crew.push({ name: '', logo: id, role: 'build' });
+}
+const roleGroups = [
+  { key: 'funding', title: 'Funded it', blurb: 'Sponsors and foundations who covered what nobody could donate.' },
+  { key: 'design', title: 'Designed it', blurb: 'Designers who drew the room and picked every finish.' },
+  { key: 'build', title: 'Built and supplied it', blurb: 'Manufacturers, suppliers, and trades who gave materials and labor.' },
+  { key: 'community', title: 'Showed up for it', blurb: 'Photographers, caterers, and neighbors who made reveal day.' },
+].map(g => ({ ...g, members: crew.filter(c => c.role === g.key) })).filter(g => g.members.length > 0);
+
+/* ── Video + before/after ── */
+const streamId = k.streamVideoId || null;
+const ytMatch = (k.videoUrl || '').match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/))([a-zA-Z0-9_-]{11})/);
+const ytId = !streamId && ytMatch ? ytMatch[1] : null;
+const hasVideo = !!(streamId || ytId);
+const pair = (k.beforeAfterPhotos || [])[0] || null;
+
+/* ── Scale ── */
+const stats = await getSiteStats();
+const partnerCount = partnerCollection.length;
+const perYear = Math.round(stats.totalRooms / Math.max(stats.years, 1));
+const programPct = financialSnapshot.programPct;
+
+/* ── Chapters (drive the rail, the anchors, and the HowTo schema) ── */
+const chapters = [
+  { id: 'apply', num: '01', short: 'Apply', title: "It starts with a family's story.", schema: 'A family applies online, shares photos, and records a video walkthrough of the space. Applications are read by the selection committee, followed by an interview and a home visit.' },
+  { id: 'design', num: '02', short: 'Design', title: 'Designers draw the room around the child.', schema: 'Volunteer design partners measure the space and produce presentation boards and dimensioned floor plans built around the child\'s needs and interests.' },
+  { id: 'crew', num: '03', short: 'Crew', title: 'Then the crew assembles.', schema: 'The drawings become a materials list. Manufacturers and suppliers donate materials, sponsors fund the rest, and trade partners donate labor.' },
+  { id: 'build', num: '04', short: 'Build', title: 'Six weeks on site.', schema: 'The contractor documents the existing space, then runs a full renovation: demolition, framing, plumbing, electrical, and finishes, over about six weeks.' },
+  { id: 'reveal', num: '05', short: 'Reveal', title: 'The child walks in.', schema: 'The finished room is revealed to the child and family, filmed, and often streamed live.' },
+  { id: 'scale', num: '06', short: 'Repeat', title: 'Then we do it again.', schema: 'The same process has been repeated for hundreds of children across greater Atlanta since 2012.' },
+];
+
+const breadcrumbs = [
+  { name: 'Home', url: `${SITE}/` },
+  { name: 'How It Works', url: pageUrl },
+];
+const howToSchema = {
+  '@type': 'HowTo',
+  name: 'How Sunshine on a Ranney Day builds a room',
+  description: `The six steps every SOARD room follows, from a family's application to the reveal, shown through ${name}'s ${roomsText} completed in ${year}.`,
+  image: `${CF}/${heroId}/w=1200,h=630,fit=cover,gravity=face`,
+  step: chapters.map((c, i) => ({
+    '@type': 'HowToStep',
+    position: i + 1,
+    name: c.title,
+    text: c.schema,
+    url: `${pageUrl}#${c.id}`,
+  })),
+};
+const videoSchema = hasVideo ? getVideoSchema({
+  name: `${name}'s room reveal`,
+  description: `The reveal of ${name}'s ${roomsText}, built by Sunshine on a Ranney Day and its partners.`,
+  pageUrl,
+  streamVideoId: streamId || undefined,
+  videoUrl: k.videoUrl || undefined,
+  uploadDate: `${year}-01-01`,
+}) : null;
+const jsonLd = videoSchema ? [howToSchema, videoSchema] : [howToSchema];
+
+const heroTransforms = 'fit=cover,gravity=face,q=72';
+const heroSrcset = cfSrcset(heroId, [400, 640, 800, 1024], { fit: 'cover', gravity: 'face', aspectRatio: 1.25, quality: 72 });
+const heroSizes = '(max-width: 768px) 85vw, (max-width: 1200px) 38vw, 440px';
+---
+
+<BaseLayout
+  title="How a Room Gets Built"
+  description={`Every SOARD room follows the same six steps, from a family's application to the reveal. Follow ${name}'s ${roomsText} start to finish: the drawings, the partners, the build, and the moment it was revealed.`}
+  ogImage="/og/how-it-works.png"
+  jsonLd={jsonLd}
+  breadcrumbs={breadcrumbs}
+>
+  <link slot="head" rel="preload" as="image" imagesrcset={heroSrcset} imagesizes={heroSizes} fetchpriority="high" />
+
+  <!-- ══════ HERO · Editorial split ══════ -->
+  <section class="hero">
+    <div class="hero-inner">
+      <div class="hero-text">
+        <p class="hero-eyebrow">How It Works</p>
+        <h1>How a room <em>gets built</em>.</h1>
+        <p class="hero-lead">Every room we build follows the same six steps, from a family's first application to the moment a child walks in. This is one real project, start to finish: {name}'s {roomsText}, completed in {year}.</p>
+        <div class="hero-ctas">
+          <a href="#apply" class="btn btn-primary btn-lg">Follow the build <span aria-hidden="true">&darr;</span></a>
+          <a href="/donate/" class="btn btn-outline-dark">Fund a Room</a>
+        </div>
+      </div>
+      <div class="hero-frame">
+        <div class="hero-accent" aria-hidden="true"></div>
+        <div class="hero-photo" style={`background-image:url('${cfLqip(heroId)}')`}>
+          <img
+            src={cfRaw(heroId, `w=640,h=800,${heroTransforms}`)}
+            srcset={heroSrcset}
+            sizes={heroSizes}
+            alt={`${name} in the finished room built by Sunshine on a Ranney Day`}
+            width="640" height="800"
+            class="lqip-img"
+            fetchpriority="high"
+            loading="eager"
+            decoding="async"
+          />
+        </div>
+        <div class="hero-stat">
+          <span class="hero-stat-num">{stats.totalRooms}+</span>
+          <span class="hero-stat-label">rooms built<br/>this way</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════ CASE FILE · rail + chapters ══════ -->
+  <div class="case" id="case">
+    <nav class="rail" aria-label="Chapters">
+      <p class="rail__label">The case file</p>
+      <ol class="rail__list">
+        {chapters.map(c => (
+          <li><a href={`#${c.id}`} class="rail__link" data-rail={c.id}><span class="rail__num">{c.num}</span><span class="rail__text">{c.short}</span></a></li>
+        ))}
+      </ol>
+      <p class="rail__project">Project<br/><strong>{name}, {year}</strong></p>
+    </nav>
+
+    <div class="chapters">
+
+      <!-- 01 APPLY -->
+      <section class="chapter" id="apply" data-chapter="apply" aria-labelledby="h-apply">
+        <div class="chapter__head" data-reveal>
+          <span class="chapter__num">01</span>
+          <h2 id="h-apply">{chapters[0].title}</h2>
+        </div>
+        <div class="chapter__grid">
+          <div class="chapter__text" data-reveal>
+            <p>Families apply online in about fifteen minutes. They tell us about their child, share photos, and record a short video walking us through the space so we can see it the way they do. Every application is read by a real person.</p>
+            <p>The ones that move forward get an interview, then a home visit, before the selection committee makes its decision. The committee weighs four things:</p>
+            <ul class="criteria">
+              <li><strong>Daily impact and safety.</strong> How the current space limits the child's independence or puts them at risk.</li>
+              <li><strong>Financial circumstances.</strong> Families who could not otherwise afford the work come first.</li>
+              <li><strong>Potential for transformation.</strong> Whether a new space would change how the child lives, plays, or heals.</li>
+              <li><strong>Scope and feasibility.</strong> Whether the right room can be built inside the home's existing footprint.</li>
+            </ul>
+          </div>
+          <aside class="file" data-reveal data-delay="1">
+            <div class="file__photo" style={`background-image:url('${cfLqip(portraitId)}')`}>
+              <img src={cfRaw(portraitId, 'w=640,h=520,fit=cover,gravity=face,q=75')} srcset={cfSrcset(portraitId, [400, 640, 900], { fit: 'cover', gravity: 'face', aspectRatio: 0.8125, quality: 75 })} sizes="(max-width: 900px) 90vw, 400px" alt={`${name}`} width="640" height="520" loading="lazy" decoding="async" class="lqip-img" />
+            </div>
+            <div class="file__body">
+              <span class="file__tag">From the file</span>
+              <h3 class="file__title">{name}'s application, {year}</h3>
+              {storyExcerpt && <p class="file__story">{storyExcerpt}</p>}
+              <dl class="file__meta">
+                {k.diagnosis && <><dt>Diagnosis</dt><dd>{k.diagnosis}</dd></>}
+                <dt>Requested</dt><dd>{(k.roomTypes || []).join(' + ')}</dd>
+                {k.age && <><dt>Age</dt><dd>{Array.isArray(k.age) ? k.age.join(', ') : k.age}</dd></>}
+              </dl>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <!-- 02 DESIGN -->
+      <section class="chapter" id="design" data-chapter="design" aria-labelledby="h-design">
+        <div class="chapter__head" data-reveal>
+          <span class="chapter__num">02</span>
+          <h2 id="h-design">{chapters[1].title}</h2>
+        </div>
+        <div class="chapter__text chapter__text--wide" data-reveal>
+          <p>A design partner meets the family, measures the space, and comes back with presentation boards and a set of drawings. Nothing is generic. The finishes, the theme, and the layout all come from what the child needs and what the child loves.</p>
+        </div>
+        {boards.length > 0 && (
+          <div class="boards" data-reveal data-delay="1">
+            <p class="boards__hint" aria-hidden="true">Swipe through the boards <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></p>
+            <div class="boards__scroll" tabindex="0" aria-label="Design presentation boards, scroll sideways">
+              {boards.map((b, i) => (
+                <figure class="board">
+                  <div class="board__paper">
+                    <img src={cfRaw(cfId(b.url), 'w=900,q=80')} srcset={cfSrcset(cfId(b.url), [600, 900, 1300], { quality: 80 })} sizes="(max-width: 700px) 86vw, 620px" alt={`Design presentation board ${i + 1} for ${name}'s room`} width="900" height="532" loading="lazy" decoding="async" />
+                  </div>
+                  <figcaption>Presentation board {String(i + 1).padStart(2, '0')}</figcaption>
+                </figure>
+              ))}
+            </div>
+          </div>
+        )}
+        {existingPlan && proposedPlan && (
+          <div class="plans" data-reveal data-delay="2">
+            <figure class="plan">
+              <div class="plan__paper">
+                <img src={cfRaw(cfId(existingPlan.url), 'w=1000,q=80')} srcset={cfSrcset(cfId(existingPlan.url), [600, 1000, 1400], { quality: 80 })} sizes="(max-width: 900px) 92vw, 480px" alt={`Existing floor plan of ${name}'s space`} width="1000" height="647" loading="lazy" decoding="async" />
+              </div>
+              <figcaption><span class="plan__tag">Existing</span> The space as the family lived in it.</figcaption>
+            </figure>
+            <div class="plans__arrow" aria-hidden="true"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></div>
+            <figure class="plan">
+              <div class="plan__paper plan__paper--proposed">
+                <img src={cfRaw(cfId(proposedPlan.url), 'w=1000,q=80')} srcset={cfSrcset(cfId(proposedPlan.url), [600, 1000, 1400], { quality: 80 })} sizes="(max-width: 900px) 92vw, 480px" alt={`Proposed floor plan of ${name}'s new space`} width="1000" height="647" loading="lazy" decoding="async" />
+              </div>
+              <figcaption><span class="plan__tag plan__tag--yes">Proposed</span> Curbless shower, roll-under sink, and a bedroom built for a wheelchair to turn in.</figcaption>
+            </figure>
+          </div>
+        )}
+      </section>
+
+      <!-- 03 CREW -->
+      <section class="chapter" id="crew" data-chapter="crew" aria-labelledby="h-crew">
+        <div class="chapter__head" data-reveal>
+          <span class="chapter__num">03</span>
+          <h2 id="h-crew">{chapters[2].title}</h2>
+        </div>
+        <div class="chapter__text chapter__text--wide" data-reveal>
+          <p>The drawings become a materials list, and partners fill it. Manufacturers donate flooring, tile, and fixtures. Sponsors fund what nobody donates. Trades donate their labor. {crew.length > 0 && <>On this project, <strong>{crew.length} partners</strong> signed on.</>}</p>
+        </div>
+        {roleGroups.length > 0 && (
+          <div class="crew">
+            {roleGroups.map((g, gi) => (
+              <div class="crew__group" data-reveal data-delay={String(Math.min(gi + 1, 3))}>
+                <div class="crew__group-head">
+                  <h3>{g.title}</h3>
+                  <p>{g.blurb}</p>
+                </div>
+                <ul class="crew__logos" role="list">
+                  {g.members.map(m => (
+                    <li class="crew__logo" title={m.name || undefined}>
+                      <img src={`${CF}/${m.logo}/w=220,h=110,fit=contain,trim=10,q=80`} srcset={`${CF}/${m.logo}/w=220,h=110,fit=contain,trim=10,q=80 1x, ${CF}/${m.logo}/w=440,h=220,fit=contain,trim=10,q=80 2x`} alt={m.name || 'Partner logo'} width="220" height="110" loading="lazy" decoding="async" onerror="this.closest('li').style.display='none'" />
+                      {m.name && <span class="crew__name">{m.name}</span>}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <!-- 04 BUILD -->
+      <section class="chapter" id="build" data-chapter="build" aria-labelledby="h-build">
+        <div class="chapter__head" data-reveal>
+          <span class="chapter__num">04</span>
+          <h2 id="h-build">{chapters[3].title}</h2>
+        </div>
+        <div class="chapter__text chapter__text--wide" data-reveal>
+          <p>Before the first wall comes down, the contractor photographs every inch of the existing space. Then the build runs like any other job: demolition, framing, plumbing, electrical, and finishes, about six weeks in all. The family stays somewhere else until it is done.</p>
+        </div>
+        {buildPhotos.length > 0 && (
+          <div class="site" data-reveal data-delay="1">
+            {buildPhotos.map((p, i) => (
+              <figure class={`site__shot ${i === 0 ? 'site__shot--lead' : ''}`}>
+                <img src={cfRaw(cfId(p.url), i === 0 ? 'w=1000,h=780,fit=cover,q=78' : 'w=600,h=450,fit=cover,q=78')} srcset={cfSrcset(cfId(p.url), i === 0 ? [600, 1000, 1400] : [400, 600, 900], { fit: 'cover', aspectRatio: i === 0 ? 0.78 : 0.75, quality: 78 })} sizes={i === 0 ? '(max-width: 700px) 92vw, 46vw' : '(max-width: 700px) 45vw, 23vw'} alt={`Existing-conditions photo ${i + 1} from ${name}'s home before construction`} width={i === 0 ? 1000 : 600} height={i === 0 ? 780 : 450} loading="lazy" decoding="async" />
+              </figure>
+            ))}
+            <span class="site__stamp"><span class="site__stamp-dot" aria-hidden="true"></span>Site survey, {year}</span>
+          </div>
+        )}
+        {buildPhotos.length > 0 && (
+          <p class="site__caption" data-reveal>The existing space, photographed by the contractor before demolition day.</p>
+        )}
+      </section>
+
+      <!-- 05 REVEAL -->
+      <section class="chapter chapter--dark" id="reveal" data-chapter="reveal" aria-labelledby="h-reveal">
+        <div class="chapter__head" data-reveal>
+          <span class="chapter__num chapter__num--light">05</span>
+          <h2 id="h-reveal">{chapters[4].title}</h2>
+        </div>
+        <div class="chapter__text chapter__text--wide chapter__text--light" data-reveal>
+          <p>Everyone who touched the room is there. The reveal is filmed, often streamed live, and it is the moment every partner and donor is working toward.</p>
+        </div>
+        {hasVideo && (
+          <figure class="video" data-reveal data-delay="1">
+            <div class="video__frame">
+              {streamId ? (
+                <div class="facade" id="video-facade" data-stream={streamId} role="button" tabindex="0" aria-label={`Play ${name}'s reveal video`}>
+                  <img
+                    src={`https://videodelivery.net/${streamId}/thumbnails/thumbnail.jpg?time=2s&width=1280&height=720&fit=crop`}
+                    srcset={[640, 960, 1280, 1600].map(w => `https://videodelivery.net/${streamId}/thumbnails/thumbnail.jpg?time=2s&width=${w}&height=${Math.round(w * 9 / 16)}&fit=crop ${w}w`).join(', ')}
+                    sizes="(max-width: 900px) 92vw, 760px"
+                    alt="" width="1280" height="720" loading="lazy" decoding="async" class="facade__poster" />
+                  <span class="facade__play" aria-hidden="true"><span class="facade__ring"></span><svg viewBox="0 0 24 28" fill="none"><path d="M2 1.5v25l20-12.5L2 1.5z" fill="currentColor"/></svg></span>
+                </div>
+              ) : (
+                <div class="facade" id="video-facade" data-yt={ytId} role="button" tabindex="0" aria-label={`Play ${name}'s reveal video`}>
+                  <img src={`https://i.ytimg.com/vi/${ytId}/maxresdefault.jpg`} alt="" width="1280" height="720" loading="lazy" decoding="async" class="facade__poster" />
+                  <span class="facade__play" aria-hidden="true"><span class="facade__ring"></span><svg viewBox="0 0 24 28" fill="none"><path d="M2 1.5v25l20-12.5L2 1.5z" fill="currentColor"/></svg></span>
+                </div>
+              )}
+            </div>
+            <figcaption>{name}'s reveal, {year}.</figcaption>
+          </figure>
+        )}
+        {pair && (
+          <div class="ba" data-reveal data-delay="2">
+            <div class="ba__container" style="--ba-pos: 50%" data-ba>
+              <img class="ba__after lqip-img" src={cfRaw(cfId(pair.after), 'w=1200,q=82')} srcset={cfSrcset(cfId(pair.after), [600, 900, 1200, 1600], { quality: 82 })} sizes="(max-width: 900px) 92vw, 760px" alt={pair.afterAlt || `${name}'s space after the build`} width="1200" height="900" loading="lazy" decoding="async" style={`--lqip:url('${cfLqip(cfId(pair.after))}')`} />
+              <div class="ba__before-clip">
+                <img class="ba__before lqip-img" src={cfRaw(cfId(pair.before), 'w=1200,q=82')} srcset={cfSrcset(cfId(pair.before), [600, 900, 1200, 1600], { quality: 82 })} sizes="(max-width: 900px) 92vw, 760px" alt={pair.beforeAlt || `${name}'s space before the build`} width="1200" height="900" loading="lazy" decoding="async" style={`--lqip:url('${cfLqip(cfId(pair.before))}')`} />
+              </div>
+              <input type="range" min="0" max="100" value="50" class="ba__range" aria-label="Compare before and after" />
+              <div class="ba__handle" aria-hidden="true"><span class="ba__line"></span><span class="ba__knob"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 12H4m0 0l3-3m-3 3l3 3M16 12h4m0 0l-3-3m3 3l-3 3"/></svg></span></div>
+              <span class="ba__label ba__label--before" data-ba-label="before">Before</span>
+              <span class="ba__label ba__label--after" data-ba-label="after">After</span>
+            </div>
+            <p class="ba__hint">Drag to compare {pair.room ? pair.room.toLowerCase() : 'the space'} before and after.</p>
+          </div>
+        )}
+      </section>
+
+      <!-- 06 SCALE -->
+      <section class="chapter" id="scale" data-chapter="scale" aria-labelledby="h-scale">
+        <div class="chapter__head" data-reveal>
+          <span class="chapter__num">06</span>
+          <h2 id="h-scale">{chapters[5].title}</h2>
+        </div>
+        <div class="chapter__text chapter__text--wide" data-reveal>
+          <p>Every step above has been repeated for {stats.totalKids}+ children across greater Atlanta since 2012. The process is the same every time. The room never is.</p>
+        </div>
+        <div class="scale" data-reveal data-delay="1">
+          <div class="scale__stat"><span class="scale__num">{stats.totalRooms}+</span><span class="scale__label">rooms built since 2012</span></div>
+          <div class="scale__stat"><span class="scale__num">{perYear}</span><span class="scale__label">rooms a year, on average</span></div>
+          <div class="scale__stat"><span class="scale__num">{partnerCount}+</span><span class="scale__label">partners who have joined a build</span></div>
+          <div class="scale__stat scale__stat--accent"><span class="scale__num">{programPct}<span class="scale__cent">&cent;</span></span><span class="scale__label">of every dollar goes to programs</span></div>
+        </div>
+        <p class="scale__foot" data-reveal data-delay="2">The numbers above come from our project records and audited financials. <a href="/about/financials/">See where the money goes</a>.</p>
+      </section>
+
+    </div>
+  </div>
+
+  <!-- ══════ CLOSING ══════ -->
+  <section class="close">
+    <div class="close__inner">
+      <div class="close__head" data-reveal>
+        <div class="section-label">The Next Room</div>
+        <h2>The next room is waiting on <em>two things</em>.</h2>
+      </div>
+      <div class="close__grid">
+        <a href="/donate/" class="close__card" data-reveal data-delay="1">
+          <span class="close__kicker">A gift</span>
+          <span class="close__title">Fund a room</span>
+          <span class="close__text">Your donation covers what partners cannot donate: the fixtures, the specialty equipment, the gaps in the materials list.</span>
+          <span class="close__cta">Donate <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3.5 8h9M8.5 4l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        </a>
+        <a href="/partners/" class="close__card close__card--dark" data-reveal data-delay="2">
+          <span class="close__kicker">A crew</span>
+          <span class="close__title">Join a build</span>
+          <span class="close__text">Designers, contractors, suppliers, and sponsors carry four of the six steps. There is a place for your company on the next one.</span>
+          <span class="close__cta">Become a partner <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3.5 8h9M8.5 4l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        </a>
+      </div>
+      <p class="close__note" data-reveal data-delay="3">
+        Featured project: <a href={`/kids/${k.slug}/`}>{name}, {year}</a>{k.photographer ? `. Photos by ${k.photographer}.` : '.'}
+      </p>
+    </div>
+  </section>
+
+</BaseLayout>
+
+<style>
+  /* ── LQIP ── */
+  .hero-photo, .file__photo { background-size: cover; background-position: center; }
+  .lqip-img.lqip-pending { opacity: 0; }
+  .lqip-img:not(.lqip-pending) { transition: opacity 0.4s ease; }
+
+  /* ══════ HERO (editorial split, same family as apply/community) ══════ */
+  .hero {
+    background: var(--c-cream);
+    padding: clamp(72px, 9vw, 128px) 0 clamp(64px, 8vw, 100px);
+    position: relative; contain: layout style; overflow: hidden;
+  }
+  .hero-inner {
+    max-width: var(--max-width); margin: 0 auto; padding: 0 var(--space-xl);
+    display: grid; grid-template-columns: 1.15fr 0.85fr; gap: clamp(40px, 5vw, 80px); align-items: center;
+  }
+  .hero-eyebrow {
+    font-size: 12px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--c-text-muted);
+    margin-bottom: 20px; display: flex; align-items: center; gap: 12px;
+  }
+  .hero-eyebrow::before { content: ''; width: 28px; height: 2px; background: currentColor; }
+  .hero-text h1 {
+    font-size: clamp(2.5rem, 6vw, 4.5rem); letter-spacing: -0.035em; line-height: 1.04; color: var(--c-text); margin-bottom: 28px;
+    animation: heroSlide 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  .hero-text h1 em {
+    font-style: italic;
+    background-image: linear-gradient(transparent 52%, var(--c-yellow-soft) 52%);
+    background-repeat: no-repeat; background-size: 100% 100%; padding: 0 0.05em;
+  }
+  .hero-lead { font-size: clamp(16px, 1.6vw, 18px); color: var(--c-text-muted); line-height: 1.7; margin-bottom: 36px; max-width: 520px; opacity: 0; animation: heroUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.15s both; }
+  .hero-ctas { display: flex; gap: 14px; flex-wrap: wrap; opacity: 0; animation: heroUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.25s both; }
+  .hero-frame { position: relative; animation: heroPhotoIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) both; }
+  .hero-accent { position: absolute; bottom: -16px; right: -16px; width: 65%; height: 50%; background: var(--c-yellow); border-radius: 24px; z-index: 0; opacity: 0; animation: accentIn 1s cubic-bezier(0.16, 1, 0.3, 1) 0.7s both; }
+  .hero-photo { position: relative; z-index: 1; aspect-ratio: 4 / 5; border-radius: 24px; overflow: hidden; box-shadow: 0 32px 80px rgba(0,0,0,0.12), 0 8px 24px rgba(0,0,0,0.06); }
+  .hero-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .hero-stat {
+    position: absolute; bottom: 28px; left: -28px; z-index: 3;
+    background: var(--c-dark); color: #fff; padding: 16px 22px; border-radius: var(--border-radius-lg);
+    display: flex; align-items: center; gap: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.08), 0 16px 48px rgba(0,0,0,0.15);
+  }
+  .hero-stat-num { font-family: var(--font-display); font-size: clamp(28px, 3vw, 40px); font-weight: 700; color: var(--c-yellow); line-height: 1; }
+  .hero-stat-label { font-size: 12px; font-weight: 600; line-height: 1.35; color: rgba(255,255,255,0.65); text-transform: uppercase; letter-spacing: 0.06em; }
+  @keyframes heroUp { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: none; } }
+  @keyframes heroSlide { from { transform: translateY(16px); } to { transform: none; } }
+  @keyframes heroPhotoIn { from { transform: translateY(12px) scale(0.98); } to { transform: none; } }
+  @keyframes accentIn { from { opacity: 0; transform: translate(12px, 12px); } to { opacity: 1; transform: none; } }
+
+  /* ══════ CASE FILE LAYOUT ══════ */
+  .case {
+    max-width: var(--max-width); margin: 0 auto; padding: 0 var(--space-xl);
+    display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: clamp(32px, 5vw, 72px); align-items: start;
+  }
+  .rail { position: sticky; top: calc(var(--hdr, 84px) + 20px); padding: 40px 0; min-width: 0; }
+  .rail__label { font-size: 11px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--c-text-light); margin: 0 0 14px; }
+  .rail__list { list-style: none; margin: 0; padding: 0; border-left: 2px solid var(--c-border); position: relative; max-width: 100%; }
+  /* Progress: the yellow line fills from the top down to the chapter in view */
+  .rail__list::before {
+    content: ''; position: absolute; left: -2px; top: 0; width: 2px;
+    height: var(--rail-progress, 0%); background: var(--c-yellow);
+    transition: height 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .rail__link {
+    display: flex; align-items: baseline; gap: 12px; padding: 9px 0 9px 16px; margin-left: -2px;
+    border-left: 2px solid transparent; color: var(--c-text-muted); text-decoration: none; font-weight: 600; font-size: 15px;
+    transition: color 0.25s ease, border-color 0.25s ease, padding-left 0.25s ease;
+  }
+  .rail__num { font-family: var(--font-display); font-size: 12px; font-weight: 700; letter-spacing: 0.06em; color: var(--c-text-light); width: 22px; }
+  .rail__link:hover { color: var(--c-dark); }
+  .rail__link.is-active { color: var(--c-dark); border-left-color: var(--c-yellow); padding-left: 20px; }
+  .rail__link.is-active .rail__num { color: var(--c-dark); }
+  .rail__link:focus-visible { outline: 3px solid var(--c-yellow); outline-offset: 2px; border-radius: 6px; }
+  .rail__project { margin: 24px 0 0; padding-left: 16px; font-size: 12px; line-height: 1.6; color: var(--c-text-light); text-transform: uppercase; letter-spacing: 0.08em; }
+  .rail__project strong { color: var(--c-dark); font-size: 13px; letter-spacing: 0.02em; text-transform: none; }
+
+  .chapters { min-width: 0; }
+  .chapter { padding: clamp(56px, 7vw, 96px) 0; border-top: 1px solid var(--c-border); scroll-margin-top: 0; }
+  .chapter:first-child { border-top: none; padding-top: 40px; }
+  .chapter__head { display: flex; align-items: baseline; gap: 20px; margin-bottom: 20px; }
+  .chapter__num { font-family: var(--font-display); font-style: italic; font-size: clamp(40px, 5vw, 64px); line-height: 0.9; color: #E0DDD6; flex-shrink: 0; }
+  .chapter__num--light { color: rgba(255,255,255,0.18); }
+  .chapter h2 { font-size: clamp(26px, 3.2vw, 40px); line-height: 1.15; letter-spacing: -0.02em; margin: 0; text-wrap: balance; }
+  .chapter__grid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(280px, 0.9fr); gap: clamp(28px, 4vw, 56px); align-items: start; }
+  .chapter__text p { font-size: 17px; line-height: 1.75; color: var(--c-text-muted); margin: 0 0 16px; max-width: 62ch; }
+  .chapter__text--wide { margin-bottom: 32px; }
+  .chapter__text--light p { color: rgba(255,255,255,0.7); }
+  .chapter__text strong { color: var(--c-text); }
+  .chapter__text--light strong { color: #fff; }
+
+  .criteria { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 12px; }
+  .criteria li { position: relative; padding-left: 22px; font-size: 15px; line-height: 1.6; color: var(--c-text-muted); }
+  .criteria li::before { content: ''; position: absolute; left: 0; top: 8px; width: 10px; height: 10px; border-radius: 50%; background: var(--c-yellow); }
+  .criteria strong { color: var(--c-text); }
+
+  /* From the file: the application card */
+  .file { background: #fff; border: 1px solid var(--c-border); border-radius: 20px; overflow: hidden; box-shadow: 0 12px 40px rgba(0,0,0,0.06); }
+  .file__photo { aspect-ratio: 16 / 13; }
+  .file__photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .file__body { padding: 22px 26px 26px; }
+  .file__tag { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--c-dark); background: var(--c-yellow); padding: 4px 10px; border-radius: 6px; margin-bottom: 12px; }
+  .file__title { font-size: 20px; margin: 0 0 10px; line-height: 1.25; }
+  .file__story { font-size: 14.5px; line-height: 1.65; color: var(--c-text-muted); margin: 0 0 16px; }
+  .file__meta { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 0; font-size: 13px; }
+  .file__meta dt { font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; font-size: 11px; color: var(--c-text-light); padding-top: 2px; }
+  .file__meta dd { margin: 0; color: var(--c-text); }
+
+  /* Boards: horizontal paper strip */
+  .boards { margin: 0 calc(var(--space-xl) * -1) 32px 0; position: relative; }
+  .boards::after { content: ''; position: absolute; top: 0; right: 0; bottom: 20px; width: 72px; background: linear-gradient(90deg, rgba(254,252,245,0), var(--c-cream)); pointer-events: none; }
+  .boards__hint { display: none; align-items: center; gap: 8px; font-size: 12px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--c-text-light); margin: 0 0 12px; }
+  @media (hover: none) { .boards__hint { display: inline-flex; } }
+  .boards__scroll { display: flex; gap: 20px; overflow-x: auto; scroll-snap-type: x mandatory; padding: 8px 0 20px; scrollbar-width: thin; }
+  .boards__scroll:focus-visible { outline: 3px solid var(--c-yellow); outline-offset: 4px; border-radius: 12px; }
+  .board { flex: 0 0 min(620px, 86vw); scroll-snap-align: start; margin: 0; }
+  .board__paper { background: #fff; border: 1px solid var(--c-border); border-radius: 12px; padding: 10px; box-shadow: 0 10px 30px rgba(0,0,0,0.06); }
+  .board__paper img { width: 100%; height: auto; display: block; border-radius: 6px; }
+  .board figcaption, .plan figcaption { font-size: 13px; color: var(--c-text-muted); margin-top: 10px; }
+
+  /* Floor plans: existing → proposed */
+  .plans { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 20px; align-items: center; }
+  .plan { margin: 0; }
+  .plan__paper { position: relative; background: #fff; border: 1px solid var(--c-border); border-radius: 12px; padding: 10px; box-shadow: 0 10px 30px rgba(0,0,0,0.06); aspect-ratio: 1.68; overflow: hidden; }
+  .plan__paper--proposed { border-color: rgba(255,218,36,0.9); box-shadow: 0 10px 30px rgba(0,0,0,0.06), 0 0 0 4px var(--c-yellow-soft); }
+  /* Drawings carry a title block along the bottom edge; crop to the plan itself */
+  .plan__paper img { width: 100%; height: 100%; object-fit: cover; object-position: top; display: block; border-radius: 6px; }
+  .plan__tag { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--c-text-muted); border: 1px solid var(--c-border); padding: 3px 9px; border-radius: 100px; margin-right: 8px; }
+  .plan__tag--yes { color: var(--c-dark); background: var(--c-yellow); border-color: var(--c-yellow); }
+  .plans__arrow { color: var(--c-text-light); }
+
+  /* Crew: logos grouped by role */
+  .crew { display: grid; gap: 28px; }
+  .crew__group { border-top: 1px solid var(--c-border); padding-top: 22px; display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 24px; }
+  .crew__group-head h3 { font-size: 19px; margin: 0 0 6px; }
+  .crew__group-head p { font-size: 14px; line-height: 1.55; color: var(--c-text-muted); margin: 0; }
+  .crew__logos { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 12px; }
+  .crew__logo { background: #fff; border: 1px solid var(--c-border); border-radius: 12px; padding: 14px 12px 10px; display: flex; flex-direction: column; align-items: center; gap: 8px; min-height: 96px; transition: border-color 0.25s ease, transform 0.25s ease; }
+  .crew__logo:hover { border-color: var(--c-yellow); transform: translateY(-2px); }
+  .crew__logo img { width: 100%; height: 44px; object-fit: contain; }
+  .crew__name { font-size: 11.5px; font-weight: 600; color: var(--c-text-muted); text-align: center; line-height: 1.3; }
+
+  /* Site photos */
+  .site { position: relative; display: grid; grid-template-columns: repeat(4, 1fr); grid-auto-rows: minmax(0, auto); gap: 12px; }
+  .site__shot { margin: 0; border-radius: 14px; overflow: hidden; background: var(--c-warm-gray); aspect-ratio: 4 / 3; }
+  .site__shot--lead { grid-column: span 2; grid-row: span 2; aspect-ratio: auto; min-height: 0; }
+  .site__shot img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.6s cubic-bezier(0.16,1,0.3,1); }
+  .site__shot:hover img { transform: scale(1.03); }
+  .site__stamp { position: absolute; top: 16px; left: 16px; z-index: 2; display: inline-flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: #fff; background: rgba(30,31,37,0.72); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); padding: 7px 12px; border-radius: 100px; }
+  .site__stamp-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--c-yellow); }
+  .site__caption { font-size: 13px; color: var(--c-text-muted); margin: 12px 0 0; }
+
+  /* Reveal (dark) */
+  .chapter--dark { background: var(--c-dark-deep); color: #fff; border-top: none; margin: 0 calc(var(--space-xl) * -1); padding-left: var(--space-xl); padding-right: var(--space-xl); border-radius: 28px; }
+  .chapter--dark h2 { color: #fff; }
+  .video { margin: 0 0 28px; }
+  .video__frame { position: relative; border-radius: 16px; overflow: hidden; box-shadow: 0 24px 64px rgba(0,0,0,0.45), 0 0 0 1px rgba(255,255,255,0.06); background: #000; }
+  .facade { position: relative; aspect-ratio: 16 / 9; cursor: pointer; }
+  .facade__poster { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.7s cubic-bezier(0.16,1,0.3,1); }
+  .facade:hover .facade__poster { transform: scale(1.02); }
+  .facade__play { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 92px; height: 92px; display: flex; align-items: center; justify-content: center; color: #fff; }
+  .facade__ring { position: absolute; inset: 0; border: 2px solid rgba(255,255,255,0.9); border-radius: 50%; background: rgba(255,255,255,0.08); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); animation: breathe 3s ease-in-out infinite; transition: background 0.3s ease, border-color 0.3s ease; }
+  .facade:hover .facade__ring, .facade:focus-visible .facade__ring { background: var(--c-yellow); border-color: var(--c-yellow); }
+  .facade:hover .facade__play, .facade:focus-visible .facade__play { color: var(--c-dark); }
+  .facade__play svg { width: 22px; height: 26px; margin-left: 4px; position: relative; }
+  .facade:focus-visible { outline: 3px solid var(--c-yellow); outline-offset: 4px; }
+  @keyframes breathe { 0%, 100% { transform: scale(1); opacity: 0.85; } 50% { transform: scale(1.06); opacity: 1; } }
+  .video figcaption { font-size: 13px; color: rgba(255,255,255,0.5); margin-top: 12px; }
+
+  .ba { max-width: 760px; }
+  .ba__container { position: relative; border-radius: 16px; overflow: hidden; aspect-ratio: 4 / 3; cursor: ew-resize; user-select: none; -webkit-user-select: none; touch-action: pan-y pinch-zoom; box-shadow: 0 24px 64px rgba(0,0,0,0.45); background: #111; }
+  .ba__container:focus-within { outline: 3px solid var(--c-yellow); outline-offset: 3px; }
+  .ba__after, .ba__before { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .ba__after { position: absolute; inset: 0; }
+  .ba__before-clip { position: absolute; inset: 0; clip-path: inset(0 calc(100% - var(--ba-pos)) 0 0); z-index: 2; }
+  .ba__range { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 6; opacity: 0; margin: 0; cursor: ew-resize; -webkit-appearance: none; appearance: none; touch-action: pan-y; }
+  .ba__handle { position: absolute; top: 0; bottom: 0; left: calc(var(--ba-pos) - 24px); width: 48px; z-index: 5; display: flex; align-items: center; justify-content: center; pointer-events: none; }
+  .ba__line { position: absolute; top: 0; bottom: 0; left: 50%; width: 2px; margin-left: -1px; background: #fff; box-shadow: 0 0 12px rgba(0,0,0,0.4); }
+  .ba__knob { position: relative; width: 44px; height: 44px; border-radius: 50%; background: var(--c-yellow); color: var(--c-dark); display: flex; align-items: center; justify-content: center; box-shadow: 0 6px 20px rgba(0,0,0,0.35); }
+  .ba__knob svg { width: 22px; height: 22px; }
+  .ba__label { position: absolute; bottom: 14px; z-index: 4; font-size: 11px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: #fff; background: rgba(30,31,37,0.7); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); padding: 6px 12px; border-radius: 100px; transition: opacity 0.25s ease; }
+  .ba__label--before { left: 14px; }
+  .ba__label--after { right: 14px; }
+  .ba__label[data-fade] { opacity: 0; }
+  .ba__hint { font-size: 13px; color: rgba(255,255,255,0.5); margin: 12px 0 0; }
+
+  /* Scale */
+  .scale { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+  .scale__stat { background: #fff; border: 1px solid var(--c-border); border-radius: 16px; padding: 24px 22px; }
+  .scale__stat--accent { background: var(--c-dark); border-color: var(--c-dark); color: #fff; }
+  .scale__num { display: block; font-family: var(--font-display); font-size: clamp(30px, 3.4vw, 44px); font-weight: 700; line-height: 1; margin-bottom: 8px; color: var(--c-dark); font-variant-numeric: tabular-nums; }
+  .scale__stat--accent .scale__num { color: var(--c-yellow); }
+  .scale__cent { font-size: 0.6em; }
+  .scale__label { font-size: 13px; line-height: 1.45; color: var(--c-text-muted); }
+  .scale__stat--accent .scale__label { color: rgba(255,255,255,0.7); }
+  .scale__foot { font-size: 14px; color: var(--c-text-muted); margin: 20px 0 0; }
+  .scale__foot a { color: var(--c-dark); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--c-yellow); }
+
+  /* Closing */
+  .close { background: var(--c-yellow); padding: clamp(64px, 8vw, 96px) 0; margin-top: clamp(56px, 7vw, 96px); }
+  .close__inner { max-width: var(--max-width); margin: 0 auto; padding: 0 var(--space-xl); }
+  .close__head { max-width: 640px; margin-bottom: 32px; }
+  .close__head .section-label { color: rgba(45,46,51,0.7); }
+  .close__head h2 { font-size: clamp(28px, 4vw, 44px); line-height: 1.15; letter-spacing: -0.02em; margin: 0; }
+  .close__head h2 em { font-style: italic; }
+  .close__grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .close__card { display: flex; flex-direction: column; gap: 10px; padding: 32px; border-radius: 20px; background: rgba(255,255,255,0.7); color: var(--c-dark); text-decoration: none; border: 1px solid rgba(45,46,51,0.08); transition: transform 0.35s cubic-bezier(0.16,1,0.3,1), box-shadow 0.35s ease, background 0.35s ease; }
+  .close__card:hover { transform: translateY(-4px); box-shadow: 0 20px 48px rgba(45,46,51,0.15); background: #fff; }
+  .close__card--dark { background: var(--c-dark); color: #fff; border-color: var(--c-dark); }
+  .close__card--dark:hover { background: var(--c-dark-deep); }
+  .close__card:focus-visible { outline: 3px solid var(--c-dark); outline-offset: 4px; }
+  .close__kicker { font-size: 11px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; opacity: 0.7; }
+  .close__title { font-family: var(--font-display); font-size: 26px; font-weight: 700; line-height: 1.15; }
+  .close__text { font-size: 15px; line-height: 1.65; opacity: 0.8; }
+  .close__cta { display: inline-flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 14px; font-weight: 700; }
+  .close__card--dark .close__cta { color: var(--c-yellow); }
+  .close__note { margin: 28px 0 0; font-size: 13px; color: rgba(45,46,51,0.75); }
+  .close__note a { color: var(--c-dark); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+
+  /* Reveals */
+  [data-reveal] { opacity: 0; transform: translateY(28px); transition: opacity 0.7s cubic-bezier(0.16,1,0.3,1), transform 0.7s cubic-bezier(0.16,1,0.3,1); }
+  [data-reveal].is-visible { opacity: 1; transform: translateY(0); }
+  [data-delay="1"] { transition-delay: 0.1s; }
+  [data-delay="2"] { transition-delay: 0.2s; }
+  [data-delay="3"] { transition-delay: 0.3s; }
+
+  /* ══════ Responsive ══════ */
+  @media (max-width: 1024px) {
+    .case { grid-template-columns: minmax(0, 1fr); gap: 0; }
+    /* Sticky pill row directly under the site header; bleeds edge to edge */
+    .rail {
+      position: sticky; top: var(--hdr, 72px); z-index: 20;
+      margin: 0 calc(var(--space-xl) * -1); padding: 10px var(--space-xl);
+      background: rgba(254, 252, 245, 0.92);
+      backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--c-border);
+    }
+    .rail__label, .rail__project { display: none; }
+    .rail__list { border-left: none; display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; padding: 0; scroll-snap-type: x proximity; }
+    .rail__list::before { display: none; }
+    .rail__list::-webkit-scrollbar { display: none; }
+    .rail__list li { flex: 0 0 auto; scroll-snap-align: center; }
+    .rail__link { padding: 8px 14px; border: 1px solid var(--c-border); border-radius: 100px; white-space: nowrap; font-size: 13px; margin: 0; gap: 8px; background: var(--c-white); }
+    .rail__link.is-active { padding-left: 14px; border-color: var(--c-yellow); background: var(--c-yellow); color: var(--c-dark); }
+    .rail__num { width: auto; }
+    .chapter { scroll-margin-top: 0; }
+    .chapter__grid { grid-template-columns: 1fr; }
+    .crew__group { grid-template-columns: 1fr; gap: 14px; }
+    .scale { grid-template-columns: 1fr 1fr; }
+  }
+  @media (max-width: 900px) {
+    .hero { padding: 64px 0 56px; }
+    .hero-inner { grid-template-columns: 1fr; gap: 40px; }
+    .hero-frame { max-width: 420px; margin: 0 auto; width: 100%; }
+    .hero-stat { left: 12px; bottom: 16px; padding: 12px 16px; }
+    .plans { grid-template-columns: 1fr; }
+    .plans__arrow { transform: rotate(90deg); justify-self: center; }
+    .site { grid-template-columns: repeat(2, 1fr); }
+    .site__shot--lead { grid-column: span 2; grid-row: auto; aspect-ratio: 4 / 3; }
+    .chapter--dark { border-radius: 20px; }
+  }
+  @media (max-width: 600px) {
+    .close__grid { grid-template-columns: 1fr; }
+    .scale { grid-template-columns: 1fr 1fr; gap: 10px; }
+    .scale__stat { padding: 18px 16px; }
+    .chapter__num { font-size: 32px; }
+    .chapter__head { gap: 14px; }
+    .boards { margin-right: calc(var(--space-xl) * -1); }
+  }
+  @media print {
+    .rail, .facade__play, .ba__handle, .ba__range, .ba__label, .boards__hint, .hero-ctas, .close { display: none !important; }
+    .case { display: block; }
+    .chapter--dark { background: #fff; color: #000; margin: 0; border-radius: 0; }
+    .chapter--dark h2, .chapter__text--light p { color: #000; }
+    .chapter { break-inside: avoid; }
+    .boards__scroll { flex-wrap: wrap; overflow: visible; }
+    [data-reveal] { opacity: 1 !important; transform: none !important; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    [data-reveal] { opacity: 1; transform: none; transition: none; }
+    .rail__list::before { transition: none; }
+    .hero-text h1, .hero-lead, .hero-ctas, .hero-frame, .hero-accent { animation: none; opacity: 1; transform: none; }
+    .facade__ring { animation: none; }
+    .lqip-img.lqip-pending { opacity: initial; }
+    .site__shot img, .facade__poster { transition: none; }
+  }
+</style>
+
+<noscript>
+  <style>
+    .hero-lead, .hero-ctas, .hero-accent { opacity: 1 !important; animation: none !important; }
+    [data-reveal] { opacity: 1 !important; transform: none !important; }
+  </style>
+</noscript>
+
+<script>
+  function initHowItWorks() {
+    const caseEl = document.getElementById('case');
+    if (!caseEl) return;
+
+    /* ── Site header height → CSS var (sticky offsets + anchor scroll margins) ── */
+    const header = document.querySelector<HTMLElement>('header');
+    const setHdr = () => { if (header) document.documentElement.style.setProperty('--hdr', `${Math.round(header.getBoundingClientRect().height)}px`); };
+    setHdr();
+    window.addEventListener('resize', setHdr, { passive: true });
+
+    /* ── Chapter rail: highlight the chapter in view, fill progress, keep the pill visible ── */
+    const links = Array.from(document.querySelectorAll<HTMLAnchorElement>('[data-rail]'));
+    const chapters = Array.from(document.querySelectorAll<HTMLElement>('[data-chapter]'));
+    const railList = document.querySelector<HTMLElement>('.rail__list');
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let railObs: IntersectionObserver | null = null;
+    if (links.length && chapters.length && 'IntersectionObserver' in window) {
+      const setActive = (id: string) => {
+        links.forEach(l => l.classList.toggle('is-active', l.dataset.rail === id));
+        const idx = Math.max(0, links.findIndex(l => l.dataset.rail === id));
+        railList?.style.setProperty('--rail-progress', `${((idx + 1) / links.length) * 100}%`);
+        const active = links[idx];
+        if (railList && active && railList.scrollWidth > railList.clientWidth) {
+          railList.scrollTo({ left: active.offsetLeft - (railList.clientWidth - active.offsetWidth) / 2, behavior: reduced ? 'auto' : 'smooth' });
+        }
+      };
+      railObs = new IntersectionObserver((entries) => {
+        const visible = entries.filter(e => e.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+        if (visible[0]) setActive((visible[0].target as HTMLElement).dataset.chapter || '');
+      }, { rootMargin: '-35% 0px -55% 0px', threshold: 0 });
+      chapters.forEach(c => railObs!.observe(c));
+      setActive(chapters[0].dataset.chapter || '');
+    }
+
+    /* ── Video facade: load the player on demand ── */
+    const facade = document.getElementById('video-facade');
+    if (facade) {
+      const play = () => {
+        const stream = facade.dataset.stream;
+        const yt = facade.dataset.yt;
+        const iframe = document.createElement('iframe');
+        iframe.src = stream
+          ? `https://iframe.videodelivery.net/${stream}?autoplay=true&preload=true`
+          : `https://www.youtube-nocookie.com/embed/${yt}?autoplay=1&rel=0`;
+        iframe.allow = 'accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture';
+        iframe.allowFullscreen = true;
+        iframe.title = 'Reveal video';
+        iframe.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border:0;';
+        const wrap = document.createElement('div');
+        wrap.style.cssText = 'position:relative;aspect-ratio:16/9;background:#000';
+        wrap.appendChild(iframe);
+        facade.replaceWith(wrap);
+      };
+      facade.addEventListener('click', play);
+      facade.addEventListener('keydown', (e: KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); play(); } });
+    }
+
+    /* ── Before / after slider ── */
+    const ba = document.querySelector<HTMLElement>('[data-ba]');
+    if (ba) {
+      const range = ba.querySelector<HTMLInputElement>('.ba__range');
+      const before = ba.querySelector<HTMLElement>('[data-ba-label="before"]');
+      const after = ba.querySelector<HTMLElement>('[data-ba-label="after"]');
+      const set = (v: number) => {
+        const p = Math.max(0, Math.min(100, v));
+        ba.style.setProperty('--ba-pos', `${p}%`);
+        if (range) range.value = String(p);
+        before?.toggleAttribute('data-fade', p < 18);
+        after?.toggleAttribute('data-fade', p > 82);
+      };
+      range?.addEventListener('input', () => set(Number(range.value)));
+      let dragging = false;
+      const fromX = (x: number) => { const r = ba.getBoundingClientRect(); return ((x - r.left) / r.width) * 100; };
+      ba.addEventListener('pointerdown', (e) => { dragging = true; ba.classList.add('is-dragging'); set(fromX(e.clientX)); });
+      window.addEventListener('pointermove', (e) => { if (dragging) set(fromX(e.clientX)); }, { passive: true });
+      window.addEventListener('pointerup', () => { dragging = false; ba.classList.remove('is-dragging'); });
+    }
+
+    document.addEventListener('astro:before-swap', () => { railObs?.disconnect(); }, { once: true });
+  }
+  document.addEventListener('astro:page-load', initHowItWorks);
+</script>

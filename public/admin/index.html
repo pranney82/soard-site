@@ -1943,6 +1943,14 @@
         const r = await fetch('/api/upload-image', { method: 'POST', body: form });
         return apiJson(r, '/api/upload-image');
       },
+      async fetchOgImage(url, id) {
+        const r = await fetch('/api/fetch-og-image', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url, id }),
+        });
+        return apiJson(r, '/api/fetch-og-image');
+      },
       async deleteImage(imageId) {
         const r = await fetch('/api/delete-image', {
           method: 'POST',
@@ -9229,6 +9237,7 @@
       const [saving, setSaving] = useState(false);
       const [sha, setSha] = useState(null);
       const [dirty, setDirty] = useState(false);
+      const [showHeroPicker, setShowHeroPicker] = useState(false);
       const [data, setData] = useState({
         title: '', slug: '', description: '', tag: 'Guide',
         datePublished: new Date().toISOString().split('T')[0],
@@ -9315,6 +9324,12 @@
       if (loading) return html`<${EditorSkeleton} />`;
 
       return html`
+        ${showHeroPicker ? html`<${ImagePicker}
+          value=${data.heroImage}
+          uploadPrefix=${`articles/${data.slug || 'new'}`}
+          onSelect=${(id) => { update('heroImage', id); setShowHeroPicker(false); }}
+          onClose=${() => setShowHeroPicker(false)}
+        />` : null}
         <nav class="breadcrumb" aria-label="Breadcrumb">
           <button onClick=${onBack}>Articles</button>
           <span class="sep">›</span>
@@ -9355,6 +9370,21 @@
               <span class="form-label">Display Order</span>
               <input type="number" value=${data.order} onInput=${e => update('order', Number(e.target.value))} />
             </label>
+          </div>
+        </div>
+
+        <div class="card" style="margin-bottom: 1rem;">
+          <h3 style="margin-bottom: 0.5rem;">Hero Image</h3>
+          <p class="text-sm text-muted" style="margin-bottom: 1rem;">The photo at the top of this article. Leave blank to use the site-wide default from Kids on Site → Resource Articles.</p>
+          ${data.heroImage ? html`
+            <div style="margin-bottom: 0.75rem; border-radius: 8px; overflow: hidden; max-width: 400px;">
+              <img src=${cfThumb(data.heroImage, 'w=800,q=80')} alt="Hero preview" style="width: 100%; height: 200px; object-fit: cover; display: block;" onError=${e => { e.target.style.display = 'none'; }} />
+            </div>
+          ` : null}
+          <div style="display: flex; gap: 0.5rem;">
+            <input class="form-input" type="text" style="flex: 1;" value=${data.heroImage || ''} placeholder="kids/summer/hero" onInput=${e => update('heroImage', e.target.value || null)} />
+            <button class="btn btn-ghost" type="button" onClick=${() => setShowHeroPicker(true)}>Browse</button>
+            ${data.heroImage ? html`<button class="btn btn-ghost" type="button" onClick=${() => update('heroImage', null)}>Clear</button>` : null}
           </div>
         </div>
 
@@ -10018,6 +10048,27 @@
       const [dirty, setDirty] = useState(false);
       const [showImagePicker, setShowImagePicker] = useState(false);
       const CF_PRESS = CF; // Use same base as rest of admin
+      const [pullingImage, setPullingImage] = useState(false);
+      // Grab the story's og:image and save it to Cloudflare Images (no manual download/upload)
+      const pullImageFromUrl = async () => {
+        const url = (data.url || '').trim();
+        if (!url) { addToast('Add the article URL first', 'error'); return; }
+        const yr = (data.date || '').split('-')[0] || '';
+        const fileSlug = data.slug || slugify((data.outlet || 'article') + (yr ? ' ' + yr : ''));
+        setPullingImage(true);
+        try {
+          const res = await api.fetchOgImage(url, `press/${fileSlug}`);
+          if (res.success && res.imageId) {
+            update('image', res.imageId);
+            addToast('Image pulled from the article', 'success');
+          } else {
+            addToast(res.error || 'No image found on that page', 'error');
+          }
+        } catch (err) {
+          addToast(`Could not pull image: ${err.message}`, 'error');
+        }
+        setPullingImage(false);
+      };
       const [data, setData] = useState(() => {
         // Check for pre-filled data from Press Monitor
         const prefill = sessionStorage.getItem('press-prefill');
@@ -10201,8 +10252,11 @@
                 onInput=${e => update('image', e.target.value || null)}
                 placeholder="press/11alive-2025" />
               <button class="btn btn-ghost" type="button" onClick=${() => setShowImagePicker(true)}>Browse</button>
+              <button class="btn btn-ghost" type="button" disabled=${pullingImage || !data.url} title="Grab the story's preview image and save it to Cloudflare Images" onClick=${pullImageFromUrl}>
+                ${pullingImage ? html`<span class="spinner" style="width:14px;height:14px;border-width:2px;" />` : 'Pull from article link'}
+              </button>
             </div>
-            <span class="form-hint">Cloudflare Images ID (e.g. press/11alive-2025). Leave blank for no image.</span>
+            <span class="form-hint">Cloudflare Images ID (e.g. press/11alive-2025). "Pull from article link" grabs the story's preview image automatically; if the outlet blocks it, upload one with Browse. Leave blank and the card shows the outlet's logo instead.</span>
             ${data.image ? html`
               <div style="margin-top: 0.75rem; border-radius: 8px; overflow: hidden; max-width: 400px;">
                 <img src=${cfThumb(data.image, 'w=800,q=80')}
@@ -10706,7 +10760,10 @@
                           onBlur=${saveInlineEdit}
                           onKeyDown=${e => { if (e.key === 'Enter') saveInlineEdit(); if (e.key === 'Escape') setInlineEdit(null); }}
                           ref=${el => el && el.focus()} />`
-                      : html`<strong onDblClick=${e => startInlineEdit(e, p.slug, 'name', p.name)} style="cursor: text;" title="Double-click to edit">${p.name}</strong>`}
+                      : html`<strong onDblClick=${e => startInlineEdit(e, p.slug, 'name', p.name)} style="cursor: text;" title="Double-click to edit">${p.name}</strong>${!p.story
+                          ? html`<span title=${`No detail page yet. Add a Full Story in the editor to publish /community/${p.slug}/ and link the card.`}
+                              style="display: inline-block; margin-left: 0.5rem; font-size: 0.62rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; padding: 0.15rem 0.45rem; border-radius: 4px; background: #FFF8DB; color: #8A7200; border: 1px solid #F6E05E; vertical-align: middle;">No page yet</span>`
+                          : null}`}
                   </td>
                   <td><${CompletenessRing} pct=${pct} missing=${missing} /></td>
                   <td>
@@ -13998,10 +14055,12 @@
         'sectionPhotos.missionMain', 'sectionPhotos.missionAccent', 'sectionPhotos.process',
         'sectionPhotos.roomBedroom', 'sectionPhotos.roomBath', 'sectionPhotos.roomTherapy',
         'donatePhotos.hero', 'donatePhotos.story',
-        'applyPhotos.hero', 'applyPhotos.story', 'applyPhotos.selection',
+        'applyPhotos.hero', 'applyPhotos.story', 'applyPhotos.selection', 'applyPhotos.build',
         'communityPhotos.hero', 'communityPhotos.accent',
         'waysToGivePhotos.hero', 'waysToGivePhotos.breakPhoto', 'waysToGivePhotos.legacyPhoto',
         'financialsPhotos.hero',
+        'resourcesPhotos.hero', 'resourcesPhotos.why',
+        'upNext.photo',
         'partnerPhoto'];
 
       const stampPhoto = (copy, path) => {
@@ -14307,6 +14366,80 @@
         </div>
 
         <div class="card">
+          <h3 style="margin-bottom: 1rem;">Up Next Strip ${freshnessBadge(pts['upNext.photo'])}</h3>
+          <p class="text-sm text-muted mb-1">The announcement card right under the homepage hero: the room being built now, the next reveal, or an upcoming event. Auto mode needs no upkeep; Manual lets you write anything.</p>
+          <div class="form-row" style="grid-template-columns: 1fr 1fr;">
+            <div class="form-group">
+              <label class="form-label">Mode</label>
+              <select class="form-input" value=${data.upNext?.mode || 'auto'} onChange=${e => updateField('upNext.mode', e.target.value)}>
+                <option value="auto" selected=${(data.upNext?.mode || 'auto') === 'auto'}>Auto: current build, or the next event</option>
+                <option value="manual" selected=${data.upNext?.mode === 'manual'}>Manual: write it myself</option>
+                <option value="off" selected=${data.upNext?.mode === 'off'}>Off: hide the strip</option>
+              </select>
+            </div>
+            ${(data.upNext?.mode || 'auto') === 'auto' ? html`
+              <div class="form-group">
+                <label class="form-label">Which build to feature</label>
+                <select class="form-input" value=${data.upNext?.kidSlug || ''} onChange=${e => updateField('upNext.kidSlug', e.target.value)}>
+                  <option value="">— First kid marked In Progress —</option>
+                  ${sortedKids.filter(k => k.status === 'in-progress').map(k => html`<option value=${k.slug} selected=${k.slug === data.upNext?.kidSlug}>${k.name}${k.year ? ` (${k.year})` : ''}</option>`)}
+                </select>
+                <div class="form-hint">Only kids with status In Progress are listed. With none in progress, the next upcoming event shows instead.</div>
+              </div>
+              <div class="form-group" style="grid-column: 1 / -1;">
+                <label class="form-label">Date / status line (optional)</label>
+                <input class="form-input" value=${data.upNext?.dateText || ''} placeholder="Reveal day is October 18"
+                  onInput=${e => updateField('upNext.dateText', e.target.value)} />
+                <div class="form-hint">Shown next to the label. Leave blank for "Reveal coming soon" (or the event date).</div>
+              </div>
+            ` : null}
+          </div>
+          ${(data.upNext?.mode || 'auto') === 'manual' ? html`
+            <div class="form-row" style="grid-template-columns: 1fr 1fr; margin-top: 0.75rem;">
+              <div class="form-group">
+                <label class="form-label">Label</label>
+                <input class="form-input" value=${data.upNext?.label || ''} placeholder="Now Building" onInput=${e => updateField('upNext.label', e.target.value)} />
+              </div>
+              <div class="form-group">
+                <label class="form-label">Date / status line</label>
+                <input class="form-input" value=${data.upNext?.date || ''} placeholder="Reveal day is October 18" onInput=${e => updateField('upNext.date', e.target.value)} />
+              </div>
+              <div class="form-group" style="grid-column: 1 / -1;">
+                <label class="form-label">Headline *</label>
+                <input class="form-input" value=${data.upNext?.headline || ''} placeholder="Axel's accessible bathroom and dream bedroom" onInput=${e => updateField('upNext.headline', e.target.value)} />
+              </div>
+              <div class="form-group" style="grid-column: 1 / -1;">
+                <label class="form-label">One or two sentences</label>
+                <textarea class="form-input" rows="2" value=${data.upNext?.body || ''} onInput=${e => updateField('upNext.body', e.target.value)} />
+              </div>
+              <div class="form-group">
+                <label class="form-label">Button label</label>
+                <input class="form-input" value=${data.upNext?.ctaLabel || ''} placeholder="Meet Axel" onInput=${e => updateField('upNext.ctaLabel', e.target.value)} />
+              </div>
+              <div class="form-group">
+                <label class="form-label">Button link</label>
+                <input class="form-input" value=${data.upNext?.ctaLink || ''} placeholder="/kids/axel/" onInput=${e => updateField('upNext.ctaLink', e.target.value)} />
+              </div>
+              ${renderPhotoField('Photo', 'upNext.photo', data.upNext?.photo)}
+            </div>
+          ` : null}
+        </div>
+
+        <div class="card">
+          <h3 style="margin-bottom: 1rem;">How It Works Page</h3>
+          <p class="text-sm text-muted mb-1">The project followed start to finish on /how-it-works/. Best results come from a kid with design drawings uploaded under Plans, a reveal video, and a before/after pair.</p>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Featured project</label>
+              <select class="form-input" value=${data.howItWorks?.kidSlug || ''} onChange=${e => updateField('howItWorks.kidSlug', e.target.value)}>
+                <option value="">— Auto: newest kid with drawings and a video —</option>
+                ${sortedKids.map(k => html`<option value=${k.slug} selected=${k.slug === data.howItWorks?.kidSlug}>${k.name}${k.year ? ` (${k.year})` : ''}</option>`)}
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
           <h3 style="margin-bottom: 1rem;">Section Photos</h3>
           <p class="text-sm text-muted mb-1">Kid photos used throughout homepage sections.</p>
           <div class="form-row">
@@ -14314,7 +14447,7 @@
             ${renderPhotoField('Mission — Accent Photo', 'sectionPhotos.missionAccent', data.sectionPhotos?.missionAccent)}
           </div>
           <div class="form-row">
-            ${renderPhotoField('Process Section Photo', 'sectionPhotos.process', data.sectionPhotos?.process)}
+            ${renderPhotoField('Apply Page — Reveal Photo', 'sectionPhotos.process', data.sectionPhotos?.process)}
           </div>
           <div class="form-row" style="grid-template-columns: 1fr 1fr 1fr;">
             ${renderPhotoField('Room — Bedroom', 'sectionPhotos.roomBedroom', data.sectionPhotos?.roomBedroom)}
@@ -14346,11 +14479,21 @@
 
         <div class="card">
           <h3 style="margin-bottom: 1rem;">Apply Page</h3>
-          <p class="text-sm text-muted mb-1">Kid photos featured on the apply page.</p>
-          <div class="form-row" style="grid-template-columns: 1fr 1fr 1fr;">
-            ${renderPhotoField('Hero Photo', 'applyPhotos.hero', data.applyPhotos?.hero)}
-            ${renderPhotoField('Story Photo', 'applyPhotos.story', data.applyPhotos?.story)}
-            ${renderPhotoField('Selection Photo', 'applyPhotos.selection', data.applyPhotos?.selection)}
+          <p class="text-sm text-muted mb-1">Kid photos featured on the apply page. Each step of "The Journey" has its own photo so nothing repeats.</p>
+          <div class="form-row" style="grid-template-columns: 1fr 1fr;">
+            ${renderPhotoField('Hero Photo (large)', 'applyPhotos.hero', data.applyPhotos?.hero)}
+            ${renderPhotoField('Hero Inset Photo (small)', 'applyPhotos.story', data.applyPhotos?.story)}
+            ${renderPhotoField('Step 2 — Home Visit Photo', 'applyPhotos.selection', data.applyPhotos?.selection)}
+            ${renderPhotoField('Step 4 — Build Photo', 'applyPhotos.build', data.applyPhotos?.build)}
+          </div>
+        </div>
+
+        <div class="card">
+          <h3 style="margin-bottom: 1rem;">Resource Articles</h3>
+          <p class="text-sm text-muted mb-1">Default photo at the top of every resource guide (/resources/…). Any article can override it with its own Hero Image in the article editor.</p>
+          <div class="form-row">
+            ${renderPhotoField('Articles — Hero Photo (default)', 'resourcesPhotos.hero', data.resourcesPhotos?.hero)}
+            ${renderPhotoField('Resources Index — Why Photo', 'resourcesPhotos.why', data.resourcesPhotos?.why)}
           </div>
         </div>
 

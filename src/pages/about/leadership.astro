@@ -72,6 +72,10 @@ const breadcrumbs = [
         <p class="section-desc">
           Industry experts who volunteer their time and expertise to ensure we serve more families, more effectively.
         </p>
+        <p class="board-giving">
+          <span class="board-giving__stat">100%</span>
+          <span class="board-giving__text"><strong>Board participation.</strong> Every member of our Board of Directors makes a personal financial gift to SOARD each year, in addition to the time and expertise they volunteer.</span>
+        </p>
       </div>
 
       <div class="board-grid">
@@ -236,6 +240,38 @@ const breadcrumbs = [
     font-size: 1.05rem;
     color: var(--c-text-muted);
     line-height: 1.7;
+  }
+
+  /* 100% board giving — the line funders look for */
+  .board-giving {
+    display: inline-flex;
+    align-items: center;
+    gap: 14px;
+    margin-top: var(--space-lg);
+    padding: 12px 20px 12px 14px;
+    background: var(--c-white);
+    border: 1px solid var(--c-border);
+    border-radius: 100px;
+    text-align: left;
+    font-size: 0.92rem;
+    line-height: 1.5;
+    color: var(--c-text-muted);
+  }
+  .board-giving__stat {
+    flex-shrink: 0;
+    font-family: var(--font-display);
+    font-size: 1.35rem;
+    font-weight: 700;
+    color: var(--c-dark);
+    background: var(--c-yellow);
+    border-radius: 100px;
+    padding: 6px 14px;
+    line-height: 1;
+  }
+  .board-giving__text strong { color: var(--c-text); }
+  @media (max-width: 600px) {
+    .board-giving { border-radius: 20px; align-items: flex-start; }
+    .board-giving__stat { margin-top: 2px; }
   }
 
   /* ═══════════════════════════════════════════

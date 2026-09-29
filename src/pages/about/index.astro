@@ -84,13 +84,47 @@ const jsonLd = getFAQSchema(aboutFaqs);
     </div>
   </section>
 
+  <!-- ══════ GRACIE — The Mascot ══════ -->
+  <section class="mascot" aria-labelledby="mascot-heading">
+    <div class="mascot-inner">
+      <div class="mascot-text" data-reveal>
+        <div class="section-label">{page.mascot.label}</div>
+        <h2 id="mascot-heading" set:html={page.mascot.heading} />
+        {page.mascot.paragraphs.map((p: string) => <p set:html={p} />)}
+        <p class="mascot-tagline" set:html={page.mascot.tagline} />
+      </div>
+      <div class="mascot-visual" data-reveal data-delay="1">
+        <div class="mascot-photo">
+          <img src={`${CF}/${graciePhotoId}/w=600,q=80`} srcset={`${CF}/${graciePhotoId}/w=400,q=80 400w, ${CF}/${graciePhotoId}/w=600,q=80 600w, ${CF}/${graciePhotoId}/w=800,q=80 800w`} sizes="(max-width:768px) calc(100vw - 48px), 460px" alt="Gracie the Pig — the real pot-bellied pig that inspired SOARD's mascot" width="600" height="400" loading="lazy" decoding="async" />
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════ SUNNY & RANNEY — The Store ══════ -->
+  <section class="store-section" aria-labelledby="store-heading">
+    <div class="store-inner">
+      <div class="store-photo" data-reveal>
+        <img src={`${CF}/${storePhotoId}/w=600,q=80`} srcset={`${CF}/${storePhotoId}/w=400,q=80 400w, ${CF}/${storePhotoId}/w=600,q=80 600w, ${CF}/${storePhotoId}/w=800,q=80 800w`} sizes="(max-width:768px) calc(100vw - 48px), 460px" alt="Sunny & Ranney, a nonprofit home furnishings store in Roswell, Georgia" width="600" height="450" loading="lazy" decoding="async" />
+      </div>
+      <div class="store-text" data-reveal data-delay="1">
+        <div class="section-label">{page.store.label}</div>
+        <h2 id="store-heading" set:html={page.store.heading} />
+        {page.store.paragraphs.map((p: string) => <p set:html={p} />)}
+        <a href="https://sunnyandranney.com" target="_blank" rel="noopener noreferrer" class="btn btn-dark">Shop Sunny & Ranney →</a>
+      </div>
+    </div>
+  </section>
+
   <!-- ══════ TIMELINE ══════ -->
   <section class="timeline-section" aria-labelledby="timeline-heading">
     <div class="timeline-header" data-reveal>
       <div class="section-label section-label--yellow">Milestones</div>
       <h2 id="timeline-heading">{stats.years} years of building <em>dreams</em>.</h2>
       <p class="timeline-subtitle">Every room starts with a story. Here's ours.</p>
+      <button class="tl-expand-all" type="button" data-tl-expand-all aria-pressed="false">Expand all</button>
     </div>
+    <noscript><style>.tl-panel{grid-template-rows:1fr !important}.tl-panel-inner{opacity:1 !important;transform:none !important}.tl-expand-all{display:none}</style></noscript>
     <div class="timeline" id="timeline">
       <!-- Spine -->
       <div class="tl-track" aria-hidden="true">
@@ -104,29 +138,57 @@ const jsonLd = getFAQSchema(aboutFaqs);
             <span class="tl-dot-core"></span>
           </div>
           <div class="tl-connector" aria-hidden="true"></div>
-          <div class="tl-card">
-            {m.image && (
-              <div class="tl-image">
-                <img
-                  src={cfUrl(m.image, { w: 480, h: 280, fit: 'cover', gravity: 'face', q: 75 })}
-                  srcset={cfSrcset(m.image, [320, 480, 640], { fit: 'cover', gravity: 'face', quality: 75, aspectRatio: 280/480 })}
-                  sizes="(max-width:640px) calc(100vw - 72px), (max-width:960px) calc(100vw - 100px), 420px"
-                  alt={m.title}
-                  width="480"
-                  height="280"
-                  loading={i < 2 ? 'eager' : 'lazy'}
-                  decoding="async"
-                  class="lqip-img"
-                />
+          <article class={`tl-card ${i === 0 ? 'is-open' : ''}`} data-tl-card>
+            <h3 class="tl-heading">
+              <button class="tl-toggle" type="button" id={`tl-toggle-${i}`} aria-expanded={i === 0 ? 'true' : 'false'} aria-controls={`tl-panel-${i}`}>
+                {m.image ? (
+                  <span class="tl-thumb">
+                    <img
+                      src={cfUrl(m.image, { w: 160, h: 160, fit: 'cover', gravity: 'face', q: 75 })}
+                      srcset={cfSrcset(m.image, [96, 160, 240], { fit: 'cover', gravity: 'face', quality: 75, aspectRatio: 1 })}
+                      sizes="64px"
+                      alt=""
+                      width="64" height="64"
+                      loading={i === 0 ? 'eager' : 'lazy'}
+                      decoding="async"
+                    />
+                  </span>
+                ) : (
+                  <span class="tl-thumb tl-thumb--empty" aria-hidden="true">{String(m.year).slice(-2)}</span>
+                )}
+                <span class="tl-head">
+                  <span class="tl-year">{m.year}</span>
+                  <span class="tl-title">{m.title}</span>
+                </span>
+                <span class="tl-chevron" aria-hidden="true">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                </span>
+              </button>
+            </h3>
+            <div class="tl-panel" id={`tl-panel-${i}`} role="region" aria-labelledby={`tl-toggle-${i}`}>
+              <div class="tl-panel-inner">
+                {m.image && (
+                  <div class="tl-image">
+                    <img
+                      src={cfUrl(m.image, { w: 480, h: 280, fit: 'cover', gravity: 'face', q: 75 })}
+                      srcset={cfSrcset(m.image, [320, 480, 640], { fit: 'cover', gravity: 'face', quality: 75, aspectRatio: 280/480 })}
+                      sizes="(max-width:640px) calc(100vw - 72px), (max-width:960px) calc(100vw - 100px), 420px"
+                      alt={m.title}
+                      width="480"
+                      height="280"
+                      loading={i === 0 ? 'eager' : 'lazy'}
+                      decoding="async"
+                      class="lqip-img"
+                    />
+                  </div>
+                )}
+                <div class="tl-content">
+                  <p class="tl-desc">{m.desc}</p>
+                  {m.detail && <p class="tl-detail">{m.detail}</p>}
+                </div>
               </div>
-            )}
-            <div class="tl-content">
-              <span class="tl-year">{m.year}</span>
-              <h3 class="tl-title">{m.title}</h3>
-              <p class="tl-desc">{m.desc}</p>
-              {m.detail && <p class="tl-detail">{m.detail}</p>}
             </div>
-          </div>
+          </article>
         </div>
       ))}
       <!-- End beacon -->
@@ -156,38 +218,6 @@ const jsonLd = getFAQSchema(aboutFaqs);
       <div class="ribbon-stat" data-reveal data-delay="2">
         <span class="ribbon-num">{stats.years}</span>
         <span class="ribbon-label">Years of Impact</span>
-      </div>
-    </div>
-  </section>
-
-  <!-- ══════ GRACIE — The Mascot ══════ -->
-  <section class="mascot" aria-labelledby="mascot-heading">
-    <div class="mascot-inner">
-      <div class="mascot-text" data-reveal>
-        <div class="section-label">{page.mascot.label}</div>
-        <h2 id="mascot-heading" set:html={page.mascot.heading} />
-        {page.mascot.paragraphs.map((p: string) => <p set:html={p} />)}
-        <p class="mascot-tagline" set:html={page.mascot.tagline} />
-      </div>
-      <div class="mascot-visual" data-reveal data-delay="1">
-        <div class="mascot-photo">
-          <img src={`${CF}/${graciePhotoId}/w=600,q=80`} srcset={`${CF}/${graciePhotoId}/w=400,q=80 400w, ${CF}/${graciePhotoId}/w=600,q=80 600w, ${CF}/${graciePhotoId}/w=800,q=80 800w`} sizes="(max-width:768px) calc(100vw - 48px), 460px" alt="Gracie the Pig — the real pot-bellied pig that inspired SOARD's mascot" width="600" height="400" loading="lazy" decoding="async" />
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ══════ SUNNY & RANNEY — The Store ══════ -->
-  <section class="store-section" aria-labelledby="store-heading">
-    <div class="store-inner">
-      <div class="store-photo" data-reveal>
-        <img src={`${CF}/${storePhotoId}/w=600,q=80`} srcset={`${CF}/${storePhotoId}/w=400,q=80 400w, ${CF}/${storePhotoId}/w=600,q=80 600w, ${CF}/${storePhotoId}/w=800,q=80 800w`} sizes="(max-width:768px) calc(100vw - 48px), 460px" alt="Sunny & Ranney, a nonprofit home furnishings store in Roswell, Georgia" width="600" height="450" loading="lazy" decoding="async" />
-      </div>
-      <div class="store-text" data-reveal data-delay="1">
-        <div class="section-label">{page.store.label}</div>
-        <h2 id="store-heading" set:html={page.store.heading} />
-        {page.store.paragraphs.map((p: string) => <p set:html={p} />)}
-        <a href="https://sunnyandranney.com" target="_blank" rel="noopener noreferrer" class="btn btn-dark">Shop Sunny & Ranney →</a>
       </div>
     </div>
   </section>
@@ -379,6 +409,7 @@ const jsonLd = getFAQSchema(aboutFaqs);
 
   .timeline-header .section-label { justify-content: center; }
 
+  .timeline-header h2 em { color: var(--c-yellow); }
   .timeline-header h2 {
     color: var(--c-white);
     font-size: clamp(1.75rem, 4vw, 2.75rem);
@@ -500,7 +531,7 @@ const jsonLd = getFAQSchema(aboutFaqs);
     grid-template-columns: 1fr var(--tl-gutter) 1fr;
     gap: 0;
     align-items: start;
-    margin-bottom: 72px;
+    margin-bottom: 40px;
     z-index: 1;
   }
 
@@ -624,7 +655,7 @@ const jsonLd = getFAQSchema(aboutFaqs);
   .tl-ready .tl-item--left .tl-card  { transform: translateY(40px) translateX(30px); }
   .tl-ready .tl-item--right .tl-card { transform: translateY(40px) translateX(-30px); }
 
-  .tl-item.is-active .tl-card {
+  .tl-ready .tl-item.is-active .tl-card {
     opacity: 1;
     transform: translateY(0) translateX(0);
   }
@@ -709,6 +740,103 @@ const jsonLd = getFAQSchema(aboutFaqs);
     color: var(--c-yellow);
     letter-spacing: 0.02em;
     opacity: 0.85;
+  }
+
+  /* ── Collapsible cards (tap to open; first milestone open by default) ── */
+  .tl-heading { margin: 0; font-size: inherit; }
+  .tl-toggle {
+    display: grid;
+    grid-template-columns: 64px 1fr auto;
+    align-items: center;
+    gap: 16px;
+    width: 100%;
+    padding: 14px 16px 14px 14px;
+    background: none;
+    border: none;
+    text-align: left;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .tl-toggle:focus-visible {
+    outline: 3px solid var(--c-yellow);
+    outline-offset: -3px;
+    border-radius: 16px;
+  }
+  .tl-thumb {
+    width: 64px;
+    height: 64px;
+    border-radius: 12px;
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.06);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 1.1rem;
+    color: var(--c-yellow);
+    flex-shrink: 0;
+  }
+  .tl-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .tl-head { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; min-width: 0; }
+  .tl-head .tl-year { margin-bottom: 0; }
+  .tl-head .tl-title { margin: 0; font-size: 1.08rem; }
+  .tl-chevron {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: rgba(255, 255, 255, 0.75);
+    flex-shrink: 0;
+    transition: transform 0.45s cubic-bezier(0.16, 1, 0.3, 1), background 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+  }
+  .tl-toggle:hover .tl-chevron { border-color: rgba(255, 218, 36, 0.5); color: var(--c-yellow); }
+  .tl-card.is-open .tl-chevron {
+    transform: rotate(180deg);
+    background: var(--c-yellow);
+    border-color: var(--c-yellow);
+    color: var(--c-dark);
+  }
+  .tl-panel {
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .tl-panel-inner {
+    overflow: hidden;
+    min-height: 0;
+    opacity: 0;
+    transform: translateY(-6px);
+    transition: opacity 0.35s ease, transform 0.35s ease;
+  }
+  .tl-card.is-open .tl-panel { grid-template-rows: 1fr; }
+  .tl-card.is-open .tl-panel-inner { opacity: 1; transform: none; transition-delay: 0.08s; }
+  .tl-panel .tl-image { margin: 2px 14px 0; border-radius: 12px; }
+  .tl-panel .tl-content { padding: 16px 18px 20px; }
+  .tl-expand-all {
+    margin-top: 20px;
+    background: none;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: rgba(255, 255, 255, 0.8);
+    border-radius: 100px;
+    padding: 9px 20px;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    cursor: pointer;
+    transition: background 0.25s ease, color 0.25s ease, border-color 0.25s ease, transform 0.25s ease;
+  }
+  .tl-expand-all:hover { transform: translateY(-1px); border-color: var(--c-yellow); color: var(--c-yellow); }
+  .tl-expand-all[aria-pressed="true"] { background: var(--c-yellow); color: var(--c-dark); border-color: var(--c-yellow); }
+  .tl-expand-all:focus-visible { outline: 3px solid var(--c-yellow); outline-offset: 3px; }
+  @media (prefers-reduced-motion: reduce) {
+    .tl-panel, .tl-panel-inner, .tl-chevron, .tl-expand-all { transition: none; }
   }
 
   /* ── End cap ── */
@@ -809,7 +937,7 @@ const jsonLd = getFAQSchema(aboutFaqs);
 
     .tl-item {
       grid-template-columns: var(--tl-gutter) 1fr;
-      margin-bottom: 56px;
+      margin-bottom: 28px;
     }
 
     .tl-item--left .tl-card,
@@ -829,12 +957,12 @@ const jsonLd = getFAQSchema(aboutFaqs);
     .tl-item--left .tl-connector,
     .tl-item--right .tl-connector { display: none; }
 
-    .tl-item--left .tl-card,
-    .tl-item--right .tl-card {
+    .tl-ready .tl-item--left .tl-card,
+    .tl-ready .tl-item--right .tl-card {
       transform: translateY(28px) translateX(-16px);
     }
 
-    .tl-item.is-active .tl-card {
+    .tl-ready .tl-item.is-active .tl-card {
       transform: translateY(0) translateX(0);
     }
   }
@@ -856,7 +984,7 @@ const jsonLd = getFAQSchema(aboutFaqs);
 
     .tl-item {
       grid-template-columns: var(--tl-gutter) 1fr;
-      margin-bottom: 36px;
+      margin-bottom: 18px;
     }
 
     .tl-dot { padding-top: 20px; }
@@ -883,7 +1011,7 @@ const jsonLd = getFAQSchema(aboutFaqs);
     }
 
     .tl-item {
-      contain-intrinsic-size: auto 320px;
+      contain-intrinsic-size: auto 120px;
     }
 
     .tl-image {
@@ -1215,6 +1343,32 @@ const jsonLd = getFAQSchema(aboutFaqs);
     if (!fill || !items.length) return;
 
     const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    /* ── Collapsible milestone cards ── */
+    const cards = Array.from(timeline.querySelectorAll<HTMLElement>('[data-tl-card]'));
+    const expandAll = document.querySelector<HTMLButtonElement>('[data-tl-expand-all]');
+    const setOpen = (card: HTMLElement, open: boolean) => {
+      card.classList.toggle('is-open', open);
+      card.querySelector<HTMLButtonElement>('.tl-toggle')?.setAttribute('aria-expanded', String(open));
+    };
+    const syncExpandAll = () => {
+      if (!expandAll) return;
+      const allOpen = cards.length > 0 && cards.every(c => c.classList.contains('is-open'));
+      expandAll.setAttribute('aria-pressed', String(allOpen));
+      expandAll.textContent = allOpen ? 'Collapse all' : 'Expand all';
+    };
+    cards.forEach(card => {
+      card.querySelector<HTMLButtonElement>('.tl-toggle')?.addEventListener('click', () => {
+        setOpen(card, !card.classList.contains('is-open'));
+        syncExpandAll();
+      });
+    });
+    expandAll?.addEventListener('click', () => {
+      const open = expandAll.getAttribute('aria-pressed') !== 'true';
+      cards.forEach(c => setOpen(c, open));
+      syncExpandAll();
+    });
+    syncExpandAll();
 
     if (prefersReduced) {
       items.forEach(el => el.classList.add('is-active'));

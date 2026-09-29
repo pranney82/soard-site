@@ -57,6 +57,7 @@ const mapsUrl = `https://maps.google.com/?q=${encodeURIComponent(`${address.stre
         </div>
         <!-- Honeypot — hidden field that bots fill out, humans don't see -->
         <div aria-hidden="true" style="position:absolute;left:-9999px;top:-9999px;"><input type="text" name="website" tabindex="-1" autocomplete="off" /></div>
+        <input type="hidden" name="source" value="newsletter" />
         <p class="newsletter-note" id="newsletter-note" role="status" aria-live="polite">No spam, ever. Unsubscribe anytime.</p>
       </form>
     </div>
@@ -112,6 +113,7 @@ const mapsUrl = `https://maps.google.com/?q=${encodeURIComponent(`${address.stre
           <h3 class="footer-heading">About Us</h3>
           <ul>
             <li><a href="/about/">Our Story</a></li>
+            <li><a href="/how-it-works/">How It Works</a></li>
             <li><a href="/about/leadership/">Leadership</a></li>
             <li><a href="/about/financials/">Financials</a></li>
             <li><a href="/publicity/">Press & Media</a></li>
@@ -274,7 +276,7 @@ const mapsUrl = `https://maps.google.com/?q=${encodeURIComponent(`${address.stre
           const res = await fetch('/api/newsletter', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, hp }),
+            body: JSON.stringify({ email, hp, source: 'newsletter' }),
           });
           // Body may not be JSON (e.g. Cloudflare error pages) — don't throw on parse
           const data = await res.json().catch(() => null);

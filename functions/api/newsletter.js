@@ -19,7 +19,9 @@
  *      deleted or the settings are stale.
  *
  * Accepts both JSON (JS-enhanced) and form-encoded (no-JS fallback) POSTs.
- * JSON:  { "email": "user@example.com" }  →  { "ok": true/false }
+ * Optional `source` ("newsletter", "application-waitlist", …) becomes a Kit
+ * tag so each audience can be emailed on its own. Defaults to "newsletter".
+ * JSON:  { "email": "user@example.com", "source": "newsletter" }  →  { "ok": true/false }
  * Form:  standard form POST  →  302 redirect back with ?subscribed=1 or ?newsletter_error=...
  */
 
@@ -106,15 +108,18 @@ export async function onRequestPost(context) {
   const origin = new URL(context.request.url).origin;
 
   try {
-    let email, hp;
+    let email, hp, source;
 
     if (contentType.includes('application/json')) {
-      ({ email, hp } = await context.request.json());
+      ({ email, hp, source } = await context.request.json());
     } else {
       const form = await context.request.formData();
       email = form.get('email');
       hp = form.get('website');
+      source = form.get('source');
     }
+    source = String(source || '').trim().toLowerCase();
+    if (!/^[a-z0-9-]{2,40}$/.test(source)) source = 'newsletter';
 
     // Honeypot: if the hidden field has a value, it's a bot
     if (hp) {
@@ -132,7 +137,7 @@ export async function onRequestPost(context) {
 
     // Kit dual-write runs concurrently with the Resend flow below; the
     // signup succeeds if either provider accepts the address.
-    const kitPromise = kitSubscribe(context.env, email);
+    const kitPromise = kitSubscribe(context.env, email, { source });
 
     let resendOk = false;
     if (!apiKey) {

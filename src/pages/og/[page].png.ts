@@ -49,6 +49,7 @@ const getPages = async () => {
   { slug: 'faq', title: 'Frequently Asked Questions', subtitle: 'Everything you need to know about donating, volunteering, and applying.', heroImage: homeHero },
   { slug: 'resources', title: 'Resources', subtitle: 'Guides, tools, and information for families of children with special needs.', heroImage: homeHero },
   { slug: 'publicity', title: 'Publicity', subtitle: 'Media coverage and press mentions of Sunshine on a Ranney Day.', heroImage: 'press-braves-community-heroes' },
+  { slug: 'how-it-works', title: 'How a Room Gets Built', subtitle: 'Six steps, one real project: from a family\'s application to the reveal.', heroImage: 'kids/amari/photo-09' },
   { slug: 'ways-to-give', title: 'Ways to Give', subtitle: 'Donate, volunteer, or partner with us to transform children\'s lives.', heroImage: waysToGiveHero },
   { slug: 'privacy-policy', title: 'Privacy Policy', subtitle: 'How we protect your information.', heroImage: homeHero },
   { slug: 'terms', title: 'Terms of Service', subtitle: 'Usage terms for sunshineonaranneyday.com.', heroImage: homeHero },

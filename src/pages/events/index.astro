@@ -78,15 +78,22 @@ function pastLinkLabel(ev: { slug: string; photos: Array<{ id: string }>; stream
 }
 
 /* ── Flagship = soonest featured upcoming event, else soonest upcoming.
-   No detail page required — the hero CTA falls back to tickets/calendar. ── */
+   No detail page required — the hero CTA falls back to tickets/calendar.
+   With no upcoming events at all, the most recent PAST event takes the hero
+   as a recap, so the page always showcases a real event. ── */
 const flagshipEvent = featured[0] ?? upcoming[0];
 const allOther = upcoming.filter(e => e !== flagshipEvent);
+const recapEvent = !flagshipEvent && past.length > 0 ? past[0] : undefined;
+const heroEvent = flagshipEvent ?? recapEvent;
+const heroIsRecap = !!recapEvent;
+/* Past events shown in the showcase section (minus the one in the hero) */
+const pastDisplay = heroIsRecap ? past.slice(1) : past;
 
-/* Hero link target: detail page → ticket link → none */
-const flagshipUrl = flagshipEvent
-  ? detailPages[flagshipEvent.data.slug] || flagshipEvent.data.ticketUrl || null
+/* Hero link target: detail page → ticket link (upcoming only) → none */
+const heroUrl = heroEvent
+  ? detailPages[heroEvent.data.slug] || (!heroIsRecap && heroEvent.data.ticketUrl) || null
   : null;
-const flagshipIsExternal = !!flagshipEvent && !detailPages[flagshipEvent.data.slug] && !!flagshipEvent.data.ticketUrl;
+const heroIsExternal = !!heroEvent && !heroIsRecap && !detailPages[heroEvent.data.slug] && !!heroEvent.data.ticketUrl;
 
 /* ── Labels & colors ── */
 const catLabel: Record<string, string> = {
@@ -180,32 +187,34 @@ const yearsOfImpact = computed.years;
 const totalKidsServed = computed.totalKids;
 const totalPartners = (await getCollection('partners')).length;
 
-/* ── Flagship hero visual: poster image → branded logo (slugBrand) → category icon card.
+/* ── Hero visual: poster image (or first gallery photo for a recap) →
+   branded logo (slugBrand) → category icon card.
    LCP preload only when there's an actual image to paint. ── */
-const flagshipHasImage = !!flagshipEvent?.data.image;
-const flagshipLogo = !flagshipHasImage && flagshipEvent ? slugBrandOf(flagshipEvent.data.slug)?.logo : undefined;
-const flagshipImageSrc = flagshipEvent?.data.image || flagshipLogo || '';
-const flagshipSrcset = flagshipHasImage
-  ? cfSrcset(flagshipImageSrc, [400, 600, 800], { fit: 'contain' })
-  : flagshipLogo
-    ? cfSrcset(flagshipImageSrc, [280, 400])
+const heroImageId = heroEvent ? heroEvent.data.image || (heroIsRecap ? heroEvent.data.photos[0]?.id : undefined) : undefined;
+const heroHasImage = !!heroImageId;
+const heroLogo = !heroHasImage && heroEvent ? slugBrandOf(heroEvent.data.slug)?.logo : undefined;
+const heroImageSrc = heroImageId || heroLogo || '';
+const heroSrcset = heroHasImage
+  ? cfSrcset(heroImageSrc, [400, 600, 800], { fit: 'contain' })
+  : heroLogo
+    ? cfSrcset(heroImageSrc, [280, 400])
     : '';
-const flagshipSizes = flagshipHasImage
+const heroSizes = heroHasImage
   ? '(max-width: 767px) 280px, 440px'
   : '(max-width: 767px) 200px, 320px';
-const flagshipAlt = flagshipEvent?.data.title || 'Featured event';
-const flagshipGradient = flagshipEvent ? eventGradient(flagshipEvent.data) : catGradient.other;
+const heroAlt = heroEvent?.data.title || 'Featured event';
+const heroGradient = heroEvent ? eventGradient(heroEvent.data) : catGradient.other;
 
-/* Fallback hero photo when no flagship event */
+/* Fallback hero photo when there are no events at all */
 const sp = siteSettings.sectionPhotos || {};
 const fallbackPhotoId = sp.missionMain || 'kids/eli/photo-01';
 const fallbackSrcset = cfSrcset(fallbackPhotoId, [400, 640, 800], { fit: 'cover', gravity: 'face' });
 const fallbackSizes = '(max-width: 768px) 85vw, (max-width: 1200px) 38vw, 420px';
 
-/* Hero frame is a link when the flagship has somewhere to go */
-const HeroFrame = flagshipUrl ? 'a' : 'div';
-const heroFrameAttrs = flagshipUrl
-  ? { href: flagshipUrl, ...(flagshipIsExternal ? { target: '_blank', rel: 'noopener noreferrer' } : {}) }
+/* Hero frame is a link when the hero event has somewhere to go */
+const HeroFrame = heroUrl ? 'a' : 'div';
+const heroFrameAttrs = heroUrl
+  ? { href: heroUrl, ...(heroIsExternal ? { target: '_blank', rel: 'noopener noreferrer' } : {}) }
   : {};
 ---
 
@@ -215,87 +224,105 @@ const heroFrameAttrs = flagshipUrl
   breadcrumbs={[{ name: 'Events', url: '/events/' }]}
 >
   {/* LCP preload */}
-  {flagshipEvent ? (
-    flagshipSrcset && <link slot="head" rel="preload" as="image" imagesrcset={flagshipSrcset} imagesizes={flagshipSizes} fetchpriority="high" />
+  {heroEvent ? (
+    heroSrcset && <link slot="head" rel="preload" as="image" imagesrcset={heroSrcset} imagesizes={heroSizes} fetchpriority="high" />
   ) : (
     <link slot="head" rel="preload" as="image" imagesrcset={fallbackSrcset} imagesizes={fallbackSizes} fetchpriority="high" />
   )}
 
   <!-- ═══════════════════════════════════════════
-       HERO — Editorial split with featured event
+       HERO — Editorial split: next upcoming event,
+       or the latest past event as a recap
        ═══════════════════════════════════════════ -->
-  {flagshipEvent ? (
+  {heroEvent ? (
     <section class="hero hero--event">
       <div class="hero-inner">
         <div class="hero-text">
           <div class="hero-badges">
-            <p class="hero-eyebrow">{flagshipEvent.data.featured ? 'Featured Event' : 'Next Up'}</p>
-            <span class="hero-countdown" data-countdown={flagshipEvent.data.date} data-countdown-end={flagshipEvent.data.endDate || flagshipEvent.data.date} aria-live="polite"></span>
+            <p class="hero-eyebrow">{heroIsRecap ? 'Latest Event' : heroEvent.data.featured ? 'Featured Event' : 'Next Up'}</p>
+            {!heroIsRecap && (
+              <span class="hero-countdown" data-countdown={heroEvent.data.date} data-countdown-end={heroEvent.data.endDate || heroEvent.data.date} aria-live="polite"></span>
+            )}
           </div>
-          <h1 class="hero-headline">{flagshipEvent.data.title}</h1>
-          <p class="hero-sub">{flagshipEvent.data.shortDescription || flagshipEvent.data.description}</p>
+          <h1 class="hero-headline">{heroEvent.data.title}</h1>
+          <p class="hero-sub">{heroEvent.data.shortDescription || heroEvent.data.description}</p>
           <div class="hero-meta">
             <div class="hero-meta__item">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg>
-              <time datetime={flagshipEvent.data.date}>{fmtWeekday(flagshipEvent.data.date)}, {fmtDate(flagshipEvent.data.date)}</time>
+              <time datetime={heroEvent.data.date}>{fmtWeekday(heroEvent.data.date)}, {fmtDate(heroEvent.data.date)}</time>
             </div>
             <div class="hero-meta__item">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/></svg>
-              {flagshipEvent.data.location}
+              {heroEvent.data.location}
             </div>
-            {flagshipEvent.data.time && (
+            {!heroIsRecap && heroEvent.data.time && (
               <div class="hero-meta__item">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-                {flagshipEvent.data.time}
+                {heroEvent.data.time}
               </div>
             )}
           </div>
-          <div class="hero-ctas">
-            {detailPages[flagshipEvent.data.slug] ? (
-              <a href={detailPages[flagshipEvent.data.slug]} class="btn btn-primary btn-lg">
-                View Details & Register
+          {heroIsRecap ? (
+            <div class="hero-ctas">
+              <a href={detailPages[heroEvent.data.slug]} class="btn btn-primary btn-lg">
+                {pastLinkLabel(heroEvent.data)}
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
               </a>
-            ) : flagshipEvent.data.ticketUrl ? (
-              <a href={flagshipEvent.data.ticketUrl} class="btn btn-primary btn-lg" target="_blank" rel="noopener noreferrer">
-                Get Tickets
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M7 7h10v10"/><path d="M7 17 17 7"/></svg>
+              {pastDisplay.length > 0 && (
+                <a href="#past" class="btn btn-dark">More Past Events</a>
+              )}
+            </div>
+          ) : (
+            <div class="hero-ctas">
+              {detailPages[heroEvent.data.slug] ? (
+                <a href={detailPages[heroEvent.data.slug]} class="btn btn-primary btn-lg">
+                  View Details & Register
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+                </a>
+              ) : heroEvent.data.ticketUrl ? (
+                <a href={heroEvent.data.ticketUrl} class="btn btn-primary btn-lg" target="_blank" rel="noopener noreferrer">
+                  Get Tickets
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M7 7h10v10"/><path d="M7 17 17 7"/></svg>
+                </a>
+              ) : null}
+              <a href={googleCalUrl(heroEvent.data)} class={heroUrl ? 'btn btn-dark' : 'btn btn-primary btn-lg'} target="_blank" rel="noopener noreferrer" title="Add to Google Calendar">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg>
+                Add to Calendar
               </a>
-            ) : null}
-            <a href={googleCalUrl(flagshipEvent.data)} class={flagshipUrl ? 'btn btn-dark' : 'btn btn-primary btn-lg'} target="_blank" rel="noopener noreferrer" title="Add to Google Calendar">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg>
-              Add to Calendar
-            </a>
-          </div>
+            </div>
+          )}
+          {heroIsRecap && (
+            <p class="hero-nextnote">Our next event is in the works. Newsletter subscribers hear about it first.</p>
+          )}
         </div>
         <HeroFrame class="hero-frame" {...heroFrameAttrs}>
-          <div class="hero-event-card" style={`--hero-card-gradient: ${flagshipGradient}`}>
+          <div class="hero-event-card" style={`--hero-card-gradient: ${heroGradient}`}>
             <div class="hero-event-card__bg" aria-hidden="true"></div>
             <div class="hero-event-card__gradient" aria-hidden="true"></div>
             <div class="hero-event-card__pattern" aria-hidden="true"></div>
-            {flagshipHasImage || flagshipLogo ? (
+            {heroHasImage || heroLogo ? (
               <img
-                src={flagshipHasImage
-                  ? cfRaw(flagshipImageSrc, 'w=600,fit=contain,q=85')
-                  : cfRaw(flagshipImageSrc, 'w=400,q=85')}
-                srcset={flagshipSrcset}
-                sizes={flagshipSizes}
-                alt={flagshipAlt}
+                src={heroHasImage
+                  ? cfRaw(heroImageSrc, 'w=600,fit=contain,q=85')
+                  : cfRaw(heroImageSrc, 'w=400,q=85')}
+                srcset={heroSrcset}
+                sizes={heroSizes}
+                alt={heroAlt}
                 transition:name="event-hero"
-                width={flagshipHasImage ? 600 : 400}
-                height={flagshipHasImage ? 600 : 400}
+                width={heroHasImage ? 600 : 400}
+                height={heroHasImage ? 600 : 400}
                 loading="eager" decoding="async" fetchpriority="high"
-                class={flagshipHasImage ? 'hero-event-card__photo' : 'hero-event-card__logo'}
+                class={heroHasImage ? 'hero-event-card__photo' : 'hero-event-card__logo'}
               />
             ) : (
-              <div class="hero-event-card__icon" aria-hidden="true" set:html={catIcon[flagshipEvent.data.category]} />
+              <div class="hero-event-card__icon" aria-hidden="true" set:html={catIcon[heroEvent.data.category]} />
             )}
             {/* Mini date card overlay */}
             <div class="hero-date-card">
-              <time datetime={flagshipEvent.data.date}>
-                <span class="hero-date-card__month">{fmtMonth(flagshipEvent.data.date)}</span>
-                <span class="hero-date-card__day">{fmtDay(flagshipEvent.data.date)}</span>
-                <span class="hero-date-card__year">{fmtYear(flagshipEvent.data.date)}</span>
+              <time datetime={heroEvent.data.date}>
+                <span class="hero-date-card__month">{fmtMonth(heroEvent.data.date)}</span>
+                <span class="hero-date-card__day">{fmtDay(heroEvent.data.date)}</span>
+                <span class="hero-date-card__year">{fmtYear(heroEvent.data.date)}</span>
               </time>
             </div>
           </div>
@@ -333,6 +360,41 @@ const heroFrameAttrs = flagshipUrl
   )}
 
   <!-- ═══════════════════════════════════════════
+       LATEST EVENT PHOTO STRIP — a taste of the
+       gallery right on the events page (recap hero)
+       ═══════════════════════════════════════════ -->
+  {heroIsRecap && heroEvent && heroEvent.data.photos.length > 0 && (
+    <section class="ev-strip" aria-label={`Photos from ${heroEvent.data.title}`}>
+      <div class="container">
+        <div class="ev-strip__head" data-reveal>
+          <p class="ev-section-label">In Photos</p>
+          <a class="ev-strip__all" href={`/events/${heroEvent.data.slug}/#photos`}>
+            See all {heroEvent.data.photos.length} photos
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+          </a>
+        </div>
+        <div class="ev-strip__grid" data-reveal>
+          {heroEvent.data.photos.slice(0, 6).map((p, i) => (
+            <a href={`/events/${heroEvent.data.slug}/#photos`} class="ev-strip__item" aria-label={`Open the ${heroEvent.data.title} photo gallery`}>
+              <img
+                src={cfRaw(p.id, 'w=400,h=300,fit=cover,q=80')}
+                srcset={cfSrcset(p.id, [300, 400, 600], { height: 300, fit: 'cover' })}
+                sizes="(max-width: 767px) 42vw, 190px"
+                alt={p.alt || heroEvent.data.title}
+                width="400" height="300"
+                loading="lazy" decoding="async"
+              />
+              {i === 5 && heroEvent.data.photos.length > 6 && (
+                <span class="ev-strip__more">+{heroEvent.data.photos.length - 6}</span>
+              )}
+            </a>
+          ))}
+        </div>
+      </div>
+    </section>
+  )}
+
+  <!-- ═══════════════════════════════════════════
        UPCOMING EVENTS
        ═══════════════════════════════════════════ -->
   {allOther.length > 0 && (
@@ -359,9 +421,10 @@ const heroFrameAttrs = flagshipUrl
   )}
 
   <!-- ═══════════════════════════════════════════
-       EMPTY STATE
+       EMPTY STATE (only when there are no events at all —
+       otherwise the hero recaps the latest past event)
        ═══════════════════════════════════════════ -->
-  {upcoming.length === 0 && !flagshipEvent && (
+  {upcoming.length === 0 && past.length === 0 && (
     <section class="ev-empty" id="upcoming">
       <div class="container">
         <div class="ev-empty__box" data-reveal>
@@ -375,21 +438,6 @@ const heroFrameAttrs = flagshipUrl
       </div>
     </section>
   )}
-
-  <!-- ═══════════════════════════════════════════
-       TESTIMONIAL PULLQUOTE
-       ═══════════════════════════════════════════ -->
-  <section class="ev-quote">
-    <div class="container">
-      <div class="ev-quote__inner" data-reveal>
-        <div class="ev-quote__mark" aria-hidden="true">&ldquo;</div>
-        <blockquote class="ev-quote__text">
-          The gala was one of the most moving evenings I've ever experienced. Seeing the room reveals and meeting the families — it changed my perspective on what giving really means.
-        </blockquote>
-        <cite class="ev-quote__cite">— Sarah Mitchell, 2025 Gala Attendee</cite>
-      </div>
-    </div>
-  </section>
 
   <!-- ═══════════════════════════════════════════
        IMPACT TRUST SECTION (dark editorial split)
@@ -435,9 +483,48 @@ const heroFrameAttrs = flagshipUrl
   </section>
 
   <!-- ═══════════════════════════════════════════
+       BOTTOM CTA
+       ═══════════════════════════════════════════ -->
+  <section class="ev-cta">
+    <div class="container">
+      <div class="ev-cta__inner" data-reveal>
+        <p class="ev-section-label">Get Involved</p>
+        <h2 class="ev-section-heading">There's a Place for <em class="highlight">You</em></h2>
+        <p class="ev-cta__sub">Host, sponsor, or simply show up. Every hand makes a difference.</p>
+        <div class="ev-cta__grid">
+          <a href="mailto:info@soardcharity.com?subject=Event%20Partnership" class="ev-cta__option">
+            <div class="ev-cta__icon" aria-hidden="true">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg>
+            </div>
+            <h3>Host an Event</h3>
+            <p>Partner with us to organize a fundraiser, volunteer day, or community event.</p>
+            <span class="ev-cta__link">Get in Touch <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></span>
+          </a>
+          <a href="/donate/" class="ev-cta__option">
+            <div class="ev-cta__icon" aria-hidden="true">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9.5a5.5 5.5 0 0 1 9.591-3.676.56.56 0 0 0 .818 0A5.49 5.49 0 0 1 22 9.5c0 2.29-1.5 4-3 5.5l-5.492 5.313a2 2 0 0 1-3 .019L5 15c-1.5-1.5-3-3.2-3-5.5"/></svg>
+            </div>
+            <h3>Donate Directly</h3>
+            <p>Your donation helps build dream rooms for children with special needs.</p>
+            <span class="ev-cta__link">Give Today <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></span>
+          </a>
+          <a href="/apply/" class="ev-cta__option">
+            <div class="ev-cta__icon" aria-hidden="true">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z"/></svg>
+            </div>
+            <h3>Apply for a Room</h3>
+            <p>Know a child who deserves a dream room? Start the application today.</p>
+            <span class="ev-cta__link">Learn More <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></span>
+          </a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════
        PAST EVENTS SHOWCASE
        ═══════════════════════════════════════════ -->
-  {past.length > 0 && (
+  {pastDisplay.length > 0 && (
     <section class="ev-past" id="past">
       <div class="container">
         <div class="ev-past__header" data-reveal>
@@ -447,13 +534,13 @@ const heroFrameAttrs = flagshipUrl
         </div>
 
         {/* Highlight card for most recent past event */}
-        {past.length > 0 && (
+        {pastDisplay.length > 0 && (
           <article class="ev-highlight" data-reveal>
-            <div class={`ev-highlight__visual ${past[0].data.photos.length >= 3 ? 'ev-highlight__visual--mosaic' : ''}`} style={`background: ${eventGradient(past[0].data)}`}>
+            <div class={`ev-highlight__visual ${pastDisplay[0].data.photos.length >= 3 ? 'ev-highlight__visual--mosaic' : ''}`} style={`background: ${eventGradient(pastDisplay[0].data)}`}>
               <div class="ev-highlight__pattern" aria-hidden="true"></div>
               <div class="ev-highlight__glow" aria-hidden="true"></div>
               {(() => {
-                const photos = past[0].data.photos;
+                const photos = pastDisplay[0].data.photos;
                 /* 3+ gallery photos → mini mosaic teaser of the archive page */
                 if (photos.length >= 3) {
                   return (
@@ -464,7 +551,7 @@ const heroFrameAttrs = flagshipUrl
                             src={cfRaw(p.id, i === 0 ? 'w=500,h=600,fit=cover,q=82' : 'w=400,h=300,fit=cover,q=80')}
                             srcset={cfSrcset(p.id, i === 0 ? [400, 500, 700] : [300, 400, 500], { fit: 'cover' })}
                             sizes={i === 0 ? '(max-width: 767px) 62vw, 220px' : '(max-width: 767px) 38vw, 140px'}
-                            alt={p.alt || past[0].data.title}
+                            alt={p.alt || pastDisplay[0].data.title}
                             width={i === 0 ? 500 : 400} height={i === 0 ? 600 : 300}
                             loading="lazy" decoding="async"
                           />
@@ -476,12 +563,12 @@ const heroFrameAttrs = flagshipUrl
                     </div>
                   );
                 }
-                const cov = coverImage(past[0].data);
-                const isLogo = coverIsLogo(past[0].data);
+                const cov = coverImage(pastDisplay[0].data);
+                const isLogo = coverIsLogo(pastDisplay[0].data);
                 if (!cov) {
                   return (
                     <div class="ev-highlight__placeholder">
-                      <div class="ev-highlight__icon" set:html={catIcon[past[0].data.category]} />
+                      <div class="ev-highlight__icon" set:html={catIcon[pastDisplay[0].data.category]} />
                       <span class="ev-highlight__placeholder-label">Photos Coming Soon</span>
                     </div>
                   );
@@ -492,7 +579,7 @@ const heroFrameAttrs = flagshipUrl
                     src={cfRaw(cov, `w=720,fit=${fit},q=85`)}
                     srcset={cfSrcset(cov, [400, 600, 800], { fit })}
                     sizes="(max-width: 767px) 100vw, 360px"
-                    alt={past[0].data.title}
+                    alt={pastDisplay[0].data.title}
                     width="720" height="720"
                     loading="lazy" decoding="async"
                     class={isLogo ? 'ev-highlight__img ev-highlight__img--logo' : 'ev-highlight__img'}
@@ -502,18 +589,18 @@ const heroFrameAttrs = flagshipUrl
             </div>
             <div class="ev-highlight__content">
               <div class="ev-highlight__top">
-                <span class="ev-highlight__cat" style={`--cat: ${catColor[past[0].data.category]}`}>{catLabel[past[0].data.category]}</span>
-                <time class="ev-highlight__date" datetime={past[0].data.date}>{fmtDate(past[0].data.date)}</time>
+                <span class="ev-highlight__cat" style={`--cat: ${catColor[pastDisplay[0].data.category]}`}>{catLabel[pastDisplay[0].data.category]}</span>
+                <time class="ev-highlight__date" datetime={pastDisplay[0].data.date}>{fmtDate(pastDisplay[0].data.date)}</time>
               </div>
-              <h3 class="ev-highlight__title">{past[0].data.title}</h3>
+              <h3 class="ev-highlight__title">{pastDisplay[0].data.title}</h3>
               <p class="ev-highlight__loc">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/></svg>
-                {past[0].data.location}
+                {pastDisplay[0].data.location}
               </p>
-              <p class="ev-highlight__desc">{past[0].data.shortDescription || past[0].data.description}</p>
-              {detailPages[past[0].data.slug] && (
-                <a href={detailPages[past[0].data.slug]} class="ev-btn ev-btn--gold" style="margin-top: var(--space-lg);">
-                  {pastLinkLabel(past[0].data)}
+              <p class="ev-highlight__desc">{pastDisplay[0].data.shortDescription || pastDisplay[0].data.description}</p>
+              {detailPages[pastDisplay[0].data.slug] && (
+                <a href={detailPages[pastDisplay[0].data.slug]} class="ev-btn ev-btn--gold" style="margin-top: var(--space-lg);">
+                  {pastLinkLabel(pastDisplay[0].data)}
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
                 </a>
               )}
@@ -522,9 +609,9 @@ const heroFrameAttrs = flagshipUrl
         )}
 
         {/* Remaining past events in grid */}
-        {past.length > 1 && (
+        {pastDisplay.length > 1 && (
           <div class="ev-memories">
-            {past.slice(1).map((event, i) => (
+            {pastDisplay.slice(1).map((event, i) => (
               <article class="ev-memory" data-reveal data-delay={String(Math.min(i, 3))}>
                 <div class="ev-memory__visual" style={`background: ${eventGradient(event.data)}`}>
                   {(() => {
@@ -589,6 +676,27 @@ const heroFrameAttrs = flagshipUrl
                     {event.data.location}
                   </p>
                   <p class="ev-memory__desc">{event.data.description}</p>
+                  {(() => {
+                    /* Mini gallery row — skip the photo already used as the card cover */
+                    const thumbs = event.data.image ? event.data.photos.slice(0, 3) : event.data.photos.slice(1, 4);
+                    if (thumbs.length === 0) return null;
+                    return (
+                      <div class="ev-memory__thumbs">
+                        {thumbs.map(p => (
+                          <a href={`/events/${event.data.slug}/#photos`} class="ev-memory__thumb" aria-label={`Open the ${event.data.title} photo gallery`}>
+                            <img
+                              src={cfRaw(p.id, 'w=200,h=150,fit=cover,q=78')}
+                              srcset={cfSrcset(p.id, [150, 200, 300], { height: 150, fit: 'cover' })}
+                              sizes="90px"
+                              alt={p.alt || event.data.title}
+                              width="200" height="150"
+                              loading="lazy" decoding="async"
+                            />
+                          </a>
+                        ))}
+                      </div>
+                    );
+                  })()}
                   {detailPages[event.data.slug] && (
                     <a href={detailPages[event.data.slug]} class="ev-memory__link">
                       {pastLinkLabel(event.data)}
@@ -605,40 +713,16 @@ const heroFrameAttrs = flagshipUrl
   )}
 
   <!-- ═══════════════════════════════════════════
-       BOTTOM CTA
+       TESTIMONIAL PULLQUOTE
        ═══════════════════════════════════════════ -->
-  <section class="ev-cta">
+  <section class="ev-quote">
     <div class="container">
-      <div class="ev-cta__inner" data-reveal>
-        <p class="ev-section-label">Get Involved</p>
-        <h2 class="ev-section-heading">There's a Place for <em class="highlight">You</em></h2>
-        <p class="ev-cta__sub">Host, sponsor, or simply show up. Every hand makes a difference.</p>
-        <div class="ev-cta__grid">
-          <a href="mailto:info@soardcharity.com?subject=Event%20Partnership" class="ev-cta__option">
-            <div class="ev-cta__icon" aria-hidden="true">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg>
-            </div>
-            <h3>Host an Event</h3>
-            <p>Partner with us to organize a fundraiser, volunteer day, or community event.</p>
-            <span class="ev-cta__link">Get in Touch <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></span>
-          </a>
-          <a href="/donate/" class="ev-cta__option">
-            <div class="ev-cta__icon" aria-hidden="true">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9.5a5.5 5.5 0 0 1 9.591-3.676.56.56 0 0 0 .818 0A5.49 5.49 0 0 1 22 9.5c0 2.29-1.5 4-3 5.5l-5.492 5.313a2 2 0 0 1-3 .019L5 15c-1.5-1.5-3-3.2-3-5.5"/></svg>
-            </div>
-            <h3>Donate Directly</h3>
-            <p>Your donation helps build dream rooms for children with special needs.</p>
-            <span class="ev-cta__link">Give Today <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></span>
-          </a>
-          <a href="/apply/" class="ev-cta__option">
-            <div class="ev-cta__icon" aria-hidden="true">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z"/></svg>
-            </div>
-            <h3>Apply for a Room</h3>
-            <p>Know a child who deserves a dream room? Start the application today.</p>
-            <span class="ev-cta__link">Learn More <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></span>
-          </a>
-        </div>
+      <div class="ev-quote__inner" data-reveal>
+        <div class="ev-quote__mark" aria-hidden="true">&ldquo;</div>
+        <blockquote class="ev-quote__text">
+          The gala was one of the most moving evenings I've ever experienced. Seeing the room reveals and meeting the families — it changed my perspective on what giving really means.
+        </blockquote>
+        <cite class="ev-quote__cite">— Sarah Mitchell, 2025 Gala Attendee</cite>
       </div>
     </div>
   </section>
@@ -849,6 +933,12 @@ const heroFrameAttrs = flagshipUrl
     gap: var(--space-md);
     flex-wrap: wrap;
   }
+  /* Recap hero: quiet pointer to the next announcement */
+  .hero-nextnote {
+    margin-top: var(--space-md);
+    font-size: 0.8rem;
+    color: var(--c-text-light);
+  }
 
   /* Hero image frame (shared) */
   .hero-frame {
@@ -1051,6 +1141,91 @@ const heroFrameAttrs = flagshipUrl
   }
 
   /* ═══════════════════════════════════════════
+     LATEST EVENT PHOTO STRIP
+     ═══════════════════════════════════════════ */
+  .ev-strip {
+    background: var(--c-cream);
+    padding: 0 0 var(--space-3xl);
+    margin-top: calc(-1 * var(--space-xl));
+  }
+  .ev-strip__head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-md);
+    margin-bottom: var(--space-md);
+  }
+  .ev-strip__head .ev-section-label { margin-bottom: 0; }
+  .ev-strip__all {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--c-dark);
+    text-decoration: none;
+    transition: gap 0.2s ease, color 0.2s ease;
+  }
+  .ev-strip__all:hover { gap: 8px; color: var(--c-yellow-hover); }
+  .ev-strip__grid {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: var(--space-sm);
+  }
+  .ev-strip__item {
+    position: relative;
+    display: block;
+    aspect-ratio: 4 / 3;
+    border-radius: var(--border-radius, 10px);
+    overflow: hidden;
+    background: var(--c-warm-gray);
+  }
+  .ev-strip__item img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    transition: transform 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .ev-strip__item:hover img { transform: scale(1.05); }
+  .ev-strip__item:focus-visible {
+    outline: 3px solid var(--c-yellow);
+    outline-offset: 2px;
+  }
+  .ev-strip__more {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-display);
+    font-size: 1.3rem;
+    color: #fff;
+    background: rgba(0, 0, 0, 0.45);
+    pointer-events: none;
+  }
+  @media (max-width: 767px) {
+    .ev-strip__grid {
+      display: flex;
+      overflow-x: auto;
+      scroll-snap-type: x mandatory;
+      -webkit-overflow-scrolling: touch;
+      margin-inline: calc(-1 * var(--space-xl));
+      padding-inline: var(--space-xl);
+      scrollbar-width: none;
+    }
+    .ev-strip__grid::-webkit-scrollbar { display: none; }
+    .ev-strip__item {
+      flex: 0 0 42vw;
+      scroll-snap-align: start;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .ev-strip__item img { transition: none; }
+    .ev-strip__item:hover img { transform: none; }
+  }
+
+  /* ═══════════════════════════════════════════
      SECTION LABELS (shared)
      ═══════════════════════════════════════════ */
   .ev-section-label {
@@ -1187,7 +1362,7 @@ const heroFrameAttrs = flagshipUrl
      ═══════════════════════════════════════════ */
   .ev-impact {
     position: relative;
-    padding: var(--space-5xl) 0;
+    padding: var(--space-3xl) 0;
     background: var(--c-dark-deep, #1E1F25);
     overflow: hidden;
   }
@@ -1204,13 +1379,13 @@ const heroFrameAttrs = flagshipUrl
     z-index: 1;
     display: grid;
     grid-template-columns: 1fr;
-    gap: var(--space-3xl);
+    gap: var(--space-2xl);
     align-items: center;
   }
-  @media (min-width: 768px) {
+  @media (min-width: 900px) {
     .ev-impact__inner {
-      grid-template-columns: 0.85fr 1fr;
-      gap: var(--space-4xl);
+      grid-template-columns: 0.8fr 1.2fr;
+      gap: var(--space-3xl);
     }
   }
   .ev-section-label--light {
@@ -1223,23 +1398,26 @@ const heroFrameAttrs = flagshipUrl
     color: #fff;
     line-height: 1.15;
     text-wrap: balance;
-    margin-bottom: var(--space-lg);
+    margin-bottom: var(--space-md);
   }
   .ev-impact__desc {
     font-size: clamp(0.9rem, 1.2vw, 1rem);
     line-height: 1.75;
     color: rgba(255, 255, 255, 0.55);
     max-width: 44ch;
-    margin-bottom: var(--space-xl);
+    margin-bottom: var(--space-lg);
     text-wrap: pretty;
   }
   .ev-impact__stats {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-md);
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: var(--space-sm);
+  }
+  @media (min-width: 560px) {
+    .ev-impact__stats { grid-template-columns: repeat(3, 1fr); }
   }
   .ev-impact__card {
-    padding: var(--space-lg);
+    padding: var(--space-md);
     background: rgba(255, 255, 255, 0.05);
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: var(--border-radius-lg);
@@ -1695,6 +1873,36 @@ const heroFrameAttrs = flagshipUrl
     overflow: hidden;
     flex: 1;
   }
+  .ev-memory__thumbs {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--space-xs);
+    margin-top: var(--space-md);
+  }
+  .ev-memory__thumb {
+    display: block;
+    aspect-ratio: 4 / 3;
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--c-warm-gray);
+  }
+  .ev-memory__thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .ev-memory__thumb:hover img { transform: scale(1.06); }
+  .ev-memory__thumb:focus-visible {
+    outline: 3px solid var(--c-yellow);
+    outline-offset: 2px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .ev-memory__thumb img { transition: none; }
+    .ev-memory__thumb:hover img { transform: none; }
+  }
+
   .ev-memory__link {
     display: inline-flex;
     align-items: center;

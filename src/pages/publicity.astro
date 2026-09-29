@@ -17,8 +17,20 @@
 import PageLayout from '../layouts/PageLayout.astro';
 import MediaLogos from '../components/ui/MediaLogos.astro';
 import CFImage from '../components/ui/CFImage.astro';
-import { CF_BASE as CF } from '../utils/cf-image';
+import { CF_BASE as CF, cfRaw, cfId } from '../utils/cf-image';
 import { getCollection } from 'astro:content';
+
+/* Press excerpts sometimes arrive as raw RSS HTML (links, <font> tags) from the
+   Press Monitor. Render them as plain text so markup never leaks onto the page. */
+const plain = (s: string | null | undefined) =>
+  (s || '').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
+
+/* Outlet logos (same collection as the "As Featured In" bar). A featured story
+   with no image or video falls back to its outlet's logo instead of an empty frame. */
+const mediaLogos = await getCollection('medialogos');
+const outletLogoById: Record<string, string> = {};
+for (const m of mediaLogos) outletLogoById[m.data.slug] = cfId(m.data.logo);
+const logoFor = (key: string | null | undefined) => (key && outletLogoById[key]) || null;
 
 const allPress = await getCollection('press');
 const press = allPress.sort((a, b) => new Date(b.data.date).getTime() - new Date(a.data.date).getTime());
@@ -76,9 +88,9 @@ const breadcrumbs = [{ name: 'Home', url: '/' }, { name: 'Publicity', url: '/pub
 <PageLayout
   title="In the News — Today Show, Atlanta Braves & More"
   description={`Featured on the Today Show, WSB-TV, 11Alive, Fox 5, AJC, K-LOVE, and ${totalPress}+ outlets. See our media coverage and press highlights.`}
-  heroLabel="In the Spotlight"
-  heroTitle={'Our story, told by <em class="highlight">those who know it best</em>.'}
-  heroSubtitle="From the Today Show to Coach Saban, from the Atlanta Braves to K-LOVE, the world is helping us share the mission of building dreams for children with special needs."
+  heroLabel="Press & Media"
+  heroTitle={'Sunshine in the <em class="highlight">Spotlight</em>'}
+  heroSubtitle="See how national media, local news, athletes, celebrities, and community partners are helping share SOARD's mission and the stories of our incredible Sunshine Kids."
   jsonLd={jsonLd}
   breadcrumbs={breadcrumbs}
 >
@@ -116,7 +128,8 @@ const breadcrumbs = [{ name: 'Home', url: '/' }, { name: 'Publicity', url: '/pub
   {featuredCards[0] && (() => {
     const d = featuredCards[0].data;
     const headline = d.featuredHeadline || d.title;
-    const desc = d.featuredDescription || d.excerpt;
+    const desc = plain(d.featuredDescription || d.excerpt);
+    const logo = logoFor(d.outletLogo);
     return (
       <section class="fph" aria-labelledby="fph-heading">
         <div class="fph__split">
@@ -137,13 +150,19 @@ const breadcrumbs = [{ name: 'Home', url: '/' }, { name: 'Publicity', url: '/pub
               </div>
             ) : d.image ? (
               <img
-                src={`${d.image}/w=1200,h=800,fit=cover,q=80`}
-                srcset={`${d.image}/w=800,q=70 800w, ${d.image}/w=1200,q=80 1200w`}
+                src={cfRaw(d.image, 'w=1200,h=800,fit=cover,q=80')}
+                srcset={`${cfRaw(d.image, 'w=800,h=534,fit=cover,q=70')} 800w, ${cfRaw(d.image, 'w=1200,h=800,fit=cover,q=80')} 1200w`}
                 sizes="(max-width:1024px) 100vw, 58vw"
                 alt={headline} width="1200" height="800" loading="eager" decoding="async"
                 class="fph__img"
               />
-            ) : null}
+            ) : logo ? (
+              <div class="fph__logo" aria-hidden="true">
+                <img src={`${CF}/${logo}/w=480,fit=contain,q=85`} srcset={`${CF}/${logo}/w=480,fit=contain,q=85 1x, ${CF}/${logo}/w=960,fit=contain,q=85 2x`} alt="" width="480" height="240" loading="eager" decoding="async" />
+              </div>
+            ) : (
+              <div class="fph__logo fph__logo--text" aria-hidden="true"><span>{d.outlet}</span></div>
+            )}
             <span class="fph__badge">Featured</span>
           </figure>
           <div class="fph__body" data-reveal>
@@ -165,7 +184,8 @@ const breadcrumbs = [{ name: 'Home', url: '/' }, { name: 'Publicity', url: '/pub
         {featuredCards.slice(1).map((item, i) => {
           const d = item.data;
           const headline = d.featuredHeadline || d.title;
-          const desc = d.featuredDescription || d.excerpt;
+          const desc = plain(d.featuredDescription || d.excerpt);
+          const logo = logoFor(d.outletLogo);
           const flipped = i % 2 !== 0;
           return (
             <article class={`fpe__item ${flipped ? 'fpe__item--flip' : ''}`} data-reveal>
@@ -186,13 +206,19 @@ const breadcrumbs = [{ name: 'Home', url: '/' }, { name: 'Publicity', url: '/pub
                   </div>
                 ) : d.image ? (
                   <img
-                    src={`${d.image}/w=900,h=600,fit=cover,q=75`}
-                    srcset={`${d.image}/w=600,q=65 600w, ${d.image}/w=900,q=75 900w`}
+                    src={cfRaw(d.image, 'w=900,h=600,fit=cover,q=75')}
+                    srcset={`${cfRaw(d.image, 'w=600,h=400,fit=cover,q=65')} 600w, ${cfRaw(d.image, 'w=900,h=600,fit=cover,q=75')} 900w`}
                     sizes="(max-width:768px) 100vw, 50vw"
                     alt={headline} width="900" height="600" loading="lazy" decoding="async"
                     class="fpe__img"
                   />
-                ) : null}
+                ) : logo ? (
+                  <div class="fpe__logo" aria-hidden="true">
+                    <img src={`${CF}/${logo}/w=400,fit=contain,q=85`} srcset={`${CF}/${logo}/w=400,fit=contain,q=85 1x, ${CF}/${logo}/w=800,fit=contain,q=85 2x`} alt="" width="400" height="200" loading="lazy" decoding="async" />
+                  </div>
+                ) : (
+                  <div class="fpe__logo fpe__logo--text" aria-hidden="true"><span>{d.outlet}</span></div>
+                )}
               </figure>
               <div class="fpe__body">
                 <span class="fpe__num" aria-hidden="true">{String(i + 2).padStart(2, '0')}</span>
@@ -299,7 +325,7 @@ const breadcrumbs = [{ name: 'Home', url: '/' }, { name: 'Publicity', url: '/pub
                     <h3 class="ci__title">
                       {item.data.url ? <a href={item.data.url} target="_blank" rel="noopener noreferrer">{item.data.title}</a> : <span>{item.data.title}</span>}
                     </h3>
-                    <p class="ci__excerpt">{item.data.excerpt}</p>
+                    <p class="ci__excerpt">{plain(item.data.excerpt)}</p>
                   </div>
                   {item.data.url && (
                     <a href={item.data.url} class="ci__arrow" target="_blank" rel="noopener noreferrer" aria-label={`Read: ${item.data.title}`}>
@@ -432,6 +458,22 @@ const breadcrumbs = [{ name: 'Home', url: '/' }, { name: 'Publicity', url: '/pub
   .fph__media { position: relative; overflow: hidden; margin: 0; }
   .fph__frame { position: absolute; inset: 0; background: #000; cursor: pointer; }
   .fph__poster, .fph__img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 8s cubic-bezier(0.25,0.46,0.45,0.94); }
+  /* No photo yet: outlet logo on a soft cream field */
+  .fph__logo, .fpe__logo {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: radial-gradient(ellipse at 30% 20%, rgba(255,218,36,0.22) 0%, transparent 55%), var(--c-cream);
+  }
+  .fph__logo img, .fpe__logo img { width: min(52%, 360px); height: auto; object-fit: contain; }
+  .fpe__logo { border-radius: 16px; }
+  .fpe__logo img { width: min(56%, 260px); }
+  /* No logo on file either: the outlet name set as a wordmark */
+  .fph__logo--text span, .fpe__logo--text span {
+    font-family: var(--font-display); font-weight: 700; text-align: center;
+    color: var(--c-dark); letter-spacing: -0.02em; line-height: 1.1; padding: 0 12%;
+  }
+  .fph__logo--text span { font-size: clamp(28px, 4vw, 52px); }
+  .fpe__logo--text span { font-size: clamp(22px, 2.6vw, 34px); }
   .fph:hover .fph__poster, .fph:hover .fph__img { transform: scale(1.05); }
   .fph__badge {
     position: absolute; top: 28px; left: 28px;

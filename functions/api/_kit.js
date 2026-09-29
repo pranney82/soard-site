@@ -39,9 +39,12 @@ function kitFetch(env, path, init = {}) {
  * to KIT_FORM_ID if configured — the form add requires the subscriber to
  * already exist, hence the sequencing. Never throws.
  *
+ * @param {{source?: string}} [opts] — where the signup came from; mapped to a
+ *   Kit tag (see SOURCE_TAGS) so the team can email one audience at a time,
+ *   e.g. only the families waiting for applications to reopen.
  * @returns {Promise<{configured: boolean, ok: boolean}>}
  */
-export async function kitSubscribe(env, email) {
+export async function kitSubscribe(env, email, opts = {}) {
   if (!kitConfigured(env)) return { configured: false, ok: false };
   try {
     const res = await kitFetch(env, '/subscribers', {
@@ -65,10 +68,78 @@ export async function kitSubscribe(env, email) {
       }
     }
 
+    const tagName = tagForSource(opts.source);
+    if (tagName) {
+      // Best-effort: a tagging failure never fails the signup
+      await kitTagSubscriber(env, email, tagName);
+    }
+
     return { configured: true, ok: true };
   } catch (err) {
     console.error('Kit subscribe failed:', err);
     return { configured: true, ok: false };
+  }
+}
+
+/* ── Source → tag ──
+ * Form `source` values (validated by /api/newsletter) map to human-readable
+ * Kit tags. Unknown-but-well-formed sources become Title Case tags so a new
+ * form can start tagging without a code change. */
+const SOURCE_TAGS = {
+  'newsletter': 'Newsletter',
+  'application-waitlist': 'Application Waitlist',
+};
+function tagForSource(source) {
+  if (!source) return null;
+  const key = String(source).toLowerCase();
+  if (SOURCE_TAGS[key]) return SOURCE_TAGS[key];
+  if (!/^[a-z0-9-]{2,40}$/.test(key)) return null;
+  return key.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+}
+
+const _tagIds = new Map(); // tag name → id, per isolate
+
+/** Find a tag id by name, creating the tag on first use. Never throws. */
+async function kitTagId(env, name) {
+  if (_tagIds.has(name)) return _tagIds.get(name);
+  try {
+    let cursor = null;
+    for (let page = 0; page < 20; page++) {
+      const res = await kitFetch(env, `/tags?per_page=500${cursor ? `&after=${encodeURIComponent(cursor)}` : ''}`);
+      if (!res.ok) { console.error(`Kit list tags error ${res.status}: ${await res.text()}`); break; }
+      const data = await res.json();
+      const hit = (data.tags || []).find(t => (t.name || '').toLowerCase() === name.toLowerCase());
+      if (hit) { _tagIds.set(name, hit.id); return hit.id; }
+      if (!data.pagination?.has_next_page) break;
+      cursor = data.pagination.end_cursor;
+    }
+    const create = await kitFetch(env, '/tags', { method: 'POST', body: JSON.stringify({ name }) });
+    const body = await create.json().catch(() => ({}));
+    const id = body.tag?.id;
+    if (!create.ok || !id) { console.error(`Kit create tag "${name}" error ${create.status}:`, JSON.stringify(body)); return null; }
+    _tagIds.set(name, id);
+    return id;
+  } catch (err) {
+    console.error('Kit tag lookup failed:', err);
+    return null;
+  }
+}
+
+/** Add a tag to an existing subscriber by email. Never throws. */
+export async function kitTagSubscriber(env, email, tagName) {
+  if (!kitConfigured(env)) return false;
+  const tagId = await kitTagId(env, tagName);
+  if (!tagId) return false;
+  try {
+    const res = await kitFetch(env, `/tags/${tagId}/subscribers`, {
+      method: 'POST',
+      body: JSON.stringify({ email_address: email }),
+    });
+    if (!res.ok) { console.error(`Kit tag subscriber error ${res.status}: ${await res.text()}`); return false; }
+    return true;
+  } catch (err) {
+    console.error('Kit tag subscriber failed:', err);
+    return false;
   }
 }
 

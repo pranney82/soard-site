@@ -19,6 +19,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 import CopyChip from '../components/ui/CopyChip.astro';
 import MediaLogos from '../components/ui/MediaLogos.astro';
 import FAQSection from '../components/ui/FAQSection.astro';
+import ProcessStrip from '../components/ui/ProcessStrip.astro';
 import { getPublishedKids } from '../utils/collections';
 import faqData from '../content/site/faq.json';
 import siteSettings from '../content/site/settings.json';
@@ -43,7 +44,8 @@ const storyBio = storyKid?.data.bio || '';
 const storyDiagnosis = storyKid?.data.diagnosis || '';
 const storyRoomTypes = storyKid?.data.roomTypes || [];
 // Build a short 2-sentence excerpt from the bio
-const bioSentences = storyBio.split(/(?<=[.!?])\s+/).filter(Boolean);
+const storyBioText = storyBio.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
+const bioSentences = storyBioText.split(/(?<=[.!?])\s+/).filter(Boolean);
 const storyExcerpt = bioSentences.slice(0, 2).join(' ');
 
 const addressLine = `${siteSettings.address.street}, ${siteSettings.address.city}, ${siteSettings.address.state} ${siteSettings.address.zip}`;
@@ -261,6 +263,9 @@ const breadcrumbs = [
     </div>
   </section>
 
+  <!-- ══════ 3a. WHAT YOUR GIFT SETS IN MOTION ══════ -->
+  <ProcessStrip variant="donate" />
+
   <!-- ══════ 3b. CHECK & DONOR-ADVISED FUND ══════ -->
   <div class="donate-check-bar">
     <div class="donate-check-bar-inner">
@@ -347,6 +352,11 @@ const breadcrumbs = [
           <h3>Stock, DAF & IRA Gifts</h3>
           <p>Donate stock, recommend a grant from your donor-advised fund, or give from your IRA. All tax-smart ways to build rooms.</p>
           <a href="/ways-to-give/">See All Ways to Give →</a>
+        </div>
+        <div class="way-item">
+          <h3>Legacy Giving</h3>
+          <p>Include SOARD in your will or trust, or name us as a beneficiary of a retirement account or life insurance policy. Simple ways to shape the future for kids who need it most.</p>
+          <a href="/ways-to-give/#legacy">Plan a Legacy Gift →</a>
         </div>
         <div class="way-item">
           <h3>Shop Our Stores</h3>
@@ -578,7 +588,10 @@ const breadcrumbs = [
   }
   .hero h1 em {
     font-style: italic;
-    color: #8A7200;
+    background-image: linear-gradient(transparent 52%, var(--c-yellow-soft) 52%);
+    background-repeat: no-repeat;
+    background-size: 100% 100%;
+    padding: 0 0.05em;
   }
   .hero-lead {
     font-size: clamp(16px, 2vw, 18px);
@@ -1465,9 +1478,19 @@ const breadcrumbs = [
     .hero { padding: 80px 0 64px; }
     .hero-inner {
       grid-template-columns: 1fr;
-      gap: 40px;
+      gap: 0;
     }
-    .hero-frame { aspect-ratio: 3 / 2; }
+    /* Phone reading order: label → headline → lead → buttons → photo → trust → EIN/address.
+       The photo lands right under the buttons instead of below the org details. */
+    .hero-text { display: contents; }
+    .hero-text > .section-label { order: 1; }
+    .hero-text > h1 { order: 2; }
+    .hero-lead { order: 3; }
+    .hero-ctas { order: 4; margin-bottom: 36px; }
+    .hero-photo-wrap { order: 5; width: 100%; max-width: 420px; margin: 0 auto 52px; }
+    .hero-trust { order: 6; }
+    .hero-org { order: 7; }
+    .hero-frame { aspect-ratio: 4 / 5; }
     .hero-stat {
       bottom: -12px;
       left: 12px;
