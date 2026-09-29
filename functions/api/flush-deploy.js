@@ -50,9 +50,10 @@ export async function onRequestPost(context) {
     if (!res.ok) {
       const text = await res.text();
       console.error(`[flush-deploy] Deploy hook failed (${res.status}): ${text}`);
+      // 500, not 502: Cloudflare replaces the body of any 502/504 with its own HTML error page (see upload-video.js).
       return Response.json(
         { success: false, error: `Deploy hook failed (${res.status})` },
-        { status: 502 }
+        { status: 500 }
       );
     }
 

@@ -13,6 +13,13 @@
  * Note: CF_STREAM_TOKEN requires Stream:Edit permission.
  */
 
+// Never answer 502 or 504 from a Pages Function. Cloudflare's edge replaces the
+// body of any 502/504 response, whether from an origin or a Worker, with its
+// branded HTML "Bad gateway" page. The admin could then only report "returned
+// HTTP 502 instead of JSON" and the real Stream error was never visible.
+// 500 passes through untouched (see developers.cloudflare.com/rules/custom-errors).
+const UPSTREAM_ERROR_STATUS = 500;
+
 export async function onRequestPost(context) {
   try {
     const { CF_ACCOUNT_ID, CF_STREAM_TOKEN } = context.env;
@@ -53,9 +60,7 @@ export async function onRequestPost(context) {
     }
     if (allowedHost) metaParts.push(`allowedorigins ${b64Utf8(allowedHost)}`);
 
-    // Bounded + retried: an unbounded call here can hang the whole invocation
-    // until the edge gives up and replaces our JSON with an HTML 502 page,
-    // which the admin can only report as an unparseable response.
+    // Bounded + retried so a slow Stream API cannot hang the invocation.
     let response;
     let lastError = '';
     for (let attempt = 0; attempt < 2; attempt++) {
@@ -85,7 +90,7 @@ export async function onRequestPost(context) {
     }
 
     if (!response) {
-      return Response.json({ success: false, error: lastError || 'Stream API unreachable' }, { status: 502 });
+      return Response.json({ success: false, error: lastError || 'Stream API unreachable' }, { status: UPSTREAM_ERROR_STATUS });
     }
 
     if (!response.ok) {
@@ -100,7 +105,7 @@ export async function onRequestPost(context) {
       }
       return Response.json(
         { success: false, error: `Stream API error ${response.status}${detail ? `: ${detail}` : ''}` },
-        { status: 502 }
+        { status: UPSTREAM_ERROR_STATUS }
       );
     }
 
@@ -110,7 +115,7 @@ export async function onRequestPost(context) {
     if (!uploadUrl || !videoId) {
       return Response.json(
         { success: false, error: 'Stream API did not return upload URL or video ID' },
-        { status: 502 }
+        { status: UPSTREAM_ERROR_STATUS }
       );
     }
 
@@ -166,6 +171,6 @@ export async function onRequestGet(context) {
       ok: false,
       streamApiMs: Date.now() - started,
       error: err?.name === 'TimeoutError' ? 'Stream API did not respond within 10s' : `Stream API request failed: ${err?.message || err}`,
-    }, { status: 502 });
+    }, { status: UPSTREAM_ERROR_STATUS });
   }
 }

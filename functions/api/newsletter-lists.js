@@ -30,9 +30,10 @@ export async function onRequestGet(context) {
     if (!res.ok) {
       const body = await res.text();
       console.error(`Resend API error ${res.status}: ${body}`);
+      // 500, not 502: Cloudflare replaces the body of any 502/504 with its own HTML error page (see upload-video.js).
       return new Response(
         JSON.stringify({ ok: false, error: `Resend API returned ${res.status}.` }),
-        { status: 502, headers: cors }
+        { status: 500, headers: cors }
       );
     }
 
