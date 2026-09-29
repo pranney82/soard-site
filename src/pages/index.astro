@@ -77,7 +77,6 @@ const missionMainId = sp.missionMain || 'kids/eli/photo-01';
 const missionAccentId = sp.missionAccent || 'kids/georgia/photo-01';
 const heroPhotoId = siteSettings.heroKidPhotoId || `kids/${heroSlug}/hero`;
 const storyPhotoId = siteSettings.featuredStoryImage || (fd?.heroImage ? extractCfId(fd.heroImage) : `kids/${featuredSlug}/hero`);
-const processPhotoId = sp.process || `kids/${featuredSlug}/hero`;
 const roomPhotos = {
   bedroom: sp.roomBedroom || 'kids/griffin/hero',
   bath: sp.roomBath || 'kids/zyah/hero',
@@ -106,6 +105,66 @@ const heroImg1280 = `${CF}/${heroPhotoId}/w=1280,h=1600,${heroTransforms}`;
 const heroSrcset = `${heroImg320} 320w, ${heroImg480} 480w, ${heroImg640} 640w, ${heroImg960} 960w, ${heroImg1280} 1280w`;
 /* Photo column: 0.85fr of 1400px grid ≈ 530px. 2× retina → 1060px. 1280w covers 2.4× comfortably. */
 const heroSizes = '(max-width:480px) 80vw, (max-width:768px) 60vw, 530px';
+
+/* ── "Up Next" strip (admin: Site Config → Kids on Site → Up Next Strip) ──
+   auto   → the kid currently in build (pinned via upNext.kidSlug, else the first
+            "in-progress" kid); if none, the next upcoming event
+   manual → everything typed in admin
+   off    → strip hidden */
+type UpNext = { label: string; headline: string; body: string; date: string; photoId: string; ctaLabel: string; ctaLink: string; external: boolean };
+const un = (siteSettings as any).upNext || {};
+const upNextMode: string = un.mode || 'auto';
+let upNext: UpNext | null = null;
+if (upNextMode === 'manual' && un.headline) {
+  upNext = {
+    label: un.label || 'Up Next',
+    headline: un.headline,
+    body: un.body || '',
+    date: un.date || '',
+    photoId: un.photo ? extractCfId(un.photo) : '',
+    ctaLabel: un.ctaLabel || 'Learn More',
+    ctaLink: un.ctaLink || '/events/',
+    external: /^https?:/i.test(un.ctaLink || ''),
+  };
+} else if (upNextMode === 'auto') {
+  const inBuild = allKids
+    .filter(k => k.data.status === 'in-progress')
+    .sort((a, b) => (a.data.sortOrder ?? 9999) - (b.data.sortOrder ?? 9999) || a.data.name.localeCompare(b.data.name));
+  const building = (un.kidSlug && inBuild.find(k => k.data.slug === un.kidSlug)) || inBuild[0];
+  if (building) {
+    const k = building.data;
+    const rooms = (k.roomTypes || []).map(r => r.toLowerCase());
+    const what = rooms.length > 1 ? `${rooms.slice(0, -1).join(', ')} and ${rooms[rooms.length - 1]}` : (rooms[0] || 'dream room');
+    upNext = {
+      label: 'Now Building',
+      headline: `${k.name}'s ${what}`,
+      body: k.shortDescription || k.heroSummary || '',
+      date: un.dateText || 'Reveal coming soon',
+      photoId: extractCfId(k.heroImage || '') || `kids/${k.slug}/hero`,
+      ctaLabel: `Meet ${k.name}`,
+      ctaLink: `/kids/${k.slug}/`,
+      external: false,
+    };
+  } else {
+    const today = new Date().toISOString().split('T')[0];
+    const nextEvent = (await getCollection('events'))
+      .filter(e => e.data.status !== 'cancelled' && (e.data.endDate || e.data.date) >= today)
+      .sort((a, b) => a.data.date.localeCompare(b.data.date))[0];
+    if (nextEvent) {
+      const e = nextEvent.data;
+      upNext = {
+        label: 'Next Event',
+        headline: e.title,
+        body: e.shortDescription || e.description,
+        date: un.dateText || new Date(e.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }),
+        photoId: extractCfId(e.image || e.photos?.[0]?.id || ''),
+        ctaLabel: e.ticketUrl ? 'Get Tickets' : 'Event Details',
+        ctaLink: e.ticketUrl || '/events/',
+        external: !!e.ticketUrl,
+      };
+    }
+  }
+}
 
 import { getWebSiteSchema, getSiteNavigationSchema } from '../utils/schema';
 const jsonLd = [getWebSiteSchema(), ...getSiteNavigationSchema()];
@@ -150,6 +209,35 @@ const jsonLd = [getWebSiteSchema(), ...getSiteNavigationSchema()];
 
   </section>
 
+  <!-- ══════ UP NEXT — what's happening right now ══════ -->
+  {upNext && (
+    <section class="upnext" aria-labelledby="upnext-heading">
+      <div class="upnext-inner" data-reveal>
+        <a href={upNext.ctaLink} class="upnext-card" {...(upNext.external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}>
+          {upNext.photoId && (
+            <div class="upnext-photo" style={`background-image:url('${cfLqip(upNext.photoId)}')`}>
+              <img
+                src={`${CF}/${upNext.photoId}/w=480,h=360,fit=cover,gravity=face,q=75`}
+                srcset={`${CF}/${upNext.photoId}/w=320,h=240,fit=cover,gravity=face,q=75 320w, ${CF}/${upNext.photoId}/w=480,h=360,fit=cover,gravity=face,q=75 480w, ${CF}/${upNext.photoId}/w=720,h=540,fit=cover,gravity=face,q=75 720w`}
+                sizes="(max-width:640px) 100vw, 220px"
+                alt={upNext.headline} width="480" height="360" loading="lazy" decoding="async" class="lqip-img"
+              />
+            </div>
+          )}
+          <div class="upnext-body">
+            <div class="upnext-top">
+              <span class="upnext-label"><span class="upnext-pulse" aria-hidden="true"></span>{upNext.label}</span>
+              {upNext.date && <span class="upnext-date">{upNext.date}</span>}
+            </div>
+            <h2 id="upnext-heading" class="upnext-headline">{upNext.headline}</h2>
+            {upNext.body && <p class="upnext-text">{upNext.body}</p>}
+          </div>
+          <span class="upnext-cta">{upNext.ctaLabel} <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3.5 8h9M8.5 4l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        </a>
+      </div>
+    </section>
+  )}
+
   <!-- ══════ IMPACT RIBBON ══════ -->
   <section class="ribbon" aria-label="Impact numbers">
     <div class="ribbon-inner">
@@ -180,6 +268,7 @@ const jsonLd = [getWebSiteSchema(), ...getSiteNavigationSchema()];
         <h2 id="mission-heading">Every child deserves a space that makes them feel <em class="highlight">safe</em>, <em class="highlight">seen</em>, and <em class="highlight">loved</em>.</h2>
         <p class="mission-body">A bedroom that feels like theirs. A bathroom that works for them. A therapy room built around who they are. For children with special needs, the right space changes everything. It brings independence, comfort, and confidence to daily life for the entire family.</p>
         <p class="mission-body">Since 2012, we've partnered with designers, contractors, and families across Greater Atlanta to create over {stats.totalRooms} life-changing spaces. Every project is unique because every child is unique.</p>
+        <a href="/how-it-works/" class="mission-link">See how a room gets built <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3.5 8h9M8.5 4l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
       </div>
       <div class="mission-visual" role="presentation">
         <div class="mission-photo mission-photo--main" data-reveal style={`background-image:url('${cfLqip(missionMainId)}')`}>
@@ -284,51 +373,6 @@ const jsonLd = [getWebSiteSchema(), ...getSiteNavigationSchema()];
     </div>
   </section>
 
-  <!-- ══════ PROCESS ══════ -->
-  <section class="process" aria-labelledby="process-heading">
-    <div class="process-inner">
-      <div class="process-header" data-reveal>
-        <div class="section-label">The Process</div>
-        <h2 id="process-heading">From first call to <em class="highlight">big reveal</em></h2>
-      </div>
-
-      <div class="process-split">
-        <div class="process-photo" data-reveal style={`background-image:url('${cfLqip(processPhotoId)}')`}>
-          <img src={`${CF}/${processPhotoId}/w=960,fit=scale-down,gravity=face,q=70`} alt={`${fd?.name || 'A child'} sees their new room for the first time`} width="960" height="640" loading="lazy" decoding="async" class="lqip-img" />
-        </div>
-
-        <div class="process-content">
-          <ol class="process-timeline" role="list">
-            <li class="process-step" data-reveal data-delay="1">
-              <span class="process-num" aria-hidden="true">01</span>
-              <h3>Family Applies</h3>
-              <p>Families tell us about their child, their needs, and their dreams for a new space.</p>
-            </li>
-            <li class="process-step" data-reveal data-delay="2">
-              <span class="process-num" aria-hidden="true">02</span>
-              <h3>Design & Plan</h3>
-              <p>Our designer partners create a one-of-a-kind room concept tailored to the child's personality and needs.</p>
-            </li>
-            <li class="process-step" data-reveal data-delay="3">
-              <span class="process-num" aria-hidden="true">03</span>
-              <h3>Build & Transform</h3>
-              <p>Construction partners bring the design to life.</p>
-            </li>
-            <li class="process-step process-step--highlight" data-reveal data-delay="4">
-              <span class="process-num" aria-hidden="true">04</span>
-              <span class="process-badge">The best part</span>
-              <h3>The Big Reveal</h3>
-              <p>The child walks in and sees a room designed just for them. Everything changes in that moment.</p>
-            </li>
-          </ol>
-          <div class="process-cta" data-reveal>
-            <a href="/partners/" class="btn btn-primary">Become a Partner →</a>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-
   <!-- ══════ MORE KIDS ══════ -->
   <section class="kids-strip" aria-labelledby="kids-heading">
     <div class="kids-strip-header" data-reveal>
@@ -361,6 +405,9 @@ const jsonLd = [getWebSiteSchema(), ...getSiteNavigationSchema()];
     </div>
   </section>
 
+  <!-- ══════ PARTNERS ══════ -->
+  <PartnerShowcase logos={partnerLogos} totalPartners={totalPartners} />
+
   <!-- ══════ TRUST ══════ -->
   <section class="trust" aria-labelledby="trust-heading">
     <div class="trust-inner">
@@ -387,9 +434,6 @@ const jsonLd = [getWebSiteSchema(), ...getSiteNavigationSchema()];
     </div>
   </section>
 
-  <!-- ══════ PARTNERS ══════ -->
-  <PartnerShowcase logos={partnerLogos} totalPartners={totalPartners} />
-
   <!-- ══════ FINAL CTA ══════ -->
   <section class="finale" aria-labelledby="cta-heading">
     <div class="finale-inner">
@@ -411,7 +455,7 @@ const jsonLd = [getWebSiteSchema(), ...getSiteNavigationSchema()];
   .mission-photo,
   .story-photo,
   .kid-thumb-photo,
-  .process-photo,
+  .upnext-photo,
   .rm-parallax {
     background-size: cover;
     background-position: center;
@@ -625,6 +669,52 @@ const jsonLd = [getWebSiteSchema(), ...getSiteNavigationSchema()];
     transform: translateY(-3px);
   }
 
+  /* ── UP NEXT ── */
+  .upnext { background: var(--c-cream); padding: 36px 0 56px; contain: layout style; }
+  .upnext-inner { max-width: var(--max-width); margin: 0 auto; padding: 0 var(--page-padding); }
+  .upnext-card {
+    display: grid; grid-template-columns: 220px 1fr auto; gap: 32px; align-items: center;
+    padding: 20px 28px 20px 20px;
+    background: #fff; border: 1px solid var(--c-border); border-left: 6px solid var(--c-yellow); border-radius: 20px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.06);
+    text-decoration: none; color: inherit;
+    transition: transform 0.35s cubic-bezier(0.16,1,0.3,1), box-shadow 0.35s ease;
+  }
+  .upnext-card:hover { transform: translateY(-3px); box-shadow: 0 16px 48px rgba(0,0,0,0.1); }
+  .upnext-card:focus-visible { outline: 3px solid var(--c-yellow); outline-offset: 4px; }
+  .upnext-photo { aspect-ratio: 4 / 3; border-radius: 14px; overflow: hidden; background: var(--c-warm-gray); }
+  .upnext-photo img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.6s cubic-bezier(0.16,1,0.3,1); }
+  .upnext-card:hover .upnext-photo img { transform: scale(1.04); }
+  .upnext-body { min-width: 0; }
+  .upnext-top { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 10px; }
+  .upnext-label { display: inline-flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--c-dark); }
+  .upnext-pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--c-yellow); animation: upnextPulse 2.2s ease-out infinite; }
+  @keyframes upnextPulse {
+    0% { box-shadow: 0 0 0 0 rgba(255,218,36,0.65); }
+    70% { box-shadow: 0 0 0 10px rgba(255,218,36,0); }
+    100% { box-shadow: 0 0 0 0 rgba(255,218,36,0); }
+  }
+  .upnext-date { font-size: 13px; font-weight: 600; color: var(--c-text-light); }
+  .upnext-headline { font-size: clamp(20px, 2vw, 26px); line-height: 1.25; margin: 0 0 8px; letter-spacing: -0.01em; }
+  .upnext-text { font-size: 15px; line-height: 1.6; color: var(--c-text-muted); margin: 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .upnext-cta {
+    display: inline-flex; align-items: center; gap: 8px; white-space: nowrap;
+    padding: 14px 24px; border-radius: 100px; background: var(--c-dark); color: var(--c-white);
+    font-size: 14px; font-weight: 600; transition: background 0.25s ease, color 0.25s ease, gap 0.25s ease;
+  }
+  .upnext-card:hover .upnext-cta { background: var(--c-yellow); color: var(--c-dark); gap: 12px; }
+  @media (max-width: 900px) {
+    .upnext-card { grid-template-columns: 180px 1fr; gap: 24px; }
+    .upnext-cta { grid-column: 2; justify-self: start; }
+  }
+  @media (max-width: 640px) {
+    .upnext { padding: 24px 0 40px; }
+    .upnext-card { grid-template-columns: 1fr; gap: 16px; padding: 14px; border-radius: 16px; }
+    .upnext-photo { aspect-ratio: 16 / 9; }
+    .upnext-cta { grid-column: 1; }
+  }
+  @media (prefers-reduced-motion: reduce) { .upnext-pulse { animation: none; } }
+
   /* ── RIBBON ── */
   .ribbon { background: var(--c-dark-deep); padding: 56px 0; contain: layout style; min-height: 160px; }
   .ribbon-inner { max-width: var(--max-width); margin: 0 auto; padding: 0 var(--page-padding); display: flex; justify-content: center; align-items: center; gap: 48px; flex-wrap: wrap; }
@@ -636,21 +726,23 @@ const jsonLd = [getWebSiteSchema(), ...getSiteNavigationSchema()];
   @media (max-width: 600px) { .ribbon-inner { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; justify-items: center; } .ribbon-divider { display: none; } .ribbon-stat { min-width: 0; } .ribbon-stat:last-of-type { grid-column: 1 / -1; } }
 
   /* ── MISSION ── */
-  .mission { padding: 120px 0; contain: layout style; }
+  .mission { padding: 88px 0; contain: layout style; }
   .mission-inner { max-width: var(--max-width); margin: 0 auto; padding: 0 var(--page-padding); display: grid; grid-template-columns: 1fr 1fr; gap: 80px; align-items: center; }
   .mission h2 { font-size: clamp(28px, 3.5vw, 40px); margin-bottom: 28px; line-height: 1.25; }
   .mission h2 em { font-style: italic; }
   .mission-body { font-size: 17px; line-height: 1.8; margin-bottom: 16px; color: var(--c-text-muted); }
   .mission-body em { font-style: italic; color: var(--c-dark); }
+  .mission-link { display: inline-flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 15px; font-weight: 700; color: var(--c-dark); text-decoration: underline; text-underline-offset: 4px; text-decoration-color: var(--c-yellow); text-decoration-thickness: 2px; transition: gap 0.25s ease; }
+  .mission-link:hover { gap: 12px; }
   .mission-visual { position: relative; min-height: 480px; }
   .mission-photo { border-radius: 20px; overflow: hidden; box-shadow: 0 24px 64px rgba(0,0,0,0.1); }
   .mission-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .mission-photo--main { position: absolute; top: 0; left: 0; width: 72%; height: 70%; z-index: 1; }
   .mission-photo--accent { position: absolute; bottom: 0; right: 0; width: 58%; height: 55%; z-index: 2; border: 5px solid var(--c-cream); }
-  @media (max-width: 768px) { .mission { padding: 80px 0; } .mission-inner { grid-template-columns: 1fr; gap: 40px; } .mission-visual { min-height: 340px; } }
+  @media (max-width: 768px) { .mission { padding: 64px 0; } .mission-inner { grid-template-columns: 1fr; gap: 40px; } .mission-visual { min-height: 340px; } }
 
   /* ── STORY ── */
-  .story { background: var(--c-cream); contain: layout style; padding: 80px 0; }
+  .story { background: var(--c-cream); contain: layout style; padding: 72px 0; }
   .story-inner { max-width: var(--max-width); margin: 0 auto; padding: 0 var(--page-padding); }
   .story-split { display: grid; grid-template-columns: 1fr 1fr; border-radius: 20px; overflow: hidden; background: #fff; box-shadow: 0 4px 32px rgba(0,0,0,0.06), 0 1px 4px rgba(0,0,0,0.04); }
   .story-photo { position: relative; overflow: hidden; margin: 0; height: clamp(440px, 36vw, 560px); }
@@ -669,8 +761,8 @@ const jsonLd = [getWebSiteSchema(), ...getSiteNavigationSchema()];
   }
 
   /* ── KIDS STRIP ── */
-  .kids-strip { padding: 100px 0 80px; overflow: hidden; contain: layout style; }
-  .kids-strip-header { max-width: var(--max-width); margin: 0 auto 48px; padding: 0 var(--page-padding); display: flex; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; gap: 16px; }
+  .kids-strip { padding: 80px 0 72px; overflow: hidden; contain: layout style; }
+  .kids-strip-header { max-width: var(--max-width); margin: 0 auto 40px; padding: 0 var(--page-padding); display: flex; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; gap: 16px; }
   .kids-strip-header h2 { margin: 0; }
   .kids-strip-header h2 em { font-style: italic; }
   .kids-strip-all { font-size: 15px; font-weight: 600; color: var(--c-accent); transition: letter-spacing 0.3s ease; white-space: nowrap; }
@@ -690,56 +782,13 @@ const jsonLd = [getWebSiteSchema(), ...getSiteNavigationSchema()];
   .kids-scroll-btn:hover { background: var(--c-dark); color: var(--c-white); box-shadow: 0 4px 16px rgba(0,0,0,0.15); }
   .kids-scroll-btn--prev { left: 8px; }
   .kids-scroll-btn--next { right: 8px; }
-  @media (max-width: 768px) { .kids-strip { padding: 64px 0 48px; } .kids-scroll-btn { display: none; } }
+  @media (max-width: 768px) { .kids-strip { padding: 56px 0 40px; } .kids-scroll-btn { display: none; } }
   @media (hover: none) and (pointer: coarse) { .kids-scroll-btn { display: none; } }
 
-  /* ── PROCESS ── */
-  .process { padding: 120px 0; background: var(--c-dark-deep); contain: layout style; }
-  .process-inner { max-width: var(--max-width-wide); margin: 0 auto; padding: 0 var(--page-padding); }
-  .process-header { text-align: center; margin-bottom: 80px; }
-  .process-header .section-label { justify-content: center; color: var(--c-yellow); }
-  .process-header h2 { color: #fff; }
-  .process-header h2 em { font-style: italic; color: var(--c-yellow); }
-
-  /* Two-column split */
-  .process-split { display: grid; grid-template-columns: 1fr 1.15fr; gap: 64px; align-items: start; }
-
-  /* Photo column */
-  .process-photo { border-radius: 24px; overflow: hidden; position: sticky; top: 100px; }
-  .process-photo img { width: 100%; height: auto; display: block; object-fit: cover; aspect-ratio: 3 / 4; object-position: 60% center; }
-
-  /* Steps column */
-  .process-content { padding-top: 8px; }
-  .process-timeline { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0; }
-
-  /* Each step */
-  .process-step { padding: 32px 0; border-bottom: 1px solid rgba(255,255,255,0.06); }
-  .process-step:first-child { padding-top: 0; }
-  .process-step:last-child { border-bottom: none; }
-  .process-num { display: inline-block; font-family: var(--font-display); font-size: 13px; font-weight: 700; letter-spacing: 0.1em; color: var(--c-dark); background: var(--c-yellow); padding: 4px 12px; border-radius: 6px; margin-bottom: 16px; }
-  .process-step h3 { font-size: 22px; color: #fff; margin-bottom: 8px; line-height: 1.3; }
-  .process-step p { font-size: 15px; line-height: 1.75; color: rgba(255,255,255,0.5); margin: 0; }
-
-  /* Highlight step (The Big Reveal) */
-  .process-step--highlight { background: rgba(255,218,36,0.04); margin: 0 -24px; padding: 32px 24px; border-radius: 16px; border-bottom: none; }
-  .process-badge { display: inline-block; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--c-yellow); margin-bottom: 10px; }
-
-  /* CTA */
-  .process-cta { margin-top: 40px; }
-
-  @media (max-width: 768px) {
-    .process { padding: 80px 0; }
-    .process-header { margin-bottom: 48px; }
-    .process-split { grid-template-columns: 1fr; gap: 40px; }
-    .process-photo { position: static; border-radius: 20px; }
-    .process-photo img { aspect-ratio: 16 / 10; }
-    .process-cta { text-align: center; }
-  }
-
   /* ══ ROOMS — Editorial magazine layout ══ */
-  .rooms { padding: 140px 0 160px; background: var(--c-cream); contain: layout style; }
+  .rooms { padding: 88px 0 96px; background: var(--c-cream); contain: layout style; }
   .rooms-inner { max-width: var(--max-width-wide); margin: 0 auto; padding: 0 var(--page-padding); }
-  .rooms-header { max-width: 600px; margin-bottom: 80px; }
+  .rooms-header { max-width: 600px; margin-bottom: 48px; }
   .rooms-header h2 { line-height: 1.18; letter-spacing: -0.02em; }
   .rooms-header h2 em { font-style: italic; }
 
@@ -827,7 +876,7 @@ const jsonLd = [getWebSiteSchema(), ...getSiteNavigationSchema()];
 
   /* ════════ Responsive ════════ */
   @media (max-width: 900px) {
-    .rooms { padding: 100px 0 120px; }
+    .rooms { padding: 72px 0 80px; }
     .rm-trio { gap: 32px; }
     .rm-num { font-size: clamp(56px, 8vw, 80px); }
     .rm-card-img { aspect-ratio: 4 / 5; }
@@ -893,9 +942,9 @@ const jsonLd = [getWebSiteSchema(), ...getSiteNavigationSchema()];
   }
 
   /* ── TRUST ── */
-  .trust { padding: 120px 0; background: var(--c-dark-deep); color: #fff; contain: layout style; }
+  .trust { padding: 88px 0; background: var(--c-dark-deep); color: #fff; contain: layout style; }
   .trust-inner { max-width: var(--max-width); margin: 0 auto; padding: 0 var(--page-padding); }
-  .trust-header { text-align: center; margin-bottom: 64px; }
+  .trust-header { text-align: center; margin-bottom: 48px; }
   .trust-header .section-label { justify-content: center; }
   .trust-header h2 { color: #fff; font-size: clamp(28px, 4vw, 44px); margin-bottom: 16px; }
   .trust-header h2 em { font-style: italic; color: var(--c-yellow); }
@@ -909,11 +958,11 @@ const jsonLd = [getWebSiteSchema(), ...getSiteNavigationSchema()];
   .trust-card-label { font-size: 13px; font-weight: 600; color: rgba(255,255,255,0.5); text-transform: uppercase; letter-spacing: 0.08em; }
   .trust-card p { font-size: 15px; color: rgba(255,255,255,0.6); line-height: 1.65; }
   .trust-cta { text-align: center; }
-  @media (max-width: 768px) { .trust { padding: 80px 0; } .trust-grid { grid-template-columns: 1fr; } }
+  @media (max-width: 768px) { .trust { padding: 64px 0; } .trust-grid { grid-template-columns: 1fr; } }
 
 
   /* ── FINALE ── */
-  .finale { padding: 120px 0; background: var(--c-yellow); text-align: center; position: relative; overflow: hidden; contain: layout style; }
+  .finale { padding: 88px 0; background: var(--c-yellow); text-align: center; position: relative; overflow: hidden; contain: layout style; }
   .finale-inner { max-width: 640px; margin: 0 auto; padding: 0 var(--page-padding); position: relative; z-index: 2; }
   .finale-icon { width: clamp(72px, 9vw, 100px); height: auto; margin: 0 auto clamp(20px, 3vw, 28px); display: block; }
   .finale h2 { font-size: clamp(28px, 4vw, 40px); line-height: 1.25; margin-bottom: 20px; }
@@ -924,7 +973,7 @@ const jsonLd = [getWebSiteSchema(), ...getSiteNavigationSchema()];
   .btn-outline-dark { background: transparent; color: var(--c-dark); border: 2px solid var(--c-dark); }
   .btn-outline-dark:hover { background: var(--c-dark); color: var(--c-yellow); transform: translateY(-3px); }
   .btn-lg { font-size: 17px; padding: 18px 44px; }
-  @media (max-width: 768px) { .finale { padding: 80px 0; } .finale-ctas .btn { flex: 1; justify-content: center; min-width: 160px; } }
+  @media (max-width: 768px) { .finale { padding: 64px 0; } .finale-ctas .btn { flex: 1; justify-content: center; min-width: 160px; } }
 
   /* ── SCROLL REVEALS ── */
   [data-reveal] { opacity: 0; transform: translateY(32px); transition: opacity 0.7s cubic-bezier(0.16,1,0.3,1), transform 0.7s cubic-bezier(0.16,1,0.3,1); }

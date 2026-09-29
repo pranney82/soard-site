@@ -380,15 +380,32 @@ const jsonLd = {
           </div>
           <div class="wtg-legacy-narrative">
             <h3>Include SOARD in Your Will or Estate Plan</h3>
-            <p>A bequest is one of the most meaningful gifts you can make. By naming {orgName} in your will or trust, you ensure that children with special needs will continue to receive life-changing room makeovers for generations to come.</p>
-            <p class="wtg-fine">We recommend consulting your estate attorney. For questions, contact us at <a href={`mailto:${email}`}>{email}</a>.</p>
+            <p>A legacy gift is one of the most meaningful gifts you can make. By naming {orgName} in your estate plan, you ensure that children with special needs will continue to receive life-changing room makeovers for generations to come.</p>
+            <p class="wtg-fine">Every family's situation is different. We recommend talking with your financial advisor or estate attorney to find the giving strategy that is most beneficial for your circumstances.</p>
           </div>
+        </div>
+        <div class="wtg-legacy-ways">
+          <span class="wtg-bequest-label">Simple Ways to Shape the Future</span>
+          <ul class="wtg-legacy-list">
+            <li><strong>A gift in your will or trust.</strong> Leave a specific amount, a percentage, or the residue of your estate to SOARD.</li>
+            <li><strong>Retirement accounts.</strong> Name SOARD as a full or partial beneficiary of your IRA, 401(k), or other retirement plan.</li>
+            <li><strong>Life insurance.</strong> Name SOARD as a beneficiary of a new or existing policy.</li>
+            <li><strong>Donor-advised funds.</strong> Name SOARD as the successor beneficiary of your DAF.</li>
+            <li><strong>Bank and investment accounts.</strong> Add SOARD as a payable-on-death or transfer-on-death beneficiary.</li>
+          </ul>
         </div>
         <div class="wtg-legacy-bequest">
           <span class="wtg-bequest-label">Suggested Bequest Language</span>
           <blockquote>
             "I give, devise, and bequeath to Sunshine on a Ranney Day, Inc., a Georgia nonprofit corporation (EIN {ein}), located at {address.street}, {address.city}, {address.state} {address.zip}, <mark>[a specific dollar amount / percentage of my estate / the residue of my estate]</mark> to be used for its general charitable purposes."
           </blockquote>
+        </div>
+        <div class="wtg-legacy-share">
+          <div>
+            <strong class="wtg-legacy-share__title">Tell us about your plans</strong>
+            <p>If you have included SOARD in your estate plan, we would love to know. Sharing your wishes lets us thank you, make sure your gift is used the way you intend, and welcome you into our legacy family. Your plans stay confidential and can change at any time.</p>
+          </div>
+          <a href={`mailto:${email}?subject=Legacy%20Gift%20to%20SOARD`} class="btn btn-dark">Share Your Wishes →</a>
         </div>
       </div>
     </div>
@@ -1244,6 +1261,19 @@ const jsonLd = {
     margin: 0;
   }
   .wtg-legacy-bequest mark { background: rgba(255,218,36,0.2); color: var(--c-dark); padding: 1px 4px; border-radius: 3px; }
+  .wtg-legacy-list {
+    list-style: none; padding: 0; margin: 0;
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px 28px;
+  }
+  .wtg-legacy-list li { position: relative; padding-left: 22px; font-size: 15px; line-height: 1.65; color: var(--c-text-muted); }
+  .wtg-legacy-list li::before { content: ''; position: absolute; left: 0; top: 8px; width: 10px; height: 10px; border-radius: 50%; background: var(--c-yellow); }
+  .wtg-legacy-list li strong { color: var(--c-text); }
+  .wtg-legacy-share {
+    display: flex; align-items: center; justify-content: space-between; gap: 28px; flex-wrap: wrap;
+    padding: 28px 32px; background: var(--c-warm-gray); border-radius: 16px;
+  }
+  .wtg-legacy-share__title { display: block; font-family: var(--font-display); font-size: 19px; margin-bottom: 8px; color: var(--c-dark); }
+  .wtg-legacy-share p { font-size: 15px; line-height: 1.65; color: var(--c-text-muted); margin: 0; max-width: 560px; }
 
   /* ══════════════════════════════════════════
      05 · IN-KIND
