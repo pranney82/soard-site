@@ -1,0 +1,17 @@
+# soard-live-hub — deployed separately from the Pages project.
+#   cd workers/live-hub && npx wrangler deploy
+# No secrets: ticks are authenticated with one-time nonces verified over the Pages binding.
+name = "soard-live-hub"
+main = "src/index.js"
+compatibility_date = "2026-09-01"
+
+[vars]
+PAGES_ORIGIN = "https://sunshineonaranneyday.com"
+
+[[durable_objects.bindings]]
+name = "LIVE_HUB"
+class_name = "LiveHub"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["LiveHub"]

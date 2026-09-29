@@ -1,0 +1,31 @@
+---
+/**
+ * /live/[slug]/ — a kid's live reveal page.
+ * Static shell with the kid's story and share image; the broadcast state is
+ * live data from the shared client, so scheduling a reveal for this kid
+ * needs no rebuild.
+ */
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import LivePage from '../../components/live/LivePage.astro';
+import { getPublishedKids } from '../../utils/collections';
+import siteSettings from '../../content/site/settings.json';
+
+export async function getStaticPaths() {
+  const kids = await getPublishedKids();
+  return kids.map(kid => ({ params: { slug: kid.data.slug }, props: { kid: kid.data } }));
+}
+
+const { kid } = Astro.props as { kid: any };
+const s = siteSettings as any;
+const fallbackImage = s.heroKidPhotoId || 'kids/braxton/photo-18';
+const description = `Watch ${kid.name}'s room reveal live from Sunshine on a Ranney Day. Get a reminder and see the moment ${kid.name} sees the new room for the first time.`;
+---
+
+<BaseLayout
+  title={`${kid.name}'s Reveal, Live`}
+  description={description}
+  ogImage={`/og/kids/${kid.slug}.png`}
+  breadcrumbs={[{ name: 'Home', url: '/' }, { name: 'Kids', url: '/kids/' }, { name: kid.name, url: `/kids/${kid.slug}/` }, { name: 'Live reveal', url: `/live/${kid.slug}/` }]}
+>
+  <LivePage kid={kid} fallbackImage={fallbackImage} />
+</BaseLayout>

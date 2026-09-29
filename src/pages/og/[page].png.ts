@@ -53,6 +53,7 @@ const getPages = async () => {
   { slug: 'privacy-policy', title: 'Privacy Policy', subtitle: 'How we protect your information.', heroImage: homeHero },
   { slug: 'terms', title: 'Terms of Service', subtitle: 'Usage terms for sunshineonaranneyday.com.', heroImage: homeHero },
   { slug: 'branding', title: 'Brand Guidelines', subtitle: 'Sunshine on a Ranney Day brand assets and usage.', heroImage: homeHero },
+  { slug: 'live', title: 'Watch the Reveal Live', subtitle: 'Room reveals stream live right here. Get a reminder and watch the moment a child sees their new room.', heroImage: homeHero },
   { slug: 'events', title: 'Events', subtitle: 'Fundraisers, tournaments, and community gatherings supporting children with special needs.', heroImage: eventsHero },
   { slug: 'golf', title: 'Sunshine on a Ranney Fairway', subtitle: 'Annual charity golf tournament funding dream room makeovers.', heroImage: 'golf-logo-dark', template: 'golf' as const, golfDate: 'Monday, May 18th, 2026', golfLocation: 'Indian Hills Country Club · Marietta, GA' },
   { slug: 'sunny-and-ranney', title: 'Sunny & Ranney', subtitle: 'Meet the mascots of Sunshine on a Ranney Day.', heroImage: sunnyStore },

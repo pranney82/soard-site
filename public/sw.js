@@ -132,3 +132,35 @@ async function networkFirst(request) {
     return cached || new Response('Offline', { status: 503, headers: { 'Content-Type': 'text/plain' } });
   }
 }
+
+// ─── Web Push (reveal reminders) ─────────────────────────────────────
+// Payloads come from functions/api/_broadcast-notify.js reminderPush():
+// { title, body, url, icon?, image?, tag? }
+self.addEventListener('push', (event) => {
+  let data = {};
+  try { data = event.data ? event.data.json() : {}; } catch { data = { body: event.data ? event.data.text() : '' }; }
+  const title = data.title || 'Sunshine on a Ranney Day';
+  const options = {
+    body: data.body || '',
+    icon: data.icon || '/apple-touch-icon.png',
+    badge: '/favicon.svg',
+    image: data.image || undefined,
+    tag: data.tag || 'soard-reveal',
+    renotify: true,
+    data: { url: data.url || '/live/' },
+  };
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const url = (event.notification.data && event.notification.data.url) || '/live/';
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
+      for (const c of list) {
+        try { if (new URL(c.url).pathname === new URL(url, self.location.origin).pathname && 'focus' in c) return c.focus(); } catch {}
+      }
+      return self.clients.openWindow(url);
+    })
+  );
+});

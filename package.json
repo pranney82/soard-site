@@ -10,7 +10,8 @@
     "build": "astro build",
     "preview": "astro preview",
     "astro": "astro",
-    "build:admin-vendor": "node scripts/build-admin-vendor.mjs"
+    "build:admin-vendor": "node scripts/build-admin-vendor.mjs",
+    "test": "node --test tests/"
   },
   "keywords": [],
   "author": "",
@@ -53,7 +54,9 @@
     "htm": "3.1.1",
     "preact": "10.25.4",
     "puppeteer": "^24.42.0",
+    "qrcode-generator": "^1.5.2",
     "sortablejs": "1.15.6",
+    "sql.js": "^1.14.2",
     "tus-js-client": "4.3.1"
   }
 }

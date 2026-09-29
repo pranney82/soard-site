@@ -43,6 +43,7 @@ export { default as TiptapUnderline } from '@tiptap/extension-underline';
 export { default as TiptapLink } from '@tiptap/extension-link';
 export { default as Placeholder } from '@tiptap/extension-placeholder';
 export { default as CharacterCount } from '@tiptap/extension-character-count';
+export { default as qrcode } from 'qrcode-generator';
 `;
 
 // Record the exact bundled versions in the banner for auditability.
@@ -54,6 +55,7 @@ const pinned = [
   '@tiptap/core', '@tiptap/pm', '@tiptap/starter-kit',
   '@tiptap/extension-underline', '@tiptap/extension-link',
   '@tiptap/extension-placeholder', '@tiptap/extension-character-count',
+  'qrcode-generator',
 ];
 const banner = `/*! SOARD admin vendor bundle — built by scripts/build-admin-vendor.mjs
  * ${pinned.map((n) => `${n}@${pkgVersion(n)}`).join(' | ')}

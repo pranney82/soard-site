@@ -22,3 +22,6 @@ public/financials/*.pdf
 
 # Local Wrangler dev state
 .wrangler/
+
+# Browser test screenshots (scripts/test-faq.mjs, scripts/test-live.mjs)
+test-results/

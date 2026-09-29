@@ -1,0 +1,498 @@
+---
+/**
+ * LivePage.astro — the live reveal page (used by /live/ and /live/[slug]/)
+ * ========================================================================
+ * Editorial split hero, same skeleton as apply/donate: text left, frame
+ * right. The frame holds the kid's photo until the broadcast starts, then
+ * the Cloudflare Stream player (live), then the replay. Everything dynamic
+ * comes from the shared live client, so the page flips within a second of
+ * the phone connecting and never needs a rebuild.
+ */
+import { cfRaw, cfSrcset, cfLqip } from '../../utils/cf-image';
+
+interface KidLite {
+  slug: string; name: string; heroImage: string | null; heroSummary?: string | null; shortDescription?: string | null;
+  bio?: string | null; roomTypes?: string[] | null; year?: number | null; fundraisingUrl?: string | null;
+}
+interface Props { kid?: KidLite | null; fallbackImage: string }
+const { kid = null, fallbackImage } = Astro.props;
+
+const photo = kid?.heroImage || fallbackImage;
+const name = kid?.name || null;
+const summary = kid?.heroSummary || kid?.shortDescription || null;
+const rooms = kid?.roomTypes?.length ? kid.roomTypes.join(', ') : null;
+---
+
+<section class="hero" id="live-hero" data-phase="loading" data-kid={kid?.slug || ''}>
+  <div class="hero-inner">
+    <div class="hero-text">
+      <p class="hero-eyebrow"><span class="hero-eyebrow__dot" aria-hidden="true"></span><span data-live="eyebrow">Live reveal</span></p>
+      <h1>
+        {name ? <>{name}'s <em>room reveal</em></> : <>Watch the <em>reveal</em> live</>}
+      </h1>
+      <p class="hero-lead" data-live="lead">
+        {summary || 'Room reveals stream live right here. Get a reminder, then watch the moment a child sees their new room for the first time.'}
+      </p>
+      <p class="hero-status" data-live="status" aria-live="polite"></p>
+      <div class="hero-ctas">
+        <a class="btn btn-primary btn-lg hero-glow" href="#player" data-live="cta-watch" hidden>Watch live</a>
+        <a class="btn btn-primary btn-lg hero-glow" href="#player" data-live="cta-replay" hidden>Watch the replay</a>
+        <a class="btn btn-primary btn-lg hero-glow" href="#remind" data-live="cta-remind" hidden>Remind me</a>
+        <a class="btn btn-outline-dark" href="/api/reminders?ics=1" data-live="cta-calendar" hidden>Add to calendar</a>
+        <a class="btn btn-outline-dark" href="https://www.facebook.com/SunshineOnaRanneyDay" target="_blank" rel="noopener" data-live="cta-facebook" hidden>Comment on Facebook</a>
+        <a class="btn btn-outline-dark" href="/donate/?src=live" data-live="cta-donate">Fund the next room</a>
+      </div>
+    </div>
+
+    <div class="hero-frame" id="player">
+      <div class="hero-accent" aria-hidden="true"></div>
+      <div class="hero-photo" style={`background-image:url(${cfLqip(photo)})`} data-live="frame">
+        <img
+          class="lqip-img"
+          src={cfRaw(photo, 'w=640,h=800,fit=cover,gravity=face,q=82')}
+          srcset={cfSrcset(photo, [400, 640, 800, 1024], { fit: 'cover', gravity: 'face', aspectRatio: 1.25 })}
+          sizes="(max-width: 960px) 90vw, 40vw"
+          width="640" height="800"
+          alt={name ? `${name}` : 'A child in a newly built room'}
+          loading="eager" fetchpriority="high" decoding="async"
+          data-live="photo"
+        />
+        <div class="hero-player" data-live="player" hidden></div>
+        <div class="hero-badge" data-live="badge" hidden>
+          <span class="hero-badge__dot" aria-hidden="true"></span>
+          <span data-live="badge-text"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section section--cream live-body">
+  <div class="container live-grid">
+    <div class="live-main">
+      <div class="live-block" id="remind">
+        <p class="section-label">Reminders</p>
+        <h2 data-live="remind-heading">Never miss a reveal</h2>
+        <p class="live-block__lead">Tell us how to reach you and we'll send one note the day before, one an hour before, one when we go live, and one when the replay is up. Nothing else, ever.</p>
+        <form class="remind-form" data-live="form-email" novalidate>
+          <div class="remind-row">
+            <label class="sr-only" for="remind-email">Email address</label>
+            <input class="remind-input" id="remind-email" type="email" name="email" placeholder="you@example.com" autocomplete="email" required />
+            <button class="btn btn-primary remind-btn" type="submit">
+              <span class="btn-text">Email me</span><span class="btn-done">You're on the list</span>
+            </button>
+          </div>
+          <div class="remind-hp" aria-hidden="true"><label>Website<input type="text" name="website" tabindex="-1" autocomplete="off" /></label></div>
+          <p class="remind-note" role="status" aria-live="polite"></p>
+        </form>
+        <form class="remind-form" data-live="form-sms" hidden novalidate>
+          <div class="remind-row">
+            <label class="sr-only" for="remind-phone">Mobile number</label>
+            <input class="remind-input" id="remind-phone" type="tel" name="phone" placeholder="(404) 555-0123" autocomplete="tel" required />
+            <button class="btn btn-dark remind-btn" type="submit">
+              <span class="btn-text">Text me</span><span class="btn-done">We'll text you</span>
+            </button>
+          </div>
+          <p class="remind-consent">By entering your number you agree to receive reveal reminder texts from Sunshine on a Ranney Day. Message and data rates may apply. Reply STOP to opt out.</p>
+          <p class="remind-note" role="status" aria-live="polite"></p>
+        </form>
+        <div class="remind-extras">
+          <button class="remind-link" type="button" data-live="push-btn" hidden>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+            <span data-live="push-label">Turn on browser alerts</span>
+          </button>
+          <a class="remind-link" href="/api/reminders?ics=1" data-live="calendar-link">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg>
+            Add to calendar
+          </a>
+        </div>
+      </div>
+
+      {kid && (
+        <div class="live-block">
+          <p class="section-label">About {kid.name}</p>
+          <h2>The story behind the room</h2>
+          <p class="live-block__lead">{kid.bio ? kid.bio.split(/\n\n+/)[0].slice(0, 420) : summary}</p>
+          <p class="live-meta">
+            {rooms && <span>{rooms}</span>}
+            {kid.year && <span>{kid.year}</span>}
+          </p>
+          <a class="live-more" href={`/kids/${kid.slug}/`}>Read {kid.name}'s full story
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+          </a>
+        </div>
+      )}
+    </div>
+
+    <aside class="live-side">
+      <div class="live-card live-card--dark">
+        <p class="live-card__label">Why we stream</p>
+        <p class="live-card__text">Every reveal is the moment a family sees months of work for the first time. Watching live is the closest thing to being in the room, and it is how most of our supporters first found us.</p>
+        <a class="btn btn-primary" href="/donate/?src=live-side" data-live="cta-donate-side">Fund the next room</a>
+      </div>
+      <div class="live-card">
+        <p class="live-card__label">Also streaming on</p>
+        <ul class="live-links">
+          <li><a href="https://www.facebook.com/SunshineOnaRanneyDay" target="_blank" rel="noopener" data-live="link-facebook">Facebook</a></li>
+          <li data-live="youtube-item" hidden><a href="#" target="_blank" rel="noopener" data-live="link-youtube">YouTube</a></li>
+        </ul>
+        <p class="live-card__text live-card__text--sm">Comments and shares live on Facebook. The video here is the same stream, without the login.</p>
+      </div>
+      <div class="live-card">
+        <p class="live-card__label">Share this page</p>
+        <div class="live-share">
+          <button class="remind-link" type="button" data-live="share-copy">Copy link</button>
+          <a class="remind-link" href="#" target="_blank" rel="noopener" data-live="share-facebook">Share on Facebook</a>
+        </div>
+      </div>
+    </aside>
+  </div>
+</section>
+
+<style>
+  /* ── Editorial split hero (matches apply/donate) ── */
+  .hero {
+    background: var(--c-cream);
+    padding: clamp(80px, 10vw, 140px) 0 clamp(64px, 8vw, 100px);
+    position: relative;
+    contain: layout style;
+    min-height: clamp(480px, 70vh, 720px);
+    overflow: hidden;
+  }
+  .hero-inner {
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding: 0 var(--space-xl);
+    display: grid;
+    grid-template-columns: 1.15fr 0.85fr;
+    gap: clamp(40px, 5vw, 80px);
+    align-items: center;
+    transition: grid-template-columns 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  /* When a player is showing, give the video the wider column */
+  .hero[data-phase='live'] .hero-inner,
+  .hero[data-phase='replay'] .hero-inner { grid-template-columns: 0.85fr 1.15fr; }
+
+  .hero-eyebrow {
+    font-size: 12px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--c-text-muted); margin-bottom: 20px; display: flex; align-items: center; gap: 12px;
+  }
+  .hero-eyebrow::before { content: ''; width: 28px; height: 2px; background: currentColor; flex-shrink: 0; }
+  .hero-eyebrow__dot { display: none; width: 10px; height: 10px; border-radius: 50%; background: var(--c-yellow); position: relative; }
+  .hero[data-phase='live'] .hero-eyebrow__dot { display: inline-block; }
+  .hero[data-phase='live'] .hero-eyebrow__dot::after {
+    content: ''; position: absolute; inset: -4px; border-radius: 50%; border: 2px solid var(--c-yellow); opacity: 0;
+    animation: live-ping 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
+  }
+  @keyframes live-ping { 0% { transform: scale(0.6); opacity: 0.9; } 70%, 100% { transform: scale(1.5); opacity: 0; } }
+
+  .hero-text h1 {
+    font-size: clamp(2.5rem, 6vw, 4.5rem); letter-spacing: -0.035em; line-height: 1.04; color: var(--c-text);
+    margin-bottom: 24px; animation: heroSlide 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  .hero-text h1 em {
+    font-style: italic; background-image: linear-gradient(transparent 52%, var(--c-yellow-soft) 52%);
+    background-repeat: no-repeat; background-size: 100% 100%; padding: 0 0.05em;
+  }
+  .hero-lead {
+    font-size: clamp(16px, 1.6vw, 18px); color: var(--c-text-muted); line-height: 1.7; margin-bottom: 20px; max-width: 480px;
+    opacity: 0; animation: heroUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.15s both;
+  }
+  .hero-status {
+    font-family: var(--font-display); font-size: clamp(1.1rem, 1.8vw, 1.35rem); color: var(--c-text); margin: 0 0 32px; min-height: 1.6em;
+    opacity: 0; animation: heroUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.2s both;
+  }
+  .hero-status:empty { margin-bottom: 20px; }
+  .hero-ctas {
+    display: flex; gap: 14px; flex-wrap: wrap;
+    opacity: 0; animation: heroUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.25s both;
+  }
+  .hero-ctas [hidden] { display: none !important; }
+
+  .hero-frame { position: relative; animation: heroPhotoIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) both; scroll-margin-top: 100px; }
+  .hero-accent {
+    position: absolute; bottom: -16px; right: -16px; width: 65%; height: 50%; background: var(--c-yellow);
+    border-radius: 24px; z-index: 0; opacity: 0; animation: accentIn 1s cubic-bezier(0.16, 1, 0.3, 1) 0.7s both;
+  }
+  @keyframes accentIn { to { opacity: 0.35; } }
+  .hero-photo {
+    position: relative; z-index: 1; aspect-ratio: 4 / 5; border-radius: 24px; overflow: hidden;
+    background-size: cover; background-position: center; background-color: var(--c-dark-deep);
+    box-shadow: 0 32px 80px rgba(0, 0, 0, 0.12), 0 8px 24px rgba(0, 0, 0, 0.06);
+    transition: aspect-ratio 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .hero-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .hero[data-phase='live'] .hero-photo,
+  .hero[data-phase='replay'] .hero-photo { aspect-ratio: 16 / 9; }
+  .hero[data-phase='live'] .hero-photo img,
+  .hero[data-phase='replay'] .hero-photo img { display: none; }
+  .hero-player { position: absolute; inset: 0; }
+  .hero-player[hidden] { display: none; }
+  /* :global — the iframe is created at runtime, so it has no Astro scope attribute */
+  .hero-player :global(iframe) { width: 100%; height: 100%; border: 0; display: block; }
+
+  .hero-badge {
+    position: absolute; left: 16px; bottom: 16px; z-index: 2;
+    display: inline-flex; align-items: center; gap: 10px;
+    background: var(--c-dark-deep); color: var(--c-cream); padding: 10px 16px; border-radius: 100px;
+    font-size: 13px; font-weight: 600; letter-spacing: 0.02em;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  }
+  .hero-badge[hidden] { display: none; }
+  .hero-badge__dot { width: 8px; height: 8px; border-radius: 50%; background: var(--c-yellow); }
+  .hero[data-phase='live'] .hero-badge { left: auto; right: 16px; top: 16px; bottom: auto; }
+
+  /* ── Body ── */
+  .live-body { padding-top: clamp(48px, 6vw, 80px); }
+  .live-grid { display: grid; grid-template-columns: 1.3fr 0.7fr; gap: clamp(40px, 5vw, 80px); align-items: start; }
+  .live-block { margin-bottom: clamp(40px, 5vw, 64px); scroll-margin-top: 100px; }
+  .live-block h2 { font-size: clamp(1.75rem, 3vw, 2.5rem); letter-spacing: -0.02em; margin: 8px 0 16px; }
+  .live-block__lead { color: var(--c-text-muted); line-height: 1.7; max-width: 560px; margin-bottom: 24px; }
+  .live-meta { display: flex; gap: 16px; color: var(--c-text-light); font-size: 14px; margin-bottom: 12px; }
+  .live-meta span + span::before { content: '·'; margin-right: 16px; }
+  .live-more { display: inline-flex; align-items: center; gap: 8px; font-weight: 700; color: var(--c-dark); text-decoration: none; border-bottom: 2px solid var(--c-yellow); padding-bottom: 2px; }
+  .live-more:hover svg { transform: translateX(3px); }
+  .live-more svg { transition: transform var(--transition-fast); }
+
+  .remind-form { margin-bottom: 12px; }
+  .remind-form[hidden] { display: none; }
+  .remind-row { display: flex; gap: 10px; max-width: 520px; }
+  .remind-input {
+    flex: 1; min-width: 0; padding: 14px 18px; border-radius: 100px; border: 1.5px solid var(--c-border);
+    background: #fff; font: inherit; font-size: 15px; color: var(--c-text); transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+  }
+  .remind-input:focus { outline: none; border-color: var(--c-dark); box-shadow: 0 0 0 3px var(--c-yellow-soft); }
+  .remind-btn { flex-shrink: 0; }
+  .remind-btn .btn-done { display: none; }
+  .remind-form.is-done .btn-text { display: none; }
+  .remind-form.is-done .btn-done { display: inline; }
+  .remind-form.is-done .remind-input { opacity: 0.6; }
+  .remind-hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+  .remind-note { font-size: 14px; color: var(--c-text-muted); min-height: 1.4em; margin: 8px 0 0; }
+  .remind-note--error { color: var(--c-text); font-weight: 600; }
+  .remind-consent { font-size: 12px; color: var(--c-text-light); max-width: 520px; line-height: 1.5; margin: 10px 0 0; }
+  .remind-extras { display: flex; gap: 20px; flex-wrap: wrap; margin-top: 16px; }
+  .remind-link {
+    display: inline-flex; align-items: center; gap: 8px; background: none; border: none; padding: 0; font: inherit; font-size: 14px; font-weight: 600;
+    color: var(--c-dark); cursor: pointer; text-decoration: none; border-bottom: 2px solid var(--c-yellow); padding-bottom: 2px;
+  }
+  .remind-link[hidden] { display: none; }
+  .remind-link:hover { border-bottom-color: var(--c-dark); }
+
+  .live-side { display: grid; gap: 20px; position: sticky; top: calc(var(--header-height) + 24px); }
+  .live-card { background: #fff; border: 1px solid var(--c-border); border-radius: var(--border-radius-lg); padding: 24px; }
+  .live-card--dark { background: var(--c-dark-deep); color: var(--c-cream); border-color: transparent; }
+  .live-card__label { font-size: 12px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--c-text-muted); margin: 0 0 10px; }
+  .live-card--dark .live-card__label { color: var(--c-yellow); }
+  .live-card__text { line-height: 1.6; margin: 0 0 18px; color: inherit; }
+  .live-card--dark .live-card__text { color: rgba(254, 252, 245, 0.85); }
+  .live-card__text--sm { font-size: 13px; color: var(--c-text-muted); margin: 12px 0 0; }
+  .live-links { list-style: none; padding: 0; margin: 0; display: flex; gap: 16px; flex-wrap: wrap; }
+  .live-links a { font-weight: 700; color: var(--c-dark); text-decoration: none; border-bottom: 2px solid var(--c-yellow); padding-bottom: 2px; }
+  .live-links li[hidden] { display: none; }
+  .live-share { display: flex; gap: 20px; flex-wrap: wrap; }
+
+  @media (max-width: 960px) {
+    .hero-inner, .hero[data-phase='live'] .hero-inner, .hero[data-phase='replay'] .hero-inner { grid-template-columns: 1fr; gap: 40px; text-align: center; }
+    .hero-lead, .hero-status { margin-inline: auto; }
+    .hero-ctas { justify-content: center; }
+    /* width:100% gives the aspect-ratio box a basis once the photo is hidden */
+    .hero-frame { width: 100%; max-width: 380px; margin: 0 auto; }
+    .hero[data-phase='live'] .hero-frame, .hero[data-phase='replay'] .hero-frame { max-width: none; order: -1; }
+    .hero-eyebrow { justify-content: center; }
+    .live-grid { grid-template-columns: 1fr; }
+    .live-side { position: static; }
+  }
+  @media (max-width: 768px) {
+    .hero { padding-top: clamp(48px, 8vw, 80px); padding-bottom: var(--space-xl); min-height: auto; }
+    .hero-text h1 { font-size: clamp(2rem, 9vw, 3rem); }
+    .hero-photo { border-radius: 18px; }
+    .hero-accent { bottom: -12px; right: -12px; border-radius: 18px; }
+    .remind-row { flex-direction: column; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .hero-text h1, .hero-lead, .hero-status, .hero-ctas, .hero-frame, .hero-accent { animation: none; opacity: 1; }
+    .hero-accent { opacity: 0.35; }
+    .hero-eyebrow__dot::after { animation: none; }
+    .hero-inner, .hero-photo { transition: none; }
+  }
+</style>
+
+<script>
+  import { getLiveClient, formatWhen, relativeUntil, type LiveState, type ReminderOptions } from '../../utils/live-client';
+
+  const client = getLiveClient();
+  const hero = document.getElementById('live-hero') as HTMLElement | null;
+  if (hero) {
+    const pageKid = hero.dataset.kid || '';
+    const q = <T extends Element>(k: string) => hero.querySelector(`[data-live="${k}"]`) as T | null;
+    const body = document.querySelector('.live-body') as HTMLElement | null;
+    const bq = <T extends Element>(k: string) => body?.querySelector(`[data-live="${k}"]`) as T | null;
+    let last: LiveState | null = null;
+    let mountedPlayer = '';
+    let viewed = false;
+
+    function setHidden(el: Element | null, hidden: boolean) { if (el) (el as HTMLElement).hidden = hidden; }
+
+    function render(state: LiveState | null, meta: { reminders: ReminderOptions | null }) {
+      last = state;
+      const s = state || ({ phase: 'idle' } as LiveState);
+      const forThisKid = !pageKid || !s.kidSlug || s.kidSlug === pageKid;
+      const phase = forThisKid ? s.phase : 'idle';
+      const view = phase === 'live' || phase === 'ending' ? 'live' : phase === 'replay' ? 'replay' : phase === 'scheduled' || phase === 'armed' ? 'upcoming' : 'idle';
+      hero.dataset.phase = view;
+
+      const who = s.kidName ? `${s.kidName}'s room reveal` : 'The reveal';
+      const eyebrow = q<HTMLElement>('eyebrow');
+      const status = q<HTMLElement>('status');
+      const badge = q<HTMLElement>('badge');
+      const badgeText = q<HTMLElement>('badge-text');
+      const lead = q<HTMLElement>('lead');
+
+      if (view === 'live') {
+        if (eyebrow) eyebrow.textContent = 'Live now';
+        if (status) status.textContent = s.message || `${who} is happening right now.`;
+        if (badgeText) badgeText.textContent = 'LIVE';
+        setHidden(badge, !s.player);
+      } else if (view === 'replay') {
+        if (eyebrow) eyebrow.textContent = 'Replay';
+        if (status) status.textContent = s.player ? `${who} is ready to watch.` : `${who} just ended. The replay will appear here in a minute or two.`;
+        if (badgeText) badgeText.textContent = s.player ? 'Replay' : 'Processing';
+        setHidden(badge, false);
+      } else if (view === 'upcoming') {
+        if (eyebrow) eyebrow.textContent = 'Reveal day';
+        const rel = relativeUntil(s.scheduledAt);
+        if (status) status.textContent = s.scheduledAt ? `We go live ${formatWhen(s.scheduledAt)}${rel ? `, ${rel}` : ''}.` : 'A reveal is on the calendar.';
+        if (badgeText) badgeText.textContent = rel ? `Live ${rel}` : 'Coming up';
+        setHidden(badge, !rel);
+      } else {
+        if (eyebrow) eyebrow.textContent = 'Live reveal';
+        if (status) status.textContent = pageKid ? '' : 'No reveal is scheduled right now. Sign up below and you will hear about the next one first.';
+        setHidden(badge, true);
+      }
+      if (lead && s.message && (view === 'live' || view === 'upcoming') && !pageKid) lead.textContent = s.message;
+
+      // CTAs
+      setHidden(q('cta-watch'), view !== 'live' || !s.player);
+      setHidden(q('cta-replay'), view !== 'replay' || !s.player);
+      setHidden(q('cta-remind'), !(view === 'upcoming' || view === 'idle') || !meta.reminders?.enabled);
+      setHidden(q('cta-calendar'), view !== 'upcoming');
+      const fbCta = q<HTMLAnchorElement>('cta-facebook');
+      if (fbCta) { fbCta.href = s.facebookUrl || fbCta.href; setHidden(fbCta, !(view === 'live' || (view === 'replay' && !s.player))); fbCta.textContent = view === 'live' ? 'Comment on Facebook' : 'Watch on Facebook'; }
+      const fbLink = bq<HTMLAnchorElement>('link-facebook');
+      if (fbLink && s.facebookUrl) fbLink.href = s.facebookUrl;
+      const ytItem = bq<HTMLElement>('youtube-item');
+      const ytLink = bq<HTMLAnchorElement>('link-youtube');
+      if (ytItem && ytLink) { if (s.youtubeUrl) { ytLink.href = s.youtubeUrl; ytItem.hidden = false; } else ytItem.hidden = true; }
+
+      // Player
+      const playerEl = q<HTMLElement>('player');
+      const key = s.player && forThisKid ? `${s.player.kind}:${s.player.uid}` : '';
+      if (playerEl && key !== mountedPlayer) {
+        mountedPlayer = key;
+        playerEl.innerHTML = '';
+        if (s.player) {
+          const p = s.player;
+          const src = `https://customer-${p.customerCode}.cloudflarestream.com/${p.uid}/iframe?${p.kind === 'live' ? 'autoplay=true&muted=true' : 'preload=metadata'}`;
+          const f = document.createElement('iframe');
+          f.src = src; f.title = p.kind === 'live' ? 'Live reveal video' : 'Reveal replay';
+          f.allow = 'accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen';
+          f.setAttribute('allowfullscreen', 'true');
+          f.loading = 'eager';
+          playerEl.appendChild(f);
+          playerEl.hidden = false;
+        } else {
+          playerEl.hidden = true;
+        }
+      }
+
+      // Reminder form availability
+      const smsForm = bq<HTMLFormElement>('form-sms');
+      if (smsForm) smsForm.hidden = !meta.reminders?.sms;
+      const emailForm = bq<HTMLFormElement>('form-email');
+      if (emailForm) emailForm.hidden = meta.reminders ? !meta.reminders.email : false;
+      const pushBtn = bq<HTMLButtonElement>('push-btn');
+      if (pushBtn) pushBtn.hidden = !(meta.reminders?.push && meta.reminders.pushKey && 'PushManager' in window && 'serviceWorker' in navigator && Notification.permission !== 'denied');
+      const cal = bq<HTMLElement>('calendar-link');
+      if (cal) cal.hidden = view !== 'upcoming';
+      const rh = bq<HTMLElement>('remind-heading');
+      if (rh) rh.textContent = view === 'upcoming' && s.kidName ? `Don't miss ${s.kidName}'s reveal` : view === 'replay' ? 'Hear about the next reveal' : 'Never miss a reveal';
+
+      if (!viewed) { viewed = true; client.beacon('view_live_page', { phase: view, kid: pageKid || s.kidSlug || '' }); }
+    }
+
+    client.subscribe(render);
+    setInterval(() => { if (last?.upcoming) render(last, { reminders: client.reminders }); }, 60_000);
+
+    // Beacons on the primary actions
+    q('cta-watch')?.addEventListener('click', () => client.beacon('click_watch'));
+    q('cta-replay')?.addEventListener('click', () => client.beacon('click_replay'));
+    q('cta-facebook')?.addEventListener('click', () => client.beacon('click_facebook'));
+    q('cta-calendar')?.addEventListener('click', () => client.beacon('click_calendar'));
+    q('cta-donate')?.addEventListener('click', () => client.beacon('click_donate', { where: 'hero' }));
+    bq('cta-donate-side')?.addEventListener('click', () => client.beacon('click_donate', { where: 'side' }));
+    bq('link-facebook')?.addEventListener('click', () => client.beacon('click_facebook', { where: 'side' }));
+    bq('link-youtube')?.addEventListener('click', () => client.beacon('click_youtube'));
+
+    // Reminder forms
+    async function submitReminder(form: HTMLFormElement, payload: Record<string, string>) {
+      const note = form.querySelector('.remind-note') as HTMLElement;
+      const btn = form.querySelector('button') as HTMLButtonElement;
+      btn.disabled = true; note.className = 'remind-note'; note.textContent = 'One moment…';
+      try {
+        const res = await fetch('/api/reminders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...payload, kidSlug: pageKid || last?.kidSlug || undefined, source: pageKid ? 'live-kid' : 'live' }) });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data.ok) { form.classList.add('is-done'); note.textContent = payload.channel === 'sms' ? 'Done. We will text you before the reveal.' : 'Done. Check your inbox on reveal day.'; }
+        else { note.className = 'remind-note remind-note--error'; note.textContent = res.status === 429 ? 'Too many tries. Give it a minute.' : (data.error || 'Something went wrong. Please try again.'); btn.disabled = false; }
+      } catch { note.className = 'remind-note remind-note--error'; note.textContent = 'No connection. Please try again.'; btn.disabled = false; }
+    }
+    bq<HTMLFormElement>('form-email')?.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const form = e.currentTarget as HTMLFormElement;
+      const email = (form.querySelector('input[name="email"]') as HTMLInputElement).value.trim();
+      const hp = (form.querySelector('input[name="website"]') as HTMLInputElement)?.value || '';
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) { const n = form.querySelector('.remind-note') as HTMLElement; n.className = 'remind-note remind-note--error'; n.textContent = 'Enter a valid email address.'; return; }
+      submitReminder(form, { channel: 'email', email, hp });
+    });
+    bq<HTMLFormElement>('form-sms')?.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const form = e.currentTarget as HTMLFormElement;
+      const phone = (form.querySelector('input[name="phone"]') as HTMLInputElement).value.trim();
+      if (phone.replace(/\D/g, '').length < 10) { const n = form.querySelector('.remind-note') as HTMLElement; n.className = 'remind-note remind-note--error'; n.textContent = 'Enter a valid mobile number.'; return; }
+      submitReminder(form, { channel: 'sms', phone });
+    });
+
+    // Browser push
+    const pushBtn = bq<HTMLButtonElement>('push-btn');
+    pushBtn?.addEventListener('click', async () => {
+      const label = bq<HTMLElement>('push-label');
+      const key = client.reminders?.pushKey;
+      if (!key) return;
+      try {
+        pushBtn.disabled = true; if (label) label.textContent = 'Asking your browser…';
+        const reg = await navigator.serviceWorker.register('/sw.js');
+        await navigator.serviceWorker.ready;
+        const perm = await Notification.requestPermission();
+        if (perm !== 'granted') { if (label) label.textContent = 'Alerts blocked in this browser'; return; }
+        const raw = key.replace(/-/g, '+').replace(/_/g, '/');
+        const pad = raw.length % 4 ? '='.repeat(4 - (raw.length % 4)) : '';
+        const appKey = Uint8Array.from(atob(raw + pad), c => c.charCodeAt(0));
+        const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: appKey });
+        const res = await fetch('/api/reminders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ channel: 'push', subscription: sub.toJSON(), kidSlug: pageKid || undefined, source: 'push' }) });
+        if (label) label.textContent = res.ok ? 'Browser alerts are on' : 'Could not save. Try again.';
+        if (!res.ok) pushBtn.disabled = false;
+      } catch {
+        if (label) label.textContent = 'Could not turn on alerts here';
+        pushBtn.disabled = false;
+      }
+    });
+
+    // Share
+    bq<HTMLButtonElement>('share-copy')?.addEventListener('click', async (e) => {
+      const b = e.currentTarget as HTMLButtonElement;
+      try { await navigator.clipboard.writeText(location.href.split('#')[0]); b.textContent = 'Link copied'; setTimeout(() => { b.textContent = 'Copy link'; }, 2000); client.beacon('share', { how: 'copy' }); } catch { b.textContent = 'Copy failed'; }
+    });
+    const fbShare = bq<HTMLAnchorElement>('share-facebook');
+    if (fbShare) { fbShare.href = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(location.href.split('#')[0])}`; fbShare.addEventListener('click', () => client.beacon('share', { how: 'facebook' })); }
+  }
+</script>
