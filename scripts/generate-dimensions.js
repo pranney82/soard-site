@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Generate image dimension manifest for kid photos.
+ * Generate image dimension manifest for kid photos, plans, and before/after pairs.
  *
  * Fetches a tiny (1px wide) version of each unique image from Cloudflare Images
  * and records the original aspect ratio. CF Images preserves the original aspect
@@ -91,13 +91,16 @@ async function probe(url) {
  * Fetch a tiny version of the image and read its pixel dimensions.
  * CF returns the image at its natural aspect ratio when only width is constrained.
  *
- * We use w=32 (not w=1) because some CF pipelines quantize to a minimum size.
+ * We use w=128 (not w=1) because some CF pipelines quantize to a minimum size,
+ * and because plan crops need the ratio accurate to under half a percent.
  * Fallback to format=jpeg covers a CF encoder bug where palette PNGs fail
  * to re-encode at w=32 (ERROR 9516); forcing JPEG output sidesteps it without
  * burdening the 99.97% case that works fine on the fast path.
  */
 async function fetchDimensions(imageId) {
-  const variants = ['w=32,q=1', 'w=32,q=1,format=jpeg'];
+  // 128px, not 32: the crop that hides drawing title blocks needs the ratio
+  // within half a percent, and 32px rounded a 1187x768 sheet to 8:5.
+  const variants = ['w=128,q=1', 'w=128,q=1,format=jpeg'];
   for (const v of variants) {
     const dims = await probe(`${CF_BASE}/${imageId}/${v}`);
     if (dims) return dims;
@@ -132,6 +135,15 @@ async function main() {
       }
       for (const p of data.storyPhotos || []) {
         if (p.url) imageIds.add(cfId(p.url));
+      }
+      // Design plans + before/after pairs: the kid page and /how-it-works/ need
+      // their aspect ratio to crop the drawing title block (family address)
+      for (const p of data.plans || []) {
+        if (p.url) imageIds.add(cfId(p.url));
+      }
+      for (const pair of data.beforeAfterPhotos || []) {
+        if (pair.before) imageIds.add(cfId(pair.before));
+        if (pair.after) imageIds.add(cfId(pair.after));
       }
     } catch { /* skip malformed */ }
   }

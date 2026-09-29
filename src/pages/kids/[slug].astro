@@ -179,6 +179,33 @@ const isThinPage = !kid.bio && galleryPhotos.length <= 1 && !hasVideo;
 const plans = kid.plans || [];
 const hasPlans = plans.length > 0;
 
+/* ── Floor plans: crop the designer's title block ──
+   Drawings that follow the Existing/Proposed convention carry a title block
+   along the bottom edge that includes the family's street address. Every
+   public URL for those plans (card, srcset, lightbox) is a top-anchored cover
+   crop that drops the bottom ~10%, so the address never leaves Cloudflare.
+   Presentation boards and site photos are left whole. */
+const TITLE_BLOCK = 0.10;
+const isFloorPlan = (p: any) => /(before|after|existing|existi|proposed|layout|floor\s*plan)/i.test(p?.label || '');
+function planRatio(p: any): number {
+  const id = cfId(p.url);
+  const known = _dimsMap[id];
+  const r = known ? known[1] / known[0] : 768 / 1187; // fallback: the standard SOARD sheet
+  return r * (1 - TITLE_BLOCK);
+}
+function planUrl(p: any, w: number, q = 85): string {
+  if (!isFloorPlan(p)) return cfUrl(p.url, `w=${w},q=${q}`);
+  return _cfUrl(p.url, { w, h: Math.round(w * planRatio(p)), fit: 'cover', gravity: 'top', q });
+}
+function planSrcset(p: any, widths: number[]): string {
+  if (!isFloorPlan(p)) return _cfSrcset(p.url, widths);
+  return _cfSrcset(p.url, widths, { fit: 'cover', gravity: 'top', aspectRatio: planRatio(p) });
+}
+function planDims(p: any): [number, number] {
+  if (!isFloorPlan(p)) return dims(p.url);
+  return [1000, Math.round(1000 * planRatio(p))];
+}
+
 // ── Before/After photos ───────────────────
 const beforeAfterPhotos = kid.beforeAfterPhotos || [];
 const hasBeforeAfter = beforeAfterPhotos.length > 0;
@@ -464,15 +491,15 @@ const planOrientation = (() => {
                   style={`--lqip: url('${lqip(plan.url)}')`}
                 >
                   <img
-                    src={cfUrl(plan.url, 'w=800,q=85')}
-                    srcset={cfSrcset(plan.url, [400, 600, 800, 1200])}
+                    src={planUrl(plan, 800)}
+                    srcset={planSrcset(plan, [400, 600, 800, 1200])}
                     sizes="(max-width: 768px) 92vw, 560px"
                     alt={plan.label || 'Design plan'}
                     class="design__img lqip-img"
                     loading="lazy"
                     decoding="async"
-                    width={dims(plan.url)[0]}
-                    height={dims(plan.url)[1]}
+                    width={planDims(plan)[0]}
+                    height={planDims(plan)[1]}
                   />
                 </button>
               );
@@ -490,8 +517,8 @@ const planOrientation = (() => {
               <button
                 class="masonry__item"
                 data-index={galleryPhotos.length + i}
-                data-src={cfUrl(plan.url, 'w=1600,q=85')}
-                data-srcset={_cfSrcset(plan.url, [800, 1200, 1600, 2400])}
+                data-src={planUrl(plan, 1600)}
+                data-srcset={planSrcset(plan, [800, 1200, 1600, 2400])}
                 data-alt={plan.label || `Plan ${i + 1}`}
                 data-caption={plan.label || ''}
                 data-plan="true"
@@ -769,6 +796,7 @@ const planOrientation = (() => {
                     decoding="async"
                     width="120"
                     height="60"
+                    onerror="this.closest('.village__logo').style.display='none'"
                   />
                 </div>
               ))}

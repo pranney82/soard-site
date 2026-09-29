@@ -26,9 +26,19 @@ const CF_PROXY_RE = /^https?:\/\/[^/]+\/cdn-cgi\/imagedelivery\/[^/]+\//;
  *   cfId("https://imagedelivery.net/.../brand-logo/w=256,format=auto") → "brand-logo"
  *   cfId("kids/amari/hero") → "kids/amari/hero"
  */
+/**
+ * Image IDs that no longer exist in Cloudflare Images but are still referenced
+ * from content (a partner record plus every kid whose partnerLogos list copied
+ * it). Map each to the surviving upload so nothing renders broken. Fix the data
+ * in the admin, then delete the entry.
+ */
+const ID_ALIASES: Record<string, string> = {
+  'partners/bin-there-dump-that-atlanta/1774627292526': 'partners/bin-there-dump-that',
+};
+
 export function cfId(src: string): string {
   if (!src) return '';
-  if (!src.includes('imagedelivery.net') && !CF_PROXY_RE.test(src)) return src;
+  if (!src.includes('imagedelivery.net') && !CF_PROXY_RE.test(src)) return ID_ALIASES[src] || src;
 
   let id = src.replace(`${CF_ORIGIN}/`, '').replace(CF_PROXY_RE, '');
   const lastSlash = id.lastIndexOf('/');
@@ -38,7 +48,7 @@ export function cfId(src: string): string {
       id = id.slice(0, lastSlash);
     }
   }
-  return id;
+  return ID_ALIASES[id] || id;
 }
 
 /** Check whether a src string points to Cloudflare Images (full URL or bare image ID) */

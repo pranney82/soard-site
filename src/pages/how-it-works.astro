@@ -23,6 +23,8 @@ import { CF_BASE as CF, cfId, cfRaw, cfSrcset, cfLqip } from '../utils/cf-image'
 import { getVideoSchema } from '../utils/schema';
 import siteSettings from '../content/site/settings.json';
 import financialSnapshot from '../content/site/financial-snapshot.json';
+import dimsManifest from '../data/dimensions-kids.json';
+const dimsMap: Record<string, [number, number]> = dimsManifest;
 
 const SITE = 'https://sunshineonaranneyday.com';
 const pageUrl = `${SITE}/how-it-works/`;
@@ -54,12 +56,25 @@ const storyExcerpt = bioSentences.slice(0, 3).join(' ');
    site photos from the build app (JPG). Sort them by those conventions. */
 const plans: Array<{ url: string; label: string; type: string }> = k.plans || [];
 const isPng = (p: { url: string }) => /\.png(\/|$)/i.test(p.url);
-const isFloorPlan = (p: { label: string }) => /^(before|after|existing|proposed)/i.test(p.label || '');
-const floorPlans = plans.filter(p => isPng(p) && isFloorPlan(p));
-const existingPlan = floorPlans.find(p => /^(before|existing)/i.test(p.label)) || null;
-const proposedPlan = floorPlans.find(p => /^(after|proposed)/i.test(p.label)) || null;
+const isFloorPlan = (p: { label: string }) => /(before|after|existing|existi|proposed|layout|floor\s*plan)/i.test(p.label || '');
+const floorPlans = plans.filter(isFloorPlan);
+/* Existing first, proposed second. Labels usually say which; when a designer
+   exports both pages under one name ("Existing - Proposed.pdf", "-2"), the
+   first is the existing plan and the second the proposed one. */
+const existingPlan = floorPlans.find(p => /(before|existing|existi)/i.test(p.label) && !/^(after|proposed)/i.test(p.label)) || floorPlans[0] || null;
+const proposedPlan = floorPlans.find(p => p !== existingPlan && /(after|proposed)/i.test(p.label)) || floorPlans.find(p => p !== existingPlan) || null;
+/* Floor plans carry a title block along the bottom edge with the family's
+   street address. Serve every plan URL as a top-anchored crop that drops the
+   bottom ~10%, the same rule the kid profile page applies. */
+const TITLE_BLOCK = 0.10;
+function planRatio(url: string): number {
+  const known = dimsMap[cfId(url)];
+  return (known ? known[1] / known[0] : 768 / 1187) * (1 - TITLE_BLOCK);
+}
+const planSrc = (url: string, w: number) => cfRaw(url, `w=${w},h=${Math.round(w * planRatio(url))},fit=cover,gravity=top,q=80`);
+const planSet = (url: string) => cfSrcset(url, [600, 1000, 1400], { fit: 'cover', gravity: 'top', aspectRatio: planRatio(url), quality: 80 });
 const boards = plans.filter(p => isPng(p) && !isFloorPlan(p));
-const sitePhotos = plans.filter(p => !isPng(p));
+const sitePhotos = plans.filter(p => !isPng(p) && !isFloorPlan(p));
 /* Five survey photos spread across the set so one corner doesn't repeat:
    lead + four small tiles fill the grid exactly at every breakpoint. */
 const pickSpread = (arr: typeof sitePhotos) => {
@@ -107,11 +122,11 @@ const programPct = financialSnapshot.programPct;
 /* ── Chapters (drive the rail, the anchors, and the HowTo schema) ── */
 const chapters = [
   { id: 'apply', num: '01', short: 'Apply', title: "It starts with a family's story.", schema: 'A family applies online, shares photos, and records a video walkthrough of the space. Applications are read by the selection committee, followed by an interview and a home visit.' },
-  { id: 'design', num: '02', short: 'Design', title: 'Designers draw the room around the child.', schema: 'Volunteer design partners measure the space and produce presentation boards and dimensioned floor plans built around the child\'s needs and interests.' },
+  { id: 'design', num: '02', short: 'Design', title: 'Drawn three ways, then walked at full scale.', schema: 'Design partners measure the space and draw several layouts. Three go to the family, who walk them at full size at Walk Your Plans before choosing one. Only then are the theme, colors, and finishes chosen.' },
   { id: 'crew', num: '03', short: 'Crew', title: 'Then the crew assembles.', schema: 'The drawings become a materials list. Manufacturers and suppliers donate materials, sponsors fund the rest, and trade partners donate labor.' },
-  { id: 'build', num: '04', short: 'Build', title: 'Six weeks on site.', schema: 'The contractor documents the existing space, then runs a full renovation: demolition, framing, plumbing, electrical, and finishes, over about six weeks.' },
+  { id: 'build', num: '04', short: 'Build', title: 'Walls come down.', schema: 'The contractor documents the existing space, then runs a full renovation: demolition, framing, plumbing, electrical, and finishes. Build time varies by project.' },
   { id: 'reveal', num: '05', short: 'Reveal', title: 'The child walks in.', schema: 'The finished room is revealed to the child and family, filmed, and often streamed live.' },
-  { id: 'scale', num: '06', short: 'Repeat', title: 'Then we do it again.', schema: 'The same process has been repeated for hundreds of children across greater Atlanta since 2012.' },
+  { id: 'scale', num: '06', short: 'Scale', title: 'Every room since 2012 has followed these steps.', schema: 'The same six steps have produced hundreds of rooms across greater Atlanta since 2012.' },
 ];
 
 const breadcrumbs = [
@@ -246,9 +261,31 @@ const heroSizes = '(max-width: 768px) 85vw, (max-width: 1200px) 38vw, 440px';
           <h2 id="h-design">{chapters[1].title}</h2>
         </div>
         <div class="chapter__text chapter__text--wide" data-reveal>
-          <p>A design partner meets the family, measures the space, and comes back with presentation boards and a set of drawings. Nothing is generic. The finishes, the theme, and the layout all come from what the child needs and what the child loves.</p>
+          <p>Design starts with the space, not the theme. Our designers measure the room and draw several layouts, because where a wheelchair turns, where a shower drains, and where a bed sits decide whether the room works for years. Three layouts go to the family, who walk them at full scale at Walk Your Plans, a partner facility where the plan is laid out life-size so you can stand inside it before anything is built. The family picks one, we make their edits, and only then do the theme, the colors, and the finishes come in.</p>
         </div>
+        {existingPlan && proposedPlan && (
+          <div class="design-part">
+            <p class="chapter__kicker" data-reveal>First, the layout</p>
+          <div class="plans" data-reveal data-delay="2">
+            <figure class="plan">
+              <div class="plan__paper">
+                <img src={planSrc(existingPlan.url, 1000)} srcset={planSet(existingPlan.url)} sizes="(max-width: 900px) 92vw, 480px" alt={`Existing floor plan of ${name}'s space`} width="1000" height={Math.round(1000 * planRatio(existingPlan.url))} loading="lazy" decoding="async" />
+              </div>
+              <figcaption><span class="plan__tag">Existing</span> The space as the family lived in it.</figcaption>
+            </figure>
+            <div class="plans__arrow" aria-hidden="true"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></div>
+            <figure class="plan">
+              <div class="plan__paper plan__paper--proposed">
+                <img src={planSrc(proposedPlan.url, 1000)} srcset={planSet(proposedPlan.url)} sizes="(max-width: 900px) 92vw, 480px" alt={`Proposed floor plan of ${name}'s new space`} width="1000" height={Math.round(1000 * planRatio(proposedPlan.url))} loading="lazy" decoding="async" />
+              </div>
+              <figcaption><span class="plan__tag plan__tag--yes">Proposed</span> The layout the family chose after walking three options at full scale.</figcaption>
+            </figure>
+          </div>
+          </div>
+        )}
         {boards.length > 0 && (
+          <div class="design-part">
+            <p class="chapter__kicker" data-reveal>Then, the theme and finishes</p>
           <div class="boards" data-reveal data-delay="1">
             <p class="boards__hint" aria-hidden="true">Swipe through the boards <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></p>
             <div class="boards__scroll" tabindex="0" aria-label="Design presentation boards, scroll sideways">
@@ -262,22 +299,6 @@ const heroSizes = '(max-width: 768px) 85vw, (max-width: 1200px) 38vw, 440px';
               ))}
             </div>
           </div>
-        )}
-        {existingPlan && proposedPlan && (
-          <div class="plans" data-reveal data-delay="2">
-            <figure class="plan">
-              <div class="plan__paper">
-                <img src={cfRaw(cfId(existingPlan.url), 'w=1000,q=80')} srcset={cfSrcset(cfId(existingPlan.url), [600, 1000, 1400], { quality: 80 })} sizes="(max-width: 900px) 92vw, 480px" alt={`Existing floor plan of ${name}'s space`} width="1000" height="647" loading="lazy" decoding="async" />
-              </div>
-              <figcaption><span class="plan__tag">Existing</span> The space as the family lived in it.</figcaption>
-            </figure>
-            <div class="plans__arrow" aria-hidden="true"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></div>
-            <figure class="plan">
-              <div class="plan__paper plan__paper--proposed">
-                <img src={cfRaw(cfId(proposedPlan.url), 'w=1000,q=80')} srcset={cfSrcset(cfId(proposedPlan.url), [600, 1000, 1400], { quality: 80 })} sizes="(max-width: 900px) 92vw, 480px" alt={`Proposed floor plan of ${name}'s new space`} width="1000" height="647" loading="lazy" decoding="async" />
-              </div>
-              <figcaption><span class="plan__tag plan__tag--yes">Proposed</span> Curbless shower, roll-under sink, and a bedroom built for a wheelchair to turn in.</figcaption>
-            </figure>
           </div>
         )}
       </section>
@@ -320,7 +341,7 @@ const heroSizes = '(max-width: 768px) 85vw, (max-width: 1200px) 38vw, 440px';
           <h2 id="h-build">{chapters[3].title}</h2>
         </div>
         <div class="chapter__text chapter__text--wide" data-reveal>
-          <p>Before the first wall comes down, the contractor photographs every inch of the existing space. Then the build runs like any other job: demolition, framing, plumbing, electrical, and finishes, about six weeks in all. The family stays somewhere else until it is done.</p>
+          <p>Before the first wall comes down, the contractor photographs every inch of the existing space. Then the build runs like any other renovation: demolition, framing, plumbing, electrical, and finishes. Every build runs on its own schedule, and the family stays somewhere else until it is done.</p>
         </div>
         {buildPhotos.length > 0 && (
           <div class="site" data-reveal data-delay="1">
@@ -392,7 +413,7 @@ const heroSizes = '(max-width: 768px) 85vw, (max-width: 1200px) 38vw, 440px';
           <h2 id="h-scale">{chapters[5].title}</h2>
         </div>
         <div class="chapter__text chapter__text--wide" data-reveal>
-          <p>Every step above has been repeated for {stats.totalKids}+ children across greater Atlanta since 2012. The process is the same every time. The room never is.</p>
+          <p>That is {stats.totalKids}+ children and {stats.totalRooms}+ rooms across greater Atlanta. The process is the same every time. The room never is.</p>
         </div>
         <div class="scale" data-reveal data-delay="1">
           <div class="scale__stat"><span class="scale__num">{stats.totalRooms}+</span><span class="scale__label">rooms built since 2012</span></div>
@@ -541,8 +562,13 @@ const heroSizes = '(max-width: 768px) 85vw, (max-width: 1200px) 38vw, 440px';
   .file__meta dt { font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; font-size: 11px; color: var(--c-text-light); padding-top: 2px; }
   .file__meta dd { margin: 0; color: var(--c-text); }
 
+  /* Design chapter is two parts: layout, then finishes */
+  .design-part + .design-part { margin-top: 44px; }
+  .chapter__kicker { display: flex; align-items: center; gap: 12px; font-size: 11px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--c-text-light); margin: 0 0 16px; }
+  .chapter__kicker::before { content: ''; width: 22px; height: 2px; background: var(--c-yellow); }
+
   /* Boards: horizontal paper strip */
-  .boards { margin: 0 calc(var(--space-xl) * -1) 32px 0; position: relative; }
+  .boards { margin: 0 calc(var(--space-xl) * -1) 0 0; position: relative; }
   .boards::after { content: ''; position: absolute; top: 0; right: 0; bottom: 20px; width: 72px; background: linear-gradient(90deg, rgba(254,252,245,0), var(--c-cream)); pointer-events: none; }
   .boards__hint { display: none; align-items: center; gap: 8px; font-size: 12px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--c-text-light); margin: 0 0 12px; }
   @media (hover: none) { .boards__hint { display: inline-flex; } }
@@ -556,10 +582,9 @@ const heroSizes = '(max-width: 768px) 85vw, (max-width: 1200px) 38vw, 440px';
   /* Floor plans: existing → proposed */
   .plans { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 20px; align-items: center; }
   .plan { margin: 0; }
-  .plan__paper { position: relative; background: #fff; border: 1px solid var(--c-border); border-radius: 12px; padding: 10px; box-shadow: 0 10px 30px rgba(0,0,0,0.06); aspect-ratio: 1.68; overflow: hidden; }
+  .plan__paper { position: relative; background: #fff; border: 1px solid var(--c-border); border-radius: 12px; padding: 10px; box-shadow: 0 10px 30px rgba(0,0,0,0.06); }
   .plan__paper--proposed { border-color: rgba(255,218,36,0.9); box-shadow: 0 10px 30px rgba(0,0,0,0.06), 0 0 0 4px var(--c-yellow-soft); }
-  /* Drawings carry a title block along the bottom edge; crop to the plan itself */
-  .plan__paper img { width: 100%; height: 100%; object-fit: cover; object-position: top; display: block; border-radius: 6px; }
+  .plan__paper img { width: 100%; height: auto; display: block; border-radius: 6px; }
   .plan__tag { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--c-text-muted); border: 1px solid var(--c-border); padding: 3px 9px; border-radius: 100px; margin-right: 8px; }
   .plan__tag--yes { color: var(--c-dark); background: var(--c-yellow); border-color: var(--c-yellow); }
   .plans__arrow { color: var(--c-text-light); }
