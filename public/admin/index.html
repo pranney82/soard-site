@@ -4233,6 +4233,7 @@
       const [showPicker, setShowPicker] = useState(false);
       const [showSecrets, setShowSecrets] = useState(false);
       const [fbResult, setFbResult] = useState(null);
+      const [fbPick, setFbPick] = useState({}); // Facebook video id → kid slug chosen in the picker
       const [confirm, setConfirm] = useState(null); // { title, message, danger, fn }
       // Schedule form
       const [kidSlug, setKidSlug] = useState('');
@@ -4354,7 +4355,24 @@
           const r = await fetch('/api/fb-archive-video', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ videoId: v.id }) });
           const d = await apiJson(r, '/api/fb-archive-video');
           addToast(d.success ? `Saved to Cloudflare Stream as "${d.name}"` : `Archive failed: ${d.error}`, d.success ? 'success' : 'error');
+          if (d.success) await load({ fb: true });
         } catch (e) { addToast(`Archive error: ${e.message}`, 'error'); }
+        setBusy('');
+      };
+      // Put a saved replay on a kid's page (or move it, or take it off with slug null)
+      const handleAttachFb = async (v, slug) => {
+        setBusy(`attach:${v.id}`);
+        try {
+          const r = await fetch('/api/fb-attach-video', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ videoId: v.id, kidSlug: slug || null }) });
+          const d = await apiJson(r, '/api/fb-attach-video');
+          if (d.success) {
+            addToast(slug
+              ? `Replay is now on ${d.kidName}'s page${d.deployed ? '. The site is deploying.' : '. Use Deploy Now to publish it.'}`
+              : `Replay taken off the kid page${d.deployed ? '. The site is deploying.' : '. Use Deploy Now to publish it.'}`, 'success');
+            setFbPick((m) => ({ ...m, [v.id]: slug || '' }));
+            await load({ fb: true });
+          } else addToast(`Could not attach: ${d.error}`, 'error');
+        } catch (e) { addToast(`Attach error: ${e.message}`, 'error'); }
         setBusy('');
       };
 
@@ -4370,6 +4388,29 @@
       const kidsSorted = [...kids].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
       const larix = data.larix || {};
       const tabs = [['now', 'Now'], ['setup', 'Setup'], ['reminders', 'Reminders'], ['health', 'Health'], ['history', 'History']];
+
+      // One row in History → Facebook-only broadcasts: save it, then choose the kid page it belongs on
+      const fbVideoRow = (v) => {
+        const pick = fbPick[v.id] !== undefined ? fbPick[v.id] : (v.attachedTo || '');
+        return html`<div style="display:flex;justify-content:space-between;gap:1rem;align-items:center;flex-wrap:wrap;padding:8px 0;border-top:1px solid var(--color-border)">
+          <div style="flex:1;min-width:220px">
+            <span class="badge ${v.status === 'LIVE' ? 'badge-yellow' : 'badge-gray'}">${v.status}</span> <strong style="font-size:0.9rem">${v.title || '(untitled)'}</strong>
+            <div class="text-sm text-muted">${bcFmt(v.createdAt)}${v.streamUid ? html` · saved to Stream · ${v.attachedName ? html`on <strong>${v.attachedName}</strong>'s page` : html`<strong style="color:#8a6d00">not on a kid page yet</strong>`}` : null}</div>
+          </div>
+          <div class="flex gap-2" style="align-items:center;flex-wrap:wrap">
+            <a class="btn btn-ghost btn-sm" href=${safeHref(v.url)} target="_blank" rel="noopener">Open ↗</a>
+            ${v.streamUid ? html`
+              <a class="btn btn-ghost btn-sm" href=${`https://watch.cloudflarestream.com/${v.streamUid}`} target="_blank" rel="noopener">Replay ↗</a>
+              <select class="form-input" style="width:auto;padding:4px 8px;font-size:0.85rem" value=${pick} onChange=${(e) => setFbPick((m) => ({ ...m, [v.id]: e.target.value }))} aria-label="Kid page for this replay">
+                <option value="">Choose a kid…</option>
+                ${kidsSorted.map((k) => html`<option value=${k.slug}>${k.name}</option>`)}
+              </select>
+              <button class="btn btn-secondary btn-sm" disabled=${!!busy || !pick || pick === v.attachedTo} onClick=${() => handleAttachFb(v, pick)}>${v.attachedTo ? 'Move to this page' : 'Put on this page'}</button>
+              ${v.attachedTo ? html`<button class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${() => handleAttachFb(v, null)}>Take off page</button>` : null}`
+            : (v.status === 'VOD' ? html`<button class="btn btn-secondary btn-sm" disabled=${!!busy} onClick=${() => handleArchiveFb(v)}>Save to Stream</button>` : null)}
+          </div>
+        </div>`;
+      };
 
       const statusCard = html`
         <div class="card" style="border-left:4px solid ${P.color}">
@@ -4701,8 +4742,9 @@
         ${data.recordings?.length ? html`<div class="card"><h3 style="margin:0 0 .5rem">Recordings on the live input</h3><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px">${data.recordings.map((v) => html`<a href=${v.watch} target="_blank" rel="noopener" style="text-decoration:none;color:inherit;border:1px solid var(--color-border);border-radius:10px;overflow:hidden"><img src=${v.thumbnail} alt="" style="width:100%;aspect-ratio:16/9;object-fit:cover;display:block;background:#000" /><div style="padding:8px;font-size:12px"><div style="font-weight:600">${v.name || v.uid.slice(0, 8)}</div><div class="text-muted">${bcFmt(v.created)} · ${v.isLiveNow ? 'LIVE' : v.duration ? `${Math.round(v.duration / 60)} min` : v.state}</div></div></a>`)}</div></div>` : null}
         <div class="card">
           <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem"><h3 style="margin:0">Facebook-only broadcasts (older)</h3><button class="btn btn-ghost btn-sm" disabled=${!!busy || !s.fbConfigured} onClick=${() => load({ fb: true })}>Load from Facebook</button></div>
+          <p class="text-sm text-muted" style="margin:.35rem 0 .25rem">Replays saved to Stream show which kid page they are on. Pick a kid to put a replay on the right page or move it; the site deploys on its own.</p>
           <p class="text-sm text-muted" style="margin:.5rem 0">Lives that went straight to Facebook (before this system, or in an emergency). Facebook deletes replays after 30 days; the archive sweep saves them to Stream automatically, and you can force one here.</p>
-          ${data.fbRecent?.videos?.length ? data.fbRecent.videos.map((v) => html`<div style="display:flex;justify-content:space-between;gap:1rem;align-items:center;padding:8px 0;border-top:1px solid var(--color-border)"><div><span class="badge ${v.status === 'LIVE' ? 'badge-yellow' : 'badge-gray'}">${v.status}</span> <strong style="font-size:0.9rem">${v.title || '(untitled)'}</strong><div class="text-sm text-muted">${bcFmt(v.createdAt)}</div></div><div class="flex gap-2"><a class="btn btn-ghost btn-sm" href=${safeHref(v.url)} target="_blank" rel="noopener">Open ↗</a>${v.status === 'VOD' ? html`<button class="btn btn-secondary btn-sm" disabled=${!!busy} onClick=${() => handleArchiveFb(v)}>Save to Stream</button>` : null}</div></div>`) : (data.fbRecent ? html`<p class="text-sm text-muted">${data.fbRecent.error ? `Facebook: ${data.fbRecent.error}` : 'No recent broadcasts.'}</p>` : null)}
+          ${data.fbRecent?.videos?.length ? data.fbRecent.videos.map(fbVideoRow) : (data.fbRecent ? html`<p class="text-sm text-muted">${data.fbRecent.error ? `Facebook: ${data.fbRecent.error}` : 'No recent broadcasts.'}</p>` : null)}
         </div>`;
 
       return html`
@@ -5463,6 +5505,98 @@
             <button class="toast-undo" onClick=${t.action.fn}>${t.action.label}</button>
           </span>` : t.msg}
         </div>`)}
+      </div>`;
+    }
+
+    // ─── Stream library picker ──────────────
+    // "Choose from Stream": browse videos already in Cloudflare Stream (live
+    // reveal recordings, archived Facebook replays, earlier uploads) so a
+    // video can be linked without having the file on this computer.
+    // Render children at the end of <body> so an overlay escapes any parent
+    // stacking context (the editors sit inside one; the mobile menu button
+    // would otherwise draw on top). Tiny stand-in for createPortal.
+    function BodyPortal({ children }) {
+      const host = useRef(null);
+      if (!host.current) host.current = document.createElement('div');
+      useEffect(() => {
+        document.body.appendChild(host.current);
+        return () => { render(null, host.current); host.current.remove(); };
+      }, []);
+      useEffect(() => { render(children, host.current); });
+      return null;
+    }
+
+    function StreamPicker(props) {
+      return html`<${BodyPortal}><${StreamPickerDialog} ...${props} /><//>`;
+    }
+
+    function StreamPickerDialog({ title = 'Choose a video from Cloudflare Stream', current = '', onPick, onClose }) {
+      const [search, setSearch] = useState('');
+      const [videos, setVideos] = useState([]);
+      const [next, setNext] = useState(null);
+      const [loading, setLoading] = useState(true);
+      const [error, setError] = useState('');
+      const reqRef = useRef(0);
+      const load = async (q, before) => {
+        const id = ++reqRef.current;
+        setLoading(true); setError('');
+        try {
+          const qs = new URLSearchParams();
+          if (q) qs.set('search', q);
+          if (before) qs.set('before', before);
+          const r = await fetch(`/api/stream-videos?${qs}`);
+          const d = await apiJson(r, '/api/stream-videos');
+          if (id !== reqRef.current) return;
+          if (!d.success) { setError(d.error || 'Could not load Stream videos'); if (!before) setVideos([]); }
+          else { setVideos((v) => before ? [...v, ...d.videos] : d.videos); setNext(d.next); }
+        } catch (e) { if (id === reqRef.current) setError(e.message); }
+        if (id === reqRef.current) setLoading(false);
+      };
+      useEffect(() => { const t = setTimeout(() => load(search.trim()), search ? 300 : 0); return () => clearTimeout(t); }, [search]);
+      useEffect(() => {
+        document.body.classList.add('modal-open');
+        const h = (e) => { if (e.key === 'Escape') onClose(); };
+        window.addEventListener('keydown', h);
+        return () => { window.removeEventListener('keydown', h); document.body.classList.remove('modal-open'); };
+      }, []);
+      const fmtDur = (s) => s ? `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}` : '';
+      const fmtDate = (d) => d ? new Date(d).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '';
+      return html`<div class="modal-overlay" style="z-index:1200" onClick=${onClose} role="dialog" aria-modal="true" aria-labelledby="stream-picker-title">
+        <div class="modal" style="max-width:860px;max-height:88vh;display:flex;flex-direction:column;gap:.75rem" onClick=${(e) => e.stopPropagation()}>
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:1rem">
+            <h3 id="stream-picker-title" style="margin:0">${title}</h3>
+            <button class="btn btn-ghost btn-sm" onClick=${onClose} aria-label="Close">Close</button>
+          </div>
+          <input class="form-input" type="search" placeholder="Search by video name (kid name, event, date)" value=${search} onInput=${(e) => setSearch(e.target.value)} autofocus />
+          <div style="overflow-y:auto;flex:1;min-height:200px">
+            ${error ? html`<p class="text-sm" style="color:#8a6d00">${error}</p>` : null}
+            ${!loading && !error && !videos.length ? html`<p class="text-sm text-muted">${search ? 'No videos match that name.' : 'No videos in Stream yet.'}</p>` : null}
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px">
+              ${videos.map((v) => {
+                const isCurrent = current && (current === v.uid || String(current).endsWith(`/${v.uid}`));
+                return html`<div style=${`border:2px solid ${isCurrent ? '#FFD500' : 'var(--color-border)'};border-radius:10px;overflow:hidden;display:flex;flex-direction:column`}>
+                  <button type="button" disabled=${!v.ready} onClick=${() => onPick(v)} title=${v.ready ? 'Use this video' : 'Still processing in Stream'} style="all:unset;cursor:${v.ready ? 'pointer' : 'not-allowed'};display:block">
+                    <div style="position:relative;aspect-ratio:16/9;background:#111">
+                      <img src=${v.thumbnail} alt="" loading="lazy" onError=${(e) => { e.currentTarget.style.visibility = 'hidden'; }} style="width:100%;height:100%;object-fit:cover;display:block;opacity:${v.ready ? 1 : 0.4}" />
+                      ${v.duration ? html`<span style="position:absolute;right:6px;bottom:6px;background:rgba(0,0,0,.75);color:#fff;font-size:11px;padding:1px 6px;border-radius:4px">${fmtDur(v.duration)}</span>` : null}
+                    </div>
+                    <div style="padding:8px;font-size:12px;line-height:1.35">
+                      <div style="font-weight:600;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical">${v.name || v.uid.slice(0, 12)}</div>
+                      <div class="text-muted">${fmtDate(v.created)}${v.ready ? '' : ' · processing'}</div>
+                    </div>
+                  </button>
+                  <div style="padding:0 8px 8px;display:flex;gap:4px;flex-wrap:wrap;align-items:center;margin-top:auto">
+                    ${isCurrent ? html`<span class="badge badge-yellow">Linked here</span>` : null}
+                    ${v.usedBy.map((u) => html`<span class="badge badge-gray" title=${`${u.type} · ${u.field === 'reveal' ? 'reveal replay' : 'video'}`}>${u.name}${u.field === 'reveal' ? ' · reveal' : ''}</span>`)}
+                    <a href=${v.watch} target="_blank" rel="noopener" class="text-sm" style="margin-left:auto">Preview ↗</a>
+                  </div>
+                </div>`;
+              })}
+            </div>
+            ${loading ? html`<div style="text-align:center;padding:1rem"><span class="spinner" /></div>` : null}
+            ${!loading && next ? html`<div style="text-align:center;margin-top:12px"><button class="btn btn-ghost btn-sm" onClick=${() => load(search.trim(), next)}>Load more</button></div>` : null}
+          </div>
+        </div>
       </div>`;
     }
 
@@ -6830,6 +6964,7 @@
     // KID EDITOR
     // ═══════════════════════════════════════════
     function KidEditor({ slug, onBack, addToast, partners = [], existingSlugs = [] }) {
+      const [streamPick, setStreamPick] = useState(null); // 'video' | 'reveal' while the Stream picker is open
       const [loading, setLoading] = useState(!!slug);
       const [saving, setSaving] = useState(false);
       const [deleting, setDeleting] = useState(false);
@@ -6843,7 +6978,7 @@
         name: '', slug: '', age: '', diagnosis: '', roomTypes: [],
         year: new Date().getFullYear(), status: 'completed', bio: '',
         quote: '', heroImage: '', photos: [], photoCount: 0,
-        videoUrl: '', streamVideoId: '', photographer: '', partnerLogos: [],
+        videoUrl: '', streamVideoId: '', revealVideoUrl: '', photographer: '', partnerLogos: [],
         heroSummary: '', shortDescription: '', metaDescription: '', fundraisingUrl: '',
         roomCount: 1, childCount: 1,
         bedroomCount: 0, bathroomCount: 0, therapyRoomCount: 0,
@@ -7251,6 +7386,7 @@
             streamVideoId: data.streamVideoId || null,
             videoUrl: data.videoUrl || null,
             fundraisingUrl: data.fundraisingUrl || null,
+            revealVideoUrl: String(data.revealVideoUrl || '').trim() || null,
             photos: data.photos.map(({ _tempId, ...p }) => p),
             partnerLogos: (data.partnerLogos || []).map(({ _tempId, ...p }) => p),
             plans: (data.plans || []).map(({ _tempId, ...p }) => p),
@@ -7502,15 +7638,19 @@
             <label class="form-label">Cloudflare Stream Video (optional)</label>
             ${data.streamVideoId ? html`
               <div style="display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem; background: rgba(122, 0, 223, 0.06); border-radius: 8px; border: 1px solid rgba(122, 0, 223, 0.15);">
-                <span style="font-size: 1.5rem;">${icons.video}</span>
+                <a href=${`https://watch.cloudflarestream.com/${data.streamVideoId}`} target="_blank" rel="noopener" title="Preview in Stream" style="flex:none;width:96px;aspect-ratio:16/9;border-radius:6px;overflow:hidden;background:#111;display:block">
+                  <img src=${`https://videodelivery.net/${data.streamVideoId}/thumbnails/thumbnail.jpg?width=192&height=108&fit=crop`} alt="" onError=${(e) => { e.currentTarget.style.visibility = 'hidden'; }} style="width:100%;height:100%;object-fit:cover;display:block" />
+                </a>
                 <div style="flex: 1; min-width: 0;">
                   <div style="font-weight: 600; font-size: 0.9rem;">Stream video linked</div>
                   <div style="font-size: 0.8rem; color: rgba(0,0,0,0.45); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${data.streamVideoId}</div>
                 </div>
+                <button class="btn btn-ghost" style="font-size: 0.85rem; padding: 0.3rem 0.6rem;" onClick=${() => setStreamPick('video')}>Change</button>
                 <button class="btn btn-ghost" style="font-size: 0.85rem; padding: 0.3rem 0.6rem;" onClick=${removeVideo}>Remove</button>
               </div>
             ` : html`
               <${DropZone} onFiles=${handleVideoUpload} multiple=${false} accept="video/*" label="MP4, MOV, WebM — upload reveal video" />
+              <button type="button" class="btn btn-secondary btn-sm" style="margin-top:0.5rem" onClick=${() => setStreamPick('video')}>Choose from Stream</button>
             `}
             ${videoUploading ? html`
               <div style="margin-top: 0.5rem; padding: 0.75rem; background: rgba(255,213,0,0.1); border-radius: 8px;">
@@ -7530,6 +7670,21 @@
             ` : null}
             <small style="color: rgba(0,0,0,0.45); margin-top: 0.25rem; display: block;">Uploaded videos play on your site with no ads. Best performance for donors.</small>
           </div>
+          <div class="form-group">
+            <label class="form-label">Live reveal replay (optional)</label>
+            <div style="display:flex;gap:0.5rem;align-items:center">
+              <input class="form-input" style="flex:1" value=${data.revealVideoUrl || ''}
+                onInput=${e => updateField('revealVideoUrl', e.target.value)}
+                placeholder="https://watch.cloudflarestream.com/..." />
+              <button type="button" class="btn btn-secondary btn-sm" style="white-space:nowrap" onClick=${() => setStreamPick('reveal')}>Choose from Stream</button>
+            </div>
+            <small style="color: rgba(0,0,0,0.45); margin-top: 0.25rem; display: block;">Shows a "Watch the reveal" link in the hero. Filled in on its own after a live reveal; paste a Stream watch link to set it by hand, or clear it to take the link off the page. Wrong kid? Move it from Broadcast → History instead.</small>
+          </div>
+          ${streamPick ? html`<${StreamPicker}
+            title=${streamPick === 'reveal' ? 'Choose the live reveal replay' : 'Choose a Stream video'}
+            current=${streamPick === 'reveal' ? data.revealVideoUrl : data.streamVideoId}
+            onClose=${() => setStreamPick(null)}
+            onPick=${(v) => { updateField(streamPick === 'reveal' ? 'revealVideoUrl' : 'streamVideoId', streamPick === 'reveal' ? v.watch : v.uid); setStreamPick(null); addToast(`Linked "${v.name || v.uid.slice(0, 8)}". Save to publish.`, 'success'); }} />` : null}
           <div class="form-group">
             <label class="form-label">Photographer (optional)</label>
             <input class="form-input" value=${data.photographer || ''}
@@ -9549,6 +9704,7 @@
     // EVENT EDITOR
     // ═══════════════════════════════════════════
     function EventEditor({ slug, onBack, addToast, existingSlugs = [] }) {
+      const [streamPick, setStreamPick] = useState(false);
       const [loading, setLoading] = useState(!!slug);
       const [saving, setSaving] = useState(false);
       const [sha, setSha] = useState(null);
@@ -9885,11 +10041,16 @@
                   <div style="font-weight: 600; font-size: 0.9rem;">Stream video linked</div>
                   <div style="font-size: 0.8rem; color: rgba(0,0,0,0.45); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${data.streamVideoId}</div>
                 </div>
+                <button class="btn btn-ghost btn-sm" style="font-size: 0.85rem;" onClick=${() => setStreamPick(true)}>Change</button>
                 <button class="btn btn-ghost btn-sm" style="font-size: 0.85rem;" onClick=${removeVideo}>Remove</button>
               </div>
             ` : html`
               <${DropZone} onFiles=${handleVideoUpload} multiple=${false} accept="video/*" label="MP4, MOV, WebM — upload event video" />
+              <button type="button" class="btn btn-secondary btn-sm" style="margin-top:0.5rem" onClick=${() => setStreamPick(true)}>Choose from Stream</button>
             `}
+            ${streamPick ? html`<${StreamPicker} title="Choose the event video" current=${data.streamVideoId}
+              onClose=${() => setStreamPick(false)}
+              onPick=${(v) => { update('streamVideoId', v.uid); setStreamPick(false); addToast(`Linked "${v.name || v.uid.slice(0, 8)}". Save to publish.`, 'success'); }} />` : null}
             ${videoUploading ? html`
               <div style="margin-top: 0.5rem; padding: 0.75rem; background: rgba(255,218,36,0.1); border-radius: 8px;">
                 <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.4rem;">
@@ -10794,6 +10955,7 @@
     // COMMUNITY PROJECT EDITOR
     // ═══════════════════════════════════════════
     function CommunityEditor({ slug, onBack, addToast, partners = [], existingSlugs = [] }) {
+      const [streamPick, setStreamPick] = useState(false);
       const [loading, setLoading] = useState(!!slug);
       const [saving, setSaving] = useState(false);
       const [deleting, setDeleting] = useState(false);
@@ -11269,16 +11431,23 @@
             <label class="form-label">Cloudflare Stream Video (optional)</label>
             ${data.streamVideoId ? html`
               <div style="display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem; background: rgba(122, 0, 223, 0.06); border-radius: 8px; border: 1px solid rgba(122, 0, 223, 0.15);">
-                <span style="font-size: 1.5rem;">${icons.video}</span>
+                <a href=${`https://watch.cloudflarestream.com/${data.streamVideoId}`} target="_blank" rel="noopener" title="Preview in Stream" style="flex:none;width:96px;aspect-ratio:16/9;border-radius:6px;overflow:hidden;background:#111;display:block">
+                  <img src=${`https://videodelivery.net/${data.streamVideoId}/thumbnails/thumbnail.jpg?width=192&height=108&fit=crop`} alt="" onError=${(e) => { e.currentTarget.style.visibility = 'hidden'; }} style="width:100%;height:100%;object-fit:cover;display:block" />
+                </a>
                 <div style="flex: 1; min-width: 0;">
                   <div style="font-weight: 600; font-size: 0.9rem;">Stream video linked</div>
                   <div style="font-size: 0.8rem; color: rgba(0,0,0,0.45); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${data.streamVideoId}</div>
                 </div>
+                <button class="btn btn-ghost" style="font-size: 0.85rem; padding: 0.3rem 0.6rem;" onClick=${() => setStreamPick(true)}>Change</button>
                 <button class="btn btn-ghost" style="font-size: 0.85rem; padding: 0.3rem 0.6rem;" onClick=${removeVideo}>Remove</button>
               </div>
             ` : html`
               <${DropZone} onFiles=${handleVideoUpload} multiple=${false} accept="video/*" label="MP4, MOV, WebM — upload project video" />
+              <button type="button" class="btn btn-secondary btn-sm" style="margin-top:0.5rem" onClick=${() => setStreamPick(true)}>Choose from Stream</button>
             `}
+            ${streamPick ? html`<${StreamPicker} title="Choose the project video" current=${data.streamVideoId}
+              onClose=${() => setStreamPick(false)}
+              onPick=${(v) => { updateField('streamVideoId', v.uid); setStreamPick(false); addToast(`Linked "${v.name || v.uid.slice(0, 8)}". Save to publish.`, 'success'); }} />` : null}
             ${videoUploading ? html`
               <div style="margin-top: 0.5rem; padding: 0.75rem; background: rgba(255,213,0,0.1); border-radius: 8px;">
                 <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.4rem;">
