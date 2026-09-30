@@ -20,6 +20,7 @@ import * as notify from './_broadcast-notify.js';
 import * as fb from './_broadcast-fb.js';
 import { kitConfigured } from './_kit.js';
 import { logAudit } from './_audit.js';
+import { annotateArchived } from './_fb-archive.js';
 
 const TARGETS = new Set(['facebook', 'youtube', 'custom']);
 
@@ -76,6 +77,8 @@ export async function onRequestGet(context) {
     const settled = await Promise.allSettled(keys.map(k => tasks[k]));
     const r = {};
     keys.forEach((k, i) => { r[k] = settled[i].status === 'fulfilled' ? settled[i].value : null; });
+    // Which saved replay sits on which kid page (drives the kid picker under History)
+    if (r.fbRecent?.videos?.length) r.fbRecent = { ...r.fbRecent, videos: await annotateArchived(DB, r.fbRecent.videos) };
 
     const outputsCfg = config.outputs || {};
     const liveOutputs = r.outputs?.result || [];

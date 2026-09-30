@@ -15,6 +15,8 @@ For the crew holding the phone, and for the office. Keep this short and keep it 
 3. Tap the red **record** button. You are live everywhere: the site, Facebook, YouTube.
 4. When the reveal is done, tap stop. The site switches to the replay on its own, saves the recording, adds it to the kid's page, and emails the people who asked.
 
+If the phone goes live from the Facebook app instead, nothing extra is needed. Put the kid's name in the first line of the Facebook post ("Remi and Nico's reveal!"). A few hours after it ends, the site saves the replay to Stream, puts it on that kid's page, and redeploys.
+
 ## If something goes wrong
 
 - **Larix shows "connecting" forever**: weak signal. Tap stop, switch to the **Weak signal** profile (scanned earlier), tap record again. Cellular hotspots from a second phone also work.
