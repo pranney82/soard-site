@@ -32,6 +32,33 @@ const breadcrumbs = [
   { name: 'Brand & Media Kit', url: '/branding/' },
 ];
 
+/* Table of contents. One source feeds the desktop sidebar and the mobile pill bar.
+   `label` is the sidebar text, `short` is the pill text. `sub` entries are the
+   section's h3 sub-headings; the sidebar reveals them while that section is active. */
+const toc = [
+  { group: 'Media Kit', items: [
+    { id: 'media-bio',      label: 'Bio & Overview',   short: 'Bio' },
+    { id: 'media-impact',   label: 'Impact Stats',     short: 'Impact' },
+    { id: 'media-mission',  label: 'Mission',          short: 'Mission' },
+    { id: 'media-founders', label: "Founder's Story",  short: 'Founders' },
+    { id: 'media-photos',   label: 'Photography',      short: 'Photos' },
+    { id: 'media-contact',  label: 'Contact & Social', short: 'Contact' },
+  ]},
+  { group: 'Brand Guidelines', items: [
+    { id: 'logos',        label: 'Logos',        short: 'Logos',
+      sub: [{ id: 'logos-primary', label: 'Primary Logos' }, { id: 'logos-alternate', label: 'Alternate Logos' }] },
+    { id: 'logo-usage',   label: 'Logo Usage',   short: 'Usage',
+      sub: [{ id: 'usage-guidelines', label: 'Logo Guidelines' }, { id: 'usage-examples', label: 'Visual Examples' }] },
+    { id: 'colors',       label: 'Colors',       short: 'Colors' },
+    { id: 'typography',   label: 'Typography',   short: 'Typography',
+      sub: [{ id: 'type-web', label: 'Web Fonts' }, { id: 'type-print', label: 'Print & Brand Fonts' }] },
+    { id: 'naming',       label: 'Naming',       short: 'Naming' },
+    { id: 'voice',        label: 'Voice & Tone', short: 'Voice' },
+    { id: 'social-specs', label: 'Social Specs', short: 'Social Specs' },
+  ]},
+];
+const kitSize = '2.6 MB'; /* public/SOARD-Logo-Kit.zip */
+
 const jsonLd = {
   '@type': 'WebPage',
   name: 'Brand & Media Kit — Sunshine on a Ranney Day',
@@ -59,44 +86,47 @@ const jsonLd = {
     </div>
   </section>
 
-  <!-- Mobile sticky horizontal nav -->
-  <nav class="brand-mobile-nav" aria-label="Brand kit sections">
-    <div class="mobile-nav-scroll">
-      <a href="#media-bio" class="mobile-nav-link active">Bio</a>
-      <a href="#media-impact" class="mobile-nav-link">Impact</a>
-      <a href="#media-mission" class="mobile-nav-link">Mission</a>
-      <a href="#media-founders" class="mobile-nav-link">Founders</a>
-      <a href="#media-photos" class="mobile-nav-link">Photos</a>
-      <a href="#media-contact" class="mobile-nav-link">Contact</a>
-      <a href="#logos" class="mobile-nav-link">Logos</a>
-      <a href="#logo-usage" class="mobile-nav-link">Usage</a>
-      <a href="#colors" class="mobile-nav-link">Colors</a>
-      <a href="#typography" class="mobile-nav-link">Typography</a>
-      <a href="#naming" class="mobile-nav-link">Naming</a>
-      <a href="#voice" class="mobile-nav-link">Voice</a>
-      <a href="#social-specs" class="mobile-nav-link">Social Specs</a>
-    </div>
+  <!-- Tablet + phone: sticky pill bar (shown at 1024px and below) -->
+  <nav class="brand-mobile-nav" aria-label="On this page" data-toc-bar>
+    <ul class="mobile-nav-scroll" data-toc-strip>
+      {toc.map((g, gi) => g.items.map((item, i) => (
+        <li class:list={['mobile-nav-item', { 'mobile-nav-group-start': gi > 0 && i === 0 }]}>
+          <a href={`#${item.id}`} class="mobile-nav-link" data-toc-link={item.id}>{item.short}</a>
+        </li>
+      )))}
+    </ul>
   </nav>
 
   <div class="brand-layout">
-    <nav class="brand-sidebar" aria-label="Brand kit navigation">
-      <div class="sidebar-inner">
+    <nav class="brand-sidebar" aria-label="On this page">
+      <div class="sidebar-inner" data-toc-side>
         <p class="sidebar-label">Contents</p>
-        <p class="sidebar-group-label">Media Kit</p>
-        <a href="#media-bio" class="sidebar-link active">Bio & Overview</a>
-        <a href="#media-impact" class="sidebar-link">Impact Stats</a>
-        <a href="#media-mission" class="sidebar-link">Mission</a>
-        <a href="#media-founders" class="sidebar-link">Founder's Story</a>
-        <a href="#media-photos" class="sidebar-link">Photography</a>
-        <a href="#media-contact" class="sidebar-link">Contact & Social</a>
-        <p class="sidebar-group-label">Brand Guidelines</p>
-        <a href="#logos" class="sidebar-link">Logos</a>
-        <a href="#logo-usage" class="sidebar-link">Logo Usage</a>
-        <a href="#colors" class="sidebar-link">Colors</a>
-        <a href="#typography" class="sidebar-link">Typography</a>
-        <a href="#naming" class="sidebar-link">Naming</a>
-        <a href="#voice" class="sidebar-link">Voice & Tone</a>
-        <a href="#social-specs" class="sidebar-link">Social Specs</a>
+        <span class="sidebar-marker" data-toc-marker aria-hidden="true"></span>
+        {toc.map(g => (
+          <div class="sidebar-group">
+            <p class="sidebar-group-label">{g.group}</p>
+            <ul class="sidebar-list">
+              {g.items.map(item => (
+                <li class="sidebar-item">
+                  <a href={`#${item.id}`} class="sidebar-link" data-toc-link={item.id}>{item.label}</a>
+                  {item.sub && (
+                    <div class="sidebar-sub" data-toc-sub={item.id}>
+                      <ul class="sidebar-sub-list">
+                        {item.sub.map(s => (
+                          <li><a href={`#${s.id}`} class="sidebar-sublink" data-toc-sublink={s.id} data-toc-parent={item.id}>{s.label}</a></li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+        <a href="/SOARD-Logo-Kit.zip" download class="sidebar-download" aria-label={`Download logo kit, ZIP, ${kitSize}`}>
+          <span class="sidebar-download-icon" aria-hidden="true"><Fragment set:html={dlIcon} /></span>
+          <span class="sidebar-download-text">Download logo kit<small>ZIP · {kitSize}</small></span>
+        </a>
       </div>
     </nav>
 
@@ -293,7 +323,7 @@ const jsonLd = {
           <a href="/SOARD-Logo-Kit.zip" download class="download-all-btn" aria-label="Download all logo assets as ZIP"><Fragment set:html={dlIcon} />Download All Logos</a>
         </div>
 
-        <h3 class="logo-subhead">Primary Logos</h3>
+        <h3 class="logo-subhead" id="logos-primary">Primary Logos</h3>
         <p class="section-desc">Main logos with the "Dreams Built Here" tagline.</p>
         <div class="logo-grid logo-grid-3">
           <div class="card"><div class="card-preview bg-light"><img src={cfSrc(logos.lightTagline, 400)} srcset={cfSrcset(logos.lightTagline, [200, 400, 600])} sizes="(max-width: 768px) 80vw, 200px" alt="Sunshine on a Ranney Day logo with Dreams Built Here tagline on white background" class="logo-img" width="600" height="600" loading="lazy" decoding="async"/></div><div class="card-body"><h3>White Background</h3><p>Logo with tagline for light backgrounds</p><div class="btn-row"><a href="/api/download-logo?id=brand-logo-light-bg-tagline-download" download class="dl-btn" aria-label="Download white background logo with tagline as PNG"><Fragment set:html={dlIcon} />PNG</a></div></div></div>
@@ -301,7 +331,7 @@ const jsonLd = {
           <div class="card"><div class="card-preview bg-light"><img src={cfSrc(logos.circleTagline, 400)} srcset={cfSrcset(logos.circleTagline, [200, 400, 600])} sizes="(max-width: 768px) 80vw, 200px" alt="Sunshine on a Ranney Day circle logo with Dreams Built Here tagline" class="logo-img logo-img-circle" width="600" height="600" loading="lazy" decoding="async"/></div><div class="card-body"><h3>Circle</h3><p>Circle logo with tagline</p><div class="btn-row"><a href="/api/download-logo?id=brand-logo-circle-tagline-download" download class="dl-btn" aria-label="Download circle logo with tagline as PNG"><Fragment set:html={dlIcon} />PNG</a></div></div></div>
         </div>
 
-        <h3 class="logo-subhead">Alternate Logos</h3>
+        <h3 class="logo-subhead" id="logos-alternate">Alternate Logos</h3>
         <p class="section-desc">Logos without the tagline for smaller uses.</p>
         <div class="logo-grid logo-grid-3">
           <div class="card"><div class="card-preview bg-light"><img src={cfSrc(logos.light, 400)} srcset={cfSrcset(logos.light, [200, 400, 600])} sizes="(max-width: 768px) 80vw, 200px" alt="Sunshine on a Ranney Day logo without tagline on white background" class="logo-img" width="600" height="600" loading="lazy" decoding="async"/></div><div class="card-body"><h3>White Background</h3><p>Logo without tagline for light backgrounds</p><div class="btn-row"><a href="/api/download-logo?id=brand-logo-light-bg-download" download class="dl-btn" aria-label="Download white background logo without tagline as PNG"><Fragment set:html={dlIcon} />PNG</a></div></div></div>
@@ -317,12 +347,12 @@ const jsonLd = {
           <div class="usage-card"><div class="usage-label">Light Background</div><div class="usage-preview bg-light"><img src={cfSrc(logos.lightTagline, 400)} srcset={cfSrcset(logos.lightTagline, [200, 400, 600])} sizes="(max-width: 768px) 80vw, 270px" alt="Logo correctly placed on light background" class="logo-img" width="600" height="600" loading="lazy" decoding="async"/></div><p class="usage-text">Use the primary logo on light backgrounds. Ensure adequate contrast and clear space.</p></div>
           <div class="usage-card"><div class="usage-label">Dark Background</div><div class="usage-preview bg-dark"><img src={cfSrc(logos.darkTagline, 400)} srcset={cfSrcset(logos.darkTagline, [200, 400, 600])} sizes="(max-width: 768px) 80vw, 270px" alt="Logo correctly placed on dark background" class="logo-img" width="600" height="600" loading="lazy" decoding="async"/></div><p class="usage-text">Use the dark background version on dark backgrounds. Maintain strong contrast.</p></div>
         </div>
-        <h3>Logo Guidelines</h3>
+        <h3 id="usage-guidelines">Logo Guidelines</h3>
         <div class="dodont-grid">
           <div class="dodont-card do"><h4>✓ Do</h4><ul><li><span class="chk">✓</span>Maintain clear space around logo</li><li><span class="chk">✓</span>Scale proportionally</li><li><span class="chk">✓</span>Ensure sufficient contrast</li><li><span class="chk">✓</span>Min. 1.25" print, 75px digital</li></ul></div>
           <div class="dodont-card dont"><h4>✗ Don't</h4><ul><li><span class="x">✗</span>Distort or rotate the logo</li><li><span class="x">✗</span>Change logo colors</li><li><span class="x">✗</span>Add effects or shadows</li><li><span class="x">✗</span>Modify or recreate</li></ul></div>
         </div>
-        <h3>Visual Examples</h3>
+        <h3 id="usage-examples">Visual Examples</h3>
         <div class="vis-grid">
           <div class="vis-card ok"><div class="vis-badge ok">Correct</div><div class="vis-preview bg-light"><img src={cfSrc(logos.lightTagline, 260)} srcset={cfSrcset(logos.lightTagline, [130, 260])} sizes="130px" alt="Logo displayed correctly with proper proportions" class="vis-logo" width="600" height="600" loading="lazy" decoding="async"/></div><p>Proper proportions and clear space</p></div>
           <div class="vis-card bad"><div class="vis-badge bad">Incorrect</div><div class="vis-preview bg-light"><img src={cfSrc(logos.lightTagline, 260)} srcset={cfSrcset(logos.lightTagline, [130, 260])} sizes="130px" alt="Logo incorrectly stretched horizontally" class="vis-logo" width="600" height="600" loading="lazy" decoding="async" style="transform:scaleX(1.4);"/></div><p>Don't stretch or distort</p></div>
@@ -349,7 +379,7 @@ const jsonLd = {
         <h2>Typography</h2>
         <p class="section-desc">Our type system pairs editorial warmth with modern readability. The website uses Libre Baskerville and Outfit; print materials use the brand fonts listed below.</p>
 
-        <h3 class="logo-subhead" style="margin-top:0;">Web Fonts</h3>
+        <h3 class="logo-subhead" id="type-web" style="margin-top:0;">Web Fonts</h3>
         <p class="section-desc">Optimized for screen rendering and performance.</p>
 
         <div class="type-block">
@@ -388,7 +418,7 @@ const jsonLd = {
         <div class="two-col"><div class="info-card"><h4>Font Weight Usage</h4><ul><li><span class="bullet">●</span>Light (300) for hero text, large displays</li><li><span class="bullet">●</span>Regular (400) for body copy</li><li><span class="bullet">●</span>Semibold (600) for emphasis, buttons</li><li><span class="bullet">●</span>Bold (700) for headings, CTAs</li></ul></div><div class="info-card"><h4>Spacing &amp; Hierarchy</h4><ul><li><span class="bullet">●</span>Very tight leading (1.05–1.2) for headings</li><li><span class="bullet">●</span>Relaxed leading (1.625) for body text</li><li><span class="bullet">●</span>Tight tracking for headlines</li><li><span class="bullet">●</span>Wide tracking (0.05em) for uppercase labels</li></ul></div></div>
 
         <!-- Print & Brand Fonts -->
-        <h3 class="logo-subhead" style="margin-top:48px;">Print & Brand Fonts</h3>
+        <h3 class="logo-subhead" id="type-print" style="margin-top:48px;">Print & Brand Fonts</h3>
         <p class="section-desc">Official brand typefaces for print materials, signage, and merchandise. These are licensed fonts. Contact us for access.</p>
 
         <div class="print-fonts-grid">
@@ -525,26 +555,69 @@ const jsonLd = {
   .hero-btn-primary:hover{filter:brightness(1.05);box-shadow:0 4px 16px rgba(255,218,36,.35);transform:translateY(-1px)}
 
   /* ═══ LAYOUT ═══ */
-  .brand-layout{max-width:1280px;margin:0 auto;padding:48px 24px 64px;display:flex;gap:48px}
-  .brand-sidebar{width:220px;flex-shrink:0}
-  .sidebar-inner{position:sticky;top:96px;display:flex;flex-direction:column;gap:4px}
-  .sidebar-label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:rgba(55,58,54,.7);padding:0 16px;margin-bottom:8px}
-  .sidebar-link{display:block;padding:10px 16px;font-size:14px;font-weight:500;color:rgba(55,58,54,.7);border-radius:10px;text-decoration:none;transition:all .15s ease;min-height:44px;display:flex;align-items:center}
-  .sidebar-link:hover{color:var(--c-dark);background:rgba(55,58,54,.05)}
-  .sidebar-link.active{background:var(--c-yellow);color:var(--c-dark);font-weight:600;box-shadow:0 2px 8px rgba(255,213,0,.25)}
-  .sidebar-group-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:rgba(55,58,54,.7);padding:20px 16px 6px;margin:0}
-  .sidebar-group-label:first-of-type{padding-top:0}
+  .brand-layout{--toc-top:calc(var(--header-height) + 12px);max-width:1280px;margin:0 auto;padding:48px 24px 64px;display:flex;gap:48px}
+  .brand-sidebar{width:224px;flex-shrink:0}
 
-  /* Mobile nav */
-  .brand-mobile-nav{display:none;position:sticky;top:72px;z-index:90;background:var(--c-cream,#FEFCF5);border-bottom:1px solid rgba(55,58,54,.1);-webkit-overflow-scrolling:touch}
-  .mobile-nav-scroll{display:flex;gap:4px;padding:10px 16px;overflow-x:auto;scrollbar-width:none;-ms-overflow-style:none}
+  /* Sticky sidebar. Fits any viewport height: scrolls internally, hidden scrollbar,
+     edge fades (.fade-top/.fade-bottom set by script) signal overflow. */
+  .sidebar-inner{position:sticky;top:var(--toc-top);max-height:calc(100vh - var(--toc-top) - 24px);max-height:calc(100dvh - var(--toc-top) - 24px);overflow-y:auto;overscroll-behavior:contain;scrollbar-width:none;padding:4px 8px 8px 0;isolation:isolate}
+  .sidebar-inner::-webkit-scrollbar{display:none}
+  .sidebar-inner.fade-bottom{-webkit-mask-image:linear-gradient(to bottom,#000 calc(100% - 40px),transparent);mask-image:linear-gradient(to bottom,#000 calc(100% - 40px),transparent)}
+  .sidebar-inner.fade-top{-webkit-mask-image:linear-gradient(to bottom,transparent,#000 40px);mask-image:linear-gradient(to bottom,transparent,#000 40px)}
+  .sidebar-inner.fade-top.fade-bottom{-webkit-mask-image:linear-gradient(to bottom,transparent,#000 40px,#000 calc(100% - 40px),transparent);mask-image:linear-gradient(to bottom,transparent,#000 40px,#000 calc(100% - 40px),transparent)}
+  .sidebar-label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:rgba(55,58,54,.5);padding:0 0 0 26px;margin:0 0 18px}
+  .sidebar-group{margin-bottom:22px}
+  .sidebar-group:last-of-type{margin-bottom:0}
+  .sidebar-group-label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--c-dark);padding:0 0 0 26px;margin:0 0 8px}
+  .sidebar-list{position:relative;list-style:none;margin:0;padding:0 0 0 14px;display:flex;flex-direction:column;gap:2px}
+  .sidebar-list::before{content:"";position:absolute;left:0;top:4px;bottom:4px;width:2px;border-radius:2px;background:rgba(55,58,54,.1)}
+  .sidebar-link{display:flex;align-items:center;min-height:36px;padding:7px 12px;font-size:14px;font-weight:500;line-height:1.3;color:rgba(55,58,54,.68);border-radius:8px;text-decoration:none;transition:color .15s ease,background-color .15s ease}
+  .sidebar-link:hover{color:var(--c-dark);background:rgba(55,58,54,.05)}
+  .sidebar-link.active{color:var(--c-dark);background:rgba(255,218,36,.16)}
+  .sidebar-link:focus-visible{position:relative;z-index:1}
+  .sidebar-item.is-open>.sidebar-link{color:var(--c-dark)}
+  /* Sub-sections reveal under the active section (grid-rows trick: animatable auto height). */
+  .sidebar-sub{display:grid;grid-template-rows:0fr;transition:grid-template-rows .32s cubic-bezier(.32,.72,0,1)}
+  .sidebar-item.is-open>.sidebar-sub{grid-template-rows:1fr}
+  .sidebar-sub-list{list-style:none;margin:0;padding:0;min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:1px}
+  .sidebar-sub-list>li:first-child{padding-top:2px}
+  .sidebar-sub-list>li:last-child{padding-bottom:6px}
+  .sidebar-sublink{display:flex;align-items:center;min-height:32px;padding:5px 12px 5px 24px;font-size:13px;font-weight:500;line-height:1.3;color:rgba(55,58,54,.62);border-radius:8px;text-decoration:none;transition:color .15s ease,background-color .15s ease}
+  .sidebar-sublink:hover{color:var(--c-dark);background:rgba(55,58,54,.05)}
+  .sidebar-sublink.active{color:var(--c-dark);background:rgba(255,218,36,.16)}
+  .sidebar-sublink:focus-visible{position:relative;z-index:1}
+  @media(pointer:coarse){.sidebar-link{min-height:44px}.sidebar-sublink{min-height:40px}}
+  /* Sliding yellow marker. Script sets --y and --h; it rides the same x as the rails. */
+  .sidebar-marker{position:absolute;left:0;top:0;width:3px;height:var(--h,0px);border-radius:3px;background:var(--c-yellow);transform:translate(-.5px,var(--y,0px));opacity:0;pointer-events:none;z-index:1;transition:transform .32s cubic-bezier(.32,.72,0,1),height .32s cubic-bezier(.32,.72,0,1),opacity .2s ease}
+  .sidebar-marker.is-ready{opacity:1}
+  .sidebar-marker.no-anim{transition:none}
+  .sidebar-download{display:flex;align-items:center;gap:10px;margin:22px 0 0 14px;padding:10px 12px;border:1px solid rgba(55,58,54,.12);border-radius:10px;background:#fff;color:var(--c-dark);text-decoration:none;transition:border-color .15s ease,background-color .15s ease,box-shadow .15s ease}
+  .sidebar-download:hover{border-color:var(--c-yellow);background:rgba(255,218,36,.1);box-shadow:0 2px 10px rgba(255,218,36,.2)}
+  .sidebar-download-icon{display:grid;place-items:center;width:30px;height:30px;border-radius:50%;background:var(--c-yellow);flex-shrink:0}
+  .sidebar-download-text{display:flex;flex-direction:column;font-size:13px;font-weight:600;line-height:1.25}
+  .sidebar-download-text small{font-size:11px;font-weight:500;color:rgba(55,58,54,.6);letter-spacing:.02em;margin-top:2px}
+
+  /* Pill bar (tablet + phone). Height in --brand-nav-h keeps anchor offsets in sync. */
+  .brand-mobile-nav{--brand-nav-h:52px;display:none;position:sticky;top:var(--header-height);z-index:90;background:var(--c-cream,#FEFCF5);border-bottom:1px solid rgba(55,58,54,.08)}
+  .brand-mobile-nav::before,.brand-mobile-nav::after{content:"";position:absolute;top:0;bottom:1px;width:40px;pointer-events:none;z-index:1;transition:opacity .2s ease}
+  .brand-mobile-nav::before{left:0;background:linear-gradient(to right,var(--c-cream,#FEFCF5) 30%,rgba(254,252,245,0))}
+  .brand-mobile-nav::after{right:0;background:linear-gradient(to left,var(--c-cream,#FEFCF5) 30%,rgba(254,252,245,0))}
+  .brand-mobile-nav.at-start::before,.brand-mobile-nav.at-end::after{opacity:0}
+  .mobile-nav-scroll{display:flex;align-items:center;gap:6px;height:var(--brand-nav-h);padding:0 16px;margin:0;list-style:none;overflow-x:auto;overscroll-behavior-x:contain;scrollbar-width:none;-ms-overflow-style:none}
   .mobile-nav-scroll::-webkit-scrollbar{display:none}
-  .mobile-nav-link{flex-shrink:0;padding:8px 16px;font-size:13px;font-weight:600;color:rgba(55,58,54,.85);background:rgba(55,58,54,.05);border-radius:100px;text-decoration:none;white-space:nowrap;transition:all .15s ease;min-height:44px;display:flex;align-items:center}
-  .mobile-nav-link:hover,.mobile-nav-link.active{background:var(--c-yellow);color:var(--c-dark)}
+  .mobile-nav-item{display:flex;flex-shrink:0}
+  .mobile-nav-item:last-child{padding-right:16px}
+  .mobile-nav-group-start{position:relative;margin-left:8px;padding-left:10px}
+  .mobile-nav-group-start::before{content:"";position:absolute;left:0;top:50%;width:1px;height:18px;transform:translateY(-50%);background:rgba(55,58,54,.18)}
+  .mobile-nav-link{position:relative;display:flex;align-items:center;min-height:36px;padding:0 14px;font-size:13px;font-weight:600;line-height:1;color:rgba(55,58,54,.8);background:rgba(55,58,54,.05);border-radius:100px;text-decoration:none;white-space:nowrap;transition:background-color .15s ease,color .15s ease}
+  .mobile-nav-link::after{content:"";position:absolute;inset:-8px 0} /* 52px tall hit area on a 36px pill */
+  .mobile-nav-link:hover{background:rgba(55,58,54,.09);color:var(--c-dark)}
+  .mobile-nav-link.active{background:var(--c-yellow);color:var(--c-dark)}
 
   /* Content area */
   .brand-content{flex:1;min-width:0;max-width:900px}
-  .brand-section{margin-bottom:80px;scroll-margin-top:96px;content-visibility:auto;contain-intrinsic-size:auto 600px}
+  .brand-section{margin-bottom:80px;scroll-margin-top:16px}
+  .brand-section h3[id]{scroll-margin-top:16px}
   .brand-section h2{font-size:clamp(1.75rem,3vw,2.25rem);font-weight:300;color:var(--c-dark);margin-bottom:12px;letter-spacing:-.01em}
   .brand-section h3{font-size:18px;font-weight:600;color:var(--c-dark);margin-bottom:16px;margin-top:40px}
   .section-desc{font-size:16px;color:rgba(55,58,54,.7);line-height:1.6;margin-bottom:32px}
@@ -714,32 +787,260 @@ const jsonLd = {
   .info-box code{font-family:'SF Mono','Courier New',monospace;font-size:13px;background:rgba(55,58,54,.08);padding:2px 6px;border-radius:4px}
 
   /* Toast */
-  .brand-toast{position:fixed;bottom:32px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--c-dark-deep);color:#fff;padding:12px 24px;border-radius:10px;font-size:14px;font-weight:500;opacity:0;pointer-events:none;transition:all .3s ease;z-index:999;box-shadow:0 8px 32px rgba(0,0,0,.2)}
-  .brand-toast.visible{opacity:1;transform:translateX(-50%) translateY(0)}
+  :global(.brand-toast){position:fixed;bottom:32px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--c-dark-deep);color:#fff;padding:12px 24px;border-radius:10px;font-size:14px;font-weight:500;opacity:0;pointer-events:none;transition:all .3s ease;z-index:999;box-shadow:0 8px 32px rgba(0,0,0,.2)}
+  :global(.brand-toast.visible){opacity:1;transform:translateX(-50%) translateY(0)}
 
   /* ═══ RESPONSIVE ═══ */
-  @media(max-width:1024px){.brand-sidebar{display:none}.brand-layout{padding:32px 20px 48px}.logo-grid-3{grid-template-columns:repeat(3,1fr)}.brand-mobile-nav{display:block}.brand-section{scroll-margin-top:160px}}
+  @media(max-width:1024px){.brand-sidebar{display:none}.brand-layout{padding:32px 20px 48px}.logo-grid-3{grid-template-columns:repeat(3,1fr)}.brand-mobile-nav{display:block}.brand-section,.brand-section h3[id]{scroll-margin-top:calc(var(--brand-nav-h,52px) + 8px)}}
   @media(max-width:900px){.logo-grid-3{grid-template-columns:repeat(2,1fr)}}
   @media(max-width:768px){.brand-hero{padding:72px 20px 60px}.logo-grid{grid-template-columns:1fr}.logo-grid-3{grid-template-columns:1fr}.usage-grid{grid-template-columns:1fr}.dodont-grid{grid-template-columns:1fr}.color-grid{grid-template-columns:1fr 1fr}.two-col{grid-template-columns:1fr}.vis-grid{grid-template-columns:1fr 1fr}.section-header-row{flex-direction:column}.media-details-grid{grid-template-columns:1fr}.dl-btn{padding:10px 16px;font-size:13px;min-height:44px}.specs-table-wrap{overflow-x:auto}.specs-table{min-width:540px}.print-fonts-grid{grid-template-columns:1fr}.impact-stats-grid{grid-template-columns:repeat(2,1fr)}.branding-photos-grid{grid-template-columns:1fr}}
   @media(max-width:480px){.color-grid{grid-template-columns:1fr}.vis-grid{grid-template-columns:1fr}.hero-btn{width:100%;justify-content:center}}
 
+  /* ═══ PRINT: a brand guide gets printed; drop the navigation chrome ═══ */
+  @media print{
+    .brand-sidebar,.brand-mobile-nav,.brand-hero-actions{display:none!important}
+    .brand-layout{display:block;padding:0}
+    .brand-content{max-width:none}
+    .brand-section{margin-bottom:40px}
+    .brand-section h2,.brand-section h3{break-after:avoid}
+    .card,.color-card,.usage-card,.media-card,.type-block,.print-font-card,.info-card,.dodont-card,.impact-stat-card{break-inside:avoid;box-shadow:none}
+  }
+
   /* ═══ REDUCED MOTION ═══ */
   @media(prefers-reduced-motion:reduce){
-    .card,.usage-card,.color-card,.print-font-card,.media-card,.brand-toast,.branding-photo-card{transition:none}
+    .card,.usage-card,.color-card,.print-font-card,.media-card,:global(.brand-toast),.branding-photo-card{transition:none}
     .card:hover{transform:none;box-shadow:none}
     .color-card:hover{transform:none;box-shadow:none}
     .hero-btn-primary:hover{transform:none}
-    .brand-toast.visible{transition:none}
-    .sidebar-link,.copy-btn,.dl-btn,.download-all-btn,.mobile-nav-link,.media-detail-value a{transition:none}
+    :global(.brand-toast.visible){transition:none}
+    .sidebar-link,.sidebar-sublink,.sidebar-sub,.sidebar-marker,.sidebar-download,.copy-btn,.dl-btn,.download-all-btn,.mobile-nav-link,.brand-mobile-nav::before,.brand-mobile-nav::after,.media-detail-value a{transition:none}
   }
 </style>
 
 <script>
-  let _brandObserver: IntersectionObserver | null = null;
+  import { navigate } from 'astro:transitions/client';
+
+  let _tocCleanup: (() => void) | null = null;
 
   function cleanupBranding() {
-    _brandObserver?.disconnect();
-    _brandObserver = null;
+    _tocCleanup?.();
+    _tocCleanup = null;
+  }
+
+  /* ── Table of contents: scrollspy, sliding marker, click-to-scroll ──
+     Deterministic: the active section is the last one whose top has crossed a
+     reading line just below the sticky chrome. At the very bottom of the page
+     the last section wins, so short final sections can still be reached. */
+  function initToc() {
+    const sections = Array.from(document.querySelectorAll<HTMLElement>('.brand-section'));
+    const links = Array.from(document.querySelectorAll<HTMLAnchorElement>('[data-toc-link]'));
+    if (!sections.length || !links.length) return;
+    const sublinks = Array.from(document.querySelectorAll<HTMLAnchorElement>('[data-toc-sublink]'));
+    const subHeads = new Map<string, HTMLElement[]>();
+    for (const s of sublinks) {
+      const parent = s.dataset.tocParent || '';
+      const h = document.getElementById(s.dataset.tocSublink || '');
+      if (h) subHeads.set(parent, [...(subHeads.get(parent) || []), h]);
+    }
+
+    const ac = new AbortController();
+    const { signal } = ac;
+    const side = document.querySelector<HTMLElement>('[data-toc-side]');
+    const marker = document.querySelector<HTMLElement>('[data-toc-marker]');
+    const bar = document.querySelector<HTMLElement>('[data-toc-bar]');
+    const strip = document.querySelector<HTMLElement>('[data-toc-strip]');
+    const header = document.querySelector<HTMLElement>('.site-header');
+    const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
+    const scrollBehavior = (): ScrollBehavior => (reduceMotion.matches ? 'auto' : 'smooth');
+
+    let activeId = '';
+    let activeSub: string | null = null;
+    let reseatTimer = 0;
+    let locked = false;      // true while a click-initiated scroll is in flight
+    let navigating = false;  // true inside Astro's navigate(), which fires a synthetic popstate
+    let raf = 0;
+    let animRaf = 0;
+
+    const barVisible = () => !!bar && getComputedStyle(bar).display !== 'none';
+    const chromeBottom = () => {
+      const h = header ? header.getBoundingClientRect().bottom : 0;
+      return h + (barVisible() && bar ? bar.getBoundingClientRect().height : 0);
+    };
+
+    /* Sidebar: keep the active link inside the (possibly scrolled) sidebar and place the marker on it. */
+    const offsetInSide = (el: HTMLElement) => {
+      if (!side) return { top: 0, height: el.offsetHeight };
+      return { top: el.getBoundingClientRect().top - side.getBoundingClientRect().top + side.scrollTop, height: el.offsetHeight };
+    };
+    const updateSideFades = () => {
+      if (!side) return;
+      side.classList.toggle('fade-top', side.scrollTop > 4);
+      side.classList.toggle('fade-bottom', side.scrollTop + side.clientHeight < side.scrollHeight - 4);
+    };
+    const placeMarker = (link: HTMLElement, instant: boolean, shift = 0) => {
+      if (!marker || !side) return;
+      const m = offsetInSide(link);
+      const top = m.top + shift;
+      const height = m.height;
+      if (instant) marker.classList.add('no-anim');
+      marker.style.setProperty('--y', `${Math.round(top)}px`);
+      marker.style.setProperty('--h', `${Math.round(height)}px`);
+      marker.classList.add('is-ready');
+      if (instant) { void marker.offsetHeight; marker.classList.remove('no-anim'); }
+      // Reveal inside the sidebar without touching window scroll.
+      const pad = 12;
+      if (top < side.scrollTop + pad) side.scrollTo({ top: Math.max(0, top - pad), behavior: instant ? 'auto' : scrollBehavior() });
+      else if (top + height > side.scrollTop + side.clientHeight - pad) side.scrollTo({ top: top + height - side.clientHeight + pad, behavior: instant ? 'auto' : scrollBehavior() });
+    };
+
+    /* Pill bar: center the active pill and keep the edge fades honest. */
+    const updateStripFades = () => {
+      if (!bar || !strip) return;
+      bar.classList.toggle('at-start', strip.scrollLeft <= 2);
+      bar.classList.toggle('at-end', strip.scrollLeft + strip.clientWidth >= strip.scrollWidth - 2);
+    };
+    const centerPill = (pill: HTMLElement, instant: boolean) => {
+      if (!strip || !barVisible()) return;
+      const left = pill.getBoundingClientRect().left - strip.getBoundingClientRect().left + strip.scrollLeft;
+      const target = left + pill.offsetWidth / 2 - strip.clientWidth / 2;
+      strip.scrollTo({ left: Math.max(0, target), behavior: instant ? 'auto' : scrollBehavior() });
+    };
+
+    /* The sidebar's current row is the sub-link when a sub-heading has been reached,
+       otherwise the section link. The pill bar only knows sections. */
+    const currentEl = () =>
+      (activeSub && sublinks.find(s => s.dataset.tocSublink === activeSub)) ||
+      links.find(l => l.classList.contains('sidebar-link') && l.dataset.tocLink === activeId) || null;
+    const subBox = (id: string) => document.querySelector<HTMLElement>(`[data-toc-sub="${id}"] > ul`);
+    const reseat = () => { const el = currentEl(); if (el) placeMarker(el, false); updateSideFades(); };
+    const setActive = (id: string, sub: string | null, instant = false) => {
+      if (id === activeId && sub === activeSub) return;
+      const prevId = activeId;
+      activeId = id;
+      activeSub = sub;
+      for (const a of links) {
+        const isSide = a.classList.contains('sidebar-link');
+        const on = a.dataset.tocLink === id && (!isSide || sub === null);
+        a.classList.toggle('active', on);
+        if (on) a.setAttribute('aria-current', 'location'); else a.removeAttribute('aria-current');
+        if (isSide) a.closest('.sidebar-item')?.classList.toggle('is-open', a.dataset.tocLink === id);
+        if (on && !isSide) centerPill(a, instant);
+      }
+      for (const s of sublinks) {
+        const on = s.dataset.tocSublink === sub;
+        s.classList.toggle('active', on);
+        if (on) s.setAttribute('aria-current', 'location'); else s.removeAttribute('aria-current');
+      }
+      const el = currentEl();
+      if (!el) return;
+      // Groups above the target are mid-collapse/expand: aim the marker at the settled layout.
+      let shift = 0;
+      if (prevId !== id) {
+        const closing = prevId ? subBox(prevId) : null;
+        const opening = subBox(id);
+        const below = (box: HTMLElement) => !box.contains(el) && !!(box.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING);
+        if (closing && below(closing)) shift -= closing.getBoundingClientRect().height;
+        if (opening && below(opening)) shift += opening.scrollHeight - opening.getBoundingClientRect().height;
+      }
+      placeMarker(el, instant, shift);
+      if (prevId !== id) { clearTimeout(reseatTimer); reseatTimer = window.setTimeout(reseat, 360); }
+    };
+    side?.addEventListener('transitionend', (e) => { if ((e.target as HTMLElement).classList?.contains('sidebar-sub')) reseat(); }, { signal });
+
+    const compute = () => {
+      const doc = document.documentElement;
+      if (window.scrollY + window.innerHeight >= doc.scrollHeight - 2) return { id: sections[sections.length - 1].id, sub: null };
+      const cb = chromeBottom();
+      const line = cb + Math.min(120, (window.innerHeight - cb) * 0.25) + 1;
+      let current = sections[0].id;
+      for (const s of sections) {
+        if (s.getBoundingClientRect().top <= line) current = s.id; else break;
+      }
+      let sub: string | null = null;
+      for (const h of subHeads.get(current) || []) {
+        if (h.getBoundingClientRect().top <= line) sub = h.id; else break;
+      }
+      return { id: current, sub };
+    };
+    const sync = (instant = false) => { const c = compute(); setActive(c.id, c.sub, instant); };
+    const onScroll = () => {
+      if (locked || raf) return;
+      raf = requestAnimationFrame(() => { raf = 0; sync(); });
+    };
+
+    /* Click. Astro's router owns history: its same-page hash navigation runs synchronously
+       and lands the section exactly where scroll-padding + scroll-margin put it. We take
+       that landing as the destination, restore the origin before anything paints, and let
+       the browser glide between the two in one smooth scroll (one scroll, one scrollend,
+       one history update). The spy stays locked until we arrive, so passing sections never
+       flicker through the sidebar. Any user input cancels the ride. */
+    const instant = 'instant' as ScrollBehavior;
+    const stopAnim = () => { cancelAnimationFrame(animRaf); animRaf = 0; };
+    const unlock = () => { stopAnim(); locked = false; sync(); };
+    const rideTo = (target: HTMLElement, startY: number, endY: number, expectedTop: number) => {
+      if (Math.abs(endY - startY) < 2) { unlock(); return; }
+      window.scrollTo({ top: endY, behavior: 'smooth' });
+      const t0 = performance.now();
+      let last = window.scrollY;
+      let still = 0;
+      const watch = (now: number) => {
+        const y = window.scrollY;
+        const arrived = Math.abs(y - endY) < 1;
+        still = Math.abs(y - last) < 0.5 ? still + 1 : 0;
+        last = y;
+        if (arrived || (still >= 6 && now - t0 > 250) || now - t0 > 1800) {
+          // Final seat: correct for anything that shifted while we were moving (image loads).
+          const drift = target.getBoundingClientRect().top - expectedTop;
+          if (arrived && Math.abs(drift) > 1) window.scrollTo({ top: window.scrollY + drift, behavior: instant });
+          animRaf = 0;
+          unlock();
+          return;
+        }
+        animRaf = requestAnimationFrame(watch);
+      };
+      animRaf = requestAnimationFrame(watch);
+    };
+    for (const a of [...links, ...sublinks]) {
+      a.addEventListener('click', (e) => {
+        if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+        const id = a.dataset.tocLink || a.dataset.tocSublink || '';
+        const target = document.getElementById(id);
+        if (!target) return;
+        e.preventDefault();
+        stopAnim();
+        const startY = window.scrollY;
+        navigating = true;
+        navigate(`#${id}`);                                   // sync: history entry + native jump
+        navigating = false;
+        locked = true;
+        setActive(a.dataset.tocParent || id, a.dataset.tocSublink || null);
+        const endY = window.scrollY;                            // exact landing, per the CSS offsets
+        const expectedTop = target.getBoundingClientRect().top; // section's seat at that landing
+        if (scrollBehavior() === 'auto') { unlock(); return; }
+        window.scrollTo({ top: startY, behavior: instant });    // same task: nothing has painted yet
+        rideTo(target, startY, endY, expectedTop);
+      }, { signal });
+    }
+    const cancelOnInput = () => { if (animRaf) unlock(); };
+    window.addEventListener('wheel', cancelOnInput, { passive: true, signal });
+    window.addEventListener('touchstart', cancelOnInput, { passive: true, signal });
+    window.addEventListener('keydown', (e) => { if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(e.key)) cancelOnInput(); }, { signal });
+
+    window.addEventListener('scroll', onScroll, { passive: true, signal });
+    window.addEventListener('resize', () => { updateSideFades(); updateStripFades(); const el = currentEl(); if (el) placeMarker(el, true); }, { passive: true, signal });
+    const onHistory = () => { if (!navigating) unlock(); };
+    window.addEventListener('popstate', onHistory, { signal });
+    window.addEventListener('hashchange', onHistory, { signal });
+    side?.addEventListener('scroll', updateSideFades, { passive: true, signal });
+    strip?.addEventListener('scroll', updateStripFades, { passive: true, signal });
+
+    updateSideFades();
+    updateStripFades();
+    sync(true);
+    // Fonts settle a beat after load; re-seat the marker once they do.
+    document.fonts?.ready.then(() => { const el = currentEl(); if (el) placeMarker(el, true); updateSideFades(); });
+
+    _tocCleanup = () => { ac.abort(); cancelAnimationFrame(raf); stopAnim(); clearTimeout(reseatTimer); };
   }
 
   function initBranding() {
@@ -747,6 +1048,7 @@ const jsonLd = {
     if (!cards.length) return;
 
     cleanupBranding();
+    initToc();
 
     cards.forEach(card=>{card.addEventListener('click',()=>{const hex=(card as HTMLElement).dataset.hex;navigator.clipboard.writeText(hex!);let toast=document.querySelector('.brand-toast');if(!toast){toast=document.createElement('div');toast.className='brand-toast';document.body.appendChild(toast)}toast.textContent=`Copied ${hex}`;toast.classList.add('visible');setTimeout(()=>toast.classList.remove('visible'),2000)})});
 
@@ -768,7 +1070,6 @@ const jsonLd = {
       });
     });
 
-    const sections=document.querySelectorAll('.brand-section');const sideLinks=document.querySelectorAll('.sidebar-link');const mobLinks=document.querySelectorAll('.mobile-nav-link');_brandObserver=new IntersectionObserver(entries=>{entries.forEach(entry=>{if(entry.isIntersecting){sideLinks.forEach(l=>l.classList.remove('active'));mobLinks.forEach(l=>l.classList.remove('active'));const id=entry.target.id;const sideActive=document.querySelector(`.sidebar-link[href="#${id}"]`);if(sideActive)sideActive.classList.add('active');const mobActive=document.querySelector(`.mobile-nav-link[href="#${id}"]`);if(mobActive){mobActive.classList.add('active');mobActive.scrollIntoView({behavior:'smooth',block:'nearest',inline:'center'})}}})},{rootMargin:'-100px 0px -60% 0px'});sections.forEach(s=>_brandObserver!.observe(s));
   }
 
   document.addEventListener('astro:page-load', initBranding);
