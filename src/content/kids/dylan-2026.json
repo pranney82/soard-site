@@ -86,7 +86,11 @@
   "photographer": "Jude & Jojo Photography",
   "partnerLogos": [
     {
-      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/crosby-design-group/1788206748237/public",
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/the/1790691057925/public",
+      "name": "Jason T. Dickerson Family Foundation"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/crosby-design-group/1790020341076/public",
       "name": "Crosby Design Group"
     },
     {
@@ -96,6 +100,10 @@
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/dylan-2026/partner-1788202969760-JJP-Full-Logo-Black.png/public",
       "name": "JJP Full Logo-Black"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/bell/1774386082723/public",
+      "name": "Bell Cabinetry"
     }
   ],
   "shortDescription": null,

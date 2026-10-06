@@ -135,6 +135,7 @@ const rooms = kid?.roomTypes?.length ? kid.roomTypes.join(', ') : null;
         <ul class="live-links">
           <li><a href="https://www.facebook.com/SunshineOnaRanneyDay" target="_blank" rel="noopener" data-live="link-facebook">Facebook</a></li>
           <li data-live="youtube-item" hidden><a href="#" target="_blank" rel="noopener" data-live="link-youtube">YouTube</a></li>
+          <li data-live="instagram-item" hidden><a href="#" target="_blank" rel="noopener" data-live="link-instagram">Instagram</a></li>
         </ul>
         <p class="live-card__text live-card__text--sm">Comments and shares live on Facebook. The video here is the same stream, without the login.</p>
       </div>
@@ -231,6 +232,14 @@ const rooms = kid?.roomTypes?.length ? kid.roomTypes.join(', ') : null;
   /* :global — the iframe is created at runtime, so it has no Astro scope attribute */
   .hero-player :global(iframe) { width: 100%; height: 100%; border: 0; display: block; }
 
+  /* Portrait broadcasts (Instagram-first): tall player, kept narrow so the hero stays balanced */
+  .hero[data-orientation='portrait'][data-phase='live'] .hero-photo,
+  .hero[data-orientation='portrait'][data-phase='replay'] .hero-photo { aspect-ratio: 9 / 16; }
+  .hero[data-orientation='portrait'][data-phase='live'] .hero-inner,
+  .hero[data-orientation='portrait'][data-phase='replay'] .hero-inner { grid-template-columns: 1.15fr 0.85fr; }
+  .hero[data-orientation='portrait'][data-phase='live'] .hero-frame,
+  .hero[data-orientation='portrait'][data-phase='replay'] .hero-frame { max-width: 400px; justify-self: center; }
+
   .hero-badge {
     position: absolute; left: 16px; bottom: 16px; z-index: 2;
     display: inline-flex; align-items: center; gap: 10px;
@@ -299,6 +308,7 @@ const rooms = kid?.roomTypes?.length ? kid.roomTypes.join(', ') : null;
     /* width:100% gives the aspect-ratio box a basis once the photo is hidden */
     .hero-frame { width: 100%; max-width: 380px; margin: 0 auto; }
     .hero[data-phase='live'] .hero-frame, .hero[data-phase='replay'] .hero-frame { max-width: none; order: -1; }
+    .hero[data-orientation='portrait'][data-phase='live'] .hero-frame, .hero[data-orientation='portrait'][data-phase='replay'] .hero-frame { max-width: 360px; }
     .hero-eyebrow { justify-content: center; }
     .live-grid { grid-template-columns: 1fr; }
     .live-side { position: static; }
@@ -384,6 +394,10 @@ const rooms = kid?.roomTypes?.length ? kid.roomTypes.join(', ') : null;
       const ytItem = bq<HTMLElement>('youtube-item');
       const ytLink = bq<HTMLAnchorElement>('link-youtube');
       if (ytItem && ytLink) { if (s.youtubeUrl) { ytLink.href = s.youtubeUrl; ytItem.hidden = false; } else ytItem.hidden = true; }
+      const igItem = bq<HTMLElement>('instagram-item');
+      const igLink = bq<HTMLAnchorElement>('link-instagram');
+      if (igItem && igLink) { if (s.instagramUrl) { igLink.href = s.instagramUrl; igItem.hidden = false; } else igItem.hidden = true; }
+      hero.dataset.orientation = s.orientation === 'portrait' ? 'portrait' : 'landscape';
 
       // Player
       const playerEl = q<HTMLElement>('player');
@@ -433,6 +447,7 @@ const rooms = kid?.roomTypes?.length ? kid.roomTypes.join(', ') : null;
     bq('cta-donate-side')?.addEventListener('click', () => client.beacon('click_donate', { where: 'side' }));
     bq('link-facebook')?.addEventListener('click', () => client.beacon('click_facebook', { where: 'side' }));
     bq('link-youtube')?.addEventListener('click', () => client.beacon('click_youtube'));
+    bq('link-instagram')?.addEventListener('click', () => client.beacon('click_instagram'));
 
     // Reminder forms
     async function submitReminder(form: HTMLFormElement, payload: Record<string, string>) {

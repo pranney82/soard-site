@@ -13,6 +13,7 @@ export default defineConfig({
     sitemap({
       filter: (page) =>
         !page.includes('/branding') &&
+        !page.includes('/slate/') &&
         !page.includes('/terms') &&
         !page.includes('/privacy-policy'),
       // No lastmod: stamping every URL with the build time makes the field

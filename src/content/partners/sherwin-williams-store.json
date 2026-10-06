@@ -4,6 +4,9 @@
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/sherwin-williams-store/1774882699734/public",
   "tier": "construction",
   "featured": true,
-  "level": "builder",
-  "website": "https://www.sherwin-williams.com/store-locator/paint-store/roswell/ga/702804"
+  "level": "signature",
+  "website": "https://www.sherwin-williams.com/store-locator/paint-store/roswell/ga/702804",
+  "category": [
+    "build"
+  ]
 }

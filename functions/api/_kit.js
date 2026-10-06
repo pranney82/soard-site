@@ -144,21 +144,25 @@ export async function kitTagSubscriber(env, email, tagName) {
 }
 
 /**
- * Create a DRAFT broadcast (send_at: null) — the admin reviews & sends
- * from the Kit dashboard. Kit drafts default to all active subscribers;
- * the audience is narrowed in Kit at send time.
+ * Create a broadcast. Without `sendAt` it's a DRAFT (send_at: null) — the
+ * admin reviews & sends from the Kit dashboard, narrowing the audience there.
+ * With `sendAt` (ISO) Kit schedules it and sends on its own; `audience`
+ * ({ type: 'all' } | { type: 'tag'|'segment', id }) picks who gets it, and
+ * omitting it means every active subscriber.
  *
- * @returns {Promise<{ok: boolean, status?: number, broadcast?: object}>}
+ * @returns {Promise<{ok: boolean, status?: number, error?: string, broadcast?: object}>}
  */
-export async function kitCreateBroadcast(env, { subject, previewText, description, html }) {
+export async function kitCreateBroadcast(env, { subject, previewText, description, html, sendAt = null, audience = null }) {
   const body = {
     subject,
     preview_text: previewText || '',
     description,
     content: html,
     public: false,
-    send_at: null,
+    send_at: sendAt,
   };
+  const filter = kitSubscriberFilter(audience);
+  if (filter) body.subscriber_filter = filter;
   const templateId = parseInt(env.KIT_EMAIL_TEMPLATE_ID, 10);
   if (Number.isFinite(templateId)) body.email_template_id = templateId;
 
@@ -169,9 +173,38 @@ export async function kitCreateBroadcast(env, { subject, previewText, descriptio
   const result = await res.json().catch(() => ({}));
   if (!res.ok) {
     console.error(`Kit broadcast error ${res.status}:`, JSON.stringify(result));
-    return { ok: false, status: res.status };
+    const error = Array.isArray(result.errors) ? result.errors.join('; ') : (result.error || `HTTP ${res.status}`);
+    return { ok: false, status: res.status, error };
   }
   return { ok: true, broadcast: result.broadcast || result };
+}
+
+function kitSubscriberFilter(audience) {
+  const id = parseInt(audience?.id, 10);
+  if (!audience || !['tag', 'segment'].includes(audience.type) || !Number.isFinite(id)) return null;
+  return [{ all: [{ type: audience.type, ids: [id] }], any: null, none: null }];
+}
+
+/**
+ * Tags and segments the admin can aim an automatic send at, with tag
+ * subscriber counts so the picker can show list sizes.
+ *
+ * @returns {Promise<{ok: boolean, error?: string, tags?: object[], segments?: object[]}>}
+ */
+export async function kitListAudiences(env) {
+  if (!kitConfigured(env)) return { ok: false, error: 'KIT_API_KEY is not set' };
+  const [tagsRes, segRes] = await Promise.all([
+    kitFetch(env, '/tags?per_page=500&include=subscriber_count'),
+    kitFetch(env, '/segments?per_page=500'),
+  ]);
+  const tags = await tagsRes.json().catch(() => ({}));
+  const segs = await segRes.json().catch(() => ({}));
+  if (!tagsRes.ok) return { ok: false, error: `Kit tags: HTTP ${tagsRes.status}` };
+  return {
+    ok: true,
+    tags: (tags.tags || []).map(t => ({ id: t.id, name: t.name, count: t.subscriber_count ?? null })),
+    segments: segRes.ok ? (segs.segments || []).map(x => ({ id: x.id, name: x.name })) : [],
+  };
 }
 
 // Kit statuses → the vocabulary the admin history table already uses for

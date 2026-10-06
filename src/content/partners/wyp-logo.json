@@ -4,5 +4,8 @@
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/wyp-logo/1774544592070/public",
   "tier": "construction",
   "featured": true,
-  "level": "champion"
+  "level": "signature",
+  "category": [
+    "build"
+  ]
 }

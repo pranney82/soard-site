@@ -35,7 +35,7 @@ const reminders = { enabled: true, email: true, sms: true, push: true, pushKey: 
 
 const adminFixture = (state) => ({
   success: true,
-  state: { phase: state.phase, broadcastId: state.id, kidSlug: state.kidSlug, kidName: state.kidName, source: state.source, liveAt: state.liveAt, fb: { permalink: 'https://www.facebook.com/x/videos/1' }, clicks: 3 },
+  state: { reel: state.phase === 'replay' ? { stage: 'processing', sourceUid: 'vid1', duration: 1620, method: 'captions+ai', momentSeconds: 742, confidence: 0.9, start: 502, end: 1397, clipUid: 'clip1', error: null } : null, phase: state.phase, broadcastId: state.id, kidSlug: state.kidSlug, kidName: state.kidName, source: state.source, liveAt: state.liveAt, fb: { permalink: 'https://www.facebook.com/x/videos/1' }, clicks: 3 },
   public: state, legacy: { live: state.live },
   config: { customerCode: CODE, liveInput: { uid: 'in1', created: inH(-100), enabled: true, srt: { url: 'srt://live.cloudflare.com:778', streamId: 'sid1…2345', passphrase: 'pass…word' }, rtmps: { url: 'rtmps://live.cloudflare.com:443/live/', streamKey: 'abcd…wxyz' } }, rehearsalInput: null, outputs: { facebook: { uid: 'o1', url: 'rtmps://live-api-s.facebook.com:443/rtmp/', keyMask: 'FB-1…9999', enabled: true, createdAt: inH(-50) } }, facebook: { mode: 'persistent', pageUrl: 'https://www.facebook.com/SunshineOnaRanneyDay' }, youtube: { channelUrl: '' }, reminders: { enabled: true, hoursBefore: [24, 1], sms: true, push: true }, replayHours: 72, timezone: 'America/New_York', alerts: { emails: ['ops@example.com'] }, defaults: { title: 'Live room reveal', message: 'We are live' }, vapid: { publicKey: 'BPQ', createdAt: inH(-10) } },
   larix: { standard: 'larix://set/v1?conn[][name]=SOARD+Live&conn[][url]=srt%3A%2F%2Flive.cloudflare.com%3A778&conn[][srtstreamid]=sid&conn[][srtpass]=pw&enc[vid][res]=1920x1080', lowSignal: 'larix://set/v1?conn[][name]=Weak&conn[][url]=srt%3A%2F%2Flive.cloudflare.com%3A778&enc[vid][res]=1280x720', srtUrl: 'srt://live.cloudflare.com:778?streamid=sid&passphrase=pw', rtmps: { url: 'rtmps://live.cloudflare.com:443/live/', streamKey: 'key' } },
@@ -155,7 +155,12 @@ try {
       if (label.startsWith('Setup')) ok((await page.$$('.bc-qr svg')).length >= 2, 'QR codes render');
       if (name === 'live') await page.screenshot({ path: `${OUT}admin-${label.toLowerCase().replace(/\W+/g, '')}.png`, fullPage: true });
     }
-    if (name !== 'live') { await tabs[0].click(); await new Promise((r) => setTimeout(r, 250)); await page.screenshot({ path: `${OUT}admin-now-${name}.png`, fullPage: true }); }
+    await tabs[0].click(); await new Promise((r) => setTimeout(r, 250));
+    const nowText = await page.evaluate(() => document.querySelector('main')?.innerText || document.body.innerText);
+    if (name === 'live') ok(/Email the list now/.test(nowText) && /Kit email: goes out after 3 minutes live/.test(nowText) && !/Which kid is this/.test(nowText), 'live: Kit status + "Email the list now" button, no kid picker when the kid is known');
+    if (name === 'scheduled') ok(/Kit email at go-live: on \(All subscribers\)/.test(nowText) && /Email our Kit list \(All subscribers\) when we go live/.test(nowText), 'scheduled: Kit go-live status + switch');
+    if (name === 'idle') ok(/Email our Kit list when we go live/.test(nowText), 'idle: schedule form has the Kit switch');
+    if (name !== 'live') await page.screenshot({ path: `${OUT}admin-now-${name}.png`, fullPage: true });
   }
 
   const relevant = errors.filter((e) => !/net::ERR_FAILED|ERR_ABORTED|Failed to load resource|WebSocket connection|favicon|cloudflareinsights|imagedelivery|cdn-cgi/i.test(e));

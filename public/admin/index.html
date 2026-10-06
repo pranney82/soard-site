@@ -4238,6 +4238,8 @@
       // Schedule form
       const [kidSlug, setKidSlug] = useState('');
       const [when, setWhen] = useState(bcLocalInput(null));
+      const [kitLive, setKitLive] = useState(null); // null = follow the Kit setting
+      const [liveKid, setLiveKid] = useState('');
       const [title, setTitle] = useState('');
       const [message, setMessage] = useState('');
       const [image, setImage] = useState('');
@@ -4249,6 +4251,10 @@
       // Setup forms
       const [fbKey, setFbKey] = useState('');
       const [ytKey, setYtKey] = useState('');
+      const [igKey, setIgKey] = useState('');
+      const [igUrl, setIgUrl] = useState('');
+      const [igCheck, setIgCheck] = useState(null);
+      const [reelMinute, setReelMinute] = useState('');
       const [cfg, setCfg] = useState(null);
       const [testKind, setTestKind] = useState('live');
       const [testEmail, setTestEmail] = useState('');
@@ -4264,6 +4270,12 @@
             facebookMode: d.config.facebook?.mode || 'persistent',
             pageUrl: d.config.facebook?.pageUrl || '',
             youtubeUrl: d.config.youtube?.channelUrl || '',
+            instagramUrl: d.config.instagram?.profileUrl || '',
+            orientation: d.config.orientation || 'portrait',
+            reelsEnabled: d.config.reels?.enabled !== false,
+            reelsCaption: d.config.reels?.caption || '',
+            reelsLead: d.config.reels?.leadSeconds ?? 240,
+            reelsFeed: d.config.reels?.shareToFeed !== false,
             remEnabled: d.config.reminders?.enabled !== false,
             remSms: d.config.reminders?.sms !== false,
             remPush: d.config.reminders?.push !== false,
@@ -4325,13 +4337,16 @@
 
       const handleSchedule = async () => {
         if (!when) { addToast('Pick a date and time', 'error'); return; }
-        const d = await act('schedule', { kidSlug: kidSlug || undefined, scheduledAt: new Date(when).toISOString(), title, message, image: image || '' }, 'Schedule');
+        const d = await act('schedule', { kidSlug: kidSlug || undefined, scheduledAt: new Date(when).toISOString(), title, message, image: image || '', kitLiveEmail: typeof kitLive === 'boolean' ? kitLive : undefined }, 'Schedule');
         if (d.success) addToast('Reveal scheduled. Countdown, reminders and share page are live.', 'success');
       };
       const handleSaveConfig = async () => {
         const d = await setup('setConfig', { config: {
           facebook: { mode: cfg.facebookMode, pageUrl: cfg.pageUrl },
           youtube: { channelUrl: cfg.youtubeUrl },
+          instagram: { profileUrl: cfg.instagramUrl },
+          orientation: cfg.orientation,
+          reels: { enabled: cfg.reelsEnabled, caption: cfg.reelsCaption, leadSeconds: Number(cfg.reelsLead), shareToFeed: cfg.reelsFeed },
           reminders: { enabled: cfg.remEnabled, sms: cfg.remSms, push: cfg.remPush, hoursBefore: [cfg.rem24 ? 24 : null, cfg.rem1 ? 1 : null].filter(Boolean) },
           replayHours: Number(cfg.replayHours), timezone: cfg.timezone,
           alerts: { emails: cfg.alertEmails.split(',').map((s) => s.trim()).filter(Boolean) },
@@ -4341,8 +4356,9 @@
       };
       const handleOutput = async (target, key, url) => {
         if (!key.trim()) { addToast('Paste the stream key first', 'error'); return; }
+        if (!url || !url.trim()) { addToast('Paste the stream URL first', 'error'); return; }
         const d = await setup('setOutput', { target, streamKey: key.trim(), url }, `${target} output`);
-        if (d.success) { addToast(`${target === 'facebook' ? 'Facebook' : 'YouTube'} simulcast is set. Stream pushes to it whenever the phone goes live.`, 'success'); if (target === 'facebook') setFbKey(''); else setYtKey(''); }
+        if (d.success) { addToast(`${{ facebook: 'Facebook', youtube: 'YouTube', instagram: 'Instagram' }[target] || target} simulcast is set. Stream pushes to it whenever the phone goes live.`, 'success'); if (target === 'facebook') setFbKey(''); else if (target === 'youtube') setYtKey(''); else { setIgKey(''); setIgUrl(''); } }
       };
       const handleTestFb = async () => {
         setFbResult(null);
@@ -4382,6 +4398,16 @@
       const st = data.state; const pub = data.public; const s = data.setup; const h = data.health; const c = data.config;
       const phase = st.phase || 'idle';
       const P = BC_PHASES[phase] || BC_PHASES.idle;
+      const kitAudience = c.kitLive?.audience?.name || 'All subscribers';
+      const kitDefault = c.kitLive?.enabled !== false;
+      const kitWanted = typeof st.kitLiveEmail === 'boolean' ? st.kitLiveEmail : kitDefault;
+      const kitSent = !!(st.kit?.live && st.kit.live.sendAt && !st.kit.live.error);
+      const kitVia = { scheduled: 'from the schedule', admin: 'picked here', 'facebook-live': 'from the Facebook live post', 'facebook-post': 'from a Facebook post' }[st.kidVia] || '';
+      const kitStatus = kitSent ? html`<strong style="color:#22543D">sent to ${st.kit.live.audience}</strong>`
+        : st.kit?.live?.error ? html`<strong style="color:#744210">${st.kit.live.held ? `held: ${st.kit.live.error}` : `failed: ${st.kit.live.error}`}</strong>`
+        : !kitWanted ? 'off for this reveal'
+        : !pub.kidName ? html`<strong style="color:#744210">waiting for the kid</strong>`
+        : 'goes out after 3 minutes live';
       const lc = data.live?.lifecycle;
       const isActive = ['scheduled', 'armed', 'live', 'ending', 'replay'].includes(phase);
       const setupDone = s.streamConfigured && s.inputReady && s.hubBound;
@@ -4433,16 +4459,31 @@
                   <span>Hub: ${data.hub?.ok ? `${data.hub.clients} connected` : 'offline'}</span>
                   ${st.fb?.permalink ? html`<a href=${st.fb.permalink} target="_blank" rel="noopener">Facebook post ↗</a>` : null}
                   ${pub.liveUrl ? html`<a href=${pub.liveUrl} target="_blank" rel="noopener">Live page ↗</a>` : null}
+                  ${pub.kidSlug && phase !== 'idle' ? html`<span title="Add as a full-frame web page layer in Larix (or open full screen on a TV); switch it off when the reveal starts">Starting soon screen: <a href=${`/live/${pub.kidSlug}/slate/`} target="_blank" rel="noopener">open ↗</a> · <a href=${`/live/${pub.kidSlug}/slate/?o=portrait`} target="_blank" rel="noopener">portrait ↗</a> · <a href=${`/live/${pub.kidSlug}/starting-soon.png`} target="_blank" rel="noopener">still image ↗</a></span>` : null}
+                  ${s.kitConfigured && (phase === 'live' || phase === 'ending') ? html`<span>Kit email: ${kitStatus}</span>` : null}
+                  ${(phase === 'live' || phase === 'ending') && pub.kidName && kitVia ? html`<span>Kid: ${kitVia}</span>` : null}
+                  ${s.kitConfigured && (phase === 'scheduled' || phase === 'armed') ? html`<span>Kit email at go-live: ${kitWanted ? `on (${kitAudience})` : 'off'}</span>` : null}
                 </div>
               </div>
             </div>
             <div style="display:flex;gap:8px;flex-wrap:wrap">
               ${phase === 'scheduled' || phase === 'armed' ? html`<button class="btn btn-danger" disabled=${!!busy} onClick=${() => setConfirm({ title: 'Cancel this reveal?', message: 'The countdown and reminder signup come off the site. Reminders already sent are not recalled.', danger: true, fn: () => act('cancel', {}, 'Cancel') })}>Cancel reveal</button>` : null}
+              ${s.kitConfigured && (phase === 'live' || phase === 'ending') && !kitSent ? html`<button class="btn btn-primary" disabled=${!!busy} onClick=${() => setConfirm({ title: 'Email the Kit list now?', message: `Sends "We're live" for ${pub.title || 'this reveal'} to ${kitAudience} in Kit, about a minute from now. It goes out once per reveal and can't be recalled.`, fn: async () => { const d = await act('sendKitLive', {}, 'Kit email'); if (d.success) addToast(`Kit email scheduled to ${kitAudience}`, 'success'); } })}>Email the list now</button>` : null}
               ${phase === 'live' || phase === 'ending' ? html`<button class="btn btn-danger" disabled=${!!busy} onClick=${() => setConfirm({ title: 'End the broadcast now?', message: st.source === 'stream' ? 'Normally the site ends itself when the phone stops. Use this only if the stream is stuck. The replay still gets saved.' : 'This takes the manual banner down.', danger: true, fn: () => act('endNow', {}, 'End') })}>End now</button>` : null}
               ${phase === 'replay' ? html`<button class="btn btn-secondary" disabled=${!!busy} onClick=${() => act('extendReplay', { hours: 72 }, 'Extend')}>Keep replay 3 more days</button><button class="btn btn-ghost" disabled=${!!busy} onClick=${() => act('clearReplay', {}, 'Clear')}>Clear replay</button>` : null}
               <button class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${() => setup('runTick', {}, 'Refresh')} title="Ask Stream what is true right now">Check Stream now</button>
             </div>
           </div>
+          ${(phase === 'live' || phase === 'ending') && !pub.kidName ? html`
+            <div style="margin-top:1rem;padding:12px 14px;border-radius:10px;background:#FFF8D6;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+              <strong style="font-size:.9rem">Which kid is this?</strong>
+              <select class="form-select" style="width:auto" value=${liveKid} onChange=${(e) => setLiveKid(e.target.value)} aria-label="Kid being revealed">
+                <option value="">Choose…</option>
+                ${kidsSorted.map((k) => html`<option value=${k.slug}>${k.name}${k.year ? ` (${k.year})` : ''}</option>`)}
+              </select>
+              <button class="btn btn-primary btn-sm" disabled=${!!busy || !liveKid} onClick=${async () => { const d = await act('update', { kidSlug: liveKid }, 'Set kid'); if (d.success) { addToast(s.kitConfigured && kitWanted ? 'Kid set. The Kit email goes out once the stream has run 3 minutes.' : 'Kid set', 'success'); setLiveKid(''); } }}>Set kid</button>
+              <span class="text-sm text-muted" style="flex-basis:100%">Nothing on Facebook named the kid yet. Setting it here puts their name on the live page and releases the "we're live" email.</span>
+            </div>` : null}
           ${lc?.live && data.playback?.liveEmbed ? html`
             <div style="margin-top:1rem;border-radius:12px;overflow:hidden;background:#000;aspect-ratio:16/9;max-width:560px">
               <iframe src=${data.playback.liveEmbed} title="Live preview (muted)" style="width:100%;height:100%;border:0" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen></iframe>
@@ -4485,6 +4526,10 @@
               </div>
             </div>
           </div>
+          ${s.kitConfigured ? html`<div class="form-group">
+            <label class="checkbox-label"><input type="checkbox" checked=${typeof kitLive === 'boolean' ? kitLive : kitDefault} onChange=${(e) => setKitLive(e.target.checked)} /> Email our Kit list when we go live</label>
+            <span class="form-hint">Sends "We're live, come watch" to ${kitAudience} once the stream has run 3 minutes without dropping, so a quick phone test emails no one. Streams that start more than 30 minutes before the scheduled time are held for you to send by hand.</span>
+          </div>` : null}
           <div class="flex items-center gap-2">
             <button class="btn btn-primary" disabled=${!!busy || !when} onClick=${handleSchedule}>${busy === 'Schedule' ? html`<span class="spinner" style="width:14px;height:14px" />` : null} Schedule reveal</button>
             ${!setupDone ? html`<span class="text-sm" style="color:#744210">Setup is not finished (see the Setup tab). Scheduling works, but the phone cannot stream until the live input exists.</span>` : null}
@@ -4522,7 +4567,9 @@
               <div class="form-group"><label class="form-label">Banner message</label><input class="form-input" defaultValue=${pub.message || ''} maxlength="200" onChange=${(e) => act('update', { message: e.target.value }, 'Update')} /></div>
               <div class="form-group"><label class="form-label">Title</label><input class="form-input" defaultValue=${pub.title || ''} maxlength="140" onChange=${(e) => act('update', { title: e.target.value }, 'Update')} /></div>
               <div class="form-group"><label class="form-label">Kid</label><select class="form-select" value=${pub.kidSlug || ''} onChange=${(e) => act('update', { kidSlug: e.target.value }, 'Update')}><option value="">None</option>${kidsSorted.map((k) => html`<option value=${k.slug}>${k.name}</option>`)}</select></div>
+              <div class="form-group"><label class="form-label">Reveal happens at minute (optional)</label><input class="form-input" type="number" min="0" step="0.5" defaultValue=${st.revealAtSeconds != null ? st.revealAtSeconds / 60 : ''} placeholder="Leave blank: found automatically" onChange=${(e) => act('update', { revealAtMinute: e.target.value }, 'Update')} /><span class="form-hint">Only if you already know. Otherwise the Reel cut is found from the recording.</span></div>
             </div>
+            ${s.kitConfigured ? html`<label class="checkbox-label" style="margin:0 0 .75rem"><input type="checkbox" checked=${kitWanted} disabled=${!!busy} onChange=${(e) => act('update', { kitLiveEmail: e.target.checked }, 'Update')} /> Email our Kit list (${kitAudience}) when we go live</label>` : null}
             <p class="text-sm text-muted" style="margin:0">Changes apply on blur and show on the site within a second.</p>
           </div>` : null}
         ${phase === 'replay' && data.recordings?.length ? html`
@@ -4537,18 +4584,36 @@
               </div>`)}
             </div>
           </div>` : null}
+        ${st.reel ? (() => { const r = st.reel; const t = (x) => x == null ? '' : `${Math.floor(x / 60)}:${String(Math.floor(x % 60)).padStart(2, '0')}`; const labels = { pending: 'Waiting for the recording', captions: 'Reading captions to find the reveal', window: 'Cutting the clip', clipping: 'Stream is making the clip', download: 'Preparing the MP4', instagram: 'Sending to Instagram', processing: 'Instagram is processing', done: 'Posted', failed: 'Failed', blocked: 'Needs setup', skipped: 'Skipped' }; const methods = { fits: 'whole recording (under 15 min)', override: 'your minute', captions: 'captions', 'captions+ai': 'captions, confirmed by AI', ai: 'AI', fallback: 'the ending (no reveal found)' }; return html`
+          <div class="card" style=${`border-left:4px solid ${r.stage === 'done' ? '#38A169' : ['failed', 'blocked'].includes(r.stage) ? '#D69E2E' : '#FFD500'}`}>
+            <div style="display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap;align-items:center">
+              <h3 style="margin:0">Instagram Reel · ${labels[r.stage] || r.stage}</h3>
+              ${r.permalink ? html`<a class="btn btn-secondary btn-sm" href=${safeHref(r.permalink)} target="_blank" rel="noopener">Open on Instagram ↗</a>` : null}
+            </div>
+            <div class="text-sm" style="margin-top:.5rem;line-height:1.7">
+              ${r.start != null ? html`<div>Cut <strong>${t(r.start)} to ${t(r.end)}</strong> of ${t(r.duration)}${r.method ? html`, picked by <strong>${methods[r.method] || r.method}</strong>` : null}${r.momentSeconds != null ? `, reveal at ${t(r.momentSeconds)}` : ''}${r.confidence != null && r.method !== 'fits' ? ` (confidence ${Math.round(r.confidence * 100)}%)` : ''}.</div>` : null}
+              ${r.clipUid ? html`<div><a href=${`https://watch.cloudflarestream.com/${r.clipUid}`} target="_blank" rel="noopener">Preview the cut ↗</a></div>` : null}
+              ${r.error ? html`<div class="text-muted">${r.error}</div>` : null}
+            </div>
+            <div class="flex items-center gap-2 flex-wrap" style="margin-top:.75rem">
+              <input class="form-input" type="number" min="0" step="0.5" placeholder="Reveal at minute" value=${reelMinute} onInput=${(e) => setReelMinute(e.target.value)} style="max-width:170px" />
+              <button class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${() => setConfirm({ title: r.stage === 'done' ? 'Post another Reel?' : 'Re-cut the Reel?', message: r.stage === 'done' ? 'The Reel already on Instagram stays up. This posts a second one; delete the first in Instagram if you want only the new cut.' : 'Starts the Reel again from the recording.', fn: () => act('reelRetry', { revealAtMinute: reelMinute }, 'Reel') })}>${reelMinute ? 'Re-cut at that minute' : 'Retry'}</button>
+              ${!['done', 'skipped', 'failed'].includes(r.stage) ? html`<button class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${() => act('reelSkip', {}, 'Skip')}>Don't post this one</button>` : null}
+            </div>
+          </div>`; })() : null}
         ${sendsTable}
         <div class="card" style="background:#FEFCF5;border-left:3px solid #FFD500">
           <h3 style="margin:0 0 .5rem;font-size:0.95rem">What happens by itself</h3>
           <ul style="margin:0;padding-left:1.2rem;font-size:0.9rem;line-height:1.7">
-            <li><strong>Phone taps Start in Larix</strong> → within a second the site shows LIVE, the live page plays the stream, Facebook and YouTube receive the simulcast, and "we're live" reminders go out.</li>
+            <li><strong>Phone taps Start in Larix</strong> → within a second the site shows LIVE, the live page plays the stream, Facebook and YouTube receive the simulcast, and "we're live" reminders go out.${s.kitConfigured ? ` After 3 unbroken minutes, "We're live" is emailed to ${kitAudience} once the site knows the kid: from the schedule, the Facebook live post, a Facebook post from the last day, or the picker here.` : ''}</li>
             <li><strong>Phone stops</strong> → 45 s grace for a dropped signal, then the site flips to "Watch the replay". When Stream finishes processing (a minute or two), the replay plays on the live page, captions are generated, the link is added to the kid's page and the site rebuilds, and the replay email goes out.</li>
+            <li><strong>Instagram</strong>: ${c.reels?.enabled === false ? 'automatic Reels are off (Setup).' : 'the replay becomes an Instagram Reel on its own: the site finds the reveal moment, cuts up to 15 minutes around it, and posts it.'}</li>
             <li><strong>Scheduled and never streamed</strong> → the countdown clears itself 4 hours after the time and you get an alert.</li>
             <li><strong>Facebook</strong>: ${c.facebook?.mode === 'api' ? 'API mode is on: the site creates the Facebook live post when the phone connects and ends it when the phone stops.' : 'Persistent-key mode: schedule the live post in Live Producer ahead of time and Facebook starts it when the stream arrives (or tap Go Live in Live Producer).'}</li>
           </ul>
         </div>`;
 
-      const outputRow = (target, label, help, keyVal, setKey, presetUrl) => {
+      const outputRow = (target, label, help, keyVal, setKey, presetUrl, urlState) => {
         const o = data.outputs?.find((x) => x.target === target);
         return html`<div class="card">
           <div style="display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap;align-items:center">
@@ -4559,8 +4624,9 @@
           </div>
           <p class="text-sm text-muted" style="margin:.5rem 0 .75rem">${help}</p>
           <div class="flex items-center gap-2 flex-wrap">
+            ${urlState ? html`<input class="form-input" placeholder="Stream URL (rtmps://…)" value=${urlState.value} onInput=${(e) => urlState.set(e.target.value)} style="max-width:380px" autocomplete="off" />` : null}
             <input class="form-input" type="password" placeholder=${o ? 'Paste a new key to replace' : 'Paste the stream key'} value=${keyVal} onInput=${(e) => setKey(e.target.value)} style="max-width:380px" autocomplete="off" />
-            <button class="btn btn-secondary btn-sm" disabled=${!!busy || !s.inputReady} onClick=${() => handleOutput(target, keyVal, presetUrl)}>${o ? 'Replace key' : 'Save'}</button>
+            <button class="btn btn-secondary btn-sm" disabled=${!!busy || !s.inputReady} onClick=${() => handleOutput(target, keyVal, urlState ? urlState.value : presetUrl)}>${o ? 'Replace' : 'Save'}</button>
           </div>
         </div>`;
       };
@@ -4629,8 +4695,26 @@
         </div>
         ${outputRow('facebook', 'Facebook', html`In Facebook: Live Producer → Streaming software → Advanced settings → turn on <strong>Persistent stream key</strong> → copy the key (the server URL is filled in for you). One time only.`, fbKey, setFbKey, 'rtmps://live-api-s.facebook.com:443/rtmp/')}
         ${outputRow('youtube', 'YouTube', html`YouTube Studio → Go live → Stream → copy the <strong>Stream key</strong>. In the same screen turn on <strong>Auto-start</strong> and <strong>Auto-stop</strong> so the YouTube broadcast follows the phone.`, ytKey, setYtKey, 'rtmps://a.rtmps.youtube.com:443/live2')}
+        ${outputRow('instagram', 'Instagram live (optional, manual)', html`Not needed for the automatic Reel below. Only if you also want Instagram <em>live</em>: <strong>before each reveal</strong> (Instagram has no permanent key and no API): on a computer, instagram.com → <strong>Create</strong> → <strong>Live</strong> → copy the <strong>Stream URL</strong> and <strong>Stream key</strong> and paste both here. Needs a professional (business or creator) account. Instagram Live is portrait; set the camera orientation below to match what the crew shoots.`, igKey, setIgKey, '', { value: igUrl, set: setIgUrl })}
+        <div class="card">
+          <div style="display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap;align-items:center">
+            <h3 style="margin:0">Instagram Reel of every reveal (automatic)</h3>
+            <button class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${async () => { setIgCheck(null); const d = await setup('testInstagram', {}, 'Instagram check'); setIgCheck(d); }}>Check Instagram connection</button>
+          </div>
+          <p class="text-sm text-muted" style="margin:.5rem 0 .75rem">When the replay is ready, the site finds the reveal moment in the recording's captions (with AI as a second opinion), cuts up to 15 minutes around it, and posts it to Instagram as a Reel. Recordings under 15 minutes post whole. Nobody touches anything. The full recording stays on the site, Facebook and YouTube.</p>
+          ${igCheck ? html`<div class="text-sm" style=${`padding:8px 12px;border-radius:8px;margin-bottom:.75rem;background:${igCheck.success ? '#C6F6D5' : '#FEFCBF'}`}>
+            ${igCheck.account?.ok ? html`Linked Instagram: <strong>@${igCheck.account.username || igCheck.account.id}</strong>. ` : html`Instagram: ${igCheck.account?.error || igCheck.error} `}
+            ${igCheck.missing?.length ? html`Token is missing ${igCheck.missing.map((m) => html`<code style="margin:0 3px">${m}</code>`)}. Follow "Instagram Reels" in docs/facebook-app-review.md to regenerate it.` : igCheck.account?.ok ? 'Ready to post.' : ''}
+          </div>` : null}
+          <label class="checkbox-label"><input type="checkbox" checked=${cfg?.reelsEnabled} onChange=${(e) => setCfg({ ...cfg, reelsEnabled: e.target.checked })} /> Post a Reel after every reveal</label>
+          <label class="checkbox-label"><input type="checkbox" checked=${cfg?.reelsFeed} onChange=${(e) => setCfg({ ...cfg, reelsFeed: e.target.checked })} /> Also show it on the main grid, not only the Reels tab</label>
+          <div class="form-group" style="margin-top:.75rem"><label class="form-label">Caption</label><textarea class="form-textarea" rows="3" maxlength="2200" value=${cfg?.reelsCaption || ''} onInput=${(e) => setCfg({ ...cfg, reelsCaption: e.target.value })}></textarea><span class="form-hint"><code>{kid}</code> becomes the kid's name. Links in Instagram captions are not clickable, so point to the link in bio.</span></div>
+          <div class="form-group"><label class="form-label">Lead-up to keep before the reveal moment</label><select class="form-select" value=${cfg?.reelsLead} onChange=${(e) => setCfg({ ...cfg, reelsLead: Number(e.target.value) })} style="max-width:260px">${[60, 120, 180, 240, 300, 420, 600].map((n) => html`<option value=${n}>${n / 60} minute${n > 60 ? 's' : ''}</option>`)}</select><span class="form-hint">The rest of the 15 minutes is what happens after: reactions and the room tour.</span></div>
+          <button class="btn btn-secondary btn-sm" onClick=${handleSaveConfig} disabled=${!!busy}>Save</button>
+        </div>
         <div class="card">
           <div class="form-group"><label class="form-label">YouTube channel or live URL (shown on the live page)</label><input class="form-input" value=${cfg?.youtubeUrl || ''} placeholder="https://www.youtube.com/@…/live" onInput=${(e) => setCfg({ ...cfg, youtubeUrl: e.target.value })} style="max-width:420px" /></div>
+          <div class="form-group"><label class="form-label">Instagram profile URL (shown on the live page)</label><input class="form-input" value=${cfg?.instagramUrl || ''} placeholder="https://www.instagram.com/…" onInput=${(e) => setCfg({ ...cfg, instagramUrl: e.target.value })} style="max-width:420px" /></div>
           <button class="btn btn-secondary btn-sm" onClick=${handleSaveConfig} disabled=${!!busy}>Save</button>
         </div>
 
@@ -4663,6 +4747,7 @@
           <div class="form-grid">
             <div class="form-group"><label class="form-label">Keep the replay on the site for</label><select class="form-select" value=${cfg?.replayHours} onChange=${(e) => setCfg({ ...cfg, replayHours: Number(e.target.value) })}>${[24, 48, 72, 168, 336].map((n) => html`<option value=${n}>${n / 24} day${n > 24 ? 's' : ''}</option>`)}</select></div>
             <div class="form-group"><label class="form-label">Time zone for emails and texts</label><input class="form-input" value=${cfg?.timezone || ''} onInput=${(e) => setCfg({ ...cfg, timezone: e.target.value })} /></div>
+            <div class="form-group"><label class="form-label">Camera orientation</label><select class="form-select" value=${cfg?.orientation || 'landscape'} onChange=${(e) => setCfg({ ...cfg, orientation: e.target.value })}><option value="landscape">Landscape (best for the site, YouTube, Facebook on desktop)</option><option value="portrait">Portrait (best for Instagram and phones)</option></select><span class="form-hint">The site's player takes this shape. Whatever the crew shoots shows with bars on the platforms of the other shape.</span></div>
             <div class="form-group"><label class="form-label">Default title (unplanned broadcasts)</label><input class="form-input" value=${cfg?.defTitle || ''} onInput=${(e) => setCfg({ ...cfg, defTitle: e.target.value })} /></div>
             <div class="form-group"><label class="form-label">Default banner message</label><input class="form-input" value=${cfg?.defMessage || ''} onInput=${(e) => setCfg({ ...cfg, defMessage: e.target.value })} /></div>
           </div>
@@ -4696,7 +4781,7 @@
             <input class="form-input" type="email" placeholder="your@email" value=${testEmail} onInput=${(e) => setTestEmail(e.target.value)} style="max-width:260px" />
             <button class="btn btn-secondary btn-sm" disabled=${!!busy || !s.emailConfigured} onClick=${async () => { const d = await setup('sendTestReminder', { kind: testKind, email: testEmail || undefined }, 'Test email'); if (d.success) addToast('Test email sent', 'success'); }}>Send test</button>
           </div>
-          ${s.kitConfigured ? html`<p class="text-sm text-muted" style="margin:.75rem 0 0">Kit: a "save the date" draft is created when you schedule, and a "watch the replay" draft when the replay is ready. Review and send them from Kit to your whole list.</p>` : null}
+          ${s.kitConfigured ? html`<p class="text-sm text-muted" style="margin:.75rem 0 0">Kit: when a scheduled reveal goes live, "We're live" is emailed to ${kitAudience} automatically (switch it off per reveal when you schedule). A "save the date" draft is also created when you schedule, and a "watch the replay" draft when the replay is ready; review and send those from Kit.</p>` : null}
         </div>
         ${data.reminders?.recent?.length ? html`<div class="card"><h3 style="margin:0 0 .5rem">Recent signups</h3><div class="table-wrap"><table><thead><tr><th>When</th><th>Channel</th><th>Who</th><th>For</th><th>From</th></tr></thead><tbody>${data.reminders.recent.map((r) => html`<tr><td>${bcFmt(r.created_at)}</td><td>${r.channel}</td><td>${r.address}</td><td>${r.kid_slug || 'every reveal'}</td><td>${r.source || ''}</td></tr>`)}</tbody></table></div></div>` : null}`;
 
@@ -4735,7 +4820,7 @@
               <td><strong>${r.title || r.id}</strong><br/><span class="text-muted text-sm">${r.phase}${r.source === 'manual' ? ' · manual' : ''}</span></td>
               <td>${bcFmt(r.scheduled_at)}</td><td>${bcFmt(r.live_at)}</td><td>${mins != null ? `${mins} min` : ''}</td>
               <td>${e.view_live_page || 0}</td><td>${(e.click_watch || 0) + (e.click_replay || 0) + (e.banner_click || 0)}</td><td>${e.click_donate || 0}</td><td>${e.reminder_signup || 0}</td>
-              <td style="white-space:nowrap">${r.replay_uid ? html`<a href=${`https://watch.cloudflarestream.com/${r.replay_uid}`} target="_blank" rel="noopener">Replay ↗</a> ` : ''}${r.fb_permalink ? html`<a href=${r.fb_permalink} target="_blank" rel="noopener">Facebook ↗</a>` : ''}</td>
+              <td style="white-space:nowrap">${r.replay_uid ? html`<a href=${`https://watch.cloudflarestream.com/${r.replay_uid}`} target="_blank" rel="noopener">Replay ↗</a> ` : ''}${r.fb_permalink ? html`<a href=${r.fb_permalink} target="_blank" rel="noopener">Facebook ↗</a> ` : ''}${r.data?.reel?.permalink ? html`<a href=${safeHref(r.data.reel.permalink)} target="_blank" rel="noopener">Reel ↗</a>` : ''}</td>
             </tr>`; })}
           </tbody></table></div>` : html`<p class="text-sm text-muted">No broadcasts yet.</p>`}
         </div>

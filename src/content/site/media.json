@@ -8,9 +8,9 @@
     "website": "sunshineonaranneyday.com",
     "boilerplate": "Sunshine on a Ranney Day is a 501(c)(3) nonprofit founded in 2012 by Peter and Holly Ranney, based in Roswell, GA."
   },
-  "mission": "Sunshine on a Ranney Day is a nonprofit organization that renovates homes for children with special needs using top of the line construction and design. Through partnerships and donors we provide no cost wheelchair accessible bathrooms, dream bedrooms and in-home therapy rooms.",
+  "mission": "Sunshine on a Ranney Day renovates homes for children with special needs, disabilities, and/or long-term illnesses, at no cost to their families. With the help of partners and donors, we use the latest construction and design methods to provide wheelchair-accessible bathrooms, dream bedrooms, and in-home therapy rooms, ensuring safety and peace of mind for children and families. \n\n",
   "who": "Sunshine on a Ranney Day was founded in early 2012 by Peter and Holly Ranney after being inspired by a church sermon to use their resources to help others. The first makeover was completed in July 2012 for a child named Mathew.",
-  "founderStory": "In 2012, inspired by a church sermon, Peter and Holly Ranney found their calling to use their God-given talents and resources to help others. Sunshine on a Ranney Day was created with the idea that every child should have their own unique space. Sunshine on a Ranney Day's first makeover was completed for 11-year-old Mathew, who wanted to spend his last days in his military-themed bunker bedroom. Mathew's makeover and passing showed how impactful a makeover could be on a child's life. This experience helped shape Sunshine on a Ranney Day into what it is today.",
+  "founderStory": "Holly and Peter Ranney started Sunshine on a Ranney Day in 2012 after being inspired by a church sermon about service and their time with Mathew, an 11-year-old boy with cancer who dreamed of having a military-themed bedroom. Using their background in furniture and construction, the Ranneys transformed Mathew’s room in one day and saw firsthand how a thoughtfully designed space could make a big difference for a child facing serious illness. This experience shaped SOARD’s mission to bring hope, dignity, and joy to families through meaningful home renovations.\n",
   "contactEmail": "info@sunshineonaranneyday.com",
   "socialLinks": {
     "facebook": "https://www.facebook.com/sunshineonaranneyday",
@@ -50,6 +50,28 @@
     {
       "id": "press-logo-41nbc",
       "alt": "41NBC"
+    }
+  ],
+  "brandingPhotos": [
+    {
+      "kidSlug": "oakley",
+      "cfId": "kids/oakley/photo-14",
+      "caption": "Oakley — Spina Bifida & Hydrocephalus"
+    },
+    {
+      "kidSlug": "leland",
+      "cfId": "kids/leland/1778782015883-IMG-4829.JPG",
+      "caption": "Leland — Spina Bifida, Hydrocephalus, Neurogenic Bowel and Bladder, Chiari II"
+    },
+    {
+      "kidSlug": "cayden",
+      "cfId": "kids/cayden/photo-15",
+      "caption": "Cayden — Paralysis Waist Down & Amputee"
+    },
+    {
+      "kidSlug": "emery",
+      "cfId": "kids/emery/photo-17",
+      "caption": "Emery — Rubinstein-Taybi Syndrome, Agenesis of the Corpus Callosum, Chiari Type 1, Severe Photophobia & Tethered Spinal Cord"
     }
   ]
 }

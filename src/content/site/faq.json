@@ -25,7 +25,7 @@
     {
       "id": "tax-deductible",
       "question": "Is my donation tax-deductible?",
-      "answer": "Yes. Sunshine on a Ranney Day is a registered 501(c)(3) nonprofit (EIN 45-4773997). You'll receive a tax receipt from Zeffy immediately after donating.",
+      "answer": "Yes. Sunshine on a Ranney Day is a registered 501(c)(3) nonprofit (EIN 45-4773997). You'll receive a tax receipt from Zeffy immediately after donating. If you do not receive a receipt, please email us at info@soardcharity.com",
       "category": "donations",
       "order": 1
     },
@@ -53,28 +53,28 @@
     {
       "id": "room-cost",
       "question": "How much does a typical room makeover cost?",
-      "answer": "Room costs vary based on scope — a dream bedroom averages $8,000–$12,000, while an accessible bathroom can run $10,000–$15,000. Every dollar donated goes toward these transformations.",
+      "answer": "The cost of each makeover varies depending on the scope of the project. Dream bedrooms typically range from $10,000–$15,000, wheelchair-accessible bathrooms average $35,000–$40,000, and in-home therapy rooms generally range from $20,000–$30,000. Every dollar donated goes directly toward creating these life-changing spaces for the children and families we serve.",
       "category": "donations",
       "order": 5
     },
     {
       "id": "what-is-soard",
       "question": "What is Sunshine on a Ranney Day?",
-      "answer": "Sunshine on a Ranney Day (SOARD) is a 501(c)(3) nonprofit that creates life-changing home makeovers — dream bedrooms, accessible bathrooms, and therapy rooms — for children with special needs in the greater Atlanta area, all at no cost to families.",
+      "answer": "Sunshine on a Ranney Day (SOARD) is a 501(c)(3) nonprofit that provides life-changing home makeovers — dream bedrooms, accessible bathrooms, and therapy rooms — for children with special needs in the greater Atlanta area, all at no cost to families.",
       "category": "about",
       "order": 1
     },
     {
       "id": "how-long",
       "question": "How long has SOARD been operating?",
-      "answer": "We've been building rooms and changing lives since 2012. To date, we've completed over 106 rooms for more than 132 children across metro Atlanta.",
+      "answer": "SOARD began in 2012 when we first helped Matthew. To learn more about that project, please visit the \"About Us\" section. ",
       "category": "about",
       "order": 2
     },
     {
       "id": "who-runs",
       "question": "Who runs the organization?",
-      "answer": "SOARD was co-founded by Peter and Holly Ranney. Our team includes dedicated volunteers, board members, and a network of construction and design partners. Visit our <a href=\"/about/leadership\">Leadership</a> page to meet the team.",
+      "answer": "SOARD was co-founded by Peter and Holly Ranney who continue to run the organization daily. Our team includes dedicated volunteers, board members, and a network of construction and design partners. Visit our <a href=\"/about/leadership\">Leadership</a> page to meet the team.",
       "category": "about",
       "order": 3
     },
@@ -109,7 +109,7 @@
     {
       "id": "who-qualifies",
       "question": "Who qualifies for a room makeover?",
-      "answer": "We serve children with special needs (physical, developmental, or medical) in the greater Atlanta area. Families must demonstrate financial need and own or have permission to modify their home.",
+      "answer": "We serve children with special needs (physical, developmental, or medical) in the greater Atlanta area. Families must demonstrate financial need and own their home.",
       "category": "families",
       "order": 2
     },

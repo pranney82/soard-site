@@ -3,13 +3,19 @@
   "slug": "camp-twin-lakes",
   "impact": "10,000",
   "impactLabel": "children impacted yearly",
+  "stats": [
+    {
+      "value": "10,000",
+      "label": "children impacted yearly"
+    }
+  ],
   "year": "2018",
   "description": "Camp Twin Lakes provides life-changing camp experiences for children with serious illnesses, disabilities, and other challenges across Georgia. SOARD partnered to renovate camp facilities, creating sensory-friendly spaces and accessible areas where thousands of children can play, grow, and experience the magic of camp — many for the very first time.",
   "color": "#2E7D32",
   "imageId": "community/camp-twin-lakes/1774972570317-IMG-4692.JPG",
   "imageAlt": "Camp Twin Lakes facility renovated by SOARD",
   "badge": "",
-  "order": 1,
+  "order": 6,
   "photos": [
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/camp-twin-lakes/1774972570317-IMG-4692.JPG/public",
@@ -135,13 +141,11 @@
   "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/community/camp-twin-lakes/1774972570317-IMG-4692.JPG/public",
   "status": "completed",
   "founded": "",
-  "story": "",
+  "story": "<p>Camp Twin Lakes provides life-changing camp experiences for children with serious illnesses, disabilities, and other challenges across Georgia. SOARD partnered to renovate camp facilities, creating sensory-friendly spaces and accessible areas where thousands of children can play, grow, and experience the magic of camp — many for the very first time.</p>",
   "quote": "",
   "metaDescription": "",
   "videoUrl": null,
   "streamVideoId": null,
-  "beforePhotos": [],
-  "afterPhotos": [],
   "partnerLogos": [
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/a-color-affair/public",
@@ -191,5 +195,7 @@
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/sherwin-williams-store/1774882699734/public",
       "name": "Sherwin Williams"
     }
-  ]
+  ],
+  "beforePhotos": [],
+  "afterPhotos": []
 }

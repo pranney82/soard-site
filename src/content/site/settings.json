@@ -27,94 +27,94 @@
     "cta2Label": "See Our Work ↓",
     "cta2Link": "#stories"
   },
-  "featuredKidSlug": "amari",
-  "heroKidSlug": "braxton",
-  "heroKidPhotoId": "kids/braxton/photo-18",
+  "featuredKidSlug": "tyrece-maddie",
+  "heroKidSlug": "summer",
+  "heroKidPhotoId": "kids/summer/1774457749073-Summer-28.jpg",
   "kidShowcase": [
+    {
+      "slug": "dex",
+      "cfId": "kids/dex/1784580572666-IMG-5585.JPG"
+    },
+    {
+      "slug": "junializ",
+      "cfId": "kids/junializ/1784664837945-IMG-1549.jpg"
+    },
+    {
+      "slug": "leland",
+      "cfId": "kids/leland/1778782009113-IMG-4822.JPG"
+    },
+    {
+      "slug": "isla",
+      "cfId": "kids/isla/1787245529910-Isla-54.jpg"
+    },
     {
       "slug": "adrian-2025",
       "cfId": "kids/adrian/photo-18"
     },
     {
-      "slug": "harper-2025",
-      "cfId": "kids/harper-2025/photo-11"
-    },
-    {
-      "slug": "cayden",
-      "cfId": "kids/cayden/photo-09"
-    },
-    {
-      "slug": "naji",
-      "cfId": "kids/naji/hero"
+      "slug": "josue",
+      "cfId": "kids/josue/1778773519332-IMG-0194.jpg"
     },
     {
       "slug": "karter",
       "cfId": "kids/karter/photo-12"
-    },
-    {
-      "slug": "desmond",
-      "cfId": "kids/desmond/hero"
-    },
-    {
-      "slug": "summer",
-      "cfId": "kids/summer/hero"
     }
   ],
   "sectionPhotos": {
-    "missionMain": "kids/emery/1774895731678-Untitled-design-31.png",
-    "missionAccent": "kids/desmond/photo-19",
+    "missionMain": "kids/leland/1778782015883-IMG-4829.JPG",
+    "missionAccent": "kids/josue/ba-after-1779469998433-w-2400-q-85-metadata-none-8.webp",
     "storyPhoto": "kids/zyah/hero",
-    "roomBedroom": "kids/bryce/photo-22",
-    "roomBath": "kids/adrian/1774454538805-Adrian-SRD--30.jpg",
-    "roomTherapy": "kids/karter/1774384957640-Karter-Reveal-People-9.jpg",
-    "process": "kids/oakley/photo-15"
+    "roomBedroom": "kids/dex/1784580488536-IMG-5552.JPG",
+    "roomBath": "kids/oakley/photo-15",
+    "roomTherapy": "kids/karter/photo-12",
+    "process": "kids/emery/1774895731678-Untitled-design-31.png"
   },
   "partnerLogos": [
-    {
-      "id": "partners/gas-south",
-      "name": "Gas South"
-    },
-    {
-      "name": "Randall Paulson Architects",
-      "id": "partners/randall-paulson"
-    },
     {
       "name": "Kids R Kids Foundation",
       "id": "partners/kids-r-kids"
     },
     {
-      "id": "partners/cambria",
-      "name": "Cambria"
-    },
-    {
-      "id": "partners/mohawk",
-      "name": "Mohawk"
+      "id": "partners/gas-south",
+      "name": "Gas South"
     },
     {
       "id": "partners/jackson-healthcare",
       "name": "Jackson Healthcare"
     },
     {
-      "id": "partners/crosby-design-group",
-      "name": "Crosby Design Group"
+      "name": "Crosby Design Group",
+      "id": "partners/crosby-design-group/1790020341076"
     },
     {
-      "name": "Msi",
-      "id": "partners/msi"
+      "name": "Real Floors Commercial",
+      "id": "partners/real-floors-commercial/1774544840079"
+    },
+    {
+      "id": "partners/cambria",
+      "name": "Cambria"
     },
     {
       "id": "partners/cr-construction",
       "name": "CR Construction"
     },
     {
-      "id": "partners/stag-partners",
-      "name": "Stag Partners"
+      "name": "Randall Paulson Architects",
+      "id": "partners/randall-paulson"
+    },
+    {
+      "id": "partners/mohawk",
+      "name": "Mohawk"
+    },
+    {
+      "name": "Msi",
+      "id": "partners/msi"
     }
   ],
   "donatePhotos": {
-    "hero": "kids/oakley/hero",
+    "hero": "kids/amari/1775079116007-IMG-6679-2.jpg",
     "heroKidName": "Oakley",
-    "story": "kids/amari/photo-09",
+    "story": "kids/dylan-2026/1788202627041-dylanSOARD-48.jpeg",
     "storyKidName": "Amari"
   },
   "application": {
@@ -124,9 +124,9 @@
     "closedMessage": ""
   },
   "applyPhotos": {
-    "hero": "kids/adrian/1774454544254-Adrian-SRD--36.jpg",
-    "story": "kids/summer/1774457749073-Summer-28.jpg",
-    "selection": "kids/karter/1774384972619-Karter-Reveal-People-20.jpg"
+    "hero": "kids/glenn/1774461119263-Untitled-design-25.png",
+    "story": "kids/marie-and-alondra/photo-36",
+    "selection": "kids/harper-2025/photo-11"
   },
   "newsletter": {
     "audienceId": "",
@@ -134,40 +134,56 @@
   },
   "sunnyAndRanneyRooms": [],
   "photoTimestamps": {
-    "donatePhotos.hero": "2026-03-25T16:42:57.347Z",
-    "donatePhotos.story": "2026-03-30T19:13:44.133Z",
-    "featuredKidSlug": "2026-03-25T17:24:10.084Z",
-    "kidShowcase": "2026-03-30T17:46:01.341Z",
-    "sectionPhotos.process": "2026-03-31T19:03:27.519Z",
-    "sectionPhotos.missionMain": "2026-03-30T18:51:43.241Z",
-    "sectionPhotos.missionAccent": "2026-03-30T18:52:01.925Z",
-    "heroKidSlug": "2026-03-31T19:58:22.529Z",
-    "heroKidPhotoId": "2026-04-01T02:15:19.465Z",
-    "sectionPhotos.roomBedroom": "2026-03-30T18:52:44.310Z",
-    "sectionPhotos.roomBath": "2026-03-30T18:52:52.129Z",
-    "sectionPhotos.roomTherapy": "2026-03-30T18:52:59.821Z",
-    "featuredStoryImage": "2026-03-31T19:42:30.997Z",
-    "communityPhotos.hero": "2026-03-31T16:57:53.974Z",
-    "communityPhotos.accent": "2026-03-31T16:58:13.158Z",
-    "waysToGivePhotos.hero": "2026-03-31T17:00:28.640Z",
-    "waysToGivePhotos.breakPhoto": "2026-04-06T12:35:24.457Z",
-    "waysToGivePhotos.legacyPhoto": "2026-04-06T12:35:37.306Z",
-    "partnerPhoto": "2026-03-31T16:59:39.441Z",
-    "applyPhotos.hero": "2026-03-31T17:00:42.040Z",
-    "applyPhotos.story": "2026-03-31T17:01:24.890Z",
-    "applyPhotos.selection": "2026-03-31T17:01:07.656Z"
+    "donatePhotos.hero": "2026-09-21T19:36:37.827Z",
+    "donatePhotos.story": "2026-09-21T19:36:50.684Z",
+    "featuredKidSlug": "2026-09-21T19:12:15.870Z",
+    "kidShowcase": "2026-09-21T19:31:26.307Z",
+    "sectionPhotos.process": "2026-09-21T19:29:03.189Z",
+    "sectionPhotos.missionMain": "2026-09-21T19:26:33.942Z",
+    "sectionPhotos.missionAccent": "2026-09-21T19:54:19.971Z",
+    "heroKidSlug": "2026-09-21T19:30:27.333Z",
+    "heroKidPhotoId": "2026-09-21T19:30:27.333Z",
+    "sectionPhotos.roomBedroom": "2026-09-21T19:31:51.437Z",
+    "sectionPhotos.roomBath": "2026-09-21T19:35:41.409Z",
+    "sectionPhotos.roomTherapy": "2026-09-21T19:14:42.175Z",
+    "featuredStoryImage": "2026-09-21T19:12:15.870Z",
+    "communityPhotos.hero": "2026-09-24T13:36:23.136Z",
+    "communityPhotos.accent": "2026-09-24T13:36:31.010Z",
+    "waysToGivePhotos.hero": "2026-09-21T19:43:13.160Z",
+    "waysToGivePhotos.breakPhoto": "2026-09-22T16:43:16.085Z",
+    "waysToGivePhotos.legacyPhoto": "2026-09-21T19:43:39.812Z",
+    "partnerPhoto": "2026-09-22T16:37:13.311Z",
+    "applyPhotos.hero": "2026-09-21T19:38:46.876Z",
+    "applyPhotos.story": "2026-09-21T19:40:00.962Z",
+    "applyPhotos.selection": "2026-09-21T19:40:14.145Z",
+    "financialsPhotos.hero": "2026-09-22T16:37:04.242Z",
+    "resourcesPhotos.hero": "2026-09-29T14:24:12.115Z",
+    "resourcesPhotos.why": "2026-09-29T14:27:53.880Z"
   },
-  "featuredStoryHeadline": "Amari’s Life-Changing Makeover with Trae Young Inspires a Nation",
-  "featuredStoryDescription": "After a devastating accident, Amari's story captured hearts nationwide on NBC Nightly News. Through a partnership with Trae Young Family Foundation, Sunshine on a Ranney Day built him a wheelchair-accessible bathroom and dream bedroom, restoring his independence and inspiring hope.",
+  "featuredStoryHeadline": "",
+  "featuredStoryDescription": "",
   "featuredStoryImage": "",
   "communityPhotos": {
-    "hero": "community/summit-counseling-center/1774973192701-IMG-7393.JPG",
-    "accent": "community/summit-counseling-center/1774973369216-IMG-7470.JPG"
+    "hero": "community/childrens-development-academy/1790256890155-IMG-4518.jpg",
+    "accent": "community/childrens-development-academy/1790256870955-IMG-4480.jpg"
   },
   "waysToGivePhotos": {
-    "hero": "kids/oakley/photo-15",
-    "breakPhoto": "kids/cayden/photo-15",
-    "legacyPhoto": "kids/emery/photo-18"
+    "hero": "kids/josue/1778773505952-IMG-0187.JPG",
+    "breakPhoto": "kids/gabrielle/photo-09",
+    "legacyPhoto": "kids/emery/photo-17"
   },
-  "partnerPhoto": "kids/bryce/photo-22"
+  "partnerPhoto": "kids/leland/1778782087247-IMG-5093.JPG",
+  "financialsPhotos": {
+    "hero": "kids/cayden/photo-09"
+  },
+  "upNext": {
+    "kidSlug": "colin"
+  },
+  "howItWorks": {
+    "kidSlug": "adrian-2025"
+  },
+  "resourcesPhotos": {
+    "hero": "kids/adam/1774459698178-Untitled-design-17.png",
+    "why": "kids/damon-dj/photo-28"
+  }
 }

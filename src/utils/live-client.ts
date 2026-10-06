@@ -18,7 +18,8 @@ export interface LiveState {
   scheduledAt: string | null; liveAt: string | null; endedAt: string | null; replayUntil: string | null;
   url: string; liveUrl: string;
   player: LivePlayer | null;
-  facebookUrl: string | null; youtubeUrl: string | null;
+  facebookUrl: string | null; youtubeUrl: string | null; instagramUrl: string | null;
+  orientation: 'landscape' | 'portrait';
   source: string | null; updatedAt: string | null;
 }
 export interface ReminderOptions { enabled: boolean; email: boolean; sms: boolean; push: boolean; pushKey: string | null }

@@ -5,5 +5,8 @@
   "tier": "construction",
   "featured": true,
   "level": "champion",
-  "website": "https://www.cambriausa.com"
+  "website": "https://www.cambriausa.com",
+  "category": [
+    "build"
+  ]
 }

@@ -10,7 +10,7 @@
     "Accessible Bathroom"
   ],
   "year": 2026,
-  "status": "in-progress",
+  "status": "completed",
   "bio": "<p>Remi and Nico are remarkable sisters with a strong bond and a gentle way of connecting. Born with rare genetic mutations, they cannot walk or speak and depend on their parents for daily care. Still, they share meaningful moments with their family, who cherish these special ways of communicating.</p><p>Their parents, Tiffany and Patrick, work hard every day to ensure their daughters are cared for, supported, and loved—now and in the future. As Remi and Nico become teenagers, their needs are changing. Both girls are tall now, which makes daily routines like bathing, moving, and hair care much harder. Lifting and moving the girls safely is more difficult, and the bathroom no longer fits their needs. Their long hair needs extra care, which adds to the challenge.</p><p>A well-designed, accessible bathroom is now a necessity for this family. Thanks to the support of Helen and Jimmy Carlos, Sunshine on a Ranney day will provide a safe and practical space will help Tiffany care for her daughters with dignity and comfort. It will make daily routines like bathing and brushing their hair safer, easier, and more loving.</p>",
   "quote": "",
   "heroImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/remi-and-nico/1778008350860-DSC-0229-Edit.jpeg/public",
@@ -91,6 +91,18 @@
     {
       "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/kids-r-kids/public",
       "name": "Kids R Kids Foundation"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/randall-brothers/public",
+      "name": "Randall Brothers"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/tko-plumbing/public",
+      "name": "TKO Plumbing Services"
+    },
+    {
+      "url": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/nothing-bundt-cakes/public",
+      "name": "Nothing Bundt Cakes"
     }
   ],
   "shortDescription": null,
@@ -107,5 +119,6 @@
   "plans": [],
   "beforeAfterPhotos": [],
   "sortOrder": 3,
-  "accentImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/remi-and-nico/1778008346165-DSC-0015-Edit.jpg/public"
+  "accentImage": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/kids/remi-and-nico/1778008346165-DSC-0015-Edit.jpg/public",
+  "revealVideoUrl": "https://watch.cloudflarestream.com/38fa3559c47fdded4e5d9fe2afde9d95"
 }
