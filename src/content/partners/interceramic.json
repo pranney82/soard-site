@@ -3,7 +3,10 @@
   "slug": "interceramic",
   "logo": "https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/partners/interceramic/public",
   "tier": "construction",
-  "featured": true,
+  "featured": false,
   "level": "friend",
-  "website": "https://interceramicusa.com"
+  "website": "https://interceramicusa.com",
+  "category": [
+    "build"
+  ]
 }

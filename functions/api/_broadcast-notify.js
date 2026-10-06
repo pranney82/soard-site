@@ -313,7 +313,7 @@ const Y = '#FFDA24';
 const D = '#2D2E33';
 const CREAM = '#FEFCF5';
 
-function emailShell({ preheader, heading, body, cta, ctaUrl, image, unsubscribeUrl }) {
+function emailShell({ preheader, heading, body, cta, ctaUrl, image, unsubscribeUrl, list = false }) {
   const img = image
     ? `<tr><td style="padding:0;"><img src="${escapeHtml(image)}" width="600" alt="" style="display:block;width:100%;max-width:600px;height:auto;border-radius:16px 16px 0 0;" /></td></tr>`
     : '';
@@ -332,15 +332,19 @@ ${img}
   <a href="${escapeHtml(ctaUrl)}" style="display:inline-block;background:${Y};color:${D};font-weight:700;text-decoration:none;padding:14px 24px;border-radius:10px;font-size:16px;">${escapeHtml(cta)}</a>
 </td></tr>
 <tr><td style="padding:16px 32px 28px;font-size:12px;color:#6B6C72;border-top:1px solid #E5E4E0;">
-  You asked us to remind you about live room reveals. <a href="${escapeHtml(unsubscribeUrl)}" style="color:#6B6C72;">Stop these reminders</a>.
+  ${list
+    ? `You're getting this because you subscribed to updates from Sunshine on a Ranney Day. <a href="${escapeHtml(unsubscribeUrl)}" style="color:#6B6C72;">Unsubscribe</a>.`
+    : `You asked us to remind you about live room reveals. <a href="${escapeHtml(unsubscribeUrl)}" style="color:#6B6C72;">Stop these reminders</a>.`}
 </td></tr>
 </table></center></body></html>`;
 }
 
 /**
  * kind: 'scheduled' | 'day' | 'hour' | 'live' | 'replay'
+ * list: true for newsletter-list sends (Kit), which get list footer copy
+ *       instead of "you asked for reminders".
  */
-export function reminderEmail({ kind, kidName, scheduledAt, liveUrl, replayUrl, image, unsubscribeUrl, tz }) {
+export function reminderEmail({ kind, kidName, scheduledAt, liveUrl, replayUrl, image, unsubscribeUrl, tz, list = false }) {
   const who = kidName ? `${kidName}'s` : 'the next';
   const when = formatWhen(scheduledAt, tz);
   const map = {
@@ -381,7 +385,7 @@ export function reminderEmail({ kind, kidName, scheduledAt, liveUrl, replayUrl, 
     },
   };
   const t = map[kind] || map.live;
-  const html = emailShell({ ...t, image, unsubscribeUrl });
+  const html = emailShell({ ...t, image, unsubscribeUrl, list });
   const text = `${t.heading}\n\n${t.body.replace(/<[^>]+>/g, '')}\n\n${t.cta}: ${t.ctaUrl}\n\nStop these reminders: ${unsubscribeUrl}`;
   return { subject: t.subject, html, text };
 }

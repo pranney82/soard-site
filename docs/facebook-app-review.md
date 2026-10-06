@@ -59,3 +59,24 @@ Admin → Broadcast → Setup → Facebook → choose "Live Video API" → Save.
 ## If it is rejected
 
 Rejections usually cite an unclear screencast or missing Business Verification. Fix the cited item and resubmit; there is no cooldown. The alternative that needs no review is a multistreaming service (Restream, StreamYard) whose Facebook connector already holds approval, at a monthly fee.
+
+## Instagram Reels
+
+The site posts every reveal to Instagram as a Reel on its own (functions/api/_broadcast-reel.js). That uses the same Facebook app and the same page token, with two more permissions.
+
+**Add to the same submission:** `instagram_basic` and `instagram_content_publish`. Use-case text to add:
+
+> After each live reveal, our server posts a clip of the recording (up to 15 minutes, cut around the reveal moment) as a Reel on our own Instagram professional account, which is linked to our Facebook Page. It uses the Content Publishing API (POST /{ig-user-id}/media with media_type REELS, then media_publish). It reads only our own account's id and username. No user data is collected.
+
+Add one extra shot to the screencast: Admin → Broadcast → Now after a reveal, showing the Reel card reach "Posted", then the Reel on instagram.com/sunshineonaranneyday.
+
+**Before approval**, Facebook usually lets people with a role on the app use these permissions on their own accounts, so it can work right away once the token carries them.
+
+**Regenerate the page token with the Instagram permissions** (Peter, once; secrets live only in Cloudflare):
+
+1. Link Instagram to the Page if it isn't: Instagram app → Settings → Account type and tools → switch to a professional account → Business, then Facebook Page settings → Linked accounts → Instagram → connect.
+2. developers.facebook.com/tools/explorer → pick the SOARD app → User or Page: **Get User Access Token** → tick `pages_show_list`, `pages_read_engagement`, `pages_manage_posts`, `publish_video`, `instagram_basic`, `instagram_content_publish`, `business_management` → Generate → approve in the popup.
+3. Access Token Tool (developers.facebook.com/tools/accesstoken) → **Extend Access Token** on that user token → copy the long-lived user token.
+4. In Graph Explorer, paste the long-lived token and run `GET /me/accounts`. Copy the `access_token` of the Sunshine on a Ranney Day page. Page tokens made from a long-lived user token do not expire.
+5. Cloudflare dashboard → Workers & Pages → soard-site → Settings → Variables → edit `FB_PAGE_TOKEN` → paste → Save → redeploy (any push, or Retry deployment).
+6. Admin → Broadcast → Setup → **Check Instagram connection**. It should say "Linked Instagram: @sunshineonaranneyday. Ready to post." Test Facebook connection should list the new scopes.

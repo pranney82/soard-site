@@ -97,6 +97,33 @@ export async function fbCurrentLive(env) {
   }
 }
 
+/**
+ * Text that might name the kid being revealed right now: the Page's live
+ * (or just-started) video title + description, then the Page's own posts
+ * from the last day, newest first. Best effort; missing permissions or
+ * errors just mean fewer clues. Returns [{ source, text, lead, at }].
+ */
+export async function fbRevealClues(env, { sinceMs = 24 * 3600e3 } = {}) {
+  if (!fbConfigured(env)) return [];
+  const since = Date.now() - sinceMs;
+  const clues = [];
+  try {
+    const [vids, posts] = await Promise.all([
+      graph(env, 'GET', `${env.FB_PAGE_ID}/videos`, { fields: 'live_status,title,description,created_time', limit: '5' }),
+      graph(env, 'GET', `${env.FB_PAGE_ID}/posts`, { fields: 'message,created_time', limit: '10' }),
+    ]);
+    for (const v of (vids.ok ? vids.data.data || [] : [])) {
+      if (v.live_status !== 'LIVE' && Date.parse(v.created_time) < Date.now() - 2 * 3600e3) continue;
+      clues.push({ source: 'facebook-live', lead: v.title || '', text: `${v.title || ''} ${v.description || ''}`, at: v.created_time });
+    }
+    for (const p of (posts.ok ? posts.data.data || [] : [])) {
+      if (!p.message || Date.parse(p.created_time) < since) continue;
+      clues.push({ source: 'facebook-post', lead: p.message.split('\n')[0], text: p.message, at: p.created_time });
+    }
+  } catch { /* no clues */ }
+  return clues;
+}
+
 /** Recent videos with a live_status (LIVE or VOD), newest first. */
 export async function fbRecentBroadcasts(env, limit = 5) {
   if (!fbConfigured(env)) return { ok: false, error: 'not configured', videos: [] };

@@ -22,7 +22,8 @@
  *
  * Side effects: reminder sends (email / SMS / push, idempotent per
  * broadcast+kind+channel), Facebook API-mode live posts, replay detection +
- * captions + kid-page attach + rebuild, Kit drafts, Slack/email alerts,
+ * captions + kid-page attach + rebuild, Kit drafts + the automatic Kit
+ * "we're live" send, Slack/email alerts,
  * analytics rows, audit log.
  */
 
@@ -30,8 +31,9 @@ import { logAudit } from './_audit.js';
 import * as stream from './_stream-live.js';
 import * as notify from './_broadcast-notify.js';
 import * as fb from './_broadcast-fb.js';
-import { attachToKid } from './_fb-archive.js';
+import { attachToKid, matchKids } from './_fb-archive.js';
 import { kitConfigured, kitCreateBroadcast } from './_kit.js';
+import * as reels from './_broadcast-reel.js';
 
 export const STATE_KEY = 'broadcast';
 export const CONFIG_KEY = 'broadcast-config';
@@ -51,6 +53,18 @@ const REPLAY_CHECK_INTERVAL_MS = 30 * 1000;
 const DAILY_HEALTH_MS = 24 * 60 * 60 * 1000;
 const REVEAL_MORNING_HEALTH_MS = 6 * 60 * 60 * 1000;
 const DEPLOY_COOLDOWN_MS = 10 * 60 * 1000;
+// The automatic Kit send only fires when the stream starts this close to the
+// scheduled time, so a phone test earlier in the day can't email the whole list.
+const KIT_LIVE_EARLY_MS = 30 * 60 * 1000;
+// Kit wants a future send_at; a minute out keeps it effectively immediate.
+const KIT_SEND_DELAY_MS = 60 * 1000;
+// The stream must stay up this long in one unbroken stretch before the list is
+// emailed, so a quick phone test or an accidental tap emails nobody.
+const KIT_LIVE_STEADY_MS = 3 * 60 * 1000;
+// Past this far into a broadcast a "come watch" email is too late to send by itself.
+const KIT_LIVE_LATE_MS = 30 * 60 * 1000;
+// How often to look for clues about which kid an unscheduled reveal is for.
+const KID_CLUE_INTERVAL_MS = 60 * 1000;
 const HOOK_ENV_VARS = ['CF_PAGES_DEPLOY_HOOK', 'CF_DEPLOY_HOOK', 'DEPLOY_HOOK_URL'];
 
 // Per-isolate throttles (cheap; D1 stamps back them up)
@@ -116,11 +130,16 @@ export function defaultConfig() {
     outputs: {},           // { facebook: { uid, url, keyMask, enabled, createdAt }, youtube: {...} }
     facebook: { mode: 'persistent', pageUrl: 'https://www.facebook.com/SunshineOnaRanneyDay' },
     youtube: { channelUrl: 'https://www.youtube.com/@sunshineonaranneyday/live' },
+    instagram: { profileUrl: 'https://www.instagram.com/sunshineonaranneyday' },
+    orientation: 'portrait',   // what the crew shoots; the site player matches (the team shoots vertical)
+    reels: reels.defaultReelConfig(), // automatic Instagram Reel of every replay
     reminders: { enabled: true, hoursBefore: [24, 1], sms: true, push: true },
     replayHours: DEFAULT_REPLAY_HOURS,
     timezone: 'America/New_York',
     alerts: { emails: [] },
     defaults: { title: 'Live room reveal', message: "It's reveal day! We're live right now." },
+    // Email the Kit list when a scheduled reveal goes live. Each reveal can opt out (state.kitLiveEmail).
+    kitLive: { enabled: true, audience: { type: 'all', id: null, name: 'All subscribers' } },
     vapid: null,           // { publicKey, privateJwk, createdAt }
     setupAt: null, setupBy: null, updatedAt: null,
   };
@@ -135,8 +154,14 @@ export function defaultState() {
     title: null, message: null, image: null,
     scheduledAt: null, armedAt: null, liveAt: null, endedAt: null, disconnectedAt: null,
     liveVideoUid: null, replayUid: null, replayReadyAt: null, replayUntil: null,
+    revealAtSeconds: null, // admin override for where the reveal happens in the recording
+    reel: null,            // Instagram Reel pipeline (functions/api/_broadcast-reel.js)
     fb: { liveVideoId: null, permalink: null, outputUid: null, checkedAt: null, needsReview: false },
-    kit: { scheduledDraftId: null, replayDraftId: null },
+    kit: { scheduledDraftId: null, replayDraftId: null, live: null }, // live: { id, audience, sendAt, by, error }
+    kitLiveEmail: null,    // per-reveal override of config.kitLive.enabled; null = follow the setting
+    segmentAt: null,       // start of the current unbroken stretch of video (resets on reconnect)
+    kidVia: null,          // how the kid was known: 'scheduled' | 'admin' | 'facebook-live' | 'facebook-post'
+    kidCheckAt: null, kidAlertAt: null,
     source: null,          // 'stream' | 'manual'
     manual: null,          // { url, until } for banner-only overrides
     note: null,
@@ -206,6 +231,8 @@ export function publicState(state, config) {
     player,
     facebookUrl: state.fb?.permalink || config?.facebook?.pageUrl || null,
     youtubeUrl: config?.youtube?.channelUrl || null,
+    instagramUrl: config?.instagram?.profileUrl || null,
+    orientation: config?.orientation === 'portrait' ? 'portrait' : 'landscape',
     source: state.source,
     updatedAt: state.updatedAt,
   };
@@ -295,7 +322,7 @@ async function upsertBroadcastRow(DB, s) {
       fb_permalink=excluded.fb_permalink, source=excluded.source, data=excluded.data, updated_at=excluded.updated_at`)
     .bind(s.broadcastId, s.kidSlug, s.kidName, s.title, s.message, s.image, s.scheduledAt, s.liveAt, s.endedAt, s.phase,
       s.liveVideoUid, s.replayUid, s.fb?.liveVideoId || null, s.fb?.permalink || null, s.source,
-      JSON.stringify({ clicks: s.clicks || 0, note: s.note, kit: s.kit, replayUntil: s.replayUntil }), s.createdAt || nowIso(), nowIso()).run();
+      JSON.stringify({ clicks: s.clicks || 0, note: s.note, kit: s.kit, replayUntil: s.replayUntil, reel: s.reel || null }), s.createdAt || nowIso(), nowIso()).run();
 }
 
 export async function recordEvent(DB, broadcastId, type, meta) {
@@ -327,7 +354,7 @@ function newBroadcastId() {
   return `live-${Date.now()}`;
 }
 
-export function tSchedule(state, { kidSlug, kidName, scheduledAt, title, message, image, by }, config) {
+export function tSchedule(state, { kidSlug, kidName, scheduledAt, title, message, image, kitLiveEmail, by }, config) {
   const s = { ...defaultState(), broadcastId: newBroadcastId(), createdAt: nowIso() };
   s.kidSlug = kidSlug || null;
   s.kidName = kidName || null;
@@ -335,6 +362,8 @@ export function tSchedule(state, { kidSlug, kidName, scheduledAt, title, message
   s.title = title || (kidName ? `${kidName}'s room reveal` : config.defaults.title);
   s.message = message || (kidName ? `Watch ${kidName}'s room reveal live` : config.defaults.message);
   s.image = image || null;
+  s.kitLiveEmail = typeof kitLiveEmail === 'boolean' ? kitLiveEmail : null;
+  s.kidVia = kidSlug ? 'scheduled' : null;
   s.phase = Date.parse(scheduledAt) - Date.now() <= ARM_WINDOW_MS ? 'armed' : 'scheduled';
   if (s.phase === 'armed') s.armedAt = nowIso();
   s.updatedBy = by || null;
@@ -350,6 +379,7 @@ export function tStartLive(state, { videoUid, source = 'stream', by }, config) {
     s.title = config.defaults.title;
     s.message = config.defaults.message;
   }
+  if (s.phase !== 'live') s.segmentAt = nowIso();
   s.phase = 'live';
   s.source = source;
   s.liveAt = s.liveAt || nowIso();
@@ -364,7 +394,7 @@ export function tDisconnected(state) {
 }
 
 export function tReconnected(state) {
-  return { ...state, phase: 'live', disconnectedAt: null };
+  return { ...state, phase: 'live', disconnectedAt: null, segmentAt: nowIso() };
 }
 
 export function tEnd(state, config, { by } = {}) {
@@ -489,7 +519,7 @@ async function dueReminderKinds(DB, state, config) {
 async function draftKit(env, state, kind) {
   if (!kitConfigured(env)) return null;
   try {
-    const tpl = notify.reminderEmail({ kind, kidName: state.kidName, scheduledAt: state.scheduledAt, liveUrl: liveUrlFor(state), replayUrl: liveUrlFor(state), unsubscribeUrl: '{{ unsubscribe_url }}', image: null });
+    const tpl = notify.reminderEmail({ kind, kidName: state.kidName, scheduledAt: state.scheduledAt, liveUrl: liveUrlFor(state), replayUrl: liveUrlFor(state), unsubscribeUrl: '{{ unsubscribe_url }}', image: null, list: true });
     const r = await kitCreateBroadcast(env, { subject: tpl.subject, previewText: '', description: `[auto] ${state.kidName || 'Reveal'} ${kind}`, html: tpl.html });
     return r.ok ? (r.broadcast?.id || true) : null;
   } catch {
@@ -497,7 +527,67 @@ async function draftKit(env, state, kind) {
   }
 }
 
+export function kitLiveWanted(state, config) {
+  return typeof state.kitLiveEmail === 'boolean' ? state.kitLiveEmail : config.kitLive?.enabled !== false;
+}
+
+function emailImage(state) {
+  if (!state.image) return null;
+  if (/^https:\/\//.test(state.image)) return state.image;
+  return `${SITE_ORIGIN}/cdn-cgi/imagedelivery/ROYFuPmfN2vPS6mt5sCkZQ/${state.image}/w=1200,h=630,fit=cover,q=82`;
+}
+
+/**
+ * Email the Kit list "we're live". Once per broadcast (claimed in
+ * broadcast_sends as kind 'live', channel 'kit'); a failed send releases the
+ * claim so the admin's "Email the list now" button can retry. Never throws.
+ */
+export async function sendKitLive(env, config, state, work, { by = 'live-broadcast' } = {}) {
+  if (!kitConfigured(env) || !state.broadcastId) return state;
+  if (!await claimSend(env.DB, state.broadcastId, 'live', 'kit')) return state;
+  const audience = config.kitLive?.audience?.type && config.kitLive.audience.type !== 'all' ? config.kitLive.audience : { type: 'all', id: null, name: 'All subscribers' };
+  const s = { ...state, kit: { ...(state.kit || {}) } };
+  try {
+    const tpl = notify.reminderEmail({ kind: 'live', kidName: s.kidName, scheduledAt: s.scheduledAt, liveUrl: liveUrlFor(s), unsubscribeUrl: '{{ unsubscribe_url }}', image: emailImage(s), tz: config.timezone, list: true });
+    const sendAt = new Date(Date.now() + KIT_SEND_DELAY_MS).toISOString();
+    const r = await kitCreateBroadcast(env, { subject: tpl.subject, previewText: "Watch the reveal happening right now.", description: `[auto] ${s.kidName || 'Reveal'} live`, html: tpl.html, sendAt, audience });
+    if (r.ok) {
+      s.kit.live = { id: r.broadcast?.id || null, audience: audience.name || audience.type, sendAt, by, error: null };
+      await finishSend(env.DB, s.broadcastId, 'live', 'kit', { recipients: 0, sent: 1, failed: 0, error: null });
+      work.push('kit-live');
+      await logAudit(env.DB, { userEmail: by, action: 'published', entityType: 'newsletter', entitySlug: String(r.broadcast?.id || s.broadcastId), entityName: `Kit "we're live" email: ${s.title || 'reveal'} → ${audience.name || 'All subscribers'}`, gitStatus: 'ok' });
+    } else {
+      throw new Error(r.error || `Kit HTTP ${r.status}`);
+    }
+  } catch (err) {
+    s.kit.live = { id: null, audience: audience.name || audience.type, sendAt: null, by, error: err.message };
+    await env.DB.prepare(`DELETE FROM broadcast_sends WHERE broadcast_id = ? AND kind = 'live' AND channel = 'kit'`).bind(s.broadcastId).run().catch(() => {});
+    work.push('kit-live-failed');
+    await notify.alertAdmins(env, config, { level: 'warn', title: "Kit \"we're live\" email did not send", detail: `${err.message}. Use "Email the list now" in Admin → Broadcast to retry.`, url: `${SITE_ORIGIN}/admin/` });
+  }
+  return s;
+}
+
 // ─── Replay handling ────────────────────────────────────────────────
+
+/** Move the Instagram Reel pipeline one step and tell the humans about outcomes. */
+async function tickReel(env, config, state, work, opts) {
+  if (!state.reel || !stream.streamConfigured(env)) return state;
+  const before = state.reel.stage;
+  const r = await reels.advanceReel(env, config, state, opts);
+  work.push(...r.events);
+  const reel = r.state.reel;
+  if (reel && reel.stage !== before) {
+    if (reel.stage === 'done') {
+      await recordEvent(env.DB, state.broadcastId, 'reel_published', { permalink: reel.permalink, method: reel.method, start: reel.start, end: reel.end });
+      await logAudit(env.DB, { userEmail: 'live-broadcast', action: 'published', entityType: 'instagram-reel', entitySlug: reel.mediaId, entityName: `Instagram Reel: ${state.title || state.broadcastId}`, changes: [{ field: 'window', from: null, to: `${reel.start}-${reel.end}s (${reel.method})` }], gitStatus: 'ok' });
+      await notify.alertAdmins(env, config, { level: 'info', title: `Instagram Reel posted: ${state.title || 'reveal'}`, detail: `Cut ${Math.floor(reel.start / 60)}:${String(Math.floor(reel.start % 60)).padStart(2, '0')} to ${Math.floor(reel.end / 60)}:${String(Math.floor(reel.end % 60)).padStart(2, '0')} of the recording (picked by ${reel.method}).`, url: reel.permalink || undefined });
+    } else if (reel.stage === 'failed' || reel.stage === 'blocked') {
+      await notify.alertAdmins(env, config, { level: 'warn', title: `Instagram Reel ${reel.stage === 'blocked' ? 'needs setup' : 'failed'}: ${state.title || 'reveal'}`, detail: reel.error || 'unknown error', url: `${SITE_ORIGIN}/admin/` });
+    }
+  }
+  return r.state;
+}
 
 async function checkReplayReady(env, config, state, health, work) {
   if (state.phase !== 'replay' || state.replayUid || state.source !== 'stream') return state;
@@ -532,8 +622,93 @@ async function checkReplayReady(env, config, state, health, work) {
   await sendReminders(env, config, s, 'replay', work);
   const draft = await draftKit(env, s, 'replay');
   if (draft) s.kit = { ...(s.kit || {}), replayDraftId: draft };
+  if (reels.reelEnabled(config)) { s.reel = reels.startReel(s, uid, s.revealAtSeconds); work.push('reel:start'); }
   await recordEvent(env.DB, s.broadcastId, 'replay_ready', { uid });
   await logAudit(env.DB, { userEmail: 'live-broadcast', action: 'created', entityType: 'stream-video', entitySlug: uid, entityName: `Reveal recording ready: ${s.title || s.broadcastId}`, gitStatus: 'ok' });
+  return s;
+}
+
+/**
+ * Automatic Kit send, checked every tick while live. It goes out once the
+ * stream has stayed up KIT_LIVE_STEADY_MS in one stretch AND the kid is
+ * known (scheduled, picked in the admin, or read from Facebook). Held, with
+ * an alert, when a scheduled reveal starts more than 30 minutes early, or
+ * when no kid turns up in the first 30 minutes. "Email the list now" in the
+ * admin covers every held case.
+ */
+async function kitAutoLive(env, config, state, work) {
+  if (state.phase !== 'live' || !kitConfigured(env) || state.kit?.live || !kitLiveWanted(state, config)) return state;
+  if (state.source === 'manual' && !state.scheduledAt) return state; // emergency banner: humans decide
+  const now = Date.now();
+  const hold = async (error, title, detail) => {
+    work.push('kit-live-held');
+    await notify.alertAdmins(env, config, { level: 'warn', title, detail, url: `${SITE_ORIGIN}/admin/` });
+    return { ...state, kit: { ...(state.kit || {}), live: { id: null, held: true, error } } };
+  };
+  if (state.scheduledAt && Date.parse(state.liveAt) < Date.parse(state.scheduledAt) - KIT_LIVE_EARLY_MS) {
+    return hold('Went live more than 30 minutes early; not sent automatically', 'Went live early: Kit email held', `${state.title || 'The reveal'} went live more than 30 minutes before its scheduled time, so the "we're live" email to the Kit list was not sent automatically (it could be a phone test). If this is the real reveal, press "Email the list now" in Admin → Broadcast.`);
+  }
+  if (now - Date.parse(state.segmentAt || state.liveAt) < KIT_LIVE_STEADY_MS) return state;
+
+  let s = state;
+  if (!s.kidSlug) s = await identifyKid(env, s, work);
+  if (!s.kidSlug) {
+    if (now - Date.parse(s.liveAt) > KIT_LIVE_LATE_MS) {
+      state = s;
+      return hold('No kid identified in the first 30 minutes', "Kit email not sent: which kid is this?", 'The stream has been live 30 minutes and nothing said which kid it is, so the "we\'re live" email was not sent. Pick the kid and press "Email the list now" in Admin → Broadcast if it is still worth sending.');
+    }
+    if (!s.kidAlertAt) {
+      s = { ...s, kidAlertAt: nowIso() };
+      await notify.alertAdmins(env, config, { level: 'warn', title: 'Live now: which kid is this?', detail: 'The Kit "we\'re live" email is waiting for the kid. Nothing on Facebook named one yet. Pick the kid in Admin → Broadcast → Now and the email goes out right away, or put the kid\'s name in the first line of the Facebook post.', url: `${SITE_ORIGIN}/admin/` });
+    }
+    return s;
+  }
+  if (now - Date.parse(s.liveAt) > KIT_LIVE_LATE_MS && s.kidVia !== 'admin') {
+    state = s;
+    return hold('Kid identified more than 30 minutes in; not sent automatically', 'Kit email not sent: too late', `${s.kidName || 'The kid'} was identified more than 30 minutes into the stream, so the "we're live" email was not sent by itself. Press "Email the list now" in Admin → Broadcast if it is still worth sending.`);
+  }
+  return sendKitLive(env, config, s, work);
+}
+
+/** Kids a reveal could be for: no reveal video yet, this year or last. */
+async function openKids(DB) {
+  const res = await DB.prepare('SELECT slug, name, year, status, data FROM kids').all();
+  const year = new Date(Date.now()).getUTCFullYear();
+  return (res?.results || []).map((r) => {
+    let d = {}; try { d = JSON.parse(r.data || '{}'); } catch {}
+    return { slug: r.slug, name: r.name || d.name, year: Number(r.year) || null, image: d.heroImage || d.photos?.[0]?.url || null, reveal: d.revealVideoUrl || null };
+  }).filter((k) => k.name && !k.reveal && k.year && k.year >= year - 1);
+}
+
+/**
+ * Work out which kid an unscheduled reveal is for from what's public on
+ * Facebook: the live post first, then the Page's posts from the last day,
+ * newest first. A clue only counts when it names exactly one open kid.
+ * Throttled to once a minute. The other session's waiting screen, the
+ * admin, or a schedule setting state.kidSlug short-circuits all of this.
+ */
+async function identifyKid(env, state, work) {
+  if (!fb.fbConfigured(env)) return state;
+  if (state.kidCheckAt && Date.now() - Date.parse(state.kidCheckAt) < KID_CLUE_INTERVAL_MS) return state;
+  const s = { ...state, kidCheckAt: nowIso() };
+  const [clues, kids] = await Promise.all([fb.fbRevealClues(env), openKids(env.DB)]);
+  const ordered = [...clues.filter((c) => c.source === 'facebook-live'), ...clues.filter((c) => c.source !== 'facebook-live').sort((a, b) => Date.parse(b.at) - Date.parse(a.at))];
+  for (const c of ordered) {
+    for (const text of [c.lead, c.text]) {
+      const m = matchKids(kids, text);
+      if (m.length > 1) break; // ambiguous clue: try the next one
+      if (m.length === 1) return applyKid(s, m[0], c.source, work);
+    }
+  }
+  return s;
+}
+
+function applyKid(state, kid, via, work) {
+  const generic = !state.kidSlug;
+  const s = { ...state, kidSlug: kid.slug, kidName: kid.name, kidVia: via };
+  if (!s.image && kid.image) s.image = kid.image;
+  if (generic) { s.title = `${kid.name}'s room reveal`; s.message = `Watch ${kid.name}'s room reveal live`; }
+  if (work) work.push(`kid:${kid.slug}:${via}`);
   return s;
 }
 
@@ -715,8 +890,10 @@ export async function runTick(env, { source = 'tick', force = false, by = null, 
 
   // 4. Ongoing work
   if (state.phase === 'live' || state.phase === 'ending') state = await fbRefreshPermalink(env, state, work);
+  state = await kitAutoLive(env, config, state, work);
   for (const kind of await dueReminderKinds(DB, state, config)) await sendReminders(env, config, state, kind, work);
   state = await checkReplayReady(env, config, state, health, work);
+  state = await tickReel(env, config, state, work);
   await runHealth(env, config, state, health, work);
 
   // 5. Persist
@@ -782,7 +959,7 @@ export async function adminAction(env, action, body = {}, userEmail = 'unknown')
       const kid = await kidByName(DB, body.kidSlug);
       const image = sanitizeImage(body.image ?? kid?.image ?? null);
       if (image === undefined) return fail('image must be a Cloudflare image id or imagedelivery.net URL');
-      state = tSchedule(state, { kidSlug: kid?.slug || null, kidName: kid?.name || null, scheduledAt, title: body.title, message: body.message, image, by: userEmail }, config);
+      state = tSchedule(state, { kidSlug: kid?.slug || null, kidName: kid?.name || null, scheduledAt, title: body.title, message: body.message, image, kitLiveEmail: body.kitLiveEmail, by: userEmail }, config);
       await writeState(DB, state); await upsertBroadcastRow(DB, state);
       const work = [];
       // A save-the-date only makes sense with some lead time; inside 26 h the day-before reminder covers it
@@ -806,10 +983,19 @@ export async function adminAction(env, action, body = {}, userEmail = 'unknown')
       if (body.kidSlug !== undefined && ['scheduled', 'armed'].includes(s.phase)) {
         const kid = await kidByName(DB, body.kidSlug); s.kidSlug = kid?.slug || null; s.kidName = kid?.name || null;
         if (!body.image && kid?.image) s.image = kid.image;
+        s.kidVia = kid ? 'admin' : null;
+      } else if (body.kidSlug && ['live', 'ending'].includes(s.phase)) {
+        // Unscheduled reveal: naming the kid releases the waiting Kit email
+        const kid = await kidByName(DB, body.kidSlug);
+        if (!kid) return fail('No such kid');
+        Object.assign(s, applyKid(s, kid, 'admin', null));
       }
+      if (typeof body.kitLiveEmail === 'boolean') s.kitLiveEmail = body.kitLiveEmail;
+      if (body.revealAtMinute !== undefined) { const m = body.revealAtMinute === '' || body.revealAtMinute === null ? null : Number(body.revealAtMinute); if (m !== null && !(m >= 0 && m < 600)) return fail('revealAtMinute must be a number of minutes'); s.revealAtSeconds = m === null ? null : Math.round(m * 60); }
       if (body.url !== undefined && s.source === 'manual') s.manual = { ...(s.manual || {}), url: String(body.url) };
       s.updatedBy = userEmail;
       state = s;
+      if (s.kidVia === 'admin' && s.phase === 'live') state = await kitAutoLive(env, config, state, []);
       await writeState(DB, state); await upsertBroadcastRow(DB, state);
       await logAudit(DB, { userEmail, action: 'updated', entityType: 'live-status', entitySlug: state.broadcastId, entityName: state.title, gitStatus: 'ok' });
       break;
@@ -838,7 +1024,18 @@ export async function adminAction(env, action, body = {}, userEmail = 'unknown')
       state.manual = { url, until: new Date(Date.now() + hours * 3600e3).toISOString() };
       await writeState(DB, state); await upsertBroadcastRow(DB, state);
       await recordEvent(DB, state.broadcastId, 'live_start', { source: 'manual' });
+      state = await kitAutoLive(env, config, state, []);
       await logAudit(DB, { userEmail, action: 'published', entityType: 'live-status', entitySlug: state.broadcastId, entityName: `Manual banner: ${state.message}`, gitStatus: 'ok' });
+      break;
+    }
+    case 'sendKitLive': {
+      // By hand: an unplanned go-live, an early start the automatic send held back, or a retry
+      if (!['live', 'ending'].includes(state.phase)) return fail('Only while live');
+      if (!kitConfigured(env)) return fail('Kit is not connected (KIT_API_KEY)');
+      const work = [];
+      state = await sendKitLive(env, config, state, work, { by: userEmail });
+      if (!work.includes('kit-live')) return fail(state.kit?.live?.error || 'Already emailed for this broadcast');
+      await writeState(DB, state);
       break;
     }
     case 'endNow': {
@@ -869,6 +1066,24 @@ export async function adminAction(env, action, body = {}, userEmail = 'unknown')
       if (!/^[a-f0-9]{32}$/i.test(uid)) return fail('uid must be a Stream video id');
       if (state.phase !== 'replay') return fail('Only while a replay is showing');
       state = { ...state, replayUid: uid, replayReadyAt: nowIso(), updatedBy: userEmail };
+      if (reels.reelEnabled(config) && (!state.reel || state.reel.stage !== 'done')) state.reel = reels.startReel(state, uid, state.revealAtSeconds);
+      await writeState(DB, state); await upsertBroadcastRow(DB, state);
+      break;
+    }
+    case 'reelRetry': {
+      const uid = state.replayUid;
+      if (!uid) return fail('No replay recording yet');
+      const m = body.revealAtMinute === undefined || body.revealAtMinute === '' || body.revealAtMinute === null ? null : Number(body.revealAtMinute);
+      if (m !== null && !(m >= 0 && m < 600)) return fail('revealAtMinute must be a number of minutes');
+      const seconds = m === null ? state.revealAtSeconds : Math.round(m * 60);
+      state = { ...state, revealAtSeconds: seconds ?? null, reel: reels.startReel(state, uid, seconds ?? null), updatedBy: userEmail };
+      await writeState(DB, state); await upsertBroadcastRow(DB, state);
+      await logAudit(DB, { userEmail, action: 'updated', entityType: 'instagram-reel', entitySlug: state.broadcastId, entityName: m !== null ? `Reel re-cut at minute ${m}` : 'Reel retried', gitStatus: 'ok' });
+      break;
+    }
+    case 'reelSkip': {
+      if (!state.reel) return fail('No Reel in progress');
+      state = { ...state, reel: { ...state.reel, stage: 'skipped', updatedAt: nowIso() }, updatedBy: userEmail };
       await writeState(DB, state); await upsertBroadcastRow(DB, state);
       break;
     }

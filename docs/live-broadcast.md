@@ -22,6 +22,8 @@ soard-live-hub Durable Object (alarm every 8–60 s) ──▶ /api/broadcast-ho
         (LIVE pill, live page, admin)                  Kit drafts, audit log, analytics rows
 ```
 
+**Kit "we're live" email.** Checked every tick while live (`kitAutoLive` in `_broadcast.js`). It goes out once two things are true: the stream has stayed up 3 unbroken minutes (`state.segmentAt` resets on every reconnect, so a quick phone test emails no one), and the kid is known. The kid comes from, in order: a schedule, the admin's "Which kid is this?" picker (or anything else that sets `state.kidSlug`, such as a waiting screen), the Facebook live post's title/description, then the Page's own posts from the last day, newest first (`fbRevealClues` + the archiver's `matchKids`, open kids only: no reveal video yet, this year or last; a clue naming two kids is skipped). `state.kidVia` records which. Kit sends it about a minute later (`send_at`) to `broadcast-config.kitLive.audience` (default: all subscribers), once per broadcast (`broadcast_sends` kind `live`, channel `kit`). Held with an admin alert when: a scheduled reveal starts more than 30 minutes early, no kid turns up within 30 minutes, or the kid is found by Facebook clues after 30 minutes. The emergency manual banner never sends by itself. "Email the list now" in Admin → Broadcast → Now covers every held case and retries a failed send. Each reveal also has an on/off switch (`state.kitLiveEmail`).
+
 Stream is the origin because it gives us an authoritative "is video arriving" signal, an instant permanent recording, simulcast without a third-party service, and a player we control. Facebook stays the social destination.
 
 ## Phases
@@ -73,6 +75,7 @@ Bindings and env
 3. Scan the **Standard** QR with each phone that will stream (Larix Broadcaster installed). Scan **Weak signal** too; it adds a second profile.
 4. Facebook: Live Producer → Streaming software → Advanced → Persistent stream key → paste into Setup → Facebook simulcast. Before each reveal, schedule the live post in Live Producer (a two-minute office task, any day before); Facebook auto-starts it when the stream arrives.
 5. YouTube: Studio → Go live → Stream key → paste into Setup → YouTube simulcast. Turn on Auto-start and Auto-stop in Studio.
+5b. Instagram (optional, per reveal): Instagram issues a new Stream URL + key for every broadcast and has no API, so before each reveal someone on a desktop opens instagram.com → Create → Live, copies both, and pastes them into Setup → Instagram simulcast. Needs a professional account. Instagram Live is portrait; set Site behavior → Camera orientation to what the crew shoots.
 6. Cloudflare dashboard → Notifications → Destinations → Webhooks → Create with URL `https://sunshineonaranneyday.com/api/stream-webhook`, then Notifications → Add → Stream → Stream Live Notifications → attach it. (Optional but makes reactions instant. The Alerting API can do the same: `POST /accounts/{id}/alerting/v3/destinations/webhooks` then `POST /alerting/v3/policies` with `alert_type: stream_live_notifications`.)
 7. Reminders → Generate push keys (browser alerts). Add Twilio env vars if texts are wanted. Add alert emails in Health.
 8. Run checks in Health. Everything should read OK except optional rows.
@@ -80,6 +83,20 @@ Bindings and env
 ## Reveal day
 
 Office: nothing. Crew: open Larix, tap Start. See `docs/live-runbook.md`.
+
+## Instagram Reels (automatic)
+
+Instagram has no API for going live, so every replay becomes a Reel instead (functions/api/_broadcast-reel.js), with no human step:
+
+1. Replay ready → `state.reel` starts (`pending`). Recordings of 14:55 or less post whole (`fits`).
+2. Longer ones: wait for Stream's English captions (requested when the replay is ready), score cues for reveal language ("open your eyes", countdowns, "your new room", reactions), take the densest 45 s window, and ask Workers AI (`env.AI`) for a second opinion. Agreement within 2 min → keyword time. Weak keywords → AI. Nothing found or no captions after 25 min → the last 14:55 (`fallback`). A per-reveal "reveal happens at minute" in the admin overrides everything.
+3. Window = moment minus `leadSeconds` (default 4 min), up to 14:55, clamped to the recording. Stream `POST /stream/clip` makes a new video; the source is untouched.
+4. Stream MP4 download → Instagram `POST /{ig-user-id}/media` (REELS, caption template, cover at the reveal) → poll `status_code` → `media_publish` → permalink.
+5. The Now tab shows each stage, the chosen window and method, a preview link, and Retry / re-cut at a minute / Don't post. Outcomes alert; History links the Reel.
+
+Needs the page token to carry `instagram_basic` and `instagram_content_publish` and a professional Instagram account linked to the Page. See docs/facebook-app-review.md → Instagram Reels. Without them the Reel stops at `blocked` with the reason and an alert; nothing else is affected.
+
+The team shoots vertical, so Site behavior → Camera orientation defaults to portrait and the site's player is 9:16.
 
 ## Facebook API mode
 

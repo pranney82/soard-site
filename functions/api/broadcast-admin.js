@@ -19,10 +19,11 @@ import * as stream from './_stream-live.js';
 import * as notify from './_broadcast-notify.js';
 import * as fb from './_broadcast-fb.js';
 import { kitConfigured } from './_kit.js';
+import * as reels from './_broadcast-reel.js';
 import { logAudit } from './_audit.js';
 import { annotateArchived } from './_fb-archive.js';
 
-const TARGETS = new Set(['facebook', 'youtube', 'custom']);
+const TARGETS = new Set(['facebook', 'youtube', 'instagram', 'custom']);
 
 function redactConfig(config, reveal) {
   const c = JSON.parse(JSON.stringify(config));
@@ -222,11 +223,11 @@ export async function onRequestPost(context) {
       }
       case 'setOutput': {
         const target = String(body.target || '').toLowerCase();
-        if (!TARGETS.has(target)) return fail('target must be facebook, youtube or custom');
+        if (!TARGETS.has(target)) return fail('target must be facebook, youtube, instagram or custom');
         if (!config.liveInput?.uid) return fail('Create the live input first');
         const url = String(body.url || stream.OUTPUT_PRESETS[target]?.url || '').trim();
         const streamKey = String(body.streamKey || '').trim();
-        if (!/^rtmps?:\/\/\S+/.test(url)) return fail('url must start with rtmp:// or rtmps://');
+        if (!/^rtmps?:\/\/\S+/.test(url)) return fail(target === 'instagram' ? 'Paste the Stream URL Instagram shows next to the key (starts with rtmps://)' : 'url must start with rtmp:// or rtmps://');
         if (!streamKey) return fail('streamKey is required');
         const existing = config.outputs?.[target];
         if (existing?.uid) await stream.deleteOutput(env, config.liveInput.uid, existing.uid).catch(() => {});
@@ -264,6 +265,15 @@ export async function onRequestPost(context) {
           if (typeof p.facebook.pageUrl === 'string' && /^https:\/\/(www\.)?facebook\.com\//.test(p.facebook.pageUrl)) c.facebook.pageUrl = p.facebook.pageUrl.trim();
         }
         if (p.youtube && typeof p.youtube.channelUrl === 'string') c.youtube.channelUrl = p.youtube.channelUrl.trim().slice(0, 200);
+        if (p.instagram && typeof p.instagram.profileUrl === 'string') c.instagram = { ...(c.instagram || {}), profileUrl: p.instagram.profileUrl.trim().slice(0, 200) };
+        if (p.orientation && ['landscape', 'portrait'].includes(p.orientation)) c.orientation = p.orientation;
+        if (p.reels) {
+          c.reels = { ...reels.defaultReelConfig(), ...(c.reels || {}) };
+          if (typeof p.reels.enabled === 'boolean') c.reels.enabled = p.reels.enabled;
+          if (typeof p.reels.shareToFeed === 'boolean') c.reels.shareToFeed = p.reels.shareToFeed;
+          if (typeof p.reels.caption === 'string' && p.reels.caption.trim()) c.reels.caption = p.reels.caption.trim().slice(0, 2200);
+          if (p.reels.leadSeconds !== undefined) c.reels.leadSeconds = Math.min(600, Math.max(0, Math.round(Number(p.reels.leadSeconds) || 0)));
+        }
         if (p.reminders) {
           for (const k of ['enabled', 'sms', 'push']) if (typeof p.reminders[k] === 'boolean') c.reminders[k] = p.reminders[k];
           if (Array.isArray(p.reminders.hoursBefore)) c.reminders.hoursBefore = p.reminders.hoursBefore.map(Number).filter(n => [24, 1].includes(n));
@@ -297,6 +307,13 @@ export async function onRequestPost(context) {
         const t = await fb.checkFbToken(env);
         const [recent, info] = await Promise.all([t.ok ? fb.fbRecentBroadcasts(env, 5) : null, fb.fbTokenInfo(env)]);
         return Response.json({ success: t.ok, token: t, recent, info });
+      }
+      case 'testInstagram': {
+        const ig = await reels.instagramAccount(env);
+        const info = await fb.fbTokenInfo(env).catch(() => null);
+        const scopes = info?.scopes || [];
+        const missing = ['instagram_basic', 'instagram_content_publish'].filter(x => !scopes.includes(x));
+        return Response.json({ success: ig.ok && !missing.length, account: ig, missing, appReviewUrl: info?.appReviewUrl || null });
       }
       case 'testHub': {
         const s = await b.hubStatus(env);

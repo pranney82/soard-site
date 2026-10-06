@@ -140,6 +140,47 @@ export async function requestCaptions(env, videoUid, language = 'en') {
   }
 }
 
+// ─── Clips, captions, MP4 downloads (Instagram Reel pipeline) ───────
+
+/** Cut [start, end] seconds out of a ready video into a NEW video. Source is untouched. */
+export function createClip(env, { uid, startTimeSeconds, endTimeSeconds, name }) {
+  return api(env, 'POST', '/stream/clip', {
+    clippedFromVideoUID: uid,
+    startTimeSeconds: Math.max(0, Math.floor(startTimeSeconds)),
+    endTimeSeconds: Math.ceil(endTimeSeconds),
+    ...(name ? { meta: { name } } : {}),
+  });
+}
+
+/** Caption tracks on a video: [{ language, label, generated, status }] */
+export function listCaptions(env, uid) {
+  return api(env, 'GET', `/stream/${encodeURIComponent(uid)}/captions`);
+}
+
+/** WebVTT text of a caption track, or null. */
+export async function getCaptionsVtt(env, uid, language = 'en') {
+  try {
+    const res = await fetch(`${API}/accounts/${env.CF_ACCOUNT_ID}/stream/${encodeURIComponent(uid)}/captions/${language}/vtt`, {
+      headers: { Authorization: `Bearer ${env.CF_STREAM_TOKEN}` },
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!res.ok) return null;
+    const text = await res.text();
+    return text.includes('-->') ? text : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Ask Stream for an MP4 rendition. Result: { default: { status, url, percentComplete } } */
+export function createDownload(env, uid) {
+  return api(env, 'POST', `/stream/${encodeURIComponent(uid)}/downloads`);
+}
+
+export function getDownloads(env, uid) {
+  return api(env, 'GET', `/stream/${encodeURIComponent(uid)}/downloads`);
+}
+
 /** Token health check: list one video. */
 export async function checkToken(env) {
   try {
@@ -289,4 +330,6 @@ export function mask(s) {
 export const OUTPUT_PRESETS = {
   facebook: { label: 'Facebook Live', url: 'rtmps://live-api-s.facebook.com:443/rtmp/', help: 'Live Producer → Streaming software → Advanced settings → Persistent stream key' },
   youtube: { label: 'YouTube Live', url: 'rtmps://a.rtmps.youtube.com:443/live2', help: 'YouTube Studio → Go live → Stream → Stream key (turn on Auto-start and Auto-stop)' },
+  // Instagram issues a new URL + key per broadcast (no persistent key, no API), so both are pasted each time
+  instagram: { label: 'Instagram Live', url: '', help: 'instagram.com (desktop, professional account) → Create → Live → copy Stream URL and Stream key, new for every broadcast' },
 };
