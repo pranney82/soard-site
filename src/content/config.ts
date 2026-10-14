@@ -220,7 +220,8 @@ const community = defineCollection({
     color: z.string().default('#373A36'),
     imageId: z.string().optional(),
     imageAlt: z.string().optional(),
-    badge: z.string().optional(),
+    /* Set by the admin Status dropdown; 'in-progress' shows the In Progress badge */
+    status: z.enum(['completed', 'in-progress']).default('completed'),
     order: z.number().default(0),
     /* ── Detail page fields (optional — omit for summary-only entries) ── */
     founded: z.string().optional(),

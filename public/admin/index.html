@@ -11053,7 +11053,7 @@
         name: '', slug: '', impact: '', impactLabel: 'children impacted yearly',
         stats: [{ value: '', label: 'children impacted yearly' }],
         year: new Date().getFullYear().toString(), description: '',
-        color: '#373A36', imageId: '', imageAlt: '', badge: '', order: 0,
+        color: '#373A36', imageId: '', imageAlt: '', order: 0,
         photos: [], heroImage: '', status: 'completed',
         founded: '', story: '', quote: '', metaDescription: '',
         videoUrl: '', streamVideoId: '',
@@ -11323,8 +11323,11 @@
         }
         setSaving(true);
         try {
+          // Legacy free-text badge: the public pages now derive the label from
+          // status, so drop it on save rather than leave a stale override around.
+          const { badge: _legacyBadge, ...rest } = data;
           const saveData = {
-            ...data,
+            ...rest,
             // First stat mirrors into impact/impactLabel — the card grid,
             // list table, and completeness scoring still read those fields.
             stats: cleanStats,

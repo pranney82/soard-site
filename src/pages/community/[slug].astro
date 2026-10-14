@@ -132,7 +132,7 @@ const jsonLd = videoSchema ? [videoSchema] : undefined;
               </div>
             ))}
           </div>
-          {project.badge && <span class="cp-detail-badge">{project.badge}</span>}
+          {project.status === 'in-progress' && <span class="cp-detail-badge">In Progress</span>}
         </div>
       </div>
     </div>
