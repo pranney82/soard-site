@@ -5,7 +5,11 @@
  * to /api/live-ws (proxied to the real-time hub) so state changes arrive in
  * under a second; falls back to polling /api/broadcast when the socket is
  * unavailable. A single instance lives on window so the pill and the live
- * page never open two sockets.
+ * page never open two sockets; a same-origin iframe (the starting-soon screen
+ * shown inside the live page) borrows its parent's instance too.
+ *
+ * Watch party: a live page calls watch() so the hub counts it as a viewer,
+ * then gets 'viewers', 'react' and 'msg' / 'msg-hide' events through on().
  */
 
 export interface LivePlayer { kind: 'live' | 'replay'; uid: string; customerCode: string }
@@ -24,6 +28,16 @@ export interface LiveState {
 }
 export interface ReminderOptions { enabled: boolean; email: boolean; sms: boolean; push: boolean; pushKey: string | null }
 type Listener = (state: LiveState | null, meta: { reminders: ReminderOptions | null; timezone: string | null }) => void;
+export type ReactionKind = 'heart' | 'sun' | 'clap' | 'wow';
+export interface LiveMessage { id: string; name: string; body: string; at: string }
+export interface LiveEvents {
+  viewers: { n: number };
+  react: { c: Partial<Record<ReactionKind, number>> };
+  msg: { message: LiveMessage };
+  'msg-hide': { id: string };
+  connection: { connected: boolean };
+}
+type EventListener<K extends keyof LiveEvents> = (data: LiveEvents[K]) => void;
 
 const KEY = '__soardLiveClient';
 
@@ -32,6 +46,12 @@ function createClient() {
   let reminders: ReminderOptions | null = null;
   let timezone: string | null = null;
   const listeners = new Set<Listener>();
+  const eventListeners: { [K in keyof LiveEvents]?: Set<EventListener<K>> } = {};
+  let watching = false;
+  const fire = <K extends keyof LiveEvents>(type: K, data: LiveEvents[K]) => {
+    for (const l of (eventListeners[type] || []) as Set<EventListener<K>>) { try { l(data); } catch { /* listener bug */ } }
+  };
+  const send = (obj: unknown) => { if (!wsOk || !ws) return false; try { ws.send(JSON.stringify(obj)); return true; } catch { return false; } };
   let ws: WebSocket | null = null;
   let wsOk = false;
   let failures = 0;
@@ -76,6 +96,8 @@ function createClient() {
     } catch { schedulePoll(); return; }
     ws.onopen = () => {
       wsOk = true; failures = 0;
+      if (watching) send({ t: 'watch' });
+      fire('connection', { connected: true });
       clearTimeout(pollTimer);
       clearInterval(pingTimer);
       pingTimer = setInterval(() => { try { ws?.send('ping'); } catch { /* closing */ } }, 25_000);
@@ -87,10 +109,14 @@ function createClient() {
         if (m.type === 'state') {
           if (m.state) { state = m.state; emit(); }
           else fetchState(); // hub has no snapshot yet
-        }
+        } else if (m.type === 'viewers' && typeof m.n === 'number') fire('viewers', { n: m.n });
+        else if (m.type === 'react' && m.c && typeof m.c === 'object') fire('react', { c: m.c });
+        else if (m.type === 'msg' && m.message?.id) fire('msg', { message: m.message });
+        else if (m.type === 'msg-hide' && m.id) fire('msg-hide', { id: m.id });
       } catch { /* ignore */ }
     };
     ws.onclose = () => {
+      if (wsOk) fire('connection', { connected: false });
       wsOk = false;
       clearInterval(pingTimer);
       failures++;
@@ -115,6 +141,15 @@ function createClient() {
       if (state) l(state, { reminders, timezone });
       return () => listeners.delete(l);
     },
+    /** Count this page as a viewer (live pages only). Re-sent after reconnects. */
+    watch() { watching = true; send({ t: 'watch' }); },
+    /** Send a reaction to everyone watching. False when there is no real-time connection. */
+    react(kind: ReactionKind) { return send({ t: 'react', k: kind }); },
+    on<K extends keyof LiveEvents>(type: K, l: EventListener<K>) {
+      ((eventListeners[type] ||= new Set() as never) as Set<EventListener<K>>).add(l);
+      return () => (eventListeners[type] as Set<EventListener<K>>).delete(l);
+    },
+    get connected() { return wsOk; },
     get state() { return state; },
     get reminders() { return reminders; },
     get timezone() { return timezone; },
@@ -134,6 +169,13 @@ function createClient() {
 export type LiveClient = ReturnType<typeof createClient>;
 
 export function getLiveClient(): LiveClient {
+  // Inside a same-origin frame (the starting-soon screen on the live page), share the parent's socket
+  try {
+    if (window.parent !== window) {
+      const parent = window.parent as unknown as Record<string, LiveClient>;
+      if (parent[KEY]) return parent[KEY];
+    }
+  } catch { /* cross-origin parent */ }
   const w = window as unknown as Record<string, LiveClient>;
   if (!w[KEY]) w[KEY] = createClient();
   return w[KEY];

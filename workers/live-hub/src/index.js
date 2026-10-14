@@ -22,6 +22,13 @@
  *  3. Snapshot. The last public state is stored, so a new socket gets the
  *     current state instantly on connect.
  *
+ *  4. Watch party. Live pages send {"t":"watch"} so they count as viewers
+ *     (every page on the site holds a socket for the LIVE pill, so plain
+ *     connections are not viewers). Viewers get the viewer count, each
+ *     other's reactions ({"t":"react","k":"heart"}, batched every 400 ms and
+ *     rate limited per socket) and messages for the family, which the Pages
+ *     Function screens and then hands over with POST /relay.
+ *
  * The Pages project binds this class as LIVE_HUB (wrangler.toml,
  * durable_objects.bindings with script_name = "soard-live-hub") and pushes
  * state changes with POST /publish over the binding. Nothing but /ws and
@@ -38,6 +45,12 @@ const IDLE_MS = 60 * 1000;   // nothing scheduled soon
 const NEAR_WINDOW_MS = 30 * 60 * 1000;
 const MAX_CLIENTS = 5000;
 const NONCE_TTL_MS = 90 * 1000;
+const REACTIONS = new Set(['heart', 'sun', 'clap', 'wow']);
+const REACT_FLUSH_MS = 400;
+const REACT_WINDOW_MS = 3000;
+const REACT_MAX_PER_WINDOW = 15;
+const VIEWERS_DEBOUNCE_MS = 2000;
+const RELAY_TYPES = new Set(['msg', 'msg-hide']);
 
 function pickInterval(state) {
   const phase = state?.phase || 'idle';
@@ -60,6 +73,13 @@ export class LiveHub extends DurableObject {
     this.env = env;
     // Sockets answer "ping" without waking the object (hibernation-friendly)
     try { this.ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping', 'pong')); } catch {}
+    // Watch-party bookkeeping. In memory only: pending timers keep the object
+    // awake while there is anything to flush, and losing it costs nothing.
+    this.pendingReactions = {};
+    this.reactTimer = null;
+    this.viewersTimer = null;
+    this.lastViewers = -1;
+    this.reactRate = new WeakMap();
   }
 
   async fetch(request) {
@@ -92,6 +112,18 @@ export class LiveHub extends DurableObject {
       return Response.json({ ok: true, changed, clients: this.ctx.getWebSockets().length });
     }
 
+    if (path === '/relay' && request.method === 'POST') {
+      // Binding-only. Screened messages for the family, from the Pages Function.
+      let body;
+      try { body = await request.json(); } catch { return Response.json({ ok: false, error: 'bad json' }, { status: 400 }); }
+      if (!RELAY_TYPES.has(body?.type)) return Response.json({ ok: false, error: 'unknown type' }, { status: 400 });
+      const msg = body.type === 'msg'
+        ? { type: 'msg', message: body.message }
+        : { type: 'msg-hide', id: body.id };
+      const sent = this.broadcastWatchers({ ...msg, ts: Date.now() });
+      return Response.json({ ok: true, sent });
+    }
+
     if (path === '/verify' && request.method === 'POST') {
       // Binding-only. The site calls this to confirm a tick really came from us.
       let body;
@@ -109,10 +141,13 @@ export class LiveHub extends DurableObject {
       const [state, lastTick, alarm] = await Promise.all([
         this.ctx.storage.get('state'), this.ctx.storage.get('lastTick'), this.ctx.storage.getAlarm(),
       ]);
+      const reactions = (await this.ctx.storage.get('reactions')) || null;
       return Response.json({
         ok: true,
         clients: this.ctx.getWebSockets().length,
         adminClients: this.ctx.getWebSockets('admin').length,
+        watchers: this.watchers().length,
+        reactions: reactions && reactions.broadcastId === (state?.id || null) ? reactions : null,
         phase: state?.phase || 'idle',
         lastTick: lastTick || null,
         nextAlarm: alarm ? new Date(alarm).toISOString() : null,
@@ -146,11 +181,75 @@ export class LiveHub extends DurableObject {
     if (message === 'state') {
       const state = (await this.ctx.storage.get('state')) || null;
       ws.send(JSON.stringify({ type: 'state', state, reason: 'refresh', ts: Date.now() }));
+      return;
+    }
+    if (message.length > 200 || message[0] !== '{') return;
+    let m;
+    try { m = JSON.parse(message); } catch { return; }
+    if (m.t === 'watch') {
+      const att = ws.deserializeAttachment() || {};
+      if (!att.w) ws.serializeAttachment({ ...att, w: 1 });
+      try { ws.send(JSON.stringify({ type: 'viewers', n: this.watchers().length, ts: Date.now() })); } catch {}
+      this.scheduleViewers();
+    } else if (m.t === 'react' && REACTIONS.has(m.k)) {
+      if (!(ws.deserializeAttachment() || {}).w) return;
+      const now = Date.now();
+      const r = this.reactRate.get(ws);
+      if (!r || now - r.start > REACT_WINDOW_MS) this.reactRate.set(ws, { start: now, n: 1 });
+      else if (r.n >= REACT_MAX_PER_WINDOW) return;
+      else r.n++;
+      this.pendingReactions[m.k] = (this.pendingReactions[m.k] || 0) + 1;
+      if (!this.reactTimer) this.reactTimer = setTimeout(() => this.flushReactions(), REACT_FLUSH_MS);
     }
   }
 
   async webSocketClose(ws, code, reason) {
+    const watching = !!(ws.deserializeAttachment() || {}).w;
     try { ws.close(code, reason); } catch {}
+    if (watching) this.scheduleViewers();
+  }
+
+  /** Sockets on a live page (they sent {"t":"watch"}). */
+  watchers() {
+    return this.ctx.getWebSockets('site').filter((ws) => {
+      try { return !!(ws.deserializeAttachment() || {}).w; } catch { return false; }
+    });
+  }
+
+  /** Send to viewers and the admin; the rest of the site only needs state. */
+  broadcastWatchers(msg) {
+    const s = JSON.stringify(msg);
+    let sent = 0;
+    for (const ws of [...this.watchers(), ...this.ctx.getWebSockets('admin')]) {
+      try { ws.send(s); sent++; } catch { /* closing socket */ }
+    }
+    return sent;
+  }
+
+  scheduleViewers() {
+    if (this.viewersTimer) return;
+    this.viewersTimer = setTimeout(() => {
+      this.viewersTimer = null;
+      const n = this.watchers().length;
+      if (n === this.lastViewers) return;
+      this.lastViewers = n;
+      this.broadcastWatchers({ type: 'viewers', n, ts: Date.now() });
+    }, VIEWERS_DEBOUNCE_MS);
+  }
+
+  async flushReactions() {
+    this.reactTimer = null;
+    const c = this.pendingReactions;
+    this.pendingReactions = {};
+    if (!Object.keys(c).length) return;
+    this.broadcastWatchers({ type: 'react', c, ts: Date.now() });
+    // Running totals per reveal, for the admin
+    const state = (await this.ctx.storage.get('state')) || null;
+    const broadcastId = state?.id || null;
+    const prev = (await this.ctx.storage.get('reactions')) || null;
+    const totals = prev && prev.broadcastId === broadcastId ? { ...prev.totals } : {};
+    for (const [k, n] of Object.entries(c)) totals[k] = (totals[k] || 0) + n;
+    await this.ctx.storage.put('reactions', { broadcastId, totals, updatedAt: new Date().toISOString() });
   }
 
   async webSocketError(ws) {

@@ -1,0 +1,11 @@
+---
+/**
+ * /live/slate/ — the one starting-soon address Larix ever needs.
+ * Jumps to the scheduled kid's screen (/live/<kid>/slate/?follow=1) and keeps
+ * following as reveals change; with nothing scheduled it shows a generic
+ * screen. See SlateScreen.astro.
+ */
+import SlateScreen from '../../components/live/SlateScreen.astro';
+---
+
+<SlateScreen kid={null} />

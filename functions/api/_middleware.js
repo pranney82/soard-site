@@ -67,7 +67,10 @@ const PUBLIC_ROUTES = ['/api/newsletter', '/api/kids.json', '/api/download-logo'
   // Live broadcast system (see functions/api/_broadcast.js). stream-webhook and
   // broadcast-hooks authenticate inside the handler (Stream lifecycle is the
   // authority; hub ticks carry one-time nonces verified over the DO binding).
-  '/api/stream-webhook', '/api/broadcast-hooks', '/api/live-ws', '/api/reminders', '/api/broadcast-event'];
+  '/api/stream-webhook', '/api/broadcast-hooks', '/api/live-ws', '/api/reminders', '/api/broadcast-event',
+  // Messages for the family: screened and rate limited per visitor inside the handler
+  // (not in the per-IP list below, since a whole family on the house wifi shares one address)
+  '/api/live-messages'];
 
 // Routes public for reads only — GET/HEAD skip auth, mutations still require Access.
 // fb-live-videos returns only the page's public video permalinks (never the token),

@@ -23,6 +23,7 @@ import Button from '../../components/ui/Button.astro';
 import { getPublishedKids } from '../../utils/collections';
 import { getKidProfileSchema } from '../../utils/schema';
 import { getSiteStats } from '../../utils/stats';
+import { resolveKidVideo } from '../../utils/reveals';
 
 const computed = await getSiteStats();
 
@@ -99,22 +100,21 @@ function dims(src: string): [number, number] {
   return _dimsMap[id] || [4, 3];
 }
 
-// ── YouTube ID extraction ─────────────────
-function getYouTubeId(url: string): string | null {
-  if (!url) return null;
-  const match = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/))([a-zA-Z0-9_-]{11})/);
-  return match ? match[1] : null;
-}
-const ytId = kid.videoUrl ? getYouTubeId(kid.videoUrl) : null;
-const streamId = kid.streamVideoId || null;
+// ── Reveal video ──────────────────────────
+// Most old Stream uploads were purged, so a Stream id only wins when the
+// build saw it play; otherwise YouTube, otherwise no video block at all.
+const kidVideo = await resolveKidVideo(kid);
+const ytId = kidVideo?.type === 'youtube' ? kidVideo.id : null;
+const streamId = kidVideo?.type === 'stream' ? kidVideo.id : null;
 const hasVideo = streamId || ytId;
 
 // ── SEO ───────────────────────────────────
 const SITE = 'https://sunshineonaranneyday.com';
 const kidSchemas = getKidProfileSchema({
   ...kid,
-  videoUrl: kid.videoUrl,
-  streamVideoId: kid.streamVideoId,
+  // VideoObject must point at the video the page actually plays
+  videoUrl: ytId ? kid.videoUrl : undefined,
+  streamVideoId: streamId || undefined,
   photos: kid.photos,
   photographer: kid.photographer,
   status: kid.status,

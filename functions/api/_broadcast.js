@@ -23,7 +23,8 @@
  * Side effects: reminder sends (email / SMS / push, idempotent per
  * broadcast+kind+channel), Facebook API-mode live posts, replay detection +
  * captions + kid-page attach + rebuild, Kit drafts + the automatic Kit
- * "we're live" send, Slack/email alerts,
+ * "we're live" send, Slack/email alerts, the live feed watch (silent or
+ * missing audio, frozen video, Facebook/YouTube not live: _broadcast-monitor.js),
  * analytics rows, audit log.
  */
 
@@ -34,6 +35,7 @@ import * as fb from './_broadcast-fb.js';
 import { attachToKid, matchKids } from './_fb-archive.js';
 import { kitConfigured, kitCreateBroadcast } from './_kit.js';
 import * as reels from './_broadcast-reel.js';
+import * as monitor from './_broadcast-monitor.js';
 
 export const STATE_KEY = 'broadcast';
 export const CONFIG_KEY = 'broadcast-config';
@@ -140,6 +142,7 @@ export function defaultConfig() {
     defaults: { title: 'Live room reveal', message: "It's reveal day! We're live right now." },
     // Email the Kit list when a scheduled reveal goes live. Each reveal can opt out (state.kitLiveEmail).
     kitLive: { enabled: true, audience: { type: 'all', id: null, name: 'All subscribers' } },
+    messages: { enabled: true }, // viewers' notes for the family on the live page (functions/api/_live-messages.js)
     vapid: null,           // { publicKey, privateJwk, createdAt }
     setupAt: null, setupBy: null, updatedAt: null,
   };
@@ -890,6 +893,8 @@ export async function runTick(env, { source = 'tick', force = false, by = null, 
 
   // 4. Ongoing work
   if (state.phase === 'live' || state.phase === 'ending') state = await fbRefreshPermalink(env, state, work);
+  // The feed watch only alerts; nothing it does may stop the state machine
+  if (state.phase === 'live' && state.source === 'stream') await monitor.watch(env, config, state, health, work).catch((e) => work.push(`monitor-error: ${e.message}`));
   state = await kitAutoLive(env, config, state, work);
   for (const kind of await dueReminderKinds(DB, state, config)) await sendReminders(env, config, state, kind, work);
   state = await checkReplayReady(env, config, state, health, work);
@@ -1120,6 +1125,7 @@ export async function publicPayload(env) {
       push: !!config.reminders?.push && !!config.vapid?.publicKey,
       pushKey: config.reminders?.push ? (config.vapid?.publicKey || null) : null,
     },
+    messages: { enabled: config.messages?.enabled !== false },
     timezone: config.timezone,
     hub: !!env.LIVE_HUB,
   };

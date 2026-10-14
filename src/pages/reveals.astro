@@ -1,0 +1,443 @@
+---
+/**
+ * /reveals/: every room reveal on video.
+ *
+ * Built from kid content at build time (src/utils/reveals.ts): one card per
+ * unique playable video, live stream replays first, then every recorded
+ * reveal with a year filter. Dead Stream uploads never show up here; kids
+ * whose Stream copy is gone fall back to their YouTube video.
+ *
+ * Hero: the same editorial split as apply/donate/home (text left, framed
+ * photo right with the yellow accent block). Photos come from the newest
+ * reveals, so the page refreshes itself as new replays land.
+ */
+import BaseLayout from '../layouts/BaseLayout.astro';
+import RevealGrid from '../components/reveals/RevealGrid.astro';
+import { getReveals } from '../utils/reveals';
+import { cfRaw, cfSrcset, cfLqip } from '../utils/cf-image';
+import siteSettings from '../content/site/settings.json';
+
+const reveals = await getReveals();
+const live = reveals.filter((r) => r.kind === 'live');
+const videos = reveals.filter((r) => r.kind === 'video');
+const allYears = reveals.flatMap((r) => r.years);
+const firstYear = allYears.length ? Math.min(...allYears) : null;
+
+/* ── Hero photos: the two newest reveals with a kid photo ── */
+const withPhoto = reveals.filter((r) => r.image);
+const heroMain = withPhoto[0];
+const heroSmall = withPhoto.find((r) => r !== heroMain && r.image !== heroMain?.image && r.kids[0]?.slug !== heroMain?.kids[0]?.slug);
+const fallbackPhoto = (siteSettings as any).heroKidPhotoId || 'kids/braxton/photo-18';
+const heroMainId = heroMain?.image || fallbackPhoto;
+const heroMainAlt = heroMain ? `Photo of ${heroMain.names}` : 'A child in their new room';
+const heroSmallId = heroSmall?.image || null;
+
+const site = Astro.site?.origin || 'https://sunshineonaranneyday.com';
+const breadcrumbs = [
+  { name: 'Home', url: `${site}/` },
+  { name: 'Reveal Videos', url: `${site}/reveals/` },
+];
+
+const description = `Watch kids with special needs see their new dream bedrooms, accessible bathrooms, and therapy rooms for the first time. ${reveals.length} reveal videos${live.length ? ' and live replays' : ''}.`;
+const ogImage = cfRaw(heroMainId, 'w=1200,h=630,fit=cover,gravity=face,q=85,metadata=none');
+---
+
+<BaseLayout
+  title="Room Reveal Videos"
+  description={description}
+  breadcrumbs={breadcrumbs}
+  ogImage={ogImage}
+>
+
+  <!-- ══════ HERO: editorial split, no data-reveal (LCP) ══════ -->
+  <section class="hero">
+    <div class="hero-inner">
+      <div class="hero-text">
+        <p class="hero-eyebrow">Reveal Videos</p>
+        <h1>The moment they see it for the <em>first time</em>.</h1>
+        <p class="hero-lead">
+          Each room we build ends with a reveal: the door opens and a child sees their new space for the first time.
+          Here are {reveals.length} of those moments on video{firstYear ? `, from ${firstYear} to today` : ''}.
+        </p>
+        <div class="hero-ctas">
+          <a href={live.length ? '#live-replays' : '#all-reveals'} class="btn btn-primary btn-lg">Start watching &rarr;</a>
+          <a href="/live/" class="btn btn-outline-dark">Next live reveal</a>
+        </div>
+      </div>
+      <div class="hero-frame">
+        <div class="hero-accent" aria-hidden="true"></div>
+        <div class="hero-photo" style={`background-image:url('${cfLqip(heroMainId)}')`}>
+          <img
+            src={cfRaw(heroMainId, 'w=640,h=800,fit=cover,gravity=face,q=82,metadata=none')}
+            srcset={cfSrcset(heroMainId, [400, 640, 800, 1024], { fit: 'cover', gravity: 'face', aspectRatio: 1.25 })}
+            sizes="(max-width: 768px) 80vw, (max-width: 1200px) 38vw, 420px"
+            alt={heroMainAlt}
+            width="640"
+            height="800"
+            class="lqip-img"
+            fetchpriority="high"
+            loading="eager"
+            decoding="async"
+          />
+        </div>
+        {heroSmallId && (
+          <picture class="hero-photo hero-photo--small" style={`background-image:url('${cfLqip(heroSmallId)}')`}>
+            <source media="(max-width: 768px)" srcset="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" />
+            <source media="(min-width: 769px)" srcset={cfSrcset(heroSmallId, [240, 360, 480], { fit: 'cover', gravity: 'face', aspectRatio: 1.2 })} sizes="180px" />
+            <img
+              src={cfRaw(heroSmallId, 'w=360,h=432,fit=cover,gravity=face,q=75,metadata=none')}
+              alt={`Photo of ${heroSmall!.names}`}
+              width="360"
+              height="432"
+              class="lqip-img"
+              loading="lazy"
+              decoding="async"
+            />
+          </picture>
+        )}
+      </div>
+    </div>
+    <div class="hero-stat">
+      <span class="hero-stat-num">{reveals.length}</span>
+      <span class="hero-stat-label">reveals<br />on video</span>
+    </div>
+  </section>
+
+  <!-- ══════ LIVE STREAM REPLAYS ══════ -->
+  {live.length > 0 && (
+    <section class="section rv-section rv-section--live" id="live-replays" aria-labelledby="live-replays-title">
+      <div class="container">
+        <header class="rv-head">
+          <p class="section-label section-label--yellow">Live stream replays</p>
+          <h2 id="live-replays-title" class="rv-head__title">Missed the live reveal? <em>Watch it back.</em></h2>
+          <p class="rv-head__lead">We stream reveal day live on this site now. These are the full replays, so you can be there for the whole moment, even if you missed it.</p>
+        </header>
+        <RevealGrid reveals={live} columns={3} headingLevel="h3" eager={3} label="Live stream replays" />
+      </div>
+    </section>
+  )}
+
+  <!-- ══════ EVERY REVEAL ══════ -->
+  {videos.length > 0 && (
+    <section class="section rv-section rv-section--all" id="all-reveals" aria-labelledby="all-reveals-title">
+      <div class="container">
+        <header class="rv-head">
+          <p class="section-label section-label--yellow">Reveal videos</p>
+          <h2 id="all-reveals-title" class="rv-head__title">Every reveal on video</h2>
+          <p class="rv-head__lead">Pick a year and press play. Each video links to that child's full story and the room we built for them.</p>
+        </header>
+        <RevealGrid
+          reveals={videos}
+          columns={4}
+          headingLevel="h3"
+          filter
+          syncUrl
+          eager={live.length ? 0 : 4}
+          label="Recorded reveal videos"
+        />
+      </div>
+    </section>
+  )}
+
+  <!-- ══════ CLOSING CTA ══════ -->
+  <section class="rv-cta" aria-labelledby="rv-cta-title">
+    <div class="rv-cta__inner">
+      <div class="rv-cta__text">
+        <p class="section-label section-label--light">The next reveal</p>
+        <h2 id="rv-cta-title" class="rv-cta__title">Be there when the next door <em>opens</em>.</h2>
+        <p class="rv-cta__lead">Reveals stream live right here on our site. Leave your email on the live page and we'll remind you before the next one starts.</p>
+      </div>
+      <div class="rv-cta__actions">
+        <a href="/live/" class="btn btn-primary btn-lg rv-cta__btn">Get a reminder for the next live reveal</a>
+        <a href="/donate/" class="btn btn-ghost-light rv-cta__btn">Help build the next room</a>
+      </div>
+    </div>
+  </section>
+
+</BaseLayout>
+
+<style>
+  /* ══════════════════════════════════════════
+     HERO (same editorial split as apply.astro)
+     ══════════════════════════════════════════ */
+  @keyframes heroUp {
+    from { opacity: 0; transform: translateY(24px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes heroSlide {
+    from { transform: translateY(12px); }
+    to { transform: translateY(0); }
+  }
+  @keyframes heroPhotoIn {
+    from { opacity: 0; transform: scale(0.97); }
+    to { opacity: 1; transform: scale(1); }
+  }
+  @keyframes accentIn {
+    from { opacity: 0; transform: scale(0.85); }
+    to { opacity: 0.35; transform: scale(1); }
+  }
+
+  .hero {
+    background: var(--c-cream);
+    padding: clamp(80px, 10vw, 140px) 0 clamp(64px, 8vw, 100px);
+    position: relative;
+    contain: layout style;
+    min-height: clamp(480px, 70vh, 720px);
+    overflow: hidden;
+  }
+  .hero-inner {
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding: 0 var(--space-xl);
+    display: grid;
+    grid-template-columns: 1.15fr 0.85fr;
+    gap: clamp(40px, 5vw, 80px);
+    align-items: center;
+  }
+  .hero-eyebrow {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--c-text-muted);
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .hero-eyebrow::before {
+    content: '';
+    width: 28px;
+    height: 2px;
+    background: currentColor;
+    flex-shrink: 0;
+  }
+  .hero-text h1 {
+    font-size: clamp(2.5rem, 6vw, 4.5rem);
+    letter-spacing: -0.035em;
+    line-height: 1.04;
+    color: var(--c-text);
+    margin-bottom: 28px;
+    /* NO opacity:0 (LCP element) */
+    animation: heroSlide 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  .hero-text h1 em {
+    font-style: italic;
+    background-image: linear-gradient(transparent 52%, var(--c-yellow-soft) 52%);
+    background-repeat: no-repeat;
+    background-size: 100% 100%;
+    padding: 0 0.05em;
+  }
+  .hero-lead {
+    font-size: clamp(16px, 1.6vw, 18px);
+    color: var(--c-text-muted);
+    line-height: 1.7;
+    margin-bottom: 40px;
+    max-width: 500px;
+    opacity: 0;
+    animation: heroUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.15s both;
+  }
+  .hero-ctas {
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+    opacity: 0;
+    animation: heroUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.25s both;
+  }
+
+  .hero-frame {
+    position: relative;
+    animation: heroPhotoIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  .hero-accent {
+    position: absolute;
+    bottom: -16px;
+    right: -16px;
+    width: 65%;
+    height: 50%;
+    background: var(--c-yellow);
+    border-radius: 24px;
+    z-index: 0;
+    opacity: 0;
+    animation: accentIn 1s cubic-bezier(0.16, 1, 0.3, 1) 0.7s both;
+  }
+  .hero-photo {
+    position: relative;
+    z-index: 1;
+    aspect-ratio: 4 / 5;
+    border-radius: 24px;
+    overflow: hidden;
+    background-size: cover;
+    background-position: center;
+    box-shadow:
+      0 32px 80px rgba(0, 0, 0, 0.12),
+      0 8px 24px rgba(0, 0, 0, 0.06);
+  }
+  .hero-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .hero-photo--small {
+    position: absolute;
+    bottom: -24px;
+    left: -32px;
+    width: 40%;
+    aspect-ratio: 5 / 6;
+    z-index: 2;
+    border: 4px solid var(--c-cream);
+    box-shadow:
+      0 4px 6px rgba(0, 0, 0, 0.06),
+      0 12px 36px rgba(0, 0, 0, 0.12);
+  }
+  .hero-stat {
+    position: absolute;
+    bottom: clamp(24px, 4vw, 48px);
+    right: clamp(24px, 6vw, 80px);
+    background: var(--c-dark);
+    color: #fff;
+    padding: 16px 24px;
+    border-radius: var(--border-radius-lg);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    box-shadow:
+      0 4px 6px rgba(0, 0, 0, 0.08),
+      0 16px 48px rgba(0, 0, 0, 0.15);
+    z-index: 3;
+  }
+  .hero-stat-num {
+    font-family: var(--font-display);
+    font-size: clamp(28px, 3vw, 40px);
+    font-weight: 700;
+    color: var(--c-yellow);
+    line-height: 1;
+  }
+  .hero-stat-label {
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.35;
+    color: rgba(255, 255, 255, 0.6);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .lqip-img.lqip-pending { opacity: 0; }
+  .lqip-img:not(.lqip-pending) { transition: opacity 0.4s ease; }
+
+  /* ══════════════════════════════════════════
+     SECTIONS
+     ══════════════════════════════════════════ */
+  .rv-section--live { background: var(--c-white); }
+  .rv-section--all { background: var(--c-cream); }
+  .rv-section--live + .rv-section--all { border-top: 1px solid var(--c-border); }
+  /* No live replays: keep the grid visually apart from the cream hero */
+  .hero + .rv-section--all { background: var(--c-white); }
+
+  .rv-head {
+    max-width: 680px;
+    margin-bottom: clamp(28px, 4vw, 44px);
+  }
+  .rv-head__title {
+    margin: 0;
+    font-size: clamp(1.85rem, 3.2vw + 0.6rem, 2.9rem);
+    letter-spacing: -0.025em;
+    line-height: 1.1;
+  }
+  .rv-head__title em {
+    font-style: italic;
+    background-image: linear-gradient(transparent 55%, var(--c-yellow-soft) 55%);
+    padding: 0 0.04em;
+  }
+  .rv-head__lead {
+    margin: 16px 0 0;
+    font-size: clamp(15px, 1.4vw, 17px);
+    line-height: 1.7;
+    color: var(--c-text-muted);
+    max-width: 600px;
+  }
+
+  /* ══════════════════════════════════════════
+     CLOSING CTA
+     ══════════════════════════════════════════ */
+  .rv-cta {
+    background: var(--c-dark-deep);
+    color: var(--c-cream);
+    padding: clamp(64px, 9vw, 112px) 0;
+    border-top: 4px solid var(--c-yellow);
+  }
+  .rv-cta__inner {
+    position: relative;
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding: 0 var(--space-xl);
+    display: grid;
+    grid-template-columns: 1.2fr 0.8fr;
+    gap: clamp(32px, 5vw, 72px);
+    align-items: center;
+  }
+  .rv-cta__title {
+    margin: 0;
+    color: var(--c-white);
+    font-size: clamp(1.9rem, 3.4vw + 0.5rem, 3rem);
+    letter-spacing: -0.025em;
+    line-height: 1.1;
+  }
+  .rv-cta__title em { font-style: italic; color: var(--c-yellow); }
+  .rv-cta__lead {
+    margin: 18px 0 0;
+    font-size: clamp(15px, 1.4vw, 17px);
+    line-height: 1.7;
+    color: rgba(254, 252, 245, 0.72);
+    max-width: 520px;
+  }
+  .rv-cta__actions {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 14px;
+  }
+  .rv-cta__btn {
+    white-space: normal;
+    text-align: center;
+    line-height: 1.3;
+  }
+
+  /* ══════════════════════════════════════════
+     RESPONSIVE
+     ══════════════════════════════════════════ */
+  @media (max-width: 960px) {
+    .hero-inner { grid-template-columns: 1fr; gap: 40px; text-align: center; }
+    .hero-eyebrow { justify-content: center; }
+    .hero-lead { margin-inline: auto; }
+    .hero-ctas { justify-content: center; }
+    .hero-frame { max-width: 380px; margin: 0 auto; }
+    .hero-stat { position: relative; bottom: auto; right: auto; margin: -20px auto 0; width: fit-content; }
+
+    .rv-cta__inner { grid-template-columns: 1fr; }
+    .rv-cta__actions { max-width: 460px; }
+  }
+
+  @media (max-width: 768px) {
+    .hero { padding-top: clamp(48px, 8vw, 80px); padding-bottom: var(--space-xl); min-height: auto; }
+    .hero-inner { padding: 0 var(--space-lg); }
+    .hero-text h1 { font-size: clamp(2rem, 9vw, 3rem); }
+    .hero-photo--small { display: none; }
+    .hero-photo { border-radius: 18px; }
+    .hero-accent { bottom: -12px; right: -12px; border-radius: 18px; }
+    .rv-cta__inner { padding: 0 var(--space-lg); }
+  }
+
+  @media (max-width: 480px) {
+    .hero-ctas .btn { width: 100%; }
+  }
+
+  /* ══════════════════════════════════════════
+     REDUCED MOTION
+     ══════════════════════════════════════════ */
+  @media (prefers-reduced-motion: reduce) {
+    .hero-lead,
+    .hero-ctas,
+    .hero-frame { opacity: 1; transform: none; animation: none; }
+    .hero-text h1 { animation: none; }
+    .hero-accent { opacity: 0.35; animation: none; }
+    .btn:hover { transform: none; }
+    .lqip-img:not(.lqip-pending) { transition: none; }
+    .lqip-img.lqip-pending { opacity: initial; }
+  }
+</style>

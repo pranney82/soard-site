@@ -1,0 +1,121 @@
+---
+/**
+ * PastReveals: "watch past reveals" section for the /live/ pages.
+ * Shows the newest reveal videos (live replays first) and links to /reveals/.
+ * Renders nothing when no reveal video is playable.
+ */
+import RevealGrid from '../reveals/RevealGrid.astro';
+import { getReveals } from '../../utils/reveals';
+
+interface Props {
+  limit?: number;
+  heading?: string;
+  lead?: string;
+  /** Section background; defaults to white so it stands apart from the cream live body */
+  tone?: 'white' | 'cream' | 'gray';
+}
+
+const {
+  limit = 6,
+  heading = 'Watch past reveals',
+  lead = 'Missed one? Watch kids see their new rooms for the first time, then read the story behind each build.',
+  tone = 'white',
+} = Astro.props;
+
+const all = await getReveals();
+// A kid with a live replay often has a recorded video too; in a short row,
+// show each kid once (the live replay wins, since it sorts first)
+const seen = new Set<string>();
+const reveals = all
+  .filter((r) => {
+    if (r.kids.every((k) => seen.has(k.slug))) return false;
+    r.kids.forEach((k) => seen.add(k.slug));
+    return true;
+  })
+  .slice(0, Math.max(1, limit));
+---
+
+{reveals.length > 0 && (
+  <section class={`section past-reveals past-reveals--${tone}`} id="past-reveals" aria-labelledby="past-reveals-title">
+    <div class="container">
+      <div class="past-reveals__head">
+        <div class="past-reveals__intro">
+          <p class="section-label section-label--yellow">Reveal replays</p>
+          <h2 id="past-reveals-title" class="past-reveals__title">{heading}</h2>
+          {lead && <p class="past-reveals__lead">{lead}</p>}
+        </div>
+        <a href="/reveals/" class="past-reveals__all">
+          See every reveal
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14" /><path d="m12 5 7 7-7 7" /></svg>
+        </a>
+      </div>
+
+      <RevealGrid reveals={reveals} columns={3} headingLevel="h3" label="Recent reveal videos" />
+
+      <div class="past-reveals__foot">
+        <a href="/reveals/" class="btn btn-outline-dark">See every reveal</a>
+      </div>
+    </div>
+  </section>
+)}
+
+<style>
+  .past-reveals--white { background: var(--c-white); }
+  .past-reveals--cream { background: var(--c-cream); }
+  .past-reveals--gray { background: var(--c-warm-gray); }
+
+  .past-reveals__head {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 24px 48px;
+    margin-bottom: clamp(32px, 4vw, 48px);
+  }
+  .past-reveals__intro { max-width: 640px; }
+  .past-reveals__title {
+    margin: 0;
+    font-size: clamp(1.75rem, 3vw + 0.5rem, 2.6rem);
+    letter-spacing: -0.02em;
+    line-height: 1.12;
+  }
+  .past-reveals__lead {
+    margin: 14px 0 0;
+    font-size: clamp(15px, 1.4vw, 17px);
+    line-height: 1.65;
+    color: var(--c-text-muted);
+  }
+  .past-reveals__all {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+    font-weight: 700;
+    font-size: 0.95rem;
+    color: var(--c-text);
+    text-decoration: underline;
+    text-decoration-color: var(--c-yellow);
+    text-decoration-thickness: 3px;
+    text-underline-offset: 6px;
+    padding-block: 8px;
+  }
+  .past-reveals__all svg { transition: transform 0.25s ease; }
+  .past-reveals__all:hover svg { transform: translateX(3px); }
+  .past-reveals__all:focus-visible { outline: 2px solid var(--c-dark); outline-offset: 3px; border-radius: 4px; }
+
+  .past-reveals__foot {
+    display: none;
+    justify-content: center;
+    margin-top: 36px;
+  }
+
+  @media (max-width: 760px) {
+    .past-reveals__head { display: block; }
+    .past-reveals__all { display: none; }
+    .past-reveals__foot { display: flex; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .past-reveals__all svg { transition: none; }
+    .past-reveals__all:hover svg { transform: none; }
+  }
+</style>

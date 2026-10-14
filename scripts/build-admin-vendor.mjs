@@ -83,3 +83,27 @@ const result = await esbuild.build({
 
 const out = result.metafile.outputs['public/admin/vendor.js'];
 console.log(`vendor.js written: ${(out.bytes / 1024).toFixed(1)} KB (minified, pre-gzip)`);
+
+// hls.js gets its own file: only the Broadcast control room needs it, and it
+// is bigger than everything else combined, so the admin imports it lazily.
+// Full build, not hls.light: Stream serves audio as a separate rendition group.
+const hls = await esbuild.build({
+  stdin: {
+    contents: `export { default as Hls } from 'hls.js';`,
+    resolveDir: rootDir,
+    sourcefile: 'admin-vendor-hls-entry.js',
+    loader: 'js',
+  },
+  bundle: true,
+  minify: true,
+  format: 'esm',
+  target: 'es2020',
+  platform: 'browser',
+  outfile: join(rootDir, 'public/admin/vendor-hls.js'),
+  banner: { js: `/*! SOARD admin vendor bundle (lazy) — built by scripts/build-admin-vendor.mjs\n * hls.js@${pkgVersion('hls.js')} (Apache-2.0). Do not edit by hand.\n */` },
+  legalComments: 'none',
+  metafile: true,
+  logLevel: 'info',
+});
+const hlsOut = hls.metafile.outputs['public/admin/vendor-hls.js'];
+console.log(`vendor-hls.js written: ${(hlsOut.bytes / 1024).toFixed(1)} KB (minified, pre-gzip)`);

@@ -3,12 +3,22 @@
  * LivePage.astro — the live reveal page (used by /live/ and /live/[slug]/)
  * ========================================================================
  * Editorial split hero, same skeleton as apply/donate: text left, frame
- * right. The frame holds the kid's photo until the broadcast starts, then
- * the Cloudflare Stream player (live), then the replay. Everything dynamic
- * comes from the shared live client, so the page flips within a second of
- * the phone connecting and never needs a rebuild.
+ * right. The frame holds the kid's photo until the last 30 minutes, then the
+ * starting-soon screen, then the Cloudflare Stream player (live), then the
+ * replay. Everything dynamic comes from the shared live client, so the page
+ * flips within a second of the phone connecting and never needs a rebuild.
+ *
+ * /live/ has no kid of its own: it follows whichever reveal is current. The
+ * Pages Function functions/live/[[path]].js fills in that kid's headline,
+ * story, photo and share image before the HTML leaves the server and marks
+ * the hero with data-follow; the script keeps it current after that.
+ *
+ * Watch party (live and starting soon): reactions every viewer sees, a count
+ * of people watching on the site, and messages for the family (screened by
+ * /api/live-messages, pushed live through the real-time hub).
  */
 import { cfRaw, cfSrcset, cfLqip } from '../../utils/cf-image';
+import PastReveals from './PastReveals.astro';
 
 interface KidLite {
   slug: string; name: string; heroImage: string | null; heroSummary?: string | null; shortDescription?: string | null;
@@ -17,21 +27,31 @@ interface KidLite {
 interface Props { kid?: KidLite | null; fallbackImage: string }
 const { kid = null, fallbackImage } = Astro.props;
 
+const GENERIC_LEAD = 'Room reveals stream live right here. Get a reminder, then watch the moment a child sees their new room for the first time.';
 const photo = kid?.heroImage || fallbackImage;
 const name = kid?.name || null;
 const summary = kid?.heroSummary || kid?.shortDescription || null;
 const rooms = kid?.roomTypes?.length ? kid.roomTypes.join(', ') : null;
+const photoSrc = (id: string) => cfRaw(id, 'w=640,h=800,fit=cover,gravity=face,q=82');
+
+const REACTIONS = [
+  { k: 'heart', label: 'Send love', svg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>' },
+  { k: 'sun', label: 'Send sunshine', svg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>' },
+  { k: 'clap', label: 'Celebrate', svg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5.8 11.3 2 22l10.7-3.79"/><path d="M4 3h.01M22 8h.01M15 2h.01M22 20h.01"/><path d="m22 2-2.24.75a2.9 2.9 0 0 0-1.96 3.12c.1.86-.57 1.63-1.45 1.63h-.38c-.86 0-1.6.6-1.76 1.44L14 10"/><path d="m22 13-.82-.33c-.86-.34-1.82.2-1.98 1.11-.11.7-.72 1.22-1.43 1.22H17"/><path d="m11 2 .33.82c.34.86-.2 1.82-1.11 1.98C9.52 4.9 9 5.52 9 6.23V7"/><path d="M11 13c1.93 1.93 2.83 4.17 2 5-.83.83-3.07-.07-5-2-1.93-1.93-2.83-4.17-2-5 .83-.83 3.07.07 5 2Z"/></svg>' },
+  { k: 'wow', label: 'Wow', svg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.94 15.5A2 2 0 0 0 8.5 14.06l-6.14-1.58a.5.5 0 0 1 0-.96L8.5 9.94A2 2 0 0 0 9.94 8.5l1.58-6.14a.5.5 0 0 1 .96 0l1.58 6.14a2 2 0 0 0 1.44 1.44l6.14 1.58a.5.5 0 0 1 0 .96l-6.14 1.58a2 2 0 0 0-1.44 1.44l-1.58 6.14a.5.5 0 0 1-.96 0z"/><path d="M20 3v4M22 5h-4M4 17v2M5 18H3"/></svg>' },
+];
 ---
 
-<section class="hero" id="live-hero" data-phase="loading" data-kid={kid?.slug || ''}>
+<div class="live-page" data-view="loading">
+<section class="hero" id="live-hero" data-phase="loading" data-kid={kid?.slug || ''} data-generic-lead={GENERIC_LEAD} data-generic-photo={photoSrc(fallbackImage)}>
   <div class="hero-inner">
     <div class="hero-text">
       <p class="hero-eyebrow"><span class="hero-eyebrow__dot" aria-hidden="true"></span><span data-live="eyebrow">Live reveal</span></p>
-      <h1>
+      <h1 data-live="title">
         {name ? <>{name}'s <em>room reveal</em></> : <>Watch the <em>reveal</em> live</>}
       </h1>
       <p class="hero-lead" data-live="lead">
-        {summary || 'Room reveals stream live right here. Get a reminder, then watch the moment a child sees their new room for the first time.'}
+        {summary || GENERIC_LEAD}
       </p>
       <p class="hero-status" data-live="status" aria-live="polite"></p>
       <div class="hero-ctas">
@@ -39,30 +59,73 @@ const rooms = kid?.roomTypes?.length ? kid.roomTypes.join(', ') : null;
         <a class="btn btn-primary btn-lg hero-glow" href="#player" data-live="cta-replay" hidden>Watch the replay</a>
         <a class="btn btn-primary btn-lg hero-glow" href="#remind" data-live="cta-remind" hidden>Remind me</a>
         <a class="btn btn-outline-dark" href="/api/reminders?ics=1" data-live="cta-calendar" hidden>Add to calendar</a>
+        <a class="btn btn-outline-dark" href="#messages" data-live="cta-messages" hidden>Leave a message</a>
         <a class="btn btn-outline-dark" href="https://www.facebook.com/SunshineOnaRanneyDay" target="_blank" rel="noopener" data-live="cta-facebook" hidden>Comment on Facebook</a>
+        <a class="btn btn-outline-dark" href="#past-reveals" data-live="cta-past" hidden>Watch past reveals</a>
         <a class="btn btn-outline-dark" href="/donate/?src=live" data-live="cta-donate">Fund the next room</a>
       </div>
     </div>
 
     <div class="hero-frame" id="player">
-      <div class="hero-accent" aria-hidden="true"></div>
-      <div class="hero-photo" style={`background-image:url(${cfLqip(photo)})`} data-live="frame">
-        <img
-          class="lqip-img"
-          src={cfRaw(photo, 'w=640,h=800,fit=cover,gravity=face,q=82')}
-          srcset={cfSrcset(photo, [400, 640, 800, 1024], { fit: 'cover', gravity: 'face', aspectRatio: 1.25 })}
-          sizes="(max-width: 960px) 90vw, 40vw"
-          width="640" height="800"
-          alt={name ? `${name}` : 'A child in a newly built room'}
-          loading="eager" fetchpriority="high" decoding="async"
-          data-live="photo"
-        />
-        <div class="hero-player" data-live="player" hidden></div>
-        <div class="hero-badge" data-live="badge" hidden>
-          <span class="hero-badge__dot" aria-hidden="true"></span>
-          <span data-live="badge-text"></span>
+      <div class="hero-media">
+        <div class="hero-accent" aria-hidden="true"></div>
+        <div class="hero-photo" style={`background-image:url(${cfLqip(photo)})`} data-live="frame">
+          <img
+            class="lqip-img"
+            src={photoSrc(photo)}
+            srcset={cfSrcset(photo, [400, 640, 800, 1024], { fit: 'cover', gravity: 'face', aspectRatio: 1.25 })}
+            sizes="(max-width: 960px) 90vw, 40vw"
+            width="640" height="800"
+            alt={name ? `${name}` : 'A child in a newly built room'}
+            loading="eager" fetchpriority="high" decoding="async"
+            data-live="photo"
+          />
+          <div class="hero-player" data-live="player" hidden></div>
+          <div class="hero-reactions" data-live="reactions" aria-hidden="true"></div>
+          <div class="hero-badge" data-live="badge" hidden>
+            <span class="hero-badge__dot" aria-hidden="true"></span>
+            <span data-live="badge-text"></span>
+          </div>
         </div>
       </div>
+      <div class="watchbar" data-live="watchbar" hidden>
+        <p class="watchbar__viewers" data-live="viewers" hidden></p>
+        <div class="watchbar__reacts" role="group" aria-label="Send a reaction everyone watching will see">
+          {REACTIONS.map(r => (
+            <button class="react-btn" type="button" data-react={r.k} aria-label={r.label} title={r.label} set:html={r.svg} />
+          ))}
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="live-msgs" id="messages" data-live-msgs hidden>
+  <div class="container live-msgs__grid">
+    <div class="live-msgs__head">
+      <p class="section-label">Messages</p>
+      <h2 data-msgs="heading">Messages for the family</h2>
+      <p class="live-block__lead">Leave a kind note. Every message is saved and given to the family after the reveal.</p>
+    </div>
+    <div class="live-msgs__compose">
+      <form class="msg-form" data-msgs="form" novalidate>
+        <label class="msg-label" for="msg-name">Your first name</label>
+        <input class="msg-field" id="msg-name" name="name" type="text" maxlength="40" autocomplete="given-name" required />
+        <label class="msg-label" for="msg-body">Your message</label>
+        <textarea class="msg-field msg-field--area" id="msg-body" name="body" maxlength="280" rows="3" required placeholder="We are so happy for you!"></textarea>
+        <div class="remind-hp" aria-hidden="true"><label>Website<input type="text" name="website" tabindex="-1" autocomplete="off" /></label></div>
+        <div class="msg-actions">
+          <button class="btn btn-primary" type="submit">Post message</button>
+          <span class="msg-count" data-msgs="count" aria-hidden="true">0/280</span>
+        </div>
+        <p class="remind-note" data-msgs="note" role="status" aria-live="polite"></p>
+        <p class="msg-fine">Messages are checked before they appear. First names only, please.</p>
+      </form>
+      <p class="msg-closed" data-msgs="closed" hidden>Messages are closed for this reveal. Thank you to everyone who wrote in.</p>
+    </div>
+    <div class="live-msgs__wall">
+      <ol class="msg-list" data-msgs="list" aria-label="Messages"></ol>
+      <p class="msg-empty" data-msgs="empty">Be the first to leave a message.</p>
     </div>
   </div>
 </section>
@@ -137,7 +200,7 @@ const rooms = kid?.roomTypes?.length ? kid.roomTypes.join(', ') : null;
           <li data-live="youtube-item" hidden><a href="#" target="_blank" rel="noopener" data-live="link-youtube">YouTube</a></li>
           <li data-live="instagram-item" hidden><a href="#" target="_blank" rel="noopener" data-live="link-instagram">Instagram</a></li>
         </ul>
-        <p class="live-card__text live-card__text--sm">Comments and shares live on Facebook. The video here is the same stream, without the login.</p>
+        <p class="live-card__text live-card__text--sm">The video here is the same stream, without the login. Messages left on this page go straight to the family.</p>
       </div>
       <div class="live-card">
         <p class="live-card__label">Share this page</p>
@@ -150,7 +213,19 @@ const rooms = kid?.roomTypes?.length ? kid.roomTypes.join(', ') : null;
   </div>
 </section>
 
+<!-- Leads the page when nothing is scheduled (see .live-page order rules) -->
+<div class="live-past"><PastReveals limit={6} /></div>
+</div>
+
 <style>
+  /* ── Page order: past reveals lead when nothing is on, otherwise they close the page ── */
+  .live-page { display: flex; flex-direction: column; }
+  .live-page > .hero { order: 0; }
+  .live-page > .live-msgs { order: 1; }
+  .live-page > .live-body { order: 3; }
+  .live-page > :global(.live-past) { order: 4; }
+  .live-page[data-view='idle'] > :global(.live-past) { order: 2; }
+
   /* ── Editorial split hero (matches apply/donate) ── */
   .hero {
     background: var(--c-cream);
@@ -170,8 +245,9 @@ const rooms = kid?.roomTypes?.length ? kid.roomTypes.join(', ') : null;
     align-items: center;
     transition: grid-template-columns 0.4s cubic-bezier(0.16, 1, 0.3, 1);
   }
-  /* When a player is showing, give the video the wider column */
+  /* When a player or the starting-soon screen is showing, give the video the wider column */
   .hero[data-phase='live'] .hero-inner,
+  .hero[data-phase='starting'] .hero-inner,
   .hero[data-phase='replay'] .hero-inner { grid-template-columns: 0.85fr 1.15fr; }
 
   .hero-eyebrow {
@@ -180,7 +256,8 @@ const rooms = kid?.roomTypes?.length ? kid.roomTypes.join(', ') : null;
   }
   .hero-eyebrow::before { content: ''; width: 28px; height: 2px; background: currentColor; flex-shrink: 0; }
   .hero-eyebrow__dot { display: none; width: 10px; height: 10px; border-radius: 50%; background: var(--c-yellow); position: relative; }
-  .hero[data-phase='live'] .hero-eyebrow__dot { display: inline-block; }
+  .hero[data-phase='live'] .hero-eyebrow__dot,
+  .hero[data-phase='starting'] .hero-eyebrow__dot { display: inline-block; }
   .hero[data-phase='live'] .hero-eyebrow__dot::after {
     content: ''; position: absolute; inset: -4px; border-radius: 50%; border: 2px solid var(--c-yellow); opacity: 0;
     animation: live-ping 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
@@ -191,7 +268,7 @@ const rooms = kid?.roomTypes?.length ? kid.roomTypes.join(', ') : null;
     font-size: clamp(2.5rem, 6vw, 4.5rem); letter-spacing: -0.035em; line-height: 1.04; color: var(--c-text);
     margin-bottom: 24px; animation: heroSlide 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
   }
-  .hero-text h1 em {
+  .hero-text h1 :global(em) {
     font-style: italic; background-image: linear-gradient(transparent 52%, var(--c-yellow-soft) 52%);
     background-repeat: no-repeat; background-size: 100% 100%; padding: 0 0.05em;
   }
@@ -211,6 +288,7 @@ const rooms = kid?.roomTypes?.length ? kid.roomTypes.join(', ') : null;
   .hero-ctas [hidden] { display: none !important; }
 
   .hero-frame { position: relative; animation: heroPhotoIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) both; scroll-margin-top: 100px; }
+  .hero-media { position: relative; }
   .hero-accent {
     position: absolute; bottom: -16px; right: -16px; width: 65%; height: 50%; background: var(--c-yellow);
     border-radius: 24px; z-index: 0; opacity: 0; animation: accentIn 1s cubic-bezier(0.16, 1, 0.3, 1) 0.7s both;
@@ -224,8 +302,10 @@ const rooms = kid?.roomTypes?.length ? kid.roomTypes.join(', ') : null;
   }
   .hero-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .hero[data-phase='live'] .hero-photo,
+  .hero[data-phase='starting'] .hero-photo,
   .hero[data-phase='replay'] .hero-photo { aspect-ratio: 16 / 9; }
   .hero[data-phase='live'] .hero-photo img,
+  .hero[data-phase='starting'] .hero-photo img,
   .hero[data-phase='replay'] .hero-photo img { display: none; }
   .hero-player { position: absolute; inset: 0; }
   .hero-player[hidden] { display: none; }
@@ -234,14 +314,17 @@ const rooms = kid?.roomTypes?.length ? kid.roomTypes.join(', ') : null;
 
   /* Portrait broadcasts (Instagram-first): tall player, kept narrow so the hero stays balanced */
   .hero[data-orientation='portrait'][data-phase='live'] .hero-photo,
+  .hero[data-orientation='portrait'][data-phase='starting'] .hero-photo,
   .hero[data-orientation='portrait'][data-phase='replay'] .hero-photo { aspect-ratio: 9 / 16; }
   .hero[data-orientation='portrait'][data-phase='live'] .hero-inner,
+  .hero[data-orientation='portrait'][data-phase='starting'] .hero-inner,
   .hero[data-orientation='portrait'][data-phase='replay'] .hero-inner { grid-template-columns: 1.15fr 0.85fr; }
   .hero[data-orientation='portrait'][data-phase='live'] .hero-frame,
+  .hero[data-orientation='portrait'][data-phase='starting'] .hero-frame,
   .hero[data-orientation='portrait'][data-phase='replay'] .hero-frame { max-width: 400px; justify-self: center; }
 
   .hero-badge {
-    position: absolute; left: 16px; bottom: 16px; z-index: 2;
+    position: absolute; left: 16px; bottom: 16px; z-index: 3;
     display: inline-flex; align-items: center; gap: 10px;
     background: var(--c-dark-deep); color: var(--c-cream); padding: 10px 16px; border-radius: 100px;
     font-size: 13px; font-weight: 600; letter-spacing: 0.02em;
@@ -249,7 +332,75 @@ const rooms = kid?.roomTypes?.length ? kid.roomTypes.join(', ') : null;
   }
   .hero-badge[hidden] { display: none; }
   .hero-badge__dot { width: 8px; height: 8px; border-radius: 50%; background: var(--c-yellow); }
-  .hero[data-phase='live'] .hero-badge { left: auto; right: 16px; top: 16px; bottom: auto; }
+  .hero[data-phase='live'] .hero-badge,
+  .hero[data-phase='starting'] .hero-badge { left: auto; right: 16px; top: 16px; bottom: auto; }
+
+  /* ── Reactions floating up over the video ── */
+  .hero-reactions { position: absolute; inset: 0; z-index: 2; pointer-events: none; overflow: hidden; }
+  .hero-reactions :global(.react-float) {
+    position: absolute; bottom: 10%; width: 34px; height: 34px; color: var(--c-yellow);
+    filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.45));
+    animation: reactRise var(--d, 2.6s) cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+  }
+  .hero-reactions :global(.react-float svg) { width: 100%; height: 100%; display: block; }
+  .hero-reactions :global(.react-float[data-k='heart'] svg) { fill: currentColor; }
+  .hero-reactions :global(.react-float.is-mine) { width: 40px; height: 40px; }
+  @keyframes reactRise {
+    0% { transform: translate(0, 0) scale(0.5); opacity: 0; }
+    12% { transform: translate(0, -24px) scale(1); opacity: 1; }
+    100% { transform: translate(var(--x, 0px), -240px) scale(0.9); opacity: 0; }
+  }
+
+  /* ── Watch party bar under the video ── */
+  .watchbar { position: relative; z-index: 2; display: flex; align-items: center; gap: 12px 16px; flex-wrap: wrap; margin-top: 28px; }
+  .watchbar[hidden] { display: none; }
+  .watchbar__viewers { margin: 0; font-size: 14px; font-weight: 700; color: var(--c-text); display: inline-flex; align-items: center; gap: 10px; }
+  .watchbar__viewers::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--c-yellow); box-shadow: 0 0 0 3px var(--c-yellow-soft); }
+  .watchbar__viewers[hidden] { display: none; }
+  .watchbar__reacts { display: flex; gap: 10px; margin-left: auto; }
+  .react-btn {
+    width: 48px; height: 48px; padding: 0; border-radius: 50%; border: 1.5px solid var(--c-border); background: #fff; color: var(--c-dark);
+    display: grid; place-items: center; cursor: pointer; transition: transform 150ms ease, border-color 150ms ease, background 150ms ease;
+  }
+  .react-btn :global(svg) { width: 22px; height: 22px; }
+  .react-btn[data-react='heart'] :global(svg) { fill: var(--c-yellow); }
+  .react-btn:hover { border-color: var(--c-dark); background: var(--c-yellow-soft); }
+  .react-btn:active, .react-btn.is-pop { transform: scale(0.88); }
+  .react-btn:focus-visible { outline: 2px solid var(--c-dark); outline-offset: 2px; }
+
+  /* ── Messages for the family ── */
+  .live-msgs { background: #fff; border-top: 1px solid var(--c-border); border-bottom: 1px solid var(--c-border); padding: clamp(48px, 6vw, 80px) 0; scroll-margin-top: 80px; }
+  .live-msgs[hidden] { display: none; }
+  .live-msgs__grid {
+    display: grid; grid-template-columns: 0.9fr 1.1fr; grid-template-rows: auto 1fr;
+    grid-template-areas: 'head wall' 'compose wall'; column-gap: clamp(32px, 5vw, 72px); row-gap: 8px; align-items: start;
+  }
+  .live-msgs__head { grid-area: head; }
+  .live-msgs__compose { grid-area: compose; }
+  .live-msgs__wall { grid-area: wall; }
+  .live-msgs__head .live-block__lead { margin-bottom: 8px; }
+  .live-msgs h2 { font-size: clamp(1.75rem, 3vw, 2.5rem); letter-spacing: -0.02em; margin: 8px 0 16px; }
+  .msg-form { display: grid; gap: 8px; max-width: 480px; }
+  .msg-label { font-size: 13px; font-weight: 700; color: var(--c-text); margin-top: 6px; }
+  .msg-field {
+    width: 100%; padding: 13px 18px; border-radius: 14px; border: 1.5px solid var(--c-border); background: #fff;
+    font: inherit; font-size: 15px; color: var(--c-text); transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+  }
+  .msg-field--area { resize: vertical; min-height: 104px; line-height: 1.5; }
+  .msg-field:focus { outline: none; border-color: var(--c-dark); box-shadow: 0 0 0 3px var(--c-yellow-soft); }
+  .msg-actions { display: flex; align-items: center; gap: 16px; margin-top: 8px; }
+  .msg-count { font-size: 13px; color: var(--c-text-light); }
+  .msg-fine { font-size: 12px; color: var(--c-text-light); margin: 0; }
+  .msg-closed { color: var(--c-text-muted); line-height: 1.6; }
+  .msg-closed[hidden], .msg-form[hidden] { display: none; }
+  .live-msgs__wall { background: var(--c-cream); border-radius: var(--border-radius-lg); padding: 20px; max-height: 560px; overflow-y: auto; overscroll-behavior: contain; }
+  .msg-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+  .msg-list :global(.msg) { background: #fff; border: 1px solid var(--c-border); border-radius: 16px; padding: 14px 18px; animation: msgIn 320ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+  .msg-list :global(.msg__name) { display: block; font-weight: 700; font-size: 14px; color: var(--c-dark); }
+  .msg-list :global(.msg__body) { margin: 4px 0 0; line-height: 1.55; color: var(--c-text); overflow-wrap: anywhere; }
+  @keyframes msgIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+  .msg-empty { color: var(--c-text-muted); margin: 0; padding: 8px 4px; }
+  .msg-empty[hidden] { display: none; }
 
   /* ── Body ── */
   .live-body { padding-top: clamp(48px, 6vw, 80px); }
@@ -302,14 +453,21 @@ const rooms = kid?.roomTypes?.length ? kid.roomTypes.join(', ') : null;
   .live-share { display: flex; gap: 20px; flex-wrap: wrap; }
 
   @media (max-width: 960px) {
-    .hero-inner, .hero[data-phase='live'] .hero-inner, .hero[data-phase='replay'] .hero-inner { grid-template-columns: 1fr; gap: 40px; text-align: center; }
+    .hero-inner, .hero[data-phase='live'] .hero-inner, .hero[data-phase='starting'] .hero-inner, .hero[data-phase='replay'] .hero-inner { grid-template-columns: 1fr; gap: 40px; text-align: center; }
     .hero-lead, .hero-status { margin-inline: auto; }
     .hero-ctas { justify-content: center; }
     /* width:100% gives the aspect-ratio box a basis once the photo is hidden */
     .hero-frame { width: 100%; max-width: 380px; margin: 0 auto; }
-    .hero[data-phase='live'] .hero-frame, .hero[data-phase='replay'] .hero-frame { max-width: none; order: -1; }
-    .hero[data-orientation='portrait'][data-phase='live'] .hero-frame, .hero[data-orientation='portrait'][data-phase='replay'] .hero-frame { max-width: 360px; }
+    .hero[data-phase='live'] .hero-frame, .hero[data-phase='starting'] .hero-frame, .hero[data-phase='replay'] .hero-frame { max-width: none; order: -1; }
+    .hero[data-orientation='portrait'][data-phase='live'] .hero-frame,
+    .hero[data-orientation='portrait'][data-phase='starting'] .hero-frame,
+    .hero[data-orientation='portrait'][data-phase='replay'] .hero-frame { max-width: 360px; }
     .hero-eyebrow { justify-content: center; }
+    .watchbar { justify-content: center; }
+    .watchbar__reacts { margin-left: 0; }
+    /* Phones: read what others wrote, then write your own */
+    .live-msgs__grid { grid-template-columns: 1fr; grid-template-rows: none; grid-template-areas: 'head' 'wall' 'compose'; row-gap: 24px; }
+    .live-msgs__wall { max-height: 360px; }
     .live-grid { grid-template-columns: 1fr; }
     .live-side { position: static; }
   }
@@ -319,49 +477,115 @@ const rooms = kid?.roomTypes?.length ? kid.roomTypes.join(', ') : null;
     .hero-photo { border-radius: 18px; }
     .hero-accent { bottom: -12px; right: -12px; border-radius: 18px; }
     .remind-row { flex-direction: column; }
+    .watchbar { margin-top: 24px; }
   }
   @media (prefers-reduced-motion: reduce) {
     .hero-text h1, .hero-lead, .hero-status, .hero-ctas, .hero-frame, .hero-accent { animation: none; opacity: 1; }
     .hero-accent { opacity: 0.35; }
     .hero-eyebrow__dot::after { animation: none; }
     .hero-inner, .hero-photo { transition: none; }
+    .react-btn { transition: none; }
+    .msg-list :global(.msg) { animation: none; }
   }
 </style>
 
 <script>
-  import { getLiveClient, formatWhen, relativeUntil, type LiveState, type ReminderOptions } from '../../utils/live-client';
+  import { getLiveClient, formatWhen, relativeUntil, type LiveState, type ReminderOptions, type ReactionKind, type LiveMessage } from '../../utils/live-client';
+  import { cfRaw } from '../../utils/cf-image';
+
+  /** The crew may start streaming up to 30 minutes early (runbook), so the starting-soon screen fills that window here too. */
+  const SLATE_LEAD_MS = 30 * 60 * 1000;
+  /** Below this the count reads as lonely rather than lively, so it stays hidden. */
+  const VIEWERS_MIN = 5;
+  const MSG_POLL_MS = 20_000;
+  const MSG_MAX = 120;
 
   const client = getLiveClient();
   const hero = document.getElementById('live-hero') as HTMLElement | null;
   if (hero) {
     const pageKid = hero.dataset.kid || '';
+    // Set by functions/live/[[path]].js when /live/ was rendered for the current kid
+    const followKid = hero.dataset.follow || '';
+    const page = hero.closest('.live-page') as HTMLElement | null;
     const q = <T extends Element>(k: string) => hero.querySelector(`[data-live="${k}"]`) as T | null;
     const body = document.querySelector('.live-body') as HTMLElement | null;
     const bq = <T extends Element>(k: string) => body?.querySelector(`[data-live="${k}"]`) as T | null;
+    const msgs = document.querySelector('[data-live-msgs]') as HTMLElement | null;
+    const mq = <T extends Element>(k: string) => msgs?.querySelector(`[data-msgs="${k}"]`) as T | null;
+    const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
     let last: LiveState | null = null;
+    let lastMeta: { reminders: ReminderOptions | null } = { reminders: null };
     let mountedPlayer = '';
+    let display = 'loading';
+    let shownKid = pageKid || followKid;
+    let watching = false;
+    let viewers = 0;
     let viewed = false;
+    const slateFailed = new Set<string>();
 
     function setHidden(el: Element | null, hidden: boolean) { if (el) (el as HTMLElement).hidden = hidden; }
 
+    // ── /live/ follows the current kid ──────────────────────────────
+    function setTitle(kidName: string | null) {
+      const h1 = q<HTMLElement>('title');
+      if (!h1) return;
+      const em = document.createElement('em');
+      h1.textContent = '';
+      if (kidName) { h1.append(`${kidName}'s `); em.textContent = 'room reveal'; h1.append(em); }
+      else { h1.append('Watch the '); em.textContent = 'reveal'; h1.append(em, ' live'); }
+    }
+    function setPhoto(src: string) {
+      const img = q<HTMLImageElement>('photo');
+      if (!img || img.getAttribute('src') === src) return;
+      img.removeAttribute('srcset');
+      img.src = src;
+    }
+    function follow(s: LiveState, view: string) {
+      if (pageKid) return;
+      const want = view !== 'idle' && s.kidSlug ? s.kidSlug : '';
+      if (want === shownKid) return;
+      shownKid = want;
+      const lead = q<HTMLElement>('lead');
+      if (want) {
+        setTitle(s.kidName || null);
+        if (lead) lead.textContent = s.message || `Watch ${s.kidName ? `${s.kidName}'s` : 'the'} room reveal live, right here.`;
+        if (s.image) setPhoto(cfRaw(s.image, 'w=640,h=800,fit=cover,gravity=face,q=82'));
+      } else {
+        setTitle(null);
+        if (lead) lead.textContent = hero.dataset.genericLead || '';
+        if (hero.dataset.genericPhoto) setPhoto(hero.dataset.genericPhoto);
+      }
+    }
+
+    // ── Starting-soon screen in the frame for the last 30 minutes ──
+    function slateSrc(s: LiveState, view: string, kidSlug: string) {
+      if (view !== 'upcoming' || !kidSlug || !s.scheduledAt || slateFailed.has(kidSlug)) return '';
+      if (Date.parse(s.scheduledAt) - Date.now() > SLATE_LEAD_MS) return '';
+      return `/live/${kidSlug}/slate/?embed=1&music=0${s.orientation === 'portrait' ? '&o=portrait' : ''}`;
+    }
+
     function render(state: LiveState | null, meta: { reminders: ReminderOptions | null }) {
-      last = state;
+      last = state; lastMeta = meta;
       const s = state || ({ phase: 'idle' } as LiveState);
       const forThisKid = !pageKid || !s.kidSlug || s.kidSlug === pageKid;
       const phase = forThisKid ? s.phase : 'idle';
       const view = phase === 'live' || phase === 'ending' ? 'live' : phase === 'replay' ? 'replay' : phase === 'scheduled' || phase === 'armed' ? 'upcoming' : 'idle';
-      hero.dataset.phase = view;
+      const kidSlug = pageKid || (view !== 'idle' ? s.kidSlug || '' : '');
+      const slate = s.player ? '' : slateSrc(s, view, kidSlug);
+      display = slate ? 'starting' : view;
+      hero.dataset.phase = display;
+      if (page) page.dataset.view = display;
+      follow(s, view);
 
       const who = s.kidName ? `${s.kidName}'s room reveal` : 'The reveal';
       const eyebrow = q<HTMLElement>('eyebrow');
       const status = q<HTMLElement>('status');
       const badge = q<HTMLElement>('badge');
       const badgeText = q<HTMLElement>('badge-text');
-      const lead = q<HTMLElement>('lead');
 
       if (view === 'live') {
         if (eyebrow) eyebrow.textContent = 'Live now';
-        if (status) status.textContent = s.message || `${who} is happening right now.`;
+        if (status) status.textContent = `${who} is happening right now.`;
         if (badgeText) badgeText.textContent = 'LIVE';
         setHidden(badge, !s.player);
       } else if (view === 'replay') {
@@ -370,25 +594,32 @@ const rooms = kid?.roomTypes?.length ? kid.roomTypes.join(', ') : null;
         if (badgeText) badgeText.textContent = s.player ? 'Replay' : 'Processing';
         setHidden(badge, false);
       } else if (view === 'upcoming') {
-        if (eyebrow) eyebrow.textContent = 'Reveal day';
         const rel = relativeUntil(s.scheduledAt);
-        if (status) status.textContent = s.scheduledAt ? `We go live ${formatWhen(s.scheduledAt)}${rel ? `, ${rel}` : ''}.` : 'A reveal is on the calendar.';
-        if (badgeText) badgeText.textContent = rel ? `Live ${rel}` : 'Coming up';
-        setHidden(badge, !rel);
+        if (slate) {
+          if (eyebrow) eyebrow.textContent = 'Starting soon';
+          if (status) status.textContent = s.scheduledAt && Date.parse(s.scheduledAt) > Date.now() ? `We go live ${formatWhen(s.scheduledAt)}. Stay right here.` : 'Any moment now. Stay right here.';
+          // The starting-soon screen carries its own label in that corner
+          setHidden(badge, true);
+        } else {
+          if (eyebrow) eyebrow.textContent = 'Reveal day';
+          if (status) status.textContent = s.scheduledAt ? `We go live ${formatWhen(s.scheduledAt)}${rel ? `, ${rel}` : ''}.` : 'A reveal is on the calendar.';
+          if (badgeText) badgeText.textContent = rel ? `Live ${rel}` : 'Coming up';
+          setHidden(badge, !rel);
+        }
       } else {
         if (eyebrow) eyebrow.textContent = 'Live reveal';
-        if (status) status.textContent = pageKid ? '' : 'No reveal is scheduled right now. Sign up below and you will hear about the next one first.';
+        if (status) status.textContent = pageKid ? '' : 'No reveal is scheduled right now. Get a reminder for the next one, and watch the last few while you wait.';
         setHidden(badge, true);
       }
-      if (lead && s.message && (view === 'live' || view === 'upcoming') && !pageKid) lead.textContent = s.message;
 
       // CTAs
       setHidden(q('cta-watch'), view !== 'live' || !s.player);
       setHidden(q('cta-replay'), view !== 'replay' || !s.player);
       setHidden(q('cta-remind'), !(view === 'upcoming' || view === 'idle') || !meta.reminders?.enabled);
       setHidden(q('cta-calendar'), view !== 'upcoming');
+      setHidden(q('cta-past'), view !== 'idle' || !document.getElementById('past-reveals'));
       const fbCta = q<HTMLAnchorElement>('cta-facebook');
-      if (fbCta) { fbCta.href = s.facebookUrl || fbCta.href; setHidden(fbCta, !(view === 'live' || (view === 'replay' && !s.player))); fbCta.textContent = view === 'live' ? 'Comment on Facebook' : 'Watch on Facebook'; }
+      if (fbCta) { fbCta.href = s.facebookUrl || fbCta.href; setHidden(fbCta, !(view === 'replay' && !s.player)); fbCta.textContent = 'Watch on Facebook'; }
       const fbLink = bq<HTMLAnchorElement>('link-facebook');
       if (fbLink && s.facebookUrl) fbLink.href = s.facebookUrl;
       const ytItem = bq<HTMLElement>('youtube-item');
@@ -399,26 +630,49 @@ const rooms = kid?.roomTypes?.length ? kid.roomTypes.join(', ') : null;
       if (igItem && igLink) { if (s.instagramUrl) { igLink.href = s.instagramUrl; igItem.hidden = false; } else igItem.hidden = true; }
       hero.dataset.orientation = s.orientation === 'portrait' ? 'portrait' : 'landscape';
 
-      // Player
+      // Frame: Stream player, or the starting-soon screen, or the photo
       const playerEl = q<HTMLElement>('player');
-      const key = s.player && forThisKid ? `${s.player.kind}:${s.player.uid}` : '';
+      const key = s.player && forThisKid ? `${s.player.kind}:${s.player.uid}` : slate ? `slate:${slate}` : '';
       if (playerEl && key !== mountedPlayer) {
         mountedPlayer = key;
         playerEl.innerHTML = '';
-        if (s.player) {
+        if (s.player && forThisKid) {
           const p = s.player;
-          const src = `https://customer-${p.customerCode}.cloudflarestream.com/${p.uid}/iframe?${p.kind === 'live' ? 'autoplay=true&muted=true' : 'preload=metadata'}`;
           const f = document.createElement('iframe');
-          f.src = src; f.title = p.kind === 'live' ? 'Live reveal video' : 'Reveal replay';
+          f.src = `https://customer-${p.customerCode}.cloudflarestream.com/${p.uid}/iframe?${p.kind === 'live' ? 'autoplay=true&muted=true' : 'preload=metadata'}`;
+          f.title = p.kind === 'live' ? 'Live reveal video' : 'Reveal replay';
           f.allow = 'accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen';
           f.setAttribute('allowfullscreen', 'true');
           f.loading = 'eager';
+          playerEl.appendChild(f);
+          playerEl.hidden = false;
+        } else if (slate) {
+          const f = document.createElement('iframe');
+          f.src = slate;
+          f.title = 'Starting soon';
+          f.loading = 'eager';
+          f.tabIndex = -1;
+          // A kid whose page isn't built yet has no starting-soon screen: fall back to the photo
+          f.addEventListener('load', () => {
+            let ok = false;
+            // Same origin, so an unreadable document means the browser showed an error page
+            try { ok = !!f.contentDocument?.getElementById('canvas'); } catch { ok = false; }
+            if (!ok) { slateFailed.add(kidSlug); mountedPlayer = ''; if (last) render(last, lastMeta); }
+          });
           playerEl.appendChild(f);
           playerEl.hidden = false;
         } else {
           playerEl.hidden = true;
         }
       }
+
+      // Watch party: reactions and the viewer count while it's on (or about to be)
+      const party = display === 'live' || display === 'starting';
+      if (party && !watching) { watching = true; client.watch(); }
+      setHidden(q('watchbar'), !party);
+      renderViewers();
+
+      renderMessages(s, view, forThisKid);
 
       // Reminder form availability
       const smsForm = bq<HTMLFormElement>('form-sms');
@@ -432,11 +686,188 @@ const rooms = kid?.roomTypes?.length ? kid.roomTypes.join(', ') : null;
       const rh = bq<HTMLElement>('remind-heading');
       if (rh) rh.textContent = view === 'upcoming' && s.kidName ? `Don't miss ${s.kidName}'s reveal` : view === 'replay' ? 'Hear about the next reveal' : 'Never miss a reveal';
 
-      if (!viewed) { viewed = true; client.beacon('view_live_page', { phase: view, kid: pageKid || s.kidSlug || '' }); }
+      if (!viewed) {
+        viewed = true;
+        const src = new URLSearchParams(location.search).get('src') || '';
+        client.beacon('view_live_page', { phase: display, kid: pageKid || s.kidSlug || '', ...(src ? { src: src.slice(0, 24) } : {}) });
+        if (src === 'qr') client.beacon('qr_scan', { kid: s.kidSlug || '' });
+      }
     }
 
-    client.subscribe(render);
-    setInterval(() => { if (last?.upcoming) render(last, { reminders: client.reminders }); }, 60_000);
+
+    // ── Viewer count ────────────────────────────────────────────────
+    function renderViewers() {
+      const el = q<HTMLElement>('viewers');
+      if (!el) return;
+      const show = (display === 'live' || display === 'starting') && viewers >= VIEWERS_MIN;
+      el.hidden = !show;
+      if (show) el.textContent = `${viewers.toLocaleString()} watching here`;
+    }
+    // The watch-party hub answers {"t":"watch"} with a count; an older hub never does
+    let partyHub = false;
+    client.on('viewers', ({ n }) => { partyHub = true; viewers = n; renderViewers(); });
+
+    // ── Reactions ───────────────────────────────────────────────────
+    const layer = q<HTMLElement>('reactions');
+    const icons: Record<string, string> = {};
+    const own: Record<string, number> = {};
+    hero.querySelectorAll<HTMLButtonElement>('.react-btn').forEach((btn) => {
+      const kind = btn.dataset.react as ReactionKind;
+      icons[kind] = btn.innerHTML;
+      btn.addEventListener('click', () => {
+        spawn(kind, true);
+        if (client.react(kind)) own[kind] = (own[kind] || 0) + 1;
+        btn.classList.remove('is-pop'); void btn.offsetWidth; btn.classList.add('is-pop');
+        setTimeout(() => btn.classList.remove('is-pop'), 160);
+      });
+    });
+    function spawn(kind: string, mine: boolean) {
+      if (reduced || !layer || !icons[kind] || layer.childElementCount > 40) return;
+      const el = document.createElement('span');
+      el.className = mine ? 'react-float is-mine' : 'react-float';
+      el.dataset.k = kind;
+      el.innerHTML = icons[kind];
+      el.style.right = `${6 + Math.random() * 16}%`;
+      el.style.setProperty('--x', `${Math.round((Math.random() - 0.5) * 70)}px`);
+      el.style.setProperty('--d', `${(2.3 + Math.random() * 1).toFixed(2)}s`);
+      el.addEventListener('animationend', () => el.remove());
+      layer.appendChild(el);
+    }
+    client.on('react', ({ c }) => {
+      if (display !== 'live' && display !== 'starting') return;
+      for (const [kind, total] of Object.entries(c)) {
+        let n = Number(total) || 0;
+        const mine = Math.min(own[kind] || 0, n);
+        own[kind] = (own[kind] || 0) - mine;
+        n -= mine;
+        for (let i = 0; i < Math.min(n, 6); i++) setTimeout(() => spawn(kind, false), i * 110 + Math.random() * 80);
+      }
+    });
+
+    // ── Messages for the family ─────────────────────────────────────
+    let msgBroadcast = '';
+    let msgOpen = false;
+    let msgLoading = false;
+    const msgIds = new Set<string>();
+    const list = mq<HTMLOListElement>('list');
+    const form = mq<HTMLFormElement>('form');
+
+    function addMessage(m: LiveMessage, animate = true) {
+      if (!list || msgIds.has(m.id)) return;
+      msgIds.add(m.id);
+      const li = document.createElement('li');
+      li.className = 'msg';
+      li.dataset.id = m.id;
+      if (!animate) li.style.animation = 'none';
+      const who = document.createElement('span');
+      who.className = 'msg__name';
+      who.textContent = m.name;
+      const text = document.createElement('p');
+      text.className = 'msg__body';
+      text.textContent = m.body;
+      li.append(who, text);
+      list.prepend(li);
+      while (list.children.length > MSG_MAX) list.lastElementChild?.remove();
+      setHidden(mq('empty'), true);
+    }
+    function removeMessage(id: string) {
+      msgIds.delete(id);
+      list?.querySelector(`[data-id="${CSS.escape(id)}"]`)?.remove();
+      setHidden(mq('empty'), !!list?.children.length);
+    }
+    async function loadMessages(fresh: boolean) {
+      if (msgLoading) return;
+      msgLoading = true;
+      try {
+        const res = await fetch('/api/live-messages', { cache: 'no-store' });
+        const data = await res.json().catch(() => null);
+        if (!data || !res.ok) return;
+        if (!data.enabled || (data.broadcastId && data.broadcastId !== msgBroadcast)) {
+          if (!data.enabled) { setHidden(msgs, true); setHidden(q('cta-messages'), true); }
+          return;
+        }
+        if (fresh && list) { list.innerHTML = ''; msgIds.clear(); }
+        const incoming: LiveMessage[] = data.messages || [];
+        const keep = new Set(incoming.map(m => m.id));
+        if (!fresh) for (const id of [...msgIds]) if (!keep.has(id)) removeMessage(id);
+        for (const m of incoming) addMessage(m, !fresh);
+        msgOpen = !!data.open;
+        setHidden(form, !msgOpen);
+        setHidden(mq('closed'), msgOpen || !msgIds.size);
+        setHidden(mq('empty'), !!msgIds.size || !msgOpen);
+        setHidden(msgs, !msgOpen && !msgIds.size);
+        setHidden(q('cta-messages'), !msgOpen || display === 'idle');
+      } catch { /* offline */ } finally { msgLoading = false; }
+    }
+    function renderMessages(s: LiveState, view: string, forThisKid: boolean) {
+      if (!msgs) return;
+      const active = forThisKid && !!s.id && view !== 'idle';
+      const heading = mq<HTMLElement>('heading');
+      if (heading) heading.textContent = s.kidName ? `Messages for ${s.kidName}'s family` : 'Messages for the family';
+      const area = msgs.querySelector<HTMLTextAreaElement>('textarea');
+      if (area) area.placeholder = s.kidName ? `${s.kidName}, we are so happy for you!` : 'We are so happy for you!';
+      if (!active) {
+        msgBroadcast = ''; msgOpen = false;
+        msgs.hidden = true;
+        setHidden(q('cta-messages'), true);
+        return;
+      }
+      if (s.id !== msgBroadcast) { msgBroadcast = s.id || ''; loadMessages(true); }
+      else setHidden(q('cta-messages'), !msgOpen || display === 'idle');
+    }
+    client.on('msg', ({ message }) => { if (msgBroadcast) addMessage(message); });
+    client.on('msg-hide', ({ id }) => removeMessage(id));
+    client.on('connection', ({ connected }) => { if (connected && msgBroadcast) loadMessages(false); });
+    // Without a real-time hub that relays messages, poll so new notes still show up
+    setInterval(() => { if (msgBroadcast && !(client.connected && partyHub) && !document.hidden && !msgs?.hidden) loadMessages(false); }, MSG_POLL_MS);
+
+    function store(key: string, value?: string) {
+      try { if (value === undefined) return localStorage.getItem(key) || ''; localStorage.setItem(key, value); } catch { /* private mode */ }
+      return '';
+    }
+    const clientId = store('soard-live-id') || (() => {
+      const id = (crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`).replace(/[^a-zA-Z0-9-]/g, '');
+      store('soard-live-id', id);
+      return id;
+    })();
+    if (form) {
+      const nameInput = form.querySelector<HTMLInputElement>('input[name="name"]');
+      const bodyInput = form.querySelector<HTMLTextAreaElement>('textarea[name="body"]');
+      const count = mq<HTMLElement>('count');
+      const note = mq<HTMLElement>('note');
+      if (nameInput) nameInput.value = store('soard-live-name');
+      bodyInput?.addEventListener('input', () => { if (count) count.textContent = `${bodyInput.value.length}/280`; });
+      const say = (text: string, error = false) => { if (note) { note.className = error ? 'remind-note remind-note--error' : 'remind-note'; note.textContent = text; } };
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const btn = form.querySelector('button[type="submit"]') as HTMLButtonElement;
+        const name = nameInput?.value.trim() || '';
+        const text = bodyInput?.value.trim() || '';
+        if (!name) { say('Add your first name.', true); nameInput?.focus(); return; }
+        if (text.length < 2) { say('Write a little more.', true); bodyInput?.focus(); return; }
+        btn.disabled = true; say('Posting…');
+        try {
+          const res = await fetch('/api/live-messages', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, body: text, clientId, website: (form.querySelector('input[name="website"]') as HTMLInputElement)?.value || '' }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (res.ok && data.ok) {
+            store('soard-live-name', name);
+            if (bodyInput) bodyInput.value = '';
+            if (count) count.textContent = '0/280';
+            if (data.status === 'shown' && data.message) { addMessage(data.message); say('Posted. Thank you!'); }
+            else say('Thank you! Your message will show up once someone on our team takes a look.');
+          } else {
+            say(data.error || 'Something went wrong. Please try again.', true);
+          }
+        } catch {
+          say('No connection. Please try again.', true);
+        } finally {
+          btn.disabled = false;
+        }
+      });
+    }
 
     // Beacons on the primary actions
     q('cta-watch')?.addEventListener('click', () => client.beacon('click_watch'));
@@ -509,5 +940,10 @@ const rooms = kid?.roomTypes?.length ? kid.roomTypes.join(', ') : null;
     });
     const fbShare = bq<HTMLAnchorElement>('share-facebook');
     if (fbShare) { fbShare.href = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(location.href.split('#')[0])}`; fbShare.addEventListener('click', () => client.beacon('share', { how: 'facebook' })); }
+
+    // Last, so everything render() touches is declared before the first (possibly synchronous) call
+    client.subscribe(render);
+    // Keeps the countdown fresh and opens the starting-soon window on time
+    setInterval(() => { if (last?.upcoming) render(last, { reminders: client.reminders }); }, 15_000);
   }
 </script>

@@ -3,6 +3,9 @@ import sitemap from '@astrojs/sitemap';
 import devSync from './scripts/dev-sync.js';
 
 const isDev = process.argv.includes('dev');
+// Cache-busted so a config reload picks up edits: Astro re-imports this file
+// on change, but Node keeps its static imports cached for the whole process
+const devLiveMock = isDev ? (await import(`./scripts/dev-live-mock.js?t=${Date.now()}`)).default : null;
 
 export default defineConfig({
   site: 'https://sunshineonaranneyday.com',
@@ -19,7 +22,8 @@ export default defineConfig({
       // No lastmod: stamping every URL with the build time makes the field
       // meaningless and Google ignores (or distrusts) uniform values.
     }),
-    ...(isDev ? [devSync()] : []),
+    // devLiveMock: fake broadcast + messages for the live pages in dev (/__live/?state=live|upcoming|starting|replay|off)
+    ...(isDev ? [devSync(), devLiveMock()] : []),
   ],
   prefetch: {
     defaultStrategy: 'hover',
