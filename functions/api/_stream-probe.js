@@ -11,14 +11,22 @@
  * so a half-working feed still reports the half that works.
  */
 
-import { analyzeSegment, mergeLevels, SILENT_DB } from './_aac-level.js';
+import { analyzeSegments, SILENT_DB } from './_aac-level.js';
 import { playbackHost } from './_stream-live.js';
 
 const TIMEOUT_MS = 6000;
-/** Audio below this (RMS over the probe window) reads as "quiet" in the admin. Not an alert. */
-export const QUIET_DB = -50;
-/** Share of silent frames that makes a window "silent". */
-const SILENT_SHARE = 90;
+/**
+ * Audio verdict thresholds, shared with the admin's browser meter.
+ * Facebook and YouTube play speech around -14 LUFS; under -33 it is hard to hear.
+ */
+export const AUDIO = {
+  silentShare: 90,   // % of frames below SILENT_DB that makes a window silent
+  quietLufs: -33,    // integrated loudness under this = very quiet
+  loudLufs: -9,      // integrated loudness over this = very loud
+  loudMomentary: -6, // any 400 ms block over this = very loud
+  oneSidedDb: 20,    // left/right difference that means one side is dead
+  oneSidedFloor: -50, // ...when the louder side is at least this loud (dBFS RMS)
+};
 
 // Init segments rarely change during a broadcast; keep a few per isolate
 const initCache = new Map();
@@ -89,13 +97,23 @@ export function parseMedia(text, base) {
   return out;
 }
 
-/** "ok" | "quiet" | "silent" | "none" | "unknown" for an audio reading. */
+/** Which side is dead, if one is: 'left' | 'right' | null. */
+export function deadSide(audio) {
+  if (audio?.channels !== 2) return null;
+  const l = audio.leftDb ?? -Infinity, r = audio.rightDb ?? -Infinity;
+  if (Math.max(l, r) < AUDIO.oneSidedFloor || Math.abs(l - r) < AUDIO.oneSidedDb) return null;
+  return l > r ? 'right' : 'left';
+}
+
+/** "ok" | "quiet" | "loud" | "onesided" | "silent" | "none" | "unknown" for an audio reading. */
 export function audioVerdict(audio) {
   if (!audio) return 'unknown';
   if (audio.present === false) return 'none';
-  if (!audio.supported || audio.frames === 0) return 'unknown';
-  if (audio.silentPct >= SILENT_SHARE || audio.levelDb == null || audio.levelDb < SILENT_DB) return 'silent';
-  if (audio.levelDb < QUIET_DB) return 'quiet';
+  if (!audio.supported || !audio.frames) return 'unknown';
+  if (audio.silentPct >= AUDIO.silentShare || audio.levelDb == null || audio.levelDb < SILENT_DB) return 'silent';
+  if ((audio.lufs != null && audio.lufs > AUDIO.loudLufs) || (audio.lufsMax != null && audio.lufsMax > AUDIO.loudMomentary)) return 'loud';
+  if (deadSide(audio)) return 'onesided';
+  if (audio.lufs == null || audio.lufs < AUDIO.quietLufs) return 'quiet';
   return 'ok';
 }
 
@@ -146,6 +164,7 @@ export async function probeFeed(customerCode, uid, { audioSegments = 2 } = {}) {
     Object.assign(out.video, {
       segments: v.segments.length,
       segmentSec: v.targetDuration,
+      avgSegmentSec: v.segments.length ? Math.round((v.segments.reduce((a, x) => a + (x.duration || 0), 0) / v.segments.length) * 1000) / 1000 : null,
       lastSequence: v.lastSequence,
       // Wall-clock age of the newest segment, when Stream stamps program date-times
       edgeAgeSec: last?.pdt ? Math.round((Date.now() - (last.pdt + (last.duration || 0) * 1000)) / 100) / 10 : null,
@@ -169,11 +188,15 @@ export async function probeFeed(customerCode, uid, { audioSegments = 2 } = {}) {
         }
         const picks = pl.segments.slice(-audioSegments);
         const bytes = await Promise.all(picks.map((s) => get(s.uri, 'bytes')));
-        const level = mergeLevels(bytes.map((segment) => analyzeSegment({ init, segment })));
+        const level = analyzeSegments({ init, segments: bytes });
         Object.assign(out.audio, {
           supported: level.supported !== false,
           levelDb: level.levelDb ?? null,
+          leftDb: level.leftDb ?? null,
+          rightDb: level.rightDb ?? null,
           peakDb: level.peakDb ?? null,
+          lufs: level.lufs ?? null,
+          lufsMax: level.lufsMax ?? null,
           silentPct: level.silentPct ?? null,
           frames: level.frames || 0,
           seconds: Math.round(picks.reduce((s, x) => s + (x.duration || 0), 0) * 10) / 10,
@@ -189,6 +212,7 @@ export async function probeFeed(customerCode, uid, { audioSegments = 2 } = {}) {
     }
   }
   out.audio.verdict = audioVerdict(out.audio);
+  out.audio.deadSide = deadSide(out.audio);
   out.ok = !out.error;
   return out;
 }

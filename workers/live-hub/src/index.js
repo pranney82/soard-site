@@ -50,7 +50,7 @@ const REACT_FLUSH_MS = 400;
 const REACT_WINDOW_MS = 3000;
 const REACT_MAX_PER_WINDOW = 15;
 const VIEWERS_DEBOUNCE_MS = 2000;
-const RELAY_TYPES = new Set(['msg', 'msg-hide']);
+const RELAY_TYPES = new Set(['msg', 'msg-hide', 'gifts']);
 
 function pickInterval(state) {
   const phase = state?.phase || 'idle';
@@ -113,12 +113,13 @@ export class LiveHub extends DurableObject {
     }
 
     if (path === '/relay' && request.method === 'POST') {
-      // Binding-only. Screened messages for the family, from the Pages Function.
+      // Binding-only. Screened messages for the family, and the running total of
+      // gifts during the reveal, from the Pages Functions.
       let body;
       try { body = await request.json(); } catch { return Response.json({ ok: false, error: 'bad json' }, { status: 400 }); }
       if (!RELAY_TYPES.has(body?.type)) return Response.json({ ok: false, error: 'unknown type' }, { status: 400 });
-      const msg = body.type === 'msg'
-        ? { type: 'msg', message: body.message }
+      const msg = body.type === 'msg' ? { type: 'msg', message: body.message }
+        : body.type === 'gifts' ? { type: 'gifts', broadcastId: String(body.broadcastId || ''), cents: Number(body.cents) || 0, count: Number(body.count) || 0 }
         : { type: 'msg-hide', id: body.id };
       const sent = this.broadcastWatchers({ ...msg, ts: Date.now() });
       return Response.json({ ok: true, sent });
@@ -191,6 +192,10 @@ export class LiveHub extends DurableObject {
       if (!att.w) ws.serializeAttachment({ ...att, w: 1 });
       try { ws.send(JSON.stringify({ type: 'viewers', n: this.watchers().length, ts: Date.now() })); } catch {}
       this.scheduleViewers();
+    } else if (m.t === 'unwatch') {
+      // Left the live page but kept the tab (client-side navigation): stop counting it
+      const att = ws.deserializeAttachment() || {};
+      if (att.w) { ws.serializeAttachment({ ...att, w: 0 }); this.scheduleViewers(); }
     } else if (m.t === 'react' && REACTIONS.has(m.k)) {
       if (!(ws.deserializeAttachment() || {}).w) return;
       const now = Date.now();

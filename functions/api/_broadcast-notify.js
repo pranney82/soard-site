@@ -423,14 +423,40 @@ export function slackConfigured(env) {
   return !!env.SLACK_WEBHOOK_URL;
 }
 
-export async function slackAlert(env, text) {
+/**
+ * Post to Slack. With `blocks` (Block Kit) the message is formatted and
+ * `text` is the notification line. Live issues have to land, so: one retry
+ * on a network error, 429 or 5xx, and if Slack rejects the blocks, the same
+ * message again as plain text. → { ok, status, attempts, plain?, error? }
+ */
+export async function slackAlert(env, text, blocks = null) {
   if (!slackConfigured(env)) return { ok: false, skipped: true };
-  try {
-    const res = await fetch(env.SLACK_WEBHOOK_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }), signal: AbortSignal.timeout(10000) });
-    return { ok: res.ok, status: res.status };
-  } catch (e) {
-    return { ok: false, error: e.message };
+  const post = async (payload) => {
+    try {
+      const res = await fetch(env.SLACK_WEBHOOK_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), signal: AbortSignal.timeout(10000) });
+      return { ok: res.ok, status: res.status, error: res.ok ? null : (await res.text().catch(() => '')).slice(0, 200) || `HTTP ${res.status}` };
+    } catch (e) {
+      return { ok: false, status: 0, error: e.message };
+    }
+  };
+  let attempts = 0;
+  let r = { ok: false };
+  for (const payload of blocks ? [{ text, blocks }, { text }] : [{ text }]) {
+    for (let i = 0; i < 2; i++) {
+      attempts++;
+      r = await post(payload);
+      if (r.ok) return { ok: true, status: r.status, attempts, plain: !!blocks && !payload.blocks };
+      const transient = !r.status || r.status === 429 || r.status >= 500;
+      if (!transient) break;
+      if (i === 0) await new Promise((res) => setTimeout(res, 1200));
+    }
   }
+  return { ok: false, status: r.status, attempts, error: r.error };
+}
+
+/** Escape text for Slack mrkdwn. */
+export function slackEscape(s) {
+  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 export function alertEmails(env, config) {
@@ -441,19 +467,28 @@ export function alertEmails(env, config) {
 
 /**
  * Tell the humans. Slack if configured, email to the alert list. `level` is
- * 'info' | 'warn' | 'error'. Never throws.
+ * 'info' | 'warn' | 'error'. Optional: `fix` (what to do), `context` (one
+ * small line: which reveal, how long live), `links` [{ label, url }] beyond
+ * `url`. Never throws.
  */
-export async function alertAdmins(env, config, { level = 'warn', title, detail, url }) {
+export async function alertAdmins(env, config, { level = 'warn', title, detail, url, fix, context, links = [] }) {
   const icon = level === 'error' ? '🔴' : level === 'warn' ? '🟡' : '🟢';
-  const text = `${icon} *${title}*\n${detail || ''}${url ? `\n${url}` : ''}`;
-  const results = { slack: await slackAlert(env, text), email: null };
+  const urlLabel = url?.includes('#broadcast/control-room') ? 'Open the control room' : url?.includes('/admin/') ? 'Open the admin' : 'Open';
+  const allLinks = [...(url ? [{ label: urlLabel, url }] : []), ...links].filter((l) => l?.url);
+  const text = `${icon} ${title}${detail ? `: ${detail}` : ''}${fix ? ` Fix: ${fix}` : ''}${url ? ` ${url}` : ''}`;
+  const blocks = [
+    { type: 'section', text: { type: 'mrkdwn', text: `${icon} *${slackEscape(title)}*${detail ? `\n${slackEscape(detail)}` : ''}` } },
+    fix ? { type: 'section', text: { type: 'mrkdwn', text: `*Fix:* ${slackEscape(fix)}` } } : null,
+    context || allLinks.length ? { type: 'context', elements: [{ type: 'mrkdwn', text: [context ? slackEscape(context) : null, ...allLinks.map((l) => `<${l.url}|${slackEscape(l.label)}>`)].filter(Boolean).join('  ·  ') }] } : null,
+  ].filter(Boolean);
+  const results = { slack: await slackAlert(env, text, blocks), email: null };
   const to = alertEmails(env, config);
   if (to.length && emailConfigured(env)) {
     results.email = await sendEmails(env, {
       to,
       subject: `[SOARD Live] ${title}`,
-      html: `<p><strong>${escapeHtml(title)}</strong></p><p>${escapeHtml(detail || '').replace(/\n/g, '<br>')}</p>${url ? `<p><a href="${escapeHtml(url)}">${escapeHtml(url)}</a></p>` : ''}`,
-      text: `${title}\n\n${detail || ''}\n${url || ''}`,
+      html: `<p><strong>${escapeHtml(title)}</strong></p><p>${escapeHtml(detail || '').replace(/\n/g, '<br>')}</p>${fix ? `<p><strong>Fix:</strong> ${escapeHtml(fix)}</p>` : ''}${context ? `<p style="color:#666">${escapeHtml(context)}</p>` : ''}${allLinks.map((l) => `<p><a href="${escapeHtml(l.url)}">${escapeHtml(l.label)}</a></p>`).join('')}`,
+      text: `${title}\n\n${detail || ''}${fix ? `\nFix: ${fix}` : ''}${context ? `\n${context}` : ''}\n${allLinks.map((l) => `${l.label}: ${l.url}`).join('\n')}`,
       tags: [{ name: 'category', value: 'live-alert' }],
     });
   }

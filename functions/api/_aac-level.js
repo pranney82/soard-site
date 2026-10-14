@@ -2,19 +2,20 @@
  * AAC loudness from the bitstream (no audio decoder)
  * ==================================================
  * Workers have no audio decoder, but the server still needs to know whether
- * the reveal has sound, so it can alert someone while nobody has the admin
- * open. Frame sizes say nothing: Stream re-encodes live audio at a constant
+ * the reveal has sound, so it can alert while nobody has the admin open.
+ * Frame sizes say nothing: Stream re-encodes live audio at a constant
  * ~128 kbps, so silence and speech both average ~341 bytes per frame.
  *
- * So this decodes just enough of each AAC-LC frame: the first channel's
- * section data, scale factors and Huffman-coded spectral coefficients, then
- * inverse-quantizes them (|q|^(4/3) * 2^((sf-100)/4)) and sums the energy.
- * The MDCT is energy-preserving, so that is the frame's loudness without
- * running the filterbank. Checked against FFmpeg's decoder on noise, tones
- * and speech from -80 to -10 dBFS (tests/stream-probe.test.mjs).
+ * So this decodes the spectrum of each AAC-LC frame: section data, scale
+ * factors and Huffman-coded coefficients for both channels, inverse
+ * quantization (|q|^(4/3) * 2^((sf-100)/4)), then undoes mid/side and
+ * intensity stereo to get true left and right. The MDCT preserves energy,
+ * so summing squared coefficients gives each channel's level without the
+ * filterbank, and weighting each line by the BS.1770 K-filter's response
+ * gives loudness in LUFS with the standard 400 ms gating.
  *
- * Channel pairs report the first coded channel, which is the mid (L+R)/2
- * signal when M/S stereo is on: exact for a mono mic, close for stereo.
+ * Checked against FFmpeg's decoder (astats, ebur128) on noise, tones,
+ * speech, mono, one-sided and mid/side stereo: tests/stream-probe.test.mjs.
  *
  * Containers: fragmented MP4 (what Stream's HLS serves) and MPEG-TS with
  * ADTS (in case live packaging ever differs). AAC-LC only; anything else
@@ -72,9 +73,9 @@ function lookup(codes, bits) {
 }
 const SF_LOOKUP = lookup(SF_CODE, SF_BITS);
 const SPECTRAL_LOOKUP = SPECTRAL.map((t) => (t ? lookup(t[0], t[1]) : null));
-// |q|^(8/3): the energy of one dequantized coefficient before the step size
-const POW83 = new Float64Array(8192 + 17);
-for (let i = 0; i < POW83.length; i++) POW83[i] = Math.pow(i, 8 / 3);
+// |q|^(4/3): inverse quantization before the step size (escapes reach 8191, pulses add up to 15)
+const POW43 = new Float64Array(8192 + 17);
+for (let i = 0; i < POW43.length; i++) POW43[i] = Math.pow(i, 4 / 3);
 
 class Bits {
   constructor(bytes) { this.b = bytes; this.pos = 0; this.end = bytes.length * 8; }
@@ -303,7 +304,7 @@ export function adtsFromTs(segment) {
   return out;
 }
 
-// ─── raw_data_block → first-channel energy ──────────────────────────
+// ─── raw_data_block → per-channel energy ────────────────────────────
 
 function icsInfo(r) {
   r.read(1); // reserved
@@ -324,53 +325,25 @@ function icsInfo(r) {
   return { short: false, maxSfb, groupLen: [1] };
 }
 
-/** Energy of the first coded channel in one frame (0 for digital silence). Throws on anything it can't parse. */
-function frameEnergy(r, config) {
-  for (;;) {
-    const id = r.read(3);
-    if (id === 0 || id === 3) { r.read(4); return icsEnergy(r, null, config); } // SCE / LFE
-    if (id === 1) { // CPE
-      r.read(4);
-      let info = null;
-      if (r.read(1)) { // common_window
-        info = icsInfo(r);
-        if (r.read(2) === 1) r.skip(info.groupLen.length * info.maxSfb); // ms_used flags
-      }
-      return icsEnergy(r, info, config);
-    }
-    if (id === 4) { // DSE
-      r.read(4);
-      const align = r.read(1);
-      let count = r.read(8);
-      if (count === 255) count += r.read(8);
-      if (align) r.align();
-      r.skip(count * 8);
-      continue;
-    }
-    if (id === 6) { // FIL
-      let count = r.read(4);
-      if (count === 15) count += r.read(8) - 1;
-      r.skip(count * 8);
-      continue;
-    }
-    if (id === 7) return 0; // END with no channel element
-    throw new Error(`unsupported syntax element ${id}`);
-  }
-}
-
-function icsEnergy(r, commonInfo, config) {
+/**
+ * One individual_channel_stream, decoded to signed, dequantized spectral
+ * values in coded order (band by band; a short-window group's windows one
+ * after another inside each band). Zero, noise and intensity bands keep
+ * their slots, so the two channels of a common-window pair line up.
+ */
+function decodeIcs(r, commonInfo, config) {
   const globalGain = r.read(8);
   const info = commonInfo || icsInfo(r);
   const swb = info.short ? SWB_SHORT[config.sfIndex] : SWB_LONG[config.sfIndex];
   if (!swb || info.maxSfb > swb.length - 1) throw new Error('band count out of range');
   const groups = info.groupLen.length;
+  const bands = groups * info.maxSfb;
 
   // section_data: Huffman codebook for every band of every window group
   const sectBits = info.short ? 3 : 5;
   const esc = (1 << sectBits) - 1;
-  const cbs = [];
+  const cbs = new Uint8Array(bands);
   for (let g = 0; g < groups; g++) {
-    const row = new Uint8Array(info.maxSfb);
     let k = 0;
     while (k < info.maxSfb) {
       const cb = r.read(4);
@@ -379,31 +352,26 @@ function icsEnergy(r, commonInfo, config) {
       while ((inc = r.read(sectBits)) === esc) len += esc;
       len += inc;
       if (k + len > info.maxSfb) throw new Error('section overruns bands');
-      row.fill(cb, k, k + len);
+      cbs.fill(cb, g * info.maxSfb + k, g * info.maxSfb + k + len);
       k += len;
     }
-    cbs.push(row);
   }
 
-  // scale_factor_data: quantizer step per band; noise (PNS) bands carry their energy directly
-  let sf = globalGain, noise = globalGain - 90, firstNoise = true;
-  let energy = 0;
-  const steps = [];
-  for (let g = 0; g < groups; g++) {
-    const row = new Float64Array(info.maxSfb);
-    for (let b = 0; b < info.maxSfb; b++) {
-      const cb = cbs[g][b];
-      if (cb === ZERO_HCB) continue;
-      if (cb === INTENSITY_HCB || cb === INTENSITY_HCB2) { r.huff(SF_LOOKUP); continue; }
-      if (cb === NOISE_HCB) {
-        if (firstNoise) { noise += r.read(9) - 256; firstNoise = false; } else noise += r.huff(SF_LOOKUP) - 60;
-        energy += info.groupLen[g] * Math.pow(2, noise / 2);
-        continue;
-      }
-      sf += r.huff(SF_LOOKUP) - 60;
-      row[b] = Math.pow(2, (sf - 100) / 2); // step²
+  // scale_factor_data: quantizer step per band; noise (PNS) bands carry their energy, intensity bands a position
+  let sf = globalGain, noise = globalGain - 90, isPos = 0, firstNoise = true;
+  const step = new Float64Array(bands);   // 2^((sf-100)/4)
+  const extra = new Float64Array(bands);  // noise: band energy; intensity: position
+  for (let i = 0; i < bands; i++) {
+    const cb = cbs[i];
+    if (cb === ZERO_HCB) continue;
+    if (cb === INTENSITY_HCB || cb === INTENSITY_HCB2) { isPos += r.huff(SF_LOOKUP) - 60; extra[i] = isPos; continue; }
+    if (cb === NOISE_HCB) {
+      if (firstNoise) { noise += r.read(9) - 256; firstNoise = false; } else noise += r.huff(SF_LOOKUP) - 60;
+      extra[i] = info.groupLen[Math.floor(i / info.maxSfb)] * Math.pow(2, noise / 2);
+      continue;
     }
-    steps.push(row);
+    sf += r.huff(SF_LOOKUP) - 60;
+    step[i] = Math.pow(2, (sf - 100) / 4);
   }
 
   // pulse_data (long windows only), tns_data (skipped), gain_control (not in LC)
@@ -433,135 +401,311 @@ function icsEnergy(r, commonInfo, config) {
   }
   if (r.read(1)) throw new Error('gain control (not AAC-LC)');
 
-  // spectral_data: |q| per coefficient, band by band (short windows: the group's windows interleaved)
-  const q = pulses ? new Int32Array(1024) : null;
+  // spectral_data → signed quantized values
+  const q = new Int32Array(1024);
+  const off = new Int32Array(bands + 1);
+  let pos = 0;
   for (let g = 0; g < groups; g++) {
     for (let b = 0; b < info.maxSfb; b++) {
-      const cb = cbs[g][b];
-      if (cb === ZERO_HCB || cb >= NOISE_HCB) continue;
+      const i = g * info.maxSfb + b;
+      off[i] = pos;
+      const count = (swb[b + 1] - swb[b]) * info.groupLen[g];
+      const cb = cbs[i];
+      if (cb === ZERO_HCB || cb >= NOISE_HCB) { pos += count; continue; }
       const shape = CB_SHAPE[cb];
       const table = SPECTRAL_LOOKUP[cb];
-      const count = (swb[b + 1] - swb[b]) * info.groupLen[g];
-      let bandSum = 0, pos = swb[b];
       for (let k = 0; k < count; k += shape.dim) {
         let sym = r.huff(table, 16);
-        const vals = new Array(shape.dim);
-        for (let d = shape.dim - 1; d >= 0; d--) { vals[d] = sym % shape.mod; sym = Math.floor(sym / shape.mod); }
+        for (let d = shape.dim - 1; d >= 0; d--) { q[pos + k + d] = sym % shape.mod; sym = Math.floor(sym / shape.mod); }
         for (let d = 0; d < shape.dim; d++) {
-          let v = shape.signed ? Math.abs(vals[d] - shape.lav) : vals[d];
-          if (!shape.signed && v) r.read(1); // sign bit
-          vals[d] = v;
+          if (shape.signed) q[pos + k + d] -= shape.lav;
+          else if (q[pos + k + d] && r.read(1)) q[pos + k + d] = -q[pos + k + d];
         }
         if (cb === ESC_HCB) {
           for (let d = 0; d < 2; d++) {
-            if (vals[d] !== 16) continue;
+            const v = q[pos + k + d];
+            if (v !== 16 && v !== -16) continue;
             let n = 4;
             while (r.read(1)) { if (++n > 12) throw new Error('bad escape'); }
-            vals[d] = (1 << n) + r.read(n);
+            const mag = (1 << n) + r.read(n);
+            q[pos + k + d] = v < 0 ? -mag : mag;
           }
         }
-        for (let d = 0; d < shape.dim; d++) {
-          if (q) q[pos++] = vals[d];
-          else bandSum += POW83[vals[d]] ?? Math.pow(vals[d], 8 / 3);
-        }
       }
-      if (!q) energy += bandSum * steps[g][b];
+      pos += count;
     }
   }
-  if (q) {
-    for (const [k, amp] of pulses) if (k < 1024) q[k] += amp;
-    for (let b = 0; b < info.maxSfb; b++) {
-      if (!steps[0][b]) continue;
-      let bandSum = 0;
-      for (let k = swb[b]; k < swb[b + 1]; k++) bandSum += POW83[q[k]] ?? Math.pow(q[k], 8 / 3);
-      energy += bandSum * steps[0][b];
+  off[bands] = pos;
+  if (pulses) for (const [k, amp] of pulses) if (k < 1024) q[k] += q[k] < 0 ? -amp : amp;
+
+  // dequantize: sign(q) * |q|^(4/3) * step
+  const coef = new Float64Array(pos);
+  for (let i = 0; i < bands; i++) {
+    const st = step[i];
+    if (!st) continue;
+    for (let k = off[i]; k < off[i + 1]; k++) {
+      const v = q[k];
+      if (v) coef[k] = (v < 0 ? -1 : 1) * (POW43[v < 0 ? -v : v] ?? Math.pow(Math.abs(v), 4 / 3)) * st;
     }
   }
-  return energy;
+  return { info, swb, cbs, extra, coef, off };
 }
 
-function toDb(energy) {
-  return energy > 0 ? 10 * Math.log10(energy) + CAL_DB : -Infinity;
+// ─── Loudness weighting (ITU-R BS.1770 K-weighting) ─────────────────
+
+const kCache = new Map();
+/**
+ * |K(f)|² per MDCT line for a sample rate and transform size, from the two
+ * BS.1770 biquads (high shelf + high pass) as libebur128 derives them for
+ * any rate. Weighting each line's energy by this is K-weighting in the
+ * frequency domain.
+ */
+function kWeights(fs, n) {
+  const key = `${fs}:${n}`;
+  if (kCache.has(key)) return kCache.get(key);
+  let f0 = 1681.974450955533, G = 3.999843853973347, Q = 0.7071752369554196;
+  let K = Math.tan(Math.PI * f0 / fs);
+  const Vh = Math.pow(10, G / 20), Vb = Math.pow(Vh, 0.4996667741545416);
+  let a0 = 1 + K / Q + K * K;
+  const shelf = { b: [(Vh + Vb * K / Q + K * K) / a0, 2 * (K * K - Vh) / a0, (Vh - Vb * K / Q + K * K) / a0], a: [2 * (K * K - 1) / a0, (1 - K / Q + K * K) / a0] };
+  f0 = 38.13547087602444; Q = 0.5003270373238773;
+  K = Math.tan(Math.PI * f0 / fs);
+  a0 = 1 + K / Q + K * K;
+  const hp = { b: [1, -2, 1], a: [2 * (K * K - 1) / a0, (1 - K / Q + K * K) / a0] };
+  const mag2 = ({ b, a }, w) => {
+    const c1 = Math.cos(w), s1 = Math.sin(w), c2 = Math.cos(2 * w), s2 = Math.sin(2 * w);
+    const nr = b[0] + b[1] * c1 + b[2] * c2, ni = -(b[1] * s1 + b[2] * s2);
+    const dr = 1 + a[0] * c1 + a[1] * c2, di = -(a[0] * s1 + a[1] * s2);
+    return (nr * nr + ni * ni) / (dr * dr + di * di);
+  };
+  const out = new Float64Array(n);
+  for (let k = 0; k < n; k++) {
+    const w = Math.PI * (k + 0.5) / n; // MDCT line k sits at (k + 0.5) * fs / (2n)
+    out[k] = mag2(shelf, w) * mag2(hp, w);
+  }
+  kCache.set(key, out);
+  return out;
 }
 
-/** Level of one raw AAC-LC frame in dBFS (-Infinity for digital silence). */
-export function frameLevelDb(frame, config) {
-  return toDb(frameEnergy(new Bits(toBytes(frame)), config));
+/** Plain and K-weighted energy of coefficients [from, to) of one band (window-interleaved for short blocks). */
+function bandSums(values, from, to, swbStart, width, kw) {
+  let e = 0, w = 0;
+  for (let k = from, t = 0; k < to; k++, t++) {
+    const v = values[k];
+    if (!v) continue;
+    const v2 = v * v;
+    e += v2;
+    w += v2 * kw[swbStart + (t % width)];
+  }
+  return [e, w];
 }
 
 /**
- * Loudness summary for one HLS audio segment.
- *   init     fMP4 init segment (omit for MPEG-TS / ADTS)
- *   segment  media segment bytes
- * → { supported, frames, levelDb, peakDb, silentPct, error }
- *   levelDb   energy average over the segment (≈ RMS dBFS)
- *   peakDb    loudest frame (≈ 21 ms RMS, not sample peak)
- *   silentPct share of frames below SILENT_DB
+ * Energy per channel of one frame: { e: [L, R?], w: [L, R?] } (w is
+ * K-weighted). Mid/side and intensity stereo are undone, so a dead right
+ * channel reads as dead. Throws on anything it can't parse.
  */
-export function analyzeSegment({ init = null, segment }) {
-  const seg = toBytes(segment);
+function frameEnergies(r, config) {
+  for (;;) {
+    const id = r.read(3);
+    if (id === 0 || id === 3) { // SCE / LFE: mono
+      r.read(4);
+      const c = decodeIcs(r, null, config);
+      const [e, w] = channelSums(c, config);
+      return { e: [e], w: [w] };
+    }
+    if (id === 1) { // CPE
+      r.read(4);
+      let info = null, ms = null;
+      if (r.read(1)) { // common_window
+        info = icsInfo(r);
+        const msPresent = r.read(2);
+        const n = info.groupLen.length * info.maxSfb;
+        if (msPresent === 1) { ms = new Uint8Array(n); for (let i = 0; i < n; i++) ms[i] = r.read(1); }
+        else if (msPresent === 2) ms = new Uint8Array(n).fill(1);
+      }
+      const a = decodeIcs(r, info, config);
+      const b = decodeIcs(r, info, config);
+      return pairSums(a, b, ms, config);
+    }
+    if (id === 4) { // DSE
+      r.read(4);
+      const align = r.read(1);
+      let count = r.read(8);
+      if (count === 255) count += r.read(8);
+      if (align) r.align();
+      r.skip(count * 8);
+      continue;
+    }
+    if (id === 6) { // FIL
+      let count = r.read(4);
+      if (count === 15) count += r.read(8) - 1;
+      r.skip(count * 8);
+      continue;
+    }
+    if (id === 7) return { e: [0], w: [0] }; // END with no channel element
+    throw new Error(`unsupported syntax element ${id}`);
+  }
+}
+
+function channelSums(c, config) {
+  const { info, swb } = c;
+  const kw = kWeights(config.sampleRate, info.short ? 128 : 1024);
+  let e = 0, w = 0;
+  for (let g = 0, i = 0; g < info.groupLen.length; g++) {
+    for (let b = 0; b < info.maxSfb; b++, i++) {
+      const width = swb[b + 1] - swb[b];
+      if (c.cbs[i] === NOISE_HCB) { e += c.extra[i]; w += c.extra[i] * kw[swb[b] + (width >> 1)]; continue; }
+      const [be, bw] = bandSums(c.coef, c.off[i], c.off[i + 1], swb[b], width, kw);
+      e += be; w += bw;
+    }
+  }
+  return [e, w];
+}
+
+function pairSums(a, b, ms, config) {
+  // Without a common window the two channels are simply independent
+  if (!ms && (a.info.short !== b.info.short || a.info.maxSfb !== b.info.maxSfb || a.info.groupLen.length !== b.info.groupLen.length)) {
+    const [eL, wL] = channelSums(a, config);
+    const [eR, wR] = channelSums(b, config);
+    return { e: [eL, eR], w: [wL, wR] };
+  }
+  const { info, swb } = a;
+  const kw = kWeights(config.sampleRate, info.short ? 128 : 1024);
+  let eL = 0, wL = 0, eR = 0, wR = 0;
+  for (let g = 0, i = 0; g < info.groupLen.length; g++) {
+    for (let bnd = 0; bnd < info.maxSfb; bnd++, i++) {
+      const width = swb[bnd + 1] - swb[bnd];
+      const kMid = kw[swb[bnd] + (width >> 1)];
+      const cbA = a.cbs[i], cbB = b.cbs[i];
+      const [aE, aW] = cbA === NOISE_HCB ? [a.extra[i], a.extra[i] * kMid] : bandSums(a.coef, a.off[i], a.off[i + 1], swb[bnd], width, kw);
+      if (cbB === INTENSITY_HCB || cbB === INTENSITY_HCB2) {
+        // Right is the left band scaled by 2^(-pos/4)
+        const s2 = Math.pow(2, -b.extra[i] / 2);
+        eL += aE; wL += aW; eR += aE * s2; wR += aW * s2;
+        continue;
+      }
+      if (ms && ms[i] && cbA !== NOISE_HCB && cbB !== NOISE_HCB) {
+        // Mid/side: L = M + S, R = M - S
+        for (let k = a.off[i], t = 0; k < a.off[i + 1]; k++, t++) {
+          const m = a.coef[k], sd = b.coef[k];
+          if (!m && !sd) continue;
+          const l = m + sd, rr = m - sd, kk = kw[swb[bnd] + (t % width)];
+          eL += l * l; wL += l * l * kk; eR += rr * rr; wR += rr * rr * kk;
+        }
+        continue;
+      }
+      const [bE, bW] = cbB === NOISE_HCB ? [b.extra[i], b.extra[i] * kMid] : bandSums(b.coef, b.off[i], b.off[i + 1], swb[bnd], width, kw);
+      eL += aE; wL += aW; eR += bE; wR += bW;
+    }
+  }
+  return { e: [eL, eR], w: [wL, wR] };
+}
+
+// ─── Summaries ──────────────────────────────────────────────────────
+
+const toDb = (energy) => (energy > 0 ? 10 * Math.log10(energy) + CAL_DB : -Infinity);
+const round1 = (x) => (Number.isFinite(x) ? Math.round(x * 10) / 10 : null);
+
+/** Level of one raw AAC-LC frame in dBFS RMS, loudest channel (-Infinity for digital silence). */
+export function frameLevelDb(frame, config) {
+  const { e } = frameEnergies(new Bits(toBytes(frame)), config);
+  return toDb(Math.max(...e));
+}
+
+/**
+ * BS.1770 gated loudness over a run of frames. Blocks are 400 ms with 75 %
+ * overlap; absolute gate -70 LUFS, relative gate 10 LU under the ungated
+ * mean. → { integrated, maxMomentary } in LUFS (-Infinity when all gated out).
+ */
+function gatedLoudness(weighted, frameSec) {
+  const len = Math.max(1, Math.round(0.4 / frameSec));
+  const hop = Math.max(1, Math.round(len / 4));
+  const blocks = [];
+  for (let s = 0; s + len <= weighted.length || (s === 0 && weighted.length); s += hop) {
+    const end = Math.min(weighted.length, s + len);
+    let sum = 0;
+    for (let i = s; i < end; i++) sum += weighted[i];
+    blocks.push(sum / (end - s));
+    if (end === weighted.length) break;
+  }
+  const lufs = (p) => (p > 0 ? -0.691 + 10 * Math.log10(p) + CAL_DB : -Infinity);
+  const loud = blocks.filter((p) => lufs(p) > -70);
+  const maxMomentary = blocks.length ? Math.max(...blocks.map(lufs)) : -Infinity;
+  if (!loud.length) return { integrated: -Infinity, maxMomentary };
+  const gate = lufs(loud.reduce((a, p) => a + p, 0) / loud.length) - 10;
+  const kept = loud.filter((p) => lufs(p) > gate);
+  return { integrated: lufs(kept.reduce((a, p) => a + p, 0) / kept.length), maxMomentary };
+}
+
+/**
+ * Loudness summary for one or more consecutive HLS audio segments.
+ *   init      fMP4 init segment (omit for MPEG-TS / ADTS)
+ *   segments  media segment bytes, oldest first
+ * → { supported, frames, channels, levelDb, leftDb, rightDb, peakDb, lufs, lufsMax, silentPct, error }
+ *   levelDb    RMS dBFS, averaged over channels and the whole window
+ *   leftDb/rightDb  per channel (rightDb null for mono)
+ *   peakDb     loudest single frame (≈ 21 ms RMS, not sample peak)
+ *   lufs       integrated loudness over the window (BS.1770 gating)
+ *   lufsMax    loudest 400 ms block
+ *   silentPct  share of frames where every channel is below SILENT_DB
+ */
+export function analyzeSegments({ init = null, segments }) {
   let config = null;
   let frames = [];
-  if (seg[0] === 0x47 && seg[188] === 0x47) {
-    const adts = adtsFromTs(seg);
-    if (adts) ({ frames, config } = framesFromAdts(adts));
-  } else if (seg[0] === 0xff && (seg[1] & 0xf6) === 0xf0) {
-    ({ frames, config } = framesFromAdts(seg));
-  } else {
-    config = init ? configFromInit(init) : null;
-    frames = framesFromFmp4(seg, config?.trackId ?? null);
+  const initConfig = init ? configFromInit(init) : null;
+  for (const segment of segments) {
+    const seg = toBytes(segment);
+    if (seg[0] === 0x47 && seg[188] === 0x47) {
+      const adts = adtsFromTs(seg);
+      if (adts) { const r = framesFromAdts(adts); config ||= r.config; frames = frames.concat(r.frames); }
+    } else if (seg[0] === 0xff && (seg[1] & 0xf6) === 0xf0) {
+      const r = framesFromAdts(seg); config ||= r.config; frames = frames.concat(r.frames);
+    } else {
+      config ||= initConfig;
+      frames = frames.concat(framesFromFmp4(seg, initConfig?.trackId ?? null));
+    }
   }
   if (!config) return { supported: false, frames: frames.length, error: 'no AAC config found' };
   if (config.aot !== 2) return { supported: false, frames: frames.length, error: `audio object type ${config.aot} (only AAC-LC is read)` };
-  if (!frames.length) return { supported: true, frames: 0, levelDb: null, peakDb: null, silentPct: null, error: 'no audio frames' };
+  if (!config.sampleRate || config.sfIndex < 0) return { supported: false, frames: frames.length, error: 'unknown sample rate' };
+  if (!frames.length) return { supported: true, frames: 0, levelDb: null, peakDb: null, lufs: null, silentPct: null, error: 'no audio frames' };
 
-  let sum = 0, peak = -Infinity, silent = 0, parsed = 0, failed = 0;
+  const sums = [0, 0];
+  const weighted = [];
+  let channels = 1, peak = -Infinity, silent = 0, failed = 0;
   for (const f of frames) {
-    let e;
-    try { e = frameEnergy(new Bits(f), config); } catch { failed++; continue; }
-    parsed++;
-    sum += e;
-    const db = toDb(e);
-    if (db > peak) peak = db;
-    if (db < SILENT_DB) silent++;
+    let fe;
+    try { fe = frameEnergies(new Bits(f), config); } catch { failed++; continue; }
+    if (fe.e.length === 2) channels = 2;
+    sums[0] += fe.e[0];
+    sums[1] += fe.e[1] ?? fe.e[0];
+    weighted.push(fe.w.reduce((a, x) => a + x, 0));
+    const loudest = toDb(Math.max(...fe.e));
+    if (loudest > peak) peak = loudest;
+    if (loudest < SILENT_DB) silent++;
   }
-  if (!parsed) return { supported: true, frames: frames.length, failed, levelDb: null, peakDb: null, silentPct: null, error: 'could not read any frame' };
+  const parsed = weighted.length;
+  if (!parsed) return { supported: true, frames: frames.length, failed, levelDb: null, peakDb: null, lufs: null, silentPct: null, error: 'could not read any frame' };
+  const g = gatedLoudness(weighted, 1024 / config.sampleRate);
   return {
     supported: true,
     frames: parsed,
     failed,
     sampleRate: config.sampleRate,
-    channels: config.channels,
-    energy: sum / parsed,
-    levelDb: round1(toDb(sum / parsed)),
+    channels,
+    levelDb: round1(toDb((sums[0] + sums[1]) / 2 / parsed)),
+    leftDb: round1(toDb(sums[0] / parsed)),
+    rightDb: channels === 2 ? round1(toDb(sums[1] / parsed)) : null,
     peakDb: round1(peak),
+    lufs: round1(g.integrated),
+    lufsMax: round1(g.maxMomentary),
     silentPct: Math.round((silent / parsed) * 100),
-    silentFrames: silent,
     error: null,
   };
 }
 
-const round1 = (x) => (Number.isFinite(x) ? Math.round(x * 10) / 10 : null);
-
-/** Combine analyzeSegment() results from consecutive segments into one reading. */
-export function mergeLevels(results) {
-  const ok = results.filter((r) => r?.supported && r.frames > 0 && r.energy != null);
-  if (!ok.length) return results.find((r) => r) || { supported: false, frames: 0, error: 'nothing analyzed' };
-  const frames = ok.reduce((n, r) => n + r.frames, 0);
-  const energy = ok.reduce((s, r) => s + r.energy * r.frames, 0) / frames;
-  const silent = ok.reduce((n, r) => n + r.silentFrames, 0);
-  const peaks = ok.map((r) => r.peakDb).filter((x) => x != null);
-  return {
-    supported: true,
-    frames,
-    failed: ok.reduce((n, r) => n + (r.failed || 0), 0),
-    sampleRate: ok[0].sampleRate,
-    channels: ok[0].channels,
-    energy,
-    levelDb: round1(toDb(energy)),
-    peakDb: peaks.length ? Math.max(...peaks) : null,
-    silentPct: Math.round((silent / frames) * 100),
-    silentFrames: silent,
-    error: null,
-  };
+/** One segment; see analyzeSegments. */
+export function analyzeSegment({ init = null, segment }) {
+  return analyzeSegments({ init, segments: [segment] });
 }

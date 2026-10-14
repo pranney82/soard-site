@@ -1,0 +1,61 @@
+---
+/**
+ * LiveGive.astro — give without leaving the reveal
+ * ================================================
+ * During the watch party, "Fund the next room" opens Zeffy's donation form
+ * here instead of sending people to /donate/: a panel down the left side on
+ * a desktop (the video stays where it is, on the right), a sheet from the
+ * bottom on phones (the video moves to a small player above it). The reveal
+ * keeps playing either way. Behaviour: src/utils/live-give.ts.
+ */
+const ZEFFY_EMBED = 'https://www.zeffy.com/embed/donation-form/help-build-a-brighter-home';
+---
+
+<div class="give" data-give data-src={`${ZEFFY_EMBED}?utm_source=live-reveal`} role="dialog" aria-modal="false" aria-labelledby="give-title" hidden>
+  <div class="give__panel">
+    <div class="give__head">
+      <div>
+        <h2 class="give__title" id="give-title">Fund the next room</h2>
+        <p class="give__lead">The reveal keeps playing while you give.</p>
+      </div>
+      <button class="give__close" type="button" data-give-close aria-label="Close the donation form">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+      </button>
+    </div>
+    <iframe class="give__frame" title="Donation form powered by Zeffy" allow="payment" allowpaymentrequest loading="lazy"></iframe>
+  </div>
+</div>
+
+<style>
+  .give { position: fixed; z-index: 1200; /* over the sticky header (1000), like the donate page's form */ }
+  .give[hidden] { display: none; }
+  .give__panel {
+    height: 100%; display: flex; flex-direction: column; background: #fff; overflow: hidden;
+    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.28); animation: giveIn 0.32s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .give__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 18px 18px 12px 22px; border-bottom: 1px solid var(--c-border); }
+  .give__title { font-size: 1.3rem; letter-spacing: -0.01em; margin: 0; }
+  .give__lead { font-size: 13px; color: var(--c-text-muted); margin: 4px 0 0; }
+  .give__close {
+    flex-shrink: 0; width: 40px; height: 40px; padding: 0; border: 0; border-radius: 50%; display: grid; place-items: center; cursor: pointer;
+    background: var(--c-cream); color: var(--c-dark);
+  }
+  .give__close svg { width: 20px; height: 20px; }
+  .give__close:hover { background: var(--c-yellow-soft); }
+  .give__close:focus-visible { outline: 2px solid var(--c-dark); outline-offset: 2px; }
+  .give__frame { flex: 1 1 auto; width: 100%; border: 0; display: block; background: #fff; }
+
+  /* Desktop: down the left side, over the messages; the video on the right keeps playing */
+  @media (min-width: 961px) {
+    .give { top: calc(var(--header-height) + 12px); bottom: 12px; left: 12px; width: min(460px, 40vw); }
+    .give__panel { border-radius: 20px; }
+    @keyframes giveIn { from { opacity: 0; transform: translateX(-24px); } to { opacity: 1; transform: none; } }
+  }
+  /* Phones: a sheet from the bottom, under the small player pinned at the top */
+  @media (max-width: 960px) {
+    .give { left: 0; right: 0; bottom: 0; top: calc(var(--header-height) + 196px); }
+    .give__panel { border-radius: 20px 20px 0 0; }
+    @keyframes giveIn { from { transform: translateY(40px); opacity: 0; } to { transform: none; opacity: 1; } }
+  }
+  @media (prefers-reduced-motion: reduce) { .give__panel { animation: none; } }
+</style>

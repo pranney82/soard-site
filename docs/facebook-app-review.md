@@ -11,7 +11,7 @@ In the Facebook app used for the page token (the "Live URL" app in developers.fa
 
 Prerequisites Facebook checks: the page is more than 60 days old and has at least 100 followers (both true), the app has a privacy policy URL (`https://sunshineonaranneyday.com/privacy-policy/`), a Data Deletion Instructions URL (`https://sunshineonaranneyday.com/privacy-policy/#data-deletion`, section 09 of the policy), an app icon and category, and Business Verification is complete for the business that owns the app. Business Verification is the slow part; start it first if it isn't done.
 
-Admin → Broadcast → Setup → Facebook → **Test Facebook connection** shows the app id, the permissions the current token already has, the ones still missing, and a direct link to the app's App Review page.
+Admin → Broadcast → Settings → Facebook → **Test connection** shows the app id, the permissions the current token already has, the ones still missing, and a direct link to the app's App Review page.
 
 ## Where to submit
 
@@ -36,7 +36,7 @@ Switch the app to **Development mode** first (toggle at the top of the app dashb
 Record a 2–3 minute screen recording that shows, in order:
 
 1. Logging into the admin at sunshineonaranneyday.com/admin (blur the login).
-2. Broadcast → Setup → Facebook mode set to "Live Video API".
+2. Broadcast → Settings → Facebook set to "Automatic (Live Video API)".
 3. Broadcast → Now: a scheduled reveal (name and time visible).
 4. A phone (or OBS on the laptop, pointed at the rehearsal input for the recording) tapping Start in Larix.
 5. The admin flipping to LIVE, and the Facebook Page showing the new live video with the reveal's title.
@@ -54,7 +54,7 @@ If the reviewer insists, create a temporary Access policy for the reviewer's ema
 
 ## After approval
 
-Admin → Broadcast → Setup → Facebook → choose "Live Video API" → Save. The next time the phone connects, the site creates the Facebook post. Nothing else changes. If a call is refused (Facebook error #10 or #200) the site records it, shows a note under the Facebook settings, and keeps using the persistent key.
+Admin → Broadcast → Settings → Facebook → choose "Automatic (Live Video API)" → Save settings. The next time the phone connects, the site creates the Facebook post. Nothing else changes. If a call is refused (Facebook error #10 or #200) the site records it, shows a note under the Facebook settings, and keeps using the persistent key.
 
 ## If it is rejected
 
@@ -79,4 +79,4 @@ Add one extra shot to the screencast: Admin → Broadcast → Now after a reveal
 3. Access Token Tool (developers.facebook.com/tools/accesstoken) → **Extend Access Token** on that user token → copy the long-lived user token.
 4. In Graph Explorer, paste the long-lived token and run `GET /me/accounts`. Copy the `access_token` of the Sunshine on a Ranney Day page. Page tokens made from a long-lived user token do not expire.
 5. Cloudflare dashboard → Workers & Pages → soard-site → Settings → Variables → edit `FB_PAGE_TOKEN` → paste → Save → redeploy (any push, or Retry deployment).
-6. Admin → Broadcast → Setup → **Check Instagram connection**. It should say "Linked Instagram: @sunshineonaranneyday. Ready to post." Test Facebook connection should list the new scopes.
+6. Admin → Broadcast → Settings → Instagram → **Test connection**. It should say "Linked Instagram: @sunshineonaranneyday. Ready to post." Facebook's Test connection should list the new scopes.

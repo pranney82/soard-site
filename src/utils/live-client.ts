@@ -9,10 +9,15 @@
  * shown inside the live page) borrows its parent's instance too.
  *
  * Watch party: a live page calls watch() so the hub counts it as a viewer,
- * then gets 'viewers', 'react' and 'msg' / 'msg-hide' events through on().
+ * then gets 'viewers', 'react', 'msg' / 'msg-hide' and 'gifts' events
+ * through on().
  */
 
-export interface LivePlayer { kind: 'live' | 'replay'; uid: string; customerCode: string }
+export interface LivePlayer {
+  kind: 'live' | 'replay'; uid: string; customerCode: string;
+  /** HLS address override; only the dev mock (scripts/dev-live-mock.js) sets it */
+  src?: string;
+}
 export interface LiveState {
   phase: 'idle' | 'scheduled' | 'armed' | 'live' | 'ending' | 'replay';
   live: boolean; upcoming: boolean; replay: boolean;
@@ -35,6 +40,8 @@ export interface LiveEvents {
   react: { c: Partial<Record<ReactionKind, number>> };
   msg: { message: LiveMessage };
   'msg-hide': { id: string };
+  /** Running total of gifts during the reveal (Zeffy), pushed by the hub */
+  gifts: { broadcastId: string; cents: number; count: number };
   connection: { connected: boolean };
 }
 type EventListener<K extends keyof LiveEvents> = (data: LiveEvents[K]) => void;
@@ -113,6 +120,7 @@ function createClient() {
         else if (m.type === 'react' && m.c && typeof m.c === 'object') fire('react', { c: m.c });
         else if (m.type === 'msg' && m.message?.id) fire('msg', { message: m.message });
         else if (m.type === 'msg-hide' && m.id) fire('msg-hide', { id: m.id });
+        else if (m.type === 'gifts' && typeof m.cents === 'number') fire('gifts', { broadcastId: String(m.broadcastId || ''), cents: m.cents, count: Number(m.count) || 0 });
       } catch { /* ignore */ }
     };
     ws.onclose = () => {
@@ -143,6 +151,8 @@ function createClient() {
     },
     /** Count this page as a viewer (live pages only). Re-sent after reconnects. */
     watch() { watching = true; send({ t: 'watch' }); },
+    /** Stop counting this tab as a viewer (it navigated away from the live page). */
+    unwatch() { if (!watching) return; watching = false; send({ t: 'unwatch' }); },
     /** Send a reaction to everyone watching. False when there is no real-time connection. */
     react(kind: ReactionKind) { return send({ t: 'react', k: kind }); },
     on<K extends keyof LiveEvents>(type: K, l: EventListener<K>) {

@@ -36,6 +36,7 @@ import { attachToKid, matchKids } from './_fb-archive.js';
 import { kitConfigured, kitCreateBroadcast } from './_kit.js';
 import * as reels from './_broadcast-reel.js';
 import * as monitor from './_broadcast-monitor.js';
+import * as preflight from './_broadcast-preflight.js';
 
 export const STATE_KEY = 'broadcast';
 export const CONFIG_KEY = 'broadcast-config';
@@ -790,7 +791,7 @@ async function runHealth(env, config, state, health, work, { force = false } = {
     health.stream = { ok: false, error: 'CF_STREAM_TOKEN / CF_ACCOUNT_ID not set', at: nowIso() };
     problems.push('Cloudflare Stream is not configured');
   }
-  if (!config.liveInput?.uid) problems.push('No live input yet: open Admin → Broadcast → Set up');
+  if (!config.liveInput?.uid) problems.push('No live input yet: open Admin → Broadcast → Settings → Phones');
 
   const f = await fb.checkFbToken(env);
   health.facebook = { ok: f.ok, name: f.name || null, error: f.error || null, at: nowIso(), configured: f.configured !== false };
@@ -886,15 +887,19 @@ export async function runTick(env, { source = 'tick', force = false, by = null, 
       const mins = state.liveAt ? Math.round((Date.parse(state.endedAt || nowIso()) - Date.parse(state.liveAt)) / 60000) : null;
       await recordEvent(DB, state.broadcastId, 'live_end', { minutes: mins });
       await logAudit(DB, { userEmail: by || 'live-broadcast', action: 'updated', entityType: 'live-status', entitySlug: state.broadcastId, entityName: `Ended: ${state.title || 'Live broadcast'}`, changes: [{ field: 'minutes', from: null, to: mins }], gitStatus: 'ok' });
-      await notify.alertAdmins(env, config, { level: 'info', title: `Ended: ${state.title || 'broadcast'}`, detail: mins != null ? `Ran ${mins} minutes. Replay will attach to the kid's page when Stream finishes processing.` : 'Replay will attach when ready.' });
+      // The feed monitor's health report (sound, issues, Facebook/YouTube timing) rides along
+      const ended = state.source === 'stream' ? await monitor.finish(env, config, state, health, recordEvent).catch(() => ({ summary: '' })) : { summary: '' };
+      await notify.alertAdmins(env, config, { level: 'info', title: `Ended: ${state.title || 'broadcast'}`, detail: [mins != null ? `Ran ${mins} minutes.` : null, ended.summary || null, mins != null ? 'Replay will attach to the kid\'s page when Stream finishes processing.' : 'Replay will attach when ready.'].filter(Boolean).join('\n') });
     }
     if (state.phase === 'ending') await recordEvent(DB, state.broadcastId, 'disconnected');
   }
 
   // 4. Ongoing work
   if (state.phase === 'live' || state.phase === 'ending') state = await fbRefreshPermalink(env, state, work);
-  // The feed watch only alerts; nothing it does may stop the state machine
-  if (state.phase === 'live' && state.source === 'stream') await monitor.watch(env, config, state, health, work).catch((e) => work.push(`monitor-error: ${e.message}`));
+  // Feed watch, go/no-go and mic checks only report; nothing they do may stop the state machine
+  if ((state.phase === 'live' || state.phase === 'ending') && state.source === 'stream') await monitor.watch(env, config, state, health, work, recordEvent).catch((e) => work.push(`monitor-error: ${e.message}`));
+  if (state.phase === 'scheduled' || state.phase === 'armed') await preflight.auto(env, config, state, health, work, { hubStatus }).catch((e) => work.push(`preflight-error: ${e.message}`));
+  if (state.phase !== 'live' && state.phase !== 'ending' && await monitor.watchRehearsal(env, config, health).catch(() => false)) work.push('mic-check');
   state = await kitAutoLive(env, config, state, work);
   for (const kind of await dueReminderKinds(DB, state, config)) await sendReminders(env, config, state, kind, work);
   state = await checkReplayReady(env, config, state, health, work);

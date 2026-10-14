@@ -10,7 +10,8 @@
  *   setConfig { ...partial }
  *   generateVapid { force? }
  *   testStream | testFacebook | testHub | testAlert | runTick | lifecycle
- *   monitor { feed: live|rehearsal }   Control room: picture, audio level, every destination's verdict
+ *   monitor { feed: live|rehearsal }   Control room: picture, audio level, every destination's verdict, open issues
+ *   preflight                          go/no-go checklist for the next reveal (also posted to Slack an hour before)
  *   sendTestReminder { kind, email }
  *   messages { broadcastId? } | moderateMessage { id, status: shown|hidden }
  *   createNotificationInstructions
@@ -26,18 +27,29 @@ import { logAudit } from './_audit.js';
 import { annotateArchived } from './_fb-archive.js';
 import * as messages from './_live-messages.js';
 import * as monitor from './_broadcast-monitor.js';
+import * as preflight from './_broadcast-preflight.js';
 import { youtubeConfigured } from './_youtube.js';
 
 const TARGETS = new Set(['facebook', 'youtube', 'instagram', 'custom']);
 
-function redactConfig(config, reveal) {
+function redactConfig(config, reveal, { lastGiftAt = null } = {}) {
   const c = JSON.parse(JSON.stringify(config));
   if (c.vapid) c.vapid = { publicKey: c.vapid.publicKey, createdAt: c.vapid.createdAt };
+  // The Zeffy signing secret never leaves the server, not even for the admin: only whether it's set
+  c.zeffy = { configured: !!c.zeffy?.webhookSecret, lastEventAt: lastGiftAt };
   if (!reveal) {
     c.liveInput = stream.redactInput(c.liveInput);
     c.rehearsalInput = stream.redactInput(c.rehearsalInput);
   }
   return c;
+}
+
+// When the Zeffy webhook last fired. It lives in its own row ('live-gifts', written by
+// _live-gifts.js recordGift), so a gift arriving can never race a settings save.
+async function lastGiftAt(DB) {
+  const row = await DB.prepare('SELECT data FROM site_config WHERE key = ?').bind('live-gifts').first();
+  if (!row) return null;
+  try { return JSON.parse(row.data).lastEventAt || null; } catch { return null; }
 }
 
 function larixLinks(config) {
@@ -78,6 +90,8 @@ export async function onRequestGet(context) {
       history: DB.prepare(`SELECT id, kid_slug, kid_name, title, scheduled_at, live_at, ended_at, phase, replay_uid, fb_permalink, source, data, created_at FROM broadcasts ORDER BY created_at DESC LIMIT 12`).all(),
       events: DB.prepare(`SELECT broadcast_id, type, COUNT(*) AS n FROM broadcast_events WHERE broadcast_id IN (SELECT id FROM broadcasts ORDER BY created_at DESC LIMIT 12) GROUP BY broadcast_id, type`).all(),
       fbRecent: withFb ? fb.fbRecentBroadcasts(env, 5) : Promise.resolve(null),
+      healthReports: DB.prepare(`SELECT broadcast_id, meta FROM broadcast_events WHERE type = 'health_report' ORDER BY id DESC LIMIT 12`).all(),
+      lastGift: lastGiftAt(DB),
     };
     const keys = Object.keys(tasks);
     const settled = await Promise.allSettled(keys.map(k => tasks[k]));
@@ -115,7 +129,7 @@ export async function onRequestGet(context) {
       state,
       public: b.publicState(state, config),
       legacy: b.legacyState(state, config),
-      config: redactConfig(config, reveal),
+      config: redactConfig(config, reveal, { lastGiftAt: r.lastGift }),
       larix: reveal ? larixLinks(config) : null,
       setup: {
         streamConfigured: stream.streamConfigured(env),
@@ -143,6 +157,8 @@ export async function onRequestGet(context) {
       },
       sends: r.sends?.results || [],
       history,
+      // Feed monitor report per finished reveal (sound, issues, Facebook/YouTube timing): broadcastId → report
+      healthReports: Object.fromEntries((r.healthReports?.results || []).map((x) => { try { return [x.broadcast_id, JSON.parse(x.meta)]; } catch { return [x.broadcast_id, null]; } })),
       fbRecent: r.fbRecent,
       playback: {
         customerCode: config.customerCode,
@@ -295,6 +311,12 @@ export async function onRequestPost(context) {
         }
         if (typeof p.customerCode === 'string' && /^[a-z0-9]{8,32}$/.test(p.customerCode)) c.customerCode = p.customerCode;
         if (p.messages && typeof p.messages.enabled === 'boolean') c.messages = { ...(c.messages || {}), enabled: p.messages.enabled };
+        // Zeffy webhook signing secret (Zeffy → Settings → Integrations); '' disconnects. Read by /api/zeffy-webhook.
+        if (p.zeffy && typeof p.zeffy.webhookSecret === 'string') {
+          const webhookSecret = p.zeffy.webhookSecret.trim();
+          if (webhookSecret && !/^whsec_[A-Za-z0-9+/=_-]{10,200}$/.test(webhookSecret)) return fail('That isn\'t a Zeffy signing secret: it starts with whsec_');
+          c.zeffy = { ...(c.zeffy || {}), webhookSecret };
+        }
         await b.writeConfig(env.DB, c);
         await logAudit(env.DB, { userEmail, action: 'updated', entityType: 'live-status', entitySlug: 'broadcast-config', entityName: 'Broadcast settings', gitStatus: 'ok' });
         return Response.json({ success: true, config: redactConfig(c, false) });
@@ -353,7 +375,18 @@ export async function onRequestPost(context) {
       }
       case 'monitor': {
         const [state, health] = await Promise.all([b.readState(env.DB), b.readHealth(env.DB)]);
-        return Response.json(await monitor.report(env, config, state, health, { feed: body.feed === 'rehearsal' ? 'rehearsal' : 'live' }), { headers: { 'Cache-Control': 'no-store' } });
+        const feed = body.feed === 'rehearsal' ? 'rehearsal' : 'live';
+        const result = await monitor.report(env, config, state, health, { feed });
+        // Watching the rehearsal feed here counts as the mic check for the go/no-go
+        if (feed === 'rehearsal' && monitor.noteRehearsal(health, result.probe)) { await b.writeHealth(env.DB, health); result.rehearsal = health.rehearsal; }
+        return Response.json(result, { headers: { 'Cache-Control': 'no-store' } });
+      }
+      case 'preflight': {
+        const [state, health, hub] = await Promise.all([b.readState(env.DB), b.readHealth(env.DB), b.hubStatus(env)]);
+        const result = await preflight.run(env, config, state, health, { hub });
+        health.preflight = { ...(health.preflight?.broadcastId === state.broadcastId ? health.preflight : { broadcastId: state.broadcastId, posted: {} }), last: result };
+        await b.writeHealth(env.DB, health);
+        return Response.json({ success: true, ...result });
       }
       case 'sendTestReminder': {
         const kind = ['scheduled', 'day', 'hour', 'live', 'replay'].includes(body.kind) ? body.kind : 'live';

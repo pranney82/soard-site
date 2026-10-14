@@ -1,0 +1,117 @@
+---
+/**
+ * LiveMessages.astro — messages for the family (the panel)
+ * ========================================================
+ * Rendered beside the video (data-place="hero"), which is where it is during
+ * a live reveal, so it is already in place on first paint. Before the
+ * reveal, src/utils/live-messages.ts moves it into its own section below the
+ * hero (data-place="section"), where it spreads out into two columns.
+ */
+---
+
+<div class="msgs" data-msgs="panel" data-place="hero">
+  <div class="msgs__head">
+    <p class="section-label">Messages</p>
+    <h2 data-msgs="heading">Messages for the family</h2>
+    <p class="msgs__lead">Leave a kind note. Every message is saved and given to the family after the reveal.</p>
+  </div>
+  <div class="msgs__feed">
+    <div class="msgs__wall" data-msgs="wall">
+      <ol class="msg-list" data-msgs="list" aria-label="Messages"></ol>
+      <p class="msg-empty" data-msgs="empty">Be the first to leave a message.</p>
+    </div>
+    <button class="msg-jump" type="button" data-msgs="jump" hidden>New messages</button>
+  </div>
+  <div class="msgs__compose">
+    <form class="msg-form" data-msgs="form" novalidate>
+      <label class="msg-label" for="msg-name">Your first name</label>
+      <input class="msg-field" id="msg-name" name="name" type="text" maxlength="40" autocomplete="given-name" placeholder="First name" required />
+      <label class="msg-label" for="msg-body">Your message</label>
+      <textarea class="msg-field msg-field--area" id="msg-body" name="body" maxlength="280" rows="3" required placeholder="We are so happy for you!" enterkeyhint="send"></textarea>
+      <div class="remind-hp" aria-hidden="true"><label>Website<input type="text" name="website" tabindex="-1" autocomplete="off" /></label></div>
+      <div class="msg-actions">
+        <button class="btn btn-primary" type="submit">Post message</button>
+        <span class="msg-count" data-msgs="count" aria-hidden="true">0/280</span>
+      </div>
+      <p class="remind-note" data-msgs="note" role="status" aria-live="polite"></p>
+      <p class="msg-fine">Messages are checked before they appear. First names only, please.</p>
+    </form>
+    <p class="msg-closed" data-msgs="closed" hidden>Messages are closed for this reveal. Thank you to everyone who wrote in.</p>
+  </div>
+</div>
+
+<style>
+  .msgs h2 { font-size: clamp(1.75rem, 3vw, 2.5rem); letter-spacing: -0.02em; margin: 8px 0 16px; }
+  .msgs__lead { color: var(--c-text-muted); line-height: 1.7; max-width: 560px; margin: 0 0 8px; }
+  .msgs__feed { position: relative; min-height: 0; display: flex; flex-direction: column; }
+  .msgs__wall { border-radius: var(--border-radius-lg); padding: 16px; overflow-y: auto; overscroll-behavior: contain; scroll-behavior: smooth; }
+  .msg-jump {
+    position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%);
+    border: 0; border-radius: 100px; padding: 8px 16px; background: var(--c-dark); color: #fff;
+    font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.2);
+  }
+  .msg-jump[hidden] { display: none; }
+  .msg-jump:focus-visible { outline: 2px solid var(--c-yellow); outline-offset: 2px; }
+  .msg-form { display: grid; gap: 8px; max-width: 480px; }
+  .msg-form[hidden] { display: none; }
+  .msg-label { font-size: 13px; font-weight: 700; color: var(--c-text); margin-top: 6px; }
+  .msg-field {
+    width: 100%; padding: 13px 18px; border-radius: 14px; border: 1.5px solid var(--c-border); background: #fff;
+    font: inherit; font-size: 16px; color: var(--c-text); transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+  }
+  .msg-field--area { resize: vertical; min-height: 104px; line-height: 1.5; }
+  .msg-field:focus { outline: none; border-color: var(--c-dark); box-shadow: 0 0 0 3px var(--c-yellow-soft); }
+  .msg-actions { display: flex; align-items: center; gap: 16px; margin-top: 8px; }
+  .msg-count { font-size: 13px; color: var(--c-text-light); }
+  .msg-fine { font-size: 12px; color: var(--c-text-light); margin: 0; }
+  .msg-closed { color: var(--c-text-muted); line-height: 1.6; }
+  .msg-closed[hidden] { display: none; }
+  .msg-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+  .msg-list :global(.msg) { background: #fff; border: 1px solid var(--c-border); border-radius: 16px; padding: 12px 16px; animation: msgIn 320ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+  .msg-list :global(.msg__name) { display: block; font-weight: 700; font-size: 14px; color: var(--c-dark); }
+  .msg-list :global(.msg__body) { margin: 4px 0 0; line-height: 1.55; color: var(--c-text); overflow-wrap: anywhere; }
+  @keyframes msgIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  .msg-empty { color: var(--c-text-muted); margin: 0; padding: 8px 4px; }
+  .msg-empty[hidden] { display: none; }
+  .remind-hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+  .remind-note { font-size: 14px; color: var(--c-text-muted); min-height: 1.4em; margin: 8px 0 0; }
+  .remind-note--error { color: var(--c-text); font-weight: 600; }
+
+  /* In its own section: heading and form on the left, the wall on the right */
+  .msgs[data-place='section'] {
+    display: grid; grid-template-columns: 0.9fr 1.1fr; grid-template-rows: auto 1fr;
+    grid-template-areas: 'head feed' 'compose feed'; column-gap: clamp(32px, 5vw, 72px); row-gap: 8px; align-items: start;
+  }
+  .msgs[data-place='section'] .msgs__head { grid-area: head; }
+  .msgs[data-place='section'] .msgs__compose { grid-area: compose; }
+  .msgs[data-place='section'] .msgs__feed { grid-area: feed; }
+  .msgs[data-place='section'] .msgs__wall { max-height: 560px; background: var(--c-cream); }
+
+  /* Beside the video: a compact chat that fills the column */
+  .msgs[data-place='hero'] { display: flex; flex-direction: column; gap: 12px; flex: 1 0 auto; text-align: left; }
+  .msgs[data-place='hero'] .section-label { display: none; }
+  .msgs[data-place='hero'] h2 { font-size: 1.3rem; letter-spacing: -0.01em; margin: 0; }
+  .msgs[data-place='hero'] .msgs__lead { font-size: 13px; line-height: 1.5; margin: 4px 0 0; }
+  .msgs[data-place='hero'] .msgs__feed { flex: 1 1 0; min-height: 150px; }
+  .msgs[data-place='hero'] .msgs__wall { flex: 1 1 auto; min-height: 0; background: #fff; border: 1px solid var(--c-border); padding: 12px; }
+  .msgs[data-place='hero'] .msg-list :global(.msg) { background: var(--c-cream); border-color: transparent; padding: 10px 14px; border-radius: 14px; }
+  .msgs[data-place='hero'] .msg-form { max-width: none; gap: 8px; }
+  .msgs[data-place='hero'] .msg-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .msgs[data-place='hero'] .msg-field { padding: 11px 16px; }
+  .msgs[data-place='hero'] .msg-field--area { min-height: 0; height: 68px; resize: none; }
+  .msgs[data-place='hero'] .msg-actions { margin-top: 0; }
+  .msgs[data-place='hero'] .remind-note { margin: 0; min-height: 0; }
+  .msgs[data-place='hero'] .remind-note:empty { display: none; }
+
+  @media (max-width: 960px) {
+    .msgs[data-place='section'] { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; grid-template-areas: 'head' 'feed' 'compose'; row-gap: 24px; }
+    .msgs[data-place='section'] .msgs__wall { max-height: 360px; }
+    .msgs[data-place='hero'] .msgs__head { text-align: center; }
+    .msgs[data-place='hero'] .msgs__feed { flex: none; min-height: 0; }
+    .msgs[data-place='hero'] .msgs__wall { max-height: min(46svh, 420px); min-height: 120px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .msg-list :global(.msg) { animation: none; }
+    .msgs__wall { scroll-behavior: auto; }
+  }
+</style>

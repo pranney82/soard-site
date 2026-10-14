@@ -91,7 +91,8 @@ async function mockApi(page, state) {
   page.on('request', (req) => {
     const url = new URL(req.url());
     const json = (obj, status = 200) => req.respond({ status, contentType: 'application/json', body: JSON.stringify(obj) });
-    if (url.hostname.endsWith('cloudflarestream.com')) return req.respond({ status: 200, contentType: 'text/html', body: '<!doctype html><body style="background:#111;color:#fff;font:14px sans-serif;display:grid;place-items:center;height:100vh;margin:0">Stream player stub</body>' });
+    // What Stream answers for a live input with no camera connected: an empty playlist
+    if (url.hostname.endsWith('cloudflarestream.com')) return req.respond({ status: 204, headers: { 'access-control-allow-origin': '*' }, body: '' });
     if (url.pathname.startsWith('/cdn-cgi/imagedelivery/') || url.hostname === 'imagedelivery.net') return req.abort();
     if (url.pathname === '/api/broadcast') return json({ state, reminders, messages: { enabled: true }, timezone: 'America/New_York', hub: true });
     if (url.pathname === '/api/live-messages' && req.method() === 'GET') return json({ ok: true, open: state.phase !== 'idle', enabled: true, broadcastId: state.id, messages: state.phase === 'idle' ? [] : [{ id: 'm1', name: 'Ana', body: 'So happy for you!', at: new Date().toISOString() }] });
@@ -145,9 +146,18 @@ try {
     console.log(`    status: "${status}"`);
     const vis = async (sel) => page.$eval(sel, (el) => !el.hidden && getComputedStyle(el).display !== 'none').catch(() => false);
     if (name === 'scheduled') { ok(await vis('[data-live="cta-remind"]'), 'Remind me CTA visible'); ok(await vis('[data-live="cta-calendar"]'), 'Add to calendar visible'); ok(/goes live|We go live/.test(status), 'countdown text'); }
-    if (name === 'live') { ok(await vis('[data-live="cta-watch"]'), 'Watch live CTA visible'); ok((await page.$$('[data-live="player"] iframe')).length === 1, 'player iframe mounted'); ok(await vis('[data-live="watchbar"]'), 'reactions bar visible'); ok(await vis('[data-live-msgs]'), 'messages for the family visible'); ok(await vis('[data-live="cta-messages"]'), 'Leave a message CTA visible'); ok(!(await vis('[data-live="cta-facebook"]')), 'no Facebook detour while live'); }
-    if (name === 'replay') { ok(await vis('[data-live="cta-replay"]'), 'Watch the replay CTA visible'); ok((await page.$$('[data-live="player"] iframe')).length === 1, 'replay iframe mounted'); }
-    if (name === 'idle') { ok(!(await vis('[data-live="cta-watch"]')), 'no watch CTA'); ok((await page.$$('[data-live="player"] iframe')).length === 0, 'no player'); }
+    if (name === 'live') {
+      ok((await page.$$('[data-s="player"] video')).length === 1, 'player video mounted');
+      ok(await page.$eval('#live-hero', (el) => el.hasAttribute('data-party')), 'watch-party layout');
+      ok(await vis('[data-s="reacts"]'), 'reactions in the rail beside the video');
+      ok(await vis('[data-slot="hero"] [data-msgs="panel"]'), 'messages for the family beside the video');
+      ok(!(await vis('[data-live="cta-facebook"]')), 'no Facebook detour while live');
+      await page.waitForFunction(() => document.querySelector('[data-stage]')?.dataset.pstatus === 'waiting', { timeout: 8000 }).catch(() => {});
+      ok(await vis('[data-s="note"]'), 'camera-not-connected note while the playlist is empty');
+      ok(await page.$eval('[data-s="status"]', (el) => el.textContent.trim()) !== 'Live', 'the bar does not say Live over a frame with no picture');
+    }
+    if (name === 'replay') { ok((await page.$$('[data-s="player"] video')).length === 1, 'replay video mounted'); ok(await vis('[data-s="replaybar"]'), 'replay controls under the picture'); }
+    if (name === 'idle') { ok((await page.$$('[data-s="player"] video, [data-s="player"] iframe')).length === 0, 'no player'); ok(!(await page.$eval('#live-hero', (el) => el.hasAttribute('data-party'))), 'plain hero'); }
     ok(await vis('[data-live="form-sms"]'), 'SMS form offered');
     ok(await vis('[data-live="push-btn"]'), 'push button offered');
     ok(!(await page.$eval('#live-indicator', (el) => !el.hidden)), 'pill hidden on the live page');
@@ -195,24 +205,30 @@ try {
     ok(clicked, `nav has Broadcast (${name})`);
     await page.waitForFunction(() => [...document.querySelectorAll('h2')].some((h) => h.textContent.trim() === 'Broadcast'), { timeout: 8000 }).catch(() => {});
     const tabs = await page.$$('.hub-tab');
-    ok(tabs.length === 5 || tabs.length === 6, `${tabs.length} tabs (${name})`);
+    ok(tabs.length === 3, `${tabs.length} tabs: Now, History, Settings (${name})`);
     for (let i = 0; i < tabs.length; i++) {
       const label = await tabs[i].evaluate((b) => b.textContent.trim());
       await tabs[i].click();
       await new Promise((r) => setTimeout(r, 250));
       const cards = await page.$$eval('.card', (els) => els.length);
       ok(cards > 0, `tab ${label} renders ${cards} cards (${name})`);
-      if (label.startsWith('Setup')) ok((await page.$$('.bc-qr svg')).length >= 2, 'QR codes render');
+      if (label.startsWith('Settings')) ok((await page.$$('#bc-set-phones .bc-qr svg')).length >= 2, 'Larix QR codes render under Settings → Phones');
       if (name === 'live') await page.screenshot({ path: `${OUT}admin-${label.toLowerCase().replace(/\W+/g, '')}.png`, fullPage: true });
     }
     await tabs[0].click(); await new Promise((r) => setTimeout(r, 250));
     const nowText = await page.evaluate(() => document.querySelector('main')?.innerText || document.body.innerText);
     if (name === 'live') ok(/Email the list now/.test(nowText) && /Kit email: goes out after 3 minutes live/.test(nowText) && !/Which kid is this/.test(nowText), 'live: Kit status + "Email the list now" button, no kid picker when the kid is known');
-    if (name === 'scheduled') ok(/Kit email at go-live: on \(All subscribers\)/.test(nowText) && /Email our Kit list \(All subscribers\) when we go live/.test(nowText), 'scheduled: Kit go-live status + switch');
-    if (name === 'idle') ok(/Email our Kit list when we go live/.test(nowText), 'idle: schedule form has the Kit switch');
+    if (name === 'scheduled') {
+      ok(/Kit email at go-live: on \(All subscribers\)/.test(nowText), 'scheduled: Kit go-live status');
+      ok(await clickText('.bc-actions button', /^Edit$/), 'scheduled: Edit opens the reveal form');
+      await settle(150);
+      ok(/Email our Kit list \(All subscribers\) when we go live/.test(await page.$eval('.bc-form', (el) => el.innerText).catch(() => '')), 'scheduled: edit form has the Kit switch');
+      await clickText('.bc-form button', /^Cancel$/);
+    }
+    if (name === 'idle') ok(/Email our Kit list \(All subscribers\) when we go live/.test(nowText), 'idle: schedule form has the Kit switch');
 
     if (name === 'live') {
-      console.log('  · messages, engagement, keepsake, family QR, history (live)');
+      console.log('  · messages, engagement, keepsake, history (live)');
       await page.waitForSelector('.bc-msgs .bc-msg', { timeout: 5000 }).catch(() => {});
       const card = await page.$eval('.bc-msgs', (el) => el.innerText).catch(() => '');
       ok(/Messages for Sample Kid's family/.test(card), 'messages card titled for the family');
@@ -255,8 +271,31 @@ try {
       await settle(100);
       ok(!(await page.$('#bc-keepsake-root')), 'keepsake closes');
 
+      await page.screenshot({ path: `${OUT}admin-now.png`, fullPage: true });
+
+      ok(await clickText('.hub-tab', /^History/), 'History tab');
+      await settle(250);
+      ok(await clickText('.bc-hist-row td', /Earlier reveal/), 'History row opens');
+      await settle(150);
+      posted.length = 0;
+      ok(await clickText('.bc-hist-detail button', /^Messages \(14\)$/), 'History row shows "Messages (14)"');
+      await page.waitForSelector('.bc-msgs .bc-msg', { timeout: 4000 }).catch(() => {});
+      ok(posted.some((b) => b.action === 'messages' && b.broadcastId === 'live-0'), 'History opens the messages for that broadcastId');
+      ok(!/Let viewers post/.test(await page.$eval('.bc-msgs', (el) => el.innerText).catch(() => '')), 'past reveal: no on/off switch');
+      await settle(500);
+      await page.screenshot({ path: `${OUT}admin-history-messages.png`, fullPage: true });
+      await clickText('.bc-hist-detail .bc-btns button', /^Keepsake$/);
+      await page.waitForSelector('#bc-keepsake-root .bc-keepsake', { timeout: 3000 }).catch(() => {});
+      ok(/Sample Kid's room reveal/.test(await page.$eval('#bc-keepsake-root', (el) => el.innerText).catch(() => '')), 'History row opens the keepsake');
+      await clickText('#bc-keepsake-root button', /^Close$/);
+    }
+    if (name === 'scheduled') {
+      await page.waitForSelector('.bc-msgs', { timeout: 4000 }).catch(() => {});
+      const t = await page.$eval('.bc-msgs', (el) => el.innerText).catch(() => '');
+      ok(/Refresh/.test(t) && !/Updates every 10 seconds/.test(t), 'scheduled: messages card with a manual refresh');
+
       ok((await page.$$('.bc-family .bc-qr svg')).length === 1, 'family QR card renders an svg');
-      ok(/sunshineonaranneyday\.com\/live\/\?src=qr/.test(nowText), 'family QR card shows the /live/?src=qr link');
+      ok(/sunshineonaranneyday\.com\/live\/\?src=qr/.test(await page.$eval('.bc-family', (el) => el.innerText).catch(() => '')), 'family QR card shows the /live/?src=qr link');
       const cdp = await page.createCDPSession();
       await cdp.send('Browser.setDownloadBehavior', { behavior: 'allow', downloadPath: OUT }).catch(() => cdp.send('Page.setDownloadBehavior', { behavior: 'allow', downloadPath: OUT }));
       for (const f of ['soard-live-qr.png', 'soard-live-qr.svg']) rmSync(`${OUT}${f}`, { force: true });
@@ -268,41 +307,23 @@ try {
       ok(await clickText('.bc-family button', /^Download SVG$/), 'Download SVG button');
       const svgFile = await waitFile(`${OUT}soard-live-qr.svg`);
       ok(/<svg[^>]+viewBox/.test(svgFile?.toString() || ''), 'SVG download soard-live-qr.svg');
-      ok(errors.length === errBefore, 'no errors from the QR downloads');
-      await page.screenshot({ path: `${OUT}admin-now.png`, fullPage: true });
-
-      ok(await clickText('.hub-tab', /^History/), 'History tab');
-      await settle(250);
-      posted.length = 0;
-      ok(await clickText('.bc-link', /^14 messages$/), 'History row shows "14 messages"');
-      await page.waitForSelector('.bc-msgs .bc-msg', { timeout: 4000 }).catch(() => {});
-      ok(posted.some((b) => b.action === 'messages' && b.broadcastId === 'live-0'), 'History opens the messages for that broadcastId');
-      ok(!/Let viewers post/.test(await page.$eval('.bc-msgs', (el) => el.innerText).catch(() => '')), 'past reveal: no on/off switch');
-      await settle(500);
-      await page.screenshot({ path: `${OUT}admin-history-messages.png`, fullPage: true });
-      await clickText('.bc-link', /^Keepsake$/);
-      await page.waitForSelector('#bc-keepsake-root .bc-keepsake', { timeout: 3000 }).catch(() => {});
-      ok(/Sample Kid's room reveal/.test(await page.$eval('#bc-keepsake-root', (el) => el.innerText).catch(() => '')), 'History row opens the keepsake');
-      await clickText('#bc-keepsake-root button', /^Close$/);
-    }
-    if (name === 'scheduled') {
-      await page.waitForSelector('.bc-msgs', { timeout: 4000 }).catch(() => {});
-      const t = await page.$eval('.bc-msgs', (el) => el.innerText).catch(() => '');
-      ok(/Refresh/.test(t) && !/Updates every 10 seconds/.test(t), 'scheduled: messages card with a manual refresh');
+      // Same noise filter as the end-of-run check: a background poll or the aborted admin socket can land in this window
+      const qrErrors = errors.slice(errBefore).filter((e) => !/net::ERR_FAILED|ERR_ABORTED|Failed to load resource|WebSocket connection|favicon|cloudflareinsights|imagedelivery|cdn-cgi/i.test(e));
+      ok(qrErrors.length === 0, `no errors from the QR downloads${qrErrors.length ? ` (${qrErrors.join(' / ').slice(0, 200)})` : ''}`);
     }
     if (name === 'idle') {
       ok(!(await page.$('.bc-msgs')), 'idle: no messages card');
       ok((await page.$$('.bc-family .bc-qr svg')).length === 1, 'idle: family QR card still shows');
-      const draftOpt = await page.$eval('#bc-schedule-kid option[value="dana-draft"]', (o) => o.textContent).catch(() => '');
+      const draftOpt = await page.$eval('#bc-new-kid option[value="dana-draft"]', (o) => o.textContent).catch(() => '');
       ok(/^Dana \(.*draft\)$/.test(draftOpt), `draft kid marked in the schedule select ("${draftOpt}")`);
-      await page.select('#bc-schedule-kid', 'dana-draft');
+      await page.select('#bc-new-kid', 'dana-draft');
       await page.waitForSelector('.bc-draft-note', { timeout: 3000 }).catch(() => {});
       const note = await page.$eval('.bc-draft-note', (el) => el.innerText).catch(() => '');
       ok(/Dana isn't published on the site yet\. Reveal links will open the main live page until you publish Dana and the site redeploys, and the starting-soon screen won't exist\. Publish Dana before reveal day\./.test(note), 'draft kid warning under the schedule select');
-      await page.select('#bc-schedule-kid', kidSlug);
+      await page.select('#bc-new-kid', kidSlug);
       await settle(150);
       ok(!(await page.$('.bc-draft-note')), 'warning clears for a published kid');
-      await page.select('#bc-schedule-kid', 'dana-draft');
+      await page.select('#bc-new-kid', 'dana-draft');
       await settle(150);
     }
     if (name !== 'live') await page.screenshot({ path: `${OUT}admin-now-${name}.png`, fullPage: true });
