@@ -1028,8 +1028,132 @@
     .bc-switch input:checked + .bc-switch-track::after { left: 22px; }
     .bc-switch input:focus-visible + .bc-switch-track { box-shadow: var(--focus-ring); }
     .bc-switch input:disabled, .bc-switch input:disabled + .bc-switch-track { opacity: .6; cursor: default; }
-    .bc-engage { display: flex; gap: .4rem 1.25rem; flex-wrap: wrap; margin-top: .75rem; padding-top: .75rem; border-top: 1px solid var(--color-border); font-size: .9rem; color: var(--color-text-secondary); }
-    .bc-engage strong { color: var(--color-text); font-size: 1rem; font-variant-numeric: tabular-nums; }
+    /* Broadcast page: status, Now, History, Settings */
+    .bc-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+    .bc-header { margin-bottom: 1rem; }
+    .bc-tabs { margin-bottom: 1.25rem; }
+    .bc-tab-live, .bc-tab-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-left: .45rem; vertical-align: middle; }
+    .bc-tab-live { background: #FFD500; box-shadow: 0 0 0 3px rgba(255,213,0,.3); }
+    .bc-tab-dot { background: #D69E2E; }
+    .bc-status { border-left: 4px solid var(--phase); }
+    .bc-status-top { display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; align-items: flex-start; }
+    .bc-status-main { min-width: 0; flex: 1 1 320px; }
+    .bc-phase { display: flex; align-items: center; gap: .5rem; font-size: .75rem; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--color-text-secondary); }
+    .bc-phase .badge { text-transform: none; letter-spacing: 0; }
+    .bc-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--phase); flex: none; }
+    .bc-dot.is-live { box-shadow: 0 0 0 4px rgba(255,213,0,.3); animation: bc-pulse 1.6s ease-in-out infinite; }
+    @keyframes bc-pulse { 50% { box-shadow: 0 0 0 7px rgba(255,213,0,.08); } }
+    @media (prefers-reduced-motion: reduce) { .bc-dot.is-live { animation: none; } }
+    .bc-title { font-size: 1.4rem; font-weight: 700; line-height: 1.25; margin: .3rem 0 .35rem; overflow-wrap: anywhere; }
+    .bc-meta { display: flex; flex-wrap: wrap; gap: .25rem 1.1rem; font-size: .92rem; color: var(--color-text-secondary); }
+    .bc-meta strong { color: var(--color-text); font-variant-numeric: tabular-nums; }
+    .bc-sub { display: flex; flex-wrap: wrap; gap: .25rem 1.1rem; margin-top: .4rem; font-size: .85rem; color: var(--color-text-muted); }
+    .bc-links { display: flex; flex-wrap: wrap; gap: .3rem 1.25rem; margin-top: .85rem; padding-top: .75rem; border-top: 1px solid var(--color-border); font-size: .85rem; color: var(--color-text-muted); }
+    .bc-links a { color: var(--color-info); text-decoration: none; }
+    .bc-links a:hover { text-decoration: underline; }
+    .bc-actions, .bc-btns { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
+    .bc-callout { margin-top: 1rem; padding: .85rem 1rem; border-radius: 10px; background: #FFF8D6; display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; }
+    .bc-card-head { display: flex; justify-content: space-between; align-items: center; gap: .5rem 1rem; flex-wrap: wrap; margin-bottom: .9rem; }
+    .bc-card-head h3 { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+    .bc-room { margin-bottom: 1rem; }
+    .bc-room > .bc-card-head { margin-bottom: .5rem; }
+    .bc-pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 1rem; margin-bottom: 1rem; }
+    .bc-pair > .card { margin: 0; }
+    .bc-mini h3, .bc-family h3 { font-size: 1rem; margin-bottom: .35rem; }
+    .bc-mini p, .bc-family p { margin: 0 0 .75rem; }
+    .bc-family { display: flex; gap: 1.25rem; align-items: center; }
+    .bc-family-body { min-width: 0; flex: 1; }
+    .bc-inline { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
+    .bc-inline > .form-input { flex: 1 1 220px; max-width: 360px; }
+    .bc-thumb { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; border: 2px solid #FFD500; flex: none; }
+    .bc-fold > summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: .6rem; font-weight: 600; font-size: .95rem; }
+    .bc-fold > summary::-webkit-details-marker, .bc-more > summary::-webkit-details-marker { display: none; }
+    .bc-fold > summary::before, .bc-more > summary::before { content: ''; flex: none; width: 6px; height: 6px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(-45deg); transition: transform .15s; margin: 0 .15rem; }
+    .bc-fold[open] > summary::before, .bc-more[open] > summary::before { transform: rotate(45deg); }
+    .bc-fold-note { font-weight: 400; color: var(--color-text-muted); font-size: .85rem; }
+    .bc-fold-body { margin-top: 1rem; }
+    .bc-more { margin-top: .75rem; font-size: .88rem; }
+    .bc-more > summary { cursor: pointer; list-style: none; display: inline-flex; align-items: center; gap: .45rem; font-weight: 600; color: var(--color-text-secondary); }
+    .bc-more > summary:hover { color: var(--color-text); }
+    .bc-more[open] > summary { margin-bottom: .5rem; }
+    .bc-rows .bc-row { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) auto; gap: .25rem 1rem; padding: .5rem 0; border-top: 1px solid var(--color-border); font-size: .88rem; }
+    .bc-rows .bc-row:first-child { border-top: 0; }
+    .bc-rec { display: flex; gap: .9rem; align-items: center; }
+    .bc-rec img, .bc-rec .bc-rec-ph { width: 128px; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 8px; background: #1A1B1F; flex: none; }
+    .bc-recs { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+    .bc-rec-card { border: 1px solid var(--color-border); border-radius: 10px; overflow: hidden; color: inherit; text-decoration: none; background: var(--color-bg-card); }
+    .bc-rec-card img, .bc-rec-card .bc-rec-ph { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; display: block; background: #1A1B1F; }
+    .bc-rec-meta { padding: 8px 10px; font-size: 12px; }
+    .bc-table { overflow-x: auto; }
+    .bc-hist { padding: 0; }
+    .bc-hist .bc-card-head { margin: 0; padding: 1.5rem 1.5rem .5rem; }
+    .bc-hist th:first-child, .bc-hist td:first-child { padding-left: 1.5rem; }
+    .bc-hist th:last-child, .bc-hist td:last-child { padding-right: 1.5rem; }
+    .bc-hist .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .bc-hist-row { cursor: pointer; }
+    .bc-hist-row:hover td, .bc-hist-row.is-open td { background: var(--color-bg-secondary); }
+    .bc-hist-toggle { text-align: right; width: 1%; }
+    .bc-hist-detail > td { background: var(--color-bg-secondary); padding: .25rem 1rem 1.1rem; }
+    .bc-fbrow { display: flex; justify-content: space-between; gap: 1rem; align-items: center; flex-wrap: wrap; padding: .6rem 0; border-top: 1px solid var(--color-border); }
+    .bc-snav { display: flex; gap: .4rem; flex-wrap: wrap; margin: -.25rem 0 1rem; }
+    .bc-snav button { position: relative; border: 1px solid var(--color-border); background: var(--color-bg-card); border-radius: 999px; padding: .35rem .85rem; font-size: .82rem; font-weight: 600; color: var(--color-text-secondary); cursor: pointer; }
+    .bc-snav button:hover { color: var(--color-text); border-color: #CFCDC6; }
+    .bc-snav button.is-flag::after { content: ''; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #D69E2E; margin-left: .4rem; vertical-align: middle; }
+    .bc-set { scroll-margin-top: 1rem; }
+    .bc-set-lede { font-size: .88rem; color: var(--color-text-muted); margin: -.35rem 0 1rem; line-height: 1.55; }
+    .bc-block { padding: 1rem 0; border-top: 1px solid var(--color-border); }
+    .bc-card-head + .bc-block, .bc-set-lede + .bc-block, .bc-result + .bc-block { border-top: 0; padding-top: 0; }
+    .bc-block:last-child { padding-bottom: 0; }
+    .bc-block h4 { margin: 0 0 .35rem; font-size: .92rem; }
+    .bc-block p { margin: 0 0 .75rem; line-height: 1.55; }
+    .bc-block-head { display: flex; justify-content: space-between; align-items: center; gap: .5rem 1rem; flex-wrap: wrap; margin-bottom: .35rem; }
+    .bc-block-head h4 { margin: 0; }
+    .bc-indent { padding-left: 1.75rem; }
+    .bc-radio { display: flex; gap: .65rem; align-items: flex-start; padding: .55rem 0; cursor: pointer; }
+    .bc-radio input { margin-top: .25rem; flex: none; }
+    .bc-radio > span { display: grid; gap: .1rem; }
+    .bc-result { padding: .6rem .8rem; border-radius: 8px; border: 1px solid var(--color-border); font-size: .85rem; line-height: 1.7; margin-bottom: 1rem; }
+    .bc-result.is-ok { background: #C6F6D5; border-color: transparent; }
+    .bc-result.is-warn { background: #FEFCBF; border-color: transparent; }
+    .bc-qrs { display: flex; gap: 1.5rem; flex-wrap: wrap; align-items: flex-start; margin-top: .5rem; }
+    .bc-qr-col { display: grid; justify-items: center; gap: .4rem; }
+    .bc-qr-empty { width: 190px; padding: .9rem; border: 1px dashed var(--color-border); border-radius: 10px; font-size: .88rem; }
+    .bc-qr-empty p { margin: .3rem 0 .75rem; }
+    .bc-kv { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; padding: .2rem 0; font-size: .88rem; }
+    .bc-kv > span:first-child { width: 3.25rem; font-weight: 600; color: var(--color-text-secondary); }
+    .bc-kv code { overflow-wrap: anywhere; }
+    .bc-checklist { margin: 0; padding-left: 1.1rem; font-size: .88rem; line-height: 1.7; }
+    .bc-steps { margin: 0; padding-left: 1.2rem; line-height: 1.7; }
+    .bc-manual { display: grid; gap: .4rem; font-size: 12px; word-break: break-all; }
+    .bc-checks > .bc-check:first-child { border-top: 0; }
+    .bc-check { display: grid; grid-template-columns: 1.5rem minmax(0, 1fr); gap: .1rem .6rem; padding: .6rem 0; border-top: 1px solid var(--color-border); }
+    .bc-check-mark { width: 1.35rem; height: 1.35rem; border-radius: 50%; display: grid; place-items: center; font-size: .72rem; font-weight: 800; margin-top: .05rem; }
+    .bc-check.is-ok .bc-check-mark { background: #C6F6D5; color: #22543D; }
+    .bc-check.is-fix .bc-check-mark { background: #FEFCBF; color: #744210; }
+    .bc-check.is-opt .bc-check-mark { background: #EDF2F7; color: #718096; }
+    .bc-check-label { font-weight: 600; font-size: .9rem; }
+    .bc-check-detail { font-size: .8rem; color: var(--color-text-muted); overflow-wrap: anywhere; line-height: 1.5; }
+    /* Fixed, not sticky: .main's overflow-x makes it the sticky container, and the window scrolls */
+    .bc-settings.is-dirty { padding-bottom: 4.5rem; }
+    .bc-savebar { position: fixed; bottom: 1rem; left: calc(240px + 2rem); right: 2rem; z-index: 50; display: flex; align-items: center; justify-content: space-between; gap: .75rem; flex-wrap: wrap; padding: .7rem .8rem .7rem 1.1rem; background: #1A1B1F; color: #fff; border-radius: 12px; box-shadow: var(--shadow-lg); font-weight: 600; font-size: .9rem; }
+    .bc-savebar .btn-ghost { color: #fff; border-color: rgba(255,255,255,.35); }
+    .bc-savebar .btn-ghost:hover { background: rgba(255,255,255,.08); }
+    @media (max-width: 768px) {
+      .bc-family { flex-direction: column; align-items: flex-start; }
+      .bc-hist .bc-card-head { padding: 1rem 1rem .25rem; }
+      .bc-hist table, .bc-hist tbody { display: block; }
+      .bc-hist thead { display: none; }
+      .bc-hist tr.bc-hist-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .5rem .75rem; padding: .85rem 1rem; border-top: 1px solid var(--color-border); }
+      .bc-hist tr.bc-hist-row td { padding: 0; border: 0; background: none; }
+      .bc-hist tr.bc-hist-row td:first-child { grid-column: 1 / -1; padding: 0; }
+      .bc-hist td.num { text-align: left; }
+      .bc-hist td.num::before { content: attr(data-label); display: block; font-size: .7rem; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--color-text-muted); }
+      .bc-hist .bc-hist-toggle { grid-column: 1 / -1; width: auto; text-align: left; padding: 0 !important; }
+      .bc-hist tr.bc-hist-detail, .bc-hist tr.bc-hist-detail > td { display: block; }
+      .bc-hist tr.bc-hist-detail > td { padding: .25rem 1rem 1rem; }
+      .bc-rows .bc-row { grid-template-columns: 1fr; }
+      .bc-savebar { left: .75rem; right: .75rem; bottom: calc(.5rem + env(safe-area-inset-bottom, 0px)); }
+    }
     .bc-msg { display: flex; gap: 1rem; align-items: flex-start; padding: .75rem 0; border-top: 1px solid var(--color-border); }
     .bc-msg-main { flex: 1; min-width: 0; }
     .bc-msg-head { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; font-size: .85rem; }
@@ -4221,21 +4345,27 @@
       return html`<div>${view === 'list' ? renderList() : renderEditor()}</div>`;
     }
 
-    // ─── Broadcast control center ─────────
-    // Plans and watches live room reveals. Nothing here is needed on reveal
-    // day: the crew opens Larix and taps Start; Cloudflare Stream tells the
-    // site, and the site does the rest (banner, live page, YouTube +
-    // Facebook simulcast, reminders, replay, kid page). This screen is for
-    // scheduling ahead, phone setup (QR), health, and emergencies.
+    // ─── Broadcast ─────────────────────────────────────────
+    // Plans and watches live room reveals. Reveal day needs nothing here: the
+    // crew opens Larix and taps Start; Cloudflare Stream tells the site, and
+    // the site does the rest (banner, live page, Facebook and YouTube
+    // simulcast, reminders, replay, kid page, Instagram Reel).
+    // Three tabs. Now follows the reveal: schedule, go/no-go and mic check,
+    // then the control room while live, then the replay. History is every
+    // past reveal. Settings is setup, reminders, alerts and system checks,
+    // saved with one button.
     // Server: functions/api/broadcast-admin.js (setup) + /api/broadcast (state).
     const BC_PHASES = {
       idle: { label: 'Idle', color: '#A0AEC0' },
       scheduled: { label: 'Scheduled', color: '#D69E2E' },
-      armed: { label: 'Armed', color: '#D69E2E' },
-      live: { label: 'LIVE', color: '#FFD500' },
+      armed: { label: 'Starting soon', color: '#D69E2E' },
+      live: { label: 'Live', color: '#FFD500' },
       ending: { label: 'Reconnecting', color: '#FFD500' },
       replay: { label: 'Replay', color: '#38A169' },
     };
+    const BC_TABS = [['now', 'Now'], ['history', 'History'], ['settings', 'Settings']];
+    // #broadcast/control-room (every Slack post links there) opens Now, where the control room lives
+    const bcTabFromHash = () => (location.hash.startsWith('#broadcast/settings') ? 'settings' : location.hash.startsWith('#broadcast/history') ? 'history' : 'now');
     const bcFmt = (iso) => iso ? new Date(iso).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
     const bcAgo = (iso) => {
       if (!iso) return 'never';
@@ -4250,6 +4380,24 @@
       const pad = (n) => String(n).padStart(2, '0');
       return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
     };
+    const bcUntil = (iso) => {
+      const s = Math.round((Date.parse(iso) - Date.now()) / 1000);
+      if (!Number.isFinite(s)) return '';
+      if (s <= 60) return 'any minute now';
+      if (s < 3600) return `in ${Math.round(s / 60)} min`;
+      if (s < 86400) { const mins = Math.round(s / 60), hr = Math.floor(mins / 60), m = mins % 60; return `in ${hr} h${m ? ` ${m} min` : ''}`; }
+      const d = Math.round(s / 86400);
+      return `in ${d} day${d > 1 ? 's' : ''}`;
+    };
+    const bcClock = (ms) => {
+      const s = Math.max(0, Math.floor(ms / 1000)); const hr = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), x = s % 60;
+      return `${hr ? `${hr}:${String(m).padStart(2, '0')}` : m}:${String(x).padStart(2, '0')}`;
+    };
+    // Re-render every second while `on` (the live clock)
+    function useBcTick(on) {
+      const [, set] = useState(0);
+      useEffect(() => { if (!on) return undefined; const t = setInterval(() => set((n) => n + 1), 1000); return () => clearInterval(t); }, [on]);
+    }
     // One QR matrix for every code in Broadcast (Larix setup, family invite),
     // made locally by qrcode-generator from vendor.js. No QR service.
     const bcQr = (value, ecc = 'L') => { const qr = qrcode(0, ecc); qr.addData(value, 'Byte'); qr.make(); return qr; };
@@ -4266,30 +4414,34 @@
         ${label ? html`<figcaption style="font-size:12px;color:var(--color-text-muted);margin-top:6px">${label}</figcaption>` : null}
       </figure>`;
     }
-    function Check({ ok, label, detail }) {
-      const color = ok === true ? '#22543D' : ok === false ? '#744210' : '#4A5568';
-      const bg = ok === true ? '#C6F6D5' : ok === false ? '#FEFCBF' : '#E2E8F0';
-      return html`<div style="display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-bottom:1px solid var(--color-border)">
-        <span class="badge" style=${`background:${bg};color:${color};min-width:52px;text-align:center`}>${ok === true ? 'OK' : ok === false ? 'Fix' : '—'}</span>
-        <div style="min-width:0"><div style="font-weight:600;font-size:0.9rem">${label}</div>${detail ? html`<div style="font-size:12px;color:var(--color-text-muted);word-break:break-word">${detail}</div>` : null}</div>
+    // One line of the system checks in Settings. ok: true, false (needs a fix) or null (optional / unknown)
+    function BcCheck({ ok, label, detail, children }) {
+      const t = ok === true ? 'ok' : ok === false ? 'fix' : 'opt';
+      return html`<div class=${`bc-check is-${t}`}>
+        <span class="bc-check-mark" aria-label=${ok === true ? 'OK' : ok === false ? 'Needs a fix' : 'Optional'}>${ok === true ? '✓' : ok === false ? '!' : '–'}</span>
+        <div style="min-width:0"><div class="bc-check-label">${label}</div>${detail ? html`<div class="bc-check-detail">${detail}</div>` : null}${children}</div>
       </div>`;
     }
     function CopyBtn({ text, label = 'Copy' }) {
       const [done, setDone] = useState(false);
       return html`<button class="btn btn-ghost btn-sm" type="button" onClick=${async () => { try { await navigator.clipboard.writeText(text); setDone(true); setTimeout(() => setDone(false), 1500); } catch {} }}>${done ? 'Copied' : label}</button>`;
     }
-    // Broadcast control room (picture, sound meter, destinations) lives in ./control-room.js,
-    // loaded on first use with its HLS player, so the rest of the admin stays light.
+    // Broadcast control room (picture, sound meter, destinations, issues), the go/no-go and each
+    // reveal's health report live in ./control-room.js, loaded on first use so the admin stays light.
+    // part: 'room' (default) | 'preflight' | 'report'
     let controlRoomModule = null;
-    function ControlRoomLazy(props) {
-      const [Comp, setComp] = useState(null);
+    function ControlRoomLazy({ part = 'room', ...props }) {
+      const [mod, setMod] = useState(null);
       const [err, setErr] = useState(null);
-      useEffect(() => {
+      const load = () => {
         controlRoomModule ||= import('./control-room.js');
-        controlRoomModule.then((m) => setComp(() => m.ControlRoom)).catch((e) => { controlRoomModule = null; setErr(e.message); });
-      }, []);
-      if (err) return html`<${LoadErrorCard} error=${`Could not load the control room: ${err}`} onRetry=${() => { setErr(null); controlRoomModule = import('./control-room.js'); controlRoomModule.then((m) => setComp(() => m.ControlRoom)).catch((e) => setErr(e.message)); }} />`;
-      return Comp ? html`<${Comp} ...${props} />` : html`<div style="text-align:center;padding:2rem"><span class="spinner" /></div>`;
+        controlRoomModule.then((m) => setMod(m)).catch((e) => { controlRoomModule = null; setErr(e.message); });
+      };
+      useEffect(load, []);
+      if (err) return html`<${LoadErrorCard} error=${`Could not load the control room: ${err}`} onRetry=${() => { setErr(null); load(); }} />`;
+      // Chosen on every render: Preact can hand this instance a different part when tabs switch
+      const Comp = mod && { room: mod.ControlRoom, preflight: mod.Preflight, report: mod.HealthReport }[part];
+      return Comp ? html`<${Comp} key=${part} ...${props} />` : (part === 'room' && !mod ? html`<div style="text-align:center;padding:2rem"><span class="spinner" /></div>` : null);
     }
 
     // ─── Broadcast: family invite QR, viewer messages, keepsake ─────────
@@ -4332,17 +4484,15 @@
         setMaking(false);
       };
       return html`<div class="card bc-family">
-        <div style="display:flex;gap:1.5rem;flex-wrap:wrap;align-items:center">
-          <${QrCode} value=${BC_FAMILY_URL} size=${148} ecc="M" />
-          <div style="flex:1;min-width:240px">
-            <h3 style="margin:0 0 .35rem">Family invite QR code</h3>
-            <p class="text-sm text-muted" style="margin:0 0 .5rem">One QR code for every family. It always opens the reveal that is coming up, live, or on replay. Print it on invitations and signs; it never needs to change.</p>
-            <p class="text-sm" style="margin:0 0 .75rem;word-break:break-all"><code>${BC_FAMILY_URL}</code></p>
-            <div class="flex items-center gap-2 flex-wrap">
-              <button class="btn btn-secondary btn-sm" type="button" onClick=${downloadSvg}>Download SVG</button>
-              <button class="btn btn-secondary btn-sm" type="button" disabled=${making} onClick=${downloadPng}>Download PNG</button>
-              <${CopyBtn} text=${BC_FAMILY_URL} label="Copy link" />
-            </div>
+        <${QrCode} value=${BC_FAMILY_URL} size=${104} ecc="M" />
+        <div class="bc-family-body">
+          <h3>Family invite QR</h3>
+          <p class="text-sm text-muted">One code for every family, for invitations and signs. It always opens the reveal that's coming up, live or on replay, so it never needs reprinting.</p>
+          <p class="text-sm" style="word-break:break-all"><code>${BC_FAMILY_URL}</code></p>
+          <div class="bc-btns">
+            <button class="btn btn-ghost btn-sm" type="button" onClick=${downloadSvg}>Download SVG</button>
+            <button class="btn btn-ghost btn-sm" type="button" disabled=${making} onClick=${downloadPng}>Download PNG</button>
+            <${CopyBtn} text=${BC_FAMILY_URL} label="Copy link" />
           </div>
         </div>
       </div>`;
@@ -4483,7 +4633,7 @@
         <div style="display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap;align-items:flex-start">
           <div style="min-width:0">
             <h3 style="margin:0">${name ? `Messages for ${name}'s family` : 'Messages'}</h3>
-            ${sub ? html`<div class="text-sm text-muted" style="margin-top:2px">${sub}</div>` : null}
+            ${sub && !onToggle ? html`<div class="text-sm text-muted" style="margin-top:2px">${sub}</div>` : null}
           </div>
           <div class="flex items-center gap-2 flex-wrap">
             ${auto ? html`<span class="text-sm text-muted">Updates every 10 seconds</span>` : html`<button class="btn btn-ghost btn-sm" type="button" disabled=${loading} onClick=${load}>Refresh</button>`}
@@ -4497,7 +4647,7 @@
             <span class="bc-switch-track" aria-hidden="true"></span>
             Let viewers post messages on the live page
           </label>
-          <div class="form-hint" style="margin-top:.35rem">Each message is screened automatically before it shows. When screening can't run, the message waits here until one of us approves it.</div>
+          <div class="form-hint" style="margin-top:.35rem">Each message is screened automatically before it shows. If screening can't run, it waits here for one of us.</div>
         </div>` : null}
         ${d ? html`<div class="bc-counts">
           <span><strong>${count('shown')}</strong> shown</span>
@@ -4509,7 +4659,7 @@
         ${loading && !d && !err ? html`<div style="padding:1rem 0;text-align:center"><span class="spinner" /></div>` : null}
         ${held.length ? html`<div class="bc-review">
           <strong style="font-size:.9rem">Waiting for review (${held.length})</strong>
-          <p class="text-sm text-muted" style="margin:.2rem 0 .25rem">Screening wasn't available when these came in, so nobody sees them yet. Show the ones that look fine.</p>
+          <p class="text-sm text-muted" style="margin:.2rem 0 .25rem">Nobody sees these yet. Show the ones that look fine.</p>
           ${held.map(row)}
         </div>` : null}
         ${listed.map(row)}
@@ -4533,40 +4683,760 @@
       return html`<div class="bc-note bc-draft-note" role="note">${icons.warning}<span>${n} isn't published on the site yet. Reveal links will open the main live page until you publish ${n} and the site redeploys, and the starting-soon screen won't exist. Publish ${n} before reveal day.</span></div>`;
     }
 
+    // Settings form ⇄ the saved config (functions/api/_broadcast.js readConfig)
+    const bcCfgFrom = (c) => ({
+      facebookMode: c.facebook?.mode || 'persistent',
+      pageUrl: c.facebook?.pageUrl || '',
+      youtubeUrl: c.youtube?.channelUrl || '',
+      instagramUrl: c.instagram?.profileUrl || '',
+      orientation: c.orientation || 'portrait',
+      reelsEnabled: c.reels?.enabled !== false,
+      reelsCaption: c.reels?.caption || '',
+      reelsLead: c.reels?.leadSeconds ?? 240,
+      reelsFeed: c.reels?.shareToFeed !== false,
+      remEnabled: c.reminders?.enabled !== false,
+      remSms: c.reminders?.sms !== false,
+      remPush: c.reminders?.push !== false,
+      rem24: (c.reminders?.hoursBefore || [24, 1]).includes(24),
+      rem1: (c.reminders?.hoursBefore || [24, 1]).includes(1),
+      replayHours: c.replayHours || 72,
+      timezone: c.timezone || 'America/New_York',
+      alertEmails: (c.alerts?.emails || []).join(', '),
+      defTitle: c.defaults?.title || '',
+      defMessage: c.defaults?.message || '',
+    });
+    const bcCfgTo = (f) => ({
+      facebook: { mode: f.facebookMode, pageUrl: f.pageUrl },
+      youtube: { channelUrl: f.youtubeUrl },
+      instagram: { profileUrl: f.instagramUrl },
+      orientation: f.orientation,
+      reels: { enabled: f.reelsEnabled, caption: f.reelsCaption, leadSeconds: Number(f.reelsLead), shareToFeed: f.reelsFeed },
+      reminders: { enabled: f.remEnabled, sms: f.remSms, push: f.remPush, hoursBefore: [f.rem24 ? 24 : null, f.rem1 ? 1 : null].filter(Boolean) },
+      replayHours: Number(f.replayHours), timezone: f.timezone,
+      alerts: { emails: f.alertEmails.split(',').map((x) => x.trim()).filter(Boolean) },
+      defaults: { title: f.defTitle, message: f.defMessage },
+    });
+    const bcSpin = html`<span class="spinner" style="width:14px;height:14px" />`;
+    const bcSortKids = (kids) => [...kids].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+
+    // Schedule a reveal, or edit the scheduled one (only what changed is sent).
+    // Picking the kid fills the title, banner message and photo from the kid record.
+    function BcRevealForm({ edit = false, current = null, kids, kit, busy, act, addToast, onDone, onCancel, children }) {
+      const init = useMemo(() => (edit && current
+        ? { kidSlug: current.kidSlug || '', when: bcLocalInput(current.scheduledAt), title: current.title || '', message: current.message || '', image: current.image || '', kitLive: !!current.kitLive, revealAt: current.revealAt ?? '' }
+        : { kidSlug: '', when: bcLocalInput(null), title: '', message: '', image: '', kitLive: kit ? kit.def : false, revealAt: '' }), []);
+      const [f, setF] = useState(init);
+      const [picker, setPicker] = useState(false);
+      const set = (k) => (e) => { const v = e.target.type === 'checkbox' ? e.target.checked : e.target.value; setF((x) => ({ ...x, [k]: v })); };
+      const kidsSorted = useMemo(() => bcSortKids(kids), [kids]);
+      const kid = f.kidSlug ? kids.find((k) => k.slug === f.kidSlug) : null;
+      const onKid = (slug) => {
+        const k = kids.find((x) => x.slug === slug);
+        setF((x) => ({ ...x, kidSlug: slug, ...(k ? { title: `${k.name}'s room reveal`, message: `Watch ${k.name}'s room reveal live`, image: k.heroImage || k.photos?.[0]?.url || k.photos?.[0]?.cfImageId || '' } : {}) }));
+      };
+      const changed = Object.keys(f).filter((k) => f[k] !== init[k]);
+      const id = edit ? 'bc-edit' : 'bc-new';
+      const label = edit ? 'Save reveal' : 'Schedule';
+      const submit = async () => {
+        if (!f.when || Number.isNaN(Date.parse(f.when))) { addToast('Pick a date and time', 'error'); return; }
+        if (!edit) {
+          // Kit: only send a choice someone made, so an untouched box keeps following the setting
+          const d = await act('schedule', { kidSlug: f.kidSlug || undefined, scheduledAt: new Date(f.when).toISOString(), title: f.title, message: f.message, image: f.image || '', kitLiveEmail: kit && changed.includes('kitLive') ? f.kitLive : undefined }, label);
+          if (d.success) { addToast('Reveal scheduled. The countdown, reminder signup and share page are on the site.', 'success'); onDone?.(); }
+          return;
+        }
+        const field = { kidSlug: 'kidSlug', title: 'title', message: 'message', image: 'image', kitLive: 'kitLiveEmail', revealAt: 'revealAtMinute' };
+        const body = {};
+        for (const k of changed) { if (k === 'when') body.scheduledAt = new Date(f.when).toISOString(); else body[field[k]] = f[k]; }
+        if (!Object.keys(body).length) { onDone?.(); return; }
+        const d = await act('update', body, label);
+        if (d.success) { addToast('Reveal updated. The site shows the change within a second.', 'success'); onDone?.(); }
+      };
+      return html`<div class="card bc-form">
+        <div class="bc-card-head"><h3>${edit ? 'Edit the reveal' : 'Schedule a reveal'}</h3>${!edit ? html`<span class="text-sm text-muted">The countdown, reminders and share page follow from this.</span>` : null}</div>
+        <div class="form-grid">
+          <div class="form-group">
+            <label class="form-label" for=${`${id}-kid`}>Kid</label>
+            <select class="form-select" id=${`${id}-kid`} value=${f.kidSlug} onChange=${(e) => onKid(e.target.value)}>
+              <option value="">${edit ? 'None' : 'Choose…'}</option>
+              ${kidsSorted.map((k) => html`<option value=${k.slug}>${bcKidLabel(k, true)}</option>`)}
+            </select>
+            <${BcDraftNote} kid=${kid} />
+          </div>
+          <div class="form-group">
+            <label class="form-label" for=${`${id}-when`}>Date and time</label>
+            <input class="form-input" id=${`${id}-when`} type="datetime-local" value=${f.when} onInput=${set('when')} />
+            <span class="form-hint">Your time. Visitors see it in theirs.</span>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for=${`${id}-title`}>Title</label>
+            <input class="form-input" id=${`${id}-title`} value=${f.title} maxlength="140" placeholder=${kid ? `${kid.name}'s room reveal` : "Remi's room reveal"} onInput=${set('title')} />
+          </div>
+          <div class="form-group">
+            <label class="form-label" for=${`${id}-msg`}>Banner message</label>
+            <input class="form-input" id=${`${id}-msg`} value=${f.message} maxlength="200" placeholder=${kid ? `Watch ${kid.name}'s room reveal live` : "Watch Remi's room reveal live"} onInput=${set('message')} />
+          </div>
+          <div class="form-group">
+            <label class="form-label" for=${`${id}-img`}>Photo</label>
+            <div class="bc-inline">
+              ${f.image ? html`<img src=${cfThumb(extractCfId(f.image), 'w=80,h=80,fit=cover')} alt="" class="bc-thumb" />` : null}
+              <input class="form-input" id=${`${id}-img`} value=${f.image} placeholder="Cloudflare image id" onInput=${set('image')} style="flex:1;min-width:160px" />
+              <button class="btn btn-ghost btn-sm" type="button" onClick=${() => setPicker(true)}>Browse</button>
+            </div>
+          </div>
+          ${edit ? html`<div class="form-group">
+            <label class="form-label" for=${`${id}-moment`}>Reveal moment, in minutes (optional)</label>
+            <input class="form-input" id=${`${id}-moment`} type="number" min="0" step="0.5" value=${f.revealAt} placeholder="Found automatically" onInput=${set('revealAt')} />
+            <span class="form-hint">Only if you already know it. It sets where the Instagram Reel is cut.</span>
+          </div>` : null}
+        </div>
+        ${kit ? html`<div class="form-group">
+          <label class="checkbox-label" style="margin:0"><input type="checkbox" checked=${f.kitLive} onChange=${set('kitLive')} /> Email our Kit list (${kit.audience}) when we go live</label>
+          <div class="form-hint">Sends once the stream has run 3 minutes, so a quick phone test emails no one. A stream that starts more than 30 minutes early waits for you to send it by hand.</div>
+        </div>` : null}
+        <div class="bc-btns">
+          <button class="btn btn-primary" disabled=${!!busy || !f.when || (edit && !changed.length)} onClick=${submit}>${busy === label ? bcSpin : null}${edit ? 'Save changes' : 'Schedule reveal'}</button>
+          ${onCancel ? html`<button class="btn btn-ghost" type="button" onClick=${onCancel}>Cancel</button>` : null}
+          ${children}
+        </div>
+        ${picker ? html`<${ImagePicker} value=${f.image} uploadPrefix=${`kids/${f.kidSlug || 'live'}`} onSelect=${(img) => { setF((x) => ({ ...x, image: img })); setPicker(false); }} onClose=${() => setPicker(false)} />` : null}
+      </div>`;
+    }
+
+    // Fallback when Stream is down: a banner linking to a Facebook live started from the app
+    function BcEmergency({ kids, busy, act }) {
+      const [msg, setMsg] = useState("It's reveal day! We're live on Facebook right now.");
+      const [url, setUrl] = useState('https://www.facebook.com/SunshineOnaRanneyDay');
+      const [hours, setHours] = useState(4);
+      const [kid, setKid] = useState('');
+      const k = kid ? kids.find((x) => x.slug === kid) : null;
+      return html`<details class="card bc-fold">
+        <summary>Stream down? Put up the emergency banner</summary>
+        <div class="bc-fold-body">
+          <p class="text-sm text-muted" style="margin:0 0 1rem">If Cloudflare Stream is down and you go live from the Facebook app instead, this puts up a banner that links there. It comes down by itself after the hours you pick.</p>
+          <div class="form-grid">
+            <div class="form-group"><label class="form-label" for="bc-em-msg">Message</label><input class="form-input" id="bc-em-msg" value=${msg} maxlength="140" onInput=${(e) => setMsg(e.target.value)} /></div>
+            <div class="form-group"><label class="form-label" for="bc-em-url">Link</label><input class="form-input" id="bc-em-url" value=${url} onInput=${(e) => setUrl(e.target.value)} /></div>
+            <div class="form-group"><label class="form-label" for="bc-em-kid">Kid (optional)</label><select class="form-select" id="bc-em-kid" value=${kid} onChange=${(e) => setKid(e.target.value)}><option value="">None</option>${bcSortKids(kids).map((x) => html`<option value=${x.slug}>${bcKidLabel(x, true)}</option>`)}</select></div>
+            <div class="form-group"><label class="form-label" for="bc-em-hours">Take it down after</label><select class="form-select" id="bc-em-hours" value=${hours} onChange=${(e) => setHours(Number(e.target.value))}>${[2, 4, 6, 8].map((n) => html`<option value=${n}>${n} hours</option>`)}</select></div>
+          </div>
+          <button class="btn btn-secondary" disabled=${!!busy} onClick=${() => act('goLiveManual', { message: msg, url, durationHours: hours, kidSlug: kid || undefined, image: k?.heroImage || '' }, 'Emergency banner')}>Put the banner up</button>
+        </div>
+      </details>`;
+    }
+
+    // Reminders that went out for this reveal, folded to one line
+    const BC_SEND_KIND = { scheduled: 'Save the date', day: 'Day before', hour: 'One hour before', live: "We're live", replay: 'Replay ready' };
+    const BC_SEND_CHANNEL = { email: 'email', sms: 'text', push: 'browser alert' };
+    function BcSends({ sends }) {
+      if (!sends?.length) return null;
+      const sent = sends.reduce((a, r) => a + (r.sent || 0), 0);
+      const failed = sends.reduce((a, r) => a + (r.failed || 0), 0);
+      return html`<details class="card bc-fold">
+        <summary>Reminders sent <span class="bc-fold-note">${sent} delivered${failed ? `, ${failed} failed` : ''}</span></summary>
+        <div class="bc-fold-body bc-rows">
+          ${sends.map((r) => html`<div class="bc-row">
+            <span><strong>${BC_SEND_KIND[r.kind] || r.kind}</strong> · ${BC_SEND_CHANNEL[r.channel] || r.channel}</span>
+            <span class="text-muted">${bcFmt(r.created_at)}</span>
+            <span>${r.sent} of ${r.recipients}${r.failed ? html` · <span title=${r.error || ''}>${r.failed} failed</span>` : null}</span>
+          </div>`)}
+        </div>
+      </details>`;
+    }
+
+    // The recording on the live page after a reveal, with a way to pick another if Stream split it
+    function BcReplay({ recordings = [], busy, act }) {
+      const cur = recordings.find((v) => v.isCurrentReplay);
+      const others = recordings.filter((v) => !v.isCurrentReplay && !v.isLiveNow).slice(0, 6);
+      const len = (v) => (v.duration ? `${Math.round(v.duration / 60)} min` : v.state);
+      const thumb = (v) => (v.thumbnail ? html`<img src=${v.thumbnail} alt="" />` : html`<div class="bc-rec-ph"></div>`);
+      return html`<div class="card">
+        <div class="bc-card-head"><h3>Replay recording</h3>${cur ? html`<a class="btn btn-ghost btn-sm" href=${cur.watch} target="_blank" rel="noopener">Watch ↗</a>` : null}</div>
+        ${cur ? html`<div class="bc-rec">${thumb(cur)}<div><strong>${cur.name || cur.uid.slice(0, 8)}</strong><div class="text-sm text-muted">${len(cur)} · recorded ${bcFmt(cur.created)}</div></div></div>`
+          : html`<p class="text-sm text-muted" style="margin:0">Stream is finishing the recording. It plays on the live page a minute or two after the phone stops.</p>`}
+        ${others.length ? html`<details class="bc-more">
+          <summary>Wrong recording? Choose another</summary>
+          <p class="text-sm text-muted">After a long disconnect Stream can split a reveal into two recordings. Pick the one the site should play.</p>
+          <div class="bc-recs">${others.map((v) => html`<div class="bc-rec-card">${thumb(v)}<div class="bc-rec-meta"><strong>${v.name || v.uid.slice(0, 8)}</strong><div class="text-muted">${bcFmt(v.created)} · ${len(v)}</div>
+            <div class="bc-btns" style="margin-top:6px"><button class="btn btn-secondary btn-sm" disabled=${!!busy || v.state !== 'ready'} onClick=${() => act('setReplay', { uid: v.uid }, 'Replay')}>Use this</button><a class="btn btn-ghost btn-sm" href=${v.watch} target="_blank" rel="noopener">Watch ↗</a></div></div></div>`)}</div>
+        </details>` : null}
+      </div>`;
+    }
+
+    const BC_REEL_STAGES = { pending: 'Waiting for the recording', captions: 'Reading captions to find the reveal', window: 'Cutting the clip', clipping: 'Stream is making the clip', download: 'Preparing the MP4', instagram: 'Sending to Instagram', processing: 'Instagram is processing', done: 'Posted', failed: 'Failed', blocked: 'Needs setup', skipped: 'Skipped' };
+    const BC_REEL_METHODS = { fits: 'the whole recording (under 15 min)', override: 'your minute', captions: 'captions', 'captions+ai': 'captions, confirmed by AI', ai: 'AI', fallback: 'the ending (no reveal found)' };
+    function BcReel({ reel: r, busy, act, setConfirm }) {
+      const [minute, setMinute] = useState('');
+      const t = (x) => (x == null ? '' : bcClock(x * 1000));
+      const stuck = ['failed', 'blocked'].includes(r.stage);
+      return html`<div class="card" style=${`border-left:4px solid ${r.stage === 'done' ? '#38A169' : stuck ? '#D69E2E' : '#FFD500'}`}>
+        <div class="bc-card-head">
+          <h3>Instagram Reel <span class=${`badge ${r.stage === 'done' ? 'badge-green' : stuck ? 'badge-yellow' : 'badge-gray'}`}>${BC_REEL_STAGES[r.stage] || r.stage}</span></h3>
+          ${r.permalink ? html`<a class="btn btn-ghost btn-sm" href=${safeHref(r.permalink)} target="_blank" rel="noopener">Open on Instagram ↗</a>` : null}
+        </div>
+        <div class="text-sm" style="line-height:1.7">
+          ${r.start != null ? html`<div>Cut <strong>${t(r.start)} to ${t(r.end)}</strong> of ${t(r.duration)}${r.method ? html`, picked by <strong>${BC_REEL_METHODS[r.method] || r.method}</strong>` : null}${r.momentSeconds != null ? `, reveal at ${t(r.momentSeconds)}` : ''}${r.confidence != null && r.method !== 'fits' ? ` (confidence ${Math.round(r.confidence * 100)}%)` : ''}.</div>` : null}
+          ${r.clipUid ? html`<div><a href=${`https://watch.cloudflarestream.com/${r.clipUid}`} target="_blank" rel="noopener">Preview the cut ↗</a></div>` : null}
+          ${r.error ? html`<div class="text-muted">${r.error}</div>` : null}
+        </div>
+        <div class="bc-inline" style="margin-top:.75rem">
+          <input class="form-input" type="number" min="0" step="0.5" placeholder="Reveal at minute" aria-label="Reveal at minute" value=${minute} onInput=${(e) => setMinute(e.target.value)} style="max-width:170px" />
+          <button class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${() => setConfirm({ title: r.stage === 'done' ? 'Post another Reel?' : 'Re-cut the Reel?', message: r.stage === 'done' ? 'The Reel already on Instagram stays up. This posts a second one; delete the first in Instagram if you only want the new cut.' : 'Starts the Reel again from the recording.', confirmLabel: r.stage === 'done' ? 'Post another' : 'Re-cut', fn: () => act('reelRetry', { revealAtMinute: minute }, 'Reel') })}>${minute ? 'Re-cut at that minute' : 'Retry'}</button>
+          ${!['done', 'skipped', 'failed'].includes(r.stage) ? html`<button class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${() => act('reelSkip', {}, 'Skip')}>Don't post this one</button>` : null}
+        </div>
+      </div>`;
+    }
+
+    // ─── Broadcast → Now ─────────────────────────────────────
+    function BcNow({ data, kids, busy, act, setup, setConfirm, addToast, openSettings, roomKey }) {
+      const st = data.state; const pub = data.public; const s = data.setup; const c = data.config; const h = data.health;
+      const phase = st.phase || 'idle';
+      const P = BC_PHASES[phase] || BC_PHASES.idle;
+      const live = phase === 'live' || phase === 'ending';
+      const sched = phase === 'scheduled' || phase === 'armed';
+      const [editing, setEditing] = useState(false);
+      const [micCheck, setMicCheck] = useState(false);
+      const [checkKey, setCheckKey] = useState(0);
+      const [liveKid, setLiveKid] = useState('');
+      useBcTick(live);
+      useEffect(() => { if (!sched) setEditing(false); }, [sched]);
+
+      const kidsSorted = useMemo(() => bcSortKids(kids), [kids]);
+      const kidBySlug = (slug) => (slug ? kids.find((k) => k.slug === slug) : null);
+      const kit = s.kitConfigured ? { audience: c.kitLive?.audience?.name || 'All subscribers', def: c.kitLive?.enabled !== false } : null;
+      const kitWanted = typeof st.kitLiveEmail === 'boolean' ? st.kitLiveEmail : !!kit?.def;
+      const kitSent = !!(st.kit?.live && st.kit.live.sendAt && !st.kit.live.error);
+      const kitVia = { scheduled: 'from the schedule', admin: 'picked here', 'facebook-live': 'from the Facebook live post', 'facebook-post': 'from a Facebook post' }[st.kidVia] || '';
+      const kitStatus = kitSent ? html`<strong style="color:#22543D">sent to ${st.kit.live.audience}</strong>`
+        : st.kit?.live?.error ? html`<strong style="color:#744210">${st.kit.live.held ? `held: ${st.kit.live.error}` : `failed: ${st.kit.live.error}`}</strong>`
+        : !kitWanted ? 'off for this reveal'
+        : !pub.kidName ? html`<strong style="color:#744210">waiting for the kid</strong>`
+        : 'goes out after 3 minutes live';
+      const lc = data.live?.lifecycle;
+      const showRoom = live || phase === 'armed' || !!lc?.live;
+      const watchers = data.hub?.watchers;
+      const rx = data.hub?.reactions && (!data.hub.reactions.broadcastId || data.hub.reactions.broadcastId === st.broadcastId) ? data.hub.reactions.totals : null;
+      const hasRehearsal = !!c.rehearsalInput?.uid;
+      const setupDone = s.streamConfigured && s.inputReady && s.hubBound;
+
+      const handleMessagesToggle = async (on) => {
+        const d = await setup('setConfig', { config: { messages: { enabled: on } } }, 'Messages');
+        if (d.success) addToast(on ? 'Viewers can post messages on the live page' : 'Messages are off on the live page', 'success');
+      };
+      const startMicCheck = () => (hasRehearsal ? setMicCheck(true) : openSettings('phones'));
+      const endMicCheck = () => { setMicCheck(false); setCheckKey((k) => k + 1); };
+
+      // ── Status: what's happening and the one or two things you can do about it
+      const meta = [];
+      if (phase === 'idle') meta.push(html`<span>The site shows no banner.</span>`);
+      if (sched) meta.push(html`<span><strong>${bcFmt(pub.scheduledAt)}</strong></span>`, html`<span>${bcUntil(pub.scheduledAt)}</span>`);
+      if (live && pub.liveAt) meta.push(html`<span>Live for <strong>${bcClock(Date.now() - Date.parse(pub.liveAt))}</strong></span>`);
+      if (live && watchers != null) meta.push(html`<span><strong>${watchers}</strong> watching on the site</span>`);
+      if (live && rx) meta.push(html`<span>${['heart', 'sun', 'clap', 'wow'].map((k, i) => html`${i ? ' · ' : ''}<strong>${rx[k] || 0}</strong> ${(rx[k] || 0) === 1 ? k : `${k}s`}`)}</span>`);
+      if (phase === 'ending') meta.push(html`<span>Phone disconnected. Waiting up to 45 s for it to come back.</span>`);
+      if (phase === 'replay') meta.push(html`<span>Ended ${bcFmt(pub.endedAt)}</span>`, html`<span>${pub.player ? `On the live page until ${bcFmt(pub.replayUntil)}` : 'Stream is finishing the recording'}</span>`);
+      const sub = [];
+      if (kit && sched) sub.push(html`<span>Kit email at go-live: ${kitWanted ? `on (${kit.audience})` : 'off'}</span>`);
+      if (kit && live) sub.push(html`<span>Kit email: ${kitStatus}</span>`);
+      if (live && pub.kidName && kitVia) sub.push(html`<span>Kid: ${kitVia}</span>`);
+      if (st.source === 'manual' && phase !== 'idle') sub.push(html`<span>Emergency banner (no stream)</span>`);
+      const links = [];
+      if (pub.liveUrl && phase !== 'idle') links.push(html`<a href=${pub.liveUrl} target="_blank" rel="noopener">Live page ↗</a>`);
+      if (pub.kidSlug && (sched || live)) links.push(html`<span>Starting-soon screen: <a href=${`/live/${pub.kidSlug}/slate/`} target="_blank" rel="noopener">preview ↗</a> · <a href=${`/live/${pub.kidSlug}/slate/?tv=1`} target="_blank" rel="noopener">TV ↗</a> · <a href=${`/live/${pub.kidSlug}/starting-soon.png`} target="_blank" rel="noopener">still image ↗</a></span>`);
+      if (st.fb?.permalink) links.push(html`<a href=${st.fb.permalink} target="_blank" rel="noopener">Facebook post ↗</a>`);
+
+      const actions = sched ? html`
+          <button class="btn btn-ghost" type="button" aria-expanded=${editing} onClick=${() => setEditing(!editing)}>${editing ? 'Close editor' : 'Edit'}</button>
+          <button class="btn btn-danger" type="button" disabled=${!!busy} onClick=${() => setConfirm({ title: 'Cancel this reveal?', message: 'The countdown and reminder signup come off the site. Reminders already sent are not recalled.', danger: true, confirmLabel: 'Cancel the reveal', cancelLabel: 'Keep it', busyLabel: 'Cancelling…', fn: () => act('cancel', {}, 'Cancel') })}>Cancel reveal</button>`
+        : live ? html`
+          ${kit && !kitSent ? html`<button class="btn btn-primary" type="button" disabled=${!!busy} onClick=${() => setConfirm({ title: 'Email the Kit list now?', message: `Sends "We're live" for ${pub.title || 'this reveal'} to ${kit.audience} in Kit, about a minute from now. It goes out once per reveal and can't be recalled.`, confirmLabel: 'Send the email', fn: async () => { const d = await act('sendKitLive', {}, 'Kit email'); if (d.success) addToast(`Kit email scheduled to ${kit.audience}`, 'success'); } })}>Email the list now</button>` : null}
+          <button class="btn btn-danger" type="button" disabled=${!!busy} onClick=${() => setConfirm({ title: 'End the broadcast now?', message: st.source === 'stream' ? 'Normally the site ends itself when the phone stops. Use this only if the stream is stuck. The replay still gets saved.' : 'This takes the emergency banner down.', danger: true, confirmLabel: 'End now', cancelLabel: 'Keep going', busyLabel: 'Ending…', fn: () => act('endNow', {}, 'End') })}>End now</button>`
+        : phase === 'replay' ? html`
+          <button class="btn btn-secondary" type="button" disabled=${!!busy} onClick=${() => act('extendReplay', { hours: 72 }, 'Extend')}>Keep replay 3 more days</button>
+          <button class="btn btn-ghost" type="button" disabled=${!!busy} onClick=${() => setConfirm({ title: 'Take the replay off the live page?', message: 'The live page goes back to waiting for the next reveal. The recording stays in Stream and in History.', confirmLabel: 'Clear replay', fn: () => act('clearReplay', {}, 'Clear') })}>Clear replay</button>`
+        : null;
+
+      const kidPicker = live && !pub.kidName ? html`<div class="bc-callout">
+        <label for="bc-live-kid"><strong>Which kid is this?</strong></label>
+        <select class="form-select" id="bc-live-kid" style="width:auto" value=${liveKid} onChange=${(e) => setLiveKid(e.target.value)}>
+          <option value="">Choose…</option>
+          ${kidsSorted.map((k) => html`<option value=${k.slug}>${bcKidLabel(k, true)}</option>`)}
+        </select>
+        <button class="btn btn-primary btn-sm" type="button" disabled=${!!busy || !liveKid} onClick=${async () => { const d = await act('update', { kidSlug: liveKid }, 'Set kid'); if (d.success) { addToast(kit && kitWanted ? 'Kid set. The Kit email goes out once the stream has run 3 minutes.' : 'Kid set', 'success'); setLiveKid(''); } }}>Set kid</button>
+        <span class="text-sm text-muted" style="flex-basis:100%">Nothing on Facebook named the kid yet. Setting it here puts their name on the live page${kit ? ' and releases the "we\'re live" email' : ''}.</span>
+        ${kidBySlug(liveKid)?.publishStatus === 'draft' ? html`<div style="flex-basis:100%"><${BcDraftNote} kid=${kidBySlug(liveKid)} /></div>` : null}
+      </div>` : null;
+
+      const showKid = pub.kidName && phase !== 'idle' && !(pub.title || '').includes(pub.kidName);
+      const status = html`<div class="card bc-status" style=${`--phase:${P.color}`}>
+        <div class="bc-status-top">
+          <div class="bc-status-main">
+            <div class="bc-phase"><span class=${`bc-dot${phase === 'live' ? ' is-live' : ''}`}></span>${P.label}${showKid ? html`<span class="badge badge-accent">${pub.kidName}</span>` : null}</div>
+            <div class="bc-title">${phase === 'idle' ? 'No reveal scheduled' : (pub.title || 'Untitled reveal')}</div>
+            <div class="bc-meta">${meta}</div>
+            ${sub.length ? html`<div class="bc-sub">${sub}</div>` : null}
+          </div>
+          ${actions ? html`<div class="bc-actions">${actions}</div>` : null}
+        </div>
+        ${links.length ? html`<div class="bc-links">${links}</div>` : null}
+        ${kidPicker}
+      </div>`;
+
+      // ── Before the reveal: go/no-go, each open item with the button that fixes it
+      const go = (section, label) => ({ label, onClick: () => openSettings(section) });
+      const preflightActions = {
+        stream: go('phones', 'Phone settings'),
+        micCheck: hasRehearsal ? { label: 'Start mic check', onClick: () => setMicCheck(true) } : go('phones', 'Phone settings'),
+        facebookOutput: go('facebook', 'Facebook settings'),
+        facebookToken: go('facebook', 'Facebook settings'),
+        facebookPost: { label: 'Live Producer', href: 'https://www.facebook.com/live/producer' },
+        youtube: go('youtube', 'YouTube settings'),
+        slack: go('alerts', 'Alert settings'),
+        kid: { label: 'Edit the reveal', onClick: () => setEditing(true) },
+      };
+      const preflight = sched ? html`<${ControlRoomLazy} key="go" part="preflight" initial=${h.preflight?.broadcastId === st.broadcastId ? h.preflight.last : null} actions=${preflightActions} refreshKey=${checkKey} />` : null;
+
+      // ── The feed: the private rehearsal for a mic check, or the reveal itself
+      const micPanel = micCheck && !live ? html`<section class="bc-room" aria-labelledby="bc-mic-h">
+        <div class="bc-card-head"><h3 id="bc-mic-h">Mic check <span class="badge badge-gray">private</span></h3><button class="btn btn-secondary btn-sm" type="button" onClick=${endMicCheck}>Done</button></div>
+        <p class="text-sm text-muted" style="margin:-.25rem 0 .75rem">On the phone, open Larix on the <strong>SOARD Rehearsal</strong> profile and start streaming, then talk the way you will on the day. "Sound is good" means you're set. Nothing here reaches the public.</p>
+        ${data.larix?.rehearsal ? html`<details class="bc-more" style="margin:0 0 1rem"><summary>Rehearsal profile not on the phone yet? Show its setup code</summary><div style="margin-top:.75rem"><${QrCode} value=${data.larix.rehearsal} size=${160} label="Scan with the phone's camera" /></div></details>` : null}
+        <${ControlRoomLazy} key="room-rehearsal" feed="rehearsal" phase=${phase} refreshKey=${roomKey} />
+      </section>` : null;
+      const liveRoom = showRoom && !micPanel ? html`<section class="bc-room" id="bc-room" aria-label="Control room"><${ControlRoomLazy} key="room-live" feed="live" phase=${phase} refreshKey=${roomKey} /></section>` : null;
+
+      const messages = phase !== 'idle' ? html`<${BcMessages} key=${st.broadcastId || 'current'} auto=${live || phase === 'armed'} addToast=${addToast} kidName=${pub.kidName} title=${pub.title} date=${pub.liveAt || pub.scheduledAt} enabled=${c.messages?.enabled !== false} onToggle=${handleMessagesToggle} toggleBusy=${!!busy} />` : null;
+      const tools = html`<div class="bc-pair">
+        ${micPanel ? null : html`<div class="card bc-mini">
+          <h3>Mic check</h3>
+          <p class="text-sm text-muted">Practice on the private rehearsal feed and watch the sound meter. Do one before the first reveal and whenever the phone or mic changes.</p>
+          <button class="btn btn-secondary btn-sm" type="button" onClick=${startMicCheck}>${hasRehearsal ? 'Start mic check' : 'Set up the rehearsal feed'}</button>
+        </div>`}
+        <${BcFamilyQr} addToast=${addToast} />
+      </div>`;
+
+      if (phase === 'idle') return html`${status}${liveRoom}${micPanel}
+        <${BcRevealForm} key="new" kids=${kids} kit=${kit} busy=${busy} act=${act} addToast=${addToast}>
+          ${!setupDone ? html`<span class="text-sm" style="color:#744210">Setup isn't finished, so the phone can't stream yet. <button class="bc-link" type="button" onClick=${() => openSettings('phones')}>Open settings</button></span>` : null}
+        <//>
+        ${tools}
+        <${BcEmergency} kids=${kids} busy=${busy} act=${act} />`;
+      if (sched) return html`${status}
+        ${editing ? html`<${BcRevealForm} key=${`edit-${st.broadcastId}`} edit current=${{ kidSlug: pub.kidSlug, scheduledAt: pub.scheduledAt, title: pub.title, message: pub.message, image: st.image, kitLive: kitWanted, revealAt: st.revealAtSeconds != null ? String(st.revealAtSeconds / 60) : '' }} kids=${kids} kit=${kit} busy=${busy} act=${act} addToast=${addToast} onDone=${() => setEditing(false)} onCancel=${() => setEditing(false)} />` : null}
+        ${preflight}${micPanel}${liveRoom}${messages}${tools}`;
+      if (live) return html`${status}${liveRoom}${messages}<${BcSends} sends=${data.sends} />`;
+      return html`${status}
+        <${BcReplay} recordings=${data.recordings} busy=${busy} act=${act} />
+        ${st.reel ? html`<${BcReel} reel=${st.reel} busy=${busy} act=${act} setConfirm=${setConfirm} />` : null}
+        ${messages}
+        <${BcSends} sends=${data.sends} />`;
+    }
+
+    // ─── Broadcast → History ─────────────────────────────────
+    function BcHistory({ data, kids, load, addToast }) {
+      const [open, setOpen] = useState(null);
+      const [msgsFor, setMsgsFor] = useState(null);
+      const [rowBusy, setRowBusy] = useState('');
+      const [fbPick, setFbPick] = useState({}); // Facebook video id → kid slug chosen in the picker
+      const [fbLoading, setFbLoading] = useState(false);
+      const s = data.setup;
+      const rows = data.history || [];
+      const reports = data.healthReports || {};
+      const kidsSorted = useMemo(() => bcSortKids(kids), [kids]);
+      const toggle = (id) => { setOpen((o) => (o === id ? null : id)); setMsgsFor(null); };
+      const loadFb = async () => { setFbLoading(true); await load({ fb: true }); setFbLoading(false); };
+
+      const handleArchiveFb = async (v) => {
+        setRowBusy(`archive:${v.id}`);
+        try {
+          const r = await fetch('/api/fb-archive-video', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ videoId: v.id }) });
+          const d = await apiJson(r, '/api/fb-archive-video');
+          addToast(d.success ? `Saved to Cloudflare Stream as "${d.name}"` : `Archive failed: ${d.error}`, d.success ? 'success' : 'error');
+          if (d.success) await load({ fb: true });
+        } catch (e) { addToast(`Archive error: ${e.message}`, 'error'); }
+        setRowBusy('');
+      };
+      // Put a saved replay on a kid's page (or move it, or take it off with slug null)
+      const handleAttachFb = async (v, slug) => {
+        setRowBusy(`attach:${v.id}`);
+        try {
+          const r = await fetch('/api/fb-attach-video', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ videoId: v.id, kidSlug: slug || null }) });
+          const d = await apiJson(r, '/api/fb-attach-video');
+          if (d.success) {
+            addToast(slug
+              ? `Replay is now on ${d.kidName}'s page${d.deployed ? '. The site is deploying.' : '. Use Deploy Now to publish it.'}`
+              : `Replay taken off the kid page${d.deployed ? '. The site is deploying.' : '. Use Deploy Now to publish it.'}`, 'success');
+            setFbPick((m) => ({ ...m, [v.id]: slug || '' }));
+            await load({ fb: true });
+          } else addToast(`Could not attach: ${d.error}`, 'error');
+        } catch (e) { addToast(`Attach error: ${e.message}`, 'error'); }
+        setRowBusy('');
+      };
+      const fbVideoRow = (v) => {
+        const pick = fbPick[v.id] !== undefined ? fbPick[v.id] : (v.attachedTo || '');
+        return html`<div class="bc-fbrow">
+          <div style="flex:1;min-width:220px">
+            <span class=${`badge ${v.status === 'LIVE' ? 'badge-yellow' : 'badge-gray'}`}>${v.status}</span> <strong style="font-size:.9rem">${v.title || '(untitled)'}</strong>
+            <div class="text-sm text-muted">${bcFmt(v.createdAt)}${v.streamUid ? html` · saved to Stream · ${v.attachedName ? html`on <strong>${v.attachedName}</strong>'s page` : html`<strong style="color:#8a6d00">not on a kid page yet</strong>`}` : null}</div>
+          </div>
+          <div class="bc-btns">
+            <a class="btn btn-ghost btn-sm" href=${safeHref(v.url)} target="_blank" rel="noopener">Facebook ↗</a>
+            ${v.streamUid ? html`
+              <a class="btn btn-ghost btn-sm" href=${`https://watch.cloudflarestream.com/${v.streamUid}`} target="_blank" rel="noopener">Replay ↗</a>
+              <select class="form-select" style="width:auto;padding:4px 8px;font-size:.85rem" value=${pick} onChange=${(e) => setFbPick((m) => ({ ...m, [v.id]: e.target.value }))} aria-label="Kid page for this replay">
+                <option value="">Choose a kid…</option>
+                ${kidsSorted.map((k) => html`<option value=${k.slug}>${bcKidLabel(k)}</option>`)}
+              </select>
+              <button class="btn btn-secondary btn-sm" disabled=${!!rowBusy || !pick || pick === v.attachedTo} onClick=${() => handleAttachFb(v, pick)}>${v.attachedTo ? 'Move to this page' : 'Put on this page'}</button>
+              ${v.attachedTo ? html`<button class="btn btn-ghost btn-sm" disabled=${!!rowBusy} onClick=${() => handleAttachFb(v, null)}>Take off page</button>` : null}`
+            : (v.status === 'VOD' ? html`<button class="btn btn-secondary btn-sm" disabled=${!!rowBusy} onClick=${() => handleArchiveFb(v)}>Save to Stream</button>` : null)}
+          </div>
+        </div>`;
+      };
+
+      const watchClicks = (e) => (e.click_watch || 0) + (e.click_replay || 0) + (e.banner_click || 0);
+      const when = (r) => {
+        const mins = r.live_at && r.ended_at ? Math.round((Date.parse(r.ended_at) - Date.parse(r.live_at)) / 60000) : null;
+        return [
+          r.live_at ? bcFmt(r.live_at) : ['scheduled', 'armed'].includes(r.phase) ? `Coming up ${bcFmt(r.scheduled_at)}` : `Didn't go live${r.scheduled_at ? ` (planned ${bcFmt(r.scheduled_at)})` : ''}`,
+          mins != null ? `${mins} min` : null,
+          r.source === 'manual' ? 'emergency banner' : null,
+        ].filter(Boolean).join(' · ');
+      };
+      const detail = (r) => {
+        const meta = { broadcastId: r.id, kidName: r.kid_name, title: r.title, date: r.live_at || r.scheduled_at };
+        return html`<tr class="bc-hist-detail"><td colspan="8">
+          <div class="bc-btns">
+            ${r.replay_uid ? html`<a class="btn btn-ghost btn-sm" href=${`https://watch.cloudflarestream.com/${r.replay_uid}`} target="_blank" rel="noopener">Replay ↗</a>` : null}
+            ${r.fb_permalink ? html`<a class="btn btn-ghost btn-sm" href=${r.fb_permalink} target="_blank" rel="noopener">Facebook ↗</a>` : null}
+            ${r.data?.reel?.permalink ? html`<a class="btn btn-ghost btn-sm" href=${safeHref(r.data.reel.permalink)} target="_blank" rel="noopener">Reel ↗</a>` : null}
+            ${r.messageCount > 0 ? html`
+              <button class="btn btn-secondary btn-sm" type="button" aria-expanded=${msgsFor === r.id} onClick=${() => setMsgsFor(msgsFor === r.id ? null : r.id)}>${msgsFor === r.id ? 'Hide messages' : `Messages (${r.messageCount})`}</button>
+              <button class="btn btn-ghost btn-sm" type="button" onClick=${() => bcKeepsakeFor(meta, addToast)}>Keepsake</button>`
+            : html`<span class="text-sm text-muted">No messages were shown.</span>`}
+          </div>
+          ${reports[r.id] ? html`<div style="margin-top:.75rem"><${ControlRoomLazy} key=${`report-${r.id}`} part="report" report=${reports[r.id]} /></div>` : r.live_at ? html`<p class="text-sm text-muted" style="margin:.75rem 0 0">No feed health report for this one.</p>` : null}
+          ${msgsFor === r.id ? html`<div style="margin-top:1rem"><${BcMessages} key=${r.id} broadcastId=${r.id} addToast=${addToast} kidName=${r.kid_name} title=${r.title} date=${meta.date} onClose=${() => setMsgsFor(null)} /></div>` : null}
+        </td></tr>`;
+      };
+
+      return html`
+        <div class="card bc-hist">
+          <div class="bc-card-head"><h3>Past reveals</h3><span class="text-sm text-muted">The last 12. Open one for its feed health, messages and links.</span></div>
+          ${rows.length ? html`<div class="bc-table"><table>
+            <thead><tr><th>Reveal</th><th class="num">Page views</th><th class="num" title="Scans of the family invite QR code">QR scans</th><th class="num" title="Clicks on Watch, the replay and the site banner">Watch clicks</th><th class="num">Donate clicks</th><th class="num" title="Reminder signups">Signups</th><th class="num" title="Messages shown on the live page">Messages</th><th><span class="bc-sr">Details</span></th></tr></thead>
+            <tbody>${rows.map((r) => { const e = r.events || {}; const isOpen = open === r.id; return html`
+              <tr class=${`bc-hist-row${isOpen ? ' is-open' : ''}`} onClick=${() => toggle(r.id)}>
+                <td><strong>${r.title || r.kid_name || r.id}</strong><div class="text-sm text-muted">${when(r)}</div></td>
+                <td class="num" data-label="Views">${e.view_live_page || 0}</td><td class="num" data-label="QR scans">${e.qr_scan || 0}</td><td class="num" data-label="Watch clicks">${watchClicks(e)}</td><td class="num" data-label="Donate clicks">${e.click_donate || 0}</td><td class="num" data-label="Signups">${e.reminder_signup || 0}</td><td class="num" data-label="Messages">${r.messageCount || 0}</td>
+                <td class="bc-hist-toggle"><button class="btn btn-ghost btn-sm" type="button" aria-expanded=${isOpen} onClick=${(ev) => { ev.stopPropagation(); toggle(r.id); }}>${isOpen ? 'Close' : 'Open'}</button></td>
+              </tr>
+              ${isOpen ? detail(r) : null}`; })}</tbody>
+          </table></div>` : html`<p class="text-sm text-muted" style="padding:0 1.5rem 1.5rem;margin:0">No reveals yet.</p>`}
+        </div>
+        ${data.recordings?.length ? html`<details class="card bc-fold">
+          <summary>Recordings on the live input <span class="bc-fold-note">${data.recordings.length}</span></summary>
+          <div class="bc-fold-body bc-recs">${data.recordings.map((v) => html`<a class="bc-rec-card" href=${v.watch} target="_blank" rel="noopener">${v.thumbnail ? html`<img src=${v.thumbnail} alt="" />` : html`<div class="bc-rec-ph"></div>`}<div class="bc-rec-meta"><strong>${v.name || v.uid.slice(0, 8)}</strong><div class="text-muted">${bcFmt(v.created)} · ${v.isLiveNow ? 'live now' : v.duration ? `${Math.round(v.duration / 60)} min` : v.state}</div></div></a>`)}</div>
+        </details>` : null}
+        <details class="card bc-fold">
+          <summary>Lives that went straight to Facebook</summary>
+          <div class="bc-fold-body">
+            <p class="text-sm text-muted" style="margin:0 0 .75rem">From before this system, or an emergency. Facebook deletes replays after 30 days, so an automatic sweep saves them to Stream. Pick a kid to put a saved replay on their page; the site redeploys by itself.</p>
+            <div class="bc-btns"><button class="btn btn-ghost btn-sm" type="button" disabled=${fbLoading || !s.fbConfigured} onClick=${loadFb}>${fbLoading ? 'Loading…' : data.fbRecent ? 'Load again' : 'Load from Facebook'}</button>${!s.fbConfigured ? html`<span class="text-sm text-muted">FB_PAGE_ID / FB_PAGE_TOKEN aren't set in Cloudflare Pages.</span>` : null}</div>
+            ${data.fbRecent?.videos?.length ? html`<div style="margin-top:.75rem">${data.fbRecent.videos.map(fbVideoRow)}</div>` : (data.fbRecent ? html`<p class="text-sm text-muted" style="margin:.75rem 0 0">${data.fbRecent.error ? `Facebook: ${data.fbRecent.error}` : 'No recent lives.'}</p>` : null)}
+          </div>
+        </details>`;
+    }
+
+    // ─── Broadcast → Settings ────────────────────────────────
+    // A simulcast output: Stream pushes the reveal to this RTMPS address whenever the phone is live
+    const BC_TARGET_NAME = { facebook: 'Facebook', youtube: 'YouTube', instagram: 'Instagram' };
+    function BcOutput({ target, title, help, o, presetUrl = '', withUrl = false, s, busy, setup, setConfirm, addToast }) {
+      const [key, setKey] = useState('');
+      const [url, setUrl] = useState('');
+      const name = BC_TARGET_NAME[target] || target;
+      const save = async () => {
+        const u = withUrl ? url.trim() : presetUrl;
+        if (!key.trim()) { addToast('Paste the stream key first', 'error'); return; }
+        if (!u) { addToast('Paste the stream URL first', 'error'); return; }
+        const d = await setup('setOutput', { target, streamKey: key.trim(), url: u }, `${name} key`);
+        if (d.success) { addToast(`${name} is set. Stream sends the reveal there whenever the phone is live.`, 'success'); setKey(''); setUrl(''); }
+      };
+      return html`<div class="bc-block">
+        <div class="bc-block-head"><h4>${title}</h4>
+          ${o ? html`<div class="bc-btns">
+            <span class=${`badge ${!o.exists ? 'badge-yellow' : o.enabled ? 'badge-green' : 'badge-gray'}`}>${!o.exists ? 'Missing in Stream' : o.enabled ? 'Active' : 'Paused'}</span>
+            <span class="text-sm text-muted">key ${o.keyMask}</span>
+            <button class="btn btn-ghost btn-sm" type="button" disabled=${!!busy} onClick=${() => setup('toggleOutput', { target, enabled: !o.enabled }, 'Toggle')}>${o.enabled ? 'Pause' : 'Resume'}</button>
+            <button class="btn btn-ghost btn-sm" type="button" disabled=${!!busy} onClick=${() => setConfirm({ title: `Remove the ${name} output?`, message: 'Stream stops sending the reveal there. You can add it again any time.', danger: true, confirmLabel: 'Remove', busyLabel: 'Removing…', fn: () => setup('removeOutput', { target }, 'Remove') })}>Remove</button>
+          </div>` : html`<span class="badge badge-gray">Not set</span>`}
+        </div>
+        <p class="text-sm text-muted">${help}</p>
+        <div class="bc-inline">
+          ${withUrl ? html`<input class="form-input" placeholder="Stream URL (rtmps://…)" aria-label=${`${name} stream URL`} value=${url} onInput=${(e) => setUrl(e.target.value)} autocomplete="off" />` : null}
+          <input class="form-input" type="password" placeholder=${o ? 'Paste a new key to replace it' : 'Paste the stream key'} aria-label=${`${name} stream key`} value=${key} onInput=${(e) => setKey(e.target.value)} autocomplete="off" />
+          <button class="btn btn-secondary btn-sm" type="button" disabled=${!!busy || !s.inputReady || !key.trim()} onClick=${save}>${o ? 'Replace key' : 'Save key'}</button>
+        </div>
+        ${!s.inputReady ? html`<div class="form-hint">Create the live input under Phones first.</div>` : null}
+      </div>`;
+    }
+
+    const BC_SECTIONS = [['checks', 'Checks'], ['phones', 'Phones'], ['facebook', 'Facebook'], ['youtube', 'YouTube'], ['instagram', 'Instagram'], ['gifts', 'Gifts'], ['reminders', 'Reminders'], ['alerts', 'Alerts'], ['site', 'Site']];
+    function BcSettings({ data, busy, setup, setConfirm, addToast, cfg, setCfg, dirty, jump, clearJump }) {
+      const st = data.state; const s = data.setup; const c = data.config; const h = data.health; const larix = data.larix || {};
+      const [fbResult, setFbResult] = useState(null);
+      const [igCheck, setIgCheck] = useState(null);
+      const [testKind, setTestKind] = useState('live');
+      const [testEmail, setTestEmail] = useState('');
+      const [checking, setChecking] = useState(false);
+      const [zeffyKey, setZeffyKey] = useState('');
+      const f = cfg || bcCfgFrom(c);
+      const set = (k) => (e) => { const v = e.target.type === 'checkbox' ? e.target.checked : e.target.value; setCfg((x) => ({ ...(x || bcCfgFrom(c)), [k]: v })); };
+      const setTo = (k, v) => setCfg((x) => ({ ...(x || bcCfgFrom(c)), [k]: v }));
+      const goTo = (id) => document.getElementById(`bc-set-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      useEffect(() => { if (!jump) return; requestAnimationFrame(() => { goTo(jump); clearJump(); }); }, [jump]);
+      const out = (t) => data.outputs?.find((o) => o.target === t);
+      const kitAudience = c.kitLive?.audience?.name || 'All subscribers';
+      const common = { s, busy, setup, setConfirm, addToast };
+      // Zeffy: the signing secret is write-only (the server only says whether it's set); /api/zeffy-webhook reads it
+      const zeffy = c.zeffy || {};
+      const zeffyUrl = `${(() => { try { return new URL(s.webhookUrl).origin; } catch { return 'https://sunshineonaranneyday.com'; } })()}/api/zeffy-webhook`;
+      const saveZeffy = async (webhookSecret) => {
+        if (webhookSecret && !/^whsec_[A-Za-z0-9+/=_-]{10,200}$/.test(webhookSecret)) { addToast('That isn\'t a Zeffy signing secret: it starts with whsec_', 'error'); return; }
+        const d = await setup('setConfig', { config: { zeffy: { webhookSecret } } }, 'Zeffy secret');
+        if (d.success) { addToast(webhookSecret ? 'Zeffy signing secret saved' : 'Zeffy disconnected', 'success'); setZeffyKey(''); }
+      };
+
+      // ── System checks: only what needs a fix stays open
+      const fbOut = out('facebook'); const ytOut = out('youtube');
+      const webhookHelp = html`<details class="bc-more"><summary>How to set it up</summary><ol class="bc-steps">
+        <li>Cloudflare dashboard → Notifications → <strong>Destinations</strong> → Webhooks → Create. URL: <code>${s.webhookUrl}</code> <${CopyBtn} text=${s.webhookUrl} /> (leave the secret blank). Save and test.</li>
+        <li>Notifications → All Notifications → <strong>Add</strong> → Stream → <em>Stream Live Notifications</em> → attach that webhook → Create.</li>
+      </ol></details>`;
+      const checks = [
+        { ok: s.streamConfigured ? (h.stream?.ok ?? null) : false, label: 'Cloudflare Stream', detail: !s.streamConfigured ? 'CF_STREAM_TOKEN / CF_ACCOUNT_ID aren\'t set in Cloudflare Pages. The token needs Stream: Edit.' : h.stream?.error || (h.stream?.at ? `Token works · checked ${bcAgo(h.stream.at)}` : 'Not checked yet') },
+        { ok: s.inputReady && c.liveInput?.enabled !== false, label: 'Live input for the phone', detail: !s.inputReady ? 'Create it under Phones' : c.liveInput?.enabled === false ? 'Switched off: phones are refused. Enable it under Phones.' : 'Ready' },
+        { ok: s.hubBound ? (data.hub?.ok ?? null) : false, label: 'Real-time hub', detail: !s.hubBound ? 'LIVE_HUB binding missing: deploy the site after workers/live-hub exists' : data.hub?.ok ? `${data.hub.clients} connected · last tick ${data.hub.lastTick?.at ? bcAgo(data.hub.lastTick.at) : 'never'}${data.hub.lastTick?.error ? ` · ${data.hub.lastTick.error}` : ''}` : (data.hub?.error || 'Unreachable') },
+        { ok: h.webhook?.lastReceivedAt ? true : null, label: 'Cloudflare notification webhook', detail: h.webhook?.lastReceivedAt ? `Last one ${bcAgo(h.webhook.lastReceivedAt)} (${h.webhook.lastEvent}) · ${h.webhook.count || 0} in total` : 'None received yet. The site still works from its own checks; this just makes it react a few seconds faster.', more: webhookHelp },
+        { ok: s.fbConfigured ? (h.facebook?.ok ?? null) : false, label: 'Facebook token', detail: s.fbConfigured ? (h.facebook?.error || (h.facebook?.name ? `${h.facebook.name} · checked ${bcAgo(h.facebook.at)}` : 'Not checked yet')) : 'FB_PAGE_ID / FB_PAGE_TOKEN aren\'t set' },
+        { ok: c.facebook?.mode === 'api' ? true : fbOut ? fbOut.exists : false, label: 'Facebook simulcast', detail: c.facebook?.mode === 'api' ? 'Automatic mode makes the output when the phone connects' : !fbOut ? 'Paste the persistent stream key under Facebook' : fbOut.exists ? 'Set' : 'Missing in Stream: paste the key again' },
+        { ok: ytOut ? ytOut.exists : null, label: 'YouTube simulcast', detail: !ytOut ? 'Optional' : ytOut.exists ? 'Set' : 'Missing in Stream: paste the key again' },
+        { ok: s.youtubeConfigured ? true : null, label: 'YouTube live check', detail: s.youtubeConfigured ? 'The control room and alerts confirm the channel is live' : 'Optional: add YOUTUBE_API_KEY in Cloudflare Pages so the site can confirm YouTube went live' },
+        { ok: s.emailConfigured, label: 'Email (Resend)', detail: s.emailConfigured ? 'Ready' : 'RESEND_API_KEY is missing' },
+        { ok: s.smsConfigured ? true : null, label: 'Text messages (Twilio)', detail: s.smsConfigured ? 'Ready' : 'Optional' },
+        { ok: s.pushReady ? true : null, label: 'Browser alerts', detail: s.pushReady ? 'Keys ready' : 'Optional: generate keys under Reminders' },
+        { ok: !!(s.slackConfigured || s.alertEmails?.length), label: 'Alerts reach someone', detail: [s.slackConfigured ? 'Slack' : null, s.alertEmails?.length ? `email: ${s.alertEmails.join(', ')}` : null].filter(Boolean).join(' · ') || 'Set SLACK_WEBHOOK_URL or add alert emails under Alerts' },
+        { ok: s.deployHook, label: 'Rebuild after the replay is attached', detail: s.deployHook ? 'Deploy hook set' : 'CF_PAGES_DEPLOY_HOOK is missing' },
+        { ok: s.kitConfigured ? true : null, label: 'Kit emails', detail: s.kitConfigured ? 'Ready' : 'Optional' },
+        { ok: zeffy.configured ? true : null, label: 'Zeffy gifts', detail: zeffy.configured ? (zeffy.lastEventAt ? `Last gift ${bcAgo(zeffy.lastEventAt)}` : 'Connected, no gifts received yet') : 'Optional: connect under Gifts' },
+      ];
+      const fixes = checks.filter((x) => x.ok === false);
+      const checkRow = (x) => html`<${BcCheck} ok=${x.ok} label=${x.label} detail=${x.detail}>${x.ok !== true ? x.more : null}<//>`;
+      const flags = { checks: fixes.length > 0, phones: !s.inputReady || !s.streamConfigured, facebook: !s.fbConfigured || h.facebook?.ok === false, alerts: !(s.slackConfigured || s.alertEmails?.length) };
+      const runChecks = async () => {
+        setChecking(true);
+        await setup('runTick', {}, 'Checks'); await setup('testStream', {}, 'Stream'); await setup('testHub', {}, 'Hub');
+        setChecking(false);
+        addToast('Checks finished', 'success');
+      };
+      const section = (id, title, aside, body) => html`<section class="card bc-set" id=${`bc-set-${id}`} aria-labelledby=${`bc-set-${id}-h`}>
+        <div class="bc-card-head"><h3 id=${`bc-set-${id}-h`}>${title}</h3>${aside}</div>
+        ${body}
+      </section>`;
+
+      return html`<div class=${`bc-settings${dirty ? ' is-dirty' : ''}`}>
+        <nav class="bc-snav" aria-label="Settings sections">
+          ${BC_SECTIONS.map(([id, label]) => html`<button type="button" class=${flags[id] ? 'is-flag' : ''} onClick=${() => goTo(id)}>${label}${flags[id] ? html`<span class="bc-sr"> (needs attention)</span>` : null}</button>`)}
+        </nav>
+
+        ${section('checks', 'System checks', html`<div class="bc-btns">
+            <span class=${`badge ${fixes.length ? 'badge-yellow' : 'badge-green'}`}>${fixes.length ? `${fixes.length} need${fixes.length === 1 ? 's' : ''} a fix` : 'All required checks pass'}</span>
+            <button class="btn btn-ghost btn-sm" type="button" disabled=${checking || !!busy} onClick=${runChecks}>${checking ? 'Checking…' : 'Run checks'}</button>
+          </div>`, html`
+          ${fixes.length ? html`<div class="bc-checks">${fixes.map(checkRow)}</div>` : null}
+          <details class="bc-more"><summary>All ${checks.length} checks</summary><div class="bc-checks">${checks.map(checkRow)}</div></details>
+          ${h.lastTick ? html`<p class="text-sm text-muted" style="margin:.75rem 0 0">Last state check ${bcAgo(h.lastTick.at)} via <code>${h.lastTick.source}</code>${h.lastTick.work?.length ? ` (${h.lastTick.work.join(', ')})` : ''}${h.lifecycle?.at ? `. Stream said ${h.lifecycle.live ? 'live' : 'idle'} ${bcAgo(h.lifecycle.at)}.` : '.'}</p>` : null}`)}
+
+        ${section('phones', 'Phones', null, html`
+          <div class="bc-block">
+            <div class="bc-block-head"><h4>Stream live input</h4>
+              ${c.liveInput ? html`<div class="bc-btns">
+                <span class=${`badge ${c.liveInput.enabled === false ? 'badge-yellow' : 'badge-green'}`}>${c.liveInput.enabled === false ? 'Switched off' : 'Ready'}</span>
+                <button class="btn btn-ghost btn-sm" type="button" disabled=${!!busy} onClick=${() => setup('refreshInput', {}, 'Refresh input')}>Refresh</button>
+                <button class="btn btn-ghost btn-sm" type="button" disabled=${!!busy} onClick=${() => setConfirm({ title: 'Rotate the ingest keys?', message: 'Every phone must scan a new code afterwards. Do this if a phone was lost or a key showed on a screenshare.', danger: true, confirmLabel: 'Rotate keys', busyLabel: 'Rotating…', fn: () => setup('rotateKeys', {}, 'Rotate') })}>Rotate keys</button>
+                ${c.liveInput.enabled === false
+                  ? html`<button class="btn btn-secondary btn-sm" type="button" disabled=${!!busy} onClick=${() => setup('enableInput', {}, 'Enable')}>Switch on</button>`
+                  : html`<button class="btn btn-ghost btn-sm" type="button" disabled=${!!busy} onClick=${() => setConfirm({ title: 'Switch off the live input?', message: 'Phones are refused until you switch it back on. Use this to stop an unwanted broadcast.', danger: true, confirmLabel: 'Switch off', busyLabel: 'Switching off…', fn: () => setup('disableInput', {}, 'Disable') })}>Switch off</button>`}
+              </div>` : null}
+            </div>
+            <p class="text-sm text-muted">The one address every phone streams to. Each reveal becomes a new recording on it, and a 30 second grace keeps one dropped signal from splitting a reveal in two.</p>
+            ${!s.streamConfigured ? html`<p class="text-sm" style="color:#744210">CF_STREAM_TOKEN / CF_ACCOUNT_ID aren't set in Cloudflare Pages. The token needs Stream: Edit.</p>` : null}
+            ${c.liveInput
+              ? html`<div class="text-sm text-muted"><code>${c.liveInput.uid}</code> · created ${bcFmt(c.liveInput.created)}${c.liveInput.keysRotatedAt ? ` · keys rotated ${bcFmt(c.liveInput.keysRotatedAt)}` : ''}</div>`
+              : html`<button class="btn btn-primary" type="button" disabled=${!!busy || !s.streamConfigured} onClick=${() => setup('setupInput', {}, 'Create input')}>${busy === 'Create input' ? bcSpin : null} Create the live input</button>`}
+          </div>
+          <div class="bc-block">
+            <h4>Set up a phone</h4>
+            <p class="text-sm text-muted">Install <strong>Larix Broadcaster</strong> with a Premium subscription (the free version stamps a watermark on the video). Point the phone's camera at a code and tap the banner: Larix opens with the SOARD connection filled in. On reveal day, open Larix and tap record.</p>
+            ${larix.standard ? html`<div class="bc-qrs">
+              <${QrCode} value=${larix.standard} size=${168} label="Standard · 1080p · 3.5 Mbps" />
+              <${QrCode} value=${larix.lowSignal} size=${168} label="Weak signal · 720p · 1.8 Mbps" />
+              ${c.rehearsalInput && larix.rehearsal
+                ? html`<div class="bc-qr-col"><${QrCode} value=${larix.rehearsal} size=${168} label="Rehearsal · private mic checks" /><button class="bc-link text-sm" type="button" disabled=${!!busy} onClick=${() => setConfirm({ title: 'Delete the rehearsal feed?', message: 'Practice phones lose their connection until you create a new one.', danger: true, confirmLabel: 'Delete', fn: () => setup('deleteRehearsal', {}, 'Delete rehearsal') })}>Delete rehearsal feed</button></div>`
+                : html`<div class="bc-qr-empty"><strong>Rehearsal feed</strong><p class="text-sm text-muted">A private second input for practice and mic checks. It never reaches the public, and its recordings delete themselves after 30 days.</p><button class="btn btn-secondary btn-sm" type="button" disabled=${!!busy || !s.streamConfigured} onClick=${() => setup('setupRehearsal', {}, 'Rehearsal')}>Create rehearsal feed</button></div>`}
+            </div>` : html`<p class="text-sm text-muted">Create the live input first.</p>`}
+          </div>
+          <div class="bc-block">
+            <h4>Before every reveal</h4>
+            <ul class="bc-checklist">
+              <li>Wireless mic receiver plugged into the phone (not Bluetooth), and Larix's level meter moves.</li>
+              <li>Larix → Settings → Connectivity → <em>Adaptive bitrate</em> on, so a weak signal lowers quality instead of dropping.</li>
+              <li>The weak-signal profile if the house has poor cell coverage.</li>
+              <li>Battery above 50% or on a pack.</li>
+            </ul>
+          </div>
+          ${larix.srtUrl ? html`<details class="bc-more"><summary>OBS and manual connection details</summary><div class="bc-manual">
+            <div><strong>SRT (OBS, Larix):</strong> <code>${larix.srtUrl}</code> <${CopyBtn} text=${larix.srtUrl} /></div>
+            ${larix.rtmps ? html`<div><strong>RTMPS server:</strong> <code>${larix.rtmps.url}</code> <${CopyBtn} text=${larix.rtmps.url} /></div><div><strong>RTMPS key:</strong> <code>${larix.rtmps.streamKey}</code> <${CopyBtn} text=${larix.rtmps.streamKey} /></div>` : null}
+            <div><strong>Larix setup link:</strong> <${CopyBtn} text=${larix.standard} label="Copy" /></div>
+          </div></details>` : null}`)}
+
+        ${section('facebook', 'Facebook', html`<div class="bc-btns">${!s.fbConfigured ? html`<span class="text-sm text-muted">FB_PAGE_ID / FB_PAGE_TOKEN aren't set</span>` : null}<button class="btn btn-ghost btn-sm" type="button" disabled=${!!busy || !s.fbConfigured} onClick=${async () => { setFbResult(null); setFbResult(await setup('testFacebook', {}, 'Facebook test')); }}>Test connection</button></div>`, html`
+          ${fbResult ? html`<div class=${`bc-result ${fbResult.success ? 'is-ok' : 'is-warn'}`}>${fbResult.success ? `Connected to "${fbResult.token?.name}". Recent lives: ${(fbResult.recent?.videos || []).length}.` : `Failed: ${fbResult.token?.error || fbResult.error}`}</div>` : null}
+          ${fbResult?.info?.appId ? html`<div class="bc-result">
+            <div><strong>App Review helper</strong> · app id <code>${fbResult.info.appId}</code> · token ${fbResult.info.expiresAt ? `expires ${bcFmt(fbResult.info.expiresAt)}` : 'never expires'}</div>
+            <div>Granted: ${(fbResult.info.scopes || []).map((sc) => html`<code style="margin-right:4px">${sc}</code>`)}</div>
+            ${fbResult.info.missingForApiMode?.length ? html`<div>Still needed for automatic mode: ${fbResult.info.missingForApiMode.map((sc) => html`<code style="margin-right:4px;background:#FEFCBF">${sc}</code>`)} plus the <strong>Live Video API</strong> feature.</div>` : html`<div style="color:#22543D">Every permission automatic mode needs is granted. If the site still gets error #10, the Live Video API feature itself is pending review.</div>`}
+            <div style="margin-top:4px"><a href=${fbResult.info.appReviewUrl} target="_blank" rel="noopener">App Review → Permissions and Features ↗</a> · <a href=${fbResult.info.appSettingsUrl} target="_blank" rel="noopener">App settings → Basic ↗</a> · package: <code>docs/facebook-app-review.md</code></div>
+          </div>` : null}
+          <div class="bc-block">
+            <h4>How the live post gets made</h4>
+            <label class="bc-radio"><input type="radio" name="bc-fbmode" checked=${f.facebookMode === 'api'} onChange=${() => setTo('facebookMode', 'api')} /><span><strong>Automatic (Live Video API)</strong><span class="text-sm text-muted">The site creates the post when the phone connects and ends it when the phone stops. Needs Facebook's approval of the app.</span></span></label>
+            <label class="bc-radio"><input type="radio" name="bc-fbmode" checked=${f.facebookMode === 'persistent'} onChange=${() => setTo('facebookMode', 'persistent')} /><span><strong>Persistent stream key</strong><span class="text-sm text-muted">Schedule the live post in Live Producer ahead of time; Facebook starts it when the stream arrives.</span></span></label>
+            ${st.fb?.needsReview ? html`<p class="text-sm" style="color:#744210;margin:.5rem 0 0">Facebook refused the API call because the app hasn't passed App Review for the Live Video API yet, so the site fell back to the persistent key. The submission package is in docs/facebook-app-review.md.</p>` : null}
+          </div>
+          <div class="bc-block"><label class="form-label" for="bc-fb-page">Page URL</label><input class="form-input" id="bc-fb-page" value=${f.pageUrl} onInput=${set('pageUrl')} style="max-width:420px" /></div>
+          <${BcOutput} target="facebook" title="Persistent stream key" help=${html`Live Producer → Streaming software → Advanced settings → turn on <strong>Persistent stream key</strong> → copy the key. One time only.${f.facebookMode === 'api' ? ' In automatic mode it is the fallback if Facebook refuses the API.' : ''}`} o=${fbOut} presetUrl="rtmps://live-api-s.facebook.com:443/rtmp/" ...${common} />`)}
+
+        ${section('youtube', 'YouTube', null, html`
+          <${BcOutput} target="youtube" title="Stream key" help=${html`YouTube Studio → Go live → Stream → copy the <strong>Stream key</strong>. In the same screen turn on <strong>Auto-start</strong> and <strong>Auto-stop</strong> so YouTube follows the phone.`} o=${ytOut} presetUrl="rtmps://a.rtmps.youtube.com:443/live2" ...${common} />
+          <div class="bc-block">
+            <label class="form-label" for="bc-yt-url">Channel or live URL (linked from the live page)</label>
+            <input class="form-input" id="bc-yt-url" value=${f.youtubeUrl} placeholder="https://www.youtube.com/@…/live" onInput=${set('youtubeUrl')} style="max-width:420px" />
+            ${!s.youtubeConfigured ? html`<div class="form-hint">Add <code>YOUTUBE_API_KEY</code> (YouTube Data API v3) in Cloudflare Pages so the site can confirm YouTube actually went live.</div>` : null}
+          </div>`)}
+
+        ${section('instagram', 'Instagram', html`<button class="btn btn-ghost btn-sm" type="button" disabled=${!!busy} onClick=${async () => { setIgCheck(null); setIgCheck(await setup('testInstagram', {}, 'Instagram check')); }}>Test connection</button>`, html`
+          ${igCheck ? html`<div class=${`bc-result ${igCheck.success ? 'is-ok' : 'is-warn'}`}>
+            ${igCheck.account?.ok ? html`Linked Instagram: <strong>@${igCheck.account.username || igCheck.account.id}</strong>. ` : html`Instagram: ${igCheck.account?.error || igCheck.error} `}
+            ${igCheck.missing?.length ? html`The token is missing ${igCheck.missing.map((m) => html`<code style="margin:0 3px">${m}</code>`)}. Follow "Instagram Reels" in docs/facebook-app-review.md to regenerate it.` : igCheck.account?.ok ? 'Ready to post.' : ''}
+          </div>` : null}
+          <div class="bc-block">
+            <h4>A Reel of every reveal</h4>
+            <p class="text-sm text-muted">When the replay is ready, the site finds the reveal moment in the captions (with AI as a second opinion), cuts up to 15 minutes around it, and posts it as a Reel. Shorter recordings post whole.</p>
+            <label class="checkbox-label"><input type="checkbox" checked=${f.reelsEnabled} onChange=${set('reelsEnabled')} /> Post a Reel after every reveal</label>
+            <label class="checkbox-label"><input type="checkbox" checked=${f.reelsFeed} onChange=${set('reelsFeed')} /> Also show it on the main grid, not only the Reels tab</label>
+            <div class="form-grid">
+              <div class="form-group span-2"><label class="form-label" for="bc-reel-caption">Caption</label><textarea class="form-textarea" id="bc-reel-caption" rows="3" maxlength="2200" value=${f.reelsCaption} onInput=${set('reelsCaption')}></textarea><span class="form-hint"><code>{kid}</code> becomes the kid's name. Links in captions aren't clickable, so point to the link in bio.</span></div>
+              <div class="form-group"><label class="form-label" for="bc-reel-lead">Lead-up before the reveal moment</label><select class="form-select" id="bc-reel-lead" value=${f.reelsLead} onChange=${(e) => setTo('reelsLead', Number(e.target.value))}>${[60, 120, 180, 240, 300, 420, 600].map((n) => html`<option value=${n}>${n / 60} minute${n > 60 ? 's' : ''}</option>`)}</select><span class="form-hint">The rest of the 15 minutes is the reactions and the room tour.</span></div>
+              <div class="form-group"><label class="form-label" for="bc-ig-url">Profile URL (linked from the live page)</label><input class="form-input" id="bc-ig-url" value=${f.instagramUrl} placeholder="https://www.instagram.com/…" onInput=${set('instagramUrl')} /></div>
+            </div>
+          </div>
+          <details class="bc-more"><summary>Instagram Live too (manual, every time)</summary>
+            <${BcOutput} target="instagram" withUrl title="Instagram Live stream" help=${html`Not needed for the Reel. Instagram has no permanent key and no API, so this is set up <strong>before each reveal</strong>: on a computer, instagram.com → Create → Live → copy the Stream URL and key and paste both here. Needs a professional account.`} o=${out('instagram')} ...${common} />
+          </details>`)}
+
+        ${section('gifts', 'Gifts during reveals (Zeffy)', html`<span class=${`badge ${zeffy.configured ? 'badge-green' : 'badge-gray'}`}>${zeffy.configured ? 'Connected' : 'Not connected'}</span>`, html`
+          <p class="bc-set-lede">Zeffy tells the site about each gift as it's made, so the live page can show a running total of one-time gifts made during each reveal. It never shows names or single amounts.</p>
+          <div class="bc-block">
+            <h4>In Zeffy → Settings → Integrations, add a webhook</h4>
+            <div class="bc-kv"><span>URL</span><code>${zeffyUrl}</code><${CopyBtn} text=${zeffyUrl} /></div>
+            <div class="bc-kv"><span>Event</span><code>payment.completed</code></div>
+          </div>
+          <div class="bc-block">
+            <label class="form-label" for="bc-zeffy-secret">Signing secret</label>
+            <div class="bc-inline">
+              <input class="form-input" id="bc-zeffy-secret" type="password" autocomplete="off" placeholder=${zeffy.configured ? 'Paste a new secret to replace it' : 'whsec_…'} value=${zeffyKey} onInput=${(e) => setZeffyKey(e.target.value)} />
+              <button class="btn btn-secondary btn-sm" type="button" disabled=${!!busy || !zeffyKey.trim()} onClick=${() => saveZeffy(zeffyKey.trim())}>${zeffy.configured ? 'Replace secret' : 'Save secret'}</button>
+              ${zeffy.configured ? html`<button class="btn btn-ghost btn-sm" type="button" disabled=${!!busy} onClick=${() => setConfirm({ title: 'Disconnect Zeffy?', message: 'The site stops accepting gift notices from Zeffy until you paste the secret again.', danger: true, confirmLabel: 'Disconnect', busyLabel: 'Disconnecting…', fn: () => saveZeffy('') })}>Disconnect</button>` : null}
+            </div>
+            <div class="form-hint">Copy the webhook's signing secret from Zeffy (it starts with whsec_) and paste it here. The site keeps it and never shows it again.</div>
+          </div>
+          <p class="text-sm text-muted" style="margin:0">Last gift received: <strong title=${zeffy.lastEventAt ? bcFmt(zeffy.lastEventAt) : ''}>${zeffy.lastEventAt ? bcAgo(zeffy.lastEventAt) : 'none yet'}</strong></p>`)}
+
+        ${section('reminders', 'Reminders', html`<span class="text-sm text-muted"><strong>${data.reminders?.counts?.email || 0}</strong> email · <strong>${data.reminders?.counts?.sms || 0}</strong> text · <strong>${data.reminders?.counts?.push || 0}</strong> browser signups</span>`, html`
+          <div class="bc-block">
+            <label class="checkbox-label"><input type="checkbox" checked=${f.remEnabled} onChange=${set('remEnabled')} /> Send reminders</label>
+            <div class="bc-indent">
+              <label class="checkbox-label"><input type="checkbox" checked=${f.rem24} disabled=${!f.remEnabled} onChange=${set('rem24')} /> The day before</label>
+              <label class="checkbox-label"><input type="checkbox" checked=${f.rem1} disabled=${!f.remEnabled} onChange=${set('rem1')} /> One hour before</label>
+              <div class="form-hint">"We're live" and "The replay is ready" always go out while reminders are on.</div>
+            </div>
+          </div>
+          <div class="bc-block">
+            <label class="checkbox-label"><input type="checkbox" checked=${f.remSms} onChange=${set('remSms')} /> Offer text messages ${s.smsConfigured ? html`<span class="badge badge-green">Twilio connected</span>` : html`<span class="badge badge-gray">Twilio not set up</span>`}</label>
+            ${!s.smsConfigured ? html`<div class="form-hint" style="margin:0 0 1rem 1.75rem">Set <code>TWILIO_ACCOUNT_SID</code>, <code>TWILIO_AUTH_TOKEN</code> and <code>TWILIO_FROM</code> (or <code>TWILIO_MESSAGING_SERVICE_SID</code>) in Cloudflare Pages. US texting needs the number registered for A2P 10DLC; Twilio handles STOP replies.</div>` : null}
+            <div class="bc-inline">
+              <label class="checkbox-label" style="margin:0"><input type="checkbox" checked=${f.remPush} onChange=${set('remPush')} /> Offer browser alerts</label>
+              ${s.pushReady ? html`<span class="badge badge-green">Keys ready</span>` : html`<button class="btn btn-ghost btn-sm" type="button" disabled=${!!busy} onClick=${() => setup('generateVapid', {}, 'Push keys')}>Generate push keys</button>`}
+            </div>
+          </div>
+          <div class="bc-block">
+            <h4>Preview an email</h4>
+            <div class="bc-inline">
+              <select class="form-select" aria-label="Which email" value=${testKind} onChange=${(e) => setTestKind(e.target.value)} style="max-width:200px">${[['scheduled', 'Save the date'], ['day', 'Day before'], ['hour', 'One hour'], ['live', "We're live"], ['replay', 'Replay ready']].map(([k, l]) => html`<option value=${k}>${l}</option>`)}</select>
+              <input class="form-input" type="email" aria-label="Send it to" placeholder="your@email" value=${testEmail} onInput=${(e) => setTestEmail(e.target.value)} style="max-width:260px" />
+              <button class="btn btn-secondary btn-sm" type="button" disabled=${!!busy || !s.emailConfigured} onClick=${async () => { const d = await setup('sendTestReminder', { kind: testKind, email: testEmail || undefined }, 'Test email'); if (d.success) addToast('Test email sent', 'success'); }}>Send test</button>
+            </div>
+          </div>
+          ${s.kitConfigured ? html`<div class="bc-block"><h4>Kit</h4><p class="text-sm text-muted" style="margin:0">When a scheduled reveal goes live, "We're live" goes to ${kitAudience} by itself (each reveal can opt out when you schedule it). Scheduling also makes a "save the date" draft in Kit, and the replay makes a "watch the replay" draft. Review and send those from Kit.</p></div>` : null}
+          ${data.reminders?.recent?.length ? html`<details class="bc-more"><summary>Recent signups (${data.reminders.recent.length})</summary><div class="bc-table" style="margin-top:.5rem"><table><thead><tr><th>When</th><th>Channel</th><th>Who</th><th>For</th><th>From</th></tr></thead><tbody>${data.reminders.recent.map((r) => html`<tr><td>${bcFmt(r.created_at)}</td><td>${r.channel}</td><td>${r.address}</td><td>${r.kid_slug || 'every reveal'}</td><td>${r.source || ''}</td></tr>`)}</tbody></table></div></details>` : null}`)}
+
+        ${section('alerts', 'Alerts', html`<button class="btn btn-ghost btn-sm" type="button" disabled=${!!busy} onClick=${async () => { const d = await setup('testAlert', {}, 'Test alert'); if (d.success) addToast('Test alert sent', 'success'); }}>Send test alert</button>`, html`
+          <p class="bc-set-lede">Alerts go out when a scheduled reveal never streams, Stream reports an encoder error, or a daily check fails (and again on the morning of a reveal). While live, they also fire when the sound goes silent or disappears, the picture freezes, the signal gets weak, or Facebook or YouTube aren't live a couple of minutes in.</p>
+          <div class="bc-block">
+            <div class="bc-inline"><strong class="text-sm">Slack</strong>${s.slackConfigured ? html`<span class="badge badge-green">Connected</span>` : html`<span class="badge badge-yellow">Not set up</span><span class="text-sm text-muted">Set <code>SLACK_WEBHOOK_URL</code> in Cloudflare Pages.</span>`}</div>
+          </div>
+          <div class="bc-block">
+            <label class="form-label" for="bc-alert-emails">Alert emails</label>
+            <input class="form-input" id="bc-alert-emails" value=${f.alertEmails} placeholder="peter@…, ops@…" onInput=${set('alertEmails')} style="max-width:520px" />
+            <div class="form-hint">Comma separated.</div>
+          </div>`)}
+
+        ${section('site', 'Site', null, html`
+          <div class="form-grid">
+            <div class="form-group"><label class="form-label" for="bc-replay-hours">Keep the replay on the live page for</label><select class="form-select" id="bc-replay-hours" value=${f.replayHours} onChange=${(e) => setTo('replayHours', Number(e.target.value))}>${[24, 48, 72, 168, 336].map((n) => html`<option value=${n}>${n / 24} day${n > 24 ? 's' : ''}</option>`)}</select></div>
+            <div class="form-group"><label class="form-label" for="bc-orientation">Camera orientation</label><select class="form-select" id="bc-orientation" value=${f.orientation} onChange=${set('orientation')}><option value="portrait">Portrait (phones, Instagram)</option><option value="landscape">Landscape (desktop, YouTube, Facebook)</option></select><span class="form-hint">The site's player takes this shape. Platforms of the other shape show bars.</span></div>
+            <div class="form-group"><label class="form-label" for="bc-tz">Time zone for emails and texts</label><input class="form-input" id="bc-tz" value=${f.timezone} onInput=${set('timezone')} /></div>
+            <div class="form-group"></div>
+            <div class="form-group"><label class="form-label" for="bc-def-title">Default title (unplanned broadcasts)</label><input class="form-input" id="bc-def-title" value=${f.defTitle} onInput=${set('defTitle')} /></div>
+            <div class="form-group"><label class="form-label" for="bc-def-msg">Default banner message</label><input class="form-input" id="bc-def-msg" value=${f.defMessage} onInput=${set('defMessage')} /></div>
+          </div>`)}
+
+        <details class="card bc-fold">
+          <summary>How reveal day runs by itself</summary>
+          <div class="bc-fold-body"><ul class="bc-checklist">
+            <li><strong>The phone taps Start in Larix.</strong> Within a second the site shows Live, the live page plays the stream, Facebook and YouTube get the simulcast, and "we're live" reminders go out.${s.kitConfigured ? ` After 3 unbroken minutes, "We're live" goes to ${kitAudience} in Kit once the site knows the kid.` : ''}</li>
+            <li><strong>The phone stops.</strong> After 45 seconds of grace for a dropped signal, the site switches to the replay. When Stream finishes (a minute or two), the replay plays on the live page, captions are made, the link goes on the kid's page, the site rebuilds, and the replay email goes out.</li>
+            <li><strong>Facebook.</strong> ${f.facebookMode === 'api' ? 'The site creates the live post when the phone connects and ends it when the phone stops.' : 'Facebook starts the live post you scheduled in Live Producer when the stream arrives.'}</li>
+            <li><strong>Instagram.</strong> ${f.reelsEnabled ? 'The replay becomes a Reel by itself.' : 'Automatic Reels are off.'}</li>
+            <li><strong>A scheduled reveal that never streams</strong> comes off the site 4 hours after its time, and you get an alert.</li>
+          </ul></div>
+        </details>
+      </div>`;
+    }
+
+    // ─── Broadcast (the page) ────────────────────────────────
     function Broadcast({ addToast, kids = [] }) {
       const [data, setData] = useState(null);
       const [loading, setLoading] = useState(true);
-      const [tab, setTab] = useState('now');
+      const [tab, setTab] = useState(bcTabFromHash);
       const [busy, setBusy] = useState('');
-      const [showPicker, setShowPicker] = useState(false);
-      const [showSecrets, setShowSecrets] = useState(false);
-      const [fbResult, setFbResult] = useState(null);
-      const [fbPick, setFbPick] = useState({}); // Facebook video id → kid slug chosen in the picker
-      const [confirm, setConfirm] = useState(null); // { title, message, danger, fn }
-      // Schedule form
-      const [kidSlug, setKidSlug] = useState('');
-      const [when, setWhen] = useState(bcLocalInput(null));
-      const [kitLive, setKitLive] = useState(null); // null = follow the Kit setting
-      const [liveKid, setLiveKid] = useState('');
-      const [title, setTitle] = useState('');
-      const [message, setMessage] = useState('');
-      const [image, setImage] = useState('');
-      // Manual banner fallback
-      const [manualOpen, setManualOpen] = useState(false);
-      const [manualMsg, setManualMsg] = useState("It's reveal day! We're live on Facebook right now.");
-      const [manualUrl, setManualUrl] = useState('https://www.facebook.com/SunshineOnaRanneyDay');
-      const [manualHours, setManualHours] = useState(4);
-      // Setup forms
-      const [fbKey, setFbKey] = useState('');
-      const [ytKey, setYtKey] = useState('');
-      const [igKey, setIgKey] = useState('');
-      const [igUrl, setIgUrl] = useState('');
-      const [igCheck, setIgCheck] = useState(null);
-      const [reelMinute, setReelMinute] = useState('');
-      const [cfg, setCfg] = useState(null);
-      const [testKind, setTestKind] = useState('live');
-      const [testEmail, setTestEmail] = useState('');
-      const [histMsgs, setHistMsgs] = useState(null); // History row whose messages are open: { id, kidName, title, date }
+      const [confirm, setConfirm] = useState(null); // { title, message, danger, confirmLabel, cancelLabel, busyLabel, fn }
+      const [cfg, setCfg] = useState(null);         // Settings form, kept across tabs
+      const [cfgBase, setCfgBase] = useState(null); // what the server has, to spot unsaved edits
+      const [roomKey, setRoomKey] = useState(0);    // bump to re-check the feed right now
+      const [jump, setJump] = useState(null);       // Settings section to scroll to
       const wsRef = useRef(null);
 
       const load = useCallback(async (opts = {}) => {
@@ -4574,28 +5444,11 @@
           const r = await fetch(`/api/broadcast-admin?reveal=1${opts.fb ? '&fb=1' : ''}`);
           const d = await apiJson(r, '/api/broadcast-admin');
           if (!d.success) { addToast(`Broadcast: ${d.error}`, 'error'); return; }
-          setData(d);
-          setCfg((c) => c || {
-            facebookMode: d.config.facebook?.mode || 'persistent',
-            pageUrl: d.config.facebook?.pageUrl || '',
-            youtubeUrl: d.config.youtube?.channelUrl || '',
-            instagramUrl: d.config.instagram?.profileUrl || '',
-            orientation: d.config.orientation || 'portrait',
-            reelsEnabled: d.config.reels?.enabled !== false,
-            reelsCaption: d.config.reels?.caption || '',
-            reelsLead: d.config.reels?.leadSeconds ?? 240,
-            reelsFeed: d.config.reels?.shareToFeed !== false,
-            remEnabled: d.config.reminders?.enabled !== false,
-            remSms: d.config.reminders?.sms !== false,
-            remPush: d.config.reminders?.push !== false,
-            rem24: (d.config.reminders?.hoursBefore || [24, 1]).includes(24),
-            rem1: (d.config.reminders?.hoursBefore || [24, 1]).includes(1),
-            replayHours: d.config.replayHours || 72,
-            timezone: d.config.timezone || 'America/New_York',
-            alertEmails: (d.config.alerts?.emails || []).join(', '),
-            defTitle: d.config.defaults?.title || '',
-            defMessage: d.config.defaults?.message || '',
-          });
+          // Facebook's list costs Graph quota, so it's only fetched on request; keep it through polls
+          setData((prev) => ({ ...d, fbRecent: d.fbRecent ?? prev?.fbRecent ?? null }));
+          const base = bcCfgFrom(d.config);
+          setCfgBase(base);
+          setCfg((cur) => cur || base);
         } catch (e) { addToast(`Could not load broadcast status: ${e.message}`, 'error'); }
         setLoading(false);
       }, []);
@@ -4620,16 +5473,6 @@
       }, [data?.state?.phase]);
       useEffect(() => () => { try { wsRef.current?.close(); } catch {} }, []);
 
-      // Auto-fill the schedule form from the kid
-      const onKid = (slug) => {
-        setKidSlug(slug);
-        const k = kids.find((x) => x.slug === slug);
-        if (!k) return;
-        setTitle(`${k.name}'s room reveal`);
-        setMessage(`Watch ${k.name}'s room reveal live`);
-        setImage(k.heroImage || k.photos?.[0]?.url || k.photos?.[0]?.cfImageId || '');
-      };
-
       const call = async (endpoint, body, label) => {
         setBusy(label || body.action);
         try {
@@ -4644,537 +5487,49 @@
       const setup = (action, body = {}, label) => call('/api/broadcast-admin', { action, ...body }, label);
       const act = (action, body = {}, label) => call('/api/broadcast', { action, ...body }, label);
 
-      const handleSchedule = async () => {
-        if (!when) { addToast('Pick a date and time', 'error'); return; }
-        const d = await act('schedule', { kidSlug: kidSlug || undefined, scheduledAt: new Date(when).toISOString(), title, message, image: image || '', kitLiveEmail: typeof kitLive === 'boolean' ? kitLive : undefined }, 'Schedule');
-        if (d.success) addToast('Reveal scheduled. Countdown, reminders and share page are live.', 'success');
+      // The save bar renders here, not inside Settings: .main > * fades in with a
+      // transform, and a transformed ancestor would carry a fixed bar along with it
+      const dirty = !!cfg && !!cfgBase && JSON.stringify(cfg) !== JSON.stringify(cfgBase);
+      useGlobalDirty(dirty, 'Broadcast settings');
+      const saveCfg = async () => {
+        if (!dirty) return;
+        const d = await setup('setConfig', { config: bcCfgTo(cfg) }, 'Save settings');
+        if (d.success) { addToast('Settings saved', 'success'); setCfg(null); await load(); }
       };
-      const handleMessagesToggle = async (on) => {
-        const d = await setup('setConfig', { config: { messages: { enabled: on } } }, 'Messages');
-        if (d.success) addToast(on ? 'Viewers can post messages on the live page' : 'Messages are off on the live page', 'success');
-      };
-      const handleSaveConfig = async () => {
-        const d = await setup('setConfig', { config: {
-          facebook: { mode: cfg.facebookMode, pageUrl: cfg.pageUrl },
-          youtube: { channelUrl: cfg.youtubeUrl },
-          instagram: { profileUrl: cfg.instagramUrl },
-          orientation: cfg.orientation,
-          reels: { enabled: cfg.reelsEnabled, caption: cfg.reelsCaption, leadSeconds: Number(cfg.reelsLead), shareToFeed: cfg.reelsFeed },
-          reminders: { enabled: cfg.remEnabled, sms: cfg.remSms, push: cfg.remPush, hoursBefore: [cfg.rem24 ? 24 : null, cfg.rem1 ? 1 : null].filter(Boolean) },
-          replayHours: Number(cfg.replayHours), timezone: cfg.timezone,
-          alerts: { emails: cfg.alertEmails.split(',').map((s) => s.trim()).filter(Boolean) },
-          defaults: { title: cfg.defTitle, message: cfg.defMessage },
-        } }, 'Save settings');
-        if (d.success) addToast('Settings saved', 'success');
-      };
-      const handleOutput = async (target, key, url) => {
-        if (!key.trim()) { addToast('Paste the stream key first', 'error'); return; }
-        if (!url || !url.trim()) { addToast('Paste the stream URL first', 'error'); return; }
-        const d = await setup('setOutput', { target, streamKey: key.trim(), url }, `${target} output`);
-        if (d.success) { addToast(`${{ facebook: 'Facebook', youtube: 'YouTube', instagram: 'Instagram' }[target] || target} simulcast is set. Stream pushes to it whenever the phone goes live.`, 'success'); if (target === 'facebook') setFbKey(''); else if (target === 'youtube') setYtKey(''); else { setIgKey(''); setIgUrl(''); } }
-      };
-      const handleTestFb = async () => {
-        setFbResult(null);
-        const d = await setup('testFacebook', {}, 'Facebook test');
-        setFbResult(d);
-      };
-      const handleArchiveFb = async (v) => {
-        setBusy(`archive:${v.id}`);
-        try {
-          const r = await fetch('/api/fb-archive-video', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ videoId: v.id }) });
-          const d = await apiJson(r, '/api/fb-archive-video');
-          addToast(d.success ? `Saved to Cloudflare Stream as "${d.name}"` : `Archive failed: ${d.error}`, d.success ? 'success' : 'error');
-          if (d.success) await load({ fb: true });
-        } catch (e) { addToast(`Archive error: ${e.message}`, 'error'); }
-        setBusy('');
-      };
-      // Put a saved replay on a kid's page (or move it, or take it off with slug null)
-      const handleAttachFb = async (v, slug) => {
-        setBusy(`attach:${v.id}`);
-        try {
-          const r = await fetch('/api/fb-attach-video', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ videoId: v.id, kidSlug: slug || null }) });
-          const d = await apiJson(r, '/api/fb-attach-video');
-          if (d.success) {
-            addToast(slug
-              ? `Replay is now on ${d.kidName}'s page${d.deployed ? '. The site is deploying.' : '. Use Deploy Now to publish it.'}`
-              : `Replay taken off the kid page${d.deployed ? '. The site is deploying.' : '. Use Deploy Now to publish it.'}`, 'success');
-            setFbPick((m) => ({ ...m, [v.id]: slug || '' }));
-            await load({ fb: true });
-          } else addToast(`Could not attach: ${d.error}`, 'error');
-        } catch (e) { addToast(`Attach error: ${e.message}`, 'error'); }
-        setBusy('');
-      };
+      useSaveShortcut(() => { if (dirty && !busy) saveCfg(); });
+      const openSettings = (section) => { setTab('settings'); setJump(section); };
+      const refreshNow = async () => { await setup('runTick', {}, 'Refresh'); setRoomKey((k) => k + 1); };
 
       if (loading) return html`<div style="text-align:center;padding:3rem"><span class="spinner" /></div>`;
-      if (!data) return html`<${LoadErrorCard} error="Could not load the broadcast center" onRetry=${() => { setLoading(true); load(); }} />`;
+      if (!data) return html`<${LoadErrorCard} error="Could not load the broadcast page" onRetry=${() => { setLoading(true); load(); }} />`;
 
-      const st = data.state; const pub = data.public; const s = data.setup; const h = data.health; const c = data.config;
-      const phase = st.phase || 'idle';
-      const P = BC_PHASES[phase] || BC_PHASES.idle;
-      const kitAudience = c.kitLive?.audience?.name || 'All subscribers';
-      const kitDefault = c.kitLive?.enabled !== false;
-      const kitWanted = typeof st.kitLiveEmail === 'boolean' ? st.kitLiveEmail : kitDefault;
-      const kitSent = !!(st.kit?.live && st.kit.live.sendAt && !st.kit.live.error);
-      const kitVia = { scheduled: 'from the schedule', admin: 'picked here', 'facebook-live': 'from the Facebook live post', 'facebook-post': 'from a Facebook post' }[st.kidVia] || '';
-      const kitStatus = kitSent ? html`<strong style="color:#22543D">sent to ${st.kit.live.audience}</strong>`
-        : st.kit?.live?.error ? html`<strong style="color:#744210">${st.kit.live.held ? `held: ${st.kit.live.error}` : `failed: ${st.kit.live.error}`}</strong>`
-        : !kitWanted ? 'off for this reveal'
-        : !pub.kidName ? html`<strong style="color:#744210">waiting for the kid</strong>`
-        : 'goes out after 3 minutes live';
-      const lc = data.live?.lifecycle;
-      const isActive = ['scheduled', 'armed', 'live', 'ending', 'replay'].includes(phase);
+      const phase = data.state.phase || 'idle';
+      const s = data.setup;
       const setupDone = s.streamConfigured && s.inputReady && s.hubBound;
-      const kidsSorted = [...kids].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-      const kidBySlug = (slug) => (slug ? kids.find((k) => k.slug === slug) : null);
-      const msgsEnabled = c.messages?.enabled !== false;
-      const liveish = phase === 'live' || phase === 'ending' || phase === 'armed';
-      const watchers = data.hub?.watchers;
-      const rx = data.hub?.reactions && (!data.hub.reactions.broadcastId || data.hub.reactions.broadcastId === st.broadcastId) ? data.hub.reactions.totals : null;
-      const messagesCard = phase !== 'idle' ? html`<${BcMessages} key=${st.broadcastId || 'current'} auto=${liveish} addToast=${addToast} kidName=${pub.kidName} title=${pub.title} date=${pub.liveAt || pub.scheduledAt} enabled=${msgsEnabled} onToggle=${handleMessagesToggle} toggleBusy=${!!busy} />` : null;
-      const larix = data.larix || {};
-      const tabs = [['now', 'Now'], ['monitor', 'Control room'], ['setup', 'Setup'], ['reminders', 'Reminders'], ['health', 'Health'], ['history', 'History']];
-      const alertTargets = [s.slackConfigured ? 'Slack' : null, s.alertEmails?.length ? s.alertEmails.join(', ') : null].filter(Boolean).join(' and ');
-      const controlRoomProps = { phase, hasRehearsal: !!c.rehearsalInput?.uid, alertTargets, onSetup: () => setTab('setup') };
-
-      // One row in History → Facebook-only broadcasts: save it, then choose the kid page it belongs on
-      const fbVideoRow = (v) => {
-        const pick = fbPick[v.id] !== undefined ? fbPick[v.id] : (v.attachedTo || '');
-        return html`<div style="display:flex;justify-content:space-between;gap:1rem;align-items:center;flex-wrap:wrap;padding:8px 0;border-top:1px solid var(--color-border)">
-          <div style="flex:1;min-width:220px">
-            <span class="badge ${v.status === 'LIVE' ? 'badge-yellow' : 'badge-gray'}">${v.status}</span> <strong style="font-size:0.9rem">${v.title || '(untitled)'}</strong>
-            <div class="text-sm text-muted">${bcFmt(v.createdAt)}${v.streamUid ? html` · saved to Stream · ${v.attachedName ? html`on <strong>${v.attachedName}</strong>'s page` : html`<strong style="color:#8a6d00">not on a kid page yet</strong>`}` : null}</div>
-          </div>
-          <div class="flex gap-2" style="align-items:center;flex-wrap:wrap">
-            <a class="btn btn-ghost btn-sm" href=${safeHref(v.url)} target="_blank" rel="noopener">Open ↗</a>
-            ${v.streamUid ? html`
-              <a class="btn btn-ghost btn-sm" href=${`https://watch.cloudflarestream.com/${v.streamUid}`} target="_blank" rel="noopener">Replay ↗</a>
-              <select class="form-input" style="width:auto;padding:4px 8px;font-size:0.85rem" value=${pick} onChange=${(e) => setFbPick((m) => ({ ...m, [v.id]: e.target.value }))} aria-label="Kid page for this replay">
-                <option value="">Choose a kid…</option>
-                ${kidsSorted.map((k) => html`<option value=${k.slug}>${bcKidLabel(k)}</option>`)}
-              </select>
-              <button class="btn btn-secondary btn-sm" disabled=${!!busy || !pick || pick === v.attachedTo} onClick=${() => handleAttachFb(v, pick)}>${v.attachedTo ? 'Move to this page' : 'Put on this page'}</button>
-              ${v.attachedTo ? html`<button class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${() => handleAttachFb(v, null)}>Take off page</button>` : null}`
-            : (v.status === 'VOD' ? html`<button class="btn btn-secondary btn-sm" disabled=${!!busy} onClick=${() => handleArchiveFb(v)}>Save to Stream</button>` : null)}
-          </div>
-        </div>`;
-      };
-
-      const statusCard = html`
-        <div class="card" style="border-left:4px solid ${P.color}">
-          <div style="display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap;align-items:flex-start">
-            <div>
-              <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
-                <span style=${`width:12px;height:12px;border-radius:50%;background:${P.color};${phase === 'live' ? 'box-shadow:0 0 0 4px rgba(255,213,0,.25)' : ''}`}></span>
-                <strong style="font-size:1.1rem;letter-spacing:.02em">${P.label}</strong>
-                ${pub.kidName ? html`<span class="badge badge-accent">${pub.kidName}</span>` : null}
-                ${st.source === 'manual' ? html`<span class="badge badge-gray">manual banner</span>` : null}
-              </div>
-              <div style="font-size:0.9rem;color:var(--color-text-secondary)">
-                ${phase === 'idle' ? 'Nothing scheduled. The site shows no banner.' : null}
-                ${phase === 'scheduled' || phase === 'armed' ? html`<div><strong>${pub.title}</strong> goes live <strong>${bcFmt(pub.scheduledAt)}</strong>. Countdown and reminder signup are on the site.</div>` : null}
-                ${phase === 'live' || phase === 'ending' ? html`<div><strong>${pub.title}</strong> · live since ${bcFmt(pub.liveAt)}${phase === 'ending' ? ' · phone disconnected, waiting up to 45 s for it to come back' : ''}</div>` : null}
-                ${phase === 'replay' ? html`<div><strong>${pub.title}</strong> ended ${bcFmt(pub.endedAt)}. ${pub.player ? 'Replay is on the site' : 'Waiting for Stream to finish the recording'} until ${bcFmt(pub.replayUntil)}.</div>` : null}
-                <div style="margin-top:6px;display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--color-text-muted)">
-                  <span>Stream input: ${lc ? (lc.live ? html`<strong style="color:#22543D">receiving video</strong>` : 'idle') : (s.inputReady ? 'unreachable' : 'not set up')}</span>
-                  ${data.live?.viewers != null && lc?.live ? html`<span>Watching now: <strong>${data.live.viewers}</strong></span>` : null}
-                  <span>Hub: ${data.hub?.ok ? `${data.hub.clients} connected` : 'offline'}</span>
-                  ${st.fb?.permalink ? html`<a href=${st.fb.permalink} target="_blank" rel="noopener">Facebook post ↗</a>` : null}
-                  ${pub.liveUrl ? html`<a href=${pub.liveUrl} target="_blank" rel="noopener">Live page ↗</a>` : null}
-                  ${pub.kidSlug && phase !== 'idle' ? html`<span title="Larix points at /live/slate/ once and follows the scheduled kid on its own">Starting soon screen: <a href=${`/live/${pub.kidSlug}/slate/`} target="_blank" rel="noopener">preview ↗</a> · <a href=${`/live/${pub.kidSlug}/slate/?tv=1`} target="_blank" rel="noopener">TV ↗</a> · <a href=${`/live/${pub.kidSlug}/starting-soon.png`} target="_blank" rel="noopener">still image ↗</a></span>` : null}
-                  ${s.kitConfigured && (phase === 'live' || phase === 'ending') ? html`<span>Kit email: ${kitStatus}</span>` : null}
-                  ${(phase === 'live' || phase === 'ending') && pub.kidName && kitVia ? html`<span>Kid: ${kitVia}</span>` : null}
-                  ${s.kitConfigured && (phase === 'scheduled' || phase === 'armed') ? html`<span>Kit email at go-live: ${kitWanted ? `on (${kitAudience})` : 'off'}</span>` : null}
-                </div>
-              </div>
-            </div>
-            <div style="display:flex;gap:8px;flex-wrap:wrap">
-              ${phase === 'scheduled' || phase === 'armed' ? html`<button class="btn btn-danger" disabled=${!!busy} onClick=${() => setConfirm({ title: 'Cancel this reveal?', message: 'The countdown and reminder signup come off the site. Reminders already sent are not recalled.', danger: true, fn: () => act('cancel', {}, 'Cancel') })}>Cancel reveal</button>` : null}
-              ${s.kitConfigured && (phase === 'live' || phase === 'ending') && !kitSent ? html`<button class="btn btn-primary" disabled=${!!busy} onClick=${() => setConfirm({ title: 'Email the Kit list now?', message: `Sends "We're live" for ${pub.title || 'this reveal'} to ${kitAudience} in Kit, about a minute from now. It goes out once per reveal and can't be recalled.`, fn: async () => { const d = await act('sendKitLive', {}, 'Kit email'); if (d.success) addToast(`Kit email scheduled to ${kitAudience}`, 'success'); } })}>Email the list now</button>` : null}
-              ${phase === 'live' || phase === 'ending' ? html`<button class="btn btn-danger" disabled=${!!busy} onClick=${() => setConfirm({ title: 'End the broadcast now?', message: st.source === 'stream' ? 'Normally the site ends itself when the phone stops. Use this only if the stream is stuck. The replay still gets saved.' : 'This takes the manual banner down.', danger: true, fn: () => act('endNow', {}, 'End') })}>End now</button>` : null}
-              ${phase === 'replay' ? html`<button class="btn btn-secondary" disabled=${!!busy} onClick=${() => act('extendReplay', { hours: 72 }, 'Extend')}>Keep replay 3 more days</button><button class="btn btn-ghost" disabled=${!!busy} onClick=${() => act('clearReplay', {}, 'Clear')}>Clear replay</button>` : null}
-              <button class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${() => setup('runTick', {}, 'Refresh')} title="Ask Stream what is true right now">Check Stream now</button>
-            </div>
-          </div>
-          ${(phase === 'live' || phase === 'ending') && !pub.kidName ? html`
-            <div style="margin-top:1rem;padding:12px 14px;border-radius:10px;background:#FFF8D6;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-              <strong style="font-size:.9rem">Which kid is this?</strong>
-              <select class="form-select" style="width:auto" value=${liveKid} onChange=${(e) => setLiveKid(e.target.value)} aria-label="Kid being revealed">
-                <option value="">Choose…</option>
-                ${kidsSorted.map((k) => html`<option value=${k.slug}>${bcKidLabel(k, true)}</option>`)}
-              </select>
-              <button class="btn btn-primary btn-sm" disabled=${!!busy || !liveKid} onClick=${async () => { const d = await act('update', { kidSlug: liveKid }, 'Set kid'); if (d.success) { addToast(s.kitConfigured && kitWanted ? 'Kid set. The Kit email goes out once the stream has run 3 minutes.' : 'Kid set', 'success'); setLiveKid(''); } }}>Set kid</button>
-              <span class="text-sm text-muted" style="flex-basis:100%">Nothing on Facebook named the kid yet. Setting it here puts their name on the live page and releases the "we're live" email.</span>
-              ${kidBySlug(liveKid)?.publishStatus === 'draft' ? html`<div style="flex-basis:100%"><${BcDraftNote} kid=${kidBySlug(liveKid)} /></div>` : null}
-            </div>` : null}
-          ${(phase === 'live' || phase === 'ending') && (watchers != null || rx) ? html`
-            <div class="bc-engage" aria-label="Live engagement">
-              ${watchers != null ? html`<span><strong>${watchers}</strong> watching on the site</span>` : null}
-              ${rx ? ['heart', 'sun', 'clap', 'wow'].map((k) => html`<span><strong>${rx[k] || 0}</strong> ${(rx[k] || 0) === 1 ? k : `${k}s`}</span>`) : null}
-            </div>` : null}
-          ${lc?.live || phase === 'live' || phase === 'ending' ? html`
-            <div style="margin-top:1rem"><${ControlRoomLazy} ...${controlRoomProps} compact onOpen=${() => setTab('monitor')} /></div>` : null}
-        </div>`;
-
-      const scheduleForm = html`
-        <div class="card">
-          <h3 style="margin:0 0 .25rem">Schedule a reveal</h3>
-          <p class="text-sm text-muted" style="margin:0 0 1rem">Pick the kid and the time. The site puts up a countdown, the reminder signup, a share page with ${'the kid\'s'} photo, and reminders go out the day before, an hour before, and when the phone connects. Nobody needs to press anything on reveal day.</p>
-          <div class="form-grid">
-            <div class="form-group">
-              <label class="form-label" for="bc-schedule-kid">Kid</label>
-              <select class="form-select" id="bc-schedule-kid" value=${kidSlug} onChange=${(e) => onKid(e.target.value)}>
-                <option value="">Choose…</option>
-                ${kidsSorted.map((k) => html`<option value=${k.slug}>${bcKidLabel(k, true)}</option>`)}
-              </select>
-              <span class="form-hint">Fills the title, banner message, photo and share page from the kid record.</span>
-              <${BcDraftNote} kid=${kidBySlug(kidSlug)} />
-            </div>
-            <div class="form-group">
-              <label class="form-label">Date and time</label>
-              <input class="form-input" type="datetime-local" value=${when} onInput=${(e) => setWhen(e.target.value)} />
-              <span class="form-hint">Your local time. The site shows it in each visitor's time zone.</span>
-            </div>
-            <div class="form-group">
-              <label class="form-label">Title</label>
-              <input class="form-input" value=${title} maxlength="140" placeholder="Remi's room reveal" onInput=${(e) => setTitle(e.target.value)} />
-            </div>
-            <div class="form-group">
-              <label class="form-label">Banner message</label>
-              <input class="form-input" value=${message} maxlength="200" placeholder="Watch Remi's room reveal live" onInput=${(e) => setMessage(e.target.value)} />
-            </div>
-            <div class="form-group span-2">
-              <label class="form-label">Photo</label>
-              <div class="flex items-center gap-2">
-                ${image ? html`<img src=${cfThumb(extractCfId(image), 'w=80,h=80,fit=cover')} alt="" style="width:40px;height:40px;border-radius:50%;object-fit:cover;border:2px solid #FFD500" />` : null}
-                <input class="form-input" value=${image} placeholder="Cloudflare image id" onInput=${(e) => setImage(e.target.value)} style="max-width:360px" />
-                <button class="btn btn-ghost btn-sm" type="button" onClick=${() => setShowPicker(true)}>Browse</button>
-              </div>
-            </div>
-          </div>
-          ${s.kitConfigured ? html`<div class="form-group">
-            <label class="checkbox-label"><input type="checkbox" checked=${typeof kitLive === 'boolean' ? kitLive : kitDefault} onChange=${(e) => setKitLive(e.target.checked)} /> Email our Kit list when we go live</label>
-            <span class="form-hint">Sends "We're live, come watch" to ${kitAudience} once the stream has run 3 minutes without dropping, so a quick phone test emails no one. Streams that start more than 30 minutes before the scheduled time are held for you to send by hand.</span>
-          </div>` : null}
-          <div class="flex items-center gap-2">
-            <button class="btn btn-primary" disabled=${!!busy || !when} onClick=${handleSchedule}>${busy === 'Schedule' ? html`<span class="spinner" style="width:14px;height:14px" />` : null} Schedule reveal</button>
-            ${!setupDone ? html`<span class="text-sm" style="color:#744210">Setup is not finished (see the Setup tab). Scheduling works, but the phone cannot stream until the live input exists.</span>` : null}
-          </div>
-          ${showPicker ? html`<${ImagePicker} value=${image} uploadPrefix=${`kids/${kidSlug || 'live'}`} onSelect=${(id) => { setImage(id); setShowPicker(false); }} onClose=${() => setShowPicker(false)} />` : null}
-        </div>
-        <div class="card" style="background:var(--color-bg-secondary)">
-          <button class="btn btn-ghost btn-sm" type="button" onClick=${() => setManualOpen(!manualOpen)}>${manualOpen ? 'Hide' : 'Show'} emergency banner (no stream)</button>
-          ${manualOpen ? html`
-            <p class="text-sm text-muted" style="margin:.75rem 0">If Cloudflare Stream is down and you go live straight from the Facebook app, this puts the old-style banner up that links to Facebook. It ends itself after the hours you pick.</p>
-            <div class="form-grid">
-              <div class="form-group"><label class="form-label">Message</label><input class="form-input" value=${manualMsg} maxlength="140" onInput=${(e) => setManualMsg(e.target.value)} /></div>
-              <div class="form-group"><label class="form-label">Link</label><input class="form-input" value=${manualUrl} onInput=${(e) => setManualUrl(e.target.value)} /></div>
-              <div class="form-group"><label class="form-label">Auto-end after</label><select class="form-select" value=${manualHours} onChange=${(e) => setManualHours(Number(e.target.value))}>${[2, 4, 6, 8].map((n) => html`<option value=${n}>${n} hours</option>`)}</select></div>
-            </div>
-            <button class="btn btn-secondary" disabled=${!!busy} onClick=${() => act('goLiveManual', { message: manualMsg, url: manualUrl, durationHours: manualHours, kidSlug: kidSlug || undefined, image: image || '' }, 'Manual banner')}>Put the banner up</button>` : null}
-        </div>`;
-
-      const sendsTable = data.sends?.length ? html`
-        <div class="card">
-          <h3 style="margin:0 0 .5rem">Reminders sent for this reveal</h3>
-          <div class="table-wrap"><table><thead><tr><th>When</th><th>Kind</th><th>Channel</th><th>Recipients</th><th>Sent</th><th>Failed</th></tr></thead><tbody>
-            ${data.sends.map((r) => html`<tr><td>${bcFmt(r.created_at)}</td><td>${r.kind}</td><td>${r.channel}</td><td>${r.recipients}</td><td>${r.sent}</td><td>${r.failed}${r.error ? html` <span class="text-muted" title=${r.error}>ⓘ</span>` : ''}</td></tr>`)}
-          </tbody></table></div>
-        </div>` : null;
-
-      const nowTab = html`
-        ${statusCard}
-        ${liveish ? messagesCard : null}
-        <${BcFamilyQr} addToast=${addToast} />
-        ${!isActive ? scheduleForm : null}
-        ${isActive && (phase === 'scheduled' || phase === 'armed') ? html`
-          <div class="card">
-            <h3 style="margin:0 0 .5rem">Edit</h3>
-            <div class="form-grid">
-              <div class="form-group"><label class="form-label">Date and time</label><input class="form-input" type="datetime-local" value=${bcLocalInput(pub.scheduledAt)} onChange=${(e) => act('update', { scheduledAt: new Date(e.target.value).toISOString() }, 'Update')} /></div>
-              <div class="form-group"><label class="form-label">Banner message</label><input class="form-input" defaultValue=${pub.message || ''} maxlength="200" onChange=${(e) => act('update', { message: e.target.value }, 'Update')} /></div>
-              <div class="form-group"><label class="form-label">Title</label><input class="form-input" defaultValue=${pub.title || ''} maxlength="140" onChange=${(e) => act('update', { title: e.target.value }, 'Update')} /></div>
-              <div class="form-group"><label class="form-label" for="bc-edit-kid">Kid</label><select class="form-select" id="bc-edit-kid" value=${pub.kidSlug || ''} onChange=${(e) => act('update', { kidSlug: e.target.value }, 'Update')}><option value="">None</option>${kidsSorted.map((k) => html`<option value=${k.slug}>${bcKidLabel(k)}</option>`)}</select><${BcDraftNote} kid=${kidBySlug(pub.kidSlug)} /></div>
-              <div class="form-group"><label class="form-label">Reveal happens at minute (optional)</label><input class="form-input" type="number" min="0" step="0.5" defaultValue=${st.revealAtSeconds != null ? st.revealAtSeconds / 60 : ''} placeholder="Leave blank: found automatically" onChange=${(e) => act('update', { revealAtMinute: e.target.value }, 'Update')} /><span class="form-hint">Only if you already know. Otherwise the Reel cut is found from the recording.</span></div>
-            </div>
-            ${s.kitConfigured ? html`<label class="checkbox-label" style="margin:0 0 .75rem"><input type="checkbox" checked=${kitWanted} disabled=${!!busy} onChange=${(e) => act('update', { kitLiveEmail: e.target.checked }, 'Update')} /> Email our Kit list (${kitAudience}) when we go live</label>` : null}
-            <p class="text-sm text-muted" style="margin:0">Changes apply on blur and show on the site within a second.</p>
-          </div>` : null}
-        ${!liveish ? messagesCard : null}
-        ${phase === 'replay' && data.recordings?.length ? html`
-          <div class="card">
-            <h3 style="margin:0 0 .5rem">Replay recording</h3>
-            <p class="text-sm text-muted" style="margin:0 0 .75rem">The site picks the recording from this broadcast automatically. If Stream split it into two (long disconnect), choose the right one here.</p>
-            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px">
-              ${data.recordings.slice(0, 6).map((v) => html`<div style=${`border:2px solid ${v.isCurrentReplay ? '#FFD500' : 'var(--color-border)'};border-radius:10px;overflow:hidden`}>
-                <img src=${v.thumbnail} alt="" style="width:100%;aspect-ratio:16/9;object-fit:cover;display:block;background:#000" />
-                <div style="padding:8px;font-size:12px"><div style="font-weight:600">${v.name || v.uid.slice(0, 8)}</div><div class="text-muted">${bcFmt(v.created)} · ${v.duration ? `${Math.round(v.duration / 60)} min` : v.state}</div>
-                  <div style="margin-top:6px;display:flex;gap:6px">${v.isCurrentReplay ? html`<span class="badge badge-yellow">On the site</span>` : html`<button class="btn btn-ghost btn-sm" disabled=${!!busy || v.state !== 'ready'} onClick=${() => act('setReplay', { uid: v.uid }, 'Replay')}>Use this</button>`}<a class="btn btn-ghost btn-sm" href=${v.watch} target="_blank" rel="noopener">Open</a></div></div>
-              </div>`)}
-            </div>
-          </div>` : null}
-        ${st.reel ? (() => { const r = st.reel; const t = (x) => x == null ? '' : `${Math.floor(x / 60)}:${String(Math.floor(x % 60)).padStart(2, '0')}`; const labels = { pending: 'Waiting for the recording', captions: 'Reading captions to find the reveal', window: 'Cutting the clip', clipping: 'Stream is making the clip', download: 'Preparing the MP4', instagram: 'Sending to Instagram', processing: 'Instagram is processing', done: 'Posted', failed: 'Failed', blocked: 'Needs setup', skipped: 'Skipped' }; const methods = { fits: 'whole recording (under 15 min)', override: 'your minute', captions: 'captions', 'captions+ai': 'captions, confirmed by AI', ai: 'AI', fallback: 'the ending (no reveal found)' }; return html`
-          <div class="card" style=${`border-left:4px solid ${r.stage === 'done' ? '#38A169' : ['failed', 'blocked'].includes(r.stage) ? '#D69E2E' : '#FFD500'}`}>
-            <div style="display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap;align-items:center">
-              <h3 style="margin:0">Instagram Reel · ${labels[r.stage] || r.stage}</h3>
-              ${r.permalink ? html`<a class="btn btn-secondary btn-sm" href=${safeHref(r.permalink)} target="_blank" rel="noopener">Open on Instagram ↗</a>` : null}
-            </div>
-            <div class="text-sm" style="margin-top:.5rem;line-height:1.7">
-              ${r.start != null ? html`<div>Cut <strong>${t(r.start)} to ${t(r.end)}</strong> of ${t(r.duration)}${r.method ? html`, picked by <strong>${methods[r.method] || r.method}</strong>` : null}${r.momentSeconds != null ? `, reveal at ${t(r.momentSeconds)}` : ''}${r.confidence != null && r.method !== 'fits' ? ` (confidence ${Math.round(r.confidence * 100)}%)` : ''}.</div>` : null}
-              ${r.clipUid ? html`<div><a href=${`https://watch.cloudflarestream.com/${r.clipUid}`} target="_blank" rel="noopener">Preview the cut ↗</a></div>` : null}
-              ${r.error ? html`<div class="text-muted">${r.error}</div>` : null}
-            </div>
-            <div class="flex items-center gap-2 flex-wrap" style="margin-top:.75rem">
-              <input class="form-input" type="number" min="0" step="0.5" placeholder="Reveal at minute" value=${reelMinute} onInput=${(e) => setReelMinute(e.target.value)} style="max-width:170px" />
-              <button class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${() => setConfirm({ title: r.stage === 'done' ? 'Post another Reel?' : 'Re-cut the Reel?', message: r.stage === 'done' ? 'The Reel already on Instagram stays up. This posts a second one; delete the first in Instagram if you want only the new cut.' : 'Starts the Reel again from the recording.', fn: () => act('reelRetry', { revealAtMinute: reelMinute }, 'Reel') })}>${reelMinute ? 'Re-cut at that minute' : 'Retry'}</button>
-              ${!['done', 'skipped', 'failed'].includes(r.stage) ? html`<button class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${() => act('reelSkip', {}, 'Skip')}>Don't post this one</button>` : null}
-            </div>
-          </div>`; })() : null}
-        ${sendsTable}
-        <div class="card" style="background:#FEFCF5;border-left:3px solid #FFD500">
-          <h3 style="margin:0 0 .5rem;font-size:0.95rem">What happens by itself</h3>
-          <ul style="margin:0;padding-left:1.2rem;font-size:0.9rem;line-height:1.7">
-            <li><strong>Phone taps Start in Larix</strong> → within a second the site shows LIVE, the live page plays the stream, Facebook and YouTube receive the simulcast, and "we're live" reminders go out.${s.kitConfigured ? ` After 3 unbroken minutes, "We're live" is emailed to ${kitAudience} once the site knows the kid: from the schedule, the Facebook live post, a Facebook post from the last day, or the picker here.` : ''}</li>
-            <li><strong>Phone stops</strong> → 45 s grace for a dropped signal, then the site flips to "Watch the replay". When Stream finishes processing (a minute or two), the replay plays on the live page, captions are generated, the link is added to the kid's page and the site rebuilds, and the replay email goes out.</li>
-            <li><strong>Instagram</strong>: ${c.reels?.enabled === false ? 'automatic Reels are off (Setup).' : 'the replay becomes an Instagram Reel on its own: the site finds the reveal moment, cuts up to 15 minutes around it, and posts it.'}</li>
-            <li><strong>Scheduled and never streamed</strong> → the countdown clears itself 4 hours after the time and you get an alert.</li>
-            <li><strong>Facebook</strong>: ${c.facebook?.mode === 'api' ? 'API mode is on: the site creates the Facebook live post when the phone connects and ends it when the phone stops.' : 'Persistent-key mode: schedule the live post in Live Producer ahead of time and Facebook starts it when the stream arrives (or tap Go Live in Live Producer).'}</li>
-          </ul>
-        </div>`;
-
-      const outputRow = (target, label, help, keyVal, setKey, presetUrl, urlState) => {
-        const o = data.outputs?.find((x) => x.target === target);
-        return html`<div class="card">
-          <div style="display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap;align-items:center">
-            <h3 style="margin:0">${label} simulcast</h3>
-            ${o ? html`<div class="flex items-center gap-2"><span class="badge ${o.exists ? 'badge-green' : 'badge-yellow'}">${o.exists ? (o.enabled ? 'Active' : 'Paused') : 'Missing in Stream'}</span><span class="text-sm text-muted">key ${o.keyMask}</span>
-              <button class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${() => setup('toggleOutput', { target, enabled: !o.enabled }, 'Toggle')}>${o.enabled ? 'Pause' : 'Resume'}</button>
-              <button class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${() => setConfirm({ title: `Remove the ${label} output?`, message: 'Stream stops pushing there. You can add it again any time.', danger: true, fn: () => setup('removeOutput', { target }, 'Remove') })}>Remove</button></div>` : html`<span class="badge badge-gray">Not set</span>`}
-          </div>
-          <p class="text-sm text-muted" style="margin:.5rem 0 .75rem">${help}</p>
-          <div class="flex items-center gap-2 flex-wrap">
-            ${urlState ? html`<input class="form-input" placeholder="Stream URL (rtmps://…)" value=${urlState.value} onInput=${(e) => urlState.set(e.target.value)} style="max-width:380px" autocomplete="off" />` : null}
-            <input class="form-input" type="password" placeholder=${o ? 'Paste a new key to replace' : 'Paste the stream key'} value=${keyVal} onInput=${(e) => setKey(e.target.value)} style="max-width:380px" autocomplete="off" />
-            <button class="btn btn-secondary btn-sm" disabled=${!!busy || !s.inputReady} onClick=${() => handleOutput(target, keyVal, urlState ? urlState.value : presetUrl)}>${o ? 'Replace' : 'Save'}</button>
-          </div>
-        </div>`;
-      };
-
-      const setupTab = html`
-        <div class="card">
-          <h3 style="margin:0 0 .5rem">1. Cloudflare Stream live input</h3>
-          <p class="text-sm text-muted" style="margin:0 0 .75rem">The standing ingest the phone streams to. Created once; every reveal is a new recording on it. Recording is automatic, low-latency HLS is on, and a 30 s reconnect grace keeps one dropped signal from splitting a reveal into two videos.</p>
-          ${!s.streamConfigured ? html`<p class="text-sm" style="color:#744210">CF_STREAM_TOKEN / CF_ACCOUNT_ID are not set in Cloudflare Pages. The token needs Stream: Edit.</p>` : null}
-          ${c.liveInput ? html`
-            <div class="flex items-center gap-2 flex-wrap">
-              <span class="badge badge-green">Ready</span><code style="font-size:12px">${c.liveInput.uid}</code>
-              <span class="text-sm text-muted">created ${bcFmt(c.liveInput.created)}${c.liveInput.keysRotatedAt ? ` · keys rotated ${bcFmt(c.liveInput.keysRotatedAt)}` : ''}${c.liveInput.enabled === false ? ' · DISABLED' : ''}</span>
-              <button class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${() => setup('refreshInput', {}, 'Refresh')}>Refresh</button>
-              <button class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${() => setConfirm({ title: 'Rotate the ingest keys?', message: 'Every phone must scan a new QR code afterwards. Do this if a phone was lost or a key was shown on a screenshare.', danger: true, fn: () => setup('rotateKeys', {}, 'Rotate') })}>Rotate keys</button>
-              ${c.liveInput.enabled === false ? html`<button class="btn btn-secondary btn-sm" disabled=${!!busy} onClick=${() => setup('enableInput', {}, 'Enable')}>Enable</button>` : html`<button class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${() => setConfirm({ title: 'Disable the live input?', message: 'Phones will be refused until you enable it again. Use this to stop an unwanted broadcast.', danger: true, fn: () => setup('disableInput', {}, 'Disable') })}>Disable</button>`}
-            </div>` : html`<button class="btn btn-primary" disabled=${!!busy || !s.streamConfigured} onClick=${() => setup('setupInput', {}, 'Create input')}>${busy === 'Create input' ? html`<span class="spinner" style="width:14px;height:14px" />` : null} Create the live input</button>`}
-        </div>
-
-        <div class="card">
-          <h3 style="margin:0 0 .5rem">2. Set up a phone</h3>
-          <p class="text-sm text-muted" style="margin:0 0 .75rem">Install <strong>Larix Broadcaster</strong> (free, iPhone and Android). Open the phone's camera, point it at a code below, and tap the banner that appears. Larix opens with the SOARD connection and video settings filled in. That's the whole setup. On reveal day: open Larix, tap the record button.</p>
-          ${larix.standard ? html`
-            <div style="display:flex;gap:2rem;flex-wrap:wrap;align-items:flex-start">
-              <${QrCode} value=${larix.standard} label="Standard · 1080p · 3.5 Mbps" />
-              <${QrCode} value=${larix.lowSignal} label="Weak signal · 720p · 1.8 Mbps" />
-              <div style="max-width:420px;font-size:0.9rem;line-height:1.6">
-                <p style="margin:0 0 .5rem"><strong>Before every reveal</strong></p>
-                <ul style="margin:0 0 .75rem;padding-left:1.2rem">
-                  <li>Plug in the wireless mic receiver (not Bluetooth) and check the level meter moves in Larix.</li>
-                  <li>Larix settings → Connectivity → turn on <em>Adaptive bitrate</em> (Ladder ascend) so weak signal lowers quality instead of dropping.</li>
-                  <li>Use the weak-signal profile when the house has poor cell coverage.</li>
-                  <li>Battery above 50 % or on a pack; the phone stays awake while streaming.</li>
-                </ul>
-                <button class="btn btn-ghost btn-sm" type="button" onClick=${() => setShowSecrets(!showSecrets)}>${showSecrets ? 'Hide' : 'Show'} OBS / manual details</button>
-                ${showSecrets ? html`<div style="margin-top:.5rem;font-size:12px;word-break:break-all">
-                  <div><strong>SRT (OBS, Larix):</strong> <code>${larix.srtUrl}</code> <${CopyBtn} text=${larix.srtUrl} /></div>
-                  ${larix.rtmps ? html`<div style="margin-top:6px"><strong>RTMPS server:</strong> <code>${larix.rtmps.url}</code> <${CopyBtn} text=${larix.rtmps.url} /><br/><strong>RTMPS key:</strong> <code>${larix.rtmps.streamKey}</code> <${CopyBtn} text=${larix.rtmps.streamKey} /></div>` : null}
-                  <div style="margin-top:6px"><strong>Larix link:</strong> <${CopyBtn} text=${larix.standard} label="Copy setup link" /></div>
-                </div>` : null}
-              </div>
-            </div>` : html`<p class="text-sm text-muted">Create the live input first.</p>`}
-        </div>
-
-        <div class="card">
-          <h3 style="margin:0 0 .5rem">3. Facebook</h3>
-          <div class="form-group">
-            <label class="form-label">How the Facebook post gets created</label>
-            <label class="checkbox-label" style="display:block;margin:.25rem 0"><input type="radio" name="fbmode" checked=${cfg?.facebookMode === 'persistent'} onChange=${() => setCfg({ ...cfg, facebookMode: 'persistent' })} /> Persistent stream key (works today). Schedule the live post in Live Producer ahead of time; Facebook starts it when the stream arrives.</label>
-            <label class="checkbox-label" style="display:block;margin:.25rem 0"><input type="radio" name="fbmode" checked=${cfg?.facebookMode === 'api'} onChange=${() => setCfg({ ...cfg, facebookMode: 'api' })} /> Live Video API (after Facebook approves the app). The site creates and ends the post itself. Zero taps.</label>
-            ${st.fb?.needsReview ? html`<p class="text-sm" style="color:#744210;margin:.25rem 0 0">Facebook refused the API call: the app has not passed App Review for the Live Video API yet. The site fell back to the persistent key. See docs/facebook-app-review.md for the submission package.</p>` : null}
-          </div>
-          <div class="form-group"><label class="form-label">Page URL</label><input class="form-input" value=${cfg?.pageUrl || ''} onInput=${(e) => setCfg({ ...cfg, pageUrl: e.target.value })} style="max-width:420px" /></div>
-          <div class="flex items-center gap-2 flex-wrap" style="margin-bottom:1rem">
-            <button class="btn btn-secondary btn-sm" onClick=${handleSaveConfig} disabled=${!!busy}>Save</button>
-            <button class="btn btn-ghost btn-sm" onClick=${handleTestFb} disabled=${!!busy || !s.fbConfigured}>Test Facebook connection</button>
-            ${!s.fbConfigured ? html`<span class="text-sm text-muted">FB_PAGE_ID / FB_PAGE_TOKEN not set in Cloudflare Pages.</span>` : null}
-          </div>
-          ${fbResult ? html`<div class="text-sm" style=${`padding:8px 12px;border-radius:8px;background:${fbResult.success ? '#C6F6D5' : '#FEFCBF'}`}>${fbResult.success ? `Connected to "${fbResult.token?.name}". Recent broadcasts: ${(fbResult.recent?.videos || []).length}.` : `Failed: ${fbResult.token?.error || fbResult.error}`}</div>` : null}
-          ${fbResult?.info?.appId ? html`<div class="text-sm" style="margin-top:.75rem;padding:10px 12px;border:1px solid var(--color-border);border-radius:8px;line-height:1.7">
-            <div><strong>App Review helper</strong> · app id <code>${fbResult.info.appId}</code> · token ${fbResult.info.expiresAt ? `expires ${bcFmt(fbResult.info.expiresAt)}` : 'never expires'}</div>
-            <div>Granted: ${(fbResult.info.scopes || []).map((sc) => html`<code style="margin-right:4px">${sc}</code>`)}</div>
-            ${fbResult.info.missingForApiMode?.length ? html`<div>Still needed for API mode: ${fbResult.info.missingForApiMode.map((sc) => html`<code style="margin-right:4px;background:#FEFCBF">${sc}</code>`)} plus the <strong>Live Video API</strong> feature.</div>` : html`<div style="color:#22543D">All permissions for API mode are granted. If the site still gets error #10, the Live Video API feature itself is pending review.</div>`}
-            <div style="margin-top:4px"><a href=${fbResult.info.appReviewUrl} target="_blank" rel="noopener">Open App Review → Permissions and Features ↗</a> · <a href=${fbResult.info.appSettingsUrl} target="_blank" rel="noopener">App settings → Basic ↗</a> · package: <code>docs/facebook-app-review.md</code></div>
-          </div>` : null}
-        </div>
-        ${outputRow('facebook', 'Facebook', html`In Facebook: Live Producer → Streaming software → Advanced settings → turn on <strong>Persistent stream key</strong> → copy the key (the server URL is filled in for you). One time only.`, fbKey, setFbKey, 'rtmps://live-api-s.facebook.com:443/rtmp/')}
-        ${outputRow('youtube', 'YouTube', html`YouTube Studio → Go live → Stream → copy the <strong>Stream key</strong>. In the same screen turn on <strong>Auto-start</strong> and <strong>Auto-stop</strong> so the YouTube broadcast follows the phone.`, ytKey, setYtKey, 'rtmps://a.rtmps.youtube.com:443/live2')}
-        ${outputRow('instagram', 'Instagram live (optional, manual)', html`Not needed for the automatic Reel below. Only if you also want Instagram <em>live</em>: <strong>before each reveal</strong> (Instagram has no permanent key and no API): on a computer, instagram.com → <strong>Create</strong> → <strong>Live</strong> → copy the <strong>Stream URL</strong> and <strong>Stream key</strong> and paste both here. Needs a professional (business or creator) account. Instagram Live is portrait; set the camera orientation below to match what the crew shoots.`, igKey, setIgKey, '', { value: igUrl, set: setIgUrl })}
-        <div class="card">
-          <div style="display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap;align-items:center">
-            <h3 style="margin:0">Instagram Reel of every reveal (automatic)</h3>
-            <button class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${async () => { setIgCheck(null); const d = await setup('testInstagram', {}, 'Instagram check'); setIgCheck(d); }}>Check Instagram connection</button>
-          </div>
-          <p class="text-sm text-muted" style="margin:.5rem 0 .75rem">When the replay is ready, the site finds the reveal moment in the recording's captions (with AI as a second opinion), cuts up to 15 minutes around it, and posts it to Instagram as a Reel. Recordings under 15 minutes post whole. Nobody touches anything. The full recording stays on the site, Facebook and YouTube.</p>
-          ${igCheck ? html`<div class="text-sm" style=${`padding:8px 12px;border-radius:8px;margin-bottom:.75rem;background:${igCheck.success ? '#C6F6D5' : '#FEFCBF'}`}>
-            ${igCheck.account?.ok ? html`Linked Instagram: <strong>@${igCheck.account.username || igCheck.account.id}</strong>. ` : html`Instagram: ${igCheck.account?.error || igCheck.error} `}
-            ${igCheck.missing?.length ? html`Token is missing ${igCheck.missing.map((m) => html`<code style="margin:0 3px">${m}</code>`)}. Follow "Instagram Reels" in docs/facebook-app-review.md to regenerate it.` : igCheck.account?.ok ? 'Ready to post.' : ''}
-          </div>` : null}
-          <label class="checkbox-label"><input type="checkbox" checked=${cfg?.reelsEnabled} onChange=${(e) => setCfg({ ...cfg, reelsEnabled: e.target.checked })} /> Post a Reel after every reveal</label>
-          <label class="checkbox-label"><input type="checkbox" checked=${cfg?.reelsFeed} onChange=${(e) => setCfg({ ...cfg, reelsFeed: e.target.checked })} /> Also show it on the main grid, not only the Reels tab</label>
-          <div class="form-group" style="margin-top:.75rem"><label class="form-label">Caption</label><textarea class="form-textarea" rows="3" maxlength="2200" value=${cfg?.reelsCaption || ''} onInput=${(e) => setCfg({ ...cfg, reelsCaption: e.target.value })}></textarea><span class="form-hint"><code>{kid}</code> becomes the kid's name. Links in Instagram captions are not clickable, so point to the link in bio.</span></div>
-          <div class="form-group"><label class="form-label">Lead-up to keep before the reveal moment</label><select class="form-select" value=${cfg?.reelsLead} onChange=${(e) => setCfg({ ...cfg, reelsLead: Number(e.target.value) })} style="max-width:260px">${[60, 120, 180, 240, 300, 420, 600].map((n) => html`<option value=${n}>${n / 60} minute${n > 60 ? 's' : ''}</option>`)}</select><span class="form-hint">The rest of the 15 minutes is what happens after: reactions and the room tour.</span></div>
-          <button class="btn btn-secondary btn-sm" onClick=${handleSaveConfig} disabled=${!!busy}>Save</button>
-        </div>
-        <div class="card">
-          <div class="form-group"><label class="form-label">YouTube channel or live URL (shown on the live page)</label><input class="form-input" value=${cfg?.youtubeUrl || ''} placeholder="https://www.youtube.com/@…/live" onInput=${(e) => setCfg({ ...cfg, youtubeUrl: e.target.value })} style="max-width:420px" /></div>
-          <div class="form-group"><label class="form-label">Instagram profile URL (shown on the live page)</label><input class="form-input" value=${cfg?.instagramUrl || ''} placeholder="https://www.instagram.com/…" onInput=${(e) => setCfg({ ...cfg, instagramUrl: e.target.value })} style="max-width:420px" /></div>
-          <button class="btn btn-secondary btn-sm" onClick=${handleSaveConfig} disabled=${!!busy}>Save</button>
-        </div>
-
-        <div class="card">
-          <h3 style="margin:0 0 .5rem">4. Cloudflare notification (instant reaction)</h3>
-          <p class="text-sm text-muted" style="margin:0 0 .5rem">The site checks Stream every few seconds on its own. This webhook makes the reaction instant when the phone connects or drops. Set it up once in the Cloudflare dashboard:</p>
-          <ol style="font-size:0.9rem;line-height:1.7;margin:0 0 .5rem;padding-left:1.2rem">
-            <li>Notifications → <strong>Destinations</strong> → Webhooks → Create. URL: <code>${s.webhookUrl}</code> <${CopyBtn} text=${s.webhookUrl} /> (leave the secret blank). Save and test.</li>
-            <li>Notifications → All Notifications → <strong>Add</strong> → Stream → <em>Stream Live Notifications</em> → attach that webhook → Create.</li>
-          </ol>
-          <div class="text-sm">Last received: <strong>${h.webhook?.lastReceivedAt ? `${bcAgo(h.webhook.lastReceivedAt)} (${h.webhook.lastEvent})` : 'never'}</strong> · total ${h.webhook?.count || 0}</div>
-        </div>
-
-        <div class="card">
-          <h3 style="margin:0 0 .5rem">5. Rehearsal input (private)</h3>
-          <p class="text-sm text-muted" style="margin:0 0 .75rem">A second ingest that never touches the public site, Facebook or YouTube. Scan its code on a phone to practice, then watch the preview here. Recordings auto-delete after 30 days.</p>
-          ${c.rehearsalInput ? html`
-            <div style="display:flex;gap:2rem;flex-wrap:wrap;align-items:flex-start">
-              <${QrCode} value=${larix.rehearsal} size="180" label="Rehearsal · scan on a phone" />
-              <div style="flex:1;min-width:280px">
-                <div class="text-sm" style="margin-bottom:.5rem">Status: <strong>${data.live?.rehearsal?.live ? 'receiving video' : 'idle'}</strong></div>
-                ${data.live?.rehearsal?.live && data.playback?.rehearsalEmbed ? html`<div style="border-radius:12px;overflow:hidden;background:#000;aspect-ratio:16/9;max-width:480px"><iframe src=${data.playback.rehearsalEmbed} title="Rehearsal preview" style="width:100%;height:100%;border:0" allow="autoplay; fullscreen" allowfullscreen></iframe></div>` : null}
-                <button class="btn btn-ghost btn-sm" style="margin-top:.5rem" disabled=${!!busy} onClick=${() => setConfirm({ title: 'Delete the rehearsal input?', message: 'Practice phones lose their connection until you create a new one.', danger: true, fn: () => setup('deleteRehearsal', {}, 'Delete rehearsal') })}>Delete</button>
-              </div>
-            </div>` : html`<button class="btn btn-secondary btn-sm" disabled=${!!busy || !s.streamConfigured} onClick=${() => setup('setupRehearsal', {}, 'Rehearsal')}>Create rehearsal input</button>`}
-        </div>
-
-        <div class="card">
-          <h3 style="margin:0 0 .5rem">6. Site behavior</h3>
-          <div class="form-grid">
-            <div class="form-group"><label class="form-label">Keep the replay on the site for</label><select class="form-select" value=${cfg?.replayHours} onChange=${(e) => setCfg({ ...cfg, replayHours: Number(e.target.value) })}>${[24, 48, 72, 168, 336].map((n) => html`<option value=${n}>${n / 24} day${n > 24 ? 's' : ''}</option>`)}</select></div>
-            <div class="form-group"><label class="form-label">Time zone for emails and texts</label><input class="form-input" value=${cfg?.timezone || ''} onInput=${(e) => setCfg({ ...cfg, timezone: e.target.value })} /></div>
-            <div class="form-group"><label class="form-label">Camera orientation</label><select class="form-select" value=${cfg?.orientation || 'landscape'} onChange=${(e) => setCfg({ ...cfg, orientation: e.target.value })}><option value="landscape">Landscape (best for the site, YouTube, Facebook on desktop)</option><option value="portrait">Portrait (best for Instagram and phones)</option></select><span class="form-hint">The site's player takes this shape. Whatever the crew shoots shows with bars on the platforms of the other shape.</span></div>
-            <div class="form-group"><label class="form-label">Default title (unplanned broadcasts)</label><input class="form-input" value=${cfg?.defTitle || ''} onInput=${(e) => setCfg({ ...cfg, defTitle: e.target.value })} /></div>
-            <div class="form-group"><label class="form-label">Default banner message</label><input class="form-input" value=${cfg?.defMessage || ''} onInput=${(e) => setCfg({ ...cfg, defMessage: e.target.value })} /></div>
-          </div>
-          <button class="btn btn-secondary btn-sm" onClick=${handleSaveConfig} disabled=${!!busy}>Save</button>
-        </div>`;
-
-      const remindersTab = html`
-        <div class="card">
-          <div class="stat-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:1rem">
-            ${[['email', 'Email'], ['sms', 'Text'], ['push', 'Browser']].map(([k, l]) => html`<div class="stat-card" style="--card-accent:#FFD500"><div class="stat-number">${data.reminders?.counts?.[k] || 0}</div><div class="stat-label">${l} reminders</div></div>`)}
-          </div>
-          <div class="form-group">
-            <label class="checkbox-label"><input type="checkbox" checked=${cfg?.remEnabled} onChange=${(e) => setCfg({ ...cfg, remEnabled: e.target.checked })} /> Send reminders</label>
-            <label class="checkbox-label"><input type="checkbox" checked=${cfg?.rem24} onChange=${(e) => setCfg({ ...cfg, rem24: e.target.checked })} /> The day before</label>
-            <label class="checkbox-label"><input type="checkbox" checked=${cfg?.rem1} onChange=${(e) => setCfg({ ...cfg, rem1: e.target.checked })} /> One hour before</label>
-            <span class="form-hint">"We're live" and "replay is ready" always go out when reminders are on.</span>
-          </div>
-          <div class="form-group">
-            <label class="checkbox-label"><input type="checkbox" checked=${cfg?.remSms} onChange=${(e) => setCfg({ ...cfg, remSms: e.target.checked })} /> Offer text messages ${s.smsConfigured ? html`<span class="badge badge-green">Twilio connected</span>` : html`<span class="badge badge-gray">Twilio not configured</span>`}</label>
-            ${!s.smsConfigured ? html`<span class="form-hint">Set <code>TWILIO_ACCOUNT_SID</code>, <code>TWILIO_AUTH_TOKEN</code> and <code>TWILIO_FROM</code> (or <code>TWILIO_MESSAGING_SERVICE_SID</code>) in Cloudflare Pages. US texting needs the number registered for A2P 10DLC in Twilio; STOP replies are handled by Twilio.</span>` : null}
-          </div>
-          <div class="form-group">
-            <label class="checkbox-label"><input type="checkbox" checked=${cfg?.remPush} onChange=${(e) => setCfg({ ...cfg, remPush: e.target.checked })} /> Offer browser alerts ${s.pushReady ? html`<span class="badge badge-green">Keys ready</span>` : html`<button class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${() => setup('generateVapid', {}, 'Push keys')}>Generate push keys</button>`}</label>
-          </div>
-          <button class="btn btn-secondary btn-sm" onClick=${handleSaveConfig} disabled=${!!busy}>Save</button>
-        </div>
-        <div class="card">
-          <h3 style="margin:0 0 .5rem">Preview an email</h3>
-          <div class="flex items-center gap-2 flex-wrap">
-            <select class="form-select" value=${testKind} onChange=${(e) => setTestKind(e.target.value)} style="max-width:200px">${[['scheduled', 'Save the date'], ['day', 'Day before'], ['hour', 'One hour'], ['live', "We're live"], ['replay', 'Replay ready']].map(([k, l]) => html`<option value=${k}>${l}</option>`)}</select>
-            <input class="form-input" type="email" placeholder="your@email" value=${testEmail} onInput=${(e) => setTestEmail(e.target.value)} style="max-width:260px" />
-            <button class="btn btn-secondary btn-sm" disabled=${!!busy || !s.emailConfigured} onClick=${async () => { const d = await setup('sendTestReminder', { kind: testKind, email: testEmail || undefined }, 'Test email'); if (d.success) addToast('Test email sent', 'success'); }}>Send test</button>
-          </div>
-          ${s.kitConfigured ? html`<p class="text-sm text-muted" style="margin:.75rem 0 0">Kit: when a scheduled reveal goes live, "We're live" is emailed to ${kitAudience} automatically (switch it off per reveal when you schedule). A "save the date" draft is also created when you schedule, and a "watch the replay" draft when the replay is ready; review and send those from Kit.</p>` : null}
-        </div>
-        ${data.reminders?.recent?.length ? html`<div class="card"><h3 style="margin:0 0 .5rem">Recent signups</h3><div class="table-wrap"><table><thead><tr><th>When</th><th>Channel</th><th>Who</th><th>For</th><th>From</th></tr></thead><tbody>${data.reminders.recent.map((r) => html`<tr><td>${bcFmt(r.created_at)}</td><td>${r.channel}</td><td>${r.address}</td><td>${r.kid_slug || 'every reveal'}</td><td>${r.source || ''}</td></tr>`)}</tbody></table></div></div>` : null}`;
-
-      const healthTab = html`
-        <div class="card">
-          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem;margin-bottom:.5rem">
-            <h3 style="margin:0">Checks</h3>
-            <div class="flex gap-2"><button class="btn btn-secondary btn-sm" disabled=${!!busy} onClick=${async () => { await setup('runTick', {}, 'Checks'); await setup('testStream', {}, 'Stream'); await setup('testHub', {}, 'Hub'); addToast('Checks finished', 'success'); }}>Run checks now</button><button class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${async () => { const d = await setup('testAlert', {}, 'Test alert'); if (d.success) addToast('Test alert sent to Slack/email', 'success'); }}>Send test alert</button></div>
-          </div>
-          <${Check} ok=${s.streamConfigured ? (h.stream?.ok ?? null) : false} label="Cloudflare Stream token" detail=${h.stream?.error || (h.stream?.at ? `checked ${bcAgo(h.stream.at)}` : 'not checked yet')} />
-          <${Check} ok=${s.inputReady} label="Live input" detail=${s.inputReady ? c.liveInput?.uid : 'Create it in Setup'} />
-          <${Check} ok=${s.hubBound ? (data.hub?.ok ?? null) : false} label="Real-time hub" detail=${!s.hubBound ? 'LIVE_HUB binding missing: deploy the site after workers/live-hub exists' : data.hub?.ok ? `${data.hub.clients} clients · last tick ${data.hub.lastTick?.at ? bcAgo(data.hub.lastTick.at) : 'never'}${data.hub.lastTick?.error ? ` · ${data.hub.lastTick.error}` : ''}` : (data.hub?.error || 'unreachable')} />
-          <${Check} ok=${h.webhook?.lastReceivedAt ? true : null} label="Cloudflare notification webhook" detail=${h.webhook?.lastReceivedAt ? `last ${bcAgo(h.webhook.lastReceivedAt)} (${h.webhook.lastEvent})` : 'never received; the site still works from its own checks, reaction is just a few seconds slower'} />
-          <${Check} ok=${s.fbConfigured ? (h.facebook?.ok ?? null) : false} label="Facebook token" detail=${s.fbConfigured ? (h.facebook?.error || (h.facebook?.name ? `${h.facebook.name} · checked ${bcAgo(h.facebook.at)}` : 'not checked yet')) : 'FB_PAGE_ID / FB_PAGE_TOKEN not set'} />
-          <${Check} ok=${!!data.outputs?.find((o) => o.target === 'facebook' && o.exists)} label="Facebook simulcast output" detail=${data.outputs?.find((o) => o.target === 'facebook') ? 'set' : 'not set (Setup → Facebook)'} />
-          <${Check} ok=${!!data.outputs?.find((o) => o.target === 'youtube' && o.exists)} label="YouTube simulcast output" detail=${data.outputs?.find((o) => o.target === 'youtube') ? 'set' : 'optional'} />
-          <${Check} ok=${s.youtubeConfigured ? true : null} label="YouTube live check" detail=${s.youtubeConfigured ? 'the control room and alerts confirm the channel is live' : 'optional: add YOUTUBE_API_KEY (YouTube Data API v3 key) in Cloudflare Pages so the site can confirm YouTube went live'} />
-          <${Check} ok=${s.emailConfigured} label="Email (Resend)" detail=${s.emailConfigured ? 'ready' : 'RESEND_API_KEY missing'} />
-          <${Check} ok=${s.smsConfigured ? true : null} label="Text messages (Twilio)" detail=${s.smsConfigured ? 'ready' : 'optional'} />
-          <${Check} ok=${s.pushReady ? true : null} label="Browser push keys" detail=${s.pushReady ? 'ready' : 'optional: generate in Reminders'} />
-          <${Check} ok=${s.slackConfigured ? true : (s.alertEmails?.length ? true : false)} label="Alerts" detail=${[s.slackConfigured ? 'Slack' : null, s.alertEmails?.length ? `email: ${s.alertEmails.join(', ')}` : null].filter(Boolean).join(' · ') || 'Set SLACK_WEBHOOK_URL or add alert emails below'} />
-          <${Check} ok=${s.deployHook} label="Auto rebuild after replay attaches" detail=${s.deployHook ? 'deploy hook set' : 'CF_PAGES_DEPLOY_HOOK missing'} />
-          <${Check} ok=${s.kitConfigured ? true : null} label="Kit drafts" detail=${s.kitConfigured ? 'ready' : 'optional'} />
-        </div>
-        <div class="card">
-          <div class="form-group"><label class="form-label">Alert emails (comma separated)</label><input class="form-input" value=${cfg?.alertEmails || ''} placeholder="peter@…, ops@…" onInput=${(e) => setCfg({ ...cfg, alertEmails: e.target.value })} /></div>
-          <p class="text-sm text-muted" style="margin:0 0 .75rem">Alerts fire when a scheduled reveal never streams, when Stream reports an encoder error, when a daily check fails (and again on the morning of a reveal), and as a courtesy note when a broadcast starts and ends. While live, they also fire when the sound goes silent or disappears, the picture freezes, or Facebook or YouTube aren't live a couple of minutes in. Slack goes to <code>SLACK_WEBHOOK_URL</code> if set.</p>
-          <button class="btn btn-secondary btn-sm" onClick=${handleSaveConfig} disabled=${!!busy}>Save</button>
-        </div>
-        ${h.lastTick ? html`<div class="card" style="background:var(--color-bg-secondary)"><div class="text-sm">Last state check: ${bcAgo(h.lastTick.at)} via <code>${h.lastTick.source}</code>${h.lastTick.work?.length ? ` · ${h.lastTick.work.join(', ')}` : ''}</div>${h.lifecycle?.at ? html`<div class="text-sm text-muted">Stream lifecycle ${bcAgo(h.lifecycle.at)}: ${h.lifecycle.live ? `live (video ${h.lifecycle.videoUID})` : 'idle'}</div>` : null}</div>` : null}`;
-
-      const historyTab = html`
-        ${histMsgs ? html`<${BcMessages} key=${histMsgs.id} broadcastId=${histMsgs.id} addToast=${addToast} kidName=${histMsgs.kidName} title=${histMsgs.title} date=${histMsgs.date} onClose=${() => setHistMsgs(null)} scrollOnOpen=${true} />` : null}
-        <div class="card">
-          <h3 style="margin:0 0 .5rem">Broadcasts</h3>
-          ${data.history?.length ? html`<div class="table-wrap"><table><thead><tr><th>Reveal</th><th>Scheduled</th><th>Live</th><th>Length</th><th>Page views</th><th title="Scans of the family invite QR code">QR scans</th><th>Watch clicks</th><th>Donate clicks</th><th>Signups</th><th>Links</th></tr></thead><tbody>
-            ${data.history.map((r) => { const mins = r.live_at && r.ended_at ? Math.round((Date.parse(r.ended_at) - Date.parse(r.live_at)) / 60000) : null; const e = r.events || {}; const meta = { id: r.id, broadcastId: r.id, kidName: r.kid_name, title: r.title, date: r.live_at || r.scheduled_at }; return html`<tr>
-              <td><strong>${r.title || r.id}</strong><br/><span class="text-muted text-sm">${r.phase}${r.source === 'manual' ? ' · manual' : ''}</span>
-                ${r.messageCount > 0 ? html`<div class="text-sm" style="margin-top:2px;white-space:nowrap"><button class="bc-link" type="button" onClick=${() => setHistMsgs(meta)}>${bcPlural(r.messageCount, 'message')}</button> · <button class="bc-link" type="button" onClick=${() => bcKeepsakeFor(meta, addToast)}>Keepsake</button></div>` : null}</td>
-              <td>${bcFmt(r.scheduled_at)}</td><td>${bcFmt(r.live_at)}</td><td>${mins != null ? `${mins} min` : ''}</td>
-              <td>${e.view_live_page || 0}</td><td>${e.qr_scan || 0}</td><td>${(e.click_watch || 0) + (e.click_replay || 0) + (e.banner_click || 0)}</td><td>${e.click_donate || 0}</td><td>${e.reminder_signup || 0}</td>
-              <td style="white-space:nowrap">${r.replay_uid ? html`<a href=${`https://watch.cloudflarestream.com/${r.replay_uid}`} target="_blank" rel="noopener">Replay ↗</a> ` : ''}${r.fb_permalink ? html`<a href=${r.fb_permalink} target="_blank" rel="noopener">Facebook ↗</a> ` : ''}${r.data?.reel?.permalink ? html`<a href=${safeHref(r.data.reel.permalink)} target="_blank" rel="noopener">Reel ↗</a>` : ''}</td>
-            </tr>`; })}
-          </tbody></table></div>` : html`<p class="text-sm text-muted">No broadcasts yet.</p>`}
-        </div>
-        ${data.recordings?.length ? html`<div class="card"><h3 style="margin:0 0 .5rem">Recordings on the live input</h3><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px">${data.recordings.map((v) => html`<a href=${v.watch} target="_blank" rel="noopener" style="text-decoration:none;color:inherit;border:1px solid var(--color-border);border-radius:10px;overflow:hidden"><img src=${v.thumbnail} alt="" style="width:100%;aspect-ratio:16/9;object-fit:cover;display:block;background:#000" /><div style="padding:8px;font-size:12px"><div style="font-weight:600">${v.name || v.uid.slice(0, 8)}</div><div class="text-muted">${bcFmt(v.created)} · ${v.isLiveNow ? 'LIVE' : v.duration ? `${Math.round(v.duration / 60)} min` : v.state}</div></div></a>`)}</div></div>` : null}
-        <div class="card">
-          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem"><h3 style="margin:0">Facebook-only broadcasts (older)</h3><button class="btn btn-ghost btn-sm" disabled=${!!busy || !s.fbConfigured} onClick=${() => load({ fb: true })}>Load from Facebook</button></div>
-          <p class="text-sm text-muted" style="margin:.35rem 0 .25rem">Replays saved to Stream show which kid page they are on. Pick a kid to put a replay on the right page or move it; the site deploys on its own.</p>
-          <p class="text-sm text-muted" style="margin:.5rem 0">Lives that went straight to Facebook (before this system, or in an emergency). Facebook deletes replays after 30 days; the archive sweep saves them to Stream automatically, and you can force one here.</p>
-          ${data.fbRecent?.videos?.length ? data.fbRecent.videos.map(fbVideoRow) : (data.fbRecent ? html`<p class="text-sm text-muted">${data.fbRecent.error ? `Facebook: ${data.fbRecent.error}` : 'No recent broadcasts.'}</p>` : null)}
-        </div>`;
-
+      const settingsFlag = dirty ? 'Unsaved changes' : !setupDone ? 'Setup is not finished' : null;
+      const ctx = { data, kids, busy, act, setup, setConfirm, addToast, load, openSettings, roomKey };
       return html`
-        <div class="page-header">
+        <div class="page-header bc-header">
           <div>
             <h2>Broadcast</h2>
-            <p class="text-muted" style="margin:0">Live room reveals: schedule ahead, set up phones, watch health. Reveal day runs itself.</p>
+            <p class="text-muted" style="margin:0">Schedule reveals, watch them live, and fix anything that goes wrong.</p>
           </div>
+          <button class="btn btn-ghost btn-sm" type="button" disabled=${!!busy} onClick=${refreshNow} title="Ask Cloudflare Stream what's true right now">${busy === 'Refresh' ? bcSpin : null}Refresh</button>
         </div>
-        <div class="hub-tabs" style="margin-bottom:1.25rem">
-          ${tabs.map(([id, label]) => html`<button class=${`hub-tab ${tab === id ? 'active' : ''}`} onClick=${() => setTab(id)}>${label}${id === 'health' && !setupDone ? ' •' : ''}</button>`)}
+        <div class="hub-tabs bc-tabs" role="tablist" aria-label="Broadcast">
+          ${BC_TABS.map(([id, label]) => html`<button type="button" role="tab" aria-selected=${tab === id} class=${`hub-tab ${tab === id ? 'active' : ''}`} onClick=${() => setTab(id)}>${label}${id === 'now' && (phase === 'live' || phase === 'ending') ? html`<span class="bc-tab-live" aria-hidden="true"></span><span class="bc-sr"> (live)</span>` : null}${id === 'settings' && settingsFlag ? html`<span class="bc-tab-dot" title=${settingsFlag} aria-hidden="true"></span><span class="bc-sr"> (${settingsFlag.toLowerCase()})</span>` : null}</button>`)}
         </div>
-        ${tab === 'now' ? nowTab : tab === 'monitor' ? html`<${ControlRoomLazy} ...${controlRoomProps} />` : tab === 'setup' ? setupTab : tab === 'reminders' ? remindersTab : tab === 'health' ? healthTab : historyTab}
-        ${confirm ? html`<${ConfirmModal} title=${confirm.title} message=${confirm.message} danger=${confirm.danger} loading=${!!busy} onCancel=${() => setConfirm(null)} onConfirm=${async () => { const fn = confirm.fn; setConfirm(null); await fn(); }} />` : null}
+        ${tab === 'now' ? html`<${BcNow} ...${ctx} />`
+          : tab === 'history' ? html`<${BcHistory} ...${ctx} />`
+          : html`<${BcSettings} ...${ctx} cfg=${cfg} setCfg=${setCfg} dirty=${dirty} jump=${jump} clearJump=${() => setJump(null)} />`}
+        ${tab === 'settings' && dirty ? html`<div class="bc-savebar" role="region" aria-label="Unsaved settings">
+          <span>Unsaved changes</span>
+          <div class="bc-btns">
+            <button class="btn btn-ghost btn-sm" type="button" disabled=${!!busy} onClick=${() => setCfg(cfgBase)}>Discard</button>
+            <button class="btn btn-primary btn-sm" type="button" disabled=${!!busy} onClick=${saveCfg}>${busy === 'Save settings' ? bcSpin : null}Save settings</button>
+          </div>
+        </div>` : null}
+        ${confirm ? html`<${ConfirmModal} title=${confirm.title} message=${confirm.message} danger=${confirm.danger} confirmLabel=${confirm.confirmLabel} cancelLabel=${confirm.cancelLabel} busyLabel=${confirm.busyLabel} loading=${!!busy} onCancel=${() => setConfirm(null)} onConfirm=${async () => { const fn = confirm.fn; setConfirm(null); await fn(); }} />` : null}
       `;
     }
 
@@ -6017,7 +6372,8 @@
     }
 
     // ─── Confirm Modal ──────────────────────
-    function ConfirmModal({ title, message, onConfirm, onCancel, danger, loading }) {
+    // confirmLabel / cancelLabel / busyLabel override the buttons ("Delete" / "Cancel" / "Deleting...")
+    function ConfirmModal({ title, message, onConfirm, onCancel, danger, loading, confirmLabel, cancelLabel, busyLabel }) {
       // Trap focus, handle Escape, lock body scroll
       const modalRef = useRef();
       useEffect(() => {
@@ -6033,9 +6389,9 @@
           <h3 id="modal-title">${title}</h3>
           <p>${message}</p>
           <div class="modal-buttons">
-            <button class="btn btn-ghost" onClick=${onCancel} disabled=${loading}>Cancel</button>
+            <button class="btn btn-ghost" onClick=${onCancel} disabled=${loading}>${cancelLabel || 'Cancel'}</button>
             <button class="btn ${danger ? 'btn-danger' : 'btn-primary'}" onClick=${onConfirm} disabled=${loading}>
-              ${loading ? html`<span class="spinner" /> Deleting...` : danger ? 'Delete' : 'Confirm'}
+              ${loading ? html`<span class="spinner" /> ${busyLabel || (confirmLabel ? 'Working...' : 'Deleting...')}` : confirmLabel || (danger ? 'Delete' : 'Confirm')}
             </button>
           </div>
         </div>
@@ -16211,7 +16567,7 @@
     }
 
     function App() {
-      const [view, setView] = useState('dashboard');
+      const [view, setView] = useState(() => (location.hash.startsWith('#broadcast') ? 'broadcast' : 'dashboard'));
       const [editSlug, setEditSlug] = useState(null);
       const [toasts, setToasts] = useState([]);
       const [kids, setKids] = useState([]);

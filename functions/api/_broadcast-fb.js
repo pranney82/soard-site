@@ -220,6 +220,23 @@ export async function fbLiveVideoHealth(env, liveVideoId) {
   }
 }
 
+/**
+ * A scheduled (not yet live) live post on the Page, if Facebook lists one on
+ * the /videos edge. Best effort for the go/no-go: not finding one doesn't
+ * prove there isn't one. → { ok, found, title, error }
+ */
+export async function fbScheduledLive(env) {
+  if (!fbConfigured(env)) return { ok: false, found: false, error: 'not configured' };
+  try {
+    const r = await graph(env, 'GET', `${env.FB_PAGE_ID}/videos`, { fields: 'live_status,title,created_time', limit: '15' });
+    if (!r.ok) return { ok: false, found: false, error: r.error };
+    const v = (r.data.data || []).find((x) => /^SCHEDULED_(UNPUBLISHED|LIVE)$/.test(x.live_status || ''));
+    return { ok: true, found: !!v, title: v?.title || null };
+  } catch (e) {
+    return { ok: false, found: false, error: e.message };
+  }
+}
+
 /** Split Facebook's rtmps://host:443/rtmp/<key> ingest URL into a Stream output { url, streamKey }. */
 export function splitIngestUrl(ingestUrl) {
   if (!ingestUrl) return null;

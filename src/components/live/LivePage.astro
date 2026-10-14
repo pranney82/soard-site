@@ -3,22 +3,34 @@
  * LivePage.astro — the live reveal page (used by /live/ and /live/[slug]/)
  * ========================================================================
  * Editorial split hero, same skeleton as apply/donate: text left, frame
- * right. The frame holds the kid's photo until the last 30 minutes, then the
- * starting-soon screen, then the Cloudflare Stream player (live), then the
+ * right. The frame (LiveStage) holds the kid's photo until the last 30
+ * minutes, then the starting-soon screen, then the live video, then the
  * replay. Everything dynamic comes from the shared live client, so the page
  * flips within a second of the phone connecting and never needs a rebuild.
  *
  * /live/ has no kid of its own: it follows whichever reveal is current. The
  * Pages Function functions/live/[[path]].js fills in that kid's headline,
  * story, photo and share image before the HTML leaves the server and marks
- * the hero with data-follow; the script keeps it current after that.
+ * the hero with data-follow, and during the watch party it also lays the
+ * page out for the video before first paint; the script keeps it current.
  *
- * Watch party (live and starting soon): reactions every viewer sees, a count
- * of people watching on the site, and messages for the family (screened by
- * /api/live-messages, pushed live through the real-time hub).
+ * Watch party (data-party: starting soon, live, replay): the crew shoots
+ * portrait, so the frame becomes a 9:16 video as tall as the screen allows,
+ * with nothing drawn on the picture (controls, reactions and the viewer
+ * count sit in a rail beside it and a bar under it). The messages for the
+ * family (LiveMessages) sit in the text column beside it. On phones the
+ * kid's name sits above the video and the newest message in the bar under
+ * it. The pieces: LiveStage.astro + utils/live-stage.ts (the frame),
+ * LiveMessages.astro + utils/live-messages.ts (the messages),
+ * LiveGive.astro + utils/live-give.ts (giving without leaving the reveal,
+ * with the running total of gifts from functions/api/live-gifts.js) and
+ * utils/live-player.ts (the video).
  */
-import { cfRaw, cfSrcset, cfLqip } from '../../utils/cf-image';
+import { cfRaw } from '../../utils/cf-image';
 import PastReveals from './PastReveals.astro';
+import LiveStage from './LiveStage.astro';
+import LiveMessages from './LiveMessages.astro';
+import LiveGive from './LiveGive.astro';
 
 interface KidLite {
   slug: string; name: string; heroImage: string | null; heroSummary?: string | null; shortDescription?: string | null;
@@ -32,18 +44,11 @@ const photo = kid?.heroImage || fallbackImage;
 const name = kid?.name || null;
 const summary = kid?.heroSummary || kid?.shortDescription || null;
 const rooms = kid?.roomTypes?.length ? kid.roomTypes.join(', ') : null;
-const photoSrc = (id: string) => cfRaw(id, 'w=640,h=800,fit=cover,gravity=face,q=82');
-
-const REACTIONS = [
-  { k: 'heart', label: 'Send love', svg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>' },
-  { k: 'sun', label: 'Send sunshine', svg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>' },
-  { k: 'clap', label: 'Celebrate', svg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5.8 11.3 2 22l10.7-3.79"/><path d="M4 3h.01M22 8h.01M15 2h.01M22 20h.01"/><path d="m22 2-2.24.75a2.9 2.9 0 0 0-1.96 3.12c.1.86-.57 1.63-1.45 1.63h-.38c-.86 0-1.6.6-1.76 1.44L14 10"/><path d="m22 13-.82-.33c-.86-.34-1.82.2-1.98 1.11-.11.7-.72 1.22-1.43 1.22H17"/><path d="m11 2 .33.82c.34.86-.2 1.82-1.11 1.98C9.52 4.9 9 5.52 9 6.23V7"/><path d="M11 13c1.93 1.93 2.83 4.17 2 5-.83.83-3.07-.07-5-2-1.93-1.93-2.83-4.17-2-5 .83-.83 3.07.07 5 2Z"/></svg>' },
-  { k: 'wow', label: 'Wow', svg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.94 15.5A2 2 0 0 0 8.5 14.06l-6.14-1.58a.5.5 0 0 1 0-.96L8.5 9.94A2 2 0 0 0 9.94 8.5l1.58-6.14a.5.5 0 0 1 .96 0l1.58 6.14a2 2 0 0 0 1.44 1.44l6.14 1.58a.5.5 0 0 1 0 .96l-6.14 1.58a2 2 0 0 0-1.44 1.44l-1.58 6.14a.5.5 0 0 1-.96 0z"/><path d="M20 3v4M22 5h-4M4 17v2M5 18H3"/></svg>' },
-];
+const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><path d="m16 6-4-4-4 4"/><path d="M12 2v13"/></svg>';
 ---
 
 <div class="live-page" data-view="loading">
-<section class="hero" id="live-hero" data-phase="loading" data-kid={kid?.slug || ''} data-generic-lead={GENERIC_LEAD} data-generic-photo={photoSrc(fallbackImage)}>
+<section class="hero" id="live-hero" data-phase="loading" data-orientation="portrait" data-kid={kid?.slug || ''} data-generic-lead={GENERIC_LEAD} data-generic-photo={cfRaw(fallbackImage, 'w=640,h=800,fit=cover,gravity=face,q=82')}>
   <div class="hero-inner">
     <div class="hero-text">
       <p class="hero-eyebrow"><span class="hero-eyebrow__dot" aria-hidden="true"></span><span data-live="eyebrow">Live reveal</span></p>
@@ -54,80 +59,27 @@ const REACTIONS = [
         {summary || GENERIC_LEAD}
       </p>
       <p class="hero-status" data-live="status" aria-live="polite"></p>
+      <div class="hero-party" data-slot="hero" hidden><LiveMessages /></div>
+      <p class="hero-gifts" data-live="gifts" hidden><strong data-live="gifts-total"></strong> given during this reveal<span class="hero-gifts__count" data-live="gifts-count"></span></p>
       <div class="hero-ctas">
-        <a class="btn btn-primary btn-lg hero-glow" href="#player" data-live="cta-watch" hidden>Watch live</a>
-        <a class="btn btn-primary btn-lg hero-glow" href="#player" data-live="cta-replay" hidden>Watch the replay</a>
+        <a class="btn btn-primary btn-lg hero-glow" href="https://www.facebook.com/SunshineOnaRanneyDay" target="_blank" rel="noopener" data-live="cta-facebook" hidden>Watch on Facebook</a>
         <a class="btn btn-primary btn-lg hero-glow" href="#remind" data-live="cta-remind" hidden>Remind me</a>
         <a class="btn btn-outline-dark" href="/api/reminders?ics=1" data-live="cta-calendar" hidden>Add to calendar</a>
         <a class="btn btn-outline-dark" href="#messages" data-live="cta-messages" hidden>Leave a message</a>
-        <a class="btn btn-outline-dark" href="https://www.facebook.com/SunshineOnaRanneyDay" target="_blank" rel="noopener" data-live="cta-facebook" hidden>Comment on Facebook</a>
         <a class="btn btn-outline-dark" href="#past-reveals" data-live="cta-past" hidden>Watch past reveals</a>
         <a class="btn btn-outline-dark" href="/donate/?src=live" data-live="cta-donate">Fund the next room</a>
+        <button class="btn btn-outline-dark hero-share" type="button" data-live="cta-share" hidden><Fragment set:html={SHARE} /><span data-live="share-label">Share</span></button>
       </div>
     </div>
 
     <div class="hero-frame" id="player">
-      <div class="hero-media">
-        <div class="hero-accent" aria-hidden="true"></div>
-        <div class="hero-photo" style={`background-image:url(${cfLqip(photo)})`} data-live="frame">
-          <img
-            class="lqip-img"
-            src={photoSrc(photo)}
-            srcset={cfSrcset(photo, [400, 640, 800, 1024], { fit: 'cover', gravity: 'face', aspectRatio: 1.25 })}
-            sizes="(max-width: 960px) 90vw, 40vw"
-            width="640" height="800"
-            alt={name ? `${name}` : 'A child in a newly built room'}
-            loading="eager" fetchpriority="high" decoding="async"
-            data-live="photo"
-          />
-          <div class="hero-player" data-live="player" hidden></div>
-          <div class="hero-reactions" data-live="reactions" aria-hidden="true"></div>
-          <div class="hero-badge" data-live="badge" hidden>
-            <span class="hero-badge__dot" aria-hidden="true"></span>
-            <span data-live="badge-text"></span>
-          </div>
-        </div>
-      </div>
-      <div class="watchbar" data-live="watchbar" hidden>
-        <p class="watchbar__viewers" data-live="viewers" hidden></p>
-        <div class="watchbar__reacts" role="group" aria-label="Send a reaction everyone watching will see">
-          {REACTIONS.map(r => (
-            <button class="react-btn" type="button" data-react={r.k} aria-label={r.label} title={r.label} set:html={r.svg} />
-          ))}
-        </div>
-      </div>
+      <LiveStage photo={photo} alt={name || 'A child in a newly built room'} />
     </div>
   </div>
 </section>
 
 <section class="live-msgs" id="messages" data-live-msgs hidden>
-  <div class="container live-msgs__grid">
-    <div class="live-msgs__head">
-      <p class="section-label">Messages</p>
-      <h2 data-msgs="heading">Messages for the family</h2>
-      <p class="live-block__lead">Leave a kind note. Every message is saved and given to the family after the reveal.</p>
-    </div>
-    <div class="live-msgs__compose">
-      <form class="msg-form" data-msgs="form" novalidate>
-        <label class="msg-label" for="msg-name">Your first name</label>
-        <input class="msg-field" id="msg-name" name="name" type="text" maxlength="40" autocomplete="given-name" required />
-        <label class="msg-label" for="msg-body">Your message</label>
-        <textarea class="msg-field msg-field--area" id="msg-body" name="body" maxlength="280" rows="3" required placeholder="We are so happy for you!"></textarea>
-        <div class="remind-hp" aria-hidden="true"><label>Website<input type="text" name="website" tabindex="-1" autocomplete="off" /></label></div>
-        <div class="msg-actions">
-          <button class="btn btn-primary" type="submit">Post message</button>
-          <span class="msg-count" data-msgs="count" aria-hidden="true">0/280</span>
-        </div>
-        <p class="remind-note" data-msgs="note" role="status" aria-live="polite"></p>
-        <p class="msg-fine">Messages are checked before they appear. First names only, please.</p>
-      </form>
-      <p class="msg-closed" data-msgs="closed" hidden>Messages are closed for this reveal. Thank you to everyone who wrote in.</p>
-    </div>
-    <div class="live-msgs__wall">
-      <ol class="msg-list" data-msgs="list" aria-label="Messages"></ol>
-      <p class="msg-empty" data-msgs="empty">Be the first to leave a message.</p>
-    </div>
-  </div>
+  <div class="container" data-slot="section"></div>
 </section>
 
 <section class="section section--cream live-body">
@@ -215,6 +167,7 @@ const REACTIONS = [
 
 <!-- Leads the page when nothing is scheduled (see .live-page order rules) -->
 <div class="live-past"><PastReveals limit={6} /></div>
+<LiveGive />
 </div>
 
 <style>
@@ -231,7 +184,7 @@ const REACTIONS = [
     background: var(--c-cream);
     padding: clamp(80px, 10vw, 140px) 0 clamp(64px, 8vw, 100px);
     position: relative;
-    contain: layout style;
+    /* No layout containment or transforms on the hero: they would trap the docked mini player */
     min-height: clamp(480px, 70vh, 720px);
     overflow: hidden;
   }
@@ -243,12 +196,7 @@ const REACTIONS = [
     grid-template-columns: 1.15fr 0.85fr;
     gap: clamp(40px, 5vw, 80px);
     align-items: center;
-    transition: grid-template-columns 0.4s cubic-bezier(0.16, 1, 0.3, 1);
   }
-  /* When a player or the starting-soon screen is showing, give the video the wider column */
-  .hero[data-phase='live'] .hero-inner,
-  .hero[data-phase='starting'] .hero-inner,
-  .hero[data-phase='replay'] .hero-inner { grid-template-columns: 0.85fr 1.15fr; }
 
   .hero-eyebrow {
     font-size: 12px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase;
@@ -286,123 +234,38 @@ const REACTIONS = [
     opacity: 0; animation: heroUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.25s both;
   }
   .hero-ctas [hidden] { display: none !important; }
+  .hero-share { display: inline-flex; align-items: center; gap: 8px; }
+  .hero-share :global(svg) { width: 17px; height: 17px; }
+  .hero-party { margin-bottom: 20px; }
+  .hero-gifts { margin: 0 0 16px; font-size: 15px; color: var(--c-text-muted); }
+  .hero-gifts[hidden] { display: none; }
+  .hero-gifts strong { color: var(--c-text); font-size: 1.15em; background-image: linear-gradient(transparent 58%, var(--c-yellow-soft) 58%); padding: 0 0.1em; }
+  .hero-party[hidden] { display: none; }
 
-  .hero-frame { position: relative; animation: heroPhotoIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) both; scroll-margin-top: 100px; }
-  .hero-media { position: relative; }
-  .hero-accent {
-    position: absolute; bottom: -16px; right: -16px; width: 65%; height: 50%; background: var(--c-yellow);
-    border-radius: 24px; z-index: 0; opacity: 0; animation: accentIn 1s cubic-bezier(0.16, 1, 0.3, 1) 0.7s both;
-  }
-  @keyframes accentIn { to { opacity: 0.35; } }
-  .hero-photo {
-    position: relative; z-index: 1; aspect-ratio: 4 / 5; border-radius: 24px; overflow: hidden;
-    background-size: cover; background-position: center; background-color: var(--c-dark-deep);
-    box-shadow: 0 32px 80px rgba(0, 0, 0, 0.12), 0 8px 24px rgba(0, 0, 0, 0.06);
-    transition: aspect-ratio 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-  }
-  .hero-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
-  .hero[data-phase='live'] .hero-photo,
-  .hero[data-phase='starting'] .hero-photo,
-  .hero[data-phase='replay'] .hero-photo { aspect-ratio: 16 / 9; }
-  .hero[data-phase='live'] .hero-photo img,
-  .hero[data-phase='starting'] .hero-photo img,
-  .hero[data-phase='replay'] .hero-photo img { display: none; }
-  .hero-player { position: absolute; inset: 0; }
-  .hero-player[hidden] { display: none; }
-  /* :global — the iframe is created at runtime, so it has no Astro scope attribute */
-  .hero-player :global(iframe) { width: 100%; height: 100%; border: 0; display: block; }
-
-  /* Portrait broadcasts (Instagram-first): tall player, kept narrow so the hero stays balanced */
-  .hero[data-orientation='portrait'][data-phase='live'] .hero-photo,
-  .hero[data-orientation='portrait'][data-phase='starting'] .hero-photo,
-  .hero[data-orientation='portrait'][data-phase='replay'] .hero-photo { aspect-ratio: 9 / 16; }
-  .hero[data-orientation='portrait'][data-phase='live'] .hero-inner,
-  .hero[data-orientation='portrait'][data-phase='starting'] .hero-inner,
-  .hero[data-orientation='portrait'][data-phase='replay'] .hero-inner { grid-template-columns: 1.15fr 0.85fr; }
-  .hero[data-orientation='portrait'][data-phase='live'] .hero-frame,
-  .hero[data-orientation='portrait'][data-phase='starting'] .hero-frame,
-  .hero[data-orientation='portrait'][data-phase='replay'] .hero-frame { max-width: 400px; justify-self: center; }
-
-  .hero-badge {
-    position: absolute; left: 16px; bottom: 16px; z-index: 3;
-    display: inline-flex; align-items: center; gap: 10px;
-    background: var(--c-dark-deep); color: var(--c-cream); padding: 10px 16px; border-radius: 100px;
-    font-size: 13px; font-weight: 600; letter-spacing: 0.02em;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
-  }
-  .hero-badge[hidden] { display: none; }
-  .hero-badge__dot { width: 8px; height: 8px; border-radius: 50%; background: var(--c-yellow); }
-  .hero[data-phase='live'] .hero-badge,
-  .hero[data-phase='starting'] .hero-badge { left: auto; right: 16px; top: 16px; bottom: auto; }
-
-  /* ── Reactions floating up over the video ── */
-  .hero-reactions { position: absolute; inset: 0; z-index: 2; pointer-events: none; overflow: hidden; }
-  .hero-reactions :global(.react-float) {
-    position: absolute; bottom: 10%; width: 34px; height: 34px; color: var(--c-yellow);
-    filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.45));
-    animation: reactRise var(--d, 2.6s) cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
-  }
-  .hero-reactions :global(.react-float svg) { width: 100%; height: 100%; display: block; }
-  .hero-reactions :global(.react-float[data-k='heart'] svg) { fill: currentColor; }
-  .hero-reactions :global(.react-float.is-mine) { width: 40px; height: 40px; }
-  @keyframes reactRise {
-    0% { transform: translate(0, 0) scale(0.5); opacity: 0; }
-    12% { transform: translate(0, -24px) scale(1); opacity: 1; }
-    100% { transform: translate(var(--x, 0px), -240px) scale(0.9); opacity: 0; }
+  /* backwards, not both: a transform left on after the entrance would trap the docked mini player */
+  .hero-frame {
+    position: relative; animation: heroPhotoIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) backwards; scroll-margin-top: 100px;
+    /* The height the stage (video + bar) may take */
+    --fh: clamp(420px, calc(100svh - var(--header-height) - 44px), 900px);
   }
 
-  /* ── Watch party bar under the video ── */
-  .watchbar { position: relative; z-index: 2; display: flex; align-items: center; gap: 12px 16px; flex-wrap: wrap; margin-top: 28px; }
-  .watchbar[hidden] { display: none; }
-  .watchbar__viewers { margin: 0; font-size: 14px; font-weight: 700; color: var(--c-text); display: inline-flex; align-items: center; gap: 10px; }
-  .watchbar__viewers::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--c-yellow); box-shadow: 0 0 0 3px var(--c-yellow-soft); }
-  .watchbar__viewers[hidden] { display: none; }
-  .watchbar__reacts { display: flex; gap: 10px; margin-left: auto; }
-  .react-btn {
-    width: 48px; height: 48px; padding: 0; border-radius: 50%; border: 1.5px solid var(--c-border); background: #fff; color: var(--c-dark);
-    display: grid; place-items: center; cursor: pointer; transition: transform 150ms ease, border-color 150ms ease, background 150ms ease;
-  }
-  .react-btn :global(svg) { width: 22px; height: 22px; }
-  .react-btn[data-react='heart'] :global(svg) { fill: var(--c-yellow); }
-  .react-btn:hover { border-color: var(--c-dark); background: var(--c-yellow-soft); }
-  .react-btn:active, .react-btn.is-pop { transform: scale(0.88); }
-  .react-btn:focus-visible { outline: 2px solid var(--c-dark); outline-offset: 2px; }
-
-  /* ── Messages for the family ── */
-  .live-msgs { background: #fff; border-top: 1px solid var(--c-border); border-bottom: 1px solid var(--c-border); padding: clamp(48px, 6vw, 80px) 0; scroll-margin-top: 80px; }
-  .live-msgs[hidden] { display: none; }
-  .live-msgs__grid {
-    display: grid; grid-template-columns: 0.9fr 1.1fr; grid-template-rows: auto 1fr;
-    grid-template-areas: 'head wall' 'compose wall'; column-gap: clamp(32px, 5vw, 72px); row-gap: 8px; align-items: start;
-  }
-  .live-msgs__head { grid-area: head; }
-  .live-msgs__compose { grid-area: compose; }
-  .live-msgs__wall { grid-area: wall; }
-  .live-msgs__head .live-block__lead { margin-bottom: 8px; }
-  .live-msgs h2 { font-size: clamp(1.75rem, 3vw, 2.5rem); letter-spacing: -0.02em; margin: 8px 0 16px; }
-  .msg-form { display: grid; gap: 8px; max-width: 480px; }
-  .msg-label { font-size: 13px; font-weight: 700; color: var(--c-text); margin-top: 6px; }
-  .msg-field {
-    width: 100%; padding: 13px 18px; border-radius: 14px; border: 1.5px solid var(--c-border); background: #fff;
-    font: inherit; font-size: 15px; color: var(--c-text); transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
-  }
-  .msg-field--area { resize: vertical; min-height: 104px; line-height: 1.5; }
-  .msg-field:focus { outline: none; border-color: var(--c-dark); box-shadow: 0 0 0 3px var(--c-yellow-soft); }
-  .msg-actions { display: flex; align-items: center; gap: 16px; margin-top: 8px; }
-  .msg-count { font-size: 13px; color: var(--c-text-light); }
-  .msg-fine { font-size: 12px; color: var(--c-text-light); margin: 0; }
-  .msg-closed { color: var(--c-text-muted); line-height: 1.6; }
-  .msg-closed[hidden], .msg-form[hidden] { display: none; }
-  .live-msgs__wall { background: var(--c-cream); border-radius: var(--border-radius-lg); padding: 20px; max-height: 560px; overflow-y: auto; overscroll-behavior: contain; }
-  .msg-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
-  .msg-list :global(.msg) { background: #fff; border: 1px solid var(--c-border); border-radius: 16px; padding: 14px 18px; animation: msgIn 320ms cubic-bezier(0.16, 1, 0.3, 1) both; }
-  .msg-list :global(.msg__name) { display: block; font-weight: 700; font-size: 14px; color: var(--c-dark); }
-  .msg-list :global(.msg__body) { margin: 4px 0 0; line-height: 1.55; color: var(--c-text); overflow-wrap: anywhere; }
-  @keyframes msgIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
-  .msg-empty { color: var(--c-text-muted); margin: 0; padding: 8px 4px; }
-  .msg-empty[hidden] { display: none; }
+  /* ── Watch party: video beside the messages ── */
+  .hero[data-party] { padding: clamp(20px, 2.4vw, 32px) 0 clamp(48px, 5vw, 72px); min-height: 0; }
+  .hero[data-party] .hero-inner { grid-template-columns: minmax(0, 1fr) auto; gap: clamp(32px, 4.5vw, 72px); align-items: stretch; }
+  .hero[data-party][data-orientation='landscape'] .hero-inner { grid-template-columns: minmax(300px, 0.8fr) minmax(0, 1.2fr); }
+  /* Top, not centre: a tall messages column must never push the video below the fold */
+  .hero[data-party] .hero-frame { align-self: start; }
+  /* A portrait stage sits in an auto-sized column, where a percentage width has nothing to resolve against */
+  .hero[data-party][data-orientation='portrait'] .hero-frame { --stage-max: 100vw; }
+  .hero[data-party] .hero-lead { display: none; }
+  .hero[data-party] .hero-status:empty { display: none; }
+  .hero[data-party] .hero-status { margin-bottom: 20px; min-height: 0; }
+  .hero[data-party] .hero-text h1 { font-size: clamp(2rem, 3.4vw, 3.1rem); margin-bottom: 16px; }
+  .hero[data-party] .hero-eyebrow { margin-bottom: 14px; }
 
   /* ── Body ── */
+  .live-msgs { background: #fff; border-top: 1px solid var(--c-border); border-bottom: 1px solid var(--c-border); padding: clamp(48px, 6vw, 80px) 0; scroll-margin-top: 80px; }
+  .live-msgs[hidden] { display: none; }
   .live-body { padding-top: clamp(48px, 6vw, 80px); }
   .live-grid { display: grid; grid-template-columns: 1.3fr 0.7fr; gap: clamp(40px, 5vw, 80px); align-items: start; }
   .live-block { margin-bottom: clamp(40px, 5vw, 64px); scroll-margin-top: 100px; }
@@ -452,57 +315,77 @@ const REACTIONS = [
   .live-links li[hidden] { display: none; }
   .live-share { display: flex; gap: 20px; flex-wrap: wrap; }
 
+  @media (min-width: 961px) {
+    /* The text column matches the video's height and the message wall takes up the slack */
+    .hero[data-party] .hero-text { display: flex; flex-direction: column; min-height: 0; }
+    .hero[data-party] .hero-party:not([hidden]) { flex: 1 1 0; display: flex; flex-direction: column; }
+  }
   @media (max-width: 960px) {
-    .hero-inner, .hero[data-phase='live'] .hero-inner, .hero[data-phase='starting'] .hero-inner, .hero[data-phase='replay'] .hero-inner { grid-template-columns: 1fr; gap: 40px; text-align: center; }
+    .hero-inner, .hero[data-party] .hero-inner, .hero[data-party][data-orientation='landscape'] .hero-inner { grid-template-columns: minmax(0, 1fr); gap: 40px; text-align: center; }
     .hero-lead, .hero-status { margin-inline: auto; }
     .hero-ctas { justify-content: center; }
-    /* width:100% gives the aspect-ratio box a basis once the photo is hidden */
     .hero-frame { width: 100%; max-width: 380px; margin: 0 auto; }
-    .hero[data-phase='live'] .hero-frame, .hero[data-phase='starting'] .hero-frame, .hero[data-phase='replay'] .hero-frame { max-width: none; order: -1; }
-    .hero[data-orientation='portrait'][data-phase='live'] .hero-frame,
-    .hero[data-orientation='portrait'][data-phase='starting'] .hero-frame,
-    .hero[data-orientation='portrait'][data-phase='replay'] .hero-frame { max-width: 360px; }
     .hero-eyebrow { justify-content: center; }
-    .watchbar { justify-content: center; }
-    .watchbar__reacts { margin-left: 0; }
-    /* Phones: read what others wrote, then write your own */
-    .live-msgs__grid { grid-template-columns: 1fr; grid-template-rows: none; grid-template-areas: 'head' 'wall' 'compose'; row-gap: 24px; }
-    .live-msgs__wall { max-height: 360px; }
     .live-grid { grid-template-columns: 1fr; }
     .live-side { position: static; }
+
+    /* Phones and tablets: the kid's name, then the video as big as fits under it, then the messages */
+    .hero[data-party] .hero-inner { gap: 0; }
+    .hero[data-party] .hero-text { display: contents; }
+    .hero[data-party] .hero-eyebrow { display: none; }
+    .hero[data-party] .hero-text h1 {
+      order: 1; font-size: 1.4rem; line-height: 1.25; letter-spacing: -0.015em; margin: 0 0 10px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .hero[data-party] .hero-frame { order: 2; max-width: none; --fh: calc(100svh - var(--header-height) - 12px - 2.2rem - 18px); }
+    .hero[data-party] .hero-status { order: 3; margin: 20px auto 0; }
+    .hero[data-party] .hero-party { order: 4; margin: 24px 0 0; }
+    .hero[data-party] .hero-gifts { order: 5; margin: 24px 0 0; }
+    .hero[data-party] .hero-ctas { order: 6; margin-top: 16px; }
   }
   @media (max-width: 768px) {
     .hero { padding-top: clamp(48px, 8vw, 80px); padding-bottom: var(--space-xl); min-height: auto; }
+    .hero[data-party] { padding-top: 12px; padding-bottom: 32px; }
+    .hero[data-party] .hero-inner { padding: 0 var(--space-md); }
     .hero-text h1 { font-size: clamp(2rem, 9vw, 3rem); }
-    .hero-photo { border-radius: 18px; }
-    .hero-accent { bottom: -12px; right: -12px; border-radius: 18px; }
     .remind-row { flex-direction: column; }
-    .watchbar { margin-top: 24px; }
   }
   @media (prefers-reduced-motion: reduce) {
-    .hero-text h1, .hero-lead, .hero-status, .hero-ctas, .hero-frame, .hero-accent { animation: none; opacity: 1; }
-    .hero-accent { opacity: 0.35; }
+    .hero-text h1, .hero-lead, .hero-status, .hero-ctas, .hero-frame { animation: none; opacity: 1; }
     .hero-eyebrow__dot::after { animation: none; }
-    .hero-inner, .hero-photo { transition: none; }
-    .react-btn { transition: none; }
-    .msg-list :global(.msg) { animation: none; }
   }
 </style>
 
 <script>
-  import { getLiveClient, formatWhen, relativeUntil, type LiveState, type ReminderOptions, type ReactionKind, type LiveMessage } from '../../utils/live-client';
+  import { getLiveClient, formatWhen, relativeUntil, type LiveState, type ReminderOptions } from '../../utils/live-client';
+  import { createStage } from '../../utils/live-stage';
+  import { createMessages } from '../../utils/live-messages';
+  import { createGive } from '../../utils/live-give';
   import { cfRaw } from '../../utils/cf-image';
 
   /** The crew may start streaming up to 30 minutes early (runbook), so the starting-soon screen fills that window here too. */
   const SLATE_LEAD_MS = 30 * 60 * 1000;
-  /** Below this the count reads as lonely rather than lively, so it stays hidden. */
-  const VIEWERS_MIN = 5;
-  const MSG_POLL_MS = 20_000;
-  const MSG_MAX = 120;
 
   const client = getLiveClient();
-  const hero = document.getElementById('live-hero') as HTMLElement | null;
-  if (hero) {
+
+  /**
+   * The site navigates client-side (Astro ClientRouter), which runs this
+   * module once per visit to the site, not once per visit to the page. So
+   * the page sets itself up on every astro:page-load that lands on it, and
+   * stops its video, timers and listeners when it is swapped out; otherwise
+   * coming back to it (the Back button) would show a dead page.
+   */
+  let teardown: (() => void) | null = null;
+  document.addEventListener('astro:before-swap', () => { teardown?.(); teardown = null; });
+  document.addEventListener('astro:page-load', () => {
+    teardown?.();
+    teardown = null;
+    const hero = document.getElementById('live-hero') as HTMLElement | null;
+    const stageEl = hero?.querySelector<HTMLElement>('[data-stage]');
+    if (hero && stageEl) teardown = setUp(hero, stageEl);
+  });
+
+  function setUp(hero: HTMLElement, stageEl: HTMLElement) {
     const pageKid = hero.dataset.kid || '';
     // Set by functions/live/[[path]].js when /live/ was rendered for the current kid
     const followKid = hero.dataset.follow || '';
@@ -510,29 +393,81 @@ const REACTIONS = [
     const q = <T extends Element>(k: string) => hero.querySelector(`[data-live="${k}"]`) as T | null;
     const body = document.querySelector('.live-body') as HTMLElement | null;
     const bq = <T extends Element>(k: string) => body?.querySelector(`[data-live="${k}"]`) as T | null;
-    const msgs = document.querySelector('[data-live-msgs]') as HTMLElement | null;
-    const mq = <T extends Element>(k: string) => msgs?.querySelector(`[data-msgs="${k}"]`) as T | null;
-    const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const setHidden = (el: Element | null, hidden: boolean) => { if (el) (el as HTMLElement).hidden = hidden; };
+    const setAttr = (el: HTMLElement, name: string, on: boolean) => { if (on) el.setAttribute(name, ''); else el.removeAttribute(name); };
     let last: LiveState | null = null;
     let lastMeta: { reminders: ReminderOptions | null } = { reminders: null };
-    let mountedPlayer = '';
     let display = 'loading';
     let shownKid = pageKid || followKid;
-    let watching = false;
-    let viewers = 0;
     let viewed = false;
     const slateFailed = new Set<string>();
 
-    function setHidden(el: Element | null, hidden: boolean) { if (el) (el as HTMLElement).hidden = hidden; }
+    const stage = createStage(stageEl, {
+      client,
+      // The hero lays itself out around the video's real shape
+      onShape: (orientation, party) => { hero.dataset.orientation = orientation; setAttr(hero, 'data-party', party); },
+      onOpenMessages: () => messages?.focusComposer(),
+      onSlateFailed: (src) => { slateFailed.add(src); if (last) render(last, lastMeta); },
+    });
+
+    const panel = document.querySelector<HTMLElement>('[data-msgs="panel"]');
+    const heroSlot = hero.querySelector<HTMLElement>('[data-slot="hero"]');
+    const section = document.querySelector<HTMLElement>('[data-live-msgs]');
+    const sectionSlot = section?.querySelector<HTMLElement>('[data-slot="section"]');
+    const messages = panel && heroSlot && section && sectionSlot
+      ? createMessages({ client, panel, heroSlot, section, sectionSlot, cta: q('cta-messages'), onLatest: (m) => stage.setLatest(m) })
+      : null;
+
+    // ── Giving without leaving the reveal ───────────────────────────
+    const giveEl = document.querySelector<HTMLElement>('[data-give]');
+    const give = giveEl ? createGive(giveEl, { client, stage }) : null;
+    const giveFrom = (where: string) => (e: Event) => {
+      // During the watch party the form opens beside the video; otherwise the link goes to /donate/
+      if (!give || !stage.party) { client.beacon('click_donate', { where }); return; }
+      e.preventDefault();
+      give.open(where);
+    };
+    q('cta-donate')?.addEventListener('click', giveFrom('hero'));
+    bq('cta-donate-side')?.addEventListener('click', giveFrom('side'));
+
+    // Running total of gifts during this reveal (Zeffy). Pushed by the hub; polled without one.
+    const GIFTS_POLL_MS = 30_000;
+    let giftsPushed = false;
+    const money = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
+    function showGifts(broadcastId: string | null, cents: number, count: number) {
+      const el = q<HTMLElement>('gifts');
+      const show = !!broadcastId && broadcastId === last?.id && count > 0 && stage.party;
+      setHidden(el, !show);
+      if (!show) return;
+      const total = q<HTMLElement>('gifts-total'); const n = q<HTMLElement>('gifts-count');
+      if (total) total.textContent = money.format(Math.floor(cents / 100));
+      if (n) n.textContent = ` · ${count.toLocaleString()} ${count === 1 ? 'gift' : 'gifts'}`;
+    }
+    async function loadGifts() {
+      if (!stage.party || document.hidden) return;
+      try {
+        const res = await fetch('/api/live-gifts');
+        const d = res.ok ? await res.json() : null;
+        if (d?.ok && d.configured) showGifts(d.broadcastId, d.cents, d.count);
+      } catch { /* offline */ }
+    }
+    const offGifts = client.on('gifts', ({ broadcastId, cents, count }) => { giftsPushed = true; showGifts(broadcastId, cents, count); });
+    const giftsTimer = setInterval(() => { if (!giftsPushed) loadGifts(); }, GIFTS_POLL_MS);
+    let giftsFor = '';
 
     // ── /live/ follows the current kid ──────────────────────────────
-    function setTitle(kidName: string | null) {
+    function setTitle(kidName: string | null, view: string) {
       const h1 = q<HTMLElement>('title');
       if (!h1) return;
+      const [before, mid, after] = kidName ? [`${kidName}'s `, 'room reveal', '']
+        : view === 'live' ? ["Today's ", 'room reveal', '']
+        : view === 'replay' ? ['Watch the ', 'reveal', '']
+        : ['Watch the ', 'reveal', ' live'];
+      if (h1.textContent === `${before}${mid}${after}`) return;
       const em = document.createElement('em');
+      em.textContent = mid;
       h1.textContent = '';
-      if (kidName) { h1.append(`${kidName}'s `); em.textContent = 'room reveal'; h1.append(em); }
-      else { h1.append('Watch the '); em.textContent = 'reveal'; h1.append(em, ' live'); }
+      h1.append(before, em, after);
     }
     function setPhoto(src: string) {
       const img = q<HTMLImageElement>('photo');
@@ -543,25 +478,26 @@ const REACTIONS = [
     function follow(s: LiveState, view: string) {
       if (pageKid) return;
       const want = view !== 'idle' && s.kidSlug ? s.kidSlug : '';
-      if (want === shownKid) return;
-      shownKid = want;
-      const lead = q<HTMLElement>('lead');
-      if (want) {
-        setTitle(s.kidName || null);
-        if (lead) lead.textContent = s.message || `Watch ${s.kidName ? `${s.kidName}'s` : 'the'} room reveal live, right here.`;
-        if (s.image) setPhoto(cfRaw(s.image, 'w=640,h=800,fit=cover,gravity=face,q=82'));
-      } else {
-        setTitle(null);
-        if (lead) lead.textContent = hero.dataset.genericLead || '';
-        if (hero.dataset.genericPhoto) setPhoto(hero.dataset.genericPhoto);
+      if (want !== shownKid) {
+        shownKid = want;
+        const lead = q<HTMLElement>('lead');
+        if (want) {
+          if (lead) lead.textContent = s.message || `Watch ${s.kidName ? `${s.kidName}'s` : 'the'} room reveal live, right here.`;
+          if (s.image) setPhoto(cfRaw(s.image, 'w=640,h=800,fit=cover,gravity=face,q=82'));
+        } else {
+          if (lead) lead.textContent = hero.dataset.genericLead || '';
+          if (hero.dataset.genericPhoto) setPhoto(hero.dataset.genericPhoto);
+        }
       }
+      setTitle(want ? s.kidName || null : null, view);
     }
 
     // ── Starting-soon screen in the frame for the last 30 minutes ──
     function slateSrc(s: LiveState, view: string, kidSlug: string) {
-      if (view !== 'upcoming' || !kidSlug || !s.scheduledAt || slateFailed.has(kidSlug)) return '';
+      if (view !== 'upcoming' || !kidSlug || !s.scheduledAt) return '';
       if (Date.parse(s.scheduledAt) - Date.now() > SLATE_LEAD_MS) return '';
-      return `/live/${kidSlug}/slate/?embed=1&music=0${s.orientation === 'portrait' ? '&o=portrait' : ''}`;
+      const src = `/live/${kidSlug}/slate/?embed=1&music=0${s.orientation === 'portrait' ? '&o=portrait' : ''}`;
+      return slateFailed.has(src) ? '' : src;
     }
 
     function render(state: LiveState | null, meta: { reminders: ReminderOptions | null }) {
@@ -571,55 +507,49 @@ const REACTIONS = [
       const phase = forThisKid ? s.phase : 'idle';
       const view = phase === 'live' || phase === 'ending' ? 'live' : phase === 'replay' ? 'replay' : phase === 'scheduled' || phase === 'armed' ? 'upcoming' : 'idle';
       const kidSlug = pageKid || (view !== 'idle' ? s.kidSlug || '' : '');
-      const slate = s.player ? '' : slateSrc(s, view, kidSlug);
+      const hasPlayer = !!(s.player && forThisKid && (view === 'live' || view === 'replay'));
+      const slate = hasPlayer ? '' : slateSrc(s, view, kidSlug);
       display = slate ? 'starting' : view;
+      const party = !!slate || hasPlayer;
       hero.dataset.phase = display;
+      setAttr(hero, 'data-party', party);
       if (page) page.dataset.view = display;
       follow(s, view);
 
-      const who = s.kidName ? `${s.kidName}'s room reveal` : 'The reveal';
       const eyebrow = q<HTMLElement>('eyebrow');
       const status = q<HTMLElement>('status');
-      const badge = q<HTMLElement>('badge');
-      const badgeText = q<HTMLElement>('badge-text');
-
+      let badge = '';
       if (view === 'live') {
         if (eyebrow) eyebrow.textContent = 'Live now';
-        if (status) status.textContent = `${who} is happening right now.`;
-        if (badgeText) badgeText.textContent = 'LIVE';
-        setHidden(badge, !s.player);
+        // The video says it all; without one (a Facebook-only broadcast) point people there
+        if (status) status.textContent = hasPlayer ? '' : 'We are live on Facebook right now.';
+        badge = 'Live';
       } else if (view === 'replay') {
         if (eyebrow) eyebrow.textContent = 'Replay';
-        if (status) status.textContent = s.player ? `${who} is ready to watch.` : `${who} just ended. The replay will appear here in a minute or two.`;
-        if (badgeText) badgeText.textContent = s.player ? 'Replay' : 'Processing';
-        setHidden(badge, false);
+        if (status) status.textContent = hasPlayer ? '' : 'The reveal just ended. The replay will appear here in a minute or two.';
+        badge = 'Processing';
       } else if (view === 'upcoming') {
         const rel = relativeUntil(s.scheduledAt);
         if (slate) {
           if (eyebrow) eyebrow.textContent = 'Starting soon';
           if (status) status.textContent = s.scheduledAt && Date.parse(s.scheduledAt) > Date.now() ? `We go live ${formatWhen(s.scheduledAt)}. Stay right here.` : 'Any moment now. Stay right here.';
-          // The starting-soon screen carries its own label in that corner
-          setHidden(badge, true);
         } else {
           if (eyebrow) eyebrow.textContent = 'Reveal day';
           if (status) status.textContent = s.scheduledAt ? `We go live ${formatWhen(s.scheduledAt)}${rel ? `, ${rel}` : ''}.` : 'A reveal is on the calendar.';
-          if (badgeText) badgeText.textContent = rel ? `Live ${rel}` : 'Coming up';
-          setHidden(badge, !rel);
         }
+        badge = rel ? `Live ${rel}` : 'Coming up';
       } else {
         if (eyebrow) eyebrow.textContent = 'Live reveal';
         if (status) status.textContent = pageKid ? '' : 'No reveal is scheduled right now. Get a reminder for the next one, and watch the last few while you wait.';
-        setHidden(badge, true);
       }
 
-      // CTAs
-      setHidden(q('cta-watch'), view !== 'live' || !s.player);
-      setHidden(q('cta-replay'), view !== 'replay' || !s.player);
-      setHidden(q('cta-remind'), !(view === 'upcoming' || view === 'idle') || !meta.reminders?.enabled);
-      setHidden(q('cta-calendar'), view !== 'upcoming');
+      // CTAs: reminders stop making sense once the starting-soon screen is up
+      setHidden(q('cta-remind'), !(display === 'upcoming' || display === 'idle') || !meta.reminders?.enabled);
+      setHidden(q('cta-calendar'), display !== 'upcoming');
       setHidden(q('cta-past'), view !== 'idle' || !document.getElementById('past-reveals'));
+      setHidden(q('cta-share'), !party);
       const fbCta = q<HTMLAnchorElement>('cta-facebook');
-      if (fbCta) { fbCta.href = s.facebookUrl || fbCta.href; setHidden(fbCta, !(view === 'replay' && !s.player)); fbCta.textContent = 'Watch on Facebook'; }
+      if (fbCta) { fbCta.href = s.facebookUrl || fbCta.href; setHidden(fbCta, !((view === 'live' || view === 'replay') && !hasPlayer)); }
       const fbLink = bq<HTMLAnchorElement>('link-facebook');
       if (fbLink && s.facebookUrl) fbLink.href = s.facebookUrl;
       const ytItem = bq<HTMLElement>('youtube-item');
@@ -628,51 +558,17 @@ const REACTIONS = [
       const igItem = bq<HTMLElement>('instagram-item');
       const igLink = bq<HTMLAnchorElement>('link-instagram');
       if (igItem && igLink) { if (s.instagramUrl) { igLink.href = s.instagramUrl; igItem.hidden = false; } else igItem.hidden = true; }
-      hero.dataset.orientation = s.orientation === 'portrait' ? 'portrait' : 'landscape';
 
-      // Frame: Stream player, or the starting-soon screen, or the photo
-      const playerEl = q<HTMLElement>('player');
-      const key = s.player && forThisKid ? `${s.player.kind}:${s.player.uid}` : slate ? `slate:${slate}` : '';
-      if (playerEl && key !== mountedPlayer) {
-        mountedPlayer = key;
-        playerEl.innerHTML = '';
-        if (s.player && forThisKid) {
-          const p = s.player;
-          const f = document.createElement('iframe');
-          f.src = `https://customer-${p.customerCode}.cloudflarestream.com/${p.uid}/iframe?${p.kind === 'live' ? 'autoplay=true&muted=true' : 'preload=metadata'}`;
-          f.title = p.kind === 'live' ? 'Live reveal video' : 'Reveal replay';
-          f.allow = 'accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen';
-          f.setAttribute('allowfullscreen', 'true');
-          f.loading = 'eager';
-          playerEl.appendChild(f);
-          playerEl.hidden = false;
-        } else if (slate) {
-          const f = document.createElement('iframe');
-          f.src = slate;
-          f.title = 'Starting soon';
-          f.loading = 'eager';
-          f.tabIndex = -1;
-          // A kid whose page isn't built yet has no starting-soon screen: fall back to the photo
-          f.addEventListener('load', () => {
-            let ok = false;
-            // Same origin, so an unreadable document means the browser showed an error page
-            try { ok = !!f.contentDocument?.getElementById('canvas'); } catch { ok = false; }
-            if (!ok) { slateFailed.add(kidSlug); mountedPlayer = ''; if (last) render(last, lastMeta); }
-          });
-          playerEl.appendChild(f);
-          playerEl.hidden = false;
-        } else {
-          playerEl.hidden = true;
-        }
-      }
-
-      // Watch party: reactions and the viewer count while it's on (or about to be)
-      const party = display === 'live' || display === 'starting';
-      if (party && !watching) { watching = true; client.watch(); }
-      setHidden(q('watchbar'), !party);
-      renderViewers();
-
-      renderMessages(s, view, forThisKid);
+      stage.update({
+        mode: display as 'idle' | 'upcoming' | 'starting' | 'live' | 'replay',
+        player: hasPlayer ? s.player : null,
+        slate,
+        orientation: s.orientation === 'landscape' ? 'landscape' : 'portrait',
+        badge,
+      });
+      messages?.update({ active: forThisKid && !!s.id && view !== 'idle', broadcastId: s.id, kidName: s.kidName, party });
+      if (!party) { setHidden(q('gifts'), true); give?.close(); }
+      else if (giftsFor !== s.id) { giftsFor = s.id || ''; loadGifts(); }
 
       // Reminder form availability
       const smsForm = bq<HTMLFormElement>('form-sms');
@@ -694,188 +590,9 @@ const REACTIONS = [
       }
     }
 
-
-    // ── Viewer count ────────────────────────────────────────────────
-    function renderViewers() {
-      const el = q<HTMLElement>('viewers');
-      if (!el) return;
-      const show = (display === 'live' || display === 'starting') && viewers >= VIEWERS_MIN;
-      el.hidden = !show;
-      if (show) el.textContent = `${viewers.toLocaleString()} watching here`;
-    }
-    // The watch-party hub answers {"t":"watch"} with a count; an older hub never does
-    let partyHub = false;
-    client.on('viewers', ({ n }) => { partyHub = true; viewers = n; renderViewers(); });
-
-    // ── Reactions ───────────────────────────────────────────────────
-    const layer = q<HTMLElement>('reactions');
-    const icons: Record<string, string> = {};
-    const own: Record<string, number> = {};
-    hero.querySelectorAll<HTMLButtonElement>('.react-btn').forEach((btn) => {
-      const kind = btn.dataset.react as ReactionKind;
-      icons[kind] = btn.innerHTML;
-      btn.addEventListener('click', () => {
-        spawn(kind, true);
-        if (client.react(kind)) own[kind] = (own[kind] || 0) + 1;
-        btn.classList.remove('is-pop'); void btn.offsetWidth; btn.classList.add('is-pop');
-        setTimeout(() => btn.classList.remove('is-pop'), 160);
-      });
-    });
-    function spawn(kind: string, mine: boolean) {
-      if (reduced || !layer || !icons[kind] || layer.childElementCount > 40) return;
-      const el = document.createElement('span');
-      el.className = mine ? 'react-float is-mine' : 'react-float';
-      el.dataset.k = kind;
-      el.innerHTML = icons[kind];
-      el.style.right = `${6 + Math.random() * 16}%`;
-      el.style.setProperty('--x', `${Math.round((Math.random() - 0.5) * 70)}px`);
-      el.style.setProperty('--d', `${(2.3 + Math.random() * 1).toFixed(2)}s`);
-      el.addEventListener('animationend', () => el.remove());
-      layer.appendChild(el);
-    }
-    client.on('react', ({ c }) => {
-      if (display !== 'live' && display !== 'starting') return;
-      for (const [kind, total] of Object.entries(c)) {
-        let n = Number(total) || 0;
-        const mine = Math.min(own[kind] || 0, n);
-        own[kind] = (own[kind] || 0) - mine;
-        n -= mine;
-        for (let i = 0; i < Math.min(n, 6); i++) setTimeout(() => spawn(kind, false), i * 110 + Math.random() * 80);
-      }
-    });
-
-    // ── Messages for the family ─────────────────────────────────────
-    let msgBroadcast = '';
-    let msgOpen = false;
-    let msgLoading = false;
-    const msgIds = new Set<string>();
-    const list = mq<HTMLOListElement>('list');
-    const form = mq<HTMLFormElement>('form');
-
-    function addMessage(m: LiveMessage, animate = true) {
-      if (!list || msgIds.has(m.id)) return;
-      msgIds.add(m.id);
-      const li = document.createElement('li');
-      li.className = 'msg';
-      li.dataset.id = m.id;
-      if (!animate) li.style.animation = 'none';
-      const who = document.createElement('span');
-      who.className = 'msg__name';
-      who.textContent = m.name;
-      const text = document.createElement('p');
-      text.className = 'msg__body';
-      text.textContent = m.body;
-      li.append(who, text);
-      list.prepend(li);
-      while (list.children.length > MSG_MAX) list.lastElementChild?.remove();
-      setHidden(mq('empty'), true);
-    }
-    function removeMessage(id: string) {
-      msgIds.delete(id);
-      list?.querySelector(`[data-id="${CSS.escape(id)}"]`)?.remove();
-      setHidden(mq('empty'), !!list?.children.length);
-    }
-    async function loadMessages(fresh: boolean) {
-      if (msgLoading) return;
-      msgLoading = true;
-      try {
-        const res = await fetch('/api/live-messages', { cache: 'no-store' });
-        const data = await res.json().catch(() => null);
-        if (!data || !res.ok) return;
-        if (!data.enabled || (data.broadcastId && data.broadcastId !== msgBroadcast)) {
-          if (!data.enabled) { setHidden(msgs, true); setHidden(q('cta-messages'), true); }
-          return;
-        }
-        if (fresh && list) { list.innerHTML = ''; msgIds.clear(); }
-        const incoming: LiveMessage[] = data.messages || [];
-        const keep = new Set(incoming.map(m => m.id));
-        if (!fresh) for (const id of [...msgIds]) if (!keep.has(id)) removeMessage(id);
-        for (const m of incoming) addMessage(m, !fresh);
-        msgOpen = !!data.open;
-        setHidden(form, !msgOpen);
-        setHidden(mq('closed'), msgOpen || !msgIds.size);
-        setHidden(mq('empty'), !!msgIds.size || !msgOpen);
-        setHidden(msgs, !msgOpen && !msgIds.size);
-        setHidden(q('cta-messages'), !msgOpen || display === 'idle');
-      } catch { /* offline */ } finally { msgLoading = false; }
-    }
-    function renderMessages(s: LiveState, view: string, forThisKid: boolean) {
-      if (!msgs) return;
-      const active = forThisKid && !!s.id && view !== 'idle';
-      const heading = mq<HTMLElement>('heading');
-      if (heading) heading.textContent = s.kidName ? `Messages for ${s.kidName}'s family` : 'Messages for the family';
-      const area = msgs.querySelector<HTMLTextAreaElement>('textarea');
-      if (area) area.placeholder = s.kidName ? `${s.kidName}, we are so happy for you!` : 'We are so happy for you!';
-      if (!active) {
-        msgBroadcast = ''; msgOpen = false;
-        msgs.hidden = true;
-        setHidden(q('cta-messages'), true);
-        return;
-      }
-      if (s.id !== msgBroadcast) { msgBroadcast = s.id || ''; loadMessages(true); }
-      else setHidden(q('cta-messages'), !msgOpen || display === 'idle');
-    }
-    client.on('msg', ({ message }) => { if (msgBroadcast) addMessage(message); });
-    client.on('msg-hide', ({ id }) => removeMessage(id));
-    client.on('connection', ({ connected }) => { if (connected && msgBroadcast) loadMessages(false); });
-    // Without a real-time hub that relays messages, poll so new notes still show up
-    setInterval(() => { if (msgBroadcast && !(client.connected && partyHub) && !document.hidden && !msgs?.hidden) loadMessages(false); }, MSG_POLL_MS);
-
-    function store(key: string, value?: string) {
-      try { if (value === undefined) return localStorage.getItem(key) || ''; localStorage.setItem(key, value); } catch { /* private mode */ }
-      return '';
-    }
-    const clientId = store('soard-live-id') || (() => {
-      const id = (crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`).replace(/[^a-zA-Z0-9-]/g, '');
-      store('soard-live-id', id);
-      return id;
-    })();
-    if (form) {
-      const nameInput = form.querySelector<HTMLInputElement>('input[name="name"]');
-      const bodyInput = form.querySelector<HTMLTextAreaElement>('textarea[name="body"]');
-      const count = mq<HTMLElement>('count');
-      const note = mq<HTMLElement>('note');
-      if (nameInput) nameInput.value = store('soard-live-name');
-      bodyInput?.addEventListener('input', () => { if (count) count.textContent = `${bodyInput.value.length}/280`; });
-      const say = (text: string, error = false) => { if (note) { note.className = error ? 'remind-note remind-note--error' : 'remind-note'; note.textContent = text; } };
-      form.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const btn = form.querySelector('button[type="submit"]') as HTMLButtonElement;
-        const name = nameInput?.value.trim() || '';
-        const text = bodyInput?.value.trim() || '';
-        if (!name) { say('Add your first name.', true); nameInput?.focus(); return; }
-        if (text.length < 2) { say('Write a little more.', true); bodyInput?.focus(); return; }
-        btn.disabled = true; say('Posting…');
-        try {
-          const res = await fetch('/api/live-messages', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name, body: text, clientId, website: (form.querySelector('input[name="website"]') as HTMLInputElement)?.value || '' }),
-          });
-          const data = await res.json().catch(() => ({}));
-          if (res.ok && data.ok) {
-            store('soard-live-name', name);
-            if (bodyInput) bodyInput.value = '';
-            if (count) count.textContent = '0/280';
-            if (data.status === 'shown' && data.message) { addMessage(data.message); say('Posted. Thank you!'); }
-            else say('Thank you! Your message will show up once someone on our team takes a look.');
-          } else {
-            say(data.error || 'Something went wrong. Please try again.', true);
-          }
-        } catch {
-          say('No connection. Please try again.', true);
-        } finally {
-          btn.disabled = false;
-        }
-      });
-    }
-
     // Beacons on the primary actions
-    q('cta-watch')?.addEventListener('click', () => client.beacon('click_watch'));
-    q('cta-replay')?.addEventListener('click', () => client.beacon('click_replay'));
     q('cta-facebook')?.addEventListener('click', () => client.beacon('click_facebook'));
     q('cta-calendar')?.addEventListener('click', () => client.beacon('click_calendar'));
-    q('cta-donate')?.addEventListener('click', () => client.beacon('click_donate', { where: 'hero' }));
-    bq('cta-donate-side')?.addEventListener('click', () => client.beacon('click_donate', { where: 'side' }));
     bq('link-facebook')?.addEventListener('click', () => client.beacon('click_facebook', { where: 'side' }));
     bq('link-youtube')?.addEventListener('click', () => client.beacon('click_youtube'));
     bq('link-instagram')?.addEventListener('click', () => client.beacon('click_instagram'));
@@ -934,16 +651,36 @@ const REACTIONS = [
     });
 
     // Share
+    const pageUrl = () => location.href.split('#')[0];
     bq<HTMLButtonElement>('share-copy')?.addEventListener('click', async (e) => {
       const b = e.currentTarget as HTMLButtonElement;
-      try { await navigator.clipboard.writeText(location.href.split('#')[0]); b.textContent = 'Link copied'; setTimeout(() => { b.textContent = 'Copy link'; }, 2000); client.beacon('share', { how: 'copy' }); } catch { b.textContent = 'Copy failed'; }
+      try { await navigator.clipboard.writeText(pageUrl()); b.textContent = 'Link copied'; setTimeout(() => { b.textContent = 'Copy link'; }, 2000); client.beacon('share', { how: 'copy' }); } catch { b.textContent = 'Copy failed'; }
     });
     const fbShare = bq<HTMLAnchorElement>('share-facebook');
-    if (fbShare) { fbShare.href = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(location.href.split('#')[0])}`; fbShare.addEventListener('click', () => client.beacon('share', { how: 'facebook' })); }
+    if (fbShare) { fbShare.href = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(pageUrl())}`; fbShare.addEventListener('click', () => client.beacon('share', { how: 'facebook' })); }
+    // Hero share: the phone's share sheet where there is one, otherwise copy the link
+    q<HTMLButtonElement>('cta-share')?.addEventListener('click', async () => {
+      const label = q<HTMLElement>('share-label');
+      const title = q<HTMLElement>('title')?.textContent?.trim() || document.title;
+      if (navigator.share) {
+        try { await navigator.share({ title, text: display === 'live' ? `${title}, live now` : title, url: pageUrl() }); client.beacon('share', { how: 'sheet' }); } catch { /* dismissed */ }
+        return;
+      }
+      try { await navigator.clipboard.writeText(pageUrl()); if (label) { label.textContent = 'Link copied'; setTimeout(() => { label.textContent = 'Share'; }, 2000); } client.beacon('share', { how: 'copy' }); } catch { /* blocked */ }
+    });
 
     // Last, so everything render() touches is declared before the first (possibly synchronous) call
-    client.subscribe(render);
+    const unsubscribe = client.subscribe(render);
     // Keeps the countdown fresh and opens the starting-soon window on time
-    setInterval(() => { if (last?.upcoming) render(last, { reminders: client.reminders }); }, 15_000);
+    const countdown = setInterval(() => { if (last?.upcoming) render(last, { reminders: client.reminders }); }, 15_000);
+    return () => {
+      unsubscribe();
+      clearInterval(countdown);
+      clearInterval(giftsTimer);
+      offGifts();
+      give?.destroy();
+      stage.destroy();
+      messages?.destroy();
+    };
   }
 </script>

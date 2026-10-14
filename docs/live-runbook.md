@@ -6,9 +6,8 @@ For the crew holding the phone, and for the office. Keep this short and keep it 
 
 1. Admin → Broadcast → Now → **Schedule a reveal**: pick the kid, date and time. That's the countdown, the reminders, the share page and the emails.
 2. Facebook → Live Producer → schedule a live video for the same time using the **persistent stream key**. (Not needed once the Live Video API is approved.)
-3. Check Health: everything OK. If the reveal is tomorrow, the site re-checks by itself in the morning and alerts if anything is off.
-4. Sound check, before the first reveal and whenever the phone or mic changes: put the phone on the **rehearsal** profile (Admin → Broadcast → Setup → rehearsal QR), open Admin → Broadcast → **Control room** → **Rehearsal feed**, and talk normally. The verdict should read "Sound is good", with speech between −24 and −12 dB on both meters. Switch the starting-soon screen layer on as well: the music should also land in that band, on the quiet side. Nothing in a rehearsal reaches the public.
-5. Instagram only, within the hour before: on a computer, instagram.com → Create → Live → copy the Stream URL and key → Admin → Broadcast → Setup → Instagram simulcast → paste both → Save. Skip this if you are not streaming to Instagram.
+3. Broadcast → Now shows the **Go / no-go** for the scheduled reveal: fix anything it lists (each item has its own button). If the reveal is tomorrow, the site re-checks by itself in the morning and alerts if anything is off.
+4. Sound check, before the first reveal and whenever the phone or mic changes: put the phone on the **rehearsal** profile (Admin → Broadcast → Settings → Phones → rehearsal QR), open Admin → Broadcast → Now → **Start mic check**, and talk normally. The verdict should read "Sound is good", with speech between −24 and −12 dB on both meters. Switch the starting-soon screen layer on as well: the music should also land in that band, on the quiet side. Nothing in a rehearsal reaches the public.
 
 ## Reveal day (crew, 30 seconds)
 
@@ -24,9 +23,9 @@ If the phone goes live from the Facebook app instead, nothing extra is needed. P
 
 - **Larix shows "connecting" forever**: weak signal. Tap stop, switch to the **Weak signal** profile (scanned earlier), tap record again. Cellular hotspots from a second phone also work.
 - **The stream dropped for a moment**: keep going. The site waits 45 seconds, Stream waits 30, and the recording stays in one piece.
-- **Lost the phone profile**: open the admin on any phone → Broadcast → Setup → scan the QR again.
+- **Lost the phone profile**: open the admin on any phone → Broadcast → Settings → Phones → scan the QR again.
 - **Facebook didn't go live**: Live Producer → the scheduled post → Go Live. Everything else keeps running.
-- **Nothing works**: go live from the Facebook app the old way, and the office puts up the emergency banner in Broadcast → Now → "Show emergency banner".
+- **Nothing works**: go live from the Facebook app the old way, and the office puts up the emergency banner in Broadcast → Now → "Stream down? Put up the emergency banner".
 
 ## Audio
 

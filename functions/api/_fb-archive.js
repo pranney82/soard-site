@@ -429,8 +429,8 @@ async function alertNeedsKid(env, entry, reason) {
     const row = await env.DB.prepare('SELECT data FROM site_config WHERE key = ?').bind(BROADCAST_CONFIG_KEY).first();
     const config = row ? JSON.parse(row.data) : {};
     const detail = reason === 'has-link'
-      ? `The replay is safe in Cloudflare Stream, but ${entry.matchedName || 'that kid'}'s page already has a reveal link, so it was not replaced. Open Admin → Broadcast → History and pick the kid next to the video to swap it.`
-      : 'The replay is safe in Cloudflare Stream, but the post did not name exactly one of this year’s kids. Open Admin → Broadcast → History and pick the kid next to the video.';
+      ? `The replay is safe in Cloudflare Stream, but ${entry.matchedName || 'that kid'}'s page already has a reveal link, so it was not replaced. Open Admin → Broadcast → History → Lives that went straight to Facebook and pick the kid next to the video to swap it.`
+      : 'The replay is safe in Cloudflare Stream, but the post did not name exactly one of this year’s kids. Open Admin → Broadcast → History → Lives that went straight to Facebook and pick the kid next to the video.';
     await alertAdmins(env, config, { level: 'warn', title: `Reveal replay saved but not on a kid page: ${entry.name}`, detail, url: `${SITE_ORIGIN}/admin/` });
   } catch { /* alerts never break the sweep */ }
 }

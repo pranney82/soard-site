@@ -1,0 +1,391 @@
+---
+/**
+ * LiveStage.astro — the frame on the live page: photo, starting-soon screen, video
+ * ===============================================================================
+ * Before the watch party it is the hero's portrait photo with its badge
+ * (countdown, "Live" for a Facebook-only broadcast, "Processing").
+ *
+ * During the watch party (data-party: starting soon, live, replay) nothing is
+ * drawn on the picture. Everything sits beside or under it:
+ *
+ *   ┌──────────┐┌──┐  rail: sound, captions, picture in picture, full screen,
+ *   │          ││  │        then the reactions (they float up the rail)
+ *   │  video   ││  │
+ *   │          ││  │
+ *   └──────────┘└──┘
+ *   captions line           (replay, when switched on)
+ *   bar: LIVE · 34 watching · Tap for sound / latest message
+ *        or play · seek bar with the reveal marked · time   (replay)
+ *   Jump to the reveal      (replay, once the moment is known)
+ *
+ * The only things ever shown over the frame are for when there is no
+ * picture: "The camera is getting ready", "Reconnecting", "Tap to watch".
+ *
+ * Sizing: the page sets --fh, the height the whole stage may take; the
+ * stage fits the video, rail and bar inside it at the picture's real shape
+ * (--ar, width / height). Behaviour lives in src/utils/live-stage.ts.
+ */
+import { cfRaw, cfSrcset, cfLqip } from '../../utils/cf-image';
+
+interface Props { photo: string; alt: string }
+const { photo, alt } = Astro.props;
+
+const svg = (paths: string) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
+const SPEAKER = '<path d="M11 4.702a.705.705 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298z"/>';
+const ICON = {
+  soundOff: svg(`${SPEAKER}<path d="M22 9l-6 6"/><path d="M16 9l6 6"/>`),
+  soundOn: svg(`${SPEAKER}<path d="M16 9a5 5 0 0 1 0 6"/><path d="M19.364 18.364a9 9 0 0 0 0-12.728"/>`),
+  full: svg('<path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/>'),
+  pip: svg('<path d="M21 9V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v10c0 1.1.9 2 2 2h4"/><rect width="10" height="7" x="12" y="13" rx="2"/>'),
+  cc: svg('<rect width="18" height="14" x="3" y="5" rx="2"/><path d="M10.5 10.2a2.2 2.2 0 1 0 0 3.6"/><path d="M17 10.2a2.2 2.2 0 1 0 0 3.6"/>'),
+  play: svg('<path d="M7 4.5v15a1 1 0 0 0 1.5.86l12.5-7.5a1 1 0 0 0 0-1.72L8.5 3.64A1 1 0 0 0 7 4.5z" fill="currentColor"/>'),
+  pause: svg('<rect x="6" y="4" width="4" height="16" rx="1" fill="currentColor"/><rect x="14" y="4" width="4" height="16" rx="1" fill="currentColor"/>'),
+  close: svg('<path d="M18 6 6 18"/><path d="m6 6 12 12"/>'),
+  eye: svg('<path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/>'),
+  spark: svg('<path d="M9.94 15.5A2 2 0 0 0 8.5 14.06l-6.14-1.58a.5.5 0 0 1 0-.96L8.5 9.94A2 2 0 0 0 9.94 8.5l1.58-6.14a.5.5 0 0 1 .96 0l1.58 6.14a2 2 0 0 0 1.44 1.44l6.14 1.58a.5.5 0 0 1 0 .96l-6.14 1.58a2 2 0 0 0-1.44 1.44l-1.58 6.14a.5.5 0 0 1-.96 0z"/>'),
+};
+const REACTIONS = [
+  { k: 'heart', label: 'Send love', svg: svg('<path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/>') },
+  { k: 'sun', label: 'Send sunshine', svg: svg('<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>') },
+  { k: 'clap', label: 'Celebrate', svg: svg('<path d="M5.8 11.3 2 22l10.7-3.79"/><path d="M4 3h.01M22 8h.01M15 2h.01M22 20h.01"/><path d="m22 2-2.24.75a2.9 2.9 0 0 0-1.96 3.12c.1.86-.57 1.63-1.45 1.63h-.38c-.86 0-1.6.6-1.76 1.44L14 10"/><path d="m22 13-.82-.33c-.86-.34-1.82.2-1.98 1.11-.11.7-.72 1.22-1.43 1.22H17"/><path d="m11 2 .33.82c.34.86-.2 1.82-1.11 1.98C9.52 4.9 9 5.52 9 6.23V7"/><path d="M11 13c1.93 1.93 2.83 4.17 2 5-.83.83-3.07-.07-5-2-1.93-1.93-2.83-4.17-2-5 .83-.83 3.07.07 5 2Z"/>') },
+  { k: 'wow', label: 'Wow', svg: svg('<path d="M9.94 15.5A2 2 0 0 0 8.5 14.06l-6.14-1.58a.5.5 0 0 1 0-.96L8.5 9.94A2 2 0 0 0 9.94 8.5l1.58-6.14a.5.5 0 0 1 .96 0l1.58 6.14a2 2 0 0 0 1.44 1.44l6.14 1.58a.5.5 0 0 1 0 .96l-6.14 1.58a2 2 0 0 0-1.44 1.44l-1.58 6.14a.5.5 0 0 1-.96 0z"/><path d="M20 3v4M22 5h-4M4 17v2M5 18H3"/>') },
+];
+---
+
+<div class="stage" data-stage data-mode="loading" data-orientation="portrait" tabindex="-1">
+  <div class="stage__screen">
+    <div class="stage__accent" aria-hidden="true"></div>
+    <div class="stage__picture" data-s="picture" data-live="frame" style={`background-image:url(${cfLqip(photo)})`}>
+      <div class="stage__clip">
+        <img
+          class="stage__photo lqip-img"
+          src={cfRaw(photo, 'w=640,h=800,fit=cover,gravity=face,q=82')}
+          srcset={cfSrcset(photo, [400, 640, 800, 1024], { fit: 'cover', gravity: 'face', aspectRatio: 1.25 })}
+          sizes="(max-width: 960px) 90vw, 40vw"
+          width="640" height="800"
+          alt={alt}
+          loading="eager" fetchpriority="high" decoding="async"
+          data-live="photo"
+        />
+        <div class="stage__player" data-s="player" hidden></div>
+        <div class="stage__note" data-s="note" role="status" hidden>
+          <p class="stage__note-title" data-s="note-title"></p>
+          <p class="stage__note-text" data-s="note-text"></p>
+        </div>
+        <button class="stage__tap" type="button" data-s="tap" hidden>
+          <span class="stage__tap-icon"><Fragment set:html={ICON.play} /></span>
+          <span>Tap to watch</span>
+        </button>
+        <p class="stage__badge" data-s="badge" hidden><span class="stage__badge-dot" aria-hidden="true"></span><span data-s="badge-text"></span></p>
+      </div>
+      <div class="stage__dockbar" data-s="dockbar" hidden>
+        <span class="stage__dock-label"><span class="dot" aria-hidden="true"></span><span data-s="dock-label">Live</span></span>
+        <button class="stage__undock" type="button" data-s="undock" aria-label="Close the mini player"><Fragment set:html={ICON.close} /></button>
+      </div>
+    </div>
+  </div>
+
+  <div class="stage__rail" data-s="rail" hidden>
+    <div class="rail__tools">
+      <button class="rail__btn rail__btn--sound" type="button" data-tool="sound" aria-label="Turn sound on" title="Sound (M)" hidden>
+        <span class="rail__off"><Fragment set:html={ICON.soundOff} /></span>
+        <span class="rail__on"><Fragment set:html={ICON.soundOn} /></span>
+      </button>
+      <button class="rail__btn" type="button" data-tool="cc" aria-label="Captions" aria-pressed="false" title="Captions (C)" hidden><Fragment set:html={ICON.cc} /></button>
+      <button class="rail__btn" type="button" data-tool="pip" aria-label="Picture in picture" title="Picture in picture" hidden><Fragment set:html={ICON.pip} /></button>
+      <button class="rail__btn" type="button" data-tool="full" aria-label="Full screen" title="Full screen (F)"><Fragment set:html={ICON.full} /></button>
+    </div>
+    <div class="rail__lane" data-s="lane" aria-hidden="true"></div>
+    <div class="rail__reacts" data-s="reacts" role="group" aria-label="Send a reaction everyone watching will see" hidden>
+      {REACTIONS.map(r => (
+        <button class="rail__btn rail__react" type="button" data-react={r.k} aria-label={r.label} title={r.label} set:html={r.svg} />
+      ))}
+    </div>
+  </div>
+
+  <p class="stage__cc" data-s="cc" aria-hidden="true" hidden><span data-s="cc-text"></span></p>
+
+  <div class="stage__bar" data-s="bar" hidden>
+    <div class="bar__live" data-s="livebar">
+      <span class="bar__status"><span class="bar__dot" aria-hidden="true"></span><span data-s="status">Connecting</span></span>
+      <span class="bar__count" data-s="count" hidden><Fragment set:html={ICON.eye} /><span data-s="count-text"></span></span>
+      <button class="bar__sound" type="button" data-s="sound" hidden><Fragment set:html={ICON.soundOff} /><span>Tap for sound</span></button>
+      <button class="bar__latest" type="button" data-s="latest" hidden aria-label="Latest message, open the messages">
+        <span class="bar__latest-name" data-s="latest-name"></span><span class="bar__latest-body" data-s="latest-body"></span>
+      </button>
+    </div>
+    <div class="bar__replay" data-s="replaybar" hidden>
+      <button class="bar__play" type="button" data-s="play" aria-label="Play">
+        <span class="bar__icon-play"><Fragment set:html={ICON.play} /></span>
+        <span class="bar__icon-pause"><Fragment set:html={ICON.pause} /></span>
+      </button>
+      <div class="seek">
+        <input class="seek__range" type="range" min="0" max="1000" step="1" value="0" data-s="seek" aria-label="Seek" aria-valuetext="0:00" />
+        <button class="seek__mark" type="button" data-s="mark" aria-label="Jump to the reveal" title="The reveal" hidden><Fragment set:html={ICON.spark} /></button>
+      </div>
+      <span class="bar__time" data-s="time">0:00</span>
+    </div>
+  </div>
+
+  <button class="stage__jump" type="button" data-s="jump" hidden>
+    <Fragment set:html={ICON.spark} /><span data-s="jump-label">Jump to the reveal</span><span class="stage__jump-at" data-s="jump-at"></span>
+  </button>
+</div>
+
+<style>
+  /* ── Before the watch party: the hero's portrait photo ── */
+  .stage { --ar: 0.5625; --rail: 48px; --gap: 8px; --bar: 50px; --below: calc(var(--bar) + var(--gap)); position: relative; outline: none; }
+  .stage[data-orientation='landscape'] { --ar: 1.7778; }
+  .stage__screen { position: relative; }
+  .stage__accent {
+    position: absolute; bottom: -16px; right: -16px; width: 65%; height: 50%; background: var(--c-yellow);
+    border-radius: 24px; z-index: 0; opacity: 0; animation: accentIn 1s cubic-bezier(0.16, 1, 0.3, 1) 0.7s both;
+  }
+  @keyframes accentIn { to { opacity: 0.35; } }
+  .stage__picture {
+    position: relative; z-index: 1; aspect-ratio: 4 / 5; border-radius: 24px;
+    background-size: cover; background-position: center; background-color: var(--c-dark-deep);
+    box-shadow: 0 32px 80px rgba(0, 0, 0, 0.12), 0 8px 24px rgba(0, 0, 0, 0.06);
+  }
+  .stage__clip { position: absolute; inset: 0; border-radius: inherit; overflow: hidden; container-type: inline-size; }
+  .stage__photo { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .stage__player { position: absolute; inset: 0; transition: opacity 0.3s ease; }
+  .stage__player[hidden] { display: none; }
+  /* :global: the video and iframes are created at runtime, so they have no Astro scope attribute */
+  .stage__player :global(iframe) { width: 100%; height: 100%; border: 0; display: block; }
+  .stage__player :global(video) { width: 100%; height: 100%; display: block; object-fit: contain; background: #000; }
+  .stage[data-pkind='replay'] .stage__player :global(video) { cursor: pointer; }
+
+  .stage__badge {
+    position: absolute; left: 16px; bottom: 16px; z-index: 3; margin: 0;
+    display: inline-flex; align-items: center; gap: 10px;
+    background: var(--c-dark-deep); color: var(--c-cream); padding: 10px 16px; border-radius: 100px;
+    font-size: 13px; font-weight: 600; letter-spacing: 0.02em; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  }
+  .stage__badge[hidden] { display: none; }
+  .stage__badge-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--c-yellow); }
+
+  /* ── Watch party: video + rail, with the bar underneath ── */
+  .stage[data-party] {
+    display: grid; grid-template-columns: minmax(0, 1fr) var(--rail); column-gap: var(--gap);
+    grid-template-areas: 'screen rail' 'cc cc' 'bar bar' 'jump jump';
+    /* As big as the height allows at the picture's shape, never wider than the column */
+    width: min(var(--stage-max, 100%), calc((var(--fh, 640px) - var(--below)) * var(--ar) + var(--rail) + var(--gap)));
+    margin-inline: auto;
+  }
+  .stage[data-party][data-cc] { --below: calc(var(--bar) + var(--gap) + 3.4em + var(--gap)); }
+  .stage[data-party][data-jump] { --below: calc(var(--bar) + var(--gap) + 46px + var(--gap)); }
+  .stage[data-party][data-cc][data-jump] { --below: calc(var(--bar) + var(--gap) + 3.4em + var(--gap) + 46px + var(--gap)); }
+  .stage[data-party] .stage__screen { grid-area: screen; aspect-ratio: var(--ar); }
+  .stage[data-party] .stage__picture { position: absolute; inset: 0; aspect-ratio: auto; border-radius: 20px; }
+  .stage[data-party] .stage__photo { display: none; }
+  .stage[data-party] .stage__accent { display: none; }
+  /* While the camera connects or reconnects, the kid's photo sits behind the note */
+  .stage[data-party][data-pkind='live'][data-pstatus='connecting'] .stage__photo,
+  .stage[data-party][data-pstatus='waiting'] .stage__photo,
+  .stage[data-party][data-pstatus='reconnecting'] .stage__photo { display: block; filter: blur(16px) brightness(0.45); transform: scale(1.12); }
+  .stage[data-pkind='live'][data-pstatus='connecting'] .stage__player,
+  .stage[data-pstatus='waiting'] .stage__player,
+  .stage[data-pstatus='reconnecting'] .stage__player { opacity: 0; }
+
+  .stage__note {
+    position: absolute; inset: 0; z-index: 2; display: grid; place-content: center; text-align: center;
+    padding: 24px; color: #fff; pointer-events: none;
+  }
+  .stage__note[hidden] { display: none; }
+  .stage__note-title { font-family: var(--font-display); font-size: clamp(1.2rem, 7cqi, 1.6rem); line-height: 1.2; margin: 0 0 8px; }
+  .stage__note-text { font-size: 14px; line-height: 1.55; margin: 0 auto; max-width: 30ch; color: rgba(255, 255, 255, 0.86); }
+  .stage__note-text:empty { display: none; }
+
+  .stage__tap {
+    position: absolute; inset: 0; z-index: 4; display: grid; place-content: center; justify-items: center; gap: 12px;
+    border: 0; background: rgba(0, 0, 0, 0.35); color: #fff; font: inherit; font-size: 15px; font-weight: 700; cursor: pointer;
+  }
+  .stage__tap[hidden] { display: none; }
+  .stage__tap-icon { width: 76px; height: 76px; border-radius: 50%; background: var(--c-yellow); color: var(--c-dark); display: grid; place-items: center; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3); }
+  .stage__tap-icon :global(svg) { width: 32px; height: 32px; margin-left: 4px; }
+  .stage__tap:focus-visible .stage__tap-icon { outline: 3px solid #fff; outline-offset: 3px; }
+
+  /* ── Rail ── */
+  .stage__rail {
+    grid-area: rail; display: flex; flex-direction: column; align-items: center; gap: 8px; min-height: 0;
+    padding: 6px 0; border-radius: 100px; background: color-mix(in srgb, var(--c-yellow) 16%, transparent);
+  }
+  .stage__rail[hidden] { display: none; }
+  .rail__tools, .rail__reacts { display: flex; flex-direction: column; gap: 6px; }
+  .rail__tools [hidden], .rail__reacts[hidden] { display: none; }
+  .rail__lane { flex: 1 1 auto; width: 100%; min-height: 0; position: relative; overflow: hidden; pointer-events: none; }
+  .rail__btn {
+    width: 40px; height: 40px; padding: 0; border: 1px solid var(--c-border); border-radius: 50%; display: grid; place-items: center; cursor: pointer;
+    background: #fff; color: var(--c-dark); transition: transform 150ms ease, background 150ms ease, border-color 150ms ease;
+  }
+  .rail__btn :global(svg) { width: 19px; height: 19px; }
+  .rail__btn:hover { border-color: var(--c-dark); }
+  .rail__btn:focus-visible { outline: 2px solid var(--c-dark); outline-offset: 2px; }
+  .rail__btn[aria-pressed='true'] { background: var(--c-dark); color: #fff; border-color: var(--c-dark); }
+  .rail__on, .stage[data-muted] .rail__off { display: grid; }
+  .rail__off, .stage[data-muted] .rail__on { display: none; }
+  .stage[data-muted] .rail__btn--sound { background: var(--c-yellow); border-color: var(--c-yellow); }
+  .rail__react { width: 40px; height: 40px; }
+  .rail__react[data-react='heart'] :global(svg) { fill: var(--c-yellow); color: var(--c-dark); }
+  .rail__react:active, .rail__react.is-pop { transform: scale(0.86); }
+
+  /* Reactions float up the rail, beside the picture */
+  .rail__lane :global(.react-float) {
+    position: absolute; bottom: 0; left: 50%; width: 26px; height: 26px; margin-left: -13px; color: var(--c-dark);
+    animation: reactRise var(--d, 2.6s) cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+  }
+  .rail__lane :global(.react-float svg) { width: 100%; height: 100%; display: block; }
+  .rail__lane :global(.react-float[data-k='heart']) { color: var(--c-yellow); }
+  .rail__lane :global(.react-float[data-k='heart'] svg) { fill: currentColor; stroke: var(--c-dark); stroke-width: 1.5; }
+  .rail__lane :global(.react-float.is-mine) { width: 30px; height: 30px; margin-left: -15px; }
+  @keyframes reactRise {
+    0% { transform: translate(0, 0) scale(0.5); opacity: 0; }
+    12% { transform: translate(0, -16px) scale(1); opacity: 1; }
+    100% { transform: translate(var(--x, 0px), calc(-1 * var(--rise, 240px))) scale(0.85); opacity: 0; }
+  }
+
+  /* ── Captions line (replay) ── */
+  .stage__cc {
+    grid-area: cc; margin: var(--gap) 0 0; min-height: 3.4em; display: grid; place-items: center; text-align: center;
+    padding: 6px 14px; border-radius: 14px; background: var(--c-dark-deep); color: #fff; font-size: 15px; line-height: 1.4;
+  }
+  .stage__cc[hidden] { display: none; }
+
+  /* ── Bar ── */
+  .stage__bar {
+    grid-area: bar; margin-top: var(--gap); height: var(--bar); display: flex; align-items: center;
+    padding: 0 6px 0 16px; border-radius: 100px; background: #fff; border: 1px solid var(--c-border); min-width: 0;
+  }
+  .stage__bar[hidden] { display: none; }
+  .bar__live, .bar__replay { display: flex; align-items: center; gap: 12px; width: 100%; min-width: 0; }
+  .bar__live[hidden], .bar__replay[hidden] { display: none; }
+  .bar__status { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: var(--c-text); white-space: nowrap; }
+  .bar__dot { width: 9px; height: 9px; border-radius: 50%; background: var(--c-text-light); position: relative; flex-shrink: 0; }
+  .stage[data-onair] .bar__dot { background: var(--c-yellow); }
+  .stage[data-onair][data-mode='live'] .bar__dot::after {
+    content: ''; position: absolute; inset: -4px; border-radius: 50%; border: 2px solid var(--c-yellow); opacity: 0;
+    animation: live-ping 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
+  }
+  @keyframes live-ping { 0% { transform: scale(0.6); opacity: 0.9; } 70%, 100% { transform: scale(1.5); opacity: 0; } }
+  .bar__count { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--c-text-muted); white-space: nowrap; }
+  .bar__count[hidden] { display: none; }
+  .bar__count :global(svg) { width: 15px; height: 15px; }
+  .bar__sound {
+    margin-left: auto; display: inline-flex; align-items: center; gap: 8px; height: 38px; padding: 0 16px 0 12px;
+    border: 0; border-radius: 100px; background: var(--c-yellow); color: var(--c-dark);
+    font: inherit; font-size: 14px; font-weight: 800; cursor: pointer; white-space: nowrap;
+    animation: soundNudge 2.8s ease-in-out 1.5s 3;
+  }
+  .bar__sound[hidden] { display: none; }
+  .bar__sound :global(svg) { width: 19px; height: 19px; }
+  .bar__sound:focus-visible { outline: 2px solid var(--c-dark); outline-offset: 2px; }
+  @keyframes soundNudge { 0%, 80%, 100% { transform: none; } 88% { transform: scale(1.06); } }
+  .bar__latest {
+    margin-left: auto; min-width: 0; flex: 0 1 auto; display: none; align-items: baseline; gap: 6px; height: 38px; padding: 0 14px;
+    border: 0; border-radius: 100px; background: var(--c-cream); color: var(--c-text); font: inherit; font-size: 13px; cursor: pointer; text-align: left;
+    overflow: hidden; white-space: nowrap;
+  }
+  .bar__latest-name { font-weight: 800; flex-shrink: 0; }
+  .bar__latest-body { overflow: hidden; text-overflow: ellipsis; }
+  .bar__latest:focus-visible { outline: 2px solid var(--c-dark); outline-offset: 2px; }
+
+  .bar__play {
+    width: 38px; height: 38px; flex-shrink: 0; padding: 0; border: 0; border-radius: 50%; display: grid; place-items: center; cursor: pointer;
+    background: var(--c-yellow); color: var(--c-dark); margin-left: -10px;
+  }
+  .bar__play :global(svg) { width: 16px; height: 16px; }
+  .bar__icon-play :global(svg) { margin-left: 2px; }
+  .bar__play:focus-visible { outline: 2px solid var(--c-dark); outline-offset: 2px; }
+  .bar__icon-pause, .stage[data-playing] .bar__icon-play { display: none; }
+  .stage[data-playing] .bar__icon-pause { display: grid; }
+  .bar__icon-play { display: grid; }
+  .bar__time { font-size: 13px; font-weight: 600; color: var(--c-text-muted); font-variant-numeric: tabular-nums; white-space: nowrap; padding-right: 10px; }
+
+  .seek { position: relative; flex: 1 1 auto; min-width: 60px; height: 38px; display: flex; align-items: center; }
+  .seek__range { --p: 0%; width: 100%; height: 38px; margin: 0; background: transparent; cursor: pointer; -webkit-appearance: none; appearance: none; }
+  .seek__range::-webkit-slider-runnable-track { height: 6px; border-radius: 6px; background: linear-gradient(to right, var(--c-dark) var(--p), var(--c-border) var(--p)); }
+  .seek__range::-moz-range-track { height: 6px; border-radius: 6px; background: var(--c-border); }
+  .seek__range::-moz-range-progress { height: 6px; border-radius: 6px; background: var(--c-dark); }
+  .seek__range::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; margin-top: -5px; border-radius: 50%; background: var(--c-dark); border: 2px solid #fff; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3); }
+  .seek__range::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: var(--c-dark); border: 2px solid #fff; }
+  .seek__range:focus-visible { outline: 2px solid var(--c-dark); outline-offset: 2px; border-radius: 6px; }
+  .seek__mark {
+    position: absolute; top: 50%; left: var(--at, 50%); width: 26px; height: 26px; margin: -13px 0 0 -13px; padding: 0; border: 0; border-radius: 50%;
+    display: grid; place-items: center; background: var(--c-yellow); color: var(--c-dark); cursor: pointer; box-shadow: 0 0 0 3px #fff;
+  }
+  .seek__mark[hidden] { display: none; }
+  .seek__mark :global(svg) { width: 14px; height: 14px; }
+  .seek__mark:focus-visible { outline: 2px solid var(--c-dark); outline-offset: 2px; }
+
+  .stage__jump {
+    grid-area: jump; margin-top: var(--gap); height: 46px; display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+    border: 0; border-radius: 100px; background: var(--c-yellow); color: var(--c-dark);
+    font: inherit; font-size: 15px; font-weight: 800; cursor: pointer; box-shadow: 0 8px 24px rgba(253, 216, 53, 0.35);
+  }
+  .stage__jump[hidden] { display: none; }
+  .stage__jump :global(svg) { width: 18px; height: 18px; }
+  .stage__jump-at { font-weight: 600; opacity: 0.75; font-variant-numeric: tabular-nums; }
+  .stage__jump:focus-visible { outline: 2px solid var(--c-dark); outline-offset: 2px; }
+
+  /* ── Full screen: the whole stage, so captions and controls stay off the picture ── */
+  .stage[data-party]:fullscreen {
+    --fh: calc(100vh - 32px); --stage-max: calc(100vw - 32px);
+    width: 100vw; height: 100vh; padding: 16px; margin: 0; background: var(--c-dark-deep);
+    align-content: center; justify-content: center;
+    grid-template-columns: min(calc(100vw - 32px - var(--rail) - var(--gap)), calc((var(--fh) - var(--below)) * var(--ar))) var(--rail);
+  }
+  .stage:fullscreen .stage__rail { background: rgba(255, 255, 255, 0.08); }
+  .stage:fullscreen .rail__btn[data-tool='pip'] { display: none; }
+
+  /* ── Mini player: just the picture, with its own little bar above it ── */
+  .stage[data-party] .stage__picture.is-docked {
+    position: fixed; inset: auto 16px calc(16px + var(--dock-bottom, 0px) + env(safe-area-inset-bottom, 0px)) auto;
+    width: min(260px, calc(var(--mini-h, 300px) * var(--ar))); height: auto; aspect-ratio: var(--ar);
+    z-index: 950; /* over content, under the sticky header (1000) and its mobile menu (1100) */
+    border-radius: 16px; cursor: pointer;
+    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.35);
+    animation: dockIn 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  @keyframes dockIn { from { opacity: 0; transform: translateY(16px) scale(0.96); } to { opacity: 1; transform: none; } }
+  /* Pinned above the give sheet on a phone: small, at the top, over everything the sheet covers */
+  .stage[data-party] .stage__picture.is-docked.is-pinned {
+    inset: calc(var(--header-height) + 44px) 16px auto auto; --mini-h: 140px; z-index: 1250;
+  }
+  .stage__picture.is-docked .stage__note-text { display: none; }
+  .stage__picture.is-docked .stage__note-title { font-size: 14px; }
+  .stage__dockbar {
+    position: absolute; left: 0; right: 0; bottom: calc(100% + 6px); display: flex; align-items: center; justify-content: space-between;
+  }
+  .stage__dockbar[hidden] { display: none; }
+  .stage__dock-label {
+    display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 100px; background: var(--c-dark-deep); color: #fff;
+    font-size: 11px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase;
+  }
+  .stage__dock-label .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--c-yellow); }
+  .stage__undock {
+    width: 30px; height: 30px; padding: 0; border: 0; border-radius: 50%; display: grid; place-items: center; cursor: pointer;
+    background: var(--c-dark-deep); color: #fff; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  }
+  .stage__undock[hidden] { display: none; }
+  .stage__undock :global(svg) { width: 16px; height: 16px; }
+  .stage__undock:focus-visible { outline: 2px solid var(--c-dark); outline-offset: 2px; }
+
+  @media (max-width: 960px) {
+    .stage[data-party] .stage__picture.is-docked { --mini-h: 210px; }
+    .stage[data-party] .stage__picture { border-radius: 16px; }
+    /* The latest message lives in the bar on phones; on a desktop the messages sit beside the video */
+    .bar__latest { display: inline-flex; }
+    .bar__latest[hidden] { display: none; }
+  }
+  @media (max-width: 400px) {
+    .bar__count span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+    .stage__bar { padding-left: 12px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .stage__accent { animation: none; opacity: 0.35; }
+    .bar__sound, .stage[data-party] .stage__picture.is-docked { animation: none; }
+    .stage[data-onair][data-mode='live'] .bar__dot::after { animation: none; }
+    .stage__player, .rail__btn { transition: none; }
+  }
+</style>

@@ -342,3 +342,26 @@ test('sendTestReminder + config update through admin endpoint', async () => {
   assert.equal(g.setup.inputReady, true);
   assert.equal(g.reminders.counts.email, 1);
 });
+
+test('Zeffy signing secret: stored, never sent back, validated, cleared with ""', async () => {
+  const set = (webhookSecret) => endpoints.admin.onRequestPost(ctx(post('https://x/api/broadcast-admin', { action: 'setConfig', config: { zeffy: { webhookSecret } } }))).then((r) => r.json());
+  const secret = 'whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw';
+  const d = await set(secret);
+  assert.equal(d.success, true, d.error);
+  assert.deepEqual(d.config.zeffy, { configured: true, lastEventAt: null });
+  assert.equal((await b.readConfig(env.DB)).zeffy.webhookSecret, secret, 'stored for /api/zeffy-webhook');
+  const g = await (await endpoints.admin.onRequestGet(ctx(new Request('https://x/api/broadcast-admin?reveal=1')))).json();
+  assert.equal(g.config.zeffy.configured, true);
+  assert.ok(!JSON.stringify(g).includes(secret), 'not even ?reveal=1 returns the secret');
+  const bad = await set('not-a-secret');
+  assert.equal(bad.success, false);
+  assert.equal((await b.readConfig(env.DB)).zeffy.webhookSecret, secret, 'a bad value leaves the saved secret alone');
+  const cleared = await set('');
+  assert.equal(cleared.success, true, cleared.error);
+  assert.equal(cleared.config.zeffy.configured, false);
+  // The webhook keeps its last-gift time in its own row, so it never races a settings save
+  const at = '2026-10-14T22:00:00.000Z';
+  await env.DB.prepare('INSERT OR REPLACE INTO site_config (key, data, updated_at) VALUES (?, ?, ?)').bind('live-gifts', JSON.stringify({ lastEventAt: at }), at).run();
+  const g2 = await (await endpoints.admin.onRequestGet(ctx(new Request('https://x/api/broadcast-admin')))).json();
+  assert.equal(g2.config.zeffy.lastEventAt, at, 'admin reads the last gift time from the live-gifts row');
+});
