@@ -190,6 +190,36 @@ export async function fbLiveVideoPermalink(env, liveVideoId) {
   }
 }
 
+/**
+ * API mode only: what Facebook's ingest is receiving for a live video.
+ * Facebook refreshes stream_health every 2 s. Persistent-key mode can't read
+ * this (/live_videos needs App Review), so callers fall back to fbCurrentLive.
+ * → { ok, status, health: { videoBitrate, audioBitrate, fps, width, height, gopMs } | null, error }
+ */
+export async function fbLiveVideoHealth(env, liveVideoId) {
+  if (!fbConfigured(env) || !liveVideoId) return { ok: false, error: 'not configured' };
+  try {
+    const r = await graph(env, 'GET', liveVideoId, { fields: 'status,ingest_streams{is_master,stream_health}' });
+    if (!r.ok) return { ok: false, error: r.error, code: r.code };
+    const streams = r.data.ingest_streams?.data || [];
+    const h = (streams.find((s) => s.is_master) || streams[0])?.stream_health || null;
+    return {
+      ok: true,
+      status: r.data.status || null,
+      health: h ? {
+        videoBitrate: h.video_bitrate ?? null,
+        audioBitrate: h.audio_bitrate ?? null,
+        fps: h.video_framerate ?? null,
+        width: h.video_width ?? null,
+        height: h.video_height ?? null,
+        gopMs: h.video_gop_size ?? null,
+      } : null,
+    };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
+
 /** Split Facebook's rtmps://host:443/rtmp/<key> ingest URL into a Stream output { url, streamKey }. */
 export function splitIngestUrl(ingestUrl) {
   if (!ingestUrl) return null;

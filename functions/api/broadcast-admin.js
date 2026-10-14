@@ -10,7 +10,9 @@
  *   setConfig { ...partial }
  *   generateVapid { force? }
  *   testStream | testFacebook | testHub | testAlert | runTick | lifecycle
+ *   monitor { feed: live|rehearsal }   Control room: picture, audio level, every destination's verdict
  *   sendTestReminder { kind, email }
+ *   messages { broadcastId? } | moderateMessage { id, status: shown|hidden }
  *   createNotificationInstructions
  */
 
@@ -22,6 +24,9 @@ import { kitConfigured } from './_kit.js';
 import * as reels from './_broadcast-reel.js';
 import { logAudit } from './_audit.js';
 import { annotateArchived } from './_fb-archive.js';
+import * as messages from './_live-messages.js';
+import * as monitor from './_broadcast-monitor.js';
+import { youtubeConfigured } from './_youtube.js';
 
 const TARGETS = new Set(['facebook', 'youtube', 'instagram', 'custom']);
 
@@ -101,7 +106,9 @@ export async function onRequestGet(context) {
     for (const row of (r.reminderCounts?.results || [])) counts[row.channel] = row.n;
     const eventsByBroadcast = {};
     for (const row of (r.events?.results || [])) { (eventsByBroadcast[row.broadcast_id] ||= {})[row.type] = row.n; }
-    const history = (r.history?.results || []).map(h => { let d = {}; try { d = JSON.parse(h.data || '{}'); } catch {} return { ...h, data: d, events: eventsByBroadcast[h.id] || {} }; });
+    const historyRows = r.history?.results || [];
+    const messageCounts = await messages.shownCounts(DB, historyRows.map(h => h.id)).catch(() => ({}));
+    const history = historyRows.map(h => { let d = {}; try { d = JSON.parse(h.data || '{}'); } catch {} return { ...h, data: d, events: eventsByBroadcast[h.id] || {}, messageCount: messageCounts[h.id] || 0 }; });
 
     return Response.json({
       success: true,
@@ -117,6 +124,7 @@ export async function onRequestGet(context) {
         smsConfigured: notify.smsConfigured(env),
         slackConfigured: notify.slackConfigured(env),
         kitConfigured: kitConfigured(env),
+        youtubeConfigured: youtubeConfigured(env),
         hubBound: !!env.LIVE_HUB,
         deployHook: !!(env.CF_PAGES_DEPLOY_HOOK || env.CF_DEPLOY_HOOK || env.DEPLOY_HOOK_URL),
         inputReady: !!config.liveInput?.uid,
@@ -286,9 +294,18 @@ export async function onRequestPost(context) {
           if (typeof p.defaults.message === 'string') c.defaults.message = p.defaults.message.trim().slice(0, 200) || c.defaults.message;
         }
         if (typeof p.customerCode === 'string' && /^[a-z0-9]{8,32}$/.test(p.customerCode)) c.customerCode = p.customerCode;
+        if (p.messages && typeof p.messages.enabled === 'boolean') c.messages = { ...(c.messages || {}), enabled: p.messages.enabled };
         await b.writeConfig(env.DB, c);
         await logAudit(env.DB, { userEmail, action: 'updated', entityType: 'live-status', entitySlug: 'broadcast-config', entityName: 'Broadcast settings', gitStatus: 'ok' });
         return Response.json({ success: true, config: redactConfig(c, false) });
+      }
+      case 'messages': {
+        return Response.json(await messages.adminList(env, typeof body.broadcastId === 'string' ? body.broadcastId.slice(0, 40) : null));
+      }
+      case 'moderateMessage': {
+        const r = await messages.moderate(env, body.id, body.status, userEmail);
+        if (r.success) await logAudit(env.DB, { userEmail, action: 'updated', entityType: 'live-message', entitySlug: r.message.id, entityName: `${body.status === 'shown' ? 'Showed' : 'Hid'} message from ${r.message.name}`, gitStatus: 'ok' });
+        return Response.json(r, { status: r.success ? 200 : (r.status || 400) });
       }
       case 'generateVapid': {
         if (config.vapid?.publicKey && !body.force) return fail('Push keys already exist. Regenerating would orphan every existing browser subscription; pass force to do it anyway.');
@@ -333,6 +350,10 @@ export async function onRequestPost(context) {
         const lc = config.liveInput?.uid ? await stream.lifecycle(config.customerCode, config.liveInput.uid) : null;
         const viewers = config.liveInput?.uid ? await stream.liveViewers(config.customerCode, config.liveInput.uid) : null;
         return Response.json({ success: true, lifecycle: lc, viewers });
+      }
+      case 'monitor': {
+        const [state, health] = await Promise.all([b.readState(env.DB), b.readHealth(env.DB)]);
+        return Response.json(await monitor.report(env, config, state, health, { feed: body.feed === 'rehearsal' ? 'rehearsal' : 'live' }), { headers: { 'Cache-Control': 'no-store' } });
       }
       case 'sendTestReminder': {
         const kind = ['scheduled', 'day', 'hour', 'live', 'replay'].includes(body.kind) ? body.kind : 'live';

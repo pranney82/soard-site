@@ -1,0 +1,517 @@
+---
+/**
+ * SlateScreen.astro — "starting soon" screen for the reveal stream
+ * ================================================================
+ * Shown to viewers while the stream warms up before a reveal:
+ *   - Larix Broadcaster web page layer (full frame), switched off when the
+ *     reveal starts. Larix points at /live/slate/ once per phone and never
+ *     changes: that page follows whichever kid is scheduled.
+ *   - full screen on a TV or laptop at the house (?tv=1)
+ *
+ * Built on a fixed broadcast canvas (1920×1080, or 1080×1920 portrait) that
+ * scales to whatever the viewport is, so it frames identically in Larix,
+ * on a TV and in a browser. Portrait keeps everything that matters inside
+ * Instagram Live's safe area (its header covers the top ~12%, comments the
+ * bottom ~20%).
+ *
+ * Live data: the scheduled time and the admin-picked photo come from the
+ * shared live client, so rescheduling needs no rebuild. In the final hour
+ * the start time becomes a running clock; music (MUSIC_URL, loaded by Larix
+ * when the layer has "Play media" on) fades out when the clock reaches zero
+ * so it never plays over the reveal.
+ *
+ * Query overrides: ?o=portrait|landscape, ?at=18:30 or an ISO time,
+ * ?photo=<CF image id>, ?still=1 (no motion), ?tv=1 (screen in the room:
+ * first card hands the stream to phones, no music), ?music=0 (silent) or
+ * ?music=<url> (a different track), ?follow=1 (set by /live/slate/),
+ * ?embed=1 (inside the live page's video frame: always silent).
+ */
+import qrcode from 'qrcode-generator';
+import { cfRaw, cfLqip } from '../../utils/cf-image';
+import siteSettings from '../../content/site/settings.json';
+
+interface Props { kid?: any | null }
+const { kid = null } = Astro.props;
+const SITE = 'https://sunshineonaranneyday.com';
+/** Royalty-free track on R2 (uploaded in the Cloudflare dashboard); missing file = silence */
+const MUSIC_URL = 'https://files.sunshineonaranneyday.com/live/starting-soon.mp3';
+const s = siteSettings as any;
+const photo: string = kid?.heroImage || s.heroKidPhotoId || 'kids/braxton/photo-18';
+const possessive = kid ? (/s$/i.test(kid.name) ? `${kid.name}\u2019` : `${kid.name}\u2019s`) : null;
+const nameLen = possessive ? possessive.length : 9; // "Our next"
+const titleSize = nameLen <= 10 ? 'l' : nameLen <= 16 ? 'm' : 's';
+const rooms: string[] = kid?.roomTypes || [];
+const partners: { url: string; name: string }[] = (kid?.partnerLogos || []).filter((p: any) => p?.url);
+// Repeat short lists so the band is always full; the second copy makes the loop seamless
+const band = partners.length ? Array.from({ length: Math.max(1, Math.ceil(8 / partners.length)) }, () => partners).flat() : [];
+
+/** QR as a single SVG path, built at build time (no client library, no network). */
+function qr(url: string) {
+  const q = qrcode(0, 'M');
+  q.addData(url);
+  q.make();
+  const n = q.getModuleCount();
+  let d = '';
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (q.isDark(r, c)) d += `M${c} ${r}h1v1h-1z`;
+  return { n, d };
+}
+
+const livePath = kid ? `live/${kid.slug}` : 'live';
+const cards = [
+  // Stream viewers are already watching, so card one asks them to bring someone; on a TV at the house (?tv=1) it hands the stream to a phone
+  { key: 'share', kicker: 'Invite someone to watch', tvKicker: 'Watch on your phone', text: 'Send a friend the link, or scan', tvText: 'Scan to follow along, or visit', url: `sunshineonaranneyday.com/${livePath}`, qr: qr(`${SITE}/${livePath}/?src=slate`) },
+  { key: 'give', kicker: 'Fund the next room', text: 'Every reveal starts with a gift. Scan to give, or visit', url: 'sunshineonaranneyday.com/donate', qr: qr(`${SITE}/donate/?src=slate`) },
+  kid
+    ? { key: 'story', kicker: `Meet ${kid.name}`, text: `Scan to read ${possessive} story, or visit`, url: `sunshineonaranneyday.com/kids/${kid.slug}`, qr: qr(`${SITE}/kids/${kid.slug}/?src=slate`) }
+    : { key: 'story', kicker: 'Meet the kids', text: 'Scan to see every room we have built, or visit', url: 'sunshineonaranneyday.com/kids', qr: qr(`${SITE}/kids/?src=slate`) },
+];
+
+const photoSrc = {
+  landscape: cfRaw(photo, 'w=1400,h=1750,fit=cover,gravity=face,q=88'),
+  portrait: cfRaw(photo, 'w=1840,h=1200,fit=cover,gravity=face,q=88'),
+};
+const LOGO = cfRaw('brand-logo-light-bg-tagline-display', 'w=900,q=90');
+---
+
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>{possessive ? `${possessive} reveal starts soon` : 'Live room reveal starts soon'} | Sunshine on a Ranney Day</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="preload" href="/fonts/outfit-latin-variable.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="/fonts/libre-baskerville-latin-700-normal.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="/fonts/libre-baskerville-latin-400-italic.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href={photoSrc.landscape} as="image" />
+  <style is:inline>
+    @font-face { font-family: 'Libre Baskerville'; font-style: normal; font-weight: 700; font-display: block; src: url('/fonts/libre-baskerville-latin-700-normal.woff2') format('woff2'); }
+    @font-face { font-family: 'Libre Baskerville'; font-style: italic; font-weight: 400; font-display: block; src: url('/fonts/libre-baskerville-latin-400-italic.woff2') format('woff2'); }
+    @font-face { font-family: 'Outfit'; font-style: normal; font-weight: 100 900; font-display: block; src: url('/fonts/outfit-latin-variable.woff2') format('woff2'); }
+  </style>
+</head>
+<body data-o="landscape" data-state="soon" data-partners={partners.length ? 'yes' : 'no'}>
+  <div class="canvas" id="canvas">
+    <div class="glow" aria-hidden="true"></div>
+
+    <div class="logo" role="img" aria-label="Sunshine on a Ranney Day, Dreams Built Here"><img src={LOGO} alt="" /></div>
+
+    <div class="copy">
+      <p class="eyebrow"><span class="dot" aria-hidden="true"></span>Live room reveal <span class="eyebrow-sep" aria-hidden="true">·</span> Starting soon</p>
+      <h1 class={`title title--${titleSize}`}>{possessive || 'Our next'} <em>room reveal</em></h1>
+      <p class="sub">{possessive
+        ? `Stay right here. ${possessive} family is about to see the finished room for the first time.`
+        : 'Stay right here. A family is about to see their finished room for the first time.'}</p>
+      <div class="when">
+        <span class="when-label" data-when="label">Starting</span>
+        <span class="when-time" data-when="time">In just a few minutes</span>
+        <span class="when-rel" data-when="rel" hidden></span>
+      </div>
+    </div>
+
+    <div class="frame">
+      <div class="accent" aria-hidden="true"></div>
+      <div class="photo" style={`background-image:url(${cfLqip(photo)})`}>
+        <img id="photo" src={photoSrc.landscape} data-landscape={photoSrc.landscape} data-portrait={photoSrc.portrait} alt={kid?.name || 'A child in a newly built room'} />
+      </div>
+      {rooms.length > 0 && (
+        <div class="rooms"><span class="rooms-label">Today</span>{rooms.join(' · ')}</div>
+      )}
+    </div>
+
+    <div class="cards">
+      {cards.map((c, i) => (
+        <div class={`card${i === 0 ? ' is-on' : ''}`} data-card={c.key}>
+          <svg class="qr" viewBox={`-2 -2 ${c.qr.n + 4} ${c.qr.n + 4}`} shape-rendering="crispEdges" aria-hidden="true">
+            <rect x="-2" y="-2" width={c.qr.n + 4} height={c.qr.n + 4} fill="#fff" />
+            <path d={c.qr.d} fill="#373A36" />
+          </svg>
+          <div class="card-text">
+            <p class="card-kicker">{c.tvKicker ? <><span class="for-stream">{c.kicker}</span><span class="for-tv">{c.tvKicker}</span></> : c.kicker}</p>
+            <p class="card-body">{c.tvText ? <><span class="for-stream">{c.text}</span><span class="for-tv">{c.tvText}</span></> : c.text}</p>
+            <p class="card-url" set:html={c.url.replace(/\//g, '/<wbr>')} />
+          </div>
+        </div>
+      ))}
+    </div>
+
+    {band.length > 0 && (
+      <div class="partners">
+        <p class="partners-label">Built with help from</p>
+        <div class="marquee">
+          <div class="marquee-track" style={`--n:${band.length}`}>
+            {[...band, ...band].map((p, i) => (
+              <span class="chip" aria-hidden={i >= band.length ? 'true' : undefined}>
+                <img src={cfRaw(p.url, 'trim=border,h=160,fit=scale-down,q=90')} alt={i < band.length ? p.name : ''} loading="eager" onerror="this.parentElement.remove()" />
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
+    )}
+  </div>
+
+  <script is:inline define:vars={{ slug: kid?.slug || '', music: MUSIC_URL }}>
+    window.__SLATE_KID__ = slug;
+    window.__SLATE_MUSIC__ = music;
+  </script>
+  <script>
+    import { getLiveClient, type LiveState } from '../../utils/live-client';
+    import { cfRaw } from '../../utils/cf-image';
+
+    const body = document.body;
+    const canvas = document.getElementById('canvas')!;
+    const photo = document.getElementById('photo') as HTMLImageElement;
+    const params = new URLSearchParams(location.search);
+    const kidSlug = (window as any).__SLATE_KID__ as string;
+    if (params.get('still') === '1') body.classList.add('still');
+    const tv = params.get('tv') === '1';
+    if (tv) body.classList.add('tv');
+
+    // ── Orientation + fit: fixed canvas scaled to the viewport ──
+    function fit() {
+      const forced = params.get('o');
+      const o = forced === 'portrait' || forced === 'landscape' ? forced : innerHeight > innerWidth ? 'portrait' : 'landscape';
+      if (body.dataset.o !== o) {
+        body.dataset.o = o;
+        if (!photoOverride) photo.src = (o === 'portrait' ? photo.dataset.portrait : photo.dataset.landscape) || photo.src;
+      }
+      const [w, h] = o === 'portrait' ? [1080, 1920] : [1920, 1080];
+      canvas.style.transform = `translate(-50%, -50%) scale(${Math.min(innerWidth / w, innerHeight / h)})`;
+    }
+
+    // ── Photo: ?photo= wins, then the photo picked when the reveal was scheduled ──
+    let photoOverride = params.get('photo');
+    function setPhoto(id: string | null) {
+      if (!id) return;
+      photoOverride = id;
+      const portrait = body.dataset.o === 'portrait';
+      const next = cfRaw(id, portrait ? 'w=1840,h=1200,fit=cover,gravity=face,q=88' : 'w=1400,h=1750,fit=cover,gravity=face,q=88');
+      if (photo.src !== next) photo.src = next;
+    }
+    addEventListener('resize', () => { fit(); if (photoOverride) setPhoto(photoOverride); });
+    fit();
+    if (photoOverride) setPhoto(photoOverride);
+
+    // ── Start time ──
+    let startAt: number | null = null;
+    let tz = 'America/New_York';
+    const at = params.get('at');
+    if (at) {
+      if (/^\d{1,2}:\d{2}$/.test(at)) {
+        const [hh, mm] = at.split(':').map(Number);
+        const d = new Date(); d.setHours(hh, mm, 0, 0);
+        startAt = d.getTime();
+      } else if (!Number.isNaN(Date.parse(at))) startAt = Date.parse(at);
+    }
+
+    const el = (k: string) => document.querySelector<HTMLElement>(`[data-when="${k}"]`)!;
+    const fmtClock = (d: Date) => new Intl.DateTimeFormat('en-US', { timeZone: tz, hour: 'numeric', minute: '2-digit' }).format(d);
+    function renderWhen() {
+      const label = el('label'), time = el('time'), rel = el('rel');
+      const set = (state: string, l: string, t: string, r: string) => {
+        body.dataset.state = state;
+        if (label.textContent !== l) label.textContent = l;
+        if (time.textContent !== t) time.textContent = t;
+        if (rel.textContent !== r) rel.textContent = r;
+        rel.hidden = !r;
+      };
+      if (!startAt) return set('soon', 'Starting', 'In just a few minutes', '');
+      const left = startAt - Date.now();
+      if (left <= 0) return set('now', 'Starting', 'Any moment now', '');
+      const d = new Date(startAt);
+      if (left <= 3600e3) {
+        // Final hour: a running clock, with the wall-clock time underneath
+        const secs = Math.ceil(left / 1000);
+        const mm = Math.floor(secs / 60), ss = secs % 60;
+        return set('count', 'Starting in', `${mm}:${String(ss).padStart(2, '0')}`, `Live at ${fmtClock(d)}`);
+      }
+      const fmtDay = new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'long' });
+      const hours = left / 3600e3;
+      const sameDay = fmtDay.format(d) === fmtDay.format(new Date()) && hours < 18;
+      set('timed', sameDay ? 'Live at' : `Live ${fmtDay.format(d)} at`, fmtClock(d),
+        hours < 2 ? 'in about an hour' : hours < 18 ? `in about ${Math.round(hours)} hours` : '');
+    }
+    renderWhen();
+    setInterval(() => { renderWhen(); syncMusic(); }, 1000);
+
+    // ── Music: plays under the countdown, fades out at zero so it never runs over the reveal ──
+    // Larix mixes a web layer's sound into the stream when the layer has "Play media" on.
+    // Desktop browsers block sound without a click, which is fine: a TV at the house stays quiet.
+    const musicParam = params.get('music');
+    const embed = params.get('embed') === '1'; // inside the site's video frame: never makes sound
+    const musicSrc = tv || embed || musicParam === '0' ? null : (musicParam && /^https:\/\//.test(musicParam) ? musicParam : (window as any).__SLATE_MUSIC__);
+    let audio: HTMLAudioElement | null = null; // created on first play, so a page about to jump never fetches the track
+    let fadeTimer: ReturnType<typeof setInterval> | undefined;
+    const TARGET = 0.8;
+    function fade(to: number, ms: number, then?: () => void) {
+      if (!audio) return;
+      clearInterval(fadeTimer);
+      const from = audio.volume, steps = Math.max(1, Math.round(ms / 50));
+      let n = 0;
+      fadeTimer = setInterval(() => {
+        n++;
+        audio.volume = Math.min(1, Math.max(0, from + (to - from) * (n / steps)));
+        if (n >= steps) { clearInterval(fadeTimer); then?.(); }
+      }, 50);
+    }
+    let musicOn = false;
+    // The permanent address may be about to jump to a kid's screen; wait for the live state so the track doesn't start twice
+    let musicReady = !!kidSlug;
+    setTimeout(() => { if (!musicReady) { musicReady = true; syncMusic(); } }, 4000);
+    function syncMusic() {
+      if (!musicSrc || !musicReady) return;
+      const want = !(startAt && startAt - Date.now() <= 0);
+      if (want && !musicOn) {
+        if (!audio) {
+          audio = new Audio(musicSrc);
+          audio.addEventListener('error', () => { musicOn = false; }, { once: true });
+        }
+        const a = audio;
+        musicOn = true;
+        a.loop = true;
+        a.volume = 0;
+        a.play().then(() => fade(TARGET, 3000)).catch(() => { musicOn = false; });
+      } else if (!want && musicOn && audio) {
+        const a = audio;
+        musicOn = false;
+        // iOS ignores volume changes, so the fade there is a clean stop
+        fade(0, 8000, () => a.pause());
+      }
+    }
+    syncMusic();
+
+    // ── Live state: start time, picked photo, and (in follow mode) which kid ──
+    // /live/slate/ and ?follow=1 pages jump to whichever kid is scheduled, so Larix is set up once
+    const follow = !kidSlug || params.get('follow') === '1';
+    const ACTIVE = new Set(['scheduled', 'armed', 'live', 'ending']);
+    let jumping = false;
+    async function jumpTo(slug: string) {
+      if (jumping) return;
+      jumping = true;
+      const q = new URLSearchParams(params); q.set('follow', '1');
+      const url = `/live/${slug}/slate/?${q}`;
+      try {
+        const res = await fetch(url, { method: 'HEAD' });
+        if (res.ok) { location.replace(url); return; }
+      } catch { /* offline: stay generic */ }
+      jumping = false;
+    }
+    getLiveClient().subscribe((s: LiveState | null, meta) => {
+      if (meta?.timezone) tz = meta.timezone;
+      if (!s) return;
+      if (follow && s.kidSlug && s.kidSlug !== kidSlug && ACTIVE.has(s.phase)) { jumpTo(s.kidSlug); return; }
+      if (!musicReady && !jumping) { musicReady = true; syncMusic(); }
+      if (kidSlug && s.kidSlug !== kidSlug) return; // another kid's broadcast never drives this page
+      if (!at && s.scheduledAt && ACTIVE.has(s.phase)) { startAt = Date.parse(s.scheduledAt); renderWhen(); syncMusic(); }
+      if (kidSlug && !params.get('photo') && s.image) setPhoto(s.image);
+    });
+
+    // ── Info cards rotate every 10 s ──
+    const cards = [...document.querySelectorAll<HTMLElement>('.card')];
+    let i = 0;
+    if (cards.length > 1 && !body.classList.contains('still')) {
+      setInterval(() => {
+        cards[i].classList.remove('is-on');
+        i = (i + 1) % cards.length;
+        cards[i].classList.add('is-on');
+      }, 10_000);
+    }
+  </script>
+
+  <style is:global>
+    :root {
+      --c-yellow: #FFDA24;
+      --c-yellow-soft: rgba(255, 218, 36, 0.3);
+      --c-yellow-mark: rgba(255, 218, 36, 0.42);
+      --c-dark: #373A36;
+      --c-dark-deep: #1E1F25;
+      --c-cream: #FEFCF5;
+      --c-text: #373A36;
+      --c-text-muted: #5A5B61;
+      --c-border: #E5E4E0;
+      --ease: cubic-bezier(0.16, 1, 0.3, 1);
+      --font-display: 'Libre Baskerville', Georgia, serif;
+      --font-body: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+    body {
+      background: var(--c-cream); color: var(--c-text); font-family: var(--font-body);
+      overflow: hidden; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
+    }
+
+    /* ── Canvas ── */
+    .canvas {
+      position: absolute; left: 50%; top: 50%; width: 1920px; height: 1080px;
+      transform-origin: center; overflow: hidden; background: var(--c-cream);
+    }
+    body[data-o='portrait'] .canvas { width: 1080px; height: 1920px; }
+
+    .glow {
+      position: absolute; width: 1400px; height: 1400px; right: -380px; top: -300px; border-radius: 50%;
+      background: radial-gradient(circle, rgba(255, 218, 36, 0.22) 0%, rgba(255, 218, 36, 0.08) 40%, transparent 68%);
+      animation: drift 26s ease-in-out infinite alternate;
+    }
+    body[data-o='portrait'] .glow { right: -520px; top: 80px; }
+    @keyframes drift { to { transform: translate(-160px, 120px) scale(1.08); } }
+
+    /* Logo: the CF asset is a padded 600×600 square; crop to its 396×371 content box */
+    .logo { position: absolute; left: 112px; top: 80px; width: 190px; height: calc(190px * 371 / 396); overflow: hidden; animation: up 0.9s var(--ease) both; }
+    .logo img { display: block; width: calc(190px * 600 / 396); margin: calc(-190px * 98 / 396) 0 0 calc(-190px * 102 / 396); }
+    body[data-o='portrait'] .logo { left: 80px; top: 250px; width: 150px; height: calc(150px * 371 / 396); }
+    body[data-o='portrait'] .logo img { width: calc(150px * 600 / 396); margin: calc(-150px * 98 / 396) 0 0 calc(-150px * 102 / 396); }
+
+    /* ── Copy (left column / lower block) ── */
+    .copy { position: absolute; left: 112px; top: 280px; bottom: 164px; width: 960px; display: flex; flex-direction: column; justify-content: center; }
+    body[data-partners='no'] .copy { bottom: 60px; }
+    body[data-o='portrait'] .copy { left: 80px; top: 980px; bottom: 380px; width: 920px; }
+
+    .eyebrow {
+      display: flex; align-items: center; gap: 18px; margin-bottom: 34px;
+      font-size: 24px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--c-text-muted);
+      animation: up 0.9s var(--ease) 0.1s both;
+    }
+    .eyebrow::before { content: ''; width: 44px; height: 3px; background: currentColor; flex-shrink: 0; }
+    .eyebrow-sep { color: var(--c-yellow); font-weight: 900; }
+    .dot { width: 16px; height: 16px; border-radius: 50%; background: var(--c-yellow); position: relative; flex-shrink: 0; box-shadow: 0 0 0 1px rgba(55, 58, 54, 0.12); }
+    .dot::after { content: ''; position: absolute; inset: -6px; border-radius: 50%; border: 3px solid var(--c-yellow); opacity: 0; animation: ping 1.8s cubic-bezier(0, 0, 0.2, 1) infinite; }
+    @keyframes ping { 0% { transform: scale(0.6); opacity: 0.9; } 70%, 100% { transform: scale(1.6); opacity: 0; } }
+    body[data-o='portrait'] .eyebrow { font-size: 22px; margin-bottom: 26px; }
+
+    .title {
+      font-family: var(--font-display); font-weight: 700; color: var(--c-text);
+      letter-spacing: -0.035em; line-height: 1.06; margin-bottom: 32px;
+      animation: slide 1s var(--ease) 0.15s both;
+    }
+    .title--l { font-size: 118px; }
+    .title--m { font-size: 104px; }
+    .title--s { font-size: 88px; }
+    body[data-o='portrait'] .title--l { font-size: 104px; }
+    body[data-o='portrait'] .title--m { font-size: 88px; }
+    body[data-o='portrait'] .title--s { font-size: 74px; }
+    body[data-o='portrait'] .title { margin-bottom: 24px; }
+    /* Same yellow-marker italic as the site hero, drawn in on load */
+    .title em {
+      font-family: var(--font-display); font-style: italic; font-weight: 400; white-space: nowrap;
+      background-image: linear-gradient(transparent 58%, var(--c-yellow-mark) 58%, var(--c-yellow-mark) 92%, transparent 92%);
+      background-repeat: no-repeat; background-size: 0% 100%; padding: 0 0.06em;
+      animation: mark 1.1s var(--ease) 0.9s forwards;
+    }
+    @keyframes mark { to { background-size: 100% 100%; } }
+
+    .sub {
+      font-size: 31px; line-height: 1.5; color: var(--c-text-muted); max-width: 830px; margin-bottom: 44px;
+      animation: up 0.9s var(--ease) 0.3s both;
+    }
+    body[data-o='portrait'] .sub { max-width: none; font-size: 29px; margin-bottom: 32px; }
+
+    /* Start time: the one thing a viewer needs */
+    .when {
+      display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 22px;
+      padding-left: 30px; border-left: 6px solid var(--c-yellow);
+      animation: up 0.9s var(--ease) 0.4s both;
+    }
+    .when-label { flex-basis: 100%; font-size: 22px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--c-text-muted); }
+    .when-time { font-family: var(--font-display); font-weight: 700; font-size: 72px; letter-spacing: -0.03em; line-height: 1.1; color: var(--c-text); }
+    .when-rel { font-size: 32px; font-weight: 500; color: var(--c-text-muted); }
+    .when-rel[hidden] { display: none; }
+    body[data-state='soon'] .when-time, body[data-state='now'] .when-time { font-size: 60px; }
+    body[data-o='portrait'] .when-time { font-size: 62px; }
+    body[data-o='portrait'][data-state='soon'] .when-time, body[data-o='portrait'][data-state='now'] .when-time { font-size: 54px; }
+    body[data-o='portrait'] .when-label { font-size: 20px; }
+    body[data-o='portrait'] .when-rel { font-size: 28px; }
+    /* Final-hour clock: Outfit's tabular digits (the serif has none), so it never jitters as it ticks */
+    body[data-state='count'] .when-time {
+      font-family: var(--font-body); font-weight: 600; font-variant-numeric: tabular-nums;
+      font-size: 104px; line-height: 1; letter-spacing: -0.02em; margin-top: 4px;
+    }
+    body[data-o='portrait'][data-state='count'] .when-time { font-size: 108px; }
+    body[data-o='portrait'][data-state='count'] .when-rel { flex-basis: 100%; margin-top: 8px; }
+
+    /* ── Photo frame: rounded, offset yellow block, slow drift ── */
+    .frame { position: absolute; left: 1176px; top: 96px; width: 632px; height: 790px; animation: photoIn 1.1s var(--ease) both; }
+    body[data-partners='no'] .frame { top: 145px; }
+    body[data-o='portrait'] .frame { left: 80px; top: 410px; width: 920px; height: 540px; }
+    .accent {
+      position: absolute; right: -30px; bottom: -30px; width: 65%; height: 50%;
+      background: var(--c-yellow); border-radius: 32px; opacity: 0; animation: accent 1.2s var(--ease) 0.7s forwards;
+    }
+    @keyframes accent { to { opacity: 0.4; } }
+    .photo {
+      position: absolute; inset: 0; border-radius: 32px; overflow: hidden;
+      background-color: var(--c-dark-deep); background-size: cover; background-position: center;
+      box-shadow: 0 40px 100px rgba(0, 0, 0, 0.14), 0 10px 30px rgba(0, 0, 0, 0.07);
+    }
+    .photo img {
+      width: 100%; height: 100%; object-fit: cover; display: block; transform-origin: 50% 35%;
+      animation: kenburns 38s ease-in-out infinite alternate;
+    }
+    @keyframes kenburns { from { transform: scale(1.02); } to { transform: scale(1.13) translate(-1.5%, 1%); } }
+
+    .rooms {
+      position: absolute; top: 28px; right: 28px; display: flex; align-items: center; gap: 12px;
+      background: var(--c-dark-deep); color: var(--c-cream); border-radius: 100px; padding: 14px 24px;
+      font-size: 22px; font-weight: 600; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+      animation: up 0.9s var(--ease) 1s both;
+    }
+    .rooms-label { color: var(--c-yellow); font-size: 16px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; }
+
+    /* Rotating info card, overlapping the photo's lower-left corner */
+    .cards { position: absolute; left: 980px; top: 630px; width: 620px; height: 212px; animation: up 1s var(--ease) 1.1s both; }
+    body[data-partners='no'] .cards { top: 679px; }
+    body[data-o='portrait'] .cards { left: 80px; top: 1570px; width: 920px; height: 196px; }
+    body[data-o='portrait'][data-partners='no'] .cards { top: 1620px; }
+    .card {
+      position: absolute; inset: 0; display: flex; align-items: center; gap: 26px;
+      background: #fff; border: 1px solid var(--c-border); border-radius: 24px; padding: 22px 28px 22px 22px;
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.14), 0 6px 16px rgba(0, 0, 0, 0.06);
+      opacity: 0; transform: translateY(14px); transition: opacity 0.8s var(--ease), transform 0.8s var(--ease);
+    }
+    .card.is-on { opacity: 1; transform: none; }
+    .qr { width: 168px; height: 168px; flex-shrink: 0; border-radius: 10px; }
+    .card-text { min-width: 0; }
+    .for-tv, body.tv .for-stream { display: none; }
+    body.tv .for-tv { display: inline; }
+    .card-kicker { font-family: var(--font-display); font-weight: 700; font-size: 30px; letter-spacing: -0.02em; line-height: 1.15; margin-bottom: 8px; }
+    .card-body { font-size: 20px; line-height: 1.4; color: var(--c-text-muted); margin-bottom: 6px; }
+    .card-url { font-size: 19px; font-weight: 700; color: var(--c-dark); }
+    .card-url::after { content: ''; display: block; width: 48px; height: 3px; background: var(--c-yellow); margin-top: 8px; }
+
+    /* ── Partner band ── */
+    .partners {
+      position: absolute; left: 0; right: 0; bottom: 0; height: 136px;
+      display: flex; align-items: center; gap: 40px; padding-left: 112px;
+      border-top: 1px solid var(--c-border); background: rgba(255, 255, 255, 0.55);
+      animation: fade 1.2s ease 1.3s both;
+    }
+    body[data-o='portrait'] .partners { height: 124px; padding-left: 80px; gap: 28px; }
+    .partners-label { flex-shrink: 0; font-size: 18px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--c-text-muted); width: 170px; line-height: 1.35; }
+    .marquee {
+      flex: 1; overflow: hidden; height: 100%; display: flex; align-items: center;
+      -webkit-mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent);
+      mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent);
+    }
+    .marquee-track { display: flex; gap: 22px; width: max-content; animation: marquee calc(var(--n) * 5s) linear infinite; }
+    @keyframes marquee { to { transform: translateX(calc(-50% - 11px)); } }
+    .chip {
+      height: 88px; min-width: 170px; padding: 10px 22px; background: #fff; border: 1px solid var(--c-border); border-radius: 18px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .chip img { max-height: 60px; max-width: 280px; object-fit: contain; display: block; }
+
+    /* ── Motion ── */
+    @keyframes up { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: none; } }
+    @keyframes slide { from { opacity: 0; transform: translateY(36px); } to { opacity: 1; transform: none; } }
+    @keyframes photoIn { from { opacity: 0; transform: scale(0.97); } to { opacity: 1; transform: none; } }
+    @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+    body.still *, body.still *::before, body.still *::after { animation-duration: 0s !important; animation-delay: 0s !important; transition: none !important; }
+    body.still .photo img { animation: none; transform: scale(1.02); }
+    body.still .marquee-track { animation: none; }
+    @media (prefers-reduced-motion: reduce) {
+      .glow, .photo img, .marquee-track { animation: none; }
+    }
+  </style>
+</body>
+</html>

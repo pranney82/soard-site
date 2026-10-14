@@ -49,23 +49,25 @@ Code
 - `functions/api/_broadcast.js` — state machine, D1 schema, reminders, replay handling, Facebook side effects, health, admin commands.
 - `functions/api/_stream-live.js` — Stream Live REST wrapper, lifecycle/viewers, Larix setup link, output presets.
 - `functions/api/_broadcast-notify.js` — Resend, Twilio, Web Push (VAPID + aes128gcm, no library), ICS, email/SMS/push copy, Slack/email alerts.
-- `functions/api/_broadcast-fb.js` — Facebook Graph reads, Live Video API create/end (API mode).
-- Endpoints: `broadcast.js` (public GET, admin POST), `broadcast-admin.js` (control center GET + setup POST), `stream-webhook.js`, `broadcast-hooks.js`, `live-ws.js`, `reminders.js`, `broadcast-event.js`. `live-status.js` is the legacy view over the same state.
-- Front end: `src/utils/live-client.ts` (one WebSocket + polling fallback per tab), `src/components/global/LiveIndicator.astro`, `src/components/live/LivePage.astro`, `src/pages/live/index.astro`, `src/pages/live/[slug].astro`, `public/sw.js` (push handlers).
-- Admin: the `Broadcast` component in `public/admin/index.html` (replaces Go Live). QR codes come from `qrcode-generator` bundled into `public/admin/vendor.js`.
-- Tests: `npm test` runs `tests/broadcast.test.mjs` against a sql.js D1 shim (`tests/lib/d1-shim.mjs`). `node scripts/test-live.mjs` drives the built site and admin in Puppeteer with mocked API states.
+- `functions/api/_broadcast-fb.js` — Facebook Graph reads, Live Video API create/end (API mode), ingest health (API mode).
+- `functions/api/_broadcast-monitor.js`: the feed monitor (Control room report + the unattended watch in `runTick`). Uses `_stream-probe.js` (reads Stream's HLS like a viewer), `_aac-level.js` + `_aac-tables.js` (audio level from the AAC bitstream, no decoder), `_youtube.js` (is the channel live).
+- Endpoints: `broadcast.js` (public GET, admin POST), `broadcast-admin.js` (control center GET + setup POST), `stream-webhook.js`, `broadcast-hooks.js`, `live-ws.js`, `reminders.js`, `broadcast-event.js`, `live-messages.js` (messages for the family; logic in `_live-messages.js`). `live-status.js` is the legacy view over the same state.
+- `functions/live/[[path]].js`: rewrites `/live/` for the current kid and redirects unknown `/live/<kid>/` links to `/live/` (see The live page below).
+- Front end: `src/utils/live-client.ts` (one WebSocket + polling fallback per tab, shared with the starting-soon iframe; watch/react/event API), `src/components/global/LiveIndicator.astro`, `src/components/live/LivePage.astro`, `src/components/live/PastReveals.astro`, `src/pages/live/index.astro`, `src/pages/live/[slug].astro`, `src/pages/reveals.astro` (every reveal video; data in `src/utils/reveals.ts`), `public/sw.js` (push handlers).
+- Admin: the `Broadcast` component in `public/admin/index.html` (replaces Go Live). QR codes come from `qrcode-generator` bundled into `public/admin/vendor.js`. The Control room is `public/admin/control-room.js`, loaded on first use; its HLS player is `public/admin/vendor-hls.js` (hls.js, built by `npm run build:admin-vendor`).
+- Tests: `npm test` runs `tests/broadcast.test.mjs` and `tests/live-messages.test.mjs` against a sql.js D1 shim (`tests/lib/d1-shim.mjs`). `node scripts/test-live.mjs` drives the built site and admin in Puppeteer with mocked API states. `tests/stream-probe.test.mjs` checks the audio level reader against reference clips (`tests/fixtures/aac/`), the HLS probe, destination verdicts and alerts. `node scripts/test-control-room.mjs` plays a generated feed through the Control room (needs ffmpeg; set `FFMPEG` if it isn't on PATH).
 
 Data (D1 `soard-db`)
 
 - `site_config` keys `broadcast` (state), `broadcast-config` (settings, live input record incl. ingest secrets, outputs, VAPID keys), `broadcast-health` (checks, webhook stats, deploy cooldown). All three are in `RUNTIME_ONLY_KEYS` in `scripts/d1-helpers.js`, so the prebuild never writes them to `src/content`.
-- Tables (created on first use by `ensureSchema`): `broadcasts`, `broadcast_reminders`, `broadcast_sends` (idempotency per broadcast+kind+channel), `broadcast_events` (analytics).
+- Tables (created on first use by `ensureSchema`): `broadcasts`, `broadcast_reminders`, `broadcast_sends` (idempotency per broadcast+kind+channel), `broadcast_events` (analytics), `broadcast_messages` (messages for the family; IPs stored only as a hash salted with the broadcast id).
 
 Bindings and env
 
 - `wrangler.toml` binds `LIVE_HUB` to `LiveHub@soard-live-hub`. The binding takes effect on the next Pages deploy after the Worker exists.
 - Required: `CF_ACCOUNT_ID`, `CF_STREAM_TOKEN` (Stream: Edit), `RESEND_API_KEY`, `CF_PAGES_DEPLOY_HOOK`. Already set.
 - Facebook: `FB_PAGE_ID`, `FB_PAGE_TOKEN` (already set; used for permalinks and API mode).
-- Optional: `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM` or `TWILIO_MESSAGING_SERVICE_SID` (texts); `SLACK_WEBHOOK_URL`, `ALERT_EMAILS` (alerts); `KIT_API_KEY` (drafts, already set).
+- Optional: `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM` or `TWILIO_MESSAGING_SERVICE_SID` (texts); `SLACK_WEBHOOK_URL`, `ALERT_EMAILS` (alerts); `KIT_API_KEY` (drafts, already set); `YOUTUBE_API_KEY` (lets the Control room and alerts confirm YouTube is live: Google Cloud → APIs & Services → enable YouTube Data API v3 → Credentials → API key, restricted to that API).
 - No new secrets are required. Hub ticks are authenticated with one-time nonces verified over the private binding; the Cloudflare webhook is only a wake-up call and every decision is re-derived from Stream's lifecycle endpoint.
 
 ## Setup, once
@@ -83,6 +85,39 @@ Bindings and env
 ## Reveal day
 
 Office: nothing. Crew: open Larix, tap Start. See `docs/live-runbook.md`.
+
+## Control room and feed checks
+
+Admin → Broadcast → **Control room** (and a compact version on Now while live) plays the feed with its own HLS player instead of Stream's iframe, so the page can hear it:
+
+- **Sound**: left/right meters (RMS and peak, dBFS) and a verdict: good, very quiet, no sound (6 s), too loud (clipping), one side only, or no audio track. A mono mic reads on both meters. "Listen here" plays it out loud. The browser may ask for one click before it can listen.
+- **Picture**: feed size and frame rate, delay behind the phone, stalls, and a warning when the picture goes black or stops moving.
+- **Destinations**: Website, Facebook, YouTube, Instagram Live, each OK / starting / needs a fix, with the fix and a button (Live Producer, YouTube Studio). Facebook in persistent-key mode can only see whether the Page has a live video; API mode adds Facebook's own ingest numbers, including audio bitrate. YouTube needs `YOUTUBE_API_KEY`. Instagram can't be checked.
+- **Rehearsal feed**: the same player and meter on the private rehearsal input, for a mic check that never goes public.
+
+Without anyone watching, `runTick` checks the live feed every 15 s (`_broadcast-monitor.js` → `watch`) and alerts once per problem: no audio track (after 20 s), silence for 30 s (then "audio is back" when it returns), no new video for 30 s while the phone shows connected, Facebook not live 2 min in, YouTube not live 2.5 min in. The server measures audio by decoding the AAC spectrum of the newest segments (within about 1 dB of a real decoder), because Stream encodes at a constant bitrate and file sizes say nothing about sound.
+
+## The live page
+
+One page component serves `/live/` (follows whatever reveal is current) and `/live/<kid>/` (that kid only; another kid's reveal never shows there).
+
+- **The family QR code** points at `/live/?src=qr` and never changes. Admin → Broadcast → Now has it as SVG and PNG. Scans count as `qr_scan` events in History.
+- **`/live/` becomes the kid's page.** While a reveal is scheduled, live or on replay, `functions/live/[[path]].js` rewrites the static page for that kid before it leaves the server: headline, story, photo, page title and share preview (`/og/kids/<kid>.png`). The response is `no-store`. Texts and Slack fetch previews fresh; Facebook caches them, so Facebook posts should use the kid's own link (the system already does).
+- **Unknown kid links** (kid still a draft, a typo, an old slug) redirect to `/live/` instead of "page not found". The admin warns when a reveal is scheduled for a draft kid, since the starting-soon screen also needs the kid published.
+- **Frame timeline:** kid photo and countdown, then for the last 30 minutes before the start time the starting-soon screen (`/live/<kid>/slate/?embed=1&music=0`, same origin, silent; needs `'self'` in the CSP `frame-src`), then the Stream player when the phone connects, then the replay.
+- **Past reveals** (`PastReveals.astro`) close the page, and lead it when nothing is scheduled. `/reveals/` has every reveal video. Kid pages and the showcase only use a Stream video if it still plays (checked at build); otherwise YouTube.
+
+## Watch party and messages
+
+On a live page during the starting-soon window and while live:
+
+- **Reactions** (love, sunshine, celebrate, wow). Taps go over the WebSocket as `{"t":"react","k":"heart"}`; the hub rate limits each socket (15 per 3 s), batches every 400 ms and sends counts to everyone watching, who see them float up over the video. Totals per reveal show in the admin.
+- **Viewer count.** Live pages send `{"t":"watch"}`; only those sockets count (every page on the site holds a socket for the LIVE pill). Shown as "N watching here" from 5 viewers up; it counts the site only, not Facebook or YouTube.
+- **Messages for the family.** First name plus up to 280 characters. Every message is screened before anyone sees it: local rules (links, emails, phone numbers, social handles, a short word list), then Workers AI (`@cf/meta/llama-3.3-70b-instruct-fp8-fast`) with the context of a child's reveal, approving only kind, supportive or neutral notes. If screening is unavailable the message is **held** (fails closed) until someone approves it. Limits: 3 per visitor per minute, 20 per visitor per reveal, 30 per IP per minute (generous so a whole family on the house wifi can post), no duplicates, honeypot field. Shown messages reach everyone through the hub (`POST /relay` over the binding); without a hub that relays, pages poll every 20 s.
+- **Admin:** Broadcast → Now → Messages: on/off switch (`config.messages.enabled`), waiting-for-review box, Hide/Show on every message, blocked ones folded away, and **Keepsake**, a print-ready page of every shown message to give the family. History links each past reveal's messages and keepsake.
+- Messages stay open through the replay and close when the reveal clears.
+
+**Deploy order:** the hub Worker carries the watch party (`watch`, reactions, `/relay`). Deploy it (`cd workers/live-hub && npx wrangler deploy`) before or with the site. With an older hub, messages still work (pages fall back to polling) but reactions and the viewer count don't.
 
 ## Instagram Reels (automatic)
 
@@ -110,5 +145,5 @@ After Facebook approves the Live Video API for the app (see `docs/facebook-app-r
 - **Linking any Stream video by hand**: every Stream video box in the kid, event and community editors has "Choose from Stream", which browses the whole Stream library by name and shows which pages already use each video. No file on the computer is needed.
 - **Two recordings for one reveal**: the phone was gone longer than the 30 s input timeout. Pick the right one in Now → Replay recording.
 - **Encoder error alert (`ERR_GOP_OUT_OF_RANGE` etc.)**: re-scan the QR; it sets H.264, AAC, keyframe 2 s.
-- **Audio problems**: use a wireless mic with its own receiver plugged into the phone, not Bluetooth (hands-free profile audio is low quality and drops in crowded rooms). Check Larix's level meter before starting.
+- **Audio problems**: use a wireless mic with its own receiver plugged into the phone, not Bluetooth (hands-free profile audio is low quality and drops in crowded rooms). Check Larix's level meter before starting, and do a mic check on the Rehearsal feed in the Control room: speech should sit between -24 and -12 dB on both meters.
 - **Reset everything**: `POST /api/broadcast {action:'reset'}` from the admin console, or the Now tab if a broken state is showing.

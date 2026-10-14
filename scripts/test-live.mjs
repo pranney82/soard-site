@@ -7,13 +7,14 @@
  * The preview serves no Pages Functions, so every /api call is mocked here
  * with fixtures for each broadcast state. Checks the live page in
  * scheduled / live / replay / idle states, the LIVE pill on the home page,
- * the reminder form, and every tab of the admin Broadcast control center.
+ * the reminder form, and every tab of the admin Broadcast control center,
+ * including viewer message moderation, the family keepsake (screen and
+ * print), the family invite QR downloads, and the draft-kid warning.
  * Screenshots land in test-results/live/. Exits non-zero on any failure or
  * console error.
  */
 import puppeteer from 'puppeteer';
-import { mkdirSync } from 'node:fs';
-import { readdirSync } from 'node:fs';
+import { mkdirSync, readdirSync, readFileSync, existsSync, rmSync } from 'node:fs';
 
 const BASE = process.env.BASE || 'http://localhost:4322';
 const OUT = new URL('../test-results/live/', import.meta.url).pathname;
@@ -22,6 +23,12 @@ const kidSlug = readdirSync(new URL('../src/content/kids/', import.meta.url).pat
 const CODE = 'cuav5h47lgfe96ql';
 const failures = [];
 const ok = (cond, msg) => { if (!cond) failures.push(msg); console.log(`${cond ? '  ✓' : '  ✗'} ${msg}`); };
+const settle = (ms = 250) => new Promise((r) => setTimeout(r, ms));
+let page; // set once the browser starts
+// Click the first element matching sel whose trimmed text matches re
+const clickText = (sel, re) => page.evaluate((s, src) => { const rx = new RegExp(src); const el = [...document.querySelectorAll(s)].find((x) => rx.test(x.textContent.trim())); if (el) { el.click(); return true; } return false; }, sel, re.source);
+// Wait for a finished download (Chrome renames .crdownload when done)
+const waitFile = async (path, ms = 6000) => { for (let t = 0; t < ms; t += 100) { if (existsSync(path)) return readFileSync(path); await settle(100); } return null; };
 
 const inH = (h) => new Date(Date.now() + h * 3600e3).toISOString();
 const base = { id: 'live-1', kidSlug, kidName: 'Sample Kid', title: "Sample Kid's room reveal", message: "Watch Sample Kid's room reveal live", image: null, liveUrl: `${BASE}/live/${kidSlug}/`, facebookUrl: 'https://www.facebook.com/SunshineOnaRanneyDay', youtubeUrl: 'https://www.youtube.com/@soard/live', source: 'stream', updatedAt: new Date().toISOString() };
@@ -33,21 +40,47 @@ const STATES = {
 };
 const reminders = { enabled: true, email: true, sms: true, push: true, pushKey: 'BPQ' + 'x'.repeat(84) };
 
+// Kids the admin loads from list-content (they feed the Broadcast kid
+// selects): one real published kid and a draft copy, so the draft warning
+// can be exercised.
+const kidJson = JSON.parse(readFileSync(new URL(`../src/content/kids/${kidSlug}.json`, import.meta.url), 'utf8'));
+const KIDS = [
+  { ...kidJson, slug: kidSlug, publishStatus: 'published' },
+  { ...kidJson, name: 'Dana', slug: 'dana-draft', publishStatus: 'draft' },
+];
+
+// Viewer messages, one or more of each status, newest first
+const MESSAGES = [
+  { id: 'm6', name: 'Grandma Jo', body: 'We are so proud of you! Enjoy every minute in your new room.', status: 'held', reason: 'Screening was unavailable', createdAt: inH(-0.02), moderatedBy: null, moderatedAt: null },
+  { id: 'm5', name: 'Coach Mike', body: 'This is amazing. Way to go, team!', status: 'shown', reason: null, createdAt: inH(-0.05), moderatedBy: null, moderatedAt: null },
+  { id: 'm4', name: 'Promo Bot', body: 'Buy cheap followers today', status: 'blocked', reason: 'Looks like advertising', createdAt: inH(-0.08), moderatedBy: null, moderatedAt: null },
+  { id: 'm3', name: 'Alex', body: 'First! lol', status: 'hidden', reason: null, createdAt: inH(-0.1), moderatedBy: 'ops@example.com', moderatedAt: inH(-0.09) },
+  { id: 'm2', name: 'Aunt Rosa', body: 'Sending so much love from Ohio. Your room looks like a dream.', status: 'shown', reason: null, createdAt: inH(-0.12), moderatedBy: null, moderatedAt: null },
+  { id: 'm1', name: 'Priya', body: 'Congratulations! We watched from our kitchen and cried happy tears.', status: 'shown', reason: null, createdAt: inH(-0.15), moderatedBy: null, moderatedAt: null },
+];
+const messagesFixture = (state, broadcastId) => {
+  const counts = { shown: 0, hidden: 0, blocked: 0, held: 0 };
+  for (const m of MESSAGES) counts[m.status]++;
+  const past = broadcastId && broadcastId !== state.id;
+  return { success: true, broadcastId: broadcastId || state.id, kidSlug, kidName: past ? 'Sample Kid' : state.kidName, title: past ? 'Earlier reveal' : state.title, enabled: true, counts, messages: MESSAGES };
+};
+const posted = []; // POST bodies sent to /api/broadcast-admin
+
 const adminFixture = (state) => ({
   success: true,
   state: { reel: state.phase === 'replay' ? { stage: 'processing', sourceUid: 'vid1', duration: 1620, method: 'captions+ai', momentSeconds: 742, confidence: 0.9, start: 502, end: 1397, clipUid: 'clip1', error: null } : null, phase: state.phase, broadcastId: state.id, kidSlug: state.kidSlug, kidName: state.kidName, source: state.source, liveAt: state.liveAt, fb: { permalink: 'https://www.facebook.com/x/videos/1' }, clicks: 3 },
   public: state, legacy: { live: state.live },
-  config: { customerCode: CODE, liveInput: { uid: 'in1', created: inH(-100), enabled: true, srt: { url: 'srt://live.cloudflare.com:778', streamId: 'sid1…2345', passphrase: 'pass…word' }, rtmps: { url: 'rtmps://live.cloudflare.com:443/live/', streamKey: 'abcd…wxyz' } }, rehearsalInput: null, outputs: { facebook: { uid: 'o1', url: 'rtmps://live-api-s.facebook.com:443/rtmp/', keyMask: 'FB-1…9999', enabled: true, createdAt: inH(-50) } }, facebook: { mode: 'persistent', pageUrl: 'https://www.facebook.com/SunshineOnaRanneyDay' }, youtube: { channelUrl: '' }, reminders: { enabled: true, hoursBefore: [24, 1], sms: true, push: true }, replayHours: 72, timezone: 'America/New_York', alerts: { emails: ['ops@example.com'] }, defaults: { title: 'Live room reveal', message: 'We are live' }, vapid: { publicKey: 'BPQ', createdAt: inH(-10) } },
+  config: { customerCode: CODE, liveInput: { uid: 'in1', created: inH(-100), enabled: true, srt: { url: 'srt://live.cloudflare.com:778', streamId: 'sid1…2345', passphrase: 'pass…word' }, rtmps: { url: 'rtmps://live.cloudflare.com:443/live/', streamKey: 'abcd…wxyz' } }, rehearsalInput: null, outputs: { facebook: { uid: 'o1', url: 'rtmps://live-api-s.facebook.com:443/rtmp/', keyMask: 'FB-1…9999', enabled: true, createdAt: inH(-50) } }, facebook: { mode: 'persistent', pageUrl: 'https://www.facebook.com/SunshineOnaRanneyDay' }, youtube: { channelUrl: '' }, reminders: { enabled: true, hoursBefore: [24, 1], sms: true, push: true }, replayHours: 72, timezone: 'America/New_York', alerts: { emails: ['ops@example.com'] }, defaults: { title: 'Live room reveal', message: 'We are live' }, vapid: { publicKey: 'BPQ', createdAt: inH(-10) }, messages: { enabled: true } },
   larix: { standard: 'larix://set/v1?conn[][name]=SOARD+Live&conn[][url]=srt%3A%2F%2Flive.cloudflare.com%3A778&conn[][srtstreamid]=sid&conn[][srtpass]=pw&enc[vid][res]=1920x1080', lowSignal: 'larix://set/v1?conn[][name]=Weak&conn[][url]=srt%3A%2F%2Flive.cloudflare.com%3A778&enc[vid][res]=1280x720', srtUrl: 'srt://live.cloudflare.com:778?streamid=sid&passphrase=pw', rtmps: { url: 'rtmps://live.cloudflare.com:443/live/', streamKey: 'key' } },
   setup: { streamConfigured: true, fbConfigured: true, emailConfigured: true, smsConfigured: false, slackConfigured: false, kitConfigured: true, hubBound: true, deployHook: true, inputReady: true, pushReady: true, webhookUrl: 'https://sunshineonaranneyday.com/api/stream-webhook', alertEmails: ['ops@example.com'] },
   health: { lastDailyAt: inH(-2), stream: { ok: true, at: inH(-2) }, facebook: { ok: true, name: 'SOARD', at: inH(-2) }, hub: { ok: true, clients: 4, at: inH(-2) }, webhook: { lastReceivedAt: inH(-0.5), lastEvent: 'live_input.connected', count: 12 }, lifecycle: { at: inH(-0.01), live: state.live, videoUID: 'vid1' }, lastTick: { at: inH(-0.01), source: 'hub', work: [] } },
-  hub: { ok: true, clients: 4, lastTick: { at: inH(-0.01) } },
+  hub: { ok: true, clients: 4, lastTick: { at: inH(-0.01) }, watchers: state.live ? 31 : 0, reactions: state.live ? { broadcastId: state.id, totals: { heart: 12, sun: 30, clap: 8, wow: 1 } } : null },
   live: { lifecycle: { isInput: true, live: state.live, videoUID: state.live ? 'vid1' : null }, rehearsal: null, viewers: state.live ? 27 : null },
   outputs: [{ target: 'facebook', uid: 'o1', url: 'rtmps://live-api-s.facebook.com:443/rtmp/', keyMask: 'FB-1…9999', enabled: true, exists: true }],
   recordings: [{ uid: 'vid1', name: 'Sample reveal', created: inH(-2), duration: 1800, state: 'ready', readyToStream: true, thumbnail: 'about:blank', watch: 'https://watch.cloudflarestream.com/vid1', isCurrentReplay: state.phase === 'replay', isLiveNow: false }],
   reminders: { counts: { email: 42, sms: 7, push: 3 }, recent: [{ channel: 'email', address: 'fa…@example.com', kid_slug: kidSlug, created_at: inH(-1), source: 'live-kid' }] },
   sends: state.phase === 'idle' ? [] : [{ kind: 'day', channel: 'email', recipients: 42, sent: 42, failed: 0, created_at: inH(-30) }],
-  history: [{ id: 'live-0', kid_slug: kidSlug, kid_name: 'Sample Kid', title: 'Earlier reveal', scheduled_at: inH(-700), live_at: inH(-699), ended_at: inH(-698.5), phase: 'idle', replay_uid: 'vid0', fb_permalink: null, source: 'stream', data: {}, events: { view_live_page: 120, click_watch: 40, click_donate: 6, reminder_signup: 12 } }],
+  history: [{ id: 'live-0', kid_slug: kidSlug, kid_name: 'Sample Kid', title: 'Earlier reveal', scheduled_at: inH(-700), live_at: inH(-699), ended_at: inH(-698.5), phase: 'idle', replay_uid: 'vid0', fb_permalink: null, source: 'stream', data: {}, messageCount: 14, events: { view_live_page: 120, click_watch: 40, click_donate: 6, reminder_signup: 12 } }],
   fbRecent: null,
   playback: { customerCode: CODE, liveEmbed: `https://customer-${CODE}.cloudflarestream.com/in1/iframe?muted=true&autoplay=true`, rehearsalEmbed: null },
 });
@@ -60,13 +93,30 @@ async function mockApi(page, state) {
     const json = (obj, status = 200) => req.respond({ status, contentType: 'application/json', body: JSON.stringify(obj) });
     if (url.hostname.endsWith('cloudflarestream.com')) return req.respond({ status: 200, contentType: 'text/html', body: '<!doctype html><body style="background:#111;color:#fff;font:14px sans-serif;display:grid;place-items:center;height:100vh;margin:0">Stream player stub</body>' });
     if (url.pathname.startsWith('/cdn-cgi/imagedelivery/') || url.hostname === 'imagedelivery.net') return req.abort();
-    if (url.pathname === '/api/broadcast') return json({ state, reminders, timezone: 'America/New_York', hub: true });
+    if (url.pathname === '/api/broadcast') return json({ state, reminders, messages: { enabled: true }, timezone: 'America/New_York', hub: true });
+    if (url.pathname === '/api/live-messages' && req.method() === 'GET') return json({ ok: true, open: state.phase !== 'idle', enabled: true, broadcastId: state.id, messages: state.phase === 'idle' ? [] : [{ id: 'm1', name: 'Ana', body: 'So happy for you!', at: new Date().toISOString() }] });
+    if (url.pathname === '/api/live-messages') return json({ ok: true, status: 'shown', message: { id: 'm2', name: 'Bo', body: 'Congratulations!', at: new Date().toISOString() } });
     if (url.pathname === '/api/live-ws') return req.abort();
     if (url.pathname === '/api/broadcast-event') return req.respond({ status: 204, body: '' });
     if (url.pathname === '/api/reminders') return req.method() === 'POST' ? json({ ok: true, channel: 'email' }) : json({ ok: true });
-    if (url.pathname === '/api/broadcast-admin') return json(adminFixture(state));
+    if (url.pathname === '/api/broadcast-admin') {
+      if (req.method() !== 'POST') return json(adminFixture(state));
+      let body = {};
+      try { body = JSON.parse(req.postData() || '{}'); } catch {}
+      posted.push(body);
+      if (body.action === 'messages') return json(messagesFixture(state, body.broadcastId));
+      if (body.action === 'moderateMessage') {
+        const m = MESSAGES.find((x) => x.id === body.id);
+        return m ? json({ success: true, message: { ...m, status: body.status, moderatedBy: 'ops@example.com', moderatedAt: new Date().toISOString() } }) : json({ success: false, error: 'not found' }, 404);
+      }
+      if (body.action === 'setConfig') return json({ success: true, config: adminFixture(state).config });
+      return json(adminFixture(state));
+    }
     if (url.pathname === '/api/live-status') return json({ live: state.live, upcoming: state.upcoming, auto: true });
-    if (url.pathname.startsWith('/api/list-content')) return json({ success: true, items: [], total: 0, hasMore: false });
+    if (url.pathname.startsWith('/api/list-content')) {
+      const items = url.searchParams.get('dir') === 'src/content/kids' ? KIDS.map((content) => ({ name: `${content.slug}.json`, path: `src/content/kids/${content.slug}.json`, content })) : [];
+      return json({ success: true, items, total: items.length, pages: 1, hasMore: false });
+    }
     if (url.pathname.startsWith('/api/pending-changes')) return json({ success: true, changes: [], since: null });
     if (url.pathname.startsWith('/api/audit-log')) return json({ success: true, entries: [], total: 0 });
     if (url.pathname.startsWith('/api/deployments')) return json({ success: true, deploys: [], source: 'cloudflare' });
@@ -78,7 +128,7 @@ async function mockApi(page, state) {
 
 const browser = await puppeteer.launch({ headless: 'new', args: ['--no-sandbox'] });
 try {
-  const page = await browser.newPage();
+  page = await browser.newPage();
   const errors = [];
   page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
   page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
@@ -95,7 +145,7 @@ try {
     console.log(`    status: "${status}"`);
     const vis = async (sel) => page.$eval(sel, (el) => !el.hidden && getComputedStyle(el).display !== 'none').catch(() => false);
     if (name === 'scheduled') { ok(await vis('[data-live="cta-remind"]'), 'Remind me CTA visible'); ok(await vis('[data-live="cta-calendar"]'), 'Add to calendar visible'); ok(/goes live|We go live/.test(status), 'countdown text'); }
-    if (name === 'live') { ok(await vis('[data-live="cta-watch"]'), 'Watch live CTA visible'); ok((await page.$$('[data-live="player"] iframe')).length === 1, 'player iframe mounted'); ok(await vis('[data-live="cta-facebook"]'), 'Comment on Facebook visible'); }
+    if (name === 'live') { ok(await vis('[data-live="cta-watch"]'), 'Watch live CTA visible'); ok((await page.$$('[data-live="player"] iframe')).length === 1, 'player iframe mounted'); ok(await vis('[data-live="watchbar"]'), 'reactions bar visible'); ok(await vis('[data-live-msgs]'), 'messages for the family visible'); ok(await vis('[data-live="cta-messages"]'), 'Leave a message CTA visible'); ok(!(await vis('[data-live="cta-facebook"]')), 'no Facebook detour while live'); }
     if (name === 'replay') { ok(await vis('[data-live="cta-replay"]'), 'Watch the replay CTA visible'); ok((await page.$$('[data-live="player"] iframe')).length === 1, 'replay iframe mounted'); }
     if (name === 'idle') { ok(!(await vis('[data-live="cta-watch"]')), 'no watch CTA'); ok((await page.$$('[data-live="player"] iframe')).length === 0, 'no player'); }
     ok(await vis('[data-live="form-sms"]'), 'SMS form offered');
@@ -145,7 +195,7 @@ try {
     ok(clicked, `nav has Broadcast (${name})`);
     await page.waitForFunction(() => [...document.querySelectorAll('h2')].some((h) => h.textContent.trim() === 'Broadcast'), { timeout: 8000 }).catch(() => {});
     const tabs = await page.$$('.hub-tab');
-    ok(tabs.length === 5, `5 tabs (${name})`);
+    ok(tabs.length === 5 || tabs.length === 6, `${tabs.length} tabs (${name})`);
     for (let i = 0; i < tabs.length; i++) {
       const label = await tabs[i].evaluate((b) => b.textContent.trim());
       await tabs[i].click();
@@ -160,6 +210,101 @@ try {
     if (name === 'live') ok(/Email the list now/.test(nowText) && /Kit email: goes out after 3 minutes live/.test(nowText) && !/Which kid is this/.test(nowText), 'live: Kit status + "Email the list now" button, no kid picker when the kid is known');
     if (name === 'scheduled') ok(/Kit email at go-live: on \(All subscribers\)/.test(nowText) && /Email our Kit list \(All subscribers\) when we go live/.test(nowText), 'scheduled: Kit go-live status + switch');
     if (name === 'idle') ok(/Email our Kit list when we go live/.test(nowText), 'idle: schedule form has the Kit switch');
+
+    if (name === 'live') {
+      console.log('  · messages, engagement, keepsake, family QR, history (live)');
+      await page.waitForSelector('.bc-msgs .bc-msg', { timeout: 5000 }).catch(() => {});
+      const card = await page.$eval('.bc-msgs', (el) => el.innerText).catch(() => '');
+      ok(/Messages for Sample Kid's family/.test(card), 'messages card titled for the family');
+      ok(/Let viewers post messages on the live page/.test(card), 'messages on/off switch');
+      ok(/3\s+shown/.test(card) && /1\s+waiting for review/.test(card) && /1\s+hidden/.test(card) && /1\s+blocked/.test(card), 'messages counts line');
+      ok(/Updates every 10 seconds/.test(card), 'messages auto-refresh while live');
+      const btns = await page.$$eval('.bc-msgs .bc-msg button', (els) => els.map((b) => b.textContent.trim()));
+      ok(btns.filter((t) => t === 'Hide').length === 3 && btns.filter((t) => t === 'Show').length === 2, `Hide/Show buttons (${btns.join(', ')})`);
+      ok(await page.$eval('.bc-review', (el) => /Waiting for review \(1\)/.test(el.innerText) && /Grandma Jo/.test(el.innerText)).catch(() => false), 'held message on top as "Waiting for review"');
+      ok(!/Buy cheap followers/.test(card), 'blocked messages folded away by default');
+      ok(await clickText('.bc-msgs button', /^Show blocked \(1\)$/), '"Show blocked (1)" toggle');
+      await settle(150);
+      ok(/Buy cheap followers/.test(await page.$eval('.bc-msgs', (el) => el.innerText)), 'blocked message shows after the toggle');
+      ok(/31 watching on the site/.test(nowText) && /12 hearts/.test(nowText) && /30 suns/.test(nowText) && /8 claps/.test(nowText) && /1 wow\b/.test(nowText), 'live engagement: watchers + reaction totals');
+
+      posted.length = 0;
+      await page.evaluate(() => { const row = [...document.querySelectorAll('.bc-msgs .bc-msg')].find((r) => /Coach Mike/.test(r.textContent)); [...row.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Hide').click(); });
+      await page.waitForFunction(() => { const row = [...document.querySelectorAll('.bc-msgs .bc-msg')].find((r) => /Coach Mike/.test(r.textContent)); return /Hidden/.test(row?.querySelector('.badge')?.textContent || ''); }, { timeout: 4000 }).catch(() => {});
+      ok(posted.some((b) => b.action === 'moderateMessage' && b.id === 'm5' && b.status === 'hidden'), 'Hide posts moderateMessage {id, status: hidden}');
+      ok(await page.evaluate(() => { const row = [...document.querySelectorAll('.bc-msgs .bc-msg')].find((r) => /Coach Mike/.test(r.textContent)); return /Hidden/.test(row.querySelector('.badge').textContent) && [...row.querySelectorAll('button')].some((b) => b.textContent.trim() === 'Show'); }), 'hidden row flips to a Show button');
+
+      posted.length = 0;
+      await page.click('.bc-msgs .bc-switch input');
+      for (let i = 0; i < 30 && !posted.some((b) => b.action === 'setConfig'); i++) await settle(100);
+      ok(posted.some((b) => b.action === 'setConfig' && b.config?.messages?.enabled === false && Object.keys(b.config).length === 1), 'switch posts setConfig { messages: { enabled: false } }');
+      await settle(300);
+
+      ok(await clickText('.bc-msgs button', /^Keepsake$/), 'Keepsake button');
+      await page.waitForSelector('#bc-keepsake-root .bc-keepsake', { timeout: 3000 }).catch(() => {});
+      const keep = await page.$eval('#bc-keepsake-root', (el) => el.innerText).catch(() => '');
+      ok(/Sample Kid's room reveal/.test(keep) && /Sending so much love from Ohio/.test(keep) && /Aunt Rosa/.test(keep), 'keepsake has the title and a shown message');
+      ok(!/Buy cheap followers|First! lol|Grandma Jo|Coach Mike/.test(keep), 'keepsake leaves out hidden, blocked and held messages');
+      ok(!!(await page.$('#bc-keepsake-root .bc-keepsake-bar button')), 'keepsake has a Print button');
+      await page.screenshot({ path: `${OUT}admin-keepsake.png` });
+      await page.emulateMediaType('print');
+      ok(await page.evaluate(() => getComputedStyle(document.getElementById('app')).display === 'none' && getComputedStyle(document.querySelector('.bc-keepsake-bar')).display === 'none'), 'keepsake print view drops the admin and the toolbar');
+      await page.screenshot({ path: `${OUT}admin-keepsake-print.png`, fullPage: true });
+      await page.emulateMediaType(null);
+      await clickText('#bc-keepsake-root button', /^Close$/);
+      await settle(100);
+      ok(!(await page.$('#bc-keepsake-root')), 'keepsake closes');
+
+      ok((await page.$$('.bc-family .bc-qr svg')).length === 1, 'family QR card renders an svg');
+      ok(/sunshineonaranneyday\.com\/live\/\?src=qr/.test(nowText), 'family QR card shows the /live/?src=qr link');
+      const cdp = await page.createCDPSession();
+      await cdp.send('Browser.setDownloadBehavior', { behavior: 'allow', downloadPath: OUT }).catch(() => cdp.send('Page.setDownloadBehavior', { behavior: 'allow', downloadPath: OUT }));
+      for (const f of ['soard-live-qr.png', 'soard-live-qr.svg']) rmSync(`${OUT}${f}`, { force: true });
+      const errBefore = errors.length;
+      ok(await clickText('.bc-family button', /^Download PNG$/), 'Download PNG button');
+      const png = await waitFile(`${OUT}soard-live-qr.png`);
+      const pw = png?.length > 24 ? png.readUInt32BE(16) : 0; const ph = png?.length > 24 ? png.readUInt32BE(20) : 0;
+      ok(png?.subarray(1, 4).toString() === 'PNG' && pw >= 1900 && pw <= 2200 && pw === ph, `PNG download soard-live-qr.png (${pw}x${ph})`);
+      ok(await clickText('.bc-family button', /^Download SVG$/), 'Download SVG button');
+      const svgFile = await waitFile(`${OUT}soard-live-qr.svg`);
+      ok(/<svg[^>]+viewBox/.test(svgFile?.toString() || ''), 'SVG download soard-live-qr.svg');
+      ok(errors.length === errBefore, 'no errors from the QR downloads');
+      await page.screenshot({ path: `${OUT}admin-now.png`, fullPage: true });
+
+      ok(await clickText('.hub-tab', /^History/), 'History tab');
+      await settle(250);
+      posted.length = 0;
+      ok(await clickText('.bc-link', /^14 messages$/), 'History row shows "14 messages"');
+      await page.waitForSelector('.bc-msgs .bc-msg', { timeout: 4000 }).catch(() => {});
+      ok(posted.some((b) => b.action === 'messages' && b.broadcastId === 'live-0'), 'History opens the messages for that broadcastId');
+      ok(!/Let viewers post/.test(await page.$eval('.bc-msgs', (el) => el.innerText).catch(() => '')), 'past reveal: no on/off switch');
+      await settle(500);
+      await page.screenshot({ path: `${OUT}admin-history-messages.png`, fullPage: true });
+      await clickText('.bc-link', /^Keepsake$/);
+      await page.waitForSelector('#bc-keepsake-root .bc-keepsake', { timeout: 3000 }).catch(() => {});
+      ok(/Sample Kid's room reveal/.test(await page.$eval('#bc-keepsake-root', (el) => el.innerText).catch(() => '')), 'History row opens the keepsake');
+      await clickText('#bc-keepsake-root button', /^Close$/);
+    }
+    if (name === 'scheduled') {
+      await page.waitForSelector('.bc-msgs', { timeout: 4000 }).catch(() => {});
+      const t = await page.$eval('.bc-msgs', (el) => el.innerText).catch(() => '');
+      ok(/Refresh/.test(t) && !/Updates every 10 seconds/.test(t), 'scheduled: messages card with a manual refresh');
+    }
+    if (name === 'idle') {
+      ok(!(await page.$('.bc-msgs')), 'idle: no messages card');
+      ok((await page.$$('.bc-family .bc-qr svg')).length === 1, 'idle: family QR card still shows');
+      const draftOpt = await page.$eval('#bc-schedule-kid option[value="dana-draft"]', (o) => o.textContent).catch(() => '');
+      ok(/^Dana \(.*draft\)$/.test(draftOpt), `draft kid marked in the schedule select ("${draftOpt}")`);
+      await page.select('#bc-schedule-kid', 'dana-draft');
+      await page.waitForSelector('.bc-draft-note', { timeout: 3000 }).catch(() => {});
+      const note = await page.$eval('.bc-draft-note', (el) => el.innerText).catch(() => '');
+      ok(/Dana isn't published on the site yet\. Reveal links will open the main live page until you publish Dana and the site redeploys, and the starting-soon screen won't exist\. Publish Dana before reveal day\./.test(note), 'draft kid warning under the schedule select');
+      await page.select('#bc-schedule-kid', kidSlug);
+      await settle(150);
+      ok(!(await page.$('.bc-draft-note')), 'warning clears for a published kid');
+      await page.select('#bc-schedule-kid', 'dana-draft');
+      await settle(150);
+    }
     if (name !== 'live') await page.screenshot({ path: `${OUT}admin-now-${name}.png`, fullPage: true });
   }
 

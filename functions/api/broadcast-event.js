@@ -11,6 +11,7 @@ import { ensureSchema, recordEvent, readState, writeState } from './_broadcast.j
 const TYPES = new Set([
   'banner_click', 'view_live_page', 'click_watch', 'click_facebook', 'click_youtube',
   'click_donate', 'click_replay', 'click_instagram', 'click_calendar', 'reminder_form_view', 'share',
+  'qr_scan', // the reusable family QR code (/live/?src=qr)
 ]);
 
 export async function onRequestPost(context) {
