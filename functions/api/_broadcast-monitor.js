@@ -158,11 +158,12 @@ export function destinations({ config, state, phoneLive, liveForMs, probe, viewe
     loud: ['Live, sound very loud', `Loudness ${lufsText(probe?.audio?.lufs)}: likely distorting.`],
     onesided: ['Live, sound on one side', `Only the ${probe?.audio?.deadSide === 'left' ? 'right' : 'left'} side has sound.`],
   }[audio];
-  if (!config.liveInput?.uid) out.site = { status: 'off', title: 'No live input', detail: 'Create it in Setup.' };
+  if (!config.liveInput?.uid) out.site = { status: 'off', title: 'No live input', detail: 'Create it in Settings → Phones.' };
+  else if (!live && state?.phase === 'ending') out.site = { status: 'wait', title: 'Waiting for the phone to come back', detail: 'Up to 45 s, then the site switches to the replay.' };
   else if (!live) out.site = { status: 'idle', title: 'Waiting for the phone', detail: 'Starts by itself when Larix connects.' };
   else if (!probe?.ok) out.site = { status: settling(RULES.feedAfter) ? 'wait' : 'warn', title: settling(RULES.feedAfter) ? 'Starting' : 'Player can\'t load the feed', detail: probe?.error || 'Checking…', fix: settling(RULES.feedAfter) ? null : 'Usually clears in a few seconds. If it doesn\'t, stop and restart the stream in Larix.' };
   else if (siteAudio) out.site = { status: 'warn', title: siteAudio[0], detail: siteAudio[1], fix: 'See Sound.' };
-  else out.site = { status: 'ok', title: 'Live on the site', detail: [viewers != null ? `${viewers} watching` : null, probe.video?.height ? `${Math.min(probe.video.width, probe.video.height)}p` : null, probe.audio?.lufs != null ? lufsText(probe.audio.lufs) : null].filter(Boolean).join(' · ') };
+  else out.site = { status: 'ok', title: 'Live on the site', detail: [probe.video?.height ? `${Math.min(probe.video.width, probe.video.height)}p` : null, probe.audio?.lufs != null ? lufsText(probe.audio.lufs) : null].filter(Boolean).join(' · ') };
   out.site.url = state.kidSlug ? `${SITE_ORIGIN}/live/${state.kidSlug}/` : `${SITE_ORIGIN}/live/`;
   out.site.viewers = viewers ?? null;
 
@@ -199,14 +200,14 @@ export function destinations({ config, state, phoneLive, liveForMs, probe, viewe
   else if (settling(RULES.ytGrace)) Object.assign(out.youtube, { status: 'wait', title: 'Starting', detail: 'YouTube takes up to two minutes to show a new live.' });
   else Object.assign(out.youtube, youtube.upcoming
     ? { status: 'warn', title: 'Waiting in YouTube Studio', detail: 'YouTube has the broadcast set up but hasn\'t started it.', fix: 'Turn on Auto-start in YouTube Studio, or press Go live there.', action: { label: 'Open YouTube Studio', url: studio } }
-    : { status: 'warn', title: 'Not live', detail: 'The channel has no live broadcast.', fix: 'In YouTube Studio → Go live → Stream, check the stream key matches Setup and Auto-start is on.', action: { label: 'Open YouTube Studio', url: studio } });
+    : { status: 'warn', title: 'Not live', detail: 'The channel has no live broadcast.', fix: 'In YouTube Studio → Go live → Stream, check the stream key matches Settings → YouTube and Auto-start is on.', action: { label: 'Open YouTube Studio', url: studio } });
 
   // Instagram Live: manual, per broadcast, and Instagram offers no API to confirm it
   const igOut = outputOf('instagram');
   out.instagram = { url: config.instagram?.profileUrl || null };
   if (!igOut) Object.assign(out.instagram, { status: 'off', title: 'Not set up', detail: 'Optional, and set up per reveal.' });
-  else if (!igOut.exists) Object.assign(out.instagram, { status: 'warn', title: 'Output missing in Stream', detail: 'Paste the URL and key again in Setup.' });
-  else if (!igOut.enabled) Object.assign(out.instagram, { status: 'off', title: 'Paused', detail: 'Resume it in Setup.' });
+  else if (!igOut.exists) Object.assign(out.instagram, { status: 'warn', title: 'Output missing in Stream', detail: 'Paste the URL and key again in Settings → Instagram.' });
+  else if (!igOut.enabled) Object.assign(out.instagram, { status: 'off', title: 'Paused', detail: 'Resume it in Settings → Instagram.' });
   else if (!live) Object.assign(out.instagram, { status: 'idle', title: 'Ready', detail: 'Instagram keys only last one broadcast.' });
   else Object.assign(out.instagram, { status: 'unknown', title: 'Sending (can\'t confirm)', detail: 'Instagram has no way for the site to check. Look in the Instagram app.' });
 
@@ -426,7 +427,7 @@ export async function watch(env, config, state, health, work, record = async () 
     m.signal = { status, ratio: ratio != null ? Math.round(ratio * 100) / 100 : null, reconnects5m: recent, connection };
     if (status === 'weak') {
       const why = recent >= 2 ? `The phone dropped ${recent} times in the last 5 minutes.` : reconnecting ? 'Stream says the phone is reconnecting.' : `Video is arriving at ${Math.round(ratio * 100)}% of real time, so viewers see stutters and stops.`;
-      await c.raise('weakSignal', { level: 'warn', after: RULES.weakAfter, title: 'The phone\'s signal is weak', detail: why, fix: 'Switch Larix to the Weak signal profile (second QR code in Setup), move toward a window, or join the house Wi-Fi.' });
+      await c.raise('weakSignal', { level: 'warn', after: RULES.weakAfter, title: 'The phone\'s signal is weak', detail: why, fix: 'Switch Larix to the Weak signal profile (Settings → Phones), move toward a window, or join the house Wi-Fi.' });
     } else if (status === 'strong') await c.clear('weakSignal');
   }
 

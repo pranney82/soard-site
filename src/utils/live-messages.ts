@@ -32,8 +32,6 @@ interface Options {
   sectionSlot: HTMLElement;
   /** "Leave a message" in the hero, shown while the panel is in its section */
   cta: HTMLElement | null;
-  /** The newest message changed */
-  onLatest?: (message: LiveMessage | null) => void;
 }
 
 const POLL_MS = 20_000;
@@ -55,7 +53,6 @@ export function createMessages(opts: Options) {
   let loading = false;
   let shown = false;
   let relayed = false; // the hub relays messages, so no polling
-  let newest: LiveMessage | null = null;
   const ids = new Set<string>();
 
   const nearEnd = () => !wall || wall.scrollHeight - wall.scrollTop - wall.clientHeight < 80;
@@ -89,12 +86,6 @@ export function createMessages(opts: Options) {
     shown = show;
   }
 
-  function latestChanged() {
-    const last = list?.lastElementChild as HTMLElement | null;
-    const m = last ? { id: last.dataset.id || '', name: last.querySelector('.msg__name')?.textContent || '', body: last.querySelector('.msg__body')?.textContent || '', at: '' } : null;
-    if (m?.id !== newest?.id) { newest = m; opts.onLatest?.(m); }
-  }
-
   function add(m: LiveMessage, animate = true, mine = false) {
     if (!list || ids.has(m.id)) return;
     const stick = mine || nearEnd();
@@ -114,13 +105,11 @@ export function createMessages(opts: Options) {
     while (list.children.length > MAX) list.firstElementChild?.remove();
     setHidden($('empty'), true);
     if (stick) toEnd(); else setHidden($('jump'), false);
-    latestChanged();
   }
   function remove(id: string) {
     ids.delete(id);
     list?.querySelector(`[data-id="${CSS.escape(id)}"]`)?.remove();
     setHidden($('empty'), !!list?.children.length);
-    latestChanged();
   }
 
   async function load(fresh: boolean) {
@@ -218,12 +207,6 @@ export function createMessages(opts: Options) {
     destroy() {
       clearInterval(poll);
       for (const off of offs) off();
-    },
-    /** Bring the box you write in into view (from the latest message in the video's bar) */
-    focusComposer() {
-      const target = open ? form : wall;
-      target?.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'center' });
-      if (open) setTimeout(() => panel.querySelector<HTMLTextAreaElement>('textarea')?.focus({ preventScroll: true }), reduced ? 0 : 400);
     },
   };
 }

@@ -20,8 +20,7 @@
  *
  * Also answers /api/live-messages from memory (a few sample notes, and
  * anything you post that has no link in it), so the messages wall works in
- * dev, /api/live-gifts with a sample running total, and /api/live-replay
- * with the &reveal moment. Reactions animate locally only: there is no
+ * dev, and /api/live-replay with the &reveal moment. Reactions animate locally only: there is no
  * real-time hub in dev.
  *
  * Dev only: never registered for builds, and the mode lives in memory, so a
@@ -133,11 +132,6 @@ function handler(logger) {
       }));
     }
 
-    if (url.pathname === '/api/live-gifts') {
-      const state = buildState(url.origin);
-      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
-      return res.end(JSON.stringify({ ok: true, configured: true, broadcastId: state.id, cents: state.id ? 124000 : 0, count: state.id ? 18 : 0, lastEventAt: null }));
-    }
     if (url.pathname === '/api/live-replay') {
       if (url.searchParams.has('vtt')) { res.writeHead(404); return res.end(); }
       const state = buildState(url.origin);

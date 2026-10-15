@@ -92,7 +92,6 @@ function rewrite(res, { kid, party, messages }) {
       .on('.live-page', setAttrs({ 'data-view': party.mode }))
       .on('#live-hero', setAttrs({ 'data-phase': party.mode, ...shape }))
       .on('#live-hero [data-stage]', setAttrs({ 'data-mode': party.mode, ...shape }))
-      .on('#live-hero [data-s="rail"]', setAttrs({ hidden: null }))
       .on('#live-hero [data-s="bar"]', setAttrs({ hidden: null }))
       .on('#live-hero [data-live="eyebrow"]', { element(e) { e.setInnerContent(party.eyebrow); } });
     if (messages) rw = rw.on('#live-hero [data-slot="hero"]', setAttrs({ hidden: null }));

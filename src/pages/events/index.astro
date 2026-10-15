@@ -397,6 +397,19 @@ const heroFrameAttrs = heroUrl
   <!-- ═══════════════════════════════════════════
        UPCOMING EVENTS
        ═══════════════════════════════════════════ -->
+  <!-- Confirmed reveal days, filled in by script from /api/reveals (JobTread).
+       Stays hidden until at least one reveal is confirmed. -->
+  <section class="ev-reveals" id="reveals" data-upcoming-reveals hidden>
+    <div class="container">
+      <div class="ev-reveals__header">
+        <p class="ev-section-label">Room Reveals</p>
+        <h2 class="ev-section-heading">Watch a Room <em class="highlight">Reveal</em> Live</h2>
+        <p class="ev-section-sub">Join online for the moment a child walks into their finished room for the first time.</p>
+      </div>
+      <div class="ev-reveals__grid" data-upcoming-reveals-grid></div>
+    </div>
+  </section>
+
   {allOther.length > 0 && (
     <section class="ev-upcoming" id="upcoming">
       <div class="container">
@@ -733,6 +746,79 @@ const heroFrameAttrs = heroUrl
      CLIENT-SIDE: Countdown + Smooth Scroll
      ═══════════════════════════════════════════ -->
 <script>
+  /* ── Upcoming reveals (confirmed in JobTread, via /api/reveals) ── */
+  import { loadReveals, revealDay, revealTime, revealCalendarUrl, type Reveal } from '../../utils/reveals-client';
+
+  function daysAway(r: Reveal): string {
+    const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date());
+    const days = Math.round((Date.parse(`${r.date}T12:00:00Z`) - Date.parse(`${today}T12:00:00Z`)) / 86_400_000);
+    return days <= 0 ? 'Today' : days === 1 ? 'Tomorrow' : `${days} days away`;
+  }
+
+  function el<K extends keyof HTMLElementTagNameMap>(tag: K, className: string, text?: string) {
+    const node = document.createElement(tag);
+    node.className = className;
+    if (text) node.textContent = text;
+    return node;
+  }
+
+  function revealCard(r: Reveal): HTMLElement {
+    const card = el('article', 'ev-reveal-card');
+
+    const media = el('a', 'ev-reveal-card__media');
+    media.href = r.kidUrl;
+    media.setAttribute('aria-label', `Meet ${r.name}`);
+    if (r.image) {
+      const img = el('img', 'ev-reveal-card__img');
+      img.src = r.image;
+      img.alt = r.name;
+      img.width = 640;
+      img.height = 480;
+      img.loading = 'lazy';
+      img.decoding = 'async';
+      media.append(img);
+    } else {
+      const icon = el('span', 'ev-reveal-card__icon');
+      icon.innerHTML = '<svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z"/></svg>';
+      media.append(icon);
+    }
+    media.append(el('span', 'ev-reveal-card__chip', daysAway(r)));
+
+    const body = el('div', 'ev-reveal-card__body');
+    const when = el('p', 'ev-reveal-card__when', revealDay(r));
+    const time = revealTime(r);
+    if (time) when.append(el('span', 'ev-reveal-card__time', time));
+    const name = el('h3', 'ev-reveal-card__name');
+    const nameLink = el('a', '', `${r.name}'s Reveal Day`);
+    nameLink.href = r.kidUrl;
+    name.append(nameLink);
+
+    const actions = el('div', 'ev-reveal-card__actions');
+    const watch = el('a', 'ev-reveal-card__watch', 'Watch live');
+    watch.href = r.liveUrl;
+    const cal = el('a', 'ev-reveal-card__cal', 'Add to calendar');
+    cal.href = revealCalendarUrl(r);
+    cal.target = '_blank';
+    cal.rel = 'noopener noreferrer';
+    actions.append(watch, cal);
+
+    body.append(when, name, actions);
+    card.append(media, body);
+    return card;
+  }
+
+  async function showUpcomingReveals() {
+    const section = document.querySelector<HTMLElement>('[data-upcoming-reveals]');
+    const grid = section?.querySelector('[data-upcoming-reveals-grid]');
+    if (!section || !grid) return;
+    const reveals = await loadReveals();
+    if (!reveals.length || !section.isConnected) return;
+    grid.replaceChildren(...reveals.map(revealCard));
+    section.hidden = false;
+  }
+
+  document.addEventListener('astro:page-load', showUpcomingReveals);
+
   /* ── Live countdown badges ── */
   document.querySelectorAll<HTMLElement>('[data-countdown]').forEach(el => {
     const target = new Date(el.dataset.countdown + 'T00:00:00');
@@ -1251,6 +1337,146 @@ const heroFrameAttrs = heroUrl
     color: var(--c-text-muted);
     max-width: 52ch;
     margin-top: var(--space-sm);
+  }
+
+  /* ═══════════════════════════════════════════
+     UPCOMING REVEALS (cards are built by script, hence :global)
+     ═══════════════════════════════════════════ */
+  .ev-reveals {
+    padding: var(--space-4xl) 0;
+    background: var(--c-cream);
+  }
+  .ev-reveals__header { margin-bottom: var(--space-2xl); }
+  .ev-reveals__grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: var(--space-xl);
+  }
+  @media (min-width: 640px) {
+    .ev-reveals__grid { grid-template-columns: repeat(2, 1fr); }
+  }
+  @media (min-width: 960px) {
+    .ev-reveals__grid { grid-template-columns: repeat(3, 1fr); }
+  }
+  :global(.ev-reveal-card) {
+    display: flex;
+    flex-direction: column;
+    background: var(--c-white);
+    border-radius: 20px;
+    overflow: hidden;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 8px 28px rgba(0, 0, 0, 0.06);
+    animation: ev-reveal-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  @keyframes ev-reveal-in {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: none; }
+  }
+  :global(.ev-reveal-card__media) {
+    position: relative;
+    display: block;
+    aspect-ratio: 4 / 3;
+    background: linear-gradient(135deg, var(--c-dark) 0%, var(--c-dark-deep) 100%);
+  }
+  :global(.ev-reveal-card__img) {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  :global(.ev-reveal-card__icon) {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    color: var(--c-yellow);
+  }
+  :global(.ev-reveal-card__chip) {
+    position: absolute;
+    top: 16px;
+    left: 16px;
+    padding: 6px 14px;
+    border-radius: 100px;
+    background: var(--c-yellow);
+    color: var(--c-dark);
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  :global(.ev-reveal-card__body) {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: var(--space-lg);
+    flex: 1;
+  }
+  :global(.ev-reveal-card__when) {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 10px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--c-text-muted);
+  }
+  :global(.ev-reveal-card__time)::before {
+    content: '·';
+    margin-right: 10px;
+    opacity: 0.5;
+  }
+  :global(.ev-reveal-card__name) {
+    font-family: var(--font-display);
+    font-size: 1.35rem;
+    font-weight: 400;
+    line-height: 1.25;
+    color: var(--c-dark);
+  }
+  :global(.ev-reveal-card__name a) {
+    color: inherit;
+    text-decoration: none;
+  }
+  :global(.ev-reveal-card__name a:hover) {
+    text-decoration: underline;
+    text-decoration-color: var(--c-yellow);
+    text-decoration-thickness: 2px;
+    text-underline-offset: 4px;
+  }
+  :global(.ev-reveal-card__actions) {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px 20px;
+    margin-top: auto;
+    padding-top: var(--space-md);
+  }
+  :global(.ev-reveal-card__watch) {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.65rem 1.4rem;
+    border-radius: 100px;
+    background: var(--c-yellow);
+    color: var(--c-dark);
+    font-size: 0.88rem;
+    font-weight: 600;
+    text-decoration: none;
+    transition: transform 200ms, box-shadow 200ms;
+  }
+  :global(.ev-reveal-card__watch:hover) {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 24px var(--c-yellow-glow);
+  }
+  :global(.ev-reveal-card__cal) {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--c-dark);
+    text-decoration: underline;
+    text-decoration-color: var(--c-border);
+    text-underline-offset: 4px;
+  }
+  :global(.ev-reveal-card__cal:hover) { text-decoration-color: var(--c-yellow); }
+  @media (prefers-reduced-motion: reduce) {
+    :global(.ev-reveal-card) { animation: none; }
   }
 
   /* ═══════════════════════════════════════════

@@ -52,6 +52,7 @@ const CSS = `
 .cr { display: grid; gap: 1rem; margin-bottom: 1rem; }
 .cr .card { margin: 0; }
 .cr-bar { display: flex; flex-wrap: wrap; gap: .5rem 1rem; align-items: center; justify-content: space-between; }
+.cr-feedbar { margin-bottom: .75rem; }
 .cr-chips { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; font-size: .85rem; color: var(--color-text-secondary); }
 .cr-chip { display: inline-flex; align-items: center; gap: .4rem; padding: .25rem .65rem; border-radius: 999px; background: var(--color-bg); border: 1px solid var(--color-border); font-weight: 600; color: var(--color-text); white-space: nowrap; }
 .cr-chip[data-tone] { background: var(--tone-bg); border-color: transparent; color: var(--tone-fg); }
@@ -798,6 +799,7 @@ export function ControlRoom({ feed = 'live', phase, refreshKey = 0 }) {
     player.behind != null ? html`<b>${Math.round(player.behind)} s</b> behind the phone` : null,
     player.stalls ? html`<b>${player.stalls}</b> stall${player.stalls > 1 ? 's' : ''}` : null,
     probe?.video?.renditions > 1 ? html`${probe.video.renditions} quality levels for viewers` : null,
+    report?.at ? html`checked ${ago(report.at)}` : null,
   ].filter(Boolean);
 
   const signal = feed === 'live' && live ? report?.watch?.signal : null;
@@ -805,17 +807,18 @@ export function ControlRoom({ feed = 'live', phase, refreshKey = 0 }) {
   const fbEmbed = dests?.facebook?.status === 'ok' && dests.facebook.url && /facebook\.com\/.*(videos|watch)/.test(dests.facebook.url)
     ? `https://www.facebook.com/plugins/video.php?href=${encodeURIComponent(dests.facebook.url)}&show_text=false&autoplay=true&mute=1` : null;
 
-  const topBar = html`<div class="cr-bar">
+  // Phone, signal and freshness sit on the picture's own card, so they read as the feed's status
+  const feedBar = html`<div class="cr-bar cr-feedbar">
     <div class="cr-chips">
       <span class="cr-chip" data-tone style=${toneStyle(conn[0])}><span class=${`cr-dot ${live ? 'is-live' : ''}`} style=${live ? '--dot:#FFD500' : ''}></span>${conn[1]}</span>
       ${signal ? html`<span class="cr-chip" data-tone style=${toneStyle(signal.status === 'strong' ? 'ok' : 'warn')} title=${signal.ratio != null ? `Video arriving at ${Math.round(signal.ratio * 100)}% of real time${signal.reconnects5m ? `, ${signal.reconnects5m} reconnect(s) in 5 min` : ''}` : ''}>Signal ${signal.status}</span>` : null}
       ${report && report.slack === false && feed === 'live' ? html`<span class="cr-chip" data-tone style=${toneStyle('warn')}>Slack alerts off</span>` : null}
-      ${report?.at ? html`<span>Checked ${ago(report.at)}</span>` : null}
     </div>
     ${error ? html`<span class="cr-note" style="color:#744210">${error}</span>` : null}
   </div>`;
 
   const stage = html`<div class="card">
+    ${feedBar}
     <div class=${`cr-stage ${portrait ? 'is-portrait' : 'is-landscape'}${live && player.state !== 'off' ? '' : ' is-empty'}`}>
       <video ref=${muteOnce} playsinline aria-label=${feed === 'rehearsal' ? 'Rehearsal feed preview' : 'Live feed preview'}></video>
       ${overlay ? html`<div class="cr-over"><div><strong>${overlay[0]}</strong>${overlay[1] || ''}</div></div>` : null}
@@ -875,7 +878,6 @@ export function ControlRoom({ feed = 'live', phase, refreshKey = 0 }) {
   const mainClass = `cr-main ${portrait ? 'is-portrait' : 'is-landscape'}`;
   // Portrait: a tall, narrow player, so everything else sits beside it
   return html`<div class="cr">
-    ${topBar}
     ${issuesCard}
     ${portrait
       ? html`<div class=${mainClass}>${stage}<div class="cr-side">${audioCard}${destCards}</div></div>`

@@ -9,8 +9,7 @@
  * shown inside the live page) borrows its parent's instance too.
  *
  * Watch party: a live page calls watch() so the hub counts it as a viewer,
- * then gets 'viewers', 'react', 'msg' / 'msg-hide' and 'gifts' events
- * through on().
+ * then gets 'viewers', 'react' and 'msg' / 'msg-hide' events through on().
  */
 
 export interface LivePlayer {
@@ -40,8 +39,6 @@ export interface LiveEvents {
   react: { c: Partial<Record<ReactionKind, number>> };
   msg: { message: LiveMessage };
   'msg-hide': { id: string };
-  /** Running total of gifts during the reveal (Zeffy), pushed by the hub */
-  gifts: { broadcastId: string; cents: number; count: number };
   connection: { connected: boolean };
 }
 type EventListener<K extends keyof LiveEvents> = (data: LiveEvents[K]) => void;
@@ -120,7 +117,6 @@ function createClient() {
         else if (m.type === 'react' && m.c && typeof m.c === 'object') fire('react', { c: m.c });
         else if (m.type === 'msg' && m.message?.id) fire('msg', { message: m.message });
         else if (m.type === 'msg-hide' && m.id) fire('msg-hide', { id: m.id });
-        else if (m.type === 'gifts' && typeof m.cents === 'number') fire('gifts', { broadcastId: String(m.broadcastId || ''), cents: m.cents, count: Number(m.count) || 0 });
       } catch { /* ignore */ }
     };
     ws.onclose = () => {
