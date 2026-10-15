@@ -149,7 +149,7 @@ try {
     if (name === 'live') {
       ok((await page.$$('[data-s="player"] video')).length === 1, 'player video mounted');
       ok(await page.$eval('#live-hero', (el) => el.hasAttribute('data-party')), 'watch-party layout');
-      ok(await vis('[data-s="reacts"]'), 'reactions in the rail beside the video');
+      ok(await vis('[data-s="bar"]'), 'the bar under the video');
       ok(await vis('[data-slot="hero"] [data-msgs="panel"]'), 'messages for the family beside the video');
       ok(!(await vis('[data-live="cta-facebook"]')), 'no Facebook detour while live');
       await page.waitForFunction(() => document.querySelector('[data-stage]')?.dataset.pstatus === 'waiting', { timeout: 8000 }).catch(() => {});

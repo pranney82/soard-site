@@ -16,15 +16,15 @@
  *
  * Watch party (data-party: starting soon, live, replay): the crew shoots
  * portrait, so the frame becomes a 9:16 video as tall as the screen allows,
- * with nothing drawn on the picture (controls, reactions and the viewer
- * count sit in a rail beside it and a bar under it). The messages for the
- * family (LiveMessages) sit in the text column beside it. On phones the
- * kid's name sits above the video and the newest message in the bar under
- * it. The pieces: LiveStage.astro + utils/live-stage.ts (the frame),
+ * with nothing drawn on the picture and one simple bar under it. The
+ * messages for the family (LiveMessages) sit beside it on a desktop and
+ * under it on a phone, where the kid's name sits above it. Kept simple for
+ * people who have never been here: watch, leave a message, give, share.
+ * Nothing sends people off to watch somewhere else, except a Facebook-only
+ * broadcast with no video here. The pieces: LiveStage.astro + utils/live-stage.ts (the frame),
  * LiveMessages.astro + utils/live-messages.ts (the messages),
- * LiveGive.astro + utils/live-give.ts (giving without leaving the reveal,
- * with the running total of gifts from functions/api/live-gifts.js) and
- * utils/live-player.ts (the video).
+ * LiveGive.astro + utils/live-give.ts (giving without leaving the reveal)
+ * and utils/live-player.ts (the video).
  */
 import { cfRaw } from '../../utils/cf-image';
 import PastReveals from './PastReveals.astro';
@@ -60,7 +60,6 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
       </p>
       <p class="hero-status" data-live="status" aria-live="polite"></p>
       <div class="hero-party" data-slot="hero" hidden><LiveMessages /></div>
-      <p class="hero-gifts" data-live="gifts" hidden><strong data-live="gifts-total"></strong> given during this reveal<span class="hero-gifts__count" data-live="gifts-count"></span></p>
       <div class="hero-ctas">
         <a class="btn btn-primary btn-lg hero-glow" href="https://www.facebook.com/SunshineOnaRanneyDay" target="_blank" rel="noopener" data-live="cta-facebook" hidden>Watch on Facebook</a>
         <a class="btn btn-primary btn-lg hero-glow" href="#remind" data-live="cta-remind" hidden>Remind me</a>
@@ -145,22 +144,6 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
         <p class="live-card__text">Every reveal is the moment a family sees months of work for the first time. Watching live is the closest thing to being in the room, and it is how most of our supporters first found us.</p>
         <a class="btn btn-primary" href="/donate/?src=live-side" data-live="cta-donate-side">Fund the next room</a>
       </div>
-      <div class="live-card">
-        <p class="live-card__label">Also streaming on</p>
-        <ul class="live-links">
-          <li><a href="https://www.facebook.com/SunshineOnaRanneyDay" target="_blank" rel="noopener" data-live="link-facebook">Facebook</a></li>
-          <li data-live="youtube-item" hidden><a href="#" target="_blank" rel="noopener" data-live="link-youtube">YouTube</a></li>
-          <li data-live="instagram-item" hidden><a href="#" target="_blank" rel="noopener" data-live="link-instagram">Instagram</a></li>
-        </ul>
-        <p class="live-card__text live-card__text--sm">The video here is the same stream, without the login. Messages left on this page go straight to the family.</p>
-      </div>
-      <div class="live-card">
-        <p class="live-card__label">Share this page</p>
-        <div class="live-share">
-          <button class="remind-link" type="button" data-live="share-copy">Copy link</button>
-          <a class="remind-link" href="#" target="_blank" rel="noopener" data-live="share-facebook">Share on Facebook</a>
-        </div>
-      </div>
     </aside>
   </div>
 </section>
@@ -237,9 +220,6 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
   .hero-share { display: inline-flex; align-items: center; gap: 8px; }
   .hero-share :global(svg) { width: 17px; height: 17px; }
   .hero-party { margin-bottom: 20px; }
-  .hero-gifts { margin: 0 0 16px; font-size: 15px; color: var(--c-text-muted); }
-  .hero-gifts[hidden] { display: none; }
-  .hero-gifts strong { color: var(--c-text); font-size: 1.15em; background-image: linear-gradient(transparent 58%, var(--c-yellow-soft) 58%); padding: 0 0.1em; }
   .hero-party[hidden] { display: none; }
 
   /* backwards, not both: a transform left on after the entrance would trap the docked mini player */
@@ -255,8 +235,6 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
   .hero[data-party][data-orientation='landscape'] .hero-inner { grid-template-columns: minmax(300px, 0.8fr) minmax(0, 1.2fr); }
   /* Top, not centre: a tall messages column must never push the video below the fold */
   .hero[data-party] .hero-frame { align-self: start; }
-  /* A portrait stage sits in an auto-sized column, where a percentage width has nothing to resolve against */
-  .hero[data-party][data-orientation='portrait'] .hero-frame { --stage-max: 100vw; }
   .hero[data-party] .hero-lead { display: none; }
   .hero[data-party] .hero-status:empty { display: none; }
   .hero[data-party] .hero-status { margin-bottom: 20px; min-height: 0; }
@@ -309,13 +287,11 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
   .live-card--dark .live-card__label { color: var(--c-yellow); }
   .live-card__text { line-height: 1.6; margin: 0 0 18px; color: inherit; }
   .live-card--dark .live-card__text { color: rgba(254, 252, 245, 0.85); }
-  .live-card__text--sm { font-size: 13px; color: var(--c-text-muted); margin: 12px 0 0; }
-  .live-links { list-style: none; padding: 0; margin: 0; display: flex; gap: 16px; flex-wrap: wrap; }
-  .live-links a { font-weight: 700; color: var(--c-dark); text-decoration: none; border-bottom: 2px solid var(--c-yellow); padding-bottom: 2px; }
-  .live-links li[hidden] { display: none; }
-  .live-share { display: flex; gap: 20px; flex-wrap: wrap; }
 
   @media (min-width: 961px) {
+    /* A portrait stage sits in an auto-sized column, where a percentage width has nothing to
+       resolve against (desktop only: on phones the column is the screen width, and 100% is right) */
+    .hero[data-party][data-orientation='portrait'] .hero-frame { --stage-max: 100vw; }
     /* The text column matches the video's height and the message wall takes up the slack */
     .hero[data-party] .hero-text { display: flex; flex-direction: column; min-height: 0; }
     .hero[data-party] .hero-party:not([hidden]) { flex: 1 1 0; display: flex; flex-direction: column; }
@@ -330,7 +306,7 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
     .live-side { position: static; }
 
     /* Phones and tablets: the kid's name, then the video as big as fits under it, then the messages */
-    .hero[data-party] .hero-inner { gap: 0; }
+    .hero[data-party] .hero-inner, .hero[data-party][data-orientation='landscape'] .hero-inner { gap: 0; }
     .hero[data-party] .hero-text { display: contents; }
     .hero[data-party] .hero-eyebrow { display: none; }
     .hero[data-party] .hero-text h1 {
@@ -340,8 +316,7 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
     .hero[data-party] .hero-frame { order: 2; max-width: none; --fh: calc(100svh - var(--header-height) - 12px - 2.2rem - 18px); }
     .hero[data-party] .hero-status { order: 3; margin: 20px auto 0; }
     .hero[data-party] .hero-party { order: 4; margin: 24px 0 0; }
-    .hero[data-party] .hero-gifts { order: 5; margin: 24px 0 0; }
-    .hero[data-party] .hero-ctas { order: 6; margin-top: 16px; }
+    .hero[data-party] .hero-ctas { order: 5; margin-top: 24px; }
   }
   @media (max-width: 768px) {
     .hero { padding-top: clamp(48px, 8vw, 80px); padding-bottom: var(--space-xl); min-height: auto; }
@@ -406,7 +381,6 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
       client,
       // The hero lays itself out around the video's real shape
       onShape: (orientation, party) => { hero.dataset.orientation = orientation; setAttr(hero, 'data-party', party); },
-      onOpenMessages: () => messages?.focusComposer(),
       onSlateFailed: (src) => { slateFailed.add(src); if (last) render(last, lastMeta); },
     });
 
@@ -415,7 +389,7 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
     const section = document.querySelector<HTMLElement>('[data-live-msgs]');
     const sectionSlot = section?.querySelector<HTMLElement>('[data-slot="section"]');
     const messages = panel && heroSlot && section && sectionSlot
-      ? createMessages({ client, panel, heroSlot, section, sectionSlot, cta: q('cta-messages'), onLatest: (m) => stage.setLatest(m) })
+      ? createMessages({ client, panel, heroSlot, section, sectionSlot, cta: q('cta-messages') })
       : null;
 
     // ── Giving without leaving the reveal ───────────────────────────
@@ -429,31 +403,6 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
     };
     q('cta-donate')?.addEventListener('click', giveFrom('hero'));
     bq('cta-donate-side')?.addEventListener('click', giveFrom('side'));
-
-    // Running total of gifts during this reveal (Zeffy). Pushed by the hub; polled without one.
-    const GIFTS_POLL_MS = 30_000;
-    let giftsPushed = false;
-    const money = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
-    function showGifts(broadcastId: string | null, cents: number, count: number) {
-      const el = q<HTMLElement>('gifts');
-      const show = !!broadcastId && broadcastId === last?.id && count > 0 && stage.party;
-      setHidden(el, !show);
-      if (!show) return;
-      const total = q<HTMLElement>('gifts-total'); const n = q<HTMLElement>('gifts-count');
-      if (total) total.textContent = money.format(Math.floor(cents / 100));
-      if (n) n.textContent = ` · ${count.toLocaleString()} ${count === 1 ? 'gift' : 'gifts'}`;
-    }
-    async function loadGifts() {
-      if (!stage.party || document.hidden) return;
-      try {
-        const res = await fetch('/api/live-gifts');
-        const d = res.ok ? await res.json() : null;
-        if (d?.ok && d.configured) showGifts(d.broadcastId, d.cents, d.count);
-      } catch { /* offline */ }
-    }
-    const offGifts = client.on('gifts', ({ broadcastId, cents, count }) => { giftsPushed = true; showGifts(broadcastId, cents, count); });
-    const giftsTimer = setInterval(() => { if (!giftsPushed) loadGifts(); }, GIFTS_POLL_MS);
-    let giftsFor = '';
 
     // ── /live/ follows the current kid ──────────────────────────────
     function setTitle(kidName: string | null, view: string) {
@@ -547,17 +496,9 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
       setHidden(q('cta-remind'), !(display === 'upcoming' || display === 'idle') || !meta.reminders?.enabled);
       setHidden(q('cta-calendar'), display !== 'upcoming');
       setHidden(q('cta-past'), view !== 'idle' || !document.getElementById('past-reveals'));
-      setHidden(q('cta-share'), !party);
+      setHidden(q('cta-share'), view === 'idle');
       const fbCta = q<HTMLAnchorElement>('cta-facebook');
       if (fbCta) { fbCta.href = s.facebookUrl || fbCta.href; setHidden(fbCta, !((view === 'live' || view === 'replay') && !hasPlayer)); }
-      const fbLink = bq<HTMLAnchorElement>('link-facebook');
-      if (fbLink && s.facebookUrl) fbLink.href = s.facebookUrl;
-      const ytItem = bq<HTMLElement>('youtube-item');
-      const ytLink = bq<HTMLAnchorElement>('link-youtube');
-      if (ytItem && ytLink) { if (s.youtubeUrl) { ytLink.href = s.youtubeUrl; ytItem.hidden = false; } else ytItem.hidden = true; }
-      const igItem = bq<HTMLElement>('instagram-item');
-      const igLink = bq<HTMLAnchorElement>('link-instagram');
-      if (igItem && igLink) { if (s.instagramUrl) { igLink.href = s.instagramUrl; igItem.hidden = false; } else igItem.hidden = true; }
 
       stage.update({
         mode: display as 'idle' | 'upcoming' | 'starting' | 'live' | 'replay',
@@ -567,8 +508,7 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
         badge,
       });
       messages?.update({ active: forThisKid && !!s.id && view !== 'idle', broadcastId: s.id, kidName: s.kidName, party });
-      if (!party) { setHidden(q('gifts'), true); give?.close(); }
-      else if (giftsFor !== s.id) { giftsFor = s.id || ''; loadGifts(); }
+      if (!party) give?.close();
 
       // Reminder form availability
       const smsForm = bq<HTMLFormElement>('form-sms');
@@ -593,9 +533,6 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
     // Beacons on the primary actions
     q('cta-facebook')?.addEventListener('click', () => client.beacon('click_facebook'));
     q('cta-calendar')?.addEventListener('click', () => client.beacon('click_calendar'));
-    bq('link-facebook')?.addEventListener('click', () => client.beacon('click_facebook', { where: 'side' }));
-    bq('link-youtube')?.addEventListener('click', () => client.beacon('click_youtube'));
-    bq('link-instagram')?.addEventListener('click', () => client.beacon('click_instagram'));
 
     // Reminder forms
     async function submitReminder(form: HTMLFormElement, payload: Record<string, string>) {
@@ -652,12 +589,6 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
 
     // Share
     const pageUrl = () => location.href.split('#')[0];
-    bq<HTMLButtonElement>('share-copy')?.addEventListener('click', async (e) => {
-      const b = e.currentTarget as HTMLButtonElement;
-      try { await navigator.clipboard.writeText(pageUrl()); b.textContent = 'Link copied'; setTimeout(() => { b.textContent = 'Copy link'; }, 2000); client.beacon('share', { how: 'copy' }); } catch { b.textContent = 'Copy failed'; }
-    });
-    const fbShare = bq<HTMLAnchorElement>('share-facebook');
-    if (fbShare) { fbShare.href = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(pageUrl())}`; fbShare.addEventListener('click', () => client.beacon('share', { how: 'facebook' })); }
     // Hero share: the phone's share sheet where there is one, otherwise copy the link
     q<HTMLButtonElement>('cta-share')?.addEventListener('click', async () => {
       const label = q<HTMLElement>('share-label');
@@ -676,8 +607,6 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
     return () => {
       unsubscribe();
       clearInterval(countdown);
-      clearInterval(giftsTimer);
-      offGifts();
       give?.destroy();
       stage.destroy();
       messages?.destroy();

@@ -256,10 +256,19 @@ const baseConfig = {
 const okProbe = { ok: true, video: { width: 1080, height: 1920 }, audio: { present: true, verdict: 'ok', lufs: -17 } };
 const listed = [{ uid: 'o-fb', enabled: true }, { uid: 'o-yt', enabled: true }];
 
+test('destinations: the Website card says so while the phone is reconnecting', () => {
+  const d = destinations({ config: baseConfig, state: { kidSlug: 'sam', phase: 'ending', fb: {} }, phoneLive: false, liveForMs: 0, probe: null, viewers: null, outputs: listed, facebook: null, youtube: null });
+  assert.equal(d.site.status, 'wait');
+  assert.equal(d.site.title, 'Waiting for the phone to come back');
+  const idle = destinations({ config: baseConfig, state: { phase: 'scheduled', fb: {} }, phoneLive: false, liveForMs: 0, probe: null, viewers: null, outputs: listed, facebook: null, youtube: null });
+  assert.equal(idle.site.title, 'Waiting for the phone');
+});
+
 test('destinations: everything live and confirmed', () => {
   const d = destinations({ config: baseConfig, state: { kidSlug: 'sam', fb: {} }, phoneLive: true, liveForMs: 5 * 60e3, probe: okProbe, viewers: 12, outputs: listed, facebook: { configured: true, ok: true, live: true, permalink: 'https://facebook.com/v/1' }, youtube: { configured: true, ok: true, live: { viewers: 4, url: 'https://youtube.com/watch?v=1' } } });
   assert.equal(d.site.status, 'ok');
-  assert.match(d.site.detail, /12 watching · 1080p · -17 LUFS/);
+  assert.equal(d.site.detail, '1080p · -17 LUFS', 'the admin status card carries the one "watching" number');
+  assert.equal(d.site.viewers, 12, 'Stream\'s player count stays for the peak in the health report');
   assert.equal(d.facebook.status, 'ok');
   assert.equal(d.facebook.url, 'https://facebook.com/v/1');
   assert.equal(d.youtube.status, 'ok');

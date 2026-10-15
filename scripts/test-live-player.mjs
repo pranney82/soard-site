@@ -9,18 +9,18 @@
  * /api/broadcast, /api/live-messages and /api/live-replay. Checks, at
  * desktop, laptop and phone sizes (including a phone with Safari's
  * toolbars showing):
- *   - the whole stage (video, rail, bar) fits on screen, the kid's name
+ *   - the whole stage (video and the bar under it) fits on screen, the kid's name
  *     above the video on phones, the messages beside it on desktops
  *   - nothing is ever drawn on a playing picture (every sampled point of
  *     the video hits the video)
- *   - sound, reactions floating up the rail, the mini player
+ *   - one simple bar: Tap for sound, then sound / heart / full screen; the
+ *     mini player; no links sending viewers off to watch somewhere else
  *   - a sideways picture reshapes the frame; camera-not-connected and
  *     dropped-feed notes, and recovery on its own
  *   - replay: own controls, the reveal marked on the seek bar, Jump to the
  *     reveal, captions under the picture, keyboard control
  *   - giving without leaving: the Zeffy form opens beside the video (desktop)
- *     or under a small pinned player (phone) while the reveal keeps playing,
- *     and the running total of gifts during the reveal
+ *     or under a small pinned player (phone) while the reveal keeps playing
  *   - leaving the page and coming back with the Back button (client-side
  *     navigation) brings the video back
  * Screenshots land in test-results/live-player/. Exits non-zero on any
@@ -92,7 +92,6 @@ async function mock(page) {
     if (url.pathname === '/api/live-messages') return json({ ok: true, status: 'shown', message: { id: `p${Date.now()}`, name: 'Bo', body: 'Congratulations!', at: new Date().toISOString() } });
     if (url.pathname === '/api/live-replay' && url.searchParams.has('vtt')) return req.respond({ status: 200, contentType: 'text/vtt', body: VTT });
     if (url.pathname === '/api/live-replay') return json({ ok: true, uid: 'rep1', revealAt: 6, captions: true });
-    if (url.pathname === '/api/live-gifts') return json({ ok: true, configured: true, broadcastId: state.id, cents: 124050, count: 18, lastEventAt: null });
     if (url.hostname === 'www.zeffy.com') return req.respond({ status: 200, contentType: 'text/html', body: '<!doctype html><body style="font:16px sans-serif;padding:24px">Zeffy donation form stub</body>' });
     if (url.pathname === '/api/live-ws') return req.abort();
     if (url.pathname === '/api/broadcast-event') return req.respond({ status: 204, body: '' });
@@ -122,15 +121,15 @@ const probe = (page) => page.evaluate(() => {
   return {
     party: stage?.hasAttribute('data-party'), mode: stage?.dataset.mode, pstatus: stage?.dataset.pstatus, orient: stage?.dataset.orientation,
     vsize: video ? `${video.videoWidth}x${video.videoHeight}` : null, muted: video?.muted, time: video?.currentTime, paused: video?.paused,
-    stage: r(stage), picture: r(pic), rail: r(s('rail')), bar: r(s('bar')), h1: r(document.querySelector('.hero-text h1')),
-    status: s('status')?.textContent, soundCta: vis(s('sound')), latest: vis(s('latest')) ? s('latest-name').textContent : null,
-    reacts: vis(s('reacts')), note: vis(s('note')) ? s('note-title').textContent : null, docked: pic?.classList.contains('is-docked'),
+    stage: r(stage), picture: r(pic), bar: r(s('bar')), h1: r(document.querySelector('.hero-text h1')),
+    status: s('status')?.textContent, soundCta: vis(s('sound')), heart: vis(s('heart')), mute: vis(s('mute')),
+    full: [...document.querySelectorAll('[data-full]')].some(vis),
+    note: vis(s('note')) ? s('note-title').textContent : null, docked: pic?.classList.contains('is-docked'),
+    leaveLinks: [...document.querySelectorAll('.live-page a[href*="facebook.com"], .live-page a[href*="youtube.com"], .live-page a[href*="instagram.com"]')].filter((a) => vis(a) && !a.href.includes('sharer')).length,
     panelBeside: !!document.querySelector('[data-slot="hero"] [data-msgs="panel"]') && vis(document.querySelector('[data-msgs="panel"]')),
     form: r(document.querySelector('[data-msgs="form"]')), covered,
-    floats: [...document.querySelectorAll('.react-float')].map((el) => r(el)),
     jump: vis(s('jump')) ? s('jump-label').textContent : null, mark: vis(s('mark')), cc: vis(s('cc')) ? s('cc-text').textContent : null,
     give: vis(document.querySelector('.give__panel')) ? r(document.querySelector('.give__panel')) : null,
-    gifts: vis(document.querySelector('[data-live="gifts"]')) ? document.querySelector('[data-live="gifts"]').textContent.replace(/\s+/g, ' ').trim() : null,
     overflowX: document.documentElement.scrollWidth - document.documentElement.clientWidth, vw: innerWidth, vh: innerHeight,
   };
 });
@@ -167,13 +166,19 @@ try {
     ok(g.orient === 'portrait' && g.vsize === '144x256', `portrait picture (${g.vsize})`);
     ok(Math.abs(g.picture.w / g.picture.h - 0.5625) < 0.02, `9:16 frame (${g.picture.w}x${g.picture.h})`);
     ok(!g.covered, `nothing drawn on the picture${g.covered ? ` (hit ${g.covered})` : ''}`);
-    ok(g.stage.y >= 0 && g.stage.b <= g.vh, `video, rail and bar all on screen (stage ${g.stage.y}-${g.stage.b} of ${g.vh})`);
-    ok(g.rail.x >= g.picture.r && g.bar.y >= g.picture.b, 'rail beside the picture, bar under it');
+    ok(g.stage.y >= 0 && g.stage.b <= g.vh, `video and bar all on screen (stage ${g.stage.y}-${g.stage.b} of ${g.vh})`);
+    ok(g.bar.y >= g.picture.b && Math.abs(g.bar.w - g.picture.w) <= 2, 'the bar sits under the picture, the same width');
     ok(g.overflowX <= 0, `no sideways scroll (${g.overflowX})`);
-    ok(g.status === 'Live' && g.soundCta && g.reacts, 'bar says Live with Tap for sound; reactions in the rail');
+    // The hero clips overflow, so scroll width alone can't see a stage that runs off the side
+    ok([g.stage, g.bar].every((b) => b.x >= 8 && b.r <= g.vw - 8), `video and bar inside the screen's gutters (stage ${g.stage.x}-${g.stage.r} of ${g.vw})`);
+    ok(g.status === 'Live' && g.soundCta && !g.heart && !g.mute && !g.full, 'muted: the bar says Live and offers one thing, Tap for sound');
+    ok(g.leaveLinks === 0, `nothing sends viewers off to watch somewhere else (${g.leaveLinks} links)`);
     if (phone) {
       ok(g.h1.b <= g.picture.y && g.h1.y >= 0, `kid's name above the video (${g.h1.y}-${g.h1.b})`);
       ok(g.picture.w >= 250, `video at least 250px wide (${g.picture.w})`);
+      // Touch screens get 44px minimum buttons site-wide: the round controls must stay round at that size
+      const odd = await page.evaluate(() => [...document.querySelectorAll('[data-stage] .bar__btn:not(.bar__cc), [data-stage] .bar__play')].filter((el) => el.getBoundingClientRect().width > 0).map((el) => el.getBoundingClientRect()).filter((b) => Math.abs(b.width - b.height) > 1 || b.height < 44).length);
+      ok(odd === 0, `round controls are 44px circles on a touch screen (${odd} out of shape)`);
     } else {
       ok(g.panelBeside && g.form.b <= g.vh + 8, `messages beside the video, message box on screen (${g.form.b})`);
       ok(g.picture.w >= (vp.height < 800 ? 290 : 340), `video as big as the screen height allows (${g.picture.w}px wide)`);
@@ -184,9 +189,8 @@ try {
     await sleep(400);
     g = await probe(page);
     ok(g.muted === false && !g.soundCta, 'one tap turns the sound on');
-    if (phone) ok(g.latest === 'Priya', `newest message in the bar once the sound is on (${g.latest})`);
+    ok(!g.soundCta && g.mute && g.heart && g.full, 'sound on: the bar shows sound, a heart and full screen');
 
-    ok(g.gifts === '$1,240 given during this reveal · 18 gifts', `running total of gifts (${g.gifts})`);
 
     if (name === 'desktop' || name === 'phone') {
       await page.click('[data-live="cta-donate"]');
@@ -204,10 +208,10 @@ try {
       await sleep(500);
     }
 
-    await page.click('[data-react="heart"]');
+    await page.click('[data-s="heart"]');
     await sleep(500);
     g = await probe(page);
-    ok(g.floats.length > 0 && g.floats.every((f) => f.x >= g.rail.x - 2 && f.r <= g.rail.r + 2), 'reaction floats up the rail, not over the picture');
+    ok(!g.covered, 'sending love draws nothing over the picture');
 
     await page.evaluate(() => window.scrollTo(0, document.querySelector('.hero').offsetHeight + 400));
     await sleep(900);
@@ -233,7 +237,7 @@ try {
   await page.setViewport({ width: 390, height: 844, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
   await sleep(800);
   g = await probe(page);
-  ok(g.overflowX <= 0 && !g.covered, `fits a phone (${g.picture.w}x${g.picture.h})`);
+  ok(g.overflowX <= 0 && !g.covered && [g.stage, g.bar].every((b) => b.x >= 8 && b.r <= g.vw - 8), `fits a phone, inside the gutters (${g.picture.w}x${g.picture.h}, stage to ${g.stage.r} of ${g.vw})`);
   await page.screenshot({ path: `${OUT}landscape-phone.png` });
 
   console.log('\n▶ camera not connected yet');
@@ -244,6 +248,13 @@ try {
   g = await probe(page);
   ok(g.pstatus === 'waiting' && g.note === 'The camera is getting ready' && g.status === 'Waiting for the camera', `note over the empty frame, bar doesn't claim Live (${g.status})`);
   await page.screenshot({ path: `${OUT}waiting.png` });
+  await page.setViewport({ width: 390, height: 844, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
+  await sleep(600);
+  g = await probe(page);
+  const barFits = await page.evaluate(() => { const bar = document.querySelector('[data-s="bar"]').getBoundingClientRect(); return [...document.querySelectorAll('[data-s="bar"] *')].filter((el) => el.getBoundingClientRect().width > 0).every((el) => el.getBoundingClientRect().right <= bar.right + 1); });
+  ok([g.stage, g.bar].every((b) => b.x >= 8 && b.r <= g.vw - 8) && barFits && !g.heart, 'phone: waiting state fits, the bar shows only what the camera is doing');
+  await page.screenshot({ path: `${OUT}waiting-phone.png` });
+  await page.setViewport({ width: 1424, height: 830 });
 
   console.log('\n▶ the feed drops, then comes back');
   feed.down = false;
@@ -263,7 +274,7 @@ try {
   await page.waitForFunction(() => !document.querySelector('[data-s="jump"]')?.hidden, { timeout: 15000 }).catch(() => {});
   await sleep(600);
   g = await probe(page);
-  ok(g.mode === 'replay' && g.party && !g.reacts, 'replay in the watch-party layout, no reactions');
+  ok(g.mode === 'replay' && g.party && !g.heart, 'replay in the watch-party layout, no heart');
   ok(g.mark && g.jump === 'Jump to the reveal', 'the reveal is marked on the seek bar, with a Jump button');
   await page.click('[data-s="jump"]');
   await waitFor(page, ['playing']);
@@ -271,8 +282,8 @@ try {
   g = await probe(page);
   ok(g.pstatus === 'playing' && g.time >= 1 && g.time < 4, `Jump plays from just before the reveal (${g.time?.toFixed(1)}s)`);
   ok(!g.covered, `no control bar drawn on the replay${g.covered ? ` (hit ${g.covered})` : ''}`);
-  ok(await page.$eval('[data-tool="sound"]', (b) => b.getAttribute('aria-label')) === 'Mute', 'a replay plays with sound, and the rail says so');
-  await page.click('[data-tool="cc"]');
+  ok(g.muted === false, 'a replay plays with sound');
+  await page.click('[data-s="cc-toggle"]');
   await sleep(700);
   g = await probe(page);
   ok(g.cc === 'Okay, open your eyes!', `captions under the picture (${g.cc})`);
@@ -281,7 +292,7 @@ try {
   await sleep(300);
   ok((await probe(page)).paused === true, 'play button pauses');
   // Keyboard, with focus anywhere in the stage: K plays and pauses, M mutes, C captions
-  await page.focus('[data-tool="cc"]');
+  await page.focus('[data-s="cc-toggle"]');
   await page.keyboard.press('k');
   await sleep(400);
   ok((await probe(page)).paused === false, 'K plays');

@@ -5,25 +5,26 @@
  * Before the watch party it is the hero's portrait photo with its badge
  * (countdown, "Live" for a Facebook-only broadcast, "Processing").
  *
- * During the watch party (data-party: starting soon, live, replay) nothing is
- * drawn on the picture. Everything sits beside or under it:
+ * During the watch party (data-party: starting soon, live, replay) it is the
+ * video, as big as the screen allows, with nothing drawn on the picture and
+ * one simple bar under it:
  *
- *   ┌──────────┐┌──┐  rail: sound, captions, picture in picture, full screen,
- *   │          ││  │        then the reactions (they float up the rail)
- *   │  video   ││  │
- *   │          ││  │
- *   └──────────┘└──┘
- *   captions line           (replay, when switched on)
- *   bar: LIVE · 34 watching · Tap for sound / latest message
- *        or play · seek bar with the reveal marked · time   (replay)
- *   Jump to the reveal      (replay, once the moment is known)
+ *   ┌──────────────┐
+ *   │              │
+ *   │    video     │
+ *   │              │
+ *   └──────────────┘
+ *   captions line                        (replay, when switched on)
+ *   ● LIVE · 34 watching    [Tap for sound]   then   [sound] [♥] [full screen]
+ *   or  [▶] seek bar with the reveal marked  time  [CC] [full screen]   (replay)
+ *   [ Jump to the reveal ]               (replay, once the moment is known)
  *
  * The only things ever shown over the frame are for when there is no
  * picture: "The camera is getting ready", "Reconnecting", "Tap to watch".
  *
  * Sizing: the page sets --fh, the height the whole stage may take; the
- * stage fits the video, rail and bar inside it at the picture's real shape
- * (--ar, width / height). Behaviour lives in src/utils/live-stage.ts.
+ * stage fits the video and bar inside it at the picture's real shape (--ar,
+ * width / height). Behaviour lives in src/utils/live-stage.ts.
  */
 import { cfRaw, cfSrcset, cfLqip } from '../../utils/cf-image';
 
@@ -36,20 +37,13 @@ const ICON = {
   soundOff: svg(`${SPEAKER}<path d="M22 9l-6 6"/><path d="M16 9l6 6"/>`),
   soundOn: svg(`${SPEAKER}<path d="M16 9a5 5 0 0 1 0 6"/><path d="M19.364 18.364a9 9 0 0 0 0-12.728"/>`),
   full: svg('<path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/>'),
-  pip: svg('<path d="M21 9V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v10c0 1.1.9 2 2 2h4"/><rect width="10" height="7" x="12" y="13" rx="2"/>'),
-  cc: svg('<rect width="18" height="14" x="3" y="5" rx="2"/><path d="M10.5 10.2a2.2 2.2 0 1 0 0 3.6"/><path d="M17 10.2a2.2 2.2 0 1 0 0 3.6"/>'),
+  heart: svg('<path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/>'),
   play: svg('<path d="M7 4.5v15a1 1 0 0 0 1.5.86l12.5-7.5a1 1 0 0 0 0-1.72L8.5 3.64A1 1 0 0 0 7 4.5z" fill="currentColor"/>'),
   pause: svg('<rect x="6" y="4" width="4" height="16" rx="1" fill="currentColor"/><rect x="14" y="4" width="4" height="16" rx="1" fill="currentColor"/>'),
   close: svg('<path d="M18 6 6 18"/><path d="m6 6 12 12"/>'),
   eye: svg('<path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/>'),
   spark: svg('<path d="M9.94 15.5A2 2 0 0 0 8.5 14.06l-6.14-1.58a.5.5 0 0 1 0-.96L8.5 9.94A2 2 0 0 0 9.94 8.5l1.58-6.14a.5.5 0 0 1 .96 0l1.58 6.14a2 2 0 0 0 1.44 1.44l6.14 1.58a.5.5 0 0 1 0 .96l-6.14 1.58a2 2 0 0 0-1.44 1.44l-1.58 6.14a.5.5 0 0 1-.96 0z"/>'),
 };
-const REACTIONS = [
-  { k: 'heart', label: 'Send love', svg: svg('<path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/>') },
-  { k: 'sun', label: 'Send sunshine', svg: svg('<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>') },
-  { k: 'clap', label: 'Celebrate', svg: svg('<path d="M5.8 11.3 2 22l10.7-3.79"/><path d="M4 3h.01M22 8h.01M15 2h.01M22 20h.01"/><path d="m22 2-2.24.75a2.9 2.9 0 0 0-1.96 3.12c.1.86-.57 1.63-1.45 1.63h-.38c-.86 0-1.6.6-1.76 1.44L14 10"/><path d="m22 13-.82-.33c-.86-.34-1.82.2-1.98 1.11-.11.7-.72 1.22-1.43 1.22H17"/><path d="m11 2 .33.82c.34.86-.2 1.82-1.11 1.98C9.52 4.9 9 5.52 9 6.23V7"/><path d="M11 13c1.93 1.93 2.83 4.17 2 5-.83.83-3.07-.07-5-2-1.93-1.93-2.83-4.17-2-5 .83-.83 3.07.07 5 2Z"/>') },
-  { k: 'wow', label: 'Wow', svg: svg('<path d="M9.94 15.5A2 2 0 0 0 8.5 14.06l-6.14-1.58a.5.5 0 0 1 0-.96L8.5 9.94A2 2 0 0 0 9.94 8.5l1.58-6.14a.5.5 0 0 1 .96 0l1.58 6.14a2 2 0 0 0 1.44 1.44l6.14 1.58a.5.5 0 0 1 0 .96l-6.14 1.58a2 2 0 0 0-1.44 1.44l-1.58 6.14a.5.5 0 0 1-.96 0z"/><path d="M20 3v4M22 5h-4M4 17v2M5 18H3"/>') },
-];
 ---
 
 <div class="stage" data-stage data-mode="loading" data-orientation="portrait" tabindex="-1">
@@ -85,34 +79,21 @@ const REACTIONS = [
     </div>
   </div>
 
-  <div class="stage__rail" data-s="rail" hidden>
-    <div class="rail__tools">
-      <button class="rail__btn rail__btn--sound" type="button" data-tool="sound" aria-label="Turn sound on" title="Sound (M)" hidden>
-        <span class="rail__off"><Fragment set:html={ICON.soundOff} /></span>
-        <span class="rail__on"><Fragment set:html={ICON.soundOn} /></span>
-      </button>
-      <button class="rail__btn" type="button" data-tool="cc" aria-label="Captions" aria-pressed="false" title="Captions (C)" hidden><Fragment set:html={ICON.cc} /></button>
-      <button class="rail__btn" type="button" data-tool="pip" aria-label="Picture in picture" title="Picture in picture" hidden><Fragment set:html={ICON.pip} /></button>
-      <button class="rail__btn" type="button" data-tool="full" aria-label="Full screen" title="Full screen (F)"><Fragment set:html={ICON.full} /></button>
-    </div>
-    <div class="rail__lane" data-s="lane" aria-hidden="true"></div>
-    <div class="rail__reacts" data-s="reacts" role="group" aria-label="Send a reaction everyone watching will see" hidden>
-      {REACTIONS.map(r => (
-        <button class="rail__btn rail__react" type="button" data-react={r.k} aria-label={r.label} title={r.label} set:html={r.svg} />
-      ))}
-    </div>
-  </div>
-
   <p class="stage__cc" data-s="cc" aria-hidden="true" hidden><span data-s="cc-text"></span></p>
 
   <div class="stage__bar" data-s="bar" hidden>
     <div class="bar__live" data-s="livebar">
       <span class="bar__status"><span class="bar__dot" aria-hidden="true"></span><span data-s="status">Connecting</span></span>
       <span class="bar__count" data-s="count" hidden><Fragment set:html={ICON.eye} /><span data-s="count-text"></span></span>
-      <button class="bar__sound" type="button" data-s="sound" hidden><Fragment set:html={ICON.soundOff} /><span>Tap for sound</span></button>
-      <button class="bar__latest" type="button" data-s="latest" hidden aria-label="Latest message, open the messages">
-        <span class="bar__latest-name" data-s="latest-name"></span><span class="bar__latest-body" data-s="latest-body"></span>
-      </button>
+      <span class="bar__end">
+        <button class="bar__sound" type="button" data-s="sound" hidden><Fragment set:html={ICON.soundOff} /><span>Tap for sound</span></button>
+        <button class="bar__btn" type="button" data-s="mute" aria-label="Mute" title="Sound (M)" hidden>
+          <span class="bar__on"><Fragment set:html={ICON.soundOn} /></span>
+          <span class="bar__off"><Fragment set:html={ICON.soundOff} /></span>
+        </button>
+        <button class="bar__btn bar__heart" type="button" data-s="heart" aria-label="Send love to the family" title="Send love" hidden><Fragment set:html={ICON.heart} /></button>
+        <button class="bar__btn" type="button" data-full aria-label="Full screen" title="Full screen (F)" hidden><Fragment set:html={ICON.full} /></button>
+      </span>
     </div>
     <div class="bar__replay" data-s="replaybar" hidden>
       <button class="bar__play" type="button" data-s="play" aria-label="Play">
@@ -124,6 +105,8 @@ const REACTIONS = [
         <button class="seek__mark" type="button" data-s="mark" aria-label="Jump to the reveal" title="The reveal" hidden><Fragment set:html={ICON.spark} /></button>
       </div>
       <span class="bar__time" data-s="time">0:00</span>
+      <button class="bar__btn bar__cc" type="button" data-s="cc-toggle" aria-label="Captions" aria-pressed="false" title="Captions (C)" hidden>CC</button>
+      <button class="bar__btn" type="button" data-full aria-label="Full screen" title="Full screen (F)"><Fragment set:html={ICON.full} /></button>
     </div>
   </div>
 
@@ -134,7 +117,7 @@ const REACTIONS = [
 
 <style>
   /* ── Before the watch party: the hero's portrait photo ── */
-  .stage { --ar: 0.5625; --rail: 48px; --gap: 8px; --bar: 50px; --below: calc(var(--bar) + var(--gap)); position: relative; outline: none; }
+  .stage { --ar: 0.5625; --gap: 8px; --bar: 52px; --below: calc(var(--bar) + var(--gap)); position: relative; outline: none; }
   .stage[data-orientation='landscape'] { --ar: 1.7778; }
   .stage__screen { position: relative; }
   .stage__accent {
@@ -165,21 +148,19 @@ const REACTIONS = [
   .stage__badge[hidden] { display: none; }
   .stage__badge-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--c-yellow); }
 
-  /* ── Watch party: video + rail, with the bar underneath ── */
+  /* ── Watch party: the video, with the bar underneath ── */
   .stage[data-party] {
-    display: grid; grid-template-columns: minmax(0, 1fr) var(--rail); column-gap: var(--gap);
-    grid-template-areas: 'screen rail' 'cc cc' 'bar bar' 'jump jump';
+    display: grid; grid-template-columns: minmax(0, 1fr);
     /* As big as the height allows at the picture's shape, never wider than the column */
-    width: min(var(--stage-max, 100%), calc((var(--fh, 640px) - var(--below)) * var(--ar) + var(--rail) + var(--gap)));
+    width: min(var(--stage-max, 100%), calc((var(--fh, 640px) - var(--below)) * var(--ar)));
     margin-inline: auto;
   }
   .stage[data-party][data-cc] { --below: calc(var(--bar) + var(--gap) + 3.4em + var(--gap)); }
   .stage[data-party][data-jump] { --below: calc(var(--bar) + var(--gap) + 46px + var(--gap)); }
   .stage[data-party][data-cc][data-jump] { --below: calc(var(--bar) + var(--gap) + 3.4em + var(--gap) + 46px + var(--gap)); }
-  .stage[data-party] .stage__screen { grid-area: screen; aspect-ratio: var(--ar); }
+  .stage[data-party] .stage__screen { aspect-ratio: var(--ar); }
   .stage[data-party] .stage__picture { position: absolute; inset: 0; aspect-ratio: auto; border-radius: 20px; }
   .stage[data-party] .stage__photo { display: none; }
-  .stage[data-party] .stage__accent { display: none; }
   /* While the camera connects or reconnects, the kid's photo sits behind the note */
   .stage[data-party][data-pkind='live'][data-pstatus='connecting'] .stage__photo,
   .stage[data-party][data-pstatus='waiting'] .stage__photo,
@@ -206,61 +187,25 @@ const REACTIONS = [
   .stage__tap-icon :global(svg) { width: 32px; height: 32px; margin-left: 4px; }
   .stage__tap:focus-visible .stage__tap-icon { outline: 3px solid #fff; outline-offset: 3px; }
 
-  /* ── Rail ── */
-  .stage__rail {
-    grid-area: rail; display: flex; flex-direction: column; align-items: center; gap: 8px; min-height: 0;
-    padding: 6px 0; border-radius: 100px; background: color-mix(in srgb, var(--c-yellow) 16%, transparent);
-  }
-  .stage__rail[hidden] { display: none; }
-  .rail__tools, .rail__reacts { display: flex; flex-direction: column; gap: 6px; }
-  .rail__tools [hidden], .rail__reacts[hidden] { display: none; }
-  .rail__lane { flex: 1 1 auto; width: 100%; min-height: 0; position: relative; overflow: hidden; pointer-events: none; }
-  .rail__btn {
-    width: 40px; height: 40px; padding: 0; border: 1px solid var(--c-border); border-radius: 50%; display: grid; place-items: center; cursor: pointer;
-    background: #fff; color: var(--c-dark); transition: transform 150ms ease, background 150ms ease, border-color 150ms ease;
-  }
-  .rail__btn :global(svg) { width: 19px; height: 19px; }
-  .rail__btn:hover { border-color: var(--c-dark); }
-  .rail__btn:focus-visible { outline: 2px solid var(--c-dark); outline-offset: 2px; }
-  .rail__btn[aria-pressed='true'] { background: var(--c-dark); color: #fff; border-color: var(--c-dark); }
-  .rail__on, .stage[data-muted] .rail__off { display: grid; }
-  .rail__off, .stage[data-muted] .rail__on { display: none; }
-  .stage[data-muted] .rail__btn--sound { background: var(--c-yellow); border-color: var(--c-yellow); }
-  .rail__react { width: 40px; height: 40px; }
-  .rail__react[data-react='heart'] :global(svg) { fill: var(--c-yellow); color: var(--c-dark); }
-  .rail__react:active, .rail__react.is-pop { transform: scale(0.86); }
-
-  /* Reactions float up the rail, beside the picture */
-  .rail__lane :global(.react-float) {
-    position: absolute; bottom: 0; left: 50%; width: 26px; height: 26px; margin-left: -13px; color: var(--c-dark);
-    animation: reactRise var(--d, 2.6s) cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
-  }
-  .rail__lane :global(.react-float svg) { width: 100%; height: 100%; display: block; }
-  .rail__lane :global(.react-float[data-k='heart']) { color: var(--c-yellow); }
-  .rail__lane :global(.react-float[data-k='heart'] svg) { fill: currentColor; stroke: var(--c-dark); stroke-width: 1.5; }
-  .rail__lane :global(.react-float.is-mine) { width: 30px; height: 30px; margin-left: -15px; }
-  @keyframes reactRise {
-    0% { transform: translate(0, 0) scale(0.5); opacity: 0; }
-    12% { transform: translate(0, -16px) scale(1); opacity: 1; }
-    100% { transform: translate(var(--x, 0px), calc(-1 * var(--rise, 240px))) scale(0.85); opacity: 0; }
-  }
-
   /* ── Captions line (replay) ── */
   .stage__cc {
-    grid-area: cc; margin: var(--gap) 0 0; min-height: 3.4em; display: grid; place-items: center; text-align: center;
+    margin: var(--gap) 0 0; min-height: 3.4em; display: grid; place-items: center; text-align: center;
     padding: 6px 14px; border-radius: 14px; background: var(--c-dark-deep); color: #fff; font-size: 15px; line-height: 1.4;
   }
   .stage__cc[hidden] { display: none; }
 
   /* ── Bar ── */
+  /* Above the yellow accent that peeks out from behind the video */
+  .stage__bar, .stage__cc, .stage__jump { position: relative; z-index: 1; }
   .stage__bar {
-    grid-area: bar; margin-top: var(--gap); height: var(--bar); display: flex; align-items: center;
+    margin-top: var(--gap); height: var(--bar); display: flex; align-items: center;
     padding: 0 6px 0 16px; border-radius: 100px; background: #fff; border: 1px solid var(--c-border); min-width: 0;
   }
   .stage__bar[hidden] { display: none; }
-  .bar__live, .bar__replay { display: flex; align-items: center; gap: 12px; width: 100%; min-width: 0; }
+  .bar__live, .bar__replay { display: flex; align-items: center; gap: 10px; width: 100%; min-width: 0; }
   .bar__live[hidden], .bar__replay[hidden] { display: none; }
-  .bar__status { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: var(--c-text); white-space: nowrap; }
+  .bar__status { display: inline-flex; align-items: center; gap: 8px; min-width: 0; font-size: 13px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: var(--c-text); white-space: nowrap; }
+  .bar__status span:last-child { overflow: hidden; text-overflow: ellipsis; }
   .bar__dot { width: 9px; height: 9px; border-radius: 50%; background: var(--c-text-light); position: relative; flex-shrink: 0; }
   .stage[data-onair] .bar__dot { background: var(--c-yellow); }
   .stage[data-onair][data-mode='live'] .bar__dot::after {
@@ -271,27 +216,38 @@ const REACTIONS = [
   .bar__count { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--c-text-muted); white-space: nowrap; }
   .bar__count[hidden] { display: none; }
   .bar__count :global(svg) { width: 15px; height: 15px; }
+  .bar__end { margin-left: auto; display: flex; align-items: center; gap: 4px; }
+  .bar__end [hidden] { display: none; }
   .bar__sound {
-    margin-left: auto; display: inline-flex; align-items: center; gap: 8px; height: 38px; padding: 0 16px 0 12px;
+    display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 16px 0 12px;
     border: 0; border-radius: 100px; background: var(--c-yellow); color: var(--c-dark);
     font: inherit; font-size: 14px; font-weight: 800; cursor: pointer; white-space: nowrap;
     animation: soundNudge 2.8s ease-in-out 1.5s 3;
   }
-  .bar__sound[hidden] { display: none; }
   .bar__sound :global(svg) { width: 19px; height: 19px; }
   .bar__sound:focus-visible { outline: 2px solid var(--c-dark); outline-offset: 2px; }
   @keyframes soundNudge { 0%, 80%, 100% { transform: none; } 88% { transform: scale(1.06); } }
-  .bar__latest {
-    margin-left: auto; min-width: 0; flex: 0 1 auto; display: none; align-items: baseline; gap: 6px; height: 38px; padding: 0 14px;
-    border: 0; border-radius: 100px; background: var(--c-cream); color: var(--c-text); font: inherit; font-size: 13px; cursor: pointer; text-align: left;
-    overflow: hidden; white-space: nowrap;
+  .bar__btn {
+    width: 40px; height: 40px; flex-shrink: 0; padding: 0; border: 0; border-radius: 50%; display: grid; place-items: center; cursor: pointer;
+    background: transparent; color: var(--c-dark); transition: background 150ms ease, transform 150ms ease;
   }
-  .bar__latest-name { font-weight: 800; flex-shrink: 0; }
-  .bar__latest-body { overflow: hidden; text-overflow: ellipsis; }
-  .bar__latest:focus-visible { outline: 2px solid var(--c-dark); outline-offset: 2px; }
+  .bar__btn[hidden] { display: none; }
+  .bar__btn:hover { background: var(--c-cream); }
+  .bar__btn:focus-visible { outline: 2px solid var(--c-dark); outline-offset: 2px; }
+  .bar__btn :global(svg) { width: 21px; height: 21px; }
+  .bar__off, .stage[data-muted] .bar__on { display: none; }
+  .bar__on, .stage[data-muted] .bar__off { display: grid; }
+  .bar__heart { color: var(--c-dark); }
+  .bar__heart :global(svg) { fill: var(--c-yellow); }
+  .bar__heart:active, .bar__heart.is-pop { transform: scale(0.84); }
+  /* Others watching sent love: the heart beats (no numbers, nothing over the picture) */
+  .bar__heart.is-beat { animation: heartBeat 0.6s ease-out; }
+  @keyframes heartBeat { 0% { transform: none; } 25% { transform: scale(1.22); } 50% { transform: scale(0.96); } 75% { transform: scale(1.1); } 100% { transform: none; } }
+  .bar__cc { font-size: 12px; font-weight: 800; letter-spacing: 0.04em; border: 1.5px solid var(--c-border); width: 40px; height: 32px; border-radius: 8px; }
+  .bar__cc[aria-pressed='true'] { background: var(--c-dark); color: #fff; border-color: var(--c-dark); }
 
   .bar__play {
-    width: 38px; height: 38px; flex-shrink: 0; padding: 0; border: 0; border-radius: 50%; display: grid; place-items: center; cursor: pointer;
+    width: 40px; height: 40px; flex-shrink: 0; padding: 0; border: 0; border-radius: 50%; display: grid; place-items: center; cursor: pointer;
     background: var(--c-yellow); color: var(--c-dark); margin-left: -10px;
   }
   .bar__play :global(svg) { width: 16px; height: 16px; }
@@ -300,10 +256,10 @@ const REACTIONS = [
   .bar__icon-pause, .stage[data-playing] .bar__icon-play { display: none; }
   .stage[data-playing] .bar__icon-pause { display: grid; }
   .bar__icon-play { display: grid; }
-  .bar__time { font-size: 13px; font-weight: 600; color: var(--c-text-muted); font-variant-numeric: tabular-nums; white-space: nowrap; padding-right: 10px; }
+  .bar__time { font-size: 13px; font-weight: 600; color: var(--c-text-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
 
-  .seek { position: relative; flex: 1 1 auto; min-width: 60px; height: 38px; display: flex; align-items: center; }
-  .seek__range { --p: 0%; width: 100%; height: 38px; margin: 0; background: transparent; cursor: pointer; -webkit-appearance: none; appearance: none; }
+  .seek { position: relative; flex: 1 1 auto; min-width: 60px; height: 40px; display: flex; align-items: center; }
+  .seek__range { --p: 0%; width: 100%; height: 40px; margin: 0; background: transparent; cursor: pointer; -webkit-appearance: none; appearance: none; }
   .seek__range::-webkit-slider-runnable-track { height: 6px; border-radius: 6px; background: linear-gradient(to right, var(--c-dark) var(--p), var(--c-border) var(--p)); }
   .seek__range::-moz-range-track { height: 6px; border-radius: 6px; background: var(--c-border); }
   .seek__range::-moz-range-progress { height: 6px; border-radius: 6px; background: var(--c-dark); }
@@ -319,7 +275,7 @@ const REACTIONS = [
   .seek__mark:focus-visible { outline: 2px solid var(--c-dark); outline-offset: 2px; }
 
   .stage__jump {
-    grid-area: jump; margin-top: var(--gap); height: 46px; display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+    margin-top: var(--gap); height: 46px; display: inline-flex; align-items: center; justify-content: center; gap: 10px;
     border: 0; border-radius: 100px; background: var(--c-yellow); color: var(--c-dark);
     font: inherit; font-size: 15px; font-weight: 800; cursor: pointer; box-shadow: 0 8px 24px rgba(253, 216, 53, 0.35);
   }
@@ -328,15 +284,13 @@ const REACTIONS = [
   .stage__jump-at { font-weight: 600; opacity: 0.75; font-variant-numeric: tabular-nums; }
   .stage__jump:focus-visible { outline: 2px solid var(--c-dark); outline-offset: 2px; }
 
-  /* ── Full screen: the whole stage, so captions and controls stay off the picture ── */
+  /* ── Full screen: the whole stage, so captions and the bar stay off the picture ── */
   .stage[data-party]:fullscreen {
     --fh: calc(100vh - 32px); --stage-max: calc(100vw - 32px);
     width: 100vw; height: 100vh; padding: 16px; margin: 0; background: var(--c-dark-deep);
     align-content: center; justify-content: center;
-    grid-template-columns: min(calc(100vw - 32px - var(--rail) - var(--gap)), calc((var(--fh) - var(--below)) * var(--ar))) var(--rail);
+    grid-template-columns: min(calc(100vw - 32px), calc((var(--fh) - var(--below)) * var(--ar)));
   }
-  .stage:fullscreen .stage__rail { background: rgba(255, 255, 255, 0.08); }
-  .stage:fullscreen .rail__btn[data-tool='pip'] { display: none; }
 
   /* ── Mini player: just the picture, with its own little bar above it ── */
   .stage[data-party] .stage__picture.is-docked {
@@ -374,18 +328,28 @@ const REACTIONS = [
   @media (max-width: 960px) {
     .stage[data-party] .stage__picture.is-docked { --mini-h: 210px; }
     .stage[data-party] .stage__picture { border-radius: 16px; }
-    /* The latest message lives in the bar on phones; on a desktop the messages sit beside the video */
-    .bar__latest { display: inline-flex; }
-    .bar__latest[hidden] { display: none; }
+    .stage[data-party] .stage__accent { display: none; }
   }
   @media (max-width: 400px) {
     .bar__count span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
     .stage__bar { padding-left: 12px; }
   }
+  /* Touch screens: the site makes every button at least 44px tall (global.css), so the round
+     controls are 44px circles there, and the small ones keep their size with a 44px hit area */
+  @media (hover: none) and (pointer: coarse) {
+    .stage { --bar: 56px; }
+    .bar__btn, .bar__play { width: 44px; height: 44px; }
+    .bar__cc { height: 44px; }
+    .bar__sound { height: 44px; }
+    .seek, .seek__range { height: 44px; }
+    .seek__mark, .stage__undock { min-height: 0; }
+    .stage__undock { position: relative; }
+    .seek__mark::after, .stage__undock::after { content: ''; position: absolute; inset: -9px; border-radius: 50%; }
+  }
   @media (prefers-reduced-motion: reduce) {
     .stage__accent { animation: none; opacity: 0.35; }
-    .bar__sound, .stage[data-party] .stage__picture.is-docked { animation: none; }
+    .bar__sound, .bar__heart.is-beat, .stage[data-party] .stage__picture.is-docked { animation: none; }
     .stage[data-onair][data-mode='live'] .bar__dot::after { animation: none; }
-    .stage__player, .rail__btn { transition: none; }
+    .stage__player, .bar__btn { transition: none; }
   }
 </style>

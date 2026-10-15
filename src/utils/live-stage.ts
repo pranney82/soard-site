@@ -3,13 +3,14 @@
  * =====================================================================
  * The page tells the stage what should be on it (update()); the stage owns
  * everything after that: mounting the video or the starting-soon screen,
- * the rail (sound, captions, picture in picture, full screen, reactions),
- * the bar under the video, replay controls with the reveal marked, captions
- * under the picture, the corner mini player and keyboard shortcuts.
+ * the one bar under the video (LIVE, viewers, sound, a heart, full screen;
+ * or replay controls with the reveal marked), captions under the picture,
+ * the corner mini player and keyboard shortcuts.
  *
- * Nothing is ever drawn on a playing picture.
+ * Nothing is ever drawn on a playing picture, and the controls are kept to
+ * what a first-time viewer understands at a glance.
  */
-import type { LiveClient, LiveMessage, LivePlayer, ReactionKind } from './live-client';
+import type { LiveClient, LivePlayer } from './live-client';
 import { mountPlayer, type PlayerHandle, type PlayerStatus } from './live-player';
 
 export type StageMode = 'loading' | 'idle' | 'upcoming' | 'starting' | 'live' | 'replay';
@@ -26,8 +27,6 @@ export interface StageView {
 }
 export interface Stage {
   update(view: StageView): void;
-  /** Newest message for the family, shown in the bar on phones */
-  setLatest(message: LiveMessage | null): void;
   readonly party: boolean;
   /** Hold the video in a small player at the top of the screen (while the give sheet covers the page on a phone) */
   pin(on: boolean): void;
@@ -38,8 +37,6 @@ interface Options {
   client: LiveClient;
   /** The page lays itself out around the stage's shape */
   onShape?: (orientation: 'portrait' | 'landscape', party: boolean) => void;
-  /** The latest message in the bar was tapped */
-  onOpenMessages?: () => void;
   /** The starting-soon screen didn't load (kid page not built) */
   onSlateFailed?: (src: string) => void;
 }
@@ -93,13 +90,11 @@ export function parseVtt(vtt: string): Cue[] {
 
 export function createStage(root: HTMLElement, opts: Options): Stage {
   const $ = <T extends HTMLElement = HTMLElement>(k: string) => root.querySelector(`[data-s="${k}"]`) as T | null;
-  const tool = (k: string) => root.querySelector<HTMLButtonElement>(`[data-tool="${k}"]`);
   const { client } = opts;
   const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const picture = $('picture');
   const screen = root.querySelector<HTMLElement>('.stage__screen');
   const playerEl = $('player');
-  const lane = $('lane');
   const seek = $<HTMLInputElement>('seek');
 
   let view: StageView = { mode: 'loading', player: null, slate: '', orientation: 'portrait', badge: '' };
@@ -111,7 +106,6 @@ export function createStage(root: HTMLElement, opts: Options): Stage {
   let muted = true;
   let sized: 'portrait' | 'landscape' | '' = '';
   let viewers = 0;
-  let latest: LiveMessage | null = null;
   let watching = false;
   let slowConnect = false;
   let connectingTimer: ReturnType<typeof setTimeout> | undefined;
@@ -262,15 +256,6 @@ export function createStage(root: HTMLElement, opts: Options): Stage {
     if (note) { const t = $('note-title'); const x = $('note-text'); if (t) t.textContent = note[0]; if (x) x.textContent = note[1]; }
     setHidden($('tap'), !(isVideo && pstatus === 'blocked'));
 
-    // Rail
-    setHidden($('rail'), !party);
-    setHidden(tool('sound'), !isVideo);
-    const sound = tool('sound'); if (sound) sound.setAttribute('aria-label', muted ? 'Turn sound on' : 'Mute');
-    setHidden(tool('cc'), !(kind === 'replay' && hasCaptions && isVideo));
-    tool('cc')?.setAttribute('aria-pressed', String(ccOn));
-    setHidden(tool('pip'), !(isVideo && document.pictureInPictureEnabled && v));
-    setHidden($('reacts'), !(party && (live || starting)));
-
     // Bar
     setHidden($('bar'), !party);
     const replayControls = kind === 'replay' && isVideo;
@@ -283,10 +268,17 @@ export function createStage(root: HTMLElement, opts: Options): Stage {
     const count = (live && onAir || starting) && viewers >= VIEWERS_MIN;
     setHidden($('count'), !count);
     const ct = $('count-text'); if (ct && count) ct.textContent = `${viewers.toLocaleString()} ${starting ? 'waiting' : 'watching'}`;
+    // Muted: one clear "Tap for sound". After that: sound, a heart, full screen
     const soundCta = live && isVideo && showing && muted;
     setHidden($('sound'), !soundCta);
-    setHidden($('latest'), !(live && !soundCta && latest));
-    if (latest) { const n = $('latest-name'); const b = $('latest-body'); if (n) n.textContent = latest.name; if (b) b.textContent = latest.body; }
+    const mute = $('mute');
+    setHidden(mute, !(live && isVideo && showing && !muted));
+    mute?.setAttribute('aria-label', muted ? 'Turn sound on' : 'Mute');
+    setHidden($('heart'), !((live && !soundCta && (onAir || !isVideo)) || starting));
+    root.querySelectorAll<HTMLElement>('[data-full]').forEach((b) => setHidden(b, !(isVideo && (kind === 'replay' || (live && !soundCta)))));
+    const cc = $('cc-toggle');
+    setHidden(cc, !(kind === 'replay' && hasCaptions && isVideo));
+    cc?.setAttribute('aria-pressed', String(ccOn));
 
     // Replay extras
     flag('data-cc', party && kind === 'replay' && hasCaptions && ccOn && isVideo);
@@ -383,22 +375,15 @@ export function createStage(root: HTMLElement, opts: Options): Stage {
       else v?.webkitEnterFullscreen?.(); // iPhone: only the video itself can go full screen
     } catch { v?.webkitEnterFullscreen?.(); }
   }
-  async function togglePip() {
-    const v = video();
-    if (!v) return;
-    try { if (document.pictureInPictureElement) await document.exitPictureInPicture(); else await v.requestPictureInPicture(); } catch { /* refused */ }
-  }
 
   $('sound')?.addEventListener('click', () => soundOn('sound'));
   $('tap')?.addEventListener('click', () => { if (!player) return; soundOn('tap'); player.play(); });
-  tool('sound')?.addEventListener('click', toggleSound);
-  tool('cc')?.addEventListener('click', toggleCaptions);
-  tool('pip')?.addEventListener('click', togglePip);
-  tool('full')?.addEventListener('click', toggleFullscreen);
+  $('mute')?.addEventListener('click', toggleSound);
+  $('cc-toggle')?.addEventListener('click', toggleCaptions);
+  root.querySelectorAll('[data-full]').forEach((b) => b.addEventListener('click', toggleFullscreen));
   $('play')?.addEventListener('click', togglePlay);
   $('mark')?.addEventListener('click', jumpToReveal);
   $('jump')?.addEventListener('click', jumpToReveal);
-  $('latest')?.addEventListener('click', () => opts.onOpenMessages?.());
   // Tapping the picture: sound on for a muted live video, play / pause for a replay
   playerEl?.addEventListener('click', () => {
     if (docked) return;
@@ -425,41 +410,23 @@ export function createStage(root: HTMLElement, opts: Options): Stage {
     else if ((k === 'k' || (k === ' ' && t === root)) && kind === 'replay') { e.preventDefault(); togglePlay(); }
   });
 
-  // ── Reactions: they float up the rail, beside the picture ───────
-  const icons: Record<string, string> = {};
-  const own: Record<string, number> = {};
-  root.querySelectorAll<HTMLButtonElement>('[data-react]').forEach((btn) => {
-    const k = btn.dataset.react as ReactionKind;
-    icons[k] = btn.innerHTML;
-    btn.addEventListener('click', () => {
-      spawn(k, true);
-      if (client.react(k)) own[k] = (own[k] || 0) + 1;
-      btn.classList.remove('is-pop'); void btn.offsetWidth; btn.classList.add('is-pop');
-      setTimeout(() => btn.classList.remove('is-pop'), 160);
-    });
-  });
-  function spawn(k: string, mine: boolean) {
-    if (reduced || docked || !lane || !icons[k] || lane.childElementCount > 30) return;
-    const el = document.createElement('span');
-    el.className = mine ? 'react-float is-mine' : 'react-float';
-    el.dataset.k = k;
-    el.innerHTML = icons[k];
-    el.style.setProperty('--x', `${Math.round((Math.random() - 0.5) * 14)}px`);
-    el.style.setProperty('--rise', `${Math.max(120, lane.clientHeight - 20)}px`);
-    el.style.setProperty('--d', `${(2.2 + Math.random() * 0.9).toFixed(2)}s`);
-    el.addEventListener('animationend', () => el.remove());
-    lane.appendChild(el);
-  }
+  // ── Love: one heart. Yours pops; when others send love, it beats ──
+  // (nothing floats over the picture, and no numbers)
+  const heart = $('heart');
+  const bump = (cls: string, ms: number) => {
+    if (!heart || reduced) return;
+    heart.classList.remove(cls); void heart.offsetWidth; heart.classList.add(cls);
+    setTimeout(() => heart.classList.remove(cls), ms);
+  };
+  let mine = 0;
+  heart?.addEventListener('click', () => { bump('is-pop', 160); if (client.react('heart')) mine++; });
   const offs: (() => void)[] = [];
   offs.push(client.on('react', ({ c }) => {
     if (view.mode !== 'live' && view.mode !== 'starting') return;
-    for (const [k, total] of Object.entries(c)) {
-      let n = Number(total) || 0;
-      const mine = Math.min(own[k] || 0, n);
-      own[k] = (own[k] || 0) - mine;
-      n -= mine;
-      for (let i = 0; i < Math.min(n, 6); i++) setTimeout(() => spawn(k, false), i * 120 + Math.random() * 80);
-    }
+    const total = Object.values(c).reduce((n, v) => n + (Number(v) || 0), 0);
+    const theirs = total - Math.min(mine, total);
+    mine = Math.max(0, mine - total);
+    if (theirs > 0) bump('is-beat', 600);
   }));
   offs.push(client.on('viewers', ({ n }) => { viewers = n; paint(); }));
 
@@ -523,7 +490,6 @@ export function createStage(root: HTMLElement, opts: Options): Stage {
 
   return {
     update,
-    setLatest(m) { latest = m; paint(); },
     get party() { return party; },
     pin(on: boolean) { pinned = on; updateDock(); },
     destroy() {
