@@ -70,7 +70,10 @@ const PUBLIC_ROUTES = ['/api/newsletter', '/api/kids.json', '/api/download-logo'
   '/api/stream-webhook', '/api/broadcast-hooks', '/api/live-ws', '/api/reminders', '/api/broadcast-event',
   // Messages for the family: screened and rate limited per visitor inside the handler
   // (not in the per-IP list below, since a whole family on the house wifi shares one address)
-  '/api/live-messages'];
+  '/api/live-messages',
+  // Reveal calendar invites: a JobTread workflow wake-up ({ jobId }); the handler
+  // re-reads everything from JobTread, so the body can't change what gets sent
+  '/api/reveal-invites'];
 
 // Routes public for reads only — GET/HEAD skip auth, mutations still require Access.
 // fb-live-videos returns only the page's public video permalinks (never the token),
