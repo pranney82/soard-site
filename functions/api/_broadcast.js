@@ -329,6 +329,16 @@ async function upsertBroadcastRow(DB, s) {
       JSON.stringify({ clicks: s.clicks || 0, note: s.note, kit: s.kit, replayUntil: s.replayUntil, reel: s.reel || null }), s.createdAt || nowIso(), nowIso()).run();
 }
 
+/**
+ * Mark a planned broadcast's row as finished ('cancelled', 'missed') before the
+ * state is cleared. tClear drops the broadcastId, so the persist step can't
+ * update the row afterwards, and History would keep calling it "Coming up".
+ */
+async function closeBroadcastRow(DB, s, phase) {
+  if (!s.broadcastId) return;
+  await DB.prepare('UPDATE broadcasts SET phase = ?, updated_at = ? WHERE id = ?').bind(phase, nowIso(), s.broadcastId).run();
+}
+
 export async function recordEvent(DB, broadcastId, type, meta) {
   try {
     await DB.prepare('INSERT INTO broadcast_events (broadcast_id, type, meta, created_at) VALUES (?, ?, ?, ?)')
@@ -861,6 +871,7 @@ export async function runTick(env, { source = 'tick', force = false, by = null, 
   if ((state.phase === 'scheduled' || state.phase === 'armed') && state.scheduledAt && now - Date.parse(state.scheduledAt) > SCHEDULED_EXPIRE_MS) {
     await notify.alertAdmins(env, config, { level: 'warn', title: 'Scheduled reveal never went live', detail: `${state.title || 'Reveal'} was scheduled for ${state.scheduledAt} and no stream arrived. The countdown has been cleared.`, url: `${SITE_ORIGIN}/admin/` });
     await recordEvent(DB, state.broadcastId, 'missed');
+    await closeBroadcastRow(DB, state, 'missed');
     state = tClear(state, 'missed'); work.push('missed');
   }
   if (state.phase === 'live' && state.source === 'manual' && state.manual?.until && now >= Date.parse(state.manual.until)) {
@@ -969,6 +980,8 @@ export async function adminAction(env, action, body = {}, userEmail = 'unknown')
       const kid = await kidByName(DB, body.kidSlug);
       const image = sanitizeImage(body.image ?? kid?.image ?? null);
       if (image === undefined) return fail('image must be a Cloudflare image id or imagedelivery.net URL');
+      // Scheduling over a planned reveal replaces it; close the old row so History doesn't show both
+      if (['scheduled', 'armed'].includes(state.phase)) await closeBroadcastRow(DB, state, 'cancelled');
       state = tSchedule(state, { kidSlug: kid?.slug || null, kidName: kid?.name || null, scheduledAt, title: body.title, message: body.message, image, kitLiveEmail: body.kitLiveEmail, by: userEmail }, config);
       await writeState(DB, state); await upsertBroadcastRow(DB, state);
       const work = [];
@@ -1014,6 +1027,7 @@ export async function adminAction(env, action, body = {}, userEmail = 'unknown')
       if (!['scheduled', 'armed'].includes(state.phase)) return fail('Nothing scheduled to cancel');
       await recordEvent(DB, state.broadcastId, 'cancelled');
       await logAudit(DB, { userEmail, action: 'deleted', entityType: 'live-status', entitySlug: state.broadcastId, entityName: `Cancelled: ${state.title}`, gitStatus: 'ok' });
+      await closeBroadcastRow(DB, state, 'cancelled');
       state = tClear(state, 'cancelled', userEmail);
       await writeState(DB, state);
       break;

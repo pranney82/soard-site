@@ -111,6 +111,15 @@ export async function onRequestGet(context) {
     for (const row of (r.events?.results || [])) { (eventsByBroadcast[row.broadcast_id] ||= {})[row.type] = row.n; }
     const historyRows = r.history?.results || [];
     const messageCounts = await messages.shownCounts(DB, historyRows.map(h => h.id)).catch(() => ({}));
+    // Only the current broadcast can still be planned. Older rows left at scheduled/armed
+    // (cancelled or missed before those paths closed their row) would read "Coming up"
+    // forever, so settle them here, once.
+    const nowMs = Date.now();
+    const stale = historyRows.filter(h => ['scheduled', 'armed'].includes(h.phase) && h.id !== state.broadcastId);
+    for (const h of stale) h.phase = h.scheduled_at && Date.parse(h.scheduled_at) < nowMs ? 'missed' : 'cancelled';
+    if (stale.length) {
+      await DB.batch(stale.map(h => DB.prepare('UPDATE broadcasts SET phase = ?, updated_at = ? WHERE id = ?').bind(h.phase, new Date().toISOString(), h.id))).catch(() => {});
+    }
     const history = historyRows.map(h => { let d = {}; try { d = JSON.parse(h.data || '{}'); } catch {} return { ...h, data: d, events: eventsByBroadcast[h.id] || {}, messageCount: messageCounts[h.id] || 0 }; });
 
     return Response.json({
