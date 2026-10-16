@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { generateKeyPairSync, createVerify } from 'node:crypto';
 import { createD1 } from './lib/d1-shim.mjs';
 import { planInvite, reconcileJob, sendTestInvite, writeConfig, REVEAL_TASK_TYPE, FIELD_STATUS, FIELD_INVITE_DETAILS, FIELD_CONTACT_EMAIL } from '../functions/api/_reveal-invites.js';
-import { serviceAccountJwt, eventIdFor, clearTokenCache } from '../functions/api/_google-calendar.js';
+import { serviceAccountJwt, eventIdFor, clearTokenCache, parseServiceAccount } from '../functions/api/_google-calendar.js';
 import { FIELD_REVEAL_CONFIRMED } from '../functions/api/_reveals.js';
 
 const NOW = Date.parse('2026-10-16T14:00:00Z');
@@ -83,6 +83,21 @@ test('the Google sign-in JWT is signed by the service account and impersonates t
   assert.equal(claims.exp - claims.iat, 3600);
   const ok = createVerify('RSA-SHA256').update(`${h}.${c}`).verify(publicKey, Buffer.from(s, 'base64url'));
   assert.ok(ok, 'signature verifies with the public key');
+});
+
+test('the key is read however it was pasted, and errors never echo it', () => {
+  const json = JSON.stringify(KEY, null, 2);
+  const ok = (raw) => assert.equal(parseServiceAccount(raw).client_email, KEY.client_email);
+  ok(json);                                                    // the downloaded file
+  ok(`  ${json}\n`);                                           // stray whitespace
+  ok(JSON.stringify(json));                                    // wrapped in quotes
+  ok(json.replace(/"/g, (_, i) => (i % 2 ? '“' : '”')));   // smart quotes
+  ok(json.replace(/\\n/g, '\n'));                              // real line breaks inside the private key
+  ok(Buffer.from(json).toString('base64'));                    // base64 of the file
+  assert.throws(() => parseServiceAccount(KEY.private_key), (e) => /only the private key/.test(e.message) && !e.message.includes('MII'));
+  assert.throws(() => parseServiceAccount(json.slice(0, 500)), (e) => /cut off/.test(e.message) && !e.message.includes(KEY.client_email));
+  assert.throws(() => parseServiceAccount(JSON.stringify({ client_id: '1' })), /missing client_email and private_key/);
+  assert.throws(() => parseServiceAccount(''), /it is empty/);
 });
 
 // ── End to end against fake JobTread + Google ──

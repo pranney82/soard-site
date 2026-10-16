@@ -15,13 +15,50 @@ export const CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar.events';
 
 const _tokens = new Map(); // subject → { token, expiresAt }
 
+/**
+ * The service account key as pasted into Cloudflare. Accepts the downloaded
+ * JSON file as-is, plus the usual paste accidents: wrapped in quotes, curly
+ * "smart" quotes, line breaks inside the private key, or base64 of the file.
+ * Errors describe the value's shape without ever echoing it (JSON.parse
+ * messages include a snippet of the input, so they're never passed on).
+ */
 export function parseServiceAccount(raw) {
-  let key = raw;
-  if (typeof raw === 'string') {
-    try { key = JSON.parse(raw); } catch { throw new Error('GOOGLE_CALENDAR_KEY is not valid JSON'); }
+  if (raw && typeof raw === 'object') return checkKey(raw);
+  const text = String(raw ?? '').trim();
+  const attempts = [
+    text,
+    text.replace(/[“”„‟″]/g, '"').replace(/[‘’]/g, "'"),
+    text.replace(/[\r\n]+/g, ' '),
+  ];
+  if (/^[A-Za-z0-9+/=_\s-]{200,}$/.test(text)) {
+    try { attempts.push(atob(text.replace(/\s+/g, '').replace(/-/g, '+').replace(/_/g, '/'))); } catch { /* not base64 */ }
   }
-  if (!key?.client_email || !key?.private_key) throw new Error('GOOGLE_CALENDAR_KEY is missing client_email or private_key');
+  for (const attempt of attempts) {
+    let value;
+    try { value = JSON.parse(attempt); } catch { continue; }
+    if (typeof value === 'string') { try { value = JSON.parse(value); } catch { continue; } } // JSON wrapped in quotes
+    if (value && typeof value === 'object') return checkKey(value);
+  }
+  throw new Error(`GOOGLE_CALENDAR_KEY is not valid JSON (${describeShape(text)}). Paste the entire downloaded .json key file, exactly as it is.`);
+}
+
+function checkKey(key) {
+  const missing = ['client_email', 'private_key'].filter(f => !key[f]);
+  if (missing.length) throw new Error(`GOOGLE_CALENDAR_KEY is missing ${missing.join(' and ')}. Paste the entire downloaded .json key file, not just one value from it.`);
+  if (key.type && key.type !== 'service_account') throw new Error(`GOOGLE_CALENDAR_KEY is a "${key.type}" key; it needs a service account key`);
   return key;
+}
+
+/** Safe hints about a pasted value: never any of its content */
+function describeShape(text) {
+  const hints = [`${text.length} characters`];
+  if (!text) return 'it is empty';
+  if (text.includes('BEGIN PRIVATE KEY') && !text.includes('client_email')) hints.push('looks like only the private key');
+  if (/^["']/.test(text)) hints.push('starts with a quote mark');
+  else if (text[0] !== '{') hints.push('does not start with {');
+  if (/[“”‘’]/.test(text)) hints.push('has curly quotes');
+  if (text[0] === '{' && !text.endsWith('}')) hints.push('does not end with }, maybe cut off');
+  return hints.join(', ');
 }
 
 const b64url = (bytes) => btoa(String.fromCharCode(...new Uint8Array(bytes))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
