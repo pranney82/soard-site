@@ -7,7 +7,7 @@
  * Keep it in sync with DEFAULT_TRUST_BADGES in public/admin/index.html.
  *
  * `image` is a Cloudflare Images id (or pasted imagedelivery URL) uploaded
- * from the admin, or a site path for the legacy Candid seal. A badge with no
+ * from the admin, or a site path for the seals that ship in public/. A badge with no
  * image still renders, as a text badge.
  */
 import { cfUrl, isCF } from './cf-image';
@@ -24,7 +24,7 @@ export const DEFAULT_TRUST_BADGES: TrustBadge[] = [
     name: 'Charity Navigator',
     detail: '4-Star Rating',
     url: 'https://www.charitynavigator.org/ein/454773997',
-    image: '',
+    image: '/charity-navigator-4-star-2026.png',
   },
   {
     name: 'Candid',
