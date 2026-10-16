@@ -2111,8 +2111,10 @@
       /* List rows become compact cards; the delete button pins to the top-right corner */
       .table-wrap tr { position: relative; }
       .table-wrap tr:has(.btn-row-danger) td:has(> strong) { padding-right: 5rem; }
-      .table-wrap td:last-child:has(> .btn-row-danger) { position: absolute; top: 0.85rem; right: 0; margin: 0; }
-      .table-wrap tr:first-child td:last-child:has(> .btn-row-danger) { top: 0; }
+      .table-wrap td:last-child:has(.btn-row-danger) { position: absolute; top: 0.85rem; right: 0; margin: 0; }
+      .table-wrap tr:first-child td:last-child:has(.btn-row-danger) { top: 0; }
+      /* FAQ order: up, number, down sit in a row instead of a 130px column */
+      .faq-order { flex-direction: row !important; gap: 0.35rem !important; }
 
       .toast-container { align-items: stretch; }
       .toast { min-width: 0; max-width: none; }
@@ -2121,7 +2123,7 @@
       .chart-bar-group { gap: 3px; }
       .chart-bar-col { min-width: 0; }
       .chart-bar { min-width: 0; }
-      .chart-bar-value, .chart-bar-label { font-size: 0.6rem; }
+      .chart-bar-value, .chart-bar-label { font-size: 0.7rem; }
 
       /* Wide logs scroll inside their card instead of being cut off */
       .card:has(> table.data-table) { overflow-x: auto; }
@@ -2139,8 +2141,9 @@
       .hub-tabs { margin-left: -0.75rem; margin-right: -0.75rem; padding: 0 0.75rem; }
       .editor-save-footer { margin-left: -0.75rem; margin-right: -0.75rem; }
       /* The sparkline needs more room than a half-width card has */
-      .stat-card > div[style*="space-between"] > svg { display: none; }
-      .stat-card .stat-label { font-size: 0.68rem; }
+      .stat-card .mini-chart { display: none !important; }
+      .email-editor-head h2 { white-space: normal !important; }
+      .stat-card .stat-label { font-size: 0.72rem; letter-spacing: 0.04em; }
     }
 
     /* ─── Touch + readability ───────────── */
@@ -2153,16 +2156,41 @@
       /* Below the sidebar breakpoint the content column is the whole screen */
       .bc-savebar { left: 1.5rem; right: 1.5rem; }
     }
+    @media (min-width: 769px) and (max-width: 1180px), (pointer: coarse) and (min-width: 769px) and (max-width: 1400px) {
+      /* Tablets: wide lists (Kids has 11 columns) fit without sideways scrolling */
+      .table-wrap th, .table-wrap td { padding-left: 0.45rem; padding-right: 0.45rem; }
+      .table-wrap th:first-child, .table-wrap td:first-child { padding-left: 1rem; }
+      .table-wrap th:last-child, .table-wrap td:last-child { padding-right: 1rem; }
+      .bc-hist th, .bc-hist td { padding-left: 0.5rem; padding-right: 0.5rem; }
+      /* Age and photo count stay in the editor; the list keeps name, diagnosis, year and status */
+      .kids-table th:nth-child(6), .kids-table td:nth-child(6),
+      .kids-table th:nth-last-child(2), .kids-table td:nth-last-child(2),
+      .community-table th:nth-last-child(2), .community-table td:nth-last-child(2) { display: none; }
+    }
     /* Touch screens and narrow windows read at 16px; every rem-sized label,
        hint and value scales with it (iPad draws a CSS pixel smaller than a Mac does) */
     @media (max-width: 768px), (pointer: coarse) {
       html { font-size: 16px; }
+      /* Inline micro-labels (0.6-0.68rem) come up to Apple's 11pt minimum */
+      [style*="font-size: 0.6rem"], [style*="font-size: 0.65rem"], [style*="font-size: 0.66rem"], [style*="font-size: 0.68rem"] { font-size: 0.72rem !important; }
+    }
+    @media (max-width: 1024px), (pointer: coarse) {
+      /* At tablet and phone size the cumulative line reads better without a value on every point;
+         the bars beside it label each year and the header shows the total */
+      .chart-line-svg text[font-weight="700"] { display: none; }
+      .chart-line-svg text { font-size: 11px; }
     }
     @media (max-width: 768px) {
       .bc-savebar { left: 0.75rem; right: 0.75rem; }
       /* Two photos per row so each one has room for its 44px action buttons */
       .photo-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)) !important; }
       .main code { overflow-wrap: anywhere; }
+      /* Growth charts stack instead of splitting a phone's width in two */
+      .chart-panel { flex: 1 1 100% !important; }
+      .chart-container { padding: 1.25rem; }
+      .pending-row { flex-wrap: wrap; row-gap: 0.35rem; }
+      .email-editor-head > div:first-child { flex: 1 1 100%; }
+      .email-editor-head > div:first-child > div { flex: 1; }
     }
     @media (pointer: coarse) {
       html { touch-action: manipulation; }
@@ -2183,14 +2211,17 @@
       .checkbox-label { min-height: 44px; }
       .fav-btn { min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
       .rte-btn { width: 44px; height: 44px; }
-      .photo-btn { width: 40px !important; height: 40px !important; }
+      .photo-btn { width: 44px !important; height: 44px !important; }
+      /* FAQ reorder arrows: the phone-only fix above doesn't reach tablets */
+      button[style*="min-height: auto"] { min-height: 44px !important; min-width: 44px !important; }
+      label:has(> input[type="checkbox"]), label:has(> input[type="radio"]), label:has(input[role="switch"]) { min-height: 44px; }
       .order-btns { flex-direction: row !important; gap: 6px !important; }
       .order-btn { width: 44px !important; height: 44px !important; font-size: 0.8rem !important; border-radius: 8px !important; }
       .breadcrumb button { min-height: 44px; min-width: 44px; }
       .bc-snav button { min-height: 44px; }
       .bc-switch { min-height: 44px; }
       .email-editor-grid button:not(.btn) { min-height: 44px; min-width: 44px; }
-      summary { padding-block: 0.75rem; margin-block: -0.75rem; }
+      summary { padding-block: 0.85rem; margin-block: -0.85rem; }
       /* Inline links keep their line height but get a taller hit area */
       .deploy-sha, .deploy-link, .bc-links a { display: inline-block; padding: 14px 6px; margin: -14px -6px; }
 
@@ -2209,6 +2240,8 @@
       input[type="checkbox"]:not(label input):not([role="switch"]):disabled { opacity: 0.45; }
 
       /* Pressed states stand in for hover */
+      .hamburger:hover { background: transparent; }
+      .hamburger:active { background: rgba(255,255,255,0.1); }
       .nav-item:active { background: rgba(255,255,255,0.1); }
       .table-wrap tbody tr:active td { background: var(--color-bg-hover); }
       .quick-action-btn:active, .attention-card:active, .stat-card:active { background: var(--color-bg-hover); }
@@ -4302,7 +4335,7 @@
       `;
 
       const renderEditor = () => html`
-        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.25rem; gap: 1rem; flex-wrap: wrap;">
+        <div class="email-editor-head" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.25rem; gap: 1rem; flex-wrap: wrap;">
           <div style="display: flex; align-items: center; gap: 0.75rem; min-width: 0;">
             <button class="btn btn-ghost btn-sm" onClick=${closeEditor}>${icons.arrowLeft} Back</button>
             <div style="min-width: 0;">
@@ -8044,7 +8077,7 @@
           </div>
         ` : null}
         <div class="card">
-          <div class="table-wrap"><table>
+          <div class="table-wrap"><table class="kids-table">
             <thead><tr>
               <th style="width: 36px;"><input type="checkbox" checked=${selected.size === sorted.length && sorted.length > 0}
                 onChange=${toggleAll} style="width: 16px; height: 16px; accent-color: #FFD500;" /></th>
@@ -12020,7 +12053,7 @@
           </div>
         ` : null}
         <div class="card">
-          <div class="table-wrap"><table>
+          <div class="table-wrap"><table class="community-table">
             <thead><tr>
               <th style="width: 36px;"><input type="checkbox" checked=${selected.size === sorted.length && sorted.length > 0}
                 onChange=${toggleAll} style="width: 16px; height: 16px; accent-color: #FFD500;" /></th>
@@ -13004,7 +13037,7 @@
                     ${catItems.map((item, idx) => html`
                       <tr key=${item.id} onClick=${() => setEditItem(item.id)} style="cursor: pointer;">
                         <td class="text-muted" onClick=${e => e.stopPropagation()}>
-                          <div style="display: flex; flex-direction: column; align-items: center; gap: 2px;">
+                          <div class="faq-order" style="display: flex; flex-direction: column; align-items: center; gap: 2px;">
                             <button class="btn btn-ghost btn-sm" style="padding: 0; min-height: auto; font-size: 0.7rem; opacity: ${idx === 0 ? 0.2 : 0.6};"
                               onClick=${() => moveItem(item.id, -1)} disabled=${idx === 0} title="Move up">▲</button>
                             <span style="font-size: 0.85rem;">${String(idx + 1).padStart(2, '0')}</span>
@@ -16617,7 +16650,7 @@
               }</span>
             </div>
             ${pendingChanges.map(c => html`
-              <div style="display: flex; align-items: center; gap: 0.75rem; padding: 0.6rem 1rem; border-bottom: 1px solid rgba(0,0,0,0.04); font-size: 0.85rem;">
+              <div class="pending-row" style="display: flex; align-items: center; gap: 0.75rem; padding: 0.6rem 1rem; border-bottom: 1px solid rgba(0,0,0,0.04); font-size: 0.85rem;">
                 <span class="badge ${actionColor(c.action)}" style="font-size: 0.7rem; min-width: 58px; text-align: center;">${actionLabel(c.action)}</span>
                 <span style="font-weight: 500; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
                   ${c.name || c.slug || '—'}
@@ -17013,7 +17046,7 @@
       const gradId = `miniGrad_${color.replace('#', '')}`;
 
       return html`
-        <svg width=${width} height=${height} viewBox="0 0 ${width} ${height}" style="display: block; overflow: visible;">
+        <svg class="mini-chart" width=${width} height=${height} viewBox="0 0 ${width} ${height}" style="display: block; overflow: visible;">
           <defs>
             <linearGradient id=${gradId} x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stop-color=${color} stop-opacity="0.25" />
