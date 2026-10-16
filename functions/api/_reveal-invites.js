@@ -1,0 +1,318 @@
+/**
+ * Reveal calendar invites for staff and the makeover family
+ * ===========================================================================
+ * One Google Calendar event per JobTread job, on the organizer's calendar
+ * (Clareece by default), so the invite comes from her and Google handles
+ * updates and cancellations.
+ *
+ *   Build Schedule task complete  → "Tentative: Max's Reveal Day" (all day,
+ *                                   or timed once the task has a time)
+ *   Reveal task moves             → the same event moves; guests get an update
+ *   Reveal Date Confirmed = Yes   → the same event becomes "Max's Reveal Day"
+ *   Job closed / denied / awaiting funding, or no Reveal date
+ *                                 → a future event is cancelled
+ * Reveals already in the past are never touched.
+ *
+ * Guests: internal JobTread users with the Admin or Designer role, plus the
+ * job's customer contacts with an email. The organizer is never a guest.
+ *
+ * Triggered by SOARD JobTread workflows posting { jobId } to
+ * /api/reveal-invites. The post is only a wake-up call: everything is
+ * re-read from JobTread with JOBTREAD_GRANT_KEY, so a forged post can only
+ * make the calendar match what JobTread already says.
+ *
+ * Sending is off until enabled from /api/reveal-invites-admin (site_config
+ * "reveal-invites"). While off, each wake-up records what it would have done.
+ */
+
+import { JT_URL, SOARD_ORG_ID, FIELD_REVEAL_CONFIRMED, todayEastern, matchKid, loadKids } from './_reveals.js';
+import { accessToken, eventIdFor, upsertEvent, cancelEvent } from './_google-calendar.js';
+
+export const REVEAL_TASK_TYPE = '22NZSbkR5rZw';
+export const FIELD_STATUS = '22P52qfFub9b';
+export const FIELD_INVITE_DETAILS = '22PgGhdabNcJ';
+export const FIELD_CONTACT_EMAIL = '22NJw43QvHeJ';
+export const DEFAULT_ORGANIZER = 'ccunningham@soardcharity.com';
+const STAFF_ROLES = new Set(['Admin', 'Designer']);
+const NOT_STAFF = new Set(['selection@soardcharity.com']); // Qualification Committee login
+const INACTIVE_STATUSES = new Set(['Denied', 'Awaiting Funding']);
+const SITE = 'https://sunshineonaranneyday.com';
+const CONFIG_KEY = 'reveal-invites';
+const TZ = 'America/New_York';
+
+const SCHEMA = [
+  `CREATE TABLE IF NOT EXISTS reveal_invites (
+    job_id TEXT PRIMARY KEY, event_id TEXT, state TEXT, hash TEXT, reveal_date TEXT,
+    guests TEXT, last_action TEXT, error TEXT, updated_at TEXT)`,
+];
+const _schemaReady = new WeakSet();
+export async function ensureSchema(DB) {
+  if (_schemaReady.has(DB)) return;
+  await DB.batch(SCHEMA.map(sql => DB.prepare(sql)));
+  _schemaReady.add(DB);
+}
+
+export async function readConfig(DB) {
+  const row = await DB.prepare('SELECT data FROM site_config WHERE key = ?').bind(CONFIG_KEY).first();
+  let data = {};
+  try { data = row ? JSON.parse(row.data) : {}; } catch { /* default */ }
+  return { enabled: false, organizer: DEFAULT_ORGANIZER, ...data };
+}
+
+export async function writeConfig(DB, patch) {
+  const next = { ...(await readConfig(DB)), ...patch };
+  await DB.prepare('INSERT OR REPLACE INTO site_config (key, data, updated_at) VALUES (?, ?, ?)')
+    .bind(CONFIG_KEY, JSON.stringify(next), new Date().toISOString()).run();
+  return next;
+}
+
+async function pave(grantKey, query, fetchImpl) {
+  const res = await fetchImpl(JT_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query: { $: { grantKey }, ...query } }),
+  });
+  if (!res.ok) throw new Error(`JobTread returned ${res.status}`);
+  return res.json();
+}
+
+export async function fetchJob(grantKey, jobId, fetchImpl = fetch) {
+  const cf = { nodes: { value: {}, customField: { id: {} } } };
+  const body = await pave(grantKey, {
+    job: {
+      $: { id: jobId },
+      id: {}, name: {}, closedOn: {},
+      organization: { id: {} },
+      location: { address: {}, account: { contacts: { $: { size: 50 }, nodes: { name: {}, customFieldValues: cf } } } },
+      customFieldValues: { $: { size: 50 }, ...cf },
+      tasks: {
+        $: { size: 100, where: { or: [[['taskType', 'id'], '=', REVEAL_TASK_TYPE], ['name', '=', 'Build Schedule']] } },
+        nodes: { id: {}, name: {}, startDate: {}, startTime: {}, endDate: {}, endTime: {}, progress: {}, taskType: { id: {} } },
+      },
+    },
+  }, fetchImpl);
+  return body?.job || null;
+}
+
+export async function fetchStaff(grantKey, fetchImpl = fetch) {
+  const body = await pave(grantKey, {
+    organization: {
+      $: { id: SOARD_ORG_ID },
+      memberships: { $: { size: 100 }, nodes: { isInternal: {}, role: { name: {} }, user: { name: {}, emailAddress: {} } } },
+    },
+  }, fetchImpl);
+  return (body?.organization?.memberships?.nodes || [])
+    .filter(m => m.isInternal && STAFF_ROLES.has(m.role?.name) && m.user?.emailAddress)
+    .map(m => ({ name: m.user.name, email: m.user.emailAddress.trim().toLowerCase() }))
+    .filter(s => !NOT_STAFF.has(s.email));
+}
+
+const fieldValues = (nodes) => Object.fromEntries((nodes || []).map(v => [v.customField?.id, v.value]));
+const hhmm = (t) => (t ? String(t).slice(0, 5) : null);
+
+function addHour(time) {
+  const [h, m] = time.split(':').map(Number);
+  return `${String(Math.min(h + 1, 23)).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+function nextDay(date) {
+  return new Date(Date.parse(`${date}T12:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
+}
+function longDate(date) {
+  return new Date(`${date}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' });
+}
+
+/** First name for the title: the matched kid's site name, else the job name's first word */
+function displayName(job, kids) {
+  const kid = matchKid(job.name, kids);
+  if (kid) return { name: kid.name, slug: kid.slug };
+  const base = String(job.name || '').replace(/\(\d{4}\)\s*$/, '').trim();
+  return { name: base.split(/\s+/)[0] || 'The', slug: null };
+}
+
+/**
+ * What the calendar should look like for this job:
+ * { action: 'upsert', event, guests } | { action: 'cancel', reason } | { action: 'skip', reason }
+ */
+export function planInvite(job, staff, { kids = [], organizer = DEFAULT_ORGANIZER, now = Date.now() } = {}) {
+  if (!job) return { action: 'skip', reason: 'job not found' };
+  if (job.organization?.id && job.organization.id !== SOARD_ORG_ID) return { action: 'skip', reason: 'not a SOARD job' };
+
+  const tasks = job.tasks?.nodes || [];
+  const reveals = tasks.filter(t => t.taskType?.id === REVEAL_TASK_TYPE);
+  const reveal = reveals.find(t => (t.progress ?? 0) < 1) || reveals[0];
+  if (reveal?.startDate && reveal.startDate < todayEastern(now)) return { action: 'skip', reason: 'reveal date has passed' };
+
+  const values = fieldValues(job.customFieldValues?.nodes);
+  if (job.closedOn) return { action: 'cancel', reason: 'job closed' };
+  if (INACTIVE_STATUSES.has(values[FIELD_STATUS])) return { action: 'cancel', reason: `status is ${values[FIELD_STATUS]}` };
+  if (!reveal?.startDate) return { action: 'cancel', reason: 'no Reveal task date' };
+
+  const confirmed = String(values[FIELD_REVEAL_CONFIRMED] || '').trim().toLowerCase().startsWith('yes');
+  const scheduleBuilt = tasks.some(t => t.name === 'Build Schedule' && t.progress === 1);
+  if (!confirmed && !scheduleBuilt) return { action: 'cancel', reason: 'Build Schedule not complete yet' };
+
+  const who = displayName(job, kids);
+  const date = reveal.startDate;
+  const start = hhmm(reveal.startTime);
+  const end = start ? (hhmm(reveal.endTime) && hhmm(reveal.endTime) > start && (reveal.endDate || date) === date ? hhmm(reveal.endTime) : addHour(start)) : null;
+
+  const lines = confirmed
+    ? [`${who.name}'s reveal is confirmed for ${longDate(date)}${start ? '' : ' (time to come)'}.`]
+    : [
+      `This is a tentative date for ${who.name}'s reveal while the build wraps up.`,
+      'This invite updates automatically if the date moves, and the time is added once the reveal is confirmed.',
+    ];
+  const details = String(values[FIELD_INVITE_DETAILS] || '').trim();
+  if (details) lines.push('', details);
+  if (who.slug) lines.push('', `${SITE}/kids/${who.slug}/`);
+
+  const guests = [];
+  const seen = new Set([organizer.toLowerCase()]);
+  const add = (email) => {
+    const e = String(email || '').trim().toLowerCase();
+    if (!e || !e.includes('@') || seen.has(e)) return;
+    seen.add(e);
+    guests.push(e);
+  };
+  for (const c of job.location?.account?.contacts?.nodes || []) add(fieldValues(c.customFieldValues?.nodes)[FIELD_CONTACT_EMAIL]);
+  for (const s of staff) add(s.email);
+
+  const event = {
+    id: eventIdFor('soardreveal', job.id),
+    summary: confirmed ? `${who.name}'s Reveal Day` : `Tentative: ${who.name}'s Reveal Day`,
+    status: confirmed ? 'confirmed' : 'tentative',
+    location: job.location?.address || undefined,
+    description: lines.join('\n'),
+    start: start ? { dateTime: `${date}T${start}:00`, timeZone: TZ } : { date },
+    end: start ? { dateTime: `${date}T${end}:00`, timeZone: TZ } : { date: nextDay(date) },
+    attendees: guests.map(email => ({ email })),
+    guestsCanSeeOtherGuests: false,
+    guestsCanInviteOthers: false,
+    transparency: 'opaque',
+  };
+  return { action: 'upsert', event, guests, confirmed, date };
+}
+
+async function hashOf(value) {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(value)));
+  return [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 32);
+}
+
+async function readRow(DB, jobId) {
+  return DB.prepare('SELECT * FROM reveal_invites WHERE job_id = ?').bind(jobId).first();
+}
+
+async function writeRow(DB, row) {
+  await DB.prepare(`INSERT OR REPLACE INTO reveal_invites (job_id, event_id, state, hash, reveal_date, guests, last_action, error, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .bind(row.job_id, row.event_id ?? null, row.state ?? null, row.hash ?? null, row.reveal_date ?? null,
+      row.guests ?? null, row.last_action ?? null, row.error ?? null, new Date().toISOString()).run();
+}
+
+/**
+ * Make the calendar match JobTread for one job. Sends nothing unless the
+ * invite is enabled (or `force` is set by an admin), and nothing when the
+ * event already matches. Returns what happened.
+ */
+export async function reconcileJob(env, jobId, { fetchImpl = fetch, now = Date.now(), force = false, dryRun = false } = {}) {
+  const { DB } = env;
+  await ensureSchema(DB);
+  const config = await readConfig(DB);
+  if (!env.JOBTREAD_GRANT_KEY) return { jobId, action: 'skip', reason: 'JOBTREAD_GRANT_KEY is not set' };
+
+  const [job, staff, kids] = await Promise.all([
+    fetchJob(env.JOBTREAD_GRANT_KEY, jobId, fetchImpl),
+    fetchStaff(env.JOBTREAD_GRANT_KEY, fetchImpl),
+    loadKids(DB).catch(() => []),
+  ]);
+  const plan = planInvite(job, staff, { kids, organizer: config.organizer, now });
+  const row = await readRow(DB, jobId);
+  const live = !dryRun && (config.enabled || force);
+
+  if (plan.action === 'skip') return { jobId, action: 'skip', reason: plan.reason };
+
+  if (plan.action === 'cancel') {
+    if (!row || row.state === 'cancelled' || !row.event_id) return { jobId, action: 'skip', reason: plan.reason };
+    if (!live) return { jobId, action: 'would-cancel', reason: plan.reason };
+    try {
+      const token = await accessToken(env, config.organizer, { fetchImpl, now });
+      await cancelEvent(token, config.organizer, row.event_id, { fetchImpl });
+      await writeRow(DB, { ...row, state: 'cancelled', hash: null, last_action: `cancelled: ${plan.reason}`, error: null });
+      return { jobId, action: 'cancelled', reason: plan.reason };
+    } catch (err) {
+      await writeRow(DB, { ...row, error: err.message });
+      return { jobId, action: 'error', error: err.message };
+    }
+  }
+
+  const hash = await hashOf(plan.event);
+  if (row?.hash === hash && row?.state !== 'cancelled') return { jobId, action: 'unchanged', eventId: plan.event.id };
+  if (!live) return { jobId, action: row ? 'would-update' : 'would-create', event: plan.event };
+
+  try {
+    const token = await accessToken(env, config.organizer, { fetchImpl, now });
+    const { created } = await upsertEvent(token, config.organizer, plan.event, { fetchImpl });
+    await writeRow(DB, {
+      job_id: jobId, event_id: plan.event.id, state: plan.event.status, hash, reveal_date: plan.date,
+      guests: JSON.stringify(plan.guests), last_action: created ? 'created' : 'updated', error: null,
+    });
+    return { jobId, action: created ? 'created' : 'updated', eventId: plan.event.id, status: plan.event.status, guests: plan.guests.length };
+  } catch (err) {
+    await writeRow(DB, { ...(row || { job_id: jobId }), error: err.message });
+    return { jobId, action: 'error', error: err.message };
+  }
+}
+
+/** Every open SOARD job, reconciled one at a time (go-live catch-up and daily safety net) */
+export async function reconcileAll(env, { fetchImpl = fetch, now = Date.now(), dryRun = false } = {}) {
+  const body = await pave(env.JOBTREAD_GRANT_KEY, {
+    organization: { $: { id: SOARD_ORG_ID }, jobs: { $: { size: 100, where: ['closedOn', '=', null] }, nodes: { id: {} } } },
+  }, fetchImpl);
+  const results = [];
+  for (const { id } of body?.organization?.jobs?.nodes || []) {
+    results.push(await reconcileJob(env, id, { fetchImpl, now, dryRun }));
+  }
+  return results;
+}
+
+/**
+ * Admin test: the same invite the job would get, sent only to `testEmail`,
+ * as a separate "TEST" event so nobody else is involved. `date`/`time`
+ * override the Reveal task to try a move.
+ */
+export async function sendTestInvite(env, jobId, testEmail, { date, time, cancel = false, fetchImpl = fetch, now = Date.now() } = {}) {
+  const { DB } = env;
+  await ensureSchema(DB);
+  const config = await readConfig(DB);
+  const token = await accessToken(env, config.organizer, { fetchImpl, now });
+  const eventId = eventIdFor('soardrevealtest', jobId);
+  if (cancel) {
+    await cancelEvent(token, config.organizer, eventId, { fetchImpl });
+    return { action: 'cancelled', eventId };
+  }
+  const [job, staff, kids] = await Promise.all([
+    fetchJob(env.JOBTREAD_GRANT_KEY, jobId, fetchImpl),
+    fetchStaff(env.JOBTREAD_GRANT_KEY, fetchImpl),
+    loadKids(DB).catch(() => []),
+  ]);
+  if (job && (date || time !== undefined)) {
+    for (const t of job.tasks?.nodes || []) {
+      if (t.taskType?.id !== REVEAL_TASK_TYPE) continue;
+      if (date) { t.startDate = date; t.endDate = date; }
+      if (time !== undefined) { t.startTime = time || null; t.endTime = null; }
+    }
+  }
+  // Pretend the schedule is built so the test always produces an invite
+  if (job) job.tasks.nodes.push({ name: 'Build Schedule', progress: 1 });
+  const plan = planInvite(job, staff, { kids, organizer: config.organizer, now });
+  if (plan.action !== 'upsert') return { action: 'skip', reason: plan.reason };
+  const event = {
+    ...plan.event,
+    id: eventId,
+    summary: `TEST · ${plan.event.summary}`,
+    description: `Test invite from the reveal invite system. Only you received it; the real one would go to: ${plan.guests.join(', ') || '(no guests yet)'}\n\n${plan.event.description}`,
+    attendees: [{ email: testEmail }],
+  };
+  const { created } = await upsertEvent(token, config.organizer, event, { fetchImpl });
+  return { action: created ? 'created' : 'updated', eventId, wouldInvite: plan.guests, event };
+}
