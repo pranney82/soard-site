@@ -27,6 +27,7 @@
 
 import { JT_URL, SOARD_ORG_ID, FIELD_REVEAL_CONFIRMED, todayEastern, matchKid, loadKids } from './_reveals.js';
 import { accessToken, eventIdFor, upsertEvent, cancelEvent } from './_google-calendar.js';
+import { sendEmails, slackAlert, emailConfigured } from './_broadcast-notify.js';
 
 export const REVEAL_TASK_TYPE = '22NZSbkR5rZw';
 export const FIELD_STATUS = '22P52qfFub9b';
@@ -45,8 +46,14 @@ const EMAIL_ALIASES = { 'peter@ranneyblair.com': 'peter@soardcharity.com' };
 const STAFF_DOMAIN = '@soardcharity.com';
 const INACTIVE_STATUSES = new Set(['Denied', 'Awaiting Funding']);
 const SITE = 'https://sunshineonaranneyday.com';
+const ADMIN_URL = `${SITE}/admin/#reveal-invites`;
 const CONFIG_KEY = 'reveal-invites';
 const TZ = 'America/New_York';
+// Problems email these people plus the organizer (and ALERT_EMAILS, Slack if set)
+const DEFAULT_ALERT_EMAILS = ['peter@soardcharity.com'];
+// The safety sweep re-checks every open job at most this often, in case a
+// JobTread webhook was ever missed
+const SWEEP_EVERY_MS = 6 * 60 * 60 * 1000;
 
 const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS reveal_invites (
@@ -253,7 +260,38 @@ async function writeRow(DB, row) {
  * invite is enabled (or `force` is set by an admin), and nothing when the
  * event already matches. Returns what happened.
  */
-export async function reconcileJob(env, jobId, { fetchImpl = fetch, now = Date.now(), force = false, dryRun = false } = {}) {
+/**
+ * Tell people when an invite can't be sent: email the alert list and the
+ * organizer, plus Slack when configured. Only called for a new problem, so a
+ * stuck job doesn't email on every JobTread change.
+ */
+async function alertProblem(env, config, { jobId, name, error }) {
+  const to = [...new Set([
+    ...(config.alertEmails || DEFAULT_ALERT_EMAILS), config.organizer,
+    ...String(env.ALERT_EMAILS || '').split(',').map(s => s.trim()),
+  ].filter(e => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e || '')))];
+  const title = `Reveal invite problem${name ? `: ${name}` : ''}`;
+  const detail = `The calendar invite for ${name || `job ${jobId}`} couldn't be updated. Google or JobTread said: ${error}`;
+  const fix = /unauthorized_client|GOOGLE_CALENDAR_KEY|sign-in/i.test(error)
+    ? 'The Google key or its domain-wide delegation needs attention (Cloudflare GOOGLE_CALENDAR_KEY, Workspace Admin → Domain-wide delegation).'
+    : 'Open Reveal Invites in the admin and press Retry. If it keeps failing, check the job in JobTread.';
+  await Promise.allSettled([
+    slackAlert(env, `🟡 ${title}: ${detail} Fix: ${fix} ${ADMIN_URL}`),
+    emailConfigured(env) && to.length ? sendEmails(env, {
+      to,
+      subject: `[SOARD] ${title}`,
+      html: `<p><strong>${escapeHtml(title)}</strong></p><p>${escapeHtml(detail)}</p><p><strong>Fix:</strong> ${escapeHtml(fix)}</p><p><a href="${ADMIN_URL}">Open Reveal Invites in the admin</a></p>`,
+      text: `${title}\n\n${detail}\n\nFix: ${fix}\n\n${ADMIN_URL}`,
+      tags: [{ name: 'category', value: 'reveal-invite-alert' }],
+    }) : null,
+  ]);
+}
+
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+export async function reconcileJob(env, jobId, { fetchImpl = fetch, now = Date.now(), force = false, dryRun = false, preloaded = null } = {}) {
   const { DB } = env;
   await ensureSchema(DB);
   const config = await readConfig(DB);
@@ -261,9 +299,14 @@ export async function reconcileJob(env, jobId, { fetchImpl = fetch, now = Date.n
 
   const [job, staff, kids] = await Promise.all([
     fetchJob(env.JOBTREAD_GRANT_KEY, jobId, fetchImpl),
-    fetchStaff(env.JOBTREAD_GRANT_KEY, fetchImpl),
-    loadKids(DB).catch(() => []),
+    preloaded?.staff || fetchStaff(env.JOBTREAD_GRANT_KEY, fetchImpl),
+    preloaded?.kids || loadKids(DB).catch(() => []),
   ]);
+  const failed = async (row, err) => {
+    await writeRow(DB, { ...(row || { job_id: jobId }), error: err.message });
+    if (err.message !== row?.error) await alertProblem(env, config, { jobId, name: job ? displayName(job, kids).name : null, error: err.message }).catch(() => {});
+    return { jobId, action: 'error', error: err.message };
+  };
   const sandbox = jobId === SANDBOX_JOB_ID;
   const plan = planInvite(job, staff, { kids, organizer: config.organizer, now, onlyGuests: sandbox ? (config.testGuests || DEFAULT_TEST_GUESTS) : null, template: config.template });
   if (sandbox && plan.event) plan.event.summary = `TEST · ${plan.event.summary}`;
@@ -281,8 +324,7 @@ export async function reconcileJob(env, jobId, { fetchImpl = fetch, now = Date.n
       await writeRow(DB, { ...row, state: 'cancelled', hash: null, last_action: `cancelled: ${plan.reason}`, error: null });
       return { jobId, action: 'cancelled', reason: plan.reason };
     } catch (err) {
-      await writeRow(DB, { ...row, error: err.message });
-      return { jobId, action: 'error', error: err.message };
+      return failed(row, err);
     }
   }
 
@@ -312,22 +354,50 @@ export async function reconcileJob(env, jobId, { fetchImpl = fetch, now = Date.n
     });
     return { jobId, action, eventId: plan.event.id, status: plan.event.status, guests: plan.guests.length };
   } catch (err) {
-    await writeRow(DB, { ...(row || { job_id: jobId }), error: err.message });
-    return { jobId, action: 'error', error: err.message };
+    return failed(row, err);
   }
 }
 
-/** Every open SOARD job, reconciled one at a time (go-live catch-up and daily safety net) */
+/** Every open SOARD job, reconciled one at a time (go-live catch-up and the safety sweep) */
 export async function reconcileAll(env, { fetchImpl = fetch, now = Date.now(), dryRun = false } = {}) {
-  const body = await pave(env.JOBTREAD_GRANT_KEY, {
-    organization: { $: { id: SOARD_ORG_ID }, jobs: { $: { size: 100, where: ['closedOn', '=', null] }, nodes: { id: {} } } },
-  }, fetchImpl);
+  const [body, staff, kids] = await Promise.all([
+    pave(env.JOBTREAD_GRANT_KEY, {
+      organization: { $: { id: SOARD_ORG_ID }, jobs: { $: { size: 100, where: ['closedOn', '=', null] }, nodes: { id: {} } } },
+    }, fetchImpl),
+    fetchStaff(env.JOBTREAD_GRANT_KEY, fetchImpl),
+    loadKids(env.DB).catch(() => []),
+  ]);
   const results = [];
   for (const { id } of body?.organization?.jobs?.nodes || []) {
     if (id === SANDBOX_JOB_ID) continue;
-    results.push(await reconcileJob(env, id, { fetchImpl, now, dryRun }));
+    results.push(await reconcileJob(env, id, { fetchImpl, now, dryRun, preloaded: { staff, kids } }));
   }
   return results;
+}
+
+/**
+ * Safety sweep, piggybacked on public traffic (called from /api/reveals with
+ * waitUntil): at most every SWEEP_EVERY_MS, re-check every open job so a
+ * missed JobTread webhook is caught within hours. Claims the slot before
+ * running so overlapping requests don't double up. Never throws.
+ */
+export async function maybeSweep(env, { fetchImpl = fetch, now = Date.now() } = {}) {
+  try {
+    if (!env.DB || !env.JOBTREAD_GRANT_KEY) return null;
+    await ensureSchema(env.DB);
+    const config = await readConfig(env.DB);
+    if (!config.enabled) return null;
+    if (now - Date.parse(config.lastSweep?.at || 0) < SWEEP_EVERY_MS) return null;
+    await writeConfig(env.DB, { lastSweep: { ...(config.lastSweep || {}), at: new Date(now).toISOString(), running: true } });
+    const results = await reconcileAll(env, { fetchImpl, now });
+    const changed = results.filter(r => ['created', 'updated', 'updated quietly', 'cancelled'].includes(r.action)).length;
+    const errors = results.filter(r => r.action === 'error').length;
+    const summary = { at: new Date(now).toISOString(), checked: results.length, changed, errors };
+    await writeConfig(env.DB, { lastSweep: summary });
+    return summary;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -374,32 +444,38 @@ export async function sendTestInvite(env, jobId, testEmail, { date, time, cancel
 
 /**
  * Upcoming reveals for the admin Invites page: every open job with a Reveal
- * date from today on, its notes, and what its invite has done so far.
+ * date from today on, its notes, what its invite has done so far, and the
+ * exact invite it would send now (title, when, where, message, guests by name).
  */
 export async function listUpcoming(env, { fetchImpl = fetch, now = Date.now() } = {}) {
   const { DB } = env;
   await ensureSchema(DB);
   const cf = { $: { size: 50 }, nodes: { value: {}, customField: { id: {} } } };
-  const [body, kids, rowsRes] = await Promise.all([
+  const [body, staff, kids, rowsRes, config] = await Promise.all([
     pave(env.JOBTREAD_GRANT_KEY, {
       organization: {
         $: { id: SOARD_ORG_ID },
         jobs: {
           $: { size: 100, where: ['closedOn', '=', null] },
           nodes: {
-            id: {}, name: {}, customFieldValues: cf,
+            id: {}, name: {}, closedOn: {}, organization: { id: {} },
+            location: { address: {}, account: { contacts: { $: { size: 50 }, nodes: { name: {}, customFieldValues: cf } } } },
+            customFieldValues: cf,
             tasks: {
               $: { size: 20, where: { or: [[['taskType', 'id'], '=', REVEAL_TASK_TYPE], ['name', '=', 'Build Schedule']] } },
-              nodes: { name: {}, startDate: {}, startTime: {}, progress: {}, taskType: { id: {} } },
+              nodes: { name: {}, startDate: {}, startTime: {}, endDate: {}, endTime: {}, progress: {}, taskType: { id: {} } },
             },
           },
         },
       },
     }, fetchImpl),
+    fetchStaff(env.JOBTREAD_GRANT_KEY, fetchImpl),
     loadKids(DB).catch(() => []),
     DB.prepare('SELECT * FROM reveal_invites').all(),
+    readConfig(DB),
   ]);
   const rows = Object.fromEntries((rowsRes.results || []).map(r => [r.job_id, r]));
+  const staffNames = Object.fromEntries(staff.map(s => [s.email, s.name]));
   const today = todayEastern(now);
   const out = [];
   for (const job of body?.organization?.jobs?.nodes || []) {
@@ -409,23 +485,55 @@ export async function listUpcoming(env, { fetchImpl = fetch, now = Date.now() } 
     if (!reveal?.startDate || reveal.startDate < today) continue;
     const values = fieldValues(job.customFieldValues?.nodes);
     const row = rows[job.id];
+    const who = displayName(job, kids);
+
+    // The invite exactly as it would go out right now, with guests named
+    const familyNames = {};
+    for (const c of job.location?.account?.contacts?.nodes || []) {
+      const email = String(fieldValues(c.customFieldValues?.nodes)[FIELD_CONTACT_EMAIL] || '').trim().toLowerCase();
+      if (email) familyNames[email] = c.name;
+    }
+    // Preview as it will look once it goes out, even before Build Schedule is done
+    const plan = planInvite({ ...job, tasks: { nodes: [...tasks, { name: 'Build Schedule', progress: 1 }] } },
+      staff, { kids, organizer: config.organizer, now, template: config.template });
+    const preview = plan.action === 'upsert' ? {
+      title: plan.event.summary,
+      status: plan.event.status,
+      start: plan.event.start,
+      end: plan.event.end,
+      location: plan.event.location || null,
+      description: plan.event.description,
+      guests: plan.guests.map(email => ({
+        email,
+        name: familyNames[email] || staffNames[email] || null,
+        kind: familyNames[email] ? 'family' : 'staff',
+      })),
+    } : null;
+
     out.push({
       jobId: job.id,
       jobName: job.name,
-      name: displayName(job, kids).name,
+      name: who.name,
+      kidUrl: who.slug ? `/kids/${who.slug}/` : null,
+      jobUrl: `https://app.jobtread.com/jobs/${job.id}`,
       date: reveal.startDate,
       time: hhmm(reveal.startTime),
       confirmed: String(values[FIELD_REVEAL_CONFIRMED] || '').trim().toLowerCase().startsWith('yes'),
       scheduleBuilt: tasks.some(t => t.name === 'Build Schedule' && t.progress === 1),
       status: values[FIELD_STATUS] || null,
       details: String(values[FIELD_INVITE_DETAILS] || ''),
+      preview,
       invite: row ? {
         state: row.state, lastAction: row.last_action, error: row.error, updatedAt: row.updated_at,
         guests: row.guests ? JSON.parse(row.guests).length : 0,
       } : null,
     });
   }
-  return out.sort((a, b) => (a.date + (a.time || '')).localeCompare(b.date + (b.time || '')));
+  const organizerName = staffNames[config.organizer] || null;
+  return {
+    organizerName,
+    reveals: out.sort((a, b) => (a.date + (a.time || '')).localeCompare(b.date + (b.time || ''))),
+  };
 }
 
 /**

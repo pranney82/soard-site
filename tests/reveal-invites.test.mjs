@@ -6,7 +6,7 @@ import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { generateKeyPairSync, createVerify } from 'node:crypto';
 import { createD1 } from './lib/d1-shim.mjs';
-import { planInvite, reconcileJob, sendTestInvite, writeConfig, renderTemplate, listUpcoming, setInviteDetails, DEFAULT_TEMPLATE, REVEAL_TASK_TYPE, FIELD_STATUS, FIELD_INVITE_DETAILS, FIELD_CONTACT_EMAIL } from '../functions/api/_reveal-invites.js';
+import { planInvite, reconcileJob, sendTestInvite, writeConfig, readConfig, renderTemplate, listUpcoming, setInviteDetails, maybeSweep, DEFAULT_TEMPLATE, REVEAL_TASK_TYPE, FIELD_STATUS, FIELD_INVITE_DETAILS, FIELD_CONTACT_EMAIL } from '../functions/api/_reveal-invites.js';
 import { serviceAccountJwt, eventIdFor, clearTokenCache, parseServiceAccount } from '../functions/api/_google-calendar.js';
 import { FIELD_REVEAL_CONFIRMED } from '../functions/api/_reveals.js';
 
@@ -294,7 +294,7 @@ test('saving notes from admin writes JobTread, then updates the invite', async (
   await assert.rejects(() => setInviteDetails(env, jt.id, 'x'.repeat(2001), { fetchImpl: recording }), /2,000/);
 });
 
-test('admin list: upcoming reveals on open jobs, with their invite status', async () => {
+test('admin list: upcoming reveals with the exact invite each would send, guests named', async () => {
   await writeConfig(env.DB, { enabled: true });
   await reconcileJob(env, jt.id, { fetchImpl: fakeFetch, now: NOW });
   const listFetch = async (url, init) => {
@@ -303,14 +303,84 @@ test('admin list: upcoming reveals on open jobs, with their invite status', asyn
         jt,
         { ...job({ date: '2026-10-07' }), id: 'pastJob0001', name: 'Peter Raish (2026)' },
         { ...job(), id: '22P3HTX9cXn4', name: 'Sunshine Office 2025' },
+        { ...job({ built: false, date: '2026-11-11' }), id: 'colinJob001', name: 'Colin Lindsay (2026)' },
       ] } } });
     }
     return fakeFetch(url, init);
   };
-  const list = await listUpcoming(env, { fetchImpl: listFetch, now: NOW });
-  assert.deepEqual(list.map(r => r.jobId), [jt.id], 'past reveals and the sandbox are left out');
-  assert.equal(list[0].name, 'Max');
-  assert.equal(list[0].scheduleBuilt, true);
-  assert.equal(list[0].invite.state, 'tentative');
-  assert.equal(list[0].invite.guests, 2);
+  const { reveals, organizerName } = await listUpcoming(env, { fetchImpl: listFetch, now: NOW });
+  assert.deepEqual(reveals.map(r => r.jobId), [jt.id, 'colinJob001'], 'past reveals and the sandbox are left out, soonest first');
+  const max = reveals[0];
+  assert.equal(max.name, 'Max');
+  assert.equal(max.kidUrl, '/kids/max/');
+  assert.equal(max.jobUrl, `https://app.jobtread.com/jobs/${jt.id}`);
+  assert.equal(max.invite.state, 'tentative');
+  assert.equal(max.preview.title, "Tentative: Max's Reveal Day");
+  assert.equal(max.preview.location, '2060 Grand Prix Dr, Atlanta, GA 30345, USA');
+  assert.deepEqual(max.preview.guests, [
+    { email: 'valerie.daniel22@gmail.com', name: 'Valerie Daniel', kind: 'family' },
+    { email: 'cnielsen@soardcharity.com', name: 'Christian Nielsen', kind: 'staff' },
+  ]);
+  assert.ok(reveals[1].preview, 'a reveal not scheduled yet still previews how its invite will look');
+  assert.equal(reveals[1].invite, null);
+  assert.equal(organizerName, null, 'organizer name comes from JobTread staff when she is on the list');
+});
+
+test('a new problem emails the team once; the same problem again does not', async () => {
+  await writeConfig(env.DB, { enabled: true });
+  env.RESEND_API_KEY = 're_test';
+  const sent = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    if (String(url).includes('resend.com')) { sent.push(JSON.parse(init.body)); return Response.json({ data: [] }); }
+    return realFetch(url, init);
+  };
+  const broken = async (url, init) => (new URL(url).hostname === 'www.googleapis.com' && init?.method === 'POST'
+    ? Response.json({ error: { message: 'Calendar usage limits exceeded.' } }, { status: 403 })
+    : fakeFetch(url, init));
+  try {
+    assert.equal((await reconcileJob(env, jt.id, { fetchImpl: broken, now: NOW })).action, 'error');
+    assert.equal(sent.length, 1);
+    const recipients = sent[0].map(m => m.to[0]).sort();
+    assert.deepEqual(recipients, ['ccunningham@soardcharity.com', 'peter@soardcharity.com']);
+    assert.match(sent[0][0].subject, /Reveal invite problem: Max/);
+    assert.match(sent[0][0].text, /usage limits exceeded/);
+    assert.equal((await reconcileJob(env, jt.id, { fetchImpl: broken, now: NOW })).action, 'error');
+    assert.equal(sent.length, 1, 'same problem, no second email');
+    assert.equal((await reconcileJob(env, jt.id, { fetchImpl: fakeFetch, now: NOW })).action, 'created', 'recovers on the next try');
+  } finally {
+    globalThis.fetch = realFetch;
+    delete env.RESEND_API_KEY;
+  }
+});
+
+test('two changes at once: the second insert updates instead of failing', async () => {
+  await writeConfig(env.DB, { enabled: true });
+  const id = eventIdFor('soardreveal', jt.id);
+  const racing = async (url, init) => {
+    const u = new URL(url);
+    if (u.hostname === 'www.googleapis.com' && (!init?.method || init.method === 'GET')) return Response.json({ error: { message: 'Not Found' } }, { status: 404 });
+    if (u.hostname === 'www.googleapis.com' && init.method === 'POST') return Response.json({ error: { message: 'The requested identifier already exists.' } }, { status: 409 });
+    return fakeFetch(url, init);
+  };
+  const r = await reconcileJob(env, jt.id, { fetchImpl: racing, now: NOW });
+  assert.equal(r.action, 'updated');
+  assert.ok(events.has(id));
+});
+
+test('safety sweep: only when sending is on, at most every 6 hours', async () => {
+  const sweepFetch = async (url, init) => {
+    if (new URL(url).hostname === 'api.jobtread.com' && JSON.parse(init.body).query.organization?.jobs) {
+      return Response.json({ organization: { jobs: { nodes: [{ id: jt.id }, { id: '22P3HTX9cXn4' }] } } });
+    }
+    return fakeFetch(url, init);
+  };
+  assert.equal(await maybeSweep(env, { fetchImpl: sweepFetch, now: NOW }), null, 'off while sending is paused');
+  await writeConfig(env.DB, { enabled: true });
+  const first = await maybeSweep(env, { fetchImpl: sweepFetch, now: NOW });
+  assert.deepEqual({ checked: first.checked, changed: first.changed, errors: first.errors }, { checked: 1, changed: 1, errors: 0 }, 'creates the missed invite; skips the sandbox');
+  assert.equal(await maybeSweep(env, { fetchImpl: sweepFetch, now: NOW + 60 * 60 * 1000 }), null, 'not again within 6 hours');
+  const later = await maybeSweep(env, { fetchImpl: sweepFetch, now: NOW + 7 * 60 * 60 * 1000 });
+  assert.equal(later.changed, 0, 'nothing changed, nothing sent');
+  assert.equal((await readConfig(env.DB)).lastSweep.checked, 1);
 });

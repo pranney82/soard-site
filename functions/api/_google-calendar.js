@@ -123,11 +123,18 @@ export async function upsertEvent(token, calendarId, event, { fetchImpl = fetch,
   const cal = encodeURIComponent(calendarId);
   const existing = await call(token, 'GET', `/calendars/${cal}/events/${event.id}`, null, fetchImpl);
   const q = `?sendUpdates=${sendUpdates}`;
-  const res = existing.status === 404
+  let created = existing.status === 404;
+  let res = created
     ? await call(token, 'POST', `/calendars/${cal}/events${q}`, event, fetchImpl)
     : await call(token, 'PUT', `/calendars/${cal}/events/${event.id}${q}`, event, fetchImpl);
-  if (!res.ok) throw new Error(`Google Calendar ${existing.status === 404 ? 'insert' : 'update'} failed (${res.status}): ${res.data?.error?.message || ''}`.trim());
-  return { created: existing.status === 404, event: res.data };
+  // Two JobTread changes at once can both see "not found"; the second insert
+  // then gets 409 (the id is taken) and should simply update instead.
+  if (created && res.status === 409) {
+    created = false;
+    res = await call(token, 'PUT', `/calendars/${cal}/events/${event.id}${q}`, event, fetchImpl);
+  }
+  if (!res.ok) throw new Error(`Google Calendar ${created ? 'insert' : 'update'} failed (${res.status}): ${res.data?.error?.message || ''}`.trim());
+  return { created, event: res.data };
 }
 
 /** Cancel the event (guests get a cancellation). Already gone is fine. */

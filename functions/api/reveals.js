@@ -10,6 +10,7 @@
  */
 
 import { getReveals } from './_reveals.js';
+import { maybeSweep } from './_reveal-invites.js';
 
 const EDGE_TTL = 180;
 const BROWSER_TTL = 60;
@@ -25,6 +26,9 @@ export async function onRequestGet(context) {
   }
 
   const body = await getReveals(env);
+  // Reveal invites safety net: re-check every open job every few hours, after
+  // the response, so a missed JobTread webhook can't leave an invite stale
+  context.waitUntil(maybeSweep(env));
   // Only a fresh read is worth holding for the full TTL; a fallback gets a short one
   const ttl = body.source === 'jobtread' ? EDGE_TTL : 30;
   const res = Response.json(body, {
