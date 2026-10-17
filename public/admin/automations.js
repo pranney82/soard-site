@@ -122,9 +122,9 @@ const MAP = { t: 'SOARD', children: [
           does: 'Sends the new field value to the reveal date sync.',
           touches: ['JobTread'], where: 'JobTread workflow “Reveal Date field → Site reveal date sync”', live: wf('22PgHVcgDXFN') },
         { t: 'Reveal checks for PMs', s: 'off', k: 'schedule',
-          when: 'Weekdays at 8 am Eastern, woken by the JobTread workflow below (visits to the reveals feed are the backup).',
+          when: 'Weekdays at 8 am Eastern, on the live hub’s heartbeat (visits to the reveals feed and admin loads are the backup).',
           does: 'Leaves one internal comment for the project manager on any job whose reveal needs attention: unconfirmed inside two weeks, confirmed without a time, date passed, work scheduled after the reveal, or the Reveal Date and the schedule disagree. The same problem is repeated every 3 days at most. Also puts back a date the sync missed when the answer is clear.',
-          touches: ['JobTread', 'D1'], where: 'functions/api/reveal-checks.js · _reveal-nudges.js',
+          touches: ['JobTread', 'D1'], where: 'functions/api/broadcast-hooks.js → _reveal-nudges.js',
           info: 'Families never see these comments. Preview them in Reveals → Invites before switching on.',
           live: (f) => {
             const c = f.revealChecks;
@@ -135,10 +135,6 @@ const MAP = { t: 'SOARD', children: [
             if (stale(c.lastRunAt, 4 * 24 * HOUR)) return ATTN(`Hasn’t run since ${stamp(c.lastRunAt)}.`, c.lastRunAt);
             return ON(`Checked ${plural(c.checked ?? 0, 'job')}, posted ${plural(c.posted ?? 0, 'comment')}${c.repaired ? `, put ${plural(c.repaired, 'date')} back in sync` : ''}${c.errors ? `, ${c.errors} failed` : ''}.`, c.lastRunAt);
           } },
-        { t: 'Weekday 8 am wake-up', s: 'live', k: 'schedule',
-          when: 'Monday to Friday at 8 am Eastern.',
-          does: 'Wakes the reveal checks. They run once a day at most, however often they’re woken.',
-          touches: ['JobTread'], where: 'JobTread workflow “Weekday 8 AM → Site reveal checks” → POST /api/reveal-checks', live: wf('22PgQeyQNx34') },
       ]},
       { t: 'Calendar invites', children: [
         { t: 'Invite engine', s: 'live', k: 'event',
@@ -164,15 +160,15 @@ const MAP = { t: 'SOARD', children: [
           when: 'A Reveal or Build Schedule task is deleted.',
           does: 'Wakes the invite engine so the invite can be cancelled.', touches: ['JobTread'], where: JT_INVITE_HOOK, live: wf('22PgQQ6JnJDm') },
         { t: 'Safety sweep', s: 'live', k: 'schedule',
-          when: 'Every 6 hours, carried by visits to the reveals feed.',
+          when: 'Every 6 hours, on the live hub’s heartbeat (visits to the reveals feed are the backup).',
           does: 'Reconciles every open job with Google Calendar, catching anything a missed workflow call left behind.',
-          touches: ['JobTread', 'Google Calendar', 'D1'], where: 'functions/api/reveals.js → _reveal-invites.js',
+          touches: ['JobTread', 'Google Calendar', 'D1'], where: 'functions/api/broadcast-hooks.js · reveals.js → _reveal-invites.js',
           live: (f) => {
             const i = f.invites;
             if (!i) return null;
             if (!i.enabled) return OFF('Invite sending is switched off, so there’s nothing to sweep.');
             if (!i.lastSweepAt) return ATTN('It has never run.');
-            if (stale(i.lastSweepAt, 24 * HOUR)) return ATTN(`Hasn’t run since ${stamp(i.lastSweepAt)}. It rides on visits to the reveals feed and admin loads, and on the weekday 8 am wake-up.`, i.lastSweepAt);
+            if (stale(i.lastSweepAt, 24 * HOUR)) return ATTN(`Hasn’t run since ${stamp(i.lastSweepAt)}. It rides on the live hub’s heartbeat, so check the Live hub entry.`, i.lastSweepAt);
             return ON(`Checked ${plural(i.checked ?? 0, 'job')}, changed ${i.changed ?? 0}.`, i.lastSweepAt);
           } },
         { t: 'Invite problem alerts', s: 'live', k: 'event',
