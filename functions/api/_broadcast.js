@@ -155,6 +155,7 @@ export function defaultState() {
     phase: 'idle',
     broadcastId: null,
     kidSlug: null, kidName: null,
+    jobId: null,           // the JobTread job this reveal was scheduled from (_broadcast-schedule.js)
     title: null, message: null, image: null,
     scheduledAt: null, armedAt: null, liveAt: null, endedAt: null, disconnectedAt: null,
     liveVideoUid: null, replayUid: null, replayReadyAt: null, replayUntil: null,
@@ -326,7 +327,7 @@ async function upsertBroadcastRow(DB, s) {
       fb_permalink=excluded.fb_permalink, source=excluded.source, data=excluded.data, updated_at=excluded.updated_at`)
     .bind(s.broadcastId, s.kidSlug, s.kidName, s.title, s.message, s.image, s.scheduledAt, s.liveAt, s.endedAt, s.phase,
       s.liveVideoUid, s.replayUid, s.fb?.liveVideoId || null, s.fb?.permalink || null, s.source,
-      JSON.stringify({ clicks: s.clicks || 0, note: s.note, kit: s.kit, replayUntil: s.replayUntil, reel: s.reel || null }), s.createdAt || nowIso(), nowIso()).run();
+      JSON.stringify({ clicks: s.clicks || 0, note: s.note, kit: s.kit, kitLiveEmail: s.kitLiveEmail ?? null, replayUntil: s.replayUntil, reel: s.reel || null, jobId: s.jobId || null }), s.createdAt || nowIso(), nowIso()).run();
 }
 
 /**
@@ -368,10 +369,11 @@ function newBroadcastId() {
   return `live-${Date.now()}`;
 }
 
-export function tSchedule(state, { kidSlug, kidName, scheduledAt, title, message, image, kitLiveEmail, by }, config) {
+export function tSchedule(state, { kidSlug, kidName, jobId, scheduledAt, title, message, image, kitLiveEmail, by }, config) {
   const s = { ...defaultState(), broadcastId: newBroadcastId(), createdAt: nowIso() };
   s.kidSlug = kidSlug || null;
   s.kidName = kidName || null;
+  s.jobId = jobId || null;
   s.scheduledAt = scheduledAt;
   s.title = title || (kidName ? `${kidName}'s room reveal` : config.defaults.title);
   s.message = message || (kidName ? `Watch ${kidName}'s room reveal live` : config.defaults.message);
@@ -952,6 +954,13 @@ function sanitizeImage(val) {
   return undefined;
 }
 
+const JOB_ID = /^[A-Za-z0-9]{6,32}$/;
+
+/** 'YYYY-MM-DD' of an instant in the broadcast's time zone */
+function dayIn(iso, tz) {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: tz || 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(iso));
+}
+
 async function kidByName(DB, slug) {
   if (!slug) return null;
   const row = await DB.prepare('SELECT slug, name, data FROM kids WHERE slug = ?').bind(slug).first();
@@ -982,7 +991,8 @@ export async function adminAction(env, action, body = {}, userEmail = 'unknown')
       if (image === undefined) return fail('image must be a Cloudflare image id or imagedelivery.net URL');
       // Scheduling over a planned reveal replaces it; close the old row so History doesn't show both
       if (['scheduled', 'armed'].includes(state.phase)) await closeBroadcastRow(DB, state, 'cancelled');
-      state = tSchedule(state, { kidSlug: kid?.slug || null, kidName: kid?.name || null, scheduledAt, title: body.title, message: body.message, image, kitLiveEmail: body.kitLiveEmail, by: userEmail }, config);
+      const jobId = JOB_ID.test(String(body.jobId || '')) ? String(body.jobId) : null;
+      state = tSchedule(state, { kidSlug: kid?.slug || null, kidName: kid?.name || null, jobId, scheduledAt, title: body.title, message: body.message, image, kitLiveEmail: body.kitLiveEmail, by: userEmail }, config);
       await writeState(DB, state); await upsertBroadcastRow(DB, state);
       const work = [];
       // A save-the-date only makes sense with some lead time; inside 26 h the day-before reminder covers it
@@ -999,9 +1009,14 @@ export async function adminAction(env, action, body = {}, userEmail = 'unknown')
       if (body.title !== undefined) s.title = String(body.title).trim().slice(0, 140) || s.title;
       if (body.message !== undefined) s.message = String(body.message).trim().slice(0, 200) || s.message;
       if (body.image !== undefined) { const img = sanitizeImage(body.image); if (img === undefined) return fail('bad image'); s.image = img; }
+      if (JOB_ID.test(String(body.jobId || ''))) s.jobId = String(body.jobId);
+      let movedFrom = null;
       if (body.scheduledAt !== undefined && ['scheduled', 'armed'].includes(s.phase)) {
         const at = isoOrNull(body.scheduledAt); if (!at) return fail('scheduledAt is not a valid date');
+        // A new day re-arms the reminders; a new time on the same day keeps what already went out
+        if (s.scheduledAt && dayIn(s.scheduledAt, config.timezone) !== dayIn(at, config.timezone)) movedFrom = s.scheduledAt;
         s.scheduledAt = at; s.phase = Date.parse(at) - Date.now() <= ARM_WINDOW_MS ? 'armed' : 'scheduled';
+        if (s.phase === 'armed' && !s.armedAt) s.armedAt = nowIso();
       }
       if (body.kidSlug !== undefined && ['scheduled', 'armed'].includes(s.phase)) {
         const kid = await kidByName(DB, body.kidSlug); s.kidSlug = kid?.slug || null; s.kidName = kid?.name || null;
@@ -1020,7 +1035,16 @@ export async function adminAction(env, action, body = {}, userEmail = 'unknown')
       state = s;
       if (s.kidVia === 'admin' && s.phase === 'live') state = await kitAutoLive(env, config, state, []);
       await writeState(DB, state); await upsertBroadcastRow(DB, state);
-      await logAudit(DB, { userEmail, action: 'updated', entityType: 'live-status', entitySlug: state.broadcastId, entityName: state.title, gitStatus: 'ok' });
+      if (movedFrom) {
+        // Moved to another day: the day-before and hour-before reminders go out again for the new date,
+        // people who could have seen the old date hear about the new one, and Kit gets a fresh draft
+        await DB.prepare("DELETE FROM broadcast_sends WHERE broadcast_id = ? AND kind IN ('moved', 'day', 'hour')").bind(state.broadcastId).run();
+        await recordEvent(DB, state.broadcastId, 'moved', { from: movedFrom, to: state.scheduledAt });
+        if (Date.parse(state.scheduledAt) - Date.now() > 26 * 3600e3) await sendReminders(env, config, state, 'moved', []);
+        const draft = await draftKit(env, state, 'scheduled');
+        if (draft) { state.kit = { ...(state.kit || {}), scheduledDraftId: draft }; await writeState(DB, state); }
+      }
+      await logAudit(DB, { userEmail, action: 'updated', entityType: 'live-status', entitySlug: state.broadcastId, entityName: state.title, ...(movedFrom ? { changes: [{ field: 'scheduledAt', from: movedFrom, to: state.scheduledAt }] } : {}), gitStatus: 'ok' });
       break;
     }
     case 'cancel': {

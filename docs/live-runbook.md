@@ -4,9 +4,9 @@ For the crew holding the phone, and for the office. Keep this short and keep it 
 
 ## Before reveal day (office, 5 minutes, any day ahead)
 
-1. Admin → Broadcast → Now → **Schedule a reveal**: pick the kid, date and time. That's the countdown, the reminders, the share page and the emails.
+1. In **JobTread**, give the job's Reveal task its date and time and set **Reveal Date Confirmed** to Yes. Within seconds the site puts up the countdown, the reminder signup and the share page, and the reminders and emails follow. Nothing is scheduled in the admin. Admin → Reveals → Now shows it, plus every upcoming reveal with what has gone out for it. To move or cancel a reveal, change it in JobTread. The kid page must be published, and the job name must carry the kid's name and year, like "Max Sample (2026)".
 2. Facebook → Live Producer → schedule a live video for the same time using the **persistent stream key**. (Not needed once the Live Video API is approved.)
-3. Broadcast → Now shows the **Go / no-go** for the scheduled reveal: fix anything it lists (each item has its own button). If the reveal is tomorrow, the site re-checks by itself in the morning and alerts if anything is off.
+3. Reveals → Now shows the **Go / no-go** for the scheduled reveal: fix anything it lists (each item has its own button). If the reveal is tomorrow, the site re-checks by itself in the morning and alerts if anything is off.
 4. Sound check, before the first reveal and whenever the phone or mic changes: put the phone on the **rehearsal** profile (Admin → Broadcast → Settings → Phones → rehearsal QR), open Admin → Broadcast → Now → **Start mic check**, and talk normally. The verdict should read "Sound is good", with speech between −24 and −12 dB on both meters. Switch the starting-soon screen layer on as well: the music should also land in that band, on the quiet side. Nothing in a rehearsal reaches the public.
 
 ## Reveal day (crew, 30 seconds)
@@ -43,7 +43,7 @@ Use a wireless mic with its own receiver that plugs into the phone's port: DJI M
 
 While the stream warms up, viewers on the site, Facebook and YouTube see a starting-soon screen in the site's style: logo, "{Name}'s room reveal", the start time, a slowly drifting photo, rotating QR cards (invite someone to watch, fund the next room, the kid's story), the rooms being built, a band of that build's partner logos, and music.
 
-- **Start time:** taken from the reveal scheduled in Admin → Broadcast. More than an hour out it reads "Live at 6:30 PM, in about 2 hours". In the final hour it becomes a running clock ("Starting in 12:34"), and at zero it reads "Any moment now". Reschedule in the admin and the screen follows within a second.
+- **Start time:** taken from the reveal confirmed in JobTread. More than an hour out it reads "Live at 6:30 PM, in about 2 hours". In the final hour it becomes a running clock ("Starting in 12:34"), and at zero it reads "Any moment now". Change the time in JobTread and the screen follows within a minute.
 - **Music:** plays under the countdown and fades out when the clock reaches zero, so it never plays over the reveal. The track is `live/starting-soon.mp3` on the files bucket (`files.sunshineonaranneyday.com`). Upload a replacement in the Cloudflare dashboard under R2 with the same name to change it. Use a track licensed for live streaming: Facebook and YouTube mute or cut off live video with copyrighted music. No file there means no music, and nothing breaks.
 - **Which kid:** automatic. The screen follows whichever reveal is scheduled. With nothing scheduled it shows a general "Our next room reveal" screen.
 
@@ -51,7 +51,7 @@ While the stream warms up, viewers on the site, Facebook and YouTube see a start
 
 Fallback without a web layer: an **Image** layer with `https://sunshineonaranneyday.com/live/<kid>/starting-soon.png` (or `starting-soon-portrait.png`). That one is per kid and has no clock or music.
 
-**TV or laptop at the house:** `https://sunshineonaranneyday.com/live/slate/?tv=1`, full screen (Chrome: F11, or Cmd+Ctrl+F on a Mac). The first card offers the stream to guests' phones, and it stays silent. Admin → Broadcast → Now links the preview, the TV version and the still image once a reveal is scheduled.
+**TV or laptop at the house:** `https://sunshineonaranneyday.com/live/slate/?tv=1`, full screen (Chrome: F11, or Cmd+Ctrl+F on a Mac). The first card offers the stream to guests' phones, and it stays silent. Admin → Reveals → Now links the preview, the TV version and the still image once a reveal is scheduled.
 
 Optional overrides on the address: `?at=18:30` (start time by hand), `?photo=<image id>`, `?music=0` (silent), `?still=1` (no motion).
 

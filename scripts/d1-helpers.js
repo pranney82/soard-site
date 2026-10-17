@@ -147,7 +147,8 @@ export function writeCollection(dir, rows, { deleteRemoved = false } = {}) {
 
 // Runtime-only site_config keys — served live from D1 (never read at build
 // time), so writing them to src/content would just churn git on every build.
-const RUNTIME_ONLY_KEYS = new Set(['live-status', 'broadcast', 'broadcast-config', 'broadcast-health']);
+// The schedule lock holds a bare number, which the site collection's schema would reject.
+const RUNTIME_ONLY_KEYS = new Set(['live-status', 'broadcast', 'broadcast-config', 'broadcast-health', 'broadcast-schedule', 'broadcast-schedule-lock']);
 
 // ── Write site config to disk ──────────────────────────────────────
 export function writeSiteConfig(siteRows) {

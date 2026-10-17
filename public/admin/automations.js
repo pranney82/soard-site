@@ -28,7 +28,7 @@ import { h, htm, useState, useEffect, useRef, useMemo } from './vendor.js';
 
 const html = htm.bind(h);
 
-const WRITTEN_ON = 'October 16, 2026';
+const WRITTEN_ON = 'October 17, 2026';
 const FACTS_URL = '/api/automations-admin';
 
 // ─── Live check helpers ───────────────────
@@ -147,7 +147,7 @@ const MAP = { t: 'SOARD', children: [
             if (!i) return null;
             if (env(f) && !f.env.calendar) return ATTN('GOOGLE_CALENDAR_KEY is missing in Cloudflare, so no invites can go out.');
             if (!i.enabled) return OFF('Sending is switched off in Reveals → Invites.');
-            if (i.errors > 0) return ATTN(`The last sweep hit ${plural(i.errors, 'error')}. Open Reveals → Invites to retry.`, i.lastSweepAt);
+            if (i.errors > 0) return ATTN(`The last sweep hit ${plural(i.errors, 'error')}. Open Reveals → Now to retry.`, i.lastSweepAt);
             return ON(`Sending is on. ${plural(i.rows ?? 0, 'reveal has', 'reveals have')} an invite.`, i.lastSweepAt);
           } },
         { t: 'Task moved or Build Schedule done', s: 'live', k: 'event',
@@ -178,10 +178,28 @@ const MAP = { t: 'SOARD', children: [
           live: (f) => (!env(f) ? null : !f.env.resend ? ATTN('RESEND_API_KEY is missing, so problem alerts can’t be emailed.') : ON(f.env.slack ? 'By email and Slack.' : 'By email only: Slack isn’t connected.')) },
         { t: 'Reveals → Invites page', s: 'live', k: 'admin',
           when: 'Staff open Reveals → Invites.',
-          does: 'Turn invites on or off, edit the invite wording, preview, send a test, or retry one job. Turn the reveal checks on or off and preview today’s comments before they post. Dates and notes are changed in JobTread.',
+          does: 'Turn invites on or off, edit the invite wording, preview it and send a test. Turn the reveal checks on or off and preview today’s comments before they post. Retrying a failed invite is on Reveals → Now. Dates and notes are changed in JobTread.',
           touches: ['JobTread', 'Google Calendar'], where: 'functions/api/reveal-invites-admin.js' },
       ]},
       { t: 'On the website', children: [
+        { t: 'Live countdown follows JobTread', s: 'live', k: 'event',
+          when: 'A JobTread workflow reports a reveal change (right away), and every 5 minutes on the live hub’s heartbeat. Opening Reveals checks too.',
+          does: 'Puts the countdown, reminder signup and starting-soon screen up for the next reveal confirmed with a time, moves it when the date or time changes, and takes it down when the reveal is unconfirmed. A new date re-arms the reminders and tells everyone who signed up. Nobody schedules reveals in the admin.',
+          touches: ['JobTread', 'D1'], where: 'functions/api/_broadcast-schedule.js (from broadcast-hooks.js, reveal-sync.js, reveal-invites.js, reveals.js)',
+          info: 'Only published kids get a countdown, matched by the job name (“Max Sample (2026)”). A confirmed reveal with no time or no matching kid page shows as a note on Reveals → Now. Once the start time passes, only a new time for the same reveal moves it; the stream decides the rest.',
+          live: (f) => {
+            const c = f.liveSchedule;
+            if (!c) return null;
+            if (!c.checkedAt) return ATTN('It hasn’t checked JobTread yet. It runs on the live hub’s heartbeat.');
+            if (c.error) return ATTN(`The last JobTread check failed: ${c.error}`, c.checkedAt);
+            if (stale(c.checkedAt, 30 * MIN)) return ATTN(`Hasn’t checked JobTread since ${stamp(c.checkedAt)}. It rides on the live hub’s heartbeat, so check the Heartbeat entry.`, c.checkedAt);
+            if (c.waiting) return ATTN(`${plural(c.waiting, 'confirmed reveal')} can’t have a countdown yet (no time, or no published kid page). See Reveals → Now.`, c.checkedAt);
+            return ON(c.next ? `Following ${c.next}.` : 'Nothing is confirmed with a time yet.', c.checkedAt);
+          } },
+        { t: 'Reveals → Now tracker', s: 'live', k: 'admin',
+          when: 'Staff open Reveals → Now.',
+          does: 'Lists every upcoming reveal from JobTread with what has gone out for it: the tentative and confirmed invites, the countdown, save-the-date, day-before and hour-before reminders, and the “we’re live” emails, each with when and how many. A failed invite can be retried there.',
+          touches: ['JobTread', 'D1'], where: 'functions/api/reveal-invites-admin.js' },
         { t: 'Public reveal feed', s: 'live', k: 'visitor',
           when: 'Any page that shows reveal dates asks for them (cached at the edge for 3 minutes).',
           does: 'Reads confirmed reveals straight from JobTread and matches them to kids by year and name. Kid pages switch “Building” to “Reveal Oct 27” and link to the live page; the events page shows “Watch a Room Reveal Live”. Never shows tentative dates or job names.',
@@ -329,12 +347,12 @@ const MAP = { t: 'SOARD', children: [
           touches: ['Kit', 'Facebook'], where: 'functions/api/_broadcast.js (kitAutoLive)',
           live: (f) => (!f.broadcast || !env(f) ? null : !f.env.kit ? ATTN('KIT_API_KEY is missing, so the list can’t be emailed.') : f.broadcast.kitLive ? ON(`Switched on in ${SETTINGS}.`, f.sends?.live?.kit?.last) : OFF(`Switched off in ${SETTINGS}.`)) },
         { t: 'Kit drafts', s: 'live', k: 'event',
-          when: 'A reveal is scheduled, and when its replay is ready.',
+          when: 'The countdown goes up or moves to a new day, and when the replay is ready.',
           does: 'Creates a ready-to-send Kit draft for each.',
           touches: ['Kit'], where: 'functions/api/_broadcast.js · _kit.js',
           live: needsKey('kit', 'KIT_API_KEY is missing, so no drafts are made.') },
         { t: 'Reminder emails', s: 'live', k: 'schedule',
-          when: 'On scheduling, 24 hours before, 1 hour before, at go-live and when the replay is ready.',
+          when: 'When the countdown goes up (with a day’s notice), when the date moves, 24 hours before, 1 hour before, at go-live and when the replay is ready.',
           does: 'Emails everyone who asked for a reminder, once per reveal per kind.',
           touches: ['Resend', 'D1'], where: 'functions/api/_broadcast-notify.js',
           live: (f) => reminderBlock(f, 'email') || (!env(f) ? null : f.env.resend ? ON(null, lastSend(f, 'email')) : ATTN('RESEND_API_KEY is missing.')) },

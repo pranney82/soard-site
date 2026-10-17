@@ -106,7 +106,7 @@ export async function run(env, config, state, health, { hub = null } = {}) {
   // The reveal itself
   if (['scheduled', 'armed'].includes(state.phase)) {
     if (state.kidSlug) add('kid', 'ok', `Reveal for ${state.kidName || state.kidSlug}`, state.scheduledAt ? `Starts ${new Date(state.scheduledAt).toLocaleString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit', timeZone: config.timezone || 'America/New_York' })}` : null);
-    else add('kid', 'warn', 'No kid picked for this reveal', 'The live page and the "we\'re live" email can\'t name them.', 'Broadcast → Now → Edit → Kid.');
+    else add('kid', 'warn', 'No kid for this reveal', 'The live page and the "we\'re live" email can\'t name them.', 'The kid comes from the JobTread job name, like "Max Sample (2026)". Check it matches a published kid page.');
   }
 
   const counts = { ok: 0, warn: 0, fail: 0, unknown: 0, off: 0 };
