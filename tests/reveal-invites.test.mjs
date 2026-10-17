@@ -6,7 +6,7 @@ import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { generateKeyPairSync, createVerify } from 'node:crypto';
 import { createD1 } from './lib/d1-shim.mjs';
-import { planInvite, reconcileJob, sendTestInvite, writeConfig, readConfig, renderTemplate, listUpcoming, setInviteDetails, maybeSweep, DEFAULT_TEMPLATE, REVEAL_TASK_TYPE, FIELD_STATUS, FIELD_INVITE_DETAILS, FIELD_CONTACT_EMAIL } from '../functions/api/_reveal-invites.js';
+import { planInvite, reconcileJob, sendTestInvite, writeConfig, readConfig, renderTemplate, listUpcoming, maybeSweep, DEFAULT_TEMPLATE, REVEAL_TASK_TYPE, FIELD_STATUS, FIELD_INVITE_DETAILS, FIELD_CONTACT_EMAIL } from '../functions/api/_reveal-invites.js';
 import { serviceAccountJwt, eventIdFor, clearTokenCache, parseServiceAccount } from '../functions/api/_google-calendar.js';
 import { FIELD_REVEAL_CONFIRMED } from '../functions/api/_reveals.js';
 
@@ -272,26 +272,6 @@ test('wording from admin fills in name, date and time', () => {
   const p = planInvite(job({ confirmed: true, time: '09:30', details: 'Gate code 1234' }), STAFF, { kids: KIDS, now: NOW, template });
   assert.equal(p.event.summary, 'Reveal Day: Max!');
   assert.equal(p.event.description, 'See you Tuesday, October 27 at 9:30 AM.\n\nGate code 1234\n\nhttps://sunshineonaranneyday.com/kids/max/');
-});
-
-test('saving notes from admin writes JobTread, then updates the invite', async () => {
-  await writeConfig(env.DB, { enabled: true });
-  await reconcileJob(env, jt.id, { fetchImpl: fakeFetch, now: NOW });
-  const writes = [];
-  const recording = async (url, init) => {
-    const q = init?.body && new URL(url).hostname === 'api.jobtread.com' ? JSON.parse(init.body).query : null;
-    if (q?.updateJob) {
-      writes.push(q.updateJob.$);
-      jt = job({ details: q.updateJob.$.customFieldValues[FIELD_INVITE_DETAILS] });
-      return Response.json({ updateJob: {} });
-    }
-    return fakeFetch(url, init);
-  };
-  const r = await setInviteDetails(env, jt.id, '  Park on Example Way.  ', { fetchImpl: recording });
-  assert.deepEqual(writes, [{ id: jt.id, customFieldValues: { [FIELD_INVITE_DETAILS]: 'Park on Example Way.' } }]);
-  assert.equal(r.action, 'updated');
-  assert.match(events.get(eventIdFor('soardreveal', jt.id)).description, /Park on Example Way\./);
-  await assert.rejects(() => setInviteDetails(env, jt.id, 'x'.repeat(2001), { fetchImpl: recording }), /2,000/);
 });
 
 test('admin list: upcoming reveals with the exact invite each would send, guests named', async () => {

@@ -1,5 +1,5 @@
 /**
- * /api/reveal-invites-admin (Cloudflare Access) — reveal calendar invites
+ * /api/reveal-invites-admin (Cloudflare Access) — reveal calendar invites, for Reveals → Invites
  *
  * GET                         → settings, setup checks, and every job's invite record
  * GET ?test=<jobId>           → send that job's invite to YOU only, as a separate TEST event
@@ -17,7 +17,7 @@
 
 import {
   ensureSchema, readConfig, writeConfig, reconcileJob, reconcileAll, sendTestInvite,
-  listUpcoming, setInviteDetails, maybeSweep, DEFAULT_TEMPLATE, TEMPLATE_LIMITS,
+  listUpcoming, maybeSweep, DEFAULT_TEMPLATE, TEMPLATE_LIMITS,
 } from './_reveal-invites.js';
 import { logAudit } from './_audit.js';
 
@@ -103,7 +103,7 @@ export async function onRequestGet(context) {
 
 /**
  * POST { enabled?, organizer?, template?, updateExisting? } → settings
- * POST { jobId, details }                                   → a reveal's notes, saved to JobTread
+ * (A reveal's notes are edited only in JobTread, "Reveal Invite Details".)
  */
 export async function onRequestPost(context) {
   const { env } = context;
@@ -113,16 +113,6 @@ export async function onRequestPost(context) {
 
   try {
     await ensureSchema(env.DB);
-
-    if (typeof body.jobId === 'string') {
-      if (!ID.test(body.jobId)) return fail('A JobTread job id is required');
-      const result = await setInviteDetails(env, body.jobId, body.details);
-      await logAudit(env.DB, {
-        userEmail: me, action: 'updated', entityType: 'reveal-invite', entitySlug: body.jobId, entityName: 'Reveal invite notes',
-        changes: [{ field: 'Reveal Invite Details', from: null, to: String(body.details || '').slice(0, 200) }], gitStatus: 'ok',
-      }).catch(() => {});
-      return Response.json({ ok: result.action !== 'error', result, ...(result.error ? { error: result.error } : {}) });
-    }
 
     const patch = {};
     if (typeof body.enabled === 'boolean') patch.enabled = body.enabled;
