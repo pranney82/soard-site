@@ -1,0 +1,19 @@
+---
+/**
+ * Publicity page templates for the admin Preview (behind Access with the rest
+ * of /admin/, and kept out of the sitemap). The real publicity page rendered
+ * with the made-up stories in ../_preview-fixtures.js; each variant leads with
+ * a different featured layout (video, photo, outlet logo, outlet name).
+ * public/admin/press-preview.js clones their parts to rebuild the page from
+ * unsaved edits.
+ */
+import PublicityPage from '../../publicity.astro';
+import { FIXTURES } from '../_preview-fixtures.js';
+
+export function getStaticPaths() {
+  return Object.keys(FIXTURES.press).map((variant) => ({ params: { variant } }));
+}
+
+const { collection, mediaLogos } = FIXTURES.press[Astro.params.variant as keyof typeof FIXTURES.press];
+---
+<PublicityPage press={collection} mediaLogos={mediaLogos} />

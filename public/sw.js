@@ -45,6 +45,8 @@ self.addEventListener('fetch', (event) => {
   const isCFImage = url.hostname === 'imagedelivery.net';
 
   if (!isSameOrigin && !isCFImage) return;
+  // The admin's Preview loads a fresh ?admin-preview URL per edit; don't cache those pages
+  if (url.searchParams.has('admin-preview')) return;
 
   // CF Images: separate cache with eviction limit.
   // The site serves these same-origin via /cdn-cgi/imagedelivery/ —

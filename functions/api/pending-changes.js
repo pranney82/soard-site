@@ -1,161 +1,175 @@
 /**
  * GET /api/pending-changes
- * Returns audit log entries since the last successful production deploy,
- * deduplicated by entity. Each entity appears once with its most recent
- * action, plus an edit count and list of contributors.
+ * What's saved in the admin but not on the live site yet, and where the
+ * site update that will carry it stands.
  *
- * Checks both the CF Pages API and the audit log 'deployed' row for the
- * last deploy time, and uses whichever is more recent. This means pending
- * changes clear regardless of how the deploy was triggered (admin panel,
- * CLI, git push, etc.).
+ * Saves only write D1; the site changes when a build reads D1 (Publish in
+ * the admin, a git push, or an automation's deploy). So a change is live only
+ * once a production build that started after it has succeeded. With the CF
+ * Pages API available:
+ *   - live: the newest successful production build (changes saved before it
+ *     started are on the site)
+ *   - active: a newer build still running; changes saved before it started
+ *     are "publishing", later ones "waiting"
+ *   - failed: the newest build failed, so nothing newer went live
+ * Without the API it falls back to the audit log's last 'deployed' row and
+ * can't see builds (publish.tracking = false).
  *
- * Env bindings: DB (D1), CF_ACCOUNT_ID (optional), CF_PAGES_TOKEN (optional)
+ * Changes are deduplicated by entity: each appears once with its most recent
+ * action, an edit count and its contributors. Activity that never needs a
+ * rebuild (live banner, emails, viewer messages, Stream uploads, invite
+ * settings) is left out.
+ *
+ * Env bindings: DB (D1), CF_ACCOUNT_ID + CF_PAGES_TOKEN (optional), a deploy hook (see flush-deploy.js)
  */
 
 const CF_PROJECT = 'soard-site';
+const HOOK_ENV_VARS = ['CF_PAGES_DEPLOY_HOOK', 'CF_DEPLOY_HOOK', 'DEPLOY_HOOK_URL'];
 
-/**
- * Normalize a timestamp to SQLite datetime format (YYYY-MM-DD HH:MM:SS)
- * so SQL string comparisons with audit_log.created_at work correctly.
- */
-function toSqliteTimestamp(dateStr) {
+// Read at runtime from D1 by Functions, or not site content at all
+export const RUNTIME_TYPES = ['live-status', 'email-broadcast', 'newsletter', 'instagram-reel',
+  'live-input', 'live-message', 'stream-video', 'site-config'];
+
+/** Normalize a timestamp to SQLite datetime format (YYYY-MM-DD HH:MM:SS) to compare with audit_log.created_at */
+export function toSqliteTimestamp(dateStr) {
   return new Date(dateStr).toISOString().replace('T', ' ').replace(/\.\d+Z$/, '');
 }
 
-/**
- * Fetch the latest successful production deploy from CF Pages.
- * Returns { at, by } or null.
- */
-async function fetchCfDeploy(env) {
+/** audit_log.created_at (UTC, no zone) → ISO */
+const sqlToIso = (s) => (s ? `${String(s).replace(' ', 'T')}Z` : null);
+
+async function fetchCfDeploys(env) {
   const { CF_ACCOUNT_ID, CF_PAGES_TOKEN } = env;
   if (!CF_ACCOUNT_ID || !CF_PAGES_TOKEN) return null;
-
   const res = await fetch(
-    `https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/pages/projects/${CF_PROJECT}/deployments?per_page=20`,
-    {
-      headers: {
-        'Authorization': `Bearer ${CF_PAGES_TOKEN}`,
-        'Content-Type': 'application/json',
-      },
-    }
+    `https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/pages/projects/${CF_PROJECT}/deployments?per_page=25&env=production`,
+    { headers: { Authorization: `Bearer ${CF_PAGES_TOKEN}`, 'Content-Type': 'application/json' } },
   );
   if (!res.ok) return null;
-
   const data = await res.json();
-  if (!data.success || !data.result) return null;
+  return data.success && Array.isArray(data.result) ? data.result : null;
+}
 
-  const deploy = data.result.find(
-    d => d.environment === 'production' && d.latest_stage?.status === 'success'
-  );
-  if (!deploy) return null;
+const isLiveDeploy = (d) => d.latest_stage?.name === 'deploy' && d.latest_stage?.status === 'success';
+const isFailed = (d) => ['failure', 'canceled'].includes(d.latest_stage?.status);
 
-  const commitHash = deploy.deployment_trigger?.metadata?.commit_hash || null;
+/**
+ * CF Pages production deployments (any order) → the publishing picture:
+ * { live, active, failed, typicalSeconds }. Each build is
+ * { id, at (ISO, when it was created), stage, stageStatus, endedAt, url }.
+ */
+export function summarizeDeploys(results) {
+  const prod = (results || [])
+    .filter((d) => (d.environment || 'production') === 'production')
+    .sort((a, b) => Date.parse(b.created_on) - Date.parse(a.created_on));
+  const view = (d) => (d ? {
+    id: d.id,
+    at: new Date(d.created_on).toISOString(),
+    stage: d.latest_stage?.name || null,
+    stageStatus: d.latest_stage?.status || null,
+    endedAt: d.latest_stage?.ended_on || null,
+    url: d.url || null,
+    commitMessage: d.deployment_trigger?.metadata?.commit_message || null,
+  } : null);
+  const liveIdx = prod.findIndex(isLiveDeploy);
+  const newer = liveIdx === -1 ? prod : prod.slice(0, liveIdx);
+  const active = newer.find((d) => !isFailed(d) && !isLiveDeploy(d));
+  // A failure only matters when it's the newest word: a build running after it may still carry everything
+  const failed = newer[0] && isFailed(newer[0]) ? newer[0] : null;
+  const durations = prod.filter(isLiveDeploy).slice(0, 10)
+    .map((d) => (Date.parse(d.latest_stage.ended_on) - Date.parse(d.created_on)) / 1000)
+    .filter((s) => s > 0 && s < 3600)
+    .sort((a, b) => a - b);
   return {
-    at: toSqliteTimestamp(deploy.created_on),
-    by: commitHash ? commitHash.slice(0, 7) : null,
+    live: view(prod[liveIdx]),
+    active: view(active),
+    failed: view(failed),
+    typicalSeconds: durations.length ? Math.round(durations[Math.floor(durations.length / 2)]) : null,
   };
 }
 
 /**
- * Fetch the latest 'deployed' audit log row.
- * Returns { at, by } or null.
+ * Audit rows (newest first) → one entry per entity with its publishing state:
+ * 'publishing' when a running build started after it was saved, else 'waiting'.
  */
-async function fetchAuditDeploy(DB) {
-  const result = await DB.prepare(
-    `SELECT user_email, created_at FROM audit_log
-     WHERE action = 'deployed' ORDER BY created_at DESC LIMIT 1`
-  ).all();
-  const row = result.results?.[0];
-  if (!row) return null;
-  return { at: row.created_at, by: row.user_email };
+export function summarizeChanges(rows, activeAt) {
+  const map = new Map();
+  for (const e of rows) {
+    const key = `${e.entity_type}::${e.entity_slug}`;
+    const at = sqlToIso(e.created_at);
+    if (!map.has(key)) {
+      map.set(key, { action: e.action, type: e.entity_type, slug: e.entity_slug, name: e.entity_name, at, edits: 1, users: new Set([e.user_email]) });
+    } else {
+      const c = map.get(key);
+      c.edits++;
+      if (e.user_email) c.users.add(e.user_email);
+    }
+  }
+  return [...map.values()].map((c) => ({
+    ...c,
+    users: [...c.users].filter(Boolean),
+    state: activeAt && Date.parse(c.at) <= Date.parse(activeAt) ? 'publishing' : 'waiting',
+  }));
 }
 
 export async function onRequestGet(context) {
   try {
     const { DB } = context.env;
-
-    // Fetch both sources in parallel — CF API + D1 audit log
-    const [cfResult, auditResult] = await Promise.all([
-      fetchCfDeploy(context.env).catch(e => {
+    const [cfResults, auditDeploy] = await Promise.all([
+      fetchCfDeploys(context.env).catch((e) => {
         console.error('[pending-changes] CF Pages API error:', e.message);
         return null;
       }),
-      fetchAuditDeploy(DB),
+      DB.prepare(`SELECT user_email, created_at FROM audit_log WHERE action = 'deployed' ORDER BY created_at DESC LIMIT 1`).first(),
     ]);
 
-    // Use whichever deploy is more recent.
-    // The audit log row is written instantly on admin "Deploy Now";
-    // the CF Pages entry only appears after the build succeeds.
-    // Comparing both means admin deploys clear pending changes immediately,
-    // while CLI/git-push deploys clear once the build finishes.
-    let lastDeploy = null;
-    if (cfResult && auditResult) {
-      lastDeploy = cfResult.at > auditResult.at ? cfResult : auditResult;
-    } else {
-      lastDeploy = cfResult || auditResult;
-    }
+    const tracking = !!cfResults;
+    const deploys = tracking ? summarizeDeploys(cfResults) : { live: null, active: null, failed: null, typicalSeconds: null };
+    // Without build tracking, the last Publish click is the best guess at what's live
+    const since = tracking
+      ? (deploys.live ? toSqliteTimestamp(deploys.live.at) : '1970-01-01 00:00:00')
+      : (auditDeploy?.created_at || '1970-01-01 00:00:00');
 
-    const since = lastDeploy?.at || '1970-01-01 00:00:00';
-
-    // Get audit log entries since the last deploy.
-    // live-status is D1-only (the Go Live banner) — it takes effect
-    // immediately and never needs a deploy, so it isn't "pending".
-    const changesResult = await DB.prepare(
+    const placeholders = RUNTIME_TYPES.map(() => '?').join(', ');
+    const rows = (await DB.prepare(
       `SELECT user_email, action, entity_type, entity_slug, entity_name, created_at
        FROM audit_log
        WHERE action != 'deployed'
-         AND entity_type != 'live-status'
+         AND entity_type NOT IN (${placeholders})
          AND created_at > ?
        ORDER BY created_at DESC
        LIMIT 200`
-    ).bind(since).all();
+    ).bind(...RUNTIME_TYPES, since).all()).results || [];
 
-    const rows = changesResult.results || [];
-
-    // Deduplicate by entity (type + slug). Keep the most recent action per entity.
-    const entityMap = new Map();
-    for (const e of rows) {
-      const key = `${e.entity_type}::${e.entity_slug}`;
-      if (!entityMap.has(key)) {
-        entityMap.set(key, {
-          action: e.action,
-          type: e.entity_type,
-          slug: e.entity_slug,
-          name: e.entity_name,
-          at: e.created_at,
-          edits: 1,
-          users: new Set([e.user_email]),
-        });
-      } else {
-        const existing = entityMap.get(key);
-        existing.edits++;
-        if (e.user_email) existing.users.add(e.user_email);
-      }
-    }
-
-    const changes = Array.from(entityMap.values()).map(c => ({
-      action: c.action,
-      type: c.type,
-      slug: c.slug,
-      name: c.name,
-      at: c.at,
-      edits: c.edits,
-      users: Array.from(c.users).filter(Boolean),
-    }));
+    const changes = summarizeChanges(rows, deploys.active?.at);
+    // Who pressed Publish for the builds shown (the newest click before each started, within 15 min)
+    const byFor = (build) => {
+      if (!build || !auditDeploy) return null;
+      const gap = Date.parse(build.at) - Date.parse(sqlToIso(auditDeploy.created_at));
+      return gap >= -60e3 && gap < 15 * 60e3 ? auditDeploy.user_email : null;
+    };
 
     return Response.json({
       success: true,
-      since: lastDeploy?.at || null,
-      lastDeployBy: lastDeploy?.by || null,
-      lastDeployAt: lastDeploy?.at || null,
+      since: sqlToIso(since),
+      lastDeployBy: tracking ? byFor(deploys.live) : auditDeploy?.user_email || null,
+      lastDeployAt: tracking ? deploys.live?.at || null : sqlToIso(auditDeploy?.created_at),
       totalEdits: rows.length,
       changes,
-    });
+      publish: {
+        tracking,
+        hook: HOOK_ENV_VARS.some((k) => context.env[k]),
+        live: deploys.live,
+        active: deploys.active && { ...deploys.active, by: byFor(deploys.active) },
+        failed: deploys.failed,
+        typicalSeconds: deploys.typicalSeconds,
+      },
+    }, { headers: { 'Cache-Control': 'private, no-store' } });
   } catch (err) {
     console.error('[pending-changes]', err);
     return Response.json(
       { success: false, error: err.message || 'An unexpected error occurred' },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

@@ -264,6 +264,9 @@ const structuredData = buildSchemaGraph(...graphSchemas);
   <main id="main-content">
     <slot />
   </main>
+  <!-- Admin Preview: the admin frames this page with ?admin-preview and swaps
+       in unsaved edits here, before any page script starts -->
+  <script is:inline>if(/[?&]admin-preview=/.test(location.search)&&window.parent!==window)try{parent.__soardPreview&&parent.__soardPreview(document,window)}catch(e){}</script>
   <Footer />
   <LiveIndicator />
   <ScrollReveal />

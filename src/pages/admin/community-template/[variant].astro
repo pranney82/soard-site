@@ -1,0 +1,19 @@
+---
+/**
+ * Community project page templates for the admin Preview (behind Access with
+ * the rest of /admin/, and kept out of the sitemap). The real page rendered
+ * with the made-up projects in ../_preview-fixtures.js; full has a photo,
+ * stats, a rich story, a quote, a Stream video, photos and partners, alt has
+ * the color block, a plain story and YouTube. public/admin/community-preview.js
+ * clones their sections to rebuild a project's page from unsaved edits.
+ */
+import CommunityPage from '../../community/[slug].astro';
+import { FIXTURES } from '../_preview-fixtures.js';
+
+export function getStaticPaths() {
+  return Object.keys(FIXTURES.community).map((variant) => ({ params: { variant } }));
+}
+
+const { item } = FIXTURES.community[Astro.params.variant as keyof typeof FIXTURES.community];
+---
+<CommunityPage project={item} allProjects={[item]} />

@@ -79,6 +79,10 @@ export async function getStaticPaths() {
 }
 
 const { kid, prevKid, nextKid, relatedKids } = Astro.props;
+/* The admin's Preview (public/admin/kid-preview.js) rebuilds this page's
+   sections from unsaved edits by cloning this markup and mirroring the
+   derivations below (bio split, hero hook, chapters, gallery split, plan
+   crop). If you change either, run: node scripts/test-page-preview.mjs */
 const photos = kid.photos || [];
 // ── CF Image helpers ──────────────────────
 import { cfUrl as _cfUrl, cfSrcset as _cfSrcset, cfRaw, CF_BASE, cfId } from '../../utils/cf-image';
@@ -103,7 +107,9 @@ function dims(src: string): [number, number] {
 // ── Reveal video ──────────────────────────
 // Most old Stream uploads were purged, so a Stream id only wins when the
 // build saw it play; otherwise YouTube, otherwise no video block at all.
-const kidVideo = await resolveKidVideo(kid);
+// The admin preview's template pages (src/pages/admin/kid-template/) pass
+// forceVideo so they render a known player without a Stream lookup.
+const kidVideo = Astro.props.forceVideo !== undefined ? Astro.props.forceVideo : await resolveKidVideo(kid);
 const ytId = kidVideo?.type === 'youtube' ? kidVideo.id : null;
 const streamId = kidVideo?.type === 'stream' ? kidVideo.id : null;
 const hasVideo = streamId || ytId;

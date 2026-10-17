@@ -33,8 +33,10 @@ const kids = defineCollection({
     /** "Watch the live reveal" hero link — written by the FB live auto-archiver */
     revealVideoUrl: z.string().nullable().optional(),
     photographer: z.string().nullable().optional(),
+    // name is the logo's alt text on the kid page (without it every logo read "Project partner")
     partnerLogos: z.array(z.object({
       url: z.string(),
+      name: z.string().nullable().optional(),
     })).default([]),
     heroSummary: z.string().nullable().optional(),
     shortDescription: z.string().nullable().optional(),

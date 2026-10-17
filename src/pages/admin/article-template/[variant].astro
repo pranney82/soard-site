@@ -1,0 +1,19 @@
+---
+/**
+ * Article page templates for the admin Preview (behind Access with the rest
+ * of /admin/, and kept out of the sitemap). The real resource-guide page
+ * rendered with the made-up articles in ../_preview-fixtures.js; full has a
+ * hero photo, a table of contents and questions, nohero shows the site's
+ * fallback photo. public/admin/article-preview.js clones their sections to
+ * rebuild an article's page from unsaved edits.
+ */
+import ArticlePage from '../../resources/[slug].astro';
+import { FIXTURES } from '../_preview-fixtures.js';
+
+export function getStaticPaths() {
+  return Object.keys(FIXTURES.article).map((variant) => ({ params: { variant } }));
+}
+
+const { item } = FIXTURES.article[Astro.params.variant as keyof typeof FIXTURES.article];
+---
+<ArticlePage article={item} allArticles={[item]} />

@@ -19,6 +19,10 @@
  * - content-visibility: auto on friend grid (387+ cards)
  * - contain: content on all grids for layout perf
  * - All images via CF Images CDN
+ *
+ * The admin's Preview (public/admin/partner-preview.js) rebuilds this page from
+ * unsaved edits by cloning this markup and mirroring its logic. After
+ * changing it, run: node scripts/test-page-preview.mjs
  */
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import { getCollection } from 'astro:content';
@@ -41,7 +45,9 @@ const impactCiteOrg = siteSettings.partnerQuoteOrg || 'Lee Hainer Construction';
 const stats = await getSiteStats();
 
 /* ── All partners from content collection ── */
-const allPartners = await getCollection('partners');
+// The admin Preview's template page (src/pages/admin/partners-template/)
+// passes made-up partners; the real page always reads the collection.
+const allPartners = Astro.props.partners ?? await getCollection('partners');
 
 /* ── Sort by order, then alphabetically ── */
 const sorted = [...allPartners].sort((a, b) =>
