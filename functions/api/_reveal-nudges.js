@@ -88,7 +88,8 @@ export function screenJob(job, { allowSandbox = false } = {}) {
 
 /**
  * The issues for one job, in order. Pure.
- * `scheduleTasks` (the job's schedule) is needed for check 4 only.
+ * `scheduleTasks` (schedule tasks, or just those ending after the reveal) is
+ * needed for check 4 only.
  * → { skip } | { issues: [{ key, text }], pm, date }
  * `key` names the problem without the wording that changes daily ("11 days
  * away"), so the repeat rule compares problems, not sentences.
@@ -204,9 +205,16 @@ async function fetchOpenJobs(key, fetchImpl) {
   return jobs;
 }
 
-async function scheduleOf(key, jobId, fetchImpl) {
+/** Schedule tasks ending after the reveal (JobTread filters, so a long schedule can't overflow a page) */
+async function lateTasksOf(key, jobId, date, fetchImpl) {
   const b = await pave(key, {
-    job: { $: { id: jobId }, tasks: { $: { size: 100, where: ['isToDo', '=', false] }, nodes: { name: {}, endDate: {}, progress: {}, isGroup: {}, taskType: { id: {} } } } },
+    job: {
+      $: { id: jobId },
+      tasks: {
+        $: { size: 100, where: { and: [['isToDo', '=', false], ['endDate', '>', date]] } },
+        nodes: { name: {}, endDate: {}, progress: {}, isGroup: {}, taskType: { id: {} } },
+      },
+    },
   }, fetchImpl);
   return b?.job?.tasks?.nodes || [];
 }
@@ -259,7 +267,7 @@ export async function runNudges(env, { fetchImpl = fetch, now = Date.now(), jobI
 
       const first = checkJob(job, null, { today, allowSandbox });
       if (first.skip) return { ...base, action: 'skip', reason: first.skip, ...(repaired ? { repaired } : {}) };
-      const schedule = first.date && first.date >= today ? await scheduleOf(key, job.id, fetchImpl) : null;
+      const schedule = first.date && first.date >= today ? await lateTasksOf(key, job.id, first.date, fetchImpl) : null;
       const { issues, pm } = checkJob(job, schedule, { today, allowSandbox });
       const extra = { ...(repaired ? { repaired } : {}), date: first.date };
       if (!issues.length) return { ...base, action: 'ok', ...extra };
