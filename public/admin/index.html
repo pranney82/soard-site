@@ -1888,6 +1888,13 @@
     .dbars-x span { text-align: center; font-size: max(11px, 0.7rem); color: var(--color-text-muted); font-variant-numeric: tabular-nums; }
     .dbars-tablebtn { margin-top: 0.5rem; }
     .dbars-cap { margin: 0 0 1.6rem; font-size: 0.84rem; color: var(--color-text-secondary); }
+    .dbars-top { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem 1rem; flex-wrap: wrap; margin-bottom: 1.6rem; }
+    .dbars-top .dbars-cap { margin: 0; }
+    .dseg { display: inline-flex; padding: 2px; border-radius: 8px; background: #F1EFEA; }
+    .dseg button { border: 0; padding: 0.3rem 0.8rem; border-radius: 6px; background: none; color: var(--color-text-secondary); font: inherit; font-size: 0.82rem; font-weight: 600; cursor: pointer; }
+    .dseg button:hover { color: var(--color-text); }
+    .dseg button[aria-pressed="true"] { background: var(--color-bg-card); color: var(--color-text); box-shadow: 0 1px 2px rgba(31, 32, 36, 0.1); }
+    .dseg button:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--color-text); }
     .dbars-hit { cursor: pointer; }
     .dbars-col.is-sel:not(.is-current) .dbars-bar { background: #8E8A80; }
     .dbars-col.is-sel.is-current .dbars-bar { box-shadow: 0 0 0 2px var(--color-bg-card), 0 0 0 4px #E0B800; }
@@ -1935,6 +1942,7 @@
       .dlink { min-height: 44px; display: inline-flex; align-items: center; }
       .dlane-head { min-height: 44px; }
       .dcard-head { min-height: 44px; margin-bottom: 0.4rem; }
+      .dseg button { min-height: 44px; }
     }
     @media (max-width: 768px) {
       .dash { gap: 1rem; }
@@ -7561,13 +7569,24 @@
     // Children per year (siblings count individually, like the website's stats).
     // Every bar is a button: picking a year lists the kids counted in it.
     const DASH_STATUS = { 'in-progress': 'In build', 'needs-funding': 'Awaiting funding' };
-    function DashBars({ years, counts, profiles, onOpenKid }) {
+    // What the year chart can count. Each kid profile is one makeover; a makeover
+    // can cover siblings (childCount) and several rooms (roomCount).
+    const DASH_METRICS = {
+      kids: { label: 'Kids', one: 'kid', cap: 'Kids served each year', of: (k) => Number(k.childCount) || 1 },
+      rooms: { label: 'Rooms', one: 'room', cap: 'Rooms built each year', of: (k) => Number(k.roomCount) || 1 },
+    };
+
+    function DashBars({ years, series, profiles, onOpenKid }) {
       const thisYear = new Date().getFullYear();
       const cur = years.length - 1;
       const [hover, setHover] = useState(null);
       const [sel, setSel] = useState(cur);
       const [table, setTable] = useState(false);
       const [showAll, setShowAll] = useState(false);
+      const [metric, setMetric] = useState('kids');
+      const M = DASH_METRICS[metric];
+      const unit = (n) => dashCount(n, M.one);
+      const counts = series[metric];
       const max = Math.max(...counts, 1);
       const step = max > 20 ? 10 : 5;
       const top = Math.ceil(max / step) * step;
@@ -7587,7 +7606,7 @@
 
       const list = (profiles[years[sel]] || []).slice().sort((a, b) =>
         (a.status === 'completed' ? 0 : 1) - (b.status === 'completed' ? 0 : 1) || a.name.localeCompare(b.name));
-      const kidsN = counts[sel];
+      const multi = list.filter((k) => M.of(k) > 1);
       const open = list.filter((k) => k.status !== 'completed');
       const building = open.filter((k) => k.status === 'in-progress').length;
       const waiting = open.filter((k) => k.status === 'needs-funding').length;
@@ -7596,18 +7615,19 @@
 
       const yearPanel = html`<div class="dyear" aria-live="polite">
         <div class="dyear-head">
-          <h4><span class="dyear-y">${years[sel]}</span> ${dashCount(kidsN, 'kid')}${isNow(sel) ? ' so far' : ''}</h4>
-          <span class="dyear-sub">${dashCount(list.length, 'family', 'families')}${kidsN !== list.length ? ` · siblings counted individually` : ''}</span>
+          <h4><span class="dyear-y">${years[sel]}</span> ${unit(counts[sel])}${isNow(sel) ? ' so far' : ''}</h4>
+          <span class="dyear-sub">from ${dashCount(list.length, 'makeover')}</span>
         </div>
-        ${open.length ? html`<p class="dyear-note">Includes ${[building ? `${dashCount(building, 'room')} still in build` : null, waiting ? `${waiting} awaiting funding` : null].filter(Boolean).join(' and ')}. The website counts ${open.length === 1 ? 'it' : 'them'} too.</p>` : null}
+        ${metric === 'kids' && multi.length ? html`<p class="dyear-note">Sibling makeovers: ${dashNames(multi.map((k) => `${k.name} (${M.of(k)} kids)`))}.</p>` : null}
+        ${open.length ? html`<p class="dyear-note">Includes ${[building ? `${building} still in build` : null, waiting ? `${waiting} awaiting funding` : null].filter(Boolean).join(' and ')}.</p>` : null}
         ${list.length ? html`<ul class="dyear-kids">
           ${shown.map((k) => html`<li key=${k.slug}>
             <button type="button" class="dyk" onClick=${() => onOpenKid(k.slug)}>
               ${k.heroImage ? html`<img src=${dashThumb(k.heroImage)} alt="" loading="lazy" />` : html`<span class="dyk-ph" aria-hidden="true">${(k.name || '?')[0]}</span>`}
               <span class="dyk-text">
                 <span class="dyk-name">${k.name}</span>
-                ${(Number(k.childCount) || 1) > 1 || DASH_STATUS[k.status] ? html`<span class="dyk-meta">
-                  ${(Number(k.childCount) || 1) > 1 ? html`<span>${k.childCount} kids</span>` : null}
+                ${M.of(k) > 1 || DASH_STATUS[k.status] ? html`<span class="dyk-meta">
+                  ${M.of(k) > 1 ? html`<span>${unit(M.of(k))}</span>` : null}
                   ${DASH_STATUS[k.status] ? html`<span class=${`dyk-status is-${k.status}`}>${DASH_STATUS[k.status]}</span>` : null}
                 </span>` : null}
               </span>
@@ -7615,14 +7635,14 @@
           </li>`)}
         </ul>
         ${list.length > LIMIT ? html`<button type="button" class="dlink" aria-expanded=${showAll} onClick=${() => setShowAll((v) => !v)}>${showAll ? 'Show fewer' : `Show all ${list.length}`}</button>` : null}`
-        : html`<p class="dyear-note">No profiles carry this year.</p>`}
+        : html`<p class="dyear-note">No makeovers this year.</p>`}
       </div>`;
 
       if (table) return html`<div class="dbars-table">
         <table>
-          <thead><tr><th>Year</th><th class="num">Kids</th><th class="num">Families</th><th></th></tr></thead>
+          <thead><tr><th>Year</th><th class="num">Kids</th><th class="num">Rooms</th><th class="num">Makeovers</th><th></th></tr></thead>
           <tbody>${years.map((y, i) => html`<tr class=${i === sel ? 'is-sel' : ''}>
-            <td>${y}${isNow(i) ? ' (so far)' : ''}</td><td class="num">${counts[i]}</td><td class="num">${(profiles[y] || []).length}</td>
+            <td>${y}${isNow(i) ? ' (so far)' : ''}</td><td class="num">${series.kids[i]}</td><td class="num">${series.rooms[i]}</td><td class="num">${(profiles[y] || []).length}</td>
             <td class="num"><button type="button" class="dlink" onClick=${() => pick(i)} aria-pressed=${i === sel}>${i === sel ? 'Showing' : 'Who'}</button></td>
           </tr>`)}</tbody>
         </table>
@@ -7631,23 +7651,28 @@
       </div>`;
 
       return html`<div class="dbars">
-        <p class="dbars-cap">Kids served each year. Pick a year to see who’s counted.</p>
+        <div class="dbars-top">
+          <p class="dbars-cap">${M.cap}. Pick a year to see its makeovers.</p>
+          <div class="dseg" role="group" aria-label="Count">
+            ${Object.entries(DASH_METRICS).map(([key, m]) => html`<button type="button" key=${key} aria-pressed=${metric === key} onClick=${() => setMetric(key)}>${m.label}</button>`)}
+          </div>
+        </div>
         <div class="dbars-plot">
           <div class="dbars-grid" aria-hidden="true">
             ${ticks.map((v) => html`<div class="dbars-tick" style=${`bottom:${(v / top) * 100}%`}><span>${v}</span></div>`)}
           </div>
-          <div class="dbars-cols" role="toolbar" aria-label="Kids served per year" onKeyDown=${onKey}>
+          <div class="dbars-cols" role="toolbar" aria-label=${`${M.cap}`} onKeyDown=${onKey}>
             ${years.map((y, i) => {
               const h = (counts[i] / top) * 100;
               const label = isNow(i) ? `${counts[i]} so far` : i === peak ? `${counts[i]}` : null;
               return html`<div class=${`dbars-col ${isNow(i) ? 'is-current' : ''} ${hover === i ? 'is-hover' : ''} ${sel === i ? 'is-sel' : ''}`}>
                 <button type="button" id=${`dbar-${y}`} class="dbars-hit" tabindex=${sel === i ? 0 : -1} aria-pressed=${sel === i}
-                  aria-label=${`${y}: ${counts[i]} kids${isNow(i) ? ' so far' : ''}`}
+                  aria-label=${isNow(i) ? `${y}: ${unit(counts[i])} so far` : `${y}: ${unit(counts[i])}`}
                   onClick=${() => pick(i)}
                   onPointerEnter=${() => setHover(i)} onPointerLeave=${() => setHover(null)} onFocus=${() => setHover(i)} onBlur=${() => setHover(null)}>
                   <span class="dbars-bar" style=${`height:${Math.max(h, 1.5)}%`}></span>
                   ${label ? html`<span class="dbars-val" style=${`bottom:${h}%`}>${label}</span>` : null}
-                  ${hover === i ? html`<span class="dbars-tip" style=${`bottom:${h}%`} role="tooltip"><strong>${counts[i]}</strong> kids in ${y}${isNow(i) ? ' so far' : ''}</span>` : null}
+                  ${hover === i ? html`<span class="dbars-tip" style=${`bottom:${h}%`} role="tooltip"><strong>${counts[i]}</strong> ${counts[i] === 1 ? M.one : `${M.one}s`} in ${y}${isNow(i) ? ' so far' : ''}</span>` : null}
                 </button>
               </div>`;
             })}
@@ -7851,26 +7876,30 @@
 
       // ── Impact
       // Counted exactly like the website (src/utils/stats.ts): published profiles,
-      // every child on a sibling profile, a missing room count as one room
+      // every child on a sibling profile, a missing room count as one room.
+      // Each profile is one makeover; the year view lists them.
       const published = useMemo(() => kids.filter((k) => k.publishStatus !== 'draft'), [kids]);
       const childrenOf = (k) => Number(k.childCount) || 1;
+      const roomsOf = (k) => Number(k.roomCount) || 1;
       const yearData = useMemo(() => {
-        const counts = {};
+        const kidsBy = {};
+        const roomsBy = {};
         const profiles = {};
         published.forEach((k) => {
           if (!k.year) return;
-          counts[k.year] = (counts[k.year] || 0) + childrenOf(k);
+          kidsBy[k.year] = (kidsBy[k.year] || 0) + childrenOf(k);
+          roomsBy[k.year] = (roomsBy[k.year] || 0) + roomsOf(k);
           (profiles[k.year] = profiles[k.year] || []).push(k);
         });
-        const years = Object.keys(counts).sort();
+        const years = Object.keys(profiles).sort();
         if (!years.length) return null;
         const first = +years[0];
         const all = [];
         for (let y = first; y <= Math.max(thisYear, +years[years.length - 1]); y++) all.push(String(y));
-        return { years: all, counts: all.map((y) => counts[y] || 0), profiles, first };
+        return { years: all, series: { kids: all.map((y) => kidsBy[y] || 0), rooms: all.map((y) => roomsBy[y] || 0) }, profiles, first };
       }, [published]);
       const kidsServed = published.reduce((s, k) => s + childrenOf(k), 0);
-      const rooms = published.reduce((s, k) => s + (Number(k.roomCount) || 1), 0);
+      const rooms = published.reduce((s, k) => s + roomsOf(k), 0);
       const lastYearCount = published.filter((k) => +k.year === thisYear - 1).reduce((s, k) => s + childrenOf(k), 0);
       const thisYearCount = published.filter((k) => +k.year === thisYear).reduce((s, k) => s + childrenOf(k), 0);
 
@@ -7998,13 +8027,13 @@
                 <span class="dhero-label">kids served</span>
               </div>
               <dl class="dstats">
-                <div><dt>This year</dt><dd>${thisYearCount}${lastYearCount ? html`<span class=${`dstat-delta ${thisYearCount >= lastYearCount ? 'is-up' : 'is-down'}`}>${thisYearCount >= lastYearCount ? '↑' : '↓'} ${Math.abs(Math.round(((thisYearCount - lastYearCount) / lastYearCount) * 100))}% vs all of ${thisYear - 1}</span>` : null}</dd></div>
+                <div><dt>Kids this year</dt><dd>${thisYearCount}${lastYearCount ? html`<span class=${`dstat-delta ${thisYearCount >= lastYearCount ? 'is-up' : 'is-down'}`}>${thisYearCount >= lastYearCount ? '↑' : '↓'} ${Math.abs(Math.round(((thisYearCount - lastYearCount) / lastYearCount) * 100))}% vs all of ${thisYear - 1}</span>` : null}</dd></div>
                 <div><dt>Rooms built</dt><dd>${rooms.toLocaleString()}</dd></div>
                 <div><dt>Partners</dt><dd>${partners.length.toLocaleString()}</dd></div>
                 <div><dt>Press stories</dt><dd>${press.length.toLocaleString()}</dd></div>
               </dl>
             </div>
-            ${yearData ? html`<${DashBars} years=${yearData.years} counts=${yearData.counts} profiles=${yearData.profiles} onOpenKid=${(slug) => onNavigate('kids-hub', slug, 'kids')} />` : null}
+            ${yearData ? html`<${DashBars} years=${yearData.years} series=${yearData.series} profiles=${yearData.profiles} onOpenKid=${(slug) => onNavigate('kids-hub', slug, 'kids')} />` : null}
           <//>
 
           <${DashActivity} onViewAll=${() => onNavigate('audit-log')} />
