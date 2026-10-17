@@ -182,6 +182,19 @@ test('create, move, confirm, cancel: one event, updated in place', async () => {
   assert.ok(!events.has(id));
 });
 
+test('the office sandbox sends even while sending is off, only to the test guests, marked TEST', async () => {
+  jt = { ...job(), id: '22P3HTX9cXn4', name: 'Sunshine Office 2025' };
+  const r = await reconcileJob(env, jt.id, { fetchImpl: fakeFetch, now: NOW });
+  assert.equal(r.action, 'created');
+  assert.equal(r.guests, 1);
+  const ev = events.get(eventIdFor('soardreveal', jt.id));
+  assert.deepEqual(ev.attendees, [{ email: 'peter@soardcharity.com' }], 'no family, no staff');
+  assert.equal(ev.summary, "TEST · Tentative: Sunshine's Reveal Day");
+  // ...while a real job in the same state still only reports what it would do
+  jt = job();
+  assert.equal((await reconcileJob(env, jt.id, { fetchImpl: fakeFetch, now: NOW })).action, 'would-create');
+});
+
 test('Google errors are recorded, not thrown', async () => {
   await writeConfig(env.DB, { enabled: true });
   const failing = async (url, init) => (new URL(url).hostname === 'oauth2.googleapis.com'

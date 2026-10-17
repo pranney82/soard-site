@@ -33,6 +33,11 @@ export const FIELD_STATUS = '22P52qfFub9b';
 export const FIELD_INVITE_DETAILS = '22PgGhdabNcJ';
 export const FIELD_CONTACT_EMAIL = '22NJw43QvHeJ';
 export const DEFAULT_ORGANIZER = 'ccunningham@soardcharity.com';
+// The internal office job is a sandbox: both JobTread workflows skip it, so only
+// deliberate tests reach it. Its invites always send (even with sending off), go
+// only to the test guests, and are marked TEST.
+export const SANDBOX_JOB_ID = '22P3HTX9cXn4';
+export const DEFAULT_TEST_GUESTS = ['peter@soardcharity.com'];
 const STAFF_ROLES = new Set(['Admin', 'Designer']);
 const NOT_STAFF = new Set(['selection@soardcharity.com']); // Qualification Committee login
 const INACTIVE_STATUSES = new Set(['Denied', 'Awaiting Funding']);
@@ -133,7 +138,7 @@ function displayName(job, kids) {
  * What the calendar should look like for this job:
  * { action: 'upsert', event, guests } | { action: 'cancel', reason } | { action: 'skip', reason }
  */
-export function planInvite(job, staff, { kids = [], organizer = DEFAULT_ORGANIZER, now = Date.now() } = {}) {
+export function planInvite(job, staff, { kids = [], organizer = DEFAULT_ORGANIZER, now = Date.now(), onlyGuests = null } = {}) {
   if (!job) return { action: 'skip', reason: 'job not found' };
   if (job.organization?.id && job.organization.id !== SOARD_ORG_ID) return { action: 'skip', reason: 'not a SOARD job' };
 
@@ -174,8 +179,12 @@ export function planInvite(job, staff, { kids = [], organizer = DEFAULT_ORGANIZE
     seen.add(e);
     guests.push(e);
   };
-  for (const c of job.location?.account?.contacts?.nodes || []) add(fieldValues(c.customFieldValues?.nodes)[FIELD_CONTACT_EMAIL]);
-  for (const s of staff) add(s.email);
+  if (onlyGuests) {
+    onlyGuests.forEach(add);
+  } else {
+    for (const c of job.location?.account?.contacts?.nodes || []) add(fieldValues(c.customFieldValues?.nodes)[FIELD_CONTACT_EMAIL]);
+    for (const s of staff) add(s.email);
+  }
 
   const event = {
     id: eventIdFor('soardreveal', job.id),
@@ -225,9 +234,11 @@ export async function reconcileJob(env, jobId, { fetchImpl = fetch, now = Date.n
     fetchStaff(env.JOBTREAD_GRANT_KEY, fetchImpl),
     loadKids(DB).catch(() => []),
   ]);
-  const plan = planInvite(job, staff, { kids, organizer: config.organizer, now });
+  const sandbox = jobId === SANDBOX_JOB_ID;
+  const plan = planInvite(job, staff, { kids, organizer: config.organizer, now, onlyGuests: sandbox ? (config.testGuests || DEFAULT_TEST_GUESTS) : null });
+  if (sandbox && plan.event) plan.event.summary = `TEST · ${plan.event.summary}`;
   const row = await readRow(DB, jobId);
-  const live = !dryRun && (config.enabled || force);
+  const live = !dryRun && (config.enabled || force || sandbox);
 
   if (plan.action === 'skip') return { jobId, action: 'skip', reason: plan.reason };
 
@@ -270,6 +281,7 @@ export async function reconcileAll(env, { fetchImpl = fetch, now = Date.now(), d
   }, fetchImpl);
   const results = [];
   for (const { id } of body?.organization?.jobs?.nodes || []) {
+    if (id === SANDBOX_JOB_ID) continue;
     results.push(await reconcileJob(env, id, { fetchImpl, now, dryRun }));
   }
   return results;
