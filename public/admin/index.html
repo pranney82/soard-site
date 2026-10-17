@@ -5754,6 +5754,12 @@
       .ri-token span { color: var(--color-text-muted); margin-left: 0.35rem; font-family: system-ui, sans-serif; }
       .ri-savebar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem 1.25rem; margin-top: 1.25rem; padding-top: 1.1rem; border-top: 1px solid var(--color-border); }
       .ri-check { display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.88rem; color: var(--color-text-secondary); }
+      .ri-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem; margin-top: 0.9rem; }
+      .ri-nudges { list-style: none; margin: 0.9rem 0 0; padding: 0; display: grid; gap: 0.6rem; }
+      .ri-nudge { border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 0.8rem 0.95rem; background: var(--color-bg-secondary); font-size: 0.88rem; }
+      .ri-nudge__job { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 0.25rem 1rem; font-weight: 700; margin-bottom: 0.35rem; }
+      .ri-nudge__job a { font-weight: 400; color: var(--color-text-secondary); font-size: 0.85rem; text-decoration: underline; text-underline-offset: 3px; }
+      .ri-nudge__msg { margin: 0; white-space: pre-line; line-height: 1.55; overflow-wrap: anywhere; }
       @media (max-width: 900px) {
         .ri-wording { grid-template-columns: minmax(0, 1fr); }
         .ri-row { grid-template-columns: minmax(0, 1fr) auto; }
@@ -5790,6 +5796,8 @@
       const [busy, setBusy] = useState(null);
       const [confirmSending, setConfirmSending] = useState(null); // true = turn on, false = pause
       const [toggling, setToggling] = useState(false);
+      const [checksBusy, setChecksBusy] = useState(null); // 'preview' | 'run' | 'toggle'
+      const [checksPreview, setChecksPreview] = useState(null);
       const fieldRefs = useRef({});
       const lastField = useRef({});
 
@@ -5860,6 +5868,37 @@
         setBusy(null);
       };
 
+      // Reveal checks: the weekday comments for Project Managers
+      const checks = async (query, busyKey) => {
+        setChecksBusy(busyKey);
+        try {
+          const res = await fetch(`/api/reveal-invites-admin?${query}`, { cache: 'no-store' });
+          const d = await res.json();
+          if (!d.ok) throw new Error(d.error || 'Reveal checks failed');
+          return d;
+        } catch (e) { addToast(e.message, 'error'); return null; }
+        finally { setChecksBusy(null); }
+      };
+      const previewChecks = async () => {
+        const d = await checks('checks=preview', 'preview');
+        if (d) setChecksPreview(d.results);
+      };
+      const runChecks = async () => {
+        const d = await checks('checks=run', 'run');
+        if (!d) return;
+        const posted = d.results.filter(r => r.action === 'posted').length;
+        const failed = d.results.filter(r => r.action === 'error');
+        addToast(failed.length ? `${posted} posted, ${failed.length} failed: ${failed[0].error}` : posted ? `${posted} comment${posted === 1 ? '' : 's'} posted in JobTread` : 'Nothing new to post', failed.length ? 'error' : 'success');
+        setChecksPreview(null);
+        await load({ keepEdits: true });
+      };
+      const toggleChecks = async (enabled) => {
+        const d = await checks(`checks-enable=${enabled ? 1 : 0}`, 'toggle');
+        if (!d) return;
+        addToast(enabled ? 'Reveal checks are on' : 'Reveal checks are paused', 'success');
+        await load({ keepEdits: true });
+      };
+
       const insertToken = (kind, token) => {
         const key = lastField.current[kind] || `${kind}Message`;
         const el = fieldRefs.current[key];
@@ -5879,6 +5918,8 @@
       const dirty = JSON.stringify(template) !== JSON.stringify(config.template);
       const sweep = config.lastSweep;
       const problems = upcoming.filter(r => r.invite?.error);
+      const nudges = data.checks || { enabled: false };
+      const lastChecks = nudges.lastRun && !nudges.lastRun.running ? nudges.lastRun : null;
 
       // Wording preview: a real upcoming reveal, with an example time for "confirmed" when it has none
       const sampleReveal = upcoming.find(r => r.jobId === previewJob) || upcoming.find(r => r.preview) || null;
@@ -5948,6 +5989,48 @@
                     <a href=${r.scheduleUrl || r.jobUrl} target="_blank" rel="noopener">Change in JobTread ↗</a>
                   </li>`)}
               </ul>`}
+          </div>
+
+          <div class="card">
+            <div class="ri-status">
+              <div class="ri-status__main">
+                <span class=${'ri-dot' + (nudges.enabled ? ' ri-dot--on' : '')} aria-hidden="true"></span>
+                <div>
+                  <h3>${nudges.enabled ? 'Reveal checks are on' : 'Reveal checks are paused'}</h3>
+                  <p class="ri-meta">Weekday mornings at 8, an internal comment for the Project Manager on any job whose reveal needs attention: not confirmed inside two weeks, confirmed without a time, date passed, work scheduled after the reveal, or the Reveal Date and the schedule disagree. Families never see these. The same problem is repeated every 3 days at most.</p>
+                  <p class="ri-meta">${lastChecks ? html`Last run ${inviteAgo(lastChecks.at)}: ${lastChecks.checked} job${lastChecks.checked === 1 ? '' : 's'} checked, ${lastChecks.posted ? `${lastChecks.posted} comment${lastChecks.posted === 1 ? '' : 's'} posted` : 'nothing new to post'}${lastChecks.repaired ? `, ${lastChecks.repaired} date${lastChecks.repaired === 1 ? '' : 's'} put back in sync` : ''}${lastChecks.errors ? html`, <span class="ri-warn">${lastChecks.errors} failed</span>` : ''}.` : 'Not run yet.'}${nudges.lastError ? html` <span class="ri-warn">Last attempt failed: ${nudges.lastError.error}. It tries again on its own.</span>` : null}</p>
+                </div>
+              </div>
+              <button class=${'btn ' + (nudges.enabled ? 'btn-ghost' : 'btn-primary')} disabled=${checksBusy === 'toggle'} onClick=${() => toggleChecks(!nudges.enabled)}>
+                ${checksBusy === 'toggle' ? html`<span class="spinner" />` : nudges.enabled ? 'Pause checks' : 'Turn on checks'}
+              </button>
+            </div>
+            <div class="ri-actions">
+              <button class="btn btn-ghost btn-sm" disabled=${!!checksBusy} onClick=${previewChecks}>
+                ${checksBusy === 'preview' ? html`<span class="spinner" /> Checking JobTread...` : 'Preview today\'s comments'}
+              </button>
+              ${checksPreview ? html`<button class="btn btn-ghost btn-sm" onClick=${() => setChecksPreview(null)}>Hide preview</button>` : null}
+            </div>
+            ${checksPreview ? (() => {
+              const toPost = checksPreview.filter(r => r.action === 'would-post');
+              const held = checksPreview.filter(r => r.action === 'repeat-skipped').length;
+              const fixes = checksPreview.filter(r => r.repaired);
+              return html`
+                <p class="ri-meta">${toPost.length ? `${toPost.length} comment${toPost.length === 1 ? '' : 's'} would be posted.` : 'Nothing needs a comment right now.'}${held ? ` ${held} already raised in the last 3 days.` : ''}${fixes.length ? ` ${fixes.length} reveal date${fixes.length === 1 ? '' : 's'} would be put back in sync.` : ''}</p>
+                ${toPost.length ? html`
+                  <ul class="ri-nudges">
+                    ${toPost.map(r => html`
+                      <li class="ri-nudge" key=${r.jobId}>
+                        <div class="ri-nudge__job">${r.name}<a href=${`https://app.jobtread.com/jobs/${r.jobId}`} target="_blank" rel="noopener">Open job ↗</a></div>
+                        <p class="ri-nudge__msg">${r.message}</p>
+                      </li>`)}
+                  </ul>
+                  <div class="ri-actions">
+                    <button class="btn btn-primary btn-sm" disabled=${!!checksBusy} onClick=${runChecks}>
+                      ${checksBusy === 'run' ? html`<span class="spinner" /> Posting...` : `Post ${toPost.length === 1 ? 'this comment' : `these ${toPost.length} comments`} now`}
+                    </button>
+                  </div>` : null}`;
+            })() : null}
           </div>
 
           <div class="card">
