@@ -7,6 +7,7 @@
  *        &time=HH:MM | none     try a time (or back to all day)
  * GET ?test-cancel=<jobId>    → cancel your TEST event
  * GET ?preview=<jobId>        → what the real invite would be and who gets it (sends nothing)
+ * GET ?sync=<jobId>           → bring that reveal's invite up to date now (Retry)
  * GET ?sweep=1                → reconcile every open job (dry run while sending is off)
  * GET ?enable=1 | ?enable=0   → turn sending on / off
  * POST { enabled, organizer } → turn sending on/off, change the organizer
@@ -16,7 +17,7 @@
 
 import {
   ensureSchema, readConfig, writeConfig, reconcileJob, reconcileAll, sendTestInvite,
-  listUpcoming, setInviteDetails, DEFAULT_TEMPLATE, TEMPLATE_LIMITS,
+  listUpcoming, setInviteDetails, maybeSweep, DEFAULT_TEMPLATE, TEMPLATE_LIMITS,
 } from './_reveal-invites.js';
 import { logAudit } from './_audit.js';
 
@@ -47,6 +48,14 @@ export async function onRequestGet(context) {
       return Response.json({ ok: true, sentTo: me, ...result });
     }
 
+    // Bring one reveal's invite up to date now (the admin's Retry / Sync now)
+    if (q.has('sync')) {
+      const jobId = q.get('sync');
+      if (!ID.test(jobId)) return fail('A JobTread job id is required');
+      const result = await reconcileJob(env, jobId);
+      return Response.json({ ok: result.action !== 'error', ...result, ...(result.event ? { event: undefined } : {}) });
+    }
+
     if (q.has('preview')) {
       const jobId = q.get('preview');
       if (!ID.test(jobId)) return fail('A JobTread job id is required');
@@ -69,15 +78,18 @@ export async function onRequestGet(context) {
       return Response.json({ ok: true, results });
     }
 
+    context.waitUntil(maybeSweep(env));
     const config = await readConfig(env.DB);
     let upcoming = [];
+    let organizerName = null;
     let upcomingError = null;
     if (env.JOBTREAD_GRANT_KEY) {
-      try { upcoming = await listUpcoming(env); } catch (err) { upcomingError = err.message; }
+      try { ({ reveals: upcoming, organizerName } = await listUpcoming(env)); } catch (err) { upcomingError = err.message; }
     }
     return Response.json({
       ok: true,
       config,
+      organizerName,
       defaults: DEFAULT_TEMPLATE,
       limits: TEMPLATE_LIMITS,
       setup: { jobtread: Boolean(env.JOBTREAD_GRANT_KEY), google: Boolean(env.GOOGLE_CALENDAR_KEY) },
