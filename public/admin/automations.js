@@ -100,31 +100,45 @@ const MAP = { t: 'SOARD', children: [
     about: 'JobTread is the source of truth for reveal dates. A date counts as real only once Reveal Date Confirmed is Yes.',
     children: [
       { t: 'Date sync', children: [
-        { t: 'Reveal Date Sync agent', s: 'live', k: 'event',
-          when: 'A JobTread workflow sends it each change to a Reveal task or the Reveal Date field (about 45 seconds end to end).',
-          does: 'Keeps the Reveal task and the Reveal Date field in step, converting Eastern time to JobTread’s UTC. Once the date is confirmed, the field wins and schedule shifts snap back with an internal comment.',
-          touches: ['JobTread', 'DataX'], where: 'DataX agent “SOARD Reveal Date Sync”',
-          info: 'Edits made through DataX itself don’t sync (that stops echo loops), so fixes made there must set both the task and the field.',
+        { t: 'Reveal date sync', s: 'live', k: 'event',
+          when: 'A JobTread workflow reports each change to a Reveal task or the Reveal Date field (about 15 seconds end to end).',
+          does: 'Keeps the Reveal task and the Reveal Date field in step, converting Eastern time to JobTread’s UTC. Not confirmed: the side that changed wins. Confirmed: the field wins and schedule shifts snap back with an internal comment.',
+          touches: ['JobTread', 'D1'], where: 'functions/api/reveal-sync.js · _reveal-sync.js',
+          info: 'The site’s own edits don’t wake the workflows again, and an echo that slips through is recognized and ignored, so a person’s quick second edit still counts. Edits made through DataX don’t sync, so fixes made there must set both the task and the field.',
           live: (f) => {
             const a = wf('22PgHVceQhvW')(f);
             const b = wf('22PgHVcgDXFN')(f);
             if (!a || !b) return null;
-            if (a.s === 'live' && b.s === 'live') return { why: 'Both JobTread workflows that feed it are on. The agent itself runs in DataX, which this page can’t see.' };
-            return ATTN('A JobTread workflow that feeds it is off or missing, so some date changes won’t sync.');
+            if (a.s !== 'live' || b.s !== 'live') return ATTN('A JobTread workflow that feeds it is off or missing, so some date changes won’t sync.');
+            const c = f.revealChecks;
+            return ON(c?.syncedAt ? `Both JobTread workflows are on. Last synced a date ${ago(c.syncedAt)}.` : 'Both JobTread workflows are on.', c?.syncedAt || null);
           } },
-        { t: 'Reveal task changed → agent', s: 'live', k: 'event',
-          when: 'A Reveal task’s date or time changes (any job except the office sandbox).',
-          does: 'Sends the task’s new date to the Reveal Date Sync agent.',
-          touches: ['JobTread', 'DataX'], where: 'JobTread workflow “Reveal task → DataX Reveal Date Sync”', live: wf('22PgHVceQhvW') },
-        { t: 'Reveal Date field changed → agent', s: 'live', k: 'event',
-          when: 'The Reveal Date field on a job changes.',
-          does: 'Sends the new field value to the Reveal Date Sync agent.',
-          touches: ['JobTread', 'DataX'], where: 'JobTread workflow “Reveal Date field → DataX Reveal Date Sync”', live: wf('22PgHVcgDXFN') },
-        { t: 'Reveal nudges for PMs', s: 'test', k: 'schedule',
-          when: 'Weekdays at 8 am Eastern.',
-          does: 'Checks every open job’s reveal and leaves an internal comment for the project manager when something needs attention: unconfirmed inside two weeks, no time set, date passed, or work scheduled after the reveal.',
-          touches: ['JobTread', 'DataX'], where: 'DataX agent “SOARD Reveal Nudges”',
-          note: 'Built October 15 and waiting in test mode for a go-ahead to switch it on.' },
+        { t: 'Reveal task changed → sync', s: 'live', k: 'event',
+          when: 'A Reveal task’s date or time changes (by anyone but the site itself).',
+          does: 'Sends the task’s new date to the reveal date sync.',
+          touches: ['JobTread'], where: 'JobTread workflow “Reveal task → Site reveal date sync”', live: wf('22PgHVceQhvW') },
+        { t: 'Reveal Date field changed → sync', s: 'live', k: 'event',
+          when: 'The Reveal Date field on a job changes (by anyone but the site itself).',
+          does: 'Sends the new field value to the reveal date sync.',
+          touches: ['JobTread'], where: 'JobTread workflow “Reveal Date field → Site reveal date sync”', live: wf('22PgHVcgDXFN') },
+        { t: 'Reveal checks for PMs', s: 'off', k: 'schedule',
+          when: 'Weekdays at 8 am Eastern, woken by the JobTread workflow below (visits to the reveals feed are the backup).',
+          does: 'Leaves one internal comment for the project manager on any job whose reveal needs attention: unconfirmed inside two weeks, confirmed without a time, date passed, work scheduled after the reveal, or the Reveal Date and the schedule disagree. The same problem is repeated every 3 days at most. Also puts back a date the sync missed when the answer is clear.',
+          touches: ['JobTread', 'D1'], where: 'functions/api/reveal-checks.js · _reveal-nudges.js',
+          info: 'Families never see these comments. Preview them in Reveals → Invites before switching on.',
+          live: (f) => {
+            const c = f.revealChecks;
+            if (!c) return null;
+            if (!c.enabled) return OFF('Switched off in Reveals → Invites.', c.lastRunAt);
+            if (c.lastErrorAt && (!c.lastRunAt || c.lastErrorAt > c.lastRunAt)) return ATTN(`The last attempt failed (${stamp(c.lastErrorAt)}). It retries on its own every half hour.`, c.lastRunAt);
+            if (!c.lastRunAt) return ON('Switched on. The first run is the next weekday at 8 am.');
+            if (stale(c.lastRunAt, 4 * 24 * HOUR)) return ATTN(`Hasn’t run since ${stamp(c.lastRunAt)}.`, c.lastRunAt);
+            return ON(`Checked ${plural(c.checked ?? 0, 'job')}, posted ${plural(c.posted ?? 0, 'comment')}${c.repaired ? `, put ${plural(c.repaired, 'date')} back in sync` : ''}${c.errors ? `, ${c.errors} failed` : ''}.`, c.lastRunAt);
+          } },
+        { t: 'Weekday 8 am wake-up', s: 'live', k: 'schedule',
+          when: 'Monday to Friday at 8 am Eastern.',
+          does: 'Wakes the reveal checks. They run once a day at most, however often they’re woken.',
+          touches: ['JobTread'], where: 'JobTread workflow “Weekday 8 AM → Site reveal checks” → POST /api/reveal-checks', live: wf('22PgQeyQNx34') },
       ]},
       { t: 'Calendar invites', children: [
         { t: 'Invite engine', s: 'live', k: 'event',
@@ -158,7 +172,7 @@ const MAP = { t: 'SOARD', children: [
             if (!i) return null;
             if (!i.enabled) return OFF('Invite sending is switched off, so there’s nothing to sweep.');
             if (!i.lastSweepAt) return ATTN('It has never run.');
-            if (stale(i.lastSweepAt, 24 * HOUR)) return ATTN(`Hasn’t run since ${stamp(i.lastSweepAt)}. It rides on visits to the reveals feed; Sweep all in Reveals → Invites runs it now.`, i.lastSweepAt);
+            if (stale(i.lastSweepAt, 24 * HOUR)) return ATTN(`Hasn’t run since ${stamp(i.lastSweepAt)}. It rides on visits to the reveals feed and admin loads, and on the weekday 8 am wake-up.`, i.lastSweepAt);
             return ON(`Checked ${plural(i.checked ?? 0, 'job')}, changed ${i.changed ?? 0}.`, i.lastSweepAt);
           } },
         { t: 'Invite problem alerts', s: 'live', k: 'event',
@@ -168,7 +182,7 @@ const MAP = { t: 'SOARD', children: [
           live: (f) => (!env(f) ? null : !f.env.resend ? ATTN('RESEND_API_KEY is missing, so problem alerts can’t be emailed.') : ON(f.env.slack ? 'By email and Slack.' : 'By email only: Slack isn’t connected.')) },
         { t: 'Reveals → Invites page', s: 'live', k: 'admin',
           when: 'Staff open Reveals → Invites.',
-          does: 'Turn sending on or off, change the organizer, edit the invite wording, preview, send a test, retry one job or sweep all. Saving notes writes Reveal Invite Details back to JobTread.',
+          does: 'Turn invites on or off, edit the invite wording, preview, send a test, or retry one job. Turn the reveal checks on or off and preview today’s comments before they post. Dates and notes are changed in JobTread.',
           touches: ['JobTread', 'Google Calendar'], where: 'functions/api/reveal-invites-admin.js' },
       ]},
       { t: 'On the website', children: [

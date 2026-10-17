@@ -139,3 +139,24 @@ test('a rescued replay attached by hand in the kid editor no longer counts as wa
   assert.equal(f.fbArchive.needsKid, 0);
   assert.equal(f.fbArchive.archived, 2);
 });
+
+test('reveal checks and the date sync report their switch, last run and last activity, never error text', async () => {
+  const DB = await makeDb();
+  // Before the first sync the reveal_sync table doesn't exist yet
+  let f = await gatherFacts(ENV(DB), { fetchImpl: jtFetch() });
+  assert.deepEqual(f.revealChecks, { enabled: false, lastRunAt: null, checked: null, posted: null, repaired: null, errors: null, lastErrorAt: null, syncedAt: null, syncedJobs: null });
+
+  await DB.prepare('INSERT INTO site_config (key, data, updated_at) VALUES (?, ?, ?)').bind('reveal-nudges', JSON.stringify({
+    enabled: true,
+    lastRun: { day: '2026-10-19', at: '2026-10-19T12:00:03.000Z', checked: 9, posted: 2, repaired: 1, errors: 0 },
+    lastError: { at: '2026-10-16T12:00:00.000Z', error: 'JobTread returned 503: secret-ish detail' },
+  }), '2026-10-19T12:00:04Z').run();
+  await DB.prepare('CREATE TABLE reveal_sync (job_id TEXT PRIMARY KEY, updated_at TEXT)').run();
+  await DB.prepare('INSERT INTO reveal_sync (job_id, updated_at) VALUES (?, ?), (?, ?)').bind('j1', '2026-10-18T15:00:00Z', 'j2', '2026-10-19T09:30:00Z').run();
+  f = await gatherFacts(ENV(DB), { fetchImpl: jtFetch() });
+  assert.deepEqual(f.revealChecks, {
+    enabled: true, lastRunAt: '2026-10-19T12:00:03.000Z', checked: 9, posted: 2, repaired: 1, errors: 0,
+    lastErrorAt: '2026-10-16T12:00:00.000Z', syncedAt: '2026-10-19T09:30:00Z', syncedJobs: 2,
+  });
+  assert.ok(!JSON.stringify(f).includes('secret-ish'));
+});
