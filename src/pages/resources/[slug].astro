@@ -14,6 +14,10 @@
  * - Reading progress bar: tiny scroll listener (~150 bytes)
  * - contain: layout style on heavy sections
  * - data-reveal scroll observer (~300 bytes)
+ *
+ * The admin's Preview (public/admin/article-preview.js) rebuilds this page from
+ * unsaved edits by cloning this markup and mirroring its logic. After
+ * changing it, run: node scripts/test-page-preview.mjs
  */
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import FAQSection from '../../components/ui/FAQSection.astro';

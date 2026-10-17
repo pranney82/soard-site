@@ -9,6 +9,10 @@
  * PERF: CF Images w/ srcset, LQIP blur-up, preload LCP, inline CSS
  * SEO:  Event schema, breadcrumbs, OG image
  * A11Y: Heading hierarchy, ARIA, prefers-reduced-motion
+ *
+ * The admin's Preview (public/admin/event-preview.js) rebuilds this page from
+ * unsaved edits by cloning this markup and mirroring its logic. After
+ * changing it, run: node scripts/test-page-preview.mjs
  */
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import { getCollection } from 'astro:content';

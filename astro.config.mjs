@@ -15,6 +15,7 @@ export default defineConfig({
   integrations: [
     sitemap({
       filter: (page) =>
+        !page.includes('/admin/') &&
         !page.includes('/branding') &&
         !page.includes('/slate/') &&
         !page.includes('/terms') &&

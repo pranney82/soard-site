@@ -57,6 +57,10 @@ export async function onRequestPost(context) {
       );
     }
 
+    // The hook answers { result: { id } }: the build the admin then follows
+    const hookReply = await res.json().catch(() => null);
+    const deploymentId = hookReply?.result?.id || null;
+
     // Log who triggered the deploy
     const userEmail = context.data?.userEmail;
     await logAudit(DB, {
@@ -74,6 +78,7 @@ export async function onRequestPost(context) {
     return Response.json({
       success: true,
       message: 'Deploy triggered',
+      deploymentId,
       ...(failedSyncs > 0 ? {
         warning: `${failedSyncs} save(s) failed to sync to GitHub. The deploy will use D1 data (correct), but your GitHub repo is out of date.`,
         failedSyncs,
