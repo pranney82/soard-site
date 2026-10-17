@@ -1680,10 +1680,7 @@
 
     /* Grid */
     .dash { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 1.25rem; align-items: start; }
-    .dash-needs { grid-column: span 8; align-self: stretch; }
-    .dash-upcoming { grid-column: span 4; align-self: stretch; display: flex; flex-direction: column; }
-    .dash-upcoming > .dcard-foot { margin-top: auto; }
-    .dash-families { grid-column: 1 / -1; }
+    .dash-needs, .dash-upcoming, .dash-families { grid-column: 1 / -1; }
     .dash-impact { grid-column: span 7; align-self: stretch; }
     .dash-activity { grid-column: span 5; align-self: stretch; }
     @media (max-width: 1100px) {
@@ -1742,6 +1739,84 @@
     .dcal-kind.is-tentative { background: transparent; color: var(--color-text-secondary); box-shadow: inset 0 0 0 1px var(--color-border-strong); }
     .dcal-date.is-tentative { border-style: dashed; border-color: var(--color-border-strong); background: transparent; }
     .dcal-date.is-tentative .dcal-day { color: var(--color-text-secondary); }
+
+    /* Coming up: month calendar */
+    .dmo-bar { display: flex; align-items: center; gap: 0.5rem 0.75rem; margin: 0.1rem 0 0.8rem; }
+    .dmo-title { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0.1rem 0.6rem; margin: 0; min-width: 0; font-size: 1.2rem; font-weight: 700; letter-spacing: -0.02em; }
+    .dmo-count { font-size: 0.85rem; font-weight: 500; letter-spacing: 0; color: var(--color-text-muted); }
+    .dmo-nav { display: flex; align-items: center; gap: 0.35rem; margin-left: auto; }
+    .dmo-arrow { width: 34px; height: 34px; display: grid; place-items: center; padding: 0; border: 1px solid var(--color-border); border-radius: 9px; background: var(--color-bg-card); color: var(--color-text); cursor: pointer; }
+    .dmo-arrow:hover:not(:disabled) { background: var(--color-bg-hover); border-color: var(--color-border-strong); }
+    .dmo-arrow:disabled { opacity: 0.35; cursor: default; }
+    .dmo-arrow.is-prev svg { transform: scaleX(-1); }
+    .dmo-week, .dmo-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); list-style: none; margin: 0; padding: 0; }
+    .dmo-week { padding-bottom: 0.4rem; font-size: max(11px, 0.72rem); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--color-text-muted); }
+    .dmo-week li { padding: 0 0.5rem; }
+    .dmo-week .is-short { display: none; }
+    /* 1px gaps over a border-colored backdrop draw the grid lines */
+    .dmo-grid { gap: 1px; background: var(--color-border); border: 1px solid var(--color-border); border-radius: 12px; overflow: hidden; }
+    .dmo-day { position: relative; display: flex; flex-direction: column; gap: 3px; min-width: 0; min-height: 116px; padding: 0.3rem 0.35rem; background: var(--color-bg-card); }
+    .dmo-day.is-out { background: #FAF9F6; }
+    .dmo-num { position: relative; align-self: flex-start; display: grid; place-items: center; min-width: 24px; height: 24px; padding: 0 0.3rem; border-radius: 999px; font-size: 0.85rem; font-weight: 600; font-variant-numeric: tabular-nums; pointer-events: none; }
+    .dmo-day.is-past .dmo-num, .dmo-day.is-out .dmo-num { color: var(--color-text-muted); font-weight: 500; }
+    .dmo-day.is-today .dmo-num { background: var(--color-primary); color: #1F2024; font-weight: 700; }
+    .dmo-hit { position: absolute; inset: 0; padding: 0; border: 0; border-radius: 0; background: none; cursor: pointer; }
+    .dmo-hit:hover { background: var(--color-bg-hover); }
+    .dmo-hit:focus-visible, .dmo-day.is-sel .dmo-hit { outline: none; box-shadow: inset 0 0 0 2px var(--color-text); }
+    .dmo-evs { position: relative; display: flex; flex-direction: column; gap: 3px; min-width: 0; pointer-events: none; }
+    .dmo-day.is-out .dmo-evs { opacity: 0.55; }
+    .dmo-ev {
+      display: flex; align-items: center; gap: 0.3rem; width: 100%; min-width: 0; min-height: 24px; padding: 0.15rem 0.4rem;
+      border: 1px solid transparent; border-radius: 6px; background: #EFEEEA; color: #3D3E44;
+      font: inherit; font-size: max(11px, 0.76rem); font-weight: 600; line-height: 1.25; text-align: left; cursor: pointer; pointer-events: auto;
+    }
+    .dmo-ev:hover { border-color: rgba(0,0,0,0.14); }
+    .dmo-ev-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .dmo-ev-time { flex: none; font-weight: 500; opacity: 0.8; font-variant-numeric: tabular-nums; }
+    .dmo-ev.is-confirmed, .dmo-ev.is-scheduled { background: #FFF3BF; color: #5C4600; box-shadow: inset 3px 0 0 var(--color-primary); }
+    .dmo-ev.is-tentative { background: transparent; color: var(--color-text-secondary); border: 1px dashed var(--color-border-strong); }
+    .dmo-ev.is-live { background: #1F2024; color: var(--color-primary); }
+    .dmo-ev:focus-visible, .dmo-more:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--color-text); }
+    .dmo-more { align-self: flex-start; display: inline-flex; align-items: center; min-height: 24px; padding: 0 0.4rem; border: 0; border-radius: 6px; background: none; font: inherit; font-size: max(11px, 0.74rem); font-weight: 600; color: var(--color-text-secondary); cursor: pointer; pointer-events: auto; }
+    .dmo-more:hover { color: var(--color-text); text-decoration: underline; text-underline-offset: 2px; }
+    .dmo-dots { display: none; }
+    .dmo-agenda { margin-top: 0.9rem; padding-top: 0.6rem; border-top: 1px solid var(--color-border); }
+    .dmo-agenda.is-month:not(.is-empty) { display: none; }
+    .dmo-agenda-head { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; margin-bottom: 0.2rem; }
+    .dmo-agenda-head strong { font-size: 0.95rem; }
+    .dmo-agenda .dempty { padding: 0.35rem 0 0.25rem; }
+    .dmo-key { display: flex; flex-wrap: wrap; gap: 0.35rem 1.1rem; margin: 0.85rem 0 0; padding: 0; list-style: none; font-size: max(11px, 0.78rem); color: var(--color-text-secondary); }
+    .dmo-key li { display: inline-flex; align-items: center; gap: 0.4rem; }
+    .dmo-key i { width: 14px; height: 10px; border-radius: 3px; background: #EFEEEA; }
+    .dmo-key .is-confirmed { background: #FFF3BF; box-shadow: inset 3px 0 0 var(--color-primary); }
+    .dmo-key .is-tentative { background: transparent; border: 1px dashed var(--color-border-strong); }
+    .dmo-key .is-today { width: 12px; height: 12px; border-radius: 50%; background: var(--color-primary); }
+    @media (pointer: coarse) {
+      /* Chips are too small to aim at: a tap anywhere on the day opens its list */
+      .dmo-ev, .dmo-more { pointer-events: none; }
+      .dmo-arrow { width: 44px; height: 44px; }
+    }
+    @media (max-width: 768px) {
+      .dmo-title { font-size: 1.05rem; }
+      .dmo-week li { padding: 0; text-align: center; }
+      .dmo-week .is-long { display: none; }
+      .dmo-week .is-short { display: inline; }
+      .dmo-grid { border-radius: 10px; }
+      .dmo-day { align-items: center; gap: 4px; min-height: 0; aspect-ratio: 1 / 1; padding: 0.3rem 0 0; }
+      .dmo-num { align-self: center; }
+      .dmo-evs { display: none; }
+      .dmo-dots { position: relative; display: flex; gap: 3px; pointer-events: none; }
+      .dmo-dots i { width: 6px; height: 6px; border-radius: 50%; background: #8E8F95; }
+      .dmo-dots .is-confirmed, .dmo-dots .is-scheduled { background: #D9AE00; }
+      .dmo-dots .is-tentative { background: transparent; box-shadow: inset 0 0 0 1.5px #8E8F95; }
+      .dmo-dots .is-live { background: #1F2024; }
+      .dmo-day.is-out .dmo-dots { opacity: 0.55; }
+      .dmo-agenda.is-month:not(.is-empty) { display: block; }
+      .dmo-key i { width: 8px; height: 8px; border-radius: 50%; box-shadow: none; }
+      .dmo-key .is-event { background: #8E8F95; }
+      .dmo-key .is-confirmed { background: #D9AE00; box-shadow: none; }
+      .dmo-key .is-tentative { border: 0; box-shadow: inset 0 0 0 1.5px #8E8F95; }
+    }
 
     /* Families */
     .dlanes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.25rem 1.5rem; margin-top: 0.4rem; }
@@ -7326,6 +7401,124 @@
       </section>`;
     }
 
+    // One Coming up entry as a row: the selected day's list and the phone month list
+    const dashAgendaRow = (u) => html`<li key=${u.key}>
+      <button type="button" class="dcal-item" onClick=${u.go}>
+        <span class=${`dcal-date ${u.tentative ? 'is-tentative' : dashDays(u.date) <= 3 ? 'is-soon' : ''}`} aria-hidden="true">
+          <span class="dcal-mon">${u.date.toLocaleDateString('en-US', { month: 'short' })}</span>
+          <span class="dcal-day">${u.date.getDate()}</span>
+        </span>
+        <span class="dcal-text">
+          <span class="dcal-title">${u.title}</span>
+          <span class="dcal-sub">${u.live ? `Live now · started ${dashAgo(u.date)}` : `${u.tentative ? `Tentatively ${dashDayInline(u.date)}` : dashDay(u.date)}${u.timed ? ` · ${dashTime(u.date)}` : ''}${Math.abs(dashDays(u.date)) > 1 ? ` · ${dashIn(u.date)}` : ''}`}</span>
+        </span>
+        <span class=${`dcal-kind is-${u.kind.toLowerCase()}`}>${u.kind}</span>
+      </button>
+    </li>`;
+    const dashDayKey = (d) => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+    // "6 PM", or "6:30 PM" when there are minutes
+    const dashShortTime = (d) => d.toLocaleTimeString('en-US', d.getMinutes() ? { hour: 'numeric', minute: '2-digit' } : { hour: 'numeric' });
+    const DASH_WEEK = [['Sun', 'S'], ['Mon', 'M'], ['Tue', 'T'], ['Wed', 'W'], ['Thu', 'T'], ['Fri', 'F'], ['Sat', 'S']];
+
+    // Coming up as a month calendar. Chips open the reveal or event; a day
+    // opens its list underneath. Phones show dots and the month's list, and
+    // touch screens open the day on any tap, since chips are too small to aim at.
+    function DashMonth({ items, onAddEvent }) {
+      const thisMonth = useMemo(() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1); }, []);
+      const [month, setMonth] = useState(thisMonth);
+      const [sel, setSel] = useState(null);
+      // Every day an item touches (events can run several days)
+      const byDay = useMemo(() => {
+        const m = {};
+        items.forEach((u) => {
+          const d = new Date(u.date); d.setHours(0, 0, 0, 0);
+          const last = u.end && u.end > d ? +u.end : +d;
+          for (let i = 0; +d <= last && i < 62; i++, d.setDate(d.getDate() + 1)) (m[dashDayKey(d)] = m[dashDayKey(d)] || []).push(u);
+        });
+        return m;
+      }, [items]);
+
+      const y = month.getFullYear(), mo = month.getMonth();
+      const lead = month.getDay();
+      const inMonthDays = new Date(y, mo + 1, 0).getDate();
+      const cells = Array.from({ length: Math.ceil((lead + inMonthDays) / 7) * 7 }, (_, i) => new Date(y, mo, 1 - lead + i));
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      const monthItems = [...new Set(Array.from({ length: inMonthDays }, (_, i) => byDay[dashDayKey(new Date(y, mo, i + 1))] || []).flat())];
+      const monthReveals = monthItems.filter((u) => u.kind !== 'Event').length;
+      const monthEvents = monthItems.length - monthReveals;
+      const nextUp = monthItems.length ? null : items.find((u) => u.date >= new Date(y, mo + 1, 1));
+      const ahead = (y - thisMonth.getFullYear()) * 12 + mo - thisMonth.getMonth();
+      const show = (d) => { setMonth(new Date(d.getFullYear(), d.getMonth(), 1)); setSel(null); };
+      const selItems = sel ? byDay[dashDayKey(sel)] || [] : [];
+      const monthName = month.toLocaleDateString('en-US', { month: 'long' });
+      const longDay = (d) => d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+
+      return html`<div class="dmo">
+        <div class="dmo-bar">
+          <h4 class="dmo-title" aria-live="polite">
+            ${month.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+            ${monthItems.length ? html`<span class="dmo-count">${[monthReveals && dashCount(monthReveals, 'reveal'), monthEvents && dashCount(monthEvents, 'event')].filter(Boolean).join(' · ')}</span>` : null}
+          </h4>
+          <div class="dmo-nav">
+            ${ahead > 0 ? html`<button type="button" class="btn btn-ghost btn-sm" onClick=${() => show(thisMonth)}>Today</button>` : null}
+            <button type="button" class="dmo-arrow is-prev" aria-label="Previous month" disabled=${ahead <= 0} onClick=${() => show(new Date(y, mo - 1, 1))}>${DI.chevron}</button>
+            <button type="button" class="dmo-arrow" aria-label="Next month" disabled=${ahead >= 12} onClick=${() => show(new Date(y, mo + 1, 1))}>${DI.chevron}</button>
+          </div>
+        </div>
+        <ol class="dmo-week" aria-hidden="true">
+          ${DASH_WEEK.map(([long, short]) => html`<li key=${long}><span class="is-long">${long}</span><span class="is-short">${short}</span></li>`)}
+        </ol>
+        <ol class="dmo-grid">
+          ${cells.map((d) => {
+            const k = dashDayKey(d);
+            const list = byDay[k] || [];
+            const isSel = !!sel && dashDayKey(sel) === k;
+            const fits = list.length > 3 ? 2 : 3;
+            const cls = ['dmo-day', d.getMonth() !== mo && 'is-out', d < today && 'is-past', +d === +today && 'is-today', isSel && 'is-sel'].filter(Boolean).join(' ');
+            return html`<li class=${cls} key=${k}>
+              ${list.length ? html`<button type="button" class="dmo-hit" aria-pressed=${isSel}
+                aria-label=${`${longDay(d)}: ${list.map((u) => u.title).join(', ')}`}
+                onClick=${() => setSel(isSel ? null : d)}></button>` : null}
+              <span class="dmo-num" aria-hidden="true">${d.getDate()}</span>
+              ${list.length ? html`<div class="dmo-evs">
+                ${list.slice(0, fits).map((u) => html`<button type="button" key=${u.key} class=${`dmo-ev is-${u.kind.toLowerCase()}`} onClick=${u.go}
+                  title=${`${u.title} · ${u.kind}${u.timed ? ` · ${dashTime(u.date)}` : ''}`}>
+                  ${u.live ? html`<span class="dmo-ev-time">Live</span> ` : u.timed && dashDayKey(u.date) === k ? html`<span class="dmo-ev-time">${dashShortTime(u.date)}</span> ` : null}
+                  <span class="dmo-ev-name">${u.short || u.title}</span>
+                </button>`)}
+                ${list.length > fits ? html`<button type="button" class="dmo-more" onClick=${() => setSel(d)}>+${list.length - fits} more</button>` : null}
+              </div>
+              <span class="dmo-dots" aria-hidden="true">${list.slice(0, 3).map((u) => html`<i key=${u.key} class=${`is-${u.kind.toLowerCase()}`}></i>`)}</span>` : null}
+            </li>`;
+          })}
+        </ol>
+        ${sel ? html`<div class="dmo-agenda">
+          <div class="dmo-agenda-head">
+            <strong>${longDay(sel)}</strong>
+            <button type="button" class="dlink" onClick=${() => setSel(null)}>Close</button>
+          </div>
+          <ol class="dcal">${selItems.map(dashAgendaRow)}</ol>
+        </div>`
+        : monthItems.length ? html`<div class="dmo-agenda is-month">
+          <div class="dmo-agenda-head"><strong>${ahead > 0 ? `In ${monthName}` : `Rest of ${monthName}`}</strong></div>
+          <ol class="dcal">${monthItems.map(dashAgendaRow)}</ol>
+        </div>`
+        : html`<div class="dmo-agenda is-month is-empty">
+          <div class="dempty">
+            <p>${items.length ? `Nothing on the calendar ${ahead > 0 ? `in ${monthName}` : `for the rest of ${monthName}`}.` : 'Nothing on the calendar yet.'}</p>
+            ${nextUp ? html`<button type="button" class="btn btn-ghost btn-sm" onClick=${() => show(nextUp.date)}>Next up: ${nextUp.short || nextUp.title}, ${nextUp.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</button>`
+              : html`<button type="button" class="btn btn-ghost btn-sm" onClick=${onAddEvent}>Add an event</button>`}
+          </div>
+        </div>`}
+        <ul class="dmo-key" aria-label="Key">
+          <li><i class="is-confirmed"></i>Confirmed reveal</li>
+          <li><i class="is-tentative"></i>Tentative reveal</li>
+          <li><i class="is-event"></i>Event</li>
+          <li><i class="is-today"></i>Today</li>
+        </ul>
+      </div>`;
+    }
+
     function DashNewMenu({ onNavigate }) {
       const [open, setOpen] = useState(false);
       const ref = useRef();
@@ -7544,17 +7737,18 @@
           const confirmed = r.confirmed !== false;
           items.push({
             key: `r-${r.slug}`, kind: isOn ? 'Live' : confirmed ? 'Confirmed' : 'Tentative', live: isOn, tentative: !confirmed && !isOn,
-            date: d, title: `${r.name || kidBySlug[r.slug]?.name || 'Room'}’s room reveal`, timed: confirmed && !!r.time, slug: r.slug, jobId: r.jobId,
+            date: d, title: `${r.name || kidBySlug[r.slug]?.name || 'Room'}’s room reveal`, short: `${r.name || kidBySlug[r.slug]?.name || 'Room'}’s reveal`, timed: confirmed && !!r.time, slug: r.slug, jobId: r.jobId,
             go: () => (live?.kidSlug === r.slug ? onNavigate('broadcast') : onNavigate('kids-hub', r.slug, 'kids')),
           });
         });
         if (live?.upcoming && live.startsAt && live.kidSlug && !seen.has(live.kidSlug)) {
-          items.push({ key: 'r-live', kind: 'Scheduled', date: new Date(live.startsAt), title: `${live.kidName}’s room reveal`, timed: true, go: () => onNavigate('broadcast') });
+          items.push({ key: 'r-live', kind: 'Scheduled', date: new Date(live.startsAt), title: `${live.kidName}’s room reveal`, short: `${live.kidName}’s reveal`, timed: true, go: () => onNavigate('broadcast') });
         }
         (events || []).forEach((e) => {
           const d = dashLocalDate(e.date);
-          if (!d || d < today) return;
-          items.push({ key: `e-${e.slug}`, kind: 'Event', date: d, title: (e.title || e.name || 'Event').trim(), sub: e.location, timed: false, go: () => onNavigate('events', e.slug) });
+          const end = dashLocalDate(e.endDate);
+          if (!d || (end && end > d ? end : d) < today) return;
+          items.push({ key: `e-${e.slug}`, kind: 'Event', date: d, end, title: (e.title || e.name || 'Event').trim(), sub: e.location, timed: false, go: () => onNavigate('events', e.slug) });
         });
         return items.sort((a, b) => a.date - b.date);
       }, [reveals, events, live]);
@@ -7767,26 +7961,8 @@
 
           <${DashCard} id="dash-upcoming" title="Coming up" className="dash-upcoming"
             action=${html`<button type="button" class="dlink" onClick=${() => onNavigate('events')}>All events</button>`}>
-            ${reveals === null ? html`<div class="dph" style="height: 220px"></div>`
-              : upcoming.length ? html`<ol class="dcal">
-                ${upcoming.slice(0, 5).map((u) => html`<li key=${u.key}>
-                  <button type="button" class="dcal-item" onClick=${u.go}>
-                    <span class=${`dcal-date ${u.tentative ? 'is-tentative' : dashDays(u.date) <= 3 ? 'is-soon' : ''}`} aria-hidden="true">
-                      <span class="dcal-mon">${u.date.toLocaleDateString('en-US', { month: 'short' })}</span>
-                      <span class="dcal-day">${u.date.getDate()}</span>
-                    </span>
-                    <span class="dcal-text">
-                      <span class="dcal-title">${u.title}</span>
-                      <span class="dcal-sub">${u.live ? `Live now · started ${dashAgo(u.date)}` : `${u.tentative ? `Tentatively ${dashDayInline(u.date)}` : dashDay(u.date)}${u.timed ? ` · ${dashTime(u.date)}` : ''}${Math.abs(dashDays(u.date)) > 1 ? ` · ${dashIn(u.date)}` : ''}`}</span>
-                    </span>
-                    <span class=${`dcal-kind is-${u.kind.toLowerCase()}`}>${u.kind}</span>
-                  </button>
-                </li>`)}
-              </ol>`
-              : html`<div class="dempty">
-                <p>Nothing on the calendar yet.</p>
-                <button type="button" class="btn btn-ghost btn-sm" onClick=${() => onNavigate('events', '')}>Add an event</button>
-              </div>`}
+            ${reveals === null ? html`<div class="dph" style="height: 520px"></div>`
+              : html`<${DashMonth} items=${upcoming} onAddEvent=${() => onNavigate('events', '')} />`}
             <p class="dcard-foot">Reveal dates come from JobTread. A date stays tentative until Reveal Date Confirmed is Yes; only confirmed reveals appear on the website.</p>
           <//>
 
