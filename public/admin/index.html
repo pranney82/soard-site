@@ -4577,6 +4577,21 @@
       return Comp ? html`<${Comp} key=${part} ...${props} />` : (part === 'room' && !mod ? html`<div style="text-align:center;padding:2rem"><span class="spinner" /></div>` : null);
     }
 
+    // Site → Automations: a mindmap of every automation and outside service,
+    // kept in ./automations.js and loaded on first visit.
+    let automationsModule = null;
+    function AutomationsLazy() {
+      const [mod, setMod] = useState(null);
+      const [err, setErr] = useState(null);
+      const load = () => {
+        automationsModule ||= import('./automations.js');
+        automationsModule.then((m) => setMod(m)).catch((e) => { automationsModule = null; setErr(e.message); });
+      };
+      useEffect(load, []);
+      if (err) return html`<${LoadErrorCard} error=${`Could not load the automations map: ${err}`} onRetry=${() => { setErr(null); load(); }} />`;
+      return mod ? html`<${mod.AutomationsMap} />` : html`<div style="text-align:center;padding:2rem"><span class="spinner" /></div>`;
+    }
+
     // ─── Broadcast: family invite QR, viewer messages, keepsake ─────────
     // The family QR never changes: /live/ always opens the reveal that is
     // coming up, live, or on replay. ?src=qr lets the site count scans.
@@ -17266,7 +17281,7 @@
 
 
     function App() {
-      const [view, setView] = useState(() => ((location.hash.startsWith('#broadcast') || location.hash.startsWith('#reveal-invites')) ? 'broadcast' : 'dashboard'));
+      const [view, setView] = useState(() => ((location.hash.startsWith('#broadcast') || location.hash.startsWith('#reveal-invites')) ? 'broadcast' : location.hash.startsWith('#automations') ? 'automations' : 'dashboard'));
       const [editSlug, setEditSlug] = useState(null);
       const [toasts, setToasts] = useState([]);
       const [kids, setKids] = useState([]);
@@ -17529,6 +17544,7 @@
         mail: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="20" height="16" x="2" y="4" rx="2" /><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" /></svg>`,
         goLive: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4.9 19.1C1 15.2 1 8.8 4.9 4.9" /><path d="M7.8 16.2c-2.3-2.3-2.3-6.1 0-8.5" /><circle cx="12" cy="12" r="2" /><path d="M16.2 7.8c2.3 2.3 2.3 6.1 0 8.5" /><path d="M19.1 4.9C23 8.8 23 15.1 19.1 19" /></svg>`,
         auditLog: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>`,
+        automations: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="8" height="8" x="3" y="3" rx="2" /><path d="M7 11v4a2 2 0 0 0 2 2h4" /><rect width="8" height="8" x="13" y="13" rx="2" /></svg>`,
         pressMonitor: html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M2 12a10 10 0 1 0 10-10" /><path d="M2 16.1A5 5 0 0 1 5.9 20" /><path d="M2 12.05A10 10 0 0 1 9.95 20" /><path d="M2 8.05A15 15 0 0 1 13.95 20" /><circle cx="2" cy="20" r="2" /></svg>`,
         menu: html`<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/></svg>`,
         x: html`<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>`,
@@ -17552,6 +17568,7 @@
         ]},
         { label: 'Site', items: [
           { id: 'site-hub', icon: icons.settings, label: 'Site Config' },
+          { id: 'automations', icon: icons.automations, label: 'Automations' },
           { id: 'audit-log', icon: icons.auditLog, label: 'Audit Log' },
         ]},
       ];
@@ -17726,6 +17743,9 @@
 
           case 'audit-log':
             return html`<${AuditLogPage} addToast=${addToast} />`;
+
+          case 'automations':
+            return html`<${AutomationsLazy} />`;
 
           case 'email':
             return html`<${EmailComposer} kids=${kids} events=${events} addToast=${addToast} />`;
