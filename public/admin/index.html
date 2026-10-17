@@ -4496,9 +4496,9 @@
       ending: { label: 'Reconnecting', color: '#FFD500' },
       replay: { label: 'Replay', color: '#38A169' },
     };
-    const BC_TABS = [['now', 'Now'], ['history', 'History'], ['settings', 'Settings']];
+    const BC_TABS = [['now', 'Now'], ['invites', 'Invites'], ['history', 'History'], ['settings', 'Settings']];
     // #broadcast/control-room (every Slack post links there) opens Now, where the control room lives
-    const bcTabFromHash = () => (location.hash.startsWith('#broadcast/settings') ? 'settings' : location.hash.startsWith('#broadcast/history') ? 'history' : 'now');
+    const bcTabFromHash = () => (location.hash.startsWith('#broadcast/settings') ? 'settings' : location.hash.startsWith('#broadcast/history') ? 'history' : (location.hash.startsWith('#broadcast/invites') || location.hash.startsWith('#reveal-invites')) ? 'invites' : 'now');
     const bcFmt = (iso) => iso ? new Date(iso).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
     const bcAgo = (iso) => {
       if (!iso) return 'never';
@@ -5626,16 +5626,17 @@
       return html`
         <div class="page-header bc-header">
           <div>
-            <h2>Broadcast</h2>
-            <p class="page-sub">Schedule reveals, watch them live, and fix anything that goes wrong.</p>
+            <h2>Reveals</h2>
+            <p class="page-sub">Schedule reveals, send calendar invites, watch them live, and fix anything that goes wrong.</p>
           </div>
           <button class="btn btn-ghost btn-sm" type="button" disabled=${!!busy} onClick=${refreshNow} title="Ask Cloudflare Stream what's true right now">${busy === 'Refresh' ? bcSpin : null}Refresh</button>
         </div>
-        <div class="hub-tabs bc-tabs" role="tablist" aria-label="Broadcast" onKeyDown=${onTabKey}>
+        <div class="hub-tabs bc-tabs" role="tablist" aria-label="Reveals" onKeyDown=${onTabKey}>
           ${BC_TABS.map(([id, label]) => html`<button type="button" role="tab" id=${`bc-tab-${id}`} aria-selected=${tab === id} aria-controls="bc-panel" tabindex=${tab === id ? 0 : -1} class=${`hub-tab ${tab === id ? 'active' : ''}`} onClick=${() => setTab(id)}>${label}${id === 'now' && (phase === 'live' || phase === 'ending') ? html`<span class="bc-tab-live" aria-hidden="true"></span><span class="bc-sr"> (live)</span>` : null}${id === 'settings' && settingsFlag ? html`<span class="bc-tab-dot" title=${settingsFlag} aria-hidden="true"></span><span class="bc-sr"> (${settingsFlag.toLowerCase()})</span>` : null}</button>`)}
         </div>
         <div id="bc-panel" role="tabpanel" aria-labelledby=${`bc-tab-${tab}`}>
           ${tab === 'now' ? html`<${BcNow} ...${ctx} />`
+            : tab === 'invites' ? html`<${RevealInvitesPanel} addToast=${addToast} />`
             : tab === 'history' ? html`<${BcHistory} ...${ctx} />`
             : html`<${BcSettings} ...${ctx} cfg=${cfg} setCfg=${setCfg} dirty=${dirty} jump=${jump} clearJump=${() => setJump(null)} />`}
         </div>
@@ -5650,12 +5651,11 @@
       `;
     }
 
-    // ─── Reveal Invites (Comms → Invites) ─────────────────────
+    // ─── Reveals → Invites tab ─────────────────────
     // Calendar invites from Clareece's Google Calendar to staff and the
     // makeover family, driven by JobTread (functions/api/_reveal-invites.js).
-    // Each reveal shows the exact invite guests see; its notes save back to
-    // JobTread ("Reveal Invite Details") so JobTread stays the source of truth.
-    // The wording for every invite is edited at the bottom.
+    // JobTread is the only place dates, times and notes are edited; this tab is
+    // the on/off switch, a glance at every upcoming invite, and the wording.
     const INVITE_KINDS = [
       { kind: 'tentative', label: 'Tentative invite', when: 'Goes out when Build Schedule is marked complete in JobTread.' },
       { kind: 'confirmed', label: 'Confirmed invite', when: 'Replaces the tentative one when Reveal Date Confirmed is set to Yes.' },
@@ -5681,15 +5681,14 @@
       return String(text || '').replace(/\{(name|date|time|when)\}/g, (_, k) => values[k]);
     };
     // Same composition as the server: message, then the reveal's notes, then the kid's page
-    const inviteDescription = (template, kind, r, notes) => [
-      fillInvite(template[kind + 'Message'], { name: r.name, date: r.date, time: kind === 'confirmed' ? (r.time || r.sampleTime) : r.time }).trim(),
-      String(notes || '').trim(),
+    const inviteDescription = (template, kind, r, time) => [
+      fillInvite(template[kind + 'Message'], { name: r.name, date: r.date, time }).trim(),
+      String(r.details || '').trim(),
       r.kidUrl ? INVITE_SITE + r.kidUrl : '',
     ].filter(Boolean).join('\n\n');
     const inviteWhen = (start, end) => {
       if (start?.date) return `${inviteDay(start.date)} · All day`;
-      const d = start.dateTime.slice(0, 10);
-      return `${inviteDay(d)} · ${inviteClock(start.dateTime.slice(11, 16))} to ${inviteClock(end.dateTime.slice(11, 16))} ET`;
+      return `${inviteDay(start.dateTime.slice(0, 10))} · ${inviteClock(start.dateTime.slice(11, 16))} to ${inviteClock(end.dateTime.slice(11, 16))} ET`;
     };
     const inviteAgo = (iso) => {
       const mins = Math.round((Date.now() - Date.parse(iso)) / 60000);
@@ -5702,103 +5701,76 @@
     const RI_STYLES = `
       .ri { display: grid; gap: 1.25rem; }
       .ri-status { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1rem 1.5rem; }
-      .ri-status__main { display: flex; gap: 0.85rem; align-items: flex-start; min-width: 0; }
+      .ri-status__main { display: flex; gap: 0.85rem; align-items: flex-start; min-width: 0; flex: 1 1 26rem; }
       .ri-dot { width: 10px; height: 10px; border-radius: 50%; margin-top: 0.45rem; flex-shrink: 0; background: var(--color-text-muted); }
       .ri-dot--on { background: var(--color-success); box-shadow: 0 0 0 4px rgba(47,125,79,0.14); }
-      .ri-status h3 { margin: 0; font-size: 1.05rem; }
+      .ri h3 { margin: 0; font-size: 1.05rem; }
       .ri-meta { margin: 0.2rem 0 0; color: var(--color-text-secondary); font-size: 0.85rem; line-height: 1.5; }
       .ri-warn { color: var(--color-danger); }
-      .ri-section-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 0.25rem 1rem; margin-bottom: 0.25rem; }
-      .ri-section-head h3 { margin: 0; font-size: 1.1rem; }
-      .ri-reveal { border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 1rem 1.1rem 1.1rem; background: var(--color-bg-card); }
-      .ri-reveal + .ri-reveal { margin-top: 0.9rem; }
-      .ri-reveal__head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem 1rem; }
-      .ri-reveal__name { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.35rem 0.6rem; }
-      .ri-reveal__name strong { font-size: 1.15rem; letter-spacing: -0.01em; }
-      .ri-reveal__date { color: var(--color-text-secondary); font-size: 0.92rem; }
-      .ri-links { display: flex; gap: 0.9rem; font-size: 0.85rem; }
-      .ri-links a { color: var(--color-text-secondary); text-decoration: underline; text-underline-offset: 3px; }
-      .ri-links a:hover { color: var(--color-text); }
-      .ri-state { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.75rem; margin: 0.4rem 0 0.9rem; font-size: 0.86rem; color: var(--color-text-secondary); }
-      .ri-state--error { color: var(--color-danger); }
-      .ri-reveal__grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: 1.1rem; align-items: start; }
-      .ri-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.6rem; }
+      .ri-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 0.25rem 1rem; }
+      .ri-list { list-style: none; margin: 0.75rem 0 0; padding: 0; border-top: 1px solid var(--color-border); }
+      .ri-row { display: grid; grid-template-columns: minmax(7rem, 1fr) minmax(9rem, 1.2fr) minmax(0, 2.4fr) auto; align-items: center; gap: 0.35rem 1rem; padding: 0.7rem 0; border-bottom: 1px solid var(--color-border); font-size: 0.9rem; }
+      .ri-row strong { font-size: 0.98rem; }
+      .ri-row__date { color: var(--color-text-secondary); }
+      .ri-row__state { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem 0.6rem; color: var(--color-text-secondary); min-width: 0; }
+      .ri-row__state--error { color: var(--color-danger); }
+      .ri-row a { color: var(--color-text-secondary); font-size: 0.85rem; text-decoration: underline; text-underline-offset: 3px; white-space: nowrap; }
+      .ri-row a:hover { color: var(--color-text); }
       .ri-chip { display: inline-flex; align-items: center; padding: 0.15rem 0.55rem; border-radius: 999px; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.02em; white-space: nowrap; }
       .ri-chip--tentative { background: var(--color-primary-bg); color: var(--color-primary-ink); box-shadow: inset 0 0 0 1px rgba(214,158,46,0.35); }
       .ri-chip--confirmed { background: rgba(47,125,79,0.1); color: var(--color-success); }
       .ri-chip--waiting { background: var(--color-bg-secondary); color: var(--color-text-secondary); box-shadow: inset 0 0 0 1px var(--color-border); }
-      .ri-invite { display: flex; gap: 0.9rem; border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 0.95rem 1rem; background: var(--color-bg-secondary); }
-      .ri-invite__date { flex-shrink: 0; width: 50px; border-radius: 10px; overflow: hidden; text-align: center; background: var(--color-bg-card); box-shadow: var(--shadow-sm); align-self: flex-start; }
-      .ri-invite__date span { display: block; font-size: 0.65rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #fff; background: var(--color-text); padding: 2px 0; }
-      .ri-invite__date strong { display: block; font-size: 1.35rem; line-height: 1.6; }
-      .ri-invite__body { min-width: 0; flex: 1; }
+      .ri-chip--cancelled { background: var(--color-bg-secondary); color: var(--color-text-muted); }
+      .ri-invite { border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 0.95rem 1rem; background: var(--color-bg-secondary); }
       .ri-invite__title { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem 0.5rem; font-weight: 700; font-size: 1rem; margin-bottom: 0.45rem; }
       .ri-invite__facts { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0.15rem 0.75rem; margin: 0 0 0.6rem; font-size: 0.86rem; }
       .ri-invite__facts dt { color: var(--color-text-muted); }
       .ri-invite__facts dd { margin: 0; overflow-wrap: anywhere; }
-      .ri-invite__desc { white-space: pre-line; font-size: 0.88rem; line-height: 1.55; color: var(--color-text); margin: 0 0 0.6rem; overflow-wrap: anywhere; }
+      .ri-invite__desc { white-space: pre-line; font-size: 0.88rem; line-height: 1.55; margin: 0; overflow-wrap: anywhere; }
       .ri-label { display: block; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-text-muted); margin-bottom: 0.35rem; }
-      .ri-guests { display: flex; flex-wrap: wrap; gap: 0.35rem; }
-      .ri-guest { display: inline-flex; align-items: baseline; gap: 0.35rem; padding: 0.2rem 0.55rem; border-radius: 999px; font-size: 0.8rem; background: var(--color-bg-card); box-shadow: inset 0 0 0 1px var(--color-border); }
-      .ri-guest small { font-size: 0.68rem; color: var(--color-text-muted); }
-      .ri-guest--family { box-shadow: inset 0 0 0 1px rgba(214,158,46,0.55); }
-      .ri-empty { padding: 1.25rem; border: 1px dashed var(--color-border-strong); border-radius: var(--radius-md); color: var(--color-text-secondary); font-size: 0.9rem; }
-      .ri-wording { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.5rem; }
+      .ri-wording { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.5rem; margin-top: 1rem; }
       .ri-kind h4 { margin: 0; font-size: 0.98rem; }
       .ri-kind > p { margin: 0.15rem 0 0.8rem; color: var(--color-text-secondary); font-size: 0.85rem; }
       .ri-tokens { display: flex; flex-wrap: wrap; gap: 0.35rem; margin: -0.25rem 0 0.9rem; }
       .ri-token { border: 1px solid var(--color-border); background: var(--color-bg-card); border-radius: 999px; padding: 0.2rem 0.6rem; font-size: 0.78rem; cursor: pointer; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
       .ri-token:hover { border-color: var(--color-border-strong); background: var(--color-bg-hover); }
       .ri-token:focus-visible { outline: none; box-shadow: var(--focus-ring-strong); }
-      .ri-token span { font-family: inherit; color: var(--color-text-muted); margin-left: 0.35rem; font-family: system-ui, sans-serif; }
+      .ri-token span { color: var(--color-text-muted); margin-left: 0.35rem; font-family: system-ui, sans-serif; }
       .ri-savebar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem 1.25rem; margin-top: 1.25rem; padding-top: 1.1rem; border-top: 1px solid var(--color-border); }
       .ri-check { display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.88rem; color: var(--color-text-secondary); }
       @media (max-width: 900px) {
-        .ri-reveal__grid, .ri-wording { grid-template-columns: minmax(0, 1fr); }
-      }
-      @media (max-width: 520px) {
-        .ri-invite { padding: 0.85rem; }
-        .ri-invite__date { display: none; }
-        .ri-reveal { padding: 0.9rem; }
+        .ri-wording { grid-template-columns: minmax(0, 1fr); }
+        .ri-row { grid-template-columns: minmax(0, 1fr) auto; }
+        .ri-row__date { grid-column: 1; grid-row: 2; }
+        .ri-row__state { grid-column: 1 / -1; }
+        .ri-row a { grid-column: 2; grid-row: 1; justify-self: end; }
       }
     `;
 
-    function InviteCard({ title, status, start, end, location, description, organizer, guests }) {
-      const d = start?.date || start?.dateTime?.slice(0, 10);
-      if (!d) return null;
-      const month = new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' });
+    function InviteCard({ title, status, start, end, location, description, organizer }) {
+      if (!start?.date && !start?.dateTime) return null;
       return html`
         <div class="ri-invite">
-          <div class="ri-invite__date" aria-hidden="true"><span>${month}</span><strong>${Number(d.slice(8, 10))}</strong></div>
-          <div class="ri-invite__body">
-            <div class="ri-invite__title">
-              ${title}
-              <span class=${'ri-chip ' + (status === 'confirmed' ? 'ri-chip--confirmed' : 'ri-chip--tentative')}>${status === 'confirmed' ? 'Confirmed' : 'Tentative'}</span>
-            </div>
-            <dl class="ri-invite__facts">
-              <dt>When</dt><dd>${inviteWhen(start, end)}</dd>
-              ${location ? html`<dt>Where</dt><dd>${location}</dd>` : null}
-              <dt>From</dt><dd>${organizer}</dd>
-            </dl>
-            <p class="ri-invite__desc">${description}</p>
-            ${guests ? html`
-              <span class="ri-label">Guests (${guests.length})</span>
-              ${guests.length ? html`<div class="ri-guests">
-                ${guests.map(g => html`<span class=${'ri-guest ri-guest--' + g.kind} key=${g.email} title=${g.email}>${g.name || g.email}<small>${g.kind === 'family' ? 'Family' : 'Staff'}</small></span>`)}
-              </div>` : html`<p class="ri-meta">No one yet. Add an email to the family's contact in JobTread.</p>`}
-            ` : null}
+          <div class="ri-invite__title">
+            ${title}
+            <span class=${'ri-chip ' + (status === 'confirmed' ? 'ri-chip--confirmed' : 'ri-chip--tentative')}>${status === 'confirmed' ? 'Confirmed' : 'Tentative'}</span>
           </div>
+          <dl class="ri-invite__facts">
+            <dt>When</dt><dd>${inviteWhen(start, end)}</dd>
+            ${location ? html`<dt>Where</dt><dd>${location}</dd>` : null}
+            <dt>From</dt><dd>${organizer}</dd>
+          </dl>
+          <p class="ri-invite__desc">${description}</p>
         </div>`;
     }
 
-    function RevealInvitesPage({ addToast }) {
+    function RevealInvitesPanel({ addToast }) {
       const [data, setData] = useState(null);
       const [loadError, setLoadError] = useState('');
       const [template, setTemplate] = useState(null);
       const [previewJob, setPreviewJob] = useState(null);
       const [updateExisting, setUpdateExisting] = useState(false);
       const [savingTemplate, setSavingTemplate] = useState(false);
-      const [notes, setNotes] = useState({});
       const [busy, setBusy] = useState(null);
       const [confirmSending, setConfirmSending] = useState(null); // true = turn on, false = pause
       const [toggling, setToggling] = useState(false);
@@ -5813,7 +5785,6 @@
           if (!d.ok) throw new Error(d.error || 'Could not load invites');
           setData(d);
           if (!keepEdits) setTemplate(d.config.template);
-          setNotes(prev => Object.fromEntries((d.upcoming || []).map(r => [r.jobId, keepEdits && prev[r.jobId] !== undefined ? prev[r.jobId] : (r.details || '')])));
         } catch (e) {
           setLoadError(e.message);
         }
@@ -5845,20 +5816,9 @@
           const changed = (d.updated || []).filter(r => /^(updated|created)/.test(r.action)).length;
           addToast(updateExisting && d.updated ? `Wording saved. ${changed} invite${changed === 1 ? '' : 's'} updated.` : 'Wording saved', 'success');
           setUpdateExisting(false);
-          await load({ keepEdits: false });
+          await load();
         } catch (e) { addToast(e.message, 'error'); }
         setSavingTemplate(false);
-      };
-
-      const saveNotes = async (r) => {
-        setBusy(r.jobId + ':notes');
-        try {
-          const d = await post({ jobId: r.jobId, details: notes[r.jobId] || '' });
-          const a = d.result?.action || '';
-          addToast(/updated|created/.test(a) ? `Saved to JobTread. ${r.name}'s invite is updated.` : 'Saved to JobTread', 'success');
-          await load({ keepEdits: true });
-        } catch (e) { addToast(e.message, 'error'); }
-        setBusy(null);
       };
 
       const syncNow = async (r) => {
@@ -5874,12 +5834,12 @@
       };
 
       const sendTest = async (r) => {
-        setBusy(r.jobId + ':test');
+        setBusy('test');
         try {
           const res = await fetch(`/api/reveal-invites-admin?test=${encodeURIComponent(r.jobId)}`, { cache: 'no-store' });
           const d = await res.json();
           if (!d.ok) throw new Error(d.error || 'Test failed');
-          addToast(d.action === 'skip' ? `No invite yet: ${d.reason}` : `Test invite sent to ${d.sentTo}. Saved notes are included.`, d.action === 'skip' ? 'info' : 'success');
+          addToast(d.action === 'skip' ? `No invite yet: ${d.reason}` : `Test invite for ${r.name} sent to ${d.sentTo}, with the saved wording`, d.action === 'skip' ? 'info' : 'success');
         } catch (e) { addToast(e.message, 'error'); }
         setBusy(null);
       };
@@ -5894,70 +5854,59 @@
         requestAnimationFrame(() => { if (el) { el.focus(); el.setSelectionRange(startPos + token.length, startPos + token.length); } });
       };
 
-      if (loadError) return html`
-        <div class="card" style="padding: 2.5rem; text-align: center;">
-          <p style="color: var(--color-danger); margin-bottom: 1rem;">Couldn't load reveal invites: ${loadError}</p>
-          <button class="btn btn-primary" onClick=${() => load()}>Retry</button>
-        </div>`;
-      if (!data || !template) return html`<div class="card" style="padding: 3rem; text-align: center; color: var(--color-text-secondary);">Loading reveal invites…</div>`;
+      if (loadError) return html`<${LoadErrorCard} error=${`Couldn't load reveal invites: ${loadError}`} onRetry=${() => load()} />`;
+      if (!data || !template) return html`<div style="text-align:center;padding:3rem"><span class="spinner" /></div>`;
 
       const { config, defaults, limits, upcoming = [], setup } = data;
       const organizer = data.organizerName ? `${data.organizerName} (${config.organizer})` : config.organizer;
       const alertTo = [...new Set([...(config.alertEmails || ['peter@soardcharity.com']), config.organizer])];
       const dirty = JSON.stringify(template) !== JSON.stringify(config.template);
       const sweep = config.lastSweep;
+      const problems = upcoming.filter(r => r.invite?.error);
 
-      // Wording preview: a real upcoming reveal (or a stand-in), with an example time for "confirmed"
+      // Wording preview: a real upcoming reveal, with an example time for "confirmed" when it has none
       const sampleReveal = upcoming.find(r => r.jobId === previewJob) || upcoming.find(r => r.preview) || null;
-      const sample = sampleReveal
-        ? { ...sampleReveal, sampleTime: '16:00' }
-        : { name: 'Max', date: new Date(Date.now() + 10 * 864e5).toISOString().slice(0, 10), time: null, sampleTime: '16:00', kidUrl: '/kids/max/', details: '' };
+      const sample = sampleReveal || { name: 'Max', date: new Date(Date.now() + 10 * 864e5).toISOString().slice(0, 10), time: null, kidUrl: '/kids/max/', details: '' };
       const sampleCard = (kind) => {
-        const time = kind === 'confirmed' ? (sample.time || sample.sampleTime) : sample.time;
+        const time = kind === 'confirmed' ? (sample.time || '16:00') : sample.time;
         const start = time ? { dateTime: `${sample.date}T${time}:00` } : { date: sample.date };
         const end = time ? { dateTime: `${sample.date}T${String(Number(time.slice(0, 2)) + 1).padStart(2, '0')}${time.slice(2)}:00` } : { date: sample.date };
         return html`<${InviteCard}
           title=${fillInvite(template[kind + 'Title'], { name: sample.name, date: sample.date, time })}
           status=${kind} start=${start} end=${end}
           location=${sample.preview?.location || null}
-          description=${inviteDescription(template, kind, sample, sample.details)}
+          description=${inviteDescription(template, kind, sample, time)}
           organizer=${organizer} />`;
       };
 
-      const stateLine = (r) => {
+      const rowState = (r) => {
         const inv = r.invite;
-        if (inv?.error) return html`<div class="ri-state ri-state--error" role="alert">
-          <span>Not sent: ${inv.error}</span>
-          <button class="btn btn-ghost" disabled=${busy === r.jobId + ':sync'} onClick=${() => syncNow(r)}>${busy === r.jobId + ':sync' ? html`<span class="spinner" /> Retrying...` : 'Retry'}</button>
-        </div>`;
-        let text;
-        if (inv?.state === 'cancelled') text = `Invite cancelled ${inviteAgo(inv.updatedAt)}`;
-        else if (inv) text = `Invite ${/^created/.test(inv.lastAction || '') ? 'sent' : 'updated'} ${inviteAgo(inv.updatedAt)} to ${inv.guests} ${inv.guests === 1 ? 'person' : 'people'}`;
-        else if (!r.preview) text = `No invite while the job is ${r.status || 'in this status'}`;
-        else if (!r.confirmed && !r.scheduleBuilt) text = 'Goes out when Build Schedule is marked complete in JobTread';
-        else text = config.enabled ? 'Goes out on the next change in JobTread' : 'Goes out once invites are turned on';
-        return html`<div class="ri-state"><span>${text}</span>
-          ${inv && inv.state !== 'cancelled' ? html`<button class="btn btn-ghost" style="padding: 0.2rem 0.6rem; font-size: 0.8rem;" disabled=${busy === r.jobId + ':sync'} onClick=${() => syncNow(r)}>${busy === r.jobId + ':sync' ? 'Checking...' : 'Check now'}</button>` : null}
-        </div>`;
+        if (inv?.error) return html`<span class="ri-row__state ri-row__state--error" role="alert">
+          Not sent: ${inv.error}
+          <button class="btn btn-ghost btn-sm" disabled=${busy === r.jobId + ':sync'} onClick=${() => syncNow(r)}>${busy === r.jobId + ':sync' ? html`<span class="spinner" /> Retrying...` : 'Retry'}</button>
+        </span>`;
+        if (inv?.state === 'cancelled') return html`<span class="ri-row__state"><span class="ri-chip ri-chip--cancelled">Cancelled</span>${inviteAgo(inv.updatedAt)}</span>`;
+        if (inv) return html`<span class="ri-row__state">
+          <span class=${'ri-chip ' + (inv.state === 'confirmed' ? 'ri-chip--confirmed' : 'ri-chip--tentative')}>${inv.state === 'confirmed' ? 'Confirmed' : 'Tentative'}</span>
+          Sent to ${inv.guests} ${inv.guests === 1 ? 'person' : 'people'}, ${/^created/.test(inv.lastAction || '') ? 'sent' : 'updated'} ${inviteAgo(inv.updatedAt)}
+        </span>`;
+        const why = !r.preview ? `No invite while the job is ${r.status || 'in this status'}`
+          : !r.confirmed && !r.scheduleBuilt ? 'Waits for Build Schedule to be marked complete'
+          : config.enabled ? 'Goes out on the next change in JobTread' : 'Goes out once invites are turned on';
+        return html`<span class="ri-row__state"><span class="ri-chip ri-chip--waiting">Not sent</span>${why}</span>`;
       };
 
       return html`
         <div class="ri">
           <style>${RI_STYLES}</style>
-          <div class="page-header" style="margin-bottom: 0;">
-            <div>
-              <h2>Reveal Invites</h2>
-              <p class="page-sub">Calendar invites to staff and the family, from ${data.organizerName || 'Clareece'}'s Google Calendar. Dates, times and notes come from JobTread.</p>
-            </div>
-          </div>
 
           <div class="card ri-status">
             <div class="ri-status__main">
               <span class=${'ri-dot' + (config.enabled ? ' ri-dot--on' : '')} aria-hidden="true"></span>
               <div>
-                <h3>${config.enabled ? 'Invites are on' : 'Invites are paused'}</h3>
-                <p class="ri-meta">From ${organizer}. Problems email ${alertTo.join(' and ')}.</p>
-                ${sweep?.at && !sweep.running ? html`<p class="ri-meta">Last safety check ${inviteAgo(sweep.at)}: ${sweep.checked} job${sweep.checked === 1 ? '' : 's'} checked, ${sweep.changed ? `${sweep.changed} brought up to date` : 'all up to date'}${sweep.errors ? `, ${sweep.errors} with problems` : ''}.</p>` : null}
+                <h3>${config.enabled ? 'Calendar invites are on' : 'Calendar invites are paused'}</h3>
+                <p class="ri-meta">From ${organizer} to staff and the family. Dates, times and notes come from JobTread.</p>
+                <p class="ri-meta">${problems.length ? html`<span class="ri-warn">${problems.length} invite${problems.length === 1 ? '' : 's'} not sent, see below. </span>` : null}Problems email ${alertTo.join(' and ')}.${sweep?.at && !sweep.running ? ` Last safety check ${inviteAgo(sweep.at)}: ${sweep.checked} jobs, ${sweep.changed ? `${sweep.changed} brought up to date` : 'all up to date'}${sweep.errors ? `, ${sweep.errors} with problems` : ''}.` : ''}</p>
                 ${!setup.google ? html`<p class="ri-meta ri-warn">The Google Calendar key is missing in Cloudflare.</p>` : null}
                 ${!setup.jobtread ? html`<p class="ri-meta ri-warn">The JobTread grant key is missing in Cloudflare.</p>` : null}
               </div>
@@ -5968,61 +5917,25 @@
           </div>
 
           <div class="card">
-            <div class="ri-section-head">
+            <div class="ri-head">
               <h3>Upcoming reveals</h3>
-              <span class="ri-meta" style="margin: 0;">${upcoming.length} on open jobs</span>
+              <span class="ri-meta" style="margin: 0;">To change a date, time or the notes, edit the job in JobTread.</span>
             </div>
-            <p class="ri-meta" style="margin: 0 0 1rem;">Each reveal shows the invite exactly as guests see it. Notes go under the message: parking, arrival time, gate or door codes. Saving writes them to JobTread and updates the invite.</p>
-            ${data.upcomingError ? html`<p class="ri-warn">Couldn't read JobTread: ${data.upcomingError}</p>` : null}
-            ${!upcoming.length && !data.upcomingError ? html`<div class="ri-empty">No upcoming reveals on open jobs. They appear here once a job's Reveal task has a date.</div>` : null}
-            ${upcoming.map(r => {
-              const changed = (notes[r.jobId] || '') !== (r.details || '');
-              const kind = r.preview?.status || (r.confirmed ? 'confirmed' : 'tentative');
-              return html`
-                <div class="ri-reveal" key=${r.jobId}>
-                  <div class="ri-reveal__head">
-                    <div class="ri-reveal__name">
-                      <strong>${r.name}</strong>
-                      <span class="ri-reveal__date">${inviteDay(r.date, 'short')}${r.time ? ` at ${inviteClock(r.time)}` : ', no time yet'}</span>
-                      <span class=${'ri-chip ' + (r.confirmed ? 'ri-chip--confirmed' : r.scheduleBuilt ? 'ri-chip--tentative' : 'ri-chip--waiting')}>
-                        ${r.confirmed ? 'Confirmed' : r.scheduleBuilt ? 'Tentative' : 'Not scheduled yet'}
-                      </span>
-                    </div>
-                    <div class="ri-links">
-                      <a href=${r.jobUrl} target="_blank" rel="noopener">JobTread ↗</a>
-                      ${r.kidUrl ? html`<a href=${INVITE_SITE + r.kidUrl} target="_blank" rel="noopener">Kid page ↗</a>` : null}
-                    </div>
-                  </div>
-                  ${stateLine(r)}
-                  <div class="ri-reveal__grid">
-                    <div>
-                      <label class="form-label" for=${'notes-' + r.jobId}>Notes for ${r.name}'s invite</label>
-                      <textarea id=${'notes-' + r.jobId} class="form-textarea" rows="3" maxlength="2000"
-                        placeholder="Parking, arrival time, gate or door codes"
-                        value=${notes[r.jobId] || ''} onInput=${e => setNotes({ ...notes, [r.jobId]: e.target.value })}></textarea>
-                      <div class="ri-actions">
-                        <button class="btn btn-primary" disabled=${!changed || busy === r.jobId + ':notes'} onClick=${() => saveNotes(r)}>
-                          ${busy === r.jobId + ':notes' ? html`<span class="spinner" /> Saving...` : changed ? 'Save notes' : 'Saved'}
-                        </button>
-                        ${changed ? html`<button class="btn btn-ghost" onClick=${() => setNotes({ ...notes, [r.jobId]: r.details || '' })}>Undo</button>` : null}
-                        <button class="btn btn-ghost" disabled=${!r.preview || busy === r.jobId + ':test'} onClick=${() => sendTest(r)}>
-                          ${busy === r.jobId + ':test' ? html`<span class="spinner" /> Sending...` : 'Send me a test'}
-                        </button>
-                      </div>
-                    </div>
-                    ${r.preview ? html`<${InviteCard}
-                      title=${fillInvite(template[kind + 'Title'], { name: r.name, date: r.date, time: r.time })}
-                      status=${kind} start=${r.preview.start} end=${r.preview.end} location=${r.preview.location}
-                      description=${inviteDescription(template, kind, r, notes[r.jobId])}
-                      organizer=${organizer} guests=${r.preview.guests} />`
-                    : html`<div class="ri-empty">No invite for this job right now${r.status ? ` (status: ${r.status})` : ''}.</div>`}
-                  </div>
-                </div>`;
-            })}
+            ${data.upcomingError ? html`<p class="ri-meta ri-warn">Couldn't read JobTread: ${data.upcomingError}</p>` : null}
+            ${!upcoming.length && !data.upcomingError ? html`<p class="ri-meta">No upcoming reveals on open jobs yet.</p>` : html`
+              <ul class="ri-list">
+                ${upcoming.map(r => html`
+                  <li class="ri-row" key=${r.jobId}>
+                    <strong>${r.name}</strong>
+                    <span class="ri-row__date">${inviteDay(r.date, 'short')}${r.time ? `, ${inviteClock(r.time)}` : ', no time yet'}</span>
+                    ${rowState(r)}
+                    <a href=${r.jobUrl} target="_blank" rel="noopener">JobTread ↗</a>
+                  </li>`)}
+              </ul>`}
           </div>
 
           <div class="card">
-            <div class="ri-section-head">
+            <div class="ri-head">
               <h3>Invite wording</h3>
               ${upcoming.length > 1 ? html`
                 <label class="ri-check">Preview with
@@ -6031,7 +5944,7 @@
                   </select>
                 </label>` : null}
             </div>
-            <p class="ri-meta" style="margin: 0 0 1.1rem;">Used for every reveal. Click a placeholder to insert it where your cursor is.</p>
+            <p class="ri-meta">Used for every reveal. Click a placeholder to insert it where your cursor is.</p>
             <div class="ri-wording">
               ${INVITE_KINDS.map(({ kind, label, when }) => html`
                 <div class="ri-kind" key=${kind}>
@@ -6054,7 +5967,7 @@
                   <div class="ri-tokens" role="group" aria-label=${'Insert into the ' + label.toLowerCase()}>
                     ${INVITE_TOKENS.map(t => html`<button type="button" class="ri-token" key=${t.token} onClick=${() => insertToken(kind, t.token)}>${t.token}<span>${t.hint}</span></button>`)}
                   </div>
-                  <span class="ri-label">Preview${sampleReveal ? `, ${sample.name}` : ''}${kind === 'confirmed' && !sample.time ? ' (example time)' : ''}</span>
+                  <span class="ri-label">Preview, ${sample.name}${kind === 'confirmed' && !sample.time ? ' (example time)' : ''}</span>
                   ${sampleCard(kind)}
                 </div>
               `)}
@@ -6064,6 +5977,9 @@
                 ${savingTemplate ? html`<span class="spinner" /> Saving...` : dirty ? 'Save wording' : 'Saved'}
               </button>
               ${dirty ? html`<button class="btn btn-ghost" onClick=${() => setTemplate({ ...config.template })}>Undo changes</button>` : null}
+              ${sampleReveal ? html`<button class="btn btn-ghost" disabled=${dirty || busy === 'test'} title=${dirty ? 'Save the wording first' : ''} onClick=${() => sendTest(sampleReveal)}>
+                ${busy === 'test' ? html`<span class="spinner" /> Sending...` : `Send me a test for ${sampleReveal.name}`}
+              </button>` : null}
               <label class="ri-check">
                 <input type="checkbox" checked=${updateExisting} disabled=${!config.enabled || !dirty} onChange=${e => setUpdateExisting(e.target.checked)} />
                 Also update invites already sent (each guest gets an update email)
@@ -6071,11 +5987,11 @@
               ${JSON.stringify(template) !== JSON.stringify(defaults) ? html`
                 <button class="btn btn-ghost" onClick=${() => setTemplate({ ...defaults })}>Use the original wording</button>` : null}
             </div>
-            <p class="ri-meta" style="margin: 0.5rem 0 0;">Otherwise new wording goes on new invites, and on existing ones the next time their reveal changes.</p>
+            <p class="ri-meta">Otherwise new wording goes on new invites, and on existing ones the next time their reveal changes.</p>
           </div>
 
           ${confirmSending !== null ? html`<${ConfirmModal}
-            title=${confirmSending ? 'Turn on reveal invites?' : 'Pause reveal invites?'}
+            title=${confirmSending ? 'Turn on calendar invites?' : 'Pause calendar invites?'}
             message=${confirmSending
               ? 'Staff and families will get calendar invites from Clareece as reveals are scheduled, moved, confirmed, or cancelled in JobTread.'
               : 'Nothing new goes out while paused. Invites already sent stay on calendars as they are.'}
@@ -17349,7 +17265,7 @@
 
 
     function App() {
-      const [view, setView] = useState(() => (location.hash.startsWith('#broadcast') ? 'broadcast' : location.hash.startsWith('#reveal-invites') ? 'reveal-invites' : 'dashboard'));
+      const [view, setView] = useState(() => ((location.hash.startsWith('#broadcast') || location.hash.startsWith('#reveal-invites')) ? 'broadcast' : 'dashboard'));
       const [editSlug, setEditSlug] = useState(null);
       const [toasts, setToasts] = useState([]);
       const [kids, setKids] = useState([]);
@@ -17631,8 +17547,7 @@
         ]},
         { label: 'Comms', items: [
           { id: 'email', icon: icons.mail, label: 'Email' },
-          { id: 'broadcast', icon: icons.goLive, label: 'Broadcast' },
-          { id: 'reveal-invites', icon: icons.events, label: 'Invites' },
+          { id: 'broadcast', icon: icons.goLive, label: 'Reveals' },
         ]},
         { label: 'Site', items: [
           { id: 'site-hub', icon: icons.settings, label: 'Site Config' },
@@ -17817,9 +17732,6 @@
           case 'broadcast':
           case 'go-live':
             return html`<${Broadcast} addToast=${addToast} kids=${kids} />`;
-
-          case 'reveal-invites':
-            return html`<${RevealInvitesPage} addToast=${addToast} />`;
 
           case 'deploys':
             return html`<${Deploys} addToast=${addToast} onDeploy=${promptDeploy} />`;

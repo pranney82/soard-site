@@ -46,7 +46,7 @@ const EMAIL_ALIASES = { 'peter@ranneyblair.com': 'peter@soardcharity.com' };
 const STAFF_DOMAIN = '@soardcharity.com';
 const INACTIVE_STATUSES = new Set(['Denied', 'Awaiting Funding']);
 const SITE = 'https://sunshineonaranneyday.com';
-const ADMIN_URL = `${SITE}/admin/#reveal-invites`;
+const ADMIN_URL = `${SITE}/admin/#broadcast/invites`;
 const CONFIG_KEY = 'reveal-invites';
 const TZ = 'America/New_York';
 // Problems email these people plus the organizer (and ALERT_EMAILS, Slack if set)
@@ -68,7 +68,7 @@ export async function ensureSchema(DB) {
 }
 
 /**
- * Invite wording, editable in admin (Comms → Invites). Placeholders:
+ * Invite wording, editable in admin (Reveals → Invites). Placeholders:
  * {name} kid's first name, {date} "Tuesday, October 27", {time} "4:00 PM"
  * (or "time to come"), {when} the date with the time when there is one.
  * The reveal's own notes (JobTread "Reveal Invite Details") and a link to the
@@ -274,13 +274,13 @@ async function alertProblem(env, config, { jobId, name, error }) {
   const detail = `The calendar invite for ${name || `job ${jobId}`} couldn't be updated. Google or JobTread said: ${error}`;
   const fix = /unauthorized_client|GOOGLE_CALENDAR_KEY|sign-in/i.test(error)
     ? 'The Google key or its domain-wide delegation needs attention (Cloudflare GOOGLE_CALENDAR_KEY, Workspace Admin → Domain-wide delegation).'
-    : 'Open Reveal Invites in the admin and press Retry. If it keeps failing, check the job in JobTread.';
+    : 'Open Reveals → Invites in the admin and press Retry. If it keeps failing, check the job in JobTread.';
   await Promise.allSettled([
     slackAlert(env, `🟡 ${title}: ${detail} Fix: ${fix} ${ADMIN_URL}`),
     emailConfigured(env) && to.length ? sendEmails(env, {
       to,
       subject: `[SOARD] ${title}`,
-      html: `<p><strong>${escapeHtml(title)}</strong></p><p>${escapeHtml(detail)}</p><p><strong>Fix:</strong> ${escapeHtml(fix)}</p><p><a href="${ADMIN_URL}">Open Reveal Invites in the admin</a></p>`,
+      html: `<p><strong>${escapeHtml(title)}</strong></p><p>${escapeHtml(detail)}</p><p><strong>Fix:</strong> ${escapeHtml(fix)}</p><p><a href="${ADMIN_URL}">Open Reveals → Invites in the admin</a></p>`,
       text: `${title}\n\n${detail}\n\nFix: ${fix}\n\n${ADMIN_URL}`,
       tags: [{ name: 'category', value: 'reveal-invite-alert' }],
     }) : null,
@@ -534,20 +534,4 @@ export async function listUpcoming(env, { fetchImpl = fetch, now = Date.now() } 
     organizerName,
     reveals: out.sort((a, b) => (a.date + (a.time || '')).localeCompare(b.date + (b.time || ''))),
   };
-}
-
-/**
- * Save a reveal's notes to its JobTread job ("Reveal Invite Details"), so
- * JobTread stays the source of truth, then bring the invite up to date now
- * rather than waiting for the workflow (which then finds nothing to change).
- */
-export async function setInviteDetails(env, jobId, details, { fetchImpl = fetch } = {}) {
-  const text = String(details ?? '').trim();
-  if (text.length > 2000) throw new Error('Notes are limited to 2,000 characters');
-  const job = await fetchJob(env.JOBTREAD_GRANT_KEY, jobId, fetchImpl);
-  if (!job || job.organization?.id !== SOARD_ORG_ID) throw new Error('Not a SOARD job');
-  await pave(env.JOBTREAD_GRANT_KEY, {
-    updateJob: { $: { id: jobId, customFieldValues: { [FIELD_INVITE_DETAILS]: text || null } } },
-  }, fetchImpl);
-  return reconcileJob(env, jobId, { fetchImpl });
 }
