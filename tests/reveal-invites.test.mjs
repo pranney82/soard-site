@@ -6,7 +6,7 @@ import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { generateKeyPairSync, createVerify } from 'node:crypto';
 import { createD1 } from './lib/d1-shim.mjs';
-import { planInvite, reconcileJob, sendTestInvite, writeConfig, REVEAL_TASK_TYPE, FIELD_STATUS, FIELD_INVITE_DETAILS, FIELD_CONTACT_EMAIL } from '../functions/api/_reveal-invites.js';
+import { planInvite, reconcileJob, sendTestInvite, writeConfig, renderTemplate, listUpcoming, setInviteDetails, DEFAULT_TEMPLATE, REVEAL_TASK_TYPE, FIELD_STATUS, FIELD_INVITE_DETAILS, FIELD_CONTACT_EMAIL } from '../functions/api/_reveal-invites.js';
 import { serviceAccountJwt, eventIdFor, clearTokenCache, parseServiceAccount } from '../functions/api/_google-calendar.js';
 import { FIELD_REVEAL_CONFIRMED } from '../functions/api/_reveals.js';
 
@@ -256,4 +256,61 @@ test('test invite goes only to the tester, as a separate event', async () => {
   const c = await sendTestInvite(env, jt.id, 'peter@soardcharity.com', { fetchImpl: fakeFetch, now: NOW, cancel: true });
   assert.equal(c.action, 'cancelled');
   assert.equal(events.size, 0);
+});
+
+test('the default wording is exactly what invites already went out with', () => {
+  const p = planInvite(job(), STAFF, { kids: KIDS, now: NOW });
+  assert.equal(p.event.summary, "Tentative: Max's Reveal Day");
+  assert.equal(p.event.description, "This is a tentative date for Max's reveal while the build wraps up.\nThis invite updates automatically if the date moves, and the time is added once the reveal is confirmed.\n\nhttps://sunshineonaranneyday.com/kids/max/");
+});
+
+test('wording from admin fills in name, date and time', () => {
+  assert.equal(renderTemplate('{name} on {date} at {time}, {when}. {other}', { name: 'Max', date: '2026-10-27', time: '16:00' }),
+    'Max on Tuesday, October 27 at 4:00 PM, Tuesday, October 27 at 4:00 PM. {other}');
+  assert.equal(renderTemplate('{when}', { name: 'Max', date: '2026-10-27', time: null }), 'Tuesday, October 27 (time to come)');
+  const template = { ...DEFAULT_TEMPLATE, confirmedTitle: 'Reveal Day: {name}!', confirmedMessage: 'See you {when}.' };
+  const p = planInvite(job({ confirmed: true, time: '09:30', details: 'Gate code 1234' }), STAFF, { kids: KIDS, now: NOW, template });
+  assert.equal(p.event.summary, 'Reveal Day: Max!');
+  assert.equal(p.event.description, 'See you Tuesday, October 27 at 9:30 AM.\n\nGate code 1234\n\nhttps://sunshineonaranneyday.com/kids/max/');
+});
+
+test('saving notes from admin writes JobTread, then updates the invite', async () => {
+  await writeConfig(env.DB, { enabled: true });
+  await reconcileJob(env, jt.id, { fetchImpl: fakeFetch, now: NOW });
+  const writes = [];
+  const recording = async (url, init) => {
+    const q = init?.body && new URL(url).hostname === 'api.jobtread.com' ? JSON.parse(init.body).query : null;
+    if (q?.updateJob) {
+      writes.push(q.updateJob.$);
+      jt = job({ details: q.updateJob.$.customFieldValues[FIELD_INVITE_DETAILS] });
+      return Response.json({ updateJob: {} });
+    }
+    return fakeFetch(url, init);
+  };
+  const r = await setInviteDetails(env, jt.id, '  Park on Example Way.  ', { fetchImpl: recording });
+  assert.deepEqual(writes, [{ id: jt.id, customFieldValues: { [FIELD_INVITE_DETAILS]: 'Park on Example Way.' } }]);
+  assert.equal(r.action, 'updated');
+  assert.match(events.get(eventIdFor('soardreveal', jt.id)).description, /Park on Example Way\./);
+  await assert.rejects(() => setInviteDetails(env, jt.id, 'x'.repeat(2001), { fetchImpl: recording }), /2,000/);
+});
+
+test('admin list: upcoming reveals on open jobs, with their invite status', async () => {
+  await writeConfig(env.DB, { enabled: true });
+  await reconcileJob(env, jt.id, { fetchImpl: fakeFetch, now: NOW });
+  const listFetch = async (url, init) => {
+    if (new URL(url).hostname === 'api.jobtread.com' && JSON.parse(init.body).query.organization?.jobs) {
+      return Response.json({ organization: { jobs: { nodes: [
+        jt,
+        { ...job({ date: '2026-10-07' }), id: 'pastJob0001', name: 'Peter Raish (2026)' },
+        { ...job(), id: '22P3HTX9cXn4', name: 'Sunshine Office 2025' },
+      ] } } });
+    }
+    return fakeFetch(url, init);
+  };
+  const list = await listUpcoming(env, { fetchImpl: listFetch, now: NOW });
+  assert.deepEqual(list.map(r => r.jobId), [jt.id], 'past reveals and the sandbox are left out');
+  assert.equal(list[0].name, 'Max');
+  assert.equal(list[0].scheduleBuilt, true);
+  assert.equal(list[0].invite.state, 'tentative');
+  assert.equal(list[0].invite.guests, 2);
 });

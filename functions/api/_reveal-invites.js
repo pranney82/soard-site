@@ -60,11 +60,38 @@ export async function ensureSchema(DB) {
   _schemaReady.add(DB);
 }
 
+/**
+ * Invite wording, editable in admin (Comms → Invites). Placeholders:
+ * {name} kid's first name, {date} "Tuesday, October 27", {time} "4:00 PM"
+ * (or "time to come"), {when} the date with the time when there is one.
+ * The reveal's own notes (JobTread "Reveal Invite Details") and a link to the
+ * kid's page are added under the message.
+ */
+export const DEFAULT_TEMPLATE = {
+  tentativeTitle: "Tentative: {name}'s Reveal Day",
+  tentativeMessage: "This is a tentative date for {name}'s reveal while the build wraps up.\nThis invite updates automatically if the date moves, and the time is added once the reveal is confirmed.",
+  confirmedTitle: "{name}'s Reveal Day",
+  confirmedMessage: "{name}'s reveal is confirmed for {when}.",
+};
+export const TEMPLATE_LIMITS = { tentativeTitle: 150, confirmedTitle: 150, tentativeMessage: 2000, confirmedMessage: 2000 };
+
 export async function readConfig(DB) {
   const row = await DB.prepare('SELECT data FROM site_config WHERE key = ?').bind(CONFIG_KEY).first();
   let data = {};
   try { data = row ? JSON.parse(row.data) : {}; } catch { /* default */ }
-  return { enabled: false, organizer: DEFAULT_ORGANIZER, ...data };
+  return { enabled: false, organizer: DEFAULT_ORGANIZER, ...data, template: { ...DEFAULT_TEMPLATE, ...(data.template || {}) } };
+}
+
+function clock(time) {
+  const [h, m] = time.split(':').map(Number);
+  return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`;
+}
+
+/** Fill {name} {date} {time} {when}; unknown placeholders are left as typed */
+export function renderTemplate(text, { name, date, time }) {
+  const day = longDate(date);
+  const values = { name, date: day, time: time ? clock(time) : 'time to come', when: time ? `${day} at ${clock(time)}` : `${day} (time to come)` };
+  return String(text || '').replace(/\{(name|date|time|when)\}/g, (_, k) => values[k]);
 }
 
 export async function writeConfig(DB, patch) {
@@ -144,7 +171,7 @@ function displayName(job, kids) {
  * What the calendar should look like for this job:
  * { action: 'upsert', event, guests } | { action: 'cancel', reason } | { action: 'skip', reason }
  */
-export function planInvite(job, staff, { kids = [], organizer = DEFAULT_ORGANIZER, now = Date.now(), onlyGuests = null } = {}) {
+export function planInvite(job, staff, { kids = [], organizer = DEFAULT_ORGANIZER, now = Date.now(), onlyGuests = null, template = DEFAULT_TEMPLATE } = {}) {
   if (!job) return { action: 'skip', reason: 'job not found' };
   if (job.organization?.id && job.organization.id !== SOARD_ORG_ID) return { action: 'skip', reason: 'not a SOARD job' };
 
@@ -167,12 +194,9 @@ export function planInvite(job, staff, { kids = [], organizer = DEFAULT_ORGANIZE
   const start = hhmm(reveal.startTime);
   const end = start ? (hhmm(reveal.endTime) && hhmm(reveal.endTime) > start && (reveal.endDate || date) === date ? hhmm(reveal.endTime) : addHour(start)) : null;
 
-  const lines = confirmed
-    ? [`${who.name}'s reveal is confirmed for ${longDate(date)}${start ? '' : ' (time to come)'}.`]
-    : [
-      `This is a tentative date for ${who.name}'s reveal while the build wraps up.`,
-      'This invite updates automatically if the date moves, and the time is added once the reveal is confirmed.',
-    ];
+  const t = { ...DEFAULT_TEMPLATE, ...template };
+  const fill = (text) => renderTemplate(text, { name: who.name, date, time: start });
+  const lines = [fill(confirmed ? t.confirmedMessage : t.tentativeMessage).trim()];
   const details = String(values[FIELD_INVITE_DETAILS] || '').trim();
   if (details) lines.push('', details);
   if (who.slug) lines.push('', `${SITE}/kids/${who.slug}/`);
@@ -194,7 +218,7 @@ export function planInvite(job, staff, { kids = [], organizer = DEFAULT_ORGANIZE
 
   const event = {
     id: eventIdFor('soardreveal', job.id),
-    summary: confirmed ? `${who.name}'s Reveal Day` : `Tentative: ${who.name}'s Reveal Day`,
+    summary: fill(confirmed ? t.confirmedTitle : t.tentativeTitle).trim() || `${who.name}'s Reveal Day`,
     status: confirmed ? 'confirmed' : 'tentative',
     location: job.location?.address || undefined,
     description: lines.join('\n'),
@@ -241,7 +265,7 @@ export async function reconcileJob(env, jobId, { fetchImpl = fetch, now = Date.n
     loadKids(DB).catch(() => []),
   ]);
   const sandbox = jobId === SANDBOX_JOB_ID;
-  const plan = planInvite(job, staff, { kids, organizer: config.organizer, now, onlyGuests: sandbox ? (config.testGuests || DEFAULT_TEST_GUESTS) : null });
+  const plan = planInvite(job, staff, { kids, organizer: config.organizer, now, onlyGuests: sandbox ? (config.testGuests || DEFAULT_TEST_GUESTS) : null, template: config.template });
   if (sandbox && plan.event) plan.event.summary = `TEST · ${plan.event.summary}`;
   const row = await readRow(DB, jobId);
   const live = !dryRun && (config.enabled || force || sandbox);
@@ -335,7 +359,7 @@ export async function sendTestInvite(env, jobId, testEmail, { date, time, cancel
   }
   // Pretend the schedule is built so the test always produces an invite
   if (job) job.tasks.nodes.push({ name: 'Build Schedule', progress: 1 });
-  const plan = planInvite(job, staff, { kids, organizer: config.organizer, now });
+  const plan = planInvite(job, staff, { kids, organizer: config.organizer, now, template: config.template });
   if (plan.action !== 'upsert') return { action: 'skip', reason: plan.reason };
   const event = {
     ...plan.event,
@@ -346,4 +370,76 @@ export async function sendTestInvite(env, jobId, testEmail, { date, time, cancel
   };
   const { created } = await upsertEvent(token, config.organizer, event, { fetchImpl });
   return { action: created ? 'created' : 'updated', eventId, wouldInvite: plan.guests, event };
+}
+
+/**
+ * Upcoming reveals for the admin Invites page: every open job with a Reveal
+ * date from today on, its notes, and what its invite has done so far.
+ */
+export async function listUpcoming(env, { fetchImpl = fetch, now = Date.now() } = {}) {
+  const { DB } = env;
+  await ensureSchema(DB);
+  const cf = { $: { size: 50 }, nodes: { value: {}, customField: { id: {} } } };
+  const [body, kids, rowsRes] = await Promise.all([
+    pave(env.JOBTREAD_GRANT_KEY, {
+      organization: {
+        $: { id: SOARD_ORG_ID },
+        jobs: {
+          $: { size: 100, where: ['closedOn', '=', null] },
+          nodes: {
+            id: {}, name: {}, customFieldValues: cf,
+            tasks: {
+              $: { size: 20, where: { or: [[['taskType', 'id'], '=', REVEAL_TASK_TYPE], ['name', '=', 'Build Schedule']] } },
+              nodes: { name: {}, startDate: {}, startTime: {}, progress: {}, taskType: { id: {} } },
+            },
+          },
+        },
+      },
+    }, fetchImpl),
+    loadKids(DB).catch(() => []),
+    DB.prepare('SELECT * FROM reveal_invites').all(),
+  ]);
+  const rows = Object.fromEntries((rowsRes.results || []).map(r => [r.job_id, r]));
+  const today = todayEastern(now);
+  const out = [];
+  for (const job of body?.organization?.jobs?.nodes || []) {
+    if (job.id === SANDBOX_JOB_ID) continue;
+    const tasks = job.tasks?.nodes || [];
+    const reveal = tasks.filter(t => t.taskType?.id === REVEAL_TASK_TYPE).find(t => (t.progress ?? 0) < 1);
+    if (!reveal?.startDate || reveal.startDate < today) continue;
+    const values = fieldValues(job.customFieldValues?.nodes);
+    const row = rows[job.id];
+    out.push({
+      jobId: job.id,
+      jobName: job.name,
+      name: displayName(job, kids).name,
+      date: reveal.startDate,
+      time: hhmm(reveal.startTime),
+      confirmed: String(values[FIELD_REVEAL_CONFIRMED] || '').trim().toLowerCase().startsWith('yes'),
+      scheduleBuilt: tasks.some(t => t.name === 'Build Schedule' && t.progress === 1),
+      status: values[FIELD_STATUS] || null,
+      details: String(values[FIELD_INVITE_DETAILS] || ''),
+      invite: row ? {
+        state: row.state, lastAction: row.last_action, error: row.error, updatedAt: row.updated_at,
+        guests: row.guests ? JSON.parse(row.guests).length : 0,
+      } : null,
+    });
+  }
+  return out.sort((a, b) => (a.date + (a.time || '')).localeCompare(b.date + (b.time || '')));
+}
+
+/**
+ * Save a reveal's notes to its JobTread job ("Reveal Invite Details"), so
+ * JobTread stays the source of truth, then bring the invite up to date now
+ * rather than waiting for the workflow (which then finds nothing to change).
+ */
+export async function setInviteDetails(env, jobId, details, { fetchImpl = fetch } = {}) {
+  const text = String(details ?? '').trim();
+  if (text.length > 2000) throw new Error('Notes are limited to 2,000 characters');
+  const job = await fetchJob(env.JOBTREAD_GRANT_KEY, jobId, fetchImpl);
+  if (!job || job.organization?.id !== SOARD_ORG_ID) throw new Error('Not a SOARD job');
+  await pave(env.JOBTREAD_GRANT_KEY, {
+    updateJob: { $: { id: jobId, customFieldValues: { [FIELD_INVITE_DETAILS]: text || null } } },
+  }, fetchImpl);
+  return reconcileJob(env, jobId, { fetchImpl });
 }
