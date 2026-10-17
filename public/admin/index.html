@@ -5711,7 +5711,8 @@
       .ri-list { list-style: none; margin: 0.75rem 0 0; padding: 0; border-top: 1px solid var(--color-border); }
       .ri-row { display: grid; grid-template-columns: minmax(7rem, 1fr) minmax(9rem, 1.2fr) minmax(0, 2.4fr) auto; align-items: center; gap: 0.35rem 1rem; padding: 0.7rem 0; border-bottom: 1px solid var(--color-border); font-size: 0.9rem; }
       .ri-row strong { font-size: 0.98rem; }
-      .ri-row__date { color: var(--color-text-secondary); }
+      .ri-row a.ri-row__date { color: var(--color-text); font-size: 0.9rem; text-decoration: underline; text-decoration-color: var(--color-border-strong); text-underline-offset: 3px; white-space: normal; }
+      .ri-row a.ri-row__date:hover { text-decoration-color: var(--color-text); }
       .ri-row__state { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem 0.6rem; color: var(--color-text-secondary); min-width: 0; }
       .ri-row__state--error { color: var(--color-danger); }
       .ri-row a { color: var(--color-text-secondary); font-size: 0.85rem; text-decoration: underline; text-underline-offset: 3px; white-space: nowrap; }
@@ -5919,7 +5920,7 @@
           <div class="card">
             <div class="ri-head">
               <h3>Upcoming reveals</h3>
-              <span class="ri-meta" style="margin: 0;">To change a date, time or the notes, edit the job in JobTread.</span>
+              <span class="ri-meta" style="margin: 0;">Click a date to change it on the JobTread schedule. Notes are the job's "Reveal Invite Details".</span>
             </div>
             ${data.upcomingError ? html`<p class="ri-meta ri-warn">Couldn't read JobTread: ${data.upcomingError}</p>` : null}
             ${!upcoming.length && !data.upcomingError ? html`<p class="ri-meta">No upcoming reveals on open jobs yet.</p>` : html`
@@ -5927,9 +5928,9 @@
                 ${upcoming.map(r => html`
                   <li class="ri-row" key=${r.jobId}>
                     <strong>${r.name}</strong>
-                    <span class="ri-row__date">${inviteDay(r.date, 'short')}${r.time ? `, ${inviteClock(r.time)}` : ', no time yet'}</span>
+                    <a class="ri-row__date" href=${r.scheduleUrl || r.jobUrl} target="_blank" rel="noopener" title="Open the Reveal task on the JobTread schedule">${inviteDay(r.date, 'short')}${r.time ? `, ${inviteClock(r.time)}` : ', no time yet'}</a>
                     ${rowState(r)}
-                    <a href=${r.jobUrl} target="_blank" rel="noopener">JobTread ↗</a>
+                    <a href=${r.scheduleUrl || r.jobUrl} target="_blank" rel="noopener">Change in JobTread ↗</a>
                   </li>`)}
               </ul>`}
           </div>

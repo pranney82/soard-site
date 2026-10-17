@@ -46,6 +46,8 @@ const EMAIL_ALIASES = { 'peter@ranneyblair.com': 'peter@soardcharity.com' };
 const STAFF_DOMAIN = '@soardcharity.com';
 const INACTIVE_STATUSES = new Set(['Denied', 'Awaiting Funding']);
 const SITE = 'https://sunshineonaranneyday.com';
+/** The job's schedule in JobTread, opened on the Reveal task when we know it */
+export const scheduleUrl = (jobId, taskId) => `https://app.jobtread.com/jobs/${jobId}/schedule${taskId ? `?taskId=${taskId}` : ''}`;
 const ADMIN_URL = `${SITE}/admin/#broadcast/invites`;
 const CONFIG_KEY = 'reveal-invites';
 const TZ = 'America/New_York';
@@ -265,7 +267,7 @@ async function writeRow(DB, row) {
  * organizer, plus Slack when configured. Only called for a new problem, so a
  * stuck job doesn't email on every JobTread change.
  */
-async function alertProblem(env, config, { jobId, name, error }) {
+async function alertProblem(env, config, { jobId, name, error, taskId }) {
   const to = [...new Set([
     ...(config.alertEmails || DEFAULT_ALERT_EMAILS), config.organizer,
     ...String(env.ALERT_EMAILS || '').split(',').map(s => s.trim()),
@@ -280,8 +282,8 @@ async function alertProblem(env, config, { jobId, name, error }) {
     emailConfigured(env) && to.length ? sendEmails(env, {
       to,
       subject: `[SOARD] ${title}`,
-      html: `<p><strong>${escapeHtml(title)}</strong></p><p>${escapeHtml(detail)}</p><p><strong>Fix:</strong> ${escapeHtml(fix)}</p><p><a href="${ADMIN_URL}">Open Reveals → Invites in the admin</a></p>`,
-      text: `${title}\n\n${detail}\n\nFix: ${fix}\n\n${ADMIN_URL}`,
+      html: `<p><strong>${escapeHtml(title)}</strong></p><p>${escapeHtml(detail)}</p><p><strong>Fix:</strong> ${escapeHtml(fix)}</p><p><a href="${ADMIN_URL}">Open Reveals → Invites in the admin</a></p><p><a href="${scheduleUrl(jobId, taskId)}">Open the schedule in JobTread</a></p>`,
+      text: `${title}\n\n${detail}\n\nFix: ${fix}\n\nAdmin: ${ADMIN_URL}\nJobTread schedule: ${scheduleUrl(jobId, taskId)}`,
       tags: [{ name: 'category', value: 'reveal-invite-alert' }],
     }) : null,
   ]);
@@ -304,7 +306,8 @@ export async function reconcileJob(env, jobId, { fetchImpl = fetch, now = Date.n
   ]);
   const failed = async (row, err) => {
     await writeRow(DB, { ...(row || { job_id: jobId }), error: err.message });
-    if (err.message !== row?.error) await alertProblem(env, config, { jobId, name: job ? displayName(job, kids).name : null, error: err.message }).catch(() => {});
+    const revealTask = (job?.tasks?.nodes || []).filter(t => t.taskType?.id === REVEAL_TASK_TYPE).find(t => (t.progress ?? 0) < 1);
+    if (err.message !== row?.error) await alertProblem(env, config, { jobId, name: job ? displayName(job, kids).name : null, error: err.message, taskId: revealTask?.id }).catch(() => {});
     return { jobId, action: 'error', error: err.message };
   };
   const sandbox = jobId === SANDBOX_JOB_ID;
@@ -463,7 +466,7 @@ export async function listUpcoming(env, { fetchImpl = fetch, now = Date.now() } 
             customFieldValues: cf,
             tasks: {
               $: { size: 20, where: { or: [[['taskType', 'id'], '=', REVEAL_TASK_TYPE], ['name', '=', 'Build Schedule']] } },
-              nodes: { name: {}, startDate: {}, startTime: {}, endDate: {}, endTime: {}, progress: {}, taskType: { id: {} } },
+              nodes: { id: {}, name: {}, startDate: {}, startTime: {}, endDate: {}, endTime: {}, progress: {}, taskType: { id: {} } },
             },
           },
         },
@@ -516,6 +519,7 @@ export async function listUpcoming(env, { fetchImpl = fetch, now = Date.now() } 
       name: who.name,
       kidUrl: who.slug ? `/kids/${who.slug}/` : null,
       jobUrl: `https://app.jobtread.com/jobs/${job.id}`,
+      scheduleUrl: scheduleUrl(job.id, reveal.id),
       date: reveal.startDate,
       time: hhmm(reveal.startTime),
       confirmed: String(values[FIELD_REVEAL_CONFIRMED] || '').trim().toLowerCase().startsWith('yes'),
