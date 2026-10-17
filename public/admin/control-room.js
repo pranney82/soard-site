@@ -81,7 +81,7 @@ button.cr-chip { cursor: pointer; font: inherit; font-weight: 600; }
 .cr-verdict p { margin: .15rem 0 0; font-size: .85rem; line-height: 1.45; }
 .cr-loud { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .5rem; margin: .9rem 0 .2rem; }
 .cr-loud div { background: var(--color-bg-secondary); border-radius: 8px; padding: .45rem .6rem; }
-.cr-loud span { display: block; font-size: .72rem; color: var(--color-text-muted); }
+.cr-loud span { display: block; font-size: max(11px, 0.72rem); color: var(--color-text-muted); }
 .cr-loud b { font-size: 1.05rem; font-variant-numeric: tabular-nums; }
 .cr-meters { display: grid; gap: .45rem; margin: .75rem 0 .25rem; }
 .cr-meter { display: grid; grid-template-columns: 2.6rem 1fr 4.4rem; gap: .5rem; align-items: center; font-size: .78rem; font-variant-numeric: tabular-nums; color: var(--color-text-secondary); }
@@ -92,7 +92,7 @@ button.cr-chip { cursor: pointer; font: inherit; font-weight: 600; }
 .cr-track.is-lufs .cr-fill { background: linear-gradient(90deg, #A0AEC0 0%, #A0AEC0 34%, #38A169 52%, #38A169 76%, #D69E2E 84%, #E53E3E 99%); background-size: var(--full, 300px) 100%; }
 .cr-peak { position: absolute; top: 0; bottom: 0; width: 2px; left: 0; background: var(--color-text); opacity: .75; }
 .cr-mark { position: absolute; top: -2px; bottom: -2px; width: 3px; left: 0; background: #2D2E33; border-radius: 2px; transition: left 300ms ease-out; }
-.cr-scale { display: grid; grid-template-columns: 2.6rem 1fr 4.4rem; gap: .5rem; font-size: .7rem; color: var(--color-text-muted); }
+.cr-scale { display: grid; grid-template-columns: 2.6rem 1fr 4.4rem; gap: .5rem; font-size: max(11px, 0.7rem); color: var(--color-text-muted); }
 .cr-scale div { position: relative; height: 1rem; }
 .cr-scale div span { position: absolute; transform: translateX(-50%); font-variant-numeric: tabular-nums; }
 .cr-hist { width: 100%; height: 56px; display: block; margin-top: .75rem; background: var(--color-bg-secondary); border-radius: 6px; }
@@ -117,7 +117,7 @@ button.cr-chip { cursor: pointer; font: inherit; font-weight: 600; }
 .cr-dest .cr-actions { margin-top: auto; padding-top: .35rem; display: flex; gap: .4rem; flex-wrap: wrap; }
 .cr-embed { margin-top: .5rem; border-radius: 8px; overflow: hidden; background: #000; aspect-ratio: 16 / 9; }
 .cr-embed iframe { width: 100%; height: 100%; border: 0; display: block; }
-.cr-pill { font-size: .72rem; font-weight: 700; letter-spacing: .02em; padding: .15rem .5rem; border-radius: 999px; background: var(--tone-bg); color: var(--tone-fg); white-space: nowrap; }
+.cr-pill { font-size: max(11px, 0.72rem); font-weight: 700; letter-spacing: .02em; padding: .15rem .5rem; border-radius: 999px; background: var(--tone-bg); color: var(--tone-fg); white-space: nowrap; }
 .cr-go { border-left: 4px solid var(--dot); }
 .cr-go-head { display: flex; justify-content: space-between; align-items: center; gap: .5rem 1rem; flex-wrap: wrap; }
 .cr-go-head h3 { display: flex; align-items: center; gap: .6rem; }
