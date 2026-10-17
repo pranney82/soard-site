@@ -40,6 +40,9 @@ export const SANDBOX_JOB_ID = '22P3HTX9cXn4';
 export const DEFAULT_TEST_GUESTS = ['peter@soardcharity.com'];
 const STAFF_ROLES = new Set(['Admin', 'Designer']);
 const NOT_STAFF = new Set(['selection@soardcharity.com']); // Qualification Committee login
+// JobTread logins that aren't where that person wants reveal invites
+const EMAIL_ALIASES = { 'peter@ranneyblair.com': 'peter@soardcharity.com' };
+const STAFF_DOMAIN = '@soardcharity.com';
 const INACTIVE_STATUSES = new Set(['Denied', 'Awaiting Funding']);
 const SITE = 'https://sunshineonaranneyday.com';
 const CONFIG_KEY = 'reveal-invites';
@@ -108,7 +111,10 @@ export async function fetchStaff(grantKey, fetchImpl = fetch) {
   }, fetchImpl);
   return (body?.organization?.memberships?.nodes || [])
     .filter(m => m.isInternal && STAFF_ROLES.has(m.role?.name) && m.user?.emailAddress)
-    .map(m => ({ name: m.user.name, email: m.user.emailAddress.trim().toLowerCase() }))
+    .map(m => {
+      const email = m.user.emailAddress.trim().toLowerCase();
+      return { name: m.user.name, email: EMAIL_ALIASES[email] || email };
+    })
     .filter(s => !NOT_STAFF.has(s.email));
 }
 
@@ -260,14 +266,27 @@ export async function reconcileJob(env, jobId, { fetchImpl = fetch, now = Date.n
   if (row?.hash === hash && row?.state !== 'cancelled') return { jobId, action: 'unchanged', eventId: plan.event.id };
   if (!live) return { jobId, action: row ? 'would-update' : 'would-create', event: plan.event };
 
+  // Only the staff on the guest list changed (someone joined, left, or changed
+  // address)? Update quietly: Workspace calendars sync on their own, and the
+  // family isn't emailed about a guest list they can't see.
+  let sendUpdates = 'all';
+  if (row?.hash && row.state !== 'cancelled' && row.guests) {
+    const before = JSON.parse(row.guests);
+    const sameDetails = (await hashOf({ ...plan.event, attendees: before.map(email => ({ email })) })) === row.hash;
+    const added = plan.guests.filter(g => !before.includes(g));
+    const removed = before.filter(g => !plan.guests.includes(g));
+    if (sameDetails && [...added, ...removed].every(g => g.endsWith(STAFF_DOMAIN) || EMAIL_ALIASES[g])) sendUpdates = 'none';
+  }
+
   try {
     const token = await accessToken(env, config.organizer, { fetchImpl, now });
-    const { created } = await upsertEvent(token, config.organizer, plan.event, { fetchImpl });
+    const { created } = await upsertEvent(token, config.organizer, plan.event, { fetchImpl, sendUpdates });
+    const action = created ? 'created' : sendUpdates === 'none' ? 'updated quietly' : 'updated';
     await writeRow(DB, {
       job_id: jobId, event_id: plan.event.id, state: plan.event.status, hash, reveal_date: plan.date,
-      guests: JSON.stringify(plan.guests), last_action: created ? 'created' : 'updated', error: null,
+      guests: JSON.stringify(plan.guests), last_action: sendUpdates === 'none' ? 'updated quietly (staff guest list only)' : action, error: null,
     });
-    return { jobId, action: created ? 'created' : 'updated', eventId: plan.event.id, status: plan.event.status, guests: plan.guests.length };
+    return { jobId, action, eventId: plan.event.id, status: plan.event.status, guests: plan.guests.length };
   } catch (err) {
     await writeRow(DB, { ...(row || { job_id: jobId }), error: err.message });
     return { jobId, action: 'error', error: err.message };

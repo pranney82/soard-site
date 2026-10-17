@@ -101,8 +101,15 @@ test('the key is read however it was pasted, and errors never echo it', () => {
 });
 
 // ── End to end against fake JobTread + Google ──
-let env, calls, events, jt;
+const BASE_MEMBERS = [
+  { isInternal: true, role: { name: 'Admin' }, user: { name: 'Christian Nielsen', emailAddress: 'cnielsen@soardcharity.com' } },
+  { isInternal: true, role: { name: 'Admin' }, user: { name: 'Qualification Committee', emailAddress: 'selection@soardcharity.com' } },
+  { isInternal: false, role: { name: 'Makeover Family' }, user: { name: 'Someone Else', emailAddress: 'other@family.com' } },
+  { isInternal: false, role: { name: 'Vendor' }, user: { name: 'Real Floors', emailAddress: 'vendor@floors.com' } },
+];
+let env, calls, events, jt, members;
 beforeEach(async () => {
+  members = [...BASE_MEMBERS];
   clearTokenCache();
   const DB = await createD1({ schemaSql: [
     'CREATE TABLE kids (slug TEXT PRIMARY KEY, name TEXT NOT NULL, year INTEGER, status TEXT, data TEXT NOT NULL)',
@@ -121,12 +128,7 @@ async function fakeFetch(url, init = {}) {
   if (u.hostname === 'api.jobtread.com') {
     const q = JSON.parse(init.body).query;
     if (q.job) return Response.json({ job: jt });
-    return Response.json({ organization: { memberships: { nodes: [
-      { isInternal: true, role: { name: 'Admin' }, user: { name: 'Christian Nielsen', emailAddress: 'cnielsen@soardcharity.com' } },
-      { isInternal: true, role: { name: 'Admin' }, user: { name: 'Qualification Committee', emailAddress: 'selection@soardcharity.com' } },
-      { isInternal: false, role: { name: 'Makeover Family' }, user: { name: 'Someone Else', emailAddress: 'other@family.com' } },
-      { isInternal: false, role: { name: 'Vendor' }, user: { name: 'Real Floors', emailAddress: 'vendor@floors.com' } },
-    ] } } });
+    return Response.json({ organization: { memberships: { nodes: members } } });
   }
   if (u.hostname === 'oauth2.googleapis.com') return Response.json({ access_token: 'ya29.test', expires_in: 3600 });
   if (u.hostname === 'www.googleapis.com') {
@@ -193,6 +195,40 @@ test('the office sandbox sends even while sending is off, only to the test guest
   // ...while a real job in the same state still only reports what it would do
   jt = job();
   assert.equal((await reconcileJob(env, jt.id, { fetchImpl: fakeFetch, now: NOW })).action, 'would-create');
+});
+
+test('staff guest list changes update quietly; family changes email everyone', async () => {
+  await writeConfig(env.DB, { enabled: true });
+  members = [...BASE_MEMBERS, { isInternal: true, role: { name: 'Admin' }, user: { name: 'Peter Ranney', emailAddress: 'peter@ranneyblair.com' } }];
+  assert.equal((await reconcileJob(env, jt.id, { fetchImpl: fakeFetch, now: NOW })).action, 'created');
+  const id = eventIdFor('soardreveal', jt.id);
+  assert.ok(events.get(id).attendees.some(a => a.email === 'peter@soardcharity.com'), 'JobTread login mapped to the soardcharity address');
+  assert.ok(!events.get(id).attendees.some(a => a.email === 'peter@ranneyblair.com'));
+
+  // A staff member is added in JobTread: no emails to anyone
+  members = [...members, { isInternal: true, role: { name: 'Designer' }, user: { name: 'Linzi Berkowitz', emailAddress: 'lberkowitz@soardcharity.com' } }];
+  calls.length = 0;
+  let r = await reconcileJob(env, jt.id, { fetchImpl: fakeFetch, now: NOW });
+  assert.equal(r.action, 'updated quietly');
+  assert.ok(calls.some(c => c.startsWith('PUT') && c.endsWith('sendUpdates=none')));
+  assert.ok(events.get(id).attendees.some(a => a.email === 'lberkowitz@soardcharity.com'));
+
+  // The family adds a contact: everyone gets the update so the new person is invited
+  const j = job();
+  j.location.account.contacts.nodes.push({ name: 'Grandma', customFieldValues: { nodes: [{ value: 'grandma@example.com', customField: { id: FIELD_CONTACT_EMAIL } }] } });
+  jt = j;
+  calls.length = 0;
+  r = await reconcileJob(env, jt.id, { fetchImpl: fakeFetch, now: NOW });
+  assert.equal(r.action, 'updated');
+  assert.ok(calls.some(c => c.startsWith('PUT') && c.endsWith('sendUpdates=all')));
+
+  // A date change with a staff change still emails everyone
+  members = BASE_MEMBERS;
+  jt = { ...j, tasks: job({ date: '2026-10-30' }).tasks };
+  calls.length = 0;
+  r = await reconcileJob(env, jt.id, { fetchImpl: fakeFetch, now: NOW });
+  assert.equal(r.action, 'updated');
+  assert.ok(calls.some(c => c.startsWith('PUT') && c.endsWith('sendUpdates=all')));
 });
 
 test('Google errors are recorded, not thrown', async () => {
