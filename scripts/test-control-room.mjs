@@ -1,8 +1,8 @@
 /**
- * test-control-room.mjs — drive the Broadcast control room in a real browser
+ * test-control-room.mjs — drive the Reveals (formerly Broadcast) control room in a real browser
  * ===========================================================================
  * Plays a generated feed through the admin's own HLS player (the control
- * room on Broadcast → Now while live) and checks the sound meter calls each
+ * room on Reveals → Now while live) and checks the sound meter calls each
  * section right: speech-like bursts (good, with a LUFS reading), silence (no
  * sound), a left-only tone (one side), white noise at full scale
  * (distorting), a mono mic on the rehearsal feed (never one-sided). Also
@@ -182,10 +182,10 @@ try {
   await mock(page, { phase: 'live', live: true });
   await page.setViewport({ width: 1360, height: 900 });
   await page.goto(`${BASE}/admin/`, { waitUntil: 'networkidle2' });
-  ok(await clickText(page, 'button.nav-item', /^Broadcast/), 'nav has Broadcast');
+  ok(await clickText(page, 'button.nav-item', /^Reveals/), 'nav has Reveals');
   await page.waitForSelector('#bc-room .cr-stage video', { timeout: 10000 }).catch(() => {});
   ok(!!(await page.$('#bc-room .cr')), 'control room on Now');
-  ok((await page.$$('.hub-tab')).length === 3, '3 tabs: Now, History, Settings');
+  ok(JSON.stringify(await page.$$eval('.hub-tab', (ts) => ts.map((t) => t.childNodes[0].textContent.trim()))) === JSON.stringify(['Now', 'Invites', 'History', 'Settings']), '4 tabs: Now, Invites, History, Settings');
   ok((await page.$$('iframe[title="Live preview (muted)"]')).length === 0, 'old muted iframe preview is gone');
   await page.waitForFunction(() => (document.querySelector('.cr-stage video')?.currentTime || 0) > 1.5, { timeout: 15000 }).catch(() => {});
   ok((await mediaTime(page)) > 1.5, `player plays (t=${(await mediaTime(page)).toFixed(1)})`);
@@ -232,7 +232,7 @@ try {
   await mock(page, { phase: 'scheduled', live: false });
   await page.goto('about:blank');
   await page.goto(`${BASE}/admin/`, { waitUntil: 'networkidle2' });
-  await clickText(page, 'button.nav-item', /^Broadcast/);
+  await clickText(page, 'button.nav-item', /^Reveals/);
   await page.waitForFunction(() => /Go, with notes/.test(document.body.innerText), { timeout: 8000 }).catch(() => {});
   const nowText = await page.evaluate(() => document.body.innerText);
   ok(/Go, with notes/.test(nowText) && /No mic check in the last 2 days/.test(nowText), 'Now shows the go/no-go with what to fix');
