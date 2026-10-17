@@ -131,7 +131,7 @@
       line-height: 1.2;
     }
     .sidebar-logo small {
-      font-size: 0.72rem;
+      font-size: max(11px, 0.72rem);
       color: rgba(255,255,255,0.45);
       display: block;
       letter-spacing: 0.01em;
@@ -184,11 +184,11 @@
     .nav-count {
       margin-left: auto; min-width: 20px; height: 20px; padding: 0 6px;
       border-radius: 10px; background: var(--color-primary); color: #1A1B1F;
-      font-size: 0.7rem; font-weight: 700; display: inline-flex; align-items: center; justify-content: center;
+      font-size: max(11px, 0.7rem); font-weight: 700; display: inline-flex; align-items: center; justify-content: center;
       font-variant-numeric: tabular-nums;
     }
     .nav-section {
-      font-size: 0.68rem;
+      font-size: max(11px, 0.68rem);
       font-weight: 600;
       text-transform: uppercase;
       letter-spacing: 0.09em;
@@ -338,27 +338,7 @@
       .page-header > div:last-child { display: flex; gap: 0.5rem; }
       .page-header > .flex { width: 100%; }
 
-      /* Stat cards */
-      .stat-card .stat-number { font-size: 1.75rem; }
-      .stat-grid { grid-template-columns: repeat(2, 1fr) !important; gap: 0.75rem !important; margin-bottom: 1.25rem !important; }
       .email-tpl-grid { grid-template-columns: repeat(2, 1fr) !important; }
-      .chart-panel { min-width: 0 !important; width: 100% !important; }
-
-      /* Dashboard Recent Kids — grid layout per row */
-      .dashboard-recent .table-wrap tr {
-        display: grid !important;
-        grid-template-columns: 44px 1fr auto;
-        grid-template-rows: auto auto;
-        gap: 0.15rem 0.6rem;
-        padding: 0.75rem 0 !important;
-        align-items: center;
-      }
-      .dashboard-recent .table-wrap td { padding: 0 !important; border: none !important; }
-      .dashboard-recent .table-wrap td:nth-child(1) { grid-row: 1 / 3; grid-column: 1; } /* thumb */
-      .dashboard-recent .table-wrap td:nth-child(2) { grid-row: 1; grid-column: 2; } /* name */
-      .dashboard-recent .table-wrap td:nth-child(3) { grid-row: 1; grid-column: 3; font-size: 0.8rem; color: #6B6C72; } /* year */
-      .dashboard-recent .table-wrap td:nth-child(4) { grid-row: 2; grid-column: 2 / 4; } /* status */
-      .dashboard-recent .table-wrap td:nth-child(5) { display: none; } /* hide photo count on mobile */
 
       /* Tables — responsive card layout */
       .table-wrap { overflow-x: visible; }
@@ -388,7 +368,7 @@
         display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; 
       }
       /* Secondary data cells */
-      .table-wrap td .badge { font-size: 0.7rem; }
+      .table-wrap td .badge { font-size: max(11px, 0.7rem); }
       .table-wrap td.text-sm { font-size: 0.8rem; color: #6B6C72; }
       /* Action cell */
       .table-wrap td:last-child {
@@ -432,7 +412,7 @@
 
       /* Deploy items */
       .deploy-msg { font-size: 0.82rem; white-space: normal; }
-      .deploy-meta { font-size: 0.75rem; }
+      .deploy-meta { font-size: max(11px, 0.75rem); }
       .deploy-item { flex-wrap: wrap; }
 
       /* Dropzone */
@@ -644,16 +624,14 @@
       .page-header { gap: 0.5rem; margin-bottom: 1.25rem; }
       .page-header h2 { font-size: 1.1rem; }
       .page-header .btn { font-size: 0.85rem; }
-      .stat-card { padding: 1rem; }
-      .stat-card .stat-number { font-size: 1.5rem; }
       .td-thumb { width: 36px; height: 36px; }
       .photo-grid { grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); }
       .photo-btn { width: 44px !important; height: 44px !important; }
-      .form-hint { font-size: 0.75rem; }
+      .form-hint { font-size: max(11px, 0.75rem); }
       .card { padding: 0.85rem; border-radius: 10px; }
       .dropzone { padding: 1.25rem 0.75rem; }
       .dropzone-text { font-size: 0.82rem; }
-      .badge { font-size: 0.7rem; }
+      .badge { font-size: max(11px, 0.7rem); }
       .deploy-item { padding: 0.7rem 0.75rem; gap: 0.5rem; }
 
       /* Milestones: smaller image preview */
@@ -709,72 +687,6 @@
       grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
       gap: 1rem;
     }
-    .stat-grid {
-      display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 1rem;
-      margin-bottom: 1.75rem;
-    }
-    @media (max-width: 1100px) { .stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-    .stat-card {
-      --card-accent: var(--color-primary);
-      background: var(--color-bg-card);
-      border-radius: var(--radius-md);
-      padding: 1.15rem 1.25rem 1.2rem;
-      box-shadow: var(--shadow-sm);
-      border: 1px solid var(--color-border);
-      text-align: left;
-      transition: box-shadow 0.2s var(--ease-out), border-color 0.2s, transform 0.2s var(--ease-out);
-      position: relative;
-      overflow: hidden;
-      animation: cardSlideUp 0.4s var(--ease-out) both;
-    }
-    .stat-card:nth-child(1) { animation-delay: 0s; }
-    .stat-card:nth-child(2) { animation-delay: 0.03s; }
-    .stat-card:nth-child(3) { animation-delay: 0.06s; }
-    .stat-card:nth-child(4) { animation-delay: 0.09s; }
-    .stat-card:nth-child(5) { animation-delay: 0.12s; }
-    .stat-card:nth-child(6) { animation-delay: 0.15s; }
-    .stat-card:nth-child(7) { animation-delay: 0.18s; }
-    .stat-card:nth-child(8) { animation-delay: 0.21s; }
-    .stat-card::before {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      height: 3px;
-      background: transparent;
-      transition: background 0.2s ease;
-    }
-    .stat-card:hover {
-      box-shadow: var(--shadow-md);
-      transform: translateY(-1px);
-      border-color: var(--color-border-strong);
-    }
-    .stat-card:hover::before { background: var(--card-accent, var(--color-primary)); }
-    .stat-card:focus-visible {
-      outline: none;
-      box-shadow: var(--focus-ring-strong);
-    }
-    /* Numbers stay neutral; the icon chip carries each card's color */
-    .stat-card .stat-number {
-      font-size: 2rem;
-      font-weight: 700;
-      letter-spacing: -0.03em;
-      color: var(--color-text);
-      line-height: 1.1;
-      font-variant-numeric: tabular-nums;
-    }
-    .stat-card .stat-label {
-      font-size: 0.74rem;
-      font-weight: 600;
-      color: var(--color-text-secondary);
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      margin-top: 0.25rem;
-    }
-
     /* ─── Buttons ────────────────────────── */
     .btn {
       display: inline-flex; align-items: center; justify-content: center; gap: 0.45rem;
@@ -826,7 +738,7 @@
     }
     /* Photo freshness badges */
     .freshness-badge {
-      display: inline-block; font-size: 0.7rem; font-weight: 600; padding: 0.15rem 0.5rem;
+      display: inline-block; font-size: max(11px, 0.7rem); font-weight: 600; padding: 0.15rem 0.5rem;
       border-radius: 99px; margin-left: 0.5rem; vertical-align: middle; letter-spacing: 0.01em;
     }
     .freshness-fresh { background: #C6F6D5; color: #22543D; }
@@ -840,7 +752,7 @@
     .freshness-alert--warn { background: #FFFBEB; border: 1px solid #F6E05E; color: #744210; }
     .freshness-alert--danger { background: #FFF5F5; border: 1px solid #FEB2B2; color: #9B2C2C; }
     .form-hint {
-      font-size: 0.78rem;
+      font-size: max(11px, 0.78rem);
       color: var(--color-text-muted);
       margin-top: 0.3rem;
       line-height: 1.45;
@@ -936,7 +848,7 @@
       color: var(--color-text);
       border: none;
       border-radius: 100px;
-      font-size: 0.78rem;
+      font-size: max(11px, 0.78rem);
       font-weight: 500;
     }
     .chip-remove {
@@ -951,7 +863,7 @@
     table { width: 100%; border-collapse: collapse; }
     th {
       text-align: left;
-      font-size: 0.72rem;
+      font-size: max(11px, 0.72rem);
       font-weight: 600;
       text-transform: uppercase;
       letter-spacing: 0.06em;
@@ -1173,7 +1085,7 @@
       display: inline-flex; align-items: center; gap: 0.25rem;
     }
     .breadcrumb button:hover { color: var(--color-text); text-decoration: underline; text-underline-offset: 3px; }
-    .breadcrumb .sep { color: #737580; font-size: 0.75rem; }
+    .breadcrumb .sep { color: #737580; font-size: max(11px, 0.75rem); }
     .breadcrumb .current { color: var(--color-text); font-weight: 500; }
     .back-link {
       display: inline-flex; align-items: center; gap: 0.35rem;
@@ -1188,7 +1100,7 @@
       display: inline-block;
       padding: 0.18rem 0.55rem;
       border-radius: 999px;
-      font-size: 0.73rem;
+      font-size: max(11px, 0.73rem);
       font-weight: 600;
       line-height: 1.35;
       letter-spacing: 0.005em;
@@ -1224,18 +1136,18 @@
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
     .deploy-meta {
-      font-size: 0.78rem; color: #6B6C72; margin-top: 0.2rem;
+      font-size: max(11px, 0.78rem); color: #6B6C72; margin-top: 0.2rem;
       display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center;
     }
     .deploy-sha {
-      font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.75rem;
+      font-family: 'SF Mono', 'Fira Code', monospace; font-size: max(11px, 0.75rem);
       background: rgba(0,0,0,0.06); padding: 0.1rem 0.4rem; border-radius: 4px;
       color: #4A5568; text-decoration: none;
     }
     .deploy-sha:hover { background: rgba(0,0,0,0.1); }
     .deploy-status { flex-shrink: 0; margin-top: 0.1rem; }
     .deploy-link {
-      font-size: 0.78rem; color: var(--color-info); text-decoration: none;
+      font-size: max(11px, 0.78rem); color: var(--color-info); text-decoration: none;
     }
     .deploy-link:hover { text-decoration: underline; }
 
@@ -1265,7 +1177,7 @@
     .bc-status { border-left: 4px solid var(--phase); }
     .bc-status-top { display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; align-items: flex-start; }
     .bc-status-main { min-width: 0; flex: 1 1 320px; }
-    .bc-phase { display: flex; align-items: center; gap: .5rem; font-size: .75rem; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--color-text-secondary); }
+    .bc-phase { display: flex; align-items: center; gap: .5rem; font-size: max(11px, 0.75rem); font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--color-text-secondary); }
     .bc-phase .badge { text-transform: none; letter-spacing: 0; }
     .bc-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--phase); flex: none; }
     .bc-dot.is-live { box-shadow: 0 0 0 4px rgba(255,213,0,.3); animation: bc-pulse 1.6s ease-in-out infinite; }
@@ -1351,7 +1263,7 @@
     .bc-manual { display: grid; gap: .4rem; font-size: 12px; word-break: break-all; }
     .bc-checks > .bc-check:first-child { border-top: 0; }
     .bc-check { display: grid; grid-template-columns: 1.5rem minmax(0, 1fr); gap: .1rem .6rem; padding: .6rem 0; border-top: 1px solid var(--color-border); }
-    .bc-check-mark { width: 1.35rem; height: 1.35rem; border-radius: 50%; display: grid; place-items: center; font-size: .72rem; font-weight: 800; margin-top: .05rem; }
+    .bc-check-mark { width: 1.35rem; height: 1.35rem; border-radius: 50%; display: grid; place-items: center; font-size: max(11px, 0.72rem); font-weight: 800; margin-top: .05rem; }
     .bc-check.is-ok .bc-check-mark { background: #C6F6D5; color: #22543D; }
     .bc-check.is-fix .bc-check-mark { background: #FEFCBF; color: #744210; }
     .bc-check.is-opt .bc-check-mark { background: #EDF2F7; color: #718096; }
@@ -1373,7 +1285,7 @@
       .bc-hist tr.bc-hist-row td { padding: 0; border: 0; background: none; }
       .bc-hist tr.bc-hist-row td:first-child { grid-column: 1 / -1; padding: 0; }
       .bc-hist td.num { text-align: left; }
-      .bc-hist td.num::before { content: attr(data-label); display: block; font-size: .7rem; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--color-text-muted); }
+      .bc-hist td.num::before { content: attr(data-label); display: block; font-size: max(11px, 0.7rem); font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--color-text-muted); }
       .bc-hist .bc-hist-toggle { grid-column: 1 / -1; width: auto; text-align: left; padding: 0 !important; }
       .bc-hist tr.bc-hist-detail, .bc-hist tr.bc-hist-detail > td { display: block; }
       .bc-hist tr.bc-hist-detail > td { padding: .25rem 1rem 1rem; }
@@ -1386,7 +1298,7 @@
     .bc-msg-head time { color: var(--color-text-muted); font-size: .8rem; }
     .bc-msg-body { margin-top: .25rem; font-size: .95rem; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
     .bc-msg.is-hidden .bc-msg-body, .bc-msg.is-blocked .bc-msg-body { color: var(--color-text-secondary); }
-    .bc-msg-why { margin-top: .2rem; font-size: .78rem; color: var(--color-text-muted); }
+    .bc-msg-why { margin-top: .2rem; font-size: max(11px, 0.78rem); color: var(--color-text-muted); }
     .bc-msg .btn { flex-shrink: 0; }
     .bc-review { margin: .75rem 0 1rem; padding: .75rem 1rem .25rem; background: #FEFCF5; border: 1px solid #FFD500; border-radius: 10px; }
     .bc-review > .bc-msg:first-of-type { border-top: 0; }
@@ -1459,7 +1371,7 @@
       pointer-events: none; height: 0; font-style: italic;
     }
     .rte-counts {
-      display: flex; gap: 1rem; padding: 0.35rem 0.75rem; font-size: 0.75rem;
+      display: flex; gap: 1rem; padding: 0.35rem 0.75rem; font-size: max(11px, 0.75rem);
       color: var(--color-text-secondary); background: var(--color-bg);
       border-top: 1px solid var(--color-border);
     }
@@ -1468,7 +1380,7 @@
     /* ─── Sortable table headers ──────── */
     th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
     th.sortable:hover { color: #2D2E33; }
-    .sort-icon { font-size: 0.7rem; margin-left: 0.25rem; opacity: 0.4; }
+    .sort-icon { font-size: max(11px, 0.7rem); margin-left: 0.25rem; opacity: 0.4; }
     th.sortable.sorted { color: var(--color-text); }
     th.sortable.sorted .sort-icon { opacity: 1; color: var(--color-primary-ink); }
 
@@ -1484,35 +1396,10 @@
     .draft-badge, .draft-badge-draft, .draft-badge-published {
       display: inline-flex; align-items: center; gap: 0.3rem;
       padding: 0.2rem 0.6rem; border-radius: 100px;
-      font-size: 0.75rem; font-weight: 600;
+      font-size: max(11px, 0.75rem); font-weight: 600;
     }
     .draft-badge-draft { background: #FEFCBF; color: #744210; }
     .draft-badge-published { background: #C6F6D5; color: #22543D; }
-
-    /* ─── Activity log ───────────────── */
-    .activity-item {
-      display: flex; align-items: flex-start; gap: 0.75rem;
-      padding: 0.6rem 0.5rem; border-bottom: 1px solid #F5F4F0;
-      font-size: 0.85rem;
-      border-radius: 6px;
-      margin: 0 -0.5rem;
-      transition: background 0.15s ease;
-      cursor: default;
-    }
-    .activity-item:hover { background: var(--color-primary-bg); }
-    .activity-item:last-child { border-bottom: none; }
-    .activity-dot {
-      width: 8px; height: 8px; border-radius: 50%;
-      margin-top: 0.35rem; flex-shrink: 0;
-      transition: transform 0.2s ease, box-shadow 0.2s ease;
-    }
-    .activity-item:hover .activity-dot {
-      transform: scale(1.4);
-      box-shadow: 0 0 0 3px rgba(255,213,0,0.15);
-    }
-    .activity-dot-create { background: #38A169; }
-    .activity-dot-update { background: var(--color-primary); }
-    .activity-dot-delete { background: #E53E3E; }
 
     /* ─── Form Validation ────────────────── */
     .form-input.is-invalid, .form-textarea.is-invalid, .form-select.is-invalid {
@@ -1523,12 +1410,12 @@
       box-shadow: 0 0 0 3px rgba(229,62,62,0.15);
     }
     .form-error {
-      font-size: 0.78rem;
+      font-size: max(11px, 0.78rem);
       color: var(--color-danger);
       margin-top: 0.2rem;
     }
     .char-count {
-      font-size: 0.75rem;
+      font-size: max(11px, 0.75rem);
       color: var(--color-text-muted);
       text-align: right;
       margin-top: 0.15rem;
@@ -1571,7 +1458,7 @@
       flex: 1; overflow-y: auto; padding: 0.5rem;
     }
     .cmd-palette-section {
-      font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em;
+      font-size: max(11px, 0.7rem); text-transform: uppercase; letter-spacing: 0.06em;
       color: #737580; padding: 0.4rem 0.6rem 0.25rem; font-weight: 600;
     }
     .cmd-palette-item {
@@ -1584,17 +1471,17 @@
     .cmd-palette-item.active { background: rgba(255,213,0,0.16); box-shadow: inset 3px 0 0 var(--color-primary); }
     .cmd-palette-item svg { width: 16px; height: 16px; stroke: #6B6C72; flex-shrink: 0; }
     .cmd-palette-item .cmd-meta {
-      margin-left: auto; font-size: 0.75rem; color: #737580;
+      margin-left: auto; font-size: max(11px, 0.75rem); color: #737580;
     }
     .cmd-palette-footer {
       display: flex; align-items: center; gap: 1rem; padding: 0.5rem 1rem;
-      border-top: 1px solid var(--border, #E5E4E0); font-size: 0.75rem; color: #737580;
+      border-top: 1px solid var(--border, #E5E4E0); font-size: max(11px, 0.75rem); color: #737580;
     }
     .cmd-palette-footer kbd {
       display: inline-flex; align-items: center; justify-content: center;
       min-width: 22px; height: 20px; padding: 0 4px;
       background: #F5F4F0; border: 1px solid #E5E4E0; border-radius: 4px;
-      font-size: 0.7rem; font-family: inherit; color: #6B6C72;
+      font-size: max(11px, 0.7rem); font-family: inherit; color: #6B6C72;
     }
 
     /* ─── Skeleton Loading ─────────────── */
@@ -1623,7 +1510,7 @@
       display: inline-flex; align-items: center; justify-content: center;
       min-width: 26px; height: 24px; padding: 0 6px;
       background: #F5F4F0; border: 1px solid #E5E4E0; border-radius: 5px;
-      font-size: 0.75rem; font-family: inherit; color: #2D2E33; font-weight: 500;
+      font-size: max(11px, 0.75rem); font-family: inherit; color: #2D2E33; font-weight: 500;
     }
 
     /* ─── Toast with Undo ──────────── */
@@ -1644,7 +1531,7 @@
     }
     .completeness-ring svg { transform: rotate(-90deg); }
     .completeness-pct {
-      position: absolute; font-size: 0.7rem; font-weight: 700; color: var(--color-text);
+      position: absolute; font-size: max(11px, 0.7rem); font-weight: 700; color: var(--color-text);
     }
 
     /* ─── Responsive Preview ────────── */
@@ -1680,336 +1567,6 @@
       from { opacity: 0; transform: translateY(16px); }
       to { opacity: 1; transform: translateY(0); }
     }
-    @keyframes countUp {
-      from { opacity: 0; transform: translateY(10px) scale(0.95); }
-      to { opacity: 1; transform: translateY(0) scale(1); }
-    }
-
-    /* ─── Premium Charts ────────────── */
-    @keyframes chartBarGrow { from { transform: scaleY(0); } to { transform: scaleY(1); } }
-    @keyframes chartFadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
-    @keyframes chartLineDraw { from { stroke-dashoffset: 1000; } to { stroke-dashoffset: 0; } }
-    @keyframes chartDotPop { from { r: 0; opacity: 0; } to { r: 4; opacity: 1; } }
-    @keyframes chartAreaFade { from { opacity: 0; } to { opacity: 1; } }
-
-    .chart-container {
-      position: relative;
-      background: var(--color-bg-card);
-      border-radius: var(--radius-lg);
-      border: 1px solid var(--color-border);
-      padding: 1.75rem;
-      box-shadow: var(--shadow-sm);
-      transition: box-shadow 0.2s ease;
-    }
-    .chart-container:hover { box-shadow: var(--shadow-md); }
-    .chart-title {
-      font-size: 1.15rem;
-      font-weight: 700;
-      color: var(--color-text);
-      margin-bottom: 1.5rem;
-    }
-    .chart-subtitle {
-      font-size: 0.78rem;
-      font-weight: 600;
-      color: var(--color-text-secondary);
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      margin-bottom: 0.75rem;
-    }
-    .chart-panel {
-      flex: 1;
-      min-width: 280px;
-      position: relative;
-    }
-    .chart-bar-group {
-      display: flex;
-      align-items: flex-end;
-      gap: 6px;
-      height: 160px;
-      padding-bottom: 28px;
-      position: relative;
-    }
-    .chart-bar-col {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      flex: 1;
-      max-width: 52px;
-      position: relative;
-      height: 100%;
-      justify-content: flex-end;
-    }
-    .chart-bar {
-      width: 100%;
-      border-radius: 6px 6px 2px 2px;
-      min-width: 20px;
-      transform-origin: bottom;
-      animation: chartBarGrow 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) both;
-      cursor: pointer;
-      transition: filter 0.15s ease, box-shadow 0.15s ease;
-      position: relative;
-    }
-    .chart-bar:hover {
-      filter: brightness(1.08);
-      box-shadow: 0 2px 12px rgba(255, 213, 0, 0.4);
-    }
-    .chart-bar-value {
-      font-size: 0.7rem;
-      font-weight: 700;
-      color: var(--color-text);
-      margin-bottom: 4px;
-      opacity: 0;
-      animation: chartFadeUp 0.3s ease both;
-    }
-    .chart-bar-label {
-      font-size: 0.75rem;
-      color: var(--color-text-muted);
-      margin-top: 6px;
-      font-weight: 500;
-    }
-    .chart-gridline {
-      position: absolute;
-      left: 0;
-      right: 0;
-      border-top: 1px dashed var(--color-border);
-      pointer-events: none;
-    }
-    .chart-tooltip {
-      position: absolute;
-      background: var(--color-sidebar);
-      color: #fff;
-      padding: 6px 10px;
-      border-radius: 8px;
-      font-size: 0.75rem;
-      font-weight: 600;
-      pointer-events: none;
-      white-space: nowrap;
-      z-index: 10;
-      opacity: 0;
-      transition: opacity 0.15s ease;
-      box-shadow: 0 4px 16px rgba(0,0,0,0.2);
-      transform: translateX(-50%);
-    }
-    .chart-tooltip::after {
-      content: '';
-      position: absolute;
-      top: 100%;
-      left: 50%;
-      transform: translateX(-50%);
-      border: 5px solid transparent;
-      border-top-color: var(--color-sidebar);
-    }
-    .chart-line-svg {
-      display: block;
-      overflow: visible;
-    }
-    .chart-line-path {
-      stroke-dasharray: 1000;
-      animation: chartLineDraw 1.2s cubic-bezier(0.4, 0, 0.2, 1) both;
-    }
-    .chart-line-dot {
-      animation: chartDotPop 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) both;
-      cursor: pointer;
-      transition: r 0.15s ease;
-    }
-    .chart-line-dot:hover { r: 6; }
-    .chart-line-area {
-      animation: chartAreaFade 0.8s ease both;
-      animation-delay: 0.4s;
-    }
-    .chart-legend {
-      display: flex;
-      gap: 1.25rem;
-      margin-top: 1rem;
-      padding-top: 0.75rem;
-      border-top: 1px solid var(--color-border);
-    }
-    .chart-legend-item {
-      display: flex;
-      align-items: center;
-      gap: 0.4rem;
-      font-size: 0.75rem;
-      color: var(--color-text-secondary);
-    }
-    .chart-legend-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-    }
-    .chart-stat-highlight {
-      display: flex;
-      align-items: baseline;
-      gap: 0.5rem;
-      margin-bottom: 0.25rem;
-    }
-    .chart-stat-highlight .big {
-      font-size: 1.75rem;
-      font-weight: 800;
-      color: var(--color-text);
-    }
-    .chart-stat-highlight .delta {
-      font-size: 0.8rem;
-      font-weight: 600;
-      padding: 2px 8px;
-      border-radius: 99px;
-    }
-    .chart-stat-highlight .delta.up {
-      background: rgba(56, 161, 105, 0.1);
-      color: #38A169;
-    }
-    .chart-stat-highlight .delta.down {
-      background: rgba(229, 62, 62, 0.06);
-      color: #E53E3E;
-    }
-
-
-    /* ─── Quick Actions ────────────────── */
-    .quick-actions {
-      display: flex;
-      gap: 0.5rem;
-      flex-wrap: wrap;
-      animation: cardSlideUp 0.4s var(--ease-out) 0.05s both;
-    }
-    .quick-action-btn {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      min-height: 38px;
-      padding: 0.35rem 0.85rem 0.35rem 0.4rem;
-      background: var(--color-bg-card);
-      border: 1px solid var(--color-border);
-      border-radius: 9px;
-      font-size: 0.85rem;
-      font-weight: 600;
-      color: var(--color-text);
-      white-space: nowrap;
-      cursor: pointer;
-      transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
-      box-shadow: var(--shadow-xs);
-    }
-    .quick-action-btn:hover {
-      border-color: var(--color-border-strong);
-      background: var(--color-bg-hover);
-    }
-    .quick-action-btn:active { transform: translateY(1px); }
-    .quick-action-btn:focus-visible {
-      outline: none;
-      box-shadow: var(--focus-ring-strong);
-    }
-    .quick-action-btn svg { width: 16px; height: 16px; flex-shrink: 0; }
-    .quick-action-icon {
-      width: 28px;
-      height: 28px;
-      border-radius: 6px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      flex-shrink: 0;
-    }
-
-    /* ─── Enhanced Stat Cards ────────────── */
-    .stat-card-icon {
-      width: 36px;
-      height: 36px;
-      border-radius: 9px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      margin-bottom: 0.85rem;
-      flex-shrink: 0;
-    }
-    .stat-card-icon svg { width: 18px; height: 18px; }
-    .stat-card-meta {
-      font-size: 0.72rem;
-      color: var(--color-text-muted);
-      margin-top: 0.25rem;
-    }
-
-    /* ─── Needs Attention ────────────────── */
-    .attention-section {
-      margin-bottom: 1.75rem;
-    }
-    .attention-section h3, .dash-section-title {
-      font-size: 1rem;
-      font-weight: 700;
-      margin-bottom: 0.75rem;
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-    }
-    .attention-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-      gap: 0.75rem;
-    }
-    .attention-card {
-      display: flex;
-      align-items: center;
-      gap: 0.75rem;
-      padding: 0.8rem 1rem 0.8rem 0.8rem;
-      background: var(--color-bg-card);
-      border: 1px solid var(--color-border);
-      border-radius: 10px;
-      cursor: pointer;
-      transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
-      box-shadow: var(--shadow-xs);
-      animation: cardSlideUp 0.4s var(--ease-out) both;
-    }
-    .attention-card:nth-child(1) { animation-delay: 0.08s; }
-    .attention-card:nth-child(2) { animation-delay: 0.11s; }
-    .attention-card:nth-child(3) { animation-delay: 0.14s; }
-    .attention-card:nth-child(4) { animation-delay: 0.17s; }
-    .attention-card:hover {
-      border-color: var(--color-border-strong);
-      box-shadow: var(--shadow-md);
-    }
-    .attention-card:focus-visible {
-      outline: none;
-      box-shadow: var(--focus-ring-strong);
-    }
-    .attention-icon {
-      width: 36px;
-      height: 36px;
-      border-radius: 8px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      flex-shrink: 0;
-      font-size: 1.1rem;
-    }
-    .attention-card-body {
-      flex: 1;
-      min-width: 0;
-    }
-    .attention-card-title {
-      font-size: 0.88rem;
-      font-weight: 600;
-      color: var(--color-text);
-    }
-    .attention-card-desc {
-      font-size: 0.76rem;
-      color: var(--color-text-muted);
-    }
-    .attention-count {
-      font-size: 1.15rem;
-      font-weight: 700;
-      letter-spacing: -0.02em;
-      color: var(--color-text);
-      flex-shrink: 0;
-      font-variant-numeric: tabular-nums;
-    }
-
-    /* ─── Dashboard Two-Col ────────────── */
-    .dash-bottom-grid {
-      display: grid;
-      grid-template-columns: 1.4fr 1fr;
-      gap: 1.5rem;
-      margin-top: 1.75rem;
-      animation: cardSlideUp 0.5s var(--ease-out) 0.2s both;
-    }
-    @media (max-width: 960px) {
-      .dash-bottom-grid { grid-template-columns: 1fr; }
-    }
 
     /* ─── Content Health Bar ────────────── */
     .health-bar-track {
@@ -2023,11 +1580,6 @@
       height: 100%;
       border-radius: 99px;
       transition: width 1s var(--ease-out);
-    }
-
-    @media (max-width: 768px) {
-      .attention-grid { grid-template-columns: 1fr; }
-      .dash-bottom-grid { grid-template-columns: 1fr; gap: 1rem; }
     }
 
     /* ─── Favorites ────────────────── */
@@ -2079,17 +1631,262 @@
     .img-picker-thumb.focused { border-color: var(--color-primary); }
     .img-picker-grid:focus { outline: none; }
     .img-picker-thumb img { display: block; width: 100%; height: 100%; object-fit: cover; }
-    .img-picker-id { position: absolute; bottom: 0; left: 0; right: 0; background: rgba(0,0,0,0.7); color: #fff; font-size: 0.7rem; padding: 4px 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .img-picker-id { position: absolute; bottom: 0; left: 0; right: 0; background: rgba(0,0,0,0.7); color: #fff; font-size: max(11px, 0.7rem); padding: 4px 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .img-picker-pager { display: flex; justify-content: center; align-items: center; gap: 0.75rem; padding-top: 1rem; border-top: 1px solid rgba(45,46,51,0.08); margin-top: 0.75rem; }
     .img-picker-empty { text-align: center; padding: 3rem; color: #6B6C72; grid-column: 1 / -1; }
+
+    /* ─── Dashboard ─────────────────────── */
+    .dash-head { align-items: flex-end; }
+    .dash-head h2 { font-size: 1.75rem; }
+    .dash-sep { margin: 0 0.5rem; color: var(--color-border-strong); }
+    .dash-sub span { display: inline; }
+    .dash-head-actions { display: flex; gap: 0.5rem; align-items: center; }
+    .dash-head-actions .btn svg { opacity: 0.6; }
+    .dnew { position: relative; }
+    .dnew-btn svg:last-child { margin-left: -0.15rem; opacity: 0.7; }
+    .dnew-menu {
+      position: absolute; right: 0; top: calc(100% + 6px); z-index: 60; min-width: 210px;
+      padding: 0.35rem; background: var(--color-bg-card); border: 1px solid var(--color-border);
+      border-radius: 12px; box-shadow: var(--shadow-lg); animation: modalIn 0.16s var(--ease-out);
+    }
+    .dnew-item {
+      display: block; width: 100%; text-align: left; padding: 0.55rem 0.75rem; border: 0; background: none;
+      border-radius: 8px; font-size: 0.92rem; font-weight: 500; color: var(--color-text);
+    }
+    .dnew-item:hover, .dnew-item:focus-visible { background: var(--color-bg-hover); box-shadow: none; outline: none; }
+    .dnew-item:focus-visible { box-shadow: inset 0 0 0 2px var(--color-text); }
+
+    .dpins { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; margin: -0.5rem 0 1.25rem; }
+    .dpins-label { font-size: max(11px, 0.72rem); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--color-text-muted); margin-right: 0.25rem; }
+    .dpin { display: inline-flex; align-items: center; gap: 0.45rem; padding: 0.25rem 0.7rem 0.25rem 0.25rem; border: 1px solid var(--color-border); border-radius: 999px; background: var(--color-bg-card); font-size: 0.85rem; font-weight: 600; color: var(--color-text); }
+    .dpin img { width: 26px; height: 26px; border-radius: 50%; object-fit: cover; }
+    .dpin:hover { border-color: var(--color-border-strong); }
+
+    /* Live banner */
+    .dlive {
+      display: flex; align-items: center; justify-content: space-between; gap: 1rem 1.5rem; flex-wrap: wrap;
+      margin-bottom: 1.25rem; padding: 1.25rem 1.5rem; border-radius: var(--radius-lg);
+      background: #1A1B1F; color: #fff; box-shadow: var(--shadow-md);
+      background-image: radial-gradient(120% 140% at 0% 0%, rgba(255,213,0,0.16), transparent 55%);
+    }
+    .dlive h3 { font-size: 1.3rem; font-weight: 700; letter-spacing: -0.02em; margin: 0.4rem 0 0.2rem; }
+    .dlive p { margin: 0; color: rgba(255,255,255,0.7); font-size: 0.9rem; }
+    .dlive-badge { display: inline-flex; align-items: center; gap: 0.5rem; font-size: max(11px, 0.72rem); font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-primary); }
+    .dlive-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--color-primary); box-shadow: 0 0 0 4px rgba(255,213,0,0.25); animation: bc-pulse 1.6s ease-in-out infinite; }
+    .dlive-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+    .dlive-ghost { background: transparent; color: #fff; border-color: rgba(255,255,255,0.3); }
+    .dlive-ghost:hover:not(:disabled) { background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.45); }
+    .dlive-ghost svg { opacity: 0.7; }
+
+    /* Grid */
+    .dash { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 1.25rem; align-items: start; }
+    .dash-needs { grid-column: span 8; align-self: stretch; }
+    .dash-upcoming { grid-column: span 4; align-self: stretch; display: flex; flex-direction: column; }
+    .dash-upcoming > .dcard-foot { margin-top: auto; }
+    .dash-families { grid-column: 1 / -1; }
+    .dash-impact { grid-column: span 7; align-self: stretch; }
+    .dash-activity { grid-column: span 5; align-self: stretch; }
+    @media (max-width: 1100px) {
+      .dash-needs, .dash-upcoming, .dash-impact, .dash-activity { grid-column: 1 / -1; }
+    }
+
+    .dcard {
+      background: var(--color-bg-card); border: 1px solid var(--color-border); border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-sm); padding: 1.15rem 1.35rem 1.35rem; min-width: 0;
+      animation: cardSlideUp 0.4s var(--ease-out) both;
+    }
+    .dash > :nth-child(2) { animation-delay: 0.04s; }
+    .dash > :nth-child(3) { animation-delay: 0.08s; }
+    .dash > :nth-child(4) { animation-delay: 0.12s; }
+    .dash > :nth-child(5) { animation-delay: 0.16s; }
+    .dcard-head { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; margin-bottom: 0.6rem; min-height: 28px; }
+    .dcard-head h3 { display: flex; align-items: baseline; gap: 0.55rem; font-size: 1.02rem; font-weight: 700; letter-spacing: -0.015em; }
+    .dcard-meta { font-size: 0.82rem; font-weight: 500; color: var(--color-text-muted); letter-spacing: 0; }
+    .dlink { background: none; border: 0; padding: 0.25rem 0; font: inherit; font-size: 0.85rem; font-weight: 600; color: var(--color-text-secondary); cursor: pointer; }
+    .dlink:hover { color: var(--color-text); text-decoration: underline; text-underline-offset: 3px; }
+    .dph { border-radius: 10px; background: var(--color-bg-secondary); }
+    .dempty { padding: 1.25rem 0 0.25rem; color: var(--color-text-secondary); font-size: 0.9rem; line-height: 1.55; }
+    .dempty p { margin: 0 0 0.75rem; }
+    .dcard-foot { padding-top: 0.9rem; font-size: max(11px, 0.78rem); line-height: 1.45; color: var(--color-text-muted); }
+
+    /* Needs you */
+    .dneeds { list-style: none; margin: 0; padding: 0; }
+    .dneed { display: grid; grid-template-columns: 38px minmax(0, 1fr) auto; align-items: center; gap: 0.9rem; padding: 0.8rem 0; border-top: 1px solid #F0EEE9; }
+    .dneed:first-child { border-top: 0; padding-top: 0.35rem; }
+    .dneed-icon { width: 38px; height: 38px; border-radius: 10px; display: grid; place-items: center; background: #F1EFEA; color: #55565C; }
+    .dneed.is-urgent .dneed-icon { background: #FDECEC; color: #C53030; }
+    .dneed.is-action .dneed-icon { background: #FFF3BF; color: #7A5C00; }
+    .dneed-title { font-weight: 600; font-size: 0.95rem; line-height: 1.35; }
+    .dneed-detail { margin-top: 0.15rem; font-size: 0.84rem; line-height: 1.45; color: var(--color-text-secondary); }
+    .dneed-act { white-space: nowrap; }
+    .dneeds-more { margin-top: 0.35rem; }
+    .dcaught { display: flex; gap: 0.9rem; align-items: center; padding: 0.75rem 0 0.25rem; }
+    .dcaught-icon { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; background: #E3F4E8; color: #1E6B3C; flex: none; }
+    .dcaught strong { display: block; font-size: 1rem; }
+    .dcaught p { margin: 0.15rem 0 0; color: var(--color-text-secondary); font-size: 0.88rem; line-height: 1.5; }
+
+    /* Coming up */
+    .dcal { list-style: none; margin: 0 -0.5rem; padding: 0; }
+    .dcal-item { display: grid; grid-template-columns: 46px minmax(0, 1fr) auto; gap: 0.8rem; align-items: center; width: 100%; padding: 0.55rem 0.5rem; border: 0; background: none; border-radius: 10px; text-align: left; color: inherit; }
+    .dcal-item:hover { background: var(--color-bg-hover); }
+    .dcal-date { display: grid; justify-items: center; align-content: center; height: 48px; border-radius: 10px; border: 1px solid var(--color-border); background: var(--color-bg-card); line-height: 1; }
+    .dcal-date.is-soon { background: var(--color-primary); border-color: #EBC400; }
+    .dcal-mon { font-size: max(11px, 0.7rem); font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--color-text-secondary); }
+    .dcal-date.is-soon .dcal-mon { color: #5C4600; }
+    .dcal-day { font-size: 1.2rem; font-weight: 700; margin-top: 2px; letter-spacing: -0.02em; }
+    .dcal-title { display: block; font-weight: 600; font-size: 0.93rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .dcal-sub { display: block; font-size: 0.82rem; color: var(--color-text-secondary); margin-top: 0.1rem; }
+    .dcal-kind { font-size: max(11px, 0.72rem); font-weight: 600; padding: 0.15rem 0.5rem; border-radius: 999px; background: #EFEEEA; color: #55565C; }
+    .dcal-kind.is-live { background: #1F2024; color: var(--color-primary); }
+    .dcal-kind.is-confirmed, .dcal-kind.is-scheduled { background: #FFF3BF; color: #6E5200; }
+    .dcal-kind.is-tentative { background: transparent; color: var(--color-text-secondary); box-shadow: inset 0 0 0 1px var(--color-border-strong); }
+    .dcal-date.is-tentative { border-style: dashed; border-color: var(--color-border-strong); background: transparent; }
+    .dcal-date.is-tentative .dcal-day { color: var(--color-text-secondary); }
+
+    /* Families */
+    .dlanes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.25rem 1.5rem; margin-top: 0.4rem; }
+    .dlane { min-width: 0; }
+    .dlane-head { display: flex; align-items: center; gap: 0.5rem; width: 100%; padding: 0.2rem 0.1rem 0.6rem; margin-bottom: 0.65rem; border: 0; border-bottom: 2px solid var(--lane, #9A9BA1); background: none; color: var(--color-text); font-weight: 700; font-size: 0.9rem; text-align: left; }
+    .dlane-funding { --lane: #E07B39; }
+    .dlane-build { --lane: #F2C900; }
+    .dlane-done { --lane: #38A169; }
+    .dlane-head svg { margin-left: auto; color: var(--color-text-muted); }
+    .dlane-head:hover .dlane-label { text-decoration: underline; text-underline-offset: 3px; }
+    .dlane-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--lane, #9A9BA1); flex: none; }
+    .dlane-count { font-weight: 600; color: var(--color-text-muted); font-variant-numeric: tabular-nums; }
+    .dlane-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 0.4rem; }
+    .dlane-list > li { min-width: 0; }
+    .dkid { display: flex; align-items: center; gap: 0.7rem; width: 100%; padding: 0.45rem 0.55rem; border: 1px solid var(--color-border); border-radius: 10px; background: var(--color-bg-card); text-align: left; color: inherit; transition: border-color 0.15s, box-shadow 0.15s; }
+    .dkid:hover { border-color: var(--color-border-strong); box-shadow: var(--shadow-sm); }
+    .dkid-photo { width: 38px; height: 38px; border-radius: 50%; object-fit: cover; flex: none; background: #EEECE6; }
+    .dkid-ph { display: grid; place-items: center; font-weight: 700; color: var(--color-text-muted); }
+    .dkid-text { min-width: 0; flex: 1; }
+    .dkid-name { display: block; font-weight: 600; font-size: 0.92rem; }
+    .dkid-sub { display: block; font-size: 0.8rem; color: var(--color-text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .dkid-chip { flex: none; font-size: max(11px, 0.72rem); font-weight: 600; padding: 0.15rem 0.5rem; border-radius: 999px; background: #EFEEEA; color: #55565C; white-space: nowrap; }
+    .dkid-chip.is-soon { background: #FFF3BF; color: #6E5200; }
+    .dkid-chip.is-tentative { background: transparent; color: var(--color-text-secondary); box-shadow: inset 0 0 0 1px var(--color-border-strong); }
+    .dneed-act svg { opacity: 0.6; }
+    .dlane-empty { margin: 0.25rem 0.1rem; font-size: 0.86rem; color: var(--color-text-muted); }
+    .dlane-more { margin: 0.45rem 0.1rem 0; }
+    .dlane-foot { margin: 0.6rem 0.1rem 0; font-size: 0.8rem; color: var(--color-text-muted); }
+
+    /* Impact */
+    .dimpact { display: flex; align-items: flex-end; justify-content: space-between; gap: 1rem 2rem; flex-wrap: wrap; margin: 0.25rem 0 1.25rem; }
+    .dhero { display: flex; align-items: baseline; gap: 0.6rem; }
+    .dhero-num { font-size: 3.25rem; font-weight: 700; letter-spacing: -0.04em; line-height: 1; }
+    .dhero-label { font-size: 0.95rem; color: var(--color-text-secondary); font-weight: 500; }
+    .dstats { display: flex; gap: 1.5rem; flex-wrap: wrap; margin: 0; }
+    .dstats > div { min-width: 0; }
+    .dstats dt { font-size: max(11px, 0.78rem); color: var(--color-text-muted); font-weight: 500; }
+    .dstats dd { margin: 0.1rem 0 0; font-size: 1.15rem; font-weight: 700; letter-spacing: -0.02em; display: flex; align-items: baseline; gap: 0.4rem; }
+    .dstat-delta { font-size: max(11px, 0.75rem); font-weight: 600; letter-spacing: 0; color: var(--color-text-secondary); }
+    .dstat-delta.is-up { color: #1E6B3C; }
+    .dstat-delta.is-down { color: #A32B2B; }
+
+    .dbars { position: relative; }
+    .dbars-plot { position: relative; height: 190px; margin-left: 26px; }
+    .dbars-grid { position: absolute; inset: 0; pointer-events: none; }
+    .dbars-tick { position: absolute; left: 0; right: 0; border-top: 1px solid #EEECE6; }
+    .dbars-tick:first-child { border-top-color: #D9D6CE; }
+    .dbars-tick span { position: absolute; right: calc(100% + 8px); top: -0.55em; font-size: max(11px, 0.7rem); color: var(--color-text-muted); font-variant-numeric: tabular-nums; }
+    .dbars-cols { position: absolute; inset: 0; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 2px; }
+    .dbars-col { position: relative; min-width: 0; }
+    .dbars-hit { position: absolute; inset: -6px 0 0; width: 100%; border: 0; padding: 0; background: none; cursor: default; border-radius: 6px; }
+    .dbars-hit:focus-visible { box-shadow: inset 0 0 0 2px var(--color-text); }
+    .dbars-bar { position: absolute; bottom: 0; left: 50%; transform: translateX(-50%); width: min(24px, 72%); border-radius: 4px 4px 0 0; background: #D9D6CE; transition: background 0.15s; }
+    .dbars-col.is-hover .dbars-bar { background: #BDB9AF; }
+    .dbars-col.is-current .dbars-bar { background: var(--color-primary); }
+    .dbars-col.is-current.is-hover .dbars-bar { background: #F2C900; }
+    .dbars-val { position: absolute; left: 50%; transform: translate(-50%, -4px); font-size: max(11px, 0.74rem); font-weight: 700; white-space: nowrap; color: var(--color-text); pointer-events: none; }
+    .dbars-tip {
+      position: absolute; left: 50%; transform: translate(-50%, -8px); z-index: 2; white-space: nowrap; pointer-events: none;
+      padding: 0.35rem 0.6rem; border-radius: 8px; background: #1F2024; color: rgba(255,255,255,0.8); font-size: max(11px, 0.78rem); box-shadow: var(--shadow-md);
+    }
+    .dbars-tip strong { color: #fff; }
+    .dbars-col.is-hover .dbars-val { visibility: hidden; }
+    /* Labels and tooltips on the outermost bars stay inside the plot */
+    .dbars-col:last-child .dbars-val, .dbars-col:last-child .dbars-tip { left: auto; right: 0; transform: translateY(-4px); }
+    .dbars-col:last-child .dbars-tip { transform: translateY(-8px); }
+    .dbars-col:first-child .dbars-tip { left: 0; transform: translateY(-8px); }
+    .dbars-x { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 2px; margin: 0.4rem 0 0 26px; }
+    .dbars-x span { text-align: center; font-size: max(11px, 0.7rem); color: var(--color-text-muted); font-variant-numeric: tabular-nums; }
+    .dbars-tablebtn { margin-top: 0.5rem; }
+    .dbars-cap { margin: 0 0 1.6rem; font-size: 0.84rem; color: var(--color-text-secondary); }
+    .dbars-hit { cursor: pointer; }
+    .dbars-col.is-sel:not(.is-current) .dbars-bar { background: #8E8A80; }
+    .dbars-col.is-sel.is-current .dbars-bar { box-shadow: 0 0 0 2px var(--color-bg-card), 0 0 0 4px #E0B800; }
+    .dbars-x span.is-sel { color: var(--color-text); font-weight: 700; }
+    .dbars-table tr.is-sel td { background: #FBFAF7; font-weight: 600; }
+
+    /* Who's counted in the picked year */
+    .dyear { margin-top: 1.1rem; padding-top: 1rem; border-top: 1px solid #F0EEE9; }
+    .dyear-head { display: flex; align-items: baseline; justify-content: space-between; gap: 0.25rem 1rem; flex-wrap: wrap; }
+    .dyear-head h4 { margin: 0; font-size: 1rem; font-weight: 700; letter-spacing: -0.01em; }
+    .dyear-y { display: inline-block; margin-right: 0.35rem; padding: 0.05rem 0.45rem; border-radius: 6px; background: #1F2024; color: #fff; font-variant-numeric: tabular-nums; }
+    .dyear-sub { font-size: 0.82rem; color: var(--color-text-muted); }
+    .dyear-note { margin: 0.4rem 0 0; font-size: 0.84rem; line-height: 1.5; color: var(--color-text-secondary); }
+    .dyear-kids { list-style: none; margin: 0.8rem 0 0.4rem; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 0.4rem; }
+    .dyear-kids > li { min-width: 0; }
+    .dyk { display: flex; align-items: center; gap: 0.6rem; width: 100%; padding: 0.35rem 0.6rem 0.35rem 0.35rem; border: 1px solid var(--color-border); border-radius: 10px; background: var(--color-bg-card); text-align: left; color: inherit; transition: border-color 0.15s, box-shadow 0.15s; }
+    .dyk:hover { border-color: var(--color-border-strong); box-shadow: var(--shadow-sm); }
+    .dyk img, .dyk-ph { width: 34px; height: 34px; border-radius: 50%; object-fit: cover; flex: none; background: #EEECE6; }
+    .dyk-ph { display: grid; place-items: center; font-weight: 700; color: var(--color-text-muted); }
+    .dyk-text { min-width: 0; flex: 1; }
+    .dyk-name { display: block; font-weight: 600; font-size: 0.88rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .dyk-meta { display: flex; flex-wrap: wrap; gap: 0.15rem 0.45rem; margin-top: 0.1rem; font-size: max(11px, 0.76rem); color: var(--color-text-secondary); }
+    .dyk-status { font-weight: 600; }
+    .dyk-status.is-in-progress { color: #7A5C00; }
+    .dyk-status.is-needs-funding { color: #B4581F; }
+    .dbars-table table { font-size: 0.88rem; }
+    .dbars-table td, .dbars-table th { padding: 0.4rem 0.5rem; }
+    .dbars-table .num { text-align: right; }
+
+    /* Activity */
+    .dfeed { list-style: none; margin: 0; padding: 0; }
+    .dfeed-item { display: flex; gap: 0.75rem; padding: 0.65rem 0; border-top: 1px solid #F0EEE9; }
+    .dfeed-item:first-child { border-top: 0; padding-top: 0.3rem; }
+    .dfeed-avatar { width: 30px; height: 30px; border-radius: 50%; flex: none; display: grid; place-items: center; background: #EFEEEA; color: #55565C; font-size: max(11px, 0.72rem); font-weight: 700; letter-spacing: 0.02em; }
+    .dfeed-body { min-width: 0; }
+    .dfeed-line { font-size: 0.9rem; line-height: 1.4; color: var(--color-text-secondary); }
+    .dfeed-line strong { color: var(--color-text); font-weight: 600; }
+    .dfeed-meta { display: flex; flex-wrap: wrap; gap: 0.15rem 0.6rem; margin-top: 0.15rem; font-size: max(11px, 0.78rem); color: var(--color-text-muted); }
+    .dfeed-type { text-transform: capitalize; }
+
+    @media (max-width: 900px) {
+      .dlanes { grid-template-columns: minmax(0, 1fr); }
+    }
+    @media (pointer: coarse) {
+      .dlink { min-height: 44px; display: inline-flex; align-items: center; }
+      .dlane-head { min-height: 44px; }
+      .dcard-head { min-height: 44px; margin-bottom: 0.4rem; }
+    }
+    @media (max-width: 768px) {
+      .dash { gap: 1rem; }
+      .dash-head h2 { font-size: 1.5rem; }
+      .dash-head-actions { flex: 1 1 100%; }
+      .dash-head-actions .dnew { flex: 1; }
+      .dash-head-actions .dnew-btn { width: 100%; }
+      .dash-sub .dash-sep { display: none; }
+      .dash-sub .dash-status { display: block; margin-top: 0.1rem; }
+      .dash-activity { order: 4; }
+      .dash-impact { order: 5; }
+      .dcard { padding: 1rem 1rem 1.15rem; }
+      .dneed { grid-template-columns: 38px minmax(0, 1fr); }
+      .dneed-act { grid-column: 2; justify-self: start; }
+      .dlive { padding: 1.1rem; }
+      .dlive-actions { flex: 1 1 100%; }
+      .dlive-actions .btn { flex: 1; }
+      .dhero-num { font-size: 2.75rem; }
+      .dstats { gap: 1rem 1.25rem; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; }
+      .dbars-x span:nth-child(even) { visibility: hidden; }
+      .dyear-kids { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .dnew-menu { left: 0; right: 0; }
+    }
 
     /* ─── Toolbar (search + filter rows) ─ */
     .toolbar { display: flex; gap: 0.6rem; flex-wrap: wrap; align-items: center; }
     .toolbar > .form-select, .toolbar > select { width: auto; flex: 0 1 200px; }
-
-    /* ─── Dashboard header ─────────────── */
-    .dash-header { align-items: flex-end; }
-    .dash-header .quick-actions { justify-content: flex-end; }
 
     /* ─── Responsive refinements ────────
        Kept last so they win over the base component rules above
@@ -2101,13 +1898,6 @@
       .page-header .btn { flex: 0 0 auto; white-space: nowrap; }
       .page-sub, .page-header h2 + p { font-size: 0.88rem; }
 
-      .page-header.dash-header > .quick-actions { flex: 1 1 100%; justify-content: flex-start; }
-
-      .stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 0.75rem !important; margin-bottom: 1.25rem !important; }
-      .stat-card { padding: 0.9rem 1rem 1rem; }
-      .stat-card .stat-number { font-size: 1.6rem; }
-      .stat-card-icon { width: 32px; height: 32px; margin-bottom: 0.6rem; }
-
       /* List rows become compact cards; the delete button pins to the top-right corner */
       .table-wrap tr { position: relative; }
       .table-wrap tr:has(.btn-row-danger) td:has(> strong) { padding-right: 5rem; }
@@ -2118,12 +1908,6 @@
 
       .toast-container { align-items: stretch; }
       .toast { min-width: 0; max-width: none; }
-
-      /* Fifteen years of bars have to share a phone's width */
-      .chart-bar-group { gap: 3px; }
-      .chart-bar-col { min-width: 0; }
-      .chart-bar { min-width: 0; }
-      .chart-bar-value, .chart-bar-label { font-size: 0.7rem; }
 
       /* Wide logs scroll inside their card instead of being cut off */
       .card:has(> table.data-table) { overflow-x: auto; }
@@ -2140,13 +1924,15 @@
     @media (max-width: 480px) {
       .hub-tabs { margin-left: -0.75rem; margin-right: -0.75rem; padding: 0 0.75rem; }
       .editor-save-footer { margin-left: -0.75rem; margin-right: -0.75rem; }
-      /* The sparkline needs more room than a half-width card has */
-      .stat-card .mini-chart { display: none !important; }
       .email-editor-head h2 { white-space: normal !important; }
-      .stat-card .stat-label { font-size: 0.72rem; letter-spacing: 0.04em; }
     }
 
     /* ─── Touch + readability ───────────── */
+    /* Text floor: nothing renders under 11px (Apple's smallest caption size).
+       Inline micro-sizes in the markup are lifted here rather than one by one. */
+    [style*="font-size: 0.6rem"], [style*="font-size: 0.62rem"], [style*="font-size: 0.65rem"], [style*="font-size: 0.66rem"],
+    [style*="font-size: 0.68rem"], [style*="font-size: 0.7rem"], [style*="font-size: 0.72rem"], [style*="font-size: 10px"] { font-size: max(11px, 0.72rem) !important; }
+    [style*="font-size: 0.75rem"], [style*="font-size: 0.76rem"], [style*="font-size: 0.78rem"] { font-size: max(11px, 0.75rem) !important; }
     html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
     /* Tab rows scroll sideways at any width once they run out of room */
     .hub-tabs { overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
@@ -2171,23 +1957,20 @@
        hint and value scales with it (iPad draws a CSS pixel smaller than a Mac does) */
     @media (max-width: 768px), (pointer: coarse) {
       html { font-size: 16px; }
-      /* Inline micro-labels (0.6-0.68rem) come up to Apple's 11pt minimum */
-      [style*="font-size: 0.6rem"], [style*="font-size: 0.65rem"], [style*="font-size: 0.66rem"], [style*="font-size: 0.68rem"] { font-size: 0.72rem !important; }
     }
-    @media (max-width: 1024px), (pointer: coarse) {
-      /* At tablet and phone size the cumulative line reads better without a value on every point;
-         the bars beside it label each year and the header shows the total */
-      .chart-line-svg text[font-weight="700"] { display: none; }
-      .chart-line-svg text { font-size: 11px; }
+    @media (max-width: 600px) {
+      /* Side-by-side form fields written as inline grids stack on phones
+         (grids of photos or numbers without fields keep their columns) */
+      [style*="grid-template-columns: 1fr 1fr"]:has(input, textarea, select),
+      [style*="grid-template-columns: 1fr 1.5fr"]:has(input, textarea, select),
+      [style*="grid-template-columns: 2fr 1fr"]:has(input, textarea, select),
+      [style*="grid-template-columns: 1fr 0.6fr"]:has(input, textarea, select) { grid-template-columns: minmax(0, 1fr) !important; }
     }
     @media (max-width: 768px) {
       .bc-savebar { left: 0.75rem; right: 0.75rem; }
       /* Two photos per row so each one has room for its 44px action buttons */
       .photo-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)) !important; }
       .main code { overflow-wrap: anywhere; }
-      /* Growth charts stack instead of splitting a phone's width in two */
-      .chart-panel { flex: 1 1 100% !important; }
-      .chart-container { padding: 1.25rem; }
       .pending-row { flex-wrap: wrap; row-gap: 0.35rem; }
       .email-editor-head > div:first-child { flex: 1 1 100%; }
       .email-editor-head > div:first-child > div { flex: 1; }
@@ -2206,7 +1989,7 @@
       .form-grid input:not([type="checkbox"]):not([type="radio"]),
       .form-group input:not([type="checkbox"]):not([type="radio"]),
       .modal-content input:not([type="checkbox"]):not([type="radio"]) { min-height: 44px; }
-      .hub-tab, .nav-item, .sidebar-search, .sidebar-deploy, .quick-action-btn { min-height: 44px; }
+      .hub-tab, .nav-item, .sidebar-search, .sidebar-deploy { min-height: 44px; }
       button.chip { min-height: 44px; padding-inline: 0.95rem; }
       .checkbox-label { min-height: 44px; }
       .fav-btn { min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
@@ -2216,6 +1999,10 @@
       button[style*="min-height: auto"] { min-height: 44px !important; min-width: 44px !important; }
       label:has(> input[type="checkbox"]), label:has(> input[type="radio"]), label:has(input[role="switch"]) { min-height: 44px; }
       .order-btns { flex-direction: row !important; gap: 6px !important; }
+      /* Reorder Grid: arrows side by side at a full touch size */
+      [data-reorder-row] > div:has(> button[aria-label^="Move"]) { flex-direction: row !important; gap: 6px !important; }
+      [data-reorder-row] button[aria-label^="Move"] { width: 44px !important; height: 44px !important; border-radius: 8px !important; font-size: 0.8rem !important; }
+      .preview-device-btn { width: 44px; height: 44px; }
       .order-btn { width: 44px !important; height: 44px !important; font-size: 0.8rem !important; border-radius: 8px !important; }
       .breadcrumb button { min-height: 44px; min-width: 44px; }
       .bc-snav button { min-height: 44px; }
@@ -2244,11 +2031,6 @@
       .hamburger:active { background: rgba(255,255,255,0.1); }
       .nav-item:active { background: rgba(255,255,255,0.1); }
       .table-wrap tbody tr:active td { background: var(--color-bg-hover); }
-      .quick-action-btn:active, .attention-card:active, .stat-card:active { background: var(--color-bg-hover); }
-      /* Hover lifts stick after a tap on touch screens, so drop them */
-      .stat-card:hover { transform: none; box-shadow: var(--shadow-sm); border-color: var(--color-border); }
-      .stat-card:hover::before { background: transparent; }
-      .attention-card:hover { box-shadow: var(--shadow-xs); border-color: var(--color-border); }
     }
     @media (max-width: 768px) {
       /* Dialogs become bottom sheets: thumb-reachable buttons, room for the keyboard */
@@ -2664,75 +2446,6 @@
       return name.slice(0, 2).toUpperCase();
     }
 
-    /** Mini activity feed for the dashboard — shows latest 15 from server */
-    function ActivityLog({ onViewAll }) {
-      const [log, setLog] = useState([]);
-      const [loading, setLoading] = useState(true);
-      const [error, setError] = useState(null);
-
-      const load = () => {
-        setLoading(true);
-        setError(null);
-        fetch('/api/audit-log?limit=15')
-          .then(r => r.json())
-          .then(data => {
-            if (data.success) setLog(data.entries);
-            else setError(data.error || 'Failed to load activity');
-          })
-          .catch((e) => setError(e.message || 'Failed to load activity'))
-          .finally(() => setLoading(false));
-      };
-      useEffect(() => { load(); }, []);
-
-      if (loading) return html`
-        <div class="card" style="text-align: center; color: var(--text-secondary); padding: 2rem;">
-          Loading activity...
-        </div>
-      `;
-
-      if (error) return html`
-        <div class="card" style="text-align: center; padding: 2rem;">
-          <p style="color: var(--color-danger); margin-bottom: 0.75rem; font-size: 0.88rem;">Couldn't load activity: ${error}</p>
-          <button class="btn btn-ghost btn-sm" onClick=${load}>Retry</button>
-        </div>
-      `;
-
-      if (!log.length) return html`
-        <div class="card" style="text-align: center; color: var(--text-secondary); padding: 2rem;">
-          No activity yet. Changes you make will appear here.
-        </div>
-      `;
-
-      return html`
-        <div class="card" style="padding: 1rem 1.25rem;">
-          <div style="max-height: 400px; overflow-y: auto;">
-            ${log.map((entry, i) => html`
-              <div class="activity-item" key=${entry.id || i}>
-                <div class="activity-dot" style="background: ${AUDIT_ACTION_COLORS[entry.action] || '#718096'};"></div>
-                <div style="flex: 1; min-width: 0;">
-                  <div>
-                    <span style="font-weight: 500; text-transform: capitalize;">${entry.action}</span>
-                    ${' '}
-                    <span style="color: var(--text-secondary);">${entry.entity_type}</span>
-                    ${entry.entity_name ? html` — <strong>${entry.entity_name}</strong>` : ''}
-                  </div>
-                  <div style="font-size: 0.78rem; color: var(--text-secondary); margin-top: 2px;">
-                    ${entry.user_email && entry.user_email !== 'unknown'
-                      ? html`<span style="font-weight: 500;">${entry.user_email.split('@')[0]}</span> · `
-                      : ''}${auditTimeAgo(entry.created_at)}${entry.changes ? html` · <span style="color: #805AD5;">${entry.changes.length} field${entry.changes.length !== 1 ? 's' : ''}</span>` : ''}
-                  </div>
-                </div>
-              </div>
-            `)}
-          </div>
-          ${onViewAll ? html`
-            <div style="text-align: center; padding-top: 0.75rem; border-top: 1px solid #F5F4F0; margin-top: 0.5rem;">
-              <button onClick=${onViewAll} class="btn btn-ghost" style="font-size: 0.85rem;">View Full Audit Log</button>
-            </div>
-          ` : null}
-        </div>
-      `;
-    }
 
     // ─── Full Audit Log Page ──────────────────────
     // ─── Email block helpers ────────────────
@@ -7026,468 +6739,646 @@
     // ═══════════════════════════════════════════
     // DASHBOARD
     // ═══════════════════════════════════════════
-    function Dashboard({ kids, partners, team, events, communityProjects, press, articles, onNavigate }) {
-      // Pinned / favorite items
-      const pinnedItems = useMemo(() => {
-        const favs = getFavorites();
-        if (!favs.length) return [];
-        return favs.map(key => {
-          const [type, slug] = key.split(':');
-          if (type === 'kid') {
-            const k = kids.find(x => x.slug === slug);
-            return k ? { type: 'kid', label: k.name, slug: k.slug, thumb: k.heroImage, meta: `${k.year || ''} · ${k.status}`, id: 'kids-hub' } : null;
-          }
-          return null;
-        }).filter(Boolean);
-      }, [kids]);
+    // A "today" page: what needs someone now, what's coming up, where every
+    // family stands, and the long view. Content comes from the collections
+    // App already loaded; live state comes only from light, cached endpoints
+    // (live-status, reveals, deployments, audit-log), never broadcast-admin.
+    const DASH_DAY = 86400e3;
+    // Event dates are plain YYYY-MM-DD: read them as local days, not UTC midnight
+    const dashLocalDate = (s) => {
+      if (!s) return null;
+      const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(s).trim());
+      const d = m ? new Date(+m[1], +m[2] - 1, +m[3]) : new Date(s);
+      return isNaN(d) ? null : d;
+    };
+    const dashDays = (d) => { const a = new Date(); a.setHours(0, 0, 0, 0); const b = new Date(d); b.setHours(0, 0, 0, 0); return Math.round((b - a) / DASH_DAY); };
+    const dashTime = (d) => d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    const dashDay = (d) => {
+      const n = dashDays(d);
+      if (n === 0) return 'Today';
+      if (n === 1) return 'Tomorrow';
+      if (n > 1 && n < 7) return d.toLocaleDateString('en-US', { weekday: 'long' });
+      return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+    };
+    // Mid-sentence form: "today"/"tomorrow" lowercase, weekdays and dates as they are
+    const dashDayInline = (d) => { const s = dashDay(d); return s === 'Today' || s === 'Tomorrow' ? s.toLowerCase() : s; };
+    const dashIn = (d) => { const n = dashDays(d); return n === 0 ? 'today' : n === 1 ? 'tomorrow' : n < 0 ? `${-n} days ago` : `in ${n} days`; };
+    const dashAgo = (t) => {
+      const s = Math.max(0, Math.round((Date.now() - new Date(t)) / 1000));
+      if (s < 60) return 'just now';
+      if (s < 3600) return `${Math.floor(s / 60)} min ago`;
+      if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+      const days = Math.floor(s / 86400);
+      return days === 1 ? 'yesterday' : `${days} days ago`;
+    };
+    const dashThumb = (src) => {
+      const id = extractCfId(src);
+      if (!id) return '';
+      return /^(https?:|blob:|data:)/.test(id) ? id : `${CF}/${id}/w=96,h=96,fit=cover`;
+    };
+    const dashCount = (n, one, many) => `${n} ${n === 1 ? one : (many || `${one}s`)}`;
+    const dashNames = (names, max = 3) => names.length <= max
+      ? names.join(', ')
+      : `${names.slice(0, max).join(', ')} and ${names.length - max} more`;
+    const dashGreeting = () => { const h = new Date().getHours(); return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening'; };
+    const dashField = (f) => ({ heroImage: 'main photo', bio: 'story', shortDescription: 'short description', photoCount: 'photos', storyPhotos: 'story photos', revealVideoUrl: 'reveal video', streamVideoId: 'reveal video' }[f] || String(f).replace(/([A-Z])/g, ' $1').toLowerCase());
+    const dashUser = (email) => (!email || email === 'unknown') ? 'Someone' : email.includes('@') ? email.split('@')[0] : email;
+    const dashInitials = (email) => userInitials(email);
 
-      // Compute kids-per-year sparkline data
+    // Small icons used only here
+    const DI = {
+      live:     _s(html`<circle cx="12" cy="12" r="2"/><path d="M16.24 7.76a6 6 0 0 1 0 8.49"/><path d="M7.76 16.24a6 6 0 0 1 0-8.49"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M4.93 19.07a10 10 0 0 1 0-14.14"/>`, 18),
+      upload:   _s(html`<path d="M12 3v12"/><path d="m17 8-5-5-5 5"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>`, 18),
+      alert:    _s(html`<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/>`, 18),
+      calendar: _s(html`<path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/>`, 18),
+      image:    _s(html`<rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.09-3.09a2 2 0 0 0-2.82 0L6 21"/>`, 18),
+      list:     _s(html`<path d="M9 11l2 2 4-4"/><rect width="18" height="18" x="3" y="3" rx="2"/>`, 18),
+      heart:    _s(html`<path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/>`, 18),
+      plus:     _s(html`<path d="M12 5v14"/><path d="M5 12h14"/>`, 16),
+      external: _s(html`<path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>`, 15),
+      chevron:  _s(html`<path d="m9 18 6-6-6-6"/>`, 16),
+      down:     _s(html`<path d="m6 9 6 6 6-6"/>`, 15),
+      done:     _s(html`<path d="M20 6 9 17l-5-5"/>`, 22),
+    };
+
+    // Staff view of reveal dates (confirmed and tentative) and each kid's
+    // JobTread job, shared by the dashboard and the kid editor. One request per
+    // minute at most; falls back to the public, confirmed-only feed.
+    const JT_JOB_URL = (id) => `https://app.jobtread.com/jobs/${encodeURIComponent(id)}`;
+    let _revealsAdmin = null;
+    function loadRevealsAdmin(force) {
+      if (!force && _revealsAdmin && Date.now() - _revealsAdmin.at < 60000) return _revealsAdmin.promise;
+      const promise = fetch('/api/reveals-admin', { cache: 'no-store' })
+        .then((r) => r.json())
+        .then((d) => (d?.success ? { reveals: d.reveals || [], jobs: d.jobs || {}, full: true } : Promise.reject(new Error(d?.error || 'reveals-admin failed'))))
+        .catch(() => fetch('/api/reveals', { cache: 'no-store' })
+          .then((r) => r.json())
+          .then((d) => ({ reveals: (d?.reveals || []).map((r) => ({ ...r, confirmed: true })), jobs: {}, full: false }))
+          .catch(() => ({ reveals: [], jobs: {}, full: false })));
+      _revealsAdmin = { at: Date.now(), promise };
+      return promise;
+    }
+    /** "JobTread ↗" for a kid whose profile matches a JobTread job (name + year) */
+    function JobTreadLink({ slug }) {
+      const [jobId, setJobId] = useState(null);
+      useEffect(() => {
+        let on = true;
+        if (slug) loadRevealsAdmin().then((d) => { if (on) setJobId(d.jobs?.[slug] || null); });
+        return () => { on = false; };
+      }, [slug]);
+      if (!jobId) return null;
+      return html`<a class="btn btn-ghost btn-sm" href=${JT_JOB_URL(jobId)} target="_blank" rel="noopener" title="Open this kid's job in JobTread">JobTread ${DI.external}</a>`;
+    }
+
+    // Light live state, refreshed when the tab comes back and often while a reveal is close
+    function useDashLive() {
+      const [live, setLive] = useState(null);
+      const [reveals, setReveals] = useState(null);
+      const [jtJobs, setJtJobs] = useState({});
+      const [lastDeploy, setLastDeploy] = useState(undefined);
+      const load = useCallback(async (force) => {
+        const get = (u) => fetch(u, { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+        const [ls, rv, dp] = await Promise.all([get('/api/live-status'), loadRevealsAdmin(force === true), get('/api/deployments')]);
+        setLive(ls || {});
+        setReveals(rv.reveals);
+        setJtJobs(rv.jobs || {});
+        setLastDeploy(dp?.success ? (dp.deploys || [])[0] || null : null);
+      }, []);
+      useEffect(() => {
+        load();
+        const onVis = () => { if (document.visibilityState === 'visible') load(); };
+        const onDeploy = () => setTimeout(load, 1500);
+        document.addEventListener('visibilitychange', onVis);
+        window.addEventListener('soard-deployed', onDeploy);
+        return () => { document.removeEventListener('visibilitychange', onVis); window.removeEventListener('soard-deployed', onDeploy); };
+      }, [load]);
+      // Poll every 30 s while live or within two hours of a scheduled start
+      const startsAt = live?.startsAt ? Date.parse(live.startsAt) : null;
+      const hot = !!live?.live || (startsAt && startsAt - Date.now() < 2 * 3600e3 && startsAt - Date.now() > -3600e3);
+      useEffect(() => {
+        if (!hot) return undefined;
+        const t = setInterval(load, 30000);
+        return () => clearInterval(t);
+      }, [hot, load]);
+      return { live, reveals, jtJobs, lastDeploy };
+    }
+
+    function DashCard({ id, title, meta, action, className = '', children }) {
+      return html`<section class=${`dcard ${className}`} aria-labelledby=${`${id}-h`}>
+        <header class="dcard-head">
+          <h3 id=${`${id}-h`}>${title}${meta != null ? html`<span class="dcard-meta">${meta}</span>` : null}</h3>
+          ${action || null}
+        </header>
+        ${children}
+      </section>`;
+    }
+
+    function DashNewMenu({ onNavigate }) {
+      const [open, setOpen] = useState(false);
+      const ref = useRef();
+      const items = [
+        ['Kid', () => onNavigate('kids-hub', '', 'kids')],
+        ['Community project', () => onNavigate('kids-hub', '', 'community')],
+        ['Partner', () => onNavigate('partners-hub', '', 'partners')],
+        ['Event', () => onNavigate('events', '')],
+        ['Press story', () => onNavigate('press-hub', '', 'press')],
+        ['Resource article', () => onNavigate('articles', '')],
+        ['Team member', () => onNavigate('people-hub', '', 'team')],
+      ];
+      useEffect(() => {
+        if (!open) return undefined;
+        const first = ref.current?.querySelector('[role="menuitem"]');
+        first?.focus();
+        const onDown = (e) => { if (!ref.current?.contains(e.target)) setOpen(false); };
+        const onKey = (e) => {
+          const list = [...(ref.current?.querySelectorAll('[role="menuitem"]') || [])];
+          const i = list.indexOf(document.activeElement);
+          if (e.key === 'Escape') { setOpen(false); ref.current?.querySelector('.dnew-btn')?.focus(); }
+          else if (e.key === 'ArrowDown') { e.preventDefault(); list[(i + 1) % list.length]?.focus(); }
+          else if (e.key === 'ArrowUp') { e.preventDefault(); list[(i - 1 + list.length) % list.length]?.focus(); }
+          else if (e.key === 'Tab') setOpen(false);
+        };
+        document.addEventListener('pointerdown', onDown);
+        document.addEventListener('keydown', onKey);
+        return () => { document.removeEventListener('pointerdown', onDown); document.removeEventListener('keydown', onKey); };
+      }, [open]);
+      return html`<div class="dnew" ref=${ref}>
+        <button type="button" class="btn btn-primary dnew-btn" aria-haspopup="menu" aria-expanded=${open} onClick=${() => setOpen((o) => !o)}>
+          ${DI.plus} New ${DI.down}
+        </button>
+        ${open ? html`<div class="dnew-menu" role="menu" aria-label="Create new">
+          ${items.map(([label, go]) => html`<button type="button" role="menuitem" class="dnew-item" onClick=${() => { setOpen(false); go(); }}>${label}</button>`)}
+        </div>` : null}
+      </div>`;
+    }
+
+    // Children per year (siblings count individually, like the website's stats).
+    // Every bar is a button: picking a year lists the kids counted in it.
+    const DASH_STATUS = { 'in-progress': 'In build', 'needs-funding': 'Awaiting funding' };
+    function DashBars({ years, counts, profiles, onOpenKid }) {
+      const thisYear = new Date().getFullYear();
+      const cur = years.length - 1;
+      const [hover, setHover] = useState(null);
+      const [sel, setSel] = useState(cur);
+      const [table, setTable] = useState(false);
+      const [showAll, setShowAll] = useState(false);
+      const max = Math.max(...counts, 1);
+      const step = max > 20 ? 10 : 5;
+      const top = Math.ceil(max / step) * step;
+      const ticks = [];
+      for (let v = 0; v <= top; v += step) ticks.push(v);
+      const peak = counts.indexOf(max);
+      const isNow = (i) => +years[i] === thisYear;
+      const pick = (i) => { setSel(i); setShowAll(false); };
+      const onKey = (e) => {
+        const next = { ArrowRight: sel + 1, ArrowLeft: sel - 1, Home: 0, End: years.length - 1 }[e.key];
+        if (next === undefined) return;
+        e.preventDefault();
+        const i = Math.max(0, Math.min(years.length - 1, next));
+        pick(i);
+        requestAnimationFrame(() => document.getElementById(`dbar-${years[i]}`)?.focus());
+      };
+
+      const list = (profiles[years[sel]] || []).slice().sort((a, b) =>
+        (a.status === 'completed' ? 0 : 1) - (b.status === 'completed' ? 0 : 1) || a.name.localeCompare(b.name));
+      const kidsN = counts[sel];
+      const open = list.filter((k) => k.status !== 'completed');
+      const building = open.filter((k) => k.status === 'in-progress').length;
+      const waiting = open.filter((k) => k.status === 'needs-funding').length;
+      const LIMIT = 9;
+      const shown = showAll ? list : list.slice(0, LIMIT);
+
+      const yearPanel = html`<div class="dyear" aria-live="polite">
+        <div class="dyear-head">
+          <h4><span class="dyear-y">${years[sel]}</span> ${dashCount(kidsN, 'kid')}${isNow(sel) ? ' so far' : ''}</h4>
+          <span class="dyear-sub">${dashCount(list.length, 'family', 'families')}${kidsN !== list.length ? ` · siblings counted individually` : ''}</span>
+        </div>
+        ${open.length ? html`<p class="dyear-note">Includes ${[building ? `${dashCount(building, 'room')} still in build` : null, waiting ? `${waiting} awaiting funding` : null].filter(Boolean).join(' and ')}. The website counts ${open.length === 1 ? 'it' : 'them'} too.</p>` : null}
+        ${list.length ? html`<ul class="dyear-kids">
+          ${shown.map((k) => html`<li key=${k.slug}>
+            <button type="button" class="dyk" onClick=${() => onOpenKid(k.slug)}>
+              ${k.heroImage ? html`<img src=${dashThumb(k.heroImage)} alt="" loading="lazy" />` : html`<span class="dyk-ph" aria-hidden="true">${(k.name || '?')[0]}</span>`}
+              <span class="dyk-text">
+                <span class="dyk-name">${k.name}</span>
+                ${(Number(k.childCount) || 1) > 1 || DASH_STATUS[k.status] ? html`<span class="dyk-meta">
+                  ${(Number(k.childCount) || 1) > 1 ? html`<span>${k.childCount} kids</span>` : null}
+                  ${DASH_STATUS[k.status] ? html`<span class=${`dyk-status is-${k.status}`}>${DASH_STATUS[k.status]}</span>` : null}
+                </span>` : null}
+              </span>
+            </button>
+          </li>`)}
+        </ul>
+        ${list.length > LIMIT ? html`<button type="button" class="dlink" aria-expanded=${showAll} onClick=${() => setShowAll((v) => !v)}>${showAll ? 'Show fewer' : `Show all ${list.length}`}</button>` : null}`
+        : html`<p class="dyear-note">No profiles carry this year.</p>`}
+      </div>`;
+
+      if (table) return html`<div class="dbars-table">
+        <table>
+          <thead><tr><th>Year</th><th class="num">Kids</th><th class="num">Families</th><th></th></tr></thead>
+          <tbody>${years.map((y, i) => html`<tr class=${i === sel ? 'is-sel' : ''}>
+            <td>${y}${isNow(i) ? ' (so far)' : ''}</td><td class="num">${counts[i]}</td><td class="num">${(profiles[y] || []).length}</td>
+            <td class="num"><button type="button" class="dlink" onClick=${() => pick(i)} aria-pressed=${i === sel}>${i === sel ? 'Showing' : 'Who'}</button></td>
+          </tr>`)}</tbody>
+        </table>
+        <button type="button" class="dlink" onClick=${() => setTable(false)}>Show chart</button>
+        ${yearPanel}
+      </div>`;
+
+      return html`<div class="dbars">
+        <p class="dbars-cap">Kids served each year. Pick a year to see who’s counted.</p>
+        <div class="dbars-plot">
+          <div class="dbars-grid" aria-hidden="true">
+            ${ticks.map((v) => html`<div class="dbars-tick" style=${`bottom:${(v / top) * 100}%`}><span>${v}</span></div>`)}
+          </div>
+          <div class="dbars-cols" role="toolbar" aria-label="Kids served per year" onKeyDown=${onKey}>
+            ${years.map((y, i) => {
+              const h = (counts[i] / top) * 100;
+              const label = isNow(i) ? `${counts[i]} so far` : i === peak ? `${counts[i]}` : null;
+              return html`<div class=${`dbars-col ${isNow(i) ? 'is-current' : ''} ${hover === i ? 'is-hover' : ''} ${sel === i ? 'is-sel' : ''}`}>
+                <button type="button" id=${`dbar-${y}`} class="dbars-hit" tabindex=${sel === i ? 0 : -1} aria-pressed=${sel === i}
+                  aria-label=${`${y}: ${counts[i]} kids${isNow(i) ? ' so far' : ''}`}
+                  onClick=${() => pick(i)}
+                  onPointerEnter=${() => setHover(i)} onPointerLeave=${() => setHover(null)} onFocus=${() => setHover(i)} onBlur=${() => setHover(null)}>
+                  <span class="dbars-bar" style=${`height:${Math.max(h, 1.5)}%`}></span>
+                  ${label ? html`<span class="dbars-val" style=${`bottom:${h}%`}>${label}</span>` : null}
+                  ${hover === i ? html`<span class="dbars-tip" style=${`bottom:${h}%`} role="tooltip"><strong>${counts[i]}</strong> kids in ${y}${isNow(i) ? ' so far' : ''}</span>` : null}
+                </button>
+              </div>`;
+            })}
+          </div>
+        </div>
+        <div class="dbars-x" aria-hidden="true">${years.map((y, i) => html`<span class=${sel === i ? 'is-sel' : ''}>’${String(y).slice(-2)}</span>`)}</div>
+        ${yearPanel}
+        <button type="button" class="dlink dbars-tablebtn" onClick=${() => setTable(true)}>View as table</button>
+      </div>`;
+    }
+
+    function DashActivity({ onViewAll }) {
+      const [log, setLog] = useState(null);
+      const [error, setError] = useState(null);
+      const load = () => {
+        setError(null);
+        fetch('/api/audit-log?limit=10')
+          .then((r) => r.json())
+          .then((d) => { if (d.success) setLog(d.entries || []); else setError(d.error || 'Couldn’t load activity'); })
+          .catch((e) => setError(e.message || 'Couldn’t load activity'));
+      };
+      useEffect(() => {
+        load();
+        const onChange = () => setTimeout(load, 800);
+        window.addEventListener('soard-content-changed', onChange);
+        return () => window.removeEventListener('soard-content-changed', onChange);
+      }, []);
+      const verb = { created: 'added', updated: 'edited', deleted: 'deleted', published: 'published', drafted: 'saved a draft of', uploaded: 'uploaded', deployed: 'deployed' };
+      return html`<${DashCard} id="dash-activity" title="Recent activity" className="dash-activity"
+        action=${html`<button type="button" class="dlink" onClick=${onViewAll}>View all</button>`}>
+        ${error ? html`<div class="dempty"><p>Couldn’t load activity.</p><button class="btn btn-ghost btn-sm" onClick=${load}>Try again</button></div>`
+          : log === null ? html`<div class="dph" style="height: 300px"></div>`
+          : !log.length ? html`<div class="dempty"><p>No activity yet. Edits show up here as they happen.</p></div>`
+          : html`<ol class="dfeed">
+            ${log.map((e, i) => {
+              const fields = Array.isArray(e.changes) ? e.changes.map((c) => dashField(c.field)) : [];
+              return html`<li class="dfeed-item" key=${e.id || i}>
+                <span class="dfeed-avatar" aria-hidden="true">${dashInitials(e.user_email)}</span>
+                <div class="dfeed-body">
+                  <div class="dfeed-line"><strong>${dashUser(e.user_email)}</strong> ${verb[e.action] || e.action} ${e.entity_name ? html`<strong>${e.entity_name}</strong>` : `a ${e.entity_type}`}</div>
+                  <div class="dfeed-meta">
+                    <span class="dfeed-type">${e.entity_type}</span>
+                    ${fields.length ? html`<span>${dashNames(fields, 2)}</span>` : null}
+                    <time title=${new Date(/Z$|[+-]\d\d:?\d\d$/.test(e.created_at || '') ? e.created_at : `${e.created_at}Z`).toLocaleString()}>${auditTimeAgo(e.created_at)}</time>
+                  </div>
+                </div>
+              </li>`;
+            })}
+          </ol>`}
+      <//>`;
+    }
+
+    function Dashboard({ kids, partners, team, events, communityProjects, press, articles, onNavigate, pendingData, onDeploy, deploying }) {
+      const { live, reveals, jtJobs, lastDeploy } = useDashLive();
+      const [showAllNeeds, setShowAllNeeds] = useState(false);
+      const thisYear = new Date().getFullYear();
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      const kidBySlug = useMemo(() => Object.fromEntries(kids.map((k) => [k.slug, k])), [kids]);
+
+      // Pinned favourites from the Kids list
+      const pinned = useMemo(() => getFavorites().map((key) => {
+        const [type, slug] = key.split(':');
+        const k = type === 'kid' ? kidBySlug[slug] : null;
+        return k ? { slug: k.slug, name: k.name, thumb: dashThumb(k.heroImage) } : null;
+      }).filter(Boolean), [kidBySlug]);
+
+      // ── Families
+      const awaiting = kids.filter((k) => k.status === 'needs-funding');
+      const building = kids.filter((k) => k.status === 'in-progress');
+      const completed = kids.filter((k) => k.status === 'completed');
+      const doneThisYear = completed.filter((k) => +k.year === thisYear);
+      const revealBySlug = useMemo(() => Object.fromEntries((reveals || [])
+        .map((r) => [r.slug, { date: new Date(r.startsAt), confirmed: r.confirmed !== false, time: r.time }]).filter(([, v]) => !isNaN(v.date))), [reveals]);
+      // In build: the next reveal first, then the rest by name
+      const buildingSorted = [...building].sort((a, b) => (revealBySlug[a.slug]?.date || Infinity) - (revealBySlug[b.slug]?.date || Infinity) || a.name.localeCompare(b.name));
+
+      // ── Coming up: confirmed reveals + events still ahead
+      const upcoming = useMemo(() => {
+        const items = [];
+        const seen = new Set();
+        const now = Date.now();
+        (reveals || []).forEach((r) => {
+          const d = new Date(r.startsAt);
+          if (isNaN(d) || d.getTime() < now - 3 * 3600e3) return;
+          seen.add(r.slug);
+          const isOn = !!live?.live && live.kidSlug === r.slug;
+          const confirmed = r.confirmed !== false;
+          items.push({
+            key: `r-${r.slug}`, kind: isOn ? 'Live' : confirmed ? 'Confirmed' : 'Tentative', live: isOn, tentative: !confirmed && !isOn,
+            date: d, title: `${r.name || kidBySlug[r.slug]?.name || 'Room'}’s room reveal`, timed: confirmed && !!r.time, slug: r.slug, jobId: r.jobId,
+            go: () => (live?.kidSlug === r.slug ? onNavigate('broadcast') : onNavigate('kids-hub', r.slug, 'kids')),
+          });
+        });
+        if (live?.upcoming && live.startsAt && live.kidSlug && !seen.has(live.kidSlug)) {
+          items.push({ key: 'r-live', kind: 'Scheduled', date: new Date(live.startsAt), title: `${live.kidName}’s room reveal`, timed: true, go: () => onNavigate('broadcast') });
+        }
+        (events || []).forEach((e) => {
+          const d = dashLocalDate(e.date);
+          if (!d || d < today) return;
+          items.push({ key: `e-${e.slug}`, kind: 'Event', date: d, title: (e.title || e.name || 'Event').trim(), sub: e.location, timed: false, go: () => onNavigate('events', e.slug) });
+        });
+        return items.sort((a, b) => a.date - b.date);
+      }, [reveals, events, live]);
+
+      // ── Needs you, most urgent first
+      const pendingChanges = pendingData?.changes || [];
+      const staleEvents = (events || []).filter((e) => e.status === 'upcoming' && dashLocalDate(e.date) && dashLocalDate(e.date) < today);
+      const noPhoto = kids.filter((k) => !k.heroImage);
+      const incomplete = kids.map((k) => ({ k, ...getCompleteness(k, true) })).filter((x) => x.pct < 70);
+      const gapCounts = {};
+      incomplete.forEach((x) => x.missing.forEach((m) => { gapCounts[m] = (gapCounts[m] || 0) + 1; }));
+      const topGaps = Object.entries(gapCounts).sort((a, b) => b[1] - a[1]).slice(0, 2).map(([m, n]) => `${m.toLowerCase()} (${n})`);
+      const fundNoLink = awaiting.filter((k) => !k.fundraisingUrl);
+      const nextReveal = upcoming.find((u) => u.kind === 'Confirmed' || u.kind === 'Scheduled');
+      const tentativeSoon = upcoming.filter((u) => u.tentative && dashDays(u.date) >= 0 && dashDays(u.date) <= 14);
+      const isLive = !!live?.live;
+
+      const needs = [];
+      if (lastDeploy && /fail|error|cancel/i.test(lastDeploy.status || '')) needs.push({
+        key: 'deploy-failed', tone: 'urgent', icon: DI.alert,
+        title: 'The last site update failed',
+        detail: `${lastDeploy.commitMessage || 'Deploy'} · ${dashAgo(lastDeploy.createdOn)}. The live site still shows the update before it.`,
+        action: { label: 'See what failed', go: () => onNavigate('deploys') },
+      });
+      if (pendingChanges.length) {
+        const names = pendingChanges.map((c) => c.name || c.slug).filter(Boolean);
+        const people = [...new Set(pendingChanges.flatMap((c) => c.users || []).map(dashUser))];
+        needs.push({
+          key: 'pending', tone: 'action', icon: DI.upload,
+          title: `${dashCount(pendingChanges.length, 'edit')} ${pendingChanges.length === 1 ? 'isn’t' : 'aren’t'} live on the site yet`,
+          detail: `${dashNames(names)}${people.length ? ` · by ${dashNames(people, 2)}` : ''}`,
+          action: { label: deploying ? 'Deploying…' : 'Deploy now', go: onDeploy, primary: true, busy: deploying },
+        });
+      }
+      if (nextReveal && !isLive) {
+        const n = dashDays(nextReveal.date);
+        if (n >= 0 && n <= 3) needs.push({
+          key: 'reveal', tone: 'action', icon: DI.live,
+          title: `${nextReveal.title.replace('’s room reveal', '’s reveal')} is ${n === 0 ? 'today' : n === 1 ? 'tomorrow' : dashDay(nextReveal.date)} at ${dashTime(nextReveal.date)}`,
+          detail: 'Run the go/no-go check and a mic check before it starts.',
+          action: { label: 'Open Broadcast', go: () => onNavigate('broadcast') },
+        });
+      }
+      const hasNextEvent = upcoming.some((u) => u.kind === 'Event');
+      const staleNames = dashNames(staleEvents.map((e) => (e.title || e.name || '').trim()));
+      tentativeSoon.forEach((u) => needs.push({
+        key: `tentative-${u.slug}`, tone: 'action', icon: DI.calendar,
+        title: `${u.title.replace('’s room reveal', '’s reveal date')} isn’t confirmed`,
+        detail: `Tentatively ${dashDayInline(u.date)}${dashDays(u.date) > 1 ? `, ${dashIn(u.date)}` : ''}. Set Reveal Date Confirmed to Yes in JobTread and the site, invites and live page pick it up.`,
+        action: u.jobId
+          ? { label: 'Open in JobTread', href: JT_JOB_URL(u.jobId) }
+          : { label: 'Open profile', go: () => onNavigate('kids-hub', u.slug, 'kids') },
+      }));
+      if (staleEvents.length && !hasNextEvent) needs.push({
+        key: 'events', tone: 'fix', icon: DI.calendar,
+        title: 'The Events page has nothing coming up',
+        detail: `${staleNames} ${staleEvents.length === 1 ? 'is' : 'are'} over but still marked Upcoming.`,
+        action: { label: 'Review events', go: () => onNavigate('events') },
+      });
+      else if (staleEvents.length) needs.push({
+        key: 'events', tone: 'fix', icon: DI.calendar,
+        title: `${dashCount(staleEvents.length, 'past event')} still ${staleEvents.length === 1 ? 'says' : 'say'} Upcoming`,
+        detail: `${staleNames}. Visitors see ${staleEvents.length === 1 ? 'it' : 'them'} as still ahead.`,
+        action: { label: 'Review events', go: () => onNavigate('events') },
+      });
+      else if (!hasNextEvent) needs.push({
+        key: 'events', tone: 'fix', icon: DI.calendar,
+        title: 'The Events page has nothing coming up',
+        detail: 'Add the next event so the site has something to promote.',
+        action: { label: 'Add an event', go: () => onNavigate('events', '') },
+      });
+      if (fundNoLink.length) needs.push({
+        key: 'fund-link', tone: 'fix', icon: DI.heart,
+        title: `${dashNames(fundNoLink.map((k) => k.name))} ${fundNoLink.length === 1 ? 'is' : 'are'} awaiting funding without a fundraising link`,
+        detail: 'Their page has no way to give toward the room.',
+        action: { label: 'Add the link', go: () => onNavigate('kids-hub', fundNoLink[0].slug, 'kids') },
+      });
+      if (noPhoto.length) needs.push({
+        key: 'no-photo', tone: 'fix', icon: DI.image,
+        title: `${dashCount(noPhoto.length, 'kid')} ${noPhoto.length === 1 ? 'has' : 'have'} no main photo`,
+        detail: dashNames(noPhoto.map((k) => k.name)),
+        action: { label: 'Show them', go: () => onNavigate('kids-hub', null, 'kids', 'missing-photos') },
+      });
+      if (incomplete.length === 1) {
+        const x = incomplete[0];
+        needs.push({
+          key: 'incomplete', tone: 'fix', icon: DI.list,
+          title: `${x.k.name}’s profile is ${x.pct}% complete`,
+          detail: `Missing: ${dashNames(x.missing.map((m) => m.toLowerCase()), 4)}`,
+          action: { label: 'Finish it', go: () => onNavigate('kids-hub', x.k.slug, 'kids') },
+        });
+      } else if (incomplete.length) needs.push({
+        key: 'incomplete', tone: 'fix', icon: DI.list,
+        title: `${dashCount(incomplete.length, 'kid profile')} are under 70% complete`,
+        detail: topGaps.length ? `Most often missing: ${topGaps.join(', ')}` : 'Open one to see what’s missing.',
+        action: { label: 'Show them', go: () => onNavigate('kids-hub', null, 'kids', 'incomplete') },
+      });
+      const NEEDS_MAX = 4;
+      const shownNeeds = showAllNeeds ? needs : needs.slice(0, NEEDS_MAX);
+
+      // ── Impact
+      // Counted exactly like the website (src/utils/stats.ts): published profiles,
+      // every child on a sibling profile, a missing room count as one room
+      const published = useMemo(() => kids.filter((k) => k.publishStatus !== 'draft'), [kids]);
+      const childrenOf = (k) => Number(k.childCount) || 1;
       const yearData = useMemo(() => {
         const counts = {};
-        kids.forEach(k => { if (k.year) counts[k.year] = (counts[k.year] || 0) + 1; });
-        const years = Object.keys(counts).sort();
-        if (years.length < 2) return null;
-        let cumulative = [];
-        let sum = 0;
-        years.forEach(y => { sum += counts[y]; cumulative.push(sum); });
-        return { perYear: years.map(y => counts[y]), cumulative, years };
-      }, [kids]);
-
-
-      // Needs attention metrics
-      const attention = useMemo(() => {
-        const noPhoto = kids.filter(k => !k.heroImage);
-        const incomplete = kids.filter(k => {
-          const score = getCompleteness(k);
-          return score < 70;
+        const profiles = {};
+        published.forEach((k) => {
+          if (!k.year) return;
+          counts[k.year] = (counts[k.year] || 0) + childrenOf(k);
+          (profiles[k.year] = profiles[k.year] || []).push(k);
         });
-        const inProgress = kids.filter(k => k.status === 'in-progress');
-        const needsFunding = kids.filter(k => k.status === 'needs-funding');
-        const upcomingEvents = (events || []).filter(e => e.status === 'upcoming');
-        return { noPhoto, incomplete, inProgress, needsFunding, upcomingEvents };
-      }, [kids, events]);
+        const years = Object.keys(counts).sort();
+        if (!years.length) return null;
+        const first = +years[0];
+        const all = [];
+        for (let y = first; y <= Math.max(thisYear, +years[years.length - 1]); y++) all.push(String(y));
+        return { years: all, counts: all.map((y) => counts[y] || 0), profiles, first };
+      }, [published]);
+      const kidsServed = published.reduce((s, k) => s + childrenOf(k), 0);
+      const rooms = published.reduce((s, k) => s + (Number(k.roomCount) || 1), 0);
+      const lastYearCount = published.filter((k) => +k.year === thisYear - 1).reduce((s, k) => s + childrenOf(k), 0);
+      const thisYearCount = published.filter((k) => +k.year === thisYear).reduce((s, k) => s + childrenOf(k), 0);
 
-      // Content health (average profile completeness)
-      const avgCompleteness = useMemo(() => {
-        if (!kids.length) return 0;
-        const total = kids.reduce((sum, k) => sum + getCompleteness(k), 0);
-        return Math.round(total / kids.length);
-      }, [kids]);
+      // ── Header status line
+      const lastLiveAt = pendingData?.lastDeployAt || lastDeploy?.createdOn;
+      const statusLine = lastLiveAt ? `Site last updated ${dashAgo(lastLiveAt)}${pendingData?.lastDeployBy ? ` by ${dashUser(pendingData.lastDeployBy)}` : ''}` : null;
 
-      const completedRooms = kids.filter(k => k.status === 'completed').length;
-      const inProgressCount = kids.filter(k => k.status === 'in-progress').length;
-      const needsFundingCount = kids.filter(k => k.status === 'needs-funding').length;
-      const upcomingEventsCount = (events || []).filter(e => e.status === 'upcoming').length;
+      const kidRow = (k, extra) => html`<li key=${k.slug}>
+        <button type="button" class="dkid" onClick=${() => onNavigate('kids-hub', k.slug, 'kids')}>
+          ${k.heroImage ? html`<img class="dkid-photo" src=${dashThumb(k.heroImage)} alt="" loading="lazy" />` : html`<span class="dkid-photo dkid-ph" aria-hidden="true">${(k.name || '?')[0]}</span>`}
+          <span class="dkid-text">
+            <span class="dkid-name">${k.name}</span>
+            <span class="dkid-sub">${k.diagnosis || (k.age ? `Age ${k.age}` : '')}</span>
+          </span>
+          ${extra || null}
+        </button>
+      </li>`;
+
+      const lane = (id, label, list, opts = {}) => html`<div class=${`dlane dlane-${id}`}>
+        <button type="button" class="dlane-head" onClick=${opts.go}>
+          <span class="dlane-dot" aria-hidden="true"></span>
+          <span class="dlane-label">${label}</span>
+          <span class="dlane-count">${opts.count ?? list.length}</span>
+          ${DI.chevron}
+        </button>
+        ${list.length ? html`<ul class="dlane-list">
+          ${list.slice(0, opts.max || 6).map((k) => kidRow(k, opts.extra?.(k)))}
+        </ul>` : html`<p class="dlane-empty">${opts.empty}</p>`}
+        ${list.length > (opts.max || 6) ? html`<button type="button" class="dlink dlane-more" onClick=${opts.go}>${opts.moreLabel || `All ${list.length}`}</button>` : null}
+        ${opts.foot || null}
+      </div>`;
 
       return html`
-
-        <div class="page-header dash-header">
+        <div class="page-header dash-head">
           <div>
-            <h2>Dashboard</h2>
-            <p class="page-sub">${new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</p>
+            <h2>${dashGreeting()}</h2>
+            <p class="page-sub dash-sub"><span>${today.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</span>${statusLine ? html`<span class="dash-sep" aria-hidden="true">·</span><span class="dash-status">${statusLine}</span>` : null}</p>
           </div>
-        <!-- Quick Actions -->
-        <div class="quick-actions">
-          <button class="quick-action-btn" onClick=${() => onNavigate('kids-hub', '')}>
-            <div class="quick-action-icon" style="background: rgba(255,213,0,0.12);">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#D6A800" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            </div>
-            <span class="qa-label">Add Kid</span>
-          </button>
-          <button class="quick-action-btn" onClick=${() => onNavigate('partners-hub', '')}>
-            <div class="quick-action-icon" style="background: rgba(49,130,206,0.1);">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3182CE" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            </div>
-            <span class="qa-label">Add Partner</span>
-          </button>
-          <button class="quick-action-btn" onClick=${() => onNavigate('events', '')}>
-            <div class="quick-action-icon" style="background: rgba(128,90,213,0.1);">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#805AD5" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-            </div>
-            <span class="qa-label">Add Event</span>
-          </button>
-          <button class="quick-action-btn" onClick=${() => onNavigate('press-hub', '')}>
-            <div class="quick-action-icon" style="background: rgba(56,161,105,0.1);">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#38A169" stroke-width="2" stroke-linecap="round"><path d="M4 22h16a2 2 0 002-2V4a2 2 0 00-2-2H8a2 2 0 00-2 2v16a2 2 0 01-2 2zm0 0a2 2 0 01-2-2v-9c0-1.1.9-2 2-2h2"/><line x1="10" y1="6" x2="18" y2="6"/><line x1="10" y1="10" x2="18" y2="10"/><line x1="10" y1="14" x2="14" y2="14"/></svg>
-            </div>
-            <span class="qa-label">Add Press</span>
-          </button>
-          <button class="quick-action-btn" onClick=${() => window.open('/', '_blank')}>
-            <div class="quick-action-icon" style="background: rgba(113,128,150,0.1);">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#718096" stroke-width="2" stroke-linecap="round"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-            </div>
-            <span class="qa-label">View Site</span>
-          </button>
-        </div>
-        </div>
-
-        ${pinnedItems.length > 0 ? html`
-          <div style="margin-bottom: 1.5rem;">
-            <h3 style="font-size: 0.78rem; color: #6B6C72; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.5rem;">
-              Pinned
-            </h3>
-            <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
-              ${pinnedItems.map(p => html`
-                <button key=${p.slug}
-                  onClick=${() => onNavigate(p.id, p.slug)}
-                  style="display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.75rem; background: #fff; border: 1px solid #E5E4E0; border-radius: 10px; cursor: pointer; transition: all 0.15s; box-shadow: 0 1px 3px rgba(0,0,0,0.04);"
-                  onMouseEnter=${e => e.currentTarget.style.borderColor = '#FFD500'}
-                  onMouseLeave=${e => e.currentTarget.style.borderColor = '#E5E4E0'}>
-                  ${p.thumb ? html`<img src=${p.thumb} style="width: 28px; height: 28px; border-radius: 6px; object-fit: cover;" />` : null}
-                  <div style="text-align: left;">
-                    <div style="font-size: 0.85rem; font-weight: 600; color: #2D2E33;">${p.label}</div>
-                    <div style="font-size: 0.7rem; color: #737580;">${p.meta}</div>
-                  </div>
-                </button>
-              `)}
-            </div>
-          </div>
-        ` : null}
-
-        <!-- Stat Cards -->
-        <div class="stat-grid">
-          <div class="stat-card" style="--card-accent: #FFD500; cursor: pointer; text-align: left;" onClick=${() => onNavigate('kids-hub')}>
-            <div style="display: flex; align-items: flex-start; justify-content: space-between;">
-              <div>
-                <div class="stat-card-icon" style="background: rgba(255,213,0,0.12);">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#D6A800" stroke-width="2" stroke-linecap="round"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-                </div>
-                <div class="stat-label" style="margin-top: 0; margin-bottom: 0.25rem;">Kids</div>
-                <div class="stat-number">${kids.length}</div>
-              </div>
-              ${yearData ? html`<${MiniChart} data=${yearData.cumulative} color="#FFD500" height=${40} width=${90} />` : null}
-            </div>
-          </div>
-          <div class="stat-card" style="--card-accent: #3182CE; cursor: pointer; text-align: left;" onClick=${() => onNavigate('partners-hub')}>
-            <div class="stat-card-icon" style="background: rgba(49,130,206,0.1);">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#3182CE" stroke-width="2" stroke-linecap="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
-            </div>
-            <div class="stat-label" style="margin-top: 0; margin-bottom: 0.25rem;">Partners</div>
-            <div class="stat-number">${partners.length}</div>
-          </div>
-          <div class="stat-card" style="--card-accent: #718096; cursor: pointer; text-align: left;" onClick=${() => onNavigate('people-hub', null, 'team')}>
-            <div class="stat-card-icon" style="background: rgba(113,128,150,0.1);">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#718096" stroke-width="2" stroke-linecap="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
-            </div>
-            <div class="stat-label" style="margin-top: 0; margin-bottom: 0.25rem;">Team & Board</div>
-            <div class="stat-number">${team.length}</div>
-          </div>
-          <div class="stat-card" style="--card-accent: #38A169; cursor: pointer; text-align: left;" onClick=${() => onNavigate('kids-hub', null, 'kids', 'completed')}>
-            <div style="display: flex; align-items: flex-start; justify-content: space-between;">
-              <div>
-                <div class="stat-card-icon" style="background: rgba(56,161,105,0.1);">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#38A169" stroke-width="2" stroke-linecap="round"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-                </div>
-                <div class="stat-label" style="margin-top: 0; margin-bottom: 0.25rem;">Completed</div>
-                <div class="stat-number">${completedRooms}</div>
-              </div>
-              ${yearData ? html`<${MiniChart} data=${yearData.perYear} color="#38A169" height=${40} width=${90} />` : null}
-            </div>
-          </div>
-          <div class="stat-card" style="--card-accent: #D69E2E; cursor: pointer; text-align: left;" onClick=${() => onNavigate('kids-hub', null, 'kids', 'in-progress')}>
-            <div class="stat-card-icon" style="background: rgba(214,158,46,0.1);">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#D69E2E" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-            </div>
-            <div class="stat-label" style="margin-top: 0; margin-bottom: 0.25rem;">In Build</div>
-            <div class="stat-number">${inProgressCount}</div>
-          </div>
-          <div class="stat-card" style="--card-accent: #E53E3E; cursor: pointer; text-align: left;" onClick=${() => onNavigate('kids-hub', null, 'kids', 'needs-funding')}>
-            <div class="stat-card-icon" style="background: rgba(229,62,62,0.1);">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#E53E3E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
-            </div>
-            <div class="stat-label" style="margin-top: 0; margin-bottom: 0.25rem;">Awaiting Funding</div>
-            <div class="stat-number">${needsFundingCount}</div>
-          </div>
-          <div class="stat-card" style="--card-accent: #805AD5; cursor: pointer; text-align: left;" onClick=${() => onNavigate('events', null, null, 'upcoming')}>
-            <div class="stat-card-icon" style="background: rgba(128,90,213,0.1);">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#805AD5" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-            </div>
-            <div class="stat-label" style="margin-top: 0; margin-bottom: 0.25rem;">Upcoming Events</div>
-            <div class="stat-number">${upcomingEventsCount}</div>
-          </div>
-          <div class="stat-card" style="--card-accent: #E53E3E; cursor: pointer; text-align: left;" onClick=${() => onNavigate('kids-hub', null, 'community')}>
-            <div class="stat-card-icon" style="background: rgba(229,62,62,0.08);">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#E53E3E" stroke-width="2" stroke-linecap="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-            </div>
-            <div class="stat-label" style="margin-top: 0; margin-bottom: 0.25rem;">Community</div>
-            <div class="stat-number">${(communityProjects || []).length}</div>
+          <div class="dash-head-actions">
+            <a class="btn btn-ghost" href="/" target="_blank" rel="noopener">View site ${DI.external}</a>
+            <${DashNewMenu} onNavigate=${onNavigate} />
           </div>
         </div>
 
-        <!-- Needs Attention -->
-        ${(attention.noPhoto.length > 0 || attention.incomplete.length > 0 || attention.upcomingEvents.length > 0) ? html`
-          <div class="attention-section">
-            <h3>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#D69E2E" stroke-width="2" stroke-linecap="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-              Needs Attention
-            </h3>
-            <div class="attention-grid">
-              ${attention.noPhoto.length > 0 ? html`
-                <div class="attention-card" onClick=${() => onNavigate('kids-hub', null, 'kids', 'missing-photos')}>
-                  <div class="attention-icon" style="background: rgba(229,62,62,0.08); color: #E53E3E;">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-                  </div>
-                  <div class="attention-card-body">
-                    <div class="attention-card-title">Missing Photos</div>
-                    <div class="attention-card-desc">Kids without a hero image</div>
-                  </div>
-                  <div class="attention-count">${attention.noPhoto.length}</div>
+        ${pinned.length ? html`<div class="dpins" aria-label="Pinned">
+          <span class="dpins-label">Pinned</span>
+          ${pinned.map((p) => html`<button type="button" class="dpin" onClick=${() => onNavigate('kids-hub', p.slug, 'kids')}>
+            ${p.thumb ? html`<img src=${p.thumb} alt="" />` : null}${p.name}
+          </button>`)}
+        </div>` : null}
+
+        ${isLive ? html`<section class="dlive" aria-label="Live now">
+          <div class="dlive-main">
+            <span class="dlive-badge"><span class="dlive-dot" aria-hidden="true"></span>Live now</span>
+            <h3>${live.kidName ? `${live.kidName}’s room reveal` : live.message || 'Live reveal'}</h3>
+            <p>${live.startsAt ? `Started ${dashAgo(live.startsAt)}` : 'Streaming now'} · watch the feed and the sound in the control room</p>
+          </div>
+          <div class="dlive-actions">
+            ${live.liveUrl ? html`<a class="btn dlive-ghost" href=${live.liveUrl} target="_blank" rel="noopener">Watch page ${DI.external}</a>` : null}
+            <button type="button" class="btn btn-primary" onClick=${() => onNavigate('broadcast')}>Open control room</button>
+          </div>
+        </section>` : null}
+
+        <div class="dash">
+          <${DashCard} id="dash-needs" title="Needs you" meta=${needs.length || null} className="dash-needs">
+            ${needs.length ? html`<ul class="dneeds">
+              ${shownNeeds.map((n) => html`<li class=${`dneed is-${n.tone}`} key=${n.key}>
+                <span class="dneed-icon" aria-hidden="true">${n.icon}</span>
+                <div class="dneed-text">
+                  <div class="dneed-title">${n.title}</div>
+                  <div class="dneed-detail">${n.detail}</div>
                 </div>
-              ` : null}
-              ${attention.incomplete.length > 0 ? html`
-                <div class="attention-card" onClick=${() => onNavigate('kids-hub', null, 'kids', 'incomplete')}>
-                  <div class="attention-icon" style="background: rgba(214,158,46,0.1); color: #D69E2E;">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
-                  </div>
-                  <div class="attention-card-body">
-                    <div class="attention-card-title">Incomplete Profiles</div>
-                    <div class="attention-card-desc">Below 70% completeness</div>
-                  </div>
-                  <div class="attention-count">${attention.incomplete.length}</div>
-                </div>
-              ` : null}
-              ${attention.inProgress.length > 0 ? html`
-                <div class="attention-card" onClick=${() => onNavigate('kids-hub', null, 'kids', 'in-progress')}>
-                  <div class="attention-icon" style="background: rgba(49,130,206,0.1); color: #3182CE;">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                  </div>
-                  <div class="attention-card-body">
-                    <div class="attention-card-title">Rooms In Build</div>
-                    <div class="attention-card-desc">Awaiting completion</div>
-                  </div>
-                  <div class="attention-count">${attention.inProgress.length}</div>
-                </div>
-              ` : null}
-              ${attention.needsFunding.length > 0 ? html`
-                <div class="attention-card" onClick=${() => onNavigate('kids-hub', null, 'kids', 'needs-funding')}>
-                  <div class="attention-icon" style="background: rgba(229,62,62,0.1); color: #E53E3E;">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
-                  </div>
-                  <div class="attention-card-body">
-                    <div class="attention-card-title">Rooms Awaiting Funding</div>
-                    <div class="attention-card-desc">Not yet ready to build</div>
-                  </div>
-                  <div class="attention-count">${attention.needsFunding.length}</div>
-                </div>
-              ` : null}
-              ${attention.upcomingEvents.length > 0 ? html`
-                <div class="attention-card" onClick=${() => onNavigate('events', null, null, 'upcoming')}>
-                  <div class="attention-icon" style="background: rgba(128,90,213,0.1); color: #805AD5;">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-                  </div>
-                  <div class="attention-card-body">
-                    <div class="attention-card-title">Upcoming Events</div>
-                    <div class="attention-card-desc">Events to prepare for</div>
-                  </div>
-                  <div class="attention-count">${attention.upcomingEvents.length}</div>
-                </div>
-              ` : null}
+                ${n.action.href
+                  ? html`<a class="btn btn-ghost btn-sm dneed-act" href=${n.action.href} target="_blank" rel="noopener">${n.action.label} ${DI.external}</a>`
+                  : html`<button type="button" class=${`btn ${n.action.primary ? 'btn-primary' : 'btn-ghost'} btn-sm dneed-act`} disabled=${!!n.action.busy} onClick=${n.action.go}>
+                    ${n.action.busy ? html`<span class="spinner" style="width:14px;height:14px;border-width:2px" />` : null}${n.action.label}
+                  </button>`}
+              </li>`)}
+            </ul>
+            ${needs.length > NEEDS_MAX ? html`<button type="button" class="dlink dneeds-more" onClick=${() => setShowAllNeeds((v) => !v)} aria-expanded=${showAllNeeds}>
+              ${showAllNeeds ? 'Show fewer' : `Show ${needs.length - NEEDS_MAX} more`}
+            </button>` : null}`
+            : html`<div class="dcaught">
+              <span class="dcaught-icon" aria-hidden="true">${DI.done}</span>
+              <div><strong>You’re all caught up</strong><p>Nothing needs you right now. Unpublished edits, close reveals and fixes show up here.</p></div>
+            </div>`}
+          <//>
+
+          <${DashCard} id="dash-upcoming" title="Coming up" className="dash-upcoming"
+            action=${html`<button type="button" class="dlink" onClick=${() => onNavigate('events')}>All events</button>`}>
+            ${reveals === null ? html`<div class="dph" style="height: 220px"></div>`
+              : upcoming.length ? html`<ol class="dcal">
+                ${upcoming.slice(0, 5).map((u) => html`<li key=${u.key}>
+                  <button type="button" class="dcal-item" onClick=${u.go}>
+                    <span class=${`dcal-date ${u.tentative ? 'is-tentative' : dashDays(u.date) <= 3 ? 'is-soon' : ''}`} aria-hidden="true">
+                      <span class="dcal-mon">${u.date.toLocaleDateString('en-US', { month: 'short' })}</span>
+                      <span class="dcal-day">${u.date.getDate()}</span>
+                    </span>
+                    <span class="dcal-text">
+                      <span class="dcal-title">${u.title}</span>
+                      <span class="dcal-sub">${u.live ? `Live now · started ${dashAgo(u.date)}` : `${u.tentative ? `Tentatively ${dashDayInline(u.date)}` : dashDay(u.date)}${u.timed ? ` · ${dashTime(u.date)}` : ''}${Math.abs(dashDays(u.date)) > 1 ? ` · ${dashIn(u.date)}` : ''}`}</span>
+                    </span>
+                    <span class=${`dcal-kind is-${u.kind.toLowerCase()}`}>${u.kind}</span>
+                  </button>
+                </li>`)}
+              </ol>`
+              : html`<div class="dempty">
+                <p>Nothing on the calendar yet.</p>
+                <button type="button" class="btn btn-ghost btn-sm" onClick=${() => onNavigate('events', '')}>Add an event</button>
+              </div>`}
+            <p class="dcard-foot">Reveal dates come from JobTread. A date stays tentative until Reveal Date Confirmed is Yes; only confirmed reveals appear on the website.</p>
+          <//>
+
+          <${DashCard} id="dash-families" title="Families" className="dash-families"
+            meta=${`${building.length + awaiting.length} in progress`}
+            action=${html`<button type="button" class="dlink" onClick=${() => onNavigate('kids-hub', null, 'kids')}>All kids</button>`}>
+            <div class="dlanes">
+              ${lane('funding', 'Awaiting funding', awaiting, { go: () => onNavigate('kids-hub', null, 'kids', 'needs-funding'), empty: 'No one is waiting on funding.' })}
+              ${lane('build', 'In build', buildingSorted, {
+                go: () => onNavigate('kids-hub', null, 'kids', 'in-progress'), empty: 'No rooms in build.',
+                extra: (k) => {
+                  const r = revealBySlug[k.slug];
+                  if (!r) return null;
+                  const when = dashDays(r.date) < 7 ? dashDay(r.date) : r.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                  return r.confirmed
+                    ? html`<span class=${`dkid-chip ${dashDays(r.date) <= 3 ? 'is-soon' : ''}`} title=${`Reveal confirmed for ${r.date.toLocaleString()}`}>Reveal ${when}</span>`
+                    : html`<span class="dkid-chip is-tentative" title="Tentative until Reveal Date Confirmed is Yes in JobTread">Tentative ${when}</span>`;
+                },
+              })}
+              ${lane('done', `Completed in ${thisYear}`, doneThisYear, {
+                go: () => onNavigate('kids-hub', null, 'kids', 'completed'), max: 5, empty: 'No rooms finished yet this year.',
+                moreLabel: `All ${doneThisYear.length} this year`,
+                foot: html`<p class="dlane-foot">${completed.length} rooms completed since ${yearData?.first || 2012}</p>`,
+              })}
             </div>
-          </div>
-        ` : null}
+          <//>
 
-        <!-- Content Health Bar -->
-        <div class="card" style="margin-bottom: 1.75rem; padding: 1.25rem 1.5rem;">
-          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;">
-            <div style="font-size: 0.85rem; font-weight: 700;">Profile Completeness</div>
-            <div style="font-size: 0.85rem; font-weight: 700; color: ${avgCompleteness >= 80 ? '#38A169' : avgCompleteness >= 60 ? '#D69E2E' : '#E53E3E'};">${avgCompleteness}%</div>
-          </div>
-          <div class="health-bar-track">
-            <div class="health-bar-fill" style="width: ${avgCompleteness}%; background: ${avgCompleteness >= 80 ? 'linear-gradient(90deg, #38A169, #48BB78)' : avgCompleteness >= 60 ? 'linear-gradient(90deg, #D69E2E, #ECC94B)' : 'linear-gradient(90deg, #E53E3E, #FC8181)'};"></div>
-          </div>
-          <div style="display: flex; justify-content: space-between; margin-top: 0.5rem; font-size: 0.72rem; color: var(--color-text-muted);">
-            <span>${kids.filter(k => getCompleteness(k) >= 90).length} excellent</span>
-            <span>${kids.filter(k => { const s = getCompleteness(k); return s >= 60 && s < 90; }).length} good</span>
-            <span>${kids.filter(k => getCompleteness(k) < 60).length} needs work</span>
-          </div>
-          ${(() => {
-            const incomplete = kids
-              .map(k => ({ kid: k, ...getCompleteness(k, true) }))
-              .filter(x => x.pct < 100)
-              .sort((a, b) => a.pct - b.pct);
-            if (!incomplete.length) return null;
-            return html`
-              <details style="margin-top: 0.75rem; border-top: 1px solid #E5E4E0; padding-top: 0.75rem;">
-                <summary style="cursor: pointer; font-size: 0.78rem; font-weight: 600; color: var(--color-text-secondary); user-select: none;">
-                  ${incomplete.length} profile${incomplete.length !== 1 ? 's' : ''} with missing fields
-                </summary>
-                <div style="margin-top: 0.5rem; max-height: 240px; overflow-y: auto; display: flex; flex-direction: column; gap: 0.4rem;">
-                  ${incomplete.map(x => html`
-                    <div style="display: flex; align-items: baseline; gap: 0.5rem; font-size: 0.75rem; padding: 0.35rem 0.5rem; background: #FAFAF6; border-radius: 6px; cursor: pointer;"
-                      onClick=${() => onNavigate('kids-hub', x.kid.slug)}>
-                      <${CompletenessRing} pct=${x.pct} missing=${x.missing} size=${22} />
-                      <strong style="min-width: 100px; color: var(--color-text);">${x.kid.name}</strong>
-                      <span style="color: var(--color-text-muted);">Missing: ${x.missing.join(', ')}</span>
-                    </div>
-                  `)}
-                </div>
-              </details>
-            `;
-          })()}
-        </div>
-
-        ${yearData ? html`
-          <div class="chart-container" style="margin-bottom: 1.75rem;">
-            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.25rem;">
-              <div class="chart-title">Growth Over Time</div>
-              <div style="display: flex; gap: 0.5rem;">
-                ${(() => {
-                  const total = yearData.cumulative[yearData.cumulative.length - 1] || 0;
-                  const prevYear = yearData.perYear[yearData.perYear.length - 2] || 0;
-                  const curYear = yearData.perYear[yearData.perYear.length - 1] || 0;
-                  const delta = prevYear ? Math.round(((curYear - prevYear) / prevYear) * 100) : 0;
-                  return html`
-                    <div class="chart-stat-highlight">
-                      <span class="big">${total}</span>
-                      <span style="font-size: 0.8rem; color: var(--color-text-secondary);">total kids</span>
-                      ${delta !== 0 ? html`<span class="delta ${delta >= 0 ? 'up' : 'down'}">${delta > 0 ? '+' : ''}${delta}% YoY</span>` : null}
-                    </div>
-                  `;
-                })()}
+          <${DashCard} id="dash-impact" title="Impact" className="dash-impact"
+            meta=${yearData ? `since ${yearData.first}` : null}>
+            <div class="dimpact">
+              <div class="dhero">
+                <span class="dhero-num">${kidsServed}</span>
+                <span class="dhero-label">kids served</span>
               </div>
+              <dl class="dstats">
+                <div><dt>This year</dt><dd>${thisYearCount}${lastYearCount ? html`<span class=${`dstat-delta ${thisYearCount >= lastYearCount ? 'is-up' : 'is-down'}`}>${thisYearCount >= lastYearCount ? '↑' : '↓'} ${Math.abs(Math.round(((thisYearCount - lastYearCount) / lastYearCount) * 100))}% vs all of ${thisYear - 1}</span>` : null}</dd></div>
+                <div><dt>Rooms built</dt><dd>${rooms.toLocaleString()}</dd></div>
+                <div><dt>Partners</dt><dd>${partners.length.toLocaleString()}</dd></div>
+                <div><dt>Press stories</dt><dd>${press.length.toLocaleString()}</dd></div>
+              </dl>
             </div>
+            ${yearData ? html`<${DashBars} years=${yearData.years} counts=${yearData.counts} profiles=${yearData.profiles} onOpenKid=${(slug) => onNavigate('kids-hub', slug, 'kids')} />` : null}
+          <//>
 
-            <div style="display: flex; gap: 2.5rem; flex-wrap: wrap; margin-top: 1rem;">
-              <!-- Bar Chart: Kids per Year -->
-              <div class="chart-panel">
-                <div class="chart-subtitle">Kids per year</div>
-                <div class="chart-bar-group">
-                  ${(() => {
-                    const max = Math.max(...yearData.perYear);
-                    const gridLines = [0.25, 0.5, 0.75, 1].map(f => Math.round(max * f));
-                    return gridLines.map(v => {
-                      const bottom = 28 + ((v / max) * 120);
-                      return html`<div class="chart-gridline" style="bottom: ${bottom}px;"></div>`;
-                    });
-                  })()}
-                  ${yearData.years.map((y, i) => {
-                    const max = Math.max(...yearData.perYear);
-                    const h = Math.max(6, (yearData.perYear[i] / max) * 120);
-                    const delay = i * 0.04;
-                    return html`<div key=${y} class="chart-bar-col">
-                      <div class="chart-bar-value" style="animation-delay: ${delay + 0.4}s;">${yearData.perYear[i]}</div>
-                      <div class="chart-bar" style="height: ${h}px; background: linear-gradient(to top, #F0C000, #FFD500, #FFE14D); animation-delay: ${delay}s; box-shadow: 0 1px 4px rgba(255,213,0,0.25);" title="${y}: ${yearData.perYear[i]} kids"></div>
-                      <div class="chart-bar-label">'${y.toString().slice(-2)}</div>
-                    </div>`;
-                  })}
-                </div>
-              </div>
-
-              <!-- Line Chart: Cumulative Growth -->
-              <div class="chart-panel">
-                <div class="chart-subtitle">Cumulative growth</div>
-                ${(() => {
-                  const d = yearData.cumulative;
-                  const w = 320, h = 140, padTop = 20, padBot = 24, padLeft = 36;
-                  const chartW = w - padLeft;
-                  const chartH = h - padTop - padBot;
-                  const max = Math.max(...d);
-                  const min = 0;
-                  const range = max - min || 1;
-                  const step = chartW / (d.length - 1);
-                  const pts = d.map((v, i) => ({
-                    x: padLeft + i * step,
-                    y: padTop + chartH - ((v - min) / range) * chartH
-                  }));
-
-                  // Smooth bezier path
-                  const pathD = pts.reduce((acc, p, i) => {
-                    if (i === 0) return 'M ' + p.x + ',' + p.y;
-                    const prev = pts[i - 1];
-                    const cpx = (prev.x + p.x) / 2;
-                    return acc + ' C ' + cpx + ',' + prev.y + ' ' + cpx + ',' + p.y + ' ' + p.x + ',' + p.y;
-                  }, '');
-                  const areaD = pathD + ' L ' + pts[pts.length - 1].x + ',' + (padTop + chartH) + ' L ' + pts[0].x + ',' + (padTop + chartH) + ' Z';
-
-                  // Y-axis gridlines
-                  const gridCount = 4;
-                  const gridLines = Array.from({ length: gridCount + 1 }, (_, i) => {
-                    const val = Math.round((max / gridCount) * i);
-                    const y = padTop + chartH - ((val - min) / range) * chartH;
-                    return { val, y };
-                  });
-
-                  return html`<svg width="100%" height=${h} viewBox="0 0 ${w} ${h}" class="chart-line-svg" preserveAspectRatio="xMidYMid meet">
-                    <defs>
-                      <linearGradient id="cumGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stop-color="#FFD500" stop-opacity="0.25" />
-                        <stop offset="80%" stop-color="#FFD500" stop-opacity="0.03" />
-                        <stop offset="100%" stop-color="#FFD500" stop-opacity="0" />
-                      </linearGradient>
-                      <filter id="glowDot">
-                        <feGaussianBlur stdDeviation="2" result="blur" />
-                        <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
-                      </filter>
-                    </defs>
-
-                    <!-- Grid lines -->
-                    ${gridLines.map(g => html`
-                      <line x1=${padLeft} y1=${g.y} x2=${w} y2=${g.y} stroke="#E5E4E0" stroke-width="1" stroke-dasharray="4 3" />
-                      <text x=${padLeft - 6} y=${g.y + 3.5} text-anchor="end" font-size="9" fill="#737580" font-weight="500">${g.val}</text>
-                    `)}
-
-                    <!-- Area fill -->
-                    <path d=${areaD} fill="url(#cumGrad)" class="chart-line-area" />
-
-                    <!-- Line -->
-                    <path d=${pathD} fill="none" stroke="#FFD500" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="chart-line-path" />
-
-                    <!-- Data points & labels -->
-                    ${pts.map((p, i) => html`
-                      <circle cx=${p.x} cy=${p.y} r="4" fill="#FFD500" filter="url(#glowDot)" class="chart-line-dot" style="animation-delay: ${0.6 + i * 0.06}s;">
-                        <title>${yearData.years[i]}: ${d[i]} kids</title>
-                      </circle>
-                      <text x=${p.x} y=${p.y - 10} text-anchor="middle" font-size="10" font-weight="700" fill="var(--color-text)" style="opacity: 0; animation: chartFadeUp 0.3s ease ${0.8 + i * 0.06}s both;">${d[i]}</text>
-                      <text x=${p.x} y=${padTop + chartH + 14} text-anchor="middle" font-size="9" fill="#737580" font-weight="500">'${yearData.years[i].toString().slice(-2)}</text>
-                    `)}
-                  </svg>`;
-                })()}
-              </div>
-            </div>
-
-            <!-- Legend -->
-            <div class="chart-legend">
-              <div class="chart-legend-item">
-                <div class="chart-legend-dot" style="background: #FFD500;"></div>
-                Kids sponsored
-              </div>
-              <div class="chart-legend-item">
-                <div class="chart-legend-dot" style="background: #38A169;"></div>
-                Rooms completed
-              </div>
-              <div class="chart-legend-item" style="margin-left: auto; font-size: 0.7rem; color: var(--color-text-muted);">
-                Since ${yearData.years[0]}
-              </div>
-            </div>
-          </div>
-        ` : null}
-
-        <!-- Bottom Two-Column: Recent Kids + Activity -->
-        <div class="dash-bottom-grid">
-          <div class="card dashboard-recent">
-            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
-              <h3>Recent Kids</h3>
-              <button class="btn btn-ghost btn-sm" onClick=${() => onNavigate('kids-hub')}>View All →</button>
-            </div>
-            <div class="table-wrap"><table>
-              <thead><tr><th></th><th>Name</th><th>Year</th><th>Status</th><th>Photos</th></tr></thead>
-              <tbody>
-                ${kids.slice(0, 8).map(k => html`<tr key=${k.slug} style="cursor: pointer;" onClick=${() => onNavigate('kids-hub', k.slug)}>
-                  <td>${k.heroImage ? html`<img class="td-thumb" src="${k.heroImage}" alt="" />` : '—'}</td>
-                  <td><strong>${k.name}</strong></td>
-                  <td>${k.year || '—'}</td>
-                  <td><span class="badge ${k.status === 'completed' ? 'badge-green' : k.status === 'needs-funding' ? 'badge-red' : 'badge-yellow'}">${k.status === 'in-progress' ? 'in build' : k.status === 'needs-funding' ? 'awaiting funding' : k.status}</span></td>
-                  <td>${k.photoCount || 0}</td>
-                </tr>`)}
-              </tbody>
-            </table></div>
-          </div>
-          <div>
-            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.75rem;">
-              <h3>Recent Activity</h3>
-            </div>
-            <${ActivityLog} onViewAll=${() => onNavigate?.('audit-log')} />
-          </div>
+          <${DashActivity} onViewAll=${() => onNavigate('audit-log')} />
         </div>
       `;
     }
@@ -8675,6 +8566,7 @@
           </h2>
           <div class="flex gap-1 items-center">
             ${slug ? html`<button class="btn btn-ghost btn-sm" onClick=${() => setShowPreview(true)}>Preview</button>` : null}
+            ${slug ? html`<${JobTreadLink} slug=${slug} />` : null}
             ${slug ? html`<button class="btn btn-danger btn-sm" onClick=${() => setShowDeleteModal(true)} disabled=${deleting}>
               ${deleting ? html`<span class="spinner" />` : null} Delete
             </button>` : null}
@@ -16999,66 +16891,24 @@
     // SKELETON DASHBOARD LOADER
     // ═══════════════════════════════════════════
     function SkeletonDashboard() {
+      const block = (h) => html`<div class="skeleton" style=${`height: ${h}px; border-radius: 10px;`}></div>`;
       return html`
-        <div class="skeleton" style="width: 100%; height: 140px; border-radius: 16px; margin-bottom: 1.75rem;"></div>
-        <div style="display: flex; gap: 0.75rem; margin-bottom: 1.75rem;">
-          ${Array(5).fill(0).map((_, i) => html`<div key=${i} class="skeleton" style="width: 110px; height: 40px; border-radius: 8px;"></div>`)}
-        </div>
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 1.75rem;">
-          ${Array(7).fill(0).map((_, i) => html`<div key=${i} class="skeleton skeleton-stat" style="height: 120px;"></div>`)}
-        </div>
-        <div class="skeleton" style="width: 100%; height: 56px; border-radius: 12px; margin-bottom: 1.75rem;"></div>
-        <div class="skeleton" style="width: 100%; height: 260px; border-radius: 16px; margin-bottom: 1.75rem;"></div>
-        <div class="dash-bottom-grid">
-          <div class="card">
-            <div class="skeleton" style="width: 120px; height: 20px; margin-bottom: 1rem;"></div>
-            ${Array(5).fill(0).map((_, i) => html`<div key=${i} class="skeleton skeleton-row"></div>`)}
+        <div class="page-header dash-head">
+          <div>
+            <div class="skeleton" style="width: 220px; height: 30px; margin-bottom: 0.5rem;"></div>
+            <div class="skeleton" style="width: 300px; height: 14px;"></div>
           </div>
-          <div class="card">
-            <div class="skeleton" style="width: 140px; height: 20px; margin-bottom: 0.75rem;"></div>
-            ${Array(4).fill(0).map((_, i) => html`<div key=${i} class="skeleton skeleton-row"></div>`)}
-          </div>
+        </div>
+        <div class="dash">
+          <div class="dcard dash-needs">${block(260)}</div>
+          <div class="dcard dash-upcoming">${block(260)}</div>
+          <div class="dcard dash-families">${block(320)}</div>
+          <div class="dcard dash-impact">${block(380)}</div>
+          <div class="dcard dash-activity">${block(380)}</div>
         </div>
       `;
     }
 
-    // ═══════════════════════════════════════════
-    // MINI SPARKLINE CHART
-    // ═══════════════════════════════════════════
-    function MiniChart({ data, color = '#FFD500', height = 40, width = 120 }) {
-      if (!data || data.length < 2) return null;
-      const max = Math.max(...data);
-      const min = Math.min(...data);
-      const range = max - min || 1;
-      const step = width / (data.length - 1);
-      const pts = data.map((v, i) => ({
-        x: i * step,
-        y: height - ((v - min) / range) * (height - 6) - 3
-      }));
-      // Smooth bezier curve
-      const pathD = pts.reduce((acc, p, i) => {
-        if (i === 0) return `M ${p.x},${p.y}`;
-        const prev = pts[i - 1];
-        const cpx = (prev.x + p.x) / 2;
-        return `${acc} C ${cpx},${prev.y} ${cpx},${p.y} ${p.x},${p.y}`;
-      }, '');
-      const areaD = `${pathD} L ${pts[pts.length - 1].x},${height} L ${pts[0].x},${height} Z`;
-      const gradId = `miniGrad_${color.replace('#', '')}`;
-
-      return html`
-        <svg class="mini-chart" width=${width} height=${height} viewBox="0 0 ${width} ${height}" style="display: block; overflow: visible;">
-          <defs>
-            <linearGradient id=${gradId} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stop-color=${color} stop-opacity="0.25" />
-              <stop offset="100%" stop-color=${color} stop-opacity="0" />
-            </linearGradient>
-          </defs>
-          <path d=${areaD} fill=${`url(#${gradId})`} />
-          <path d=${pathD} fill="none" stroke=${color} stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-          <circle cx=${pts[pts.length - 1].x} cy=${pts[pts.length - 1].y} r="3" fill=${color} />
-        </svg>
-      `;
-    }
 
     function App() {
       const [view, setView] = useState(() => (location.hash.startsWith('#broadcast') ? 'broadcast' : 'dashboard'));
@@ -17367,7 +17217,7 @@
 
         switch (view) {
           case 'dashboard':
-            return html`<${Dashboard} kids=${kids} partners=${partners} team=${team} events=${events} communityProjects=${communityProjects} press=${press} articles=${articles} onNavigate=${navigate} />`;
+            return html`<${Dashboard} kids=${kids} partners=${partners} team=${team} events=${events} communityProjects=${communityProjects} press=${press} articles=${articles} onNavigate=${navigate} pendingData=${pendingData} onDeploy=${promptDeploy} deploying=${deploying} />`;
 
           // ─── Kids Hub (tabs: Kids | Community Projects) ───
           case 'kids-hub': {
@@ -17557,7 +17407,7 @@
           }
 
           default:
-            return html`<${Dashboard} kids=${kids} partners=${partners} team=${team} events=${events} communityProjects=${communityProjects} press=${press} articles=${articles} onNavigate=${navigate} />`;
+            return html`<${Dashboard} kids=${kids} partners=${partners} team=${team} events=${events} communityProjects=${communityProjects} press=${press} articles=${articles} onNavigate=${navigate} pendingData=${pendingData} onDeploy=${promptDeploy} deploying=${deploying} />`;
         }
       };
 
