@@ -10,6 +10,10 @@
  * GET ?sync=<jobId>           → bring that reveal's invite up to date now (Retry)
  * GET ?sweep=1                → reconcile every open job (dry run while sending is off)
  * GET ?enable=1 | ?enable=0   → turn sending on / off
+ * GET ?checks=preview         → what this morning's reveal checks would post (posts nothing)
+ * GET ?checks=run             → run the reveal checks now (posts comments)
+ * GET ?checks=test            → run them on the office sandbox job only
+ * GET ?checks-enable=1 | 0    → turn the weekday reveal checks on / off
  * POST { enabled, organizer } → turn sending on/off, change the organizer
  *
  * Test links are GETs on purpose: open them in a browser signed in to Access.
@@ -19,6 +23,7 @@ import {
   ensureSchema, readConfig, writeConfig, reconcileJob, reconcileAll, sendTestInvite,
   listUpcoming, maybeSweep, DEFAULT_TEMPLATE, TEMPLATE_LIMITS,
 } from './_reveal-invites.js';
+import { readNudgeConfig, writeNudgeConfig, runNudges, maybeNudge, summarize, SANDBOX_JOB_ID } from './_reveal-nudges.js';
 import { logAudit } from './_audit.js';
 
 const ID = /^[A-Za-z0-9]{6,32}$/;
@@ -73,13 +78,34 @@ export async function onRequestGet(context) {
       return Response.json({ ok: true, config });
     }
 
+    // Reveal checks (the weekday comments for Project Managers)
+    if (q.has('checks')) {
+      const mode = q.get('checks');
+      if (!['preview', 'run', 'test'].includes(mode)) return fail('checks must be preview, run or test');
+      const results = await runNudges(env, { dryRun: mode === 'preview', jobIds: mode === 'test' ? [SANDBOX_JOB_ID] : null });
+      if (mode === 'run') await writeNudgeConfig(env.DB, { lastRun: summarize(results, Date.now()), lastError: null });
+      return Response.json({ ok: true, mode, results: results.filter(r => r.action !== 'skip'), skipped: results.filter(r => r.action === 'skip').length });
+    }
+
+    if (q.has('checks-enable')) {
+      const enabled = q.get('checks-enable') === '1';
+      const before = await readNudgeConfig(env.DB);
+      const checks = await writeNudgeConfig(env.DB, { enabled });
+      await logAudit(env.DB, {
+        userEmail: me || 'unknown', action: 'updated', entityType: 'site-config', entitySlug: 'reveal-nudges',
+        entityName: 'Reveal checks', changes: [{ field: 'enabled', from: before.enabled, to: enabled }], gitStatus: 'ok',
+      }).catch(() => {});
+      return Response.json({ ok: true, checks });
+    }
+
     if (q.get('sweep') === '1') {
       const results = await reconcileAll(env);
       return Response.json({ ok: true, results });
     }
 
     context.waitUntil(maybeSweep(env));
-    const config = await readConfig(env.DB);
+    context.waitUntil(maybeNudge(env));
+    const [config, checks] = await Promise.all([readConfig(env.DB), readNudgeConfig(env.DB)]);
     let upcoming = [];
     let organizerName = null;
     let upcomingError = null;
@@ -89,6 +115,7 @@ export async function onRequestGet(context) {
     return Response.json({
       ok: true,
       config,
+      checks,
       organizerName,
       defaults: DEFAULT_TEMPLATE,
       limits: TEMPLATE_LIMITS,

@@ -3,11 +3,11 @@
  * ===========================================================================
  * JobTread is the source of truth for reveal dates. Each SOARD job has a
  * "Reveal Date" custom field (UTC date-time, kept in sync with the job's
- * Reveal schedule task by a DataX agent) and a "Reveal Date Confirmed" field.
+ * Reveal schedule task by ./_reveal-sync.js) and a "Reveal Date Confirmed" field.
  * Only confirmed reveals are public; projected dates never leave JobTread.
  *
  * A reveal whose Eastern time is exactly midnight has no time set yet (the
- * sync agent's convention), so it's shown as a date only.
+ * date sync's convention), so it's shown as a date only.
  *
  * Jobs are matched to kid pages by year and name: "Max Sample (2026)" matches
  * the 2026 kid "Max", "Remi & Nico Powell (2026)" matches "Remi & Nico".
@@ -78,6 +78,60 @@ export function easternParts(iso) {
 
 export function todayEastern(now = Date.now()) {
   return easternParts(new Date(now).toISOString()).date;
+}
+
+/** Eastern wall-clock offset from UTC at an instant, in ms (−4 h or −5 h) */
+function easternOffsetMs(ts) {
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', {
+    timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
+  }).formatToParts(new Date(ts)).map(x => [x.type, x.value]));
+  return Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute, +p.second) - Math.floor(ts / 1000) * 1000;
+}
+
+/**
+ * Eastern local date + time ('HH:MM', or null for midnight) → UTC ISO.
+ * Exact for any date, daylight time or not: the offset is the one in force
+ * at that local time, found by settling the guess twice.
+ */
+export function easternToUtcIso(date, time) {
+  const [y, m, d] = String(date).split('-').map(Number);
+  const [hh, mm] = String(time || '00:00').split(':').map(Number);
+  const wall = Date.UTC(y, m - 1, d, hh, mm);
+  let ts = wall;
+  for (let i = 0; i < 2; i++) ts = wall - easternOffsetMs(ts);
+  return new Date(ts).toISOString();
+}
+
+/** "Tuesday, November 18" from 'YYYY-MM-DD' (weekday computed, never guessed) */
+export function longDay(date) {
+  return new Date(`${date}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' });
+}
+
+/** "3:00 PM" from 'HH:MM' */
+export function clockTime(time) {
+  const [h, m] = String(time).split(':').map(Number);
+  return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`;
+}
+
+/** Whole days from one 'YYYY-MM-DD' to another */
+export function daysBetween(from, to) {
+  return Math.round((Date.parse(`${to}T12:00:00Z`) - Date.parse(`${from}T12:00:00Z`)) / 86_400_000);
+}
+
+/** One JobTread (Pave) query with the grant key. Throws with JobTread's message on failure. */
+export async function pave(grantKey, query, fetchImpl = fetch) {
+  if (!grantKey) throw new Error('JOBTREAD_GRANT_KEY is not set');
+  const res = await fetchImpl(JT_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query: { $: { grantKey }, ...query } }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`JobTread returned ${res.status}${text ? `: ${text.slice(0, 200)}` : ''}`);
+  }
+  return res.json();
 }
 
 /** Bare Cloudflare Images id from a full delivery URL, or the input if it's already an id */

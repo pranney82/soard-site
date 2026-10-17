@@ -73,7 +73,11 @@ const PUBLIC_ROUTES = ['/api/newsletter', '/api/kids.json', '/api/download-logo'
   '/api/live-messages',
   // Reveal calendar invites: a JobTread workflow wake-up ({ jobId }); the handler
   // re-reads everything from JobTread, so the body can't change what gets sent
-  '/api/reveal-invites'];
+  '/api/reveal-invites',
+  // Reveal Date ↔ Reveal task sync: same wake-up pattern, re-reads JobTread
+  '/api/reveal-sync',
+  // Weekday reveal checks: a scheduled JobTread wake-up; runs at most once a weekday
+  '/api/reveal-checks'];
 
 // Routes public for reads only — GET/HEAD skip auth, mutations still require Access.
 // fb-live-videos returns only the page's public video permalinks (never the token),
