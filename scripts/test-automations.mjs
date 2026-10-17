@@ -37,6 +37,7 @@ const FACTS = {
   health: { lastTickAt: iso(60e3), lastTickSource: 'hub:alarm', lastDailyAt: iso(86400e3), hubOk: true, streamOk: true, facebookOk: true, webhookAt: iso(2 * 86400e3), webhookEvent: 'live_input.disconnected', replayCheckAt: iso(2 * 86400e3), monitorAt: iso(2 * 86400e3) },
   hub: { ok: true, current: false, lastTickAt: iso(40e3), clients: 2, error: null },
   invites: { enabled: true, lastSweepAt: iso(30 * 60e3), checked: 20, changed: 0, errors: 0, rows: 3 },
+  revealChecks: { enabled: false, lastRunAt: null, checked: null, posted: null, repaired: null, errors: null, lastErrorAt: null, syncedAt: iso(10 * 60e3), syncedJobs: 1 },
   fbArchive: { checkedAt: iso(60 * 60e3), archived: 3, needsKid: 1, lastAutoDeployAt: iso(17 * 86400e3) },
   reveals: { cachedAt: iso(5 * 60e3) },
   sends: { live: { kit: { last: iso(2 * 86400e3), sent: 1, failed: 0 } } },
@@ -44,7 +45,7 @@ const FACTS = {
   jobtread: {
     workflows: Object.fromEntries([
       ['22PJYm7aXBgK', true], ['22PJxRJ37KSs', true], ['22PJxRLV9Y3i', true], ['22PRvF7pG9VM', false], ['22PZF9ENDgxn', false],
-      ['22PgHVceQhvW', true], ['22PgHVcgDXFN', true], ['22PgPECxg6UP', true], ['22PgPED4vi7W', true], ['22PgQQ6JnJDm', true],
+      ['22PgHVceQhvW', true], ['22PgHVcgDXFN', true], ['22PgPECxg6UP', true], ['22PgPED4vi7W', true], ['22PgQQ6JnJDm', true], ['22PgQeyQNx34', true],
     ].map(([id, active]) => [id, { name: id, active }])),
     webhooks: Object.fromEntries(['22PDDmxBcvpA', '22PJxV5yimrd', '22P5rFX2hhQW', '22PRvE87suYz', '22PaN5dFNj8s', '22PXNK6fZGzA'].map((id) => [id, { where: 'example.com/x', events: [] }])),
   },
@@ -123,8 +124,8 @@ try {
     ['Instagram Reel', 'Off'], ['Reminder emails', 'Off'], ['Browser push reminders', 'Off'], ['Text reminders', 'Off'],
     ['Simulcast to Facebook', 'Live'], ['Simulcast to YouTube', 'Needs attention'], ['Live hub', 'Needs attention'],
     ['Slack posts', 'Off'], ['Facebook replay rescue', 'Needs attention'], ['Invite engine', 'Live'],
-    ['Reveal Date Sync agent', 'Live'], ['Application In Review comment', 'Off'],
-    ['Reveal nudges for PMs', 'Test mode'],
+    ['Reveal date sync', 'Live'], ['Application In Review comment', 'Off'],
+    ['Reveal checks for PMs', 'Off'], ['Weekday 8 am wake-up', 'Live'],
   ]) ok(await statusOf(page, title) === want, `${title}: ${want}`);
 
   const attnItems = await page.$$eval('.am-panel .am-mini li', (l) => l.length);

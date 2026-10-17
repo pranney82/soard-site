@@ -11,6 +11,7 @@
  *  - health:    heartbeat, daily check, Stream webhook, replay check timestamps
  *  - hub:       the live hub's own status, and whether it runs the current code
  *  - invites:   reveal invite sending switch and the last safety sweep
+ *  - revealChecks: weekday reveal checks switch and last run; date sync's last activity
  *  - fbArchive: last Facebook replay rescue and replays still waiting for a kid
  *  - sends:     last reminder send per kind and channel (counts only)
  *  - jobtread:  SOARD workflows (on/off) and webhooks (host and events only)
@@ -99,6 +100,23 @@ export function inviteFacts(cfg, rows) {
   };
 }
 
+/** Weekday reveal checks (site_config "reveal-nudges") and the date sync's last activity (reveal_sync) */
+export function revealCheckFacts(cfg, sync) {
+  const d = cfg?.data || {};
+  const run = d.lastRun && !d.lastRun.running ? d.lastRun : null;
+  return {
+    enabled: !!d.enabled,
+    lastRunAt: run?.at || null,
+    checked: run?.checked ?? null,
+    posted: run?.posted ?? null,
+    repaired: run?.repaired ?? null,
+    errors: run?.errors ?? null,
+    lastErrorAt: d.lastError?.at || null,
+    syncedAt: sync?.last || null,
+    syncedJobs: sync?.n ?? null,
+  };
+}
+
 /** placed: Stream uids some kid page already uses (staff can attach a replay by hand in the kid editor) */
 export function archiveFacts(a, placed = new Set()) {
   if (!a) return null;
@@ -162,7 +180,7 @@ const settle = async (fn) => { try { return await fn(); } catch (e) { return { e
 
 export async function gatherFacts(env, { fetchImpl = fetch, now = Date.now() } = {}) {
   const DB = env.DB;
-  const [cfg, health, invites, archive, reveals, inviteRows, sends, reminders, hub, jobtread] = await Promise.all([
+  const [cfg, health, invites, archive, reveals, inviteRows, sends, reminders, hub, jobtread, checks, synced] = await Promise.all([
     settle(() => siteConfig(DB, 'broadcast-config')),
     settle(() => siteConfig(DB, 'broadcast-health')),
     settle(() => siteConfig(DB, 'reveal-invites')),
@@ -173,6 +191,9 @@ export async function gatherFacts(env, { fetchImpl = fetch, now = Date.now() } =
     settle(() => DB.prepare('SELECT count(*) AS n FROM broadcast_reminders').first('n')),
     settle(() => hubStatus(env)),
     settle(() => jobtreadFacts(env.JOBTREAD_GRANT_KEY, fetchImpl)),
+    settle(() => siteConfig(DB, 'reveal-nudges')),
+    // The table appears with the first sync; until then this settles to an error
+    settle(() => DB.prepare('SELECT count(*) AS n, max(updated_at) AS last FROM reveal_sync').first()),
   ]);
   const ok = (v) => (v && !v.error ? v : null);
   const sendMap = {};
@@ -191,6 +212,7 @@ export async function gatherFacts(env, { fetchImpl = fetch, now = Date.now() } =
       // The hub gained viewer counting with the watch party; older code reports no "watchers"
       : { ok: !!hub?.ok && !hub?.error, current: !!hub && 'watchers' in hub, lastTickAt: hub?.lastTick?.at || null, clients: hub?.clients ?? null, error: hub?.error || null },
     invites: inviteFacts(ok(invites), typeof inviteRows === 'number' ? inviteRows : null),
+    revealChecks: revealCheckFacts(ok(checks), ok(synced)),
     fbArchive: archiveFacts(ok(archive), await settle(() => placedUids(DB, ok(archive))).then((p) => (p instanceof Set ? p : new Set()))),
     reveals: { cachedAt: typeof reveals === 'string' ? reveals : null },
     sends: sendMap,
