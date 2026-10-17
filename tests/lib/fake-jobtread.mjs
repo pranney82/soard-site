@@ -1,7 +1,7 @@
 /**
  * A tiny in-memory JobTread (Pave) for the reveal tests. Understands the
  * queries the reveal modules send: one job by id (Reveal tasks only), a job's
- * schedule (isToDo = false), the org's open jobs, updateJob, updateTask and
+ * schedule tasks ending after a date, the org's open jobs, updateJob, updateTask and
  * createComment. Every mutation is recorded in `calls`.
  *
  * Jobs are plain objects:
@@ -27,8 +27,9 @@ export function fakeJobTread(jobs) {
     for (const [key, v] of Object.entries(rest)) {
       if (key === 'job') {
         const j = state.jobs[v.$.id];
-        const scheduleQuery = v.tasks?.$?.where?.[0] === 'isToDo';
-        out.job = !j ? null : scheduleQuery ? { tasks: { nodes: j.schedule || [] } } : render(j);
+        // The late-work query: { and: [['isToDo', '=', false], ['endDate', '>', date]] }
+        const late = v.tasks?.$?.where?.and?.find(w => w[0] === 'endDate');
+        out.job = !j ? null : late ? { tasks: { nodes: (j.schedule || []).filter(t => t.endDate && t.endDate > late[2]) } } : render(j);
       } else if (key === 'organization') {
         out.organization = { jobs: { nextPage: null, nodes: Object.values(state.jobs).filter(j => !j.closedOn).map(render) } };
       } else if (key === 'updateJob') {
