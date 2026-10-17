@@ -7,6 +7,7 @@
  */
 
 import { syncJob } from './_reveal-sync.js';
+import { syncBroadcastSchedule } from './_broadcast-schedule.js';
 
 export async function onRequestPost(context) {
   let body = {};
@@ -15,6 +16,8 @@ export async function onRequestPost(context) {
   if (!/^[A-Za-z0-9]{6,32}$/.test(jobId)) return Response.json({ ok: false, error: 'jobId is required' }, { status: 400 });
   try {
     const r = await syncJob(context.env, { ...body, jobId });
+    // A reveal date changed: the live countdown follows right away (re-read from JobTread)
+    context.waitUntil(syncBroadcastSchedule(context.env, { force: true }));
     return Response.json({ ok: true, action: r.action, ...(r.reason ? { reason: r.reason } : {}) });
   } catch (err) {
     // 500, not 502: Cloudflare swaps 502 bodies for its own error page

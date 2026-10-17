@@ -48,7 +48,7 @@ const INACTIVE_STATUSES = new Set(['Denied', 'Awaiting Funding']);
 const SITE = 'https://sunshineonaranneyday.com';
 /** The job's schedule in JobTread, opened on the Reveal task when we know it */
 export const scheduleUrl = (jobId, taskId) => `https://app.jobtread.com/jobs/${jobId}/schedule${taskId ? `?taskId=${taskId}` : ''}`;
-const ADMIN_URL = `${SITE}/admin/#broadcast/invites`;
+const ADMIN_URL = `${SITE}/admin/#broadcast`; // Reveals → Now, where each reveal's Retry is
 const CONFIG_KEY = 'reveal-invites';
 const TZ = 'America/New_York';
 // Problems email these people plus the organizer (and ALERT_EMAILS, Slack if set)
@@ -61,6 +61,11 @@ const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS reveal_invites (
     job_id TEXT PRIMARY KEY, event_id TEXT, state TEXT, hash TEXT, reveal_date TEXT,
     guests TEXT, last_action TEXT, error TEXT, updated_at TEXT)`,
+  // Every invite that went out (sent, updated, cancelled), for the admin's per-reveal tracker
+  `CREATE TABLE IF NOT EXISTS reveal_invite_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, job_id TEXT NOT NULL, action TEXT, state TEXT,
+    guests INTEGER, reveal_date TEXT, created_at TEXT)`,
+  `CREATE INDEX IF NOT EXISTS idx_reveal_invite_log_job ON reveal_invite_log(job_id)`,
 ];
 const _schemaReady = new WeakSet();
 export async function ensureSchema(DB) {
@@ -257,6 +262,11 @@ async function writeRow(DB, row) {
       row.guests ?? null, row.last_action ?? null, row.error ?? null, new Date().toISOString()).run();
 }
 
+async function logInvite(DB, { jobId, action, state, guests, revealDate }) {
+  await DB.prepare('INSERT INTO reveal_invite_log (job_id, action, state, guests, reveal_date, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+    .bind(jobId, action, state ?? null, guests ?? null, revealDate ?? null, new Date().toISOString()).run().catch(() => {});
+}
+
 /**
  * Make the calendar match JobTread for one job. Sends nothing unless the
  * invite is enabled (or `force` is set by an admin), and nothing when the
@@ -276,13 +286,13 @@ async function alertProblem(env, config, { jobId, name, error, taskId }) {
   const detail = `The calendar invite for ${name || `job ${jobId}`} couldn't be updated. Google or JobTread said: ${error}`;
   const fix = /unauthorized_client|GOOGLE_CALENDAR_KEY|sign-in/i.test(error)
     ? 'The Google key or its domain-wide delegation needs attention (Cloudflare GOOGLE_CALENDAR_KEY, Workspace Admin → Domain-wide delegation).'
-    : 'Open Reveals → Invites in the admin and press Retry. If it keeps failing, check the job in JobTread.';
+    : 'Open Reveals in the admin, open this reveal under Upcoming reveals and press Retry. If it keeps failing, check the job in JobTread.';
   await Promise.allSettled([
     slackAlert(env, `🟡 ${title}: ${detail} Fix: ${fix} ${ADMIN_URL}`),
     emailConfigured(env) && to.length ? sendEmails(env, {
       to,
       subject: `[SOARD] ${title}`,
-      html: `<p><strong>${escapeHtml(title)}</strong></p><p>${escapeHtml(detail)}</p><p><strong>Fix:</strong> ${escapeHtml(fix)}</p><p><a href="${ADMIN_URL}">Open Reveals → Invites in the admin</a></p><p><a href="${scheduleUrl(jobId, taskId)}">Open the schedule in JobTread</a></p>`,
+      html: `<p><strong>${escapeHtml(title)}</strong></p><p>${escapeHtml(detail)}</p><p><strong>Fix:</strong> ${escapeHtml(fix)}</p><p><a href="${ADMIN_URL}">Open Reveals in the admin</a></p><p><a href="${scheduleUrl(jobId, taskId)}">Open the schedule in JobTread</a></p>`,
       text: `${title}\n\n${detail}\n\nFix: ${fix}\n\nAdmin: ${ADMIN_URL}\nJobTread schedule: ${scheduleUrl(jobId, taskId)}`,
       tags: [{ name: 'category', value: 'reveal-invite-alert' }],
     }) : null,
@@ -325,6 +335,7 @@ export async function reconcileJob(env, jobId, { fetchImpl = fetch, now = Date.n
       const token = await accessToken(env, config.organizer, { fetchImpl, now });
       await cancelEvent(token, config.organizer, row.event_id, { fetchImpl });
       await writeRow(DB, { ...row, state: 'cancelled', hash: null, last_action: `cancelled: ${plan.reason}`, error: null });
+      await logInvite(DB, { jobId, action: 'cancelled', state: 'cancelled', guests: row.guests ? JSON.parse(row.guests).length : null, revealDate: row.reveal_date });
       return { jobId, action: 'cancelled', reason: plan.reason };
     } catch (err) {
       return failed(row, err);
@@ -355,6 +366,7 @@ export async function reconcileJob(env, jobId, { fetchImpl = fetch, now = Date.n
       job_id: jobId, event_id: plan.event.id, state: plan.event.status, hash, reveal_date: plan.date,
       guests: JSON.stringify(plan.guests), last_action: sendUpdates === 'none' ? 'updated quietly (staff guest list only)' : action, error: null,
     });
+    await logInvite(DB, { jobId, action, state: plan.event.status, guests: plan.guests.length, revealDate: plan.date });
     return { jobId, action, eventId: plan.event.id, status: plan.event.status, guests: plan.guests.length };
   } catch (err) {
     return failed(row, err);
@@ -454,24 +466,39 @@ export async function listUpcoming(env, { fetchImpl = fetch, now = Date.now() } 
   const { DB } = env;
   await ensureSchema(DB);
   const cf = { $: { size: 50 }, nodes: { value: {}, customField: { id: {} } } };
-  const [body, staff, kids, rowsRes, config] = await Promise.all([
-    pave(env.JOBTREAD_GRANT_KEY, {
-      organization: {
-        $: { id: SOARD_ORG_ID },
-        jobs: {
-          $: { size: 100, where: ['closedOn', '=', null] },
-          nodes: {
-            id: {}, name: {}, closedOn: {}, organization: { id: {} },
-            location: { address: {}, account: { contacts: { $: { size: 50 }, nodes: { name: {}, customFieldValues: cf } } } },
-            customFieldValues: cf,
-            tasks: {
-              $: { size: 20, where: { or: [[['taskType', 'id'], '=', REVEAL_TASK_TYPE], ['name', '=', 'Build Schedule']] } },
-              nodes: { id: {}, name: {}, startDate: {}, startTime: {}, endDate: {}, endTime: {}, progress: {}, taskType: { id: {} } },
+  // JobTread refuses (413) a query whose worst case is too big: page size times
+  // every nested list. So open jobs come 25 at a time without their contacts,
+  // and contacts are read below for upcoming reveals only.
+  async function openJobs() {
+    const jobs = [];
+    let page = null;
+    for (let i = 0; i < 10; i++) {
+      const body = await pave(env.JOBTREAD_GRANT_KEY, {
+        organization: {
+          $: { id: SOARD_ORG_ID },
+          jobs: {
+            $: { size: 25, where: ['closedOn', '=', null], ...(page ? { page } : {}) },
+            nextPage: {},
+            nodes: {
+              id: {}, name: {}, closedOn: {}, organization: { id: {} },
+              location: { address: {} },
+              customFieldValues: cf,
+              tasks: {
+                $: { size: 20, where: { or: [[['taskType', 'id'], '=', REVEAL_TASK_TYPE], ['name', '=', 'Build Schedule']] } },
+                nodes: { id: {}, name: {}, startDate: {}, startTime: {}, endDate: {}, endTime: {}, progress: {}, taskType: { id: {} } },
+              },
             },
           },
         },
-      },
-    }, fetchImpl),
+      }, fetchImpl);
+      jobs.push(...(body?.organization?.jobs?.nodes || []));
+      page = body?.organization?.jobs?.nextPage || null;
+      if (!page) break;
+    }
+    return jobs;
+  }
+  const [jobs, staff, kids, rowsRes, config] = await Promise.all([
+    openJobs(),
     fetchStaff(env.JOBTREAD_GRANT_KEY, fetchImpl),
     loadKids(DB).catch(() => []),
     DB.prepare('SELECT * FROM reveal_invites').all(),
@@ -480,12 +507,28 @@ export async function listUpcoming(env, { fetchImpl = fetch, now = Date.now() } 
   const rows = Object.fromEntries((rowsRes.results || []).map(r => [r.job_id, r]));
   const staffNames = Object.fromEntries(staff.map(s => [s.email, s.name]));
   const today = todayEastern(now);
-  const out = [];
-  for (const job of body?.organization?.jobs?.nodes || []) {
+  const upcoming = [];
+  for (const job of jobs) {
     if (job.id === SANDBOX_JOB_ID) continue;
     const tasks = job.tasks?.nodes || [];
     const reveal = tasks.filter(t => t.taskType?.id === REVEAL_TASK_TYPE).find(t => (t.progress ?? 0) < 1);
-    if (!reveal?.startDate || reveal.startDate < today) continue;
+    if (reveal?.startDate && reveal.startDate >= today) upcoming.push({ job, tasks, reveal });
+  }
+  await Promise.all(upcoming.map(async ({ job }) => {
+    const res = await pave(env.JOBTREAD_GRANT_KEY, {
+      job: { $: { id: job.id }, location: { account: { contacts: { $: { size: 50 }, nodes: { name: {}, customFieldValues: cf } } } } },
+    }, fetchImpl);
+    job.location = { ...job.location, account: res?.job?.location?.account || null };
+  }));
+  // What went out for each, oldest first (the tracker shows when each invite was first sent)
+  const ids = upcoming.map(({ job }) => job.id);
+  const logRes = ids.length
+    ? await DB.prepare(`SELECT job_id, action, state, guests, reveal_date, created_at FROM reveal_invite_log WHERE job_id IN (${ids.map(() => '?').join(', ')}) ORDER BY id`).bind(...ids).all()
+    : { results: [] };
+  const logs = {};
+  for (const l of logRes.results || []) (logs[l.job_id] ||= []).push({ action: l.action, state: l.state, guests: l.guests, date: l.reveal_date, at: l.created_at });
+  const out = [];
+  for (const { job, tasks, reveal } of upcoming) {
     const values = fieldValues(job.customFieldValues?.nodes);
     const row = rows[job.id];
     const who = displayName(job, kids);
@@ -517,6 +560,7 @@ export async function listUpcoming(env, { fetchImpl = fetch, now = Date.now() } 
       jobId: job.id,
       jobName: job.name,
       name: who.name,
+      slug: who.slug,
       kidUrl: who.slug ? `/kids/${who.slug}/` : null,
       jobUrl: `https://app.jobtread.com/jobs/${job.id}`,
       scheduleUrl: scheduleUrl(job.id, reveal.id),
@@ -530,6 +574,7 @@ export async function listUpcoming(env, { fetchImpl = fetch, now = Date.now() } 
       invite: row ? {
         state: row.state, lastAction: row.last_action, error: row.error, updatedAt: row.updated_at,
         guests: row.guests ? JSON.parse(row.guests).length : 0,
+        log: logs[job.id] || [],
       } : null,
     });
   }

@@ -1,7 +1,8 @@
 /**
  * /api/reveal-invites-admin (Cloudflare Access) — reveal calendar invites, for Reveals → Invites
  *
- * GET                         → settings, setup checks, and every job's invite record
+ * GET                         → settings, setup checks, every upcoming reveal with its invite,
+ *                               and which one the live countdown follows
  * GET ?test=<jobId>           → send that job's invite to YOU only, as a separate TEST event
  *        &date=YYYY-MM-DD       try a moved date
  *        &time=HH:MM | none     try a time (or back to all day)
@@ -25,9 +26,58 @@ import {
 } from './_reveal-invites.js';
 import { readNudgeConfig, writeNudgeConfig, runNudges, maybeNudge, summarize, SANDBOX_JOB_ID } from './_reveal-nudges.js';
 import { logAudit } from './_audit.js';
+import { readState, readConfig as readBroadcastConfig, ensureSchema as ensureBroadcastSchema } from './_broadcast.js';
+import { readScheduleRecord } from './_broadcast-schedule.js';
+import { kitConfigured } from './_kit.js';
 
 const ID = /^[A-Za-z0-9]{6,32}$/;
 const fail = (error, status = 400) => Response.json({ ok: false, error }, { status });
+
+/**
+ * Everything that went out for each upcoming reveal besides its invite, for the
+ * tracker on Reveals → Now: its live broadcast (countdown) with the reminder
+ * sends and the Kit email, how many people asked for reminders, and the last
+ * reveal-check comment. Adds r.broadcast, r.reminderSignups and r.checkComment.
+ */
+export async function addTracking(env, upcoming) {
+  const DB = env.DB;
+  if (!upcoming.length) return;
+  await ensureBroadcastSchema(DB);
+  const ids = upcoming.map((r) => r.jobId);
+  const since = new Date(Date.now() - 180 * 86400e3).toISOString();
+  const [rows, signups, nudges] = await Promise.all([
+    DB.prepare('SELECT id, kid_slug, phase, scheduled_at, live_at, ended_at, data, created_at FROM broadcasts WHERE created_at >= ? ORDER BY created_at').bind(since).all(),
+    DB.prepare('SELECT kid_slug, COUNT(*) AS n FROM broadcast_reminders WHERE unsubscribed_at IS NULL GROUP BY kid_slug').all(),
+    // The reveal checks make their table on first run; until then there are no comments
+    (async () => DB.prepare(`SELECT job_id, message, posted_at FROM reveal_nudges WHERE job_id IN (${ids.map(() => '?').join(', ')})`).bind(...ids).all())().catch(() => ({ results: [] })),
+  ]);
+  // The latest broadcast planned from each job (cancelled ones count: a reveal can be taken down and put back)
+  const byJob = {};
+  for (const b of rows.results || []) {
+    let d = {};
+    try { d = JSON.parse(b.data || '{}'); } catch { /* no job */ }
+    if (d.jobId && ids.includes(d.jobId)) byJob[d.jobId] = { ...b, data: d };
+  }
+  const bIds = Object.values(byJob).map((b) => b.id);
+  const sends = bIds.length
+    ? (await DB.prepare(`SELECT broadcast_id, kind, channel, recipients, sent, failed, error, created_at FROM broadcast_sends WHERE broadcast_id IN (${bIds.map(() => '?').join(', ')})`).bind(...bIds).all()).results || []
+    : [];
+  const signupCounts = Object.fromEntries((signups.results || []).map((r) => [r.kid_slug || '', r.n]));
+  const nudgeBy = Object.fromEntries((nudges.results || []).map((n) => [n.job_id, n]));
+  for (const r of upcoming) {
+    const b = byJob[r.jobId];
+    r.broadcast = b ? {
+      id: b.id, phase: b.phase, scheduledAt: b.scheduled_at, liveAt: b.live_at, endedAt: b.ended_at, createdAt: b.created_at,
+      kitLiveEmail: b.data.kitLiveEmail ?? null,
+      kit: { scheduledDraft: !!b.data.kit?.scheduledDraftId, live: b.data.kit?.live || null },
+      sends: sends.filter((x) => x.broadcast_id === b.id).map(({ broadcast_id, ...x }) => x),
+    } : null;
+    // Reminders go to people who asked about this kid plus everyone who asked about every reveal
+    r.reminderSignups = (signupCounts[''] || 0) + (r.slug ? signupCounts[r.slug] || 0 : 0);
+    const n = nudgeBy[r.jobId];
+    r.checkComment = n?.posted_at ? { at: new Date(Number(n.posted_at)).toISOString(), message: n.message } : null;
+  }
+}
 
 export async function onRequestGet(context) {
   const { env } = context;
@@ -105,13 +155,18 @@ export async function onRequestGet(context) {
 
     context.waitUntil(maybeSweep(env));
     context.waitUntil(maybeNudge(env));
-    const [config, checks] = await Promise.all([readConfig(env.DB), readNudgeConfig(env.DB)]);
+    const [config, checks, broadcast, schedule] = await Promise.all([
+      readConfig(env.DB), readNudgeConfig(env.DB),
+      readState(env.DB).catch(() => null), readScheduleRecord(env.DB),
+    ]);
     let upcoming = [];
     let organizerName = null;
     let upcomingError = null;
     if (env.JOBTREAD_GRANT_KEY) {
       try { ({ reveals: upcoming, organizerName } = await listUpcoming(env)); } catch (err) { upcomingError = err.message; }
     }
+    await addTracking(env, upcoming).catch(() => {});
+    const bcConfig = await readBroadcastConfig(env.DB).catch(() => null);
     return Response.json({
       ok: true,
       config,
@@ -122,6 +177,19 @@ export async function onRequestGet(context) {
       setup: { jobtread: Boolean(env.JOBTREAD_GRANT_KEY), google: Boolean(env.GOOGLE_CALENDAR_KEY) },
       upcoming,
       ...(upcomingError ? { upcomingError } : {}),
+      // The live countdown: which job it follows, and confirmed reveals it can't follow yet (and why)
+      live: {
+        phase: broadcast?.phase || 'idle',
+        jobId: broadcast?.jobId || null,
+        scheduledAt: broadcast?.scheduledAt || null,
+        waiting: Object.fromEntries((schedule?.waiting || []).map((w) => [w.jobId, w.problem])),
+        checkedAt: schedule?.checkedAt || null,
+        reminders: {
+          enabled: bcConfig?.reminders?.enabled !== false,
+          hoursBefore: bcConfig?.reminders?.hoursBefore || [24, 1],
+        },
+        kit: { configured: kitConfigured(env), enabled: bcConfig?.kitLive?.enabled !== false, audience: bcConfig?.kitLive?.audience?.name || 'All subscribers' },
+      },
     });
   } catch (err) {
     return Response.json({ ok: false, error: err.message }, { status: 500 });

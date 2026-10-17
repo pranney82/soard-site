@@ -39,7 +39,10 @@ const REPEAT_AFTER_MS = 3 * 24 * 60 * 60 * 1000;
 const RETRY_AFTER_MS = 30 * 60 * 1000;
 const CONFIG_KEY = 'reveal-nudges';
 const RUN_FROM_HOUR = 8; // Eastern
-const MAX_PAGES = 5;
+// JobTread refuses (413) a jobs page whose worst case is too big (page size
+// times each nested list), so open jobs come 25 at a time
+const PAGE_SIZE = 25;
+const MAX_PAGES = 20;
 const PARALLEL = 4;
 
 const SCHEMA = [
@@ -194,7 +197,7 @@ async function fetchOpenJobs(key, fetchImpl) {
     const b = await pave(key, {
       organization: {
         $: { id: SOARD_ORG_ID },
-        jobs: { $: { size: 100, where: ['closedOn', '=', null], ...(page ? { page } : {}) }, nextPage: {}, nodes: JOB_FIELDS },
+        jobs: { $: { size: PAGE_SIZE, where: ['closedOn', '=', null], ...(page ? { page } : {}) }, nextPage: {}, nodes: JOB_FIELDS },
       },
     }, fetchImpl);
     const conn = b?.organization?.jobs;

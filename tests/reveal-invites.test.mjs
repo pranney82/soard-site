@@ -277,24 +277,43 @@ test('wording from admin fills in name, date and time', () => {
 test('admin list: upcoming reveals with the exact invite each would send, guests named', async () => {
   await writeConfig(env.DB, { enabled: true });
   await reconcileJob(env, jt.id, { fetchImpl: fakeFetch, now: NOW });
+  const jobs = [
+    jt,
+    { ...job({ date: '2026-10-07' }), id: 'pastJob0001', name: 'Peter Raish (2026)' },
+    { ...job(), id: '22P3HTX9cXn4', name: 'Sunshine Office 2025' },
+    { ...job({ built: false, date: '2026-11-11' }), id: 'colinJob001', name: 'Colin Lindsay (2026)' },
+  ];
+  const contactReads = [];
   const listFetch = async (url, init) => {
-    if (new URL(url).hostname === 'api.jobtread.com' && JSON.parse(init.body).query.organization?.jobs) {
-      return Response.json({ organization: { jobs: { nodes: [
-        jt,
-        { ...job({ date: '2026-10-07' }), id: 'pastJob0001', name: 'Peter Raish (2026)' },
-        { ...job(), id: '22P3HTX9cXn4', name: 'Sunshine Office 2025' },
-        { ...job({ built: false, date: '2026-11-11' }), id: 'colinJob001', name: 'Colin Lindsay (2026)' },
-      ] } } });
+    if (new URL(url).hostname === 'api.jobtread.com') {
+      const q = JSON.parse(init.body).query;
+      if (q.organization?.jobs) {
+        // JobTread answers 413 when a jobs list is too big in the worst case
+        const { $: args, nodes } = q.organization.jobs;
+        if (nodes.location?.account || args.size > 25) return new Response('Request Entity Too Large', { status: 413 });
+        const pageJobs = args.page === 'p2' ? jobs.slice(2) : jobs.slice(0, 2);
+        return Response.json({ organization: { jobs: {
+          nextPage: args.page === 'p2' ? null : 'p2',
+          nodes: pageJobs.map(j => ({ ...j, location: { address: j.location.address } })),
+        } } });
+      }
+      if (q.job?.location?.account) {
+        contactReads.push(q.job.$.id);
+        return Response.json({ job: { location: { account: jobs.find(j => j.id === q.job.$.id).location.account } } });
+      }
     }
     return fakeFetch(url, init);
   };
   const { reveals, organizerName } = await listUpcoming(env, { fetchImpl: listFetch, now: NOW });
   assert.deepEqual(reveals.map(r => r.jobId), [jt.id, 'colinJob001'], 'past reveals and the sandbox are left out, soonest first');
+  assert.deepEqual(contactReads.sort(), [jt.id, 'colinJob001'].sort(), 'family contacts are read only for upcoming reveals');
   const max = reveals[0];
   assert.equal(max.name, 'Max');
   assert.equal(max.kidUrl, '/kids/max/');
   assert.equal(max.jobUrl, `https://app.jobtread.com/jobs/${jt.id}`);
   assert.equal(max.invite.state, 'tentative');
+  assert.deepEqual(max.invite.log.map(l => [l.action, l.state, l.guests]), [['created', 'tentative', 2]], 'invite history for the tracker on Reveals → Now');
+  assert.equal(max.slug, 'max');
   assert.equal(max.preview.title, "Tentative: Max's Reveal Day");
   assert.equal(max.preview.location, '2060 Grand Prix Dr, Atlanta, GA 30345, USA');
   assert.deepEqual(max.preview.guests, [

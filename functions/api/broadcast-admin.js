@@ -3,7 +3,10 @@
  * =========================================================================
  * GET  ?reveal=1  include ingest secrets + Larix setup links (for the QR codes)
  *      ?fb=1      also query Facebook's recent broadcasts (costs Graph quota)
+ *      Also brings the broadcast in line with JobTread first (at most once a
+ *      minute), and returns that check as `schedule` (_broadcast-schedule.js).
  * POST { action }:
+ *   syncSchedule                       check JobTread now for the next confirmed reveal
  *   setupInput | refreshInput | rotateKeys | enableInput | disableInput
  *   setupRehearsal | deleteRehearsal
  *   setOutput { target: facebook|youtube, url, streamKey } | toggleOutput { target, enabled } | removeOutput { target }
@@ -29,6 +32,7 @@ import * as messages from './_live-messages.js';
 import * as monitor from './_broadcast-monitor.js';
 import * as preflight from './_broadcast-preflight.js';
 import { youtubeConfigured } from './_youtube.js';
+import { syncBroadcastSchedule } from './_broadcast-schedule.js';
 
 const TARGETS = new Set(['facebook', 'youtube', 'instagram', 'custom']);
 
@@ -64,6 +68,8 @@ export async function onRequestGet(context) {
   const withFb = url.searchParams.get('fb') === '1';
   try {
     await b.ensureSchema(env.DB);
+    // JobTread decides the next reveal; follow it before showing the state
+    const schedule = await syncBroadcastSchedule(env, { minIntervalMs: 60 * 1000 });
     const [config, state, health] = await Promise.all([b.readConfig(env.DB), b.readState(env.DB), b.readHealth(env.DB)]);
     const DB = env.DB;
 
@@ -145,6 +151,7 @@ export async function onRequestGet(context) {
         alertEmails: notify.alertEmails(env, config),
       },
       health,
+      schedule: schedule.record || null,
       hub: r.hub,
       live: { lifecycle: r.lifecycle, rehearsal: r.rehearsalLifecycle, viewers: r.viewers },
       outputs,
@@ -354,6 +361,11 @@ export async function onRequestPost(context) {
         const r = await notify.alertAdmins(env, config, { level: 'info', title: 'Test alert from the Broadcast control center', detail: `Sent by ${userEmail}. If you can read this, alerts work.`, url: `${b.SITE_ORIGIN}/admin/` });
         return Response.json({ success: true, result: r });
       }
+      case 'syncSchedule': {
+        const r = await syncBroadcastSchedule(env, { force: true });
+        if (r.action === 'error') return Response.json({ success: false, error: r.error || r.record?.last?.error || 'JobTread check failed', schedule: r.record }, { status: 500 });
+        return Response.json({ success: true, action: r.action, reason: r.reason || null, schedule: r.record });
+      }
       case 'runTick': {
         const r = await b.runTick(env, { source: 'admin', force: true, by: userEmail });
         const state = await b.readState(env.DB);
@@ -381,7 +393,7 @@ export async function onRequestPost(context) {
         return Response.json({ success: true, ...result });
       }
       case 'sendTestReminder': {
-        const kind = ['scheduled', 'day', 'hour', 'live', 'replay'].includes(body.kind) ? body.kind : 'live';
+        const kind = ['scheduled', 'moved', 'day', 'hour', 'live', 'replay'].includes(body.kind) ? body.kind : 'live';
         const email = String(body.email || userEmail).trim().toLowerCase();
         if (!notify.isEmail(email)) return fail('email is invalid');
         const state = await b.readState(env.DB);

@@ -1229,6 +1229,53 @@
     .bc-fold[open] > summary::before, .bc-more[open] > summary::before { transform: rotate(45deg); }
     .bc-fold-note { font-weight: 400; color: var(--color-text-muted); font-size: .85rem; }
     .bc-fold-body { margin-top: 1rem; }
+    /* Reveals → Now: upcoming reveals tracker */
+    .rt { margin-bottom: 1rem; }
+    .rt-list { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--color-border); }
+    .rt-item { border-bottom: 1px solid var(--color-border); }
+    .rt-row { display: grid; grid-template-columns: minmax(8rem, 1.1fr) minmax(9rem, 1fr) minmax(0, 2fr) auto; align-items: center; gap: .35rem 1rem; padding: .7rem 0; font-size: .9rem; }
+    .rt-toggle { display: inline-flex; align-items: center; gap: .55rem; min-height: 36px; padding: 0; border: 0; background: none; font: inherit; color: var(--color-text); text-align: left; cursor: pointer; }
+    .rt-toggle strong { font-size: .98rem; }
+    .rt-toggle:focus-visible { outline: none; box-shadow: var(--focus-ring); border-radius: 6px; }
+    .rt-caret { flex: none; width: 6px; height: 6px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(-45deg); transition: transform .15s; margin: 0 .2rem; }
+    .rt-item.is-open .rt-caret { transform: rotate(45deg); }
+    .rt-date { color: var(--color-text); text-decoration: underline; text-decoration-color: var(--color-border-strong); text-underline-offset: 3px; }
+    .rt-date:hover { text-decoration-color: var(--color-text); }
+    .rt-chips { display: flex; flex-wrap: wrap; gap: .3rem .4rem; min-width: 0; }
+    .rt-chip--live { background: #FFF3B0; color: #5F4B00; box-shadow: inset 0 0 0 1px rgba(214,158,46,.45); }
+    .rt-chip--error { background: rgba(197,48,48,.1); color: var(--color-danger); }
+    .rt-progress { display: inline-flex; align-items: center; gap: .5rem; color: var(--color-text-secondary); font-size: .82rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .rt-bar { width: 56px; height: 6px; border-radius: 3px; background: var(--color-bg-secondary); box-shadow: inset 0 0 0 1px var(--color-border); overflow: hidden; }
+    .rt-bar > span { display: block; height: 100%; background: var(--color-success); border-radius: 3px; }
+    .rt-body { padding: 0 0 1rem 1.35rem; }
+    .rt-steps { list-style: none; margin: 0; padding: 0; position: relative; }
+    .rt-steps::before { content: ''; position: absolute; left: 9px; top: .9rem; bottom: .9rem; width: 2px; background: var(--color-border); }
+    .rt-step { position: relative; display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: .75rem; padding: .4rem 0; }
+    .rt-ico { position: relative; z-index: 1; width: 20px; height: 20px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800; line-height: 1; background: var(--color-bg-card); margin-top: 1px; }
+    .rt-ico--done { background: var(--color-success); color: #fff; }
+    .rt-ico--wait { box-shadow: inset 0 0 0 2px var(--color-border-strong); }
+    .rt-ico--warn { background: #FFD500; color: #3D3000; }
+    .rt-ico--error { background: var(--color-danger); color: #fff; }
+    .rt-ico--off, .rt-ico--info { background: var(--color-bg-secondary); color: var(--color-text-muted); box-shadow: inset 0 0 0 1px var(--color-border); }
+    .rt-step-main { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: .15rem; }
+    .rt-label { font-weight: 600; font-size: .9rem; }
+    .rt-text { font-size: .86rem; color: var(--color-text-secondary); line-height: 1.5; overflow-wrap: anywhere; }
+    .rt-text a { color: var(--color-info); }
+    .rt-step--off .rt-label, .rt-step--wait .rt-label { color: var(--color-text-secondary); }
+    .rt-step--error .rt-text { color: var(--color-danger); }
+    .rt-step-main .btn { margin-top: .3rem; }
+    .rt-preview { margin-top: .5rem; }
+    .rt-preview .ri-invite { margin-top: .5rem; }
+    .rt-links { display: flex; flex-wrap: wrap; gap: .3rem 1.25rem; margin-top: .75rem; font-size: .85rem; color: var(--color-text-muted); }
+    .rt-links a { color: var(--color-info); text-decoration: none; }
+    .rt-links a:hover { text-decoration: underline; }
+    @media (max-width: 720px) {
+      .rt-row { grid-template-columns: minmax(0, 1fr) auto; gap: .3rem .75rem; }
+      .rt-date { grid-column: 1 / -1; padding-left: 1.4rem; }
+      .rt-chips { grid-column: 1 / -1; padding-left: 1.4rem; }
+      .rt-progress { grid-row: 1; grid-column: 2; }
+      .rt-body { padding-left: .25rem; }
+    }
     .bc-more { margin-top: .75rem; font-size: .88rem; }
     .bc-more > summary { cursor: pointer; list-style: none; display: inline-flex; align-items: center; gap: .45rem; font-weight: 600; color: var(--color-text-secondary); }
     .bc-more > summary:hover { color: var(--color-text); }
@@ -4805,10 +4852,14 @@
     // crew opens Larix and taps Start; Cloudflare Stream tells the site, and
     // the site does the rest (banner, live page, Facebook and YouTube
     // simulcast, reminders, replay, kid page, Instagram Reel).
-    // Three tabs. Now follows the reveal: schedule, go/no-go and mic check,
-    // then the control room while live, then the replay. History is every
-    // past reveal. Settings is setup, reminders, alerts and system checks,
-    // saved with one button.
+    // Nothing is scheduled here: JobTread's next confirmed reveal with a time
+    // puts the countdown up on its own (functions/api/_broadcast-schedule.js).
+    // Four tabs. Now follows the reveal: the countdown from JobTread, go/no-go
+    // and mic check, then the control room while live, then the replay, with
+    // every upcoming reveal and what has gone out for it underneath. Invites is
+    // the calendar invite and reveal check switches and the invite wording.
+    // History is every past reveal. Settings is setup, reminders, alerts and
+    // system checks, saved with one button.
     // Server: functions/api/broadcast-admin.js (setup) + /api/broadcast (state).
     const BC_PHASES = {
       idle: { label: 'Idle', color: '#A0AEC0' },
@@ -4829,11 +4880,6 @@
       if (s < 3600) return `${Math.round(s / 60)}m ago`;
       if (s < 86400) return `${Math.round(s / 3600)}h ago`;
       return `${Math.round(s / 86400)}d ago`;
-    };
-    const bcLocalInput = (iso) => {
-      const d = iso ? new Date(iso) : new Date(Date.now() + 86400e3);
-      const pad = (n) => String(n).padStart(2, '0');
-      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
     };
     const bcUntil = (iso) => {
       const s = Math.round((Date.parse(iso) - Date.now()) / 1000);
@@ -5189,89 +5235,67 @@
     const bcSpin = html`<span class="spinner" style="width:14px;height:14px" />`;
     const bcSortKids = (kids) => [...kids].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 
-    // Schedule a reveal, or edit the scheduled one (only what changed is sent).
-    // Picking the kid fills the title, banner message and photo from the kid record.
-    function BcRevealForm({ edit = false, current = null, kids, kit, busy, act, addToast, onDone, onCancel, children }) {
-      const init = useMemo(() => (edit && current
-        ? { kidSlug: current.kidSlug || '', when: bcLocalInput(current.scheduledAt), title: current.title || '', message: current.message || '', image: current.image || '', kitLive: !!current.kitLive, revealAt: current.revealAt ?? '' }
-        : { kidSlug: '', when: bcLocalInput(null), title: '', message: '', image: '', kitLive: kit ? kit.def : false, revealAt: '' }), []);
+    // What the site says about the reveal JobTread scheduled. The kid, date and
+    // time come from JobTread and change only there. Only what changed is sent.
+    function BcCustomize({ current, kit, busy, act, addToast, onDone, onCancel }) {
+      const init = useMemo(() => ({ title: current.title || '', message: current.message || '', image: current.image || '', kitLive: !!current.kitLive, revealAt: current.revealAt ?? '' }), []);
       const [f, setF] = useState(init);
       const [picker, setPicker] = useState(false);
       const set = (k) => (e) => { const v = e.target.type === 'checkbox' ? e.target.checked : e.target.value; setF((x) => ({ ...x, [k]: v })); };
-      const kidsSorted = useMemo(() => bcSortKids(kids), [kids]);
-      const kid = f.kidSlug ? kids.find((k) => k.slug === f.kidSlug) : null;
-      const onKid = (slug) => {
-        const k = kids.find((x) => x.slug === slug);
-        setF((x) => ({ ...x, kidSlug: slug, ...(k ? { title: `${k.name}'s room reveal`, message: `Watch ${k.name}'s room reveal live`, image: k.heroImage || k.photos?.[0]?.url || k.photos?.[0]?.cfImageId || '' } : {}) }));
-      };
       const changed = Object.keys(f).filter((k) => f[k] !== init[k]);
-      const id = edit ? 'bc-edit' : 'bc-new';
-      const label = edit ? 'Save reveal' : 'Schedule';
+      const label = 'Save reveal';
       const submit = async () => {
-        if (!f.when || Number.isNaN(Date.parse(f.when))) { addToast('Pick a date and time', 'error'); return; }
-        if (!edit) {
-          // Kit: only send a choice someone made, so an untouched box keeps following the setting
-          const d = await act('schedule', { kidSlug: f.kidSlug || undefined, scheduledAt: new Date(f.when).toISOString(), title: f.title, message: f.message, image: f.image || '', kitLiveEmail: kit && changed.includes('kitLive') ? f.kitLive : undefined }, label);
-          if (d.success) { addToast('Reveal scheduled. The countdown, reminder signup and share page are on the site.', 'success'); onDone?.(); }
-          return;
-        }
-        const field = { kidSlug: 'kidSlug', title: 'title', message: 'message', image: 'image', kitLive: 'kitLiveEmail', revealAt: 'revealAtMinute' };
+        const field = { title: 'title', message: 'message', image: 'image', kitLive: 'kitLiveEmail', revealAt: 'revealAtMinute' };
         const body = {};
-        for (const k of changed) { if (k === 'when') body.scheduledAt = new Date(f.when).toISOString(); else body[field[k]] = f[k]; }
+        for (const k of changed) body[field[k]] = f[k];
         if (!Object.keys(body).length) { onDone?.(); return; }
         const d = await act('update', body, label);
-        if (d.success) { addToast('Reveal updated. The site shows the change within a second.', 'success'); onDone?.(); }
+        if (d.success) { addToast('Saved. The site shows the change within a second.', 'success'); onDone?.(); }
       };
       return html`<div class="card bc-form">
-        <div class="bc-card-head"><h3>${edit ? 'Edit the reveal' : 'Schedule a reveal'}</h3>${!edit ? html`<span class="text-sm text-muted">The countdown, reminders and share page follow from this.</span>` : null}</div>
+        <div class="bc-card-head"><h3>Customize this reveal</h3><span class="text-sm text-muted">The kid, date and time come from JobTread.</span></div>
         <div class="form-grid">
           <div class="form-group">
-            <label class="form-label" for=${`${id}-kid`}>Kid</label>
-            <select class="form-select" id=${`${id}-kid`} value=${f.kidSlug} onChange=${(e) => onKid(e.target.value)}>
-              <option value="">${edit ? 'None' : 'Choose…'}</option>
-              ${kidsSorted.map((k) => html`<option value=${k.slug}>${bcKidLabel(k, true)}</option>`)}
-            </select>
-            <${BcDraftNote} kid=${kid} />
+            <label class="form-label" for="bc-edit-title">Title</label>
+            <input class="form-input" id="bc-edit-title" value=${f.title} maxlength="140" placeholder=${current.kidName ? `${current.kidName}'s room reveal` : 'Live room reveal'} onInput=${set('title')} />
           </div>
           <div class="form-group">
-            <label class="form-label" for=${`${id}-when`}>Date and time</label>
-            <input class="form-input" id=${`${id}-when`} type="datetime-local" value=${f.when} onInput=${set('when')} />
-            <span class="form-hint">Your time. Visitors see it in theirs.</span>
+            <label class="form-label" for="bc-edit-msg">Banner message</label>
+            <input class="form-input" id="bc-edit-msg" value=${f.message} maxlength="200" placeholder=${current.kidName ? `Watch ${current.kidName}'s room reveal live` : "It's reveal day! We're live right now."} onInput=${set('message')} />
           </div>
           <div class="form-group">
-            <label class="form-label" for=${`${id}-title`}>Title</label>
-            <input class="form-input" id=${`${id}-title`} value=${f.title} maxlength="140" placeholder=${kid ? `${kid.name}'s room reveal` : "Remi's room reveal"} onInput=${set('title')} />
-          </div>
-          <div class="form-group">
-            <label class="form-label" for=${`${id}-msg`}>Banner message</label>
-            <input class="form-input" id=${`${id}-msg`} value=${f.message} maxlength="200" placeholder=${kid ? `Watch ${kid.name}'s room reveal live` : "Watch Remi's room reveal live"} onInput=${set('message')} />
-          </div>
-          <div class="form-group">
-            <label class="form-label" for=${`${id}-img`}>Photo</label>
+            <label class="form-label" for="bc-edit-img">Photo</label>
             <div class="bc-inline">
               ${f.image ? html`<img src=${cfThumb(extractCfId(f.image), 'w=80,h=80,fit=cover')} alt="" class="bc-thumb" />` : null}
-              <input class="form-input" id=${`${id}-img`} value=${f.image} placeholder="Cloudflare image id" onInput=${set('image')} style="flex:1;min-width:160px" />
+              <input class="form-input" id="bc-edit-img" value=${f.image} placeholder="Cloudflare image id" onInput=${set('image')} style="flex:1;min-width:160px" />
               <button class="btn btn-ghost btn-sm" type="button" onClick=${() => setPicker(true)}>Browse</button>
             </div>
           </div>
-          ${edit ? html`<div class="form-group">
-            <label class="form-label" for=${`${id}-moment`}>Reveal moment, in minutes (optional)</label>
-            <input class="form-input" id=${`${id}-moment`} type="number" min="0" step="0.5" value=${f.revealAt} placeholder="Found automatically" onInput=${set('revealAt')} />
+          <div class="form-group">
+            <label class="form-label" for="bc-edit-moment">Reveal moment, in minutes (optional)</label>
+            <input class="form-input" id="bc-edit-moment" type="number" min="0" step="0.5" value=${f.revealAt} placeholder="Found automatically" onInput=${set('revealAt')} />
             <span class="form-hint">Only if you already know it. It sets where the Instagram Reel is cut.</span>
-          </div>` : null}
+          </div>
         </div>
         ${kit ? html`<div class="form-group">
           <label class="checkbox-label u-m-0"><input type="checkbox" checked=${f.kitLive} onChange=${set('kitLive')} /> Email our Kit list (${kit.audience}) when we go live</label>
           <div class="form-hint">Sends once the stream has run 3 minutes, so a quick phone test emails no one. A stream that starts more than 30 minutes early waits for you to send it by hand.</div>
         </div>` : null}
         <div class="bc-btns">
-          <button class="btn btn-primary" disabled=${!!busy || !f.when || (edit && !changed.length)} onClick=${submit}>${busy === label ? bcSpin : null}${edit ? 'Save changes' : 'Schedule reveal'}</button>
-          ${onCancel ? html`<button class="btn btn-ghost" type="button" onClick=${onCancel}>Cancel</button>` : null}
-          ${children}
+          <button class="btn btn-primary" disabled=${!!busy || !changed.length} onClick=${submit}>${busy === label ? bcSpin : null}Save changes</button>
+          <button class="btn btn-ghost" type="button" onClick=${onCancel}>Cancel</button>
         </div>
-        ${picker ? html`<${ImagePicker} value=${f.image} uploadPrefix=${`kids/${f.kidSlug || 'live'}`} onSelect=${(img) => { setF((x) => ({ ...x, image: img })); setPicker(false); }} onClose=${() => setPicker(false)} />` : null}
+        ${picker ? html`<${ImagePicker} value=${f.image} uploadPrefix=${`kids/${current.kidSlug || 'live'}`} onSelect=${(img) => { setF((x) => ({ ...x, image: img })); setPicker(false); }} onClose=${() => setPicker(false)} />` : null}
       </div>`;
     }
+
+    // Why a reveal confirmed in JobTread can't have its countdown yet, and the fix
+    const bcWaitingNote = (w) => {
+      const day = inviteDay(w.date, 'short');
+      if (w.problem === 'no-time') return `${w.name}'s reveal is confirmed for ${day} but has no time, so its countdown can't go up yet. Add the time to the Reveal task in JobTread.`;
+      if (w.problem === 'draft') return `${w.name}'s reveal is confirmed for ${day}, but ${w.name}'s kid page isn't published, so the countdown can't go up yet. Publish the page under Kids.`;
+      return `"${w.jobName}" is confirmed for ${day}, but no published kid page matches that job name, so its countdown can't go up. The job name needs the kid's name and year, like "Max Daniel (2026)".`;
+    };
 
     // Fallback when Stream is down: a banner linking to a Facebook live started from the app
     function BcEmergency({ kids, busy, act }) {
@@ -5360,11 +5384,13 @@
     // ─── Broadcast → Now ─────────────────────────────────────
     function BcNow({ data, kids, busy, act, setup, setConfirm, addToast, openSettings, roomKey }) {
       const st = data.state; const pub = data.public; const s = data.setup; const c = data.config; const h = data.health;
+      const sch = data.schedule || {};
       const phase = st.phase || 'idle';
       const P = BC_PHASES[phase] || BC_PHASES.idle;
       const live = phase === 'live' || phase === 'ending';
       const sched = phase === 'scheduled' || phase === 'armed';
-      const [editing, setEditing] = useState(false);
+      const [editing, setEditing] = useState(false); // the Customize panel
+      const [trackKey, setTrackKey] = useState(0);
       const [micCheck, setMicCheck] = useState(false);
       const [checkKey, setCheckKey] = useState(0);
       const [liveKid, setLiveKid] = useState('');
@@ -5376,7 +5402,7 @@
       const kit = s.kitConfigured ? { audience: c.kitLive?.audience?.name || 'All subscribers', def: c.kitLive?.enabled !== false } : null;
       const kitWanted = typeof st.kitLiveEmail === 'boolean' ? st.kitLiveEmail : !!kit?.def;
       const kitSent = !!(st.kit?.live && st.kit.live.sendAt && !st.kit.live.error);
-      const kitVia = { scheduled: 'from the schedule', admin: 'picked here', 'facebook-live': 'from the Facebook live post', 'facebook-post': 'from a Facebook post' }[st.kidVia] || '';
+      const kitVia = { scheduled: st.jobId ? 'from JobTread' : 'from the schedule', admin: 'picked here', 'facebook-live': 'from the Facebook live post', 'facebook-post': 'from a Facebook post' }[st.kidVia] || '';
       const kitStatus = kitSent ? html`<strong style="color:#22543D">sent to ${st.kit.live.audience}</strong>`
         : st.kit?.live?.error ? html`<strong style="color:#744210">${st.kit.live.held ? `held: ${st.kit.live.error}` : `failed: ${st.kit.live.error}`}</strong>`
         : !kitWanted ? 'off for this reveal'
@@ -5398,14 +5424,15 @@
 
       // ── Status: what's happening and the one or two things you can do about it
       const meta = [];
-      if (phase === 'idle') meta.push(html`<span>The site shows no banner.</span>`);
+      if (phase === 'idle') meta.push(html`<span>The countdown goes up on its own once a reveal is confirmed in JobTread with a time.</span>`);
       if (sched) meta.push(html`<span><strong>${bcFmt(pub.scheduledAt)}</strong></span>`, html`<span>${bcUntil(pub.scheduledAt)}</span>`);
       if (live && pub.liveAt) meta.push(html`<span>Live for <strong>${bcClock(Date.now() - Date.parse(pub.liveAt))}</strong></span>`);
       if (live && watchers != null) meta.push(html`<span><strong>${watchers}</strong> watching on the site</span>`);
       if (live && rx) meta.push(html`<span>${['heart', 'sun', 'clap', 'wow'].map((k, i) => html`${i ? ' · ' : ''}<strong>${rx[k] || 0}</strong> ${(rx[k] || 0) === 1 ? k : `${k}s`}`)}</span>`);
       if (phase === 'replay') meta.push(html`<span>Ended ${bcFmt(pub.endedAt)}</span>`, html`<span>${pub.player ? `On the live page until ${bcFmt(pub.replayUntil)}` : 'Stream is finishing the recording'}</span>`);
       const sub = [];
-      if (kit && sched) sub.push(html`<span>Kit email at go-live: ${kitWanted ? `on (${kit.audience})` : 'off'}</span>`);
+      if (sched && st.jobId) sub.push(html`<span>From JobTread. To move or cancel it, change the Reveal task or Reveal Date Confirmed there.</span>`);
+      if (kit && sched) sub.push(html`<span>Kit email at go-live: ${kitWanted ? `on (${kit.audience})` : 'off'} <button class="bc-link" type="button" disabled=${!!busy} onClick=${async () => { const d = await act('update', { kitLiveEmail: !kitWanted }, 'Kit email'); if (d.success) addToast(kitWanted ? 'No Kit email for this reveal' : `Kit email on for this reveal (${kit.audience})`, 'success'); }}>${kitWanted ? 'Turn off' : 'Turn on'}</button></span>`);
       if (kit && live) sub.push(html`<span>Kit email: ${kitStatus}</span>`);
       if (live && pub.kidName && kitVia) sub.push(html`<span>Kid: ${kitVia}</span>`);
       if (st.source === 'manual' && phase !== 'idle') sub.push(html`<span>Emergency banner (no stream)</span>`);
@@ -5413,10 +5440,10 @@
       if (pub.liveUrl && phase !== 'idle') links.push(html`<a href=${pub.liveUrl} target="_blank" rel="noopener">Live page ↗</a>`);
       if (pub.kidSlug && (sched || live)) links.push(html`<span>Starting-soon screen: <a href=${`/live/${pub.kidSlug}/slate/`} target="_blank" rel="noopener">preview ↗</a> · <a href=${`/live/${pub.kidSlug}/slate/?tv=1`} target="_blank" rel="noopener">TV ↗</a> · <a href=${`/live/${pub.kidSlug}/starting-soon.png`} target="_blank" rel="noopener">still image ↗</a></span>`);
       if (st.fb?.permalink) links.push(html`<a href=${st.fb.permalink} target="_blank" rel="noopener">Facebook post ↗</a>`);
+      if (st.jobId && (sched || live)) links.push(html`<a href=${`https://app.jobtread.com/jobs/${st.jobId}/schedule`} target="_blank" rel="noopener">Change it in JobTread ↗</a>`);
 
       const actions = sched ? html`
-          <button class="btn btn-ghost" type="button" aria-expanded=${editing} onClick=${() => setEditing(!editing)}>${editing ? 'Close editor' : 'Edit'}</button>
-          <button class="btn btn-danger" type="button" disabled=${!!busy} onClick=${() => setConfirm({ title: 'Cancel this reveal?', message: 'The countdown and reminder signup come off the site. Reminders already sent are not recalled.', danger: true, confirmLabel: 'Cancel the reveal', cancelLabel: 'Keep it', busyLabel: 'Cancelling…', fn: () => act('cancel', {}, 'Cancel') })}>Cancel reveal</button>`
+          <button class="btn btn-ghost" type="button" aria-expanded=${editing} onClick=${() => setEditing(!editing)}>${editing ? 'Close' : 'Customize'}</button>`
         : live ? html`
           ${kit && !kitSent ? html`<button class="btn btn-primary" type="button" disabled=${!!busy} onClick=${() => setConfirm({ title: 'Email the Kit list now?', message: `Sends "We're live" for ${pub.title || 'this reveal'} to ${kit.audience} in Kit, about a minute from now. It goes out once per reveal and can't be recalled.`, confirmLabel: 'Send the email', fn: async () => { const d = await act('sendKitLive', {}, 'Kit email'); if (d.success) addToast(`Kit email scheduled to ${kit.audience}`, 'success'); } })}>Email the list now</button>` : null}
           <button class="btn btn-danger" type="button" disabled=${!!busy} onClick=${() => setConfirm({ title: 'End the broadcast now?', message: st.source === 'stream' ? 'Normally the site ends itself when the phone stops. Use this only if the stream is stuck. The replay still gets saved.' : 'This takes the emergency banner down.', danger: true, confirmLabel: 'End now', cancelLabel: 'Keep going', busyLabel: 'Ending…', fn: () => act('endNow', {}, 'End') })}>End now</button>`
@@ -5436,6 +5463,19 @@
         ${kidBySlug(liveKid)?.publishStatus === 'draft' ? html`<div style="flex-basis:100%"><${BcDraftNote} kid=${kidBySlug(liveKid)} /></div>` : null}
       </div>` : null;
 
+      // JobTread: when the site last checked, anything confirmed that can't have a countdown yet, and a way to check now
+      const checkJobTread = async () => {
+        const d = await setup('syncSchedule', {}, 'JobTread');
+        if (!d.success) return;
+        setTrackKey((k) => k + 1);
+        addToast({ schedule: 'Countdown is up for the next confirmed reveal', update: 'Countdown moved to match JobTread', cancel: 'Countdown taken down: nothing confirmed with a time in JobTread' }[d.action] || 'Already matches JobTread', 'success');
+      };
+      const jtLine = (phase === 'idle' || sched) ? html`<div class="bc-sub">
+        <span>${sch.checkedAt ? `Checked JobTread ${bcAgo(sch.checkedAt)}` : 'Not checked against JobTread yet'}${sch.error ? html`<span style="color:#744210">: ${sch.error}</span>` : null}</span>
+        <button class="bc-link" type="button" disabled=${!!busy} onClick=${checkJobTread}>${busy === 'JobTread' ? 'Checking…' : 'Check now'}</button>
+      </div>` : null;
+      const waiting = (phase === 'idle' || sched) ? (sch.waiting || []).map((w) => html`<div class="bc-note" role="note" key=${w.jobId}>${icons.warning}<span>${bcWaitingNote(w)} <a href=${`https://app.jobtread.com/jobs/${w.jobId}/schedule`} target="_blank" rel="noopener">Open in JobTread ↗</a></span></div>`) : null;
+
       const showKid = pub.kidName && phase !== 'idle' && !(pub.title || '').includes(pub.kidName);
       const status = html`<div class="card bc-status" style=${`--phase:${P.color}`}>
         <div class="bc-status-top">
@@ -5444,11 +5484,13 @@
             <div class="bc-title">${phase === 'idle' ? 'No reveal scheduled' : (pub.title || 'Untitled reveal')}</div>
             <div class="bc-meta">${meta}</div>
             ${sub.length ? html`<div class="bc-sub">${sub}</div>` : null}
+            ${jtLine}
           </div>
           ${actions ? html`<div class="bc-actions">${actions}</div>` : null}
         </div>
         ${links.length ? html`<div class="bc-links">${links}</div>` : null}
         ${kidPicker}
+        ${waiting}
       </div>`;
 
       // ── Before the reveal: go/no-go, each open item with the button that fixes it
@@ -5461,7 +5503,7 @@
         facebookPost: { label: 'Live Producer', href: 'https://www.facebook.com/live/producer' },
         youtube: go('youtube', 'YouTube settings'),
         slack: go('alerts', 'Alert settings'),
-        kid: { label: 'Edit the reveal', onClick: () => setEditing(true) },
+        kid: st.jobId ? { label: 'Open in JobTread', href: `https://app.jobtread.com/jobs/${st.jobId}` } : { label: 'Customize', onClick: () => setEditing(true) },
       };
       const preflight = sched ? html`<${ControlRoomLazy} key="go" part="preflight" initial=${h.preflight?.broadcastId === st.broadcastId ? h.preflight.last : null} actions=${preflightActions} refreshKey=${checkKey} />` : null;
 
@@ -5484,21 +5526,24 @@
         <${BcFamilyQr} addToast=${addToast} />
       </div>`;
 
-      if (phase === 'idle') return html`${status}${liveRoom}${micPanel}
-        <${BcRevealForm} key="new" kids=${kids} kit=${kit} busy=${busy} act=${act} addToast=${addToast}>
-          ${!setupDone ? html`<span class="text-sm" style="color:#744210">Setup isn't finished, so the phone can't stream yet. <button class="bc-link" type="button" onClick=${() => openSettings('phones')}>Open settings</button></span>` : null}
-        <//>
+      // Every upcoming reveal and what has gone out for it (where the schedule form used to be)
+      const tracker = html`<${RevealTracker} addToast=${addToast} refreshKey=${`${trackKey}:${st.broadcastId || ''}:${phase}`} />`;
+      const setupNote = !setupDone ? html`<div class="bc-note" role="note">${icons.warning}<span>Setup isn't finished, so the phone can't stream yet. <button class="bc-link" type="button" onClick=${() => openSettings('phones')}>Open settings</button></span></div>` : null;
+
+      if (phase === 'idle') return html`${status}${setupNote}${liveRoom}${micPanel}
+        ${tracker}
         ${tools}
         <${BcEmergency} kids=${kids} busy=${busy} act=${act} />`;
       if (sched) return html`${status}
-        ${editing ? html`<${BcRevealForm} key=${`edit-${st.broadcastId}`} edit current=${{ kidSlug: pub.kidSlug, scheduledAt: pub.scheduledAt, title: pub.title, message: pub.message, image: st.image, kitLive: kitWanted, revealAt: st.revealAtSeconds != null ? String(st.revealAtSeconds / 60) : '' }} kids=${kids} kit=${kit} busy=${busy} act=${act} addToast=${addToast} onDone=${() => setEditing(false)} onCancel=${() => setEditing(false)} />` : null}
-        ${preflight}${micPanel}${liveRoom}${messages}${tools}`;
+        ${editing ? html`<${BcCustomize} key=${`edit-${st.broadcastId}`} current=${{ kidSlug: pub.kidSlug, kidName: pub.kidName, title: pub.title, message: pub.message, image: st.image, kitLive: kitWanted, revealAt: st.revealAtSeconds != null ? String(st.revealAtSeconds / 60) : '' }} kit=${kit} busy=${busy} act=${act} addToast=${addToast} onDone=${() => setEditing(false)} onCancel=${() => setEditing(false)} />` : null}
+        ${setupNote}${preflight}${micPanel}${liveRoom}${tracker}${messages}${tools}`;
       if (live) return html`${status}${liveRoom}${messages}<${BcSends} sends=${data.sends} />`;
       return html`${status}
         <${BcReplay} recordings=${data.recordings} busy=${busy} act=${act} />
         ${st.reel ? html`<${BcReel} reel=${st.reel} busy=${busy} act=${act} setConfirm=${setConfirm} />` : null}
         ${messages}
-        <${BcSends} sends=${data.sends} />`;
+        <${BcSends} sends=${data.sends} />
+        ${tracker}`;
     }
 
     // ─── Broadcast → History ─────────────────────────────────
@@ -5964,7 +6009,7 @@
         <div class="page-header bc-header">
           <div>
             <h2>Reveals</h2>
-            <p class="page-sub">Schedule reveals, send calendar invites, watch them live, and fix anything that goes wrong.</p>
+            <p class="page-sub">Reveals are scheduled in JobTread. Track every invite and reminder, watch reveals live, and fix anything that goes wrong.</p>
           </div>
           <button class="btn btn-ghost btn-sm" type="button" disabled=${!!busy} onClick=${refreshNow} title="Ask Cloudflare Stream what's true right now">${busy === 'Refresh' ? bcSpin : null}Refresh</button>
         </div>
@@ -5973,7 +6018,7 @@
         </div>
         <div id="bc-panel" role="tabpanel" aria-labelledby=${`bc-tab-${tab}`}>
           ${tab === 'now' ? html`<${BcNow} ...${ctx} />`
-            : tab === 'invites' ? html`<${RevealInvitesPanel} addToast=${addToast} />`
+            : tab === 'invites' ? html`<${RevealInvitesPanel} addToast=${addToast} onShowNow=${() => setTab('now')} />`
             : tab === 'history' ? html`<${BcHistory} ...${ctx} />`
             : html`<${BcSettings} ...${ctx} cfg=${cfg} setCfg=${setCfg} dirty=${dirty} jump=${jump} clearJump=${() => setJump(null)} />`}
         </div>
@@ -6045,15 +6090,6 @@
       .ri-meta { margin: 0.2rem 0 0; color: var(--color-text-secondary); font-size: 0.85rem; line-height: 1.5; }
       .ri-warn { color: var(--color-danger); }
       .ri-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 0.25rem 1rem; }
-      .ri-list { list-style: none; margin: 0.75rem 0 0; padding: 0; border-top: 1px solid var(--color-border); }
-      .ri-row { display: grid; grid-template-columns: minmax(7rem, 1fr) minmax(9rem, 1.2fr) minmax(0, 2.4fr) auto; align-items: center; gap: 0.35rem 1rem; padding: 0.7rem 0; border-bottom: 1px solid var(--color-border); font-size: 0.9rem; }
-      .ri-row strong { font-size: 0.98rem; }
-      .ri-row a.ri-row__date { color: var(--color-text); font-size: 0.9rem; text-decoration: underline; text-decoration-color: var(--color-border-strong); text-underline-offset: 3px; white-space: normal; }
-      .ri-row a.ri-row__date:hover { text-decoration-color: var(--color-text); }
-      .ri-row__state { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem 0.6rem; color: var(--color-text-secondary); min-width: 0; }
-      .ri-row__state--error { color: var(--color-danger); }
-      .ri-row a { color: var(--color-text-secondary); font-size: 0.85rem; text-decoration: underline; text-underline-offset: 3px; white-space: nowrap; }
-      .ri-row a:hover { color: var(--color-text); }
       .ri-chip { display: inline-flex; align-items: center; padding: 0.15rem 0.55rem; border-radius: 999px; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.02em; white-space: nowrap; }
       .ri-chip--tentative { background: var(--color-primary-bg); color: var(--color-primary-ink); box-shadow: inset 0 0 0 1px rgba(214,158,46,0.35); }
       .ri-chip--confirmed { background: rgba(47,125,79,0.1); color: var(--color-success); }
@@ -6084,10 +6120,6 @@
       .ri-nudge__msg { margin: 0; white-space: pre-line; line-height: 1.55; overflow-wrap: anywhere; }
       @media (max-width: 900px) {
         .ri-wording { grid-template-columns: minmax(0, 1fr); }
-        .ri-row { grid-template-columns: minmax(0, 1fr) auto; }
-        .ri-row__date { grid-column: 1; grid-row: 2; }
-        .ri-row__state { grid-column: 1 / -1; }
-        .ri-row a { grid-column: 2; grid-row: 1; justify-self: end; }
       }
     `;
 
@@ -6108,7 +6140,7 @@
         </div>`;
     }
 
-    function RevealInvitesPanel({ addToast }) {
+    function RevealInvitesPanel({ addToast, onShowNow }) {
       const [data, setData] = useState(null);
       const [loadError, setLoadError] = useState('');
       const [template, setTemplate] = useState(null);
@@ -6165,18 +6197,6 @@
           await load();
         } catch (e) { addToast(e.message, 'error'); }
         setSavingTemplate(false);
-      };
-
-      const syncNow = async (r) => {
-        setBusy(r.jobId + ':sync');
-        try {
-          const res = await fetch(`/api/reveal-invites-admin?sync=${encodeURIComponent(r.jobId)}`, { cache: 'no-store' });
-          const d = await res.json();
-          if (!d.ok) throw new Error(d.error || 'Still not working');
-          addToast(d.action === 'unchanged' ? `${r.name}'s invite is already up to date` : /^would/.test(d.action) ? 'Invites are paused, so nothing was sent' : `${r.name}'s invite is ${d.action}`, 'success');
-          await load({ keepEdits: true });
-        } catch (e) { addToast(e.message, 'error'); }
-        setBusy(null);
       };
 
       const sendTest = async (r) => {
@@ -6258,23 +6278,6 @@
           organizer=${organizer} />`;
       };
 
-      const rowState = (r) => {
-        const inv = r.invite;
-        if (inv?.error) return html`<span class="ri-row__state ri-row__state--error" role="alert">
-          Not sent: ${inv.error}
-          <button class="btn btn-ghost btn-sm" disabled=${busy === r.jobId + ':sync'} onClick=${() => syncNow(r)}>${busy === r.jobId + ':sync' ? html`<span class="spinner" /> Retrying...` : 'Retry'}</button>
-        </span>`;
-        if (inv?.state === 'cancelled') return html`<span class="ri-row__state"><span class="ri-chip ri-chip--cancelled">Cancelled</span>${inviteAgo(inv.updatedAt)}</span>`;
-        if (inv) return html`<span class="ri-row__state">
-          <span class=${'ri-chip ' + (inv.state === 'confirmed' ? 'ri-chip--confirmed' : 'ri-chip--tentative')}>${inv.state === 'confirmed' ? 'Confirmed' : 'Tentative'}</span>
-          Sent to ${inv.guests} ${inv.guests === 1 ? 'person' : 'people'}, ${/^created/.test(inv.lastAction || '') ? 'sent' : 'updated'} ${inviteAgo(inv.updatedAt)}
-        </span>`;
-        const why = !r.preview ? `No invite while the job is ${r.status || 'in this status'}`
-          : !r.confirmed && !r.scheduleBuilt ? 'Waits for Build Schedule to be marked complete'
-          : config.enabled ? 'Goes out on the next change in JobTread' : 'Goes out once invites are turned on';
-        return html`<span class="ri-row__state"><span class="ri-chip ri-chip--waiting">Not sent</span>${why}</span>`;
-      };
-
       return html`
         <div class="ri">
           <style>${RI_STYLES}</style>
@@ -6285,7 +6288,7 @@
               <div>
                 <h3>${config.enabled ? 'Calendar invites are on' : 'Calendar invites are paused'}</h3>
                 <p class="ri-meta">From ${organizer} to staff and the family. Dates, times and notes come from JobTread.</p>
-                <p class="ri-meta">${problems.length ? html`<span class="ri-warn">${problems.length} invite${problems.length === 1 ? '' : 's'} not sent, see below. </span>` : null}Problems email ${alertTo.join(' and ')}.${sweep?.at && !sweep.running ? ` Last safety check ${inviteAgo(sweep.at)}: ${sweep.checked} jobs, ${sweep.changed ? `${sweep.changed} brought up to date` : 'all up to date'}${sweep.errors ? `, ${sweep.errors} with problems` : ''}.` : ''}</p>
+                <p class="ri-meta">${problems.length ? html`<span class="ri-warn">${problems.length} invite${problems.length === 1 ? '' : 's'} not sent. <button class="bc-link" type="button" onClick=${onShowNow}>See them on Now</button> to retry. </span>` : null}Problems email ${alertTo.join(' and ')}.${sweep?.at && !sweep.running ? ` Last safety check ${inviteAgo(sweep.at)}: ${sweep.checked} jobs, ${sweep.changed ? `${sweep.changed} brought up to date` : 'all up to date'}${sweep.errors ? `, ${sweep.errors} with problems` : ''}.` : ''}</p>
                 ${!setup.google ? html`<p class="ri-meta ri-warn">The Google Calendar key is missing in Cloudflare.</p>` : null}
                 ${!setup.jobtread ? html`<p class="ri-meta ri-warn">The JobTread grant key is missing in Cloudflare.</p>` : null}
               </div>
@@ -6293,24 +6296,6 @@
             <button class=${'btn ' + (config.enabled ? 'btn-ghost' : 'btn-primary')} onClick=${() => setConfirmSending(!config.enabled)}>
               ${config.enabled ? 'Pause invites' : 'Turn on invites'}
             </button>
-          </div>
-
-          <div class="card">
-            <div class="ri-head">
-              <h3>Upcoming reveals</h3>
-              <span class="ri-meta u-m-0">Click a date to change it on the JobTread schedule. Notes are the job's "Reveal Invite Details".</span>
-            </div>
-            ${data.upcomingError ? html`<p class="ri-meta ri-warn">Couldn't read JobTread: ${data.upcomingError}</p>` : null}
-            ${!upcoming.length && !data.upcomingError ? html`<p class="ri-meta">No upcoming reveals on open jobs yet.</p>` : html`
-              <ul class="ri-list">
-                ${upcoming.map(r => html`
-                  <li class="ri-row" key=${r.jobId}>
-                    <strong>${r.name}</strong>
-                    <a class="ri-row__date" href=${r.scheduleUrl || r.jobUrl} target="_blank" rel="noopener" title="Open the Reveal task on the JobTread schedule">${inviteDay(r.date, 'short')}${r.time ? `, ${inviteClock(r.time)}` : ', no time yet'}</a>
-                    ${rowState(r)}
-                    <a href=${r.scheduleUrl || r.jobUrl} target="_blank" rel="noopener">Change in JobTread ↗</a>
-                  </li>`)}
-              </ul>`}
           </div>
 
           <div class="card">
@@ -6423,6 +6408,215 @@
             onCancel=${() => setConfirmSending(null)} />` : null}
         </div>
       `;
+    }
+
+    // ─── Reveals → Now: upcoming reveals tracker ─────────────
+    // Every upcoming reveal from JobTread with everything that goes out for it,
+    // in order: the tentative invite, confirmation, the confirmed invite, the
+    // countdown on the site, reminders and the "we're live" emails. Nothing is
+    // scheduled here; dates, times and notes change only in JobTread.
+    // Server: /api/reveal-invites-admin (listUpcoming + addTracking).
+    const RT_CHANNEL = { email: ['email', 'emails'], sms: ['text', 'texts'], push: ['browser alert', 'browser alerts'] };
+    const rtWhen = (iso) => new Date(iso).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    const rtPeople = (n) => `${n} ${n === 1 ? 'person' : 'people'}`;
+    // One reminder kind's sends across channels → "Sent Tue, Oct 20, 4:05 PM: 12 emails, 3 texts"
+    function rtSent(sends, kind) {
+      const rows = (sends || []).filter((x) => x.kind === kind);
+      if (!rows.length) return null;
+      const at = rows.map((x) => x.created_at).sort()[0];
+      const recipients = rows.reduce((a, x) => a + (x.recipients || 0), 0);
+      const failed = rows.reduce((a, x) => a + (x.failed || 0), 0);
+      if (!recipients) return { at, text: `Went out ${rtWhen(at)}, before anyone had asked for reminders` };
+      const parts = rows.filter((x) => x.recipients).map((x) => { const [one, many] = RT_CHANNEL[x.channel] || [x.channel, x.channel]; return `${x.sent} ${x.sent === 1 ? one : many}`; });
+      return { at, text: `Sent ${rtWhen(at)}: ${parts.join(', ')}${failed ? `, ${failed} failed` : ''}`, failed };
+    }
+    // Invite history: the first time each kind of invite went out
+    function rtInvite(r, state) {
+      const log = r.invite?.log || [];
+      const first = log.find((l) => l.state === state && /^(created|updated)$/.test(l.action));
+      if (first) return { at: first.at, text: `Sent ${rtWhen(first.at)} to ${rtPeople(first.guests || 0)}` };
+      // Sent before the history began: only the latest state is known
+      if (r.invite?.state === state && !log.length) return { at: r.invite.updatedAt, text: `Sent to ${rtPeople(r.invite.guests)}, last updated ${rtWhen(r.invite.updatedAt)}` };
+      return null;
+    }
+
+    /** The steps for one reveal: { key, label, state: done|wait|warn|error|off|info, text, action? } */
+    function rtSteps(r, all, live, invites) {
+      const b = r.broadcast;
+      const current = live.jobId === r.jobId && ['scheduled', 'armed', 'live', 'ending', 'replay'].includes(live.phase);
+      const waiting = live.waiting?.[r.jobId];
+      const steps = [];
+      const inv = r.invite;
+      const invError = inv?.error ? { state: 'error', text: `Not sent: ${inv.error}`, retry: true } : null;
+
+      // 1. Tentative invite
+      const tent = rtInvite(r, 'tentative');
+      steps.push({ key: 'tentative', label: 'Tentative calendar invite', ...(tent ? { state: 'done', text: tent.text }
+        : rtInvite(r, 'confirmed') ? { state: 'done', text: 'Not needed: the confirmed invite went out first' }
+        : invError && !r.confirmed ? invError
+        : !r.preview ? { state: 'off', text: `No invite while the job is ${r.status || 'in this status'}` }
+        : !r.scheduleBuilt && !r.confirmed ? { state: 'wait', text: 'Goes out when Build Schedule is marked complete in JobTread' }
+        : r.confirmed ? { state: 'done', text: 'Not needed: the reveal is already confirmed' }
+        : !invites.enabled ? { state: 'wait', text: 'Goes out once calendar invites are turned on (Reveals → Invites)' }
+        : { state: 'wait', text: 'Goes out on the next change in JobTread' }) });
+
+      // 2. Confirmed in JobTread
+      steps.push({ key: 'confirmed', label: 'Confirmed in JobTread', ...(r.confirmed
+        ? (r.time ? { state: 'done', text: `Reveal Date Confirmed is Yes, for ${inviteDay(r.date, 'short')} at ${inviteClock(r.time)}` } : { state: 'warn', text: 'Confirmed, but the Reveal task has no time yet. Add it in JobTread.' })
+        : { state: 'wait', text: 'Set Reveal Date Confirmed to Yes in JobTread once the date and time are final' }) });
+
+      // 3. Confirmed invite
+      const conf = rtInvite(r, 'confirmed');
+      steps.push({ key: 'confirmed-invite', label: 'Confirmed calendar invite', ...(conf ? { state: 'done', text: conf.text }
+        : invError && r.confirmed ? invError
+        : !r.confirmed ? { state: 'wait', text: 'Replaces the tentative invite when the reveal is confirmed' }
+        : !invites.enabled ? { state: 'wait', text: 'Goes out once calendar invites are turned on (Reveals → Invites)' }
+        : { state: 'wait', text: 'Goes out on the next change in JobTread' }) });
+      if (inv?.state === 'cancelled') steps.push({ key: 'invite-cancelled', label: 'Invite cancelled', state: 'info', text: `${String(inv.lastAction || '').replace(/^cancelled: /, 'Cancelled because: ')} (${rtWhen(inv.updatedAt)})` });
+
+      // 4. The countdown on the site
+      const ahead = live.jobId && live.jobId !== r.jobId && ['scheduled', 'armed', 'live', 'ending'].includes(live.phase) ? all.find((x) => x.jobId === live.jobId) : null;
+      steps.push({ key: 'countdown', label: 'Countdown and reminder signup on the site', ...(current && (live.phase === 'live' || live.phase === 'ending') ? { state: 'done', text: 'Live now' }
+        : current && live.phase === 'replay' ? { state: 'done', text: 'The replay is on the live page' }
+        : current ? { state: 'done', text: `On the site since ${rtWhen(b?.createdAt || live.scheduledAt)}`, link: r.slug ? { href: `/live/${r.slug}/`, label: 'Live page ↗' } : null }
+        : waiting === 'no-time' ? { state: 'warn', text: 'Waiting for a time on the Reveal task in JobTread' }
+        : waiting === 'draft' ? { state: 'warn', text: `Waiting for ${r.name}'s kid page to be published` }
+        : waiting === 'no-kid' ? { state: 'warn', text: `No published kid page matches "${r.jobName}". The job name needs the kid's name and year.` }
+        : !r.confirmed ? { state: 'wait', text: 'Goes up once the reveal is confirmed with a time' }
+        : ahead ? { state: 'wait', text: `Goes up after ${ahead.name}'s reveal` }
+        : { state: 'wait', text: 'Goes up at the next JobTread check (within 5 minutes)' }) });
+
+      // 5–7. Reminders to everyone who asked (by email, text or browser alert)
+      const reminders = live.reminders || { enabled: true, hoursBefore: [24, 1] };
+      const signups = r.reminderSignups || 0;
+      const at = b?.scheduledAt ? Date.parse(b.scheduledAt) : null;
+      const remOff = !reminders.enabled ? { state: 'off', text: 'Reminders are switched off in Reveals → Settings' } : null;
+      const saveDate = rtSent(b?.sends, 'scheduled');
+      steps.push({ key: 'save-date', label: 'Save-the-date reminder', ...(saveDate ? { state: saveDate.failed ? 'warn' : 'done', text: saveDate.text }
+        : remOff || (b && at && at - Date.parse(b.createdAt) <= 26 * 3600e3 ? { state: 'off', text: 'Skipped: less than a day\'s notice. The day-before and hour-before reminders cover it.' }
+        : { state: 'wait', text: `Goes out when the countdown goes up, to everyone who asked for reminders (${rtPeople(signups)} so far)` })) });
+      const moved = rtSent(b?.sends, 'moved');
+      if (moved) steps.push({ key: 'moved', label: 'New date reminder', state: moved.failed ? 'warn' : 'done', text: moved.text });
+      for (const [kind, hours, label] of [['day', 24, 'Day-before reminder'], ['hour', 1, 'Hour-before reminder']]) {
+        const sent = rtSent(b?.sends, kind);
+        steps.push({ key: kind, label, ...(sent ? { state: sent.failed ? 'warn' : 'done', text: sent.text }
+          : remOff || (!reminders.hoursBefore.includes(hours) ? { state: 'off', text: 'Switched off in Reveals → Settings' }
+          : current && at ? (at - hours * 3600e3 < Date.now() ? { state: 'off', text: 'Skipped: the countdown went up too close to the reveal' } : { state: 'wait', text: `Goes out ${rtWhen(new Date(at - hours * 3600e3).toISOString())}` })
+          : { state: 'wait', text: `Goes out ${hours === 24 ? 'the day' : 'an hour'} before the reveal` })) });
+      }
+
+      // 8–9. When the stream starts
+      const goLive = rtSent(b?.sends, 'live');
+      steps.push({ key: 'live', label: '"We\'re live" reminder', ...(goLive ? { state: goLive.failed ? 'warn' : 'done', text: goLive.text } : remOff || { state: 'wait', text: 'Goes out the moment the stream starts' }) });
+      const kit = live.kit || {};
+      const kitLive = b?.kit?.live;
+      const kitWanted = typeof b?.kitLiveEmail === 'boolean' ? b.kitLiveEmail : kit.enabled;
+      steps.push({ key: 'kit', label: `"We're live" email to the Kit list`, ...(!kit.configured ? { state: 'off', text: 'Kit isn\'t connected' }
+        : kitLive?.sendAt && !kitLive.error ? { state: 'done', text: `Sent to ${kitLive.audience || kit.audience} ${rtWhen(kitLive.sendAt)}` }
+        : kitLive?.error ? { state: 'warn', text: kitLive.held ? `Held: ${kitLive.error}` : `Failed: ${kitLive.error}` }
+        : !kitWanted ? { state: 'off', text: 'Off for this reveal' }
+        : { state: 'wait', text: `Goes to ${kit.audience} once the stream has run 3 minutes` }) });
+
+      // Notes for the project manager (not counted)
+      if (r.checkComment) steps.push({ key: 'check', label: 'Reveal check comment in JobTread', state: 'info', text: `Posted ${rtWhen(r.checkComment.at)}`, more: r.checkComment.message });
+      return steps;
+    }
+
+    function RevealTracker({ addToast, refreshKey }) {
+      const [data, setData] = useState(null);
+      const [error, setError] = useState('');
+      const [open, setOpen] = useState(null);
+      const [busy, setBusy] = useState(null);
+      const load = useCallback(async () => {
+        try {
+          const res = await fetch('/api/reveal-invites-admin', { cache: 'no-store' });
+          const d = await res.json();
+          if (!d.ok) throw new Error(d.error || 'Could not load upcoming reveals');
+          setData(d); setError('');
+        } catch (e) { setError(e.message); }
+      }, []);
+      useEffect(() => { load(); }, [load, refreshKey]);
+      // Each load reads JobTread, so a slow refresh; changes on this page reload it right away
+      useEffect(() => { const t = setInterval(() => { if (!document.hidden) load(); }, 120000); return () => clearInterval(t); }, [load]);
+
+      const retry = async (r) => {
+        setBusy(r.jobId);
+        try {
+          const res = await fetch(`/api/reveal-invites-admin?sync=${encodeURIComponent(r.jobId)}`, { cache: 'no-store' });
+          const d = await res.json();
+          if (!d.ok) throw new Error(d.error || 'Still not working');
+          addToast(d.action === 'unchanged' ? `${r.name}'s invite is already up to date` : /^would/.test(d.action) ? 'Invites are paused, so nothing was sent' : `${r.name}'s invite is ${d.action}`, 'success');
+          await load();
+        } catch (e) { addToast(e.message, 'error'); }
+        setBusy(null);
+      };
+
+      const head = html`<div class="bc-card-head">
+        <h3>Upcoming reveals</h3>
+        <span class="text-sm text-muted">From JobTread, soonest first. Dates, times and notes change there.</span>
+      </div>`;
+      if (error && !data) return html`<div class="card rt">${head}<p class="ri-meta ri-warn">Couldn't load: ${error} <button class="bc-link" type="button" onClick=${load}>Try again</button></p></div>`;
+      if (!data) return html`<div class="card rt">${head}<div style="text-align:center;padding:1.5rem"><span class="spinner" /></div></div>`;
+
+      const upcoming = data.upcoming || [];
+      const live = data.live || {};
+      const organizer = data.organizerName ? `${data.organizerName} (${data.config.organizer})` : data.config.organizer;
+      const openId = open ?? upcoming[0]?.jobId ?? null;
+      const ICON = { done: '✓', wait: '', warn: '!', error: '!', off: '–', info: 'i' };
+
+      return html`<div class="card rt">
+        <style>${RI_STYLES}</style>
+        ${head}
+        ${data.upcomingError ? html`<p class="ri-meta ri-warn">Couldn't read JobTread: ${data.upcomingError}</p>` : null}
+        ${!upcoming.length && !data.upcomingError ? html`<p class="ri-meta">No upcoming reveals on open jobs yet. They appear here once a job has a Reveal task with a date.</p>` : html`
+          <ul class="rt-list">
+            ${upcoming.map((r) => {
+              const steps = rtSteps(r, upcoming, live, data.config);
+              const counted = steps.filter((x) => x.state !== 'off' && x.state !== 'info');
+              const done = counted.filter((x) => x.state === 'done').length;
+              const problem = steps.find((x) => x.state === 'error') || steps.find((x) => x.state === 'warn');
+              const isOpen = openId === r.jobId;
+              const current = live.jobId === r.jobId && ['scheduled', 'armed', 'live', 'ending'].includes(live.phase);
+              const bodyId = `rt-${r.jobId}`;
+              return html`<li class=${`rt-item${isOpen ? ' is-open' : ''}`} key=${r.jobId}>
+                <div class="rt-row">
+                  <button type="button" class="rt-toggle" aria-expanded=${isOpen} aria-controls=${bodyId} onClick=${() => setOpen(isOpen ? '' : r.jobId)}>
+                    <span class="rt-caret" aria-hidden="true"></span><strong>${r.name}</strong>
+                  </button>
+                  <a class="rt-date" href=${r.scheduleUrl || r.jobUrl} target="_blank" rel="noopener" title="Open the Reveal task on the JobTread schedule">${inviteDay(r.date, 'short')}${r.time ? `, ${inviteClock(r.time)}` : ', no time yet'}</a>
+                  <span class="rt-chips">
+                    <span class=${`ri-chip ${r.confirmed ? 'ri-chip--confirmed' : 'ri-chip--tentative'}`}>${r.confirmed ? 'Confirmed' : 'Tentative'}</span>
+                    ${current ? html`<span class="ri-chip rt-chip--live">${live.phase === 'live' || live.phase === 'ending' ? 'Live now' : 'Countdown on the site'}</span>` : null}
+                    ${problem ? html`<span class=${`ri-chip ${problem.state === 'error' ? 'rt-chip--error' : 'ri-chip--waiting'}`}>${problem.state === 'error' ? 'Invite failed' : 'Needs attention'}</span>` : null}
+                  </span>
+                  <span class="rt-progress" title=${`${done} of ${counted.length} steps done`}><span class="rt-bar" aria-hidden="true"><span style=${`width:${counted.length ? Math.round((done / counted.length) * 100) : 0}%`}></span></span>${done} of ${counted.length}</span>
+                </div>
+                ${isOpen ? html`<div class="rt-body" id=${bodyId}>
+                  <ol class="rt-steps">
+                    ${steps.map((x) => html`<li class=${`rt-step rt-step--${x.state}`} key=${x.key}>
+                      <span class=${`rt-ico rt-ico--${x.state}`} aria-hidden="true">${ICON[x.state]}</span>
+                      <div class="rt-step-main">
+                        <span class="rt-label">${x.label}</span>
+                        <span class="rt-text"><span class="bc-sr">${{ done: 'Done: ', wait: 'Not yet: ', warn: 'Needs attention: ', error: 'Problem: ', off: 'Off: ', info: '' }[x.state]}</span>${x.text}${x.link ? html` <a href=${x.link.href} target="_blank" rel="noopener">${x.link.label}</a>` : null}</span>
+                        ${x.retry ? html`<button class="btn btn-ghost btn-sm" type="button" disabled=${busy === r.jobId} onClick=${() => retry(r)}>${busy === r.jobId ? html`<span class="spinner" /> Retrying…` : 'Retry'}</button>` : null}
+                        ${x.more ? html`<details class="bc-more"><summary>Read the comment</summary><p class="ri-nudge__msg">${x.more}</p></details>` : null}
+                      </div>
+                    </li>`)}
+                  </ol>
+                  ${r.preview ? html`<details class="bc-more rt-preview"><summary>The invite as it would go out now${r.preview.guests?.length ? `, to ${rtPeople(r.preview.guests.length)}` : ''}</summary>
+                    <${InviteCard} title=${r.preview.title} status=${r.preview.status} start=${r.preview.start} end=${r.preview.end} location=${r.preview.location} description=${r.preview.description} organizer=${organizer} />
+                    ${r.preview.guests?.length ? html`<p class="ri-meta">Guests: ${r.preview.guests.map((g) => (g.name ? `${g.name}${g.kind === 'family' ? ' (family)' : ''}` : g.email)).join(', ')}</p>` : null}
+                  </details>` : null}
+                  <div class="rt-links">
+                    <a href=${r.jobUrl} target="_blank" rel="noopener">Job in JobTread ↗</a>
+                    ${r.kidUrl ? html`<a href=${r.kidUrl} target="_blank" rel="noopener">Kid page ↗</a>` : null}
+                    ${r.reminderSignups ? html`<span>${rtPeople(r.reminderSignups)} asked for reminders</span>` : null}
+                  </div>
+                </div>` : null}
+              </li>`;
+            })}
+          </ul>`}
+      </div>`;
     }
 
     function AuditLogPage({ addToast }) {

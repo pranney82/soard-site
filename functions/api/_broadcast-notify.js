@@ -340,7 +340,7 @@ ${img}
 }
 
 /**
- * kind: 'scheduled' | 'day' | 'hour' | 'live' | 'replay'
+ * kind: 'scheduled' | 'moved' | 'day' | 'hour' | 'live' | 'replay'
  * list: true for newsletter-list sends (Kit), which get list footer copy
  *       instead of "you asked for reminders".
  */
@@ -353,6 +353,13 @@ export function reminderEmail({ kind, kidName, scheduledAt, liveUrl, replayUrl, 
       preheader: `We go live ${when}.`,
       heading: `${who.charAt(0).toUpperCase() + who.slice(1)} reveal is coming`,
       body: `<p>We're building something wonderful, and you're invited to watch the moment it's unveiled.</p><p><strong>${escapeHtml(when)}</strong></p><p>We'll remind you the day before and again an hour before we go live. The stream plays right on our site, and on Facebook.</p>`,
+      cta: 'See the reveal page', ctaUrl: liveUrl,
+    },
+    moved: {
+      subject: `New date: ${who} room reveal`,
+      preheader: `We now go live ${when}.`,
+      heading: `${who.charAt(0).toUpperCase() + who.slice(1)} reveal has a new date`,
+      body: `<p>The reveal moved. Here's the new time:</p><p><strong>${escapeHtml(when)}</strong></p><p>We'll remind you the day before and again an hour before we go live.</p>`,
       cta: 'See the reveal page', ctaUrl: liveUrl,
     },
     day: {
@@ -395,6 +402,7 @@ export function reminderSms({ kind, kidName, scheduledAt, liveUrl, replayUrl, tz
   const when = formatWhen(scheduledAt, tz);
   const map = {
     scheduled: `Sunshine on a Ranney Day: ${who} room reveal streams live ${when}. Watch here: ${liveUrl}`,
+    moved: `Sunshine on a Ranney Day: new date! ${who} room reveal now streams live ${when}. ${liveUrl}`,
     day: `Sunshine on a Ranney Day: tomorrow is reveal day! ${who} reveal goes live ${when}. ${liveUrl}`,
     hour: `Sunshine on a Ranney Day: ${who} reveal goes live in about an hour. ${liveUrl}`,
     live: `Sunshine on a Ranney Day: we're LIVE with ${who} reveal right now. Watch: ${liveUrl}`,
@@ -408,6 +416,7 @@ export function reminderPush({ kind, kidName, liveUrl, replayUrl, image }) {
   const who = kidName ? `${kidName}'s` : 'the next';
   const map = {
     scheduled: { title: 'Reveal scheduled', body: `${who} room reveal has a date. Tap for details.`, url: liveUrl },
+    moved: { title: 'New reveal date', body: `${who} room reveal moved. Tap for the new time.`, url: liveUrl },
     day: { title: 'Tomorrow is reveal day', body: `${who} reveal streams live tomorrow.`, url: liveUrl },
     hour: { title: 'One hour to go', body: `${who} reveal goes live in about an hour.`, url: liveUrl },
     live: { title: "We're live", body: `${who} room reveal is happening right now.`, url: liveUrl },
