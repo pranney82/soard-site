@@ -93,7 +93,10 @@ export function planSync(job, source) {
 
   const reveals = job.tasks?.nodes || [];
   const open = reveals.filter(t => (t.progress ?? 0) < 1);
+  const values = fieldValues(job.customFieldValues?.nodes);
   if (!reveals.length) {
+    // Nothing on either side is nothing to sync, not a problem worth a note
+    if (!values[FIELD_REVEAL_DATE]) return { action: 'none', reason: 'no Reveal task and no Reveal Date' };
     return { action: 'note', reason: 'no Reveal task', message: 'There\'s no Reveal task on this job, so the Reveal Date can\'t sync to the schedule. Add a task with the task type "Reveal".' };
   }
   if (!open.length) return { action: 'none', reason: 'the reveal is marked complete' };
@@ -101,7 +104,6 @@ export function planSync(job, source) {
     return { action: 'note', reason: 'several open Reveal tasks', message: `This job has ${open.length} open Reveal tasks, so the Reveal Date can't tell which one to follow. Delete the extra one or mark it complete.` };
   }
   const task = open[0];
-  const values = fieldValues(job.customFieldValues?.nodes);
   const confirmed = isYes(values[FIELD_REVEAL_CONFIRMED]);
   const fieldIso = values[FIELD_REVEAL_DATE] || null;
   const field = fieldIso ? easternParts(fieldIso) : null;
