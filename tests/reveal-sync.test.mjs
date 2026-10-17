@@ -201,6 +201,13 @@ test('no Reveal task: one note, not one per change', async () => {
   assert.match(jt.state.comments[0].message, /no Reveal task/);
 });
 
+test('no Reveal task and no Reveal Date: nothing to sync, no note', async () => {
+  const { sync, jt } = await setup({ field: null, reveals: [] });
+  const r = await sync({ source: 'field', revealDate: 'null' });
+  assert.deepEqual([r.action, r.reason], ['none', 'no Reveal task and no Reveal Date']);
+  assert.equal(jt.state.comments.length, 0);
+});
+
 test('several open Reveal tasks: a note naming the problem', async () => {
   const { sync, jt } = await setup({
     field: '2026-11-20T20:00:00.000Z',
