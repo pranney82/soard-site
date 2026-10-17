@@ -260,13 +260,17 @@ test('legacy live-status POST start with future startsAt schedules', async () =>
 
 test('hub heartbeat: nonce verified over the binding', async () => {
   hub.nonces.add('good');
+  const waits = ctx.pending.length;
   const ok = await endpoints.hooks.onRequestPost(ctx(post('https://x/api/broadcast-hooks', { type: 'tick', source: 'alarm' }, { 'x-hub-nonce': 'good' })));
   assert.equal(ok.status, 200);
+  assert.equal(ctx.pending.length - waits, 2, 'the heartbeat also wakes the reveal checks and the invite sweep');
+  await flush();
   const body = await ok.json();
   assert.equal(body.ok, true);
   assert.equal(body.state.phase, 'idle');
   const bad = await endpoints.hooks.onRequestPost(ctx(post('https://x/api/broadcast-hooks', { type: 'tick' }, { 'x-hub-nonce': 'bad' })));
   assert.equal(bad.status, 401);
+  assert.equal(ctx.pending.length, 0, 'a forged tick wakes nothing');
   const replayed = await endpoints.hooks.onRequestPost(ctx(post('https://x/api/broadcast-hooks', { type: 'tick' }, { 'x-hub-nonce': 'good' })));
   assert.equal(replayed.status, 401, 'nonce is single-use');
 });

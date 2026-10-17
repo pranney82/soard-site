@@ -18,8 +18,9 @@
  * missed and the answer is clear (the reveal is confirmed, so the field wins,
  * or one side is empty), it fixes the mismatch through ./_reveal-sync.js.
  *
- * Runs piggyback on site traffic (/api/reveals, admin loads), like the invite
- * safety sweep. Off until enabled in Reveals → Invites.
+ * Woken by the live hub's heartbeat (POST /api/broadcast-hooks, every minute
+ * even when idle), with site traffic (/api/reveals, admin loads) as a backup,
+ * like the invite safety sweep. Off until enabled in Reveals → Invites.
  */
 
 import {
@@ -316,7 +317,7 @@ export function summarize(results, now) {
 }
 
 /**
- * Once per weekday, the first site request after 8 AM Eastern runs the checks.
+ * Once per weekday, the first wake-up after 8 AM Eastern runs the checks.
  * Claims the day before running so overlapping requests don't double up; if
  * JobTread is down, the claim is released and the next request after 30
  * minutes tries again. Never throws.

@@ -45,7 +45,7 @@ const FACTS = {
   jobtread: {
     workflows: Object.fromEntries([
       ['22PJYm7aXBgK', true], ['22PJxRJ37KSs', true], ['22PJxRLV9Y3i', true], ['22PRvF7pG9VM', false], ['22PZF9ENDgxn', false],
-      ['22PgHVceQhvW', true], ['22PgHVcgDXFN', true], ['22PgPECxg6UP', true], ['22PgPED4vi7W', true], ['22PgQQ6JnJDm', true], ['22PgQeyQNx34', true],
+      ['22PgHVceQhvW', true], ['22PgHVcgDXFN', true], ['22PgPECxg6UP', true], ['22PgPED4vi7W', true], ['22PgQQ6JnJDm', true]
     ].map(([id, active]) => [id, { name: id, active }])),
     webhooks: Object.fromEntries(['22PDDmxBcvpA', '22PJxV5yimrd', '22P5rFX2hhQW', '22PRvE87suYz', '22PaN5dFNj8s', '22PXNK6fZGzA'].map((id) => [id, { where: 'example.com/x', events: [] }])),
   },
@@ -125,7 +125,7 @@ try {
     ['Simulcast to Facebook', 'Live'], ['Simulcast to YouTube', 'Needs attention'], ['Live hub', 'Needs attention'],
     ['Slack posts', 'Off'], ['Facebook replay rescue', 'Needs attention'], ['Invite engine', 'Live'],
     ['Reveal date sync', 'Live'], ['Application In Review comment', 'Off'],
-    ['Reveal checks for PMs', 'Off'], ['Weekday 8 am wake-up', 'Live'],
+    ['Reveal checks for PMs', 'Off'],
   ]) ok(await statusOf(page, title) === want, `${title}: ${want}`);
 
   const attnItems = await page.$$eval('.am-panel .am-mini li', (l) => l.length);
