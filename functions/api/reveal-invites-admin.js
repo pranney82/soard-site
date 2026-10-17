@@ -14,7 +14,10 @@
  * Test links are GETs on purpose: open them in a browser signed in to Access.
  */
 
-import { ensureSchema, readConfig, writeConfig, reconcileJob, reconcileAll, sendTestInvite } from './_reveal-invites.js';
+import {
+  ensureSchema, readConfig, writeConfig, reconcileJob, reconcileAll, sendTestInvite,
+  listUpcoming, setInviteDetails, DEFAULT_TEMPLATE, TEMPLATE_LIMITS,
+} from './_reveal-invites.js';
 import { logAudit } from './_audit.js';
 
 const ID = /^[A-Za-z0-9]{6,32}$/;
@@ -67,39 +70,81 @@ export async function onRequestGet(context) {
     }
 
     const config = await readConfig(env.DB);
-    const { results: rows } = await env.DB.prepare('SELECT job_id, state, reveal_date, guests, last_action, error, updated_at FROM reveal_invites ORDER BY updated_at DESC').all();
+    let upcoming = [];
+    let upcomingError = null;
+    if (env.JOBTREAD_GRANT_KEY) {
+      try { upcoming = await listUpcoming(env); } catch (err) { upcomingError = err.message; }
+    }
     return Response.json({
       ok: true,
       config,
+      defaults: DEFAULT_TEMPLATE,
+      limits: TEMPLATE_LIMITS,
       setup: { jobtread: Boolean(env.JOBTREAD_GRANT_KEY), google: Boolean(env.GOOGLE_CALENDAR_KEY) },
-      invites: (rows || []).map(r => ({ ...r, guests: r.guests ? JSON.parse(r.guests).length : 0 })),
+      upcoming,
+      ...(upcomingError ? { upcomingError } : {}),
     });
   } catch (err) {
     return Response.json({ ok: false, error: err.message }, { status: 500 });
   }
 }
 
+/**
+ * POST { enabled?, organizer?, template?, updateExisting? } → settings
+ * POST { jobId, details }                                   → a reveal's notes, saved to JobTread
+ */
 export async function onRequestPost(context) {
   const { env } = context;
+  const me = context.data?.userEmail || 'unknown';
   let body = {};
   try { body = await context.request.json(); } catch { /* empty */ }
-  const patch = {};
-  if (typeof body.enabled === 'boolean') patch.enabled = body.enabled;
-  if (typeof body.organizer === 'string') {
-    const o = body.organizer.trim().toLowerCase();
-    if (!/^[^\s@]+@soardcharity\.com$/.test(o)) return fail('organizer must be a soardcharity.com address');
-    patch.organizer = o;
-  }
-  if (!Object.keys(patch).length) return fail('Nothing to change');
+
   try {
+    await ensureSchema(env.DB);
+
+    if (typeof body.jobId === 'string') {
+      if (!ID.test(body.jobId)) return fail('A JobTread job id is required');
+      const result = await setInviteDetails(env, body.jobId, body.details);
+      await logAudit(env.DB, {
+        userEmail: me, action: 'updated', entityType: 'reveal-invite', entitySlug: body.jobId, entityName: 'Reveal invite notes',
+        changes: [{ field: 'Reveal Invite Details', from: null, to: String(body.details || '').slice(0, 200) }], gitStatus: 'ok',
+      }).catch(() => {});
+      return Response.json({ ok: result.action !== 'error', result, ...(result.error ? { error: result.error } : {}) });
+    }
+
+    const patch = {};
+    if (typeof body.enabled === 'boolean') patch.enabled = body.enabled;
+    if (typeof body.organizer === 'string') {
+      const o = body.organizer.trim().toLowerCase();
+      if (!/^[^\s@]+@soardcharity\.com$/.test(o)) return fail('organizer must be a soardcharity.com address');
+      patch.organizer = o;
+    }
+    if (body.template && typeof body.template === 'object') {
+      const template = {};
+      for (const [key, max] of Object.entries(TEMPLATE_LIMITS)) {
+        const value = String(body.template[key] ?? DEFAULT_TEMPLATE[key]).replace(/\r\n/g, '\n').trim();
+        if (!value) return fail('Titles and messages can\'t be empty');
+        if (value.length > max) return fail(`That's too long (${max} characters at most)`);
+        template[key] = value;
+      }
+      patch.template = template;
+    }
+    if (!Object.keys(patch).length) return fail('Nothing to change');
+
     const before = await readConfig(env.DB);
     const config = await writeConfig(env.DB, patch);
     await logAudit(env.DB, {
-      userEmail: context.data?.userEmail || 'unknown', action: 'updated', entityType: 'site-config', entitySlug: 'reveal-invites',
-      entityName: 'Reveal calendar invites',
-      changes: Object.keys(patch).map(field => ({ field, from: before[field], to: config[field] })), gitStatus: 'ok',
+      userEmail: me, action: 'updated', entityType: 'site-config', entitySlug: 'reveal-invites', entityName: 'Reveal calendar invites',
+      changes: Object.keys(patch).map(field => ({
+        field,
+        from: field === 'template' ? 'previous wording' : before[field],
+        to: field === 'template' ? 'new wording' : config[field],
+      })), gitStatus: 'ok',
     }).catch(() => {});
-    return Response.json({ ok: true, config });
+
+    // New wording reaches existing invites on their next change, or right now when asked
+    const updated = patch.template && body.updateExisting === true && config.enabled ? await reconcileAll(env) : null;
+    return Response.json({ ok: true, config, ...(updated ? { updated } : {}) });
   } catch (err) {
     return Response.json({ ok: false, error: err.message }, { status: 500 });
   }

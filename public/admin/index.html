@@ -5650,6 +5650,254 @@
       `;
     }
 
+    // ─── Reveal Invites (Comms → Invites) ─────────────────────
+    // Calendar invites from Clareece's Google Calendar to staff and the
+    // makeover family, driven by JobTread (functions/api/_reveal-invites.js).
+    // The wording is edited here; each reveal's notes save back to JobTread
+    // ("Reveal Invite Details") so JobTread stays the source of truth.
+    const INVITE_FIELDS = [
+      { key: 'tentativeTitle', label: 'Tentative invite title', rows: 0 },
+      { key: 'tentativeMessage', label: 'Tentative invite message', rows: 5 },
+      { key: 'confirmedTitle', label: 'Confirmed invite title', rows: 0 },
+      { key: 'confirmedMessage', label: 'Confirmed invite message', rows: 3 },
+    ];
+    const inviteDay = (date, style = 'long') => new Date(`${date}T12:00:00Z`).toLocaleDateString('en-US', style === 'long'
+      ? { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' }
+      : { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' });
+    const inviteClock = (time) => {
+      const [h, m] = time.split(':').map(Number);
+      return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`;
+    };
+    // Same placeholders as the server: {name} {date} {time} {when}
+    const fillInvite = (text, { name, date, time }) => {
+      const day = inviteDay(date);
+      const values = { name, date: day, time: time ? inviteClock(time) : 'time to come', when: time ? `${day} at ${inviteClock(time)}` : `${day} (time to come)` };
+      return String(text || '').replace(/\{(name|date|time|when)\}/g, (_, k) => values[k]);
+    };
+
+    function RevealInvitesPage({ addToast }) {
+      const [data, setData] = useState(null);
+      const [loadError, setLoadError] = useState('');
+      const [template, setTemplate] = useState(null);
+      const [updateExisting, setUpdateExisting] = useState(false);
+      const [savingTemplate, setSavingTemplate] = useState(false);
+      const [notes, setNotes] = useState({});
+      const [busyJob, setBusyJob] = useState(null);
+      const [confirmSending, setConfirmSending] = useState(null); // true = turn on, false = turn off
+      const [toggling, setToggling] = useState(false);
+
+      const load = useCallback(async () => {
+        setLoadError('');
+        try {
+          const res = await fetch('/api/reveal-invites-admin', { cache: 'no-store' });
+          const d = await res.json();
+          if (!d.ok) throw new Error(d.error || 'Could not load invites');
+          setData(d);
+          setTemplate(d.config.template);
+          setNotes(Object.fromEntries((d.upcoming || []).map(r => [r.jobId, r.details || ''])));
+        } catch (e) {
+          setLoadError(e.message);
+        }
+      }, []);
+      useEffect(() => { load(); }, [load]);
+
+      const post = async (body) => {
+        const res = await fetch('/api/reveal-invites-admin', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+        });
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok || !d.ok) throw new Error(d.error || `Couldn't save (${res.status})`);
+        return d;
+      };
+
+      const setSending = async (enabled) => {
+        setToggling(true);
+        try {
+          await post({ enabled });
+          addToast(enabled ? 'Invites are sending' : 'Invites are paused', 'success');
+          setConfirmSending(null);
+          await load();
+        } catch (e) { addToast(e.message, 'error'); }
+        setToggling(false);
+      };
+
+      const saveTemplate = async () => {
+        setSavingTemplate(true);
+        try {
+          const d = await post({ template, updateExisting });
+          const changed = (d.updated || []).filter(r => /^(updated|created)/.test(r.action)).length;
+          addToast(updateExisting && d.updated ? `Wording saved, ${changed} invite${changed === 1 ? '' : 's'} updated` : 'Wording saved', 'success');
+          setUpdateExisting(false);
+          await load();
+        } catch (e) { addToast(e.message, 'error'); }
+        setSavingTemplate(false);
+      };
+
+      const saveNotes = async (jobId) => {
+        setBusyJob(jobId + ':notes');
+        try {
+          const d = await post({ jobId, details: notes[jobId] || '' });
+          const a = d.result?.action || '';
+          addToast(/updated|created/.test(a) ? 'Notes saved, invite updated' : /^would/.test(a) ? 'Notes saved to JobTread' : 'Notes saved', 'success');
+          await load();
+        } catch (e) { addToast(e.message, 'error'); }
+        setBusyJob(null);
+      };
+
+      const sendTest = async (jobId) => {
+        setBusyJob(jobId + ':test');
+        try {
+          const res = await fetch(`/api/reveal-invites-admin?test=${encodeURIComponent(jobId)}`, { cache: 'no-store' });
+          const d = await res.json();
+          if (!d.ok) throw new Error(d.error || 'Test failed');
+          addToast(d.action === 'skip' ? `No invite yet: ${d.reason}` : `Test invite sent to ${d.sentTo}`, d.action === 'skip' ? 'info' : 'success');
+        } catch (e) { addToast(e.message, 'error'); }
+        setBusyJob(null);
+      };
+
+      if (loadError) return html`
+        <div class="card" style="padding: 2.5rem; text-align: center;">
+          <p style="color: var(--color-danger); margin-bottom: 1rem;">Couldn't load reveal invites: ${loadError}</p>
+          <button class="btn btn-primary" onClick=${load}>Retry</button>
+        </div>`;
+      if (!data || !template) return html`<div class="card" style="padding: 3rem; text-align: center; color: var(--text-secondary);">Loading…</div>`;
+
+      const { config, defaults, limits, upcoming = [], setup } = data;
+      const dirty = JSON.stringify(template) !== JSON.stringify(config.template);
+      const sample = upcoming[0] || { name: 'Max', date: new Date(Date.now() + 10 * 864e5).toISOString().slice(0, 10), time: null };
+      const confirmedSample = { ...sample, time: sample.time || '16:00' };
+
+      const inviteLine = (r) => {
+        const inv = r.invite;
+        if (inv?.error) return html`<span style="color: var(--color-danger);">Problem: ${inv.error}</span>`;
+        if (inv?.state === 'cancelled') return 'Cancelled';
+        if (inv) return `Sent to ${inv.guests} ${inv.guests === 1 ? 'person' : 'people'} · ${/^created/.test(inv.lastAction || '') ? 'sent' : 'updated'} ${new Date(inv.updatedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}`;
+        if (!r.confirmed && !r.scheduleBuilt) return 'Waiting for Build Schedule to be marked complete';
+        return config.enabled ? 'Sends on the next JobTread change' : 'Sends once invites are turned on';
+      };
+
+      return html`
+        <div>
+          <div class="page-header">
+            <div>
+              <h2>Reveal Invites</h2>
+              <p class="page-sub">Calendar invites from Clareece's Google Calendar to staff and the family. Dates come from each job's Reveal task in JobTread.</p>
+            </div>
+            <span class="badge ${config.enabled ? 'badge-green' : 'badge-gray'}">${config.enabled ? 'Sending' : 'Paused'}</span>
+          </div>
+
+          <div class="card" style="margin-bottom: 1rem; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1rem;">
+            <div>
+              <h3 class="card-title">${config.enabled ? 'Invites are sending' : 'Invites are paused'}</h3>
+              <p class="form-hint" style="margin: 0.25rem 0 0;">
+                From ${config.organizer}.
+                ${!setup.google ? ' Google Calendar key is missing in Cloudflare.' : ''}
+                ${!setup.jobtread ? ' JobTread grant key is missing in Cloudflare.' : ''}
+              </p>
+            </div>
+            <button class="btn ${config.enabled ? 'btn-ghost' : 'btn-primary'}" onClick=${() => setConfirmSending(!config.enabled)}>
+              ${config.enabled ? 'Pause invites' : 'Turn on invites'}
+            </button>
+          </div>
+
+          <div class="card" style="margin-bottom: 1rem;">
+            <h3 class="card-title">Invite wording</h3>
+            <p class="form-hint" style="margin: 0.25rem 0 1rem;">
+              Use ${'{name}'} for the kid's name, ${'{date}'} for the day, ${'{time}'} for the time, or ${'{when}'} for the day with the time.
+              Each reveal's notes and a link to the kid's page are added under the message.
+            </p>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem;">
+              ${[['Tentative invite', 'tentative', sample, 'Sent when Build Schedule is marked complete'], ['Confirmed invite', 'confirmed', confirmedSample, 'Sent when Reveal Date Confirmed is set to Yes']].map(([label, kind, s, when]) => html`
+                <div key=${kind}>
+                  <h4 style="margin: 0 0 0.15rem; font-size: 0.95rem;">${label}</h4>
+                  <p class="form-hint" style="margin: 0 0 0.75rem;">${when}</p>
+                  ${INVITE_FIELDS.filter(f => f.key.startsWith(kind)).map(f => html`
+                    <div class="form-group" key=${f.key}>
+                      <label class="form-label" for=${'invite-' + f.key}>${f.rows ? 'Message' : 'Title'}</label>
+                      ${f.rows
+                        ? html`<textarea id=${'invite-' + f.key} class="form-textarea" rows=${f.rows} maxlength=${limits?.[f.key]}
+                            value=${template[f.key]} onInput=${e => setTemplate({ ...template, [f.key]: e.target.value })}></textarea>`
+                        : html`<input id=${'invite-' + f.key} class="form-input" type="text" maxlength=${limits?.[f.key]}
+                            value=${template[f.key]} onInput=${e => setTemplate({ ...template, [f.key]: e.target.value })} />`}
+                    </div>
+                  `)}
+                  <div style="border: 1px solid var(--color-border); border-radius: 10px; padding: 0.9rem 1rem;">
+                    <p class="form-hint" style="margin: 0 0 0.35rem; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 600;">Preview, ${s.name}</p>
+                    <p style="font-weight: 700; margin: 0 0 0.35rem;">${fillInvite(template[kind + 'Title'], s)}</p>
+                    <p style="margin: 0; white-space: pre-line; color: var(--text-secondary);">${fillInvite(template[kind + 'Message'], s)}</p>
+                  </div>
+                </div>
+              `)}
+            </div>
+
+            <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem 1.25rem; margin-top: 1.25rem;">
+              <button class="btn btn-primary" disabled=${!dirty || savingTemplate} onClick=${saveTemplate}>
+                ${savingTemplate ? html`<span class="spinner" /> Saving...` : 'Save wording'}
+              </button>
+              <label style="display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.9rem;">
+                <input type="checkbox" checked=${updateExisting} disabled=${!config.enabled} onChange=${e => setUpdateExisting(e.target.checked)} />
+                Also update invites already sent (everyone on them gets an update email)
+              </label>
+              ${JSON.stringify(template) !== JSON.stringify(defaults) ? html`
+                <button class="btn btn-ghost" onClick=${() => setTemplate({ ...defaults })}>Use the original wording</button>` : null}
+            </div>
+            <p class="form-hint" style="margin: 0.5rem 0 0;">Otherwise new wording is used for new invites, and for existing ones the next time their reveal changes.</p>
+          </div>
+
+          <div class="card">
+            <h3 class="card-title">Upcoming reveals</h3>
+            <p class="form-hint" style="margin: 0.25rem 0 1rem;">Notes appear in the invite under the message (parking, arrival, door codes). Saving updates JobTread's "Reveal Invite Details" and the invite.</p>
+            ${data.upcomingError ? html`<p style="color: var(--color-danger);">Couldn't read JobTread: ${data.upcomingError}</p>` : null}
+            ${upcoming.length === 0 && !data.upcomingError ? html`<p style="color: var(--text-secondary);">No upcoming reveals on open jobs.</p>` : null}
+            <div style="display: grid; gap: 1rem;">
+              ${upcoming.map(r => {
+                const changed = (notes[r.jobId] || '') !== (r.details || '');
+                return html`
+                  <div key=${r.jobId} style="border: 1px solid var(--color-border); border-radius: 12px; padding: 1rem 1.1rem;">
+                    <div style="display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 0.5rem 1rem;">
+                      <div>
+                        <strong style="font-size: 1.05rem;">${r.name}</strong>
+                        <span class="form-hint" style="margin-left: 0.5rem;">${r.jobName}</span>
+                      </div>
+                      <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem;">
+                        <span>${inviteDay(r.date, 'short')}${r.time ? ` at ${inviteClock(r.time)}` : ', no time yet'}</span>
+                        <span class="badge ${r.confirmed ? 'badge-green' : r.scheduleBuilt ? 'badge-yellow' : 'badge-gray'}">
+                          ${r.confirmed ? 'Confirmed' : r.scheduleBuilt ? 'Tentative' : 'Not scheduled yet'}
+                        </span>
+                      </div>
+                    </div>
+                    <p class="form-hint" style="margin: 0.35rem 0 0.75rem;">${inviteLine(r)}</p>
+                    <label class="form-label" for=${'notes-' + r.jobId}>Notes in ${r.name}'s invite</label>
+                    <textarea id=${'notes-' + r.jobId} class="form-textarea" rows="2" maxlength="2000"
+                      placeholder="Parking, arrival time, gate or door codes..."
+                      value=${notes[r.jobId] || ''} onInput=${e => setNotes({ ...notes, [r.jobId]: e.target.value })}></textarea>
+                    <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.6rem;">
+                      <button class="btn btn-primary" disabled=${!changed || busyJob === r.jobId + ':notes'} onClick=${() => saveNotes(r.jobId)}>
+                        ${busyJob === r.jobId + ':notes' ? html`<span class="spinner" /> Saving...` : 'Save notes'}
+                      </button>
+                      <button class="btn btn-ghost" disabled=${busyJob === r.jobId + ':test'} onClick=${() => sendTest(r.jobId)}>
+                        ${busyJob === r.jobId + ':test' ? html`<span class="spinner" /> Sending...` : 'Send me a test'}
+                      </button>
+                    </div>
+                  </div>`;
+              })}
+            </div>
+          </div>
+
+          ${confirmSending !== null ? html`<${ConfirmModal}
+            title=${confirmSending ? 'Turn on reveal invites?' : 'Pause reveal invites?'}
+            message=${confirmSending
+              ? 'Staff and families will get calendar invites from Clareece as reveals are scheduled, moved, confirmed, or cancelled in JobTread.'
+              : 'Nothing new goes out while paused. Invites already sent stay on calendars as they are.'}
+            confirmLabel=${confirmSending ? 'Turn on' : 'Pause'}
+            busyLabel=${confirmSending ? 'Turning on...' : 'Pausing...'}
+            loading=${toggling}
+            onConfirm=${() => setSending(confirmSending)}
+            onCancel=${() => setConfirmSending(null)} />` : null}
+        </div>
+      `;
+    }
+
     function AuditLogPage({ addToast }) {
       const [entries, setEntries] = useState([]);
       const [total, setTotal] = useState(0);
@@ -17194,6 +17442,7 @@
         { label: 'Comms', items: [
           { id: 'email', icon: icons.mail, label: 'Email' },
           { id: 'broadcast', icon: icons.goLive, label: 'Broadcast' },
+          { id: 'reveal-invites', icon: icons.events, label: 'Invites' },
         ]},
         { label: 'Site', items: [
           { id: 'site-hub', icon: icons.settings, label: 'Site Config' },
@@ -17378,6 +17627,9 @@
           case 'broadcast':
           case 'go-live':
             return html`<${Broadcast} addToast=${addToast} kids=${kids} />`;
+
+          case 'reveal-invites':
+            return html`<${RevealInvitesPage} addToast=${addToast} />`;
 
           case 'deploys':
             return html`<${Deploys} addToast=${addToast} onDeploy=${promptDeploy} />`;
