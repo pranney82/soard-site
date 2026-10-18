@@ -19,6 +19,7 @@
 import { parsePath } from './_collections.js';
 import { deleteFile } from './_github.js';
 import { logAudit, getEntityName } from './_audit.js';
+import { setBoardEmail, refreshForBoardChange } from './_reveal-invites.js';
 
 export async function onRequestPost(context) {
   try {
@@ -86,6 +87,13 @@ export async function onRequestPost(context) {
       path,
       gitStatus,
     });
+
+    // A board member removed from the website: forget their private reveal email and take
+    // them off open reveal invites now
+    if (parsed.table === 'team' && oldData?.group === 'board') {
+      await setBoardEmail(DB, parsed.slug, '').catch(() => {});
+      context.waitUntil(refreshForBoardChange(context.env));
+    }
 
     return Response.json({ success: true, gitCommit: gitStatus });
   } catch (err) {

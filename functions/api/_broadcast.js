@@ -445,9 +445,10 @@ export function tClear(state, note, by) {
 // ─── Reminders ──────────────────────────────────────────────────────
 
 /**
- * A rehearsal's reminder: each kind goes once, by email, to the test address
- * (the reveal invites' test guests), marked TEST. Nobody who signed up gets
- * anything, and no texts or browser alerts go out.
+ * A rehearsal's reminder: whatever a real reveal would send under the current
+ * Settings (reminders on, which hours before), each kind once, by email, to the
+ * test address (the reveal invites' test guests), marked TEST. Nobody who
+ * signed up gets anything, and no texts or browser alerts go out.
  */
 async function sendTestReminder(env, state, kind, work, summary) {
   const { DB } = env;
@@ -500,9 +501,9 @@ function unsubscribeUrl(token) {
 export async function sendReminders(env, config, state, kind, work) {
   const { DB } = env;
   const summary = { kind, email: null, sms: null, push: null };
-  if (!state.broadcastId) return summary;
+  if (!config.reminders?.enabled || !state.broadcastId) return summary;
+  // A rehearsal follows the same switches as a real reveal, but only the test address hears it
   if (state.test) return sendTestReminder(env, state, kind, work, summary);
-  if (!config.reminders?.enabled) return summary;
   const common = {
     kind, kidName: state.kidName, scheduledAt: state.scheduledAt, tz: config.timezone,
     liveUrl: liveUrlFor(state),

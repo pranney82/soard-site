@@ -84,9 +84,11 @@ function invitesData(phase) {
         invite: { state: 'confirmed', lastAction: 'updated', error: null, updatedAt: iso(-D), guests: 5, log: [{ action: 'created', state: 'tentative', guests: 5, date: day(10), at: iso(-6 * D) }, { action: 'updated', state: 'confirmed', guests: 5, date: day(10), at: iso(-D) }] },
         broadcast: sched ? { id: 'live-1', phase: 'scheduled', scheduledAt: maxAt, createdAt: iso(-D), kitLiveEmail: null, kit: { scheduledDraft: true, live: null }, sends: [{ kind: 'scheduled', channel: 'email', recipients: 12, sent: 12, failed: 0, created_at: iso(-D) }, { kind: 'scheduled', channel: 'push', recipients: 3, sent: 3, failed: 0, created_at: iso(-D) }] } : null,
         reminderSignups: 15, checkComment: null },
-      { jobId: 'jobCol0001', jobName: 'Colin Lindsay (2026)', name: 'Colin', slug: 'colin', kidUrl: '/kids/colin/', jobUrl: 'https://app.jobtread.com/jobs/jobCol0001', scheduleUrl: 'https://app.jobtread.com/jobs/jobCol0001/schedule', date: day(25), time: null, confirmed: false, scheduleBuilt: false, status: 'Build', details: '', preview: preview('Colin', 'tentative'),
+      { jobId: 'jobCol0001', jobName: 'Colin Lindsay (2026)', name: 'Colin', slug: 'colin', kidUrl: '/kids/colin/', jobUrl: 'https://app.jobtread.com/jobs/jobCol0001', scheduleUrl: 'https://app.jobtread.com/jobs/jobCol0001/schedule', date: day(25), time: null, confirmed: false, scheduleBuilt: false, status: 'Build', details: '',
+        preview: { ...preview('Colin', 'tentative'), addsOnConfirm: [{ email: 'jacey@x.com', name: 'Jacey Verhoef', kind: 'vendor' }, { email: 'a@x.com', name: 'A', kind: 'board' }, { email: 'b@x.com', name: 'B', kind: 'board' }] },
         invite: null, broadcast: null, reminderSignups: 12, checkComment: null },
     ],
+    board: [{ slug: 'scott-wierson', name: 'Scott Wierson', hasEmail: true }, { slug: 'mary-atchley', name: 'Mary Atchley', hasEmail: false }],
     live: { phase: sched ? 'scheduled' : 'idle', jobId: sched ? 'jobMax0001' : null, scheduledAt: sched ? maxAt : null, waiting: { jobLiz0001: { problem: 'no-time', nearMiss: null } }, checkedAt: iso(-2 * 60e3), reminders: { enabled: true, hoursBefore: [24, 1] }, kit: { configured: true, enabled: true, audience: 'All subscribers' } },
   };
 }
@@ -103,7 +105,11 @@ function serve() {
   return new Promise((resolve) => server.listen(0, () => resolve(server)));
 }
 
-async function open(browser, base, viewport, phase, hash = '#broadcast') {
+const TEAM = [
+  { name: 'Scott Wierson', slug: 'scott-wierson', title: 'Board Chair', organization: 'Real Floors Commercial, CEO', group: 'board', order: 0 },
+  { name: 'In memoriam, Brent Aronson', slug: 'brent-aronson', title: 'Board Member 2024-2025', group: 'board', order: 1 },
+];
+async function open(browser, base, viewport, phase, hash = '#broadcast', waitSel = '.bc-tabs') {
   const page = await browser.newPage();
   await page.setViewport(viewport);
   const errors = [];
@@ -120,7 +126,11 @@ async function open(browser, base, viewport, phase, hash = '#broadcast') {
     if (url.pathname === '/api/broadcast-admin' && req.method() === 'GET') return json(adminData(phase));
     if (url.pathname === '/api/broadcast-admin' && req.method() === 'POST') return json({ success: true, action: 'none', schedule: adminData(phase).schedule });
     if (url.pathname === '/api/broadcast') return json({ success: true, state: adminData(phase).public });
+    if (url.pathname === '/api/reveal-invites-admin' && url.searchParams.get('board') === '1') return json({ ok: true, board: [{ slug: 'scott-wierson', name: 'Scott Wierson', email: null, memorial: false }] });
+    if (url.pathname === '/api/reveal-invites-admin' && req.method() === 'POST') return json({ ok: true, board: [] });
     if (url.pathname === '/api/reveal-invites-admin') return json(invitesData(phase));
+    if (url.pathname === '/api/list-content' && (url.searchParams.get('dir') || '').includes('team')) return json({ success: true, items: TEAM.map((t) => ({ name: `${t.slug}.json`, path: `src/content/team/${t.slug}.json`, sha: t.slug, content: t })), total: TEAM.length, hasMore: false });
+    if (url.pathname === '/api/read-content' && (url.searchParams.get('path') || '').includes('src/content/team/')) { const t = TEAM.find((x) => url.searchParams.get('path').endsWith(`${x.slug}.json`)); return json({ success: true, content: JSON.stringify(t), sha: t.slug }); }
     if (url.pathname === '/api/live-ws') return req.abort();
     if (url.pathname.startsWith('/api/list-content')) return json({ success: true, items: [], total: 0, hasMore: false });
     if (url.pathname.startsWith('/api/pending-changes')) return json({ success: true, changes: [], since: null });
@@ -130,7 +140,7 @@ async function open(browser, base, viewport, phase, hash = '#broadcast') {
     return req.continue();
   });
   await page.goto(`${base}/admin/${hash}`, { waitUntil: 'networkidle2' });
-  await page.waitForSelector('.bc-tabs', { timeout: 15000 });
+  await page.waitForSelector(waitSel, { timeout: 15000 });
   if (hash === '#broadcast') await page.waitForSelector('.rt-list', { timeout: 15000 });
   return { page, errors, posts };
 }
@@ -187,6 +197,11 @@ try {
   ok((await text(page, '.rt-item:nth-child(2) .rt-preview')).includes("Max's Reveal Day") && (await text(page, '.rt-item:nth-child(2) .rt-preview')).includes('Pat Sample (family)'), 'the invite preview shows the invite and its guests');
   await page.screenshot({ path: join(OUT, 'now-scheduled.png'), fullPage: true });
 
+  await clickToggle(page, 'Colin');
+  await pause(150);
+  const col = await stepsOf(page, 'Colin');
+  ok(col.find((x) => x.label === 'Confirmed calendar invite').text.includes('adding Jacey Verhoef (vendor) and 2 board members'), `the tentative reveal says who confirming adds (${col.find((x) => x.label === 'Confirmed calendar invite').text})`);
+
   console.log('Actions');
   ok(await clickButton(page, '.bc-status', 'Customize'), 'Customize opens');
   await page.waitForSelector('#bc-edit-title');
@@ -242,8 +257,38 @@ try {
   const invText = await text(inv.page, '#bc-panel');
   ok(!invText.includes('Upcoming reveals'), 'the upcoming list moved off the Invites tab');
   ok(invText.includes('Calendar invites are on') && invText.includes('Reveal checks are paused') && invText.includes('Invite wording'), 'the switches and the wording stay');
+  ok(invText.includes('Who gets the invites') && invText.includes('adds the vendors, sponsors, photographers and design partners'), 'it explains the two stages');
+  ok(invText.includes('1 of 2 board members') && invText.includes('Missing: Mary Atchley'), 'it says which board members still need an email');
   ok(inv.errors.length === 0, `no console errors (${inv.errors.join(' | ')})`);
   await inv.page.close();
+
+  console.log('People → Board member');
+  const ppl = await open(browser, base, { width: 1440, height: 1000 }, 'idle', '', 'nav, .sidebar, aside');
+  const clicked = await ppl.page.evaluate(() => { const el = [...document.querySelectorAll('a, button')].find((x) => x.textContent.trim() === 'People'); if (el) el.click(); return !!el; });
+  ok(clicked, 'People is in the sidebar');
+  await pause(400);
+  await ppl.page.evaluate(() => [...document.querySelectorAll('button.hub-tab')].find((b) => b.textContent.trim() === 'Board')?.click());
+  await pause(400);
+  await ppl.page.evaluate(() => [...document.querySelectorAll('tr.u-clickable')].find((tr) => tr.textContent.includes('Scott Wierson'))?.click());
+  await ppl.page.waitForSelector('#board-reveal-email', { timeout: 10000 }).catch(() => {});
+  ok(!!(await ppl.page.$('#board-reveal-email')), 'a board member has an email field for reveal invites');
+  ok((await text(ppl.page, '.card:has(#board-reveal-email)')).includes('Private: never shown on the site'), 'it says the email is private');
+  await ppl.page.waitForFunction(() => !document.querySelector('#board-reveal-email')?.disabled);
+  await ppl.page.type('#board-reveal-email', 'Scott@Example.com');
+  await ppl.page.evaluate(() => [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Save email')?.click());
+  await pause(300);
+  const bp = ppl.posts.find((x) => x.path === '/api/reveal-invites-admin' && x.body?.boardEmail);
+  ok(bp && bp.body.boardEmail.slug === 'scott-wierson' && bp.body.boardEmail.email === 'scott@example.com', 'saving sends it to the private store, not the public record');
+  ok(!ppl.posts.some((x) => x.path === '/api/save-content' && JSON.stringify(x.body).includes('scott@example.com')), 'the email never goes into the saved (GitHub-committed) record');
+  await ppl.page.evaluate(() => document.querySelector('.breadcrumb button')?.click()); // back to the list
+  await ppl.page.waitForFunction(() => [...document.querySelectorAll('tr.u-clickable')].some((tr) => tr.textContent.includes('Brent Aronson')), { timeout: 5000 }).catch(() => {});
+  await ppl.page.evaluate(() => [...document.querySelectorAll('tr.u-clickable')].find((tr) => tr.textContent.includes('Brent Aronson'))?.click());
+  await pause(800);
+  ok((await text(ppl.page, '.page-header h2')).includes('Brent Aronson'), `the memorial entry opens (${await text(ppl.page, '.page-header h2')})`);
+  ok((await ppl.page.evaluate(() => [...document.querySelectorAll('.card')].some((c) => c.textContent.includes('Reveal invites') && c.textContent.includes('Memorial entries are never invited')))), 'a memorial entry says it is never invited');
+  ok(ppl.errors.length === 0, `no console errors (${ppl.errors.join(' | ')})`);
+  await ppl.page.screenshot({ path: join(OUT, 'people-board.png'), fullPage: false });
+  await ppl.page.close();
 
   console.log('Phone');
   const phone = await open(browser, base, { width: 390, height: 844, isMobile: true, hasTouch: true }, 'scheduled');

@@ -370,3 +370,16 @@ test('a real stream during a rehearsal goes out publicly as its own broadcast', 
   assert.equal(live.kidSlug, null, 'it does not borrow the rehearsal\'s kid');
   assert.equal(b.publicState(live, b.defaultConfig()).live, true);
 });
+
+test('a rehearsal follows the reminder switches like a real reveal: reminders off means nothing, not even to the test address', async () => {
+  const cfg = await b.readConfig(env.DB);
+  await b.writeConfig(env.DB, { ...cfg, reminders: { ...cfg.reminders, enabled: false } });
+  try {
+    jobs = [job('jobTst0001', 'TEST Isla Example (2026)', { startsAt: at(5) })];
+    assert.equal((await sync()).action, 'schedule');
+    assert.equal((await b.readState(env.DB)).test, true, 'the rehearsal countdown still goes up');
+    assert.equal(emails.length, 0, 'no save-the-date while reminders are off');
+  } finally {
+    await b.writeConfig(env.DB, cfg);
+  }
+});

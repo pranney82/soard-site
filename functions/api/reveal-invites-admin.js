@@ -15,6 +15,8 @@
  * GET ?checks=run             → run the reveal checks now (posts comments)
  * GET ?checks=test            → run them on the office sandbox job only
  * GET ?checks-enable=1 | 0    → turn the weekday reveal checks on / off
+ * GET ?board=1               → the website's board with each member's private reveal email
+ * POST { boardEmail: { slug, email } } → set or clear one (empty email) and update open invites
  * POST { enabled, organizer } → turn sending on/off, change the organizer
  *
  * Test links are GETs on purpose: open them in a browser signed in to Access.
@@ -22,7 +24,7 @@
 
 import {
   ensureSchema, readConfig, writeConfig, reconcileJob, reconcileAll, sendTestInvite,
-  listUpcoming, maybeSweep, DEFAULT_TEMPLATE, TEMPLATE_LIMITS,
+  listUpcoming, maybeSweep, boardRoster, setBoardEmail, refreshForBoardChange, DEFAULT_TEMPLATE, TEMPLATE_LIMITS,
 } from './_reveal-invites.js';
 import { readNudgeConfig, writeNudgeConfig, runNudges, maybeNudge, summarize, SANDBOX_JOB_ID } from './_reveal-nudges.js';
 import { logAudit } from './_audit.js';
@@ -153,11 +155,14 @@ export async function onRequestGet(context) {
       return Response.json({ ok: true, results });
     }
 
+    if (q.get('board') === '1') return Response.json({ ok: true, board: await boardRoster(env.DB) });
+
     context.waitUntil(maybeSweep(env));
     context.waitUntil(maybeNudge(env));
-    const [config, checks, broadcast, schedule] = await Promise.all([
+    const [config, checks, broadcast, schedule, board] = await Promise.all([
       readConfig(env.DB), readNudgeConfig(env.DB),
       readState(env.DB).catch(() => null), readScheduleRecord(env.DB),
+      boardRoster(env.DB).catch(() => []),
     ]);
     let upcoming = [];
     let organizerName = null;
@@ -177,6 +182,8 @@ export async function onRequestGet(context) {
       setup: { jobtread: Boolean(env.JOBTREAD_GRANT_KEY), google: Boolean(env.GOOGLE_CALENDAR_KEY) },
       upcoming,
       ...(upcomingError ? { upcomingError } : {}),
+      // Who confirmed invites add from the website's board, and who still needs an email
+      board: board.filter((m) => !m.memorial).map(({ slug, name, email }) => ({ slug, name, hasEmail: !!email })),
       // The live countdown: which job it follows, and confirmed reveals it can't follow yet (and why)
       live: {
         phase: broadcast?.phase || 'idle',
@@ -208,6 +215,17 @@ export async function onRequestPost(context) {
 
   try {
     await ensureSchema(env.DB);
+
+    // A board member's private reveal email (People → Board): open invites follow right away
+    if (body.boardEmail && typeof body.boardEmail === 'object') {
+      const slug = String(body.boardEmail.slug || '').trim();
+      const member = (await boardRoster(env.DB)).find((m) => m.slug === slug);
+      if (!member) return fail('Not a board member on the website');
+      try { await setBoardEmail(env.DB, slug, body.boardEmail.email); } catch (e) { return fail(e.message); }
+      await logAudit(env.DB, { userEmail: me, action: 'updated', entityType: 'team', entitySlug: slug, entityName: `Reveal invite email for ${member.name}`, gitStatus: 'ok' }).catch(() => {});
+      context.waitUntil(refreshForBoardChange(env));
+      return Response.json({ ok: true, board: await boardRoster(env.DB) });
+    }
 
     const patch = {};
     if (typeof body.enabled === 'boolean') patch.enabled = body.enabled;

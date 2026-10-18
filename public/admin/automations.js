@@ -139,7 +139,7 @@ const MAP = { t: 'SOARD', children: [
       { t: 'Calendar invites', children: [
         { t: 'Invite engine', s: 'live', k: 'event',
           when: 'Woken by the three JobTread workflows below; it re-reads the job itself.',
-          does: 'Build Schedule done → a tentative all-day invite. Reveal moved → the same invite updates. Confirmed → a timed “Reveal Day” invite. Closed, denied or awaiting funding → cancelled. Guests are Admin and Designer staff plus the family’s contacts. Past reveals are never touched.',
+          does: 'Build Schedule done → a tentative all-day invite. Reveal moved → the same invite updates. Confirmed → a timed “Reveal Day” invite. Closed, denied or awaiting funding before the reveal → cancelled. Tentative guests are Admin and Designer staff and the family (the job’s customer contacts and Makeover Family users with access to the job). Confirming adds the vendors, sponsors, photographers and design partners with access to that job in JobTread, and the board (website board members with a private reveal email, plus any Board Member users in JobTread); un-confirming takes them off. Board changes on the website update open invites right away. Once a reveal has happened (its start time has passed or its Reveal task is complete), its invite is never touched again, so closing the job afterwards sends nothing.',
           touches: ['JobTread', 'Google Calendar'], where: 'functions/api/reveal-invites.js · _reveal-invites.js · _google-calendar.js',
           info: 'Invites come from Clareece’s Google Calendar through a service account. The office job is a live sandbox: its invites go only to Peter and are titled TEST.',
           live: (f) => {

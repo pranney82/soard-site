@@ -20,6 +20,10 @@
 import { EXTRACTORS, parsePath, generateSha } from './_collections.js';
 import { commitFile } from './_github.js';
 import { logAudit, diffJson, getEntityName } from './_audit.js';
+import { refreshForBoardChange } from './_reveal-invites.js';
+
+// On the board for confirmed reveal invites (a memorial entry never is)
+const onBoard = (d) => d?.group === 'board' && !/^\s*in memoriam/i.test(d?.name || '');
 
 export async function onRequestPost(context) {
   try {
@@ -127,6 +131,9 @@ export async function onRequestPost(context) {
       path,
       gitStatus,
     });
+
+    // Joining or leaving the board changes who confirmed reveal invites reach: follow it now
+    if (parsed.table === 'team' && onBoard(oldData) !== onBoard(data)) context.waitUntil(refreshForBoardChange(context.env));
 
     return Response.json({
       success: true,

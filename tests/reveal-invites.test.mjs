@@ -6,7 +6,7 @@ import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { generateKeyPairSync, createVerify } from 'node:crypto';
 import { createD1 } from './lib/d1-shim.mjs';
-import { planInvite, reconcileJob, sendTestInvite, writeConfig, readConfig, renderTemplate, listUpcoming, maybeSweep, DEFAULT_TEMPLATE, REVEAL_TASK_TYPE, FIELD_STATUS, FIELD_INVITE_DETAILS, FIELD_CONTACT_EMAIL } from '../functions/api/_reveal-invites.js';
+import { guestGroups, fetchBoard, boardRoster, setBoardEmail, planInvite, reconcileJob, sendTestInvite, writeConfig, readConfig, renderTemplate, listUpcoming, maybeSweep, DEFAULT_TEMPLATE, REVEAL_TASK_TYPE, FIELD_STATUS, FIELD_INVITE_DETAILS, FIELD_CONTACT_EMAIL } from '../functions/api/_reveal-invites.js';
 import { serviceAccountJwt, eventIdFor, clearTokenCache, parseServiceAccount } from '../functions/api/_google-calendar.js';
 import { FIELD_REVEAL_CONFIRMED } from '../functions/api/_reveals.js';
 
@@ -73,6 +73,96 @@ test('when there should be no invite', () => {
   assert.equal(planInvite({ ...job(), organization: { id: 'other' } }, STAFF, { now: NOW }).action, 'skip');
 });
 
+test('a reveal that has happened is never cancelled or changed, even when the job closes the same day', () => {
+  // NOW is 10:00 AM Eastern on October 16
+  const plan = (o, tweak = (j) => j) => planInvite(tweak(job({ confirmed: true, ...o })), STAFF, { kids: KIDS, now: NOW });
+  assert.equal(plan({ date: '2026-10-16', time: '09:00:00.000', closed: '2026-10-16' }).action, 'skip', 'this morning\'s reveal, job closed after: no cancellation email');
+  assert.equal(plan({ date: '2026-10-16', time: '16:00:00.000', closed: '2026-10-16' }).action, 'cancel', 'closed before this afternoon\'s reveal: it is called off');
+  assert.equal(plan({ date: '2026-10-16', time: null, closed: '2026-10-16' }).action, 'skip', 'an all-day reveal today counts as under way');
+  const done = (j) => ({ ...j, tasks: { nodes: j.tasks.nodes.map((t) => (t.name === 'Reveal' ? { ...t, progress: 1 } : t)) } });
+  assert.equal(plan({ date: '2026-10-27', closed: '2026-10-16' }, done).action, 'skip', 'Reveal task marked complete: it happened, whatever the date says');
+  assert.equal(plan({ date: '2026-10-27', closed: '2026-10-16' }).action, 'cancel', 'a future reveal on a closed job is still cancelled');
+});
+
+// Two stages: tentative → staff and family; confirmed → plus the people given access to the job and the board
+const access = (role, name, emailAddress, isInternal = false) => ({ membership: { isInternal, role: { name: role }, user: { name, emailAddress } } });
+function islaLike(o) {
+  const j = job(o);
+  j.location.account.contacts.nodes.push({ name: 'Morgan Lee', customFieldValues: { nodes: [{ value: 'wish.coordinator@example.com', customField: { id: FIELD_CONTACT_EMAIL } }] } });
+  j.aces = { nodes: [
+    access('Makeover Family', 'Erin Example', 'erin.example@example.com'),
+    access('Sponsor', 'Morgan Lee', 'wish.coordinator@example.com'),
+    access('Vendor', 'Mike Kamber', 'gym.vendor@example.com'),
+    access('Vendor', 'Niki Murphy', 'niki.photo@example.com'),
+    access('Application Reviewer', 'A Reviewer', 'reviewer@example.com'),
+    access('Admin', 'Qualification Committee', 'selection@soardcharity.com', true),
+  ] };
+  return j;
+}
+const BOARD = [{ name: 'Scott Wierson', email: 'scott@example.com', from: 'website' }];
+
+test('tentative invite: staff and the family only; a sponsor who is also a family contact waits for confirmation', () => {
+  const p = planInvite(islaLike(), STAFF, { kids: KIDS, board: BOARD, now: NOW });
+  assert.equal(p.event.status, 'tentative');
+  assert.deepEqual(p.guests, ['pat.sample@example.com', 'erin.example@example.com', 'cnielsen@soardcharity.com']);
+  assert.deepEqual(p.addsOnConfirm.map((x) => [x.email, x.kind]), [
+    ['wish.coordinator@example.com', 'sponsor'],
+    ['gym.vendor@example.com', 'vendor'],
+    ['niki.photo@example.com', 'vendor'],
+    ['scott@example.com', 'board'],
+  ], 'the preview says who confirming adds');
+  assert.equal(p.people['erin.example@example.com'].kind, 'family');
+});
+
+test('confirmed invite: the same event adds the job\'s vendors, sponsors and the board; reviewers and committee logins never', () => {
+  const p = planInvite(islaLike({ confirmed: true, time: '16:00:00.000' }), STAFF, { kids: KIDS, board: BOARD, now: NOW });
+  assert.equal(p.event.status, 'confirmed');
+  assert.deepEqual(p.guests, [
+    'pat.sample@example.com', 'erin.example@example.com', 'cnielsen@soardcharity.com',
+    'wish.coordinator@example.com', 'gym.vendor@example.com', 'niki.photo@example.com', 'scott@example.com',
+  ]);
+  assert.ok(!p.guests.includes('reviewer@example.com') && !p.guests.includes('selection@soardcharity.com'));
+  assert.equal(p.people['wish.coordinator@example.com'].kind, 'sponsor');
+  assert.equal(p.event.guestsCanSeeOtherGuests, false, 'board and vendors never see the family\'s emails');
+  assert.deepEqual(p.addsOnConfirm, []);
+});
+
+test('the board comes from the website (with a private email) and the JobTread Board Member role; memorials never', async () => {
+  await env.DB.prepare('CREATE TABLE IF NOT EXISTS team (slug TEXT PRIMARY KEY, data TEXT NOT NULL)').run();
+  const put = (slug, data) => env.DB.prepare('INSERT OR REPLACE INTO team (slug, data) VALUES (?, ?)').bind(slug, JSON.stringify(data)).run();
+  await put('scott-wierson', { name: 'Scott Wierson', title: 'Board Chair', group: 'board' });
+  await put('mary-atchley', { name: 'Mary Atchley', title: 'Board Member', group: 'board' });
+  await put('brent-aronson', { name: 'In memoriam, Brent Aronson', title: 'Board Member 2024-2025', group: 'board' });
+  await put('holly-ranney', { name: 'Holly Ranney', title: 'Director', group: 'team' });
+  await setBoardEmail(env.DB, 'scott-wierson', ' Scott@Example.com ');
+  await setBoardEmail(env.DB, 'brent-aronson', 'brent@example.com');
+  await setBoardEmail(env.DB, 'holly-ranney', 'holly@example.com');
+  await assert.rejects(() => setBoardEmail(env.DB, 'mary-atchley', 'not an email'));
+  const roster = await boardRoster(env.DB);
+  assert.deepEqual(roster.map((m) => [m.slug, m.email, m.memorial]), [['brent-aronson', 'brent@example.com', true], ['mary-atchley', null, false], ['scott-wierson', 'scott@example.com', false]], 'the website board, with who has an email');
+  boardMembers = [{ user: { name: 'New Member', emailAddress: 'new@example.com' } }];
+  const board = await fetchBoard(env, fakeFetch);
+  assert.deepEqual(board.map((x) => [x.email, x.from]), [['scott@example.com', 'website'], ['new@example.com', 'jobtread']],
+    'Mary has no email yet, Brent is a memorial, Holly is staff not board');
+});
+
+test('confirming adds the stage-two guests and emails everyone; un-confirming takes them back off', async () => {
+  await writeConfig(env.DB, { enabled: true });
+  boardMembers = [{ user: { name: 'Board Person', emailAddress: 'board@example.com' } }];
+  jt = islaLike();
+  await reconcileJob(env, jt.id, { fetchImpl: fakeFetch, now: NOW });
+  const id = eventIdFor('soardreveal', jt.id);
+  assert.ok(!events.get(id).attendees.some((a) => a.email === 'board@example.com'), 'tentative: no board yet');
+  jt = islaLike({ confirmed: true, time: '16:00:00.000' });
+  const r = await reconcileJob(env, jt.id, { fetchImpl: fakeFetch, now: NOW });
+  assert.equal(r.action, 'updated');
+  assert.ok(calls.some((c) => c.includes('sendUpdates=all')), 'new guests get the invite, everyone gets the update');
+  assert.deepEqual(events.get(id).attendees.map((a) => a.email).slice(-4), ['wish.coordinator@example.com', 'gym.vendor@example.com', 'niki.photo@example.com', 'board@example.com']);
+  jt = islaLike();
+  await reconcileJob(env, jt.id, { fetchImpl: fakeFetch, now: NOW });
+  assert.deepEqual(events.get(id).attendees.map((a) => a.email), ['pat.sample@example.com', 'erin.example@example.com', 'cnielsen@soardcharity.com'], 'back to staff and family');
+});
+
 test('the Google sign-in JWT is signed by the service account and impersonates the organizer', async () => {
   const jwt = await serviceAccountJwt(KEY, 'ccunningham@soardcharity.com', NOW);
   const [h, c, s] = jwt.split('.');
@@ -104,12 +194,14 @@ test('the key is read however it was pasted, and errors never echo it', () => {
 const BASE_MEMBERS = [
   { isInternal: true, role: { name: 'Admin' }, user: { name: 'Christian Nielsen', emailAddress: 'cnielsen@soardcharity.com' } },
   { isInternal: true, role: { name: 'Admin' }, user: { name: 'Qualification Committee', emailAddress: 'selection@soardcharity.com' } },
+  { isInternal: true, role: { name: 'Admin' }, user: { name: 'DATAx', emailAddress: 'hello@contractorcto.com' } },
   { isInternal: false, role: { name: 'Makeover Family' }, user: { name: 'Someone Else', emailAddress: 'other@family.com' } },
   { isInternal: false, role: { name: 'Vendor' }, user: { name: 'Real Floors', emailAddress: 'vendor@floors.com' } },
 ];
-let env, calls, events, jt, members;
+let env, calls, events, jt, members, boardMembers;
 beforeEach(async () => {
   members = [...BASE_MEMBERS];
+  boardMembers = [];
   clearTokenCache();
   const DB = await createD1({ schemaSql: [
     'CREATE TABLE kids (slug TEXT PRIMARY KEY, name TEXT NOT NULL, year INTEGER, status TEXT, data TEXT NOT NULL)',
@@ -128,6 +220,8 @@ async function fakeFetch(url, init = {}) {
   if (u.hostname === 'api.jobtread.com') {
     const q = JSON.parse(init.body).query;
     if (q.job) return Response.json({ job: jt });
+    // Board Member users (none here); otherwise the staff read
+    if (JSON.stringify(q.organization?.memberships?.$?.where || '').includes('role')) return Response.json({ organization: { memberships: { nodes: boardMembers } } });
     return Response.json({ organization: { memberships: { nodes: members } } });
   }
   if (u.hostname === 'oauth2.googleapis.com') return Response.json({ access_token: 'ya29.test', expires_in: 3600 });
@@ -207,6 +301,21 @@ test('a JobTread "TEST …" job is a sandbox too: invites reach only the test gu
   // A job merely containing the word is not a test job
   jt = { ...job(), id: 'jobOth0001', name: 'Max Testa (2026)' };
   assert.equal((await reconcileJob(env, jt.id, { fetchImpl: fakeFetch, now: NOW })).action, 'would-create');
+});
+
+test('staff come from a staff-only read, so new staff are never cut off by families and vendors', async () => {
+  let staffQuery = null;
+  const spy = async (url, init = {}) => {
+    const q = new URL(url).hostname === 'api.jobtread.com' ? JSON.parse(init.body).query : null;
+    const where = q?.organization?.memberships?.$?.where;
+    if (where && where[0] === 'isInternal') staffQuery = q.organization.memberships.$;
+    return fakeFetch(url, init);
+  };
+  await writeConfig(env.DB, { enabled: true });
+  await reconcileJob(env, jt.id, { fetchImpl: spy, now: NOW });
+  assert.deepEqual(staffQuery.where, ['isInternal', '=', true]);
+  const ev = events.get(eventIdFor('soardreveal', jt.id));
+  assert.ok(!ev.attendees.some((a) => a.email === 'hello@contractorcto.com'), 'the DATAx integration login is not a guest');
 });
 
 test('staff guest list changes update quietly; family changes email everyone', async () => {

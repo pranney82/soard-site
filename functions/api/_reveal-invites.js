@@ -11,10 +11,21 @@
  *   Reveal Date Confirmed = Yes   → the same event becomes "Max's Reveal Day"
  *   Job closed / denied / awaiting funding, or no Reveal date
  *                                 → a future event is cancelled
- * Reveals already in the past are never touched.
+ * A reveal that has happened is never touched again: its day is past, its
+ * start time today has passed (all day: the whole day counts), or its Reveal
+ * task is marked complete. Closing the job afterwards cancels nothing.
  *
- * Guests: internal JobTread users with the Admin or Designer role, plus the
- * job's customer contacts with an email. The organizer is never a guest.
+ * Guests, in two stages (the organizer is never a guest):
+ *   Tentative  staff (internal Admin and Designer users) and the family: the job's
+ *              customer contacts with an email, and Makeover Family users given
+ *              access to the job
+ *   Confirmed  the same event, plus everyone else given access to the job in
+ *              JobTread for the room itself (Vendor, Sponsor, Photographer and
+ *              Design Partner users) and the board: the website's board members
+ *              with a private reveal email (People → Board) and any JobTread
+ *              Board Member users. Un-confirming takes them back off.
+ * A person's JobTread role decides their stage, so a sponsor who is also a
+ * contact on the family's account still waits for the confirmed invite.
  *
  * Triggered by SOARD JobTread workflows posting { jobId } to
  * /api/reveal-invites. The post is only a wake-up call: everything is
@@ -25,7 +36,7 @@
  * "reveal-invites"). While off, each wake-up records what it would have done.
  */
 
-import { JT_URL, SOARD_ORG_ID, FIELD_REVEAL_CONFIRMED, todayEastern, matchKid, loadKids } from './_reveals.js';
+import { JT_URL, SOARD_ORG_ID, FIELD_REVEAL_CONFIRMED, todayEastern, easternParts, matchKid, loadKids } from './_reveals.js';
 import { accessToken, eventIdFor, upsertEvent, cancelEvent } from './_google-calendar.js';
 import { sendEmails, slackAlert, emailConfigured } from './_broadcast-notify.js';
 
@@ -55,7 +66,12 @@ export async function testGuests(DB) {
   return list.filter((e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e || ''));
 }
 const STAFF_ROLES = new Set(['Admin', 'Designer']);
-const NOT_STAFF = new Set(['selection@soardcharity.com']); // Qualification Committee login
+const FAMILY_ROLE = 'Makeover Family';
+// People given access to the job who join once the reveal is confirmed, by JobTread role
+const CONFIRMED_ROLES = { Vendor: 'vendor', Sponsor: 'sponsor', Photographer: 'photographer', 'Design Partner': 'design partner', 'Board Member': 'board' };
+export const BOARD_ROLE_ID = '22PgGdtxTATR';
+// Logins with staff roles that aren't people: the Qualification Committee and the DATAx integration
+const NOT_STAFF = new Set(['selection@soardcharity.com', 'hello@contractorcto.com']);
 // JobTread logins that aren't where that person wants reveal invites
 const EMAIL_ALIASES = { 'peter@ranneyblair.com': 'peter@soardcharity.com' };
 const STAFF_DOMAIN = '@soardcharity.com';
@@ -81,6 +97,9 @@ const SCHEMA = [
     id INTEGER PRIMARY KEY AUTOINCREMENT, job_id TEXT NOT NULL, action TEXT, state TEXT,
     guests INTEGER, reveal_date TEXT, created_at TEXT)`,
   `CREATE INDEX IF NOT EXISTS idx_reveal_invite_log_job ON reveal_invite_log(job_id)`,
+  // Board members' reveal emails, by their website slug. Its own table on purpose:
+  // site content and site_config are committed to GitHub and written into builds.
+  `CREATE TABLE IF NOT EXISTS reveal_board_emails (slug TEXT PRIMARY KEY, email TEXT NOT NULL, updated_at TEXT)`,
 ];
 const _schemaReady = new WeakSet();
 export async function ensureSchema(DB) {
@@ -153,16 +172,101 @@ export async function fetchJob(grantKey, jobId, fetchImpl = fetch) {
         $: { size: 100, where: { or: [[['taskType', 'id'], '=', REVEAL_TASK_TYPE], ['name', '=', 'Build Schedule']] } },
         nodes: { id: {}, name: {}, startDate: {}, startTime: {}, endDate: {}, endTime: {}, progress: {}, taskType: { id: {} } },
       },
+      aces: JOB_ACCESS,
     },
   }, fetchImpl);
   return body?.job || null;
+}
+
+/** Who has been given access to a job in JobTread (family, vendors, sponsors…), for the guest list */
+export const JOB_ACCESS = { $: { size: 50 }, nodes: { membership: { isInternal: {}, role: { name: {} }, user: { name: {}, emailAddress: {} } } } };
+
+const normEmail = (e) => {
+  const x = String(e || '').trim().toLowerCase();
+  return EMAIL_ALIASES[x] || x;
+};
+const isEmail = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e || '');
+
+/**
+ * The website's board (People → Board) with each member's private reveal email:
+ * [{ slug, name, title, email, memorial }]. A memorial entry ("In memoriam, …")
+ * is listed but never invited.
+ */
+export async function boardRoster(DB) {
+  await ensureSchema(DB);
+  let rows = [];
+  try { rows = (await DB.prepare('SELECT slug, data FROM team').all()).results || []; } catch { return []; }
+  const emails = Object.fromEntries(((await DB.prepare('SELECT slug, email FROM reveal_board_emails').all()).results || []).map((r) => [r.slug, r.email]));
+  const out = [];
+  for (const row of rows) {
+    let d = {};
+    try { d = JSON.parse(row.data || '{}'); } catch { continue; }
+    if (d.group !== 'board') continue;
+    out.push({ slug: row.slug, name: d.name, title: d.title || '', order: Number(d.order) || 0, email: emails[row.slug] || null, memorial: /^\s*in memoriam/i.test(d.name || '') });
+  }
+  return out.sort((a, b) => a.order - b.order || String(a.name).localeCompare(String(b.name)));
+}
+
+/** Save (or clear, with an empty email) a board member's private reveal email */
+export async function setBoardEmail(DB, slug, email) {
+  await ensureSchema(DB);
+  const e = normEmail(email);
+  if (!e) return DB.prepare('DELETE FROM reveal_board_emails WHERE slug = ?').bind(slug).run();
+  if (!isEmail(e)) throw new Error('That email doesn\'t look right');
+  return DB.prepare('INSERT OR REPLACE INTO reveal_board_emails (slug, email, updated_at) VALUES (?, ?, ?)').bind(slug, e, new Date().toISOString()).run();
+}
+
+/**
+ * The board, for confirmed invites: the website's board members with a private
+ * reveal email, plus anyone with the Board Member role in JobTread. Memorial
+ * entries never. Never throws.
+ */
+export async function fetchBoard(env, fetchImpl = fetch) {
+  const out = [];
+  try {
+    for (const m of await boardRoster(env.DB)) if (!m.memorial && isEmail(m.email)) out.push({ name: m.name, email: m.email, from: 'website' });
+  } catch { /* no website board */ }
+  if (env.JOBTREAD_GRANT_KEY) {
+    try {
+      const body = await pave(env.JOBTREAD_GRANT_KEY, {
+        organization: { $: { id: SOARD_ORG_ID }, memberships: { $: { size: 100, where: [['role', 'id'], '=', BOARD_ROLE_ID] }, nodes: { user: { name: {}, emailAddress: {} } } } },
+      }, fetchImpl);
+      for (const m of body?.organization?.memberships?.nodes || []) {
+        const email = normEmail(m.user?.emailAddress);
+        if (isEmail(email)) out.push({ name: m.user.name, email, from: 'jobtread' });
+      }
+    } catch { /* JobTread unreachable: the website's board still counts */ }
+  }
+  return out;
+}
+
+/**
+ * The guest list by stage: family and staff for the tentative invite; the people
+ * given access to the job for the room itself, and the board, once confirmed.
+ * Each person appears once, in the first group they belong to.
+ */
+export function guestGroups(job, staff = [], board = []) {
+  const access = (job?.aces?.nodes || []).map((a) => a.membership).filter((m) => m && !m.isInternal && m.user?.emailAddress);
+  const partners = access.filter((m) => CONFIRMED_ROLES[m.role?.name])
+    .map((m) => ({ email: normEmail(m.user.emailAddress), name: m.user.name, kind: CONFIRMED_ROLES[m.role.name] }));
+  const later = new Set([...partners, ...board].map((p) => p.email));
+  const contacts = (job?.location?.account?.contacts?.nodes || [])
+    .map((c) => ({ email: normEmail(fieldValues(c.customFieldValues?.nodes)[FIELD_CONTACT_EMAIL]), name: c.name, kind: 'family' }));
+  const familyUsers = access.filter((m) => m.role?.name === FAMILY_ROLE).map((m) => ({ email: normEmail(m.user.emailAddress), name: m.user.name, kind: 'family' }));
+  return {
+    family: [...contacts, ...familyUsers].filter((p) => isEmail(p.email) && !later.has(p.email)),
+    staff: staff.map((p) => ({ ...p, kind: 'staff' })),
+    confirmed: [...partners, ...board.map((p) => ({ ...p, kind: 'board' }))],
+  };
 }
 
 export async function fetchStaff(grantKey, fetchImpl = fetch) {
   const body = await pave(grantKey, {
     organization: {
       $: { id: SOARD_ORG_ID },
-      memberships: { $: { size: 100 }, nodes: { isInternal: {}, role: { name: {} }, user: { name: {}, emailAddress: {} } } },
+      // Staff only: families and vendors are members too (138 and growing), and a page of
+      // everyone would push staff added later past its end, silently off every invite
+      memberships: { $: { size: 100, where: ['isInternal', '=', true] }, nodes: { isInternal: {}, role: { name: {} }, user: { name: {}, emailAddress: {} } } },
     },
   }, fetchImpl);
   return (body?.organization?.memberships?.nodes || [])
@@ -197,17 +301,33 @@ function displayName(job, kids) {
 }
 
 /**
+ * The reveal is over or under way, so its invite is left as it is: the day is
+ * past, today's start time has passed (an all-day reveal counts all day), or
+ * the Reveal task is marked complete. Comparing dates alone let a job closed
+ * the afternoon of a morning reveal cancel the invite for a reveal that had
+ * already happened.
+ */
+export function revealHappened(reveal, now = Date.now()) {
+  if (!reveal?.startDate) return false;
+  if (reveal.progress === 1) return true;
+  const nowParts = easternParts(new Date(now).toISOString());
+  if (reveal.startDate !== nowParts.date) return reveal.startDate < nowParts.date;
+  const start = hhmm(reveal.startTime);
+  return !start || start <= (nowParts.time || '00:00');
+}
+
+/**
  * What the calendar should look like for this job:
  * { action: 'upsert', event, guests } | { action: 'cancel', reason } | { action: 'skip', reason }
  */
-export function planInvite(job, staff, { kids = [], organizer = DEFAULT_ORGANIZER, now = Date.now(), onlyGuests = null, template = DEFAULT_TEMPLATE } = {}) {
+export function planInvite(job, staff, { kids = [], board = [], organizer = DEFAULT_ORGANIZER, now = Date.now(), onlyGuests = null, template = DEFAULT_TEMPLATE } = {}) {
   if (!job) return { action: 'skip', reason: 'job not found' };
   if (job.organization?.id && job.organization.id !== SOARD_ORG_ID) return { action: 'skip', reason: 'not a SOARD job' };
 
   const tasks = job.tasks?.nodes || [];
   const reveals = tasks.filter(t => t.taskType?.id === REVEAL_TASK_TYPE);
   const reveal = reveals.find(t => (t.progress ?? 0) < 1) || reveals[0];
-  if (reveal?.startDate && reveal.startDate < todayEastern(now)) return { action: 'skip', reason: 'reveal date has passed' };
+  if (revealHappened(reveal, now)) return { action: 'skip', reason: 'the reveal has already happened' };
 
   const values = fieldValues(job.customFieldValues?.nodes);
   if (job.closedOn) return { action: 'cancel', reason: 'job closed' };
@@ -231,18 +351,31 @@ export function planInvite(job, staff, { kids = [], organizer = DEFAULT_ORGANIZE
   if (who.slug) lines.push('', `${SITE}/kids/${who.slug}/`);
 
   const guests = [];
-  const seen = new Set([organizer.toLowerCase()]);
-  const add = (email) => {
-    const e = String(email || '').trim().toLowerCase();
-    if (!e || !e.includes('@') || seen.has(e)) return;
+  const people = {}; // email → { name, kind } for the admin's preview
+  const seen = new Set([organizer.toLowerCase(), ...NOT_STAFF]);
+  const add = (p) => {
+    const e = String(p.email || '').trim().toLowerCase();
+    if (!isEmail(e) || seen.has(e)) return false;
     seen.add(e);
     guests.push(e);
+    people[e] = { name: p.name || null, kind: p.kind };
+    return true;
   };
+  // Who the confirmed invite adds, for a tentative one's preview
+  let addsOnConfirm = [];
   if (onlyGuests) {
-    onlyGuests.forEach(add);
+    onlyGuests.forEach((email) => add({ email, kind: 'test' }));
   } else {
-    for (const c of job.location?.account?.contacts?.nodes || []) add(fieldValues(c.customFieldValues?.nodes)[FIELD_CONTACT_EMAIL]);
-    for (const s of staff) add(s.email);
+    const g = guestGroups(job, staff, board);
+    g.family.forEach(add);
+    g.staff.forEach(add);
+    if (confirmed) g.confirmed.forEach(add);
+    else {
+      const later = new Set();
+      addsOnConfirm = g.confirmed
+        .filter((p) => isEmail(p.email) && !seen.has(p.email) && !later.has(p.email) && later.add(p.email))
+        .map(({ email, name, kind }) => ({ email, name, kind }));
+    }
   }
 
   const event = {
@@ -258,7 +391,7 @@ export function planInvite(job, staff, { kids = [], organizer = DEFAULT_ORGANIZE
     guestsCanInviteOthers: false,
     transparency: 'opaque',
   };
-  return { action: 'upsert', event, guests, confirmed, date };
+  return { action: 'upsert', event, guests, people, addsOnConfirm, confirmed, date };
 }
 
 async function hashOf(value) {
@@ -324,10 +457,11 @@ export async function reconcileJob(env, jobId, { fetchImpl = fetch, now = Date.n
   const config = await readConfig(DB);
   if (!env.JOBTREAD_GRANT_KEY) return { jobId, action: 'skip', reason: 'JOBTREAD_GRANT_KEY is not set' };
 
-  const [job, staff, kids] = await Promise.all([
+  const [job, staff, kids, board] = await Promise.all([
     fetchJob(env.JOBTREAD_GRANT_KEY, jobId, fetchImpl),
     preloaded?.staff || fetchStaff(env.JOBTREAD_GRANT_KEY, fetchImpl),
     preloaded?.kids || loadKids(DB).catch(() => []),
+    preloaded?.board || fetchBoard(env, fetchImpl),
   ]);
   const failed = async (row, err) => {
     await writeRow(DB, { ...(row || { job_id: jobId }), error: err.message });
@@ -336,7 +470,7 @@ export async function reconcileJob(env, jobId, { fetchImpl = fetch, now = Date.n
     return { jobId, action: 'error', error: err.message };
   };
   const sandbox = jobId === SANDBOX_JOB_ID || isTestJob(job);
-  const plan = planInvite(job, staff, { kids, organizer: config.organizer, now, onlyGuests: sandbox ? (config.testGuests || DEFAULT_TEST_GUESTS) : null, template: config.template });
+  const plan = planInvite(job, staff, { kids, board, organizer: config.organizer, now, onlyGuests: sandbox ? (config.testGuests || DEFAULT_TEST_GUESTS) : null, template: config.template });
   if (sandbox && plan.event) plan.event.summary = `TEST · ${plan.event.summary}`;
   const row = await readRow(DB, jobId);
   const live = !dryRun && (config.enabled || force || sandbox);
@@ -390,17 +524,18 @@ export async function reconcileJob(env, jobId, { fetchImpl = fetch, now = Date.n
 
 /** Every open SOARD job, reconciled one at a time (go-live catch-up and the safety sweep) */
 export async function reconcileAll(env, { fetchImpl = fetch, now = Date.now(), dryRun = false } = {}) {
-  const [body, staff, kids] = await Promise.all([
+  const [body, staff, kids, board] = await Promise.all([
     pave(env.JOBTREAD_GRANT_KEY, {
       organization: { $: { id: SOARD_ORG_ID }, jobs: { $: { size: 100, where: ['closedOn', '=', null] }, nodes: { id: {} } } },
     }, fetchImpl),
     fetchStaff(env.JOBTREAD_GRANT_KEY, fetchImpl),
     loadKids(env.DB).catch(() => []),
+    fetchBoard(env, fetchImpl),
   ]);
   const results = [];
   for (const { id } of body?.organization?.jobs?.nodes || []) {
     if (id === SANDBOX_JOB_ID) continue;
-    results.push(await reconcileJob(env, id, { fetchImpl, now, dryRun, preloaded: { staff, kids } }));
+    results.push(await reconcileJob(env, id, { fetchImpl, now, dryRun, preloaded: { staff, kids, board } }));
   }
   return results;
 }
@@ -512,12 +647,13 @@ export async function listUpcoming(env, { fetchImpl = fetch, now = Date.now() } 
     }
     return jobs;
   }
-  const [jobs, staff, kids, rowsRes, config] = await Promise.all([
+  const config = await readConfig(DB);
+  const [jobs, staff, kids, rowsRes, board] = await Promise.all([
     openJobs(),
     fetchStaff(env.JOBTREAD_GRANT_KEY, fetchImpl),
     loadKids(DB).catch(() => []),
     DB.prepare('SELECT * FROM reveal_invites').all(),
-    readConfig(DB),
+    fetchBoard(env, fetchImpl),
   ]);
   const rows = Object.fromEntries((rowsRes.results || []).map(r => [r.job_id, r]));
   const staffNames = Object.fromEntries(staff.map(s => [s.email, s.name]));
@@ -531,9 +667,10 @@ export async function listUpcoming(env, { fetchImpl = fetch, now = Date.now() } 
   }
   await Promise.all(upcoming.map(async ({ job }) => {
     const res = await pave(env.JOBTREAD_GRANT_KEY, {
-      job: { $: { id: job.id }, location: { account: { contacts: { $: { size: 50 }, nodes: { name: {}, customFieldValues: cf } } } } },
+      job: { $: { id: job.id }, location: { account: { contacts: { $: { size: 50 }, nodes: { name: {}, customFieldValues: cf } } } }, aces: JOB_ACCESS },
     }, fetchImpl);
     job.location = { ...job.location, account: res?.job?.location?.account || null };
+    job.aces = res?.job?.aces || null;
   }));
   // What went out for each, oldest first (the tracker shows when each invite was first sent)
   const ids = upcoming.map(({ job }) => job.id);
@@ -548,15 +685,9 @@ export async function listUpcoming(env, { fetchImpl = fetch, now = Date.now() } 
     const row = rows[job.id];
     const who = displayName(job, kids);
 
-    // The invite exactly as it would go out right now, with guests named
-    const familyNames = {};
-    for (const c of job.location?.account?.contacts?.nodes || []) {
-      const email = String(fieldValues(c.customFieldValues?.nodes)[FIELD_CONTACT_EMAIL] || '').trim().toLowerCase();
-      if (email) familyNames[email] = c.name;
-    }
-    // Preview as it will look once it goes out, even before Build Schedule is done
+    // Preview as it will look once it goes out, even before Build Schedule is done, guests named
     const plan = planInvite({ ...job, tasks: { nodes: [...tasks, { name: 'Build Schedule', progress: 1 }] } },
-      staff, { kids, organizer: config.organizer, now, template: config.template });
+      staff, { kids, board, organizer: config.organizer, now, template: config.template });
     const preview = plan.action === 'upsert' ? {
       title: plan.event.summary,
       status: plan.event.status,
@@ -564,11 +695,9 @@ export async function listUpcoming(env, { fetchImpl = fetch, now = Date.now() } 
       end: plan.event.end,
       location: plan.event.location || null,
       description: plan.event.description,
-      guests: plan.guests.map(email => ({
-        email,
-        name: familyNames[email] || staffNames[email] || null,
-        kind: familyNames[email] ? 'family' : 'staff',
-      })),
+      guests: plan.guests.map(email => ({ email, name: plan.people[email]?.name || staffNames[email] || null, kind: plan.people[email]?.kind || 'staff' })),
+      // Who confirming the reveal adds (vendors, sponsors, the board…)
+      addsOnConfirm: plan.addsOnConfirm,
     } : null;
 
     out.push({
@@ -599,4 +728,16 @@ export async function listUpcoming(env, { fetchImpl = fetch, now = Date.now() } 
     organizerName,
     reveals: out.sort((a, b) => (a.date + (a.time || '')).localeCompare(b.date + (b.time || ''))),
   };
+}
+
+/**
+ * The board changed on the website (a member added, removed, or their email
+ * set): bring every open reveal's invite up to date now, so a confirmed invite
+ * gains or loses them right away. Never throws.
+ */
+export async function refreshForBoardChange(env) {
+  try {
+    if (!env.JOBTREAD_GRANT_KEY || !(await readConfig(env.DB)).enabled) return null;
+    return await reconcileAll(env);
+  } catch { return null; }
 }

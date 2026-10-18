@@ -6303,6 +6303,18 @@
           </div>
 
           <div class="card">
+            <h3>Who gets the invites</h3>
+            <p class="ri-meta"><strong>Tentative</strong>, once Build Schedule is complete: staff and the family (the job's customer contacts, and anyone with the Makeover Family role who has access to the job).</p>
+            <p class="ri-meta"><strong>Confirmed</strong>, once Reveal Date Confirmed is Yes: the same invite becomes the real one and adds the vendors, sponsors, photographers and design partners who have access to that job in JobTread, plus the board. Un-confirming takes them back off.</p>
+            ${(() => {
+              const board = data.board || [];
+              const missing = board.filter((m) => !m.hasEmail);
+              if (!board.length) return html`<p class="ri-meta">No board members on the website yet (People → Board).</p>`;
+              return html`<p class="ri-meta">Board: <strong>${board.length - missing.length} of ${board.length}</strong> board members on the website have an email for reveal invites.${missing.length ? html` <span class="ri-warn">Missing: ${missing.map((m) => m.name).join(', ')}.</span> Add each one on their page in People → Board.` : ''}</p>`;
+            })()}
+          </div>
+
+          <div class="card">
             <div class="ri-status">
               <div class="ri-status__main">
                 <span class=${'ri-dot' + (nudges.enabled ? ' ri-dot--on' : '')} aria-hidden="true"></span>
@@ -6434,6 +6446,12 @@
       const parts = rows.filter((x) => x.recipients).map((x) => { const [one, many] = RT_CHANNEL[x.channel] || [x.channel, x.channel]; return `${x.sent} ${x.sent === 1 ? one : many}`; });
       return { at, text: `Sent ${rtWhen(at)}: ${parts.join(', ')}${failed ? `, ${failed} failed` : ''}`, failed };
     }
+    // "Niki Murphy (vendor), Morgan Lee (sponsor) and 11 board members"
+    const rtWhoAdds = (list = []) => {
+      const board = list.filter((p) => p.kind === 'board').length;
+      const parts = [...list.filter((p) => p.kind !== 'board').map((p) => `${p.name || p.email} (${p.kind})`), board ? `${board} board member${board === 1 ? '' : 's'}` : null].filter(Boolean);
+      return parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}` : parts[0] || '';
+    };
     // Invite history: the first time each kind of invite went out
     function rtInvite(r, state) {
       const log = r.invite?.log || [];
@@ -6475,7 +6493,7 @@
       const conf = rtInvite(r, 'confirmed');
       steps.push({ key: 'confirmed-invite', label: 'Confirmed calendar invite', ...(conf ? { state: 'done', text: conf.text }
         : invError && r.confirmed ? invError
-        : !r.confirmed ? { state: 'wait', text: 'Replaces the tentative invite when the reveal is confirmed' }
+        : !r.confirmed ? { state: 'wait', text: `Replaces the tentative invite when the reveal is confirmed${r.preview?.addsOnConfirm?.length ? `, adding ${rtWhoAdds(r.preview.addsOnConfirm)}` : ''}` }
         : !invites.enabled ? { state: 'wait', text: 'Goes out once calendar invites are turned on (Reveals → Invites)' }
         : { state: 'wait', text: 'Goes out on the next change in JobTread' }) });
       if (inv?.state === 'cancelled') steps.push({ key: 'invite-cancelled', label: 'Invite cancelled', state: 'info', text: `${String(inv.lastAction || '').replace(/^cancelled: /, 'Cancelled because: ')} (${rtWhen(inv.updatedAt)})` });
@@ -6492,8 +6510,9 @@
         : ahead ? { state: 'wait', text: `Goes up after ${ahead.name}'s reveal` }
         : { state: 'wait', text: 'Goes up at the next JobTread check (within 5 minutes)' }) });
 
-      // 5–7. Reminders to everyone who asked (by email, text or browser alert); a rehearsal's go to the test address only
-      const reminders = r.test ? { enabled: true, hoursBefore: [24, 1] } : (live.reminders || { enabled: true, hoursBefore: [24, 1] });
+      // 5–7. Reminders to everyone who asked (by email, text or browser alert); a rehearsal's
+      // follow the same Settings but go to the test address only
+      const reminders = live.reminders || { enabled: true, hoursBefore: [24, 1] };
       const signups = r.reminderSignups || 0;
       const at = b?.scheduledAt ? Date.parse(b.scheduledAt) : null;
       const remOff = !reminders.enabled ? { state: 'off', text: 'Reminders are switched off in Reveals → Settings' } : null;
@@ -6613,7 +6632,8 @@
                   </ol>
                   ${r.preview ? html`<details class="bc-more rt-preview"><summary>The invite as it would go out now${r.preview.guests?.length ? `, to ${rtPeople(r.preview.guests.length)}` : ''}</summary>
                     <${InviteCard} title=${r.preview.title} status=${r.preview.status} start=${r.preview.start} end=${r.preview.end} location=${r.preview.location} description=${r.preview.description} organizer=${organizer} />
-                    ${r.preview.guests?.length ? html`<p class="ri-meta">Guests: ${r.preview.guests.map((g) => (g.name ? `${g.name}${g.kind === 'family' ? ' (family)' : ''}` : g.email)).join(', ')}</p>` : null}
+                    ${r.preview.guests?.length ? html`<p class="ri-meta">Guests: ${r.preview.guests.map((g) => `${g.name || g.email}${g.kind && g.kind !== 'staff' ? ` (${g.kind})` : ''}`).join(', ')}</p>` : null}
+                    ${r.preview.addsOnConfirm?.length ? html`<p class="ri-meta">Once confirmed, also: ${rtWhoAdds(r.preview.addsOnConfirm)}.</p>` : null}
                   </details>` : null}
                   <div class="rt-links">
                     <a href=${r.jobUrl} target="_blank" rel="noopener">Job in JobTread ↗</a>
@@ -11689,6 +11709,48 @@
       `;
     }
 
+    // A board member's email for reveal invites. Private, so it is kept apart from
+    // the public record (site content is committed to GitHub and built into the
+    // site): /api/reveal-invites-admin stores it in its own table. Board members
+    // join every reveal's invite once the reveal is confirmed.
+    function BoardRevealEmail({ slug, name, addToast }) {
+      const [email, setEmail] = useState('');
+      const [saved, setSaved] = useState(null); // null while loading
+      const [busy, setBusy] = useState(false);
+      const memorial = /^\s*in memoriam/i.test(name || '');
+      useEffect(() => {
+        if (!slug) return;
+        fetch('/api/reveal-invites-admin?board=1', { cache: 'no-store' }).then((r) => r.json())
+          .then((d) => { const m = (d.board || []).find((x) => x.slug === slug); setEmail(m?.email || ''); setSaved(m?.email || ''); })
+          .catch(() => setSaved(''));
+      }, [slug]);
+      const clean = email.trim().toLowerCase();
+      const save = async () => {
+        setBusy(true);
+        try {
+          const res = await fetch('/api/reveal-invites-admin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ boardEmail: { slug, email: clean } }) });
+          const d = await res.json().catch(() => ({}));
+          if (!res.ok || !d.ok) throw new Error(d.error || `Couldn't save (${res.status})`);
+          setSaved(clean);
+          addToast(clean ? `Saved. ${name || 'They'} will be on every confirmed reveal invite, starting with any already confirmed.` : `${name || 'They'} won't get reveal invites`, 'success');
+        } catch (e) { addToast(e.message, 'error'); }
+        setBusy(false);
+      };
+      return html`<div class="card">
+        <h3 class="u-mb-2">Reveal invites</h3>
+        ${memorial ? html`<p class="text-sm text-muted u-m-0">Memorial entries are never invited.</p>`
+          : !slug ? html`<p class="text-sm text-muted u-m-0">Save this board member first, then add their email here.</p>`
+          : html`<div class="form-group u-m-0">
+            <label class="form-label" for="board-reveal-email">Email for reveal invites</label>
+            <div class="bc-inline">
+              <input class="form-input" id="board-reveal-email" type="email" autocomplete="off" value=${email} placeholder="name@example.com" disabled=${saved === null} onInput=${(e) => setEmail(e.target.value)} />
+              <button class="btn btn-secondary btn-sm" type="button" disabled=${busy || saved === null || clean === (saved || '')} onClick=${save}>${busy ? html`<span class="spinner" />` : null}${clean || !saved ? 'Save email' : 'Remove email'}</button>
+            </div>
+            <div class="form-hint">Private: never shown on the site. Board members are added to every reveal's calendar invite once the reveal is confirmed in JobTread.</div>
+          </div>`}
+      </div>`;
+    }
+
     // ═══════════════════════════════════════════
     // TEAM EDITOR
     // ═══════════════════════════════════════════
@@ -11780,6 +11842,7 @@
             </div>
           </div>
         </div>
+        ${data.group === 'board' ? html`<${BoardRevealEmail} slug=${slug} name=${data.name} addToast=${addToast} />` : null}
         <div class="card">
           <h3 class="u-mb-2">Headshot</h3>
           ${photoPreview ? html`
