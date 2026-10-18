@@ -5290,10 +5290,12 @@
     }
 
     // Why a reveal confirmed in JobTread can't have its countdown yet, and the fix
+    // (the same wording staff get by Slack and email: stuckText in _broadcast-schedule.js)
     const bcWaitingNote = (w) => {
       const day = inviteDay(w.date, 'short');
       if (w.problem === 'no-time') return `${w.name}'s reveal is confirmed for ${day} but has no time, so its countdown can't go up yet. Add the time to the Reveal task in JobTread.`;
       if (w.problem === 'draft') return `${w.name}'s reveal is confirmed for ${day}, but ${w.name}'s kid page isn't published, so the countdown can't go up yet. Publish the page under Kids.`;
+      if (w.nearMiss) return `"${w.jobName}" is confirmed for ${day}, but no kid page is filed under ${(w.jobName.match(/\((\d{4})\)\s*$/) || [])[1]} with that name. ${w.nearMiss.name}'s page is filed under ${w.nearMiss.year}: make the years agree in the JobTread job name or on the kid page.`;
       return `"${w.jobName}" is confirmed for ${day}, but no published kid page matches that job name, so its countdown can't go up. The job name needs the kid's name and year, like "Max Sample (2026)".`;
     };
 
@@ -5431,6 +5433,7 @@
       if (live && rx) meta.push(html`<span>${['heart', 'sun', 'clap', 'wow'].map((k, i) => html`${i ? ' · ' : ''}<strong>${rx[k] || 0}</strong> ${(rx[k] || 0) === 1 ? k : `${k}s`}`)}</span>`);
       if (phase === 'replay') meta.push(html`<span>Ended ${bcFmt(pub.endedAt)}</span>`, html`<span>${pub.player ? `On the live page until ${bcFmt(pub.replayUntil)}` : 'Stream is finishing the recording'}</span>`);
       const sub = [];
+      if (sched && st.test) sub.push(html`<span><strong>Rehearsal from a JobTread TEST job.</strong> The public site shows nothing, and reminders go only to the test address.</span>`);
       if (sched && st.jobId) sub.push(html`<span>From JobTread. To move or cancel it, change the Reveal task or Reveal Date Confirmed there.</span>`);
       if (kit && sched) sub.push(html`<span>Kit email at go-live: ${kitWanted ? `on (${kit.audience})` : 'off'} <button class="bc-link" type="button" disabled=${!!busy} onClick=${async () => { const d = await act('update', { kitLiveEmail: !kitWanted }, 'Kit email'); if (d.success) addToast(kitWanted ? 'No Kit email for this reveal' : `Kit email on for this reveal (${kit.audience})`, 'success'); }}>${kitWanted ? 'Turn off' : 'Turn on'}</button></span>`);
       if (kit && live) sub.push(html`<span>Kit email: ${kitStatus}</span>`);
@@ -5480,7 +5483,7 @@
       const status = html`<div class="card bc-status" style=${`--phase:${P.color}`}>
         <div class="bc-status-top">
           <div class="bc-status-main">
-            <div class="bc-phase"><span class=${`bc-dot${phase === 'live' ? ' is-live' : ''}`}></span>${P.label}${showKid ? html`<span class="badge badge-accent">${pub.kidName}</span>` : null}</div>
+            <div class="bc-phase"><span class=${`bc-dot${phase === 'live' ? ' is-live' : ''}`}></span>${P.label}${showKid ? html`<span class="badge badge-accent">${pub.kidName}</span>` : null}${st.test ? html`<span class="badge badge-gray" title="From a JobTread TEST job">Rehearsal</span>` : null}</div>
             <div class="bc-title">${phase === 'idle' ? 'No reveal scheduled' : (pub.title || 'Untitled reveal')}</div>
             <div class="bc-meta">${meta}</div>
             ${sub.length ? html`<div class="bc-sub">${sub}</div>` : null}
@@ -5950,7 +5953,8 @@
         if (!wsRef.current && 'WebSocket' in window) {
           try {
             const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/live-ws?role=admin`);
-            ws.onmessage = (ev) => { try { const m = JSON.parse(ev.data); if (m.type === 'state' && m.state && !dead) setData((d) => d ? { ...d, public: m.state, state: { ...d.state, phase: m.state.phase } } : d); if (m.type === 'state' && !dead) load(); } catch {} };
+            // The hub only carries the public view, which hides a rehearsal: keep the admin's own copy then
+            ws.onmessage = (ev) => { try { const m = JSON.parse(ev.data); if (m.type === 'state' && m.state && !dead) setData((d) => d && !d.state?.test ? { ...d, public: m.state, state: { ...d.state, phase: m.state.phase } } : d); if (m.type === 'state' && !dead) load(); } catch {} };
             ws.onclose = () => { wsRef.current = null; };
             wsRef.current = ws;
           } catch {}
@@ -6444,9 +6448,11 @@
     function rtSteps(r, all, live, invites) {
       const b = r.broadcast;
       const current = live.jobId === r.jobId && ['scheduled', 'armed', 'live', 'ending', 'replay'].includes(live.phase);
-      const waiting = live.waiting?.[r.jobId];
+      const w = live.waiting?.[r.jobId] || null;
+      const waiting = w?.problem || w;
       const steps = [];
       const inv = r.invite;
+      const said = (x) => (r.test ? `${x.text} (test address only)` : x.text);
       const invError = inv?.error ? { state: 'error', text: `Not sent: ${inv.error}`, retry: true } : null;
 
       // 1. Tentative invite
@@ -6481,25 +6487,25 @@
         : current ? { state: 'done', text: `On the site since ${rtWhen(b?.createdAt || live.scheduledAt)}`, link: r.slug ? { href: `/live/${r.slug}/`, label: 'Live page ↗' } : null }
         : waiting === 'no-time' ? { state: 'warn', text: 'Waiting for a time on the Reveal task in JobTread' }
         : waiting === 'draft' ? { state: 'warn', text: `Waiting for ${r.name}'s kid page to be published` }
-        : waiting === 'no-kid' ? { state: 'warn', text: `No published kid page matches "${r.jobName}". The job name needs the kid's name and year.` }
+        : waiting === 'no-kid' ? { state: 'warn', text: w?.nearMiss ? `No kid page is filed under this job's year. ${w.nearMiss.name}'s page is filed under ${w.nearMiss.year}: make the years agree in JobTread or on the kid page.` : `No published kid page matches "${r.jobName}". The job name needs the kid's name and year.` }
         : !r.confirmed ? { state: 'wait', text: 'Goes up once the reveal is confirmed with a time' }
         : ahead ? { state: 'wait', text: `Goes up after ${ahead.name}'s reveal` }
         : { state: 'wait', text: 'Goes up at the next JobTread check (within 5 minutes)' }) });
 
-      // 5–7. Reminders to everyone who asked (by email, text or browser alert)
-      const reminders = live.reminders || { enabled: true, hoursBefore: [24, 1] };
+      // 5–7. Reminders to everyone who asked (by email, text or browser alert); a rehearsal's go to the test address only
+      const reminders = r.test ? { enabled: true, hoursBefore: [24, 1] } : (live.reminders || { enabled: true, hoursBefore: [24, 1] });
       const signups = r.reminderSignups || 0;
       const at = b?.scheduledAt ? Date.parse(b.scheduledAt) : null;
       const remOff = !reminders.enabled ? { state: 'off', text: 'Reminders are switched off in Reveals → Settings' } : null;
       const saveDate = rtSent(b?.sends, 'scheduled');
-      steps.push({ key: 'save-date', label: 'Save-the-date reminder', ...(saveDate ? { state: saveDate.failed ? 'warn' : 'done', text: saveDate.text }
+      steps.push({ key: 'save-date', label: 'Save-the-date reminder', ...(saveDate ? { state: saveDate.failed ? 'warn' : 'done', text: said(saveDate) }
         : remOff || (b && at && at - Date.parse(b.createdAt) <= 26 * 3600e3 ? { state: 'off', text: 'Skipped: less than a day\'s notice. The day-before and hour-before reminders cover it.' }
-        : { state: 'wait', text: `Goes out when the countdown goes up, to everyone who asked for reminders (${rtPeople(signups)} so far)` })) });
+        : { state: 'wait', text: r.test ? 'Goes out when the countdown goes up, to the test address only' : `Goes out when the countdown goes up, to everyone who asked for reminders (${rtPeople(signups)} so far)` })) });
       const moved = rtSent(b?.sends, 'moved');
-      if (moved) steps.push({ key: 'moved', label: 'New date reminder', state: moved.failed ? 'warn' : 'done', text: moved.text });
+      if (moved) steps.push({ key: 'moved', label: 'New date reminder', state: moved.failed ? 'warn' : 'done', text: said(moved) });
       for (const [kind, hours, label] of [['day', 24, 'Day-before reminder'], ['hour', 1, 'Hour-before reminder']]) {
         const sent = rtSent(b?.sends, kind);
-        steps.push({ key: kind, label, ...(sent ? { state: sent.failed ? 'warn' : 'done', text: sent.text }
+        steps.push({ key: kind, label, ...(sent ? { state: sent.failed ? 'warn' : 'done', text: said(sent) }
           : remOff || (!reminders.hoursBefore.includes(hours) ? { state: 'off', text: 'Switched off in Reveals → Settings' }
           : current && at ? (at - hours * 3600e3 < Date.now() ? { state: 'off', text: 'Skipped: the countdown went up too close to the reveal' } : { state: 'wait', text: `Goes out ${rtWhen(new Date(at - hours * 3600e3).toISOString())}` })
           : { state: 'wait', text: `Goes out ${hours === 24 ? 'the day' : 'an hour'} before the reveal` })) });
@@ -6507,11 +6513,12 @@
 
       // 8–9. When the stream starts
       const goLive = rtSent(b?.sends, 'live');
-      steps.push({ key: 'live', label: '"We\'re live" reminder', ...(goLive ? { state: goLive.failed ? 'warn' : 'done', text: goLive.text } : remOff || { state: 'wait', text: 'Goes out the moment the stream starts' }) });
+      steps.push({ key: 'live', label: '"We\'re live" reminder', ...(goLive ? { state: goLive.failed ? 'warn' : 'done', text: said(goLive) } : remOff || { state: 'wait', text: 'Goes out the moment the stream starts' }) });
       const kit = live.kit || {};
       const kitLive = b?.kit?.live;
       const kitWanted = typeof b?.kitLiveEmail === 'boolean' ? b.kitLiveEmail : kit.enabled;
-      steps.push({ key: 'kit', label: `"We're live" email to the Kit list`, ...(!kit.configured ? { state: 'off', text: 'Kit isn\'t connected' }
+      steps.push({ key: 'kit', label: `"We're live" email to the Kit list`, ...(r.test ? { state: 'off', text: 'Never for a rehearsal' }
+        : !kit.configured ? { state: 'off', text: 'Kit isn\'t connected' }
         : kitLive?.sendAt && !kitLive.error ? { state: 'done', text: `Sent to ${kitLive.audience || kit.audience} ${rtWhen(kitLive.sendAt)}` }
         : kitLive?.error ? { state: 'warn', text: kitLive.held ? `Held: ${kitLive.error}` : `Failed: ${kitLive.error}` }
         : !kitWanted ? { state: 'off', text: 'Off for this reveal' }
@@ -6580,11 +6587,12 @@
               const bodyId = `rt-${r.jobId}`;
               return html`<li class=${`rt-item${isOpen ? ' is-open' : ''}`} key=${r.jobId}>
                 <div class="rt-row">
-                  <button type="button" class="rt-toggle" aria-expanded=${isOpen} aria-controls=${bodyId} onClick=${() => setOpen(isOpen ? '' : r.jobId)}>
+                  <button type="button" class="rt-toggle" aria-expanded=${isOpen} aria-controls=${isOpen ? bodyId : null} onClick=${() => setOpen(isOpen ? '' : r.jobId)}>
                     <span class="rt-caret" aria-hidden="true"></span><strong>${r.name}</strong>
                   </button>
                   <a class="rt-date" href=${r.scheduleUrl || r.jobUrl} target="_blank" rel="noopener" title="Open the Reveal task on the JobTread schedule">${inviteDay(r.date, 'short')}${r.time ? `, ${inviteClock(r.time)}` : ', no time yet'}</a>
                   <span class="rt-chips">
+                    ${r.test ? html`<span class="ri-chip ri-chip--waiting" title="A JobTread TEST job: invites and reminders reach only the test address, and the public site shows nothing">Rehearsal</span>` : null}
                     <span class=${`ri-chip ${r.confirmed ? 'ri-chip--confirmed' : 'ri-chip--tentative'}`}>${r.confirmed ? 'Confirmed' : 'Tentative'}</span>
                     ${current ? html`<span class="ri-chip rt-chip--live">${live.phase === 'live' || live.phase === 'ending' ? 'Live now' : 'Countdown on the site'}</span>` : null}
                     ${problem ? html`<span class=${`ri-chip ${problem.state === 'error' ? 'rt-chip--error' : 'ri-chip--waiting'}`}>${problem.state === 'error' ? 'Invite failed' : 'Needs attention'}</span>` : null}

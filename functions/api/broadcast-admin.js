@@ -32,7 +32,7 @@ import * as messages from './_live-messages.js';
 import * as monitor from './_broadcast-monitor.js';
 import * as preflight from './_broadcast-preflight.js';
 import { youtubeConfigured } from './_youtube.js';
-import { syncBroadcastSchedule } from './_broadcast-schedule.js';
+import { syncBroadcastSchedule, readScheduleRecord } from './_broadcast-schedule.js';
 
 const TARGETS = new Set(['facebook', 'youtube', 'instagram', 'custom']);
 
@@ -68,8 +68,11 @@ export async function onRequestGet(context) {
   const withFb = url.searchParams.get('fb') === '1';
   try {
     await b.ensureSchema(env.DB);
-    // JobTread decides the next reveal; follow it before showing the state
-    const schedule = await syncBroadcastSchedule(env, { minIntervalMs: 60 * 1000 });
+    // JobTread decides the next reveal; follow it before showing the state, but never
+    // keep the page waiting more than a few seconds on JobTread (it finishes in the background)
+    const syncing = syncBroadcastSchedule(env, { minIntervalMs: 60 * 1000 });
+    context.waitUntil?.(syncing);
+    const schedule = (await Promise.race([syncing, new Promise((r) => setTimeout(() => r(null), 4000))])) || { record: await readScheduleRecord(env.DB) };
     const [config, state, health] = await Promise.all([b.readConfig(env.DB), b.readState(env.DB), b.readHealth(env.DB)]);
     const DB = env.DB;
 
@@ -131,8 +134,9 @@ export async function onRequestGet(context) {
     return Response.json({
       success: true,
       state,
-      public: b.publicState(state, config),
-      legacy: b.legacyState(state, config),
+      // The admin sees a rehearsal (JobTread TEST job); nothing public does
+      public: b.publicState(state, config, { includeTest: true }),
+      legacy: b.legacyState(state, config, { includeTest: true }),
       config: redactConfig(config, reveal),
       larix: reveal ? larixLinks(config) : null,
       setup: {

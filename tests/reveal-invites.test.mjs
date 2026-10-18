@@ -197,6 +197,18 @@ test('the office sandbox sends even while sending is off, only to the test guest
   assert.equal((await reconcileJob(env, jt.id, { fetchImpl: fakeFetch, now: NOW })).action, 'would-create');
 });
 
+test('a JobTread "TEST …" job is a sandbox too: invites reach only the test guests, marked TEST, named after the kid', async () => {
+  jt = { ...job({ confirmed: true, time: '16:00:00.000' }), id: 'jobTst0001', name: 'TEST Max Sample (2026)' };
+  const r = await reconcileJob(env, jt.id, { fetchImpl: fakeFetch, now: NOW });
+  assert.equal(r.action, 'created', 'sends even while sending is off');
+  const ev = events.get(eventIdFor('soardreveal', jt.id));
+  assert.deepEqual(ev.attendees, [{ email: 'peter@soardcharity.com' }], 'no family, no staff');
+  assert.equal(ev.summary, "TEST · Max's Reveal Day");
+  // A job merely containing the word is not a test job
+  jt = { ...job(), id: 'jobOth0001', name: 'Max Testa (2026)' };
+  assert.equal((await reconcileJob(env, jt.id, { fetchImpl: fakeFetch, now: NOW })).action, 'would-create');
+});
+
 test('staff guest list changes update quietly; family changes email everyone', async () => {
   await writeConfig(env.DB, { enabled: true });
   members = [...BASE_MEMBERS, { isInternal: true, role: { name: 'Admin' }, user: { name: 'Peter Ranney', emailAddress: 'peter@ranneyblair.com' } }];

@@ -20,7 +20,9 @@
  * the stored answer.
  */
 
-import { readState } from './_broadcast.js';
+import { readState as readFullState, visibleState } from './_broadcast.js';
+
+const readState = (DB) => readFullState(DB).then(visibleState);
 import { parseVtt, detectByKeywords, detectByAi, chooseMoment } from './_broadcast-reel.js';
 import * as stream from './_stream-live.js';
 

@@ -80,6 +80,13 @@ export function formatWhen(iso, tz = 'America/New_York') {
   return `${date} at ${time}`;
 }
 
+/** The reveal is later today (in the broadcast's time zone): the "day before" reminder says today, not tomorrow */
+export function isRevealToday(iso, tz = 'America/New_York', now = Date.now()) {
+  if (!iso) return false;
+  const day = (t) => new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(t));
+  return day(iso) === day(now);
+}
+
 // ─── Email (Resend) ─────────────────────────────────────────────────
 
 export function emailConfigured(env) {
@@ -347,6 +354,8 @@ ${img}
 export function reminderEmail({ kind, kidName, scheduledAt, liveUrl, replayUrl, image, unsubscribeUrl, tz, list = false }) {
   const who = kidName ? `${kidName}'s` : 'the next';
   const when = formatWhen(scheduledAt, tz);
+  // A countdown that goes up on the day itself sends its "day before" reminder the same day
+  const today = isRevealToday(scheduledAt, tz);
   const map = {
     scheduled: {
       subject: `Save the date: ${who} room reveal`,
@@ -363,9 +372,9 @@ export function reminderEmail({ kind, kidName, scheduledAt, liveUrl, replayUrl, 
       cta: 'See the reveal page', ctaUrl: liveUrl,
     },
     day: {
-      subject: `Tomorrow: ${who} room reveal, live`,
+      subject: `${today ? 'Today' : 'Tomorrow'}: ${who} room reveal, live`,
       preheader: `We go live ${when}.`,
-      heading: `Tomorrow is reveal day`,
+      heading: `${today ? 'Today' : 'Tomorrow'} is reveal day`,
       body: `<p>${escapeHtml(who.charAt(0).toUpperCase() + who.slice(1))} reveal streams live <strong>${escapeHtml(when)}</strong>.</p><p>Bookmark the page below. It flips to the live video the moment we start.</p>`,
       cta: 'Open the reveal page', ctaUrl: liveUrl,
     },
@@ -403,7 +412,7 @@ export function reminderSms({ kind, kidName, scheduledAt, liveUrl, replayUrl, tz
   const map = {
     scheduled: `Sunshine on a Ranney Day: ${who} room reveal streams live ${when}. Watch here: ${liveUrl}`,
     moved: `Sunshine on a Ranney Day: new date! ${who} room reveal now streams live ${when}. ${liveUrl}`,
-    day: `Sunshine on a Ranney Day: tomorrow is reveal day! ${who} reveal goes live ${when}. ${liveUrl}`,
+    day: `Sunshine on a Ranney Day: ${isRevealToday(scheduledAt, tz) ? 'today' : 'tomorrow'} is reveal day! ${who} reveal goes live ${when}. ${liveUrl}`,
     hour: `Sunshine on a Ranney Day: ${who} reveal goes live in about an hour. ${liveUrl}`,
     live: `Sunshine on a Ranney Day: we're LIVE with ${who} reveal right now. Watch: ${liveUrl}`,
     replay: `Sunshine on a Ranney Day: missed the reveal? Watch the replay: ${replayUrl || liveUrl}`,
@@ -412,12 +421,15 @@ export function reminderSms({ kind, kidName, scheduledAt, liveUrl, replayUrl, tz
   return first ? `${body} Reply STOP to opt out.` : body;
 }
 
-export function reminderPush({ kind, kidName, liveUrl, replayUrl, image }) {
+export function reminderPush({ kind, kidName, scheduledAt, tz, liveUrl, replayUrl, image }) {
   const who = kidName ? `${kidName}'s` : 'the next';
+  const today = isRevealToday(scheduledAt, tz);
   const map = {
     scheduled: { title: 'Reveal scheduled', body: `${who} room reveal has a date. Tap for details.`, url: liveUrl },
     moved: { title: 'New reveal date', body: `${who} room reveal moved. Tap for the new time.`, url: liveUrl },
-    day: { title: 'Tomorrow is reveal day', body: `${who} reveal streams live tomorrow.`, url: liveUrl },
+    day: today
+      ? { title: 'Today is reveal day', body: `${who} reveal streams live today.`, url: liveUrl }
+      : { title: 'Tomorrow is reveal day', body: `${who} reveal streams live tomorrow.`, url: liveUrl },
     hour: { title: 'One hour to go', body: `${who} reveal goes live in about an hour.`, url: liveUrl },
     live: { title: "We're live", body: `${who} room reveal is happening right now.`, url: liveUrl },
     replay: { title: 'Replay is ready', body: `Watch ${who} reveal any time.`, url: replayUrl || liveUrl },

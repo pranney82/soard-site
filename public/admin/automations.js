@@ -186,7 +186,7 @@ const MAP = { t: 'SOARD', children: [
           when: 'A JobTread workflow reports a reveal change (right away), and every 5 minutes on the live hub’s heartbeat. Opening Reveals checks too.',
           does: 'Puts the countdown, reminder signup and starting-soon screen up for the next reveal confirmed with a time, moves it when the date or time changes, and takes it down when the reveal is unconfirmed. A new date re-arms the reminders and tells everyone who signed up. Nobody schedules reveals in the admin.',
           touches: ['JobTread', 'D1'], where: 'functions/api/_broadcast-schedule.js (from broadcast-hooks.js, reveal-sync.js, reveal-invites.js, reveals.js)',
-          info: 'Only published kids get a countdown, matched by the job name (“Max Sample (2026)”). A confirmed reveal with no time or no matching kid page shows as a note on Reveals → Now. Once the start time passes, only a new time for the same reveal moves it; the stream decides the rest.',
+          info: 'Only published kids get a countdown, matched by the job name (“Max Sample (2026)”). A confirmed reveal with no time or no matching kid page shows as a note on Reveals → Now, and staff get one Slack/email alert about it once it’s within three weeks. When the job and kid page are filed under neighboring years, the note names the kid page to fix. Staff also hear each time the countdown goes up, moves or comes down. Once the start time passes, only a new time for the same reveal moves it; the stream decides the rest.',
           live: (f) => {
             const c = f.liveSchedule;
             if (!c) return null;

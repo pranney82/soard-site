@@ -21,7 +21,7 @@
  * static page untouched.
  */
 
-import { readState, readConfig, publicState } from '../api/_broadcast.js';
+import { readState, readConfig, publicState, visibleState } from '../api/_broadcast.js';
 import { watchParty } from './_watch-party.js';
 import { cfRaw, cfSrcset, cfLqip } from '../../src/utils/cf-image.ts';
 
@@ -134,7 +134,8 @@ export async function onRequest(context) {
   try {
     if (env.DB) {
       const [state, config] = await Promise.all([readState(env.DB), readConfig(env.DB)]);
-      broadcast = { state, config, pub: publicState(state, config) };
+      // A rehearsal (JobTread TEST job) is invisible here: the page reads as nothing scheduled
+      broadcast = { state: visibleState(state), config, pub: publicState(state, config) };
     }
   } catch { broadcast = null; }
 

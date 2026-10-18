@@ -18,7 +18,10 @@
  * the admin switches them off (config.messages.enabled).
  */
 
-import { ensureSchema, readConfig, readState, recordEvent } from './_broadcast.js';
+import { ensureSchema, readConfig, readState as readFullState, visibleState, recordEvent } from './_broadcast.js';
+
+// Viewers only ever talk to a public broadcast: a rehearsal (JobTread TEST job) reads as nothing scheduled
+const readState = (DB) => readFullState(DB).then(visibleState);
 
 const AI_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
 const OPEN_PHASES = new Set(['scheduled', 'armed', 'live', 'ending', 'replay']);

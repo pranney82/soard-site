@@ -179,6 +179,31 @@ export async function kitCreateBroadcast(env, { subject, previewText, descriptio
   return { ok: true, broadcast: result.broadcast || result };
 }
 
+/**
+ * Rewrite a broadcast, but only while it is still an unsent draft. Never
+ * touches one staff scheduled or sent. Never throws.
+ *
+ * @returns {Promise<{ok: boolean, status?: string, error?: string}>} status is
+ *   Kit's (draft | scheduled | sending | completed | aborted) when not a draft
+ */
+export async function kitUpdateDraft(env, id, { subject, previewText, description, html }) {
+  if (!kitConfigured(env) || !Number.isFinite(Number(id))) return { ok: false, error: 'no draft' };
+  try {
+    const cur = await kitFetch(env, `/broadcasts/${id}`);
+    const got = await cur.json().catch(() => ({}));
+    if (!cur.ok) return { ok: false, error: `HTTP ${cur.status}` };
+    const b = got.broadcast || got;
+    if (b.status !== 'draft' || b.send_at || b.published_at) return { ok: false, status: b.status || 'sent' };
+    const res = await kitFetch(env, `/broadcasts/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ subject, preview_text: previewText || '', description, content: html }),
+    });
+    return res.ok ? { ok: true } : { ok: false, error: `HTTP ${res.status}` };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
+
 function kitSubscriberFilter(audience) {
   const id = parseInt(audience?.id, 10);
   if (!audience || !['tag', 'segment'].includes(audience.type) || !Number.isFinite(id)) return null;

@@ -182,7 +182,7 @@ export async function onRequestGet(context) {
         phase: broadcast?.phase || 'idle',
         jobId: broadcast?.jobId || null,
         scheduledAt: broadcast?.scheduledAt || null,
-        waiting: Object.fromEntries((schedule?.waiting || []).map((w) => [w.jobId, w.problem])),
+        waiting: Object.fromEntries((schedule?.waiting || []).map((w) => [w.jobId, { problem: w.problem, nearMiss: w.nearMiss || null }])),
         checkedAt: schedule?.checkedAt || null,
         reminders: {
           enabled: bcConfig?.reminders?.enabled !== false,

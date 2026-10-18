@@ -19,7 +19,19 @@
  * Only published kids are planned: the countdown names the kid, and the public
  * reveal feed (./_reveals.js) has the same rule. Confirmed reveals that can't be
  * planned yet (no time, no kid page matches the job name, the kid page isn't
- * published) are listed for the admin on Reveals → Now.
+ * published) are listed for the admin on Reveals → Now, with the kid page filed
+ * under the neighboring year when that's the likely mix-up (jobs carry the
+ * application year, kid pages the reveal year). That stays a suggestion: a
+ * countdown on the wrong kid's page is worse than none.
+ *
+ * Rehearsals: a job named "TEST …" (named after a kid, "TEST Isla Example (2026)")
+ * runs the same path end to end, but its countdown is marked test: the public
+ * never sees it (visibleState in _broadcast.js), reminders go to the test
+ * address only, Kit is left alone, and any real reveal takes the slot first.
+ *
+ * Staff hear about it (Slack and the alert emails): the countdown going up,
+ * moving or coming down, and once per problem, a confirmed reveal in the next
+ * three weeks that can't have one.
  *
  * Runs on the live hub's heartbeat at most every 5 minutes, right away when a
  * JobTread workflow reports a reveal change (/api/reveal-sync, /api/reveal-invites),
@@ -30,9 +42,10 @@
  * Last result: D1 site_config "broadcast-schedule".
  */
 
-import { FIELD_REVEAL_DATE, FIELD_REVEAL_CONFIRMED, easternParts, todayEastern, matchKid, fetchJobs } from './_reveals.js';
-import { SANDBOX_JOB_ID } from './_reveal-invites.js';
-import { adminAction, readState, ensureSchema } from './_broadcast.js';
+import { FIELD_REVEAL_DATE, FIELD_REVEAL_CONFIRMED, easternParts, todayEastern, matchKid, parseJobName, fetchJobs, longDay, clockTime } from './_reveals.js';
+import { SANDBOX_JOB_ID, isTestJob } from './_reveal-invites.js';
+import { adminAction, readState, readConfig, ensureSchema, SITE_ORIGIN } from './_broadcast.js';
+import { alertAdmins } from './_broadcast-notify.js';
 
 const RECORD_KEY = 'broadcast-schedule';
 const LOCK_KEY = 'broadcast-schedule-lock';
@@ -46,6 +59,10 @@ const REPLAY_WORK_MAX_MS = 6 * 3600e3;
 const HAPPENED_WINDOW_MS = 12 * 3600e3;
 const REEL_FINISHED = new Set(['done', 'failed', 'skipped', 'blocked']);
 const BY = 'JobTread';
+// A confirmed reveal this close that can't have a countdown gets one alert per problem
+const STUCK_ALERT_DAYS = 21;
+const ADMIN_URL = `${SITE_ORIGIN}/admin/#broadcast`;
+const jtSchedule = (jobId) => `https://app.jobtread.com/jobs/${jobId}/schedule`;
 
 /** Every kid, drafts too, so a reveal can say "the kid page isn't published" */
 async function allKids(DB) {
@@ -76,6 +93,9 @@ export function confirmedReveals(jobs, kids, now = Date.now()) {
     if (!parts || parts.date < today) continue;
     const kid = matchKid(job.name, published);
     const draft = kid ? null : matchKid(job.name, drafts);
+    // No kid that year: is there exactly one under the year before or after? (suggested, never used)
+    const year = parseJobName(job.name).year;
+    const near = kid || draft || !year ? null : matchKid(job.name, published.filter((k) => Math.abs(Number(k.year) - year) === 1).map((k) => ({ ...k, year, filedUnder: Number(k.year) })));
     out.push({
       jobId: job.id,
       jobName: job.name,
@@ -85,6 +105,8 @@ export function confirmedReveals(jobs, kids, now = Date.now()) {
       date: parts.date,
       time: parts.time,
       problem: draft ? 'draft' : !kid ? 'no-kid' : !parts.time ? 'no-time' : null,
+      ...(near ? { nearMiss: { slug: near.slug, name: near.name, year: near.filedUnder } } : {}),
+      ...(isTestJob(job) ? { test: true } : {}),
     });
   }
   return out.sort((a, b) => a.startsAt.localeCompare(b.startsAt));
@@ -107,7 +129,9 @@ function replayDone(state, now) {
 export function planBroadcast(state, reveals, { now = Date.now(), happened = [] } = {}) {
   const phase = state.phase || 'idle';
   const wentLive = (r) => happened.some((h) => h.kidSlug === r.slug && Date.parse(h.liveAt) >= Date.parse(r.startsAt) - HAPPENED_WINDOW_MS);
-  const next = reveals.find((r) => !r.problem && Date.parse(r.startsAt) > now && !wentLive(r)) || null;
+  // A real reveal always comes first; a rehearsal only gets the slot when nothing real is planned
+  const ready = reveals.filter((r) => !r.problem && Date.parse(r.startsAt) > now && !wentLive(r));
+  const next = ready.find((r) => !r.test) || ready[0] || null;
   const none = (reason) => ({ action: 'none', target: null, next, reason });
 
   if (phase === 'live' || phase === 'ending') return none('live now');
@@ -176,7 +200,52 @@ async function waitForLock(DB, wait) {
   return false;
 }
 
-const brief = (r) => (r ? { jobId: r.jobId, jobName: r.jobName, slug: r.slug, name: r.name, startsAt: r.startsAt, date: r.date, time: r.time, ...(r.problem ? { problem: r.problem } : {}) } : null);
+const brief = (r) => (r ? { jobId: r.jobId, jobName: r.jobName, slug: r.slug, name: r.name, startsAt: r.startsAt, date: r.date, time: r.time, ...(r.problem ? { problem: r.problem } : {}), ...(r.nearMiss ? { nearMiss: r.nearMiss } : {}), ...(r.test ? { test: true } : {}) } : null);
+
+const whenText = (r) => `${longDay(r.date)}${r.time ? ` at ${clockTime(r.time)}` : ''}`;
+
+/** What's wrong with a confirmed reveal that can't have a countdown, and the fix (also shown in the admin) */
+export function stuckText(r) {
+  const when = longDay(r.date);
+  if (r.problem === 'no-time') return { detail: `${r.name}'s reveal is confirmed for ${when} but has no time, so its countdown can't go up.`, fix: 'Add the time to the Reveal task in JobTread.' };
+  if (r.problem === 'draft') return { detail: `${r.name}'s reveal is confirmed for ${when}, but ${r.name}'s kid page isn't published, so the countdown can't go up.`, fix: `Publish ${r.name}'s page under Kids in the admin.` };
+  if (r.nearMiss) return { detail: `"${r.jobName}" is confirmed for ${when}, but no kid page is filed under ${parseJobName(r.jobName).year} with that name. ${r.nearMiss.name}'s page is filed under ${r.nearMiss.year}.`, fix: `Make the years agree: change the year in the JobTread job name, or on ${r.nearMiss.name}'s kid page.` };
+  return { detail: `"${r.jobName}" is confirmed for ${when}, but no published kid page matches that job name, so the countdown can't go up.`, fix: 'The job name needs the kid\'s name and year, like "Max Sample (2026)". A room for an organization has no kid page and no countdown.' };
+}
+
+/** Tell staff what the countdown did on its own, and about reveals it can't follow. Never throws. */
+async function tellStaff(env, { plan, before, result, reveals, alerted, now }) {
+  const config = await readConfig(env.DB).catch(() => null);
+  const sends = [];
+  const t = plan.target;
+  const tag = (x) => (x?.test ? 'TEST · ' : '');
+  const rehearsal = ' This is a rehearsal from a TEST job: nothing shows on the public site, and reminders go only to the test address.';
+  if (result?.success && plan.action === 'schedule') {
+    sends.push({ level: 'info', title: `${tag(t)}Countdown is up: ${t.name}'s reveal`, detail: `${whenText(t)}. It's confirmed in JobTread, so the site put up the countdown and reminder signup. Reminders go out the day before and an hour before.${t.test ? rehearsal : ''}${before.phase === 'scheduled' || before.phase === 'armed' ? ` It replaces ${before.kidName || 'the reveal'} planned before it.` : ''}`, url: ADMIN_URL, links: [{ label: 'Live page', url: `${SITE_ORIGIN}/live/${t.slug}/` }, { label: 'JobTread schedule', url: jtSchedule(t.jobId) }] });
+  } else if (result?.success && plan.action === 'update' && before.scheduledAt !== t.startsAt) {
+    const from = easternParts(before.scheduledAt);
+    const fromText = from ? `${longDay(from.date)}${from.time ? ` at ${clockTime(from.time)}` : ''}` : 'its old time';
+    const newDay = from?.date !== t.date;
+    sends.push({ level: 'info', title: `${tag(before)}Reveal moved: ${t.name}`, detail: `From ${fromText} to ${whenText(t)}, as changed in JobTread. The countdown follows.${newDay ? ' Everyone who signed up for reminders hears about the new date, and the day-before and hour-before reminders go out for it.' : ''}`, url: ADMIN_URL, links: [{ label: 'JobTread schedule', url: jtSchedule(t.jobId) }] });
+  } else if (result?.success && plan.action === 'cancel') {
+    sends.push({ level: before.test ? 'info' : 'warn', title: `${tag(before)}Countdown taken down: ${before.kidName || 'the reveal'}`, detail: 'It is no longer confirmed with a time in JobTread, so the countdown and reminder signup came off the site. Reminders already sent can\'t be recalled.', url: ADMIN_URL, links: before.jobId ? [{ label: 'JobTread schedule', url: jtSchedule(before.jobId) }] : [] });
+  }
+  if (result && !result.success) {
+    sends.push({ level: 'warn', title: 'Countdown couldn\'t follow JobTread', detail: `Tried to ${plan.action} ${t?.name ? `${t.name}'s reveal` : 'the countdown'}: ${result.error}`, url: ADMIN_URL });
+  }
+  // Confirmed reveals in the next three weeks that can't have a countdown: once per problem
+  const soon = new Date(now + STUCK_ALERT_DAYS * 86400e3).toISOString().slice(0, 10);
+  const next = {};
+  for (const r of reveals.filter((x) => x.problem && x.date <= soon)) {
+    const key = `${r.jobId}:${r.problem}:${r.date}`;
+    next[key] = alerted?.[key] || new Date(now).toISOString();
+    if (alerted?.[key]) continue;
+    const { detail, fix } = stuckText(r);
+    sends.push({ level: 'warn', title: `${tag(r)}No countdown yet: ${r.name || r.jobName}`, detail, fix, url: ADMIN_URL, links: [{ label: 'JobTread schedule', url: jtSchedule(r.jobId) }] });
+  }
+  for (const a of sends) await alertAdmins(env, config, a).catch(() => {});
+  return next;
+}
 
 /**
  * Bring the live broadcast in line with JobTread. Skips when it ran in the last
@@ -206,16 +275,19 @@ export async function syncBroadcastSchedule(env, { fetchImpl = fetch, now = Date
     const plan = planBroadcast(state, reveals, { now, happened });
 
     let result = null;
-    if (plan.action === 'schedule') result = await adminAction(env, 'schedule', { kidSlug: plan.target.slug, scheduledAt: plan.target.startsAt, jobId: plan.target.jobId }, BY);
+    const before = { ...state };
+    if (plan.action === 'schedule') result = await adminAction(env, 'schedule', { kidSlug: plan.target.slug, scheduledAt: plan.target.startsAt, jobId: plan.target.jobId, test: !!plan.target.test }, BY);
     else if (plan.action === 'update') result = await adminAction(env, 'update', { scheduledAt: plan.target.startsAt, jobId: plan.target.jobId }, BY);
     else if (plan.action === 'cancel') result = await adminAction(env, 'cancel', {}, BY);
 
     const at = new Date(now).toISOString();
+    const alerted = await tellStaff(env, { plan, before, result, reveals, alerted: prev?.alerted || {}, now }).catch(() => prev?.alerted || {});
     const record = {
       checkedAt: at,
       error: null,
       next: brief(plan.next),
       waiting: reveals.filter((r) => r.problem).map(brief),
+      alerted,
       last: plan.action === 'none' ? prev?.last || null : {
         action: plan.action, at, reason: plan.reason, reveal: brief(plan.target),
         ...(result && !result.success ? { error: result.error } : {}),

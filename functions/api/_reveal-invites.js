@@ -39,6 +39,21 @@ export const DEFAULT_ORGANIZER = 'ccunningham@soardcharity.com';
 // only to the test guests, and are marked TEST.
 export const SANDBOX_JOB_ID = '22P3HTX9cXn4';
 export const DEFAULT_TEST_GUESTS = ['peter@soardcharity.com'];
+// Any job named "TEST …" is a sandbox too, for end-to-end rehearsals the
+// workflows don't skip: name it after a kid ("TEST Isla Example (2026)") and its
+// invites, live countdown and reminders all run for real, but invites and
+// reminders reach only the test guests and the countdown never shows publicly.
+export const isTestJob = (job) => /^\s*TEST\b/.test(String(job?.name || ''));
+export const isSandboxJob = (job) => job?.id === SANDBOX_JOB_ID || isTestJob(job);
+
+/** Who gets sandbox and rehearsal emails (Reveals → Invites test guests) */
+export async function testGuests(DB) {
+  const row = await DB.prepare("SELECT data FROM site_config WHERE key = 'reveal-invites'").first();
+  let data = {};
+  try { data = row ? JSON.parse(row.data) : {}; } catch { /* default */ }
+  const list = Array.isArray(data.testGuests) && data.testGuests.length ? data.testGuests : DEFAULT_TEST_GUESTS;
+  return list.filter((e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e || ''));
+}
 const STAFF_ROLES = new Set(['Admin', 'Designer']);
 const NOT_STAFF = new Set(['selection@soardcharity.com']); // Qualification Committee login
 // JobTread logins that aren't where that person wants reveal invites
@@ -320,7 +335,7 @@ export async function reconcileJob(env, jobId, { fetchImpl = fetch, now = Date.n
     if (err.message !== row?.error) await alertProblem(env, config, { jobId, name: job ? displayName(job, kids).name : null, error: err.message, taskId: revealTask?.id }).catch(() => {});
     return { jobId, action: 'error', error: err.message };
   };
-  const sandbox = jobId === SANDBOX_JOB_ID;
+  const sandbox = jobId === SANDBOX_JOB_ID || isTestJob(job);
   const plan = planInvite(job, staff, { kids, organizer: config.organizer, now, onlyGuests: sandbox ? (config.testGuests || DEFAULT_TEST_GUESTS) : null, template: config.template });
   if (sandbox && plan.event) plan.event.summary = `TEST · ${plan.event.summary}`;
   const row = await readRow(DB, jobId);
@@ -561,6 +576,7 @@ export async function listUpcoming(env, { fetchImpl = fetch, now = Date.now() } 
       jobName: job.name,
       name: who.name,
       slug: who.slug,
+      ...(isTestJob(job) ? { test: true } : {}),
       kidUrl: who.slug ? `/kids/${who.slug}/` : null,
       jobUrl: `https://app.jobtread.com/jobs/${job.id}`,
       scheduleUrl: scheduleUrl(job.id, reveal.id),

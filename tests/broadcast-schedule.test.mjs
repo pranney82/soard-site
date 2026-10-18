@@ -9,6 +9,7 @@ import { confirmedReveals, planBroadcast, syncBroadcastSchedule } from '../funct
 import { FIELD_REVEAL_DATE, FIELD_REVEAL_CONFIRMED, easternToUtcIso, easternParts } from '../functions/api/_reveals.js';
 import * as b from '../functions/api/_broadcast.js';
 import { addTracking } from '../functions/api/reveal-invites-admin.js';
+import { reminderEmail, reminderSms, reminderPush, isRevealToday } from '../functions/api/_broadcast-notify.js';
 
 const H = 3600e3, D = 24 * H;
 const SANDBOX = '22P3HTX9cXn4';
@@ -25,6 +26,8 @@ const KIDS = [
   { slug: 'max', name: 'Max', year: 2026, draft: false },
   { slug: 'lizzie', name: 'Lizzie', year: 2026, draft: false },
   { slug: 'dylan', name: 'Dylan', year: 2026, draft: true },
+  { slug: 'adrian', name: 'Adrian', year: 2026, draft: false },
+  { slug: 'isla', name: 'Isla', year: 2026, draft: false },
 ];
 const reveal = (o) => ({ jobId: 'jobMax0001', jobName: 'Max Sample (2026)', slug: 'max', name: 'Max', startsAt: at(3), date: 'x', time: '16:00', problem: null, ...o });
 
@@ -108,7 +111,7 @@ test('plan: a reveal that went live early is not planned again', () => {
 
 // ─── End to end, against D1 and a fake JobTread ─────────────────────
 
-let env, jobs, jtStatus, emails;
+let env, jobs, jtStatus, emails, slack, kit;
 const realFetch = globalThis.fetch;
 const jtFetch = async (url, init) => {
   if (jtStatus !== 200) return new Response('down', { status: jtStatus });
@@ -120,7 +123,16 @@ const sync = (o = {}) => syncBroadcastSchedule(env, { fetchImpl: jtFetch, force:
 
 before(async () => {
   globalThis.fetch = async (url, init = {}) => {
-    if (String(url).startsWith('https://api.resend.com/emails/batch')) { emails.push(...JSON.parse(init.body)); return Response.json({ data: [] }); }
+    const u = String(url);
+    if (u.startsWith('https://api.resend.com/emails/batch')) { emails.push(...JSON.parse(init.body)); return Response.json({ data: [] }); }
+    if (u.startsWith('https://hooks.slack.test/')) { slack.push(JSON.parse(init.body).text); return new Response('ok'); }
+    if (u.startsWith('https://api.kit.com/v4/broadcasts')) {
+      const method = init.method || 'GET';
+      kit.calls.push({ method, url: u, body: init.body ? JSON.parse(init.body) : null });
+      if (method === 'POST') return Response.json({ broadcast: { id: ++kit.lastId } }, { status: 201 });
+      if (method === 'GET') return Response.json({ broadcast: { id: Number(u.split('/').pop()), status: kit.status, send_at: null, published_at: null } });
+      if (method === 'PUT') return Response.json({ broadcast: {} });
+    }
     return new Response('not mocked', { status: 599 });
   };
   // One database for the file: the broadcast module creates its tables once per process
@@ -129,7 +141,7 @@ before(async () => {
     await DB.prepare('INSERT INTO kids (slug, data, name, year, status) VALUES (?, ?, ?, ?, ?)')
       .bind(k.slug, JSON.stringify({ name: k.name, slug: k.slug, ...(k.draft ? { publishStatus: 'draft' } : {}) }), k.name, k.year, 'building').run();
   }
-  env = { DB, JOBTREAD_GRANT_KEY: 'grant', RESEND_API_KEY: 're_test' };
+  env = { DB, JOBTREAD_GRANT_KEY: 'grant', RESEND_API_KEY: 're_test', SLACK_WEBHOOK_URL: 'https://hooks.slack.test/x' };
   await b.ensureSchema(DB);
   await DB.prepare("INSERT INTO broadcast_reminders (id, channel, address, kid_slug, token, created_at) VALUES ('r1', 'email', 'fan@example.com', NULL, 'tok1', ?)").bind(new Date().toISOString()).run();
 });
@@ -140,6 +152,9 @@ beforeEach(async () => {
   jobs = [job('jobMax0001', 'Max Sample (2026)', { startsAt: at(5) })];
   jtStatus = 200;
   emails = [];
+  slack = [];
+  kit = { calls: [], lastId: 100, status: 'draft' };
+  delete env.KIT_API_KEY;
 });
 
 test('sync: a confirmed reveal puts the countdown up, as JobTread, with a save-the-date', async () => {
@@ -235,4 +250,123 @@ test('tracker: each upcoming reveal gets its broadcast, reminder sends, signups 
   assert.equal(max.checkComment, null);
   assert.equal(liz.broadcast, null, 'no countdown yet');
   assert.match(liz.checkComment.message, /no time yet/);
+});
+
+test('staff hear when the countdown goes up, moves and comes down', async () => {
+  await sync();
+  assert.ok(slack.some((t) => t.includes("Countdown is up: Max's reveal")), slack.join('\n'));
+  jobs = [job('jobMax0001', 'Max Sample (2026)', { startsAt: at(8) })];
+  await sync();
+  assert.ok(slack.some((t) => t.includes('Reveal moved: Max') && t.includes('Everyone who signed up for reminders hears about the new date')));
+  jobs = [job('jobMax0001', 'Max Sample (2026)', { startsAt: at(8), confirmed: false })];
+  await sync();
+  assert.ok(slack.some((t) => t.includes('Countdown taken down: Max')));
+  const n = slack.length;
+  await sync();
+  assert.equal(slack.length, n, 'nothing changed, nothing said');
+});
+
+test('a stuck confirmed reveal alerts once, and points at the kid filed under the next year', async () => {
+  jobs = [job('jobAdr0001', 'Adrian Scala (2025)', { startsAt: at(6) })];
+  const r = await sync();
+  assert.equal((await b.readState(env.DB)).phase, 'idle', 'a suggestion is never used: no countdown on a maybe');
+  assert.deepEqual(r.record.waiting[0].nearMiss, { slug: 'adrian', name: 'Adrian', year: 2026 });
+  const alert = slack.find((t) => t.includes('No countdown yet: Adrian Scala (2025)'));
+  assert.ok(alert && alert.includes("Adrian's page is filed under 2026") && alert.includes('Make the years agree'), slack.join('\n'));
+  await sync();
+  assert.equal(slack.filter((t) => t.includes('No countdown yet')).length, 1, 'once per problem');
+  jobs = [job('jobAdr0001', 'Adrian Scala (2025)', { startsAt: at(40) })];
+  await sync();
+  assert.equal(slack.filter((t) => t.includes('No countdown yet')).length, 1, 'more than three weeks out: not yet worth an alert');
+});
+
+test('a new day rewrites the Kit save-the-date draft while it is a draft, or makes a new-date draft once sent', async () => {
+  env.KIT_API_KEY = 'kit_test';
+  await sync();
+  const st = await b.readState(env.DB);
+  assert.equal(st.kit.scheduledDraftId, 101, 'save-the-date draft made when the countdown went up');
+  jobs = [job('jobMax0001', 'Max Sample (2026)', { startsAt: at(9) })];
+  await sync();
+  const put = kit.calls.find((c) => c.method === 'PUT');
+  assert.ok(put && put.url.endsWith('/broadcasts/101'), 'the same draft is rewritten');
+  assert.match(put.body.content, new RegExp(new Intl.DateTimeFormat('en-US', { month: 'long', day: 'numeric', timeZone: 'America/New_York' }).format(new Date(at(9)))));
+  assert.equal(kit.calls.filter((c) => c.method === 'POST').length, 1, 'no second draft');
+
+  kit.status = 'completed';
+  jobs = [job('jobMax0001', 'Max Sample (2026)', { startsAt: at(12) })];
+  await sync();
+  const posts = kit.calls.filter((c) => c.method === 'POST');
+  assert.equal(posts.length, 2, 'the old one went out already: a new-date draft instead');
+  assert.match(posts[1].body.subject, /New date: Max's room reveal/);
+  assert.equal(kit.calls.filter((c) => c.method === 'PUT').length, 1, 'a sent broadcast is never edited');
+  assert.equal((await b.readState(env.DB)).kit.scheduledDraftId, 102);
+});
+
+test('a countdown that goes up on the day itself says today, not tomorrow', () => {
+  const tz = 'America/New_York';
+  const later = new Date(Date.now() + 60e3).toISOString();
+  const tomorrow = at(1);
+  if (isRevealToday(later, tz)) {
+    const common = { kind: 'day', kidName: 'Max', scheduledAt: later, tz, liveUrl: 'https://x/live/max/', unsubscribeUrl: 'u' };
+    assert.match(reminderEmail(common).subject, /^Today: Max's room reveal/);
+    assert.match(reminderSms(common), /today is reveal day/);
+    assert.equal(reminderPush(common).title, 'Today is reveal day');
+  }
+  assert.equal(isRevealToday(tomorrow, tz), false);
+  assert.match(reminderEmail({ kind: 'day', kidName: 'Max', scheduledAt: tomorrow, tz, liveUrl: 'x', unsubscribeUrl: 'u' }).subject, /^Tomorrow: /);
+});
+
+// ─── Rehearsals: a JobTread "TEST …" job ────────────────────────────
+
+test('plan: a rehearsal only gets the slot when nothing real is planned, and gives it up to a real reveal', () => {
+  const rehearsal = reveal({ jobId: 'jobTst0001', jobName: 'TEST Isla Example (2026)', slug: 'isla', name: 'Isla', startsAt: at(1), test: true });
+  const real = reveal({ startsAt: at(4) });
+  assert.equal(planBroadcast({ phase: 'idle' }, [rehearsal, real]).target.jobId, 'jobMax0001', 'real first, even when the rehearsal is sooner');
+  assert.equal(planBroadcast({ phase: 'idle' }, [rehearsal]).target.jobId, 'jobTst0001');
+  const p = planBroadcast({ phase: 'scheduled', test: true, jobId: 'jobTst0001', kidSlug: 'isla', scheduledAt: rehearsal.startsAt }, [rehearsal, real]);
+  assert.equal(p.action, 'schedule', 'a real reveal takes the slot from a rehearsal');
+  assert.equal(p.target.jobId, 'jobMax0001');
+});
+
+test('rehearsal end to end: the real path runs, the public sees nothing, reminders reach only the test address, Kit untouched', async () => {
+  env.KIT_API_KEY = 'kit_test';
+  jobs = [job('jobTst0001', 'TEST Isla Example (2026)', { startsAt: at(5) })];
+  const r = await sync();
+  assert.equal(r.action, 'schedule', r.error);
+  const st = await b.readState(env.DB);
+  assert.equal(st.test, true);
+  assert.equal(st.kidSlug, 'isla');
+  assert.equal(st.title, "TEST · Isla's room reveal");
+  // Public views
+  const cfg = await b.readConfig(env.DB);
+  for (const view of [b.publicState(st, cfg), b.legacyState(st, cfg), (await b.publicPayload(env)).state]) {
+    assert.equal(view.phase, 'idle', 'the public sees nothing scheduled');
+    assert.equal(view.upcoming, false);
+    assert.ok(!view.title && !view.kidName && !view.scheduledAt, 'no name, title or time leaks');
+  }
+  assert.equal(b.publicState(st, cfg, { includeTest: true }).phase, 'scheduled', 'the admin sees it');
+  // Reminders: the test address only, marked TEST
+  const toOf = (e) => [].concat(e.to).join(',');
+  assert.deepEqual(emails.map(toOf), ['peter@soardcharity.com'], 'the subscriber gets nothing');
+  assert.match(emails[0].subject, /^TEST · Save the date: Isla's room reveal/);
+  assert.equal(kit.calls.length, 0, 'no Kit drafts for a rehearsal');
+  assert.ok(slack.some((t) => t.includes("TEST · Countdown is up: Isla's reveal") && t.includes('rehearsal')), slack.join('\n'));
+  // Moves and take-down follow JobTread the same way
+  jobs = [job('jobTst0001', 'TEST Isla Example (2026)', { startsAt: at(8) })];
+  assert.equal((await sync()).action, 'update');
+  assert.equal(toOf(emails.at(-1)), 'peter@soardcharity.com');
+  assert.match(emails.at(-1).subject, /^TEST · New date/);
+  jobs = [job('jobTst0001', 'TEST Isla Example (2026)', { startsAt: at(8), confirmed: false })];
+  assert.equal((await sync()).action, 'cancel');
+  assert.equal((await b.readState(env.DB)).phase, 'idle');
+  assert.ok(emails.every((e) => toOf(e) === 'peter@soardcharity.com'), 'nothing ever went to a subscriber');
+});
+
+test('a real stream during a rehearsal goes out publicly as its own broadcast', () => {
+  const rehearsal = { ...b.defaultState(), phase: 'armed', broadcastId: 'live-test', test: true, kidSlug: 'isla', kidName: 'Isla', title: "TEST · Isla's room reveal", scheduledAt: new Date().toISOString() };
+  const live = b.tStartLive(rehearsal, { videoUid: 'v1', source: 'stream' }, b.defaultConfig());
+  assert.equal(live.test, false);
+  assert.notEqual(live.broadcastId, 'live-test');
+  assert.equal(live.kidSlug, null, 'it does not borrow the rehearsal\'s kid');
+  assert.equal(b.publicState(live, b.defaultConfig()).live, true);
 });

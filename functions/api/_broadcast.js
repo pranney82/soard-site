@@ -33,10 +33,11 @@ import * as stream from './_stream-live.js';
 import * as notify from './_broadcast-notify.js';
 import * as fb from './_broadcast-fb.js';
 import { attachToKid, matchKids } from './_fb-archive.js';
-import { kitConfigured, kitCreateBroadcast } from './_kit.js';
+import { kitConfigured, kitCreateBroadcast, kitUpdateDraft } from './_kit.js';
 import * as reels from './_broadcast-reel.js';
 import * as monitor from './_broadcast-monitor.js';
 import * as preflight from './_broadcast-preflight.js';
+import { testGuests } from './_reveal-invites.js';
 
 export const STATE_KEY = 'broadcast';
 export const CONFIG_KEY = 'broadcast-config';
@@ -156,6 +157,7 @@ export function defaultState() {
     broadcastId: null,
     kidSlug: null, kidName: null,
     jobId: null,           // the JobTread job this reveal was scheduled from (_broadcast-schedule.js)
+    test: false,           // a rehearsal from a JobTread "TEST …" job: invisible to the public, reminders to the test address only
     title: null, message: null, image: null,
     scheduledAt: null, armedAt: null, liveAt: null, endedAt: null, disconnectedAt: null,
     liveVideoUid: null, replayUid: null, replayReadyAt: null, replayUntil: null,
@@ -214,8 +216,19 @@ export function liveUrlFor(state) {
   return state?.kidSlug ? `${SITE_ORIGIN}/live/${state.kidSlug}/` : `${SITE_ORIGIN}/live/`;
 }
 
-/** What the public site and the hub see. No secrets. */
-export function publicState(state, config) {
+/**
+ * The broadcast as anyone outside the admin may know it. A rehearsal (a
+ * JobTread "TEST …" job, state.test) runs the real pipeline but stays
+ * invisible: to the public site, the live page, the hub and the reminder
+ * signup it looks like nothing is scheduled.
+ */
+export function visibleState(state) {
+  return state?.test ? { ...defaultState(), updatedAt: state.updatedAt || null } : state;
+}
+
+/** What the public site and the hub see. No secrets. A rehearsal is hidden unless `includeTest` (admin only). */
+export function publicState(state, config, { includeTest = false } = {}) {
+  if (!includeTest) state = visibleState(state);
   const phase = state.phase || 'idle';
   const live = phase === 'live' || phase === 'ending';
   const upcoming = phase === 'scheduled' || phase === 'armed';
@@ -239,13 +252,15 @@ export function publicState(state, config) {
     instagramUrl: config?.instagram?.profileUrl || null,
     orientation: config?.orientation === 'portrait' ? 'portrait' : 'landscape',
     source: state.source,
+    ...(state.test ? { test: true } : {}),
     updatedAt: state.updatedAt,
   };
 }
 
 /** The shape the original LiveIndicator + admin Go Live read. */
-export function legacyState(state, config) {
-  const p = publicState(state, config);
+export function legacyState(state, config, opts) {
+  if (!opts?.includeTest) state = visibleState(state);
+  const p = publicState(state, config, opts);
   let endsAt = null;
   if (p.live) endsAt = state.manual?.until || (state.liveAt ? new Date(Date.parse(state.liveAt) + MAX_LIVE_HOURS * 3600e3).toISOString() : null);
   else if (p.upcoming) endsAt = state.scheduledAt ? new Date(Date.parse(state.scheduledAt) + 6 * 3600e3).toISOString() : null;
@@ -369,13 +384,14 @@ function newBroadcastId() {
   return `live-${Date.now()}`;
 }
 
-export function tSchedule(state, { kidSlug, kidName, jobId, scheduledAt, title, message, image, kitLiveEmail, by }, config) {
+export function tSchedule(state, { kidSlug, kidName, jobId, test, scheduledAt, title, message, image, kitLiveEmail, by }, config) {
   const s = { ...defaultState(), broadcastId: newBroadcastId(), createdAt: nowIso() };
   s.kidSlug = kidSlug || null;
   s.kidName = kidName || null;
   s.jobId = jobId || null;
+  s.test = !!test;
   s.scheduledAt = scheduledAt;
-  s.title = title || (kidName ? `${kidName}'s room reveal` : config.defaults.title);
+  s.title = title || `${s.test ? 'TEST · ' : ''}${kidName ? `${kidName}'s room reveal` : config.defaults.title}`;
   s.message = message || (kidName ? `Watch ${kidName}'s room reveal live` : config.defaults.message);
   s.image = image || null;
   s.kitLiveEmail = typeof kitLiveEmail === 'boolean' ? kitLiveEmail : null;
@@ -388,7 +404,8 @@ export function tSchedule(state, { kidSlug, kidName, jobId, scheduledAt, title, 
 
 export function tStartLive(state, { videoUid, source = 'stream', by }, config) {
   let s = { ...state };
-  const reusable = ['scheduled', 'armed', 'ending'].includes(state.phase) || (state.phase === 'live');
+  // A real stream never inherits a rehearsal: it starts its own, public broadcast
+  const reusable = !state.test && (['scheduled', 'armed', 'ending'].includes(state.phase) || (state.phase === 'live'));
   if (!reusable) {
     // idle or replay: a fresh, unplanned broadcast
     s = { ...defaultState(), broadcastId: newBroadcastId(), createdAt: nowIso() };
@@ -427,6 +444,25 @@ export function tClear(state, note, by) {
 
 // ─── Reminders ──────────────────────────────────────────────────────
 
+/**
+ * A rehearsal's reminder: each kind goes once, by email, to the test address
+ * (the reveal invites' test guests), marked TEST. Nobody who signed up gets
+ * anything, and no texts or browser alerts go out.
+ */
+async function sendTestReminder(env, state, kind, work, summary) {
+  const { DB } = env;
+  if (!notify.emailConfigured(env) || !(await claimSend(DB, state.broadcastId, kind, 'email'))) return summary;
+  const to = await testGuests(DB).catch(() => []);
+  const tpl = notify.reminderEmail({ kind, kidName: state.kidName, scheduledAt: state.scheduledAt, tz: 'America/New_York', liveUrl: liveUrlFor(state), replayUrl: liveUrlFor(state), unsubscribeUrl: `${SITE_ORIGIN}/admin/#broadcast`, image: null });
+  const res = to.length
+    ? await notify.sendEmailItems(env, to.map((addr) => ({ to: addr, subject: `TEST · ${tpl.subject}`, html: tpl.html, text: tpl.text })), { tags: [{ name: 'category', value: `reveal-${kind}-test` }] })
+    : { sent: 0, failed: 0, errors: [] };
+  await finishSend(DB, state.broadcastId, kind, 'email', { recipients: to.length, sent: res.sent, failed: res.failed, error: res.errors.slice(0, 3).join('; ') || null });
+  summary.email = { recipients: to.length, sent: res.sent, failed: res.failed, test: true };
+  work.push(`test-email:${kind}:${res.sent}/${to.length}`);
+  return summary;
+}
+
 async function reminderRecipients(DB, channel, kidSlug) {
   const res = await DB.prepare(
     `SELECT id, address, subscription, last_sent_at, token FROM broadcast_reminders
@@ -464,7 +500,9 @@ function unsubscribeUrl(token) {
 export async function sendReminders(env, config, state, kind, work) {
   const { DB } = env;
   const summary = { kind, email: null, sms: null, push: null };
-  if (!config.reminders?.enabled || !state.broadcastId) return summary;
+  if (!state.broadcastId) return summary;
+  if (state.test) return sendTestReminder(env, state, kind, work, summary);
+  if (!config.reminders?.enabled) return summary;
   const common = {
     kind, kidName: state.kidName, scheduledAt: state.scheduledAt, tz: config.timezone,
     liveUrl: liveUrlFor(state),
@@ -533,7 +571,7 @@ async function dueReminderKinds(DB, state, config) {
 // ─── Kit drafts ─────────────────────────────────────────────────────
 
 async function draftKit(env, state, kind) {
-  if (!kitConfigured(env)) return null;
+  if (!kitConfigured(env) || state.test) return null; // a rehearsal leaves Kit alone
   try {
     const tpl = notify.reminderEmail({ kind, kidName: state.kidName, scheduledAt: state.scheduledAt, liveUrl: liveUrlFor(state), replayUrl: liveUrlFor(state), unsubscribeUrl: '{{ unsubscribe_url }}', image: null, list: true });
     const r = await kitCreateBroadcast(env, { subject: tpl.subject, previewText: '', description: `[auto] ${state.kidName || 'Reveal'} ${kind}`, html: tpl.html });
@@ -541,6 +579,23 @@ async function draftKit(env, state, kind) {
   } catch {
     return null;
   }
+}
+
+/**
+ * The reveal moved to another day: rewrite its save-the-date draft with the new
+ * date while it is still a draft, so Kit never holds a draft with the old date.
+ * If staff already sent it, make a "new date" draft instead. Returns the draft id to keep.
+ */
+async function refreshKitDraft(env, state) {
+  if (!kitConfigured(env)) return null;
+  const id = state.kit?.scheduledDraftId;
+  if (Number.isFinite(Number(id)) && id !== true) {
+    const tpl = notify.reminderEmail({ kind: 'scheduled', kidName: state.kidName, scheduledAt: state.scheduledAt, liveUrl: liveUrlFor(state), replayUrl: liveUrlFor(state), unsubscribeUrl: '{{ unsubscribe_url }}', image: null, list: true });
+    const r = await kitUpdateDraft(env, id, { subject: tpl.subject, previewText: '', description: `[auto] ${state.kidName || 'Reveal'} scheduled`, html: tpl.html });
+    if (r.ok) return id;
+    if (!r.status) return id; // Kit unreachable: keep the draft we know about rather than make a duplicate
+  }
+  return (await draftKit(env, state, id ? 'moved' : 'scheduled')) || id || null;
 }
 
 export function kitLiveWanted(state, config) {
@@ -992,7 +1047,7 @@ export async function adminAction(env, action, body = {}, userEmail = 'unknown')
       // Scheduling over a planned reveal replaces it; close the old row so History doesn't show both
       if (['scheduled', 'armed'].includes(state.phase)) await closeBroadcastRow(DB, state, 'cancelled');
       const jobId = JOB_ID.test(String(body.jobId || '')) ? String(body.jobId) : null;
-      state = tSchedule(state, { kidSlug: kid?.slug || null, kidName: kid?.name || null, jobId, scheduledAt, title: body.title, message: body.message, image, kitLiveEmail: body.kitLiveEmail, by: userEmail }, config);
+      state = tSchedule(state, { kidSlug: kid?.slug || null, kidName: kid?.name || null, jobId, test: body.test === true, scheduledAt, title: body.title, message: body.message, image, kitLiveEmail: body.kitLiveEmail, by: userEmail }, config);
       await writeState(DB, state); await upsertBroadcastRow(DB, state);
       const work = [];
       // A save-the-date only makes sense with some lead time; inside 26 h the day-before reminder covers it
@@ -1041,8 +1096,8 @@ export async function adminAction(env, action, body = {}, userEmail = 'unknown')
         await DB.prepare("DELETE FROM broadcast_sends WHERE broadcast_id = ? AND kind IN ('moved', 'day', 'hour')").bind(state.broadcastId).run();
         await recordEvent(DB, state.broadcastId, 'moved', { from: movedFrom, to: state.scheduledAt });
         if (Date.parse(state.scheduledAt) - Date.now() > 26 * 3600e3) await sendReminders(env, config, state, 'moved', []);
-        const draft = await draftKit(env, state, 'scheduled');
-        if (draft) { state.kit = { ...(state.kit || {}), scheduledDraftId: draft }; await writeState(DB, state); }
+        const draft = await refreshKitDraft(env, state);
+        if (draft && draft !== state.kit?.scheduledDraftId) { state.kit = { ...(state.kit || {}), scheduledDraftId: draft }; await writeState(DB, state); }
       }
       await logAudit(DB, { userEmail, action: 'updated', entityType: 'live-status', entitySlug: state.broadcastId, entityName: state.title, ...(movedFrom ? { changes: [{ field: 'scheduledAt', from: movedFrom, to: state.scheduledAt }] } : {}), gitStatus: 'ok' });
       break;
@@ -1149,7 +1204,7 @@ export async function adminAction(env, action, body = {}, userEmail = 'unknown')
   await writeState(DB, state);
   _lastTickResult = null; // next tick must recompute
   await publishToHub(env, state, config, `admin:${action}`);
-  return { success: true, state: publicState(state, config), legacy: legacyState(state, config) };
+  return { success: true, state: publicState(state, config, { includeTest: true }), legacy: legacyState(state, config, { includeTest: true }) };
 }
 
 // ─── Public read ────────────────────────────────────────────────────

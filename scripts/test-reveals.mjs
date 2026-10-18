@@ -34,15 +34,17 @@ const day = (n) => iso(n * D).slice(0, 10);
 const maxAt = new Date(`${day(10)}T20:00:00Z`).toISOString(); // 4:00 PM Eastern
 
 function adminData(phase) {
+  const rehearsal = phase === 'rehearsal';
+  if (rehearsal) phase = 'scheduled';
   const sched = phase === 'scheduled';
   const state = sched
-    ? { phase, broadcastId: 'live-1', kidSlug: 'max', kidName: 'Max', jobId: 'jobMax0001', title: "Max's room reveal", message: "Watch Max's room reveal live", image: null, scheduledAt: maxAt, kitLiveEmail: null, kit: { scheduledDraftId: 'k1' }, fb: {}, kidVia: 'scheduled', updatedBy: 'JobTread', revealAtSeconds: null }
+    ? { phase, broadcastId: 'live-1', kidSlug: 'max', kidName: 'Max', jobId: 'jobMax0001', test: rehearsal, title: `${rehearsal ? 'TEST · ' : ''}Max's room reveal`, message: "Watch Max's room reveal live", image: null, scheduledAt: maxAt, kitLiveEmail: null, kit: { scheduledDraftId: 'k1' }, fb: {}, kidVia: 'scheduled', updatedBy: 'JobTread', revealAtSeconds: null }
     : { phase: 'idle', broadcastId: null, kit: {}, fb: {} };
   return {
     success: true,
     state,
     public: sched
-      ? { phase, live: false, upcoming: true, replay: false, id: 'live-1', kidSlug: 'max', kidName: 'Max', title: state.title, message: state.message, scheduledAt: maxAt, liveUrl: 'https://sunshineonaranneyday.com/live/max/', url: 'https://sunshineonaranneyday.com/live/max/' }
+      ? { phase, live: false, upcoming: true, replay: false, id: 'live-1', kidSlug: 'max', kidName: 'Max', ...(rehearsal ? { test: true } : {}), title: state.title, message: state.message, scheduledAt: maxAt, liveUrl: 'https://sunshineonaranneyday.com/live/max/', url: 'https://sunshineonaranneyday.com/live/max/' }
       : { phase: 'idle', live: false, upcoming: false, replay: false },
     config: { kitLive: { enabled: true, audience: { name: 'All subscribers' } }, messages: { enabled: true }, rehearsalInput: { uid: 'r1' }, liveInput: { uid: 'in1', enabled: true }, facebook: { mode: 'api', pageUrl: 'https://www.facebook.com/SunshineOnaRanneyDay' }, youtube: {}, instagram: {}, reminders: { enabled: true, hoursBefore: [24, 1], sms: false, push: true }, orientation: 'portrait', reels: { enabled: true }, defaults: { title: 'Live room reveal', message: "It's reveal day!" }, alerts: { emails: [] }, replayHours: 72, timezone: 'America/New_York', outputs: {} },
     setup: { streamConfigured: true, inputReady: true, hubBound: true, kitConfigured: true, emailConfigured: true, smsConfigured: false, slackConfigured: false, fbConfigured: true, youtubeConfigured: false, deployHook: true, pushReady: true, alertEmails: ['peter@soardcharity.com'], webhookUrl: 'https://sunshineonaranneyday.com/api/stream-webhook' },
@@ -55,13 +57,17 @@ function adminData(phase) {
     schedule: {
       checkedAt: iso(-2 * 60e3), error: null,
       next: sched ? { jobId: 'jobMax0001', name: 'Max', slug: 'max', startsAt: maxAt, date: day(10), time: '16:00' } : null,
-      waiting: [{ jobId: 'jobLiz0001', jobName: 'Lizzie Francis (2026)', name: 'Lizzie', slug: 'lizzie', date: day(5), time: null, problem: 'no-time' }],
+      waiting: [
+        { jobId: 'jobLiz0001', jobName: 'Lizzie Francis (2026)', name: 'Lizzie', slug: 'lizzie', date: day(5), time: null, problem: 'no-time' },
+        { jobId: 'jobAdr0001', jobName: 'Adrian Scala (2025)', name: null, slug: null, date: day(12), time: '16:00', problem: 'no-kid', nearMiss: { slug: 'adrian', name: 'Adrian', year: 2026 } },
+      ],
     },
   };
 }
 
 function invitesData(phase) {
-  const sched = phase === 'scheduled';
+  const rehearsal = phase === 'rehearsal';
+  const sched = phase === 'scheduled' || rehearsal;
   const preview = (name, status) => ({ title: status === 'confirmed' ? `${name}'s Reveal Day` : `Tentative: ${name}'s Reveal Day`, status, start: { date: day(10) }, end: { date: day(11) }, location: '100 Example Way, Atlanta, GA', description: `This is the date for ${name}'s reveal.`, guests: [{ email: 'family@example.com', name: 'Pat Sample', kind: 'family' }, { email: 'cnielsen@soardcharity.com', name: 'Christian Nielsen', kind: 'staff' }] });
   return {
     ok: true,
@@ -74,14 +80,14 @@ function invitesData(phase) {
       { jobId: 'jobLiz0001', jobName: 'Lizzie Francis (2026)', name: 'Lizzie', slug: 'lizzie', kidUrl: '/kids/lizzie/', jobUrl: 'https://app.jobtread.com/jobs/jobLiz0001', scheduleUrl: 'https://app.jobtread.com/jobs/jobLiz0001/schedule', date: day(5), time: null, confirmed: true, scheduleBuilt: true, status: 'Finalization', details: '', preview: preview('Lizzie', 'confirmed'),
         invite: { state: 'tentative', lastAction: 'created', error: 'Google said: Calendar usage limits exceeded.', updatedAt: iso(-3 * D), guests: 6, log: [{ action: 'created', state: 'tentative', guests: 6, date: day(5), at: iso(-3 * D) }] },
         broadcast: null, reminderSignups: 12, checkComment: { at: iso(-D), message: 'Christian, Lizzie\'s reveal is confirmed for Thursday but has no time yet.' } },
-      { jobId: 'jobMax0001', jobName: 'Max Sample (2026)', name: 'Max', slug: 'max', kidUrl: '/kids/max/', jobUrl: 'https://app.jobtread.com/jobs/jobMax0001', scheduleUrl: 'https://app.jobtread.com/jobs/jobMax0001/schedule', date: day(10), time: '16:00', confirmed: true, scheduleBuilt: true, status: 'Build', details: 'Park on the street.', preview: preview('Max', 'confirmed'),
+      { jobId: 'jobMax0001', jobName: `${rehearsal ? 'TEST ' : ''}Max Sample (2026)`, name: 'Max', slug: 'max', ...(rehearsal ? { test: true } : {}), kidUrl: '/kids/max/', jobUrl: 'https://app.jobtread.com/jobs/jobMax0001', scheduleUrl: 'https://app.jobtread.com/jobs/jobMax0001/schedule', date: day(10), time: '16:00', confirmed: true, scheduleBuilt: true, status: 'Build', details: 'Park on the street.', preview: preview('Max', 'confirmed'),
         invite: { state: 'confirmed', lastAction: 'updated', error: null, updatedAt: iso(-D), guests: 5, log: [{ action: 'created', state: 'tentative', guests: 5, date: day(10), at: iso(-6 * D) }, { action: 'updated', state: 'confirmed', guests: 5, date: day(10), at: iso(-D) }] },
         broadcast: sched ? { id: 'live-1', phase: 'scheduled', scheduledAt: maxAt, createdAt: iso(-D), kitLiveEmail: null, kit: { scheduledDraft: true, live: null }, sends: [{ kind: 'scheduled', channel: 'email', recipients: 12, sent: 12, failed: 0, created_at: iso(-D) }, { kind: 'scheduled', channel: 'push', recipients: 3, sent: 3, failed: 0, created_at: iso(-D) }] } : null,
         reminderSignups: 15, checkComment: null },
       { jobId: 'jobCol0001', jobName: 'Colin Lindsay (2026)', name: 'Colin', slug: 'colin', kidUrl: '/kids/colin/', jobUrl: 'https://app.jobtread.com/jobs/jobCol0001', scheduleUrl: 'https://app.jobtread.com/jobs/jobCol0001/schedule', date: day(25), time: null, confirmed: false, scheduleBuilt: false, status: 'Build', details: '', preview: preview('Colin', 'tentative'),
         invite: null, broadcast: null, reminderSignups: 12, checkComment: null },
     ],
-    live: { phase: sched ? 'scheduled' : 'idle', jobId: sched ? 'jobMax0001' : null, scheduledAt: sched ? maxAt : null, waiting: { jobLiz0001: 'no-time' }, checkedAt: iso(-2 * 60e3), reminders: { enabled: true, hoursBefore: [24, 1] }, kit: { configured: true, enabled: true, audience: 'All subscribers' } },
+    live: { phase: sched ? 'scheduled' : 'idle', jobId: sched ? 'jobMax0001' : null, scheduledAt: sched ? maxAt : null, waiting: { jobLiz0001: { problem: 'no-time', nearMiss: null } }, checkedAt: iso(-2 * 60e3), reminders: { enabled: true, hoursBefore: [24, 1] }, kit: { configured: true, enabled: true, audience: 'All subscribers' } },
   };
 }
 
@@ -150,6 +156,8 @@ try {
   ok(status.includes('Checked JobTread 2m ago'), 'it says when JobTread was last checked');
   ok(await page.$eval('.bc-links', (e) => [...e.querySelectorAll('a')].some((a) => a.href.endsWith('/jobs/jobMax0001/schedule') && a.textContent.includes('Change it in JobTread'))), 'links to the job schedule in JobTread');
   ok((await text(page, '.bc-status .bc-note')).includes("Lizzie's reveal is confirmed for") && (await text(page, '.bc-status .bc-note')).includes('has no time'), 'a confirmed reveal with no time says why its countdown can\'t go up');
+  const notes = await page.$$eval('.bc-status .bc-note', (n) => n.map((x) => x.textContent));
+  ok(notes.some((t) => t.includes("Adrian's page is filed under 2026") && t.includes('make the years agree')), 'a job and kid page filed under different years says exactly what to change');
 
   const rows = await page.$$eval('.rt-item .rt-toggle strong', (s) => s.map((x) => x.textContent));
   ok(rows.join(',') === 'Lizzie,Max,Colin', `the tracker lists every upcoming reveal, soonest first (${rows.join(', ')})`);
@@ -213,6 +221,20 @@ try {
   ok(idle.errors.length === 0, `no console errors (${idle.errors.join(' | ')})`);
   await idle.page.screenshot({ path: join(OUT, 'now-idle.png'), fullPage: true });
   await idle.page.close();
+
+  console.log('Rehearsal from a JobTread TEST job');
+  const reh = await open(browser, base, { width: 1440, height: 1000 }, 'rehearsal');
+  ok((await text(reh.page, '.bc-phase')).includes('Rehearsal'), 'the status card is marked Rehearsal');
+  ok((await text(reh.page, '.bc-status')).includes('The public site shows nothing, and reminders go only to the test address'), 'it says the public sees nothing and who gets reminders');
+  ok((await text(reh.page, '.rt-item:nth-child(2) .rt-chips')).includes('Rehearsal'), 'the tracker marks the rehearsal row');
+  await clickToggle(reh.page, 'Max');
+  await pause(150);
+  const rs = await stepsOf(reh.page, 'Max');
+  ok(rs.find((x) => x.label === 'Save-the-date reminder').text.endsWith('(test address only)'), 'its reminders say they went to the test address only');
+  ok(rs.find((x) => x.label.includes('Kit list')).text === 'Never for a rehearsal', 'and no Kit email, ever');
+  ok(reh.errors.length === 0, `no console errors (${reh.errors.join(' | ')})`);
+  await reh.page.screenshot({ path: join(OUT, 'now-rehearsal.png'), fullPage: false });
+  await reh.page.close();
 
   console.log('Invites tab');
   const inv = await open(browser, base, { width: 1440, height: 1000 }, 'scheduled', '#broadcast/invites');

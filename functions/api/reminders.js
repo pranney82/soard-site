@@ -13,7 +13,7 @@
  * kidSlug scopes reminders to one reveal; omitted = every reveal.
  */
 
-import { ensureSchema, readConfig, readState, liveUrlFor, recordEvent } from './_broadcast.js';
+import { ensureSchema, readConfig, readState, visibleState, liveUrlFor, recordEvent } from './_broadcast.js';
 import * as notify from './_broadcast-notify.js';
 
 const HTML_HEADERS = { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' };
@@ -49,7 +49,7 @@ export async function onRequestGet(context) {
     }
 
     if (url.searchParams.get('ics') === '1') {
-      const [config, state] = await Promise.all([readConfig(env.DB), readState(env.DB)]);
+      const [config, state] = await Promise.all([readConfig(env.DB), readState(env.DB).then(visibleState)]);
       if (!state.scheduledAt || !['scheduled', 'armed'].includes(state.phase)) {
         return new Response(page('Nothing scheduled yet', '<p>There is no reveal on the calendar right now. Check back soon.</p>'), { headers: HTML_HEADERS, status: 404 });
       }
