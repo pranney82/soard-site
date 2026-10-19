@@ -199,7 +199,7 @@ export const DEFAULT_TEMPLATE = {
   tentativeTitle: "{name}'s Reveal Day (tentative)",
   tentativeMessage: "Save the date: {name}'s {space} reveal is penciled in for {date}.\n\nIt's the moment {name} sees the new {space} for the first time.\n\nIf the build schedule shifts, this invite moves with it. The time comes once the date is confirmed, so there's no need to reply until then.",
   confirmedTitle: "{name}'s Reveal Day",
-  confirmedMessage: "{name}'s {space} reveal is confirmed for {when}.\n\nIt's the moment {name} sees the new {space} for the first time. Please reply so we know who to expect.",
+  confirmedMessage: "{name}'s {space} reveal is confirmed for {when}.\n\nIt's the moment {name} sees the new {space} for the first time. Please accept or decline so we know who to expect.",
 };
 export const TEMPLATE_LIMITS = { tentativeTitle: 150, confirmedTitle: 150, tentativeMessage: 2000, confirmedMessage: 2000 };
 // Earlier defaults. Admin saves all four fields, so a saved field still word for
@@ -210,7 +210,10 @@ const RETIRED_DEFAULTS = {
     "This is a tentative date for {name}'s reveal while the build wraps up.\nThis invite updates automatically if the date moves, and the time is added once the reveal is confirmed.",
     "Save the date: {name}'s {space} reveal is penciled in for {date}.\n\nIt's the moment {name} sees the new {space} for the first time.\n\nIf the build schedule shifts, this invite moves with it. The time and address come once the date is confirmed, so there's no need to reply until then.",
   ],
-  confirmedMessage: ["{name}'s reveal is confirmed for {when}."],
+  confirmedMessage: [
+    "{name}'s reveal is confirmed for {when}.",
+    "{name}'s {space} reveal is confirmed for {when}.\n\nIt's the moment {name} sees the new {space} for the first time. Please reply so we know who to expect.",
+  ],
 };
 
 export async function readConfig(DB) {

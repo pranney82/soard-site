@@ -644,7 +644,7 @@ test('the default wording, exactly', () => {
   assert.match(unnamed.event.description, /^Questions\? Email events@soardcharity\.com\.$/m, 'an organizer not on the staff list: just the address');
   const c = planInvite(job({ confirmed: true, time: '16:00' }), STAFF, { kids: KIDS, now: NOW });
   assert.equal(c.event.summary, "Max's Reveal Day");
-  assert.match(c.event.description, /^Max's bathroom reveal is confirmed for Tuesday, October 27 at 4:00 PM\.\n\nIt's the moment Max sees the new bathroom for the first time\. Please reply so we know who to expect\.\n\nMeet Max:/);
+  assert.match(c.event.description, /^Max's bathroom reveal is confirmed for Tuesday, October 27 at 4:00 PM\.\n\nIt's the moment Max sees the new bathroom for the first time\. Please accept or decline so we know who to expect\.\n\nMeet Max:/);
 });
 
 test("the invite names what was built, from the job's Makeover Type", () => {
@@ -672,6 +672,8 @@ test('wording saved word for word as an old default follows the new default; wor
   // The October 2026 wording that still promised the address with the confirmation
   await writeConfig(DB, { template: { ...template, tentativeMessage: "Save the date: {name}'s {space} reveal is penciled in for {date}.\n\nIt's the moment {name} sees the new {space} for the first time.\n\nIf the build schedule shifts, this invite moves with it. The time and address come once the date is confirmed, so there's no need to reply until then." } });
   assert.equal((await readConfig(DB)).template.tentativeMessage, DEFAULT_TEMPLATE.tentativeMessage);
+  await writeConfig(DB, { template: { ...template, confirmedMessage: "{name}'s {space} reveal is confirmed for {when}.\n\nIt's the moment {name} sees the new {space} for the first time. Please reply so we know who to expect." } });
+  assert.equal((await readConfig(DB)).template.confirmedMessage, DEFAULT_TEMPLATE.confirmedMessage, 'the October 2026 "Please reply" wording follows the new default');
 });
 
 test('wording from admin fills in name, date and time', () => {
