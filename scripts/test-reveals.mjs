@@ -68,7 +68,7 @@ function adminData(phase) {
 function invitesData(phase) {
   const rehearsal = phase === 'rehearsal';
   const sched = phase === 'scheduled' || rehearsal;
-  const preview = (name, status) => ({ title: status === 'confirmed' ? `${name}'s Reveal Day` : `${name}'s Reveal Day (tentative)`, status, start: { date: day(10) }, end: { date: day(11) }, location: status === 'confirmed' ? '100 Example Way, Atlanta, GA 30301, USA' : 'Atlanta, GA', locations: { tentative: 'Atlanta, GA', confirmed: '100 Example Way, Atlanta, GA 30301, USA' }, description: `This is the date for ${name}'s reveal.`, guests: [{ email: 'family@example.com', name: 'Pat Sample', kind: 'family' }, { email: 'cnielsen@soardcharity.com', name: 'Christian Nielsen', kind: 'staff' }] });
+  const preview = (name, status) => ({ title: status === 'confirmed' ? `${name}'s Reveal Day` : `${name}'s Reveal Day (tentative)`, status, start: { date: day(10) }, end: { date: day(11) }, location: '100 Example Way, Atlanta, GA 30301, USA', description: `This is the date for ${name}'s reveal.`, guests: [{ email: 'family@example.com', name: 'Pat Sample', kind: 'family' }, { email: 'cnielsen@soardcharity.com', name: 'Christian Nielsen', kind: 'staff' }] });
   return {
     ok: true,
     config: { enabled: true, organizer: 'ccunningham@soardcharity.com', template: DEFAULT_TEMPLATE, lastSweep: { at: iso(-60 * 60e3), checked: 20, changed: 0 } },
@@ -264,9 +264,8 @@ try {
   const [tent, conf] = cards;
   ok(/\(tentative\)/.test(tent) && /All day/.test(tent), 'the tentative preview is a name-first, all-day save-the-date');
   ok(/Lizzie's therapy room reveal is penciled in/.test(tent) && /sees the new therapy room/.test(conf), "{space} names what was built, from the job's Makeover Type");
-  ok(/Where\s*Atlanta, GA\b/.test(tent) && !/Example Way/.test(tent), 'the tentative preview shows the city, not the street');
+  ok(/Where\s*100 Example Way/.test(tent) && /Where\s*100 Example Way/.test(conf), 'both stages show the full address');
   ok(/Shows as\s*Free/.test(tent) && /Shows as\s*Busy/.test(conf), 'free until there is a confirmed time, then busy');
-  ok(/Example Way/.test(conf), 'the confirmed preview shows the full address');
   ok(/^Meet \w+: https:\/\/sunshineonaranneyday\.com\/kids\//m.test(tent) && /^Can't be there\? Watch live: /m.test(tent) && /^Questions\? Email ccunningham@soardcharity\.com$/m.test(tent), 'labeled links and who to ask, as the server writes them');
   const testUrls = [];
   inv.page.on('request', (r) => { if (r.url().includes('test=')) testUrls.push(r.url()); });

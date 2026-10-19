@@ -6,7 +6,7 @@ import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { generateKeyPairSync, createVerify } from 'node:crypto';
 import { createD1 } from './lib/d1-shim.mjs';
-import { guestGroups, fetchBoard, boardRoster, setBoardEmail, planInvite, reconcileJob, reconcileAll, sendTestInvite, writeConfig, readConfig, renderTemplate, listUpcoming, maybeSweep, maybeCheckGuests, realJobFor, cityOf, BY_HAND, DEFAULT_TEMPLATE, REVEAL_TASK_TYPE, FIELD_STATUS, FIELD_MAKEOVER_TYPE, FIELD_INVITE_DETAILS, FIELD_CONTACT_EMAIL } from '../functions/api/_reveal-invites.js';
+import { guestGroups, fetchBoard, boardRoster, setBoardEmail, planInvite, reconcileJob, reconcileAll, sendTestInvite, writeConfig, readConfig, renderTemplate, listUpcoming, maybeSweep, maybeCheckGuests, realJobFor, BY_HAND, DEFAULT_TEMPLATE, REVEAL_TASK_TYPE, FIELD_STATUS, FIELD_MAKEOVER_TYPE, FIELD_INVITE_DETAILS, FIELD_CONTACT_EMAIL } from '../functions/api/_reveal-invites.js';
 import { serviceAccountJwt, eventIdFor, clearTokenCache, parseServiceAccount } from '../functions/api/_google-calendar.js';
 import { FIELD_REVEAL_CONFIRMED } from '../functions/api/_reveals.js';
 
@@ -46,7 +46,7 @@ test('tentative invite once construction starts', () => {
   assert.equal(p.event.status, 'tentative');
   assert.deepEqual(p.event.start, { date: '2026-10-27' });
   assert.deepEqual(p.event.end, { date: '2026-10-28' });
-  assert.equal(p.event.location, 'Atlanta, GA', "a family's street address waits for a confirmed date");
+  assert.equal(p.event.location, '100 Example Way, Atlanta, GA 30301, USA', 'the full address from the first invite');
   assert.equal(p.event.transparency, 'transparent', 'a date that may move blocks no one');
   assert.equal(p.event.id, eventIdFor('soardreveal', '22PTestJob001'));
   assert.match(p.event.id, /^[a-v0-9]+$/, 'Google event ids allow a-v and 0-9 only');
@@ -65,19 +65,7 @@ test('a tentative invite is a save-the-date: no time, even when the Reveal task 
   const p = planInvite(job({ time: '16:00:00.000' }), STAFF, { kids: KIDS, now: NOW });
   assert.deepEqual(p.event.start, { date: '2026-10-27' });
   assert.equal(p.event.transparency, 'transparent');
-  assert.match(p.event.description, /The time and address come once the date is confirmed/);
-});
-
-test("the city, never the street: a street address that can't be told apart is left off", () => {
-  assert.equal(cityOf('100 Example Rd, Marietta, GA 30062, USA'), 'Marietta, GA');
-  assert.equal(cityOf('12 Oak St, Apt 3, Decatur, GA 30030'), 'Decatur, GA');
-  assert.equal(cityOf('Roswell, GA 30076-1234'), 'Roswell, GA');
-  assert.equal(cityOf('100 Example Rd, GA 30062'), null, 'no city: the street would be all that is left');
-  assert.equal(cityOf('100 Example Rd Marietta GA 30062'), null, 'no commas: no guess');
-  assert.equal(cityOf(''), null);
-  assert.equal(cityOf(null), null);
-  const p = planInvite({ ...job(), location: { ...job().location, address: '100 Example Rd Marietta GA' } }, STAFF, { kids: KIDS, now: NOW });
-  assert.equal(p.event.location, undefined, 'no location rather than a street');
+  assert.match(p.event.description, /The time comes once the date is confirmed/);
 });
 
 test('confirmed with a time becomes a timed, confirmed event in Eastern time', () => {
@@ -86,7 +74,7 @@ test('confirmed with a time becomes a timed, confirmed event in Eastern time', (
   assert.equal(p.event.status, 'confirmed');
   assert.deepEqual(p.event.start, { dateTime: '2026-10-27T16:00:00', timeZone: 'America/New_York' });
   assert.deepEqual(p.event.end, { dateTime: '2026-10-27T17:00:00', timeZone: 'America/New_York' });
-  assert.equal(p.event.location, '100 Example Way, Atlanta, GA 30301, USA', 'the full address once confirmed');
+  assert.equal(p.event.location, '100 Example Way, Atlanta, GA 30301, USA');
   assert.equal(p.event.transparency, 'opaque', 'a confirmed time is busy');
   assert.match(p.event.description, /^Max's bathroom reveal is confirmed for Tuesday, October 27 at 4:00 PM\./);
   assert.match(p.event.description, /Park on the street\./);
@@ -578,7 +566,7 @@ test('an invite sent before invites kept their facts is checked against the cale
   calls.length = 0;
   assert.equal((await reconcileJob(env, jt.id, { fetchImpl: fakeFetch, now: NOW })).action, 'updated quietly');
   assert.equal(events.get(id).summary, "Max's Reveal Day (tentative)");
-  assert.equal(events.get(id).location, 'Atlanta, GA');
+  assert.equal(events.get(id).location, ADDRESS);
 
   // The calendar has an older date: everyone hears about the move
   sent('tentative', { date: '2026-10-20' }, { date: '2026-10-21' });
@@ -644,7 +632,7 @@ test('the default wording, exactly', () => {
     '',
     "It's the moment Max sees the new bathroom for the first time.",
     '',
-    "If the build schedule shifts, this invite moves with it. The time and address come once the date is confirmed, so there's no need to reply until then.",
+    "If the build schedule shifts, this invite moves with it. The time comes once the date is confirmed, so there's no need to reply until then.",
     '',
     'Meet Max: https://sunshineonaranneyday.com/kids/max/',
     "Can't be there? Watch live: https://sunshineonaranneyday.com/live/max/",
@@ -678,6 +666,9 @@ test('wording saved word for word as an old default follows the new default; wor
   assert.equal(template.tentativeTitle, DEFAULT_TEMPLATE.tentativeTitle);
   assert.equal(template.tentativeMessage, DEFAULT_TEMPLATE.tentativeMessage);
   assert.equal(template.confirmedMessage, 'See you {when}!', 'chosen wording is kept');
+  // The October 2026 wording that still promised the address with the confirmation
+  await writeConfig(DB, { template: { ...template, tentativeMessage: "Save the date: {name}'s {space} reveal is penciled in for {date}.\n\nIt's the moment {name} sees the new {space} for the first time.\n\nIf the build schedule shifts, this invite moves with it. The time and address come once the date is confirmed, so there's no need to reply until then." } });
+  assert.equal((await readConfig(DB)).template.tentativeMessage, DEFAULT_TEMPLATE.tentativeMessage);
 });
 
 test('wording from admin fills in name, date and time', () => {
@@ -733,8 +724,7 @@ test('admin list: upcoming reveals with the exact invite each would send, guests
   assert.equal(max.slug, 'max');
   assert.equal(max.space, 'Bathroom', "the Makeover Type, for the wording preview's {space}");
   assert.equal(max.preview.title, "Max's Reveal Day (tentative)");
-  assert.equal(max.preview.location, 'Atlanta, GA');
-  assert.deepEqual(max.preview.locations, { tentative: 'Atlanta, GA', confirmed: '100 Example Way, Atlanta, GA 30301, USA' }, 'what each stage shows, for the wording preview');
+  assert.equal(max.preview.location, '100 Example Way, Atlanta, GA 30301, USA');
   assert.deepEqual(max.preview.guests, [
     { email: 'pat.sample@example.com', name: 'Pat Sample', kind: 'family' },
     { email: 'cnielsen@soardcharity.com', name: 'Christian Nielsen', kind: 'staff' },

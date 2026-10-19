@@ -6,12 +6,12 @@
  * updates and cancellations.
  *
  *   Construction started          → "Max's Reveal Day (tentative)": all day,
- *   (Demo done, or 2 tasks under    city only (no street address), shown as
- *   Construction done)              free, so a date that may move blocks no one
+ *   (Demo done, or 2 tasks under    shown as free, so a date that may move
+ *   Construction done)              blocks no one
  *   Reveal task moves             → the same event moves; guests get an update
  *   Reveal Date Confirmed = Yes   → the same event becomes "Max's Reveal Day":
- *                                   timed once the task has a time (then busy),
- *                                   with the full address
+ *                                   timed once the task has a time (then busy)
+ * Both carry the full address.
  * The site never cancels an invite. Calling a reveal off is done by hand:
  * someone deletes the event in Google Calendar (Google emails the guests), and
  * the site then leaves it alone for good (an admin's Retry sends it again).
@@ -197,7 +197,7 @@ export async function ensureSchema(DB) {
  */
 export const DEFAULT_TEMPLATE = {
   tentativeTitle: "{name}'s Reveal Day (tentative)",
-  tentativeMessage: "Save the date: {name}'s {space} reveal is penciled in for {date}.\n\nIt's the moment {name} sees the new {space} for the first time.\n\nIf the build schedule shifts, this invite moves with it. The time and address come once the date is confirmed, so there's no need to reply until then.",
+  tentativeMessage: "Save the date: {name}'s {space} reveal is penciled in for {date}.\n\nIt's the moment {name} sees the new {space} for the first time.\n\nIf the build schedule shifts, this invite moves with it. The time comes once the date is confirmed, so there's no need to reply until then.",
   confirmedTitle: "{name}'s Reveal Day",
   confirmedMessage: "{name}'s {space} reveal is confirmed for {when}.\n\nIt's the moment {name} sees the new {space} for the first time. Please reply so we know who to expect.",
 };
@@ -206,7 +206,10 @@ export const TEMPLATE_LIMITS = { tentativeTitle: 150, confirmedTitle: 150, tenta
 // word an old default was never chosen by anyone: it follows today's default.
 const RETIRED_DEFAULTS = {
   tentativeTitle: ["Tentative: {name}'s Reveal Day"],
-  tentativeMessage: ["This is a tentative date for {name}'s reveal while the build wraps up.\nThis invite updates automatically if the date moves, and the time is added once the reveal is confirmed."],
+  tentativeMessage: [
+    "This is a tentative date for {name}'s reveal while the build wraps up.\nThis invite updates automatically if the date moves, and the time is added once the reveal is confirmed.",
+    "Save the date: {name}'s {space} reveal is penciled in for {date}.\n\nIt's the moment {name} sees the new {space} for the first time.\n\nIf the build schedule shifts, this invite moves with it. The time and address come once the date is confirmed, so there's no need to reply until then.",
+  ],
   confirmedMessage: ["{name}'s reveal is confirmed for {when}."],
 };
 
@@ -384,17 +387,6 @@ function longDate(date) {
   return new Date(`${date}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' });
 }
 
-/**
- * "Marietta, GA" from "100 Example Rd, Marietta, GA 30062, USA". Null
- * when the city can't be told apart from the street, so a street never leaks.
- */
-export function cityOf(address) {
-  const parts = String(address || '').split(',').map(p => p.trim()).filter(Boolean);
-  const i = parts.findIndex(p => /^[A-Z]{2}(\s+\d{5}(-\d{4})?)?$/.test(p));
-  if (i < 1 || /\d/.test(parts[i - 1])) return null;
-  return `${parts[i - 1]}, ${parts[i].slice(0, 2)}`;
-}
-
 /** First name for the title: the matched kid's site name, else the job name's first word */
 function displayName(job, kids) {
   const kid = matchKid(job.name, kids);
@@ -496,8 +488,7 @@ export function planInvite(job, staff, { kids = [], board = [], organizer = DEFA
     id: eventIdFor('soardreveal', job.id),
     summary: fill(confirmed ? t.confirmedTitle : t.tentativeTitle).trim() || `${who.name}'s Reveal Day`,
     status: confirmed ? 'confirmed' : 'tentative',
-    // A family's home: the street address goes out only with a confirmed date
-    location: (confirmed ? address : cityOf(address)) || undefined,
+    location: address || undefined,
     description: lines.join('\n'),
     start: start ? { dateTime: `${date}T${start}:00`, timeZone: TZ } : { date },
     end: start ? { dateTime: `${date}T${end}:00`, timeZone: TZ } : { date: nextDay(date) },
@@ -1008,8 +999,6 @@ export async function listUpcoming(env, { fetchImpl = fetch, now = Date.now() } 
       start: plan.event.start,
       end: plan.event.end,
       location: plan.event.location || null,
-      // Where each stage's invite says it is: the city until confirmed, then the address
-      locations: { tentative: cityOf(job.location?.address) || null, confirmed: job.location?.address || null },
       description: plan.event.description,
       guests: plan.guests.map(email => ({ email, name: plan.people[email]?.name || staffNames[email] || null, kind: plan.people[email]?.kind || 'staff' })),
       // Who confirming the reveal adds (vendors, sponsors, photographers…)

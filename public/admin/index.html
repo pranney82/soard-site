@@ -6282,7 +6282,7 @@
         return html`<${InviteCard}
           title=${fillInvite(template[kind + 'Title'], { name: sample.name, space: sample.space, date: sample.date, time })}
           status=${kind} start=${start} end=${end}
-          location=${sample.preview?.locations?.[kind] ?? sample.preview?.location ?? null}
+          location=${sample.preview?.location || null}
           description=${inviteDescription(template, kind, sample, time, config.organizer)}
           organizer=${organizer} />`;
       };
