@@ -147,8 +147,9 @@ export function writeCollection(dir, rows, { deleteRemoved = false } = {}) {
 
 // Runtime-only site_config keys — served live from D1 (never read at build
 // time), so writing them to src/content would just churn git on every build.
-// The schedule lock holds a bare number, which the site collection's schema would reject.
-const RUNTIME_ONLY_KEYS = new Set(['live-status', 'broadcast', 'broadcast-config', 'broadcast-health', 'broadcast-schedule', 'broadcast-schedule-lock']);
+// The schedule lock and the invite guest check hold bare numbers, which the site
+// collection's schema would reject.
+const RUNTIME_ONLY_KEYS = new Set(['live-status', 'broadcast', 'broadcast-config', 'broadcast-health', 'broadcast-schedule', 'broadcast-schedule-lock', 'reveal-invites-guest-check']);
 
 // ── Write site config to disk ──────────────────────────────────────
 export function writeSiteConfig(siteRows) {
@@ -158,6 +159,12 @@ export function writeSiteConfig(siteRows) {
     if (RUNTIME_ONLY_KEYS.has(row.key)) continue;
     const filePath = join(siteDir, `${row.key}.json`);
     let data = safeParse(row.data);
+    // Astro fails the whole build on a site entry that isn't an object, so a
+    // runtime value nobody listed above is skipped instead of breaking every deploy
+    if (!data || typeof data !== 'object' || Array.isArray(data)) {
+      console.warn(`  ⚠ site/${row.key}: not an object, skipped (add it to RUNTIME_ONLY_KEYS if it's runtime state)`);
+      continue;
+    }
     if (row.key === 'settings') data = deepMerge(SETTINGS_DEFAULTS, data);
     writeFileSync(filePath, JSON.stringify(data, null, 2) + '\n');
   }
