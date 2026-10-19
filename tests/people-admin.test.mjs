@@ -238,3 +238,23 @@ test('a stale editor can’t bring back a renamed or deleted person', async () =
   const fresh = await save({ path: 'src/content/team/brand-new.json', content: JSON.stringify({ slug: 'brand-new', name: 'New', group: 'team', title: 'x' }), message: 'Add' });
   assert.equal(fresh.status, 200, 'adding someone (no sha yet) still works');
 });
+
+// ── Profile pages ──
+
+test('a profile page needs a bio and a place on the Leadership page', async () => {
+  const { hasProfile, profilePath, bioParagraphs, portraitTransform } = await import('../public/admin/team-shared.js');
+  const P = (d) => normalizePerson({ name: 'A B', title: 'x', group: 'board', ...d });
+  assert.equal(hasProfile(P({ bio: 'Hello.' })), true);
+  assert.equal(hasProfile(P({ bio: '   ' })), false, 'whitespace isn\'t a bio');
+  assert.equal(hasProfile(P({ bio: 'Hello.', publishStatus: 'draft' })), false, 'a draft has no page');
+  assert.equal(hasProfile(P({ bio: 'Hello.', status: 'alumni' })), false, 'alumni have no page');
+  assert.equal(hasProfile(P({ bio: 'Hello.', status: 'memorial' })), true, 'a memorial keeps theirs');
+  assert.equal(profilePath('scott-wierson'), '/about/leadership/scott-wierson/');
+  assert.deepEqual(bioParagraphs('One\nline.\n\n  Two.  \n\n\n'), ['One line.', 'Two.']);
+  assert.equal(portraitTransform({ photo: 'team/a/1' }, 640), 'w=640,h=800,fit=cover,gravity=face,q=82,metadata=none');
+  // A square framing grows into 4:5 around the same center, inside the photo
+  assert.equal(portraitTransform({ photo: 'team/a/1', photoSize: [1000, 1000], photoCrop: { x: 0.2, y: 0.2, size: 0.4 } }, 400),
+    'trim=150;400;350;200,w=400,h=500,fit=cover,q=82,metadata=none');
+  assert.equal(portraitTransform({ photo: 'team/a/1', photoSize: [1000, 600], photoCrop: { x: 0, y: 0, size: 0.6 } }, 400),
+    'trim=0;460;0;60,w=400,h=500,fit=cover,q=82,metadata=none', 'too tall for the photo: the height fits, the width follows, still centered on the framing');
+});

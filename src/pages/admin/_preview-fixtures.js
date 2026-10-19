@@ -105,17 +105,42 @@ const pressLogos = [{ id: 'tpl-outlet', data: { name: 'Template Outlet', slug: '
 const person = (slug, data) => ({ id: slug, data: { slug, order: 0, ...data } });
 const teamAll = [
   person('tpl-founder-a', { name: 'Template Founder', title: 'Co-Founder/President', group: 'team', role: 'founder', photo: 'team-template/founder' }),
-  person('tpl-founder-b', { name: 'Template Founder Two', title: 'Co-Founder', group: 'team', role: 'founder', order: 1 }),
+  person('tpl-founder-b', { name: 'Template Founder Two', title: 'Co-Founder', group: 'team', role: 'founder', order: 1, bio: 'Template bio.' }),
   person('tpl-staff-a', { name: 'Template Staff', title: 'Template Role', organization: 'Template Org', group: 'team', role: 'staff', order: 2,
     photo: 'team-template/staff', photoSize: [1200, 1600], photoCrop: { x: 0.1, y: 0.2, size: 0.7 }, photoCutout: true }),
-  person('tpl-staff-b', { name: 'Template Staff Two', title: 'Template Role', group: 'team', role: 'staff', order: 3 }),
+  person('tpl-staff-b', { name: 'Template Staff Two', title: 'Template Role', group: 'team', role: 'staff', order: 3, bio: 'Template bio.' }),
   person('tpl-honorary', { name: 'Template Greeter', title: 'Chief Greeter', group: 'team', role: 'honorary', photo: 'team-template/honorary' }),
   person('tpl-draft', { name: 'Template Draft', title: 'Template Role', group: 'team', role: 'staff', publishStatus: 'draft' }),
   person('tpl-chair', { name: 'Template Chair', title: 'Board Chair', organization: 'Template Company, CEO', group: 'board', seat: 'chair', order: 4, photo: 'team-template/chair' }),
   person('tpl-member', { name: 'Template Member', title: 'Board Member', group: 'board', seat: '', order: 1 }),
+  person('tpl-member-bio', { name: 'Template Profiled', title: 'Board Member', organization: 'Template Company', group: 'board', seat: '', order: 2, photo: 'team-template/profiled',
+    bio: 'Template first paragraph.\n\nTemplate second paragraph.', quote: 'Template quote.', linkedin: 'https://www.linkedin.com/in/template', committees: ['Template Committee'], since: 2020 }),
   person('tpl-memorial', { name: 'Template Remembered', title: 'Board Member 2020-2024', organization: 'Template Company', group: 'board', status: 'memorial', photo: 'team-template/memorial', photoCutout: true }),
   person('tpl-alumna', { name: 'Template Alumna', title: 'Board Member', group: 'board', status: 'alumni', until: 2025 }),
 ];
+
+// Profile pages (person-template): full has every part (photo with a cutout
+// and crop, company logo, years, committees, LinkedIn, quote, two others with
+// profiles, one without a photo); plain has none of the optional parts;
+// memorial switches the wording
+const profileFull = {
+  name: 'Template Profile', slug: 'tpl-profile', title: 'Board Chair', seat: 'chair', organization: 'Template Company, CEO', group: 'board', order: 0,
+  photo: 'team-template/profile', photoSize: [1200, 1600], photoCrop: { x: 0.1, y: 0.15, size: 0.8 }, photoCutout: true,
+  bio: 'Template first paragraph.\n\nTemplate second\nparagraph.', quote: 'Template quote.', linkedin: 'https://www.linkedin.com/in/template',
+  committees: ['Template Committee', 'Second Committee'], since: 2019, partner: 'tpl-partner',
+};
+const profileOthers = [
+  { name: 'Template Other', slug: 'tpl-other', title: 'Board Member', group: 'board', order: 1, photo: 'team-template/other', bio: 'Template bio.' },
+  { name: 'Template Nophoto', slug: 'tpl-nophoto', title: 'Board Member', group: 'board', order: 2, bio: 'Template bio.' },
+  { name: 'Template Hidden', slug: 'tpl-hidden', title: 'Board Member', group: 'board', order: 3, bio: 'Template bio.', publishStatus: 'draft' },
+];
+const profilePlain = { name: 'Template', slug: 'tpl-plain', title: 'Template Role', group: 'team', role: 'staff', order: 0, bio: 'Only a paragraph.' };
+const profileMemorial = {
+  name: 'Template Remembered', slug: 'tpl-remembered', title: 'Board Member 2015-2024', group: 'board', status: 'memorial', order: 4,
+  photo: 'team-template/remembered', bio: 'Template bio.', quote: 'Template words.', linkedin: 'https://www.linkedin.com/in/template', since: 2015, until: 2024,
+};
+const asEntries = (list) => list.map((d) => ({ id: d.slug, data: d }));
+const profilePartners = [{ id: 'tpl-partner', data: { name: 'Template Partner', slug: 'tpl-partner', logo: 'partners-template/logo' } }];
 
 export const FIXTURES = {
   kid: {
@@ -143,5 +168,11 @@ export const FIXTURES = {
   press: Object.fromEntries(Object.keys(pressFeatured).map((first) => [first, { collection: pressFor(first), mediaLogos: pressLogos }])),
   team: {
     full: { collection: teamAll },
+  },
+  // Item pages: the person, with the whole collection (for "More of our board") and partners
+  person: {
+    full: { item: profileFull, collection: asEntries([profileFull, ...profileOthers]), partners: profilePartners },
+    plain: { item: profilePlain, collection: asEntries([profilePlain]), partners: profilePartners },
+    memorial: { item: profileMemorial, collection: asEntries([profileFull, profileMemorial]), partners: profilePartners },
   },
 };

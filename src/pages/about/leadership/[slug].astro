@@ -1,0 +1,507 @@
+---
+/**
+ * A person's profile: /about/leadership/<slug>/
+ * Built only for someone on the Leadership page who has a bio (hasProfile in
+ * src/utils/team.ts); everyone else stays a card. Editorial split hero (the
+ * site's pattern for new pages), their bio beside the details, their "why I
+ * serve" in their words, and others with profiles. The admin's Preview
+ * template (src/pages/admin/person-template/) renders this file with made-up
+ * people through the `team` and `partners` props.
+ */
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import { getCollection } from 'astro:content';
+import { cfUrl } from '../../../utils/cf-image';
+import {
+  normalizePerson, hasProfile, comparePeople, profilePath, bioParagraphs,
+  portraitUrl, portraitSrcset, photoUrl, photoSrcset, photoLqip,
+} from '../../../utils/team';
+import type { PersonData } from '../../../utils/team';
+
+export async function getStaticPaths() {
+  const all = await getCollection('team');
+  return all
+    .filter((t) => hasProfile(normalizePerson(t.data as PersonData)))
+    .map((t) => ({ params: { slug: t.id }, props: { slug: t.id } }));
+}
+
+const { slug } = Astro.props as { slug: string };
+const allTeam: { id: string; data: PersonData }[] = Astro.props.team ?? await getCollection('team');
+const allPartners: { id: string; data: { name: string; slug?: string; logo?: string } }[] = Astro.props.partners ?? await getCollection('partners');
+const people = allTeam.map((t) => ({ id: t.id, data: normalizePerson(t.data) }));
+const me = people.find((t) => t.id === slug)!;
+const p = me.data;
+const board = p.group === 'board';
+const memorial = p.status === 'memorial';
+const first = p.name.split(/\s+/)[0];
+const nameParts = p.name.trim().split(/\s+/);
+const lastName = nameParts.length > 1 ? nameParts.pop() : '';
+const firstNames = nameParts.join(' ');
+const shownTitle = p.role === 'founder' ? p.title.replace(/Co-Founder\/?/i, '').trim() || p.title : p.title;
+const eyebrow = memorial ? 'In memoriam' : board ? 'Board of Directors' : p.role === 'founder' ? 'Co-Founder' : 'Our Team';
+const paragraphs = bioParagraphs(p.bio);
+const partner = p.partner ? allPartners.find((x) => (x.data.slug || x.id) === p.partner) : null;
+const since = typeof p.since === 'number' ? p.since : null;
+const until = typeof p.until === 'number' ? p.until : null;
+const stat = since
+  ? { num: memorial && until ? `${since}–${until}` : String(since), label: memorial ? (board ? 'served on<br/>the board' : 'with<br/>SOARD') : board ? 'on the board<br/>since' : 'with SOARD<br/>since' }
+  : null;
+const others = people
+  .filter((t) => t.id !== slug && t.data.group === p.group && hasProfile(t.data))
+  .sort((a, b) => comparePeople(a.data, b.data))
+  .slice(0, 4);
+const groupLabel = board ? 'board' : 'team';
+const backHref = `/about/leadership/#${board ? 'board' : 'our-team'}`;
+
+const SITE = 'https://sunshineonaranneyday.com';
+const canonical = `${SITE}${profilePath(slug)}`;
+const firstPara = paragraphs[0] || `${p.name}, ${shownTitle} at Sunshine on a Ranney Day.`;
+const description = firstPara.length > 155 ? `${firstPara.slice(0, 154).replace(/\s+\S*$/, '')}…` : firstPara;
+const breadcrumbs = [
+  { name: 'Home', url: `${SITE}/` },
+  { name: 'About', url: `${SITE}/about/` },
+  { name: 'Leadership', url: `${SITE}/about/leadership/` },
+  { name: p.name, url: canonical },
+];
+const personLd = {
+  '@type': 'Person',
+  '@id': `${canonical}#person`,
+  name: p.name,
+  jobTitle: shownTitle,
+  description: paragraphs[0] || undefined,
+  image: p.photo ? portraitUrl(p, 640) : undefined,
+  url: canonical,
+  sameAs: p.linkedin ? [p.linkedin] : undefined,
+  affiliation: { '@id': `${SITE}/#organization` },
+};
+---
+
+<BaseLayout
+  title={`${p.name}, ${shownTitle}`}
+  description={description}
+  breadcrumbs={breadcrumbs}
+  jsonLd={personLd}
+  ogImage={`/og/people/${slug}.png`}
+>
+
+  <!-- ══════ HERO: editorial split (no data-reveal: LCP) ══════ -->
+  <section class={memorial ? 'hero hero--memorial' : 'hero'}>
+    <div class="hero-inner">
+      <div class="hero-text">
+        <p class="hero-eyebrow">{eyebrow}</p>
+        <h1>{firstNames}{lastName ? ' ' : ''}{lastName && <em>{lastName}</em>}</h1>
+        <p class="hero-lead">
+          <span class="hero-role">{shownTitle}</span>
+          {p.organization && <span class="hero-org">{p.organization}</span>}
+        </p>
+        <div class="hero-ctas">
+          <a href={backHref} class="btn btn-primary btn-lg">Meet the {board ? 'Board' : 'Team'}</a>
+          {p.linkedin && !memorial && (
+            <a href={p.linkedin} class="btn btn-outline-dark" target="_blank" rel="noopener noreferrer">
+              LinkedIn
+              <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
+              <span class="sr-only">(opens LinkedIn)</span>
+            </a>
+          )}
+        </div>
+      </div>
+      <div class="hero-frame">
+        <div class="hero-accent" aria-hidden="true"></div>
+        <div class="hero-photo" style={p.photo ? `background-image:url('${photoLqip(p)}')` : undefined}>
+          {p.photo ? (
+            <img
+              src={portraitUrl(p, 640)}
+              srcset={portraitSrcset(p, [400, 640, 800, 1024])}
+              sizes="(max-width: 960px) 80vw, 420px"
+              alt={memorial ? `In memory of ${p.name}` : p.name}
+              width="640" height="800"
+              fetchpriority="high" loading="eager" decoding="async"
+            />
+          ) : (
+            <div class="hero-placeholder">
+              <img src={cfUrl('brand-logo-circle-display', { w: 256 })} alt="" width="256" height="256" />
+            </div>
+          )}
+        </div>
+        {partner?.data.logo && (
+          <a class="hero-logo" href="/partners/" aria-label={`${partner.data.name}, a SOARD partner`}>
+            <img src={cfUrl(partner.data.logo, { w: 240, h: 160, fit: 'contain' })} alt="" width="240" height="160" loading="lazy" decoding="async" />
+          </a>
+        )}
+      </div>
+    </div>
+    {stat && (
+      <div class="hero-stat">
+        <span class="hero-stat-num">{stat.num}</span>
+        <span class="hero-stat-label" set:html={stat.label} />
+      </div>
+    )}
+  </section>
+
+  <!-- ══════ BIO + DETAILS ══════ -->
+  <section class="section section--white bio" aria-labelledby="bio-heading">
+    <div class="container bio-grid">
+      <div class="bio-text">
+        <h2 class="section-label" id="bio-heading">About {first}</h2>
+        {paragraphs.map((para) => <p>{para}</p>)}
+      </div>
+      <aside class="facts" aria-label={`${p.name} at a glance`}>
+        <dl>
+          <div class="fact">
+            <dt>Role</dt>
+            <dd>{shownTitle}{p.role === 'founder' ? ', Co-Founder' : ''}</dd>
+          </div>
+          {p.organization && (
+            <div class="fact">
+              <dt>{board ? 'Company' : 'Organization'}</dt>
+              <dd>
+                {p.organization}
+                {partner && <a class="fact-partner" href="/partners/">A SOARD partner</a>}
+              </dd>
+            </div>
+          )}
+          {since && (
+            <div class="fact">
+              <dt>{board ? 'On the board' : 'With SOARD'}</dt>
+              <dd>{memorial && until ? `${since} to ${until}` : `Since ${since}`}</dd>
+            </div>
+          )}
+          {board && p.committees && p.committees.length > 0 && (
+            <div class="fact">
+              <dt>{p.committees.length === 1 ? 'Committee' : 'Committees'}</dt>
+              <dd><ul class="fact-chips">{p.committees.map((c) => <li>{c}</li>)}</ul></dd>
+            </div>
+          )}
+          {p.linkedin && !memorial && (
+            <div class="fact">
+              <dt>LinkedIn</dt>
+              <dd><a href={p.linkedin} target="_blank" rel="noopener noreferrer">View profile<span class="sr-only"> (opens LinkedIn)</span></a></dd>
+            </div>
+          )}
+        </dl>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ══════ IN THEIR WORDS ══════ -->
+  {p.quote && p.quote.trim() && (
+    <section class="words" aria-label={memorial ? 'In their words' : `Why ${first} serves`}>
+      <div class="container">
+        <figure class="words-quote">
+          <p class="words-label">{memorial ? 'In their words' : 'Why I serve'}</p>
+          <svg class="words-mark" aria-hidden="true" width="44" height="33" viewBox="0 0 32 24" fill="none"><path d="M0 24V14.4C0 10.4 0.8 7.2 2.4 4.8C4.1 2.4 6.9 0.5 10.8 0L12 3.6C9.7 4.3 8.1 5.4 7.1 6.9C6.1 8.4 5.6 10.1 5.6 12H12V24H0ZM20 24V14.4C20 10.4 20.8 7.2 22.4 4.8C24.1 2.4 26.9 0.5 30.8 0L32 3.6C29.7 4.3 28.1 5.4 27.1 6.9C26.1 8.4 25.6 10.1 25.6 12H32V24H20Z" fill="currentColor"/></svg>
+          <blockquote><p>{p.quote.trim()}</p></blockquote>
+          <figcaption>{p.name}</figcaption>
+        </figure>
+      </div>
+    </section>
+  )}
+
+  <!-- ══════ MORE PEOPLE ══════ -->
+  {others.length > 0 && (
+    <section class="section section--cream more" aria-labelledby="more-heading">
+      <div class="container">
+        <div class="more-head">
+          <h2 class="section-label" id="more-heading">More of our {groupLabel}</h2>
+          <a class="more-all" href={backHref}>See the whole {groupLabel} <span aria-hidden="true">&rarr;</span></a>
+        </div>
+        <ul class="more-grid">
+          {others.map((o) => (
+            <li class="more-card">
+              <div class="more-photo" style={o.data.photo ? `background-image:url(${photoLqip(o.data)});background-size:cover;background-position:center` : undefined}>
+                {o.data.photo && (
+                  <img src={photoUrl(o.data, 160)} srcset={photoSrcset(o.data, [120, 160, 240, 320])} sizes="120px" alt="" width="160" height="160" loading="lazy" decoding="async" />
+                )}
+              </div>
+              <a class="more-name" href={profilePath(o.id)}>{o.data.name}</a>
+              <p class="more-title">{o.data.role === 'founder' ? o.data.title.replace(/Co-Founder\/?/i, '').trim() || o.data.title : o.data.title}</p>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </section>
+  )}
+
+  <!-- ══════ CTA ══════ -->
+  <section class="section section--dark cta">
+    <div class="container cta-inner">
+      <h2 class="cta-heading">Want to <span class="highlight">join the mission</span>?</h2>
+      <p class="cta-text">Every room is built by people who give their time, their skills and their support. There's a place for you too.</p>
+      <div class="cta-buttons">
+        <a href="/donate/" class="btn btn-primary btn-lg">Donate</a>
+        <a href="/advisory-board/" class="btn btn-ghost-light btn-lg">Join the Advisory Board</a>
+      </div>
+    </div>
+  </section>
+</BaseLayout>
+
+<style>
+  /* ══ HERO: the editorial split used across the site (apply.astro is the reference) ══ */
+  @keyframes heroUp { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes heroSlide { from { transform: translateY(12px); } to { transform: translateY(0); } }
+  @keyframes heroPhotoIn { from { opacity: 0; transform: scale(0.97); } to { opacity: 1; transform: scale(1); } }
+  @keyframes accentIn { from { opacity: 0; transform: scale(0.85); } to { opacity: 0.35; transform: scale(1); } }
+
+  .hero {
+    background: var(--c-cream);
+    padding: clamp(80px, 10vw, 140px) 0 clamp(64px, 8vw, 100px);
+    position: relative;
+    contain: layout style;
+    min-height: clamp(480px, 70vh, 720px);
+    overflow: hidden;
+  }
+  .hero-inner {
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding: 0 var(--space-xl);
+    display: grid;
+    grid-template-columns: 1.15fr 0.85fr;
+    gap: clamp(40px, 5vw, 80px);
+    align-items: center;
+  }
+  .hero-eyebrow {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--c-text-muted);
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .hero-eyebrow::before { content: ''; width: 28px; height: 2px; background: currentColor; flex-shrink: 0; }
+  .hero-text h1 {
+    font-size: clamp(2.5rem, 6vw, 4.5rem);
+    letter-spacing: -0.035em;
+    line-height: 1.04;
+    color: var(--c-text);
+    margin-bottom: 24px;
+    animation: heroSlide 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  .hero-text h1 em {
+    font-style: italic;
+    background-image: linear-gradient(transparent 52%, var(--c-yellow-soft) 52%);
+    background-repeat: no-repeat;
+    background-size: 100% 100%;
+    padding: 0 0.05em;
+  }
+  .hero-lead {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: clamp(16px, 1.6vw, 19px);
+    color: var(--c-text-muted);
+    line-height: 1.5;
+    margin-bottom: 36px;
+    max-width: 480px;
+    opacity: 0;
+    animation: heroUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.15s both;
+  }
+  .hero-role { font-weight: 600; color: var(--c-text); }
+  .hero-ctas {
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+    opacity: 0;
+    animation: heroUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.25s both;
+  }
+  .hero-ctas .btn { display: inline-flex; align-items: center; gap: 8px; }
+  .hero-frame { position: relative; max-width: 440px; margin-left: auto; width: 100%; animation: heroPhotoIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) both; }
+  .hero-accent {
+    position: absolute;
+    bottom: -16px;
+    right: -16px;
+    width: 65%;
+    height: 50%;
+    background: var(--c-yellow);
+    border-radius: 24px;
+    z-index: 0;
+    opacity: 0;
+    animation: accentIn 1s cubic-bezier(0.16, 1, 0.3, 1) 0.7s both;
+  }
+  .hero-photo {
+    position: relative;
+    z-index: 1;
+    aspect-ratio: 4 / 5;
+    border-radius: 24px;
+    overflow: hidden;
+    background-color: var(--c-warm-gray);
+    background-size: cover;
+    background-position: center;
+    box-shadow: 0 32px 80px rgba(0, 0, 0, 0.12), 0 8px 24px rgba(0, 0, 0, 0.06);
+  }
+  .hero-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .hero-placeholder { width: 100%; height: 100%; display: grid; place-items: center; }
+  .hero-placeholder img { width: 50%; height: auto; opacity: 0.5; }
+  /* Their company's logo, where the pattern's small photo sits */
+  .hero-logo {
+    position: absolute;
+    bottom: -24px;
+    left: -32px;
+    width: 40%;
+    aspect-ratio: 3 / 2;
+    z-index: 2;
+    display: grid;
+    place-items: center;
+    padding: 14px;
+    background: #fff;
+    border: 4px solid var(--c-cream);
+    border-radius: 18px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.06), 0 12px 36px rgba(0, 0, 0, 0.12);
+    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .hero-logo img { width: 100%; height: 100%; object-fit: contain; }
+  @media (hover: hover) { .hero-logo:hover { transform: translateY(-3px); } }
+  .hero-stat {
+    position: absolute;
+    bottom: clamp(24px, 4vw, 48px);
+    right: clamp(24px, 6vw, 80px);
+    background: var(--c-dark);
+    color: #fff;
+    padding: 16px 24px;
+    border-radius: var(--border-radius-lg);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.08), 0 16px 48px rgba(0, 0, 0, 0.15);
+    z-index: 3;
+  }
+  .hero-stat-num { font-family: var(--font-display); font-size: clamp(28px, 3vw, 40px); font-weight: 700; color: var(--c-yellow); line-height: 1; }
+  .hero-stat-label { font-size: 12px; font-weight: 600; line-height: 1.35; color: rgba(255, 255, 255, 0.6); text-transform: uppercase; letter-spacing: 0.06em; }
+
+  /* ══ BIO + DETAILS ══ */
+  .bio-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 320px;
+    gap: clamp(40px, 6vw, 96px);
+    align-items: start;
+  }
+  .bio-text { max-width: 64ch; }
+  .bio-text .section-label { margin-bottom: var(--space-lg); }
+  .bio-text p {
+    font-size: clamp(17px, 1.5vw, 19px);
+    line-height: 1.75;
+    color: var(--c-text);
+    margin-bottom: 1.2em;
+  }
+  .bio-text p:first-of-type::first-letter {
+    font-family: var(--font-display);
+    float: left;
+    font-size: 3.4em;
+    line-height: 0.85;
+    padding: 0.08em 0.1em 0 0;
+    color: var(--c-text);
+  }
+  .facts {
+    position: sticky;
+    top: calc(var(--header-height, 80px) + 24px);
+    background: var(--c-cream);
+    border: 1px solid var(--c-border);
+    border-radius: var(--border-radius-lg, 20px);
+    padding: 24px 26px;
+  }
+  .facts dl { display: flex; flex-direction: column; gap: 18px; }
+  .fact dt {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--c-text-muted);
+    margin-bottom: 4px;
+  }
+  .fact dd { font-size: 16px; line-height: 1.5; color: var(--c-text); }
+  .fact dd a { color: var(--c-text); text-decoration: underline; text-decoration-color: var(--c-yellow); text-decoration-thickness: 2px; text-underline-offset: 3px; }
+  .fact-partner { display: block; width: fit-content; margin-top: 4px; font-size: 14px; }
+  /* Links in the details: a full tap target without moving the text */
+  .fact dd a { display: inline-block; padding-block: 11px; margin-block: -11px; }
+  .fact dd .fact-partner { margin-top: -7px; }
+  .fact-chips { display: flex; flex-wrap: wrap; gap: 6px; list-style: none; padding: 0; margin: 0; }
+  .fact-chips li { font-size: 13px; font-weight: 600; padding: 4px 12px; border-radius: 100px; background: var(--c-white, #fff); border: 1px solid var(--c-border); }
+
+  /* ══ IN THEIR WORDS ══ */
+  .words { background: var(--c-dark); padding-block: clamp(64px, 9vw, 120px); }
+  .words-quote { max-width: 760px; margin: 0 auto; text-align: center; }
+  .words-label { font-size: 12px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--c-yellow); margin-bottom: 20px; }
+  .words-mark { display: block; margin: 0 auto 20px; color: var(--c-yellow); opacity: 0.35; }
+  .words-quote blockquote p {
+    font-family: var(--font-display);
+    font-size: clamp(1.35rem, 3vw, 2rem);
+    font-style: italic;
+    line-height: 1.5;
+    color: var(--c-white, #fff);
+  }
+  .words-quote figcaption {
+    margin-top: 28px;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.72);
+  }
+
+  /* ══ MORE PEOPLE ══ */
+  .more-head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: var(--space-2xl); }
+  .more-all { font-weight: 600; color: var(--c-text); text-decoration: underline; text-decoration-color: var(--c-yellow); text-decoration-thickness: 2px; text-underline-offset: 4px; }
+  .more-grid { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-xl); }
+  .more-card { position: relative; text-align: center; }
+  .more-photo {
+    width: 120px;
+    aspect-ratio: 1;
+    margin: 0 auto var(--space-md);
+    border-radius: 50%;
+    overflow: hidden;
+    background-color: var(--c-warm-gray);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+    transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .more-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .more-name { font-family: var(--font-display); font-size: 1.05rem; font-weight: 700; color: var(--c-text); }
+  /* The name is the card's link */
+  .more-name::after { content: ''; position: absolute; inset: 0; }
+  .more-name:focus-visible { outline: none; }
+  .more-card:has(.more-name:focus-visible) { outline: 3px solid var(--c-yellow); outline-offset: 6px; border-radius: 12px; }
+  .more-title { font-size: 0.85rem; color: var(--c-text-muted); margin-top: 0.15rem; }
+  @media (hover: hover) {
+    .more-card:hover .more-photo { transform: scale(1.04) translateY(-4px); }
+    .more-card:hover .more-name { text-decoration: underline; text-decoration-color: var(--c-yellow); text-decoration-thickness: 2px; text-underline-offset: 3px; }
+  }
+
+  /* ══ CTA ══ */
+  .cta-inner { text-align: center; }
+  .cta-heading { font-family: var(--font-display); font-size: clamp(1.5rem, 4vw, 2.25rem); color: var(--c-white, #fff); margin-bottom: var(--space-md); }
+  .cta-text { font-size: 1.1rem; color: rgba(255, 255, 255, 0.7); max-width: 560px; margin: 0 auto var(--space-xl); line-height: 1.7; }
+  .cta-buttons { display: flex; gap: var(--space-md); justify-content: center; flex-wrap: wrap; }
+
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+  /* ══ RESPONSIVE (matches apply.astro's hero) ══ */
+  @media (max-width: 960px) {
+    .hero-inner { grid-template-columns: 1fr; gap: 40px; text-align: center; }
+    .hero-eyebrow { justify-content: center; }
+    .hero-lead { margin-inline: auto; align-items: center; }
+    .hero-ctas { justify-content: center; }
+    .hero-frame { max-width: 380px; margin: 0 auto; }
+    .hero-stat { position: relative; bottom: auto; right: auto; margin: -20px auto 0; width: fit-content; }
+    /* Like the pattern's small photo on phones: the stat badge takes that corner, and the company stays in the details */
+    .hero-logo { display: none; }
+    .bio-grid { grid-template-columns: 1fr; }
+    .facts { position: static; }
+    .more-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  @media (max-width: 768px) {
+    .hero { padding-top: clamp(48px, 8vw, 80px); padding-bottom: var(--space-xl); min-height: auto; }
+    .hero-text h1 { font-size: clamp(2.25rem, 10vw, 3rem); }
+    .hero-photo { border-radius: 18px; }
+    .hero-accent { bottom: -12px; right: -12px; border-radius: 18px; }
+    .hero-frame { max-width: 300px; }
+    .hero-ctas .btn { flex: 1 1 auto; justify-content: center; min-height: 48px; }
+    .facts { padding: 20px; }
+    .more-photo { width: 96px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .hero-lead, .hero-ctas, .hero-frame { opacity: 1; transform: none; animation: none; }
+    .hero-text h1 { animation: none; }
+    .hero-accent { opacity: 0.35; animation: none; }
+    .more-photo, .hero-logo { transition: none; }
+  }
+</style>

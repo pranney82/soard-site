@@ -1,0 +1,17 @@
+---
+/**
+ * Profile page template for the admin Preview (behind Access with the rest of
+ * /admin/, and kept out of the sitemap). A Leadership profile rendered with
+ * the made-up people in ../_preview-fixtures.js; between the variants every
+ * part of the page exists for public/admin/person-preview.js to clone.
+ */
+import ProfilePage from '../../about/leadership/[slug].astro';
+import { FIXTURES } from '../_preview-fixtures.js';
+
+export function getStaticPaths() {
+  return Object.keys(FIXTURES.person).map((variant) => ({ params: { variant } }));
+}
+
+const { item, collection, partners } = FIXTURES.person[Astro.params.variant as keyof typeof FIXTURES.person];
+---
+<ProfilePage slug={item.slug} team={collection} partners={partners} />

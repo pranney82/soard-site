@@ -7,7 +7,7 @@
 import PageLayout from '../../layouts/PageLayout.astro';
 import { getCollection } from 'astro:content';
 import { cfUrl } from '../../utils/cf-image';
-import { normalizePerson, isListed, comparePeople, photoUrl, photoSrcset, photoLqip } from '../../utils/team';
+import { normalizePerson, isListed, comparePeople, photoUrl, photoSrcset, photoLqip, hasProfile, profilePath } from '../../utils/team';
 import type { PersonData } from '../../utils/team';
 import { getSiteStats } from '../../utils/stats';
 
@@ -81,7 +81,7 @@ const breadcrumbs = [
 
       <div class="board-grid">
         {boardMembers.map((member, i) => (
-          <div class={member.data.status === 'memorial' ? 'board-card board-card--memorial' : 'board-card'} data-reveal data-delay={String(Math.min(i, 4))}>
+          <div class={['board-card', member.data.status === 'memorial' && 'board-card--memorial', hasProfile(member.data) && 'has-profile'].filter(Boolean).join(' ')} data-reveal data-delay={String(Math.min(i, 4))}>
             <div class="board-photo" style={member.data.photo ? `background-image:url(${photoLqip(member.data)});background-size:cover;background-position:center` : undefined}>
               {member.data.photo ? (
                 <img
@@ -100,11 +100,12 @@ const breadcrumbs = [
               )}
             </div>
             {member.data.status === 'memorial' && <p class="board-memorial">In memoriam</p>}
-            <h3 class="board-name">{member.data.name}</h3>
+            <h3 class="board-name">{hasProfile(member.data) ? <a class="card-link" href={profilePath(member.id)}>{member.data.name}</a> : member.data.name}</h3>
             <p class="board-title">{member.data.title}</p>
             {member.data.organization && (
               <p class="board-org">{member.data.organization}</p>
             )}
+            {hasProfile(member.data) && <span class="card-more" aria-hidden="true">Read profile</span>}
           </div>
         ))}
       </div>
@@ -138,7 +139,7 @@ const breadcrumbs = [
       <!-- Founders row — wider 2-up layout -->
       <div class="founders-row">
         {founders.map((member, i) => (
-          <div class="founder-card" data-reveal data-delay={String(i)}>
+          <div class={hasProfile(member.data) ? 'founder-card has-profile' : 'founder-card'} data-reveal data-delay={String(i)}>
             <div class="founder-photo-wrap">
               <div class="founder-photo" style={member.data.photo ? `background-image:url(${photoLqip(member.data)});background-size:cover;background-position:center` : undefined}>
                 {member.data.photo ? (
@@ -160,8 +161,9 @@ const breadcrumbs = [
               <div class="founder-ring" aria-hidden="true"></div>
             </div>
             <span class="founder-badge">Co-Founder</span>
-            <h3 class="founder-name">{member.data.name}</h3>
+            <h3 class="founder-name">{hasProfile(member.data) ? <a class="card-link" href={profilePath(member.id)}>{member.data.name}</a> : member.data.name}</h3>
             <p class="founder-title">{member.data.title.replace(/Co-Founder\/?/i, '').trim()}</p>
+            {hasProfile(member.data) && <span class="card-more" aria-hidden="true">Read profile</span>}
           </div>
         ))}
       </div>
@@ -169,7 +171,7 @@ const breadcrumbs = [
       <!-- Staff grid -->
       <div class="team-grid">
         {staff.map((member, i) => (
-          <div class="member-card" data-reveal data-delay={String(Math.min(i, 3))}>
+          <div class={hasProfile(member.data) ? 'member-card has-profile' : 'member-card'} data-reveal data-delay={String(Math.min(i, 3))}>
             <div class="member-photo" style={member.data.photo ? `background-image:url(${photoLqip(member.data)});background-size:cover;background-position:center` : undefined}>
               {member.data.photo ? (
                 <img
@@ -187,11 +189,12 @@ const breadcrumbs = [
                 </div>
               )}
             </div>
-            <h3 class="member-name">{member.data.name}</h3>
+            <h3 class="member-name">{hasProfile(member.data) ? <a class="card-link" href={profilePath(member.id)}>{member.data.name}</a> : member.data.name}</h3>
             <p class="member-title">{member.data.title}</p>
             {member.data.organization && (
               <p class="member-org">{member.data.organization}</p>
             )}
+            {hasProfile(member.data) && <span class="card-more" aria-hidden="true">Read profile</span>}
           </div>
         ))}
       </div>
@@ -630,6 +633,39 @@ const breadcrumbs = [
     font-size: 0.82rem;
     color: var(--c-text-light);
     margin-top: 0.2rem;
+  }
+
+  /* ═══════════════════════════════════════════
+     PROFILE LINKS: a card whose person has a profile page. The name is
+     the link and its hit area covers the card; "Read profile" says so
+     where there's no hover.
+     ═══════════════════════════════════════════ */
+  .has-profile { position: relative; }
+  .card-link { color: inherit; text-decoration: none; }
+  .card-link::after { content: ''; position: absolute; inset: -8px; border-radius: 16px; }
+  .card-link:focus-visible { outline: none; }
+  .has-profile:has(.card-link:focus-visible) { outline: 3px solid var(--c-yellow); outline-offset: 10px; border-radius: 16px; }
+  .card-more {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 0.55rem;
+    font-size: 0.78rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: var(--c-text);
+    text-decoration: underline;
+    text-decoration-color: var(--c-yellow);
+    text-decoration-thickness: 2px;
+    text-underline-offset: 4px;
+  }
+  .card-more::after { content: '→'; text-decoration: none; display: inline-block; transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
+  @media (hover: hover) {
+    .has-profile:hover .card-link { text-decoration: underline; text-decoration-color: var(--c-yellow); text-decoration-thickness: 2px; text-underline-offset: 4px; }
+    .has-profile:hover .card-more::after { transform: translateX(3px); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .card-more::after { transition: none; }
   }
 
   /* ═══════════════════════════════════════════

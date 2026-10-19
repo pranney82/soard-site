@@ -2471,6 +2471,15 @@
     .ppl-row__main { min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 0.15rem 0.45rem; }
     .ppl-row__name { padding: 0; border: none; background: none; font-size: 0.95rem; font-weight: 650; color: var(--color-text); text-align: left; cursor: pointer; }
     .ppl-row__name:hover { text-decoration: underline; text-underline-offset: 3px; }
+    /* The name is the row's link: its hit area covers the whole row (a full
+       44px+ target for touch and the same thing for screen readers); the
+       handle, menu and tags sit above it */
+    .ppl-row__name::after { content: ''; position: absolute; inset: 0; border-radius: inherit; }
+    .ppl-row__name:focus-visible { box-shadow: none; }
+    .ppl-row:has(.ppl-row__name:focus-visible) { box-shadow: inset 0 0 0 2px var(--color-text); }
+    .ppl-handle, .ppl-menu, .ppl-row__issues, .ppl-tag { position: relative; z-index: 1; }
+    .ppl-row__issues { pointer-events: none; }
+    .ppl-row__issues .ppl-chip { pointer-events: auto; }
     .ppl-row__sub { flex-basis: 100%; min-width: 0; font-size: 0.84rem; color: var(--color-text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .ppl-tag { padding: 0.1rem 0.45rem; border: none; border-radius: 999px; background: #EEEDE8; font-size: max(11px, 0.7rem); font-weight: 600; line-height: 1.4; color: var(--color-text-secondary); }
     .ppl-tag--memorial { background: #F1EFEA; color: #55565C; }
@@ -2607,8 +2616,11 @@
       .ppl-row__sub { white-space: normal; }
       .ppl-menu__pop [role="menuitem"] { min-height: 44px; }
       .card.ppl-ident { grid-template-columns: 1fr; gap: 1.25rem; }
-      .ppl-seg { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); }
-      .ppl-seg [role="radio"] { min-height: 44px; padding-inline: 0.35rem; white-space: nowrap; }
+      /* Choices share each row by the width their label needs, wrapping only when they must */
+      .ppl-seg { display: flex; flex-wrap: wrap; }
+      .ppl-seg [role="radio"] { flex: 1 1 auto; min-height: 44px; padding-inline: 0.6rem; white-space: nowrap; }
+      /* Five seats split three over two instead of leaving one alone on a row */
+      .ppl-seg--many [role="radio"] { flex: 1 1 30%; }
       .ppl-admin__row { flex-direction: column; align-items: flex-start; gap: 0.5rem; }
       .ppl-crop__body { grid-template-columns: 1fr; gap: 1rem; }
       .ppl-crop__previews { justify-content: center; }
@@ -2653,7 +2665,7 @@
       photoPixels as tsPhotoPixels, photoQuality as tsPhotoQuality, validCrop as tsValidCrop, cfId as tsCfId,
       normalizeLinkedIn as tsNormalizeLinkedIn, seatTitle as tsSeatTitle, CF_ORIGIN as TS_CF_ORIGIN,
       SEATS as TS_SEATS, TEAM_ROLES as TS_TEAM_ROLES, STATUSES as TS_STATUSES, MEMBER_TITLE as TS_MEMBER_TITLE,
-      PHOTO_MIN as TS_PHOTO_MIN, PHOTO_GOOD as TS_PHOTO_GOOD,
+      PHOTO_MIN as TS_PHOTO_MIN, PHOTO_GOOD as TS_PHOTO_GOOD, hasProfile as tsHasProfile, profilePath as tsProfilePath,
     } from './team-shared.js';
     const html = htm.bind(h);
 
@@ -8015,6 +8027,7 @@
       chevron:  _s(html`<path d="m9 18 6-6-6-6"/>`, 16),
       down:     _s(html`<path d="m6 9 6 6 6-6"/>`, 15),
       done:     _s(html`<path d="M20 6 9 17l-5-5"/>`, 22),
+      mail:     _s(html`<rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>`, 18),
     };
 
     // Staff view of reveal dates (confirmed and tentative) and each kid's
@@ -8419,6 +8432,8 @@
 
     function Dashboard({ kids, partners, team, events, communityProjects, press, articles, onNavigate, pendingData, onDeploy, deploying }) {
       const { live, reveals, jtJobs, lastDeploy } = useDashLive();
+      // Board members' private reveal emails (a light D1 read), for the invite reminder below
+      const [boardEmails] = useBoardEmails(true);
       const [showAllNeeds, setShowAllNeeds] = useState(false);
       const [impactOpen, setImpactOpen] = useState(false);
       const thisYear = new Date().getFullYear();
@@ -8522,6 +8537,15 @@
           ? { label: 'Open in JobTread', href: JT_JOB_URL(u.jobId) }
           : { label: 'Open profile', go: () => onNavigate('kids-hub', u.slug, 'kids') },
       }));
+      // Active board members (drafts too) with no reveal email miss every reveal invite
+      const noInvite = boardEmails ? (team || []).map(normalizePerson)
+        .filter((p) => p.group === 'board' && p.status === 'active' && !boardEmails[p.slug]).sort(comparePeople) : [];
+      if (noInvite.length) needs.push({
+        key: 'board-invites', tone: 'fix', icon: DI.mail,
+        title: noInvite.length === 1 ? `${noInvite[0].name} won’t get reveal invites` : `${dashCount(noInvite.length, 'board member')} won’t get reveal invites`,
+        detail: `${noInvite.length === 1 ? 'No' : `${dashNames(noInvite.map((p) => p.name), 3)} have no`} invite email on file. Add one on their People page and every reveal’s calendar invite includes them.`,
+        action: { label: noInvite.length === 1 ? 'Add the email' : 'Show them', go: () => (noInvite.length === 1 ? onNavigate('people-hub', noInvite[0].slug, 'board') : onNavigate('people-hub', null, 'board', 'no-invite-email')) },
+      });
       if (staleEvents.length && !hasNextEvent) needs.push({
         key: 'events', tone: 'fix', icon: DI.calendar,
         title: 'The Events page has nothing coming up',
@@ -9442,6 +9466,7 @@
       partner: { module: './partner-preview.js', noun: 'partner', publishType: 'partners', more: null, list: 'the partners page', name: (x) => x.name || 'New partner' },
       press: { module: './press-preview.js', noun: 'story', publishType: 'press', more: null, list: 'the publicity page', name: (x) => x.title || 'New story' },
       team: { module: './team-preview.js', noun: 'person', publishType: 'team', more: null, list: 'the Leadership page', name: (x) => x.name || 'New person' },
+      person: { module: './person-preview.js', noun: 'profile', publishType: 'team', more: '“More of our board”', name: (x) => x.name || 'New person' },
     };
     const previewModules = {};
     let previewSeq = 0;
@@ -9509,6 +9534,8 @@
         for (const s of otherSlugs) {
           if (s !== slug && await pageOnSite(m.pagePath(s))) return { path: m.pagePath(s), onSite: false };
         }
+        // No real page of this kind yet (the first profile, say): build it in the template page
+        if (m.fallbackPath) return { path: m.fallbackPath(), onSite: false, fallback: true };
         throw new Error(`There’s no ${K.noun} page on the site to show this in yet.`);
       };
       useEffect(() => {
@@ -9642,7 +9669,8 @@
       const notes = [
         !dirty && pubState === 'waiting' && 'This saved version isn’t on the site yet. It goes live when you publish.',
         !dirty && pubState === 'publishing' && 'This saved version is going live in the site update running now.',
-        !noPage && base && !base.onSite && `${slug ? `${name}’s page isn’t` : `New ${K.noun}s aren’t`} on the site yet, so this is shown inside another ${K.noun}’s page.${K.more ? ` The ${K.more} row at the bottom will be different.` : ''}`,
+        !noPage && base && !base.onSite && !base.fallback && `${slug ? `${name}’s page isn’t` : `New ${K.noun}s aren’t`} on the site yet, so this is shown inside another ${K.noun}’s page.${K.more ? ` The ${K.more} row at the bottom will be different.` : ''}`,
+        !noPage && base?.fallback && `${slug ? `${name}’s page isn’t` : `This ${K.noun} isn’t`} on the site yet. This is how it will look once you publish.`,
         K.list && `This is ${K.list} as it will be after the next publish: everything saved so far, plus your changes here.`,
         kid.publishStatus === 'draft' && 'This is a draft, so the page stays off the site until it’s saved with Save.',
         ...modelNotes,
@@ -11906,8 +11934,10 @@
       }
       if (p.status === 'active') {
         const noBio = !String(p.bio || '').trim();
-        const noLinkedIn = !p.linkedin;
-        if (noBio || noLinkedIn) out.push({ id: 'profile', tone: 'quiet', label: noBio && noLinkedIn ? 'No bio or LinkedIn' : noBio ? 'No bio' : 'No LinkedIn', tip: 'For the planned profile pages; not on the site yet' });
+        // Pets and young helpers aren't on LinkedIn
+        const noLinkedIn = !p.linkedin && p.role !== 'honorary';
+        if (noBio || noLinkedIn) out.push({ id: 'profile', tone: 'quiet', label: noBio && noLinkedIn ? 'No bio or LinkedIn' : noBio ? 'No bio' : 'No LinkedIn',
+          tip: noBio ? 'No profile page until they have a bio' : 'Shown on their profile page' });
       }
       return out;
     }
@@ -11956,7 +11986,7 @@
         onChange(options[next].id);
         refs.current[next]?.focus();
       };
-      return html`<div class="ppl-seg" role="radiogroup" aria-label=${label} id=${id} onKeyDown=${onKey}>
+      return html`<div class=${options.length > 3 ? 'ppl-seg ppl-seg--many' : 'ppl-seg'} role="radiogroup" aria-label=${label} id=${id} onKeyDown=${onKey}>
         ${options.map((o, i) => html`<button type="button" role="radio" key=${o.id} ref=${(el) => { refs.current[i] = el; }}
           aria-checked=${o.id === value} tabindex=${o.id === value || (i === 0 && !options.some((x) => x.id === value)) ? 0 : -1}
           disabled=${disabled} onClick=${() => onChange(o.id)}>${o.label}</button>`)}
@@ -12021,10 +12051,12 @@
     // ═══════════════════════════════════════════
     // PEOPLE LIST
     // ═══════════════════════════════════════════
-    function PeopleList({ team, group, onEdit, onAdd, onDelete, addToast, onReload }) {
+    function PeopleList({ team, group, initialFilter, onClearFilter, onEdit, onAdd, onDelete, addToast, onReload }) {
       const label = group === 'board' ? 'Board' : 'Team';
       const [search, setSearch] = useState('');
-      const [filter, setFilter] = useState('all');
+      // A filter from the Dashboard applies on arrival only, not every later visit to this tab
+      const [filter, setFilter] = useState(initialFilter || 'all');
+      useEffect(() => { if (initialFilter) onClearFilter?.(); }, []);
       const [showAlumni, setShowAlumni] = useState(false);
       const [order, setOrder] = useState({});         // section id → slugs, while dragging or saving
       const [lifted, setLifted] = useState(null);     // { section, slug, keyboard, start }
@@ -12699,6 +12731,9 @@
       const linkedinNorm = tsNormalizeLinkedIn(data.linkedin);
       const linkedinBad = !!data.linkedin && linkedinNorm === null;
       const previewRecord = useMemo(() => toPersonRecord({ ...data, slug: data.slug || slugify(data.name || ''), linkedin: linkedinNorm || '' }), [data]);
+      // A bio (and a place on the Leadership page) gives them a profile page
+      const profileReady = tsHasProfile(normalizePerson(previewRecord));
+      const profileSlugs = useMemo(() => team.filter((t) => tsHasProfile(normalizePerson(t))).map((t) => t.slug), [team]);
       const committeeSuggestions = useMemo(() => [...new Set(team.flatMap((t) => (t.group === 'board' && Array.isArray(t.committees) ? t.committees : [])))].sort(), [team]);
       const issues = pplIssues({ ...normalizePerson(previewRecord), slug }, { size: photoSize, emails: board ? { ...(emails || {}), [slug]: emailClean } : null });
 
@@ -12784,14 +12819,17 @@
           </h2>
           <div class="flex gap-1 items-center">
             ${dirty || emailDirty ? html`<span class="ppl-unsaved" role="status">Unsaved changes</span>` : null}
-            <button class="btn btn-ghost btn-sm" aria-pressed=${showPreview} onClick=${() => setShowPreview((v) => !v)}>Preview</button>
+            <button class="btn btn-ghost btn-sm" aria-pressed=${showPreview === 'team'} onClick=${() => setShowPreview((v) => (v === 'team' ? false : 'team'))}>Preview</button>
+            ${profileReady || showPreview === 'person' ? html`<button class="btn btn-ghost btn-sm" aria-pressed=${showPreview === 'person'}
+              onClick=${() => setShowPreview((v) => (v === 'person' ? false : 'person'))}>Preview profile</button>` : null}
             <button class="btn btn-primary" onClick=${save} disabled=${saving}>
               ${saving ? html`<span class="spinner" />` : null} ${saving ? 'Saving…' : 'Save'}
             </button>
           </div>
         </div>
-        ${showPreview ? html`<${PagePreview} kind="team" item=${previewRecord} slug=${slug} dirty=${dirty}
-          buildOpts=${{ collection: team }} onClose=${() => setShowPreview(false)} />` : null}
+        ${showPreview ? html`<${PagePreview} key=${showPreview} kind=${showPreview} item=${previewRecord} slug=${slug} dirty=${dirty}
+          otherSlugs=${showPreview === 'person' ? profileSlugs : []}
+          buildOpts=${showPreview === 'person' ? { collection: team, partners } : { collection: team }} onClose=${() => setShowPreview(false)} />` : null}
         ${issues.length ? html`<ul class="ppl-checklist" aria-label="Missing from this record">
           ${issues.map((i) => html`<li key=${i.id} class=${`ppl-chip ppl-chip--${i.tone}`} title=${i.tip}>${i.tone === 'warn' ? pplIcon.alert : null}${i.label}</li>`)}
         </ul>` : null}
@@ -12916,7 +12954,11 @@
 
         <section class="card" aria-labelledby="ppl-profile-h">
           <h3 id="ppl-profile-h">Profile</h3>
-          <p class="ppl-note">For the profile pages planned for the Leadership page. These aren’t shown on the site yet, so fill them in whenever you have them.</p>
+          <p class="ppl-note">${profileReady
+            ? html`Shown on ${(data.name || 'their').split(' ')[0]}’s profile page, <code>${tsProfilePath(previewRecord.slug || 'name')}</code>. Their card on the Leadership page links to it. Changes go live when you publish.`
+            : listed
+              ? html`Add a bio and ${data.name ? data.name.split(' ')[0] : 'they'} ${data.name ? 'gets' : 'get'} a profile page that their card on the Leadership page links to. “Why I serve” and LinkedIn show there too.`
+              : 'Profile pages are for people shown on the Leadership page.'}</p>
           <div class="form-group">
             <label class="form-label" for="ppl-bio">Bio</label>
             <textarea id="ppl-bio" class="form-input" rows="5" value=${data.bio || ''} onInput=${(e) => updateField('bio', e.target.value)}
@@ -12929,7 +12971,7 @@
               placeholder="One or two sentences, ideally their own"></textarea>
             <div class="form-hint ppl-count-hint">${String(data.quote || '').length}/240</div>
           </div>
-          <div class="form-group u-m-0">
+          ${data.role === 'honorary' && !data.linkedin ? null : html`<div class="form-group u-m-0">
             <label class="form-label" for="ppl-linkedin">LinkedIn</label>
             <div class="ppl-inline">
               <input id="ppl-linkedin" class="form-input" type="url" inputmode="url" autocomplete="off" placeholder="linkedin.com/in/name"
@@ -12937,7 +12979,7 @@
               ${linkedinNorm ? html`<a class="btn btn-ghost btn-sm" href=${linkedinNorm} target="_blank" rel="noopener">Open ${pplIcon.external}</a>` : null}
             </div>
             <div class=${`form-hint${linkedinBad && linkedinTouched ? ' ppl-bad' : ''}`}>${linkedinBad && linkedinTouched ? 'Use their profile link, like linkedin.com/in/name' : 'Their profile link. Short forms are fine.'}</div>
-          </div>
+          </div>`}
         </section>
 
         ${slug ? html`<section class="card ppl-admin" aria-labelledby="ppl-admin-h">
@@ -20183,6 +20225,7 @@
                 <button class="hub-tab ${pTab === 'board' ? 'active' : ''}" onClick=${() => { setSubTab('board'); setEditSlug(null); }}>Board<span class="ppl-tab-count">${onSite('board')}</span></button>
               </div>
               ${listOrError('team', pTab === 'board' ? 'board members' : 'team members', html`<${PeopleList} key=${pTab} team=${team} group=${pTab}
+                initialFilter=${dashboardFilter === 'no-invite-email' && pTab === 'board' ? 'attention' : null} onClearFilter=${() => setDashboardFilter(null)}
                 onEdit=${(s) => setEditSlug(s)} onAdd=${() => setEditSlug('')}
                 onDelete=${(t) => setDeleteModal({ type: pTab === 'board' ? 'board member' : 'team member', item: t })} addToast=${addToast} onReload=${loadData} />`)}
             `;

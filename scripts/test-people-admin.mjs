@@ -185,7 +185,24 @@ try {
   console.log('Desktop 1440');
   {
     const { page, api, errors } = await open(browser, { width: 1440, height: 1000, mobile: false });
-    await goPeople(page, 'team');
+    // Dashboard: board members without an invite email are a Needs you item
+    await page.waitForFunction(() => /won’t get reveal invites/.test(document.body.textContent), { timeout: 15000 }).catch(() => {});
+    const need = await page.evaluate(() => [...document.querySelectorAll('.dneed-title')].find((e) => /reveal invites/.test(e.textContent))?.textContent.trim());
+    ok(/^12 board members won’t get reveal invites/.test(need || ''), `the Dashboard says who misses reveal invites (${need})`);
+    await shot(page, 'desk-dashboard');
+    await page.evaluate(() => [...document.querySelectorAll('.dneed')].find((li) => /reveal invites/.test(li.textContent))?.querySelector('.dneed-act')?.click());
+    await page.waitForSelector('.ppl-row', { timeout: 10000 });
+    await sleep(500);
+    ok(await page.evaluate(() => document.querySelector('.hub-tab.active')?.textContent.startsWith('Board') && document.querySelector('.ppl-filter[aria-pressed="true"]')?.textContent.startsWith('Needs attention')),
+      'Show them opens People → Board filtered to Needs attention');
+    await clickText(page, '.hub-tab', 'Team');
+    await page.waitForSelector('.ppl-row');
+    await clickText(page, '.hub-tab', 'Board');
+    await page.waitForSelector('.ppl-row');
+    ok(await page.$eval('.ppl-filter[aria-pressed="true"]', (b) => b.textContent.startsWith('All')), 'coming back to Board later shows everyone again');
+    await clickText(page, '.hub-tab', 'Team');
+    await page.waitForSelector('.ppl-row');
+    await sleep(300);
     const tabs = await $text(page, '.hub-tab');
     ok(tabs[0] === 'Team9' && tabs[1] === 'Board13', `tab counts show who's on the site (${tabs.join(' | ')})`);
     ok(JSON.stringify(await rowNames(page, 'Founders')) === JSON.stringify(['Holly Ranney', 'Peter Ranney']), 'founders section: Holly, Peter');
@@ -326,6 +343,24 @@ try {
     await clickText(page, '.ppl-ed-head .btn', 'Preview');
     await page.$eval('#ppl-title', (i) => { i.value = 'Board Chair'; i.dispatchEvent(new Event('input', { bubbles: true })); });
 
+    // A bio turns on Preview profile: the real profile page with the unsaved bio
+    ok(!(await page.evaluate(() => [...document.querySelectorAll('.ppl-ed-head .btn')].some((b) => b.textContent.trim() === 'Preview profile'))), 'no Preview profile without a bio');
+    await page.type('#ppl-bio', 'Scott leads the board.\n\nSecond paragraph about Scott.');
+    await page.waitForFunction(() => [...document.querySelectorAll('.ppl-ed-head .btn')].some((b) => b.textContent.trim() === 'Preview profile'), { timeout: 3000 });
+    ok((await page.$eval('.ppl-note', (e) => e.textContent)).includes('/about/leadership/scott-wierson/'), 'the Profile section names their page');
+    await clickText(page, '.ppl-ed-head .btn', 'Preview profile');
+    let profileOk = false;
+    for (let i = 0; i < 40 && !profileOk; i++) {
+      await sleep(500);
+      profileOk = await page.evaluate(() => [...document.querySelectorAll('iframe')].some((f) => {
+        try { const d = f.contentDocument; return d.querySelector('h1')?.textContent.includes('Scott') && [...d.querySelectorAll('.bio-text p')].map((p) => p.textContent).join('|') === 'Scott leads the board.|Second paragraph about Scott.'; } catch { return false; }
+      }));
+    }
+    ok(profileOk, 'Preview profile shows the unsaved bio on the profile page');
+    await shot(page, 'desk-editor-profile-preview');
+    await clickText(page, '.ppl-ed-head .btn', 'Preview profile');
+    await page.$eval('#ppl-bio', (t) => { t.value = ''; t.dispatchEvent(new Event('input', { bubbles: true })); });
+
     // Photo: background removal, then framing
     await page.click('.ppl-switch input');
     await sleep(200);
@@ -430,6 +465,31 @@ try {
     await clickText(page, '.breadcrumb button', 'Team');
     await page.waitForSelector('.ppl-row');
     ok(JSON.stringify(await rowNames(page, 'Founders')) === JSON.stringify(['Holly Ranney', 'Peter Ranney']), 'still in Founders');
+    // A founder's editor, then Greg to Honorary crew
+    await clickText(page, '.ppl-row__name', 'Holly Ranney');
+    await page.waitForSelector('#ppl-title');
+    await sleep(600);
+    ok((await page.$eval('.ppl-role', (e) => e.textContent)).includes('Founders get the larger cards'), 'a founder\'s role explains the larger cards');
+    await shot(page, 'desk-editor-founder');
+    await clickText(page, '.breadcrumb button', 'Team');
+    await page.waitForSelector('.ppl-row');
+    await clickText(page, '.ppl-row__name', 'Greg Ranney');
+    await page.waitForSelector('#ppl-title');
+    await page.evaluate(() => [...[...document.querySelectorAll('.ppl-role .ppl-seg')][1].querySelectorAll('[role="radio"]')].find((b) => b.textContent === 'Honorary crew').click());
+    ok((await page.$eval('.ppl-role', (e) => e.textContent)).includes('after the staff'), 'Honorary crew says where they show');
+    ok(!(await page.evaluate(() => [...document.querySelectorAll('.ppl-role [role="radio"]')].some((b) => b.textContent === 'In memoriam'))), 'In memoriam isn\'t offered for the team (only board cards show it)');
+    ok(!(await page.$('#ppl-email')) && !(await page.$('#ppl-committees')), 'no invite email or committees for the team');
+    ok(!(await page.$('#ppl-linkedin')) && !(await page.$eval('.ppl-checklist', (e) => e.textContent)).includes('LinkedIn'), 'honorary crew aren\'t asked for LinkedIn');
+    await sleep(500);
+    await shot(page, 'desk-editor-team');
+    await clickText(page, '.ppl-ed-head .btn-primary', 'Save');
+    await page.waitForFunction(() => !document.querySelector('.ppl-unsaved'), { timeout: 8000 });
+    ok(api.st.team['greg-ranney'].role === 'honorary', 'saved as honorary crew');
+    await clickText(page, '.breadcrumb button', 'Team');
+    await page.waitForSelector('.ppl-row');
+    await sleep(300);
+    ok(JSON.stringify(await rowNames(page, 'Honorary crew')) === JSON.stringify(['Greg Ranney']) && (await rowNames(page, 'Staff')).length === 6, 'Greg moves to Honorary crew; Staff has 6');
+    await shot(page, 'desk-team-after');
     ok(await page.evaluate(() => document.querySelectorAll('.ppl-tag--waiting').length > 0), 'saved rows show Waiting to publish');
 
     ok(!errors.length, `no console errors${errors.length ? `: ${errors.join(' | ')}` : ''}`);
@@ -498,6 +558,24 @@ try {
     ok(sheet.w <= 390 && sheet.bottom <= 845, `the framing sheet fits the phone (${JSON.stringify(sheet)})`);
     await shot(page, 'phone-crop');
     await clickText(page, '.ppl-crop .btn', 'Cancel');
+    await sleep(300);
+    // The Team tab and a team member's editor on a phone
+    await page.evaluate(() => document.querySelector('.breadcrumb button')?.click());
+    await page.waitForSelector('.hub-tabs');
+    await clickText(page, '.hub-tab', 'Team');
+    await page.waitForSelector('.ppl-row');
+    await sleep(800);
+    const teamFit = await page.evaluate(() => { const main = document.querySelector('.main').getBoundingClientRect(); return [...document.querySelectorAll('.main *')].filter((e) => { const r = e.getBoundingClientRect(); return r.width && r.right > main.right + 1; }).length; });
+    ok(teamFit === 0, 'the Team tab fits the phone');
+    await shot(page, 'phone-team');
+    await clickText(page, '.ppl-row__name', 'Holly Ranney');
+    await page.waitForSelector('#ppl-title');
+    await sleep(800);
+    const tedFit = await page.evaluate(() => { const main = document.querySelector('.main').getBoundingClientRect(); return [...document.querySelectorAll('.main *')].filter((e) => { const r = e.getBoundingClientRect(); return r.width && r.right > main.right + 1; }).length; });
+    ok(tedFit === 0, 'a team member\'s editor fits the phone');
+    const clipped = await page.evaluate(() => [...document.querySelectorAll('.ppl-seg [role="radio"]')].filter((b) => b.scrollWidth > b.clientWidth + 1).map((b) => b.textContent));
+    ok(!clipped.length, `no choice label is cut off (${clipped.join(', ')})`);
+    await shot(page, 'phone-editor-team');
     ok(!errors.length, `no console errors${errors.length ? `: ${errors.join(' | ')}` : ''}`);
     await page.close();
   }

@@ -2,7 +2,7 @@ import type { APIRoute } from 'astro';
 import { getCollection } from 'astro:content';
 import { getPublishedKids } from '../utils/collections';
 import { getSiteStats } from '../utils/stats';
-import { normalizePerson, isListed } from '../utils/team';
+import { normalizePerson, isListed, hasProfile, profilePath } from '../utils/team';
 
 export const GET: APIRoute = async () => {
   const s = await getSiteStats();
@@ -28,11 +28,12 @@ export const GET: APIRoute = async () => {
     });
 
   // Build team list
+  // Anyone with a profile page links to it
   const teamList = team
-    .map((t) => normalizePerson(t.data))
-    .filter(isListed)
-    .sort((a, b) => a.name.localeCompare(b.name))
-    .map((p) => `- ${p.name}: ${p.title}${p.status === 'memorial' ? ' (in memoriam)' : ''}`);
+    .map((t) => ({ id: t.id, p: normalizePerson(t.data) }))
+    .filter(({ p }) => isListed(p))
+    .sort((a, b) => a.p.name.localeCompare(b.p.name))
+    .map(({ id, p }) => `- ${hasProfile(p) ? `[${p.name}](https://sunshineonaranneyday.com${profilePath(id)})` : p.name}: ${p.title}${p.status === 'memorial' ? ' (in memoriam)' : ''}`);
 
   // Build partners list
   const partnerList = [...partners]

@@ -27,6 +27,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { checkStreamUid } from '../functions/api/stream-check.js';
 import { FIXTURES } from '../src/pages/admin/_preview-fixtures.js';
+import { normalizePerson, hasProfile } from '../public/admin/team-shared.js';
 
 const ROOT = new URL('..', import.meta.url).pathname;
 const ONLY = process.env.ONLY ? new RegExp(process.env.ONLY) : null;
@@ -79,12 +80,25 @@ const TYPES = {
       logo: ['section.fph .fph__logo img'],
       text: ['section.fph .fph__logo--text span'],
     } },
+  // Profile pages: one per person with a bio. Real ones are built inside each
+  // other; the template variants inside each other (there may be no real ones yet)
+  person: { dir: 'team', path: (s) => `/about/leadership/${s}/`, region: 'main', skip: [], templateDonors: true,
+    include: (x) => hasProfile(normalizePerson(x)),
+    opts: () => ({ collection: rawItems('team'), partners: rawItems('partners') }),
+    parts: {
+      full: ['section.hero .hero-org', 'section.hero .hero-ctas a[href*="linkedin"]', 'section.hero .hero-photo[style] img', 'section.hero .hero-logo img',
+        'section.hero .hero-stat .hero-stat-label', 'section.hero h1 em', 'section.bio .bio-text p', '.fact .fact-partner', '.fact .fact-chips li', '.fact dd a[href*="linkedin"]',
+        'section.words blockquote p', 'section.more .more-card img', 'section.more .more-card:not(:has(img))', 'section.more .more-all'],
+      plain: ['section.hero .hero-placeholder img'],
+    } },
   team: { dir: 'team', list: true, path: () => '/about/leadership/', region: 'main', skip: [],
     parts: {
       full: ['.board-card:not(.board-card--memorial) .board-photo[style]', '.board-card .board-photo:not([style])',
         '.board-card:not(.board-card--memorial):has(.board-org)', '.board-card--memorial .board-memorial',
         '.founder-card:has(.founder-photo[style])', '.founder-card .founder-photo:not([style])',
-        '.member-card:has(.member-org):has(.member-photo[style])', '.member-card .member-photo:not([style])'],
+        '.member-card:not(.has-profile):has(.member-org):has(.member-photo[style])', '.member-card .member-photo:not([style])',
+        '.board-card:not(.board-card--memorial):not(.has-profile):has(.board-org)', '.founder-card:not(.has-profile):has(.founder-photo[style])',
+        '.has-profile .card-link', '.has-profile .card-more'],
     } },
 };
 const only = process.env.TYPES ? process.env.TYPES.split(',') : Object.keys(TYPES);
@@ -105,6 +119,12 @@ if (!SITE) {
   });
 }
 const stopDev = () => { if (dev) try { process.kill(-dev.pid); } catch {} };
+// Every item of a content folder, unfiltered, as the admin holds them
+const rawItems = (dir) => {
+  const d = join(ROOT, 'src/content', dir);
+  if (!existsSync(d)) return [];
+  return readdirSync(d).filter((f) => f.endsWith('.json')).map((f) => ({ slug: f.replace(/\.json$/, ''), ...JSON.parse(readFileSync(join(d, f), 'utf8')) }));
+};
 const itemsOf = (t) => {
   const d = join(ROOT, 'src/content', TYPES[t]?.dir || t);
   if (!existsSync(d)) return [];
@@ -181,7 +201,7 @@ try {
       let r;
       for (let attempt = 0; attempt < 2; attempt++) {
         try {
-          r = await compare({ type, item, donors: donors.map((x) => x.slug), hasOwnPage: exists[item.slug], region: cfg.region, skip: cfg.skip });
+          r = await compare({ type, item, donors: donors.map((x) => x.slug), hasOwnPage: exists[item.slug], region: cfg.region, skip: cfg.skip, opts: cfg.opts?.() });
           break;
         } catch (err) {
           // The dev server can reload the workbench mid-run when files change
@@ -200,9 +220,12 @@ try {
     // The template pages' made-up items cover every variant
     let fx = 0;
     const variants = Object.entries(FIXTURES[type] || {});
-    for (const [v, f] of variants) {
-      const r = await compare({ type, item: f.item, realPath: `/admin/${type}-template/${v}/`, donors: donors.map((x) => x.slug),
-        hasOwnPage: true, region: cfg.region, skip: cfg.skip, opts: { measure: false, video: f.video } });
+    const flat = (list) => list?.map((x) => ({ slug: x.id, ...x.data }));
+    for (const [i, [v, f]] of variants.entries()) {
+      // templateDonors: rebuild each variant inside the next variant's template page
+      const basePath = cfg.templateDonors ? `/admin/${type}-template/${variants[(i + 1) % variants.length][0]}/` : undefined;
+      const r = await compare({ type, item: f.item, realPath: `/admin/${type}-template/${v}/`, basePath, donors: donors.map((x) => x.slug),
+        hasOwnPage: true, region: cfg.region, skip: cfg.skip, opts: { measure: false, video: f.video, collection: flat(f.collection), partners: flat(f.partners) } });
       if (r.ok) fx++;
       else { failed++; report(`${type} template ${v}`, r); }
     }

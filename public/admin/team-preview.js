@@ -8,7 +8,7 @@
  * page and checks it against the real one.
  */
 import { checkBlobs, setLiveBlobs, loadTemplates, tools, guardFrame, cfUrl, isLocal } from './page-preview.js';
-import { normalizePerson, isListed, comparePeople, photoUrl, photoSrcset, photoLqip } from './team-shared.js';
+import { normalizePerson, isListed, comparePeople, photoUrl, photoSrcset, photoLqip, hasProfile, profilePath } from './team-shared.js';
 
 export const pagePath = () => '/about/leadership/';
 export const listPage = true;
@@ -69,56 +69,69 @@ export function patchPage(doc, win, model) {
     return box;
   };
   const textOrDrop = (el, text) => { if (!el) return; if (text) el.textContent = text; else el.remove(); };
+  // Someone with a profile: the name becomes the card's link, and "Read profile" follows
+  const linkProto = take('full', '.has-profile .card-link');
+  const moreProto = take('full', '.has-profile .card-more');
+  const nameAndLink = (card, nameEl, p) => {
+    if (!hasProfile(p)) { nameEl.textContent = p.name; return; }
+    const a = linkProto.cloneNode(true);
+    a.setAttribute('href', profilePath(p.slug));
+    a.textContent = p.name;
+    nameEl.replaceChildren(a);
+    card.append(moreProto.cloneNode(true));
+  };
 
   // ── Board ──
   const boardPhoto = take('full', '.board-card:not(.board-card--memorial) .board-photo[style]');
   const boardPlain = take('full', '.board-card .board-photo:not([style])');
-  const boardProto = take('full', '.board-card:not(.board-card--memorial):has(.board-org)');
+  const boardProto = take('full', '.board-card:not(.board-card--memorial):not(.has-profile):has(.board-org)');
   const memorialLabel = take('full', '.board-card--memorial .board-memorial');
   const boardCard = (p, i) => {
     const card = boardProto.cloneNode(true);
     // Scoped styles ride on data-astro-cid-* attributes, so the class is just these
-    card.setAttribute('class', p.status === 'memorial' ? 'board-card board-card--memorial' : 'board-card');
+    card.setAttribute('class', ['board-card', p.status === 'memorial' && 'board-card--memorial', hasProfile(p) && 'has-profile'].filter(Boolean).join(' '));
     card.dataset.delay = String(Math.min(i, 4));
     const box = photoBox(boardPhoto, boardPlain, p, 200, [140, 200, 280, 400]);
     if (p.photo) box.querySelector('img').setAttribute('alt', p.status === 'memorial' ? `In memory of ${p.name}, ${p.title}` : `${p.name}, ${p.title}`);
     card.querySelector('.board-photo').replaceWith(box);
     const name = card.querySelector('.board-name');
     if (p.status === 'memorial') name.before(memorialLabel.cloneNode(true));
-    name.textContent = p.name;
     card.querySelector('.board-title').textContent = p.title;
     textOrDrop(card.querySelector('.board-org'), p.organization);
+    nameAndLink(card, name, p);
     return card;
   };
   main.querySelector('.board-grid')?.replaceChildren(...board.map(boardCard));
 
   // ── Founders ──
-  const founderProto = take('full', '.founder-card:has(.founder-photo[style])');
+  const founderProto = take('full', '.founder-card:not(.has-profile):has(.founder-photo[style])');
   const founderPlain = take('full', '.founder-card .founder-photo:not([style])');
   const founderCard = (p, i) => {
     const card = founderProto.cloneNode(true);
+    card.setAttribute('class', hasProfile(p) ? 'founder-card has-profile' : 'founder-card');
     card.dataset.delay = String(i);
     const box = photoBox(founderProto.querySelector('.founder-photo'), founderPlain, p, 220, [160, 220, 320, 440]);
     if (p.photo) box.querySelector('img').setAttribute('alt', `${p.name}, ${p.title}`);
     card.querySelector('.founder-photo').replaceWith(box);
-    card.querySelector('.founder-name').textContent = p.name;
     card.querySelector('.founder-title').textContent = p.title.replace(/Co-Founder\/?/i, '').trim();
+    nameAndLink(card, card.querySelector('.founder-name'), p);
     return card;
   };
   main.querySelector('.founders-row')?.replaceChildren(...founders.map(founderCard));
 
   // ── Team ──
-  const memberProto = take('full', '.member-card:has(.member-org):has(.member-photo[style])');
+  const memberProto = take('full', '.member-card:not(.has-profile):has(.member-org):has(.member-photo[style])');
   const memberPlain = take('full', '.member-card .member-photo:not([style])');
   const memberCard = (p, i) => {
     const card = memberProto.cloneNode(true);
+    card.setAttribute('class', hasProfile(p) ? 'member-card has-profile' : 'member-card');
     card.dataset.delay = String(Math.min(i, 3));
     const box = photoBox(memberProto.querySelector('.member-photo'), memberPlain, p, 220, [160, 220, 320, 440]);
     if (p.photo) box.querySelector('img').setAttribute('alt', `${p.name}, ${p.title}`);
     card.querySelector('.member-photo').replaceWith(box);
-    card.querySelector('.member-name').textContent = p.name;
     card.querySelector('.member-title').textContent = p.title;
     textOrDrop(card.querySelector('.member-org'), p.organization);
+    nameAndLink(card, card.querySelector('.member-name'), p);
     return card;
   };
   main.querySelector('.team-grid')?.replaceChildren(...staff.map(memberCard));

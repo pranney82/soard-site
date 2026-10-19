@@ -194,6 +194,53 @@ export function photoQuality(px) {
   return 'blurry';
 }
 
+// ── Profile pages ────────────────────────────────────────────────────
+// Someone on the Leadership page who has a bio gets a page of their own,
+// and their card links to it. No bio, no page: nothing thin goes live.
+
+export const hasProfile = (p) => isListed(p) && !!String(p?.bio || '').trim();
+export const profilePath = (slug) => `/about/leadership/${slug}/`;
+
+/** Bio text as paragraphs: blank lines split them, single line breaks join */
+export function bioParagraphs(text) {
+  return String(text || '').replace(/\r/g, '').split(/\n\s*\n/)
+    .map((s) => s.replace(/\s*\n\s*/g, ' ').trim()).filter(Boolean);
+}
+
+/**
+ * The profile portrait (4:5). A square framing from the admin grows into a
+ * 4:5 box around the same center, so the face stays where it was put.
+ */
+export function portraitTransform(p, w, q = 82) {
+  const crop = validCrop(p);
+  const h = Math.round(w * 1.25);
+  const parts = [];
+  if (crop) {
+    let pw = crop.side;
+    let ph = Math.round(pw * 1.25);
+    if (ph > crop.H) { ph = crop.H; pw = Math.round(ph / 1.25); }
+    const cx = crop.left + crop.side / 2;
+    const cy = crop.top + crop.side / 2;
+    const left = Math.round(Math.min(Math.max(cx - pw / 2, 0), crop.W - pw));
+    const top = Math.round(Math.min(Math.max(cy - ph / 2, 0), crop.H - ph));
+    parts.push(`trim=${top};${crop.W - left - pw};${crop.H - top - ph};${left}`);
+  }
+  parts.push(`w=${w}`, `h=${h}`, 'fit=cover');
+  if (!crop) parts.push('gravity=face');
+  if (p?.photoCutout) parts.push('segment=foreground', `background=%23${CUTOUT_BACKDROP}`);
+  parts.push(`q=${q}`, 'metadata=none');
+  return parts.join(',');
+}
+export function portraitUrl(p, w) {
+  const id = cfId(p?.photo);
+  return id ? `${CF_BASE}/${id}/${portraitTransform(p, w)}` : '';
+}
+export function portraitSrcset(p, widths) {
+  const id = cfId(p?.photo);
+  if (!id) return '';
+  return widths.map((w) => `${CF_BASE}/${id}/${portraitTransform(p, w)} ${w}w`).join(', ');
+}
+
 // ── Profile fields ───────────────────────────────────────────────────
 
 /** "linkedin.com/in/jane" or a full URL → "https://www.linkedin.com/in/jane", else null */

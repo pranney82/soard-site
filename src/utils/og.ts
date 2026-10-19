@@ -155,6 +155,81 @@ function pill(text: string, bg = YELLOW, fg = DARK) {
 }
 
 // ═══════════════════════════════════════════════════
+// TEMPLATE: PERSON (Leadership profile): the page's split hero as a card
+// ═══════════════════════════════════════════════════
+function personTemplate(name: string, photoB64: string | null, eyebrow?: string, role?: string, organization?: string) {
+  const INK = '#373A36';
+  const SOFT = '#5A5B61';
+  const text = {
+    type: 'div',
+    props: {
+      style: {
+        display: 'flex', flexDirection: 'column' as const, justifyContent: 'center' as const,
+        width: photoB64 ? '640px' : '1000px', height: '100%', padding: '0 0 0 72px',
+      },
+      children: [
+        ...(eyebrow ? [{
+          type: 'div',
+          props: {
+            style: { display: 'flex', alignItems: 'center', gap: '14px', fontSize: '17px', fontFamily: 'Outfit', fontWeight: 700, color: SOFT, letterSpacing: '0.15em', textTransform: 'uppercase' as const, marginBottom: '22px' },
+            children: [
+              { type: 'div', props: { style: { width: '32px', height: '3px', background: INK, display: 'flex' } } },
+              eyebrow,
+            ],
+          },
+        }] : []),
+        {
+          type: 'div',
+          props: {
+            style: { fontSize: name.length > 18 ? '58px' : '68px', fontFamily: 'Libre Baskerville', fontWeight: 700, color: INK, lineHeight: 1.08, letterSpacing: '-0.02em' },
+            children: truncate(name, 32),
+          },
+        },
+        ...(role ? [{
+          type: 'div',
+          props: { style: { fontSize: '26px', fontFamily: 'Outfit', fontWeight: 700, color: INK, marginTop: '22px' }, children: truncate(role, 44) },
+        }] : []),
+        ...(organization ? [{
+          type: 'div',
+          props: { style: { fontSize: '22px', fontFamily: 'Outfit', fontWeight: 400, color: SOFT, marginTop: '6px', lineHeight: 1.35 }, children: truncate(organization, 60) },
+        }] : []),
+        {
+          type: 'div',
+          props: {
+            style: { display: 'flex', alignItems: 'center', gap: '16px', marginTop: '44px' },
+            children: [
+              pill('Leadership'),
+              { type: 'div', props: { style: { fontSize: '17px', fontFamily: 'Outfit', fontWeight: 400, color: SOFT }, children: 'sunshineonaranneyday.com' } },
+            ],
+          },
+        },
+      ],
+    },
+  };
+  return {
+    type: 'div',
+    props: {
+      style: { width: '100%', height: '100%', display: 'flex', position: 'relative' as const, overflow: 'hidden' as const, background: '#FEFCF5' },
+      children: [
+        { type: 'div', props: { style: { position: 'absolute' as const, top: 0, left: 0, right: 0, height: '6px', background: YELLOW, display: 'flex' } } },
+        text,
+        ...(photoB64 ? [
+          // Yellow accent behind the portrait, offset like the page's hero
+          { type: 'div', props: { style: { position: 'absolute' as const, right: '52px', bottom: '40px', width: '260px', height: '240px', background: YELLOW, borderRadius: '28px', opacity: 0.85, display: 'flex' } } },
+          {
+            type: 'img',
+            props: {
+              src: photoB64, width: 400, height: 500,
+              style: { position: 'absolute' as const, right: '76px', top: '62px', width: '400px', height: '500px', objectFit: 'cover' as const, borderRadius: '28px', boxShadow: '0 24px 60px rgba(0,0,0,0.18)' },
+            },
+          },
+        ] : []),
+      ],
+    },
+  };
+}
+
+// ═══════════════════════════════════════════════════
 // TEMPLATE: KID PROFILE — Photo hero with overlay
 // ═══════════════════════════════════════════════════
 function kidWithPhoto(name: string, photoB64: string, age?: number | number[] | null, diagnosis?: string | null, roomTypes?: string[] | null) {
@@ -1211,7 +1286,7 @@ function golfTemplate(logoB64: string | null, date?: string, location?: string) 
 // ═══════════════════════════════════════════════════
 // PUBLIC API
 // ═══════════════════════════════════════════════════
-export type OgTemplate = 'default' | 'kid' | 'article' | 'golf' | 'community' | 'event';
+export type OgTemplate = 'default' | 'kid' | 'article' | 'golf' | 'community' | 'event' | 'person';
 
 export interface OgOptions {
   template: OgTemplate;
@@ -1233,6 +1308,9 @@ export interface OgOptions {
   category?: string;
   eventDate?: string;
   eventLocation?: string;
+  // Person (Leadership profile)
+  eyebrow?: string;
+  organization?: string;
 }
 
 export async function generateOgImage(opts: OgOptions): Promise<Buffer> {
@@ -1282,6 +1360,12 @@ export async function generateOgImage(opts: OgOptions): Promise<Buffer> {
         photoB64 = await fetchImageBase64(imgUrl);
       }
       element = eventTemplate(opts.title, photoB64, opts.category, opts.eventDate, opts.eventLocation);
+      break;
+    }
+    case 'person': {
+      // heroImage: a full imagedelivery.net URL for the 4:5 portrait
+      const photoB64 = opts.heroImage ? await fetchImageBase64(opts.heroImage) : null;
+      element = personTemplate(opts.title, photoB64, opts.eyebrow, opts.subtitle, opts.organization);
       break;
     }
     case 'golf': {

@@ -138,3 +138,45 @@ export function photoLqip(p: PersonData): string {
   parts.push('q=30', 'blur=20');
   return `${CF_BASE}/${id}/${parts.join(',')}`;
 }
+
+// ── Profile pages ──
+// Someone on the Leadership page who has a bio gets a page of their own, and
+// their card links to it. No bio, no page.
+
+export const hasProfile = (p: Person) => isListed(p) && !!String(p?.bio || '').trim();
+export const profilePath = (slug: string) => `/about/leadership/${slug}/`;
+
+export function bioParagraphs(text: string | undefined): string[] {
+  return String(text || '').replace(/\r/g, '').split(/\n\s*\n/)
+    .map((s) => s.replace(/\s*\n\s*/g, ' ').trim()).filter(Boolean);
+}
+
+export function portraitTransform(p: PersonData, w: number, q = 82): string {
+  const crop = validCrop(p);
+  const h = Math.round(w * 1.25);
+  const parts: string[] = [];
+  if (crop) {
+    let pw = crop.side;
+    let ph = Math.round(pw * 1.25);
+    if (ph > crop.H) { ph = crop.H; pw = Math.round(ph / 1.25); }
+    const cx = crop.left + crop.side / 2;
+    const cy = crop.top + crop.side / 2;
+    const left = Math.round(Math.min(Math.max(cx - pw / 2, 0), crop.W - pw));
+    const top = Math.round(Math.min(Math.max(cy - ph / 2, 0), crop.H - ph));
+    parts.push(`trim=${top};${crop.W - left - pw};${crop.H - top - ph};${left}`);
+  }
+  parts.push(`w=${w}`, `h=${h}`, 'fit=cover');
+  if (!crop) parts.push('gravity=face');
+  if (p?.photoCutout) parts.push('segment=foreground', `background=%23${CUTOUT_BACKDROP}`);
+  parts.push(`q=${q}`, 'metadata=none');
+  return parts.join(',');
+}
+export function portraitUrl(p: PersonData, w: number): string {
+  const id = cfId(p?.photo || '');
+  return id ? `${CF_BASE}/${id}/${portraitTransform(p, w)}` : '';
+}
+export function portraitSrcset(p: PersonData, widths: number[]): string {
+  const id = cfId(p?.photo || '');
+  if (!id) return '';
+  return widths.map((w) => `${CF_BASE}/${id}/${portraitTransform(p, w)} ${w}w`).join(', ');
+}
