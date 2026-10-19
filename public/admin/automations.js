@@ -139,7 +139,7 @@ const MAP = { t: 'SOARD', children: [
       { t: 'Calendar invites', children: [
         { t: 'Invite engine', s: 'live', k: 'event',
           when: 'Woken by the four JobTread workflows below and the 5-minute new guest check; it re-reads the job itself.',
-          does: 'Build Schedule done, or construction started (Demo, or two tasks under Construction, done) → a tentative all-day invite. Reveal moved → the same invite updates. Confirmed → a timed “Reveal Day” invite. Closed, denied or awaiting funding before the reveal → cancelled. Tentative guests are Admin and Designer staff, the family (the job’s customer contacts and Makeover Family users with access to the job) and the board (website board members with a private reveal email, plus any Board Member users in JobTread). Confirming adds the vendors, sponsors, photographers and design partners with access to that job in JobTread; un-confirming takes them off. Both invites carry the link to watch the reveal live. Board changes on the website update open invites right away. Once a reveal has happened (its start time has passed or its Reveal task is complete), its invite is never touched again, so closing the job afterwards sends nothing.',
+          does: 'Construction started (Demo, or two tasks under Construction, done) → a tentative all-day invite. Reveal moved → the same invite updates. Confirmed → a timed “Reveal Day” invite. Closed, denied or awaiting funding before the reveal → cancelled. Tentative guests are Admin and Designer staff, the family (the job’s customer contacts and Makeover Family users with access to the job) and the board (website board members with a private reveal email, plus any Board Member users in JobTread). Confirming adds the vendors, sponsors, photographers and design partners with access to that job in JobTread; un-confirming takes them off. Both invites carry the link to watch the reveal live. Board changes on the website update open invites right away. Once a reveal has happened (its start time has passed or its Reveal task is complete), its invite is never touched again, so closing the job afterwards sends nothing.',
           touches: ['JobTread', 'Google Calendar'], where: 'functions/api/reveal-invites.js · _reveal-invites.js · _google-calendar.js',
           info: 'Invites come from Clareece’s Google Calendar through a service account. The office job is a live sandbox: its invites go only to Peter and are titled TEST.',
           live: (f) => {
@@ -150,8 +150,8 @@ const MAP = { t: 'SOARD', children: [
             if (i.errors > 0) return ATTN(`The last sweep hit ${plural(i.errors, 'error')}. Open Reveals → Now to retry.`, i.lastSweepAt);
             return ON(`Sending is on. ${plural(i.rows ?? 0, 'reveal has', 'reveals have')} an invite.`, i.lastSweepAt);
           } },
-        { t: 'Task moved or Build Schedule done', s: 'live', k: 'event',
-          when: 'A Reveal task’s date/time changes, or Build Schedule progress changes.',
+        { t: 'Reveal task moved', s: 'live', k: 'event',
+          when: 'A Reveal task’s date or time changes.',
           does: 'Wakes the invite engine for that job.', touches: ['JobTread'], where: JT_INVITE_HOOK, live: wf('22PgPECxg6UP') },
         { t: 'Task checked or un-checked', s: 'live', k: 'event',
           when: 'Any task’s progress changes (JobTread can’t tell the site which group a task is in, so the site counts Demo and Construction itself).',
@@ -159,8 +159,8 @@ const MAP = { t: 'SOARD', children: [
         { t: 'Confirmed, notes or status changed', s: 'live', k: 'event',
           when: 'Reveal Date Confirmed, Reveal Invite Details, job status or closed date changes.',
           does: 'Wakes the invite engine for that job.', touches: ['JobTread'], where: JT_INVITE_HOOK, live: wf('22PgPED4vi7W') },
-        { t: 'Reveal task deleted', s: 'live', k: 'event',
-          when: 'A Reveal or Build Schedule task is deleted.',
+        { t: 'Reveal or finished task deleted', s: 'live', k: 'event',
+          when: 'A Reveal task is deleted, or a finished task (losing it can mean construction hasn’t started after all).',
           does: 'Wakes the invite engine so the invite can be cancelled.', touches: ['JobTread'], where: JT_INVITE_HOOK, live: wf('22PgQQ6JnJDm') },
         { t: 'Safety sweep', s: 'live', k: 'schedule',
           when: 'Every 6 hours, on the live hub’s heartbeat (visits to the reveals feed are the backup).',

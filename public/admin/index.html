@@ -6043,7 +6043,7 @@
     // JobTread is the only place dates, times and notes are edited; this tab is
     // the on/off switch, a glance at every upcoming invite, and the wording.
     const INVITE_KINDS = [
-      { kind: 'tentative', label: 'Tentative invite', when: 'Goes out when Build Schedule is marked complete or construction starts (Demo, or two Construction tasks, done) in JobTread.' },
+      { kind: 'tentative', label: 'Tentative invite', when: 'Goes out when construction starts in JobTread (Demo, or two Construction tasks, done).' },
       { kind: 'confirmed', label: 'Confirmed invite', when: 'Replaces the tentative one when Reveal Date Confirmed is set to Yes.' },
     ];
     const INVITE_TOKENS = [
@@ -6304,7 +6304,7 @@
 
           <div class="card">
             <h3>Who gets the invites</h3>
-            <p class="ri-meta"><strong>Tentative</strong>, once Build Schedule is complete or construction starts (Demo, or two tasks under Construction, done): staff, the family (the job's customer contacts, and anyone with the Makeover Family role who has access to the job) and the board.</p>
+            <p class="ri-meta"><strong>Tentative</strong>, once construction starts (Demo, or two tasks under Construction, done): staff, the family (the job's customer contacts, and anyone with the Makeover Family role who has access to the job) and the board.</p>
             <p class="ri-meta"><strong>Confirmed</strong>, once Reveal Date Confirmed is Yes: the same invite becomes the real one and adds the vendors, sponsors, photographers and design partners who have access to that job in JobTread. Un-confirming takes them back off.</p>
             <p class="ri-meta">Both invites include the link to watch the reveal live.</p>
             ${(() => {
@@ -6479,7 +6479,7 @@
         : rtInvite(r, 'confirmed') ? { state: 'done', text: 'Not needed: the confirmed invite went out first' }
         : invError && !r.confirmed ? invError
         : !r.preview ? { state: 'off', text: `No invite while the job is ${r.status || 'in this status'}` }
-        : !r.scheduleBuilt && !r.constructionStarted && !r.confirmed ? { state: 'wait', text: 'Goes out when Build Schedule is marked complete or construction starts (Demo, or two Construction tasks, done) in JobTread' }
+        : !r.constructionStarted && !r.confirmed ? { state: 'wait', text: 'Goes out when construction starts in JobTread (Demo, or two Construction tasks, done)' }
         : r.confirmed ? { state: 'done', text: 'Not needed: the reveal is already confirmed' }
         : !invites.enabled ? { state: 'wait', text: 'Goes out once calendar invites are turned on (Reveals → Invites)' }
         : { state: 'wait', text: 'Goes out on the next change in JobTread' }) });

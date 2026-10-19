@@ -5,9 +5,8 @@
  * (Clareece by default), so the invite comes from her and Google handles
  * updates and cancellations.
  *
- *   Build Schedule task complete, → "Tentative: Max's Reveal Day" (all day,
- *   or construction started         or timed once the task has a time)
- *   (Demo done, or 2 tasks under
+ *   Construction started          → "Tentative: Max's Reveal Day" (all day,
+ *   (Demo done, or 2 tasks under    or timed once the task has a time)
  *   Construction done)
  *   Reveal task moves             → the same event moves; guests get an update
  *   Reveal Date Confirmed = Yes   → the same event becomes "Max's Reveal Day"
@@ -64,8 +63,8 @@ export const isTestJob = (job) => /^\s*TEST\b/.test(String(job?.name || ''));
 export const isSandboxJob = (job) => job?.id === SANDBOX_JOB_ID || isTestJob(job);
 
 // Construction has started once Demo is done or two tasks under the Construction
-// group are. By then the reveal date is real, even if nobody checked off Build
-// Schedule. Read as counts, not task lists, so the job query stays small.
+// group are. By then the reveal date is real. Read as counts, not task lists,
+// so the job query stays small.
 export const CONSTRUCTION_GROUP = 'Construction';
 const CONSTRUCTION_STARTED_AT = 2;
 export const CONSTRUCTION_PROGRESS = {
@@ -233,7 +232,7 @@ export async function fetchJob(grantKey, jobId, fetchImpl = fetch) {
       location: { address: {}, account: { contacts: { $: { size: 50 }, nodes: { name: {}, customFieldValues: cf } } } },
       customFieldValues: { $: { size: 50 }, ...cf },
       tasks: {
-        $: { size: 100, where: { or: [[['taskType', 'id'], '=', REVEAL_TASK_TYPE], ['name', '=', 'Build Schedule']] } },
+        $: { size: 100, where: [['taskType', 'id'], '=', REVEAL_TASK_TYPE] },
         nodes: { id: {}, name: {}, startDate: {}, startTime: {}, endDate: {}, endTime: {}, progress: {}, taskType: { id: {} } },
       },
       aces: JOB_ACCESS,
@@ -403,8 +402,7 @@ export function planInvite(job, staff, { kids = [], board = [], organizer = DEFA
   if (!reveal?.startDate) return { action: 'cancel', reason: 'no Reveal task date' };
 
   const confirmed = String(values[FIELD_REVEAL_CONFIRMED] || '').trim().toLowerCase().startsWith('yes');
-  const scheduleBuilt = tasks.some(t => t.name === 'Build Schedule' && t.progress === 1);
-  if (!confirmed && !scheduleBuilt && !constructionStarted(job)) return { action: 'cancel', reason: 'Build Schedule not complete and construction not started yet' };
+  if (!confirmed && !constructionStarted(job)) return { action: 'cancel', reason: 'construction not started yet' };
 
   const who = displayName(job, kids);
   const date = reveal.startDate;
@@ -739,8 +737,8 @@ export async function sendTestInvite(env, jobId, testEmail, { date, time, cancel
       if (time !== undefined) { t.startTime = time || null; t.endTime = null; }
     }
   }
-  // Pretend the schedule is built so the test always produces an invite
-  if (job) job.tasks.nodes.push({ name: 'Build Schedule', progress: 1 });
+  // Pretend construction has started so the test always produces an invite
+  if (job) job.demoDone = { count: 1 };
   const plan = planInvite(job, staff, { kids, organizer: config.organizer, now, template: config.template });
   if (plan.action !== 'upsert') return { action: 'skip', reason: plan.reason };
   const event = {
@@ -781,7 +779,7 @@ export async function listUpcoming(env, { fetchImpl = fetch, now = Date.now() } 
               location: { address: {} },
               customFieldValues: cf,
               tasks: {
-                $: { size: 20, where: { or: [[['taskType', 'id'], '=', REVEAL_TASK_TYPE], ['name', '=', 'Build Schedule']] } },
+                $: { size: 20, where: [['taskType', 'id'], '=', REVEAL_TASK_TYPE] },
                 nodes: { id: {}, name: {}, startDate: {}, startTime: {}, endDate: {}, endTime: {}, progress: {}, taskType: { id: {} } },
               },
             },
@@ -835,8 +833,8 @@ export async function listUpcoming(env, { fetchImpl = fetch, now = Date.now() } 
     const row = rows[job.id];
     const who = displayName(job, kids);
 
-    // Preview as it will look once it goes out, even before Build Schedule is done, guests named
-    const plan = planInvite({ ...job, tasks: { nodes: [...tasks, { name: 'Build Schedule', progress: 1 }] } },
+    // Preview as it will look once it goes out, even before construction starts, guests named
+    const plan = planInvite({ ...job, demoDone: { count: 1 } },
       staff, { kids, board, organizer: config.organizer, now, template: config.template });
     const preview = plan.action === 'upsert' ? {
       title: plan.event.summary,
@@ -862,7 +860,6 @@ export async function listUpcoming(env, { fetchImpl = fetch, now = Date.now() } 
       date: reveal.startDate,
       time: hhmm(reveal.startTime),
       confirmed: String(values[FIELD_REVEAL_CONFIRMED] || '').trim().toLowerCase().startsWith('yes'),
-      scheduleBuilt: tasks.some(t => t.name === 'Build Schedule' && t.progress === 1),
       constructionStarted: constructionStarted(job),
       status: values[FIELD_STATUS] || null,
       details: String(values[FIELD_INVITE_DETAILS] || ''),

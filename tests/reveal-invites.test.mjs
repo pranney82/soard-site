@@ -17,7 +17,7 @@ const KEY = { client_email: 'reveals@soard-cal.iam.gserviceaccount.com', private
 const STAFF = [{ name: 'Christian Nielsen', email: 'cnielsen@soardcharity.com' }, { name: 'Clareece Cunningham', email: 'ccunningham@soardcharity.com' }];
 const KIDS = [{ slug: 'max', name: 'Max', year: 2026 }];
 
-function job({ date = '2026-10-27', time = null, confirmed = false, built = true, status = 'Build', closed = null, details = '', demo = false, construction = 0 } = {}) {
+function job({ date = '2026-10-27', time = null, confirmed = false, status = 'Build', closed = null, details = '', demo = true, construction = 0 } = {}) {
   return {
     id: '22PTestJob001', name: 'Max Sample (2026)', closedOn: closed, organization: { id: '22NJw42j5GLg' },
     location: { address: '100 Example Way, Atlanta, GA 30301, USA', account: { contacts: { nodes: [
@@ -31,7 +31,6 @@ function job({ date = '2026-10-27', time = null, confirmed = false, built = true
     ] },
     tasks: { nodes: [
       { id: 't1', name: 'Reveal', startDate: date, startTime: time, endDate: date, endTime: null, progress: null, taskType: { id: REVEAL_TASK_TYPE } },
-      { id: 't2', name: 'Build Schedule', progress: built ? 1 : null, taskType: null },
     ] },
     // JobTread's counts of finished tasks: Demo, and tasks under the Construction group
     demoDone: { count: demo ? 1 : 0 },
@@ -39,7 +38,7 @@ function job({ date = '2026-10-27', time = null, confirmed = false, built = true
   };
 }
 
-test('tentative invite once the schedule is built', () => {
+test('tentative invite once construction starts', () => {
   const p = planInvite(job(), STAFF, { kids: KIDS, now: NOW });
   assert.equal(p.action, 'upsert');
   assert.equal(p.event.summary, "Tentative: Max's Reveal Day");
@@ -71,8 +70,8 @@ test('confirmed with a time becomes a timed, confirmed event in Eastern time', (
 
 test('when there should be no invite', () => {
   const plan = (o) => planInvite(job(o), STAFF, { kids: KIDS, now: NOW });
-  assert.equal(plan({ built: false }).action, 'cancel', 'schedule not built yet');
-  assert.equal(plan({ built: false, confirmed: true }).action, 'upsert', 'confirmed counts even without Build Schedule');
+  assert.equal(plan({ demo: false }).action, 'cancel', 'construction not started yet');
+  assert.equal(plan({ demo: false, confirmed: true }).action, 'upsert', 'confirmed counts even before construction starts');
   assert.equal(plan({ status: 'Awaiting Funding' }).action, 'cancel');
   assert.equal(plan({ closed: '2026-10-20' }).action, 'cancel');
   assert.equal(plan({ date: null }).action, 'cancel');
@@ -80,13 +79,16 @@ test('when there should be no invite', () => {
   assert.equal(planInvite({ ...job(), organization: { id: 'other' } }, STAFF, { now: NOW }).action, 'skip');
 });
 
-test('construction starting sends the tentative invite even when Build Schedule was never checked off', () => {
-  const plan = (o) => planInvite(job({ built: false, ...o }), STAFF, { kids: KIDS, now: NOW });
+test('construction starting is what sends the tentative invite; Build Schedule no longer does', () => {
+  const plan = (o) => planInvite(job({ demo: false, ...o }), STAFF, { kids: KIDS, now: NOW });
   assert.equal(plan({ demo: true }).action, 'upsert', 'Demo done');
   assert.equal(plan({ demo: true }).event.status, 'tentative');
   assert.equal(plan({ construction: 2 }).action, 'upsert', 'two tasks under Construction done');
   assert.equal(plan({ construction: 1 }).action, 'cancel', 'one Construction task (Start) is not enough');
   assert.equal(plan({ demo: true, status: 'Awaiting Funding' }).action, 'cancel', 'the usual stops still apply');
+  const scheduleOnly = job({ demo: false });
+  scheduleOnly.tasks.nodes.push({ id: 't2', name: 'Build Schedule', progress: 1, taskType: null });
+  assert.equal(planInvite(scheduleOnly, STAFF, { kids: KIDS, now: NOW }).action, 'cancel', 'Build Schedule checked off alone sends nothing');
 });
 
 test('the job read asks JobTread for finished construction tasks as counts', async () => {
@@ -95,7 +97,7 @@ test('the job read asks JobTread for finished construction tasks as counts', asy
     if (new URL(url).hostname === 'api.jobtread.com' && JSON.parse(init.body).query.job) asked = JSON.parse(init.body).query.job;
     return fakeFetch(url, init);
   };
-  jt = job({ built: false, demo: true });
+  jt = job({ demo: true });
   assert.equal((await reconcileJob(env, jt.id, { fetchImpl: spy, now: NOW })).action, 'would-create');
   assert.deepEqual(asked.constructionDone.$.where.and[0], [['parentTask', 'name'], '=', 'Construction']);
   assert.equal(asked.constructionDone._, 'tasks');
@@ -462,7 +464,7 @@ test('admin list: upcoming reveals with the exact invite each would send, guests
     jt,
     { ...job({ date: '2026-10-07' }), id: 'pastJob0001', name: 'Peter Raish (2026)' },
     { ...job(), id: '22P3HTX9cXn4', name: 'Sunshine Office 2025' },
-    { ...job({ built: false, date: '2026-11-11', demo: true }), id: 'colinJob001', name: 'Colin Lindsay (2026)' },
+    { ...job({ date: '2026-11-11', demo: false }), id: 'colinJob001', name: 'Colin Lindsay (2026)' },
   ];
   const contactReads = [];
   const listFetch = async (url, init) => {
@@ -502,9 +504,9 @@ test('admin list: upcoming reveals with the exact invite each would send, guests
     { email: 'pat.sample@example.com', name: 'Pat Sample', kind: 'family' },
     { email: 'cnielsen@soardcharity.com', name: 'Christian Nielsen', kind: 'staff' },
   ]);
-  assert.ok(reveals[1].preview, 'a reveal not scheduled yet still previews how its invite will look');
-  assert.equal(max.constructionStarted, false);
-  assert.equal(reveals[1].constructionStarted, true, 'Demo done: the tracker knows the invite is due without Build Schedule');
+  assert.ok(reveals[1].preview, 'a reveal before construction still previews how its invite will look');
+  assert.equal(max.constructionStarted, true, 'Demo done: the tracker knows the invite is due');
+  assert.equal(reveals[1].constructionStarted, false);
   assert.equal(reveals[1].invite, null);
   assert.equal(organizerName, null, 'organizer name comes from JobTread staff when she is on the list');
 });
