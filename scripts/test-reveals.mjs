@@ -68,7 +68,7 @@ function adminData(phase) {
 function invitesData(phase) {
   const rehearsal = phase === 'rehearsal';
   const sched = phase === 'scheduled' || rehearsal;
-  const preview = (name, status) => ({ title: status === 'confirmed' ? `${name}'s Reveal Day` : `Tentative: ${name}'s Reveal Day`, status, start: { date: day(10) }, end: { date: day(11) }, location: '100 Example Way, Atlanta, GA', description: `This is the date for ${name}'s reveal.`, guests: [{ email: 'family@example.com', name: 'Pat Sample', kind: 'family' }, { email: 'cnielsen@soardcharity.com', name: 'Christian Nielsen', kind: 'staff' }] });
+  const preview = (name, status) => ({ title: status === 'confirmed' ? `${name}'s Reveal Day` : `${name}'s Reveal Day (tentative)`, status, start: { date: day(10) }, end: { date: day(11) }, location: status === 'confirmed' ? '100 Example Way, Atlanta, GA 30301, USA' : 'Atlanta, GA', locations: { tentative: 'Atlanta, GA', confirmed: '100 Example Way, Atlanta, GA 30301, USA' }, description: `This is the date for ${name}'s reveal.`, guests: [{ email: 'family@example.com', name: 'Pat Sample', kind: 'family' }, { email: 'cnielsen@soardcharity.com', name: 'Christian Nielsen', kind: 'staff' }] });
   return {
     ok: true,
     config: { enabled: true, organizer: 'ccunningham@soardcharity.com', template: DEFAULT_TEMPLATE, lastSweep: { at: iso(-60 * 60e3), checked: 20, changed: 0 } },
@@ -77,7 +77,7 @@ function invitesData(phase) {
     defaults: DEFAULT_TEMPLATE, limits: TEMPLATE_LIMITS,
     setup: { jobtread: true, google: true },
     upcoming: [
-      { jobId: 'jobLiz0001', jobName: 'Lizzie Francis (2026)', name: 'Lizzie', slug: 'lizzie', kidUrl: '/kids/lizzie/', jobUrl: 'https://app.jobtread.com/jobs/jobLiz0001', scheduleUrl: 'https://app.jobtread.com/jobs/jobLiz0001/schedule', date: day(5), time: null, confirmed: true, constructionStarted: true, status: 'Finalization', details: '', preview: preview('Lizzie', 'confirmed'),
+      { jobId: 'jobLiz0001', jobName: 'Lizzie Francis (2026)', name: 'Lizzie', slug: 'lizzie', space: 'Therapy Room', kidUrl: '/kids/lizzie/', jobUrl: 'https://app.jobtread.com/jobs/jobLiz0001', scheduleUrl: 'https://app.jobtread.com/jobs/jobLiz0001/schedule', date: day(5), time: null, confirmed: true, constructionStarted: true, status: 'Finalization', details: '', preview: preview('Lizzie', 'confirmed'),
         invite: { state: 'tentative', lastAction: 'created', error: 'Google said: Calendar usage limits exceeded.', updatedAt: iso(-3 * D), guests: 6, log: [{ action: 'created', state: 'tentative', guests: 6, date: day(5), at: iso(-3 * D) }] },
         broadcast: null, reminderSignups: 12, checkComment: { at: iso(-D), message: 'Christian, Lizzie\'s reveal is confirmed for Thursday but has no time yet.' } },
       { jobId: 'jobMax0001', jobName: `${rehearsal ? 'TEST ' : ''}Max Sample (2026)`, name: 'Max', slug: 'max', ...(rehearsal ? { test: true } : {}), kidUrl: '/kids/max/', jobUrl: 'https://app.jobtread.com/jobs/jobMax0001', scheduleUrl: 'https://app.jobtread.com/jobs/jobMax0001/schedule', date: day(10), time: '16:00', confirmed: true, constructionStarted: true, status: 'Build', details: 'Park on the street.', preview: preview('Max', 'confirmed'),
@@ -259,6 +259,24 @@ try {
   ok(invText.includes('Calendar invites are on') && invText.includes('Reveal checks are paused') && invText.includes('Invite wording'), 'the switches and the wording stay');
   ok(invText.includes('Who gets the invites') && invText.includes('adds the vendors, sponsors, photographers and design partners'), 'it explains the two stages');
   ok(invText.includes('1 of 2 board members') && invText.includes('Missing: Mary Atchley'), 'it says which board members still need an email');
+  // The wording preview matches what the server sends at each stage
+  const cards = await inv.page.$$eval('.ri-kind', (els) => els.map((el) => el.querySelector('.ri-invite')?.innerText || ''));
+  const [tent, conf] = cards;
+  ok(/\(tentative\)/.test(tent) && /All day/.test(tent), 'the tentative preview is a name-first, all-day save-the-date');
+  ok(/Lizzie's therapy room reveal is penciled in/.test(tent) && /sees the new therapy room/.test(conf), "{space} names what was built, from the job's Makeover Type");
+  ok(/Where\s*Atlanta, GA\b/.test(tent) && !/Example Way/.test(tent), 'the tentative preview shows the city, not the street');
+  ok(/Shows as\s*Free/.test(tent) && /Shows as\s*Busy/.test(conf), 'free until there is a confirmed time, then busy');
+  ok(/Example Way/.test(conf), 'the confirmed preview shows the full address');
+  ok(/^Meet \w+: https:\/\/sunshineonaranneyday\.com\/kids\//m.test(tent) && /^Can't be there\? Watch live: /m.test(tent) && /^Questions\? Email ccunningham@soardcharity\.com$/m.test(tent), 'labeled links and who to ask, as the server writes them');
+  const testUrls = [];
+  inv.page.on('request', (r) => { if (r.url().includes('test=')) testUrls.push(r.url()); });
+  const testButtons = await inv.page.$$eval('.ri-savebar button', (els) => els.map((b) => b.textContent.trim()).filter((t) => t.startsWith('Send me')));
+  ok(testButtons.length === 2 && testButtons[0].endsWith('tentative invite') && testButtons[1].endsWith('confirmed invite'), `a test of each stage (${testButtons.join(' / ')})`);
+  await inv.page.evaluate(() => [...document.querySelectorAll('.ri-savebar button')].find((b) => b.textContent.trim().endsWith('confirmed invite'))?.click());
+  await pause(400);
+  ok(testUrls.some((u) => u.includes('stage=confirmed')), 'the confirmed test asks for the confirmed stage');
+  const wording = await inv.page.$('.ri-wording');
+  if (wording) await wording.screenshot({ path: join(OUT, 'invites-wording.png') });
   ok(inv.errors.length === 0, `no console errors (${inv.errors.join(' | ')})`);
   await inv.page.close();
 

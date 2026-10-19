@@ -137,6 +137,14 @@ export async function upsertEvent(token, calendarId, event, { fetchImpl = fetch,
   return { created, event: res.data };
 }
 
+/** The event as it is on the calendar, or null when it isn't there */
+export async function getEvent(token, calendarId, eventId, { fetchImpl = fetch } = {}) {
+  const res = await call(token, 'GET', `/calendars/${encodeURIComponent(calendarId)}/events/${eventId}`, null, fetchImpl);
+  if (res.status === 404 || res.status === 410) return null;
+  if (!res.ok) throw new Error(`Google Calendar read failed (${res.status}): ${res.data?.error?.message || ''}`.trim());
+  return res.data;
+}
+
 /** Cancel the event (guests get a cancellation). Already gone is fine. */
 export async function cancelEvent(token, calendarId, eventId, { fetchImpl = fetch, sendUpdates = 'all' } = {}) {
   const res = await call(token, 'DELETE', `/calendars/${encodeURIComponent(calendarId)}/events/${eventId}?sendUpdates=${sendUpdates}`, null, fetchImpl);

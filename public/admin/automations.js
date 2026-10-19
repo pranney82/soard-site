@@ -139,7 +139,7 @@ const MAP = { t: 'SOARD', children: [
       { t: 'Calendar invites', children: [
         { t: 'Invite engine', s: 'live', k: 'event',
           when: 'Woken by the four JobTread workflows below and the 5-minute new guest check; it re-reads the job itself.',
-          does: 'Construction started (Demo, or two tasks under Construction, done) → a tentative all-day invite. Reveal moved → the same invite updates. Confirmed → a timed “Reveal Day” invite. Closed, denied or awaiting funding before the reveal → cancelled. Tentative guests are Admin and Designer staff, the family (the job’s customer contacts and Makeover Family users with access to the job) and the board (website board members with a private reveal email, plus any Board Member users in JobTread). Confirming adds the vendors, sponsors, photographers and design partners with access to that job in JobTread; un-confirming takes them off. Both invites carry the link to watch the reveal live. Board changes on the website update open invites right away. Once a reveal has happened (its start time has passed or its Reveal task is complete), its invite is never touched again, so closing the job afterwards sends nothing.',
+          does: 'Construction started (Demo, or two tasks under Construction, done) → a tentative all-day invite, city only, shown as free. Reveal moved → the same invite updates. Confirmed → a timed “Reveal Day” invite with the full address. Guests are emailed only when the date, time, address, notes or guest list change, never for wording alone. Nothing in JobTread cancels an invite: a reveal is called off by deleting its event in Google Calendar, and the site then leaves it alone for good (Retry in the admin sends it again). A job closed, denied or awaiting funding, or a Reveal task with no date, keeps its invite and staff get one heads-up email. Tentative guests are Admin and Designer staff, the family (the job’s customer contacts and Makeover Family users with access to the job) and the board (website board members with a private reveal email, plus any Board Member users in JobTread). Confirming adds the vendors, sponsors, photographers and design partners with access to that job in JobTread; un-confirming takes them off. Both invites carry the link to watch the reveal live. Board changes on the website update open invites right away. Once a reveal has happened (its start time has passed or its Reveal task is complete), its invite is never touched again, so closing the job afterwards sends nothing.',
           touches: ['JobTread', 'Google Calendar'], where: 'functions/api/reveal-invites.js · _reveal-invites.js · _google-calendar.js',
           info: 'Invites come from Clareece’s Google Calendar through a service account. The office job is a live sandbox: its invites go only to Peter and are titled TEST.',
           live: (f) => {
@@ -159,12 +159,12 @@ const MAP = { t: 'SOARD', children: [
         { t: 'Confirmed, notes or status changed', s: 'live', k: 'event',
           when: 'Reveal Date Confirmed, Reveal Invite Details, job status or closed date changes.',
           does: 'Wakes the invite engine for that job.', touches: ['JobTread'], where: JT_INVITE_HOOK, live: wf('22PgPED4vi7W') },
-        { t: 'Reveal or finished task deleted', s: 'live', k: 'event',
-          when: 'A Reveal task is deleted, or a finished task (losing it can mean construction hasn’t started after all).',
-          does: 'Wakes the invite engine so the invite can be cancelled.', touches: ['JobTread'], where: JT_INVITE_HOOK, live: wf('22PgQQ6JnJDm') },
+        { t: 'Reveal task deleted', s: 'live', k: 'event',
+          when: 'A Reveal task is deleted.',
+          does: 'Wakes the invite engine: the invite is kept and staff get a heads-up, in case the reveal is off.', touches: ['JobTread'], where: JT_INVITE_HOOK, live: wf('22PgQQ6JnJDm') },
         { t: 'Safety sweep', s: 'live', k: 'schedule',
           when: 'Every 6 hours, on the live hub’s heartbeat (visits to the reveals feed are the backup).',
-          does: 'Reconciles every open job with Google Calendar, catching anything a missed workflow call left behind.',
+          does: 'Reconciles every open job with Google Calendar, catching anything a missed workflow call left behind, and notices invites someone deleted by hand in Google Calendar.',
           touches: ['JobTread', 'Google Calendar', 'D1'], where: 'functions/api/broadcast-hooks.js · reveals.js → _reveal-invites.js',
           live: (f) => {
             const i = f.invites;

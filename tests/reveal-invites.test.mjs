@@ -6,7 +6,7 @@ import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { generateKeyPairSync, createVerify } from 'node:crypto';
 import { createD1 } from './lib/d1-shim.mjs';
-import { guestGroups, fetchBoard, boardRoster, setBoardEmail, planInvite, reconcileJob, sendTestInvite, writeConfig, readConfig, renderTemplate, listUpcoming, maybeSweep, maybeCheckGuests, realJobFor, DEFAULT_TEMPLATE, REVEAL_TASK_TYPE, FIELD_STATUS, FIELD_INVITE_DETAILS, FIELD_CONTACT_EMAIL } from '../functions/api/_reveal-invites.js';
+import { guestGroups, fetchBoard, boardRoster, setBoardEmail, planInvite, reconcileJob, reconcileAll, sendTestInvite, writeConfig, readConfig, renderTemplate, listUpcoming, maybeSweep, maybeCheckGuests, realJobFor, cityOf, BY_HAND, DEFAULT_TEMPLATE, REVEAL_TASK_TYPE, FIELD_STATUS, FIELD_MAKEOVER_TYPE, FIELD_INVITE_DETAILS, FIELD_CONTACT_EMAIL } from '../functions/api/_reveal-invites.js';
 import { serviceAccountJwt, eventIdFor, clearTokenCache, parseServiceAccount } from '../functions/api/_google-calendar.js';
 import { FIELD_REVEAL_CONFIRMED } from '../functions/api/_reveals.js';
 
@@ -17,7 +17,7 @@ const KEY = { client_email: 'reveals@soard-cal.iam.gserviceaccount.com', private
 const STAFF = [{ name: 'Christian Nielsen', email: 'cnielsen@soardcharity.com' }, { name: 'Clareece Cunningham', email: 'ccunningham@soardcharity.com' }];
 const KIDS = [{ slug: 'max', name: 'Max', year: 2026 }];
 
-function job({ date = '2026-10-27', time = null, confirmed = false, status = 'Build', closed = null, details = '', demo = true, construction = 0 } = {}) {
+function job({ date = '2026-10-27', time = null, confirmed = false, status = 'Build', closed = null, details = '', demo = true, construction = 0, type = 'Bathroom' } = {}) {
   return {
     id: '22PTestJob001', name: 'Max Sample (2026)', closedOn: closed, organization: { id: '22NJw42j5GLg' },
     location: { address: '100 Example Way, Atlanta, GA 30301, USA', account: { contacts: { nodes: [
@@ -26,6 +26,7 @@ function job({ date = '2026-10-27', time = null, confirmed = false, status = 'Bu
     ] } } },
     customFieldValues: { nodes: [
       { value: status, customField: { id: FIELD_STATUS } },
+      ...(type ? [{ value: type, customField: { id: FIELD_MAKEOVER_TYPE } }] : []),
       ...(confirmed ? [{ value: 'Yes 👍', customField: { id: FIELD_REVEAL_CONFIRMED } }] : []),
       ...(details ? [{ value: details, customField: { id: FIELD_INVITE_DETAILS } }] : []),
     ] },
@@ -41,19 +42,42 @@ function job({ date = '2026-10-27', time = null, confirmed = false, status = 'Bu
 test('tentative invite once construction starts', () => {
   const p = planInvite(job(), STAFF, { kids: KIDS, now: NOW });
   assert.equal(p.action, 'upsert');
-  assert.equal(p.event.summary, "Tentative: Max's Reveal Day");
+  assert.equal(p.event.summary, "Max's Reveal Day (tentative)", 'the name first, so a month view shows whose reveal it is');
   assert.equal(p.event.status, 'tentative');
   assert.deepEqual(p.event.start, { date: '2026-10-27' });
   assert.deepEqual(p.event.end, { date: '2026-10-28' });
-  assert.equal(p.event.location, '100 Example Way, Atlanta, GA 30301, USA');
+  assert.equal(p.event.location, 'Atlanta, GA', "a family's street address waits for a confirmed date");
+  assert.equal(p.event.transparency, 'transparent', 'a date that may move blocks no one');
   assert.equal(p.event.id, eventIdFor('soardreveal', '22PTestJob001'));
   assert.match(p.event.id, /^[a-v0-9]+$/, 'Google event ids allow a-v and 0-9 only');
   // Family first, staff after, organizer (Clareece) never a guest, emails lowercased
   assert.deepEqual(p.guests, ['pat.sample@example.com', 'cnielsen@soardcharity.com']);
   assert.equal(p.event.guestsCanSeeOtherGuests, false);
-  assert.match(p.event.description, /tentative date for Max's reveal/);
-  assert.match(p.event.description, /\/kids\/max\//);
-  assert.match(p.event.description, /^Watch live: https:\/\/sunshineonaranneyday\.com\/live\/max\/$/m, 'the link to watch it live');
+  assert.match(p.event.description, /^Save the date: Max's bathroom reveal is penciled in for Tuesday, October 27\./, 'the date first, for a phone');
+  assert.match(p.event.description, /^Meet Max: https:\/\/sunshineonaranneyday\.com\/kids\/max\/$/m, 'a labeled link to the kid');
+  assert.match(p.event.description, /^Can't be there\? Watch live: https:\/\/sunshineonaranneyday\.com\/live\/max\/$/m, 'the link to watch it live');
+  assert.match(p.event.description, /^Questions\? Email ccunningham@soardcharity\.com$/m, 'who to ask');
+  assert.doesNotMatch(p.event.description, /^https:/m, 'no bare links');
+  assert.doesNotMatch(p.event.description, /—/, 'no em dashes in site copy');
+});
+
+test('a tentative invite is a save-the-date: no time, even when the Reveal task has one', () => {
+  const p = planInvite(job({ time: '16:00:00.000' }), STAFF, { kids: KIDS, now: NOW });
+  assert.deepEqual(p.event.start, { date: '2026-10-27' });
+  assert.equal(p.event.transparency, 'transparent');
+  assert.match(p.event.description, /The time and address come once the date is confirmed/);
+});
+
+test("the city, never the street: a street address that can't be told apart is left off", () => {
+  assert.equal(cityOf('100 Example Rd, Marietta, GA 30062, USA'), 'Marietta, GA');
+  assert.equal(cityOf('12 Oak St, Apt 3, Decatur, GA 30030'), 'Decatur, GA');
+  assert.equal(cityOf('Roswell, GA 30076-1234'), 'Roswell, GA');
+  assert.equal(cityOf('100 Example Rd, GA 30062'), null, 'no city: the street would be all that is left');
+  assert.equal(cityOf('100 Example Rd Marietta GA 30062'), null, 'no commas: no guess');
+  assert.equal(cityOf(''), null);
+  assert.equal(cityOf(null), null);
+  const p = planInvite({ ...job(), location: { ...job().location, address: '100 Example Rd Marietta GA' } }, STAFF, { kids: KIDS, now: NOW });
+  assert.equal(p.event.location, undefined, 'no location rather than a street');
 });
 
 test('confirmed with a time becomes a timed, confirmed event in Eastern time', () => {
@@ -62,19 +86,27 @@ test('confirmed with a time becomes a timed, confirmed event in Eastern time', (
   assert.equal(p.event.status, 'confirmed');
   assert.deepEqual(p.event.start, { dateTime: '2026-10-27T16:00:00', timeZone: 'America/New_York' });
   assert.deepEqual(p.event.end, { dateTime: '2026-10-27T17:00:00', timeZone: 'America/New_York' });
+  assert.equal(p.event.location, '100 Example Way, Atlanta, GA 30301, USA', 'the full address once confirmed');
+  assert.equal(p.event.transparency, 'opaque', 'a confirmed time is busy');
+  assert.match(p.event.description, /^Max's bathroom reveal is confirmed for Tuesday, October 27 at 4:00 PM\./);
   assert.match(p.event.description, /Park on the street\./);
   assert.match(p.event.description, /Watch live: https:\/\/sunshineonaranneyday\.com\/live\/max\//, 'still there once confirmed');
   const unpublished = planInvite(job(), STAFF, { kids: [], now: NOW });
-  assert.match(unpublished.event.description, /^Watch live: https:\/\/sunshineonaranneyday\.com\/live\/$/m, 'kid not on the site yet: /live/ follows the current reveal');
+  assert.match(unpublished.event.description, /^Can't be there\? Watch live: https:\/\/sunshineonaranneyday\.com\/live\/$/m, 'kid not on the site yet: /live/ follows the current reveal');
+  assert.doesNotMatch(unpublished.event.description, /^Meet /m, 'and no kid page to link');
+  const allDay = planInvite(job({ confirmed: true }), STAFF, { kids: KIDS, now: NOW });
+  assert.equal(allDay.event.transparency, 'transparent', 'confirmed without a time yet: still free');
+  assert.equal(allDay.event.location, '100 Example Way, Atlanta, GA 30301, USA');
 });
 
 test('when there should be no invite', () => {
   const plan = (o) => planInvite(job(o), STAFF, { kids: KIDS, now: NOW });
-  assert.equal(plan({ demo: false }).action, 'cancel', 'construction not started yet');
+  assert.equal(plan({ demo: false }).action, 'skip', 'construction not started yet: nothing to send');
   assert.equal(plan({ demo: false, confirmed: true }).action, 'upsert', 'confirmed counts even before construction starts');
-  assert.equal(plan({ status: 'Awaiting Funding' }).action, 'cancel');
-  assert.equal(plan({ closed: '2026-10-20' }).action, 'cancel');
-  assert.equal(plan({ date: null }).action, 'cancel');
+  // The site never cancels: these hold an invite that's out as it is
+  assert.equal(plan({ status: 'Awaiting Funding' }).action, 'hold');
+  assert.equal(plan({ closed: '2026-10-20' }).action, 'hold');
+  assert.equal(plan({ date: null }).action, 'hold');
   assert.equal(plan({ date: '2026-10-07' }).action, 'skip', 'past reveals are left alone');
   assert.equal(planInvite({ ...job(), organization: { id: 'other' } }, STAFF, { now: NOW }).action, 'skip');
 });
@@ -84,11 +116,13 @@ test('construction starting is what sends the tentative invite; Build Schedule n
   assert.equal(plan({ demo: true }).action, 'upsert', 'Demo done');
   assert.equal(plan({ demo: true }).event.status, 'tentative');
   assert.equal(plan({ construction: 2 }).action, 'upsert', 'two tasks under Construction done');
-  assert.equal(plan({ construction: 1 }).action, 'cancel', 'one Construction task (Start) is not enough');
-  assert.equal(plan({ demo: true, status: 'Awaiting Funding' }).action, 'cancel', 'the usual stops still apply');
+  assert.equal(plan({ construction: 1 }).action, 'skip', 'one Construction task (Start) is not enough');
+  assert.equal(plan({ demo: true, status: 'Awaiting Funding' }).action, 'hold', 'the usual stops still apply');
+  assert.equal(plan({ demo: false, construction: 0 }).action, 'skip');
+  assert.equal(planInvite(job({ demo: false }), STAFF, { kids: KIDS, now: NOW, sent: true }).action, 'upsert', 'once the invite is out, a task un-checked by mistake never takes it back');
   const scheduleOnly = job({ demo: false });
   scheduleOnly.tasks.nodes.push({ id: 't2', name: 'Build Schedule', progress: 1, taskType: null });
-  assert.equal(planInvite(scheduleOnly, STAFF, { kids: KIDS, now: NOW }).action, 'cancel', 'Build Schedule checked off alone sends nothing');
+  assert.equal(planInvite(scheduleOnly, STAFF, { kids: KIDS, now: NOW }).action, 'skip', 'Build Schedule checked off alone sends nothing');
 });
 
 test('the job read asks JobTread for finished construction tasks as counts', async () => {
@@ -108,11 +142,11 @@ test('a reveal that has happened is never cancelled or changed, even when the jo
   // NOW is 10:00 AM Eastern on October 16
   const plan = (o, tweak = (j) => j) => planInvite(tweak(job({ confirmed: true, ...o })), STAFF, { kids: KIDS, now: NOW });
   assert.equal(plan({ date: '2026-10-16', time: '09:00:00.000', closed: '2026-10-16' }).action, 'skip', 'this morning\'s reveal, job closed after: no cancellation email');
-  assert.equal(plan({ date: '2026-10-16', time: '16:00:00.000', closed: '2026-10-16' }).action, 'cancel', 'closed before this afternoon\'s reveal: it is called off');
+  assert.equal(plan({ date: '2026-10-16', time: '16:00:00.000', closed: '2026-10-16' }).action, 'hold', 'closed before this afternoon\'s reveal: held, staff told, cancelling is by hand');
   assert.equal(plan({ date: '2026-10-16', time: null, closed: '2026-10-16' }).action, 'skip', 'an all-day reveal today counts as under way');
   const done = (j) => ({ ...j, tasks: { nodes: j.tasks.nodes.map((t) => (t.name === 'Reveal' ? { ...t, progress: 1 } : t)) } });
   assert.equal(plan({ date: '2026-10-27', closed: '2026-10-16' }, done).action, 'skip', 'Reveal task marked complete: it happened, whatever the date says');
-  assert.equal(plan({ date: '2026-10-27', closed: '2026-10-16' }).action, 'cancel', 'a future reveal on a closed job is still cancelled');
+  assert.equal(plan({ date: '2026-10-27', closed: '2026-10-16' }).action, 'hold', 'a future reveal on a closed job is held, not cancelled');
 });
 
 // Two stages: tentative → staff, family and the board; confirmed → plus the people given access to the job
@@ -305,11 +339,75 @@ test('create, move, confirm, cancel: one event, updated in place', async () => {
   assert.equal(events.get(id).summary, "Max's Reveal Day");
   assert.equal(events.get(id).status, 'confirmed');
 
-  // Put on hold: cancelled
-  jt = job({ date: '2026-10-29', status: 'Awaiting Funding' });
+  // Put on hold in JobTread: the invite stays, staff are told once
+  jt = job({ date: '2026-10-29', time: '15:30', confirmed: true, status: 'Awaiting Funding' });
+  calls.length = 0;
   r = await reconcileJob(env, jt.id, { fetchImpl: fakeFetch, now: NOW });
-  assert.equal(r.action, 'cancelled');
-  assert.ok(!events.has(id));
+  assert.equal(r.action, 'held');
+  assert.equal(events.get(id).status, 'confirmed', 'never cancelled by the site');
+  assert.ok(!calls.some((c) => /^(PUT|POST|DELETE|PATCH) www\.googleapis\.com/.test(c)), 'the calendar is not touched');
+  const logged = async () => (await env.DB.prepare('SELECT action FROM reveal_invite_log WHERE job_id = ? ORDER BY id').bind(jt.id).all()).results.map((l) => l.action);
+  assert.equal((await logged()).at(-1), 'kept: status is Awaiting Funding');
+  await reconcileJob(env, jt.id, { fetchImpl: fakeFetch, now: NOW });
+  assert.equal((await logged()).filter((a) => a.startsWith('kept')).length, 1, 'staff hear it once, not on every wake-up');
+  // Back on in JobTread: the note clears, nothing is sent
+  jt = job({ date: '2026-10-29', time: '15:30', confirmed: true });
+  assert.equal((await reconcileJob(env, jt.id, { fetchImpl: fakeFetch, now: NOW })).action, 'unchanged');
+  assert.equal((await env.DB.prepare('SELECT last_action FROM reveal_invites WHERE job_id = ?').bind(jt.id).first()).last_action, 'back on in JobTread');
+});
+
+test('calling a reveal off is done by hand in Google Calendar, and the site never brings it back', async () => {
+  await writeConfig(env.DB, { enabled: true });
+  const id = eventIdFor('soardreveal', jt.id);
+  assert.equal((await reconcileJob(env, jt.id, { fetchImpl: fakeFetch, now: NOW })).action, 'created');
+
+  // Un-checking Demo by mistake: the invite stays, and still follows the reveal
+  jt = job({ demo: false, date: '2026-10-28' });
+  let r = await reconcileJob(env, jt.id, { fetchImpl: fakeFetch, now: NOW });
+  assert.equal(r.action, 'updated');
+  assert.deepEqual(events.get(id).start, { date: '2026-10-28' });
+
+  // Clareece deletes the event in Google Calendar (Google keeps it as cancelled)
+  events.get(id).status = 'cancelled';
+  // The 6-hour sweep notices it with nothing changed in JobTread
+  r = await reconcileJob(env, jt.id, { fetchImpl: fakeFetch, now: NOW, verify: true });
+  assert.deepEqual([r.action, r.reason], ['skip', BY_HAND]);
+  const row = await env.DB.prepare('SELECT state, last_action FROM reveal_invites WHERE job_id = ?').bind(jt.id).first();
+  assert.deepEqual([row.state, row.last_action], ['cancelled', BY_HAND]);
+
+  // Later JobTread changes (date moved, confirmed, construction checked) never send it again
+  calls.length = 0;
+  jt = job({ date: '2026-10-30', time: '16:00', confirmed: true });
+  r = await reconcileJob(env, jt.id, { fetchImpl: fakeFetch, now: NOW });
+  assert.deepEqual([r.action, r.reason], ['skip', BY_HAND]);
+  assert.equal(events.get(id).status, 'cancelled');
+  assert.ok(!calls.some((c) => c.includes('googleapis')), 'Google not even read');
+
+  // An admin's Retry is the one way to send it again
+  r = await reconcileJob(env, jt.id, { fetchImpl: fakeFetch, now: NOW, force: true });
+  assert.equal(r.action, 'updated');
+  assert.equal(events.get(id).status, 'confirmed');
+});
+
+test('an invite deleted by hand is caught before any update writes over it', async () => {
+  await writeConfig(env.DB, { enabled: true });
+  const id = eventIdFor('soardreveal', jt.id);
+  await reconcileJob(env, jt.id, { fetchImpl: fakeFetch, now: NOW });
+  events.delete(id); // deleted long enough ago that Google no longer has it
+  calls.length = 0;
+  jt = job({ date: '2026-10-29' });
+  const r = await reconcileJob(env, jt.id, { fetchImpl: fakeFetch, now: NOW });
+  assert.deepEqual([r.action, r.reason], ['skip', BY_HAND]);
+  assert.ok(!events.has(id), 'not put back');
+  assert.ok(!calls.some((c) => /^(PUT|POST) www\.googleapis\.com/.test(c)));
+});
+
+test('a TEST job clears its own invite when it is closed (only the test guests have it)', async () => {
+  jt = { ...job(), id: 'testJob0001', name: 'TEST Max Sample (2026)' };
+  assert.equal((await reconcileJob(env, jt.id, { fetchImpl: fakeFetch, now: NOW })).action, 'created');
+  jt = { ...job({ closed: '2026-10-16' }), id: 'testJob0001', name: 'TEST Max Sample (2026)' };
+  assert.equal((await reconcileJob(env, jt.id, { fetchImpl: fakeFetch, now: NOW })).action, 'cancelled');
+  assert.ok(!events.has(eventIdFor('soardreveal', 'testJob0001')));
 });
 
 test('the office sandbox sends even while sending is off, only to the test guests, marked TEST', async () => {
@@ -319,7 +417,7 @@ test('the office sandbox sends even while sending is off, only to the test guest
   assert.equal(r.guests, 1);
   const ev = events.get(eventIdFor('soardreveal', jt.id));
   assert.deepEqual(ev.attendees, [{ email: 'peter@soardcharity.com' }], 'no family, no staff');
-  assert.equal(ev.summary, "TEST · Tentative: Sunshine's Reveal Day");
+  assert.equal(ev.summary, "TEST · Sunshine's Reveal Day (tentative)");
   // ...while a real job in the same state still only reports what it would do
   jt = job();
   assert.equal((await reconcileJob(env, jt.id, { fetchImpl: fakeFetch, now: NOW })).action, 'would-create');
@@ -414,6 +512,96 @@ test('staff guest list changes update quietly; family changes email everyone', a
   assert.ok(calls.some(c => c.startsWith('PUT') && c.endsWith('sendUpdates=all')));
 });
 
+test('new wording never emails guests on its own; facts do, and an admin can push the wording', async () => {
+  await writeConfig(env.DB, { enabled: true });
+  const id = eventIdFor('soardreveal', jt.id);
+  assert.equal((await reconcileJob(env, jt.id, { fetchImpl: fakeFetch, now: NOW })).action, 'created');
+  const googleWrites = () => calls.filter((c) => /^(POST|PUT|PATCH) www\.googleapis\.com/.test(c));
+
+  // Clareece fixes a sentence: the guest check and the sweep leave every invite alone
+  await writeConfig(env.DB, { template: { ...DEFAULT_TEMPLATE, tentativeMessage: 'Hold the date for {name}: {date}.' } });
+  calls.length = 0;
+  assert.equal((await reconcileJob(env, jt.id, { fetchImpl: fakeFetch, now: NOW })).action, 'unchanged');
+  assert.deepEqual(googleWrites(), [], 'no one is emailed about wording');
+
+  // ...until a fact changes: then the update carries the new wording
+  jt = job({ details: 'Park on the street.' });
+  calls.length = 0;
+  assert.equal((await reconcileJob(env, jt.id, { fetchImpl: fakeFetch, now: NOW })).action, 'updated', 'JobTread notes are a fact guests act on');
+  assert.ok(googleWrites().every((c) => c.endsWith('sendUpdates=all')));
+  assert.match(events.get(id).description, /^Hold the date for Max: Tuesday, October 27\./);
+
+  // Wording pushed from admin ("Also update invites already sent"): everyone gets it
+  const withJobs = async (url, init = {}) => {
+    const q = new URL(url).hostname === 'api.jobtread.com' ? JSON.parse(init.body).query : null;
+    if (q?.organization?.jobs) return Response.json({ organization: { jobs: { nodes: [{ id: jt.id }] } } });
+    return fakeFetch(url, init);
+  };
+  await writeConfig(env.DB, { template: { ...DEFAULT_TEMPLATE, tentativeMessage: 'Pencil in {date} for {name}.' } });
+  calls.length = 0;
+  const results = await reconcileAll(env, { fetchImpl: withJobs, now: NOW, rewrite: true });
+  assert.equal(results.find((r) => r.jobId === jt.id)?.action, 'updated');
+  assert.ok(googleWrites().length === 1 && googleWrites()[0].endsWith('sendUpdates=all'));
+  assert.match(events.get(id).description, /^Pencil in Tuesday, October 27 for Max\./);
+  calls.length = 0;
+  assert.equal((await reconcileAll(env, { fetchImpl: withJobs, now: NOW, rewrite: true })).find((r) => r.jobId === jt.id)?.action, 'unchanged', 'pushing the same wording twice sends nothing');
+});
+
+test('an invite sent before invites kept their facts is checked against the calendar, not sent again', async () => {
+  await writeConfig(env.DB, { enabled: true });
+  await env.DB.prepare('CREATE TABLE IF NOT EXISTS reveal_invites (job_id TEXT PRIMARY KEY, event_id TEXT, state TEXT, hash TEXT, reveal_date TEXT, guests TEXT, last_action TEXT, error TEXT, updated_at TEXT)').run();
+  const id = eventIdFor('soardreveal', jt.id);
+  const legacy = 'a'.repeat(32);
+  const ADDRESS = '100 Example Way, Atlanta, GA 30301, USA';
+  const guests = ['pat.sample@example.com', 'cnielsen@soardcharity.com'];
+  // What the old invite looked like on Clareece's calendar, and the row it left
+  const sent = (state, start, end, extra = {}) => events.set(id, { id, status: state, summary: "Tentative: Max's Reveal Day", location: ADDRESS, start, end, description: 'This is a tentative date…', ...extra });
+  const row = (state, date, g = guests) => env.DB.prepare('INSERT OR REPLACE INTO reveal_invites (job_id, event_id, state, hash, reveal_date, guests, last_action) VALUES (?, ?, ?, ?, ?, ?, ?)')
+    .bind(jt.id, id, state, legacy, date, JSON.stringify(g), 'created').run();
+  const writes = () => calls.filter((c) => /^(POST|PUT|PATCH|DELETE) www\.googleapis\.com/.test(c));
+
+  // The calendar already has today's date and address: nothing goes out, and the row now keeps its facts
+  sent('tentative', { date: '2026-10-27' }, { date: '2026-10-28' });
+  await row('tentative', '2026-10-27');
+  calls.length = 0;
+  assert.equal((await reconcileJob(env, jt.id, { fetchImpl: fakeFetch, now: NOW })).action, 'unchanged');
+  assert.deepEqual(writes(), [], 'the family is not emailed');
+  const saved = await env.DB.prepare('SELECT hash FROM reveal_invites WHERE job_id = ?').bind(jt.id).first();
+  assert.match(saved.hash, /^[0-9a-f]{32}:a{32}$/);
+  calls.length = 0;
+  assert.equal((await reconcileJob(env, jt.id, { fetchImpl: fakeFetch, now: NOW })).action, 'unchanged');
+  assert.ok(!calls.some((c) => c.includes('googleapis')), 'checked once, then the row knows');
+
+  // Only staff changed since: a quiet update, which brings the new wording along
+  sent('tentative', { date: '2026-10-27' }, { date: '2026-10-28' });
+  await row('tentative', '2026-10-27', ['pat.sample@example.com']);
+  calls.length = 0;
+  assert.equal((await reconcileJob(env, jt.id, { fetchImpl: fakeFetch, now: NOW })).action, 'updated quietly');
+  assert.equal(events.get(id).summary, "Max's Reveal Day (tentative)");
+  assert.equal(events.get(id).location, 'Atlanta, GA');
+
+  // The calendar has an older date: everyone hears about the move
+  sent('tentative', { date: '2026-10-20' }, { date: '2026-10-21' });
+  await row('tentative', '2026-10-20');
+  calls.length = 0;
+  assert.equal((await reconcileJob(env, jt.id, { fetchImpl: fakeFetch, now: NOW })).action, 'updated');
+  assert.ok(writes().every((c) => c.endsWith('sendUpdates=all')));
+
+  // An old tentative invite with a time: the time comes off, and guests see that
+  sent('tentative', { dateTime: '2026-10-27T16:00:00-04:00', timeZone: 'America/New_York' }, { dateTime: '2026-10-27T17:00:00-04:00', timeZone: 'America/New_York' });
+  await row('tentative', '2026-10-27');
+  calls.length = 0;
+  assert.equal((await reconcileJob(env, jt.id, { fetchImpl: fakeFetch, now: NOW })).action, 'updated');
+
+  // Confirmed under the old wording before this shipped, same time on the calendar: left alone
+  jt = job({ confirmed: true, time: '16:00:00.000' });
+  sent('confirmed', { dateTime: '2026-10-27T16:00:00-04:00', timeZone: 'America/New_York' }, { dateTime: '2026-10-27T17:00:00-04:00', timeZone: 'America/New_York' });
+  await row('confirmed', '2026-10-27');
+  calls.length = 0;
+  assert.equal((await reconcileJob(env, jt.id, { fetchImpl: fakeFetch, now: NOW })).action, 'unchanged');
+  assert.deepEqual(writes(), []);
+});
+
 test('Google errors are recorded, not thrown', async () => {
   await writeConfig(env.DB, { enabled: true });
   const failing = async (url, init) => (new URL(url).hostname === 'oauth2.googleapis.com'
@@ -429,10 +617,17 @@ test('Google errors are recorded, not thrown', async () => {
 test('test invite goes only to the tester, as a separate event', async () => {
   const r = await sendTestInvite(env, jt.id, 'peter@soardcharity.com', { fetchImpl: fakeFetch, now: NOW, date: '2026-10-30', time: '16:00' });
   assert.equal(r.action, 'created');
-  const ev = events.get(eventIdFor('soardrevealtest', jt.id));
+  let ev = events.get(eventIdFor('soardrevealtest', jt.id));
   assert.deepEqual(ev.attendees, [{ email: 'peter@soardcharity.com' }]);
-  assert.equal(ev.summary, "TEST · Tentative: Max's Reveal Day");
+  assert.equal(ev.summary, "TEST · Max's Reveal Day (tentative)");
+  assert.deepEqual(ev.start, { date: '2026-10-30' }, 'tentative: date only');
+
+  // The confirmed version of a reveal that isn't confirmed yet, to see both stages first
+  await sendTestInvite(env, jt.id, 'peter@soardcharity.com', { fetchImpl: fakeFetch, now: NOW, date: '2026-10-30', time: '16:00', stage: 'confirmed' });
+  ev = events.get(eventIdFor('soardrevealtest', jt.id));
+  assert.equal(ev.summary, "TEST · Max's Reveal Day");
   assert.deepEqual(ev.start, { dateTime: '2026-10-30T16:00:00', timeZone: 'America/New_York' });
+  assert.equal(ev.location, '100 Example Way, Atlanta, GA 30301, USA');
   assert.match(ev.description, /pat\.sample@example\.com, cnielsen@soardcharity\.com/);
   assert.ok(!events.has(eventIdFor('soardreveal', jt.id)), 'the real event is untouched');
 
@@ -441,10 +636,48 @@ test('test invite goes only to the tester, as a separate event', async () => {
   assert.equal(events.size, 0);
 });
 
-test('the default wording is exactly what invites already went out with', () => {
+test('the default wording, exactly', () => {
   const p = planInvite(job(), STAFF, { kids: KIDS, now: NOW });
-  assert.equal(p.event.summary, "Tentative: Max's Reveal Day");
-  assert.equal(p.event.description, "This is a tentative date for Max's reveal while the build wraps up.\nThis invite updates automatically if the date moves, and the time is added once the reveal is confirmed.\n\nWatch live: https://sunshineonaranneyday.com/live/max/\n\nhttps://sunshineonaranneyday.com/kids/max/");
+  assert.equal(p.event.summary, "Max's Reveal Day (tentative)");
+  assert.equal(p.event.description, [
+    "Save the date: Max's bathroom reveal is penciled in for Tuesday, October 27.",
+    '',
+    "It's the moment Max sees the new bathroom for the first time.",
+    '',
+    "If the build schedule shifts, this invite moves with it. The time and address come once the date is confirmed, so there's no need to reply until then.",
+    '',
+    'Meet Max: https://sunshineonaranneyday.com/kids/max/',
+    "Can't be there? Watch live: https://sunshineonaranneyday.com/live/max/",
+    '',
+    'Questions? Email ccunningham@soardcharity.com',
+  ].join('\n'));
+  const c = planInvite(job({ confirmed: true, time: '16:00' }), STAFF, { kids: KIDS, now: NOW });
+  assert.equal(c.event.summary, "Max's Reveal Day");
+  assert.match(c.event.description, /^Max's bathroom reveal is confirmed for Tuesday, October 27 at 4:00 PM\.\n\nIt's the moment Max sees the new bathroom for the first time\. Please reply so we know who to expect\.\n\nMeet Max:/);
+});
+
+test("the invite names what was built, from the job's Makeover Type", () => {
+  const first = (type) => planInvite(job({ type }), STAFF, { kids: KIDS, now: NOW }).event.description.split('\n\n')[1];
+  assert.equal(first('Bedroom'), "It's the moment Max sees the new bedroom for the first time.");
+  assert.equal(first('Therapy Room'), "It's the moment Max sees the new therapy room for the first time.");
+  assert.equal(first('Ramp'), "It's the moment Max sees the new ramp for the first time.");
+  assert.equal(first(null), "It's the moment Max sees the new room for the first time.", 'blank: room');
+  assert.equal(renderTemplate('{space}', { name: 'Max', space: '  ', date: '2026-10-27' }), 'room');
+});
+
+test('wording saved word for word as an old default follows the new default; wording someone chose stays', async () => {
+  const DB = env.DB;
+  await DB.prepare('INSERT INTO site_config (key, data, updated_at) VALUES (?, ?, ?)').bind('reveal-invites', JSON.stringify({ enabled: true, template: {
+    tentativeTitle: "Tentative: {name}'s Reveal Day",
+    tentativeMessage: "This is a tentative date for {name}'s reveal while the build wraps up.\nThis invite updates automatically if the date moves, and the time is added once the reveal is confirmed.",
+    confirmedTitle: "{name}'s Reveal Day",
+    confirmedMessage: 'See you {when}!',
+  } }), 'x').run();
+  const { template, enabled } = await readConfig(DB);
+  assert.equal(enabled, true);
+  assert.equal(template.tentativeTitle, DEFAULT_TEMPLATE.tentativeTitle);
+  assert.equal(template.tentativeMessage, DEFAULT_TEMPLATE.tentativeMessage);
+  assert.equal(template.confirmedMessage, 'See you {when}!', 'chosen wording is kept');
 });
 
 test('wording from admin fills in name, date and time', () => {
@@ -454,7 +687,7 @@ test('wording from admin fills in name, date and time', () => {
   const template = { ...DEFAULT_TEMPLATE, confirmedTitle: 'Reveal Day: {name}!', confirmedMessage: 'See you {when}.' };
   const p = planInvite(job({ confirmed: true, time: '09:30', details: 'Gate code 1234' }), STAFF, { kids: KIDS, now: NOW, template });
   assert.equal(p.event.summary, 'Reveal Day: Max!');
-  assert.equal(p.event.description, 'See you Tuesday, October 27 at 9:30 AM.\n\nGate code 1234\n\nWatch live: https://sunshineonaranneyday.com/live/max/\n\nhttps://sunshineonaranneyday.com/kids/max/');
+  assert.equal(p.event.description, "See you Tuesday, October 27 at 9:30 AM.\n\nGate code 1234\n\nMeet Max: https://sunshineonaranneyday.com/kids/max/\nCan't be there? Watch live: https://sunshineonaranneyday.com/live/max/\n\nQuestions? Email ccunningham@soardcharity.com");
 });
 
 test('admin list: upcoming reveals with the exact invite each would send, guests named', async () => {
@@ -498,8 +731,10 @@ test('admin list: upcoming reveals with the exact invite each would send, guests
   assert.equal(max.invite.state, 'tentative');
   assert.deepEqual(max.invite.log.map(l => [l.action, l.state, l.guests]), [['created', 'tentative', 2]], 'invite history for the tracker on Reveals → Now');
   assert.equal(max.slug, 'max');
-  assert.equal(max.preview.title, "Tentative: Max's Reveal Day");
-  assert.equal(max.preview.location, '100 Example Way, Atlanta, GA 30301, USA');
+  assert.equal(max.space, 'Bathroom', "the Makeover Type, for the wording preview's {space}");
+  assert.equal(max.preview.title, "Max's Reveal Day (tentative)");
+  assert.equal(max.preview.location, 'Atlanta, GA');
+  assert.deepEqual(max.preview.locations, { tentative: 'Atlanta, GA', confirmed: '100 Example Way, Atlanta, GA 30301, USA' }, 'what each stage shows, for the wording preview');
   assert.deepEqual(max.preview.guests, [
     { email: 'pat.sample@example.com', name: 'Pat Sample', kind: 'family' },
     { email: 'cnielsen@soardcharity.com', name: 'Christian Nielsen', kind: 'staff' },

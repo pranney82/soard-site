@@ -6048,6 +6048,7 @@
     ];
     const INVITE_TOKENS = [
       { token: '{name}', hint: "kid's name" },
+      { token: '{space}', hint: 'bathroom' },
       { token: '{date}', hint: 'Tuesday, October 27' },
       { token: '{time}', hint: '4:00 PM' },
       { token: '{when}', hint: 'date and time' },
@@ -6060,17 +6061,18 @@
       const [h, m] = time.split(':').map(Number);
       return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`;
     };
-    // Same placeholders as the server: {name} {date} {time} {when}
-    const fillInvite = (text, { name, date, time }) => {
+    // Same placeholders as the server: {name} {space} {date} {time} {when}
+    const fillInvite = (text, { name, space, date, time }) => {
       const day = inviteDay(date);
-      const values = { name, date: day, time: time ? inviteClock(time) : 'time to come', when: time ? `${day} at ${inviteClock(time)}` : `${day} (time to come)` };
-      return String(text || '').replace(/\{(name|date|time|when)\}/g, (_, k) => values[k]);
+      const values = { name, space: String(space || '').trim().toLowerCase() || 'room', date: day, time: time ? inviteClock(time) : 'time to come', when: time ? `${day} at ${inviteClock(time)}` : `${day} (time to come)` };
+      return String(text || '').replace(/\{(name|space|date|time|when)\}/g, (_, k) => values[k]);
     };
-    // Same composition as the server: message, then the reveal's notes, then the kid's page
-    const inviteDescription = (template, kind, r, time) => [
-      fillInvite(template[kind + 'Message'], { name: r.name, date: r.date, time }).trim(),
+    // Same composition as the server: message, the reveal's notes, the links, who to ask
+    const inviteDescription = (template, kind, r, time, organizerEmail) => [
+      fillInvite(template[kind + 'Message'], { name: r.name, space: r.space, date: r.date, time }).trim(),
       String(r.details || '').trim(),
-      r.kidUrl ? INVITE_SITE + r.kidUrl : '',
+      [r.kidUrl ? `Meet ${r.name}: ${INVITE_SITE}${r.kidUrl}` : '', `Can't be there? Watch live: ${INVITE_SITE}/live/${r.slug ? `${r.slug}/` : ''}`].filter(Boolean).join('\n'),
+      `Questions? Email ${organizerEmail}`,
     ].filter(Boolean).join('\n\n');
     const inviteWhen = (start, end) => {
       if (start?.date) return `${inviteDay(start.date)} · All day`;
@@ -6138,6 +6140,7 @@
           <dl class="ri-invite__facts">
             <dt>When</dt><dd>${inviteWhen(start, end)}</dd>
             ${location ? html`<dt>Where</dt><dd>${location}</dd>` : null}
+            <dt>Shows as</dt><dd>${start.dateTime ? 'Busy' : 'Free, so it blocks no one\'s day'}</dd>
             <dt>From</dt><dd>${organizer}</dd>
           </dl>
           <p class="ri-invite__desc">${description}</p>
@@ -6203,13 +6206,14 @@
         setSavingTemplate(false);
       };
 
-      const sendTest = async (r) => {
-        setBusy('test');
+      // Either stage of a real reveal, to see it in your own inbox and calendar first
+      const sendTest = async (r, stage) => {
+        setBusy(`test-${stage}`);
         try {
-          const res = await fetch(`/api/reveal-invites-admin?test=${encodeURIComponent(r.jobId)}`, { cache: 'no-store' });
+          const res = await fetch(`/api/reveal-invites-admin?test=${encodeURIComponent(r.jobId)}&stage=${stage}`, { cache: 'no-store' });
           const d = await res.json();
           if (!d.ok) throw new Error(d.error || 'Test failed');
-          addToast(d.action === 'skip' ? `No invite yet: ${d.reason}` : `Test invite for ${r.name} sent to ${d.sentTo}, with the saved wording`, d.action === 'skip' ? 'info' : 'success');
+          addToast(d.action === 'skip' ? `No invite yet: ${d.reason}` : `Test of ${r.name}'s ${stage} invite sent to ${d.sentTo}, with the saved wording`, d.action === 'skip' ? 'info' : 'success');
         } catch (e) { addToast(e.message, 'error'); }
         setBusy(null);
       };
@@ -6267,18 +6271,19 @@
       const nudges = data.checks || { enabled: false };
       const lastChecks = nudges.lastRun && !nudges.lastRun.running ? nudges.lastRun : null;
 
-      // Wording preview: a real upcoming reveal, with an example time for "confirmed" when it has none
+      // Wording preview: a real upcoming reveal, with an example time for "confirmed" when it has none.
+      // Tentative invites are date only, like the server's.
       const sampleReveal = upcoming.find(r => r.jobId === previewJob) || upcoming.find(r => r.preview) || null;
-      const sample = sampleReveal || { name: 'Max', date: new Date(Date.now() + 10 * 864e5).toISOString().slice(0, 10), time: null, kidUrl: '/kids/max/', details: '' };
+      const sample = sampleReveal || { name: 'Max', slug: 'max', space: 'Bathroom', date: new Date(Date.now() + 10 * 864e5).toISOString().slice(0, 10), time: null, kidUrl: '/kids/max/', details: '' };
       const sampleCard = (kind) => {
-        const time = kind === 'confirmed' ? (sample.time || '16:00') : sample.time;
+        const time = kind === 'confirmed' ? (sample.time || '16:00') : null;
         const start = time ? { dateTime: `${sample.date}T${time}:00` } : { date: sample.date };
         const end = time ? { dateTime: `${sample.date}T${String(Number(time.slice(0, 2)) + 1).padStart(2, '0')}${time.slice(2)}:00` } : { date: sample.date };
         return html`<${InviteCard}
-          title=${fillInvite(template[kind + 'Title'], { name: sample.name, date: sample.date, time })}
+          title=${fillInvite(template[kind + 'Title'], { name: sample.name, space: sample.space, date: sample.date, time })}
           status=${kind} start=${start} end=${end}
-          location=${sample.preview?.location || null}
-          description=${inviteDescription(template, kind, sample, time)}
+          location=${sample.preview?.locations?.[kind] ?? sample.preview?.location ?? null}
+          description=${inviteDescription(template, kind, sample, time, config.organizer)}
           organizer=${organizer} />`;
       };
 
@@ -6307,6 +6312,7 @@
             <p class="ri-meta"><strong>Tentative</strong>, once construction starts (Demo, or two tasks under Construction, done): staff, the family (the job's customer contacts, and anyone with the Makeover Family role who has access to the job) and the board.</p>
             <p class="ri-meta"><strong>Confirmed</strong>, once Reveal Date Confirmed is Yes: the same invite becomes the real one and adds the vendors, sponsors, photographers and design partners who have access to that job in JobTread. Un-confirming takes them back off.</p>
             <p class="ri-meta">Both invites include the link to watch the reveal live.</p>
+            <p class="ri-meta"><strong>Cancelling</strong> is done by hand: delete the event in the organizer's Google Calendar and let Google email the guests. The site never cancels an invite, and never sends one again once it's been deleted (Retry on the reveal sends it again). If a job is closed, denied or put on hold first, the invite stays and staff get one email.</p>
             ${(() => {
               const board = data.board || [];
               const missing = board.filter((m) => !m.hasEmail);
@@ -6382,7 +6388,7 @@
                   </div>
                   <div class="form-group">
                     <label class="form-label" for=${'invite-' + kind + 'Message'}>Message</label>
-                    <textarea id=${'invite-' + kind + 'Message'} class="form-textarea" rows=${kind === 'tentative' ? 5 : 3} maxlength=${limits?.[kind + 'Message']}
+                    <textarea id=${'invite-' + kind + 'Message'} class="form-textarea" rows=${kind === 'tentative' ? 8 : 5} maxlength=${limits?.[kind + 'Message']}
                       ref=${el => { fieldRefs.current[kind + 'Message'] = el; }}
                       onFocus=${() => { lastField.current[kind] = kind + 'Message'; }}
                       value=${template[kind + 'Message']} onInput=${e => setTemplate({ ...template, [kind + 'Message']: e.target.value })}></textarea>
@@ -6400,9 +6406,9 @@
                 ${savingTemplate ? html`<span class="spinner" /> Saving...` : dirty ? 'Save wording' : 'Saved'}
               </button>
               ${dirty ? html`<button class="btn btn-ghost" onClick=${() => setTemplate({ ...config.template })}>Undo changes</button>` : null}
-              ${sampleReveal ? html`<button class="btn btn-ghost" disabled=${dirty || busy === 'test'} title=${dirty ? 'Save the wording first' : ''} onClick=${() => sendTest(sampleReveal)}>
-                ${busy === 'test' ? html`<span class="spinner" /> Sending...` : `Send me a test for ${sampleReveal.name}`}
-              </button>` : null}
+              ${sampleReveal ? ['tentative', 'confirmed'].map(stage => html`<button key=${stage} class="btn btn-ghost" disabled=${dirty || !!busy?.startsWith?.('test')} title=${dirty ? 'Save the wording first' : ''} onClick=${() => sendTest(sampleReveal, stage)}>
+                ${busy === `test-${stage}` ? html`<span class="spinner" /> Sending...` : `Send me ${sampleReveal.name}'s ${stage} invite`}
+              </button>`) : null}
               <label class="ri-check">
                 <input type="checkbox" checked=${updateExisting} disabled=${!config.enabled || !dirty} onChange=${e => setUpdateExisting(e.target.checked)} />
                 Also update invites already sent (each guest gets an update email)
@@ -6410,7 +6416,7 @@
               ${JSON.stringify(template) !== JSON.stringify(defaults) ? html`
                 <button class="btn btn-ghost" onClick=${() => setTemplate({ ...defaults })}>Use the original wording</button>` : null}
             </div>
-            <p class="ri-meta">Otherwise new wording goes on new invites, and on existing ones the next time their reveal changes.</p>
+            <p class="ri-meta">Otherwise new wording goes on new invites, and on invites already out the next time their date, time, address, notes or guests change.</p>
           </div>
 
           ${confirmSending !== null ? html`<${ConfirmModal}
@@ -6496,7 +6502,10 @@
         : !r.confirmed ? { state: 'wait', text: `Replaces the tentative invite when the reveal is confirmed${r.preview?.addsOnConfirm?.length ? `, adding ${rtWhoAdds(r.preview.addsOnConfirm)}` : ''}` }
         : !invites.enabled ? { state: 'wait', text: 'Goes out once calendar invites are turned on (Reveals → Invites)' }
         : { state: 'wait', text: 'Goes out on the next change in JobTread' }) });
-      if (inv?.state === 'cancelled') steps.push({ key: 'invite-cancelled', label: 'Invite cancelled', state: 'info', text: `${String(inv.lastAction || '').replace(/^cancelled: /, 'Cancelled because: ')} (${rtWhen(inv.updatedAt)})` });
+      if (inv?.state === 'cancelled') steps.push({ key: 'invite-cancelled', label: 'Invite cancelled', state: 'info', text: inv.lastAction === 'cancelled in Google Calendar'
+        ? `Deleted by hand in Google Calendar (noticed ${rtWhen(inv.updatedAt)}). The site won't send it again; Retry would.`
+        : `${String(inv.lastAction || '').replace(/^cancelled: /, 'Cancelled because: ')} (${rtWhen(inv.updatedAt)})` });
+      else if (/^kept: /.test(inv?.lastAction || '')) steps.push({ key: 'invite-kept', label: 'Invite still out', state: 'warn', text: `JobTread says ${inv.lastAction.slice(6)}. The site never cancels an invite: if the reveal is off, delete it in Google Calendar.` });
 
       // 4. The countdown on the site
       const ahead = live.jobId && live.jobId !== r.jobId && ['scheduled', 'armed', 'live', 'ending'].includes(live.phase) ? all.find((x) => x.jobId === live.jobId) : null;

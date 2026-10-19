@@ -96,10 +96,13 @@ export async function onRequestGet(context) {
       const date = q.get('date');
       if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) return fail('date must be YYYY-MM-DD');
       const timeParam = q.get('time');
+      const stage = q.get('stage');
+      if (stage && stage !== 'tentative' && stage !== 'confirmed') return fail('stage must be tentative or confirmed');
       if (timeParam && timeParam !== 'none' && !/^\d{2}:\d{2}$/.test(timeParam)) return fail('time must be HH:MM or none');
       const result = await sendTestInvite(env, jobId, me, {
         date: date || undefined,
         time: timeParam === null ? undefined : (timeParam === 'none' ? null : timeParam),
+        stage: stage || null,
         cancel: q.has('test-cancel'),
       });
       return Response.json({ ok: true, sentTo: me, ...result });
@@ -258,8 +261,8 @@ export async function onRequestPost(context) {
       })), gitStatus: 'ok',
     }).catch(() => {});
 
-    // New wording reaches existing invites on their next change, or right now when asked
-    const updated = patch.template && body.updateExisting === true && config.enabled ? await reconcileAll(env) : null;
+    // New wording reaches existing invites when their facts next change, or right now when asked
+    const updated = patch.template && body.updateExisting === true && config.enabled ? await reconcileAll(env, { rewrite: true }) : null;
     return Response.json({ ok: true, config, ...(updated ? { updated } : {}) });
   } catch (err) {
     return Response.json({ ok: false, error: err.message }, { status: 500 });

@@ -5,16 +5,23 @@
  * (Clareece by default), so the invite comes from her and Google handles
  * updates and cancellations.
  *
- *   Construction started          → "Tentative: Max's Reveal Day" (all day,
- *   (Demo done, or 2 tasks under    or timed once the task has a time)
- *   Construction done)
+ *   Construction started          → "Max's Reveal Day (tentative)": all day,
+ *   (Demo done, or 2 tasks under    city only (no street address), shown as
+ *   Construction done)              free, so a date that may move blocks no one
  *   Reveal task moves             → the same event moves; guests get an update
- *   Reveal Date Confirmed = Yes   → the same event becomes "Max's Reveal Day"
- *   Job closed / denied / awaiting funding, or no Reveal date
- *                                 → a future event is cancelled
+ *   Reveal Date Confirmed = Yes   → the same event becomes "Max's Reveal Day":
+ *                                   timed once the task has a time (then busy),
+ *                                   with the full address
+ * The site never cancels an invite. Calling a reveal off is done by hand:
+ * someone deletes the event in Google Calendar (Google emails the guests), and
+ * the site then leaves it alone for good (an admin's Retry sends it again).
+ * Un-checking a task changes nothing once the invite is out; a job closed,
+ * denied or awaiting funding, or a Reveal task with no date, keeps its invite
+ * as it is, and staff get one email in case the reveal is off. TEST jobs are
+ * the exception: closing one clears its event, which only test guests have.
  * A reveal that has happened is never touched again: its day is past, its
  * start time today has passed (all day: the whole day counts), or its Reveal
- * task is marked complete. Closing the job afterwards cancels nothing.
+ * task is marked complete.
  *
  * Guests, in two stages (the organizer is never a guest):
  *   Tentative  staff (internal Admin and Designer users), the family (the job's
@@ -25,7 +32,10 @@
  *   Confirmed  the same event, plus everyone else given access to the job in
  *              JobTread for the room itself (Vendor, Sponsor, Photographer and
  *              Design Partner users). Un-confirming takes them back off.
- * Both invites carry the link to watch the reveal live.
+ * Both invites carry the kid's page, the link to watch live and who to ask.
+ * An invite that is out changes only when its facts do (date, time, address,
+ * confirmation, the JobTread notes, or who's invited). New wording waits for
+ * that, unless an admin pushes it to every invite already out.
  * A person's JobTread role decides their stage, so a sponsor who is also a
  * contact on the family's account still waits for the confirmed invite.
  *
@@ -42,13 +52,14 @@
  */
 
 import { JT_URL, SOARD_ORG_ID, FIELD_REVEAL_CONFIRMED, todayEastern, easternParts, matchKid, parseJobName, loadKids } from './_reveals.js';
-import { accessToken, eventIdFor, upsertEvent, cancelEvent } from './_google-calendar.js';
+import { accessToken, eventIdFor, upsertEvent, cancelEvent, getEvent } from './_google-calendar.js';
 import { sendEmails, slackAlert, emailConfigured } from './_broadcast-notify.js';
 
 export const REVEAL_TASK_TYPE = '22NZSbkR5rZw';
 export const FIELD_STATUS = '22P52qfFub9b';
 export const FIELD_INVITE_DETAILS = '22PgGhdabNcJ';
 export const FIELD_CONTACT_EMAIL = '22NJw43QvHeJ';
+export const FIELD_MAKEOVER_TYPE = '22P3SQTcgurh'; // Bedroom, Bathroom, Therapy Room, Ramp
 export const DEFAULT_ORGANIZER = 'ccunningham@soardcharity.com';
 // The internal office job is a sandbox: both JobTread workflows skip it, so only
 // deliberate tests reach it. Its invites always send (even with sending off), go
@@ -128,6 +139,8 @@ const EMAIL_ALIASES = { 'peter@ranneyblair.com': 'peter@soardcharity.com' };
 const STAFF_DOMAIN = '@soardcharity.com';
 const INACTIVE_STATUSES = new Set(['Denied', 'Awaiting Funding']);
 const SITE = 'https://sunshineonaranneyday.com';
+// How an invite deleted by hand in Google Calendar is recorded (last_action and the log)
+export const BY_HAND = 'cancelled in Google Calendar';
 /** The job's schedule in JobTread, opened on the Reveal task when we know it */
 export const scheduleUrl = (jobId, taskId) => `https://app.jobtread.com/jobs/${jobId}/schedule${taskId ? `?taskId=${taskId}` : ''}`;
 const ADMIN_URL = `${SITE}/admin/#broadcast`; // Reveals → Now, where each reveal's Retry is
@@ -173,24 +186,36 @@ export async function ensureSchema(DB) {
 
 /**
  * Invite wording, editable in admin (Reveals → Invites). Placeholders:
- * {name} kid's first name, {date} "Tuesday, October 27", {time} "4:00 PM"
- * (or "time to come"), {when} the date with the time when there is one.
- * The reveal's own notes (JobTread "Reveal Invite Details"), the link to watch
- * live and a link to the kid's page are added under the message.
+ * {name} kid's first name, {space} what was built ("bathroom", from the job's
+ * Makeover Type; "room" when it's blank), {date} "Tuesday, October 27",
+ * {time} "4:00 PM" (or "time to come"), {when} the date with the time when
+ * there is one.
+ * The reveal's own notes (JobTread "Reveal Invite Details"), the kid's page,
+ * the link to watch live and who to ask are added under the message.
+ * The title leads with the name so a month view or phone widget shows whose
+ * reveal it is, and the message leads with the date so a phone shows it first.
  */
 export const DEFAULT_TEMPLATE = {
-  tentativeTitle: "Tentative: {name}'s Reveal Day",
-  tentativeMessage: "This is a tentative date for {name}'s reveal while the build wraps up.\nThis invite updates automatically if the date moves, and the time is added once the reveal is confirmed.",
+  tentativeTitle: "{name}'s Reveal Day (tentative)",
+  tentativeMessage: "Save the date: {name}'s {space} reveal is penciled in for {date}.\n\nIt's the moment {name} sees the new {space} for the first time.\n\nIf the build schedule shifts, this invite moves with it. The time and address come once the date is confirmed, so there's no need to reply until then.",
   confirmedTitle: "{name}'s Reveal Day",
-  confirmedMessage: "{name}'s reveal is confirmed for {when}.",
+  confirmedMessage: "{name}'s {space} reveal is confirmed for {when}.\n\nIt's the moment {name} sees the new {space} for the first time. Please reply so we know who to expect.",
 };
 export const TEMPLATE_LIMITS = { tentativeTitle: 150, confirmedTitle: 150, tentativeMessage: 2000, confirmedMessage: 2000 };
+// Earlier defaults. Admin saves all four fields, so a saved field still word for
+// word an old default was never chosen by anyone: it follows today's default.
+const RETIRED_DEFAULTS = {
+  tentativeTitle: ["Tentative: {name}'s Reveal Day"],
+  tentativeMessage: ["This is a tentative date for {name}'s reveal while the build wraps up.\nThis invite updates automatically if the date moves, and the time is added once the reveal is confirmed."],
+  confirmedMessage: ["{name}'s reveal is confirmed for {when}."],
+};
 
 export async function readConfig(DB) {
   const row = await DB.prepare('SELECT data FROM site_config WHERE key = ?').bind(CONFIG_KEY).first();
   let data = {};
   try { data = row ? JSON.parse(row.data) : {}; } catch { /* default */ }
-  return { enabled: false, organizer: DEFAULT_ORGANIZER, ...data, template: { ...DEFAULT_TEMPLATE, ...(data.template || {}) } };
+  const saved = Object.fromEntries(Object.entries(data.template || {}).filter(([k, v]) => !RETIRED_DEFAULTS[k]?.includes(v)));
+  return { enabled: false, organizer: DEFAULT_ORGANIZER, ...data, template: { ...DEFAULT_TEMPLATE, ...saved } };
 }
 
 function clock(time) {
@@ -198,11 +223,11 @@ function clock(time) {
   return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`;
 }
 
-/** Fill {name} {date} {time} {when}; unknown placeholders are left as typed */
-export function renderTemplate(text, { name, date, time }) {
+/** Fill {name} {space} {date} {time} {when}; unknown placeholders are left as typed */
+export function renderTemplate(text, { name, space, date, time }) {
   const day = longDate(date);
-  const values = { name, date: day, time: time ? clock(time) : 'time to come', when: time ? `${day} at ${clock(time)}` : `${day} (time to come)` };
-  return String(text || '').replace(/\{(name|date|time|when)\}/g, (_, k) => values[k]);
+  const values = { name, space: String(space || '').trim().toLowerCase() || 'room', date: day, time: time ? clock(time) : 'time to come', when: time ? `${day} at ${clock(time)}` : `${day} (time to come)` };
+  return String(text || '').replace(/\{(name|space|date|time|when)\}/g, (_, k) => values[k]);
 }
 
 export async function writeConfig(DB, patch) {
@@ -359,6 +384,17 @@ function longDate(date) {
   return new Date(`${date}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' });
 }
 
+/**
+ * "Marietta, GA" from "100 Example Rd, Marietta, GA 30062, USA". Null
+ * when the city can't be told apart from the street, so a street never leaks.
+ */
+export function cityOf(address) {
+  const parts = String(address || '').split(',').map(p => p.trim()).filter(Boolean);
+  const i = parts.findIndex(p => /^[A-Z]{2}(\s+\d{5}(-\d{4})?)?$/.test(p));
+  if (i < 1 || /\d/.test(parts[i - 1])) return null;
+  return `${parts[i - 1]}, ${parts[i].slice(0, 2)}`;
+}
+
 /** First name for the title: the matched kid's site name, else the job name's first word */
 function displayName(job, kids) {
   const kid = matchKid(job.name, kids);
@@ -385,9 +421,10 @@ export function revealHappened(reveal, now = Date.now()) {
 
 /**
  * What the calendar should look like for this job:
- * { action: 'upsert', event, guests } | { action: 'cancel', reason } | { action: 'skip', reason }
+ * { action: 'upsert', event, guests } | { action: 'hold', reason } | { action: 'skip', reason }
+ * 'hold': leave an invite that's out as it is. `sent`: this job's invite is out.
  */
-export function planInvite(job, staff, { kids = [], board = [], organizer = DEFAULT_ORGANIZER, now = Date.now(), onlyGuests = null, template = DEFAULT_TEMPLATE } = {}) {
+export function planInvite(job, staff, { kids = [], board = [], organizer = DEFAULT_ORGANIZER, now = Date.now(), onlyGuests = null, template = DEFAULT_TEMPLATE, sent = false } = {}) {
   if (!job) return { action: 'skip', reason: 'job not found' };
   if (job.organization?.id && job.organization.id !== SOARD_ORG_ID) return { action: 'skip', reason: 'not a SOARD job' };
 
@@ -397,26 +434,34 @@ export function planInvite(job, staff, { kids = [], board = [], organizer = DEFA
   if (revealHappened(reveal, now)) return { action: 'skip', reason: 'the reveal has already happened' };
 
   const values = fieldValues(job.customFieldValues?.nodes);
-  if (job.closedOn) return { action: 'cancel', reason: 'job closed' };
-  if (INACTIVE_STATUSES.has(values[FIELD_STATUS])) return { action: 'cancel', reason: `status is ${values[FIELD_STATUS]}` };
-  if (!reveal?.startDate) return { action: 'cancel', reason: 'no Reveal task date' };
+  if (job.closedOn) return { action: 'hold', reason: 'job closed' };
+  if (INACTIVE_STATUSES.has(values[FIELD_STATUS])) return { action: 'hold', reason: `status is ${values[FIELD_STATUS]}` };
+  if (!reveal?.startDate) return { action: 'hold', reason: 'no Reveal task date' };
 
   const confirmed = String(values[FIELD_REVEAL_CONFIRMED] || '').trim().toLowerCase().startsWith('yes');
-  if (!confirmed && !constructionStarted(job)) return { action: 'cancel', reason: 'construction not started yet' };
+  // Construction starting sends the first invite. Once it's out it follows the
+  // reveal, so a task un-checked by mistake never takes it back.
+  if (!confirmed && !sent && !constructionStarted(job)) return { action: 'skip', reason: 'construction not started yet' };
 
   const who = displayName(job, kids);
   const date = reveal.startDate;
-  const start = hhmm(reveal.startTime);
+  // Until it's confirmed the date is a save-the-date: no time, even when the task has one
+  const start = confirmed ? hhmm(reveal.startTime) : null;
   const end = start ? (hhmm(reveal.endTime) && hhmm(reveal.endTime) > start && (reveal.endDate || date) === date ? hhmm(reveal.endTime) : addHour(start)) : null;
 
+  const address = job.location?.address || null;
   const t = { ...DEFAULT_TEMPLATE, ...template };
-  const fill = (text) => renderTemplate(text, { name: who.name, date, time: start });
+  const fill = (text) => renderTemplate(text, { name: who.name, space: values[FIELD_MAKEOVER_TYPE], date, time: start });
   const lines = [fill(confirmed ? t.confirmedMessage : t.tentativeMessage).trim()];
   const details = String(values[FIELD_INVITE_DETAILS] || '').trim();
   if (details) lines.push('', details);
-  // The kid's own live page; before the kid is on the site, /live/ (it follows the current reveal)
-  lines.push('', `Watch live: ${SITE}/live/${who.slug ? `${who.slug}/` : ''}`);
-  if (who.slug) lines.push('', `${SITE}/kids/${who.slug}/`);
+  // Labeled links as plain text, which reads the same in Gmail, Apple Calendar
+  // and Outlook (HTML descriptions arrive as raw tags in some). The kid's live
+  // page; before the kid is on the site, /live/ (it follows the current reveal).
+  lines.push('');
+  if (who.slug) lines.push(`Meet ${who.name}: ${SITE}/kids/${who.slug}/`);
+  lines.push(`Can't be there? Watch live: ${SITE}/live/${who.slug ? `${who.slug}/` : ''}`);
+  lines.push('', `Questions? Email ${organizer}`);
 
   const guests = [];
   const people = {}; // email → { name, kind } for the admin's preview
@@ -451,16 +496,29 @@ export function planInvite(job, staff, { kids = [], board = [], organizer = DEFA
     id: eventIdFor('soardreveal', job.id),
     summary: fill(confirmed ? t.confirmedTitle : t.tentativeTitle).trim() || `${who.name}'s Reveal Day`,
     status: confirmed ? 'confirmed' : 'tentative',
-    location: job.location?.address || undefined,
+    // A family's home: the street address goes out only with a confirmed date
+    location: (confirmed ? address : cityOf(address)) || undefined,
     description: lines.join('\n'),
     start: start ? { dateTime: `${date}T${start}:00`, timeZone: TZ } : { date },
     end: start ? { dateTime: `${date}T${end}:00`, timeZone: TZ } : { date: nextDay(date) },
     attendees: guests.map(email => ({ email })),
     guestsCanSeeOtherGuests: false,
     guestsCanInviteOthers: false,
-    transparency: 'opaque',
+    // Free until there's a confirmed time, so a date that may move blocks no one's day
+    transparency: start ? 'opaque' : 'transparent',
   };
-  return { action: 'upsert', event, guests, people, addsOnConfirm, confirmed, date };
+  // What guests act on. Guests are emailed when these change, not the wording.
+  const facts = { date, start, end, confirmed, address, details };
+  return { action: 'upsert', event, guests, people, addsOnConfirm, confirmed, date, facts };
+}
+
+/** Does an event on the calendar already say what the plan says (guests aside)? */
+function hasFacts(ev, plan) {
+  const same = (a, b) => (b.date ? a?.date === b.date : String(a?.dateTime || '').slice(0, 16) === b.dateTime.slice(0, 16));
+  const { start, end, status } = plan.event;
+  return ev.status === status && same(ev.start, start) && same(ev.end, end)
+    && (ev.location || null) === plan.facts.address
+    && (!plan.facts.details || String(ev.description || '').includes(plan.facts.details));
 }
 
 async function hashOf(value) {
@@ -489,11 +547,13 @@ async function logInvite(DB, { jobId, action, state, guests, revealDate }) {
  * organizer, plus Slack when configured. Only called for a new problem, so a
  * stuck job doesn't email on every JobTread change.
  */
+const alertList = (env, config) => [...new Set([
+  ...(config.alertEmails || DEFAULT_ALERT_EMAILS), config.organizer,
+  ...String(env.ALERT_EMAILS || '').split(',').map(s => s.trim()),
+].filter(e => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e || '')))];
+
 async function alertProblem(env, config, { jobId, name, error, taskId }) {
-  const to = [...new Set([
-    ...(config.alertEmails || DEFAULT_ALERT_EMAILS), config.organizer,
-    ...String(env.ALERT_EMAILS || '').split(',').map(s => s.trim()),
-  ].filter(e => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e || '')))];
+  const to = alertList(env, config);
   const title = `Reveal invite problem${name ? `: ${name}` : ''}`;
   const detail = `The calendar invite for ${name || `job ${jobId}`} couldn't be updated. Google or JobTread said: ${error}`;
   const fix = /unauthorized_client|GOOGLE_CALENDAR_KEY|sign-in/i.test(error)
@@ -506,6 +566,29 @@ async function alertProblem(env, config, { jobId, name, error, taskId }) {
       subject: `[SOARD] ${title}`,
       html: `<p><strong>${escapeHtml(title)}</strong></p><p>${escapeHtml(detail)}</p><p><strong>Fix:</strong> ${escapeHtml(fix)}</p><p><a href="${ADMIN_URL}">Open Reveals in the admin</a></p><p><a href="${scheduleUrl(jobId, taskId)}">Open the schedule in JobTread</a></p>`,
       text: `${title}\n\n${detail}\n\nFix: ${fix}\n\nAdmin: ${ADMIN_URL}\nJobTread schedule: ${scheduleUrl(jobId, taskId)}`,
+      tags: [{ name: 'category', value: 'reveal-invite-alert' }],
+    }) : null,
+  ]);
+}
+
+/**
+ * The site never cancels an invite, so when JobTread says a reveal may be off
+ * (job closed, denied, awaiting funding, no Reveal date) staff hear it once:
+ * the invite is still on everyone's calendar until someone deletes it.
+ */
+async function alertHeld(env, config, { jobId, name, reason, taskId }) {
+  const to = alertList(env, config);
+  const who = name ? `${name}'s` : 'A';
+  const title = `${who} reveal invite is still out`;
+  const detail = `JobTread says: ${reason}. The calendar invite hasn't been cancelled; the site never cancels one on its own.`;
+  const fix = 'If the reveal is off, delete the event in the organizer\'s Google Calendar and choose to email the guests. If the reveal is still on, there is nothing to do.';
+  await Promise.allSettled([
+    slackAlert(env, `🟡 ${title}: ${detail} ${fix} ${ADMIN_URL}`),
+    emailConfigured(env) && to.length ? sendEmails(env, {
+      to,
+      subject: `[SOARD] ${title}`,
+      html: `<p><strong>${escapeHtml(title)}</strong></p><p>${escapeHtml(detail)}</p><p>${escapeHtml(fix)}</p><p><a href="${ADMIN_URL}">Open Reveals in the admin</a></p><p><a href="${scheduleUrl(jobId, taskId)}">Open the schedule in JobTread</a></p>`,
+      text: `${title}\n\n${detail}\n\n${fix}\n\nAdmin: ${ADMIN_URL}\nJobTread schedule: ${scheduleUrl(jobId, taskId)}`,
       tags: [{ name: 'category', value: 'reveal-invite-alert' }],
     }) : null,
   ]);
@@ -556,7 +639,7 @@ export async function reconcileJob(env, jobId, opts = {}) {
   }
 }
 
-async function reconcileLocked(env, jobId, { fetchImpl = fetch, now = Date.now(), force = false, dryRun = false, preloaded = null } = {}) {
+async function reconcileLocked(env, jobId, { fetchImpl = fetch, now = Date.now(), force = false, rewrite = false, dryRun = false, verify = false, preloaded = null } = {}) {
   const { DB } = env;
   const config = await readConfig(DB);
 
@@ -573,44 +656,122 @@ async function reconcileLocked(env, jobId, { fetchImpl = fetch, now = Date.now()
     return { jobId, action: 'error', error: err.message };
   };
   const sandbox = jobId === SANDBOX_JOB_ID || isTestJob(job);
-  const plan = planInvite(job, staff, { kids, board, organizer: config.organizer, now, onlyGuests: sandbox ? (config.testGuests || DEFAULT_TEST_GUESTS) : null, template: config.template });
-  if (sandbox && plan.event) plan.event.summary = `TEST · ${plan.event.summary}`;
   const row = await readRow(DB, jobId);
+  // The invite is out: sent, and not deleted in Google Calendar since
+  const sent = !!(row?.event_id && row.state !== 'cancelled');
+  const plan = planInvite(job, staff, { kids, board, organizer: config.organizer, now, onlyGuests: sandbox ? (config.testGuests || DEFAULT_TEST_GUESTS) : null, template: config.template, sent });
+  if (sandbox && plan.event) plan.event.summary = `TEST · ${plan.event.summary}`;
   const live = !dryRun && (config.enabled || force || sandbox);
+  const guestCount = () => (row?.guests ? JSON.parse(row.guests).length : null);
 
   if (plan.action === 'skip') return { jobId, action: 'skip', reason: plan.reason };
 
-  if (plan.action === 'cancel') {
-    if (!row || row.state === 'cancelled' || !row.event_id) return { jobId, action: 'skip', reason: plan.reason };
-    if (!live) return { jobId, action: 'would-cancel', reason: plan.reason };
+  // Deleted by hand in Google Calendar: never sent again, unless an admin presses Retry
+  if (row?.state === 'cancelled' && row.last_action === BY_HAND && !force) return { jobId, action: 'skip', reason: BY_HAND };
+
+  // Calling a reveal off is done by deleting its event in Google Calendar. Once
+  // that's happened the invite is only recorded as cancelled, never written to:
+  // an update would put it back on every guest's calendar.
+  const handCancelled = async () => {
+    const token = await accessToken(env, config.organizer, { fetchImpl, now });
+    const onCalendar = await getEvent(token, config.organizer, row.event_id, { fetchImpl });
+    if (onCalendar && onCalendar.status !== 'cancelled') return null;
+    await writeRow(DB, { ...row, state: 'cancelled', last_action: BY_HAND, error: null });
+    await logInvite(DB, { jobId, action: BY_HAND, state: 'cancelled', guests: guestCount(), revealDate: row.reveal_date });
+    return { jobId, action: 'skip', reason: BY_HAND };
+  };
+
+  // JobTread says the reveal may be off. The invite stays as it is (cancelling
+  // is done by hand) and staff are told once. A TEST job clears its own event.
+  if (plan.action === 'hold') {
+    if (!sent) return { jobId, action: 'skip', reason: plan.reason };
+    if (!live) return { jobId, action: 'would-hold', reason: plan.reason };
     try {
-      const token = await accessToken(env, config.organizer, { fetchImpl, now });
-      await cancelEvent(token, config.organizer, row.event_id, { fetchImpl });
-      await writeRow(DB, { ...row, state: 'cancelled', hash: null, last_action: `cancelled: ${plan.reason}`, error: null });
-      await logInvite(DB, { jobId, action: 'cancelled', state: 'cancelled', guests: row.guests ? JSON.parse(row.guests).length : null, revealDate: row.reveal_date });
-      return { jobId, action: 'cancelled', reason: plan.reason };
+      if (verify && !force) {
+        const gone = await handCancelled();
+        if (gone) return gone;
+      }
+      if (sandbox) {
+        const token = await accessToken(env, config.organizer, { fetchImpl, now });
+        await cancelEvent(token, config.organizer, row.event_id, { fetchImpl });
+        await writeRow(DB, { ...row, state: 'cancelled', hash: null, last_action: `cancelled: ${plan.reason}`, error: null });
+        await logInvite(DB, { jobId, action: 'cancelled', state: 'cancelled', guests: guestCount(), revealDate: row.reveal_date });
+        return { jobId, action: 'cancelled', reason: plan.reason };
+      }
+      const note = `kept: ${plan.reason}`;
+      if (row.last_action !== note) {
+        await writeRow(DB, { ...row, last_action: note, error: null });
+        await logInvite(DB, { jobId, action: note, state: row.state, guests: guestCount(), revealDate: row.reveal_date });
+        const revealTask = (job?.tasks?.nodes || []).filter(t => t.taskType?.id === REVEAL_TASK_TYPE).find(t => (t.progress ?? 0) < 1);
+        await alertHeld(env, config, { jobId, name: job ? displayName(job, kids).name : null, reason: plan.reason, taskId: revealTask?.id }).catch(() => {});
+      }
+      return { jobId, action: 'held', reason: plan.reason };
     } catch (err) {
       return failed(row, err);
     }
   }
 
-  const hash = await hashOf(plan.event);
-  if (row?.hash === hash && row?.state !== 'cancelled') return { jobId, action: 'unchanged', eventId: plan.event.id };
+  // Kept as "<facts>:<event>". An invite that is out changes when its facts do
+  // (date, time, address, confirmation, notes, guests). New wording alone waits
+  // for that, or for an admin's rewrite, so a reworded sentence never emails
+  // every family.
+  const factsHash = await hashOf({ ...plan.facts, guests: plan.guests });
+  const eventHash = await hashOf(plan.event);
+  const hash = `${factsHash}:${eventHash}`;
+  const out = row?.hash && row.state !== 'cancelled' ? row : null;
+  let [oldFacts, oldEvent] = String(out?.hash || '').split(':');
+  // Sent before invites kept their facts (one hash for the whole event): the
+  // event on the calendar shows what guests have. When it already has what
+  // JobTread says now, it's taken as it is (new wording reaches it like any
+  // other invite); when it doesn't, guests get the update.
+  if (out && !out.hash.includes(':') && live) {
+    try {
+      const token = await accessToken(env, config.organizer, { fetchImpl, now });
+      const sent = await getEvent(token, config.organizer, plan.event.id, { fetchImpl });
+      if (sent && hasFacts(sent, plan)) {
+        oldEvent = out.hash;
+        oldFacts = await hashOf({ ...plan.facts, guests: JSON.parse(out.guests || '[]') });
+      }
+    } catch (err) {
+      return failed(row, err);
+    }
+  }
+  // The sweep also looks for an invite deleted by hand, so the admin shows it
+  if (out && verify && live && !force) {
+    try {
+      const gone = await handCancelled();
+      if (gone) return gone;
+    } catch (err) {
+      return failed(row, err);
+    }
+  }
+  if (out && oldFacts === factsHash && (!rewrite || oldEvent === eventHash)) {
+    if (!dryRun && out.hash !== `${oldFacts}:${oldEvent}`) await DB.prepare('UPDATE reveal_invites SET hash = ? WHERE job_id = ?').bind(`${oldFacts}:${oldEvent}`, jobId).run();
+    // Held, and JobTread is back to normal (reopened, status back, date back): clear the note
+    if (!dryRun && /^kept: /.test(out.last_action || '')) await DB.prepare('UPDATE reveal_invites SET last_action = ? WHERE job_id = ?').bind('back on in JobTread', jobId).run();
+    return { jobId, action: 'unchanged', eventId: plan.event.id };
+  }
   if (!live) return { jobId, action: row ? 'would-update' : 'would-create', event: plan.event };
 
   // Only the staff on the guest list changed (someone joined, left, or changed
   // address)? Update quietly: Workspace calendars sync on their own, and the
   // family isn't emailed about a guest list they can't see.
   let sendUpdates = 'all';
-  if (row?.hash && row.state !== 'cancelled' && row.guests) {
-    const before = JSON.parse(row.guests);
-    const sameDetails = (await hashOf({ ...plan.event, attendees: before.map(email => ({ email })) })) === row.hash;
+  if (out?.guests) {
+    const before = JSON.parse(out.guests);
+    const sameFacts = (await hashOf({ ...plan.facts, guests: before })) === oldFacts;
+    const reworded = rewrite && (await hashOf({ ...plan.event, attendees: before.map(email => ({ email })) })) !== oldEvent;
     const added = plan.guests.filter(g => !before.includes(g));
     const removed = before.filter(g => !plan.guests.includes(g));
-    if (sameDetails && [...added, ...removed].every(g => g.endsWith(STAFF_DOMAIN) || EMAIL_ALIASES[g])) sendUpdates = 'none';
+    if (sameFacts && !reworded && [...added, ...removed].every(g => g.endsWith(STAFF_DOMAIN) || EMAIL_ALIASES[g])) sendUpdates = 'none';
   }
 
   try {
+    // Never write over an invite someone deleted by hand: that would send it again
+    if (out && !force) {
+      const gone = await handCancelled();
+      if (gone) return gone;
+    }
     const token = await accessToken(env, config.organizer, { fetchImpl, now });
     const { created } = await upsertEvent(token, config.organizer, plan.event, { fetchImpl, sendUpdates });
     const action = created ? 'created' : sendUpdates === 'none' ? 'updated quietly' : 'updated';
@@ -626,7 +787,7 @@ async function reconcileLocked(env, jobId, { fetchImpl = fetch, now = Date.now()
 }
 
 /** Every open SOARD job, reconciled one at a time (go-live catch-up and the safety sweep) */
-export async function reconcileAll(env, { fetchImpl = fetch, now = Date.now(), dryRun = false } = {}) {
+export async function reconcileAll(env, { fetchImpl = fetch, now = Date.now(), dryRun = false, rewrite = false, verify = false } = {}) {
   const [body, staff, kids, board] = await Promise.all([
     pave(env.JOBTREAD_GRANT_KEY, {
       organization: { $: { id: SOARD_ORG_ID }, jobs: { $: { size: 100, where: ['closedOn', '=', null] }, nodes: { id: {} } } },
@@ -638,7 +799,7 @@ export async function reconcileAll(env, { fetchImpl = fetch, now = Date.now(), d
   const results = [];
   for (const { id } of body?.organization?.jobs?.nodes || []) {
     if (id === SANDBOX_JOB_ID) continue;
-    results.push(await reconcileJob(env, id, { fetchImpl, now, dryRun, wait: false, preloaded: { staff, kids, board } }));
+    results.push(await reconcileJob(env, id, { fetchImpl, now, dryRun, rewrite, verify, wait: false, preloaded: { staff, kids, board } }));
   }
   return results;
 }
@@ -657,7 +818,7 @@ export async function maybeSweep(env, { fetchImpl = fetch, now = Date.now() } = 
     if (!config.enabled) return null;
     if (now - Date.parse(config.lastSweep?.at || 0) < SWEEP_EVERY_MS) return null;
     await writeConfig(env.DB, { lastSweep: { ...(config.lastSweep || {}), at: new Date(now).toISOString(), running: true } });
-    const results = await reconcileAll(env, { fetchImpl, now });
+    const results = await reconcileAll(env, { fetchImpl, now, verify: true });
     const changed = results.filter(r => ['created', 'updated', 'updated quietly', 'cancelled'].includes(r.action)).length;
     const errors = results.filter(r => r.action === 'error').length;
     const summary = { at: new Date(now).toISOString(), checked: results.length, changed, errors };
@@ -715,7 +876,7 @@ export async function maybeCheckGuests(env, { fetchImpl = fetch, now = Date.now(
  * as a separate "TEST" event so nobody else is involved. `date`/`time`
  * override the Reveal task to try a move.
  */
-export async function sendTestInvite(env, jobId, testEmail, { date, time, cancel = false, fetchImpl = fetch, now = Date.now() } = {}) {
+export async function sendTestInvite(env, jobId, testEmail, { date, time, stage = null, cancel = false, fetchImpl = fetch, now = Date.now() } = {}) {
   const { DB } = env;
   await ensureSchema(DB);
   const config = await readConfig(DB);
@@ -739,6 +900,11 @@ export async function sendTestInvite(env, jobId, testEmail, { date, time, cancel
   }
   // Pretend construction has started so the test always produces an invite
   if (job) job.demoDone = { count: 1 };
+  // The confirmed (or tentative) version of this reveal, whatever JobTread says today
+  if (job && stage) {
+    const others = (job.customFieldValues?.nodes || []).filter(v => v.customField?.id !== FIELD_REVEAL_CONFIRMED);
+    job.customFieldValues = { nodes: stage === 'confirmed' ? [...others, { value: 'Yes', customField: { id: FIELD_REVEAL_CONFIRMED } }] : others };
+  }
   const plan = planInvite(job, staff, { kids, organizer: config.organizer, now, template: config.template });
   if (plan.action !== 'upsert') return { action: 'skip', reason: plan.reason };
   const event = {
@@ -842,6 +1008,8 @@ export async function listUpcoming(env, { fetchImpl = fetch, now = Date.now() } 
       start: plan.event.start,
       end: plan.event.end,
       location: plan.event.location || null,
+      // Where each stage's invite says it is: the city until confirmed, then the address
+      locations: { tentative: cityOf(job.location?.address) || null, confirmed: job.location?.address || null },
       description: plan.event.description,
       guests: plan.guests.map(email => ({ email, name: plan.people[email]?.name || staffNames[email] || null, kind: plan.people[email]?.kind || 'staff' })),
       // Who confirming the reveal adds (vendors, sponsors, photographers…)
@@ -853,6 +1021,7 @@ export async function listUpcoming(env, { fetchImpl = fetch, now = Date.now() } 
       jobName: job.name,
       name: who.name,
       slug: who.slug,
+      space: values[FIELD_MAKEOVER_TYPE] || null,
       ...(isTestJob(job) ? { test: true } : {}),
       kidUrl: who.slug ? `/kids/${who.slug}/` : null,
       jobUrl: `https://app.jobtread.com/jobs/${job.id}`,
