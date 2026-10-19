@@ -5,24 +5,55 @@
  *
  * Expects JSON body:
  *   {
- *     type: "alt-text" | "seo" | "all",
- *     kid: { name, age, diagnosis, roomTypes, bio, photos: [{ url }], ... }
+ *     type: "alt-text" | "seo" | "hero-summary" | "all",
+ *     kid: { name, age, diagnosis, roomTypes, status, bio, photos: [{ url }], ... }
  *   }
  *
  * Models used:
  *   - Vision (alt text): @cf/meta/llama-3.2-11b-vision-instruct, with
  *     @cf/llava-hf/llava-1.5-7b-hf as fallback
- *   - Text (SEO): @cf/google/gemma-7b-it
+ *   - Text (SEO, hero summary): @cf/meta/llama-3.3-70b-instruct-fp8-fast
+ *     (gemma-7b-it, used before, was retired from Workers AI)
+ *
+ * Written copy follows the site's style: no em dashes, no stock phrases.
  */
 
 const VISION_MODEL = '@cf/meta/llama-3.2-11b-vision-instruct';
 const VISION_FALLBACK = '@cf/llava-hf/llava-1.5-7b-hf';
+const TEXT_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
 
-/** Downscaled imagedelivery.net variant for captioning — full-res isn't
- *  needed for alt text. Returns null for any non-imagedelivery URL. */
-function captionVariant(rawUrl) {
+// The site's copy rules, for everything written here
+const STYLE = `Style: plain, warm and specific, like a person who knows the family. Use only facts from the details given; never invent names, dates or outcomes. No em dashes or en dashes (use commas or periods). No exclamation marks. Avoid stock phrases such as "journey", "testament", "heartwarming", "life-changing", "truly", "a space where", "not only ... but".`;
+
+/** Plain text from the editor's HTML story */
+const plainText = (html) => String(html || '').replace(/<\/p>\s*<p>/gi, '\n\n').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').trim();
+/** Model output, tidied: no wrapping quotes, no dashes the style rules ban */
+const tidy = (s) => String(s || '').trim().replace(/^["'“”]+|["'“”]+$/g, '').replace(/\s*[—–]\s*/g, ', ').replace(/\s+/g, ' ').trim();
+const statusWords = (s) => (s === 'completed' ? 'SOARD built' : s === 'in-progress' ? 'SOARD is building' : 'SOARD is raising money to build');
+
+async function runText(ai, prompt, maxTokens = 400) {
+  const r = await ai.run(TEXT_MODEL, { messages: [{ role: 'user', content: prompt }], max_tokens: maxTokens });
+  return typeof r?.response === 'string' ? r.response : JSON.stringify(r?.response ?? '');
+}
+
+const CF_HASH = 'ROYFuPmfN2vPS6mt5sCkZQ';
+
+/** Downscaled imagedelivery.net variant for captioning (full-res isn't
+ *  needed for alt text). Takes an imagedelivery.net URL, the site's own
+ *  /cdn-cgi/imagedelivery/ proxy URL, or a bare image ID (some older photos
+ *  are stored that way). Anything else returns null: only our own images
+ *  are ever fetched. */
+export function captionVariant(rawUrl) {
+  const s = String(rawUrl || '').trim();
+  if (/^[a-z0-9][\w\-./]*$/i.test(s) && !s.includes('..') && !s.includes('//')) {
+    return `https://imagedelivery.net/${CF_HASH}/${s.replace(/\/(?:public|[^/]*=[^/]*)$/, '')}/w=800,q=80`;
+  }
   try {
-    const u = new URL(rawUrl);
+    const u = new URL(s);
+    const proxy = u.pathname.match(/^\/cdn-cgi\/imagedelivery\/([^/]+)\/(.+)$/);
+    if (u.protocol === 'https:' && u.hostname === 'sunshineonaranneyday.com' && proxy && proxy[1] === CF_HASH) {
+      return `https://imagedelivery.net/${CF_HASH}/${proxy[2].replace(/\/(?:public|[^/]*=[^/]*)$/, '')}/w=800,q=80`;
+    }
     if (u.hostname !== 'imagedelivery.net') return null;
     const parts = u.pathname.split('/');
     parts[parts.length - 1] = 'w=800,q=80';
@@ -44,6 +75,7 @@ Rules:
 - If mobility or medical equipment is visible, mention it plainly and matter-of-factly (e.g. "in his wheelchair") — never with pity language.
 - Do not guess at diagnoses, emotions, or context beyond what the image shows.
 - Do not start with "Image of", "Photo of", or "A picture of".
+- No em dashes.
 - Return ONLY the alt text, nothing else.`;
 }
 
@@ -156,7 +188,7 @@ export async function onRequestPost(context) {
               text = (llavaResult?.response || '').trim();
             }
 
-            text = text.replace(/^["']|["']$/g, '');
+            text = tidy(text);
             if (text.length > 160) text = text.slice(0, 157).replace(/\s+\S*$/, '') + '…';
             altTexts.push(text);
           } catch (err) {
@@ -176,41 +208,59 @@ export async function onRequestPost(context) {
 
     // ─── Generate SEO Fields with Text Model ───
     if (type === 'seo' || type === 'all') {
-      const seoPrompt = `You are writing SEO content for Sunshine on a Ranney Day (SOARD), a nonprofit that creates dream bedrooms and accessible spaces for children with special needs in Atlanta, GA.
+      const seoPrompt = `You are writing search and sharing text for one child's page on the website of Sunshine on a Ranney Day (SOARD), a nonprofit in Atlanta that builds dream bedrooms, accessible bathrooms and therapy rooms for children with special needs, at no cost to their families.
 
 Child: ${kid.name}
-Age: ${kid.age || 'unknown'}
+Age: ${Array.isArray(kid.age) ? kid.age.join(' and ') : kid.age || 'unknown'}
 Diagnosis: ${kid.diagnosis || 'not specified'}
-Room types: ${(kid.roomTypes || []).join(', ') || 'not specified'}
-Bio: ${(kid.bio || '').slice(0, 800)}
+What was built: ${(kid.roomTypes || []).join(', ') || 'not specified'} (${statusWords(kid.status)} it)
+Story: ${plainText(kid.bio).slice(0, 1800)}
 
 Write exactly two things:
+1. SHORT_DESCRIPTION: one sentence, at most 150 characters, for a card on the home page. Who the child is and what ${statusWords(kid.status)} for them.
+2. META_DESCRIPTION: 120 to 155 characters for Google's search results. Include the child's first name and "Sunshine on a Ranney Day".
 
-1. SHORT_DESCRIPTION: A warm 1-2 sentence summary (50-80 words) of this child's story for a card preview. Focus on who the child is and what SOARD is doing for them.
-
-2. META_DESCRIPTION: An SEO meta description (120-155 characters) including the child's name and "Sunshine on a Ranney Day" or "SOARD".
+${STYLE}
 
 Return in this exact format, nothing else:
 SHORT_DESCRIPTION: [text]
 META_DESCRIPTION: [text]`;
 
-      const seoResult = await ai.run(
-        '@cf/google/gemma-7b-it',
-        {
-          messages: [
-            { role: 'user', content: seoPrompt },
-          ],
-          max_tokens: 500,
-        }
-      );
-
-      const seoText = seoResult?.response || '';
-
+      const seoText = await runText(ai, seoPrompt);
       const shortMatch = seoText.match(/SHORT_DESCRIPTION:\s*(.+?)(?=META_DESCRIPTION:|$)/s);
       const metaMatch = seoText.match(/META_DESCRIPTION:\s*(.+?)$/s);
+      results.shortDescription = shortMatch ? tidy(shortMatch[1]) : '';
+      results.metaDescription = metaMatch ? tidy(metaMatch[1]) : '';
+      if (!results.shortDescription && !results.metaDescription) {
+        return Response.json({ success: false, error: 'The AI didn’t return usable text. Try again.' }, { status: 500 });
+      }
+    }
 
-      results.shortDescription = shortMatch ? shortMatch[1].trim() : '';
-      results.metaDescription = metaMatch ? metaMatch[1].trim() : '';
+    // ─── Hero summary: the line under the child's name at the top of the page ───
+    if (type === 'hero-summary') {
+      const story = plainText(kid.bio);
+      if (!story) return Response.json({ success: false, error: 'Write the story first; the summary comes from it.' }, { status: 400 });
+      const prompt = `Write the short introduction that appears under a child's name at the top of their page on the website of Sunshine on a Ranney Day (SOARD), a nonprofit in Atlanta that builds dream bedrooms, accessible bathrooms and therapy rooms for children with special needs.
+
+Child: ${kid.name}
+Diagnosis: ${kid.diagnosis || 'not specified'}
+What was built: ${(kid.roomTypes || []).join(', ') || 'not specified'} (${statusWords(kid.status)} it)
+Story: ${story.slice(0, 2500)}
+
+Rules:
+- Exactly two sentences, 200 characters or fewer in total.
+- First sentence: who ${kid.name} is and what they live with, in plain words.
+- Second sentence: what ${statusWords(kid.status)} for them, naming the main sponsor if the story names one.
+- ${STYLE}
+- Return only the two sentences.`;
+      let text = tidy(await runText(ai, prompt, 200));
+      // The page shows two sentences up to 220 characters; never hand back more
+      if (text.length > 220) {
+        const sentences = text.match(/[^.!?]+[.!?]+/g) || [text];
+        text = sentences.map((x) => x.trim()).reduce((acc, x) => ((acc + ' ' + x).trim().length <= 220 ? (acc + ' ' + x).trim() : acc), '') || sentences[0].trim();
+      }
+      if (!text) return Response.json({ success: false, error: 'The AI didn’t return a summary. Try again.' }, { status: 500 });
+      results.heroSummary = text;
     }
 
     return Response.json(

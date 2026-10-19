@@ -233,7 +233,7 @@ const heroHook = (() => {
   if (!_rawHook) return '';
   // Try to get first two sentences for richer context
   const sentences = _rawHook.match(/[^.!?]+[.!?]+/g) || [_rawHook];
-  const twoSentences = sentences.slice(0, 2).join(' ').trim();
+  const twoSentences = sentences.slice(0, 2).map((s) => s.trim()).join(' ');
   if (twoSentences.length <= 220) return twoSentences;
   // Fall back to first sentence if two is too long
   const firstSentence = sentences[0]?.trim() || _rawHook;

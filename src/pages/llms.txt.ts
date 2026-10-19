@@ -16,7 +16,7 @@ We are a nonprofit that partners with professional designers, contractors, and s
 
 ## Key Facts
 - ${s.totalKids}+ children served since 2012
-- ${s.totalRooms}+ rooms completed (bedrooms, bathrooms, therapy rooms)
+- ${s.totalRooms}+ rooms completed (bedrooms, bathrooms, therapy rooms, wheelchair ramps and chair lifts)
 ${roomTypeLines.join('\n')}
 - ${s.livesImpacted.toLocaleString()}+ children impacted through community projects
 - Donated materials and labor from professional partners

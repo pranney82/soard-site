@@ -156,8 +156,9 @@ export function writeSiteConfig(siteRows) {
   const siteDir = join(CONTENT, 'site');
   ensureDir(siteDir);
   for (const row of siteRows) {
-    if (RUNTIME_ONLY_KEYS.has(row.key)) continue;
     const filePath = join(siteDir, `${row.key}.json`);
+    // A copy left from before the key was runtime-only would still break `astro dev`
+    if (RUNTIME_ONLY_KEYS.has(row.key)) { if (existsSync(filePath)) unlinkSync(filePath); continue; }
     let data = safeParse(row.data);
     // Astro fails the whole build on a site entry that isn't an object, so a
     // runtime value nobody listed above is skipped instead of breaking every deploy

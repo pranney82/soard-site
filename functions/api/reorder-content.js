@@ -4,19 +4,24 @@
  * order is never half-saved, and one audit entry per item that moved (so
  * Publish lists exactly who moved).
  *
- * Body: { collection: "team", items: [{ slug, order }] }
+ * Body: { collection: "team" | "kids", items: [{ slug, order }] }
  * Returns: { success, changed: [slug], shas: { slug: sha } }
  *
  * Admin-only (the middleware requires Access for /api/* not in PUBLIC_ROUTES).
- * Only `order` changes: each row is read fresh and written back with just its
+ * Only the order changes: each row is read fresh and written back with just its
  * order replaced, so an edit saved meanwhile elsewhere is never overwritten.
+ * Team rows keep it in `order`; kids in `sortOrder` (their place among the
+ * active kids at the top of Meet the Kids).
  */
 import { EXTRACTORS, generateSha } from './_collections.js';
 import { commitFile } from './_github.js';
 import { logAudit, diffJson, getEntityName } from './_audit.js';
 
-// Collections whose items carry a numeric `order` (kids use sortOrder instead)
-const REORDERABLE = { team: { dir: 'src/content/team/' } };
+// Collections that can be reordered here, and the field that holds the order
+const REORDERABLE = {
+  team: { dir: 'src/content/team/', field: 'order' },
+  kids: { dir: 'src/content/kids/', field: 'sortOrder' },
+};
 const SLUG_RE = /^[a-z0-9][a-z0-9-]{0,120}$/;
 const MAX_ITEMS = 500;
 
@@ -49,8 +54,8 @@ export async function reorder(env, { collection, items } = {}, userEmail = 'unkn
   const stmts = [];
   for (const it of items) {
     const before = JSON.parse(bySlug.get(it.slug).data);
-    if ((Number(before.order) || 0) === it.order && typeof before.order === 'number') continue;
-    const after = { ...before, order: it.order };
+    if (before[cfg.field] === it.order) continue;
+    const after = { ...before, [cfg.field]: it.order };
     const json = JSON.stringify(after);
     const [cols, vals] = extractor(after);
     const all = ['"slug"', '"data"', '"updated_at"', ...cols];

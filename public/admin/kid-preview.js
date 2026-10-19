@@ -23,16 +23,12 @@ import {
   loadTemplates, tools, guardFrame,
 } from './page-preview.js';
 
-export { cfId };
+import { youTubeId, splitBio, heroHookOf, TITLE_BLOCK, isFloorPlan } from './kids-shared.js';
+
+export { cfId, youTubeId };
 
 // ── Video (mirrors src/utils/reveals.ts) ──────────────────────────────
 const STREAM_UID_RE = /^[a-f0-9]{32}$/i;
-
-export function youTubeId(url) {
-  if (!url) return null;
-  const m = url.match(/(?:youtu\.be\/|youtube(?:-nocookie)?\.com\/(?:watch\?(?:.*&)?v=|embed\/|shorts\/|live\/))([a-zA-Z0-9_-]{11})/);
-  return m ? m[1] : null;
-}
 
 const streamChecks = new Map();
 /**
@@ -88,31 +84,7 @@ export function loadKit() {
 }
 
 // ── Page model (mirrors the frontmatter of src/pages/kids/[slug].astro) ──
-function splitBio(bio) {
-  if (!bio) return [];
-  if (bio.includes('<p>')) {
-    return [...bio.matchAll(/<p>([\s\S]*?)<\/p>/gi)]
-      .map((m) => m[1].replace(/<br\s*\/?>/gi, '').trim())
-      .filter(Boolean);
-  }
-  return bio.split('\n\n').filter((p) => p.trim());
-}
-
-function heroHookOf(raw) {
-  if (!raw) return '';
-  const sentences = raw.match(/[^.!?]+[.!?]+/g) || [raw];
-  const twoSentences = sentences.slice(0, 2).join(' ').trim();
-  if (twoSentences.length <= 220) return twoSentences;
-  const firstSentence = sentences[0]?.trim() || raw;
-  if (firstSentence.length <= 180) return firstSentence;
-  const truncated = firstSentence.slice(0, 170);
-  const clauseBreak = truncated.match(/^.{80,}[,;:—–]\s/)?.[0];
-  if (clauseBreak) return clauseBreak.trim() + '...';
-  return truncated.replace(/\s+\S*$/, '') + '...';
-}
-
-const TITLE_BLOCK = 0.10;
-const isFloorPlan = (p) => /(before|after|existing|existi|proposed|layout|floor\s*plan)/i.test(p?.label || '');
+// (the bio split, hero hook and plan crop rules live in kids-shared.js)
 
 /** Every image whose size the page needs (hero, gallery, plans, before/after) */
 function sizedImages(kid) {
