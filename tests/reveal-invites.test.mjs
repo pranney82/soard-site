@@ -201,6 +201,31 @@ test('the board comes from the website (with a private email) and the JobTread B
     'Mary has no email yet, Brent is a memorial, Holly is staff not board');
 });
 
+test('board status field: alumni and memorials are never invited; a draft is still on the board', async () => {
+  await env.DB.prepare('CREATE TABLE IF NOT EXISTS team (slug TEXT PRIMARY KEY, data TEXT NOT NULL)').run();
+  const put = (slug, data) => env.DB.prepare('INSERT OR REPLACE INTO team (slug, data) VALUES (?, ?)').bind(slug, JSON.stringify(data)).run();
+  await put('brent-aronson', { name: 'In memoriam, Brent Aronson', title: 'Board Member 2024-2025', group: 'board' });
+  await put('tpl-alumni', { name: 'Ann Alumni', title: 'Board Member', group: 'board', status: 'alumni' });
+  await put('tpl-memorial', { name: 'Mo Memorial', title: 'Board Member', group: 'board', status: 'memorial' });
+  await put('tpl-draft', { name: 'Dee Draft', title: 'Board Member', group: 'board', status: 'active', publishStatus: 'draft' });
+  for (const s of ['tpl-alumni', 'tpl-memorial', 'tpl-draft']) await setBoardEmail(env.DB, s, `${s}@example.com`);
+  try {
+    const roster = await boardRoster(env.DB);
+    const row = (slug) => roster.find((m) => m.slug === slug);
+    assert.deepEqual([row('tpl-alumni').active, row('tpl-memorial').memorial, row('tpl-draft').active], [false, true, true]);
+    assert.equal(row('brent-aronson').name, 'Brent Aronson', 'an older record\'s "In memoriam, " prefix is not part of the name');
+    boardMembers = [];
+    const emails = (await fetchBoard(env, fakeFetch)).map((x) => x.email);
+    assert.ok(emails.includes('tpl-draft@example.com'), 'a draft hides them from the website only');
+    assert.ok(!emails.includes('tpl-alumni@example.com') && !emails.includes('tpl-memorial@example.com'));
+  } finally {
+    for (const s of ['tpl-alumni', 'tpl-memorial', 'tpl-draft', 'brent-aronson']) {
+      await setBoardEmail(env.DB, s, '');
+      await env.DB.prepare('DELETE FROM team WHERE slug = ?').bind(s).run();
+    }
+  }
+});
+
 test('confirming adds the stage-two guests and emails everyone; un-confirming takes them back off', async () => {
   await writeConfig(env.DB, { enabled: true });
   boardMembers = [{ user: { name: 'Board Person', emailAddress: 'board@example.com' } }];

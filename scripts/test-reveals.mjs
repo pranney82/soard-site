@@ -284,25 +284,28 @@ try {
   const clicked = await ppl.page.evaluate(() => { const el = [...document.querySelectorAll('a, button')].find((x) => x.textContent.trim() === 'People'); if (el) el.click(); return !!el; });
   ok(clicked, 'People is in the sidebar');
   await pause(400);
-  await ppl.page.evaluate(() => [...document.querySelectorAll('button.hub-tab')].find((b) => b.textContent.trim() === 'Board')?.click());
+  await ppl.page.evaluate(() => [...document.querySelectorAll('button.hub-tab')].find((b) => b.textContent.trim().startsWith('Board'))?.click()); // "Board" plus its count
   await pause(400);
-  await ppl.page.evaluate(() => [...document.querySelectorAll('tr.u-clickable')].find((tr) => tr.textContent.includes('Scott Wierson'))?.click());
-  await ppl.page.waitForSelector('#board-reveal-email', { timeout: 10000 }).catch(() => {});
-  ok(!!(await ppl.page.$('#board-reveal-email')), 'a board member has an email field for reveal invites');
-  ok((await text(ppl.page, '.card:has(#board-reveal-email)')).includes('Private: never shown on the site'), 'it says the email is private');
-  await ppl.page.waitForFunction(() => !document.querySelector('#board-reveal-email')?.disabled);
-  await ppl.page.type('#board-reveal-email', 'Scott@Example.com');
-  await ppl.page.evaluate(() => [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Save email')?.click());
+  // People → Board lists rows (PeopleList); a board member's editor (PersonEditor) has the invite email
+  await ppl.page.evaluate(() => [...document.querySelectorAll('.ppl-row__name')].find((n) => n.textContent.includes('Scott Wierson'))?.click());
+  await ppl.page.waitForSelector('#ppl-email', { timeout: 10000 }).catch(() => {});
+  ok(!!(await ppl.page.$('#ppl-email')), 'a board member has an email field for reveal invites');
+  ok((await text(ppl.page, '.card:has(#ppl-email)')).includes('Private: never shown on the site'), 'it says the email is private');
+  await ppl.page.waitForFunction(() => !document.querySelector('#ppl-email')?.disabled);
+  await ppl.page.type('#ppl-email', 'Scott@Example.com');
+  // One Save writes the record and the private email
+  await ppl.page.evaluate(() => document.querySelector('.ppl-ed-head .btn-primary')?.click());
+  await ppl.page.waitForFunction(() => !document.querySelector('.ppl-unsaved'), { timeout: 5000 }).catch(() => {});
   await pause(300);
   const bp = ppl.posts.find((x) => x.path === '/api/reveal-invites-admin' && x.body?.boardEmail);
   ok(bp && bp.body.boardEmail.slug === 'scott-wierson' && bp.body.boardEmail.email === 'scott@example.com', 'saving sends it to the private store, not the public record');
   ok(!ppl.posts.some((x) => x.path === '/api/save-content' && JSON.stringify(x.body).includes('scott@example.com')), 'the email never goes into the saved (GitHub-committed) record');
   await ppl.page.evaluate(() => document.querySelector('.breadcrumb button')?.click()); // back to the list
-  await ppl.page.waitForFunction(() => [...document.querySelectorAll('tr.u-clickable')].some((tr) => tr.textContent.includes('Brent Aronson')), { timeout: 5000 }).catch(() => {});
-  await ppl.page.evaluate(() => [...document.querySelectorAll('tr.u-clickable')].find((tr) => tr.textContent.includes('Brent Aronson'))?.click());
+  await ppl.page.waitForFunction(() => [...document.querySelectorAll('.ppl-row__name')].some((n) => n.textContent.includes('Brent Aronson')), { timeout: 5000 }).catch(() => {});
+  await ppl.page.evaluate(() => [...document.querySelectorAll('.ppl-row__name')].find((n) => n.textContent.includes('Brent Aronson'))?.click());
   await pause(800);
   ok((await text(ppl.page, '.page-header h2')).includes('Brent Aronson'), `the memorial entry opens (${await text(ppl.page, '.page-header h2')})`);
-  ok((await ppl.page.evaluate(() => [...document.querySelectorAll('.card')].some((c) => c.textContent.includes('Reveal invites') && c.textContent.includes('Memorial entries are never invited')))), 'a memorial entry says it is never invited');
+  ok((await ppl.page.evaluate(() => [...document.querySelectorAll('.card')].some((c) => /reveal invites/i.test(c.textContent) && c.textContent.includes('Memorial entries are never invited')))), 'a memorial entry says it is never invited');
   ok(ppl.errors.length === 0, `no console errors (${ppl.errors.join(' | ')})`);
   await ppl.page.screenshot({ path: join(OUT, 'people-board.png'), fullPage: false });
   await ppl.page.close();

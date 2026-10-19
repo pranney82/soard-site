@@ -99,6 +99,24 @@ const pressFor = (first) => [
 ];
 const pressLogos = [{ id: 'tpl-outlet', data: { name: 'Template Outlet', slug: 'tpl-outlet', logo: 'press-template/outlet-logo', order: 0 } }];
 
+// People: every card on the Leadership page (with and without a photo or an
+// organization, a cropped cutout, a memorial), plus a draft and an alumna
+// that the page leaves out
+const person = (slug, data) => ({ id: slug, data: { slug, order: 0, ...data } });
+const teamAll = [
+  person('tpl-founder-a', { name: 'Template Founder', title: 'Co-Founder/President', group: 'team', role: 'founder', photo: 'team-template/founder' }),
+  person('tpl-founder-b', { name: 'Template Founder Two', title: 'Co-Founder', group: 'team', role: 'founder', order: 1 }),
+  person('tpl-staff-a', { name: 'Template Staff', title: 'Template Role', organization: 'Template Org', group: 'team', role: 'staff', order: 2,
+    photo: 'team-template/staff', photoSize: [1200, 1600], photoCrop: { x: 0.1, y: 0.2, size: 0.7 }, photoCutout: true }),
+  person('tpl-staff-b', { name: 'Template Staff Two', title: 'Template Role', group: 'team', role: 'staff', order: 3 }),
+  person('tpl-honorary', { name: 'Template Greeter', title: 'Chief Greeter', group: 'team', role: 'honorary', photo: 'team-template/honorary' }),
+  person('tpl-draft', { name: 'Template Draft', title: 'Template Role', group: 'team', role: 'staff', publishStatus: 'draft' }),
+  person('tpl-chair', { name: 'Template Chair', title: 'Board Chair', organization: 'Template Company, CEO', group: 'board', seat: 'chair', order: 4, photo: 'team-template/chair' }),
+  person('tpl-member', { name: 'Template Member', title: 'Board Member', group: 'board', seat: '', order: 1 }),
+  person('tpl-memorial', { name: 'Template Remembered', title: 'Board Member 2020-2024', organization: 'Template Company', group: 'board', status: 'memorial', photo: 'team-template/memorial', photoCutout: true }),
+  person('tpl-alumna', { name: 'Template Alumna', title: 'Board Member', group: 'board', status: 'alumni', until: 2025 }),
+];
+
 export const FIXTURES = {
   kid: {
     full: { item: kidFull, video: { type: 'stream', id: 'templatestream' } },
@@ -123,4 +141,7 @@ export const FIXTURES = {
     full: { collection: partnersAll },
   },
   press: Object.fromEntries(Object.keys(pressFeatured).map((first) => [first, { collection: pressFor(first), mediaLogos: pressLogos }])),
+  team: {
+    full: { collection: teamAll },
+  },
 };

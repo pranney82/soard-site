@@ -21,9 +21,7 @@ import { EXTRACTORS, parsePath, generateSha } from './_collections.js';
 import { commitFile } from './_github.js';
 import { logAudit, diffJson, getEntityName } from './_audit.js';
 import { refreshForBoardChange } from './_reveal-invites.js';
-
-// On the board for confirmed reveal invites (a memorial entry never is)
-const onBoard = (d) => d?.group === 'board' && !/^\s*in memoriam/i.test(d?.name || '');
+import { onActiveBoard as onBoard } from './_team.js';
 
 export async function onRequestPost(context) {
   try {
@@ -70,6 +68,15 @@ export async function onRequestPost(context) {
     // sha comes from read-content, which hashes the stored JSON string with
     // generateSha() — so compare against generateSha(oldRaw). No sha, or no
     // existing row (a create) → proceed as before.
+    // A person loaded with a sha whose row is gone was renamed or deleted
+    // meanwhile: saving would bring the old record back as a duplicate
+    if (clientSha && oldRaw === null && parsed.table === 'team') {
+      return Response.json(
+        { success: false, error: 'This person was renamed or deleted since you opened them. Go back to the list to open their current record.' },
+        { status: 409 }
+      );
+    }
+
     if (clientSha && oldRaw !== null) {
       const currentSha = await generateSha(oldRaw);
       if (currentSha !== clientSha) {

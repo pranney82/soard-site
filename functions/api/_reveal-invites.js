@@ -54,6 +54,7 @@
 import { JT_URL, SOARD_ORG_ID, FIELD_REVEAL_CONFIRMED, todayEastern, easternParts, matchKid, parseJobName, loadKids } from './_reveals.js';
 import { accessToken, eventIdFor, upsertEvent, cancelEvent, getEvent } from './_google-calendar.js';
 import { sendEmails, slackAlert, emailConfigured } from './_broadcast-notify.js';
+import { personStatus, personName } from './_team.js';
 
 export const REVEAL_TASK_TYPE = '22NZSbkR5rZw';
 export const FIELD_STATUS = '22P52qfFub9b';
@@ -286,8 +287,8 @@ const isEmail = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e || '');
 
 /**
  * The website's board (People → Board) with each member's private reveal email:
- * [{ slug, name, title, email, memorial }]. A memorial entry ("In memoriam, …")
- * is listed but never invited.
+ * [{ slug, name, title, email, memorial, active }]. Only active members are
+ * invited: alumni and memorial entries are listed but never invited.
  */
 export async function boardRoster(DB) {
   await ensureSchema(DB);
@@ -299,7 +300,8 @@ export async function boardRoster(DB) {
     let d = {};
     try { d = JSON.parse(row.data || '{}'); } catch { continue; }
     if (d.group !== 'board') continue;
-    out.push({ slug: row.slug, name: d.name, title: d.title || '', order: Number(d.order) || 0, email: emails[row.slug] || null, memorial: /^\s*in memoriam/i.test(d.name || '') });
+    const status = personStatus(d);
+    out.push({ slug: row.slug, name: personName(d), title: d.title || '', order: Number(d.order) || 0, email: emails[row.slug] || null, memorial: status === 'memorial', active: status === 'active' });
   }
   return out.sort((a, b) => a.order - b.order || String(a.name).localeCompare(String(b.name)));
 }
@@ -314,14 +316,14 @@ export async function setBoardEmail(DB, slug, email) {
 }
 
 /**
- * The board, for every invite: the website's board members with a private
- * reveal email, plus anyone with the Board Member role in JobTread. Memorial
- * entries never. Never throws.
+ * The board, for every invite: the website's active board members with a
+ * private reveal email, plus anyone with the Board Member role in JobTread.
+ * Alumni and memorial entries never. Never throws.
  */
 export async function fetchBoard(env, fetchImpl = fetch) {
   const out = [];
   try {
-    for (const m of await boardRoster(env.DB)) if (!m.memorial && isEmail(m.email)) out.push({ name: m.name, email: m.email, from: 'website' });
+    for (const m of await boardRoster(env.DB)) if (m.active && isEmail(m.email)) out.push({ name: m.name, email: m.email, from: 'website' });
   } catch { /* no website board */ }
   if (env.JOBTREAD_GRANT_KEY) {
     try {

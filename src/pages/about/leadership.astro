@@ -6,21 +6,22 @@
  */
 import PageLayout from '../../layouts/PageLayout.astro';
 import { getCollection } from 'astro:content';
-import { cfUrl, cfSrcset, cfLqip } from '../../utils/cf-image';
+import { cfUrl } from '../../utils/cf-image';
+import { normalizePerson, isListed, comparePeople, photoUrl, photoSrcset, photoLqip } from '../../utils/team';
+import type { PersonData } from '../../utils/team';
 import { getSiteStats } from '../../utils/stats';
 
 const PLACEHOLDER = 'brand-logo-circle-display';
 
-const allTeam = await getCollection('team');
-const founders = allTeam
-  .filter(t => t.data.group === 'team' && t.data.title?.toLowerCase().includes('co-founder'))
-  .sort((a, b) => (a.data.order || 0) - (b.data.order || 0));
-const staff = allTeam
-  .filter(t => t.data.group === 'team' && !t.data.title?.toLowerCase().includes('co-founder'))
-  .sort((a, b) => (a.data.order || 0) - (b.data.order || 0));
-const boardMembers = allTeam
-  .filter(t => t.data.group === 'board')
-  .sort((a, b) => (a.data.order || 0) - (b.data.order || 0));
+// `team` lets the admin's Preview template render made-up people
+// (src/pages/admin/team-template/); the site always reads the collection.
+const allTeam: { id: string; data: PersonData }[] = Astro.props.team ?? await getCollection('team');
+// Drafts and alumni stay off the page; order follows public/admin/team-shared.js
+const people = allTeam.map((t) => ({ id: t.id, data: normalizePerson(t.data) })).filter((t) => isListed(t.data));
+const byRank = (a: { data: ReturnType<typeof normalizePerson> }, b: { data: ReturnType<typeof normalizePerson> }) => comparePeople(a.data, b.data);
+const founders = people.filter((t) => t.data.group === 'team' && t.data.role === 'founder').sort(byRank);
+const staff = people.filter((t) => t.data.group === 'team' && t.data.role !== 'founder').sort(byRank);
+const boardMembers = people.filter((t) => t.data.group === 'board').sort(byRank);
 
 /* ── Stats ── */
 const computed = await getSiteStats();
@@ -80,14 +81,14 @@ const breadcrumbs = [
 
       <div class="board-grid">
         {boardMembers.map((member, i) => (
-          <div class="board-card" data-reveal data-delay={String(Math.min(i, 4))}>
-            <div class="board-photo" style={member.data.photo ? `background-image:url(${cfLqip(member.data.photo)});background-size:cover;background-position:center` : undefined}>
+          <div class={member.data.status === 'memorial' ? 'board-card board-card--memorial' : 'board-card'} data-reveal data-delay={String(Math.min(i, 4))}>
+            <div class="board-photo" style={member.data.photo ? `background-image:url(${photoLqip(member.data)});background-size:cover;background-position:center` : undefined}>
               {member.data.photo ? (
                 <img
-                  src={cfUrl(member.data.photo, { w: 200, h: 200, fit: 'cover', gravity: 'face' })}
-                  srcset={cfSrcset(member.data.photo, [140, 200, 280, 400], { fit: 'cover', gravity: 'face', aspectRatio: 1 })}
+                  src={photoUrl(member.data, 200)}
+                  srcset={photoSrcset(member.data, [140, 200, 280, 400])}
                   sizes="(max-width: 600px) 140px, 200px"
-                  alt={`${member.data.name}, ${member.data.title}`}
+                  alt={member.data.status === 'memorial' ? `In memory of ${member.data.name}, ${member.data.title}` : `${member.data.name}, ${member.data.title}`}
                   width="200" height="200"
                   loading="lazy"
                   decoding="async"
@@ -98,6 +99,7 @@ const breadcrumbs = [
                 </div>
               )}
             </div>
+            {member.data.status === 'memorial' && <p class="board-memorial">In memoriam</p>}
             <h3 class="board-name">{member.data.name}</h3>
             <p class="board-title">{member.data.title}</p>
             {member.data.organization && (
@@ -138,11 +140,11 @@ const breadcrumbs = [
         {founders.map((member, i) => (
           <div class="founder-card" data-reveal data-delay={String(i)}>
             <div class="founder-photo-wrap">
-              <div class="founder-photo" style={member.data.photo ? `background-image:url(${cfLqip(member.data.photo)});background-size:cover;background-position:center` : undefined}>
+              <div class="founder-photo" style={member.data.photo ? `background-image:url(${photoLqip(member.data)});background-size:cover;background-position:center` : undefined}>
                 {member.data.photo ? (
                   <img
-                    src={cfUrl(member.data.photo, { w: 220, h: 220, fit: 'cover', gravity: 'face' })}
-                    srcset={cfSrcset(member.data.photo, [160, 220, 320, 440], { fit: 'cover', gravity: 'face', aspectRatio: 1 })}
+                    src={photoUrl(member.data, 220)}
+                    srcset={photoSrcset(member.data, [160, 220, 320, 440])}
                     sizes="(max-width: 600px) 160px, 220px"
                     alt={`${member.data.name}, ${member.data.title}`}
                     width="220" height="220"
@@ -168,11 +170,11 @@ const breadcrumbs = [
       <div class="team-grid">
         {staff.map((member, i) => (
           <div class="member-card" data-reveal data-delay={String(Math.min(i, 3))}>
-            <div class="member-photo" style={member.data.photo ? `background-image:url(${cfLqip(member.data.photo)});background-size:cover;background-position:center` : undefined}>
+            <div class="member-photo" style={member.data.photo ? `background-image:url(${photoLqip(member.data)});background-size:cover;background-position:center` : undefined}>
               {member.data.photo ? (
                 <img
-                  src={cfUrl(member.data.photo, { w: 220, h: 220, fit: 'cover', gravity: 'face' })}
-                  srcset={cfSrcset(member.data.photo, [160, 220, 320, 440], { fit: 'cover', gravity: 'face', aspectRatio: 1 })}
+                  src={photoUrl(member.data, 220)}
+                  srcset={photoSrcset(member.data, [160, 220, 320, 440])}
                   sizes="(max-width: 600px) 160px, 220px"
                   alt={`${member.data.name}, ${member.data.title}`}
                   width="220" height="220"
@@ -393,6 +395,16 @@ const breadcrumbs = [
     color: var(--c-text-light);
     margin-top: 0.2rem;
     line-height: 1.4;
+  }
+
+  /* A board member who has died: named plainly, with a quiet line above */
+  .board-memorial {
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--c-text-muted);
+    margin-bottom: 0.3rem;
   }
 
   /* ═══════════════════════════════════════════

@@ -79,6 +79,13 @@ const TYPES = {
       logo: ['section.fph .fph__logo img'],
       text: ['section.fph .fph__logo--text span'],
     } },
+  team: { dir: 'team', list: true, path: () => '/about/leadership/', region: 'main', skip: [],
+    parts: {
+      full: ['.board-card:not(.board-card--memorial) .board-photo[style]', '.board-card .board-photo:not([style])',
+        '.board-card:not(.board-card--memorial):has(.board-org)', '.board-card--memorial .board-memorial',
+        '.founder-card:has(.founder-photo[style])', '.founder-card .founder-photo:not([style])',
+        '.member-card:has(.member-org):has(.member-photo[style])', '.member-card .member-photo:not([style])'],
+    } },
 };
 const only = process.env.TYPES ? process.env.TYPES.split(',') : Object.keys(TYPES);
 

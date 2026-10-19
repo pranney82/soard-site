@@ -187,7 +187,7 @@ export async function onRequestGet(context) {
       upcoming,
       ...(upcomingError ? { upcomingError } : {}),
       // Who confirmed invites add from the website's board, and who still needs an email
-      board: board.filter((m) => !m.memorial).map(({ slug, name, email }) => ({ slug, name, hasEmail: !!email })),
+      board: board.filter((m) => m.active).map(({ slug, name, email }) => ({ slug, name, hasEmail: !!email })),
       // The live countdown: which job it follows, and confirmed reveals it can't follow yet (and why)
       live: {
         phase: broadcast?.phase || 'idle',

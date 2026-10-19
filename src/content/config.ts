@@ -103,6 +103,20 @@ const team = defineCollection({
     quote: z.string().optional(),
     group: z.enum(['team', 'board']),
     order: z.number().default(0),
+    // Structured fields (Oct 2026). Older records carry these in their name
+    // and title text; src/utils/team.ts reads both.
+    role: z.enum(['founder', 'staff', 'honorary']).optional(),
+    seat: z.enum(['', 'chair', 'vice-chair', 'treasurer', 'secretary']).optional(),
+    status: z.enum(['active', 'alumni', 'memorial']).optional(),
+    since: z.number().nullable().optional(),
+    until: z.number().nullable().optional(),
+    committees: z.array(z.string()).optional(),
+    partner: z.string().nullable().optional(),
+    linkedin: z.string().nullable().optional(),
+    publishStatus: z.enum(['published', 'draft']).optional(),
+    photoCrop: z.object({ x: z.number(), y: z.number(), size: z.number() }).nullable().optional(),
+    photoSize: z.tuple([z.number(), z.number()]).nullable().optional(),
+    photoCutout: z.boolean().optional(),
   }),
 });
 

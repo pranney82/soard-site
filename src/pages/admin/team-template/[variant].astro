@@ -1,0 +1,18 @@
+---
+/**
+ * Leadership page template for the admin Preview (behind Access with the rest
+ * of /admin/, and kept out of the sitemap). The real Leadership page rendered
+ * with the made-up people in ../_preview-fixtures.js, which between them use
+ * every card layout. public/admin/team-preview.js clones its cards to rebuild
+ * the page from unsaved edits.
+ */
+import LeadershipPage from '../../about/leadership.astro';
+import { FIXTURES } from '../_preview-fixtures.js';
+
+export function getStaticPaths() {
+  return Object.keys(FIXTURES.team).map((variant) => ({ params: { variant } }));
+}
+
+const { collection } = FIXTURES.team[Astro.params.variant as keyof typeof FIXTURES.team];
+---
+<LeadershipPage team={collection} />

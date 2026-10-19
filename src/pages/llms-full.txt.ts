@@ -2,6 +2,7 @@ import type { APIRoute } from 'astro';
 import { getCollection } from 'astro:content';
 import { getPublishedKids } from '../utils/collections';
 import { getSiteStats } from '../utils/stats';
+import { normalizePerson, isListed } from '../utils/team';
 
 export const GET: APIRoute = async () => {
   const s = await getSiteStats();
@@ -27,9 +28,11 @@ export const GET: APIRoute = async () => {
     });
 
   // Build team list
-  const teamList = [...team]
-    .sort((a, b) => a.data.name.localeCompare(b.data.name))
-    .map((t) => `- ${t.data.name}: ${t.data.title}`);
+  const teamList = team
+    .map((t) => normalizePerson(t.data))
+    .filter(isListed)
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((p) => `- ${p.name}: ${p.title}${p.status === 'memorial' ? ' (in memoriam)' : ''}`);
 
   // Build partners list
   const partnerList = [...partners]
