@@ -55,8 +55,8 @@ test('tentative invite once construction starts', () => {
   assert.equal(p.event.guestsCanSeeOtherGuests, false);
   assert.match(p.event.description, /^Save the date: Max's bathroom reveal is penciled in for Tuesday, October 27\./, 'the date first, for a phone');
   assert.match(p.event.description, /^Meet Max: https:\/\/sunshineonaranneyday\.com\/kids\/max\/$/m, 'a labeled link to the kid');
-  assert.match(p.event.description, /^Can't be there\? Watch live: https:\/\/sunshineonaranneyday\.com\/live\/max\/$/m, 'the link to watch it live');
-  assert.match(p.event.description, /^Questions\? Email ccunningham@soardcharity\.com$/m, 'who to ask');
+  assert.match(p.event.description, /^Watch live from anywhere: https:\/\/sunshineonaranneyday\.com\/live\/max\/$/m, 'the link to watch it live, for every guest, family included');
+  assert.match(p.event.description, /^Questions\? Email Clareece Cunningham at ccunningham@soardcharity\.com\.\nSunshine on a Ranney Day$/m, 'who to ask, by name, and who it is from');
   assert.doesNotMatch(p.event.description, /^https:/m, 'no bare links');
   assert.doesNotMatch(p.event.description, /—/, 'no em dashes in site copy');
 });
@@ -78,9 +78,9 @@ test('confirmed with a time becomes a timed, confirmed event in Eastern time', (
   assert.equal(p.event.transparency, 'opaque', 'a confirmed time is busy');
   assert.match(p.event.description, /^Max's bathroom reveal is confirmed for Tuesday, October 27 at 4:00 PM\./);
   assert.match(p.event.description, /Park on the street\./);
-  assert.match(p.event.description, /Watch live: https:\/\/sunshineonaranneyday\.com\/live\/max\//, 'still there once confirmed');
+  assert.match(p.event.description, /Watch live from anywhere: https:\/\/sunshineonaranneyday\.com\/live\/max\//, 'still there once confirmed');
   const unpublished = planInvite(job(), STAFF, { kids: [], now: NOW });
-  assert.match(unpublished.event.description, /^Can't be there\? Watch live: https:\/\/sunshineonaranneyday\.com\/live\/$/m, 'kid not on the site yet: /live/ follows the current reveal');
+  assert.match(unpublished.event.description, /^Watch live from anywhere: https:\/\/sunshineonaranneyday\.com\/live\/$/m, 'kid not on the site yet: /live/ follows the current reveal');
   assert.doesNotMatch(unpublished.event.description, /^Meet /m, 'and no kid page to link');
   const allDay = planInvite(job({ confirmed: true }), STAFF, { kids: KIDS, now: NOW });
   assert.equal(allDay.event.transparency, 'transparent', 'confirmed without a time yet: still free');
@@ -635,10 +635,13 @@ test('the default wording, exactly', () => {
     "If the build schedule shifts, this invite moves with it. The time comes once the date is confirmed, so there's no need to reply until then.",
     '',
     'Meet Max: https://sunshineonaranneyday.com/kids/max/',
-    "Can't be there? Watch live: https://sunshineonaranneyday.com/live/max/",
+    'Watch live from anywhere: https://sunshineonaranneyday.com/live/max/',
     '',
-    'Questions? Email ccunningham@soardcharity.com',
+    'Questions? Email Clareece Cunningham at ccunningham@soardcharity.com.',
+    'Sunshine on a Ranney Day',
   ].join('\n'));
+  const unnamed = planInvite(job(), STAFF, { kids: KIDS, now: NOW, organizer: 'events@soardcharity.com' });
+  assert.match(unnamed.event.description, /^Questions\? Email events@soardcharity\.com\.$/m, 'an organizer not on the staff list: just the address');
   const c = planInvite(job({ confirmed: true, time: '16:00' }), STAFF, { kids: KIDS, now: NOW });
   assert.equal(c.event.summary, "Max's Reveal Day");
   assert.match(c.event.description, /^Max's bathroom reveal is confirmed for Tuesday, October 27 at 4:00 PM\.\n\nIt's the moment Max sees the new bathroom for the first time\. Please reply so we know who to expect\.\n\nMeet Max:/);
@@ -678,7 +681,7 @@ test('wording from admin fills in name, date and time', () => {
   const template = { ...DEFAULT_TEMPLATE, confirmedTitle: 'Reveal Day: {name}!', confirmedMessage: 'See you {when}.' };
   const p = planInvite(job({ confirmed: true, time: '09:30', details: 'Gate code 1234' }), STAFF, { kids: KIDS, now: NOW, template });
   assert.equal(p.event.summary, 'Reveal Day: Max!');
-  assert.equal(p.event.description, "See you Tuesday, October 27 at 9:30 AM.\n\nGate code 1234\n\nMeet Max: https://sunshineonaranneyday.com/kids/max/\nCan't be there? Watch live: https://sunshineonaranneyday.com/live/max/\n\nQuestions? Email ccunningham@soardcharity.com");
+  assert.equal(p.event.description, "See you Tuesday, October 27 at 9:30 AM.\n\nGate code 1234\n\nMeet Max: https://sunshineonaranneyday.com/kids/max/\nWatch live from anywhere: https://sunshineonaranneyday.com/live/max/\n\nQuestions? Email Clareece Cunningham at ccunningham@soardcharity.com.\nSunshine on a Ranney Day");
 });
 
 test('admin list: upcoming reveals with the exact invite each would send, guests named', async () => {

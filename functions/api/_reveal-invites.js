@@ -452,8 +452,10 @@ export function planInvite(job, staff, { kids = [], board = [], organizer = DEFA
   // page; before the kid is on the site, /live/ (it follows the current reveal).
   lines.push('');
   if (who.slug) lines.push(`Meet ${who.name}: ${SITE}/kids/${who.slug}/`);
-  lines.push(`Can't be there? Watch live: ${SITE}/live/${who.slug ? `${who.slug}/` : ''}`);
-  lines.push('', `Questions? Email ${organizer}`);
+  lines.push(`Watch live from anywhere: ${SITE}/live/${who.slug ? `${who.slug}/` : ''}`);
+  // Who to ask, by name when the organizer is on the staff list, and who it's from
+  const host = (staff || []).find((s) => s.email === organizer)?.name;
+  lines.push('', `Questions? Email ${host ? `${host} at ` : ''}${organizer}.`, 'Sunshine on a Ranney Day');
 
   const guests = [];
   const people = {}; // email → { name, kind } for the admin's preview

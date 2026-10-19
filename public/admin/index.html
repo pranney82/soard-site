@@ -6068,11 +6068,11 @@
       return String(text || '').replace(/\{(name|space|date|time|when)\}/g, (_, k) => values[k]);
     };
     // Same composition as the server: message, the reveal's notes, the links, who to ask
-    const inviteDescription = (template, kind, r, time, organizerEmail) => [
+    const inviteDescription = (template, kind, r, time, organizerEmail, organizerName) => [
       fillInvite(template[kind + 'Message'], { name: r.name, space: r.space, date: r.date, time }).trim(),
       String(r.details || '').trim(),
-      [r.kidUrl ? `Meet ${r.name}: ${INVITE_SITE}${r.kidUrl}` : '', `Can't be there? Watch live: ${INVITE_SITE}/live/${r.slug ? `${r.slug}/` : ''}`].filter(Boolean).join('\n'),
-      `Questions? Email ${organizerEmail}`,
+      [r.kidUrl ? `Meet ${r.name}: ${INVITE_SITE}${r.kidUrl}` : '', `Watch live from anywhere: ${INVITE_SITE}/live/${r.slug ? `${r.slug}/` : ''}`].filter(Boolean).join('\n'),
+      `Questions? Email ${organizerName ? `${organizerName} at ` : ''}${organizerEmail}.\nSunshine on a Ranney Day`,
     ].filter(Boolean).join('\n\n');
     const inviteWhen = (start, end) => {
       if (start?.date) return `${inviteDay(start.date)} · All day`;
@@ -6283,7 +6283,7 @@
           title=${fillInvite(template[kind + 'Title'], { name: sample.name, space: sample.space, date: sample.date, time })}
           status=${kind} start=${start} end=${end}
           location=${sample.preview?.location || null}
-          description=${inviteDescription(template, kind, sample, time, config.organizer)}
+          description=${inviteDescription(template, kind, sample, time, config.organizer, data.organizerName)}
           organizer=${organizer} />`;
       };
 

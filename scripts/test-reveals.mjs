@@ -266,7 +266,7 @@ try {
   ok(/Lizzie's therapy room reveal is penciled in/.test(tent) && /sees the new therapy room/.test(conf), "{space} names what was built, from the job's Makeover Type");
   ok(/Where\s*100 Example Way/.test(tent) && /Where\s*100 Example Way/.test(conf), 'both stages show the full address');
   ok(/Shows as\s*Free/.test(tent) && /Shows as\s*Busy/.test(conf), 'free until there is a confirmed time, then busy');
-  ok(/^Meet \w+: https:\/\/sunshineonaranneyday\.com\/kids\//m.test(tent) && /^Can't be there\? Watch live: /m.test(tent) && /^Questions\? Email ccunningham@soardcharity\.com$/m.test(tent), 'labeled links and who to ask, as the server writes them');
+  ok(/^Meet \w+: https:\/\/sunshineonaranneyday\.com\/kids\//m.test(tent) && /^Watch live from anywhere: /m.test(tent) && /^Questions\? Email Clareece Cunningham at ccunningham@soardcharity\.com\.$/m.test(tent) && /^Sunshine on a Ranney Day$/m.test(tent), 'labeled links and who to ask, as the server writes them');
   const testUrls = [];
   inv.page.on('request', (r) => { if (r.url().includes('test=')) testUrls.push(r.url()); });
   const testButtons = await inv.page.$$eval('.ri-savebar button', (els) => els.map((b) => b.textContent.trim()).filter((t) => t.startsWith('Send me')));
