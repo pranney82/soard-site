@@ -24,7 +24,7 @@
 
 import {
   ensureSchema, readConfig, writeConfig, reconcileJob, reconcileAll, sendTestInvite,
-  listUpcoming, maybeSweep, boardRoster, setBoardEmail, refreshForBoardChange, DEFAULT_TEMPLATE, TEMPLATE_LIMITS,
+  listUpcoming, maybeSweep, maybeCheckGuests, boardRoster, setBoardEmail, refreshForBoardChange, DEFAULT_TEMPLATE, TEMPLATE_LIMITS,
 } from './_reveal-invites.js';
 import { readNudgeConfig, writeNudgeConfig, runNudges, maybeNudge, summarize, SANDBOX_JOB_ID } from './_reveal-nudges.js';
 import { logAudit } from './_audit.js';
@@ -158,6 +158,7 @@ export async function onRequestGet(context) {
     if (q.get('board') === '1') return Response.json({ ok: true, board: await boardRoster(env.DB) });
 
     context.waitUntil(maybeSweep(env));
+    context.waitUntil(maybeCheckGuests(env));
     context.waitUntil(maybeNudge(env));
     const [config, checks, broadcast, schedule, board] = await Promise.all([
       readConfig(env.DB), readNudgeConfig(env.DB),

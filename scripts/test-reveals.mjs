@@ -85,7 +85,7 @@ function invitesData(phase) {
         broadcast: sched ? { id: 'live-1', phase: 'scheduled', scheduledAt: maxAt, createdAt: iso(-D), kitLiveEmail: null, kit: { scheduledDraft: true, live: null }, sends: [{ kind: 'scheduled', channel: 'email', recipients: 12, sent: 12, failed: 0, created_at: iso(-D) }, { kind: 'scheduled', channel: 'push', recipients: 3, sent: 3, failed: 0, created_at: iso(-D) }] } : null,
         reminderSignups: 15, checkComment: null },
       { jobId: 'jobCol0001', jobName: 'Colin Lindsay (2026)', name: 'Colin', slug: 'colin', kidUrl: '/kids/colin/', jobUrl: 'https://app.jobtread.com/jobs/jobCol0001', scheduleUrl: 'https://app.jobtread.com/jobs/jobCol0001/schedule', date: day(25), time: null, confirmed: false, scheduleBuilt: false, status: 'Build', details: '',
-        preview: { ...preview('Colin', 'tentative'), addsOnConfirm: [{ email: 'jacey@x.com', name: 'Jacey Verhoef', kind: 'vendor' }, { email: 'a@x.com', name: 'A', kind: 'board' }, { email: 'b@x.com', name: 'B', kind: 'board' }] },
+        preview: { ...preview('Colin', 'tentative'), addsOnConfirm: [{ email: 'jacey@x.com', name: 'Jacey Verhoef', kind: 'vendor' }, { email: 'niki@x.com', name: 'Niki Murphy', kind: 'photographer' }] },
         invite: null, broadcast: null, reminderSignups: 12, checkComment: null },
     ],
     board: [{ slug: 'scott-wierson', name: 'Scott Wierson', hasEmail: true }, { slug: 'mary-atchley', name: 'Mary Atchley', hasEmail: false }],
@@ -200,7 +200,7 @@ try {
   await clickToggle(page, 'Colin');
   await pause(150);
   const col = await stepsOf(page, 'Colin');
-  ok(col.find((x) => x.label === 'Confirmed calendar invite').text.includes('adding Jacey Verhoef (vendor) and 2 board members'), `the tentative reveal says who confirming adds (${col.find((x) => x.label === 'Confirmed calendar invite').text})`);
+  ok(col.find((x) => x.label === 'Confirmed calendar invite').text.includes('adding Jacey Verhoef (vendor) and Niki Murphy (photographer)'), `the tentative reveal says who confirming adds (${col.find((x) => x.label === 'Confirmed calendar invite').text})`);
 
   console.log('Actions');
   ok(await clickButton(page, '.bc-status', 'Customize'), 'Customize opens');

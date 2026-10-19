@@ -6043,7 +6043,7 @@
     // JobTread is the only place dates, times and notes are edited; this tab is
     // the on/off switch, a glance at every upcoming invite, and the wording.
     const INVITE_KINDS = [
-      { kind: 'tentative', label: 'Tentative invite', when: 'Goes out when Build Schedule is marked complete in JobTread.' },
+      { kind: 'tentative', label: 'Tentative invite', when: 'Goes out when Build Schedule is marked complete or construction starts (Demo, or two Construction tasks, done) in JobTread.' },
       { kind: 'confirmed', label: 'Confirmed invite', when: 'Replaces the tentative one when Reveal Date Confirmed is set to Yes.' },
     ];
     const INVITE_TOKENS = [
@@ -6304,8 +6304,9 @@
 
           <div class="card">
             <h3>Who gets the invites</h3>
-            <p class="ri-meta"><strong>Tentative</strong>, once Build Schedule is complete: staff and the family (the job's customer contacts, and anyone with the Makeover Family role who has access to the job).</p>
-            <p class="ri-meta"><strong>Confirmed</strong>, once Reveal Date Confirmed is Yes: the same invite becomes the real one and adds the vendors, sponsors, photographers and design partners who have access to that job in JobTread, plus the board. Un-confirming takes them back off.</p>
+            <p class="ri-meta"><strong>Tentative</strong>, once Build Schedule is complete or construction starts (Demo, or two tasks under Construction, done): staff, the family (the job's customer contacts, and anyone with the Makeover Family role who has access to the job) and the board.</p>
+            <p class="ri-meta"><strong>Confirmed</strong>, once Reveal Date Confirmed is Yes: the same invite becomes the real one and adds the vendors, sponsors, photographers and design partners who have access to that job in JobTread. Un-confirming takes them back off.</p>
+            <p class="ri-meta">Both invites include the link to watch the reveal live.</p>
             ${(() => {
               const board = data.board || [];
               const missing = board.filter((m) => !m.hasEmail);
@@ -6446,10 +6447,9 @@
       const parts = rows.filter((x) => x.recipients).map((x) => { const [one, many] = RT_CHANNEL[x.channel] || [x.channel, x.channel]; return `${x.sent} ${x.sent === 1 ? one : many}`; });
       return { at, text: `Sent ${rtWhen(at)}: ${parts.join(', ')}${failed ? `, ${failed} failed` : ''}`, failed };
     }
-    // "Niki Murphy (vendor), Morgan Lee (sponsor) and 11 board members"
+    // "Niki Murphy (vendor), Morgan Lee (sponsor) and Mike Kamber (vendor)"
     const rtWhoAdds = (list = []) => {
-      const board = list.filter((p) => p.kind === 'board').length;
-      const parts = [...list.filter((p) => p.kind !== 'board').map((p) => `${p.name || p.email} (${p.kind})`), board ? `${board} board member${board === 1 ? '' : 's'}` : null].filter(Boolean);
+      const parts = list.map((p) => `${p.name || p.email} (${p.kind})`);
       return parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}` : parts[0] || '';
     };
     // Invite history: the first time each kind of invite went out
@@ -6479,7 +6479,7 @@
         : rtInvite(r, 'confirmed') ? { state: 'done', text: 'Not needed: the confirmed invite went out first' }
         : invError && !r.confirmed ? invError
         : !r.preview ? { state: 'off', text: `No invite while the job is ${r.status || 'in this status'}` }
-        : !r.scheduleBuilt && !r.confirmed ? { state: 'wait', text: 'Goes out when Build Schedule is marked complete in JobTread' }
+        : !r.scheduleBuilt && !r.constructionStarted && !r.confirmed ? { state: 'wait', text: 'Goes out when Build Schedule is marked complete or construction starts (Demo, or two Construction tasks, done) in JobTread' }
         : r.confirmed ? { state: 'done', text: 'Not needed: the reveal is already confirmed' }
         : !invites.enabled ? { state: 'wait', text: 'Goes out once calendar invites are turned on (Reveals → Invites)' }
         : { state: 'wait', text: 'Goes out on the next change in JobTread' }) });
@@ -11746,7 +11746,7 @@
               <input class="form-input" id="board-reveal-email" type="email" autocomplete="off" value=${email} placeholder="name@example.com" disabled=${saved === null} onInput=${(e) => setEmail(e.target.value)} />
               <button class="btn btn-secondary btn-sm" type="button" disabled=${busy || saved === null || clean === (saved || '')} onClick=${save}>${busy ? html`<span class="spinner" />` : null}${clean || !saved ? 'Save email' : 'Remove email'}</button>
             </div>
-            <div class="form-hint">Private: never shown on the site. Board members are added to every reveal's calendar invite once the reveal is confirmed in JobTread.</div>
+            <div class="form-hint">Private: never shown on the site. Board members are added to every reveal's calendar invite, from the tentative date on.</div>
           </div>`}
       </div>`;
     }

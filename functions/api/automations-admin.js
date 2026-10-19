@@ -10,7 +10,7 @@
  *  - broadcast: the Broadcast settings switches (outputs, reminders, Reels, Kit, messages)
  *  - health:    heartbeat, daily check, Stream webhook, replay check timestamps
  *  - hub:       the live hub's own status, and whether it runs the current code
- *  - invites:   reveal invite sending switch and the last safety sweep
+ *  - invites:   reveal invite sending switch, the last safety sweep and guest check
  *  - revealChecks: weekday reveal checks switch and last run; date sync's last activity
  *  - liveSchedule: the live countdown's last JobTread check (what it follows, what's waiting)
  *  - fbArchive: last Facebook replay rescue and replays still waiting for a kid
@@ -88,12 +88,14 @@ export function healthFacts(h) {
   };
 }
 
-export function inviteFacts(cfg, rows) {
+export function inviteFacts(cfg, rows, guestCheck = null) {
   if (!cfg) return null;
   const s = cfg.data?.lastSweep || {};
   return {
     enabled: !!cfg.data?.enabled,
     lastSweepAt: s.at || null,
+    // The guest check's row holds when it's next due; updated_at is when it last ran
+    lastGuestCheckAt: guestCheck?.updatedAt || null,
     checked: s.checked ?? null,
     changed: s.changed ?? null,
     errors: s.errors ?? null,
@@ -194,7 +196,7 @@ const settle = async (fn) => { try { return await fn(); } catch (e) { return { e
 
 export async function gatherFacts(env, { fetchImpl = fetch, now = Date.now() } = {}) {
   const DB = env.DB;
-  const [cfg, health, invites, archive, reveals, inviteRows, sends, reminders, hub, jobtread, checks, synced, liveSchedule] = await Promise.all([
+  const [cfg, health, invites, archive, reveals, inviteRows, sends, reminders, hub, jobtread, checks, synced, liveSchedule, guestCheck] = await Promise.all([
     settle(() => siteConfig(DB, 'broadcast-config')),
     settle(() => siteConfig(DB, 'broadcast-health')),
     settle(() => siteConfig(DB, 'reveal-invites')),
@@ -209,6 +211,7 @@ export async function gatherFacts(env, { fetchImpl = fetch, now = Date.now() } =
     // The table appears with the first sync; until then this settles to an error
     settle(() => DB.prepare('SELECT count(*) AS n, max(updated_at) AS last FROM reveal_sync').first()),
     settle(() => siteConfig(DB, 'broadcast-schedule')),
+    settle(() => siteConfig(DB, 'reveal-invites-guest-check')),
   ]);
   const ok = (v) => (v && !v.error ? v : null);
   const sendMap = {};
@@ -226,7 +229,7 @@ export async function gatherFacts(env, { fetchImpl = fetch, now = Date.now() } =
       ? { ok: false, error: hub.error }
       // The hub gained viewer counting with the watch party; older code reports no "watchers"
       : { ok: !!hub?.ok && !hub?.error, current: !!hub && 'watchers' in hub, lastTickAt: hub?.lastTick?.at || null, clients: hub?.clients ?? null, error: hub?.error || null },
-    invites: inviteFacts(ok(invites), typeof inviteRows === 'number' ? inviteRows : null),
+    invites: inviteFacts(ok(invites), typeof inviteRows === 'number' ? inviteRows : null, ok(guestCheck)),
     revealChecks: revealCheckFacts(ok(checks), ok(synced)),
     liveSchedule: liveScheduleFacts(ok(liveSchedule)),
     fbArchive: archiveFacts(ok(archive), await settle(() => placedUids(DB, ok(archive))).then((p) => (p instanceof Set ? p : new Set()))),

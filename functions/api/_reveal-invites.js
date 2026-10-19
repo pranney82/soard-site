@@ -5,8 +5,10 @@
  * (Clareece by default), so the invite comes from her and Google handles
  * updates and cancellations.
  *
- *   Build Schedule task complete  → "Tentative: Max's Reveal Day" (all day,
- *                                   or timed once the task has a time)
+ *   Build Schedule task complete, → "Tentative: Max's Reveal Day" (all day,
+ *   or construction started         or timed once the task has a time)
+ *   (Demo done, or 2 tasks under
+ *   Construction done)
  *   Reveal task moves             → the same event moves; guests get an update
  *   Reveal Date Confirmed = Yes   → the same event becomes "Max's Reveal Day"
  *   Job closed / denied / awaiting funding, or no Reveal date
@@ -16,27 +18,31 @@
  * task is marked complete. Closing the job afterwards cancels nothing.
  *
  * Guests, in two stages (the organizer is never a guest):
- *   Tentative  staff (internal Admin and Designer users) and the family: the job's
+ *   Tentative  staff (internal Admin and Designer users), the family (the job's
  *              customer contacts with an email, and Makeover Family users given
- *              access to the job
+ *              access to the job) and the board: the website's board members
+ *              with a private reveal email (People → Board) and any JobTread
+ *              Board Member users
  *   Confirmed  the same event, plus everyone else given access to the job in
  *              JobTread for the room itself (Vendor, Sponsor, Photographer and
- *              Design Partner users) and the board: the website's board members
- *              with a private reveal email (People → Board) and any JobTread
- *              Board Member users. Un-confirming takes them back off.
+ *              Design Partner users). Un-confirming takes them back off.
+ * Both invites carry the link to watch the reveal live.
  * A person's JobTread role decides their stage, so a sponsor who is also a
  * contact on the family's account still waits for the confirmed invite.
  *
  * Triggered by SOARD JobTread workflows posting { jobId } to
  * /api/reveal-invites. The post is only a wake-up call: everything is
  * re-read from JobTread with JOBTREAD_GRANT_KEY, so a forged post can only
- * make the calendar match what JobTread already says.
+ * make the calendar match what JobTread already says. JobTread has no
+ * workflow trigger for job access, so every 5 minutes the guest check
+ * (maybeCheckGuests) re-reads each reveal with an invite out: a vendor given
+ * access after the invite went out is added within minutes.
  *
  * Sending is off until enabled from /api/reveal-invites-admin (site_config
  * "reveal-invites"). While off, each wake-up records what it would have done.
  */
 
-import { JT_URL, SOARD_ORG_ID, FIELD_REVEAL_CONFIRMED, todayEastern, easternParts, matchKid, loadKids } from './_reveals.js';
+import { JT_URL, SOARD_ORG_ID, FIELD_REVEAL_CONFIRMED, todayEastern, easternParts, matchKid, parseJobName, loadKids } from './_reveals.js';
 import { accessToken, eventIdFor, upsertEvent, cancelEvent } from './_google-calendar.js';
 import { sendEmails, slackAlert, emailConfigured } from './_broadcast-notify.js';
 
@@ -57,6 +63,51 @@ export const DEFAULT_TEST_GUESTS = ['peter@soardcharity.com'];
 export const isTestJob = (job) => /^\s*TEST\b/.test(String(job?.name || ''));
 export const isSandboxJob = (job) => job?.id === SANDBOX_JOB_ID || isTestJob(job);
 
+// Construction has started once Demo is done or two tasks under the Construction
+// group are. By then the reveal date is real, even if nobody checked off Build
+// Schedule. Read as counts, not task lists, so the job query stays small.
+export const CONSTRUCTION_GROUP = 'Construction';
+const CONSTRUCTION_STARTED_AT = 2;
+export const CONSTRUCTION_PROGRESS = {
+  constructionDone: { _: 'tasks', $: { where: { and: [[['parentTask', 'name'], '=', CONSTRUCTION_GROUP], ['isGroup', '=', false], ['progress', '=', 1]] } }, count: {} },
+  demoDone: { _: 'tasks', $: { where: { and: [['name', '=', 'Demo'], ['isGroup', '=', false], ['progress', '=', 1]] } }, count: {} },
+};
+export const constructionStarted = (job) => (job?.demoDone?.count || 0) > 0 || (job?.constructionDone?.count || 0) >= CONSTRUCTION_STARTED_AT;
+
+/**
+ * The kid's real job for a rehearsal: "TEST Isla Example (2026)" → the one
+ * other open job of the same year whose name holds every word after TEST.
+ * Null when there isn't exactly one.
+ */
+export function realJobFor(testJob, jobs) {
+  const { year, tokens } = parseJobName(String(testJob?.name || '').replace(/^\s*TEST\b/, ''));
+  if (!year || !tokens.size) return null;
+  const hits = (jobs || []).filter((j) => {
+    if (j.id === testJob.id || isSandboxJob(j)) return false;
+    const p = parseJobName(j.name);
+    return p.year === year && [...tokens].every((t) => p.tokens.has(t));
+  });
+  return hits.length === 1 ? hits[0] : null;
+}
+
+/**
+ * A rehearsal job sits on the office account, so its own address is the
+ * office. Its invite borrows the address from the kid's real job instead, so
+ * the rehearsal shows what the family's invite will. `openJobs` (id, name,
+ * location.address) saves a read when the caller has them. Never throws:
+ * without a match the job keeps its own address.
+ */
+async function borrowRealAddress(grantKey, job, fetchImpl, openJobs = null) {
+  if (!isTestJob(job)) return;
+  try {
+    const jobs = openJobs || (await pave(grantKey, {
+      organization: { $: { id: SOARD_ORG_ID }, jobs: { $: { size: 100, where: ['closedOn', '=', null] }, nodes: { id: {}, name: {}, location: { address: {} } } } },
+    }, fetchImpl))?.organization?.jobs?.nodes;
+    const address = realJobFor(job, jobs)?.location?.address;
+    if (address) job.location = { ...job.location, address };
+  } catch { /* keep the job's own address */ }
+}
+
 /** Who gets sandbox and rehearsal emails (Reveals → Invites test guests) */
 export async function testGuests(DB) {
   const row = await DB.prepare("SELECT data FROM site_config WHERE key = 'reveal-invites'").first();
@@ -68,7 +119,8 @@ export async function testGuests(DB) {
 const STAFF_ROLES = new Set(['Admin', 'Designer']);
 const FAMILY_ROLE = 'Makeover Family';
 // People given access to the job who join once the reveal is confirmed, by JobTread role
-const CONFIRMED_ROLES = { Vendor: 'vendor', Sponsor: 'sponsor', Photographer: 'photographer', 'Design Partner': 'design partner', 'Board Member': 'board' };
+const CONFIRMED_ROLES = { Vendor: 'vendor', Sponsor: 'sponsor', Photographer: 'photographer', 'Design Partner': 'design partner' };
+const BOARD_ROLE = 'Board Member';
 export const BOARD_ROLE_ID = '22PgGdtxTATR';
 // Logins with staff roles that aren't people: the Qualification Committee and the DATAx integration
 const NOT_STAFF = new Set(['selection@soardcharity.com', 'hello@contractorcto.com']);
@@ -87,6 +139,16 @@ const DEFAULT_ALERT_EMAILS = ['peter@soardcharity.com'];
 // The safety sweep re-checks every open job at most this often, in case a
 // JobTread webhook was ever missed
 const SWEEP_EVERY_MS = 6 * 60 * 60 * 1000;
+// The guest check re-reads every reveal with an invite out at most this often:
+// JobTread has no webhook for someone given access to a job (a new vendor) or a
+// family contact's email, so this is how they reach an invite already sent
+const GUEST_CHECK_EVERY_MS = 5 * 60 * 1000;
+const GUEST_CHECK_KEY = 'reveal-invites-guest-check';
+// A crashed update frees its job's lock after this; a JobTread wake-up waits up
+// to LOCK_TRIES × LOCK_RETRY_MS for its turn
+const LOCK_MS = 60 * 1000;
+const LOCK_TRIES = 8;
+const LOCK_RETRY_MS = 2500;
 
 const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS reveal_invites (
@@ -100,6 +162,8 @@ const SCHEMA = [
   // Board members' reveal emails, by their website slug. Its own table on purpose:
   // site content and site_config are committed to GitHub and written into builds.
   `CREATE TABLE IF NOT EXISTS reveal_board_emails (slug TEXT PRIMARY KEY, email TEXT NOT NULL, updated_at TEXT)`,
+  // One update per invite at a time (see lockJob); a row holds its expiry in ms
+  `CREATE TABLE IF NOT EXISTS reveal_invite_locks (job_id TEXT PRIMARY KEY, until INTEGER NOT NULL)`,
 ];
 const _schemaReady = new WeakSet();
 export async function ensureSchema(DB) {
@@ -112,8 +176,8 @@ export async function ensureSchema(DB) {
  * Invite wording, editable in admin (Reveals → Invites). Placeholders:
  * {name} kid's first name, {date} "Tuesday, October 27", {time} "4:00 PM"
  * (or "time to come"), {when} the date with the time when there is one.
- * The reveal's own notes (JobTread "Reveal Invite Details") and a link to the
- * kid's page are added under the message.
+ * The reveal's own notes (JobTread "Reveal Invite Details"), the link to watch
+ * live and a link to the kid's page are added under the message.
  */
 export const DEFAULT_TEMPLATE = {
   tentativeTitle: "Tentative: {name}'s Reveal Day",
@@ -173,9 +237,12 @@ export async function fetchJob(grantKey, jobId, fetchImpl = fetch) {
         nodes: { id: {}, name: {}, startDate: {}, startTime: {}, endDate: {}, endTime: {}, progress: {}, taskType: { id: {} } },
       },
       aces: JOB_ACCESS,
+      ...CONSTRUCTION_PROGRESS,
     },
   }, fetchImpl);
-  return body?.job || null;
+  const job = body?.job || null;
+  await borrowRealAddress(grantKey, job, fetchImpl);
+  return job;
 }
 
 /** Who has been given access to a job in JobTread (family, vendors, sponsors…), for the guest list */
@@ -217,7 +284,7 @@ export async function setBoardEmail(DB, slug, email) {
 }
 
 /**
- * The board, for confirmed invites: the website's board members with a private
+ * The board, for every invite: the website's board members with a private
  * reveal email, plus anyone with the Board Member role in JobTread. Memorial
  * entries never. Never throws.
  */
@@ -241,22 +308,23 @@ export async function fetchBoard(env, fetchImpl = fetch) {
 }
 
 /**
- * The guest list by stage: family and staff for the tentative invite; the people
- * given access to the job for the room itself, and the board, once confirmed.
- * Each person appears once, in the first group they belong to.
+ * The guest list by stage: family, staff and the board from the tentative
+ * invite on; the people given access to the job for the room itself once
+ * confirmed. Each person appears once, in the first group they belong to.
  */
 export function guestGroups(job, staff = [], board = []) {
   const access = (job?.aces?.nodes || []).map((a) => a.membership).filter((m) => m && !m.isInternal && m.user?.emailAddress);
-  const partners = access.filter((m) => CONFIRMED_ROLES[m.role?.name])
-    .map((m) => ({ email: normEmail(m.user.emailAddress), name: m.user.name, kind: CONFIRMED_ROLES[m.role.name] }));
-  const later = new Set([...partners, ...board].map((p) => p.email));
+  const person = (m, kind) => ({ email: normEmail(m.user.emailAddress), name: m.user.name, kind });
+  const partners = access.filter((m) => CONFIRMED_ROLES[m.role?.name]).map((m) => person(m, CONFIRMED_ROLES[m.role.name]));
+  const later = new Set(partners.map((p) => p.email));
   const contacts = (job?.location?.account?.contacts?.nodes || [])
     .map((c) => ({ email: normEmail(fieldValues(c.customFieldValues?.nodes)[FIELD_CONTACT_EMAIL]), name: c.name, kind: 'family' }));
-  const familyUsers = access.filter((m) => m.role?.name === FAMILY_ROLE).map((m) => ({ email: normEmail(m.user.emailAddress), name: m.user.name, kind: 'family' }));
+  const familyUsers = access.filter((m) => m.role?.name === FAMILY_ROLE).map((m) => person(m, 'family'));
   return {
     family: [...contacts, ...familyUsers].filter((p) => isEmail(p.email) && !later.has(p.email)),
     staff: staff.map((p) => ({ ...p, kind: 'staff' })),
-    confirmed: [...partners, ...board.map((p) => ({ ...p, kind: 'board' }))],
+    board: [...board, ...access.filter((m) => m.role?.name === BOARD_ROLE).map((m) => person(m, 'board'))].map((p) => ({ ...p, kind: 'board' })),
+    confirmed: partners,
   };
 }
 
@@ -336,7 +404,7 @@ export function planInvite(job, staff, { kids = [], board = [], organizer = DEFA
 
   const confirmed = String(values[FIELD_REVEAL_CONFIRMED] || '').trim().toLowerCase().startsWith('yes');
   const scheduleBuilt = tasks.some(t => t.name === 'Build Schedule' && t.progress === 1);
-  if (!confirmed && !scheduleBuilt) return { action: 'cancel', reason: 'Build Schedule not complete yet' };
+  if (!confirmed && !scheduleBuilt && !constructionStarted(job)) return { action: 'cancel', reason: 'Build Schedule not complete and construction not started yet' };
 
   const who = displayName(job, kids);
   const date = reveal.startDate;
@@ -348,6 +416,8 @@ export function planInvite(job, staff, { kids = [], board = [], organizer = DEFA
   const lines = [fill(confirmed ? t.confirmedMessage : t.tentativeMessage).trim()];
   const details = String(values[FIELD_INVITE_DETAILS] || '').trim();
   if (details) lines.push('', details);
+  // The kid's own live page; before the kid is on the site, /live/ (it follows the current reveal)
+  lines.push('', `Watch live: ${SITE}/live/${who.slug ? `${who.slug}/` : ''}`);
   if (who.slug) lines.push('', `${SITE}/kids/${who.slug}/`);
 
   const guests = [];
@@ -369,6 +439,7 @@ export function planInvite(job, staff, { kids = [], board = [], organizer = DEFA
     const g = guestGroups(job, staff, board);
     g.family.forEach(add);
     g.staff.forEach(add);
+    g.board.forEach(add);
     if (confirmed) g.confirmed.forEach(add);
     else {
       const later = new Set();
@@ -416,11 +487,6 @@ async function logInvite(DB, { jobId, action, state, guests, revealDate }) {
 }
 
 /**
- * Make the calendar match JobTread for one job. Sends nothing unless the
- * invite is enabled (or `force` is set by an admin), and nothing when the
- * event already matches. Returns what happened.
- */
-/**
  * Tell people when an invite can't be sent: email the alert list and the
  * organizer, plus Slack when configured. Only called for a new problem, so a
  * stuck job doesn't email on every JobTread change.
@@ -451,11 +517,50 @@ function escapeHtml(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
-export async function reconcileJob(env, jobId, { fetchImpl = fetch, now = Date.now(), force = false, dryRun = false, preloaded = null } = {}) {
+/**
+ * One update per invite at a time. Two at once (a JobTread wake-up during the
+ * guest check, or Confirmed and the notes changed together) would each see the
+ * old invite and each email every guest. A row holding its expiry is the lock,
+ * so a crashed update frees it within LOCK_MS. `wait`: a JobTread wake-up waits
+ * its turn (it may carry the newer change, and re-reads JobTread once it has
+ * the lock); the checks just skip a busy job and catch it next time.
+ */
+async function lockJob(DB, jobId, wait) {
+  for (let i = 0; i < (wait ? LOCK_TRIES : 1); i++) {
+    if (i) await new Promise((r) => setTimeout(r, LOCK_RETRY_MS));
+    const t = Date.now();
+    const ins = await DB.prepare('INSERT OR IGNORE INTO reveal_invite_locks (job_id, until) VALUES (?, ?)').bind(jobId, t + LOCK_MS).run();
+    if (ins?.meta?.changes > 0) return true;
+    const upd = await DB.prepare('UPDATE reveal_invite_locks SET until = ? WHERE job_id = ? AND until < ?').bind(t + LOCK_MS, jobId, t).run();
+    if (upd?.meta?.changes > 0) return true;
+  }
+  return false;
+}
+
+const unlockJob = (DB, jobId) => DB.prepare('DELETE FROM reveal_invite_locks WHERE job_id = ?').bind(jobId).run().catch(() => {});
+
+/**
+ * Make the calendar match JobTread for one job. Sends nothing unless the
+ * invite is enabled (or `force` is set by an admin), and nothing when the
+ * event already matches. Returns what happened; { action: 'busy' } when
+ * another update to the same invite holds the lock.
+ */
+export async function reconcileJob(env, jobId, opts = {}) {
   const { DB } = env;
   await ensureSchema(DB);
-  const config = await readConfig(DB);
   if (!env.JOBTREAD_GRANT_KEY) return { jobId, action: 'skip', reason: 'JOBTREAD_GRANT_KEY is not set' };
+  if (opts.dryRun) return reconcileLocked(env, jobId, opts);
+  if (!(await lockJob(DB, jobId, opts.wait ?? true))) return { jobId, action: 'busy', reason: 'another update to this invite is running' };
+  try {
+    return await reconcileLocked(env, jobId, opts);
+  } finally {
+    await unlockJob(DB, jobId);
+  }
+}
+
+async function reconcileLocked(env, jobId, { fetchImpl = fetch, now = Date.now(), force = false, dryRun = false, preloaded = null } = {}) {
+  const { DB } = env;
+  const config = await readConfig(DB);
 
   const [job, staff, kids, board] = await Promise.all([
     fetchJob(env.JOBTREAD_GRANT_KEY, jobId, fetchImpl),
@@ -535,7 +640,7 @@ export async function reconcileAll(env, { fetchImpl = fetch, now = Date.now(), d
   const results = [];
   for (const { id } of body?.organization?.jobs?.nodes || []) {
     if (id === SANDBOX_JOB_ID) continue;
-    results.push(await reconcileJob(env, id, { fetchImpl, now, dryRun, preloaded: { staff, kids, board } }));
+    results.push(await reconcileJob(env, id, { fetchImpl, now, dryRun, wait: false, preloaded: { staff, kids, board } }));
   }
   return results;
 }
@@ -560,6 +665,48 @@ export async function maybeSweep(env, { fetchImpl = fetch, now = Date.now() } = 
     const summary = { at: new Date(now).toISOString(), checked: results.length, changed, errors };
     await writeConfig(env.DB, { lastSweep: summary });
     return summary;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Guest check, between sweeps (called from the hub heartbeat, /api/reveals and
+ * admin loads): at most every GUEST_CHECK_EVERY_MS, re-read each upcoming reveal
+ * whose invite is out, so a vendor given access to a confirmed reveal's job (or
+ * a family contact added) gets the invite within minutes. An invite that hasn't
+ * changed is left alone. The slot is claimed with one conditional write (its
+ * row holds when the next check is due), so overlapping wake-ups run it once.
+ * Never throws.
+ */
+export async function maybeCheckGuests(env, { fetchImpl = fetch, now = Date.now() } = {}) {
+  try {
+    const { DB } = env;
+    if (!DB || !env.JOBTREAD_GRANT_KEY) return null;
+    await ensureSchema(DB);
+    if (!(await readConfig(DB)).enabled) return null;
+    const next = String(now + GUEST_CHECK_EVERY_MS);
+    const at = new Date(now).toISOString();
+    const ins = await DB.prepare('INSERT OR IGNORE INTO site_config (key, data, updated_at) VALUES (?, ?, ?)').bind(GUEST_CHECK_KEY, next, at).run();
+    if (!(ins?.meta?.changes > 0)) {
+      const upd = await DB.prepare('UPDATE site_config SET data = ?, updated_at = ? WHERE key = ? AND CAST(data AS INTEGER) <= ?').bind(next, at, GUEST_CHECK_KEY, now).run();
+      if (!(upd?.meta?.changes > 0)) return null;
+    }
+    const { results } = await DB.prepare("SELECT job_id FROM reveal_invites WHERE state IN ('tentative', 'confirmed') AND reveal_date >= ? AND job_id != ?")
+      .bind(todayEastern(now), SANDBOX_JOB_ID).all();
+    if (!results?.length) return [];
+    const [staff, kids, board] = await Promise.all([
+      fetchStaff(env.JOBTREAD_GRANT_KEY, fetchImpl),
+      loadKids(DB).catch(() => []),
+      fetchBoard(env, fetchImpl),
+    ]);
+    const out = [];
+    for (const { job_id } of results) {
+      // One job JobTread can't read doesn't hold up the rest
+      out.push(await reconcileJob(env, job_id, { fetchImpl, now, wait: false, preloaded: { staff, kids, board } })
+        .catch((err) => ({ jobId: job_id, action: 'error', error: err.message })));
+    }
+    return out;
   } catch {
     return null;
   }
@@ -667,10 +814,13 @@ export async function listUpcoming(env, { fetchImpl = fetch, now = Date.now() } 
   }
   await Promise.all(upcoming.map(async ({ job }) => {
     const res = await pave(env.JOBTREAD_GRANT_KEY, {
-      job: { $: { id: job.id }, location: { account: { contacts: { $: { size: 50 }, nodes: { name: {}, customFieldValues: cf } } } }, aces: JOB_ACCESS },
+      job: { $: { id: job.id }, location: { account: { contacts: { $: { size: 50 }, nodes: { name: {}, customFieldValues: cf } } } }, aces: JOB_ACCESS, ...CONSTRUCTION_PROGRESS },
     }, fetchImpl);
     job.location = { ...job.location, account: res?.job?.location?.account || null };
     job.aces = res?.job?.aces || null;
+    job.constructionDone = res?.job?.constructionDone || null;
+    job.demoDone = res?.job?.demoDone || null;
+    await borrowRealAddress(env.JOBTREAD_GRANT_KEY, job, fetchImpl, jobs);
   }));
   // What went out for each, oldest first (the tracker shows when each invite was first sent)
   const ids = upcoming.map(({ job }) => job.id);
@@ -696,7 +846,7 @@ export async function listUpcoming(env, { fetchImpl = fetch, now = Date.now() } 
       location: plan.event.location || null,
       description: plan.event.description,
       guests: plan.guests.map(email => ({ email, name: plan.people[email]?.name || staffNames[email] || null, kind: plan.people[email]?.kind || 'staff' })),
-      // Who confirming the reveal adds (vendors, sponsors, the board…)
+      // Who confirming the reveal adds (vendors, sponsors, photographers…)
       addsOnConfirm: plan.addsOnConfirm,
     } : null;
 
@@ -713,6 +863,7 @@ export async function listUpcoming(env, { fetchImpl = fetch, now = Date.now() } 
       time: hhmm(reveal.startTime),
       confirmed: String(values[FIELD_REVEAL_CONFIRMED] || '').trim().toLowerCase().startsWith('yes'),
       scheduleBuilt: tasks.some(t => t.name === 'Build Schedule' && t.progress === 1),
+      constructionStarted: constructionStarted(job),
       status: values[FIELD_STATUS] || null,
       details: String(values[FIELD_INVITE_DETAILS] || ''),
       preview,
@@ -732,7 +883,7 @@ export async function listUpcoming(env, { fetchImpl = fetch, now = Date.now() } 
 
 /**
  * The board changed on the website (a member added, removed, or their email
- * set): bring every open reveal's invite up to date now, so a confirmed invite
+ * set): bring every open reveal's invite up to date now, so every invite
  * gains or loses them right away. Never throws.
  */
 export async function refreshForBoardChange(env) {

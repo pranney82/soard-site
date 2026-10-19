@@ -138,8 +138,8 @@ const MAP = { t: 'SOARD', children: [
       ]},
       { t: 'Calendar invites', children: [
         { t: 'Invite engine', s: 'live', k: 'event',
-          when: 'Woken by the three JobTread workflows below; it re-reads the job itself.',
-          does: 'Build Schedule done → a tentative all-day invite. Reveal moved → the same invite updates. Confirmed → a timed “Reveal Day” invite. Closed, denied or awaiting funding before the reveal → cancelled. Tentative guests are Admin and Designer staff and the family (the job’s customer contacts and Makeover Family users with access to the job). Confirming adds the vendors, sponsors, photographers and design partners with access to that job in JobTread, and the board (website board members with a private reveal email, plus any Board Member users in JobTread); un-confirming takes them off. Board changes on the website update open invites right away. Once a reveal has happened (its start time has passed or its Reveal task is complete), its invite is never touched again, so closing the job afterwards sends nothing.',
+          when: 'Woken by the four JobTread workflows below and the 5-minute new guest check; it re-reads the job itself.',
+          does: 'Build Schedule done, or construction started (Demo, or two tasks under Construction, done) → a tentative all-day invite. Reveal moved → the same invite updates. Confirmed → a timed “Reveal Day” invite. Closed, denied or awaiting funding before the reveal → cancelled. Tentative guests are Admin and Designer staff, the family (the job’s customer contacts and Makeover Family users with access to the job) and the board (website board members with a private reveal email, plus any Board Member users in JobTread). Confirming adds the vendors, sponsors, photographers and design partners with access to that job in JobTread; un-confirming takes them off. Both invites carry the link to watch the reveal live. Board changes on the website update open invites right away. Once a reveal has happened (its start time has passed or its Reveal task is complete), its invite is never touched again, so closing the job afterwards sends nothing.',
           touches: ['JobTread', 'Google Calendar'], where: 'functions/api/reveal-invites.js · _reveal-invites.js · _google-calendar.js',
           info: 'Invites come from Clareece’s Google Calendar through a service account. The office job is a live sandbox: its invites go only to Peter and are titled TEST.',
           live: (f) => {
@@ -153,6 +153,9 @@ const MAP = { t: 'SOARD', children: [
         { t: 'Task moved or Build Schedule done', s: 'live', k: 'event',
           when: 'A Reveal task’s date/time changes, or Build Schedule progress changes.',
           does: 'Wakes the invite engine for that job.', touches: ['JobTread'], where: JT_INVITE_HOOK, live: wf('22PgPECxg6UP') },
+        { t: 'Task checked or un-checked', s: 'live', k: 'event',
+          when: 'Any task’s progress changes (JobTread can’t tell the site which group a task is in, so the site counts Demo and Construction itself).',
+          does: 'Wakes the invite engine, so construction starting sends the tentative invite. Skips the countdown check.', touches: ['JobTread'], where: JT_INVITE_HOOK, live: wf('22PgYwQvKkTs') },
         { t: 'Confirmed, notes or status changed', s: 'live', k: 'event',
           when: 'Reveal Date Confirmed, Reveal Invite Details, job status or closed date changes.',
           does: 'Wakes the invite engine for that job.', touches: ['JobTread'], where: JT_INVITE_HOOK, live: wf('22PgPED4vi7W') },
@@ -170,6 +173,18 @@ const MAP = { t: 'SOARD', children: [
             if (!i.lastSweepAt) return ATTN('It has never run.');
             if (stale(i.lastSweepAt, 24 * HOUR)) return ATTN(`Hasn’t run since ${stamp(i.lastSweepAt)}. It rides on the live hub’s heartbeat, so check the Live hub entry.`, i.lastSweepAt);
             return ON(`Checked ${plural(i.checked ?? 0, 'job')}, changed ${i.changed ?? 0}.`, i.lastSweepAt);
+          } },
+        { t: 'New guest check', s: 'live', k: 'schedule',
+          when: 'Every 5 minutes, on the live hub’s heartbeat (visits to the reveals feed and admin loads are the backup).',
+          does: 'JobTread has no workflow trigger for giving someone access to a job, so this re-reads every upcoming reveal whose invite is out. A vendor, sponsor, photographer or design partner added to a confirmed reveal’s job, or a new family contact email, gets the invite within minutes; someone taken off the job loses it. Invites that haven’t changed are left alone.',
+          touches: ['JobTread', 'Google Calendar', 'D1'], where: 'functions/api/broadcast-hooks.js · reveals.js → _reveal-invites.js (maybeCheckGuests)',
+          live: (f) => {
+            const i = f.invites;
+            if (!i) return null;
+            if (!i.enabled) return OFF('Invite sending is switched off, so there’s nothing to check.');
+            if (!i.lastGuestCheckAt) return ATTN('It has never run.');
+            if (stale(i.lastGuestCheckAt, HOUR)) return ATTN(`Hasn’t run since ${stamp(i.lastGuestCheckAt)}. It rides on the live hub’s heartbeat, so check the Live hub entry.`, i.lastGuestCheckAt);
+            return ON('Checking every 5 minutes.', i.lastGuestCheckAt);
           } },
         { t: 'Invite problem alerts', s: 'live', k: 'event',
           when: 'An invite fails to send, update or cancel.',

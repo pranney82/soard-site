@@ -10,7 +10,7 @@
  */
 
 import { getReveals } from './_reveals.js';
-import { maybeSweep } from './_reveal-invites.js';
+import { maybeSweep, maybeCheckGuests } from './_reveal-invites.js';
 import { maybeNudge } from './_reveal-nudges.js';
 import { syncBroadcastSchedule } from './_broadcast-schedule.js';
 
@@ -31,6 +31,8 @@ export async function onRequestGet(context) {
   // Reveal invites safety net: re-check every open job every few hours, after
   // the response, so a missed JobTread webhook can't leave an invite stale
   context.waitUntil(maybeSweep(env));
+  // New guests on a reveal whose invite is out (backup for the hub's heartbeat)
+  context.waitUntil(maybeCheckGuests(env));
   // Weekday reveal checks for Project Managers, first request after 8 AM Eastern
   context.waitUntil(maybeNudge(env));
   // The live countdown follows JobTread's next confirmed reveal (backup for the hub's heartbeat)

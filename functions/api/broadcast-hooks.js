@@ -6,13 +6,13 @@
  * LIVE_HUB binding (only this Pages project can reach it), run a tick, and
  * return the public state; the hub pushes it to every open socket if it
  * changed. No shared secret exists anywhere. The same heartbeat wakes the
- * reveal checks, the reveal invite sweep and the JobTread schedule check
- * (see below).
+ * reveal checks, the reveal invite sweep and guest check, and the JobTread
+ * schedule check (see below).
  */
 
 import { runTick, verifyHubNonce } from './_broadcast.js';
 import { maybeNudge } from './_reveal-nudges.js';
-import { maybeSweep } from './_reveal-invites.js';
+import { maybeSweep, maybeCheckGuests } from './_reveal-invites.js';
 import { syncBroadcastSchedule } from './_broadcast-schedule.js';
 
 export async function onRequestPost(context) {
@@ -26,11 +26,13 @@ export async function onRequestPost(context) {
   try {
     const r = await runTick(env, { source: body.source ? `hub:${body.source}` : 'hub', force: !!body.force });
     // The hub's heartbeat (every minute even when idle) is the site's clock for
-    // reveal work: weekday 8 AM reveal checks, the 6-hourly invite sweep, and
-    // the 5-minute check that the live broadcast matches JobTread's next reveal.
+    // reveal work: weekday 8 AM reveal checks, the 6-hourly invite sweep, the
+    // 5-minute invite guest check (new vendors on a job), and the 5-minute check
+    // that the live broadcast matches JobTread's next reveal.
     // Each decides for itself whether it's due; none ever throws.
     context.waitUntil(maybeNudge(env));
     context.waitUntil(maybeSweep(env));
+    context.waitUntil(maybeCheckGuests(env));
     context.waitUntil(syncBroadcastSchedule(env));
     return Response.json({ ok: true, state: r.state, reason: r.reason, work: r.work, changed: r.changed, cached: !!r.cached });
   } catch (err) {

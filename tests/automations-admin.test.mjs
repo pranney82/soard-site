@@ -45,6 +45,7 @@ async function makeDb({ withConfig = true } = {}) {
   if (withConfig) await put('broadcast-config', CONFIG, '2026-10-14T21:23:51.175Z');
   await put('broadcast-health', HEALTH, '2026-10-17T01:34:40.440Z');
   await put('reveal-invites', INVITES, '2026-10-17T01:19:02.667Z');
+  await put('reveal-invites-guest-check', 1760664242667, '2026-10-17T01:19:02.667Z');
   await put('fb-archive', ARCHIVE, '2026-10-17T00:58:23.422Z');
   await put('reveals', [], '2026-10-17T01:19:00.989Z');
   await DB.prepare('INSERT INTO reveal_invites (job_id) VALUES (?), (?)').bind('j1', 'j2').run();
@@ -86,6 +87,7 @@ test('switches, timestamps and JobTread state come through', async () => {
   assert.equal(f.invites.enabled, true);
   assert.equal(f.invites.checked, 20);
   assert.equal(f.invites.rows, 2);
+  assert.equal(f.invites.lastGuestCheckAt, '2026-10-17T01:19:02.667Z', 'the guest check row\'s updated_at is when it last ran');
   assert.equal(f.fbArchive.needsKid, 1);
   assert.equal(f.reveals.cachedAt, '2026-10-17T01:19:00.989Z');
   assert.deepEqual(f.sends.live.kit, { last: '2026-10-14T21:00:00Z', sent: 1, failed: 0 });

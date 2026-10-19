@@ -15,8 +15,9 @@ export async function onRequestPost(context) {
   if (!/^[A-Za-z0-9]{6,32}$/.test(jobId)) return Response.json({ ok: false, error: 'jobId is required' }, { status: 400 });
   try {
     const r = await reconcileJob(context.env, jobId);
-    // Confirmed, status or the Reveal task changed: the live countdown follows right away
-    context.waitUntil(syncBroadcastSchedule(context.env, { force: true }));
+    // Confirmed, status or the Reveal task changed: the live countdown follows right away.
+    // A construction task finishing can't move the countdown, so it doesn't force a check.
+    if (body.source !== 'construction') context.waitUntil(syncBroadcastSchedule(context.env, { force: true }));
     return Response.json({ ok: r.action !== 'error', action: r.action, ...(r.reason ? { reason: r.reason } : {}) });
   } catch (err) {
     // 500, not 502: Cloudflare swaps 502 bodies for its own error page
