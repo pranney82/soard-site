@@ -71,7 +71,7 @@ Bindings and env
 - `wrangler.toml` binds `LIVE_HUB` to `LiveHub@soard-live-hub`. The binding takes effect on the next Pages deploy after the Worker exists.
 - Required: `CF_ACCOUNT_ID`, `CF_STREAM_TOKEN` (Stream: Edit), `RESEND_API_KEY`, `CF_PAGES_DEPLOY_HOOK`. Already set.
 - Facebook: `FB_PAGE_ID`, `FB_PAGE_TOKEN` (already set; used for permalinks and API mode).
-- Optional: `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM` or `TWILIO_MESSAGING_SERVICE_SID` (texts); `SLACK_BOT_TOKEN` (the site's Slack app; pick the channel in Settings → Alerts) or the older `SLACK_WEBHOOK_URL`, `ALERT_EMAILS` (alerts); `KIT_API_KEY` (drafts, already set); `YOUTUBE_API_KEY` (lets the control room and alerts confirm YouTube is live: Google Cloud → APIs & Services → enable YouTube Data API v3 → Credentials → API key, restricted to that API).
+- Optional: `TWILIO_ACCOUNT_SID`, `TWILIO_API_KEY_SID` + `TWILIO_API_KEY_SECRET` (a restricted key with only Messaging › Messages: Create; `TWILIO_AUTH_TOKEN` also works), `TWILIO_FROM` or `TWILIO_MESSAGING_SERVICE_SID` (texts); `SLACK_BOT_TOKEN` (the site's Slack app; pick the channel in Settings → Alerts) or the older `SLACK_WEBHOOK_URL`, `ALERT_EMAILS` (alerts); `KIT_API_KEY` (drafts, already set); `YOUTUBE_API_KEY` (lets the control room and alerts confirm YouTube is live: Google Cloud → APIs & Services → enable YouTube Data API v3 → Credentials → API key, restricted to that API).
 - No new secrets are required. Hub ticks are authenticated with one-time nonces verified over the private binding; the Cloudflare webhook is only a wake-up call and every decision is re-derived from Stream's lifecycle endpoint.
 
 ## Setup, once

@@ -509,7 +509,7 @@ const MAP = { t: 'SOARD', children: [
           live: (f) => {
             const block = reminderBlock(f, 'sms');
             if (!env(f)) return block;
-            const keys = 'the Twilio keys (TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM) aren’t in Cloudflare';
+            const keys = 'the Twilio keys (TWILIO_ACCOUNT_SID, TWILIO_API_KEY_SID, TWILIO_API_KEY_SECRET, TWILIO_FROM) aren’t in Cloudflare';
             if (block) return OFF(f.env.twilio ? block.why : `${block.why} Also, ${keys}.`);
             return f.env.twilio ? ON(null, lastSend(f, 'sms')) : ATTN(`Texts are switched on, but ${keys}.`);
           } },

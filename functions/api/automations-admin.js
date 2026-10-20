@@ -40,7 +40,7 @@ async function siteConfig(DB, key) {
 export function envFacts(env) {
   return {
     slack: has(env.SLACK_BOT_TOKEN) || has(env.SLACK_WEBHOOK_URL),
-    twilio: has(env.TWILIO_ACCOUNT_SID) && has(env.TWILIO_AUTH_TOKEN) && (has(env.TWILIO_FROM) || has(env.TWILIO_MESSAGING_SERVICE_SID)),
+    twilio: has(env.TWILIO_ACCOUNT_SID) && (has(env.TWILIO_AUTH_TOKEN) || (has(env.TWILIO_API_KEY_SID) && has(env.TWILIO_API_KEY_SECRET))) && (has(env.TWILIO_FROM) || has(env.TWILIO_MESSAGING_SERVICE_SID)),
     youtube: has(env.YOUTUBE_API_KEY),
     kit: has(env.KIT_API_KEY),
     resend: has(env.RESEND_API_KEY),

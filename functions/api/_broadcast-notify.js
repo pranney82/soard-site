@@ -9,7 +9,9 @@
  *
  * Env vars (all optional except RESEND_API_KEY for email):
  *   RESEND_API_KEY
- *   TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM (E.164) or TWILIO_MESSAGING_SERVICE_SID
+ *   TWILIO_ACCOUNT_SID, TWILIO_API_KEY_SID + TWILIO_API_KEY_SECRET (a restricted key
+ *     with only Messaging > Messages: Create) or TWILIO_AUTH_TOKEN,
+ *     TWILIO_FROM (E.164) or TWILIO_MESSAGING_SERVICE_SID
  *   SLACK_BOT_TOKEN (a Slack app; channel picked in the admin) or SLACK_WEBHOOK_URL
  *   ALERT_EMAILS  (comma-separated; falls back to the admin's audit email list)
  *
@@ -153,8 +155,16 @@ export async function sendEmailItems(env, items, { from = EMAIL_FROM, tags = [] 
 
 // ─── SMS (Twilio) ───────────────────────────────────────────────────
 
+// Basic-auth user:password. A restricted API key is preferred (it can only send
+// messages); the account Auth Token still works. The URL always uses the Account SID.
+function twilioCredentials(env) {
+  if (env.TWILIO_API_KEY_SID && env.TWILIO_API_KEY_SECRET) return `${env.TWILIO_API_KEY_SID}:${env.TWILIO_API_KEY_SECRET}`;
+  if (env.TWILIO_AUTH_TOKEN) return `${env.TWILIO_ACCOUNT_SID}:${env.TWILIO_AUTH_TOKEN}`;
+  return null;
+}
+
 export function smsConfigured(env) {
-  return !!(env.TWILIO_ACCOUNT_SID && env.TWILIO_AUTH_TOKEN && (env.TWILIO_FROM || env.TWILIO_MESSAGING_SERVICE_SID));
+  return !!(env.TWILIO_ACCOUNT_SID && twilioCredentials(env) && (env.TWILIO_FROM || env.TWILIO_MESSAGING_SERVICE_SID));
 }
 
 /** @returns {{sent:number, failed:number, errors:string[], optedOut:string[]}} */
@@ -163,7 +173,7 @@ export async function sendSms(env, { to, body }) {
   const list = (to || []).map(normalizePhone).filter(Boolean);
   if (!list.length) return out;
   if (!smsConfigured(env)) { out.failed = list.length; out.errors.push('Twilio not configured'); return out; }
-  const auth = 'Basic ' + btoa(`${env.TWILIO_ACCOUNT_SID}:${env.TWILIO_AUTH_TOKEN}`);
+  const auth = 'Basic ' + btoa(twilioCredentials(env));
   const url = `https://api.twilio.com/2010-04-01/Accounts/${env.TWILIO_ACCOUNT_SID}/Messages.json`;
   // Twilio is per-message; keep it to a bounded parallelism
   const queue = [...list];

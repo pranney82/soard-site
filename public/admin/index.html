@@ -7463,7 +7463,7 @@
           </div>
           <div class="bc-block">
             <label class="checkbox-label"><input type="checkbox" checked=${f.remSms} onChange=${set('remSms')} /> Offer text messages ${s.smsConfigured ? html`<span class="badge badge-green">Twilio connected</span>` : html`<span class="badge badge-gray">Twilio not set up</span>`}</label>
-            ${!s.smsConfigured ? html`<div class="form-hint" style="margin:0 0 1rem 1.75rem">Set <code>TWILIO_ACCOUNT_SID</code>, <code>TWILIO_AUTH_TOKEN</code> and <code>TWILIO_FROM</code> (or <code>TWILIO_MESSAGING_SERVICE_SID</code>) in Cloudflare Pages. US texting needs the number registered for A2P 10DLC; Twilio handles STOP replies.</div>` : null}
+            ${!s.smsConfigured ? html`<div class="form-hint" style="margin:0 0 1rem 1.75rem">Set <code>TWILIO_ACCOUNT_SID</code>, <code>TWILIO_API_KEY_SID</code>, <code>TWILIO_API_KEY_SECRET</code> (a restricted key with only Messaging › Messages: Create) and <code>TWILIO_FROM</code> in Cloudflare Pages. US texting needs the toll-free number verified first; Twilio handles STOP replies.</div>` : null}
             <div class="bc-inline">
               <label class="checkbox-label u-m-0"><input type="checkbox" checked=${f.remPush} onChange=${set('remPush')} /> Offer browser alerts</label>
               ${s.pushReady ? html`<span class="badge badge-green">Keys ready</span>` : html`<button class="btn btn-ghost btn-sm" type="button" disabled=${!!busy} onClick=${() => setup('generateVapid', {}, 'Push keys')}>Generate push keys</button>`}
