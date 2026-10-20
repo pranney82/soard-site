@@ -227,7 +227,7 @@ const jsonLd = getFAQSchema(aboutFaqs);
     <div class="today-inner" data-reveal>
       <div class="section-label">{page.today.label}</div>
       <h2 id="today-heading" set:html={page.today.heading} />
-      <p class="today-body" set:html={page.today.body} />
+      {String(page.today.body || '').split(/\n\s*\n/).map((para) => para.trim()).filter(Boolean).map((para) => <p class="today-body" set:html={para} />)}
       <div class="today-links">
         <a href="/about/leadership/" class="btn btn-dark">Meet Our Team →</a>
         <a href="/about/financials/" class="btn btn-outline-dark">View Financials →</a>
@@ -1233,6 +1233,7 @@ const jsonLd = getFAQSchema(aboutFaqs);
     line-height: 1.8;
     color: var(--c-text);
   }
+  .today-body + .today-body { margin-top: 1em; }
 
   .today-links {
     margin-top: var(--space-2xl);

@@ -35,7 +35,8 @@ const donateHeroPhoto = dp.hero || 'kids/oakley/hero';
 const donateHeroKidName = dp.heroKidName || 'Oakley';
 const donateStoryPhoto = dp.story || 'kids/amari/hero';
 const donateStoryKidName = dp.storyKidName || 'Amari';
-const donateStoryKidSlug = (dp.storyKidName || 'Amari').toLowerCase().replace(/\s+/g, '-');
+// Admin → Site Config picks the kid (storyKidSlug); older settings only had the name
+const donateStoryKidSlug = dp.storyKidSlug || (dp.storyKidName || 'Amari').toLowerCase().replace(/\s+/g, '-');
 
 /* ── Dynamic story kid data from collection ── */
 const allKids = await getPublishedKids();

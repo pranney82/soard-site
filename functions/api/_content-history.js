@@ -3,7 +3,8 @@
  * editors can show who changed what and put an earlier version back, and
  * deleted items can come back. One table for every collection: content_versions.
  * save-content and delete-content record every collection listed in
- * HISTORY_TABLES, so adding one there is all a new editor needs.
+ * HISTORY_TABLES, so adding one there is all a new editor needs. Site Config
+ * documents are recorded as collection 'site' (see SITE_COLLECTION).
  *
  *   - Every save records the version it wrote. The first save of an older
  *     record also records what was there before (no author, a second
@@ -17,6 +18,11 @@ const KEEP = 50;
 // Collection → its D1 table (the same name today; listed so nothing else is queried)
 export const HISTORY_TABLES = { kids: 'kids', team: 'team', community: 'community', partners: 'partners', community_partners: 'community_partners', medialogos: 'medialogos' };
 export const SLUG_RE = /^[a-z0-9][a-z0-9-]{0,120}$/;
+// Site Config documents (D1 site_config rows: settings, faq, our-story, media,
+// financial-snapshot, financials) keep versions too, as collection 'site' with
+// the row's key as the slug. They are never deleted, so no Recently deleted.
+export const SITE_COLLECTION = 'site';
+export const hasHistory = (collection) => !!HISTORY_TABLES[collection] || collection === SITE_COLLECTION;
 // Not edits: positions in a list, and counts derived from other fields
 const IGNORED = new Set(['order', 'sortOrder', 'photoCount']);
 

@@ -19,7 +19,9 @@ const store = 'about/sunny-ranney-storefront';
 const logo = 'logo-tagline-cyan-bg';
 const founders = 'about/founders-reunion-2026';
 
-const rooms = (siteSettings as any).sunnyAndRanneyRooms || [
+// Admin → Site Config → Sunny & Ranney; an empty list (the default) shows these
+const savedRooms = ((siteSettings as any).sunnyAndRanneyRooms || []).filter((r: any) => r?.cfId);
+const rooms = savedRooms.length ? savedRooms : [
   { cfId: 'kids/griffin/hero', label: 'Dream Bedroom' },
   { cfId: 'kids/jackson/hero', label: 'Therapy Room' },
   { cfId: 'kids/madison/hero', label: 'Sensory Space' },

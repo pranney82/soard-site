@@ -22,7 +22,7 @@ import { commitFile } from './_github.js';
 import { logAudit, diffJson, getEntityName } from './_audit.js';
 import { refreshForBoardChange } from './_reveal-invites.js';
 import { getsRevealInvites } from './_team.js';
-import { HISTORY_TABLES, recordVersion as recordContentVersion } from './_content-history.js';
+import { HISTORY_TABLES, SITE_COLLECTION, recordVersion as recordContentVersion } from './_content-history.js';
 
 export async function onRequestPost(context) {
   try {
@@ -141,9 +141,10 @@ export async function onRequestPost(context) {
     });
 
     // Every saved version is kept, so the editors can show history and restore
-    if (HISTORY_TABLES[parsed.table]) {
-      try { await recordContentVersion(DB, { collection: parsed.table, slug: parsed.slug, data, previous: oldData, userEmail, now }); }
-      catch (e) { console.error(`[save-content] ${parsed.table} history:`, e.message); }
+    const historyOf = parsed.type === 'site' ? { collection: SITE_COLLECTION, slug: parsed.key } : HISTORY_TABLES[parsed.table] ? { collection: parsed.table, slug: parsed.slug } : null;
+    if (historyOf) {
+      try { await recordContentVersion(DB, { ...historyOf, data, previous: oldData, userEmail, now }); }
+      catch (e) { console.error(`[save-content] ${historyOf.collection} history:`, e.message); }
     }
 
     // Joining or leaving the board changes who confirmed reveal invites reach: follow it now

@@ -34,7 +34,8 @@ const heroHeadline = `${heroLine1}<br>${heroLine2}`;
 const heroSub = siteSettings.homeHero?.lead || 'Dream bedrooms, accessible bathrooms, and therapy rooms for children with special needs, at no cost to families.';
 const heroCta1Label = siteSettings.homeHero?.cta1Label || 'Give Today';
 const heroCta1Link = siteSettings.homeHero?.cta1Link || '/donate';
-const heroCta2Label = siteSettings.homeHero?.cta2Label || 'See Our Work';
+// The button draws its own down arrow, so one typed at the end of the label is dropped
+const heroCta2Label = (siteSettings.homeHero?.cta2Label || 'See Our Work').replace(/\s*[\u2193\u2B07\u2192\uFE0E\uFE0F]+\s*$/, '') || 'See Our Work';
 const heroCta2Link = siteSettings.homeHero?.cta2Link || '#stories';
 
 /* ── Hero Kid + Featured Story Kid (independent) ── */

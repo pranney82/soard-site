@@ -468,7 +468,7 @@ const jsonLd = {
         </div>
       </div>
 
-      <p class="wtg-inkind-note" data-reveal>All items must be new or very gently used. We are unable to accept furniture or decor. Contact <a href={`mailto:${email}`}>{email}</a> or <a href={`tel:${phone.replace(/\./g, '')}`}>{phone}</a> to arrange a donation.</p>
+      <p class="wtg-inkind-note" data-reveal>All items must be new or very gently used. We are unable to accept furniture or decor. Contact <a href={`mailto:${email}`}>{email}</a> or <a href={`tel:+1${phone.replace(/\D/g, '').replace(/^1(?=\d{10}$)/, '')}`}>{phone}</a> to arrange a donation.</p>
     </div>
   </section>
 
@@ -497,7 +497,7 @@ const jsonLd = {
         </div>
         <div class="wtg-ref-item">
           <span class="wtg-ref-label">Phone</span>
-          <span class="wtg-ref-value"><a href={`tel:${phone.replace(/\./g, '')}`}>{phone}</a></span>
+          <span class="wtg-ref-value"><a href={`tel:+1${phone.replace(/\D/g, '').replace(/^1(?=\d{10}$)/, '')}`}>{phone}</a></span>
         </div>
         <div class="wtg-ref-item">
           <span class="wtg-ref-label">Email</span>

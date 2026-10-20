@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 import { createD1 } from './lib/d1-shim.mjs';
 import { recordVersion, recordDeletion, listVersions, getVersion, listDeleted, moveVersions, changedFields } from '../functions/api/_content-history.js';
 import { onRequestGet } from '../functions/api/content-history.js';
+import { onRequestPost as saveContent } from '../functions/api/save-content.js';
 
 const db = () => createD1({ schemaFiles: ['scripts/schema.sql'] });
 const at = (m) => `2026-10-19T12:${String(m).padStart(2, '0')}:00.000Z`;
@@ -70,4 +71,25 @@ test('the endpoint: versions, one version, deleted items, bad input', async () =
   assert.equal((await call('collection=events&slug=ava')).status, 400);
   assert.equal((await call('collection=kids&slug=../x')).status, 400);
   assert.deepEqual((await call('collection=kids&deleted=1')).body, { success: true, deleted: [] });
+});
+
+test('save-content keeps a version of each site document, and history serves it', async () => {
+  const DB = await createD1({ schemaFiles: ['scripts/schema.sql'] });
+  await DB.exec('CREATE TABLE IF NOT EXISTS site_config (key TEXT PRIMARY KEY, data TEXT, updated_at TEXT)');
+  await DB.prepare("INSERT INTO site_config (key, data) VALUES ('faq', ?)").bind(JSON.stringify({ categories: [], items: [] })).run();
+  const save = async (content) => {
+    const request = new Request('https://admin.test/api/save-content', { method: 'POST', body: JSON.stringify({ path: 'src/content/site/faq.json', content: JSON.stringify(content), message: 'Site Config: FAQ' }), headers: { 'content-type': 'application/json' } });
+    return saveContent({ env: { DB }, request, data: { userEmail: 'peter@soardcharity.com' }, waitUntil: () => {} });
+  };
+  assert.equal((await save({ categories: [{ id: 'about', label: 'About' }], items: [] })).status, 200);
+  assert.equal((await save({ categories: [{ id: 'about', label: 'About SOARD' }], items: [] })).status, 200);
+  const get = async (q) => (await onRequestGet({ env: { DB }, request: new Request(`https://admin.test/api/content-history?${q}`) })).json();
+  const list = await get('collection=site&slug=faq');
+  assert.equal(list.success, true);
+  assert.equal(list.versions.length, 3, 'two saves, and what was there before the first');
+  assert.deepEqual(list.versions[0].changed, ['categories']);
+  assert.equal(list.versions[0].by, 'peter@soardcharity.com');
+  const old = await get(`collection=site&slug=faq&id=${list.versions[1].id}`);
+  assert.equal(old.data.categories[0].label, 'About');
+  assert.equal((await get('collection=nope&slug=faq')).success, false);
 });
