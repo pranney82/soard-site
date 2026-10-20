@@ -15,7 +15,7 @@
  *    status. The boundary can be reshaped here (saved into the form draft).
  *  - Activity: what happened across every family, newest first.
  *  - A family (drawer): the whole conversation (emails, replies, texts,
- *    calls, notes) with a composer to email, text or note; the JobTread
+ *    calls, notes) with a composer to email the family or add a note; the JobTread
  *    details, editable in place; contacts, home, files.
  */
 
@@ -534,7 +534,6 @@ export function ApplicantsArea({ addToast }) {
     ${openId && html`<${Drawer}
       id=${openId}
       fields=${data.fields}
-      texting=${!!data.texting}
       summary=${all.find(a => a.id === openId)}
       onClose=${() => open(null)}
       onPrev=${idx > 0 ? () => open(shown[idx - 1].id) : null}
@@ -876,7 +875,7 @@ function ActivityView({ onOpen }) {
 
 // ─── One family (drawer) ────────────────────────────────────────────
 
-function Drawer({ id, fields, texting = false, summary, onClose, onPrev, onNext, onStatus, onChanged, onShowOnMap, addToast }) {
+function Drawer({ id, fields, summary, onClose, onPrev, onNext, onStatus, onChanged, onShowOnMap, addToast }) {
   const [d, setD] = useState(null);
   const [err, setErr] = useState(null);
   const panel = useRef(null);
@@ -938,7 +937,7 @@ function Drawer({ id, fields, texting = false, summary, onClose, onPrev, onNext,
       ${err && html`<div class="apl-callout is-warn" style="margin:1rem">${err} <button class="apl-more" onClick=${load}>Try again</button></div>`}
       ${!d && !err && html`<div class="apl-skel">Reading ${summary?.name || 'this family'} from JobTread…</div>`}
       ${d && html`<div class="apl-dbody">
-        <${Conversation} d=${{ ...d, applicant: a }} onSent=${refresh} addToast=${addToast} texting=${texting} />
+        <${Conversation} d=${{ ...d, applicant: a }} onSent=${refresh} addToast=${addToast} />
         <${SidePanel} d=${{ ...d, applicant: a }} fields=${fields} onSaved=${refresh} onShowOnMap=${onShowOnMap} addToast=${addToast} />
       </div>`}
     </aside>
@@ -1022,7 +1021,7 @@ function EventLine({ r }) {
   </div>`;
 }
 
-function Conversation({ d, onSent, addToast, texting = false }) {
+function Conversation({ d, onSent, addToast }) {
   const a = d.applicant;
   const items = useMemo(() => timelineOf(d), [d]);
   const scroller = useRef(null);
@@ -1035,18 +1034,15 @@ function Conversation({ d, onSent, addToast, texting = false }) {
   const [busy, setBusy] = useState(false);
   const [correcting, setCorrecting] = useState(false);
   const box = useRef(null);
-  const canText = texting && !!a.commsThreadId && !!a.contact?.phone;
-  const textWhy = !texting ? "Texting isn't set up yet" : 'Needs a mobile number and a Comms Thread in JobTread';
   const send = async () => {
     if (!text.trim() || busy) return;
     setBusy(true);
     const body = correcting ? { correction: { id: a.id, subject, message: text } }
-      : mode === 'email' ? { message: { id: a.id, subject, message: text, contactId: to || null } }
-        : mode === 'text' ? { text: { id: a.id, message: text } } : { note: { id: a.id, message: text } };
+      : mode === 'email' ? { message: { id: a.id, subject, message: text, contactId: to || null } } : { note: { id: a.id, message: text } };
     const j = await call(API, body);
     setBusy(false);
     if (!j.success) { addToast(j.error || 'Not sent', 'error'); return; }
-    addToast(correcting ? `Correction sent to ${j.to?.name || 'the family'}` : mode === 'email' ? `Emailed ${j.to?.name || 'the family'} through JobTread` : mode === 'text' ? 'Text sent through JobTread' : 'Note added in JobTread', 'success');
+    addToast(correcting ? `Correction sent to ${j.to?.name || 'the family'}` : mode === 'email' ? `Emailed ${j.to?.name || 'the family'} through JobTread` : 'Note added in JobTread', 'success');
     setText('');
     if (correcting) { setCorrecting(false); setSubject(DEFAULT_SUBJECT); }
     onSent();
@@ -1073,7 +1069,6 @@ function Conversation({ d, onSent, addToast, texting = false }) {
     <div class="apl-composer">
       <div class="apl-modes" role="group" aria-label="Send as">
         <button aria-pressed=${mode === 'email'} onClick=${() => setMode('email')} disabled=${!emailable.length} title=${emailable.length ? '' : 'No email address in JobTread'}>Email family</button>
-        <button aria-pressed=${mode === 'text'} onClick=${() => setMode('text')} disabled=${!canText} title=${canText ? '' : textWhy}>${texting ? 'Text' : 'Text (not set up yet)'}</button>
         <button aria-pressed=${mode === 'note'} onClick=${() => setMode('note')}>Internal note</button>
       </div>
       ${mode === 'email' && html`<div class="apl-email-row" style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:.5rem">
@@ -1082,11 +1077,11 @@ function Conversation({ d, onSent, addToast, texting = false }) {
       </div>`}
       ${correcting && html`<div class="apl-callout">Writing a correction. When it's sent, the site counts ${a.contact?.name || 'the family'} as knowing where things stand now. <button class="apl-more" onClick=${() => { setCorrecting(false); setSubject(DEFAULT_SUBJECT); setText(''); }}>Cancel</button></div>`}
       <textarea ref=${box} class="form-input" value=${text} onInput=${e => setText(e.target.value)} onKeyDown=${e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) send(); }}
-        placeholder=${mode === 'email' ? 'Write to the family. JobTread emails it from the Qualification Committee, and their reply lands here.' : mode === 'text' ? `Text ${a.contact?.name || 'the family'} at ${phoneText(a.contact?.phone)}` : 'Only staff see notes. Saved on the account in JobTread.'}
-        aria-label="Message" maxlength=${mode === 'text' ? 1000 : 4000}></textarea>
+        placeholder=${mode === 'email' ? 'Write to the family. JobTread emails it from the Qualification Committee, and their reply lands here.' : 'Only staff see notes. Saved on the account in JobTread.'}
+        aria-label="Message" maxlength="4000"></textarea>
       <div class="apl-composer-foot">
-        <span>${mode === 'text' ? `${text.length}/1000 · ` : ''}⌘/Ctrl + Enter to send</span>
-        <button class="btn btn-primary" onClick=${send} disabled=${busy || !text.trim()}>${busy ? 'Sending…' : correcting ? 'Send correction' : mode === 'email' ? 'Send email' : mode === 'text' ? 'Send text' : 'Add note'}</button>
+        <span>⌘/Ctrl + Enter to send</span>
+        <button class="btn btn-primary" onClick=${send} disabled=${busy || !text.trim()}>${busy ? 'Sending…' : correcting ? 'Send correction' : mode === 'email' ? 'Send email' : 'Add note'}</button>
       </div>
     </div>
   </section>`;

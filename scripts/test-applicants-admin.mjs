@@ -16,8 +16,8 @@
  *   - List: sorting, search with "/", year and area filters
  *   - Map: pins and the red boundary, legend toggles, "Show on map" from a
  *     family, editing the boundary saves into the form draft
- *   - A family: the conversation (emails, texts, notes, events), sending an
- *     email, a text and a note, editing details in place, archive
+ *   - A family: the conversation (emails, logged texts, notes, events), sending
+ *     an email and a note (no texting from the site), editing details in place, archive
  *   - Activity: everything across families
  *   - phone: nothing wider than the screen; the drawer fills it
  * Screenshots in test-results/applicants-admin/. Exits non-zero on failure.
@@ -93,7 +93,7 @@ const DB = await createD1();
 await DB.exec(`CREATE TABLE IF NOT EXISTS site_config (key TEXT PRIMARY KEY, data TEXT, updated_at TEXT)`);
 await DB.prepare("INSERT INTO site_config (key, data) VALUES ('settings', ?)").bind(JSON.stringify({ application: { open: true, year: '2027' } })).run();
 await DB.exec(`CREATE TABLE IF NOT EXISTS audit_log (id INTEGER PRIMARY KEY AUTOINCREMENT, user_email TEXT, action TEXT, entity_type TEXT, entity_slug TEXT, entity_name TEXT, changes TEXT, path TEXT, git_status TEXT, created_at TEXT)`);
-const env = { ...w.env, DB, JOBTREAD_QC_GRANT_KEY: 'qc-grant', APPLICANT_TEXTING: 'on' };
+const env = { ...w.env, DB, JOBTREAD_QC_GRANT_KEY: 'qc-grant' };
 
 // ── A static server for public/, plus the harness page ──
 const adminHtml = readFileSync(join(ROOT, 'public/admin/index.html'), 'utf8');
@@ -229,16 +229,12 @@ await page.click('.apl-composer .btn-primary');
 await page.waitForFunction(() => !document.querySelector('.apl-composer textarea').value, { timeout: 8000 }).catch(() => null);
 const emailed = acct('Avery Stone').comments.find(c => /visit on Tuesday/.test(c.message));
 ok(emailed?.assignees?.[0]?.emailAddress === 'jordan@example.com', 'Email family: a JobTread comment assigned to the parent (JobTread emails it)');
-// Text
+// No texting from the site (families text SOARD's Quo number): just email and notes
+ok(await page.$$eval('.apl-modes button', els => els.map(e => e.textContent.trim()).join('|')) === 'Email family|Internal note', 'the composer offers email and an internal note, no texting');
+// Note (⌘+Enter sends)
 await page.click('.apl-modes button:nth-child(2)');
-await page.type('.apl-composer textarea', 'See you Tuesday!');
-await page.keyboard.down('Meta'); await page.keyboard.press('Enter'); await page.keyboard.up('Meta');
-await page.waitForFunction(() => !document.querySelector('.apl-composer textarea').value, { timeout: 8000 });
-ok(acct('Avery Stone').comments.some(c => c.message === '/text See you Tuesday!' && c.parentCommentId === 'acct00000001-comms'), 'Text: a /text reply on the Comms Thread (⌘+Enter)');
-// Note
-await page.click('.apl-modes button:nth-child(3)');
 await page.type('.apl-composer textarea', 'Mom prefers texts after 3pm.');
-await page.click('.apl-composer .btn-primary');
+await page.keyboard.down('Meta'); await page.keyboard.press('Enter'); await page.keyboard.up('Meta');
 await page.waitForFunction(() => !document.querySelector('.apl-composer textarea').value, { timeout: 8000 });
 ok(acct('Avery Stone').comments.some(c => /^Mom prefers texts/.test(c.message) && c.internal), 'Internal note posted, staff only');
 await page.waitForFunction(() => [...document.querySelectorAll('.apl-msg.is-note')].some(e => /Mom prefers texts/.test(e.textContent)), { timeout: 8000 }).catch(() => null);

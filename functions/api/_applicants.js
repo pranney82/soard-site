@@ -16,8 +16,9 @@
  *    home, the makeover job. It records who did it and where (JobTread, the
  *    website, DataX, Zapier). It's read forward from a cursor about every
  *    minute and backfilled once to Jan 2025.
- *  - Actions from the site (status, fields, family message, text, internal
- *    note, archive) go to JobTread first and then refresh the mirror. A
+ *  - Actions from the site (status, fields, family email, internal note,
+ *    archive) go to JobTread first and then refresh the mirror. Families text
+ *    SOARD's Quo number; the site doesn't send texts. A
  *    status change sends the same family message a change made in JobTread
  *    would, through the same send-once claim (./_applicant-comms.js).
  *    JobTread's workflow skips the site's own grant, so nothing sends twice.
@@ -728,37 +729,6 @@ export async function addNote(env, accountId, { message, user = 'admin', fetchIm
   if (!text) throw new Error('Write a note first');
   const commentId = await postAccountComment(env, { accountId, message: `${text}\n\n_${adminName(user)}, from the website_`.slice(0, 4096), grant: env.JOBTREAD_GRANT_KEY }, fetchImpl);
   await logSite(env.DB, accountId, { kind: 'note', title: 'Internal note', body: text.slice(0, 4000), data: { commentId }, user, now });
-  return { commentId };
-}
-
-/**
- * Texting from the site is off until the texting service behind JobTread's
- * "/text" command is set up; then set APPLICANT_TEXTING = "on" in Cloudflare.
- * Until then the button says so instead of posting a text that goes nowhere.
- */
-export const textingOn = (env) => String(env.APPLICANT_TEXTING || '').toLowerCase() === 'on';
-
-/**
- * A text message to the family's phone. JobTread's "Comms Thread" on the
- * account turns a "/text …" reply into an SMS to the primary contact (DataX
- * sends it and logs the reply), so this posts exactly that reply.
- */
-export async function textFamily(env, accountId, { message, user = 'admin', fetchImpl = fetch, now = Date.now() } = {}) {
-  if (!textingOn(env)) throw new Error('Texting isn’t set up yet, so nothing was sent');
-  const text = String(message || '').replace(/\s+/g, ' ').trim();
-  if (!text) throw new Error('Write a text first');
-  if (text.length > 1000) throw new Error('Texts are limited to 1,000 characters');
-  const row = await getApplicantRow(env.DB, accountId);
-  if (!row?.commsThreadId) throw new Error('This account has no Comms Thread in JobTread, so texts can’t be sent from here yet');
-  if (!toE164(row.contact?.phone || '')) throw new Error('The main contact has no mobile number in JobTread');
-  const out = await pave(env.JOBTREAD_GRANT_KEY, {
-    createComment: {
-      $: { targetType: 'account', targetId: accountId, parentCommentId: row.commsThreadId, message: `/text ${text}`, isVisibleToInternalRoles: true, isVisibleToCustomerRoles: false, isVisibleToVendorRoles: false },
-      createdComment: { id: {} },
-    },
-  }, fetchImpl);
-  const commentId = out?.createComment?.createdComment?.id || null;
-  await logSite(env.DB, accountId, { kind: 'textOut', title: `Texted ${row.contact?.name || 'the family'}`, body: text, data: { commentId }, user, now });
   return { commentId };
 }
 

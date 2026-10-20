@@ -12,7 +12,6 @@
  * POST { status: { id, status, notify, denialReason } }
  * POST { fields: { id, changes: { key: value } } }
  * POST { message: { id, subject, message, contactId? } }  → JobTread emails the family
- * POST { text: { id, message } }                          → SMS through the Comms Thread
  * POST { note: { id, message } }                          → internal note
  * POST { archive: { id, archive } }
  * POST { sync: true }                                     → re-read everything now
@@ -28,8 +27,8 @@
 
 import {
   ensureApplicantSchema, listApplicants, applicantDetail, recentActivity, previewStatus, setApplicantStatus,
-  updateApplicantFields, messageFamily, addNote, textFamily, archiveApplicant, maybeSyncApplicants, syncState,
-  isAccountId, STATUSES, FIELDS, textingOn,
+  updateApplicantFields, messageFamily, addNote, archiveApplicant, maybeSyncApplicants, syncState,
+  isAccountId, STATUSES, FIELDS,
 } from './_applicants.js';
 import { applicationSettings, cleanYear } from './_applications.js';
 import { getLiveForm, getDraftForm, saveDraftForm, diffForm } from './_application-forms.js';
@@ -76,7 +75,6 @@ export async function onRequestGet(context) {
         draftUpdatedAt: draft?.updatedAt || null,
       },
       season: cleanYear(settings.year),
-      texting: textingOn(env),
       me: context.data?.userEmail || null,
     });
   }
@@ -150,12 +148,6 @@ export async function onRequestPost(context) {
       const id = target(body.message);
       const out = await messageFamily(env, id, { subject: body.message.subject, message: body.message.message, contactId: body.message.contactId || null, user });
       await audit('message', id, { to: out.to.email, subject: body.message.subject || null });
-      return ok(out);
-    }
-    if (body.text) {
-      const id = target(body.text);
-      const out = await textFamily(env, id, { message: body.text.message, user });
-      await audit('text', id, {});
       return ok(out);
     }
     if (body.note) {

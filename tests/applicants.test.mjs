@@ -10,7 +10,7 @@ import { createD1 } from './lib/d1-shim.mjs';
 import { fakeApplicantWorld, ORG } from './lib/fake-applicant-world.mjs';
 import {
   syncAllApplicants, refreshApplicants, syncEvents, backfillActivity, maybeSyncApplicants, listApplicants, getApplicantRow,
-  activityFor, activityFromEvent, setApplicantStatus, previewStatus, updateApplicantFields, messageFamily, addNote, textFamily,
+  activityFor, activityFromEvent, setApplicantStatus, previewStatus, updateApplicantFields, messageFamily, addNote,
   archiveApplicant, applicantDetail, placeOnArea, replaceBoundary, fieldInput, adminName, FIELDS, syncState,
 } from '../functions/api/_applicants.js';
 import { handleWorkflowCall, runNotifications, notifyFor } from '../functions/api/_applicant-notify.js';
@@ -225,31 +225,23 @@ test('details: options are checked, Makeover type is a list, empty clears', asyn
   assert.equal(adminName('linzi.ranney@soardcharity.com'), 'Linzi');
 });
 
-test('message, text and note go to JobTread the way staff would post them', async () => {
+test('an email and a note go to JobTread the way staff would post them', async () => {
   const a = addAccount({ name: 'Avery Stone', fields: { [F.status]: 'Applied' }, contact: { name: 'Jordan Stone', email: 'jordan@example.com', phone: '+17705550100' } });
   await syncAllApplicants(env, opts());
   await messageFamily(env, a.id, { subject: 'Your home visit', message: 'Does Tuesday at 3 work?', user: 'linzi@soardcharity.com', ...opts() });
   const msg = a.comments.find(c => c.name === 'Your home visit');
   assert.equal(msg.assignees[0].emailAddress, 'jordan@example.com');
   assert.equal(msg.grantKey, 'qc-grant');
-  await assert.rejects(() => textFamily(env, a.id, { message: 'See you Tuesday!', ...opts() }), /Texting isn’t set up yet/, 'off until the texting service is ready');
-  assert.ok(!a.comments.some(c => /^\/text /.test(c.message)), 'and nothing was posted');
-  env.APPLICANT_TEXTING = 'on';
-  await textFamily(env, a.id, { message: 'See you Tuesday!', ...opts() });
-  const text = a.comments.find(c => c.message === '/text See you Tuesday!');
-  assert.equal(text.parentCommentId, `${a.id}-comms`);
-  assert.equal(text.grantKey, 'site-grant');
   await addNote(env, a.id, { message: 'Mom prefers texts.', user: 'linzi@soardcharity.com', ...opts() });
   const note = a.comments.find(c => /^Mom prefers texts\./.test(c.message));
   assert.ok(note.internal);
   assert.match(note.message, /Linzi, from the website/);
   const kinds = (await activityFor(env.DB, a.id)).map(r => r.kind);
-  assert.deepEqual(kinds.sort(), ['note', 'sent', 'textOut']);
-  // No email, no thread: clear errors
+  assert.deepEqual(kinds.sort(), ['note', 'sent']);
+  // No email: a clear error
   const b = addAccount({ name: 'No Email', fields: { [F.status]: 'Applied' }, comms: false });
   await refreshApplicants(env, [b.id], opts());
   await assert.rejects(() => messageFamily(env, b.id, { message: 'hi', ...opts() }), /no email address/);
-  await assert.rejects(() => textFamily(env, b.id, { message: 'hi', ...opts() }), /no Comms Thread/);
 });
 
 test('archive hides an applicant from the default list; detail reads the thread live', async () => {
