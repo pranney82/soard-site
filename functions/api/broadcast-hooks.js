@@ -18,6 +18,7 @@ import { syncBroadcastSchedule } from './_broadcast-schedule.js';
 import { maybeSweepApplications } from './_applications.js';
 import { maybeSyncKidStatuses } from './_kid-status.js';
 import { maybeSweepZeffy } from './_zeffy.js';
+import { maybeRunWaitlist } from './_application-waitlist.js';
 
 export async function onRequestPost(context) {
   const { env, request } = context;
@@ -35,7 +36,9 @@ export async function onRequestPost(context) {
     // that the live broadcast matches JobTread's next reveal, and the 2-minute
     // application sweep (retries, videos ready for JobTread, expired drafts),
     // the hourly check that kids' statuses match their JobTread jobs, and the
-    // 15-minute catch-up check for Zeffy gifts the webhook missed.
+    // 15-minute catch-up check for Zeffy gifts the webhook missed, and the
+    // applications waitlist (its Kit retries, and the email that goes the
+    // minute applications open).
     // Each decides for itself whether it's due; none ever throws.
     context.waitUntil(maybeNudge(env));
     context.waitUntil(maybeSweep(env));
@@ -44,6 +47,7 @@ export async function onRequestPost(context) {
     context.waitUntil(maybeSweepApplications(env));
     context.waitUntil(maybeSyncKidStatuses(env));
     context.waitUntil(maybeSweepZeffy(env));
+    context.waitUntil(maybeRunWaitlist(env));
     return Response.json({ ok: true, state: r.state, reason: r.reason, work: r.work, changed: r.changed, cached: !!r.cached });
   } catch (err) {
     return Response.json({ ok: false, error: err.message }, { status: 500 });

@@ -12,9 +12,16 @@
  * tag so each audience can be emailed on its own. Defaults to "newsletter".
  * JSON:  { "email": "user@example.com", "source": "newsletter" }  →  { "ok": true/false }
  * Form:  standard form POST  →  302 redirect back with ?subscribed=1 or ?newsletter_error=...
+ *
+ * "application-waitlist" (the Apply page's "tell me when applications open")
+ * goes to ./_application-waitlist.js: saved on the site first, then Kit, and
+ * emailed the moment applications open. It also takes `lang` (en | es) and
+ * `page` (apply | apply-form), and answers { ok, status } where status is
+ * 'added' | 'already' | 'open' (open: here's `formUrl`, applications are open now).
  */
 
 import { kitSubscribe } from './_kit.js';
+import { recordSignup } from './_application-waitlist.js';
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -51,15 +58,17 @@ export async function onRequestPost(context) {
   const origin = new URL(context.request.url).origin;
 
   try {
-    let email, hp, source;
+    let email, hp, source, lang, page;
 
     if (contentType.includes('application/json')) {
-      ({ email, hp, source } = await context.request.json());
+      ({ email, hp, source, lang, page } = await context.request.json());
     } else {
       const form = await context.request.formData();
       email = form.get('email');
       hp = form.get('website');
       source = form.get('source');
+      lang = form.get('lang');
+      page = form.get('page');
     }
     source = String(source || '').trim().toLowerCase();
     if (!/^[a-z0-9-]{2,40}$/.test(source)) source = 'newsletter';
@@ -74,6 +83,19 @@ export async function onRequestPost(context) {
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       if (isFormPost) return redirect(origin, redirectPath, { newsletter_error: 'invalid_email' });
       return jsonOk({ ok: false, error: 'Please enter a valid email address.' }, 400);
+    }
+
+    if (source === 'application-waitlist' && context.env.DB) {
+      let out = null;
+      try {
+        out = await recordSignup(context.env, { email, lang, page: page === 'apply-form' ? 'apply-form' : 'apply' });
+      } catch (err) {
+        console.error('Waitlist signup could not be saved on the site; Kit only:', err);
+      }
+      if (out?.ok) {
+        if (isFormPost) return redirect(origin, redirectPath, { subscribed: '1', ...(out.status === 'open' ? { open: '1' } : {}) });
+        return jsonOk({ ok: true, status: out.status, confirmed: !!out.confirmed, ...(out.formUrl ? { formUrl: out.formUrl } : {}) });
+      }
     }
 
     const kit = await kitSubscribe(context.env, email, { source });

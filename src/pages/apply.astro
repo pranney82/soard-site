@@ -37,6 +37,8 @@ const appFormUrl = app.formUrl || '/apply/form/';
 const appFormExternal = !!app.formUrl;
 const appLinkAttrs = appFormExternal ? { target: '_blank', rel: 'noopener noreferrer' } : {};
 const closedMessage = app.closedMessage || `The ${appYear} application period is currently closed.`;
+// Both states are in the page; functions/apply/index.js shows the one the live
+// switch (Admin → Applications → Settings) says, so opening needs no Publish
 
 /* ── Photos (from admin, with fallbacks) ── */
 const ap = siteSettings.applyPhotos || {};
@@ -112,11 +114,8 @@ const faqJsonLd = faqs.length ? getFAQSchema(faqs) : undefined;
         <h1>Your child deserves a room built just for <em>them</em>.</h1>
         <p class="hero-lead">Dream bedrooms, accessible bathrooms, and therapy rooms for children with special needs. Designed around who they are, built by community, and <strong>always free</strong>.</p>
         <div class="hero-ctas">
-          {isOpen ? (
-            <a href={appFormUrl} {...appLinkAttrs} class="btn btn-primary btn-lg hero-glow">Apply Now &rarr;</a>
-          ) : (
-            <a href="#how-it-works" class="btn btn-primary btn-lg hero-glow">See How It Works &rarr;</a>
-          )}
+          <a href={appFormUrl} {...appLinkAttrs} class="btn btn-primary btn-lg hero-glow" data-when-open data-app-href hidden={!isOpen}>Apply Now &rarr;</a>
+          <a href="#how-it-works" class="btn btn-primary btn-lg hero-glow" data-when-closed hidden={isOpen}>See How It Works &rarr;</a>
           <a href="/kids/" class="btn btn-outline-dark">Meet the Kids</a>
         </div>
       </div>
@@ -155,22 +154,26 @@ const faqJsonLd = faqs.length ? getFAQSchema(faqs) : undefined;
   </section>
 
   <!-- ══════ STATUS BANNER ══════ -->
-  <div class={`status-banner ${isOpen ? 'status-banner--open' : ''}`}>
+  <div class={`status-banner ${isOpen ? 'status-banner--open' : ''}`} data-open-class="status-banner--open">
     <div class="status-inner">
-      <div class={`status-dot ${isOpen ? 'status-dot--open' : ''}`} aria-hidden="true"></div>
+      <div class={`status-dot ${isOpen ? 'status-dot--open' : ''}`} data-open-class="status-dot--open" aria-hidden="true"></div>
       <div class="status-text">
-        <p class="status-headline">{isOpen ? `The ${appYear} application is now open!` : closedMessage}</p>
-        <p class="status-sub">{isOpen ? "We're accepting applications for room makeovers in the greater Atlanta area." : "Leave your email and we'll let you know the moment applications reopen."}</p>
+        <p class="status-headline">
+          <span data-when-open data-app-text="openHeadline" hidden={!isOpen}>{`The ${appYear} application is now open!`}</span>
+          <span data-when-closed data-app-text="closedHeadline" hidden={isOpen}>{closedMessage}</span>
+        </p>
+        <p class="status-sub">
+          <span data-when-open hidden={!isOpen}>We're accepting applications for room makeovers in the greater Atlanta area.</span>
+          <span data-when-closed hidden={isOpen}>Leave your email and we'll let you know the moment applications reopen.</span>
+        </p>
       </div>
-      {isOpen && (
-        <a href={appFormUrl} {...appLinkAttrs} class="btn btn-primary">Apply Now &rarr;</a>
-      )}
+      <a href={appFormUrl} {...appLinkAttrs} class="btn btn-primary" data-when-open data-app-href hidden={!isOpen}>Apply Now &rarr;</a>
     </div>
-    {!isOpen && (
-      <div class="status-notify">
+    <div class="status-notify" data-when-closed hidden={isOpen}>
         {/* Same contract as the footer form: /api/newsletter accepts a plain
-            form POST (no-JS fallback — redirects back with ?subscribed=1) or
-            a JSON fetch { email, hp }. Honeypot field name is `website`. */}
+            form POST (no-JS fallback, redirects back with ?subscribed=1) or
+            a JSON fetch { email, hp, source, lang, page }. Honeypot field
+            name is `website`. The waitlist itself: functions/api/_application-waitlist.js */}
         <form class="notify-form" id="notify-form" action="/api/newsletter" method="POST">
           <div class="notify-fields">
             <input
@@ -180,14 +183,21 @@ const faqJsonLd = faqs.length ? getFAQSchema(faqs) : undefined;
               placeholder="Your email address"
               required
               autocomplete="email"
-              aria-label="Email address — get notified when applications open"
+              aria-label="Email address to hear when applications open"
               class="notify-input"
             />
             <button type="submit" class="notify-btn" id="notify-btn">Notify Me</button>
           </div>
           <div aria-hidden="true" style="position:absolute;left:-9999px;top:-9999px;"><input type="text" name="website" tabindex="-1" autocomplete="off" /></div>
           <input type="hidden" name="source" value="application-waitlist" />
+          <input type="hidden" name="page" value="apply" />
+          <fieldset class="notify-lang">
+            <legend class="notify-lang-label">Email me in</legend>
+            <label class="notify-lang-opt"><input type="radio" name="lang" value="en" checked /><span>English</span></label>
+            <label class="notify-lang-opt" lang="es"><input type="radio" name="lang" value="es" /><span>Español</span></label>
+          </fieldset>
           <p class="notify-note" id="notify-note" role="status" aria-live="polite">One email when applications open. No spam, ever.</p>
+          <a class="notify-open-link" id="notify-open-link" href={appFormUrl} {...appLinkAttrs} data-app-href hidden>Start your application &rarr;</a>
         </form>
         <div class="notify-social">
           <span class="notify-social-label">Or follow along:</span>
@@ -202,8 +212,7 @@ const faqJsonLd = faqs.length ? getFAQSchema(faqs) : undefined;
             </a>
           )}
         </div>
-      </div>
-    )}
+    </div>
   </div>
 
   <!-- ══════ WHERE WE SERVE — Service area map (editorial split) ══════ -->
@@ -444,48 +453,90 @@ const faqJsonLd = faqs.length ? getFAQSchema(faqs) : undefined;
 
 </BaseLayout>
 
-<!-- "Notify me" form — JS-enhanced submit (same /api/newsletter contract as the
+<!-- "Notify me" form: JS-enhanced submit (same /api/newsletter contract as the
      footer form). Without JS the plain form POST works: the endpoint accepts
-     form-encoded bodies and 302s back with ?subscribed=1 / ?newsletter_error=. -->
+     form-encoded bodies and 302s back with ?subscribed=1 / ?newsletter_error=.
+     The family picks the language of their emails (Spanish is preselected for
+     a Spanish browser, or for someone who used the form in Spanish). -->
 <script>
   document.addEventListener('astro:page-load', () => {
     const form = document.getElementById('notify-form') as HTMLFormElement | null;
-    if (!form) return; // banner only renders the form while applications are closed
+    if (!form) return;
     const note = document.getElementById('notify-note');
     const btn = document.getElementById('notify-btn') as HTMLButtonElement | null;
     const input = document.getElementById('notify-email') as HTMLInputElement | null;
+    const openLink = document.getElementById('notify-open-link');
     if (!note || !btn || !input) return;
 
     const IDLE_LABEL = btn.textContent || 'Notify Me';
-    const SUCCESS_MSG = "You're on the list — we'll email you the moment applications open.";
+    const IDLE_NOTE = note.textContent || '';
+    const WORDS = {
+      en: {
+        added: "You're on the list. We'll email you the moment applications open, and we just sent you a confirmation.",
+        addedQuiet: "You're on the list. We'll email you the moment applications open.",
+        already: "You're already on the list. We'll email you the moment applications open.",
+        open: 'Good news: applications are open right now. We emailed you the link too.',
+      },
+      es: {
+        added: 'Ya está en la lista. Le escribiremos en cuanto abran las solicitudes, y acabamos de enviarle una confirmación.',
+        addedQuiet: 'Ya está en la lista. Le escribiremos en cuanto abran las solicitudes.',
+        already: 'Ya estaba en la lista. Le escribiremos en cuanto abran las solicitudes.',
+        open: 'Buenas noticias: las solicitudes ya están abiertas. También le enviamos el enlace por correo.',
+      },
+    };
+    const chosen = () => (form.querySelector<HTMLInputElement>('[name="lang"]:checked')?.value === 'es' ? 'es' : 'en');
+
+    // Start in the family's language: their choice on the form, else the browser's
+    try {
+      const saved = localStorage.getItem('soard-application-lang');
+      const nav = String(navigator.languages?.[0] || navigator.language || '').toLowerCase();
+      if (saved === 'es' || (!saved && nav.startsWith('es'))) {
+        const es = form.querySelector<HTMLInputElement>('[name="lang"][value="es"]');
+        if (es) es.checked = true;
+      }
+    } catch { /* storage blocked */ }
 
     function setNote(text: string, state?: 'success' | 'error') {
       note!.textContent = text;
       note!.classList.toggle('notify-note--success', state === 'success');
       note!.classList.toggle('notify-note--error', state === 'error');
     }
+    function done(status: string, formUrl?: string, confirmed = true) {
+      const w = WORDS[chosen()];
+      input!.value = '';
+      input!.disabled = false;
+      btn!.disabled = true;
+      btn!.textContent = 'Done';
+      setNote(status === 'open' ? w.open : status === 'already' ? w.already : confirmed ? w.added : w.addedQuiet, 'success');
+      if (status === 'open' && openLink) {
+        if (formUrl) openLink.setAttribute('href', formUrl);
+        openLink.hidden = false;
+      }
+    }
+    // Typing a different address after a signup starts over
+    input.addEventListener('input', () => {
+      if (btn.textContent !== 'Done') return;
+      btn.disabled = false;
+      btn.textContent = IDLE_LABEL;
+      setNote(IDLE_NOTE);
+    });
 
-    // No-JS fallback landed back here with query params — reflect them inline.
+    // No-JS fallback landed back here with query params: reflect them inline.
     // (The footer form's script may also display/clean these; both are harmless.)
     const params = new URLSearchParams(window.location.search);
-    if (params.has('subscribed')) {
-      setNote(SUCCESS_MSG, 'success');
-      btn.disabled = true;
-      btn.textContent = 'Done';
-    } else if (params.has('newsletter_error')) {
-      setNote('Something went wrong — please try again.', 'error');
-    }
+    if (params.has('subscribed')) done(params.has('open') ? 'open' : 'added');
+    else if (params.has('newsletter_error')) setNote('Something went wrong. Please try again.', 'error');
 
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       const email = input.value.trim();
       if (!email) return;
 
-      // Honeypot — bots fill hidden fields, humans don't
+      // Honeypot: bots fill hidden fields, humans don't
       const honeypot = form.querySelector<HTMLInputElement>('[name="website"]');
       const hp = honeypot ? honeypot.value : '';
 
-      setNote('One email when applications open. No spam, ever.');
+      setNote(IDLE_NOTE);
       btn.disabled = true;
       btn.textContent = 'Sending…';
       input.disabled = true;
@@ -494,24 +545,21 @@ const faqJsonLd = faqs.length ? getFAQSchema(faqs) : undefined;
         const res = await fetch('/api/newsletter', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, hp, source: 'application-waitlist' }),
+          body: JSON.stringify({ email, hp, source: 'application-waitlist', lang: chosen(), page: 'apply' }),
         });
-        // Body may not be JSON (e.g. Cloudflare error pages) — don't throw on parse
+        // Body may not be JSON (e.g. Cloudflare error pages): don't throw on parse
         const data = await res.json().catch(() => null);
 
         if (data && data.ok) {
-          input.value = '';
-          input.disabled = false;
-          btn.textContent = 'Done';
-          setNote(SUCCESS_MSG, 'success');
+          done(data.status || 'added', data.formUrl, data.confirmed !== false);
         } else {
           btn.disabled = false;
           btn.textContent = IDLE_LABEL;
           input.disabled = false;
           setNote(
             res.status === 429
-              ? 'Too many attempts — please wait a minute and try again.'
-              : (data && data.error) || 'Something went wrong — please try again.',
+              ? 'Too many attempts. Please wait a minute and try again.'
+              : (data && data.error) || 'Something went wrong. Please try again.',
             'error',
           );
         }
@@ -519,7 +567,7 @@ const faqJsonLd = faqs.length ? getFAQSchema(faqs) : undefined;
         btn.disabled = false;
         btn.textContent = IDLE_LABEL;
         input.disabled = false;
-        setNote('Something went wrong — please try again.', 'error');
+        setNote('Something went wrong. Please try again.', 'error');
       }
     });
   });
@@ -772,6 +820,9 @@ const faqJsonLd = faqs.length ? getFAQSchema(faqs) : undefined;
     border-bottom-color: rgba(56,161,105,0.15);
   }
 
+  /* Both open and closed states are in the page; the hidden one never shows */
+  :global([data-when-open][hidden]), :global([data-when-closed][hidden]) { display: none !important; }
+
   /* ── Closed state: inline "notify me" capture + social follow ── */
   .status-notify {
     max-width: var(--max-width);
@@ -865,6 +916,52 @@ const faqJsonLd = faqs.length ? getFAQSchema(faqs) : undefined;
     text-decoration-thickness: 2px;
     text-underline-offset: 3px;
   }
+  .notify-lang {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    border: 0;
+    margin: 10px 0 0;
+    padding: 0 0 0 20px;
+  }
+  .notify-lang-label {
+    float: left;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--c-text-muted);
+    margin-right: 4px;
+    padding: 0;
+  }
+  .notify-lang-opt { position: relative; cursor: pointer; }
+  .notify-lang-opt input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+  .notify-lang-opt span {
+    display: inline-flex;
+    align-items: center;
+    min-height: 36px;
+    padding: 6px 14px;
+    border: 1.5px solid var(--c-border);
+    border-radius: 60px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--c-text);
+    background: var(--c-white);
+    transition: border-color var(--transition-fast), background var(--transition-fast);
+  }
+  .notify-lang-opt:hover span { border-color: var(--c-dark); }
+  .notify-lang-opt input:checked + span { background: var(--c-dark); border-color: var(--c-dark); color: #fff; }
+  .notify-lang-opt input:focus-visible + span { outline: 2px solid var(--c-dark); outline-offset: 2px; }
+  .notify-open-link[hidden] { display: none; }
+  .notify-open-link {
+    display: inline-block;
+    margin: 10px 0 0 20px;
+    font-weight: 700;
+    color: var(--c-dark);
+    text-decoration: underline;
+    text-decoration-color: var(--c-yellow);
+    text-decoration-thickness: 3px;
+    text-underline-offset: 4px;
+  }
   .notify-social {
     display: flex;
     align-items: center;
@@ -902,6 +999,8 @@ const faqJsonLd = faqs.length ? getFAQSchema(faqs) : undefined;
     .notify-fields { flex-direction: column; }
     .notify-note { padding-left: 4px; }
     .notify-note--success { padding-left: 4px; }
+    .notify-lang { padding-left: 4px; }
+    .notify-open-link { margin-left: 4px; }
   }
 
   /* ══════════════════════════════════════════

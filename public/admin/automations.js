@@ -276,6 +276,28 @@ const MAP = { t: 'SOARD', children: [
           touches: ['Cloudflare Turnstile'], where: 'functions/api/apply.js',
           live: (f) => (!env(f) ? null : f.env.turnstile && f.env.turnstileSite ? ON('Turnstile is checked on every new application.') : OFF('Needs TURNSTILE_SITE_KEY and TURNSTILE_SECRET_KEY in Cloudflare; the honeypot and limits work without them.')) },
       ]},
+      { t: 'Waitlist', children: [
+        { t: 'Tell me when applications open', s: 'live', k: 'visitor',
+          when: 'While applications are closed, a family leaves their email on the Apply page or the closed application form, in English or Spanish.',
+          does: 'Saves it on the site first, then adds them to Kit (tag “Application Waitlist”; someone new to Kit is also tagged “Application Waitlist only (no newsletter)” so list mail to everyone leaves them out). Emails them “You’re on the list” in their language. If Kit fails it keeps retrying, and Peter hears if a signup is still stuck after about 3 hours. Applications already open? They’re shown the link and emailed it.',
+          touches: ['D1', 'Kit', 'Resend', 'Slack'], where: 'src/pages/apply.astro · src/pages/apply/form.astro · functions/api/newsletter.js · _application-waitlist.js',
+          live: (f) => (!env(f) ? null : !f.env.kit ? ATTN('KIT_API_KEY is missing. Signups are still saved on the site, and the site emails each family itself when applications open.') : f.waitlist?.kitProblems ? ATTN(`${plural(f.waitlist.kitProblems, 'signup isn’t', 'signups aren’t')} in Kit yet. The site keeps retrying.`) : ON(f.waitlist ? `${plural(f.waitlist.waiting, 'family is', 'families are')} waiting.` : null, f.waitlist?.lastSignupAt)) },
+        { t: 'Applications-open email', s: 'live', k: 'event',
+          when: 'Applications are opened (by hand, or by the schedule).',
+          does: 'The moment applications open, checks the form is really open, puts every family waiting into a Kit tag made for this opening and language, and hands Kit one email per language scheduled for 10 minutes later (right away for a scheduled opening). From then Kit sends it on its own, even if the site’s clock stops. Families Kit can’t reach are scheduled with Resend for the same minute; if Kit can’t take it at all for two hours, the site emails everyone itself. Anyone who signs up while open is emailed the link right away. Staff get an email and a Slack post when it’s counting down, going out and done.',
+          touches: ['Kit', 'Resend', 'D1', 'Slack'], where: 'functions/api/_application-waitlist.js (the save that opens applications, then the heartbeat) · Admin → Applications → Settings → Waitlist',
+          info: 'To stop it, close applications again within the 10 minutes, or press “Don’t send this time”: the site deletes it from Kit (and cancels Resend’s). Kit is checked every 6 hours while families wait, so a broken key is caught early; “Rehearse through Kit” sends the real email to you. Each opening has its own tags, so nobody is emailed twice and next season starts fresh.',
+          live: (f) => {
+            const o = f.waitlist?.opening;
+            if (!f.waitlist) return null;
+            if (f.waitlist.kit && !f.waitlist.kit.ok && f.waitlist.waiting) return ATTN(`Kit isn’t working (${f.waitlist.kit.error}) and ${plural(f.waitlist.waiting, 'family is', 'families are')} waiting.`);
+            if (o?.state === 'countdown') return { s: 'live', why: `Counting down to the email for ${plural(o.total, 'family', 'families')}.` };
+            if (o?.state === 'preparing' && o.error) return ATTN(o.error);
+            if (o?.state === 'preparing' || o?.state === 'sending') return ON(`Going out to ${plural(o.total, 'family', 'families')}.`);
+            if (o?.state === 'sent') return ON(o.total ? `Last sent to ${plural(o.total, 'family', 'families')}:` : 'The last opening had nobody waiting.', o.sentAt);
+            return ON(f.waitlist.waiting ? `Ready for ${plural(f.waitlist.waiting, 'family', 'families')} when applications open.` : 'Nobody is waiting yet.');
+          } },
+      ]},
       { t: 'Into JobTread', children: [
         { t: 'Application → JobTread', s: 'live', k: 'event',
           when: 'A family submits.',

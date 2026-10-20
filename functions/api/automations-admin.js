@@ -19,6 +19,7 @@
  *  - fbArchive: last Facebook replay rescue and replays still waiting for a kid
  *  - sends:     last reminder send per kind and channel (counts only)
  *  - jobtread:  SOARD workflows (on/off) and webhooks (host and events only)
+ *  - waitlist:  families waiting for the applications-open email, signups not in Kit yet, the last opening
  *
  * Not in _middleware's public list, so Access guards it. Never cached.
  * Each section fails on its own: one unreachable service never blanks the rest.
@@ -289,6 +290,26 @@ export async function gatherFacts(env, { fetchImpl = fetch, now = Date.now() } =
     sends: sendMap,
     reminders: { subscribers: typeof reminders === 'number' ? reminders : null },
     jobtread: jobtread || { error: 'JobTread check failed' },
+    waitlist: await settle(() => waitlistFacts(DB)),
+  };
+}
+
+/** The applications waitlist (_application-waitlist.js): counts and times only, never addresses */
+export async function waitlistFacts(DB) {
+  // The tables appear with the first signup or heartbeat; until then this settles to an error
+  const counts = await DB.prepare(`SELECT
+      SUM(CASE WHEN opening_id IS NULL AND removed_at IS NULL AND (fallback = 1 OR kit_state IS NULL OR kit_state NOT IN ('cancelled', 'bounced', 'complained')) THEN 1 ELSE 0 END) AS waiting,
+      SUM(CASE WHEN opening_id IS NULL AND removed_at IS NULL AND kit_error IS NOT NULL THEN 1 ELSE 0 END) AS kitProblems,
+      MAX(CASE WHEN removed_at IS NULL AND page != 'kit' THEN created_at END) AS lastSignupAt
+    FROM waitlist_signups`).first();
+  const op = await DB.prepare('SELECT state, total, sent_at, error, opened_at FROM waitlist_openings ORDER BY opened_at DESC LIMIT 1').first();
+  const kit = await DB.prepare("SELECT value FROM waitlist_runtime WHERE key = 'kit_health'").first('value').then((v) => JSON.parse(v || 'null')).catch(() => null);
+  return {
+    kit: kit ? { ok: !!kit.ok, error: kit.error || null, at: kit.at || null } : null,
+    waiting: counts?.waiting || 0,
+    kitProblems: counts?.kitProblems || 0,
+    lastSignupAt: counts?.lastSignupAt || null,
+    opening: op ? { state: op.state, total: op.total || 0, sentAt: op.sent_at || null, openedAt: op.opened_at || null, error: op.error || null } : null,
   };
 }
 

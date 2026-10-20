@@ -155,7 +155,8 @@ soard-site-main/
 │       ├── generate.js         # AI: Claude-powered content generation
 │       ├── press-scan.js       # Import press mentions
 │       ├── cc-oauth-*.js       # Admin OAuth authentication
-│       ├── newsletter.js       # Newsletter signup (Kit)
+│       ├── newsletter.js       # Newsletter signup (Kit) and the applications waitlist
+│       ├── _application-waitlist.js # "Tell me when applications open": signups + the opening email
 │       ├── deployments.js      # Trigger CF Pages rebuilds
 │       └── _middleware.js      # Auth middleware
 │
@@ -219,7 +220,8 @@ All endpoints run as Cloudflare Workers Functions under `/api/`. Admin endpoints
 | `/api/download-logo` | POST | Download partner logos |
 | `/api/deployments` | POST | Trigger site rebuild |
 | `/api/zeffy-webhook` | POST | Public, signed by Zeffy: posts each completed gift to Slack #team-everyone |
-| `/api/newsletter` | POST | Newsletter signup (adds to Kit) |
+| `/api/newsletter` | POST | Newsletter signup (adds to Kit). `source: "application-waitlist"` joins the applications waitlist |
+| `/api/application-waitlist-admin` | GET/POST | Admin → Applications → Settings → Waitlist: who's waiting, the opening email, overrides |
 | `/api/kit-broadcast` | GET/POST | Kit draft broadcasts, history and the editor preview |
 | `/api/cc-oauth-start` | GET | Initiate admin OAuth flow |
 | `/api/cc-oauth-callback` | GET | Handle OAuth callback |
@@ -246,8 +248,8 @@ The admin panel can also trigger deploys after content changes via the `/api/dep
 | `CF_IMAGES_TOKEN` | Yes | Cloudflare Images API |
 | `CF_PAGES_DEPLOY_HOOK` | Yes | Trigger rebuilds after content saves |
 | OAuth client ID/secret | Yes | Admin panel authentication |
-| `KIT_API_KEY` | Yes | Kit (ConvertKit) v4 key. Kit is the only list tool: newsletter signups and "Push to Kit" broadcast drafts |
-| `RESEND_API_KEY` | Yes | One-off emails only: application links and notices, reveal reminders, staff alerts, editor test sends |
+| `KIT_API_KEY` | Yes | Kit (ConvertKit) v4 key. Kit is the only list tool: newsletter signups, "Push to Kit" broadcast drafts, and the "applications are open" email to the waitlist |
+| `RESEND_API_KEY` | Yes | One-off emails only: application links and notices, waitlist "you're on the list" confirmations, reveal reminders, staff alerts, editor test sends |
 | `SLACK_BOT_TOKEN` | No | The site's Slack app (`xoxb-…`; scopes `chat:write`, `chat:write.public`, `channels:read`, `groups:read`). Staff alerts and new-application posts go to the channel picked in Reveals → Settings → Alerts |
 | `SLACK_WEBHOOK_URL` | No | Older incoming webhook, used only when the Slack app isn't set or can't post |
 | `ZEFFY_WEBHOOK_SECRET` | No | Zeffy's `whsec_…` signing secret for `/api/zeffy-webhook` (each gift is posted to #team-everyone by the Slack app, `SLACK_BOT_TOKEN`) |
