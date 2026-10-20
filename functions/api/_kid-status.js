@@ -87,10 +87,12 @@ export function planKid(kid, facts) {
   return changed ? { next, hide: want.hide } : null;
 }
 
+// JobTread refuses (413) a query whose worst case (page size times each
+// nested list) is too big, so each job brings only its Status and Reveal task
 const JOB_FIELDS = {
   id: {}, name: {}, closedOn: {},
-  customFieldValues: { $: { size: 50 }, nodes: { value: {}, customField: { id: {} } } },
-  tasks: { $: { size: 20, where: [['taskType', 'id'], '=', REVEAL_TASK_TYPE] }, nodes: { progress: {} } },
+  customFieldValues: { $: { size: 1, where: [['customField', 'id'], '=', FIELD_STATUS] }, nodes: { value: {}, customField: { id: {} } } },
+  tasks: { $: { size: 5, where: [['taskType', 'id'], '=', REVEAL_TASK_TYPE] }, nodes: { progress: {} } },
 };
 
 async function pave(grantKey, query, fetchImpl) {
@@ -248,6 +250,8 @@ export async function syncKidStatuses(env, { jobId = null, fetchImpl = fetch, no
     return out;
   } catch (err) {
     console.error('[kid-status]', err.message);
+    // Kept so Site → Automations can say the last check failed
+    try { await writeState(env.DB, { lastError: { at: new Date(now).toISOString(), scope: jobId ? 'job' : 'all', error: String(err.message || err).slice(0, 200) } }); } catch { /* nothing more to do */ }
     return [];
   }
 }

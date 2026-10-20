@@ -144,3 +144,28 @@ test('the Reveal task query asks for the Reveal task type', async () => {
   await syncKidStatuses({ DB, JOBTREAD_GRANT_KEY: 'k' }, { jobId: 'abc123', fetchImpl });
   assert.deepEqual(seen[0].job.tasks.$.where, [['taskType', 'id'], '=', REVEAL_TASK_TYPE]);
 });
+
+test('the sweep asks for a jobs page JobTread accepts (no 413)', async () => {
+  const seen = [];
+  const fetchImpl = async (url, init) => { seen.push(JSON.parse(init.body).query); return Response.json({ organization: { jobs: { nextPage: null, nodes: [] } } }); };
+  await syncKidStatuses({ DB: await world([]), JOBTREAD_GRANT_KEY: 'k' }, { fetchImpl });
+  const jobs = seen[0].organization.jobs;
+  assert.deepEqual(jobs.nodes.customFieldValues.$.where, [['customField', 'id'], '=', FIELD_STATUS], 'only the Status field');
+  // 100 jobs × (50 fields + 20 tasks) was refused in production; reveals-admin's 100 × 50 is accepted
+  const worst = jobs.$.size * (jobs.nodes.customFieldValues.$.size + jobs.nodes.tasks.$.size);
+  assert.ok(worst <= 5000, `worst case ${worst} stays within what JobTread accepts`);
+});
+
+test('a JobTread failure is remembered for Site → Automations, and the next success clears it', async () => {
+  const DB = await world([{ slug: 'max', name: 'Max', year: 2026, status: 'completed', publishStatus: 'published' }]);
+  const env = { DB, JOBTREAD_GRANT_KEY: 'k' };
+  const state = async () => JSON.parse((await DB.prepare("SELECT value FROM kid_status_state WHERE key = 'state'").first()).value);
+  await syncKidStatuses(env, { fetchImpl: async () => new Response('Request Entity Too Large', { status: 413 }), now: Date.parse('2026-10-20T16:54:47Z') });
+  let s = await state();
+  assert.equal(s.lastError.at, '2026-10-20T16:54:47.000Z');
+  assert.match(s.lastError.error, /413/);
+  assert.equal(s.lastRun, undefined, 'no run is recorded');
+  await syncKidStatuses(env, { fetchImpl: jtFetch([job('j1', 'Max Sample (2026)', 'Closed Done')]), now: Date.parse('2026-10-20T17:54:47Z') });
+  s = await state();
+  assert.equal(s.lastRun.at, '2026-10-20T17:54:47.000Z', 'the next run is recorded after the error, so the map shows it working again');
+});

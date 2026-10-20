@@ -221,6 +221,7 @@ const MAP = { t: 'SOARD', children: [
             if (!k) return null;
             if (env(f) && !f.env.jobtread) return ATTN('JOBTREAD_GRANT_KEY is missing, so kid statuses can’t follow JobTread.');
             if (!k.lastSweepAt) return ATTN('It hasn’t run yet. It rides on the live hub’s heartbeat, so check the Heartbeat entry.');
+            if (k.lastErrorAt && (!k.lastRunAt || k.lastErrorAt > k.lastRunAt)) return ATTN(`The last check of JobTread failed (${stamp(k.lastErrorAt)}). It tries again within the hour.`, k.lastRunAt);
             if (stale(k.lastSweepAt, 3 * HOUR)) return ATTN(`Hasn’t checked JobTread since ${stamp(k.lastSweepAt)}. It rides on the live hub’s heartbeat, so check the Heartbeat entry.`, k.lastRunAt);
             if (env(f) && !f.env.deployHook) return ATTN('No deploy hook is set in Cloudflare, so changes are saved but wait for the next Publish.', k.lastRunAt);
             const hidden = k.hidden ? ` ${plural(k.hidden, 'profile is', 'profiles are')} hidden because of JobTread.` : '';

@@ -143,6 +143,7 @@ export function kidStatusFacts(state, hidden = null) {
     lastSweepAt: d.lastSweepAt || null,
     lastRunAt: d.lastRun?.at || null,
     changed: d.lastRun?.changed ?? null,
+    lastErrorAt: d.lastError?.at || null,
     deployPending: !!d.deployPending,
     lastAutoDeployAt: d.lastAutoDeployAt || null,
     hidden,
