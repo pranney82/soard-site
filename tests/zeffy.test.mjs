@@ -9,7 +9,7 @@ import { createHmac } from 'node:crypto';
 import { createD1 } from './lib/d1-shim.mjs';
 import {
   giftMessage, screenPayment, verifySignature, handleWebhook, runSweep, maybeSweepZeffy,
-  readZeffyConfig, MAJOR_GIFT_CENTS,
+  readZeffyConfig, MAJOR_GIFT_CENTS, maybeSelfTest, SELF_TEST,
 } from '../functions/api/_zeffy.js';
 
 const SECRET = 'whsec_test_5f5e5d0f7c4c9a3e2b1a';
@@ -324,4 +324,32 @@ test('D1 keeps payment ids, states and times, never an amount or a name once pos
   assert.deepEqual(rows.map((r) => r.state), ['posted', 'posted']);
   assert.doesNotMatch(JSON.stringify(rows), /Jane|Zed|\$|7,777|777700|example\.com/);
   assert.doesNotMatch(JSON.stringify(await readZeffyConfig(env.DB)), /Jane|Zed|\$|777700/);
+});
+
+test('self-test: once per SELF_TEST, through the real webhook path, plainly marked, not counted as Zeffy', async () => {
+  const r = await maybeSelfTest(env, { now: NOW });
+  assert.deepEqual(r, { id: SELF_TEST, at: new Date(NOW).toISOString(), status: 200, result: 'posted', error: null });
+  assert.equal(world.slack.length, 1);
+  assert.match(world.slack[0], /^🧪 Test from the website: no gift was made\. Gift alerts are connected, and real gifts will look like this:\n🎉 New donation - \$50\.00\nFrom: Test Donor\nCampaign: Website test\nReceived: October 20, 2026$/);
+  assert.equal(await maybeSelfTest(env, { now: NOW + 60e3 }), null, 'never twice');
+  const cfg = await readZeffyConfig(env.DB);
+  assert.equal(cfg.lastWebhookAt, undefined, 'a self-test isn’t Zeffy reaching the site');
+  assert.equal(cfg.selfTest.result, 'posted');
+  // The heartbeat runs it, and overlapping runs still post once (the payment id is claimed)
+  const env2 = { ...env, DB: await createD1({ schemaSql: ['CREATE TABLE site_config (key TEXT PRIMARY KEY, data TEXT, updated_at TEXT)'] }) };
+  await Promise.all([maybeSelfTest(env2, { now: NOW }), maybeSelfTest(env2, { now: NOW })]);
+  assert.equal(world.slack.length, 2);
+  assert.ok(await maybeSweepZeffy({ ...env, DB: await createD1({ schemaSql: ['CREATE TABLE site_config (key TEXT PRIMARY KEY, data TEXT, updated_at TEXT)'] }) }, { now: NOW }));
+  assert.equal(world.slack.length, 3, 'the heartbeat’s first wake-up posts the self-test');
+});
+
+test('self-test: Slack refusing is recorded, retried by the catch-up check, and the real format is untouched', async () => {
+  world.slackError = 'not_in_channel';
+  const r = await maybeSelfTest(env, { now: NOW });
+  assert.equal(r.status, 500);
+  assert.equal(r.error, 'not_in_channel');
+  world.slackError = null;
+  await runSweep(env, { now: NOW + 15 * MIN });
+  assert.match(world.slack[0], /^🧪 Test from the website/);
+  assert.doesNotMatch(giftMessage(payment()), /🧪/);
 });

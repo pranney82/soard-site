@@ -171,6 +171,8 @@ export function giftMessage(p) {
   if (campaign) lines.push(`Campaign: ${slackEscape(campaign)}`);
   const day = receivedOn(p?.created);
   if (day) lines.push(`Received: ${day}`);
+  // The site's own self-test (below), never a real gift
+  if (p?.metadata?.soardSelfTest === true) lines.unshift('🧪 Test from the website: no gift was made. Gift alerts are connected, and real gifts will look like this:');
   return lines.join('\n');
 }
 
@@ -237,7 +239,7 @@ export async function handlePayment(env, p, { via = 'webhook', now = Date.now() 
  * retries too, and the claim keeps it to one post); 400 for a bad signature;
  * 503 while ZEFFY_WEBHOOK_SECRET isn't set (Zeffy keeps the gift for 3 days).
  */
-export async function handleWebhook(env, request, { now = Date.now() } = {}) {
+export async function handleWebhook(env, request, { now = Date.now(), selfTest = false } = {}) {
   if (!env.DB) return Response.json({ ok: false, error: 'D1 binding missing' }, { status: 503 });
   if (!env.ZEFFY_WEBHOOK_SECRET) return Response.json({ ok: false, error: 'ZEFFY_WEBHOOK_SECRET is not set' }, { status: 503 });
   const raw = new Uint8Array(await request.arrayBuffer());
@@ -255,7 +257,7 @@ export async function handleWebhook(env, request, { now = Date.now() } = {}) {
   if (event?.type !== 'payment.completed') return Response.json({ ok: true, ignored: event?.type || 'unknown event' });
   const iso = new Date(now).toISOString();
   const cfg = await readZeffyConfig(env.DB);
-  await writeZeffyConfig(env.DB, { lastWebhookAt: iso, since: cfg.since || iso });
+  await writeZeffyConfig(env.DB, selfTest ? { since: cfg.since || iso } : { lastWebhookAt: iso, since: cfg.since || iso });
   const r = await handlePayment(env, event.data, { via: 'webhook', now });
   if (r.result === 'invalid') return Response.json({ ok: false, error: 'no payment in the event' }, { status: 400 });
   // 500, not 502: Cloudflare replaces 502 bodies with its own error page
@@ -427,10 +429,48 @@ export async function runSweep(env, { now = Date.now(), fetchImpl = fetch } = {}
   return summary;
 }
 
-/** The heartbeat's wake-up: every 15 minutes once Zeffy is connected. Never throws. */
+// ─── The self-test ──────────────────────────────────────────────────
+
+/**
+ * Change this to make production prove the whole path once more: on the next
+ * heartbeat the site signs a test gift with its own ZEFFY_WEBHOOK_SECRET and
+ * runs it through the webhook handler (signature, claim, Slack app), which
+ * posts one message in #team-everyone marked as a test. The claim on its
+ * payment id keeps it to one post; the result is kept in site_config
+ * "zeffy-alerts".selfTest. No admin button: nobody has to press anything.
+ */
+export const SELF_TEST = '2026-10-20';
+
+export async function maybeSelfTest(env, { now = Date.now() } = {}) {
+  if (!env.DB || !env.ZEFFY_WEBHOOK_SECRET || !env.SLACK_BOT_TOKEN) return null;
+  const cfg = await readZeffyConfig(env.DB);
+  if (cfg.selfTest?.id === SELF_TEST) return null;
+  const iso = new Date(now).toISOString();
+  await writeZeffyConfig(env.DB, { selfTest: { id: SELF_TEST, at: iso, result: 'running' } });
+  const t = Math.floor(now / 1000);
+  const raw = JSON.stringify({
+    id: `evt_selftest_${SELF_TEST}`, type: 'payment.completed', version: 1, dispatchedAt: iso,
+    data: {
+      id: `selftest-${SELF_TEST}`, object: 'payment', created: t, amount: 5000, currency: 'usd', status: 'succeeded', type: 'online',
+      refund_status: 'none', refunds: [], description: 'Website test', buyer: { first_name: 'Test', last_name: 'Donor' },
+      items: [], recurring: null, metadata: { soardSelfTest: true },
+    },
+  });
+  const key = await crypto.subtle.importKey('raw', enc.encode(String(env.ZEFFY_WEBHOOK_SECRET).trim()), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const v1 = toHex(await crypto.subtle.sign('HMAC', key, enc.encode(`${t}.${raw}`)));
+  const request = new Request(`${SITE_ORIGIN}/api/zeffy-webhook`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Zeffy-Signature': `t=${t},v1=${v1}` }, body: raw });
+  const res = await handleWebhook(env, request, { now, selfTest: true });
+  const body = await res.json().catch(() => ({}));
+  const selfTest = { id: SELF_TEST, at: iso, status: res.status, result: body.result || null, error: body.error || null };
+  await writeZeffyConfig(env.DB, { selfTest });
+  return selfTest;
+}
+
+/** The heartbeat's wake-up: the self-test once, then every 15 minutes once Zeffy is connected. Never throws. */
 export async function maybeSweepZeffy(env, { now = Date.now(), fetchImpl = fetch } = {}) {
   try {
     if (!env.DB || !(env.ZEFFY_API_KEY || env.ZEFFY_WEBHOOK_SECRET)) return null;
+    await maybeSelfTest(env, { now }).catch(() => null);
     const cfg = await readZeffyConfig(env.DB);
     if (now - Date.parse(cfg.lastSweepAt || 0) < SWEEP_EVERY_MS) return null;
     // Claim the slot first so overlapping wake-ups don't double up
