@@ -32,6 +32,7 @@ import puppeteer from 'puppeteer';
 import { spawn } from 'node:child_process';
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { hoverSweep } from './lib/hover-sweep.mjs';
 import * as CS from '../public/admin/community-shared.js';
 
 const ROOT = new URL('..', import.meta.url).pathname;
@@ -39,6 +40,7 @@ const OUT = join(ROOT, 'test-results/community-admin/');
 mkdirSync(OUT, { recursive: true });
 const failures = [];
 const ok = (cond, msg) => { if (!cond) failures.push(msg); console.log(`${cond ? '  ✓' : '  ✗'} ${msg}`); };
+const hoverSeen = new Set();
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 let SITE = process.env.SITE?.replace(/\/$/, '');
@@ -191,6 +193,7 @@ async function shot(page, name, { grow = true } = {}) {
   } finally {
     if (page.viewport()?.height !== vp.height) await page.setViewport(vp).catch(() => {});
   }
+  for (const f of await hoverSweep(page, hoverSeen)) ok(false, `${name}: “${f.text}” in “${f.label}” drops to ${f.hover}:1 under the pointer (${f.resting}:1 resting, ${f.colors})`);
 }
 async function goCommunity(page, mobile) {
   if (mobile) { await page.evaluate(() => document.querySelector('.hamburger')?.click()); await sleep(350); }
@@ -625,5 +628,6 @@ try {
   await browser.close();
   stopDev();
 }
+console.log(`  hover sweep: ${hoverSeen.size} kinds of control checked under the pointer`);
 console.log(failures.length ? `\n${failures.length} failed:\n- ${failures.join('\n- ')}` : '\nAll community admin checks passed.');
 process.exit(failures.length ? 1 : 0);

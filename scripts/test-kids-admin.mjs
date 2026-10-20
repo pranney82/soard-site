@@ -34,6 +34,7 @@ import puppeteer from 'puppeteer';
 import { spawn } from 'node:child_process';
 import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { hoverSweep } from './lib/hover-sweep.mjs';
 import * as KS from '../public/admin/kids-shared.js';
 
 const ROOT = new URL('..', import.meta.url).pathname;
@@ -41,6 +42,7 @@ const OUT = join(ROOT, 'test-results/kids-admin/');
 mkdirSync(OUT, { recursive: true });
 const failures = [];
 const ok = (cond, msg) => { if (!cond) failures.push(msg); console.log(`${cond ? '  ✓' : '  ✗'} ${msg}`); };
+const hoverSeen = new Set();
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 let SITE = process.env.SITE?.replace(/\/$/, '');
@@ -198,6 +200,20 @@ async function shot(page, name, { grow = true } = {}) {
   } finally {
     if (page.viewport()?.height !== vp.height) await page.setViewport(vp).catch(() => {});
   }
+  for (const f of await hoverSweep(page, hoverSeen)) ok(false, `${name}: “${f.text}” in “${f.label}” drops to ${f.hover}:1 under the pointer (${f.resting}:1 resting, ${f.colors})`);
+}
+// Hover an element and return its label's contrast ratio against its own fill (WCAG formula)
+async function hoverContrast(page, sel) {
+  await page.hover(sel);
+  await sleep(250);
+  const ratio = await page.$eval(sel, (el) => {
+    const lum = (c) => { const [r, g, b] = c.match(/[\d.]+/g).slice(0, 3).map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+    const s = getComputedStyle(el);
+    const [a, b] = [lum(s.color), lum(s.backgroundColor)].sort((x, y) => y - x);
+    return (a + 0.05) / (b + 0.05);
+  });
+  await page.mouse.move(0, 0);
+  return ratio;
 }
 async function goKids(page, mobile) {
   if (mobile) { await page.evaluate(() => document.querySelector('.hamburger')?.click()); await sleep(350); }
@@ -319,6 +335,8 @@ try {
     await page.click('.kd-filter:nth-child(2)');
     await sleep(250);
     ok(await page.$$eval('.kd-row', (rs) => rs.length) === expectWarn, 'Needs attention shows exactly those profiles');
+    const pressedHover = await hoverContrast(page, '.kd-filter[aria-pressed="true"]');
+    ok(pressedHover >= 4.5, `a selected filter keeps its label readable under the pointer (${pressedHover.toFixed(1)}:1)`);
     await page.click('.kd-filter:nth-child(1)');
     await sleep(250);
 
@@ -727,5 +745,6 @@ try {
   await browser.close();
   stopDev();
 }
+console.log(`  hover sweep: ${hoverSeen.size} kinds of control checked under the pointer`);
 console.log(failures.length ? `\n${failures.length} failed:\n- ${failures.join('\n- ')}` : '\nAll kids admin checks passed.');
 process.exit(failures.length ? 1 : 0);

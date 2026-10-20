@@ -28,6 +28,7 @@
       --color-bg-secondary: #FAFAF8;
       --color-bg-hover: #F7F6F2;
       --color-text: #2D2E33;
+      --color-text-fill-hover: #45464D; /* a dark (--color-text) fill under the pointer: selected pills */
       --color-text-secondary: #5E5F66;
       --color-text-muted: #65666D;
       --color-border: #E5E4E0;
@@ -2460,6 +2461,7 @@
     .kd-filter span.is-warn { background: #FFF3BF; color: #6E5200; }
     .kd-filter[aria-pressed="true"] { background: var(--color-text); border-color: var(--color-text); color: #fff; }
     .kd-filter[aria-pressed="true"] span { background: rgba(255,255,255,0.18); color: #fff; }
+    .kd-filter[aria-pressed="true"]:hover:not(:disabled) { background: var(--color-text-fill-hover); border-color: var(--color-text-fill-hover); color: #fff; }
     .kd-filter:disabled { opacity: 0.55; cursor: default; }
     .kd-filter svg { width: 14px; height: 14px; }
 
@@ -3146,6 +3148,7 @@
     .ppl-filter span.is-warn { background: #FFF3BF; color: #6E5200; }
     .ppl-filter[aria-pressed="true"] { background: var(--color-text); border-color: var(--color-text); color: #fff; }
     .ppl-filter[aria-pressed="true"] span { background: rgba(255,255,255,0.18); color: #fff; }
+    .ppl-filter[aria-pressed="true"]:hover:not(:disabled) { background: var(--color-text-fill-hover); border-color: var(--color-text-fill-hover); color: #fff; }
     .ppl-filter:disabled { opacity: 0.55; cursor: default; }
 
     .card.ppl-section { padding: 0; overflow: visible; }
@@ -3274,6 +3277,7 @@
     .ppl-cmte__mark { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: #EFEEEA; color: var(--color-text-muted); transition: background 0.15s, color 0.15s; }
     .ppl-cmte__mark svg { width: 13px; height: 13px; }
     .ppl-cmte[aria-pressed="true"] { background: var(--color-text); border-color: var(--color-text); color: #fff; }
+    .ppl-cmte[aria-pressed="true"]:hover { background: var(--color-text-fill-hover); border-color: var(--color-text-fill-hover); }
     .ppl-cmte[aria-pressed="true"] .ppl-cmte__mark { background: var(--color-primary); color: var(--color-text); }
     .ppl-cmte--new { border-style: dashed; background: transparent; color: var(--color-text-muted); }
     .ppl-cmte--new .ppl-cmte__mark { background: transparent; }
