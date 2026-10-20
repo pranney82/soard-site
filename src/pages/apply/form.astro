@@ -60,11 +60,6 @@ const breadcrumbs = [
             : <a href="/apply/" class="btn btn-primary btn-lg">Get notified when we open</a>}
           <a href="/apply/#faq" class="btn btn-outline-dark btn-lg">Questions? Read the FAQ</a>
         </div>
-        <div class="hero-trust">
-          <span class="hero-trust-item"><svg class="hero-trust-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.5"/><path d="M12 6v6l4 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>About 15 minutes</span>
-          <span class="hero-trust-item"><svg class="hero-trust-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M17 21v-8H7v8M7 3v5h8" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>Saves as you go</span>
-          <span class="hero-trust-item"><svg class="hero-trust-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21l7.8-7.5 1-1.1a5.5 5.5 0 0 0 0-7.8z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>Always free</span>
-        </div>
       </div>
       <div class="hero-photo-wrap">
         <div class="hero-frame" style={`background-image:url('${cfLqip(heroPhotoId)}')`}>
@@ -218,9 +213,6 @@ const breadcrumbs = [
   .hero-headline em { font-style: italic; background-image: linear-gradient(transparent 52%, var(--c-yellow-soft) 52%); padding: 0 0.05em; }
   .hero-lead { font-size: clamp(16px, 1.3vw, 19px); line-height: 1.7; color: var(--c-text); max-width: 500px; margin-bottom: 32px; animation: heroUp 0.8s cubic-bezier(0.16,1,0.3,1) 0.15s both; }
   .hero-ctas { display: flex; gap: 14px; flex-wrap: wrap; animation: heroUp 0.8s cubic-bezier(0.16,1,0.3,1) 0.25s both; }
-  .hero-trust { display: flex; gap: 20px; flex-wrap: wrap; margin-top: 24px; animation: heroUp 0.8s cubic-bezier(0.16,1,0.3,1) 0.35s both; }
-  .hero-trust-item { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; color: var(--c-text-muted); }
-  .hero-trust-icon { width: 16px; height: 16px; flex-shrink: 0; }
   .hero-photo-wrap { position: relative; max-width: 440px; justify-self: end; width: 100%; animation: heroPhotoIn 0.4s cubic-bezier(0.16,1,0.3,1) both; }
   .hero-frame { position: relative; border-radius: 24px; overflow: hidden; aspect-ratio: 4 / 5; box-shadow: 0 32px 80px rgba(0,0,0,0.12), 0 8px 24px rgba(0,0,0,0.06); background-size: cover; background-position: center; }
   .hero-frame img { width: 100%; height: 100%; object-fit: cover; display: block; }
@@ -244,7 +236,7 @@ const breadcrumbs = [
   }
   @media (pointer: coarse) { .btn:hover { transform: none; } }
   @media (prefers-reduced-motion: reduce) {
-    .hero-eyebrow, .hero-headline, .hero-lead, .hero-ctas, .hero-trust, .hero-photo-wrap, .hero-stat { animation: none; opacity: 1; transform: none; }
+    .hero-eyebrow, .hero-headline, .hero-lead, .hero-ctas, .hero-photo-wrap, .hero-stat { animation: none; opacity: 1; transform: none; }
     .btn-glow { animation: none; }
   }
 </style>
