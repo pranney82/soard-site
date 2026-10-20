@@ -115,21 +115,26 @@ async function takeTurn(DB, key, everyMs, now) {
 
 // ─── Reading JobTread ───────────────────────────────────────────────
 
+// JobTread refuses a query whose worst case (page size × every nested
+// size, with unsized lists counting as their maximum) is too big: "413
+// Request Entity Too Large". So every nested list has a small explicit
+// size, and pages are 25 accounts (PAGE). Checked against JobTread itself.
+const PAGE = 25;
 const CONTACT = {
   id: {}, name: {}, title: {},
-  customFieldValues: { $: { where: [['customField', 'id'], 'in', [FIELD_CONTACT_EMAIL, FIELD_CONTACT_PHONE]] }, nodes: { value: {}, customField: { id: {} } } },
+  customFieldValues: { $: { size: 2, where: [['customField', 'id'], 'in', [FIELD_CONTACT_EMAIL, FIELD_CONTACT_PHONE]] }, nodes: { value: {}, customField: { id: {} } } },
 };
 const ACCOUNT = {
   id: {}, name: {}, type: {}, createdAt: {}, archivedAt: {},
   organization: { id: {} },
-  customFieldValues: { $: { size: 50 }, nodes: { value: {}, customField: { id: {} } } },
+  customFieldValues: { $: { size: 25 }, nodes: { value: {}, customField: { id: {} } } },
   primaryContact: { id: {} },
-  contacts: { $: { size: 10 }, nodes: CONTACT },
+  contacts: { $: { size: 5 }, nodes: CONTACT },
   primaryLocation: {
     id: {}, address: {}, city: {}, county: {}, latitude: {}, longitude: {},
-    customFieldValues: { $: { where: [['customField', 'id'], '=', FIELD_LOCATION_COUNTY] }, nodes: { value: {} } },
+    customFieldValues: { $: { size: 1, where: [['customField', 'id'], '=', FIELD_LOCATION_COUNTY] }, nodes: { value: {} } },
   },
-  jobs: { $: { size: 3, sortBy: [{ field: 'createdAt', order: 'desc' }] }, nodes: { id: {}, name: {} } },
+  jobs: { $: { size: 2, sortBy: [{ field: 'createdAt', order: 'desc' }] }, nodes: { id: {}, name: {} } },
   comms: { _: 'comments', $: { size: 1, where: ['name', '=', 'Comms Thread'] }, nodes: { id: {} } },
 };
 
@@ -219,11 +224,11 @@ export async function syncAllApplicants(env, { fetchImpl = fetch, now = Date.now
   const before = new Map((current || []).map(r => [r.account_id, sig(r)]));
   const seen = [];
   let page = null;
-  for (let i = 0; i < 20; i++) {
+  for (let i = 0; i < 40; i++) {
     const data = await pave(env.JOBTREAD_GRANT_KEY, {
       organization: {
         $: { id: SOARD_ORG_ID },
-        accounts: { $: { size: 50, where: ['type', '=', 'customer'], sortBy: [{ field: 'createdAt', order: 'desc' }], ...(page ? { page } : {}) }, nextPage: {}, nodes: ACCOUNT },
+        accounts: { $: { size: PAGE, where: ['type', '=', 'customer'], sortBy: [{ field: 'createdAt', order: 'desc' }], ...(page ? { page } : {}) }, nextPage: {}, nodes: ACCOUNT },
       },
     }, fetchImpl);
     const conn = data?.organization?.accounts;
@@ -251,10 +256,10 @@ export async function refreshApplicants(env, ids, { fetchImpl = fetch, now = Dat
   await ensureApplicantSchema(DB);
   const polygon = await boundary(DB);
   let n = 0;
-  for (let i = 0; i < list.length; i += 25) {
-    const chunk = list.slice(i, i + 25);
+  for (let i = 0; i < list.length; i += PAGE) {
+    const chunk = list.slice(i, i + PAGE);
     const data = await pave(env.JOBTREAD_GRANT_KEY, {
-      organization: { $: { id: SOARD_ORG_ID }, accounts: { $: { size: 25, where: ['id', 'in', chunk] }, nodes: ACCOUNT } },
+      organization: { $: { id: SOARD_ORG_ID }, accounts: { $: { size: PAGE, where: ['id', 'in', chunk] }, nodes: ACCOUNT } },
     }, fetchImpl);
     const nodes = data?.organization?.accounts?.nodes || [];
     const found = new Set(nodes.map(a => a.id));
