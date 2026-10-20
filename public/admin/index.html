@@ -1414,12 +1414,12 @@
       background: var(--color-bg); border-bottom: 1px solid var(--color-border);
     }
     .rte-btn {
-      width: 32px; height: 28px; display: flex; align-items: center; justify-content: center;
-      border: none; background: transparent; border-radius: 4px; cursor: pointer;
-      font-size: 0.85rem; font-weight: 600; color: var(--color-text); transition: background 0.1s;
+      width: 34px; height: 32px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+      border: none; background: transparent; border-radius: 7px; cursor: pointer;
+      font-size: 0.85rem; font-weight: 600; color: var(--color-text-secondary); transition: background 0.1s, color 0.1s;
     }
-    .rte-btn:hover { background: rgba(0,0,0,0.08); }
-    .rte-btn.active { background: var(--color-primary); color: #000; }
+    .rte-btn:hover:not(:disabled) { background: rgba(45,46,51,0.07); color: var(--color-text); }
+    .rte-btn.active { background: #FFF3BF; color: #5C4500; box-shadow: inset 0 0 0 1px rgba(110,82,0,0.16); }
     .rte-btn:disabled { opacity: 0.3; cursor: not-allowed; }
     .rte-sep { width: 1px; height: 20px; background: var(--color-border); margin: 4px 2px; }
     .rte-wrap .ProseMirror {
@@ -2360,6 +2360,8 @@
       .checkbox-label { min-height: 44px; }
       .fav-btn { min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
       .rte-btn { width: 44px; height: 44px; }
+      .rte-toolbar { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+      .rte-toolbar::-webkit-scrollbar { display: none; }
       .photo-btn { width: 44px !important; height: 44px !important; }
       /* FAQ reorder arrows: the phone-only fix above doesn't reach tablets */
       button[style*="min-height: auto"] { min-height: 44px !important; min-width: 44px !important; }
@@ -2428,7 +2430,24 @@
     .kd-tidy-banner__text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.1rem; font-size: 0.88rem; color: var(--color-text-secondary); }
     .kd-tidy-banner__text strong { color: var(--color-text); }
     .kd-tidy-banner .btn { flex-shrink: 0; display: inline-flex; align-items: center; gap: 0.35rem; }
-    .kd-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; margin-bottom: 1rem; }
+    .kd-toolbar { position: sticky; top: 0; z-index: 30; display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; margin: 0 -0.5rem 0.75rem; padding: 0.5rem; background: var(--color-bg); }
+    .kd-toolbar.is-stuck { box-shadow: 0 1px 0 var(--color-border), 0 8px 16px -12px rgba(26,27,31,0.25); }
+    .kd-search { position: relative; }
+    .kd-kbd { position: absolute; top: 50%; right: 0.6rem; transform: translateY(-50%); min-width: 1.4rem; padding: 0.05rem 0.4rem; border: 1px solid var(--color-border-strong); border-radius: 6px; background: var(--color-bg-secondary); font: 600 0.75rem/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--color-text-muted); text-align: center; pointer-events: none; }
+    .kd-view { display: inline-flex; gap: 2px; padding: 3px; border-radius: 10px; background: #EFEEEA; }
+    .kd-view button { display: inline-flex; align-items: center; gap: 0.35rem; min-height: 30px; padding: 0.25rem 0.7rem; border: none; border-radius: 8px; background: none; font-size: 0.8rem; font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--color-text-secondary); }
+    .kd-view button[aria-pressed="true"] { background: var(--color-bg-card); color: var(--color-text); box-shadow: var(--shadow-sm), 0 0 0 1px rgba(26,27,31,0.06); }
+    .kd-wall { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 0.85rem; padding: 1rem 1.25rem 1.25rem; list-style: none; }
+    .kd-wall__btn { position: relative; display: flex; flex-direction: column; gap: 0.4rem; width: 100%; padding: 0; border: none; background: none; text-align: left; cursor: pointer; }
+    .kd-wall__btn img, .kd-wall__empty { display: block; width: 100%; aspect-ratio: 4 / 5; border-radius: 12px; object-fit: cover; background: #EFEEEA; transition: transform 0.2s var(--ease-out), box-shadow 0.2s; }
+    .kd-wall__empty { display: grid; place-items: center; color: #A3A29C; }
+    .kd-wall__btn:hover img { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+    .kd-wall__btn:focus-visible { outline: none; }
+    .kd-wall__btn:focus-visible img { box-shadow: var(--focus-ring-strong); }
+    .kd-wall__name { font-size: 0.88rem; font-weight: 650; color: var(--color-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .kd-wall__warn { position: absolute; top: 6px; right: 6px; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: #FFF3BF; color: #6E5200; box-shadow: var(--shadow-sm); }
+    .kd-wall__draft { position: absolute; top: 6px; left: 6px; padding: 0.1rem 0.45rem; border-radius: 999px; background: rgba(255,255,255,0.94); font-size: max(11px, 0.7rem); font-weight: 700; color: var(--color-text-secondary); }
+    .kd-wall__item.is-draft img { opacity: 0.6; }
     .kd-search { flex: 1 1 260px; max-width: 400px; }
     .kd-filters { display: inline-flex; flex-wrap: wrap; gap: 0.4rem; }
     .kd-filter {
@@ -2518,11 +2537,13 @@
 
     /* Dialogs */
     .modal.kd-dialog { display: flex; flex-direction: column; max-height: min(92vh, 900px); padding: 0; overflow: hidden; outline: none; }
+    .modal.kd-dialog--sm { max-width: 480px; }
     .modal.kd-dialog--md { max-width: 600px; }
+    .kd-create__year { max-width: 180px; }
     .modal.kd-dialog--lg { max-width: 820px; }
     .modal.kd-dialog--xl { max-width: 1120px; }
     .kd-dialog__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; padding: 1.1rem 1.25rem 0.9rem; border-bottom: 1px solid var(--color-border); }
-    .modal .kd-dialog__head h3 { margin: 0; }
+    .modal .kd-dialog__head h2 { margin: 0; font-size: 1.15rem; font-weight: 700; letter-spacing: -0.02em; line-height: 1.3; }
     .modal .kd-dialog__sub { margin: 0.25rem 0 0; font-size: 0.86rem; }
     .kd-dialog__body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 1.1rem 1.25rem; }
     .kd-dialog__foot { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 0.5rem; padding: 0.85rem 1.25rem; border-top: 1px solid var(--color-border); background: var(--color-bg-secondary); }
@@ -2581,8 +2602,11 @@
     .kd-bar__chip.is-active { border-color: var(--color-border); background: var(--color-bg-card); color: var(--color-text); box-shadow: var(--shadow-xs); }
     .kd-bar__n { font-size: 0.74rem; font-weight: 600; color: var(--color-text-muted); font-variant-numeric: tabular-nums; }
     .kd-bar__dot { width: 7px; height: 7px; border-radius: 50%; background: var(--color-warning); }
-    .kd-bar__save { display: none; align-items: center; gap: 0.6rem; flex-shrink: 0; }
-    .kd-bar.is-compact .kd-bar__save { display: flex; }
+    .kd-bar__save { display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0; }
+    .kd-bar__state { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.82rem; font-weight: 600; color: var(--color-text-muted); white-space: nowrap; }
+    .kd-bar__state.is-saved svg { color: var(--color-success); }
+    .kd-bar__state.is-dirty { color: #6E5200; }
+    .kd-bar__state.is-dirty::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--color-warning); }
     .kd-bar__name { max-width: 16ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.86rem; font-weight: 650; }
     .kd-note { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem 0.75rem; margin-bottom: 1rem; padding: 0.75rem 1rem; border: 1px solid #F0E3A8; border-radius: 12px; background: #FFFBEA; font-size: 0.88rem; }
     .kd-note > span { display: grid; color: #8A6A00; }
@@ -2599,6 +2623,8 @@
     .kd-sec__actions .btn.is-on { border-color: var(--color-text); box-shadow: inset 0 0 0 1px var(--color-text); }
     .kd-sec__issues { margin: -0.4rem 0 1rem; }
     .card.kd-sec.is-dropping { box-shadow: 0 0 0 2px var(--color-primary), var(--shadow-md); }
+    .card.kd-sec.is-target { animation: kdTarget 1.6s var(--ease-out); }
+    @keyframes kdTarget { 0%, 35% { box-shadow: 0 0 0 3px var(--color-primary), var(--shadow-md); } 100% { box-shadow: var(--shadow-xs); } }
     .kd-dropcover { position: absolute; inset: 0; z-index: 6; display: flex; align-items: center; justify-content: center; gap: 0.5rem; border-radius: inherit; background: rgba(255,251,234,0.9); font-weight: 700; pointer-events: none; }
     .kd-grid { display: grid; gap: 0 1.25rem; }
     .kd-grid--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -2612,6 +2638,12 @@
     .kd-label-row { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.45rem; }
     .kd-label-row .form-label { margin: 0; }
     .kd-label-row .btn, .kd-field-foot .btn { display: inline-flex; align-items: center; gap: 0.35rem; flex-shrink: 0; }
+    .kd-story-peek { position: relative; display: flex; flex-direction: column; gap: 0.75rem; width: 100%; padding: 0.9rem 1rem; border: 1px solid var(--color-border-strong); border-radius: var(--radius-sm); background: var(--color-bg-card); text-align: left; color: var(--color-text); }
+    .kd-story-peek__text { display: flex; flex-direction: column; gap: 0.6rem; max-height: 11.5em; overflow: hidden; font-size: 0.95rem; line-height: 1.6; -webkit-mask-image: linear-gradient(#000 65%, transparent); mask-image: linear-gradient(#000 65%, transparent); }
+    .kd-story-peek__foot { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; min-height: 44px; font-weight: 650; }
+    .kd-story-peek__foot { font-size: 0.95rem; }
+    .kd-story-peek__foot small { width: 100%; font-size: max(12px, 0.82rem); font-weight: 400; color: var(--color-text-muted); }
+    .kd-story-peek:hover { border-color: var(--color-text); }
     .kd-onpage { margin-top: 0.75rem; padding: 0.75rem 0.9rem; border-left: 3px solid var(--color-primary); border-radius: 0 10px 10px 0; background: var(--color-bg-secondary); }
     .kd-onpage.is-cut { border-left-color: var(--color-warning); background: #FFFBEA; }
     .kd-onpage__label { display: block; margin-bottom: 0.2rem; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--color-text-muted); }
@@ -2631,28 +2663,27 @@
     .kd-switch { gap: 0; }
 
     /* Photos */
-    .kd-feature { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); gap: 1rem; margin-bottom: 1.25rem; }
-    .kd-feature figure { margin: 0; display: flex; flex-direction: column; gap: 0.6rem; }
-    .kd-feature img, .kd-feature__empty { width: 100%; border-radius: 14px; background: #EFEEEA; }
-    .kd-feature__main img { aspect-ratio: 4 / 3; object-fit: cover; }
-    .kd-feature__accent img { aspect-ratio: 4 / 3; object-fit: cover; }
-    .kd-feature__empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.25rem; aspect-ratio: 4 / 3; border: 2px dashed var(--color-border-strong); background: var(--color-bg-secondary); font-weight: 600; color: var(--color-text-secondary); }
+    .kd-feature { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem; margin-bottom: 1.25rem; }
+    .kd-feature figure { margin: 0; display: flex; align-items: stretch; gap: 0.9rem; padding: 0.65rem; border: 1px solid var(--color-border); border-radius: 14px; background: var(--color-bg-secondary); }
+    .kd-feature img, .kd-feature__empty { flex-shrink: 0; width: 112px; height: 112px; border-radius: 10px; object-fit: cover; background: #EFEEEA; }
+    .kd-feature__main img { box-shadow: 0 0 0 2px var(--color-primary); }
+    .kd-feature__empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.15rem; padding: 0.4rem; border: 2px dashed var(--color-border-strong); background: var(--color-bg-card); font-size: 0.78rem; font-weight: 600; text-align: center; color: var(--color-text-secondary); }
     .kd-feature__empty:hover:not(:disabled) { border-color: var(--color-text); color: var(--color-text); }
     .kd-feature__empty small { font-size: max(12px, 0.8rem); font-weight: 400; color: var(--color-text-muted); }
     .kd-feature__empty svg { width: 26px; height: 26px; }
-    .kd-feature figcaption { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.75rem; font-size: 0.82rem; line-height: 1.45; color: var(--color-text-secondary); }
-    .kd-feature figcaption strong { display: block; color: var(--color-text); font-size: 0.88rem; }
-    .kd-feature figcaption .btn { flex-shrink: 0; }
+    .kd-feature figcaption { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: space-between; gap: 0.5rem; font-size: 0.8rem; line-height: 1.45; color: var(--color-text-secondary); }
+    .kd-feature figcaption strong { display: block; margin-bottom: 0.1rem; color: var(--color-text); font-size: 0.9rem; }
+    .kd-feature figcaption .btn, .kd-feature figcaption .kd-btnrow { align-self: flex-start; }
     .kd-selectbar { position: sticky; top: 64px; z-index: 8; display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem; padding: 0.55rem 0.75rem; border-radius: 12px; background: var(--color-text); color: #fff; font-size: 0.88rem; box-shadow: var(--shadow-md); }
     .kd-selectbar .btn { display: inline-flex; align-items: center; gap: 0.35rem; }
-    .kd-tiles { position: relative; display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 0.65rem; list-style: none; }
+    .kd-tiles { position: relative; display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 0.6rem; list-style: none; }
     .kd-zone { grid-column: 1 / -1; display: flex; align-items: center; gap: 0.6rem; margin-top: 0.35rem; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: var(--color-text-muted); }
     .kd-zone:first-child { margin-top: 0; }
     .kd-zone::after { content: ''; flex: 1; height: 1px; background: var(--color-border); }
     .kd-tile { position: relative; aspect-ratio: 1; border-radius: 12px; background: #EFEEEA; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
     .kd-tile.is-lifted { z-index: 5; box-shadow: var(--shadow-lg), 0 0 0 3px var(--color-primary); cursor: grabbing; }
-    .kd-tile.is-off { opacity: 0.55; }
-    .kd-tile.is-off:hover { opacity: 1; }
+    .kd-tile.is-off .kd-tile__open img { opacity: 0.5; transition: opacity 0.15s; }
+    .kd-tile.is-off:hover .kd-tile__open img { opacity: 1; }
     .kd-tile__open { display: block; width: 100%; height: 100%; padding: 0; border: none; border-radius: inherit; overflow: hidden; background: none; cursor: pointer; }
     .kd-tile__open img { display: block; width: 100%; height: 100%; object-fit: cover; pointer-events: none; transition: transform 0.25s var(--ease-out); }
     .kd-tile__open:hover img { transform: scale(1.03); }
@@ -2682,6 +2713,18 @@
     .kd-photo__nav.is-prev { left: 10px; }
     .kd-photo__nav.is-next { right: 10px; }
     .kd-photo__roles { display: grid; gap: 0.5rem; margin-bottom: 1.1rem; }
+    .kd-focus { position: relative; display: inline-flex; max-width: 100%; max-height: 68vh; cursor: crosshair; touch-action: none; outline: none; }
+    .kd-focus img { display: block; max-width: 100%; max-height: 68vh; object-fit: contain; pointer-events: none; user-select: none; -webkit-user-select: none; }
+    .kd-focus:focus-visible { box-shadow: var(--focus-ring-strong); }
+    .kd-focus__mark { position: absolute; width: 34px; height: 34px; margin: -17px 0 0 -17px; border: 3px solid #fff; border-radius: 50%; background: rgba(255,213,0,0.35); box-shadow: 0 0 0 2px rgba(20,21,24,0.55), 0 4px 14px rgba(0,0,0,0.35); pointer-events: none; transition: left 0.12s, top 0.12s; }
+    .kd-focus.is-dragging .kd-focus__mark { transition: none; }
+    .kd-focus__mark::after { content: ''; position: absolute; top: 50%; left: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%; background: #fff; }
+    .kd-photo__focus { margin-bottom: 1.1rem; }
+    .kd-photo__focus .form-hint { margin: 0 0 0.6rem; }
+    .kd-crops { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0.6rem; }
+    .kd-crops figure { margin: 0; }
+    .kd-crops img { display: block; border-radius: 8px; object-fit: cover; background: #EFEEEA; box-shadow: inset 0 0 0 1px rgba(26,27,31,0.06); }
+    .kd-crops figcaption { margin-top: 0.3rem; font-size: 0.74rem; color: var(--color-text-muted); }
     .kd-role { display: flex; align-items: flex-start; gap: 0.65rem; width: 100%; padding: 0.7rem 0.8rem; border: 1px solid var(--color-border); border-radius: 12px; background: var(--color-bg-card); text-align: left; }
     .kd-role:hover { border-color: var(--color-border-strong); background: var(--color-bg-hover); }
     .kd-role svg { margin-top: 0.1rem; color: var(--color-text-muted); }
@@ -2778,10 +2821,103 @@
     .kd-serp__title { font-size: 1.12rem; line-height: 1.3; color: #1a0dab; }
     .kd-serp__desc { font-size: 0.86rem; line-height: 1.45; color: #4d5156; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 
+    /* Editor: main column and the side panel (a column of its own once there's room) */
+    .kd-shell { container: kdshell / inline-size; }
+    .kd-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; }
+    .kd-rail { display: contents; }
+    .kd-card--status { order: 0; }
+    .kd-card--health { order: 1; }
+    .kd-main { order: 2; min-width: 0; }
+    .kd-card--site { order: 3; }
+    .kd-card { padding: 1.1rem 1.15rem 1.2rem; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-bg-card); box-shadow: var(--shadow-xs); }
+    .kd-card h3 { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.8rem; font-size: 0.78rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-text-secondary); }
+    .kd-card__count { font-size: 0.8rem; font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--color-text-muted); font-variant-numeric: tabular-nums; }
+    .kd-card__note { margin-top: 0.6rem; font-size: 0.8rem; line-height: 1.5; color: var(--color-text-secondary); }
+    .kd-card .kd-meter { margin-bottom: 0.75rem; }
+    .kd-visible { margin-top: 1rem; }
+    .kd-status-pick { display: grid; gap: 0.35rem; }
+    .kd-status-opt { display: flex; align-items: flex-start; gap: 0.6rem; width: 100%; padding: 0.55rem 0.7rem; border: 1px solid var(--color-border); border-radius: 10px; background: var(--color-bg-card); text-align: left; }
+    .kd-status-opt:hover { border-color: var(--color-border-strong); background: var(--color-bg-hover); }
+    .kd-status-opt[aria-checked="true"] { border-color: var(--color-text); box-shadow: inset 0 0 0 1px var(--color-text); background: var(--color-bg-card); }
+    .kd-status-opt:focus-visible { box-shadow: var(--focus-ring-strong); }
+    .kd-status-opt__dot { flex-shrink: 0; width: 10px; height: 10px; margin-top: 0.3rem; border-radius: 50%; box-shadow: inset 0 0 0 2px currentColor; }
+    .kd-status-opt[aria-checked="true"] .kd-status-opt__dot { background: currentColor; }
+    .kd-status-opt--needs-funding .kd-status-opt__dot { color: #B98900; }
+    .kd-status-opt--in-progress .kd-status-opt__dot { color: #2B6CB0; }
+    .kd-status-opt--completed .kd-status-opt__dot { color: var(--color-success); }
+    .kd-status-opt__text { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
+    .kd-status-opt__text strong { font-size: 0.88rem; }
+    .kd-status-opt__text small { font-size: 0.78rem; line-height: 1.45; color: var(--color-text-secondary); }
+    .kd-checks { display: grid; gap: 0.15rem; list-style: none; }
+    .kd-checks__row { display: flex; align-items: center; gap: 0.55rem; width: 100%; min-height: 34px; padding: 0.3rem 0.45rem; border: none; border-radius: 8px; background: none; font-size: 0.86rem; text-align: left; color: var(--color-text); }
+    button.kd-checks__row:hover { background: var(--color-bg-hover); }
+    .kd-checks__icon { display: grid; place-items: center; flex-shrink: 0; width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid var(--color-border-strong); }
+    .kd-checks__icon svg { width: 12px; height: 12px; }
+    .kd-checks li.is-done .kd-checks__icon { border-color: var(--color-success); background: var(--color-success); color: #fff; }
+    .kd-checks li.is-done .kd-checks__row { color: var(--color-text-secondary); }
+    .kd-checks li.is-key .kd-checks__icon { border-color: #E0B800; background: #FFF3BF; color: #6E5200; }
+    .kd-checks__go { margin-left: auto; color: var(--color-text-muted); }
+    .kd-facts { display: grid; gap: 0.55rem; margin: 0 0 0.9rem; }
+    .kd-facts div { display: grid; grid-template-columns: 78px minmax(0, 1fr); gap: 0.5rem; font-size: 0.84rem; }
+    .kd-facts dt { color: var(--color-text-muted); }
+    .kd-facts dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+    .kd-facts a { display: inline-flex; align-items: center; gap: 0.25rem; color: var(--color-text); text-decoration: underline; text-decoration-color: var(--color-border-strong); text-underline-offset: 3px; }
+    .kd-card__actions { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+    .kd-card__actions .btn { display: inline-flex; align-items: center; gap: 0.3rem; }
+    .kd-card__delete { display: block; margin-top: 0.9rem; padding: 0.35rem 0; border: none; background: none; font-size: 0.82rem; font-weight: 600; color: var(--color-danger); }
+    .kd-card__delete:hover { text-decoration: underline; text-underline-offset: 3px; }
+    @container kdshell (min-width: 1000px) {
+      .kd-layout { grid-template-columns: minmax(0, 1fr) 300px; gap: 1.25rem; align-items: start; }
+      .kd-main { grid-column: 1; grid-row: 1; }
+      .kd-rail { display: flex; flex-direction: column; gap: 1rem; grid-column: 2; grid-row: 1; position: sticky; top: 64px; max-height: calc(100vh - 80px); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+    }
+    @container kdshell (max-width: 999px) {
+      .kd-card--status, .kd-card--health { padding: 1rem; }
+    }
+    .kd-card--history { order: 3; }
+    .kd-card--site { order: 4; }
+    .kd-history { display: grid; gap: 0.1rem; margin: 0 -0.45rem 0.6rem; list-style: none; }
+    .kd-history__row { display: flex; flex-direction: column; gap: 0.1rem; width: 100%; padding: 0.45rem; border: none; border-radius: 8px; background: none; text-align: left; }
+    .kd-history__row:hover { background: var(--color-bg-hover); }
+    .kd-history__top { display: flex; justify-content: space-between; gap: 0.5rem; font-size: 0.84rem; }
+    .kd-history__top span { color: var(--color-text-muted); white-space: nowrap; }
+    .kd-history__what { font-size: 0.8rem; color: var(--color-text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .kd-hist { display: grid; grid-template-columns: minmax(0, 280px) minmax(0, 1fr); gap: 1.25rem; min-height: 320px; }
+    .kd-hist__list { max-height: 56vh; overflow-y: auto; list-style: none; border-right: 1px solid var(--color-border); padding-right: 0.75rem; }
+    .kd-hist__item { display: grid; grid-template-columns: 1fr auto; gap: 0.1rem 0.5rem; padding: 0.55rem 0.6rem; border-radius: 9px; cursor: pointer; outline: none; }
+    .kd-hist__item:hover { background: var(--color-bg-hover); }
+    .kd-hist__item.is-on { background: #FFF6CC; box-shadow: inset 0 0 0 1px rgba(110,82,0,0.18); }
+    .kd-hist__item:focus-visible { box-shadow: var(--focus-ring-strong); }
+    .kd-hist__when { font-size: 0.86rem; font-weight: 650; }
+    .kd-hist__who { font-size: 0.8rem; color: var(--color-text-muted); }
+    .kd-hist__what { grid-column: 1 / -1; font-size: 0.8rem; color: var(--color-text-secondary); }
+    .kd-hist__detail h3 { margin: 1rem 0 0.5rem; font-size: 0.74rem; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: var(--color-text-muted); }
+    .modal .kd-hist__meta { margin: 0; font-size: 0.9rem; color: var(--color-text); }
+    .kd-hist__changes { display: grid; gap: 0.4rem; margin: 0; }
+    .kd-hist__changes div { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 0.75rem; padding: 0.45rem 0.6rem; border-radius: 8px; background: var(--color-bg-secondary); font-size: 0.86rem; }
+    .kd-hist__changes dt { font-weight: 650; }
+    .kd-hist__changes dd { margin: 0; color: var(--color-text-secondary); overflow-wrap: anywhere; }
+    .kd-hist__changes.is-restore div { background: #FFFBEA; }
+    .kd-deleted-link { margin-left: auto; display: inline-flex; align-items: center; gap: 0.4rem; min-height: 34px; padding: 0.35rem 0.6rem; border: none; border-radius: 8px; background: none; font-size: 0.84rem; font-weight: 600; color: var(--color-text-secondary); }
+    .kd-deleted-link:hover { background: rgba(45,46,51,0.06); color: var(--color-text); }
+    .kd-deleted-link span { min-width: 1.4rem; padding: 0.05rem 0.4rem; border-radius: 999px; background: rgba(45,46,51,0.07); font-variant-numeric: tabular-nums; }
+    .kd-deleted { display: grid; gap: 0.5rem; list-style: none; }
+    .kd-deleted li { display: flex; align-items: center; gap: 0.75rem; padding: 0.5rem; border: 1px solid var(--color-border); border-radius: 12px; }
+    .kd-deleted .kd-thumb { width: 44px; height: 44px; }
+    .kd-deleted__text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+    .kd-deleted__text small { font-size: 0.8rem; color: var(--color-text-muted); }
+    .kd-tile__broken, .kd-logo__broken { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.35rem; padding: 0.4rem; border-radius: inherit; background: rgba(255,251,234,0.94); font-size: 0.76rem; font-weight: 700; text-align: center; color: #6E5200; pointer-events: none; }
+    .kd-logo__broken { pointer-events: auto; }
+    .kd-more { display: block; margin: -0.25rem auto 0.9rem; }
+    /* The story's toolbar stays in reach while you write a long story */
+    .kd-sec .rte-wrap { overflow: clip; }
+    .kd-sec .rte-toolbar { position: sticky; top: 50px; z-index: 6; }
+    @media (min-width: 769px) { .kd-footer { display: none; } }
+
     /* The editor narrows beside a docked Preview: lay out by its own width */
     @container (max-width: 760px) {
       .kd-grid--3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-      .kd-feature { grid-template-columns: 1fr; }
+      .kd-feature { grid-template-columns: minmax(0, 1fr); }
       .kd-pair__body { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .kd-pair__preview { grid-column: 1 / -1; }
     }
@@ -2794,19 +2930,34 @@
     }
 
     @media (max-width: 1024px) {
+      .kd-toolbar { top: calc(56px + env(safe-area-inset-top, 0px)); }
+      .kd-sec .rte-toolbar { top: calc(108px + env(safe-area-inset-top, 0px)); }
       .kd-bar { top: calc(56px + env(safe-area-inset-top, 0px)); margin: 0 -1.5rem 1rem; padding: 0.45rem 1.5rem; }
       .card.kd-sec { scroll-margin-top: calc(120px + env(safe-area-inset-top, 0px)); }
       .kd-selectbar { top: calc(118px + env(safe-area-inset-top, 0px)); }
       .kd-photo { grid-template-columns: 1fr; }
       .kd-photo__stage { max-height: 52vh; min-height: 220px; }
-      .kd-photo__stage img { max-height: 52vh; }
+      .kd-photo__stage img, .kd-focus { max-height: 52vh; }
     }
     @media (max-width: 768px) {
       .kd-head__actions { width: 100%; }
       .kd-head__actions .btn { flex: 1; justify-content: center; min-height: 44px; }
       .kd-tidy-banner { flex-direction: column; align-items: stretch; }
       .kd-tidy-banner .btn { justify-content: center; min-height: 44px; }
-      .kd-toolbar { flex-direction: column; align-items: stretch; }
+      /* On a phone the toolbar scrolls away: the screen is better spent on kids */
+      .kd-toolbar { position: static; flex-direction: column; align-items: stretch; margin: 0 0 0.75rem; padding: 0; }
+      .kd-kbd { display: none; }
+      .kd-wall { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.6rem; padding: 0.85rem 1rem 1rem; }
+      .kd-view button { min-height: 44px; }
+      .kd-checks__row, .kd-status-opt, .kd-card__delete, .kd-card__actions .btn, .kd-history__row, .kd-history__all, .kd-deleted-link, .kd-deleted .btn { min-height: 44px; }
+      .kd-hist { grid-template-columns: minmax(0, 1fr); }
+      .kd-hist__list { max-height: 34vh; border-right: none; border-bottom: 1px solid var(--color-border); padding: 0 0 0.75rem; }
+      .kd-hist__changes div { grid-template-columns: minmax(0, 1fr); gap: 0.15rem; }
+      .kd-hist__item { min-height: 44px; }
+      .kd-deleted-link { margin-left: 0; }
+      .kd-card__delete { display: flex; align-items: center; }
+      .kd-facts a { min-height: 44px; }
+      .kd-facts div { align-items: center; }
       .kd-search { flex: none; max-width: none; }
       .kd-filters { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: 0 -1rem; padding: 0 1rem; }
       .kd-filter { flex-shrink: 0; min-height: 44px; }
@@ -2834,20 +2985,18 @@
       .kd-ed-id__img { width: 52px; height: 52px; border-radius: 12px; }
       .kd-ed-actions { width: 100%; }
       .kd-ed-id__sub a { min-height: 44px; }
-      .kd-ed-actions .kd-save { display: none; }
       .kd-ed-actions .ppl-unsaved { margin-right: auto; }
       .kd-ed-actions .btn { min-height: 44px; }
       .kd-ed-actions .ppl-menu__btn { width: 44px; height: 44px; }
       .kd-bar { margin: 0 -1rem 1rem; padding: 0.45rem 1rem; }
       .kd-bar__chip { min-height: 44px; }
-      .kd-bar.is-compact .kd-bar__save { display: none; }
+      .kd-bar__save { display: none; }
       .card.kd-sec { padding: 1.1rem 1rem 1.25rem; }
       .kd-sec__actions { width: 100%; }
       .kd-sec__actions .btn { min-height: 44px; }
       .kd-label-row { flex-wrap: wrap; }
       .kd-field-foot { flex-wrap: wrap; }
       .kd-stepper button { width: 44px; height: 44px; }
-      .kd-feature figcaption { flex-direction: column; }
       .kd-pair__body { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .kd-pair__preview { grid-column: 1 / -1; }
       .kd-pair__head .kd-btnrow { margin-left: 0; }
@@ -2866,7 +3015,7 @@
       .kd-x { width: 44px; height: 44px; }
       .kd-pick { grid-template-columns: repeat(3, minmax(0, 1fr)); }
       .kd-photo__stage { max-height: 44vh; min-height: 200px; border-radius: 12px; }
-      .kd-photo__stage img { max-height: 44vh; }
+      .kd-photo__stage img, .kd-focus { max-height: 44vh; }
     }
     /* The phone's narrower page gutter */
     @media (max-width: 480px) {
@@ -7588,34 +7737,6 @@
     }
 
     // ─── Completeness Score ────────────────
-    const COMPLETENESS_FIELD_LABELS = {
-      name: 'Name', slug: 'Slug', age: 'Age', diagnosis: 'Diagnosis',
-      year: 'Year', bio: 'Bio', heroImage: 'Hero Image',
-      shortDescription: 'Short Description', quote: 'Quote', photos: 'Photos (3+)',
-    };
-
-    function getCompleteness(kid, detailed) {
-      const fields = [
-        { k: 'name', w: 1 }, { k: 'slug', w: 1 }, { k: 'age', w: 0.5 },
-        { k: 'diagnosis', w: 0.5 }, { k: 'year', w: 0.5 }, { k: 'bio', w: 1 },
-        { k: 'heroImage', w: 1 }, { k: 'shortDescription', w: 0.5 },
-        { k: 'quote', w: 0.5 },
-      ];
-      const photoScore = Math.min((kid.photoCount || 0) / 3, 1);
-      let earned = 0, total = 0;
-      const missing = [];
-      fields.forEach(f => {
-        total += f.w;
-        if (kid[f.k]) earned += f.w;
-        else missing.push(COMPLETENESS_FIELD_LABELS[f.k] || f.k);
-      });
-      total += 1;
-      earned += photoScore;
-      if (photoScore < 1) missing.push(COMPLETENESS_FIELD_LABELS.photos);
-      const pct = Math.round((earned / total) * 100);
-      return detailed ? { pct, missing } : pct;
-    }
-
     function CompletenessRing({ pct, missing, size = 28 }) {
       const r = (size - 4) / 2;
       const circ = 2 * Math.PI * r;
@@ -7736,7 +7857,20 @@
     }
 
     // ─── Rich Text Editor ─────────────────────
-    function RichTextEditor({ value, onChange, onCounts, placeholder, minHeight = 200 }) {
+    const RTE_ICONS = {
+      bold: _s(html`<path d="M6 12h9a4 4 0 0 1 0 8H7a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h7a4 4 0 0 1 0 8"/>`, 16),
+      italic: _s(html`<line x1="19" x2="10" y1="4" y2="4"/><line x1="14" x2="5" y1="20" y2="20"/><line x1="15" x2="9" y1="4" y2="20"/>`, 16),
+      underline: _s(html`<path d="M6 4v6a6 6 0 0 0 12 0V4"/><line x1="4" x2="20" y1="20" y2="20"/>`, 16),
+      heading: _s(html`<path d="M6 12h12"/><path d="M6 20V4"/><path d="M18 20V4"/>`, 16),
+      quote: _s(html`<path d="M16 3a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2 1 1 0 0 1 1 1v1a2 2 0 0 1-2 2 1 1 0 0 0-1 1v2a1 1 0 0 0 1 1 6 6 0 0 0 6-6V5a2 2 0 0 0-2-2z"/><path d="M5 3a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2 1 1 0 0 1 1 1v1a2 2 0 0 1-2 2 1 1 0 0 0-1 1v2a1 1 0 0 0 1 1 6 6 0 0 0 6-6V5a2 2 0 0 0-2-2z"/>`, 16),
+      bullets: _s(html`<path d="M3 12h.01"/><path d="M3 18h.01"/><path d="M3 6h.01"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M8 6h13"/>`, 16),
+      numbers: _s(html`<path d="M10 12h11"/><path d="M10 18h11"/><path d="M10 6h11"/><path d="M4 10h2"/><path d="M4 6h1v4"/><path d="M6 18H4c0-1 2-2 2-3s-1-1.5-2-1"/>`, 16),
+      link: _s(html`<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>`, 16),
+      clear: _s(html`<path d="M4 7V4h16v3"/><path d="M5 20h6"/><path d="M13 4 8 20"/><path d="m15 15 5 5"/><path d="m20 15-5 5"/>`, 16),
+      undo: _s(html`<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11"/>`, 16),
+      redo: _s(html`<path d="m15 14 5-5-5-5"/><path d="M20 9H9.5A5.5 5.5 0 0 0 4 14.5A5.5 5.5 0 0 0 9.5 20H13"/>`, 16),
+    };
+    function RichTextEditor({ value, onChange, onCounts, placeholder, minHeight = 200, label = 'Text', labelledBy = null }) {
       const containerRef = useRef(null);
       const editorRef = useRef(null);
       const isUpdating = useRef(false);
@@ -7797,6 +7931,8 @@
           ],
           content: value || '',
           editorProps: {
+            // Screen readers name the field by its visible label (or this text)
+            attributes: { role: 'textbox', 'aria-multiline': 'true', ...(labelledBy ? { 'aria-labelledby': labelledBy } : { 'aria-label': label }) },
             transformPastedHTML: (html) => DOMPurify.sanitize(html, {
               ALLOWED_TAGS: ['b', 'i', 'u', 'em', 'strong', 'a', 'p', 'br', 'ul', 'ol', 'li', 'h3', 'blockquote'],
               ALLOWED_ATTR: ['href', 'target', 'rel'],
@@ -7854,38 +7990,39 @@
       };
 
       const e = editorRef.current;
+      const ri = RTE_ICONS;
 
       return html`
         <div class="rte-wrap">
           <div class="rte-toolbar">
             <button type="button" class="rte-btn ${activeStates.bold ? 'active' : ''}"
-              onClick=${cmd(c => c.toggleBold())} title="Bold (${mod}B)"><b>B</b></button>
+              onClick=${cmd(c => c.toggleBold())} title="Bold (${mod}B)" aria-label="Bold" aria-pressed=${!!activeStates.bold}>${ri.bold}</button>
             <button type="button" class="rte-btn ${activeStates.italic ? 'active' : ''}"
-              onClick=${cmd(c => c.toggleItalic())} title="Italic (${mod}I)"><i>I</i></button>
+              onClick=${cmd(c => c.toggleItalic())} title="Italic (${mod}I)" aria-label="Italic" aria-pressed=${!!activeStates.italic}>${ri.italic}</button>
             <button type="button" class="rte-btn ${activeStates.underline ? 'active' : ''}"
-              onClick=${cmd(c => c.toggleUnderline())} title="Underline (${mod}U)"><u>U</u></button>
+              onClick=${cmd(c => c.toggleUnderline())} title="Underline (${mod}U)" aria-label="Underline" aria-pressed=${!!activeStates.underline}>${ri.underline}</button>
             <div class="rte-sep" />
             <button type="button" class="rte-btn ${activeStates.heading ? 'active' : ''}"
-              onClick=${cmd(c => c.toggleHeading({ level: 3 }))} title="Heading (${mod}Alt+3)">H</button>
+              onClick=${cmd(c => c.toggleHeading({ level: 3 }))} title="Heading (${mod}Alt+3)" aria-label="Heading" aria-pressed=${!!activeStates.heading}>${ri.heading}</button>
             <button type="button" class="rte-btn ${activeStates.blockquote ? 'active' : ''}"
-              onClick=${cmd(c => c.toggleBlockquote())} title="Quote (${mod}Shift+B)">"</button>
+              onClick=${cmd(c => c.toggleBlockquote())} title="Quote (${mod}Shift+B)" aria-label="Quote" aria-pressed=${!!activeStates.blockquote}>${ri.quote}</button>
             <div class="rte-sep" />
             <button type="button" class="rte-btn ${activeStates.bulletList ? 'active' : ''}"
-              onClick=${cmd(c => c.toggleBulletList())} title="Bullet list (${mod}Shift+8)">•</button>
+              onClick=${cmd(c => c.toggleBulletList())} title="Bullet list (${mod}Shift+8)" aria-label="Bullet list" aria-pressed=${!!activeStates.bulletList}>${ri.bullets}</button>
             <button type="button" class="rte-btn ${activeStates.orderedList ? 'active' : ''}"
-              onClick=${cmd(c => c.toggleOrderedList())} title="Numbered list (${mod}Shift+7)">1.</button>
+              onClick=${cmd(c => c.toggleOrderedList())} title="Numbered list (${mod}Shift+7)" aria-label="Numbered list" aria-pressed=${!!activeStates.orderedList}>${ri.numbers}</button>
             <div class="rte-sep" />
             <button type="button" class="rte-btn ${activeStates.link ? 'active' : ''}"
-              onClick=${insertLink} title="Insert link (${mod}K)">🔗</button>
+              onClick=${insertLink} title="Insert link (${mod}K)" aria-label="Link" aria-pressed=${!!activeStates.link}>${ri.link}</button>
             <button type="button" class="rte-btn"
-              onClick=${cmd(c => c.unsetAllMarks().clearNodes())} title="Clear formatting">✕</button>
+              onClick=${cmd(c => c.unsetAllMarks().clearNodes())} title="Clear formatting" aria-label="Clear formatting">${ri.clear}</button>
             <div class="rte-sep" />
             <button type="button" class="rte-btn"
               onClick=${cmd(c => c.undo())} disabled=${!e?.can().undo()}
-              title="Undo (${mod}Z)">↩</button>
+              title="Undo (${mod}Z)" aria-label="Undo">${ri.undo}</button>
             <button type="button" class="rte-btn"
               onClick=${cmd(c => c.redo())} disabled=${!e?.can().redo()}
-              title="Redo (${mod}Shift+Z)">↪</button>
+              title="Redo (${mod}Shift+Z)" aria-label="Redo">${ri.redo}</button>
             ${showLinkInput ? html`
               <div style="display: flex; align-items: center; gap: 0.35rem; margin-left: 0.25rem;">
                 <input ref=${linkInputRef} type="url" value=${linkUrl} onInput=${e => setLinkUrl(e.target.value)}
@@ -8982,9 +9119,11 @@
       const pendingChanges = pendingData?.changes || [];
       const staleEvents = (events || []).filter((e) => e.status === 'upcoming' && dashLocalDate(e.date) && dashLocalDate(e.date) < today);
       const noPhoto = kids.filter((k) => !k.heroImage);
-      const incomplete = kids.map((k) => ({ k, ...getCompleteness(k, true) })).filter((x) => x.pct < 70);
+      // What the Kids list flags as Needs attention (kids-shared.js), less what has its own item here
+      const incomplete = kids.map((k) => ({ k, missing: KS.kidIssues(k).filter((i) => i.tone === 'warn' && i.id !== 'no-hero' && i.id !== 'no-fund-link').map((i) => i.label) }))
+        .filter((x) => x.missing.length);
       const gapCounts = {};
-      incomplete.forEach((x) => x.missing.forEach((m) => { gapCounts[m] = (gapCounts[m] || 0) + 1; }));
+      incomplete.forEach((x) => x.missing.forEach((m) => { const g = m.replace(/^Only \d+ photos?$/, 'Few photos'); gapCounts[g] = (gapCounts[g] || 0) + 1; }));
       const topGaps = Object.entries(gapCounts).sort((a, b) => b[1] - a[1]).slice(0, 2).map(([m, n]) => `${m.toLowerCase()} (${n})`);
       const fundNoLink = awaiting.filter((k) => !k.fundraisingUrl);
       const nextReveal = upcoming.find((u) => u.kind === 'Confirmed' || u.kind === 'Scheduled');
@@ -9072,15 +9211,15 @@
         const x = incomplete[0];
         needs.push({
           key: 'incomplete', tone: 'fix', icon: DI.list,
-          title: `${x.k.name}’s profile is ${x.pct}% complete`,
-          detail: `Missing: ${dashNames(x.missing.map((m) => m.toLowerCase()), 4)}`,
+          title: `${x.k.name}’s profile needs attention`,
+          detail: dashNames(x.missing, 4),
           action: { label: 'Finish it', go: () => onNavigate('kids-hub', x.k.slug, 'kids') },
         });
       } else if (incomplete.length) needs.push({
         key: 'incomplete', tone: 'fix', icon: DI.list,
-        title: `${dashCount(incomplete.length, 'kid profile')} are under 70% complete`,
-        detail: topGaps.length ? `Most often missing: ${topGaps.join(', ')}` : 'Open one to see what’s missing.',
-        action: { label: 'Show them', go: () => onNavigate('kids-hub', null, 'kids', 'incomplete') },
+        title: `${dashCount(incomplete.length, 'kid profile')} need attention`,
+        detail: topGaps.length ? `Most often: ${topGaps.join(', ')}` : 'Open one to see what’s missing.',
+        action: { label: 'Show them', go: () => onNavigate('kids-hub', null, 'kids', 'attention') },
       });
       const NEEDS_MAX = 4;
       const shownNeeds = showAllNeeds ? needs : needs.slice(0, NEEDS_MAX);
@@ -9303,15 +9442,28 @@
       select: _s(html`<rect width="18" height="18" x="3" y="3" rx="2"/><path d="m9 12 2 2 4-4"/>`, 15),
       front: _s(html`<path d="m17 11-5-5-5 5"/><path d="m17 18-5-5-5 5"/>`, 15),
       calendar: _s(html`<path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/>`, 13),
+      rows: _s(html`<path d="M3 5h18"/><path d="M3 12h18"/><path d="M3 19h18"/>`, 14),
+      grid: _s(html`<rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/>`, 14),
+      next: _s(html`<path d="m9 18 6-6-6-6"/>`, 14),
+      edit: _s(html`<path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/>`, 15),
       eyeOff: _s(html`<path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49"/><path d="M14.084 14.158a3 3 0 0 1-4.242-4.242"/><path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143"/><path d="m2 2 20 20"/>`, 14),
     };
 
-    /** A Cloudflare Images variant of a stored image (local previews pass through) */
-    const kdImg = (src, t = 'w=400,q=80') => {
+    /** A Cloudflare Images variant of a stored image (local previews pass through). A
+     *  crop (one with a height) centers on the photo's focal point when it has one */
+    const kdImg = (src, t = 'w=400,q=80', focus = null) => {
       if (!src || /^(blob|data):/.test(src)) return src || '';
       const id = extractCfImageId(src);
-      return id ? `${CF}/${id}/${t}` : src;
+      if (!id) return src;
+      let tr = t;
+      if (focus && /(?:^|,)h=\d/.test(tr)) {
+        const g = `gravity=${KS.focusGravity({ focus })}`;
+        tr = /gravity=/.test(tr) ? tr.replace(/gravity=[^,]+/, g) : `${tr},${g}`;
+      }
+      return `${CF}/${id}/${tr}`;
     };
+    // The main photo's focal point (it's one of the gallery photos)
+    const kdHeroFocus = (k) => (k?.photos || []).find((p) => p.url && p.url === k.heroImage)?.focus || null;
     const kdPlural = (n, one, many = `${one}s`) => `${n.toLocaleString()} ${n === 1 ? one : many}`;
     const kdLocal = (src) => /^(blob|data):/.test(src || '');
     let kdSeq = 0;
@@ -9391,6 +9543,48 @@
         return () => { on = false; };
       }, [uid]);
       return state;
+    }
+
+    // Does an image still load? (a tiny variant, once per session; a slow answer counts as yes)
+    const kdImageChecks = new Map();
+    const kdImageOk = (url) => {
+      if (!kdImageChecks.has(url)) {
+        kdImageChecks.set(url, new Promise((done) => {
+          const img = new Image();
+          img.onload = () => done(true);
+          img.onerror = () => done(false);
+          setTimeout(() => done(true), 15000);
+          img.src = kdImg(url, 'w=40,q=40');
+        }));
+      }
+      return kdImageChecks.get(url);
+    };
+    // The directory partner a kid's logo came from (by the slug in its image path)
+    const kdLogoPartner = (url, partners) => {
+      const m = String(url || '').match(/\/partners\/([a-z0-9-]+)\//);
+      return (m && (partners || []).find((p) => p.slug === m[1] && p.logo)) || null;
+    };
+    /**
+     * Partner logos on kid pages whose image is gone (a partner re-uploaded
+     * theirs) while the directory has the partner's current one:
+     * Map(old url → partner). null while checking.
+     */
+    function useLogoRepairs(kids, partners) {
+      const [repairs, setRepairs] = useState(null);
+      useEffect(() => {
+        let on = true;
+        const cands = new Map();
+        for (const k of kids) {
+          for (const l of k.partnerLogos || []) {
+            const p = kdLogoPartner(l.url, partners);
+            if (p && p.logo !== l.url) cands.set(l.url, p);
+          }
+        }
+        Promise.all([...cands].map(async ([url, p]) => [url, p, await kdImageOk(url), await kdImageOk(p.logo)]))
+          .then((rs) => { if (on) setRepairs(new Map(rs.filter(([, , oldOk, newOk]) => !oldOk && newOk).map(([url, p]) => [url, p]))); });
+        return () => { on = false; };
+      }, [kids, partners]);
+      return repairs;
     }
 
     // Reveal dates and JobTread jobs (staff view, shared with the Dashboard)
@@ -9672,7 +9866,7 @@
       return html`<div class="modal-overlay kd-overlay" onClick=${(e) => { if (e.target === e.currentTarget && !busy) onClose(); }}>
         <div class=${`modal kd-dialog kd-dialog--${size} ${className}`} role="dialog" aria-modal="true" aria-labelledby=${id} ref=${ref} tabindex="-1">
           <header class="kd-dialog__head">
-            <div class="kd-dialog__titles"><h3 id=${id}>${title}</h3>${sub ? html`<p class="kd-dialog__sub">${sub}</p>` : null}</div>
+            <div class="kd-dialog__titles"><h2 id=${id}>${title}</h2>${sub ? html`<p class="kd-dialog__sub">${sub}</p>` : null}</div>
             <button type="button" class="kd-x" aria-label="Close" onClick=${onClose} disabled=${busy}>${kdIcon.x}</button>
           </header>
           <div class="kd-dialog__body">${children}</div>
@@ -9692,19 +9886,22 @@
     const kdRoomsOff = (k) => (Number(k.roomCount) || 1) !== Math.max(1, KS.roomTotal(KS.buildsOf(k)));
     const KD_ALT_SECONDS = 3; // rough time per photo, for the estimate before a run
 
-    function KidsTidyTool({ kids, partners, addToast, onClose, onReload, onDeploy }) {
+    function KidsTidyTool({ kids, partners, repairs, addToast, onClose, onReload, onDeploy }) {
       const ix = useMemo(() => kdPartnerIndex(partners), [partners]);
+      const fixes = repairs || new Map();
       const plan = useMemo(() => kids.map((k) => ({
         slug: k.slug,
         name: k.name,
         alt: (k.photos || []).slice(0, KS.GALLERY_MAX).filter(KS.needsAlt).length,
         names: (k.partnerLogos || []).filter((l) => !String(l.name || '').trim() && kdPartnerName(l.url, ix)).length,
         rooms: kdRoomsOff(k) ? 1 : 0,
-      })).filter((t) => t.alt || t.names || t.rooms), [kids, ix]);
+        logos: (k.partnerLogos || []).filter((l) => fixes.has(l.url)).length,
+      })).filter((t) => t.alt || t.names || t.rooms || t.logos), [kids, ix, repairs]);
       const altTotal = plan.reduce((n, t) => n + t.alt, 0);
       const nameTotal = plan.reduce((n, t) => n + t.names, 0);
       const roomTotal = plan.reduce((n, t) => n + t.rooms, 0);
-      const [jobs, setJobs] = useState({ rooms: roomTotal > 0, names: nameTotal > 0, alt: altTotal > 0 });
+      const logoTotal = plan.reduce((n, t) => n + t.logos, 0);
+      const [jobs, setJobs] = useState({ logos: logoTotal > 0, rooms: roomTotal > 0, names: nameTotal > 0, alt: altTotal > 0 });
       const [phase, setPhase] = useState('ready'); // ready | running | done
       const [prog, setProg] = useState({ done: 0, total: 0, alts: 0, names: 0, photosDone: 0, photosTotal: 0, current: '' });
       const [log, setLog] = useState([]);
@@ -9714,7 +9911,7 @@
       const logRef = useRef(null);
       useEffect(() => { if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight; }, [log]);
 
-      const targets = plan.filter((t) => (jobs.alt && t.alt) || (jobs.names && t.names) || (jobs.rooms && t.rooms));
+      const targets = plan.filter((t) => (jobs.alt && t.alt) || (jobs.names && t.names) || (jobs.rooms && t.rooms) || (jobs.logos && t.logos));
       const photoCount = jobs.alt ? altTotal : 0;
       const est = (secs) => (secs < 90 ? 'about a minute' : secs < 3600 ? `about ${Math.round(secs / 60)} minutes` : `about ${(secs / 3600).toFixed(secs < 36000 ? 1 : 0)} hours`);
 
@@ -9733,6 +9930,7 @@
         let alts = 0;
         let names = 0;
         let rooms = 0;
+        let logos = 0;
         let photosDone = 0;
         let saved = 0;
         const skipped = [];
@@ -9747,7 +9945,11 @@
             if (!r.success) throw new Error(r.error || 'couldn’t read it');
             const kid = typeof r.content === 'string' ? JSON.parse(r.content) : r.content;
             let named = 0;
+            let repaired = 0;
             const partnerLogos = (kid.partnerLogos || []).map((l) => {
+              // A logo whose file is gone: the partner's current one from the directory
+              const p = jobs.logos ? fixes.get(l.url) : null;
+              if (p) { repaired++; l = { ...l, url: p.logo, name: String(l.name || '').trim() || p.name }; }
               if (!jobs.names || String(l.name || '').trim()) return l;
               const n = kdPartnerName(l.url, ix);
               if (n) named++;
@@ -9764,22 +9966,23 @@
               setProg((p) => ({ ...p, photosDone }));
             }
             const roomFix = jobs.rooms && kdRoomsOff(kid) ? KS.buildFields(KS.buildsOf(kid), kid) : null;
-            if (!named && !altBy.size && !roomFix) { push(t.name, missing.length ? 'no alt text came back, skipped' : 'nothing left to fill', 'muted'); continue; }
+            if (!named && !repaired && !altBy.size && !roomFix) { push(t.name, missing.length ? 'no alt text came back, skipped' : 'nothing left to fill', 'muted'); continue; }
             const next = { ...kid, ...(roomFix || {}), partnerLogos, photos: (kid.photos || []).map((p) => (KS.needsAlt(p) && altBy.has(p.url) ? { ...p, alt: altBy.get(p.url) } : p)) };
-            const what = [roomFix && `room count ${kid.roomCount || 1} → ${roomFix.roomCount}`, named && `${named} logo name${named === 1 ? '' : 's'}`, altBy.size && `${altBy.size} alt text${altBy.size === 1 ? '' : 's'}`].filter(Boolean).join(', ');
+            const what = [repaired && `${repaired} logo${repaired === 1 ? '' : 's'} restored`, roomFix && `room count ${kid.roomCount || 1} → ${roomFix.roomCount}`, named && `${named} logo name${named === 1 ? '' : 's'}`, altBy.size && `${altBy.size} alt text${altBy.size === 1 ? '' : 's'}`].filter(Boolean).join(', ');
             const s = await api.saveContent(path, JSON.stringify(next, null, 2), `Tidy up: ${what} for ${kid.name}`, r.sha);
             if (!s.success) throw new Error(s.error || 'save failed');
             saved++;
             alts += altBy.size;
             names += named;
             if (roomFix) rooms++;
+            logos += repaired;
             push(t.name, what, 'ok');
           } catch (e) {
             skipped.push(t.name);
             push(t.name, `skipped: ${e.message}`, 'error');
           }
         }
-        setProg((p) => ({ ...p, done: Math.min(targets.length, p.done + 1), alts, names, rooms, current: '', saved, skipped: skipped.length }));
+        setProg((p) => ({ ...p, done: Math.min(targets.length, p.done + 1), alts, names, rooms, logos, current: '', saved, skipped: skipped.length }));
         setPhase('done');
         onReload?.();
       };
@@ -9797,13 +10000,20 @@
         : phase === 'running' ? html`
           <button type="button" class="btn btn-ghost" disabled=${stopping} onClick=${() => { stop.current = true; setStopping(true); }}>${stopping ? 'Stopping after this profile…' : 'Stop'}</button>`
         : html`
-          ${prog.alts || prog.names || prog.rooms ? html`<button type="button" class="btn btn-ghost" onClick=${() => { onClose(); onDeploy?.(); }}>Publish</button>` : null}
+          ${prog.alts || prog.names || prog.rooms || prog.logos ? html`<button type="button" class="btn btn-ghost" onClick=${() => { onClose(); onDeploy?.(); }}>Publish</button>` : null}
           <button type="button" class="btn btn-primary" data-autofocus onClick=${onClose}>Done</button>`;
 
       return html`<${KdDialog} title="Tidy up kid profiles" size="md" busy=${phase === 'running'} onClose=${onClose} footer=${footer}
           sub=${phase === 'ready' ? 'Fills in what visitors with screen readers, and search engines, are missing. Only empty fields are filled.' : null}>
         ${phase === 'ready' ? html`
           <div class="kd-tidy-jobs">
+            ${logoTotal ? html`<label class="kd-tidy-job">
+              <input type="checkbox" checked=${jobs.logos} onChange=${(e) => setJobs((j) => ({ ...j, logos: e.target.checked }))} />
+              <span>
+                <strong>Restore ${kdPlural(logoTotal, 'partner logo')}</strong>
+                <small>On ${kdPlural(plan.filter((t) => t.logos).length, 'profile')}, these logos point to files that are gone, so the pages leave the partner out. Each one switches to the partner’s current logo from the directory. Takes seconds.</small>
+              </span>
+            </label>` : null}
             ${roomTotal ? html`<label class="kd-tidy-job">
               <input type="checkbox" checked=${jobs.rooms} onChange=${(e) => setJobs((j) => ({ ...j, rooms: e.target.checked }))} />
               <span>
@@ -9837,13 +10047,66 @@
               ${phase === 'running' && jobs.alt && prog.photosDone > 2 ? html`<span class="kd-tidy-eta">${est(remaining)} left</span>` : null}
             </div>
             <div class="kd-meter" aria-hidden="true"><span style=${`width:${Math.round(pct * 100)}%`}></span></div>
-            <p class="kd-tidy-current">${phase === 'running' ? prog.current || 'Starting…' : [prog.rooms && `${kdPlural(prog.rooms, 'room count')} corrected`, prog.names && `${kdPlural(prog.names, 'logo')} named`, prog.alts && `${kdPlural(prog.alts, 'alt text')} written`, prog.skipped && `${prog.skipped} skipped`].filter(Boolean).join(' · ') || 'Nothing changed.'}</p>
+            <p class="kd-tidy-current">${phase === 'running' ? prog.current || 'Starting…' : [prog.logos && `${kdPlural(prog.logos, 'logo')} restored`, prog.rooms && `${kdPlural(prog.rooms, 'room count')} corrected`, prog.names && `${kdPlural(prog.names, 'logo')} named`, prog.alts && `${kdPlural(prog.alts, 'alt text')} written`, prog.skipped && `${prog.skipped} skipped`].filter(Boolean).join(' · ') || 'Nothing changed.'}</p>
           </div>
           <ol class="kd-tidy-log" ref=${logRef}>
             ${log.map((l, i) => html`<li key=${i} class=${`is-${l.tone}`}>${l.name ? html`<strong>${l.name}</strong> ` : null}${l.text}</li>`)}
           </ol>
-          ${phase === 'done' && (prog.alts || prog.names || prog.rooms) ? html`<p class="kd-tidy-note">Saved. The site shows it after you publish.</p>` : null}
+          ${phase === 'done' && (prog.alts || prog.names || prog.rooms || prog.logos) ? html`<p class="kd-tidy-note">Saved. The site shows it after you publish.</p>` : null}
         `}
+      <//>`;
+    }
+
+    /**
+     * Add a kid: name, status and year, then the full editor opens on the new
+     * profile. It's saved hidden (a draft) so photos have somewhere to go and
+     * nothing shows on the site until it's switched on.
+     */
+    function KidCreateDialog({ kids, onClose, onCreated, addToast }) {
+      const [name, setName] = useState('');
+      const [status, setStatus] = useState('in-progress');
+      const [year, setYear] = useState(new Date().getFullYear());
+      const [busy, setBusy] = useState(false);
+      const [touched, setTouched] = useState(false);
+      const taken = kids.map((k) => k.slug);
+      const clean = name.trim();
+      const slug = kdDedupeSlug(slugify(clean), taken);
+      const same = clean ? kids.filter((k) => String(k.name || '').trim().toLowerCase() === clean.toLowerCase()) : [];
+      const create = async () => {
+        setTouched(true);
+        if (!clean || busy) return;
+        setBusy(true);
+        const rec = kdSaveRecord(kdForEditing(kdBlankKid({ name: clean, slug, status, year: Number(year) || null, publishStatus: 'draft' }), null, slug));
+        const res = await api.saveContent(`src/content/kids/${slug}.json`, JSON.stringify(rec, null, 2), `Add kid: ${rec.name}`).catch((e) => ({ success: false, error: e.message }));
+        setBusy(false);
+        if (!res.success) { addToast(`Couldn’t create the profile: ${res.error}`, 'error'); return; }
+        addToast(`${rec.name}’s profile is ready to fill in. It stays hidden until you switch on “Show on Meet the Kids”.`, 'success');
+        onCreated(slug);
+      };
+      const footer = html`
+        <button type="button" class="btn btn-ghost" onClick=${onClose} disabled=${busy}>Cancel</button>
+        <button type="button" class="btn btn-primary" onClick=${create} disabled=${busy}>${busy ? html`<span class="spinner" /> Creating…` : 'Create profile'}</button>`;
+      return html`<${KdDialog} title="Add a kid" sub="Start with the basics. Everything else is on the next page." size="sm" busy=${busy} onClose=${onClose} footer=${footer}>
+        <form class="kd-create" onSubmit=${(e) => { e.preventDefault(); create(); }}
+          onKeyDown=${(e) => { if (e.key === 'Enter' && e.target.matches('input')) { e.preventDefault(); create(); } }}>
+          <div class="form-group">
+            <label class="form-label" for="kd-new-name">Name on the site</label>
+            <input id="kd-new-name" class=${`form-input${touched && !clean ? ' is-invalid' : ''}`} data-autofocus autocomplete="off" value=${name}
+              placeholder="First name, or “Remi & Nico” for siblings" onInput=${(e) => setName(e.target.value)} />
+            <div class=${`form-hint${touched && !clean ? ' kd-bad' : ''}`}>${touched && !clean ? 'Add their name'
+              : same.length ? html`<span class="kd-warn-text">There’s already a ${same[0].name}${same[0].year ? ` (${same[0].year})` : ''}. This makes a separate profile at <code>/kids/${slug}/</code>.</span>`
+              : clean ? html`Web address <code>/kids/${slug}/</code>` : 'Their first name, as the family wants it shown.'}</div>
+          </div>
+          <div class="form-group">
+            <span class="form-label" id="kd-new-status-l">Status</span>
+            <${KdStatusPicker} value=${status} onChange=${setStatus} />
+          </div>
+          <div class="form-group u-m-0 kd-create__year">
+            <label class="form-label" for="kd-new-year">Year</label>
+            <input id="kd-new-year" class="form-input" type="number" inputmode="numeric" min="2012" max=${new Date().getFullYear() + 2} value=${year} onInput=${(e) => setYear(e.target.value)} />
+            <div class="form-hint">The year of the reveal.</div>
+          </div>
+        </form>
       <//>`;
     }
 
@@ -9859,11 +10122,47 @@
       return oA - oB || (b.year || 0) - (a.year || 0) || String(a.name || '').localeCompare(String(b.name || ''));
     };
 
-    function KidsList({ kids, partners = [], dashboardFilter, onClearFilter, onEdit, onAdd, onDelete, addToast, onReload, onDeploy }) {
+    function KidsList({ kids, partners = [], dashboardFilter, onClearFilter, onEdit, onAdd, onDelete, addToast, onReload, onDeploy, creating, onCreateClose }) {
       const [search, setSearch] = useState('');
+      const searchRef = useRef(null);
+      // Completed rooms as rows, or as a wall of photos to find a face
+      const [view, setView] = useState(() => { try { return localStorage.getItem('soard-kids-view') === 'photos' ? 'photos' : 'rows'; } catch { return 'rows'; } });
+      const pickView = (v) => { setView(v); try { localStorage.setItem('soard-kids-view', v); } catch {} };
+      // The toolbar gets an edge once it floats over the rows
+      const toolbarRef = useRef(null);
+      const [stuck, setStuck] = useState(false);
+      // Profiles deleted lately, to bring back
+      const [deleted, setDeleted] = useState([]);
+      const [showDeleted, setShowDeleted] = useState(false);
+      useEffect(() => {
+        let on = true;
+        kdHistoryApi('deleted=1').then((r) => { if (on && r.success) setDeleted(r.deleted || []); }).catch(() => {});
+        return () => { on = false; };
+      }, [kids]);
+      useEffect(() => {
+        const on = () => {
+          const el = toolbarRef.current;
+          if (!el) return;
+          const top = parseFloat(getComputedStyle(el).top);
+          setStuck(getComputedStyle(el).position === 'sticky' && el.getBoundingClientRect().top <= top + 1 && scrollY > 120);
+        };
+        on();
+        window.addEventListener('scroll', on, { passive: true });
+        return () => window.removeEventListener('scroll', on);
+      }, []);
+      // "/" jumps to search, as in most admin tools
+      useEffect(() => {
+        const onKey = (e) => {
+          if (e.key !== '/' || e.metaKey || e.ctrlKey || e.altKey || e.target.closest?.('input, textarea, select, [contenteditable="true"]') || document.querySelector('.modal-overlay')) return;
+          e.preventDefault();
+          searchRef.current?.focus();
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+      }, []);
       // A Dashboard shortcut picks the filter on arrival only
       const [filter, setFilter] = useState(() => ({
-        'missing-photos': 'no-hero', incomplete: 'incomplete',
+        'missing-photos': 'no-hero', incomplete: 'attention', attention: 'attention',
         'in-progress': 'status:in-progress', 'needs-funding': 'status:needs-funding', completed: 'status:completed',
       }[dashboardFilter] || 'all'));
       useEffect(() => { if (dashboardFilter) onClearFilter?.(); }, []);
@@ -9883,10 +10182,9 @@
       const shown = (r) => {
         const k = r.k;
         if (q && ![k.name, k.diagnosis, String(k.year || ''), ...(k.roomTypes || [])].some((v) => String(v || '').toLowerCase().includes(q))) return false;
-        if (filter === 'attention') return warn(r);
+        if (filter === 'attention' || filter === 'incomplete') return warn(r);
         if (filter === 'drafts') return k.publishStatus === 'draft';
         if (filter === 'no-hero') return !k.heroImage;
-        if (filter === 'incomplete') return getCompleteness(k) < 70;
         if (filter.startsWith('status:')) return k.status === filter.slice(7);
         return true;
       };
@@ -9904,12 +10202,13 @@
         return [...m.entries()].sort((a, b) => b[0] - a[0]).map(([year, list]) => ({ year, list: list.sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''))) }));
       }, [kids]);
       const isOpen = (year, i) => narrowed || (openYears ? openYears.includes(year) : i < KD_OPEN_YEARS);
-      const toggleYear = (year, i) => {
-        const cur = openYears || completedYears.slice(0, KD_OPEN_YEARS).map((y) => y.year);
-        const next = isOpen(year, i) ? cur.filter((y) => y !== year) : [...cur, year];
-        setOpenYears(next);
+      // From the latest state, so quick clicks on several years all count
+      const toggleYear = (year) => setOpenYears((prev) => {
+        const cur = prev || completedYears.slice(0, KD_OPEN_YEARS).map((y) => y.year);
+        const next = cur.includes(year) ? cur.filter((y) => y !== year) : [...cur, year];
         try { localStorage.setItem('soard-kids-open-years', JSON.stringify(next)); } catch {}
-      };
+        return next;
+      });
 
       // ── The order at the top of Meet the Kids: one request for every active kid ──
       const sendOrder = async (slugs) => {
@@ -9969,6 +10268,8 @@
       const altDebt = useMemo(() => kids.reduce((n, k) => n + (k.photos || []).slice(0, KS.GALLERY_MAX).filter(KS.needsAlt).length, 0), [kids]);
       const nameDebt = useMemo(() => kids.reduce((n, k) => n + (k.partnerLogos || []).filter((l) => !String(l.name || '').trim() && kdPartnerName(l.url, ix)).length, 0), [kids, ix]);
       const roomDebt = useMemo(() => kids.filter(kdRoomsOff).length, [kids]);
+      const repairs = useLogoRepairs(kids, partners);
+      const logoDebt = useMemo(() => (repairs ? kids.reduce((n, k) => n + (k.partnerLogos || []).filter((l) => repairs.has(l.url)).length, 0) : 0), [kids, repairs]);
       const firstBuilding = KS.nowBuilding(kids);
 
       const row = (r, drag, section) => {
@@ -9987,7 +10288,7 @@
           ${sortable ? html`<button type="button" class="kd-grip" aria-describedby="kd-reorder-help" ...${drag.handleProps(k.slug, `Reorder ${k.name}`)}>${kdIcon.grip}</button>`
             : html`<span class="kd-grip-gap" aria-hidden="true"></span>`}
           ${k.heroImage
-            ? html`<img class="kd-thumb" src=${kdImg(k.heroImage, 'w=112,h=112,fit=cover,gravity=face,q=75')} alt="" width="52" height="52" loading="lazy" decoding="async" draggable=${false} />`
+            ? html`<img class="kd-thumb" src=${kdImg(k.heroImage, 'w=112,h=112,fit=cover,gravity=face,q=75', kdHeroFocus(k))} alt="" width="52" height="52" loading="lazy" decoding="async" draggable=${false} />`
             : html`<span class="kd-thumb kd-thumb--empty" aria-hidden="true">${kdIcon.image}</span>`}
           <div class="kd-row__main">
             <button type="button" class="kd-row__name" onClick=${() => onEdit(k.slug)}>${k.name || 'Unnamed'}</button>
@@ -10018,6 +10319,21 @@
         </li>`;
       };
 
+      const wallCard = (r) => {
+        const k = r.k;
+        const warns = r.issues.filter((i) => i.tone === 'warn');
+        return html`<li key=${k.slug} data-slug=${k.slug} class=${`kd-wall__item${k.publishStatus === 'draft' ? ' is-draft' : ''}`}>
+          <button type="button" class="kd-wall__btn" onClick=${() => onEdit(k.slug)}
+            aria-label=${`${k.name}${k.publishStatus === 'draft' ? ', draft' : ''}${warns.length ? `, needs attention: ${warns.map((i) => i.label).join(', ')}` : ''}`}>
+            ${k.heroImage ? html`<img src=${kdImg(k.heroImage, 'w=320,h=400,fit=cover,gravity=face,q=72', kdHeroFocus(k))} alt="" loading="lazy" decoding="async" />`
+              : html`<span class="kd-wall__empty">${kdIcon.image}</span>`}
+            <span class="kd-wall__name">${k.name}</span>
+            ${warns.length ? html`<span class="kd-wall__warn" title=${warns.map((i) => i.label).join(', ')}>${kdIcon.alert}</span>` : null}
+            ${k.publishStatus === 'draft' ? html`<span class="kd-wall__draft">Draft</span>` : null}
+          </button>
+        </li>`;
+      };
+
       const activeSection = (status, slugs, drag, title, hint) => {
         const visible = drag.order.map((s) => bySlug.get(s)).filter(Boolean).filter(shown);
         if (narrowed && !visible.length) return null;
@@ -10036,14 +10352,17 @@
       const completedVisible = completedYears.map((y) => ({ ...y, rows: y.list.map((k) => bySlug.get(k.slug)).filter(shown) })).filter((y) => !narrowed || y.rows.length);
       const completedCount = completedYears.reduce((n, y) => n + y.list.length, 0);
       const nothing = narrowed && !rows.some(shown);
-      const filterLabel = { 'no-hero': 'No main photo', incomplete: 'Under 70% complete', 'status:in-progress': 'In build', 'status:needs-funding': 'Awaiting funding', 'status:completed': 'Completed' }[filter];
+      const filterLabel = { 'no-hero': 'No main photo', 'status:in-progress': 'In build', 'status:needs-funding': 'Awaiting funding', 'status:completed': 'Completed' }[filter];
 
       return html`
-        ${tidy ? html`<${KidsTidyTool} kids=${kids} partners=${partners} addToast=${addToast} onClose=${() => setTidy(false)} onReload=${onReload} onDeploy=${onDeploy} />` : null}
+        ${tidy ? html`<${KidsTidyTool} kids=${kids} partners=${partners} repairs=${repairs} addToast=${addToast} onClose=${() => setTidy(false)} onReload=${onReload} onDeploy=${onDeploy} />` : null}
+        ${creating ? html`<${KidCreateDialog} kids=${kids} addToast=${addToast} onClose=${onCreateClose} onCreated=${(slug) => { onReload?.(); onEdit(slug); }} />` : null}
+        ${showDeleted ? html`<${KidsDeletedDialog} kids=${kids} deleted=${deleted} addToast=${addToast} onClose=${() => setShowDeleted(false)}
+          onRestored=${(slug) => { setShowDeleted(false); setDeleted((d) => d.filter((x) => x.slug !== slug)); onReload?.(); }} />` : null}
         <div class="page-header kd-head">
           <div>
             <h2>Kids</h2>
-            <p class="page-sub">${kdPlural(kids.length, 'profile')} · ${served.toLocaleString()} kids served. Meet the Kids shows families awaiting funding first, then rooms in build, then every completed room by year. Changes go live when you publish.</p>
+            <p class="page-sub">${kdPlural(kids.length, 'profile')} · ${served.toLocaleString()} kids served. Listed in Meet the Kids order. Changes go live when you publish.</p>
           </div>
           <div class="kd-head__actions">
             <a class="btn btn-ghost btn-sm" href="/kids/" target="_blank" rel="noopener">Meet the Kids ${kdIcon.external}</a>
@@ -10051,10 +10370,10 @@
           </div>
         </div>
 
-        ${altDebt || nameDebt || roomDebt ? html`<div class="kd-tidy-banner" role="note">
+        ${altDebt || nameDebt || roomDebt || logoDebt ? html`<div class="kd-tidy-banner" role="note">
           <div class="kd-tidy-banner__text">
             <strong>Profiles to tidy</strong>
-            <span>${[roomDebt && `${kdPlural(roomDebt, 'room count')} to correct`, nameDebt && `${kdPlural(nameDebt, 'partner logo')} without a name`, altDebt && `${kdPlural(altDebt, 'photo')} without alt text`].filter(Boolean).join(' · ')}.${nameDebt || altDebt ? ' Screen readers and image search rely on names and alt text.' : ''}</span>
+            <span>${[logoDebt && `${kdPlural(logoDebt, 'partner logo')} missing from pages`, roomDebt && `${kdPlural(roomDebt, 'room count')} to correct`, nameDebt && `${kdPlural(nameDebt, 'partner logo')} without a name`, altDebt && `${kdPlural(altDebt, 'photo')} without alt text`].filter(Boolean).join(' · ')}.</span>
           </div>
           <button type="button" class="btn btn-ghost btn-sm" onClick=${() => setTidy(true)}>${kdIcon.sparkle} Fill them in…</button>
         </div>` : null}
@@ -10064,10 +10383,12 @@
           <p class="text-muted">Add the first one and it appears on Meet the Kids after you publish.</p>
           <button type="button" class="btn btn-primary" onClick=${onAdd}>${kdIcon.plus} Add a kid</button>
         </div>` : html`
-        <div class="kd-toolbar">
+        <div class=${`kd-toolbar${stuck ? ' is-stuck' : ''}`} ref=${toolbarRef}>
           <div class="search-bar kd-search">
             <span class="search-icon">${icons.search}</span>
-            <input type="search" placeholder="Name, diagnosis, year or room" aria-label="Search kids" value=${search} onInput=${(e) => setSearch(e.target.value)} />
+            <input type="search" ref=${searchRef} placeholder="Name, diagnosis, year or room" aria-label="Search kids" aria-keyshortcuts="/" value=${search}
+              onInput=${(e) => setSearch(e.target.value)} onKeyDown=${(e) => { if (e.key === 'Escape' && search) { e.preventDefault(); setSearch(''); } }} />
+            ${search ? null : html`<kbd class="kd-kbd" aria-hidden="true">/</kbd>`}
           </div>
           <div class="kd-filters" role="group" aria-label="Show">
             <button type="button" class="kd-filter" aria-pressed=${filter === 'all'} onClick=${() => setFilter('all')}>All <span>${kids.length}</span></button>
@@ -10077,6 +10398,7 @@
             ${filterLabel ? html`<button type="button" class="kd-filter" aria-pressed="true" onClick=${() => setFilter('all')} title="From the Dashboard. Click to show everyone">
               ${filterLabel} <span>${rows.filter(shown).length}</span> ${kdIcon.x}</button>` : null}
           </div>
+          ${deleted.length ? html`<button type="button" class="kd-deleted-link" onClick=${() => setShowDeleted(true)}>Recently deleted <span>${deleted.length}</span></button>` : null}
         </div>
         <p class="sr-only" id="kd-reorder-help">Press Space to pick up, the arrow keys to move, Space again to drop, or Escape to cancel.</p>
         <div class="sr-only" aria-live="assertive" aria-atomic="true">${awaitingDrag.announce || buildingDrag.announce}</div>
@@ -10087,7 +10409,10 @@
         ${completedVisible.length ? html`<section class="card kd-section" aria-labelledby="kd-sec-h-completed">
           <header class="kd-section__head">
             <h3 id="kd-sec-h-completed">Completed <span class="kd-count">${completedCount}</span></h3>
-            <span class="kd-hint">Newest year first, as on Meet the Kids</span>
+            <div class="kd-view" role="group" aria-label="Show completed rooms as">
+              <button type="button" aria-pressed=${view === 'rows'} onClick=${() => pickView('rows')}>${kdIcon.rows} List</button>
+              <button type="button" aria-pressed=${view === 'photos'} onClick=${() => pickView('photos')}>${kdIcon.grid} Photos</button>
+            </div>
           </header>
           ${completedVisible.map((y, i) => {
             const open = isOpen(y.year, i);
@@ -10098,7 +10423,9 @@
                   ${!open && !narrowed ? html`<span class="kd-year__peek" aria-hidden="true">${y.list.slice(0, 6).map((k) => (k.heroImage ? html`<img src=${kdImg(k.heroImage, 'w=56,h=56,fit=cover,gravity=face,q=70')} alt="" loading="lazy" />` : null))}</span>` : null}
                 </button>
               </h4>
-              ${open ? html`<ul class="kd-rows">${y.rows.map((r) => row(r, null, 'completed'))}</ul>` : null}
+              ${open ? (view === 'photos'
+                ? html`<ul class="kd-wall">${y.rows.map((r) => wallCard(r))}</ul>`
+                : html`<ul class="kd-rows">${y.rows.map((r) => row(r, null, 'completed'))}</ul>`) : null}
             </div>`;
           })}
         </section>` : null}
@@ -10427,6 +10754,167 @@
     }
 
     // ═══════════════════════════════════════════
+    // KIDS: HISTORY (every saved version, restore, recently deleted)
+    // Versions are kept by /api/content-history (_content-history.js); a
+    // restore loads a version into the editor, and saving it is a new version.
+    // ═══════════════════════════════════════════
+    /** "just now", "12 min ago", "today, 4:12 PM", "yesterday, 9:03 AM", "Oct 12, 4:12 PM" */
+    function kdWhen(iso) {
+      const t = Date.parse(iso);
+      if (!t) return '';
+      const d = new Date(t);
+      const mins = Math.round((Date.now() - t) / 60000);
+      if (mins < 1) return 'just now';
+      if (mins < 60) return `${mins} min ago`;
+      const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+      const day = new Date(); day.setHours(0, 0, 0, 0);
+      if (t >= day.getTime()) return `today, ${time}`;
+      if (t >= day.getTime() - 864e5) return `yesterday, ${time}`;
+      return `${d.toLocaleDateString([], { month: 'short', day: 'numeric', ...(d.getFullYear() !== new Date().getFullYear() ? { year: 'numeric' } : {}) })}, ${time}`;
+    }
+    /** "peter.ranney@x.org" → "Peter" */
+    const kdWho = (email) => {
+      if (!email || email === 'unknown') return 'Someone';
+      const first = String(email).split('@')[0].split(/[._-]/)[0];
+      return first ? first.charAt(0).toUpperCase() + first.slice(1) : email;
+    };
+    const kdHistoryApi = async (q) => {
+      const r = await fetch(`/api/content-history?collection=kids&${q}`, { cache: 'no-store' });
+      return apiJson(r, '/api/content-history');
+    };
+    /**
+     * A kid's saved versions, newest first, and their records as they load
+     * (the newest few at once; ensure() fetches more, four at a time).
+     * summary(i): what version i changed, from the records once both are in
+     * (so only what shows on the page), else from the server's field list.
+     */
+    function useKidHistory(slug) {
+      const [versions, setVersions] = useState(null);
+      const [error, setError] = useState(null);
+      const [records, setRecords] = useState({});
+      const [failed, setFailed] = useState({}); // id → why it didn't load
+      const recordsRef = useRef(records);
+      recordsRef.current = records;
+      const pending = useRef(new Set());
+      const ensure = useCallback(async (ids) => {
+        const need = ids.filter((id) => id != null && !(id in recordsRef.current) && !pending.current.has(id));
+        need.forEach((id) => pending.current.add(id));
+        for (let i = 0; i < need.length; i += 4) {
+          const batch = need.slice(i, i + 4);
+          const rs = await Promise.all(batch.map((id) => kdHistoryApi(`slug=${encodeURIComponent(slug)}&id=${id}`).then((r) => [id, r]).catch((e) => [id, { success: false, error: e.message }])));
+          setRecords((d) => ({ ...d, ...Object.fromEntries(rs.filter(([, r]) => r.success).map(([id, r]) => [id, r.data])) }));
+          const bad = rs.filter(([, r]) => !r.success);
+          if (bad.length) setFailed((f) => ({ ...f, ...Object.fromEntries(bad.map(([id, r]) => [id, r.error || 'Couldn’t load that version'])) }));
+          batch.forEach((id) => pending.current.delete(id));
+        }
+      }, [slug]);
+      const reload = useCallback(async () => {
+        if (!slug) { setVersions([]); return; }
+        const r = await kdHistoryApi(`slug=${encodeURIComponent(slug)}`).catch((e) => ({ success: false, error: e.message }));
+        if (r.success) { setVersions(r.versions || []); setError(null); ensure((r.versions || []).slice(0, 4).map((v) => v.id)); }
+        else setError(r.error || 'Couldn’t load the history');
+      }, [slug]);
+      useEffect(() => { reload(); }, [reload]);
+      const summary = (i) => {
+        const v = versions?.[i];
+        if (!v) return '';
+        if (v.action === 'delete') return 'Deleted';
+        const older = versions[i + 1];
+        if (!older) return v.by ? 'Created' : 'As it was before history began';
+        const a = records[older.id];
+        const b = records[v.id];
+        if (a && b) {
+          const c = KS.describeChanges(a, b);
+          return c.length ? c.map((x) => x.label).join(', ') : 'Nothing on the page changed';
+        }
+        return v.changed?.length ? KS.changedLabels(v.changed).join(', ') : 'Saved';
+      };
+      return { versions, error, reload, records, failed, ensure, summary };
+    }
+
+    /** Every saved version: what each save changed, and putting one back */
+    function KidHistoryDialog({ name, history, current, dirty, startId, onRestore, onClose }) {
+      const list = history.versions || [];
+      const [sel, setSel] = useState(startId ?? list[0]?.id ?? null);
+      const idx = list.findIndex((v) => v.id === sel);
+      const v = list[idx];
+      const older = list[idx + 1];
+      // The selected pair first, then every version for the list's summaries
+      useEffect(() => { history.ensure([v?.id, older?.id]); }, [sel]);
+      useEffect(() => { history.ensure(list.map((x) => x.id)); }, []);
+      const cache = history.records;
+      const err = (v && history.failed[v.id]) || (older && history.failed[older.id]) || null;
+      const data = v ? cache[v.id] : null;
+      const before = older ? cache[older.id] : null;
+      const changes = data && before ? KS.describeChanges(before, data) : null;
+      const restoring = data ? KS.describeChanges(current, data) : [];
+      const isCurrent = idx === 0 && !dirty && restoring.length === 0;
+      const footer = html`
+        <button type="button" class="btn btn-ghost" onClick=${onClose}>Close</button>
+        <button type="button" class="btn btn-primary" disabled=${!data || isCurrent} onClick=${() => onRestore(data, v)}>
+          ${isCurrent ? 'This is the current version' : 'Restore this version'}</button>`;
+      return html`<${KdDialog} title=${`History: ${name}`} sub="Every save is kept. Restoring loads a version into the editor; nothing changes until you save." size="lg" className="kd-history-dlg" onClose=${onClose} footer=${footer}>
+        <div class="kd-hist">
+          <ol class="kd-hist__list" role="listbox" aria-label="Saved versions"
+            onKeyDown=${(e) => {
+              const step = e.key === 'ArrowDown' ? 1 : e.key === 'ArrowUp' ? -1 : 0;
+              if (!step) return;
+              e.preventDefault();
+              const n = list[Math.max(0, Math.min(list.length - 1, idx + step))];
+              if (n) { setSel(n.id); requestAnimationFrame(() => document.getElementById(`kd-hist-${n.id}`)?.focus()); }
+            }}>
+            ${list.map((x, i) => html`<li key=${x.id} id=${`kd-hist-${x.id}`} role="option" tabindex=${x.id === sel ? 0 : -1} aria-selected=${x.id === sel}
+                class=${`kd-hist__item${x.id === sel ? ' is-on' : ''}`} onClick=${() => setSel(x.id)} data-autofocus=${x.id === sel ? '' : null}>
+              <span class="kd-hist__when">${kdWhen(x.at)}${i === 0 ? html` <span class="kd-tag">Latest</span>` : null}</span>
+              <span class="kd-hist__who">${x.by ? kdWho(x.by) : '—'}</span>
+              <span class="kd-hist__what">${history.summary(i)}</span>
+            </li>`)}
+          </ol>
+          <div class="kd-hist__detail" aria-live="polite">
+            ${!v ? html`<p class="text-muted">No saved versions yet.</p>`
+              : err ? html`<p class="kd-bad">${err}</p>`
+              : !data ? html`<p class="text-muted"><span class="spinner spinner-14" /> Loading…</p>`
+              : html`
+                <p class="kd-hist__meta"><strong>${v.action === 'delete' ? 'Deleted' : !older && !v.by ? 'Before history began' : `${older ? 'Saved' : 'Created'} by ${kdWho(v.by)}`}</strong> · ${new Date(v.at).toLocaleString([], { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}</p>
+                ${changes ? html`<h3>What this save changed</h3>
+                  ${changes.length ? html`<dl class="kd-hist__changes">${changes.map((c) => html`<div key=${c.field}><dt>${c.label}</dt><dd>${c.detail}</dd></div>`)}</dl>` : html`<p class="text-muted">Nothing on the page.</p>`}` : null}
+                <h3>${isCurrent ? 'This is the profile as it is now' : 'Restoring it changes'}</h3>
+                ${isCurrent ? null : restoring.length
+                  ? html`<dl class="kd-hist__changes is-restore">${restoring.map((c) => html`<div key=${c.field}><dt>${c.label}</dt><dd>${c.detail}</dd></div>`)}</dl>`
+                  : html`<p class="text-muted">Nothing: it matches the editor.</p>`}
+                ${dirty && !isCurrent ? html`<p class="form-hint kd-warn-text">Your unsaved changes would be replaced (Undo brings them back).</p>` : null}`}
+          </div>
+        </div>
+      <//>`;
+    }
+
+    /** Kids deleted lately, to bring back */
+    function KidsDeletedDialog({ kids, deleted, onClose, onRestored, addToast }) {
+      const [busy, setBusy] = useState(null);
+      const taken = new Set(kids.map((k) => k.slug));
+      const restore = async (d) => {
+        setBusy(d.slug);
+        try {
+          if (taken.has(d.slug)) throw new Error(`a profile at /kids/${d.slug}/ exists again`);
+          const r = await kdHistoryApi(`slug=${encodeURIComponent(d.slug)}&id=${d.id}`);
+          if (!r.success) throw new Error(r.error);
+          const res = await api.saveContent(`src/content/kids/${d.slug}.json`, JSON.stringify(r.data, null, 2), `Restore kid: ${d.name}`);
+          if (!res.success) throw new Error(res.error);
+          addToast(`${d.name}’s profile is back. ${r.data.publishStatus === 'draft' ? 'It’s still hidden.' : 'It returns to the site when you publish.'}`, 'success');
+          onRestored(d.slug);
+        } catch (e) { addToast(`Couldn’t restore ${d.name}: ${e.message}`, 'error'); }
+        setBusy(null);
+      };
+      return html`<${KdDialog} title="Recently deleted" sub="Deleted profiles, with their photos and story, until you bring them back." size="md" onClose=${onClose} busy=${!!busy}>
+        ${deleted.length ? html`<ul class="kd-deleted">${deleted.map((d) => html`<li key=${d.slug}>
+            ${d.image ? html`<img class="kd-thumb" src=${kdImg(d.image, 'w=112,h=112,fit=cover,gravity=face,q=75')} alt="" width="44" height="44" />` : html`<span class="kd-thumb kd-thumb--empty" aria-hidden="true">${kdIcon.image}</span>`}
+            <span class="kd-deleted__text"><strong>${d.name}</strong><small>${[d.year, `deleted ${kdWhen(d.at)}`, d.by ? `by ${kdWho(d.by)}` : null].filter(Boolean).join(' · ')}</small></span>
+            <button type="button" class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${() => restore(d)} data-autofocus>${busy === d.slug ? html`<span class="spinner spinner-14" />` : null} Restore</button>
+          </li>`)}</ul>` : html`<p class="text-muted">Nothing deleted lately.</p>`}
+      <//>`;
+    }
+
+    // ═══════════════════════════════════════════
     // KID EDITOR: THE FORM
     // One page per kid, in the order the public page reads, with a sticky bar
     // of sections that also says where something needs attention. Save writes
@@ -10442,7 +10930,6 @@
       { id: 'partners', label: 'Partners' },
       { id: 'giving', label: 'Giving' },
       { id: 'search', label: 'Search & sharing' },
-      { id: 'record', label: 'Record' },
     ];
     const KD_PLAN_CAPTIONS = ['Floor plan, before', 'Floor plan, after', 'Existing floor plan', 'Proposed floor plan', 'Design rendering', 'Design board', 'Mood board'];
 
@@ -10484,6 +10971,36 @@
     }
     // What Save writes: the room fields follow the counts shown in Basics
     const kdSaveRecord = (data) => KS.kidRecord({ ...data, ...KS.buildFields(KS.buildsOf(data), data) });
+    // A new profile before anything is filled in
+    const kdBlankKid = (over = {}) => ({
+      name: '', slug: '', status: 'in-progress', year: new Date().getFullYear(), age: null, diagnosis: '',
+      roomTypes: ['Dream Bedroom'], roomCount: 1, bedroomCount: 1, bathroomCount: 0, therapyRoomCount: 0, childCount: 1,
+      heroSummary: '', bio: '', quote: '', heroImage: '', accentImage: '', photos: [], photoCount: 0, photographer: '',
+      plans: [], beforeAfterPhotos: [], partnerLogos: [], streamVideoId: '', videoUrl: '', revealVideoUrl: '',
+      fundraisingUrl: '', shortDescription: '', metaDescription: '', publishStatus: 'published', ...over,
+    });
+    const kdOrdinal = (n) => { const x = ['th', 'st', 'nd', 'rd']; const v = n % 100; return n + (x[(v - 20) % 10] || x[v] || x[0]); };
+
+    /** Status as three stacked choices; the chosen one says where the profile shows */
+    function KdStatusPicker({ value, onChange, id }) {
+      const refs = useRef([]);
+      const idx = Math.max(0, KS.STATUSES.findIndex((s) => s.id === value));
+      const onKey = (e) => {
+        const step = e.key === 'ArrowDown' || e.key === 'ArrowRight' ? 1 : e.key === 'ArrowUp' || e.key === 'ArrowLeft' ? -1 : 0;
+        if (!step) return;
+        e.preventDefault();
+        const n = (idx + step + KS.STATUSES.length) % KS.STATUSES.length;
+        onChange(KS.STATUSES[n].id);
+        refs.current[n]?.focus();
+      };
+      return html`<div class="kd-status-pick" role="radiogroup" aria-label="Status" id=${id} onKeyDown=${onKey}>
+        ${KS.STATUSES.map((s, i) => html`<button type="button" role="radio" key=${s.id} ref=${(el) => { refs.current[i] = el; }}
+            aria-checked=${s.id === value} tabindex=${s.id === value ? 0 : -1} class=${`kd-status-opt kd-status-opt--${s.id}`} onClick=${() => onChange(s.id)}>
+          <span class="kd-status-opt__dot" aria-hidden="true"></span>
+          <span class="kd-status-opt__text"><strong>${s.label}</strong>${s.id === value ? html`<small>${s.hint}</small>` : null}</span>
+        </button>`)}
+      </div>`;
+    }
 
     /** The count stepper used for rooms and kids */
     function KdStepper({ value, min = 0, max = 20, onChange, label }) {
@@ -10495,10 +11012,53 @@
     }
 
     /** One photo, large: alt text, its place on the page, main/accent, remove */
-    function KidPhotoDialog({ kid, index, onIndex, onClose, onAlt, onWriteAlt, writing, onHero, onAccent, onMove, onRemove }) {
+    // Crops of a photo the site makes, previewed while choosing its focal point
+    const KD_CROPS = [
+      { id: 'card', label: 'Meet the Kids card', w: 96, h: 120 },
+      { id: 'square', label: 'Square', w: 96, h: 96 },
+      { id: 'share', label: 'Shared link', w: 184, h: 96 },
+    ];
+    function KidPhotoDialog({ kid, index, onIndex, onClose, onAlt, onWriteAlt, writing, onHero, onAccent, onMove, onRemove, onFocus }) {
       const photos = kid.photos;
       const p = photos[index];
       const textRef = useRef(null);
+      // A focal point being dragged; it's saved to the photo when you let go
+      const [dragFocus, setDragFocus] = useState(null);
+      const frameRef = useRef(null);
+      const focusAt = (e) => {
+        const r = frameRef.current.getBoundingClientRect();
+        const c = (n) => Math.round(Math.min(1, Math.max(0, n)) * 1000) / 1000;
+        return { x: c((e.clientX - r.left) / r.width), y: c((e.clientY - r.top) / r.height) };
+      };
+      const focusDown = (e) => {
+        if (e.button > 0 || kdLocal(p?.url)) return;
+        e.preventDefault();
+        const id = e.pointerId;
+        setDragFocus(focusAt(e));
+        const move = (ev) => { if (ev.pointerId === id) setDragFocus(focusAt(ev)); };
+        const up = (ev) => {
+          if (ev.pointerId !== id) return;
+          window.removeEventListener('pointermove', move);
+          window.removeEventListener('pointerup', up);
+          window.removeEventListener('pointercancel', up);
+          setDragFocus(null);
+          if (ev.type === 'pointerup') onFocus(p._key, focusAt(ev));
+        };
+        window.addEventListener('pointermove', move);
+        window.addEventListener('pointerup', up);
+        window.addEventListener('pointercancel', up);
+      };
+      const focusKey = (e) => {
+        const f = p?.focus || { x: 0.5, y: 0.5 };
+        const by = e.shiftKey ? 0.1 : 0.02;
+        const d = { ArrowLeft: [-by, 0], ArrowRight: [by, 0], ArrowUp: [0, -by], ArrowDown: [0, by] }[e.key];
+        if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); onFocus(p._key, null); return; }
+        if (!d) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const c = (n) => Math.round(Math.min(1, Math.max(0, n)) * 1000) / 1000;
+        onFocus(p._key, { x: c(f.x + d[0]), y: c(f.y + d[1]) });
+      };
       // The field isn't bound to the value, so typing never races a render; a new
       // photo or an AI rewrite (while you're not typing) updates it here
       useEffect(() => {
@@ -10516,6 +11076,7 @@
         return () => window.removeEventListener('keydown', onKey);
       }, [index, photos.length]);
       if (!p) return null;
+      const shownFocus = dragFocus || p.focus || null;
       const zone = KS.photoZone(index);
       const isHero = p.url === kid.heroImage;
       const isAccent = p.url === kid.accentImage;
@@ -10527,7 +11088,11 @@
       return html`<${KdDialog} title=${`Photo ${index + 1} of ${photos.length}`} sub=${KS.ZONES[zone].label} size="xl" className="kd-photo-dlg" onClose=${onClose} footer=${footer}>
         <div class="kd-photo">
           <div class="kd-photo__stage">
-            <img src=${kdImg(p.url, 'w=1600,q=85')} alt=${alt} />
+            <div class=${`kd-focus${dragFocus ? ' is-dragging' : ''}`} ref=${frameRef} onPointerDown=${focusDown} onKeyDown=${focusKey} tabindex="0"
+              role="group" aria-label=${`Focal point: ${shownFocus ? `${Math.round(shownFocus.x * 100)}% across, ${Math.round(shownFocus.y * 100)}% down` : 'automatic, on faces'}. Click the photo, or use the arrow keys, to set it.`}>
+              <img src=${kdImg(p.url, 'w=1600,q=85')} alt=${alt} draggable=${false} />
+              ${shownFocus ? html`<span class="kd-focus__mark" style=${`left:${shownFocus.x * 100}%;top:${shownFocus.y * 100}%`} aria-hidden="true"></span>` : null}
+            </div>
             <button type="button" class="kd-photo__nav is-prev" aria-label="Previous photo" disabled=${index === 0} onClick=${() => onIndex(index - 1)}>${kdIcon.left}</button>
             <button type="button" class="kd-photo__nav is-next" aria-label="Next photo" disabled=${index === photos.length - 1} onClick=${() => onIndex(index + 1)}>${kdIcon.right}</button>
           </div>
@@ -10547,6 +11112,19 @@
                 ${kdIcon.star}<span><strong>Main photo</strong><small>${isHero ? 'Top of the page and the grid card' : 'Use at the top of the page and on the grid card'}</small></span></button>
               <button type="button" class=${`kd-role${isAccent ? ' is-on' : ''}`} aria-pressed=${isAccent} onClick=${() => onAccent(isAccent ? '' : p.url)}>
                 ${kdIcon.image}<span><strong>Accent photo</strong><small>${isAccent ? 'The smaller photo beside the main one' : 'Show smaller, beside the main photo'}</small></span></button>
+            </div>
+            <div class="kd-photo__focus">
+              <div class="kd-label-row">
+                <span class="form-label">Focal point</span>
+                ${p.focus ? html`<button type="button" class="btn btn-ghost btn-sm" onClick=${() => onFocus(p._key, null)}>Back to automatic</button>` : null}
+              </div>
+              <p class="form-hint">${p.focus ? 'Every crop of this photo centers here.' : 'Automatic: crops center on faces. Click the photo where they should center instead.'}</p>
+              <div class="kd-crops" aria-label="How the site crops this photo">
+                ${KD_CROPS.map((c) => html`<figure key=${c.id}>
+                  <img src=${kdImg(p.url, `w=${c.w * 2},h=${c.h * 2},fit=cover,gravity=face,q=72`, p.focus)} width=${c.w} height=${c.h} alt="" />
+                  <figcaption>${c.label}</figcaption>
+                </figure>`)}
+              </div>
             </div>
             <div class="kd-photo__move">
               <span class="form-label">Place in the gallery</span>
@@ -10590,15 +11168,17 @@
     }
 
     /** One plan: the page's crop (floor plans lose the address block), caption, place */
-    function KdPlanTile({ plan, index, drag, onLabel, onRemove, busy }) {
+    const KD_PLANS_FIRST = 8;
+    function KdPlanTile({ plan, index, drag, onLabel, onRemove, busy, broken, onBroken }) {
       const [ratio, setRatio] = useState(null);
       const floor = KS.isFloorPlan(plan);
       const fileName = KS.looksLikeFileName(plan.label);
       return html`<li class=${`kd-plan${drag.lifted?.key === plan._key ? ' is-lifted' : ''}`} ref=${drag.itemRef(plan._key)} onPointerDown=${(e) => { if (!e.target.closest('input, button')) drag.tileDown(e, plan._key); }}>
         <div class="kd-plan__img" style=${ratio ? `aspect-ratio:${ratio}` : ''}>
           <img src=${kdImg(plan.url, 'w=640,q=80')} alt=${plan.label || ''} loading="lazy" draggable=${false}
-            onLoad=${(e) => { const { naturalWidth: w, naturalHeight: h } = e.currentTarget; if (w && h) setRatio(`${w} / ${Math.round(h * (floor ? 1 - KS.TITLE_BLOCK : 1))}`); }} />
+            onLoad=${(e) => { const { naturalWidth: w, naturalHeight: h } = e.currentTarget; if (w && h) setRatio(`${w} / ${Math.round(h * (floor ? 1 - KS.TITLE_BLOCK : 1))}`); }} onError=${onBroken} />
           ${busy ? html`<span class="kd-tile__busy"><span class="spinner" /></span>` : null}
+          ${broken ? html`<span class="kd-tile__broken">${kdIcon.alert} Missing</span>` : null}
           <button type="button" class="kd-grip kd-grip--tile" ...${drag.handleProps(plan._key, `Move plan ${index + 1}`)}>${kdIcon.grip}</button>
           <span class="kd-plan__n">${index + 1}</span>
         </div>
@@ -10619,13 +11199,7 @@
     function KidEditor({ slug, kids = [], partners = [], onBack, onSaved, addToast }) {
       const existingSlugs = useMemo(() => kids.filter((k) => k.slug !== slug).map((k) => k.slug), [kids, slug]);
       const ix = useMemo(() => kdPartnerIndex(partners), [partners]);
-      const blank = () => kdForEditing({
-        name: '', slug: '', status: 'in-progress', year: new Date().getFullYear(), age: null, diagnosis: '',
-        roomTypes: ['Dream Bedroom'], roomCount: 1, bedroomCount: 1, bathroomCount: 0, therapyRoomCount: 0, childCount: 1,
-        heroSummary: '', bio: '', quote: '', heroImage: '', accentImage: '', photos: [], photoCount: 0, photographer: '',
-        plans: [], beforeAfterPhotos: [], partnerLogos: [], streamVideoId: '', videoUrl: '', revealVideoUrl: '',
-        fundraisingUrl: '', shortDescription: '', metaDescription: '', publishStatus: 'published',
-      }, ix);
+      const blank = () => kdForEditing(kdBlankKid(), ix);
       const [data, setData] = useState(blank);
       const dataRef = useRef(data);
       dataRef.current = data;
@@ -10655,6 +11229,24 @@
       const [active, setActive] = useState('basics');
       const [compact, setCompact] = useState(false);
       const [favs, setFavs] = useState(getFavorites());
+      // Touch screens reorder photos in a mode of their own, so the grid stays calm to tap through
+      const coarse = useMatchMedia('(pointer: coarse)');
+      const [arranging, setArranging] = useState(false);
+      const [showAllPlans, setShowAllPlans] = useState(false);
+      // On a phone a long story is several screens: it shows as a preview until you edit it
+      const narrow = useMatchMedia('(max-width: 768px)');
+      const [storyOpen, setStoryOpen] = useState(false);
+      const history = useKidHistory(slug);
+      const [historyOpen, setHistoryOpen] = useState(undefined); // undefined: closed; null: latest; a version id
+      const restoreVersion = (verData, v) => {
+        const prev = dataRef.current;
+        setData(kdForEditing(verData, ix, slug));
+        setHistoryOpen(undefined);
+        addToast(`Restored the version from ${kdWhen(v.at)}. Save to keep it.`, 'info', { label: 'Undo', fn: () => setData(prev) });
+      };
+      // Images whose file is gone (they fail to load here, and on the page)
+      const [broken, setBroken] = useState(() => new Set());
+      const markBroken = (url) => { if (url && !kdLocal(url)) setBroken((b) => (b.has(url) ? b : new Set([...b, url]))); };
       const { reveals, jobs } = useKidJobs();
       const headRef = useRef(null);
       const barRef = useRef(null);
@@ -10713,6 +11305,14 @@
         addToast('Your unsaved changes are back. Save to keep them.', 'success');
       };
       const discardDraft = () => { try { localStorage.removeItem(draftKey); } catch {} setDraft(null); };
+      // Back to the last saved version, with Undo
+      const discard = () => {
+        const prev = dataRef.current;
+        setData(kdForEditing(JSON.parse(base), ix, slug));
+        setTouched({});
+        try { localStorage.removeItem(draftKey); } catch {}
+        addToast('Changes discarded.', 'info', { label: 'Undo', fn: () => setData(prev) });
+      };
 
       useGlobalDirty(dirty, slug ? `${data.name || slug}’s profile` : 'the new kid');
       useEffect(() => {
@@ -10729,7 +11329,16 @@
       const intro = KS.heroIntro(record);
       const quote = KS.quoteState(record);
       const issues = KS.kidIssues(record);
-      const issuesIn = (section) => issues.filter((i) => i.section === section);
+      const brokenCount = {
+        photos: (data.photos || []).filter((x) => broken.has(x.url)).length,
+        plans: (data.plans || []).filter((x) => broken.has(x.url)).length,
+        transform: (data.beforeAfterPhotos || []).reduce((n, x) => n + (broken.has(x.before) ? 1 : 0) + (broken.has(x.after) ? 1 : 0), 0),
+        partners: (data.partnerLogos || []).filter((x) => broken.has(x.url)).length,
+      };
+      const issuesIn = (section) => [
+        ...(brokenCount[section] ? [{ id: 'broken', tone: 'warn', section, label: `${kdPlural(brokenCount[section], section === 'partners' ? 'logo' : 'image')} ${brokenCount[section] === 1 ? 'doesn’t' : 'don’t'} load`, tip: 'The file is gone, so the page leaves it out. Replace or remove it.' }] : []),
+        ...issues.filter((i) => i.section === section),
+      ];
       const streamUid = KS.streamUid(data.streamVideoId);
       const streamState = useStreamState(streamUid);
       const ytId = KS.youTubeId(data.videoUrl);
@@ -10994,6 +11603,7 @@
         setSha(res.sha);
         setBase(JSON.stringify(out));
         set({ slug: slugToSave });
+        history.reload();
         try { localStorage.removeItem(draftKey); } catch {}
         setDraft(null);
         addToast(out.publishStatus === 'draft' ? `${out.name} saved. Hidden from the site until you switch on “Show on Meet the Kids”.` : `${out.name} saved. The site shows it after you publish.`, 'success');
@@ -11026,6 +11636,11 @@
         spyHold.current = Date.now() + 1200;
         el.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
         el.querySelector('h3')?.focus({ preventScroll: true });
+        // A short ring shows where you landed (the last sections can't reach the top)
+        el.classList.remove('is-target');
+        void el.offsetWidth;
+        el.classList.add('is-target');
+        setTimeout(() => el.classList.remove('is-target'), 1600);
         setActive(id);
       };
       useEffect(() => {
@@ -11043,8 +11658,10 @@
           if (innerHeight + scrollY >= document.documentElement.scrollHeight - 4) cur = KD_SECTIONS[KD_SECTIONS.length - 1].id;
           if (Date.now() > spyHold.current) setActive(cur);
           else setTimeout(on, spyHold.current - Date.now() + 20);
+          // Compact once the header has scrolled up under the stuck bar
           const h = headRef.current?.getBoundingClientRect();
-          setCompact(!!h && h.bottom < (barRef.current?.getBoundingClientRect().top || 0) + 2);
+          const stuckAt = barRef.current ? parseFloat(getComputedStyle(barRef.current).top) || 0 : 0;
+          setCompact(!!h && h.bottom < stuckAt + 4);
         };
         const on = () => { if (!raf) raf = requestAnimationFrame(spy); };
         spy();
@@ -11083,9 +11700,26 @@
       const heroPhoto = data.heroImage;
       const accentPhoto = data.accentImage;
       const sectionCount = { photos: photos.length, plans: data.plans.length, transform: data.beforeAfterPhotos.length, partners: data.partnerLogos.length };
-      const warnSections = new Set([...issues.filter((i) => i.tone === 'warn').map((i) => i.section), ...problems.map((p) => p.section)]);
+      const warnSections = new Set([...issues.filter((i) => i.tone === 'warn').map((i) => i.section), ...problems.map((p) => p.section),
+        ...Object.keys(brokenCount).filter((k) => brokenCount[k])]);
+      const checks = KS.kidChecks(record);
+      const checksDone = checks.filter((c) => c.done).length;
+      const listed = KS.isListed(data);
+      // Where the profile sits on Meet the Kids, as saved
+      const saved = slug ? kids.find((k) => k.slug === slug) : null;
+      const peers = KS.isActive(data) ? kids.filter((k) => k.status === data.status).sort(kdActiveSort) : [];
+      const place = saved && saved.status === data.status ? peers.findIndex((k) => k.slug === slug) : -1;
+      const placeNote = !listed ? 'Hidden from the site. Switch on and save when the profile is ready.'
+        : data.status === 'completed' ? `With the ${data.year || 'other'} rooms on Meet the Kids.`
+        : place >= 0 ? `${kdOrdinal(place + 1)} of ${peers.length} ${data.status === 'needs-funding' ? 'awaiting funding' : 'in build'} on Meet the Kids${data.status === 'in-progress' && place === 0 ? ', so the home page’s Now Building feature' : ''}. Reorder from the Kids list.`
+        : `After the others ${data.status === 'needs-funding' ? 'awaiting funding' : 'in build'} once saved. Reorder from the Kids list.`;
+      const logoFix = (url) => { const p = kdLogoPartner(url, partners); return p && p.logo !== url ? p : null; };
+      const fixableLogos = (data.partnerLogos || []).filter((l) => broken.has(l.url) && logoFix(l.url));
+      const fixLogos = (list) => set((d) => ({ partnerLogos: d.partnerLogos.map((l) => { const p = list.some((x) => x._key === l._key) ? logoFix(l.url) : null; return p ? { ...l, url: p.logo, name: String(l.name || '').trim() || p.name } : l; }) }));
       const showTouched = (id) => touched[id] && problems.some((p) => p.id === id);
       const nameFirst = (data.name || '').split(/\s+(?:&|and)\s+|\s+/)[0] || 'them';
+      const storyText = String(data.bio || '').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').trim();
+      const storyWords = storyText ? storyText.split(/\s+/).length : 0;
       const roomsNow = KS.roomTotal(builds);
 
       const sec = (id, title, sub, actions, body) => html`<section class=${`card kd-sec${dropping === id ? ' is-dropping' : ''}`} id=${`kd-sec-${id}`} aria-labelledby=${`kd-sec-${id}-h`}
@@ -11114,26 +11748,26 @@
           class=${`kd-tile${photoDrag.lifted?.key === key ? ' is-lifted' : ''}${isSel ? ' is-selected' : ''}${KS.photoZone(i) === 'off' ? ' is-off' : ''}`}
           onPointerDown=${(e) => { if (!selecting && !e.target.closest('[data-kd-grip]')) photoDrag.tileDown(e, key); }}>
           <button type="button" class="kd-tile__open" aria-pressed=${selecting ? isSel : null}
-            aria-label=${`${selecting ? (isSel ? 'Deselect' : 'Select') : 'Open'} photo ${i + 1}${isHero ? ', main photo' : ''}${isAccent ? ', accent photo' : ''}${KS.needsAlt(p) ? ', no alt text' : `: ${p.alt}`}`}
+            aria-label=${`${selecting ? (isSel ? 'Deselect' : 'Select') : 'Open'} photo ${i + 1} (${KS.ZONES[KS.photoZone(i)].short.toLowerCase()})${isHero ? ', main photo' : ''}${isAccent ? ', accent photo' : ''}${KS.needsAlt(p) ? ', no alt text' : `: ${p.alt}`}`}
             onClick=${() => {
               if (photoDrag.justDragged() || uploads[p._key]) return;
               if (selecting) setSelected((s) => { const n = new Set(s); if (n.has(key)) n.delete(key); else n.add(key); return n; });
               else setPhotoOpen(key);
             }}>
-            <img src=${kdImg(p.url, 'w=360,h=360,fit=cover,q=75')} alt="" loading="lazy" decoding="async" draggable=${false} />
+            <img src=${kdImg(p.url, 'w=360,h=360,fit=cover,q=75', p.focus)} alt="" loading="lazy" decoding="async" draggable=${false} onError=${() => markBroken(p.url)} />
           </button>
           <span class="kd-tile__n" aria-hidden="true">${i + 1}</span>
+          ${broken.has(p.url) ? html`<span class="kd-tile__broken">${kdIcon.alert} Missing</span>` : null}
           ${isHero || isAccent ? html`<span class=${`kd-tile__role${isHero ? ' is-hero' : ''}`} aria-hidden="true">${isHero ? html`${kdIcon.star} Main` : 'Accent'}</span>` : null}
           ${KS.needsAlt(p) && !busy ? html`<span class="kd-tile__noalt" aria-hidden="true" title="No alt text">Alt</span>` : null}
           ${selecting ? html`<span class=${`kd-tile__check${isSel ? ' is-on' : ''}`} aria-hidden="true">${isSel ? kdIcon.check : null}</span>`
-            : uploads[p._key] ? null : html`<button type="button" class="kd-grip kd-grip--tile" ...${photoDrag.handleProps(key, `Move photo ${i + 1}`)}>${kdIcon.grip}</button>`}
+            : uploads[p._key] || (coarse && !arranging) ? null : html`<button type="button" class="kd-grip kd-grip--tile" ...${photoDrag.handleProps(key, `Move photo ${i + 1}`)}>${kdIcon.grip}</button>`}
           ${busy ? html`<span class="kd-tile__busy"><span class="spinner" />${uploads[p._key] ? null : html`<small>Alt text</small>`}</span>` : null}
         </li>`;
       };
       const zoneLabel = (i) => (i === 0 || (i === KS.GALLERY_LARGE) || i === KS.GALLERY_FIRST || i === KS.GALLERY_MAX)
-        ? html`<li class="kd-zone" key=${`zone-${i}`} role="presentation"><span>${KS.ZONES[KS.photoZone(i)].label}</span></li>` : null;
+        ? html`<li class="kd-zone" key=${`zone-${i}`} aria-hidden="true"><span>${KS.ZONES[KS.photoZone(i)].label}</span></li>` : null;
 
-      const statusOptions = KS.STATUSES.map((s) => ({ id: s.id, label: s.label }));
       const fundOk = kdUrlOk(data.fundraisingUrl);
 
       return html`
@@ -11147,7 +11781,10 @@
           onAlt=${(key, alt) => set((d) => ({ photos: d.photos.map((p) => (p._key === key ? { ...p, alt } : p)) }))}
           onWriteAlt=${(p) => writeAlt([p])} writing=${altBusy.has(photoByKey.get(photoOpen)?.url)}
           onHero=${(url) => set({ heroImage: url || '' })} onAccent=${(url) => set({ accentImage: url })}
-          onMove=${movePhoto} onRemove=${(key) => removePhotos([key])} />` : null}
+          onMove=${movePhoto} onRemove=${(key) => removePhotos([key])}
+          onFocus=${(key, focus) => set((d) => ({ photos: d.photos.map((x) => { if (x._key !== key) return x; const { focus: _f, ...rest } = x; return focus ? { ...rest, focus } : rest; }) }))} />` : null}
+        ${historyOpen !== undefined ? html`<${KidHistoryDialog} name=${data.name} history=${history} current=${record} dirty=${dirty}
+          startId=${historyOpen} onRestore=${restoreVersion} onClose=${() => setHistoryOpen(undefined)} />` : null}
         ${picker ? html`<${KidPhotoPicker} title=${picker.title} photos=${photos} current=${picker.current}
           onClose=${() => setPicker(null)} onPick=${(url) => { picker.onPick(url); setPicker(null); }} />` : null}
         ${streamPick ? html`<${StreamPicker}
@@ -11165,7 +11802,7 @@
         </nav>
         <header class="kd-ed-head" ref=${headRef}>
           <div class="kd-ed-id">
-            ${heroPhoto ? html`<img class="kd-ed-id__img" src=${kdImg(heroPhoto, 'w=144,h=144,fit=cover,gravity=face,q=75')} alt="" />`
+            ${heroPhoto ? html`<img class="kd-ed-id__img" src=${kdImg(heroPhoto, 'w=144,h=144,fit=cover,gravity=face,q=75', kdHeroFocus(data))} alt="" />`
               : html`<span class="kd-ed-id__img kd-thumb--empty" aria-hidden="true">${kdIcon.image}</span>`}
             <div class="kd-ed-id__text">
               <h2>${slug ? data.name || 'Unnamed' : data.name || 'Add a kid'}
@@ -11179,7 +11816,6 @@
             </div>
           </div>
           <div class="kd-ed-actions">
-            ${dirty ? html`<span class="ppl-unsaved" role="status">Unsaved changes</span>` : null}
             <button type="button" class="btn btn-ghost btn-sm" aria-pressed=${showPreview} onClick=${() => setShowPreview((v) => !v)}>Preview</button>
             ${slug ? html`<${PplMenu} label="More actions" items=${[
               KS.isListed(data) ? { label: 'View on the site', hint: `/kids/${slug}/`, onSelect: () => window.open(`/kids/${slug}/`, '_blank', 'noopener') } : null,
@@ -11188,7 +11824,6 @@
               { divider: true },
               { label: 'Delete profile…', danger: true, onSelect: () => setConfirmDelete(true) },
             ]} />` : null}
-            <button type="button" class="btn btn-primary kd-save" onClick=${save} disabled=${saving}>${saving ? html`<span class="spinner" />` : null} ${saving ? 'Saving…' : 'Save'}</button>
           </div>
         </header>
 
@@ -11200,10 +11835,13 @@
               ${warnSections.has(s.id) ? html`<span class="kd-bar__dot" title="Needs attention"><span class="sr-only">, needs attention</span></span>` : null}
             </button>`)}
           </nav>
-          <div class="kd-bar__save">
-            <span class="kd-bar__name">${data.name || 'New kid'}</span>
-            ${dirty ? html`<span class="ppl-unsaved">Unsaved</span>` : null}
-            <button type="button" class="btn btn-primary btn-sm" onClick=${save} disabled=${saving}>${saving ? 'Saving…' : 'Save'}</button>
+          <div class=${`kd-bar__save${dirty ? ' is-dirty' : ''}`}>
+            ${compact ? html`<span class="kd-bar__name">${data.name || 'New kid'}</span>` : null}
+            ${saving ? html`<span class="kd-bar__state" role="status"><span class="spinner spinner-14" /> Saving…</span>`
+              : dirty || !slug ? html`<span class="kd-bar__state is-dirty" role="status">${slug ? 'Unsaved changes' : 'Not saved yet'}</span>
+                  ${slug ? html`<button type="button" class="btn btn-ghost btn-sm" onClick=${discard}>Discard</button>` : null}
+                  <button type="button" class="btn btn-primary btn-sm kd-save" onClick=${save}>Save</button>`
+              : html`<span class="kd-bar__state is-saved" role="status">${kdIcon.check} Saved</span>`}
           </div>
         </div>
 
@@ -11215,7 +11853,64 @@
           <button type="button" class="btn btn-ghost btn-sm" onClick=${discardDraft}>Discard</button>
         </div>` : null}
 
-        <div class="kd-ed">
+        <div class="kd-shell">
+        <div class="kd-layout">
+        <aside class="kd-rail" aria-label="Profile at a glance">
+          <section class="kd-card kd-card--status" aria-labelledby="kd-status-h">
+            <h3 id="kd-status-h">Status</h3>
+            <${KdStatusPicker} value=${data.status} onChange=${(v) => set({ status: v })} />
+            <label class="bc-switch ppl-switch kd-visible">
+              <input type="checkbox" role="switch" checked=${listed} aria-checked=${listed}
+                onChange=${(e) => set({ publishStatus: e.target.checked ? 'published' : 'draft' })} />
+              <span class="bc-switch-track" aria-hidden="true"></span>
+              Show on Meet the Kids
+            </label>
+            <p class="kd-card__note">${placeNote}</p>
+          </section>
+          <section class="kd-card kd-card--health" aria-labelledby="kd-health-h">
+            <h3 id="kd-health-h">Profile health <span class="kd-card__count">${checksDone} of ${checks.length}</span></h3>
+            <div class="kd-meter" aria-hidden="true"><span style=${`width:${checks.length ? Math.round((checksDone / checks.length) * 100) : 0}%`}></span></div>
+            <ul class="kd-checks">
+              ${checks.map((c) => html`<li key=${c.id} class=${c.done ? 'is-done' : c.key ? 'is-key' : ''}>
+                ${c.done
+                  ? html`<span class="kd-checks__row"><span class="kd-checks__icon">${kdIcon.check}</span><span>${c.label}</span></span>`
+                  : html`<button type="button" class="kd-checks__row" onClick=${() => goTo(c.section)}>
+                      <span class="kd-checks__icon">${c.key ? kdIcon.alert : null}</span><span>${c.label}</span><span class="kd-checks__go" aria-hidden="true">${kdIcon.next}</span>
+                    </button>`}
+              </li>`)}
+            </ul>
+          </section>
+          ${slug ? html`<section class="kd-card kd-card--history" aria-labelledby="kd-history-h">
+            <h3 id="kd-history-h">History ${history.versions?.length ? html`<span class="kd-card__count">${kdPlural(history.versions.length, 'version')}</span>` : null}</h3>
+            ${history.error ? html`<p class="kd-card__note kd-bad">${history.error}</p>`
+              : history.versions === null ? html`<p class="kd-card__note"><span class="spinner spinner-14" /> Loading…</p>`
+              : !history.versions.length ? html`<p class="kd-card__note">Each save from now on is kept here, so any version can be put back.</p>`
+              : html`<ol class="kd-history">
+                  ${history.versions.slice(0, 3).map((v, i) => html`<li key=${v.id}>
+                    <button type="button" class="kd-history__row" onClick=${() => setHistoryOpen(v.id)}>
+                      <span class="kd-history__top"><strong>${v.by ? kdWho(v.by) : 'Before history'}</strong><span>${kdWhen(v.at)}</span></span>
+                      <span class="kd-history__what">${history.summary(i)}</span>
+                    </button>
+                  </li>`)}
+                </ol>
+                <button type="button" class="btn btn-ghost btn-sm kd-history__all" onClick=${() => setHistoryOpen(null)}>${history.versions.length > 3 ? `All ${history.versions.length} versions` : 'Compare and restore'}</button>`}
+          </section>` : null}
+          <section class="kd-card kd-card--site" aria-labelledby="kd-site-h">
+            <h3 id="kd-site-h">On the site</h3>
+            <dl class="kd-facts">
+              <div><dt>Page</dt><dd>${slug && listed ? html`<a href=${`/kids/${slug}/`} target="_blank" rel="noopener">/kids/${slug}/ ${kdIcon.external}</a>`
+                : slug ? html`<code>/kids/${slug}/</code> <span class="text-muted">hidden</span>` : data.slug ? html`<code>/kids/${data.slug}/</code>` : 'Made from the name'}</dd></div>
+              <div><dt>Reveal</dt><dd>${reveal ? kdRevealLabel(reveal).replace(/^Reveal,? ?/, '').replace(/^tentatively/, 'Tentatively') : jobId ? 'No date in JobTread yet' : 'Not scheduled'}</dd></div>
+              <div><dt>JobTread</dt><dd>${jobId ? html`<a href=${JT_JOB_URL(jobId)} target="_blank" rel="noopener">Open the job ${kdIcon.external}</a>` : html`<span class="text-muted">No job matches this name and year</span>`}</dd></div>
+            </dl>
+            <div class="kd-card__actions">
+              <button type="button" class="btn btn-ghost btn-sm" aria-pressed=${showPreview} onClick=${() => setShowPreview((v) => !v)}>Preview the page</button>
+              ${slug ? html`<button type="button" class="btn btn-ghost btn-sm" aria-pressed=${pinned} onClick=${() => setFavs([...toggleFavorite('kid', slug)])}>${kdIcon.star} ${pinned ? 'Pinned' : 'Pin to Dashboard'}</button>` : null}
+            </div>
+            ${slug ? html`<button type="button" class="kd-card__delete" onClick=${() => setConfirmDelete(true)} disabled=${deleting}>Delete profile…</button>` : null}
+          </section>
+        </aside>
+        <div class="kd-ed kd-main">
         ${sec('basics', 'Basics', null, null, html`
           <div class="kd-grid kd-grid--2">
             <div class="form-group">
@@ -11229,11 +11924,6 @@
               <input id="kd-diagnosis" class="form-input" value=${data.diagnosis || ''} onInput=${(e) => set({ diagnosis: e.target.value })} placeholder="e.g. Cerebral palsy" />
               <div class="form-hint">Under their name on Meet the Kids and their page.</div>
             </div>
-          </div>
-          <div class="ppl-field">
-            <span class="form-label" id="kd-status-l">Status</span>
-            <${PplSegmented} label="Status" value=${data.status} onChange=${(v) => set({ status: v })} options=${statusOptions} />
-            <div class="form-hint">${status.hint}</div>
           </div>
           <div class="kd-grid kd-grid--3">
             <div class="form-group">
@@ -11268,13 +11958,6 @@
             <p class="form-hint">${KS.buildSummary(builds)}. ${roomsNow ? `Adds ${roomsNow} to “rooms built” on the site.` : 'Add what was built.'}
               ${slug && savedRooms && savedRooms !== Math.max(1, roomsNow) ? html` <span class="kd-warn-text">It was saved as ${kdPlural(savedRooms, 'room')}; saving updates it to ${Math.max(1, roomsNow)}.</span>` : null}</p>
           </fieldset>
-          <label class="bc-switch ppl-switch">
-            <input type="checkbox" role="switch" checked=${data.publishStatus !== 'draft'} aria-checked=${data.publishStatus !== 'draft'}
-              onChange=${(e) => set({ publishStatus: e.target.checked ? 'published' : 'draft' })} />
-            <span class="bc-switch-track" aria-hidden="true"></span>
-            Show on Meet the Kids
-          </label>
-          <p class="form-hint">${data.publishStatus === 'draft' ? 'Hidden while you get the profile ready. Switch on and save when it’s ready, then publish.' : 'Switch off to hide the profile while you get it ready.'}</p>
         `)}
 
         ${sec('story', 'Story', 'The hero summary opens the page; the story follows under “Story”.',
@@ -11298,9 +11981,17 @@
             </div>` : null}
           </div>
           <div class="form-group">
-            <label class="form-label">Story</label>
-            <${RichTextEditor} value=${data.bio || ''} onChange=${(v) => set({ bio: v })} placeholder=${`${nameFirst}’s story: who they are, their diagnosis in the family’s words, the room, and who helped.`} minHeight=${220} />
-            <div class="form-hint">Each paragraph is its own block on the page. ${KS.splitBio(data.bio || '').length ? kdPlural(KS.splitBio(data.bio || '').length, 'paragraph') : 'No paragraphs yet'}.</div>
+            <div class="kd-label-row">
+              <span class="form-label" id="kd-story-l">Story</span>
+              ${narrow && storyOpen && storyText ? html`<button type="button" class="btn btn-ghost btn-sm" onClick=${() => setStoryOpen(false)}>Done editing</button>` : null}
+            </div>
+            ${narrow && !storyOpen && storyText
+              ? html`<button type="button" class="kd-story-peek" aria-describedby="kd-story-l" onClick=${() => setStoryOpen(true)}>
+                  <span class="kd-story-peek__text">${KS.splitBio(data.bio || '').slice(0, 2).map((para, i) => html`<span key=${i}>${para.replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&')}</span>`)}</span>
+                  <span class="kd-story-peek__foot">${kdIcon.edit} Edit the story <small>${kdPlural(storyWords, 'word')} · ${kdPlural(KS.splitBio(data.bio || '').length, 'paragraph')}</small></span>
+                </button>`
+              : html`<${RichTextEditor} value=${data.bio || ''} labelledBy="kd-story-l" onChange=${(v) => set({ bio: v })} placeholder=${`${nameFirst}’s story: who they are, their diagnosis in the family’s words, the room, and who helped.`} minHeight=${220} />
+                <div class="form-hint">Each paragraph is its own block on the page. ${KS.splitBio(data.bio || '').length ? kdPlural(KS.splitBio(data.bio || '').length, 'paragraph') : 'No paragraphs yet'}.</div>`}
           </div>
           <div class="form-group u-m-0">
             <label class="form-label" for="kd-quote">Pull quote <span class="form-optional">optional</span></label>
@@ -11311,25 +12002,29 @@
         `)}
 
         ${sec('photos', 'Photos',
-          photos.length ? `${kdPlural(photos.length, 'photo')}. The gallery shows the first ${KS.GALLERY_MAX}; drag to change the order.` : 'The main photo leads the page and the grid card; the gallery follows the story.',
+          photos.length ? `${kdPlural(photos.length, 'photo')}. The gallery shows the first ${KS.GALLERY_MAX}, in this order.` : 'The main photo leads the page and the grid card; the gallery follows the story.',
           html`
-            ${photos.length ? html`<button type="button" class=${`btn btn-ghost btn-sm${selecting ? ' is-on' : ''}`} aria-pressed=${selecting} onClick=${() => { setSelecting((v) => !v); setSelected(new Set()); }}>${kdIcon.select} ${selecting ? 'Done selecting' : 'Select'}</button>` : null}
+            ${coarse && photos.length > 1 ? html`<button type="button" class=${`btn btn-ghost btn-sm${arranging ? ' is-on' : ''}`} aria-pressed=${arranging} onClick=${() => { setArranging((v) => !v); setSelecting(false); setSelected(new Set()); }}>${kdIcon.grip} ${arranging ? 'Done' : 'Reorder'}</button>` : null}
+            ${photos.length ? html`<button type="button" class=${`btn btn-ghost btn-sm${selecting ? ' is-on' : ''}`} aria-pressed=${selecting} onClick=${() => { setSelecting((v) => !v); setArranging(false); setSelected(new Set()); }}>${kdIcon.select} ${selecting ? 'Done selecting' : 'Select'}</button>` : null}
             ${altMissing ? html`<button type="button" class="btn btn-ghost btn-sm" onClick=${() => writeAlt()} disabled=${altBusy.size > 0}>${altBusy.size ? html`<span class="spinner spinner-14" />` : kdIcon.sparkle} Write ${kdPlural(altMissing, 'alt text')}</button>` : null}
             <button type="button" class="btn btn-ghost btn-sm" onClick=${() => photoInput.current?.click()}>${kdIcon.upload} Add photos</button>
             <input type="file" accept="image/*,.heic,.heif" multiple hidden ref=${photoInput} onChange=${(e) => { addPhotos([...e.target.files]); e.target.value = ''; }} />`,
           html`
           <div class="kd-feature">
             <figure class=${`kd-feature__main${heroPhoto ? '' : ' is-empty'}`}>
-              ${heroPhoto ? html`<img src=${kdImg(heroPhoto, 'w=900,q=80')} alt="" />`
+              ${heroPhoto ? html`<img src=${kdImg(heroPhoto, 'w=288,h=360,fit=cover,gravity=face,q=80', kdHeroFocus(data))} alt="" onError=${() => markBroken(heroPhoto)} />`
                 : html`<button type="button" class="kd-feature__empty" onClick=${() => (photos.length ? setPicker({ title: 'Choose the main photo', current: heroPhoto, onPick: (url) => set({ heroImage: url }) }) : photoInput.current?.click())}>
                     ${kdIcon.image}<span>${photos.length ? 'Choose the main photo' : 'Add photos'}</span><small>${photos.length ? 'From the gallery below' : 'or drop them on this section'}</small></button>`}
               <figcaption>
-                <span><strong>Main photo</strong> Top of the page and the Meet the Kids card, cropped around faces.</span>
-                ${photos.length ? html`<button type="button" class="btn btn-ghost btn-sm" onClick=${() => setPicker({ title: 'Choose the main photo', current: heroPhoto, onPick: (url) => set({ heroImage: url }) })}>${heroPhoto ? 'Change' : 'Choose'}</button>` : null}
+                <span><strong>Main photo</strong> Leads the page and the Meet the Kids card, cropped ${kdHeroFocus(data) ? 'around its focal point' : 'around faces'}.</span>
+                <span class="kd-btnrow">
+                  ${photos.length ? html`<button type="button" class="btn btn-ghost btn-sm" onClick=${() => setPicker({ title: 'Choose the main photo', current: heroPhoto, onPick: (url) => set({ heroImage: url }) })}>${heroPhoto ? 'Change' : 'Choose'}</button>` : null}
+                  ${heroPhoto && photos.some((x) => x.url === heroPhoto) ? html`<button type="button" class="btn btn-ghost btn-sm" onClick=${() => setPhotoOpen(photos.find((x) => x.url === heroPhoto)._key)}>Adjust crop</button>` : null}
+                </span>
               </figcaption>
             </figure>
             <figure class=${`kd-feature__accent${accentPhoto ? '' : ' is-empty'}`}>
-              ${accentPhoto ? html`<img src=${kdImg(accentPhoto, 'w=600,q=80')} alt="" />`
+              ${accentPhoto ? html`<img src=${kdImg(accentPhoto, 'w=360,h=360,fit=cover,gravity=face,q=80', data.photos.find((x) => x.url === accentPhoto)?.focus)} alt="" />`
                 : html`<button type="button" class="kd-feature__empty" disabled=${!photos.length} onClick=${() => setPicker({ title: 'Choose the accent photo', current: accentPhoto, onPick: (url) => set({ accentImage: url }) })}>
                     ${kdIcon.image}<span>No accent photo</span><small>Optional</small></button>`}
               <figcaption>
@@ -11351,7 +12046,9 @@
             <ul class=${`kd-tiles${selecting ? ' is-selecting' : ''}`}>
               ${zoneOrder.map((key, i) => [zoneLabel(i), photoTile(key)])}
             </ul>
-            <p class="form-hint kd-tiles__help">Open a photo for its alt text and place. Drag ${kdIcon.grip} to reorder; with the keyboard, focus ${kdIcon.grip} and press Space.</p>
+            <p class="form-hint kd-tiles__help">${coarse
+              ? (arranging ? html`Drag ${kdIcon.grip} to move a photo, then tap Done.` : 'Tap a photo for its alt text and place. Tap Reorder to move photos.')
+              : html`Click a photo for its alt text and place. Drag a photo to reorder it; with the keyboard, focus ${kdIcon.grip} and press Space.`}</p>
             <div class="sr-only" aria-live="assertive">${photoDrag.announce}</div>
           ` : null}
           <div class="form-group kd-credit">
@@ -11365,9 +12062,12 @@
             <input type="file" accept="image/*" multiple hidden ref=${planInput} onChange=${(e) => { addPlans([...e.target.files]); e.target.value = ''; }} />`,
           html`
           ${data.plans.length ? html`<ul class="kd-plans">
-            ${planDrag.order.map((k, i) => { const p = data.plans.find((x) => x._key === k); return p ? html`<${KdPlanTile} key=${k} plan=${p} index=${i} drag=${planDrag} busy=${!!uploads[k]}
+            ${(showAllPlans ? planDrag.order : planDrag.order.slice(0, KD_PLANS_FIRST)).map((k, i) => { const p = data.plans.find((x) => x._key === k); return p ? html`<${KdPlanTile} key=${k} plan=${p} index=${i} drag=${planDrag} busy=${!!uploads[k]}
+              broken=${broken.has(p.url)} onBroken=${() => markBroken(p.url)}
               onLabel=${(key, label) => set((d) => ({ plans: d.plans.map((x) => (x._key === key ? { ...x, label } : x)) }))} onRemove=${removePlan} />` : null; })}
           </ul>
+          ${data.plans.length > KD_PLANS_FIRST ? html`<button type="button" class="btn btn-ghost btn-sm kd-more" aria-expanded=${showAllPlans} onClick=${() => setShowAllPlans((v) => !v)}>
+            ${showAllPlans ? 'Show fewer' : `Show all ${data.plans.length} plans`}</button>` : null}
           <div class="sr-only" aria-live="assertive">${planDrag.announce}</div>` : html`<button type="button" class="kd-dropzone" onClick=${() => planInput.current?.click()}>${kdIcon.upload}<span>Add floor plans or renderings</span><small>Images (JPG, PNG). Or drop them here.</small></button>`}
           <p class="form-hint">A caption with Before, After, Existing, Proposed, Layout or Floor plan crops the bottom ${Math.round(KS.TITLE_BLOCK * 100)}% of the drawing on the site, so the family’s address in the title block never shows. Captions appear when someone opens a plan.</p>
         `)}
@@ -11383,7 +12083,7 @@
                 const busy = uploads[`${pair._key}:${which}`];
                 return html`<div class="kd-pair__side">
                   <span class="kd-pair__label">${which === 'before' ? 'Before' : 'After'}</span>
-                  ${url ? html`<div class="kd-pair__img"><img src=${kdImg(url, 'w=600,q=80')} alt="" />${busy ? html`<span class="kd-tile__busy"><span class="spinner" /></span>` : null}
+                  ${url ? html`<div class="kd-pair__img"><img src=${kdImg(url, 'w=600,q=80')} alt="" onError=${() => markBroken(url)} />${broken.has(url) ? html`<span class="kd-tile__broken">${kdIcon.alert} Missing</span>` : null}${busy ? html`<span class="kd-tile__busy"><span class="spinner" /></span>` : null}
                       <button type="button" class="kd-x kd-x--on-img" aria-label=${`Remove the ${which} photo`} onClick=${() => setPair(pair._key, { [which]: '' })}>${kdIcon.x}</button></div>`
                     : html`<label class="kd-pair__empty">
                         ${kdIcon.upload}<span>Upload</span>
@@ -11458,7 +12158,8 @@
         `)}
 
         ${sec('partners', 'Partners', data.partnerLogos.length ? 'Logos in the Partners chapter, in this order. Drag to reorder.' : 'Companies that made the room happen, with their logos.',
-          html`<button type="button" class="btn btn-ghost btn-sm" onClick=${() => logoInput.current?.click()}>${kdIcon.upload} Upload a logo</button>
+          html`${fixableLogos.length ? html`<button type="button" class="btn btn-ghost btn-sm" onClick=${() => fixLogos(fixableLogos)}>Use current ${fixableLogos.length === 1 ? 'logo' : `logos (${fixableLogos.length})`}</button>` : null}
+            <button type="button" class="btn btn-ghost btn-sm" onClick=${() => logoInput.current?.click()}>${kdIcon.upload} Upload a logo</button>
             <input type="file" accept="image/*" hidden ref=${logoInput} onChange=${(e) => { addLogo([...e.target.files]); e.target.value = ''; }} />`,
           html`
           <div class="kd-combobox ppl-combobox">
@@ -11492,7 +12193,9 @@
               if (!l) return null;
               return html`<li key=${k} class=${`kd-logo${logoDrag.lifted?.key === k ? ' is-lifted' : ''}`} ref=${logoDrag.itemRef(k)}
                   onPointerDown=${(e) => { if (!e.target.closest('input, button')) logoDrag.tileDown(e, k); }}>
-                <div class="kd-logo__img"><img src=${kdImg(l.url, 'w=320,q=85')} alt="" loading="lazy" draggable=${false} />
+                <div class="kd-logo__img"><img src=${kdImg(l.url, 'w=320,q=85')} alt="" loading="lazy" draggable=${false} onError=${() => markBroken(l.url)} />
+                  ${broken.has(l.url) ? html`<span class="kd-logo__broken">${kdIcon.alert} Logo missing
+                    ${logoFix(l.url) ? html`<button type="button" class="btn btn-ghost btn-sm" onClick=${() => fixLogos([l])}>Use current logo</button>` : null}</span>` : null}
                   ${uploads[k] ? html`<span class="kd-tile__busy"><span class="spinner" /></span>` : null}
                   <button type="button" class="kd-grip kd-grip--tile" ...${logoDrag.handleProps(k, `Move ${l.name || 'logo'}`)}>${kdIcon.grip}</button>
                   <button type="button" class="kd-x kd-x--on-img" aria-label=${`Remove ${l.name || 'logo'}`} onClick=${() => removeLogo(k)}>${kdIcon.x}</button>
@@ -11544,25 +12247,14 @@
           </div>
         `)}
 
-        ${sec('record', 'Record', null, null, html`
-          <div class="ppl-admin__row">
-            <div><strong>Web address</strong><p class="form-hint u-m-0">${slug ? html`<code>/kids/${slug}/</code> · set when the profile was created` : data.slug ? html`<code>/kids/${data.slug}/</code> · from the name; fixed once saved` : 'Made from the name when you first save.'}</p></div>
-            ${slug && KS.isListed(data) ? html`<a class="btn btn-ghost btn-sm" href=${`/kids/${slug}/`} target="_blank" rel="noopener">View ${kdIcon.external}</a>` : null}
-          </div>
-          ${slug ? html`<div class="ppl-admin__row">
-            <div><strong>JobTread</strong><p class="form-hint u-m-0">${jobId ? `Matched to a job by name and year.${reveal ? ` ${kdRevealLabel(reveal)}.` : ''}` : 'No JobTread job matches this name and year, so reveal dates don’t reach this profile.'}</p></div>
-            ${jobId ? html`<a class="btn btn-ghost btn-sm" href=${JT_JOB_URL(jobId)} target="_blank" rel="noopener">Open job ${kdIcon.external}</a>` : null}
-          </div>
-          <div class="ppl-admin__row">
-            <div><strong>Delete</strong><p class="form-hint u-m-0">Removes the profile for good. To hide it for now, switch off “Show on Meet the Kids” in Basics.</p></div>
-            <button type="button" class="btn btn-ghost btn-sm kd-danger-quiet" onClick=${() => setConfirmDelete(true)} disabled=${deleting}>Delete…</button>
-          </div>` : null}
-        `)}
+        </div>
+        </div>
         </div>
 
         <div class="editor-save-footer kd-footer">
-          <button type="button" class="btn btn-ghost" onClick=${leave}>${dirty ? 'Cancel' : 'Back to Kids'}</button>
-          <button type="button" class="btn btn-primary" onClick=${save} disabled=${saving}>${saving ? 'Saving…' : 'Save'}</button>
+          ${dirty && slug ? html`<button type="button" class="btn btn-ghost" onClick=${discard}>Discard</button>`
+            : html`<button type="button" class="btn btn-ghost" onClick=${leave}>Back to Kids</button>`}
+          <button type="button" class="btn btn-primary" onClick=${save} disabled=${saving || (!dirty && !!slug)}>${saving ? 'Saving…' : dirty || !slug ? 'Save' : html`${kdIcon.check} Saved`}</button>
         </div>
       `;
     }
@@ -21259,7 +21951,7 @@
           case 'kids-hub': {
             const tab = subTab || 'kids';
             // If editing, show the appropriate editor
-            if (editSlug !== null) {
+            if (editSlug !== null && !(tab !== 'community' && editSlug === '')) {
               if (tab === 'community') {
                 return html`<${CommunityEditor} slug=${editSlug || undefined} onBack=${() => { setEditSlug(null); loadData(); }} addToast=${addToast} partners=${partners} existingSlugs=${communityProjects.map(c => c.slug)} />`;
               }
@@ -21276,7 +21968,8 @@
                     onDelete=${p => setDeleteModal({ type: 'community project', item: p })} addToast=${addToast} onReload=${loadData} />`)
                 : listOrError('kids', 'kids', html`<${KidsList} kids=${kids} partners=${partners} onEdit=${s => { setSubTab('kids'); setEditSlug(s); }} onAdd=${() => { setSubTab('kids'); setEditSlug(''); }}
                     onDelete=${k => setDeleteModal({ type: 'kid', item: k })} addToast=${addToast} onReload=${loadData} onDeploy=${promptDeploy}
-                    dashboardFilter=${dashboardFilter} onClearFilter=${() => setDashboardFilter(null)} />`)
+                    dashboardFilter=${dashboardFilter} onClearFilter=${() => setDashboardFilter(null)}
+                    creating=${editSlug === ''} onCreateClose=${() => setEditSlug(null)} />`)
               }
             `;
           }

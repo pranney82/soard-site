@@ -157,6 +157,13 @@ export const ZONES = {
   more: { label: 'Behind “Show all photos”', short: 'Show all' },
   off: { label: `Not on the page (it shows the first ${GALLERY_MAX})`, short: 'Not shown' },
 };
+/** A photo's focal point for the gallery's cover crops (mirrors focusCss on the kid page) */
+export function focusCss(photo) {
+  const f = photo?.focus;
+  return f ? `; --focus: ${Math.round(f.x * 1000) / 10}% ${Math.round(f.y * 1000) / 10}%` : '';
+}
+/** Cloudflare gravity for a photo: its focal point, else faces */
+export const focusGravity = (photo) => (photo?.focus ? `${Math.round(photo.focus.x * 1000) / 1000}x${Math.round(photo.focus.y * 1000) / 1000}` : 'face');
 export const needsAlt = (p) => !!(p && p.url && !String(p.alt || '').trim() && !p._tempId && !/^(blob|data):/.test(p.url));
 
 // ── Plans ────────────────────────────────────────────────────────────
@@ -246,6 +253,134 @@ export function kidIssues(kid) {
   if (!q.shown && q.reason) add('quote-hidden', 'quiet', 'Quote isn’t shown', 'story', 'It repeats the story, so the page leaves it out');
   if ((kid.plans || []).some((p) => looksLikeFileName(p.label))) add('plan-captions', 'quiet', 'Plans need real captions', 'plans', 'Captions like “CompanyCam 2445” or “4” show when someone opens a plan');
   if (photos.length > GALLERY_MAX) add('over-max', 'quiet', `${photos.length - GALLERY_MAX} photo${photos.length - GALLERY_MAX === 1 ? '' : 's'} past ${GALLERY_MAX} not shown`, 'photos', `The gallery shows the first ${GALLERY_MAX}`);
+  return out;
+}
+
+/**
+ * The editor's health checklist: what a finished profile has, in page order.
+ * Each check: { id, label, done, section, key } (key: an essential, which the
+ * Needs attention filter also counts). Checks that don't apply (a video for a
+ * room still in build) are left out.
+ */
+export function kidChecks(kid) {
+  if (!kid) return [];
+  const photos = kid.photos || [];
+  const intro = heroIntro(kid);
+  const active = isActive(kid);
+  const shown = photos.slice(0, GALLERY_MAX);
+  const list = [
+    { id: 'hero', label: 'Main photo', done: !!kid.heroImage, section: 'photos', key: true },
+    { id: 'story', label: 'Story', done: !!plain(kid.bio), section: 'story', key: true },
+    { id: 'summary', label: 'Hero summary that fits', done: !!kid.heroSummary && !intro.cut, section: 'story', key: !!kid.heroSummary && intro.cut },
+    { id: 'photos', label: kid.status === 'completed' ? 'At least 3 photos' : 'A photo', done: photos.length >= (kid.status === 'completed' ? 3 : 1), section: 'photos', key: kid.status === 'completed' },
+    shown.length ? { id: 'alt', label: 'Alt text on every photo shown', done: !shown.some(needsAlt), section: 'photos' } : null,
+    kid.status === 'completed' ? { id: 'video', label: 'Reveal video', done: !!(kid.streamVideoId || kid.videoUrl), section: 'video' } : null,
+    active ? { id: 'fund', label: 'Fundraising link', done: !!kid.fundraisingUrl, section: 'giving', key: kid.status === 'needs-funding' } : null,
+    (kid.partnerLogos || []).length ? { id: 'partners', label: 'Partner logos named', done: !(kid.partnerLogos || []).some((p) => !String(p.name || '').trim()), section: 'partners' } : null,
+    (kid.plans || []).length ? { id: 'plans', label: 'Plan captions', done: !(kid.plans || []).some((p) => looksLikeFileName(p.label) || !String(p.label || '').trim()), section: 'plans' } : null,
+  ];
+  return list.filter(Boolean);
+}
+
+// ── History: what a save changed, in words ───────────────────────────
+const HISTORY_FIELDS = [
+  ['name', 'Name'], ['status', 'Status'], ['publishStatus', 'Shown on the site'], ['year', 'Year'], ['age', 'Age'],
+  ['childCount', 'Kids in the profile'], ['diagnosis', 'Diagnosis'], ['rooms', 'What was built'],
+  ['heroSummary', 'Hero summary'], ['bio', 'Story'], ['quote', 'Pull quote'],
+  ['heroImage', 'Main photo'], ['accentImage', 'Accent photo'], ['photos', 'Photos'], ['photographer', 'Photographer'],
+  ['plans', 'Design plans'], ['beforeAfterPhotos', 'Before & after'], ['video', 'Video'], ['revealVideoUrl', 'Reveal replay'],
+  ['partnerLogos', 'Partners'], ['fundraisingUrl', 'Fundraising link'], ['metaDescription', 'Search description'],
+  ['shortDescription', 'Card blurb'],
+];
+const ROOM_KEYS = ['roomTypes', 'roomCount', 'bedroomCount', 'bathroomCount', 'therapyRoomCount'];
+const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+const words = (s) => (plain(s) ? plain(s).split(/\s+/).length : 0);
+const clip = (s, n = 48) => { const t = plain(s); return t.length > n ? `${t.slice(0, n - 1).trimEnd()}…` : t; };
+const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
+/** How a list of things (photos, logos, plans) changed: "3 added, 1 removed, new order" */
+function listChange(before = [], after = [], keyOf = (x) => x.url, extra = () => []) {
+  const b = before.map(keyOf);
+  const a = after.map(keyOf);
+  const added = a.filter((k) => !b.includes(k)).length;
+  const removed = b.filter((k) => !a.includes(k)).length;
+  const kept = a.filter((k) => b.includes(k));
+  const parts = [];
+  if (added) parts.push(`${added} added`);
+  if (removed) parts.push(`${removed} removed`);
+  if (kept.join('\n') !== b.filter((k) => a.includes(k)).join('\n')) parts.push('new order');
+  parts.push(...extra(before, after).filter(Boolean));
+  return parts.join(', ') || 'edited';
+}
+
+/** Field names from the server's history (raw record keys) as the editor's labels, once each */
+export function changedLabels(fields) {
+  const label = (f) => (ROOM_KEYS.includes(f) ? 'What was built'
+    : f === 'streamVideoId' || f === 'videoUrl' ? 'Video'
+    : (HISTORY_FIELDS.find(([k]) => k === f) || [])[1] || f.replace(/([A-Z])/g, ' $1').replace(/^./, (c) => c.toUpperCase()));
+  return [...new Set((fields || []).map(label))];
+}
+
+/**
+ * What changed between two versions of a kid, field by field, for History:
+ * [{ field, label, detail }] in the editor's order.
+ */
+export function describeChanges(rawBefore, rawAfter) {
+  if (!rawBefore || !rawAfter) return [];
+  // Both as Save writes them, so an older record's missing defaults (a count
+  // of 1, empty links) don't read as edits
+  const norm = (d) => kidRecord({ ...d, ...buildFields(buildsOf(d), d) });
+  const before = norm(rawBefore);
+  const after = norm(rawAfter);
+  const out = [];
+  for (const [field, label] of HISTORY_FIELDS) {
+    let detail = null;
+    if (field === 'rooms') {
+      const [sb, sa] = [buildSummary(buildsOf(before)), buildSummary(buildsOf(after))];
+      if (sb === sa && before.roomCount === after.roomCount) continue;
+      detail = sb === sa ? `${before.roomCount} → ${plural(after.roomCount, 'room')} counted` : `${sb} → ${sa}`;
+    } else if (field === 'video') {
+      if (same(before.streamVideoId, after.streamVideoId) && same(before.videoUrl, after.videoUrl)) continue;
+      detail = !same(before.streamVideoId, after.streamVideoId) ? (after.streamVideoId ? (before.streamVideoId ? 'Different uploaded video' : 'Uploaded video added') : 'Uploaded video removed')
+        : after.videoUrl ? (before.videoUrl ? 'Different YouTube link' : 'YouTube link added') : 'YouTube link removed';
+    } else {
+      const b = before[field];
+      const a = after[field];
+      if (same(b, a)) continue;
+      // Text that only differs in spacing or markup reads the same on the page
+      if ((typeof a === 'string' || typeof b === 'string') && !Array.isArray(a) && plain(b) === plain(a) && field !== 'heroImage' && field !== 'accentImage') continue;
+      if (field === 'status') detail = `${statusOf(b).label} → ${statusOf(a).label}`;
+      else if (field === 'publishStatus') detail = a === 'draft' ? 'Hidden' : 'Shown';
+      else if (field === 'bio') detail = words(b) === words(a) ? 'Edited' : `${words(b)} → ${plural(words(a), 'word')}`;
+      else if (field === 'age') detail = `${formatAges(b) || 'none'} → ${formatAges(a) || 'none'}`;
+      else if (field === 'heroImage' || field === 'accentImage') detail = a ? (b ? 'Changed' : 'Added') : 'Removed';
+      else if (field === 'photos') {
+        detail = listChange(b || [], a || [], (x) => x.url, (bb, aa) => {
+          const before1 = new Map(bb.map((x) => [x.url, x]));
+          const both = aa.filter((x) => before1.has(x.url));
+          const alt = both.filter((x) => (x.alt || '') !== (before1.get(x.url).alt || '')).length;
+          const focus = both.filter((x) => !same(x.focus, before1.get(x.url).focus)).length;
+          return [alt && `alt text on ${plural(alt, 'photo')}`, focus && `focal point on ${plural(focus, 'photo')}`].filter(Boolean);
+        });
+      } else if (field === 'partnerLogos') {
+        detail = listChange(b || [], a || [], (x) => x.url, (bb, aa) => {
+          const before1 = new Map(bb.map((x) => [x.url, x]));
+          const named = aa.filter((x) => before1.has(x.url) && (x.name || '') !== (before1.get(x.url).name || '')).length;
+          return [named && `${plural(named, 'name')} changed`];
+        });
+      } else if (field === 'plans') detail = listChange(b || [], a || [], (x) => x.url, (bb, aa) => {
+        const before1 = new Map(bb.map((x) => [x.url, x]));
+        const cap = aa.filter((x) => before1.has(x.url) && (x.label || '') !== (before1.get(x.url).label || '')).length;
+        return [cap && `${plural(cap, 'caption')} changed`];
+      });
+      else if (field === 'beforeAfterPhotos') detail = listChange(b || [], a || [], (x) => `${x.before}|${x.after}`);
+      else if (typeof a === 'number' || typeof b === 'number') detail = `${b ?? 'none'} → ${a ?? 'none'}`;
+      else if (!plain(b)) detail = `Added: “${clip(a)}”`;
+      else if (!plain(a)) detail = 'Removed';
+      else detail = `“${clip(b, 32)}” → “${clip(a, 32)}”`;
+    }
+    out.push({ field, label, detail });
+  }
   return out;
 }
 

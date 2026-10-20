@@ -10,7 +10,33 @@
  * Variants are either named ("public", "nav", "og") or flexible transforms ("w=800,q=85").
  */
 
+import focusManifest from '../data/focus-photos.json';
+
 export const CF_HASH = 'ROYFuPmfN2vPS6mt5sCkZQ';
+
+/**
+ * Focal points set in the admin (a photo's "Focal point"): image ID →
+ * "0.42x0.31", fractions across and down. Written by scripts/d1-helpers.js
+ * whenever kids sync. A face-centered or automatic crop of one of these
+ * photos centers on the focal point instead, everywhere the site crops it.
+ */
+const FOCUS: Record<string, string> = focusManifest;
+export function focusOf(src: string): string | null {
+  return FOCUS[cfId(src)] || null;
+}
+/** The focal point as a CSS object-position ("42% 31%"), or null */
+export function focusPosition(src: string): string | null {
+  const f = focusOf(src);
+  if (!f) return null;
+  const [x, y] = f.split('x').map((n) => Math.round(Number(n) * 1000) / 10);
+  return `${x}% ${y}%`;
+}
+/** A transform string with face/auto gravity swapped for the photo's focal point (crops only: it has a height) */
+export function withFocus(src: string, transforms: string): string {
+  const f = focusOf(src);
+  return f && /(?:^|,)h=\d/.test(transforms) ? transforms.replace(/gravity=(?:face|auto)\b/, `gravity=${f}`) : transforms;
+}
+const focusGravity = (id: string, gravity?: string, crops = true) => (crops && (gravity === 'face' || gravity === 'auto') && FOCUS[id] ? FOCUS[id] : gravity);
 const CF_ORIGIN = `https://imagedelivery.net/${CF_HASH}`;
 export const CF_BASE = `https://sunshineonaranneyday.com/cdn-cgi/imagedelivery/${CF_HASH}`;
 
@@ -63,7 +89,7 @@ export interface TransformOpts {
   w?: number;
   h?: number;
   fit?: 'cover' | 'contain' | 'crop' | 'scale-down' | 'pad';
-  gravity?: 'face' | 'auto' | 'center' | 'top' | 'bottom' | 'left' | 'right';
+  gravity?: 'face' | 'auto' | 'center' | 'top' | 'bottom' | 'left' | 'right' | `${number}x${number}`;
   q?: number;
   /** Light output sharpening (0–10). 1 = subtle, good for face crops at small sizes. */
   sharpen?: number;
@@ -91,7 +117,7 @@ function buildTransform(opts: TransformOpts): string {
 export function cfUrl(src: string, opts: TransformOpts): string {
   const id = cfId(src);
   if (!id) return src;
-  return `${CF_BASE}/${id}/${buildTransform(opts)}`;
+  return `${CF_BASE}/${id}/${buildTransform({ ...opts, gravity: focusGravity(id, opts.gravity, !!opts.h) as TransformOpts['gravity'] })}`;
 }
 
 /**
@@ -103,7 +129,7 @@ export function cfUrl(src: string, opts: TransformOpts): string {
 export function cfRaw(src: string, transforms: string): string {
   const id = cfId(src);
   if (!id) return src;
-  return `${CF_BASE}/${id}/${transforms}`;
+  return `${CF_BASE}/${id}/${withFocus(id, transforms)}`;
 }
 
 export interface SrcsetOpts {
@@ -135,7 +161,7 @@ export function cfSrcset(src: string, widths: number[], opts?: SrcsetOpts): stri
       if (opts?.height) o.h = opts.height;
       else if (opts?.aspectRatio) o.h = Math.round(w * opts.aspectRatio);
       if (opts?.fit) o.fit = opts.fit;
-      if (opts?.gravity) o.gravity = opts.gravity;
+      if (opts?.gravity) o.gravity = focusGravity(id, opts.gravity, !!o.h) as TransformOpts['gravity'];
       if (opts?.sharpen) o.sharpen = opts.sharpen;
       return `${CF_BASE}/${id}/${buildTransform(o)} ${w}w`;
     })
@@ -182,7 +208,7 @@ export function cfDensitySrcset(
   if (!id) return '';
   const q = opts?.quality ?? 80;
   const fit = opts?.fit ?? 'cover';
-  const gravity = opts?.gravity;
+  const gravity = focusGravity(id, opts?.gravity) as TransformOpts['gravity'];
 
   return [1, 2]
     .map((dpr) => {

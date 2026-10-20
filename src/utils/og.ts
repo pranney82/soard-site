@@ -13,7 +13,7 @@ import sharp from 'sharp';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { CF_HASH, cfId } from './cf-image';
+import { CF_HASH, cfId, withFocus } from './cf-image';
 
 // imagedelivery.net works at build time regardless of host (unlike the /cdn-cgi/ proxy)
 const CF_DIRECT = `https://imagedelivery.net/${CF_HASH}`;
@@ -1330,7 +1330,7 @@ export async function generateOgImage(opts: OgOptions): Promise<Buffer> {
         // heroImage is a bare CF image ID (e.g. "kids/zyah/photo-18") — build a full URL
         const imgUrl = opts.heroImage.startsWith('http')
           ? opts.heroImage
-          : `${CF_DIRECT}/${opts.heroImage}/w=1200,h=630,fit=cover,gravity=face,q=80`;
+          : `${CF_DIRECT}/${opts.heroImage}/${withFocus(opts.heroImage, 'w=1200,h=630,fit=cover,gravity=face,q=80')}`;
         photoB64 = await fetchImageBase64(imgUrl);
       }
       if (photoB64) {
@@ -1598,7 +1598,7 @@ export async function generateSlateImage(o: SlateOptions): Promise<Buffer> {
     const pw = portrait ? W : Math.round(W * 0.42);
     const ph = portrait ? Math.round(H * 0.36) : H;
     const id = cfId(o.heroImage);
-    photoB64 = await fetchImageBase64(`${CF_DIRECT}/${id}/w=${pw},h=${ph},fit=cover,gravity=face,q=85`);
+    photoB64 = await fetchImageBase64(`${CF_DIRECT}/${id}/${withFocus(id, `w=${pw},h=${ph},fit=cover,gravity=face,q=85`)}`);
   }
 
   const svg = await satori(slateTemplate(o, logo, photoB64) as any, {

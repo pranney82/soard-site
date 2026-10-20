@@ -23,7 +23,7 @@ import {
   loadTemplates, tools, guardFrame,
 } from './page-preview.js';
 
-import { youTubeId, splitBio, heroHookOf, TITLE_BLOCK, isFloorPlan } from './kids-shared.js';
+import { youTubeId, splitBio, heroHookOf, TITLE_BLOCK, isFloorPlan, focusCss } from './kids-shared.js';
 
 export { cfId, youTubeId };
 
@@ -367,7 +367,7 @@ export function patchKidPage(doc, win, model) {
       b.dataset.srcset = cfSrcset(photo.url, [800, 1200, 1600, 2400]);
       b.dataset.alt = altText;
       b.setAttribute('aria-label', `View photo ${i + 1} of ${n}`);
-      b.setAttribute('style', `--lqip: ${lqipVar(photo.url)}; --stagger: ${i}`);
+      b.setAttribute('style', `--lqip: ${lqipVar(photo.url)}; --stagger: ${i}${focusCss(photo)}`);
       const im = b.querySelector('img');
       im.src = cfRaw(photo.url, img.src);
       im.setAttribute('srcset', cfSrcset(photo.url, img.widths));

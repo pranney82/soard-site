@@ -12,7 +12,7 @@ import { getCollection } from 'astro:content';
 import { getSiteStats } from '../utils/stats';
 import { getPublishedKids } from '../utils/collections';
 
-import { CF_BASE as CF, cfId as extractCfId, cfRaw, cfSrcset, cfLqip } from '../utils/cf-image';
+import { CF_BASE as CF, cfId as extractCfId, cfRaw, cfSrcset, cfLqip, withFocus } from '../utils/cf-image';
 
 /* ── Site settings (all editable from admin) ── */
 import siteSettings from '../content/site/settings.json';
@@ -97,11 +97,11 @@ const partnerLogos = signaturePartners;
    CF Images auto-negotiates AVIF/WebP via Accept header — no format= needed.
    Preload <link> + <img> must use byte-identical srcset/sizes strings. */
 const heroTransforms = 'fit=cover,gravity=face,q=70';
-const heroImg320  = `${CF}/${heroPhotoId}/w=320,h=400,${heroTransforms}`;
-const heroImg480  = `${CF}/${heroPhotoId}/w=480,h=600,${heroTransforms}`;
-const heroImg640  = `${CF}/${heroPhotoId}/w=640,h=800,${heroTransforms}`;
-const heroImg960  = `${CF}/${heroPhotoId}/w=960,h=1200,${heroTransforms}`;
-const heroImg1280 = `${CF}/${heroPhotoId}/w=1280,h=1600,${heroTransforms}`;
+const heroImg320  = `${CF}/${heroPhotoId}/${withFocus(heroPhotoId, `w=320,h=400,${heroTransforms}`)}`;
+const heroImg480  = `${CF}/${heroPhotoId}/${withFocus(heroPhotoId, `w=480,h=600,${heroTransforms}`)}`;
+const heroImg640  = `${CF}/${heroPhotoId}/${withFocus(heroPhotoId, `w=640,h=800,${heroTransforms}`)}`;
+const heroImg960  = `${CF}/${heroPhotoId}/${withFocus(heroPhotoId, `w=960,h=1200,${heroTransforms}`)}`;
+const heroImg1280 = `${CF}/${heroPhotoId}/${withFocus(heroPhotoId, `w=1280,h=1600,${heroTransforms}`)}`;
 const heroSrcset = `${heroImg320} 320w, ${heroImg480} 480w, ${heroImg640} 640w, ${heroImg960} 960w, ${heroImg1280} 1280w`;
 /* Photo column: 0.85fr of 1400px grid ≈ 530px. 2× retina → 1060px. 1280w covers 2.4× comfortably. */
 const heroSizes = '(max-width:480px) 80vw, (max-width:768px) 60vw, 530px';
@@ -217,8 +217,8 @@ const jsonLd = [getWebSiteSchema(), ...getSiteNavigationSchema()];
           {upNext.photoId && (
             <div class="upnext-photo" style={`background-image:url('${cfLqip(upNext.photoId)}')`}>
               <img
-                src={`${CF}/${upNext.photoId}/w=480,h=360,fit=cover,gravity=face,q=75`}
-                srcset={`${CF}/${upNext.photoId}/w=320,h=240,fit=cover,gravity=face,q=75 320w, ${CF}/${upNext.photoId}/w=480,h=360,fit=cover,gravity=face,q=75 480w, ${CF}/${upNext.photoId}/w=720,h=540,fit=cover,gravity=face,q=75 720w`}
+                src={cfRaw(upNext.photoId, 'w=480,h=360,fit=cover,gravity=face,q=75')}
+                srcset={`${cfRaw(upNext.photoId, 'w=320,h=240,fit=cover,gravity=face,q=75')} 320w, ${cfRaw(upNext.photoId, 'w=480,h=360,fit=cover,gravity=face,q=75')} 480w, ${cfRaw(upNext.photoId, 'w=720,h=540,fit=cover,gravity=face,q=75')} 720w`}
                 sizes="(max-width:640px) 100vw, 220px"
                 alt={upNext.headline} width="480" height="360" loading="lazy" decoding="async" class="lqip-img"
               />

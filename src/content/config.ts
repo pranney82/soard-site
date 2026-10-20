@@ -17,6 +17,8 @@ const kids = defineCollection({
     photos: z.array(z.object({
       url: z.string(),
       alt: z.string().default(''),
+      /** Focal point set in the admin, as fractions across and down: crops center on it */
+      focus: z.object({ x: z.number().min(0).max(1), y: z.number().min(0).max(1) }).optional(),
     })).default([]),
     storyPhotos: z.array(z.object({
       url: z.string(),

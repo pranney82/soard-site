@@ -221,3 +221,54 @@ test('search text: parsed from the model, tidied, an empty answer is an error', 
   assert.equal(empty.status, 500);
   assert.equal(empty.body.success, false);
 });
+
+test('health checklist: what a finished profile has, by status', () => {
+  const ids = (k) => KS.kidChecks(k).map((c) => `${c.done ? '✓' : '·'}${c.id}`);
+  assert.deepEqual(ids(kid()), ['✓hero', '✓story', '·summary', '✓photos', '✓alt', '✓video']);
+  // In build: a photo is enough, the fundraising link counts, the video doesn't yet
+  assert.deepEqual(ids(kid({ status: 'in-progress', photos: [{ url: img('a'), alt: '' }], fundraisingUrl: '' })), ['✓hero', '✓story', '·summary', '✓photos', '·alt', '·fund']);
+  const funding = KS.kidChecks(kid({ status: 'needs-funding', fundraisingUrl: '' })).find((c) => c.id === 'fund');
+  assert.equal(funding.key, true, 'awaiting funding without a link is an essential');
+  const cut = KS.kidChecks(kid({ heroSummary: 'One. Two. Three.' })).find((c) => c.id === 'summary');
+  assert.deepEqual([cut.done, cut.key], [false, true]);
+  assert.ok(KS.kidChecks(kid({ heroSummary: 'Ava loves music. SOARD built her room.' })).find((c) => c.id === 'summary').done);
+  assert.deepEqual(ids(kid({ partnerLogos: [{ url: img('p'), name: '' }], plans: [{ url: img('q'), label: 'CompanyCam 1' }] })).slice(-2), ['·partners', '·plans']);
+  assert.ok(KS.kidChecks(kid()).every((c) => KD_SECTIONS_IDS.includes(c.section)), 'each check points at a section the editor has');
+});
+const KD_SECTIONS_IDS = ['basics', 'story', 'photos', 'plans', 'transform', 'video', 'partners', 'giving', 'search'];
+
+test('history: what a save changed, in words', () => {
+  const a = kid({ status: 'completed', bio: '<p>One two three.</p>', roomTypes: ['Dream Bedroom'], partnerLogos: [{ url: img('p1'), name: 'A' }, { url: img('p2'), name: '' }],
+    photos: [{ url: img('1'), alt: '' }, { url: img('2'), alt: 'x' }, { url: img('3'), alt: 'y' }] });
+  const b = { ...a, status: 'in-progress', publishStatus: 'draft', bio: '<p>One two three four.</p>', roomTypes: ['Dream Bedroom', 'Chair Lift'], roomCount: 2, sortOrder: 4,
+    partnerLogos: [{ url: img('p2'), name: 'B' }, { url: img('p1'), name: 'A' }],
+    photos: [{ url: img('2'), alt: 'x', focus: { x: 0.2, y: 0.3 } }, { url: img('1'), alt: 'new' }, { url: img('4'), alt: '' }] };
+  assert.deepEqual(KS.describeChanges(a, b).map((c) => `${c.label}: ${c.detail}`), [
+    'Status: Completed → In build',
+    'Shown on the site: Hidden',
+    'What was built: A dream bedroom → A dream bedroom and a chair lift',
+    'Story: 3 → 4 words',
+    'Photos: 1 added, 1 removed, new order, alt text on 1 photo, focal point on 1 photo',
+    'Partners: new order, 1 name changed',
+  ]);
+  assert.deepEqual(KS.describeChanges(a, { ...a, sortOrder: 9 }), [], 'a list position isn’t an edit');
+  assert.deepEqual(KS.changedLabels(['bedroomCount', 'roomTypes', 'videoUrl', 'streamVideoId', 'bio', 'mysteryField']), ['What was built', 'Video', 'Story', 'Mystery Field']);
+});
+
+test('focal points: the gallery position and the crop gravity', () => {
+  assert.equal(KS.focusCss({ url: 'x', focus: { x: 0.25, y: 0.756 } }), '; --focus: 25% 75.6%');
+  assert.equal(KS.focusCss({ url: 'x' }), '');
+  assert.equal(KS.focusGravity({ focus: { x: 0.12345, y: 1 } }), '0.123x1');
+  assert.equal(KS.focusGravity({}), 'face');
+});
+
+test('the focal-point map written with every kids sync', async () => {
+  const { photoFocusMap, imageIdOf } = await import('../scripts/d1-helpers.js');
+  assert.equal(imageIdOf(img('kids/a/1')), 'kids/a/1');
+  assert.equal(imageIdOf(`https://sunshineonaranneyday.com/cdn-cgi/imagedelivery/${HASH}/kids/a/1/w=300,q=80`), 'kids/a/1');
+  assert.equal(imageIdOf('kids/a/IMG-1.jpg'), 'kids/a/IMG-1.jpg');
+  assert.deepEqual(photoFocusMap([
+    { photos: [{ url: img('kids/b/2'), focus: { x: 0.5, y: 2 } }, { url: img('kids/b/3') }] },
+    { photos: [{ url: img('kids/a/1'), focus: { x: 0.12345, y: 0.5 } }, { url: img('kids/a/9'), focus: { x: 'no', y: 1 } }] },
+  ]), { 'kids/a/1': '0.123x0.5', 'kids/b/2': '0.5x1' });
+});

@@ -99,6 +99,11 @@ function lqip(src: string): string {
   const id = cfId(src);
   return _lqipMap[id] || cfRaw(src, 'w=30,q=30,blur=20');
 }
+// A photo's focal point (set in the admin) for the gallery's cover crops
+function focusCss(photo: { focus?: { x: number; y: number } }): string {
+  const f = photo?.focus;
+  return f ? `; --focus: ${Math.round(f.x * 1000) / 10}% ${Math.round(f.y * 1000) / 10}%` : '';
+}
 function dims(src: string): [number, number] {
   const id = cfId(src);
   return _dimsMap[id] || [4, 3];
@@ -677,7 +682,7 @@ const planOrientation = (() => {
                   data-alt={altText}
                   aria-label={`View photo ${i + 1} of ${galleryPhotos.length}`}
                   type="button"
-                  style={`--lqip: url('${lqip(photo.url)}'); --stagger: ${i}`}
+                  style={`--lqip: url('${lqip(photo.url)}'); --stagger: ${i}${focusCss(photo)}`}
                 >
                   <img
                     src={cfUrl(photo.url, 'w=1200,q=85')}
@@ -712,7 +717,7 @@ const planOrientation = (() => {
                   data-alt={altText}
                   aria-label={`View photo ${globalIndex + 1} of ${galleryPhotos.length}`}
                   type="button"
-                  style={`--lqip: url('${lqip(photo.url)}'); --stagger: ${globalIndex}`}
+                  style={`--lqip: url('${lqip(photo.url)}'); --stagger: ${globalIndex}${focusCss(photo)}`}
                 >
                   <img
                     src={cfUrl(photo.url, 'w=700,q=85')}
@@ -751,7 +756,7 @@ const planOrientation = (() => {
                     data-alt={altText}
                     aria-label={`View photo ${globalIndex + 1} of ${galleryPhotos.length}`}
                     type="button"
-                    style={`--lqip: url('${lqip(photo.url)}'); --stagger: ${globalIndex}`}
+                    style={`--lqip: url('${lqip(photo.url)}'); --stagger: ${globalIndex}${focusCss(photo)}`}
                   >
                     <img
                       src={cfUrl(photo.url, 'w=700,q=85')}
@@ -4381,6 +4386,7 @@ const planOrientation = (() => {
     width: 100%;
     height: 100%;
     object-fit: cover;
+    object-position: var(--focus, 50% 50%);
     display: block;
     position: relative;
     z-index: 2;

@@ -40,7 +40,7 @@ const sortRoomTypes = (types: string[]) => [...types].sort((a, b) => (ROOM_ORDER
 const totalKids = kids.reduce((sum, k) => sum + (k.data.childCount || 1), 0);
 
 // ── CF Image helpers ──────────────────────
-import { cfUrl, cfRaw, cfSrcset as _cfSrcset, cfDensitySrcset, cfId, CF_BASE } from '../../utils/cf-image';
+import { cfUrl, cfRaw, cfSrcset as _cfSrcset, cfDensitySrcset, cfId, CF_BASE, focusOf } from '../../utils/cf-image';
 import lqipManifest from '../../data/lqip-kids.json';
 const lqip: Record<string, string> = lqipManifest;
 /** Srcset with proportional height + face-crop at each breakpoint. */
@@ -119,6 +119,8 @@ const overflowKids = kids.slice(INITIAL_BATCH).map(kid => ({
   s: kid.data.slug,
   n: kid.data.name,
   i: kid.data.heroImage ? cfId(kid.data.heroImage) : '',
+  // The main photo's focal point, for cards built in the browser
+  ...(kid.data.heroImage && focusOf(kid.data.heroImage) ? { f: focusOf(kid.data.heroImage) } : {}),
   y: kid.data.year || 0,
   t: sortRoomTypes(kid.data.roomTypes || []),
   d: kid.data.diagnosis || '',
@@ -604,17 +606,18 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
 
     // ── Create overflow cards from JSON data island ──
     const CF = 'https://sunshineonaranneyday.com/cdn-cgi/imagedelivery/ROYFuPmfN2vPS6mt5sCkZQ';
-    function cfCard(id: string, w: number, h: number) {
-      return `${CF}/${id}/w=${w},h=${h},fit=cover,gravity=face,q=70,sharpen=1,metadata=none`;
+    // f: the photo's focal point (set in the admin); otherwise the crop centers on faces
+    function cfCard(id: string, w: number, h: number, f?: string) {
+      return `${CF}/${id}/w=${w},h=${h},fit=cover,gravity=${f || 'face'},q=70,sharpen=1,metadata=none`;
     }
-    function cfSS(id: string, widths: number[], ratio: number) {
-      return widths.map(w => `${cfCard(id, w, Math.round(w * ratio))} ${w}w`).join(', ');
+    function cfSS(id: string, widths: number[], ratio: number, f?: string) {
+      return widths.map(w => `${cfCard(id, w, Math.round(w * ratio), f)} ${w}w`).join(', ');
     }
     /* Blur-up placeholder URL — mirrors cfLqip() in utils/cf-image.ts */
     function cfBlur(id: string) {
       return `${CF}/${id}/w=30,q=30,blur=20`;
     }
-    function createCard(kid: { s: string; n: string; i: string; y: number; t: string[]; d: string; st: string; o: number | null }) {
+    function createCard(kid: { s: string; n: string; i: string; f?: string; y: number; t: string[]; d: string; st: string; o: number | null }) {
       const a = document.createElement('a');
       a.href = `/kids/${kid.s}/`;
       a.className = 'kid-card';
@@ -628,7 +631,7 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
       const alt = escapeHtml(`Photo of ${kid.n}${roomTypes ? ` — ${roomTypes}` : ''} — Sunshine on a Ranney Day`);
       let imgHtml: string;
       if (kid.i) {
-        imgHtml = `<picture><source media="(max-width:768px)" srcset="${cfSS(kid.i,[160,240,360,480],5/4)}" sizes="calc(50vw - 31px)"/><img src="${cfCard(kid.i,220,293)}" srcset="${cfSS(kid.i,[180,260,380,520],4/3)}" sizes="(min-width:1400px) 240px,(min-width:1100px) calc(25vw - 30px),calc(33vw - 27px)" alt="${alt}" class="kid-card__img" width="340" height="453" loading="lazy" decoding="async"/></picture>`;
+        imgHtml = `<picture><source media="(max-width:768px)" srcset="${cfSS(kid.i,[160,240,360,480],5/4,kid.f)}" sizes="calc(50vw - 31px)"/><img src="${cfCard(kid.i,220,293,kid.f)}" srcset="${cfSS(kid.i,[180,260,380,520],4/3,kid.f)}" sizes="(min-width:1400px) 240px,(min-width:1100px) calc(25vw - 30px),calc(33vw - 27px)" alt="${alt}" class="kid-card__img" width="340" height="453" loading="lazy" decoding="async"/></picture>`;
       } else {
         imgHtml = `<div class="kid-card__placeholder" aria-hidden="true"><svg width="48" height="48"><use href="#icon-placeholder"/></svg></div>`;
       }
@@ -648,7 +651,7 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
       if (allCardsLoaded) return;
       const dataEl = document.getElementById('kids-overflow');
       if (!dataEl?.textContent) { allCardsLoaded = true; return; }
-      const overflow: { s: string; n: string; i: string; y: number; t: string[]; d: string; st: string; o: number | null }[] = JSON.parse(dataEl.textContent);
+      const overflow: { s: string; n: string; i: string; f?: string; y: number; t: string[]; d: string; st: string; o: number | null }[] = JSON.parse(dataEl.textContent);
       const frag = document.createDocumentFragment();
       for (const kid of overflow) {
         const card = createCard(kid);
@@ -844,7 +847,7 @@ const lcpSrcsetDesktop = lcpKid?.data.heroImage
       const overflowEl = document.getElementById('kids-overflow');
       if (overflowEl?.textContent) {
         try {
-          const overflow: { s: string; n: string; i: string; y: number; t: string[]; d: string; st: string; o: number | null }[] = JSON.parse(overflowEl.textContent);
+          const overflow: { s: string; n: string; i: string; f?: string; y: number; t: string[]; d: string; st: string; o: number | null }[] = JSON.parse(overflowEl.textContent);
           for (const kid of overflow) {
             allKidData.push({
               year: `year-${kid.y}`,

@@ -15,7 +15,13 @@
  *     next one takes over, Undo), uploading (alt text written after), plan
  *     captions (address block crop), partners from the directory, the video
  *     the page plays, validation, the saved record, Preview, a new kid, delete
- *   - Profiles to tidy: partner logo names and alt text, Stop
+ *   - Profiles to tidy: broken partner logos, room counts, logo names, alt text, Stop
+ *   - the side panel (status, profile health), Discard with Undo, adding a kid
+ *     from the dialog, the photo wall, "/" to search, broken logos repaired
+ *   - history: versions after saves, what each changed, restoring one (and
+ *     Undo), Recently deleted and bringing a profile back
+ *   - a photo's focal point: set by clicking the photo, previews, saved
+ *   - phone: the story shows as a preview until you edit it
  *   - phone: nothing past the content column, 44px targets, touch drag on a
  *     photo's grip, sheets that fit the screen
  * Screenshots land in test-results/kids-admin/. Exits non-zero on any failure
@@ -59,12 +65,19 @@ const PARTNERS = readDir('partners');
 const KIDS0 = readDir('kids');
 for (const [slug, d] of Object.entries(KIDS0)) d.slug ||= slug;
 const PNG = join(OUT, 'pixel.png');
+// Logos whose file is gone in Cloudflare (as on the live site): their old IDs answer 404
+const BROKEN_IDS = ['partners/real-floors-commercial', 'partners/usa-insulation', 'partners/eclipse-brand-builders'];
+const isBrokenImage = (url) => BROKEN_IDS.some((id) => url.includes(`/${id}/w=`) || url.endsWith(`/${id}/public`));
 writeFileSync(PNG, Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==', 'base64'));
 
 // ── The fake API ──
 function makeApi() {
   const kids = structuredClone(KIDS0);
-  const st = { kids, calls: [], waiting: new Set(), uploads: 0 };
+  const st = { kids, calls: [], waiting: new Set(), uploads: 0, versions: {}, vid: 0 };
+  // The history the server keeps (functions/api/_content-history.js), in memory
+  const version = (slug, data, by, action = 'save') => { (st.versions[slug] ||= []).push({ id: ++st.vid, at: new Date(Date.now() + st.vid).toISOString(), by, action, data: structuredClone(data) }); };
+  const IGN = new Set(['order', 'sortOrder', 'photoCount']);
+  const changed = (a, b) => [...new Set([...Object.keys(a), ...Object.keys(b)])].filter((k) => !IGN.has(k) && JSON.stringify(a[k] ?? null) !== JSON.stringify(b[k] ?? null)).sort();
   const respond = (req) => {
     const url = new URL(req.url());
     const json = (o, status = 200) => req.respond({ status, contentType: 'application/json', body: JSON.stringify(o) });
@@ -87,13 +100,17 @@ function makeApi() {
     if (p === '/api/save-content') {
       const b = body();
       const slug = b.path.match(/kids\/(.+)\.json$/)?.[1];
+      const previous = st.kids[slug];
       st.kids[slug] = JSON.parse(b.content);
+      if (!st.versions[slug]?.length && previous) version(slug, previous, null);
+      version(slug, st.kids[slug], 'staff@soard.org');
       st.waiting.add(slug);
       return json({ success: true, sha: `sha-${slug}-${Date.now()}` });
     }
     if (p === '/api/delete-content') {
       const slug = body().path.match(/kids\/(.+)\.json$/)?.[1];
       if (!st.kids[slug]) return json({ success: false, error: 'not found' }, 404);
+      version(slug, st.kids[slug], 'staff@soard.org', 'delete');
       delete st.kids[slug];
       return json({ success: true });
     }
@@ -104,6 +121,17 @@ function makeApi() {
       for (const it of b.items) if (st.kids[it.slug] && st.kids[it.slug].sortOrder !== it.order) { st.kids[it.slug] = { ...st.kids[it.slug], sortOrder: it.order }; changed.push(it.slug); }
       changed.forEach((s) => st.waiting.add(s));
       return json({ success: true, changed, shas: {} });
+    }
+    if (p === '/api/content-history') {
+      const q = url.searchParams;
+      if (q.get('deleted')) {
+        const deleted = Object.entries(st.versions).filter(([s2, v]) => v.at(-1).action === 'delete' && !st.kids[s2])
+          .map(([s2, v]) => ({ id: v.at(-1).id, slug: s2, name: v.at(-1).data.name, year: v.at(-1).data.year, image: v.at(-1).data.heroImage, at: v.at(-1).at, by: v.at(-1).by }));
+        return json({ success: true, deleted });
+      }
+      const list = st.versions[q.get('slug')] || [];
+      if (q.get('id')) { const v = list.find((x) => x.id === Number(q.get('id'))); return v ? json({ success: true, data: v.data }) : json({ success: false, error: 'That version is gone' }, 404); }
+      return json({ success: true, versions: list.map((v, i) => ({ id: v.id, at: v.at, by: v.by, action: v.action, changed: i ? changed(list[i - 1].data, v.data) : null })).reverse() });
     }
     if (p === '/api/upload-image') {
       st.uploads++;
@@ -143,6 +171,7 @@ async function open(browser, { width, height, mobile }) {
     if (new URL(req.url()).origin === SITE && api.respond(req) !== false) return;
     // Images: answered locally (the network isn't what's under test)
     if (req.resourceType() === 'image' && /imagedelivery|i\.ytimg|videodelivery/.test(req.url())) {
+      if (isBrokenImage(req.url())) return req.respond({ status: 404, contentType: 'text/plain', body: 'not found' });
       return req.respond({ status: 200, contentType: 'image/png', body: readFileSync(PNG) });
     }
     req.continue();
@@ -203,7 +232,10 @@ const openKid = async (page, name) => {
     await sleep(300);
     await page.evaluate((n) => [...document.querySelectorAll('.kd-row__name')].find((x) => x.textContent.trim() === n)?.click(), name);
   }
-  await page.waitForSelector('.kd-ed-head', { timeout: 10000 });
+  await page.waitForSelector('.kd-ed-head', { timeout: 10000 }).catch(async (e) => {
+    console.log('DEBUG openKid:', name, (await page.evaluate(() => document.querySelector('.main')?.innerText.slice(0, 500))).replace(/\n+/g, ' | '));
+    throw e;
+  });
   await sleep(500);
 };
 // past: how far beyond the target's middle to let go (a row moves once you pass its middle)
@@ -263,6 +295,18 @@ try {
     ok(await page.$eval('.kd-tidy-banner', (e) => /partner logos? without a name/.test(e.textContent) && /without alt text/.test(e.textContent)), 'Profiles to tidy names both bulk fixes');
     ok(!(await page.evaluate(() => [...document.querySelectorAll('.kd-row__issues .kd-chip')].some((c) => /alt text|unnamed/.test(c.textContent)))), 'rows leave bulk fixes to the tidy banner');
     await shot(page, 'desk-list');
+
+    // "/" jumps to search; the photo wall
+    await page.evaluate(() => document.activeElement?.blur());
+    await page.keyboard.press('/');
+    ok(await page.evaluate(() => document.activeElement?.matches('.kd-search input')), '“/” puts the cursor in search');
+    await page.keyboard.press('Escape');
+    await page.evaluate(() => [...document.querySelectorAll('.kd-view button')].find((b) => /Photos/.test(b.textContent)).click());
+    await sleep(200);
+    ok(await page.$$eval('.kd-wall .kd-wall__btn', (b) => b.length) > 10 && !(await page.$('.kd-section:last-of-type .kd-row')), 'completed rooms show as a photo wall');
+    await page.evaluate(() => [...document.querySelectorAll('.kd-view button')].find((b) => /List/.test(b.textContent)).click());
+    await sleep(200);
+    ok(await page.evaluate(() => /missing from pages/.test(document.querySelector('.kd-tidy-banner')?.textContent || '')), 'Profiles to tidy counts partner logos missing from pages');
 
     // Search and the filter
     await page.type('.kd-search input', 'cerebral');
@@ -338,21 +382,41 @@ try {
     await goKids(page, false);
     await openKid(page, 'Amari');
     ok(await page.$eval('.kd-ed-id h2', (e) => e.textContent.startsWith('Amari')), 'the editor opens on Amari');
-    ok(await page.$$eval('.kd-bar__chip', (c) => c.length) === 10, 'the section bar has all ten sections');
-    ok(!(await page.$('.kd-ed-actions .ppl-unsaved')), 'opening a profile leaves nothing unsaved');
+    ok(await page.$$eval('.kd-bar__chip', (c) => c.length) === 9, 'the section bar has all nine sections');
+    ok(await page.$('.kd-bar__state.is-saved'), 'opening a profile leaves nothing unsaved');
+    const panel = await page.evaluate(() => { const r = document.querySelector('.kd-rail').getBoundingClientRect(); const m = document.querySelector('.kd-main').getBoundingClientRect(); return { side: r.left > m.right, w: Math.round(r.width) }; });
+    ok(panel.side && panel.w === 300, `status, health and the page sit in a side panel (${panel.w}px)`);
+    const health = await page.$eval('.kd-card--health h3', (h) => h.textContent);
+    const amariChecks = KS.kidChecks(KS.kidRecord({ ...amari }));
+    ok(health.includes(`${amariChecks.filter((c) => c.done).length} of ${amariChecks.length}`), `profile health counts what’s done (${health.replace('Profile health', '').trim()})`);
+    await page.evaluate(() => [...document.querySelectorAll('.kd-checks button')].find((b) => /Plan captions/.test(b.textContent))?.click());
+    await sleep(200);
+    await settle(page);
+    ok(await page.evaluate(() => { const r = document.getElementById('kd-sec-plans').getBoundingClientRect(); return r.top >= 0 && r.top < 160; }), 'a health item jumps to the section that fixes it');
+    await page.evaluate(() => window.scrollTo(0, 0));
     await shot(page, 'desk-editor');
 
     // Rooms: + Therapy room, then − (unsaved clears again)
     const therapyPlus = await page.evaluateHandle(() => [...document.querySelectorAll('.kd-builds__list li')].find((li) => /Therapy room/.test(li.textContent)).querySelectorAll('button')[1]);
     await therapyPlus.click();
     await sleep(150);
-    ok(await page.$('.kd-ed-actions .ppl-unsaved'), 'a change shows Unsaved changes');
+    ok(await page.$('.kd-bar__state.is-dirty') && await page.$('.kd-bar__save .kd-save'), 'a change shows Unsaved changes, with Save');
     ok(await page.evaluate(() => /Adds 3 to “rooms built”/.test(document.querySelector('.kd-builds .form-hint').textContent)), 'the room summary counts three rooms');
     const therapyMinus = await page.evaluateHandle(() => [...document.querySelectorAll('.kd-builds__list li')].find((li) => /Therapy room/.test(li.textContent)).querySelectorAll('button')[0]);
     await therapyMinus.click();
     await sleep(150);
-    ok(!(await page.$('.kd-ed-actions .ppl-unsaved')), 'undoing the change by hand clears it');
+    ok(await page.$('.kd-bar__state.is-saved'), 'undoing the change by hand clears it');
+    // Discard puts the saved version back, with Undo
     await therapyPlus.click();
+    await page.type('#kd-diagnosis', ' (test)');
+    await clickText(page, '.kd-bar__save .btn', 'Discard');
+    await sleep(250);
+    ok(await page.$eval('#kd-diagnosis', (e) => e.value) === amari.diagnosis && await page.$('.kd-bar__state.is-saved'), 'Discard puts the saved version back');
+    await clickToast(page, 'Undo');
+    await sleep(250);
+    ok(/\(test\)$/.test(await page.$eval('#kd-diagnosis', (e) => e.value)), 'and Undo brings the changes back');
+    await page.click('#kd-diagnosis', { clickCount: 3 });
+    await page.type('#kd-diagnosis', amari.diagnosis);
 
     // The section bar jumps
     await page.evaluate(() => [...document.querySelectorAll('.kd-bar__chip')].find((c) => c.textContent.startsWith('Partners')).click());
@@ -368,7 +432,7 @@ try {
     await sleep(200);
     await page.evaluate(() => document.querySelectorAll('.kd-tile__open')[2].click());
     await page.waitForSelector('.kd-photo-dlg', { timeout: 5000 });
-    ok(await page.$eval('.kd-photo-dlg h3', (e) => e.textContent.trim()) === `Photo 3 of ${amari.photos.length}`, 'a photo opens large, with its place');
+    ok(await page.$eval('.kd-photo-dlg h2', (e) => e.textContent.trim()) === `Photo 3 of ${amari.photos.length}`, 'a photo opens large, with its place');
     await page.type('#kd-photo-alt', 'Amari laughing in his new room');
     await page.evaluate(() => [...document.querySelectorAll('.kd-role')].find((b) => /Main photo/.test(b.textContent)).click());
     await sleep(150);
@@ -436,11 +500,11 @@ try {
 
     // Validation: a bad fundraising link stops Save and shows where
     await page.type('#kd-fund', 'zeffy.com/oops');
-    await page.click('.kd-ed-actions .kd-save');
+    await page.click('.kd-bar__save .kd-save');
     await sleep(200);
     await settle(page);
     ok(callsTo(api, '/api/save-content') === 0, 'a bad link blocks Save');
-    ok(await page.evaluate(() => { const r = document.getElementById('kd-sec-giving').getBoundingClientRect(); return r.top >= 0 && r.top < 200; }), 'and scrolls to Giving');
+    ok(await page.evaluate(() => { const r = document.getElementById('kd-sec-giving').getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight && document.activeElement?.id === 'kd-sec-giving-h'; }), 'and brings Giving into view');
     await page.click('#kd-fund', { clickCount: 3 });
     await page.type('#kd-fund', 'https://www.zeffy.com/en-US/donation-form/amari');
 
@@ -459,7 +523,40 @@ try {
     ok(saved.partnerLogos.every((l) => String(l.name || '').trim()) && saved.partnerLogos.some((l) => l.url === newPartner.logo), 'every partner logo is named, the new one included');
     ok(saved.plans[0].label === 'Floor plan, after' && saved.plans.every((p) => ['as-built', 'proposed'].includes(p.type)), 'plans saved with captions and a valid type');
     ok(saved.fundraisingUrl === 'https://www.zeffy.com/en-US/donation-form/amari', 'the fundraising link saved');
-    ok(!(await page.$('.kd-ed-actions .ppl-unsaved')), 'after saving nothing is unsaved');
+    ok(await page.$('.kd-bar__state.is-saved'), 'after saving nothing is unsaved');
+
+    // History: the save and the version before it, and what the save changed
+    await page.waitForFunction(() => document.querySelectorAll('.kd-history__row').length >= 2, { timeout: 5000 }).catch(() => {});
+    const hist = await page.$$eval('.kd-history__row', (r) => r.map((x) => x.textContent.replace(/\s+/g, ' ').trim()));
+    ok(hist.length === 2 && /^Staff/.test(hist[0]) && /Story|Photos|What was built/.test(hist[0]) && /Before history/.test(hist[1]), `History lists the save, who made it and what changed (${hist[0]?.slice(0, 80)})`);
+    await page.click('.kd-history__all');
+    await page.waitForSelector('.kd-hist__item');
+    await page.evaluate(() => [...document.querySelectorAll('.kd-hist__item')].at(-1).click());
+    await page.waitForFunction(() => /Restoring it changes/.test(document.querySelector('.kd-hist__detail')?.textContent || ''), { timeout: 5000 });
+    ok(await page.evaluate(() => /Fundraising link/.test(document.querySelector('.kd-hist__changes.is-restore')?.textContent || '')), 'the oldest version shows what restoring it would change');
+    await clickText(page, '.kd-dialog__foot .btn-primary', 'Restore this version');
+    await sleep(300);
+    ok(!(await page.$('.kd-hist')) && await page.$eval('#kd-fund', (e) => e.value) === (amari.fundraisingUrl || '') && await page.$('.kd-bar__state.is-dirty'), 'Restore loads that version into the editor, unsaved');
+    await clickToast(page, 'Undo');
+    await sleep(250);
+    ok(await page.$eval('#kd-fund', (e) => e.value) === 'https://www.zeffy.com/en-US/donation-form/amari' && await page.$('.kd-bar__state.is-saved'), 'Undo puts the saved version back');
+
+    // A focal point: click the photo where crops should center
+    await page.evaluate(() => document.querySelectorAll('.kd-tile__open')[0].click());
+    await page.waitForSelector('.kd-focus img');
+    await sleep(300);
+    const fbox = await page.$eval('.kd-focus', (e) => { const r = e.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; });
+    await page.mouse.click(fbox.x + fbox.w * 0.25, fbox.y + fbox.h * 0.75);
+    await sleep(300);
+    const fp = await page.evaluate(() => ({ mark: !!document.querySelector('.kd-focus__mark'), crops: [...document.querySelectorAll('.kd-crops img')].map((i) => i.getAttribute('src')) }));
+    ok(fp.mark && fp.crops.length === 3 && fp.crops.every((u) => /gravity=0\.2\d*x0\.7\d*/.test(u)), `clicking the photo sets its focal point, and the crop previews use it (${fp.crops[0]?.match(/gravity=[^,]+/)?.[0]})`);
+    await page.keyboard.press('Escape');
+    await sleep(200);
+    ok(/gravity=0\.2\d*x0\.7\d*/.test(await page.evaluate(() => document.querySelectorAll('.kd-tile img')[0].getAttribute('src'))), 'the photo’s tile crops around it too');
+    await page.click('.kd-bar__save .kd-save');
+    await sleep(700);
+    const focused = api.st.kids.amari.photos.find((x) => x.focus);
+    ok(focused && Math.abs(focused.focus.x - 0.25) < 0.02 && Math.abs(focused.focus.y - 0.75) < 0.02, `the focal point is saved on the photo (${JSON.stringify(focused?.focus)})`);
 
     // Preview frames the real page
     await page.click('.kd-ed-actions .btn-ghost[aria-pressed]');
@@ -476,12 +573,18 @@ try {
     await sleep(300);
 
     // Delete
-    await page.evaluate(() => document.getElementById('kd-sec-record').scrollIntoView());
-    await clickText(page, '#kd-sec-record .btn', 'Delete…');
+    await page.click('.kd-card__delete');
     await sleep(200);
     await clickText(page, '.modal .btn-danger', 'Delete profile');
     await page.waitForSelector('.kd-row', { timeout: 10000 });
     ok(!api.st.kids.amari, 'Delete removes the profile and goes back to the list');
+    await page.waitForSelector('.kd-deleted-link', { timeout: 5000 }).catch(() => {});
+    ok(await page.evaluate(() => /Recently deleted\s*1/.test(document.querySelector('.kd-deleted-link')?.textContent || '')), 'the list offers Recently deleted');
+    await page.click('.kd-deleted-link');
+    await page.waitForSelector('.kd-deleted li');
+    await clickText(page, '.kd-deleted .btn', 'Restore');
+    await sleep(700);
+    ok(api.st.kids.amari?.name === 'Amari' && api.st.kids.amari.photos.some((x) => x.focus), 'Restore brings the profile back as it was');
     ok(!errors.length, `no console errors (${errors.join(' | ').slice(0, 300)})`);
     await page.close();
   }
@@ -491,27 +594,52 @@ try {
     const { page, api, errors } = await open(browser, { width: 1440, height: 1000, mobile: false });
     await goKids(page, false);
     await clickText(page, '.kd-head__actions .btn-primary', 'Add a kid');
-    await page.waitForSelector('#kd-name');
-    await page.type('#kd-name', 'Test Kid');
-    ok(await page.evaluate(() => /\/kids\/test-kid\//.test(document.querySelector('#kd-sec-basics').textContent)), 'the web address follows the name');
-    ok(await page.$eval('.ppl-seg [aria-checked="true"]', (e) => e.textContent) === 'In build', 'a new kid starts in build');
+    await page.waitForSelector('#kd-new-name');
+    ok(await page.evaluate(() => document.activeElement?.id === 'kd-new-name'), 'Add a kid opens a dialog, ready to type');
+    ok(await page.$eval('.kd-status-pick [aria-checked="true"]', (e) => e.textContent.startsWith('In build')), 'a new kid starts in build');
+    await page.type('#kd-new-name', 'Dylan');
+    ok(await page.evaluate(() => /already a Dylan/.test(document.querySelector('.kd-create').textContent) && /\/kids\/dylan-2026-2\//.test(document.querySelector('.kd-create').textContent)), 'a name already in use says so, with the new address');
+    await page.click('#kd-new-name', { clickCount: 3 });
+    await page.type('#kd-new-name', 'Test Kid');
+    ok(await page.evaluate(() => /\/kids\/test-kid\//.test(document.querySelector('.kd-create').textContent)), 'the web address follows the name');
+    await page.keyboard.press('Enter');
+    await page.waitForSelector('.kd-ed-head', { timeout: 10000 }).catch(async (e) => { console.log('DEBUG main:', (await page.evaluate(() => document.querySelector('.main')?.innerText.slice(0, 600))).replace(/\n+/g, ' | ')); console.log('DEBUG errors:', errors); throw e; });
+    await sleep(600);
+    const made0 = api.st.kids['test-kid'];
+    ok(made0 && made0.publishStatus === 'draft' && made0.status === 'in-progress' && made0.year === new Date().getFullYear(), 'Create saves a hidden profile and opens it');
+    ok(await page.$eval('.kd-ed-id h2', (e) => /Test Kid/.test(e.textContent)) && await page.$('.kd-card__delete'), 'the editor opens on the new profile');
     await page.type('#kd-ages', '7, x');
     await page.click('#kd-diagnosis');
     ok(await page.evaluate(() => document.querySelector('#kd-ages').classList.contains('is-invalid')), 'a bad age is flagged');
     await page.click('#kd-ages', { clickCount: 3 });
     await page.type('#kd-ages', '7, 9');
-    await page.click('.kd-ed-actions .kd-save');
-    await page.waitForFunction(() => /Test Kid/.test(document.querySelector('.kd-ed-id h2')?.textContent || '') && document.querySelector('.kd-ed-head [aria-pressed]'), { timeout: 10000 });
+    await page.click('.kd-bar__save .kd-save');
     await sleep(800);
     const made = api.st.kids['test-kid'];
-    ok(made && made.status === 'in-progress' && JSON.stringify(made.age) === '[7,9]' && made.roomTypes?.join() === 'Dream Bedroom', 'Save creates /kids/test-kid with the details');
-    ok(await page.evaluate(() => !!document.querySelector('#kd-sec-record .kd-danger-quiet')), 'and the editor switches to the saved profile');
+    ok(made && JSON.stringify(made.age) === '[7,9]' && made.roomTypes?.join() === 'Dream Bedroom', 'Save keeps the details');
 
-    // Tidy: names only (fast), then alt text, stopped after a few
+    // Broken partner logos: flagged, and switched to the partner's current logo
+    await page.evaluate(() => document.querySelector('.breadcrumb button').click());
+    await page.waitForSelector('.kd-row');
+    await openKid(page, 'Abby');
+    await page.evaluate(() => document.getElementById('kd-sec-partners').scrollIntoView());
+    await page.waitForFunction(() => document.querySelectorAll('.kd-logo__broken').length >= 3, { timeout: 15000 }).catch(() => {});
+    ok(await page.$$eval('.kd-logo__broken', (b) => b.length) === 3, 'the three logos that no longer load say so');
+    ok(await page.evaluate(() => /3 logos don’t load/.test(document.querySelector('#kd-sec-partners .kd-sec__issues')?.textContent || '')), 'and the Partners section flags them');
+    await clickText(page, '#kd-sec-partners .kd-sec__actions .btn', 'Use current logos');
+    await sleep(500);
+    ok(await page.$$eval('.kd-logo__broken', (b) => b.length) === 0, '“Use current logos” switches them to the directory’s logos');
+    await page.click('.kd-bar__save .kd-save');
+    await sleep(800);
+    const abby = api.st.kids.abby;
+    ok(abby.partnerLogos.filter((l) => /real-floors-commercial|usa-insulation|eclipse-brand-builders/.test(l.url)).every((l) => /\/\d{10,}\/public$/.test(l.url) && l.name), 'the saved profile has the current logos, named');
+
+    // Tidy: logos, room counts and names (fast), then alt text, stopped after a few
     await page.evaluate(() => document.querySelector('.breadcrumb button').click());
     await page.waitForSelector('.kd-tidy-banner');
     await page.click('.kd-tidy-banner .btn');
     await page.waitForSelector('.kd-tidy-job');
+    ok(await page.evaluate(() => [...document.querySelectorAll('.kd-tidy-job')].some((j) => /Restore \d+ partner logos?/.test(j.textContent))), 'the tidy tool restores broken partner logos');
     const job = (text) => page.evaluate((t) => [...document.querySelectorAll('.kd-tidy-job')].find((j) => j.textContent.includes(t))?.querySelector('input').click(), text);
     await job('alt text');
     const before = callsTo(api, '/api/save-content');
@@ -520,6 +648,8 @@ try {
     const namedKids = callsTo(api, '/api/save-content') - before;
     const unnamedLeft = Object.values(api.st.kids).reduce((n, k) => n + (k.partnerLogos || []).filter((l) => !String(l.name || '').trim() && /\/partners\//.test(l.url)).length, 0);
     ok(namedKids > 50 && callsTo(api, '/api/generate') === 0, `names come from the directory, no AI (${namedKids} profiles saved)`);
+    const stillBroken = Object.values(api.st.kids).reduce((n, k) => n + (k.partnerLogos || []).filter((l) => isBrokenImage(l.url)).length, 0);
+    ok(stillBroken === 0, `broken partner logos are restored everywhere (${stillBroken} left)`);
     ok(unnamedLeft < 300, `directory logos are named (${unnamedLeft} left that the directory doesn’t know)`);
     const roomsOff = Object.values(api.st.kids).filter((k) => (Number(k.roomCount) || 1) !== Math.max(1, KS.roomTotal(KS.buildsOf(k))));
     ok(!roomsOff.length && api.st.kids.marilyn?.roomCount === 3, `room counts are corrected too (${roomsOff.map((k) => k.slug).join(', ') || 'none left'})`);
@@ -552,6 +682,10 @@ try {
     const small = await smallTargets(page, '.kd-row .kd-grip, .kd-row .ppl-menu__btn, .kd-filter, .kd-head__actions .btn, .kd-year__btn');
     ok(!small.length, `list targets are 44px (${small.join('; ')})`);
     await openKid(page, 'Colin');
+    ok(await page.$('.kd-story-peek') && !(await page.$('#kd-sec-story .rte-wrap')), 'on a phone the story shows as a preview');
+    await page.evaluate(() => document.querySelector('.kd-story-peek').click());
+    await sleep(300);
+    ok(await page.$('#kd-sec-story .rte-wrap'), 'tapping it opens the story editor');
     await shot(page, 'phone-editor');
     ok(!(await overflowing(page)).length, `the editor fits the screen (${(await overflowing(page)).join(', ')})`);
     const bar = await page.$eval('.kd-bar', (e) => e.getBoundingClientRect().top);
@@ -560,9 +694,13 @@ try {
     const barScrolled = await page.$eval('.kd-bar', (e) => e.getBoundingClientRect().top);
     ok(bar > 56 && Math.abs(barScrolled - 56) < 2, `the section bar sticks under the top bar (${Math.round(barScrolled)}px)`);
     ok(await page.$eval('.kd-footer', (e) => { const r = e.getBoundingClientRect(); return r.bottom <= innerHeight + 1 && r.top < innerHeight; }), 'Save stays at the bottom of the screen');
-    const smallEd = await smallTargets(page, '.kd-sec .btn:not(.kd-small-input), .kd-stepper button, .kd-bar__chip, .kd-grip--tile, .kd-footer .btn');
+    const smallEd = await smallTargets(page, '.kd-sec .btn:not(.kd-small-input), .kd-stepper button, .kd-bar__chip, .kd-footer .btn, .kd-status-opt, .kd-checks__row, .kd-card__delete, .kd-card__actions .btn');
     ok(!smallEd.length, `editor targets are 44px (${smallEd.join('; ')})`);
     // Touch drag on a photo's grip
+    ok(!(await page.$('.kd-tile [data-kd-grip]')), 'on a phone, photo tiles stay clear of drag handles');
+    await clickText(page, '#kd-sec-photos .kd-sec__actions .btn', 'Reorder');
+    await sleep(200);
+    ok((await smallTargets(page, '.kd-grip--tile')).length === 0 && await page.$('.kd-tile [data-kd-grip]'), 'Reorder shows 44px handles');
     await page.evaluate(() => document.querySelectorAll('.kd-tile')[0].scrollIntoView({ block: 'center' }));
     await sleep(300);
     const src0 = await page.evaluate(() => document.querySelectorAll('.kd-tile img')[0].getAttribute('src'));

@@ -143,6 +143,39 @@ export function writeCollection(dir, rows, { deleteRemoved = false } = {}) {
     const data = safeParse(row.data);
     writeFileSync(filePath, JSON.stringify(data, null, 2) + '\n');
   }
+  if (dir === 'kids') writeFocusManifest(rows.map((r) => safeParse(r.data)));
+}
+
+// ── Photo focal points (src/data/focus-photos.json) ─────────────────
+// Image ID → "0.42x0.31" for every kid photo with a focal point set in the
+// admin. src/utils/cf-image.ts crops those photos around it instead of the
+// faces it finds. Written with every kids sync, so dev and builds agree.
+const CF_ID_RE = /^https?:\/\/(?:imagedelivery\.net|[^/]+\/cdn-cgi\/imagedelivery)\/[^/]+\/(.+?)(?:\/(?:public|[^/]*=[^/]*))?$/;
+export function imageIdOf(url) {
+  const s = String(url || '');
+  const m = s.match(CF_ID_RE);
+  return m ? m[1] : (/^https?:/.test(s) ? '' : s);
+}
+export function photoFocusMap(kids) {
+  const out = {};
+  for (const kid of kids) {
+    for (const p of kid?.photos || []) {
+      const f = p?.focus;
+      const id = imageIdOf(p?.url);
+      if (!id || !f || !Number.isFinite(f.x) || !Number.isFinite(f.y)) continue;
+      const c = (n) => Math.round(Math.min(1, Math.max(0, n)) * 1000) / 1000;
+      out[id] = `${c(f.x)}x${c(f.y)}`;
+    }
+  }
+  return Object.fromEntries(Object.entries(out).sort(([a], [b]) => a.localeCompare(b)));
+}
+function writeFocusManifest(kids) {
+  const file = join(CONTENT, '..', 'data', 'focus-photos.json');
+  const json = JSON.stringify(photoFocusMap(kids), null, 2) + '\n';
+  // Unchanged: leave the file alone (no rebuild in dev, no churn in git)
+  if (existsSync(file) && readFileSync(file, 'utf8') === json) return;
+  ensureDir(join(CONTENT, '..', 'data'));
+  writeFileSync(file, json);
 }
 
 // Runtime-only site_config keys — served live from D1 (never read at build
