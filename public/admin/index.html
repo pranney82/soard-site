@@ -6423,7 +6423,7 @@
       invalid_auth: 'Slack doesn’t accept SLACK_BOT_TOKEN. Copy the Bot User OAuth Token from the app’s OAuth & Permissions page into Cloudflare Pages again, then Publish.',
       token_revoked: 'The token was revoked. Reinstall the app to the workspace, put the new token in Cloudflare Pages, then Publish.',
       account_inactive: 'The app was removed from the workspace. Reinstall it, put the new token in Cloudflare Pages, then Publish.',
-      missing_scope: 'The app is missing a permission. Add chat:write, chat:write.public, channels:read and groups:read under OAuth & Permissions, reinstall, and update the token.',
+      missing_scope: 'The Slack app is missing {needed}. At api.slack.com/apps → SOARD Website → OAuth & Permissions → Bot Token Scopes, add what’s missing, click Reinstall to Workspace, then Check again here.',
       ratelimited: 'Slack asked the site to slow down. Check again in a minute.',
     };
     function BcSlackSteps() {
@@ -6438,6 +6438,8 @@
     function BcSlack({ mode, addToast }) {
       const [st, setSt] = useState(null); // slackStatus result; null while checking
       const [channels, setChannels] = useState(null);
+      const [chErr, setChErr] = useState(null); // { error, needed } when Slack won't list channels
+      const [missing, setMissing] = useState(null); // a scope that hides private channels
       const [pick, setPick] = useState('');
       const [working, setWorking] = useState('');
       const post = async (action, body = {}) => apiJson(await fetch('/api/broadcast-admin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, ...body }) }), '/api/broadcast-admin');
@@ -6447,7 +6449,11 @@
         setWorking('');
       };
       const loadChannels = async () => {
-        try { const d = await post('slackChannels'); if (d.success) setChannels(d.channels); else { setChannels([]); addToast(d.error, 'error'); } } catch (e) { setChannels([]); addToast(e.message, 'error'); }
+        try {
+          const d = await post('slackChannels');
+          if (d.success) { setChannels(d.channels); setMissing(d.missing || null); setChErr(null); }
+          else { setChannels([]); setMissing(null); setChErr({ error: d.slackError || d.error, needed: d.needed }); }
+        } catch (e) { setChannels([]); setChErr({ error: e.message }); }
       };
       useEffect(() => { if (mode === 'bot') { check(); loadChannels(); } }, [mode]);
       const save = async () => {
@@ -6472,9 +6478,13 @@
       </div>`;
 
       const current = st?.channel?.id || '';
-      const fix = st && !st.ok ? (SLACK_FIX[st.error] || `Slack said: ${st.error}`).replace('{bot}', st.bot || 'the app') : null;
+      // Slack names missing scopes as "a,b": say "the a and b permissions"
+      const scopeText = (needed) => { const l = String(needed || 'chat:write,chat:write.public,channels:read,groups:read').split(',').filter(Boolean); return `the ${l.length > 1 ? `${l.slice(0, -1).join(', ')} and ${l.at(-1)} permissions` : `${l[0]} permission`}`; };
+      const fixText = (error, needed) => (SLACK_FIX[error] || `Slack said: ${error}`).replace('{bot}', st?.bot || 'the app').replace('{needed}', scopeText(needed));
+      // A channel list Slack refused is the more useful thing to fix first
+      const fix = chErr ? fixText(chErr.error, chErr.needed) : st && !st.ok ? fixText(st.error, st.needed) : null;
       return html`<div class="bc-block">
-        <div class="bc-inline"><strong class="text-sm">Slack</strong>${st === null ? html`<span class="text-sm text-muted">Checking Slack…</span>` : st.ok ? html`<span class="badge badge-green">Connected</span>` : html`<span class="badge badge-yellow">Needs a fix</span>`}</div>
+        <div class="bc-inline"><strong class="text-sm">Slack</strong>${st === null ? html`<span class="text-sm text-muted">Checking Slack…</span>` : st.ok && !chErr ? html`<span class="badge badge-green">Connected</span>` : html`<span class="badge badge-yellow">Needs a fix</span>`}</div>
         ${st?.ok ? html`<p class="text-sm" style="margin:.4rem 0 0">Posting to <strong>#${st.channel.name}</strong>${st.team ? ` in ${st.team}` : ''}${st.bot ? ` as @${st.bot}` : ''}.</p>` : null}
         ${fix ? html`<p class="text-sm" style="margin:.4rem 0 0">${fix}</p>` : null}
         <div class="bc-inline" style="margin-top:.6rem;flex-wrap:wrap;gap:.5rem">
@@ -6486,6 +6496,7 @@
           <button class="btn btn-secondary btn-sm" type="button" disabled=${!pick || pick === current || !!working} onClick=${save}>${working === 'save' ? 'Saving…' : 'Post alerts here'}</button>
           <button class="btn btn-ghost btn-sm" type="button" disabled=${!!working} onClick=${() => { check(); loadChannels(); }}>${working === 'check' ? 'Checking…' : 'Check again'}</button>
         </div>
+        ${missing ? html`<div class="form-hint">Only public channels are listed: private ones need the ${missing} permission too (add it, reinstall the app, then Check again).</div>` : null}
         <div class="form-hint">Private channels show up once the app is invited (/invite @${st?.bot || 'the app'}). Every alert, application heads-up and reveal post goes to this channel.${st?.webhook ? ' SLACK_WEBHOOK_URL is a backup, used only if the app can’t post.' : ''}</div>
       </div>`;
     }

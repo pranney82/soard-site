@@ -565,12 +565,12 @@ export async function slackStatus(env) {
   const out = { mode: env.SLACK_BOT_TOKEN ? 'bot' : env.SLACK_WEBHOOK_URL ? 'webhook' : null, webhook: !!env.SLACK_WEBHOOK_URL, ok: false, error: null, team: null, bot: null, channel: cfg.channel || null };
   if (out.mode !== 'bot') { out.ok = out.mode === 'webhook'; return out; }
   const auth = await slackApi(env, 'auth.test');
-  if (!auth.ok) { out.error = auth.error; return out; }
+  if (!auth.ok) { out.error = auth.error; out.needed = auth.needed || null; return out; }
   out.team = auth.team || null;
   out.bot = auth.user || null;
   if (!cfg.channel?.id) { out.error = 'no_channel'; return out; }
   const info = await slackApi(env, 'conversations.info', { channel: cfg.channel.id });
-  if (!info.ok) { out.error = info.error; return out; }
+  if (!info.ok) { out.error = info.error; out.needed = info.needed || null; return out; }
   const c = info.channel || {};
   out.channel = { id: c.id, name: c.name, private: !!c.is_private, member: !!c.is_member };
   if (c.is_archived) { out.error = 'is_archived'; return out; }
@@ -580,19 +580,34 @@ export async function slackStatus(env) {
   return out;
 }
 
-/** Channels the app can post in: every public one, and the private ones it was invited to. → { ok, channels: [{ id, name, private, member }] } */
+/**
+ * Channels the app can post in: every public one, and the private ones it
+ * was invited to. Listing both needs channels:read AND groups:read; without
+ * groups:read the public ones still come back (missing names the scope).
+ * → { ok, channels: [{ id, name, private, member }], missing?, error?, needed? }
+ */
 export async function slackChannels(env) {
   const channels = [];
+  let types = 'public_channel,private_channel';
+  let missing = null;
   let cursor;
   for (let page = 0; page < 10; page++) {
-    const d = await slackApi(env, 'conversations.list', { types: 'public_channel,private_channel', exclude_archived: true, limit: 200, ...(cursor ? { cursor } : {}) });
-    if (!d.ok) return { ok: false, error: d.error, channels };
+    const d = await slackApi(env, 'conversations.list', { types, exclude_archived: true, limit: 200, ...(cursor ? { cursor } : {}) });
+    // Only groups:read missing: list the public channels. Both missing: name both at once.
+    const needed = String(d.needed || '');
+    if (!d.ok && d.error === 'missing_scope' && page === 0 && types.includes('private') && needed.includes('groups:read') && !needed.includes('channels:read')) {
+      types = 'public_channel';
+      missing = 'groups:read';
+      page = -1;
+      continue;
+    }
+    if (!d.ok) return { ok: false, error: d.error, needed: d.needed || null, channels };
     for (const c of d.channels || []) channels.push({ id: c.id, name: c.name, private: !!c.is_private, member: !!c.is_member });
     cursor = d.response_metadata?.next_cursor;
     if (!cursor) break;
   }
   channels.sort((a, b) => a.name.localeCompare(b.name));
-  return { ok: true, channels };
+  return { ok: true, channels, ...(missing ? { missing } : {}) };
 }
 
 /** Escape text for Slack mrkdwn. */

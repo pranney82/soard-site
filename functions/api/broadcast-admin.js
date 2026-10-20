@@ -368,14 +368,16 @@ export async function onRequestPost(context) {
       case 'slackChannels': {
         if (!env.SLACK_BOT_TOKEN) return fail('Add SLACK_BOT_TOKEN in Cloudflare Pages first');
         const r = await notify.slackChannels(env);
-        return r.ok ? Response.json({ success: true, channels: r.channels }) : fail(`Slack said: ${r.error}`);
+        // missing / needed name the Slack permission to add, so the admin can say exactly what to fix
+        return r.ok ? Response.json({ success: true, channels: r.channels, missing: r.missing || null })
+          : Response.json({ success: false, error: `Slack said: ${r.error}`, slackError: r.error, needed: r.needed || null }, { status: 400 });
       }
       case 'setSlackChannel': {
         if (!env.SLACK_BOT_TOKEN) return fail('Add SLACK_BOT_TOKEN in Cloudflare Pages first');
         const id = String(body.id || '');
         if (!/^[CG][A-Z0-9]{6,}$/.test(id)) return fail('Pick a channel');
         const info = await notify.slackApi(env, 'conversations.info', { channel: id });
-        if (!info.ok) return fail(`Slack said: ${info.error}`);
+        if (!info.ok) return fail(`Slack said: ${info.error}${info.needed ? ` (the app needs ${info.needed})` : ''}`);
         const channel = { id, name: info.channel?.name || id, private: !!info.channel?.is_private };
         await notify.writeSlackConfig(env.DB, { ...(await notify.readSlackConfig(env.DB, { fresh: true })), channel, updatedAt: new Date().toISOString(), updatedBy: userEmail });
         await logAudit(env.DB, { userEmail, action: 'updated', entityType: 'live-status', entitySlug: 'slack', entityName: `Slack alerts channel: #${channel.name}`, gitStatus: 'ok' });

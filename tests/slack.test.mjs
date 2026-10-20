@@ -26,7 +26,7 @@ const CHANNELS = [
 
 beforeEach(async () => {
   calls = [];
-  slack = { token: TOKEN, postError: null, blocksOk: true, hookDown: false, pageSize: 2, rateLimitOnce: false };
+  slack = { token: TOKEN, postError: null, blocksOk: true, hookDown: false, pageSize: 2, rateLimitOnce: false, scopes: new Set(['chat:write', 'chat:write.public', 'channels:read', 'groups:read']) };
   env = { DB: await createD1({ schemaFiles: ['scripts/schema.sql'] }), SLACK_BOT_TOKEN: TOKEN };
   globalThis.fetch = async (input, init = {}) => {
     const url = typeof input === 'string' ? input : input.url;
@@ -44,9 +44,13 @@ beforeEach(async () => {
       return json(c ? { ok: true, channel: c } : { ok: false, error: 'channel_not_found' });
     }
     if (method === 'conversations.list') {
+      // Like Slack: each requested type needs its scope, and one missing refuses the whole call
+      const need = [body.types.includes('public_channel') && 'channels:read', body.types.includes('private_channel') && 'groups:read'].filter((x) => x && !slack.scopes.has(x));
+      if (need.length) return json({ ok: false, error: 'missing_scope', needed: need.join(','), provided: [...slack.scopes].join(',') });
+      const listed = CHANNELS.filter((c) => (c.is_private ? body.types.includes('private_channel') : body.types.includes('public_channel')));
       const start = Number(body.cursor || 0);
-      const page = CHANNELS.slice(start, start + slack.pageSize);
-      const next = start + slack.pageSize < CHANNELS.length ? String(start + slack.pageSize) : '';
+      const page = listed.slice(start, start + slack.pageSize);
+      const next = start + slack.pageSize < listed.length ? String(start + slack.pageSize) : '';
       return json({ ok: true, channels: page, response_metadata: { next_cursor: next } });
     }
     if (method === 'chat.postMessage') {
@@ -184,6 +188,20 @@ test('the channel list pages through Slack and comes back sorted', async () => {
   assert.equal(r.channels.find((c) => c.name === 'board').private, true);
 });
 
+test('a missing Slack permission is named; without groups:read the public channels still list', async () => {
+  slack.scopes.delete('groups:read');
+  const partial = await notify.slackChannels(env);
+  assert.equal(partial.ok, true);
+  assert.equal(partial.missing, 'groups:read');
+  assert.deepEqual(partial.channels.map((c) => c.name), ['general', 'website-alerts']);
+
+  slack.scopes.delete('channels:read');
+  const none = await notify.slackChannels(env);
+  assert.equal(none.ok, false);
+  assert.equal(none.error, 'missing_scope');
+  assert.equal(none.needed, 'channels:read,groups:read', 'both named at once');
+});
+
 // ─── The admin picker ────────────────────────────────────────────────
 
 test('picking a channel in the admin saves it and says hello there', async () => {
@@ -215,6 +233,18 @@ test('the picker refuses junk ids and unknown channels, and says when the app is
   assert.match((await adminPost({ action: 'slackChannels' })).error, /SLACK_BOT_TOKEN/);
   const st = await adminPost({ action: 'slackStatus' });
   assert.equal(st.slack.mode, null);
+});
+
+test('the admin channel list passes on which Slack permission is missing', async () => {
+  slack.scopes.delete('groups:read');
+  const partial = await adminPost({ action: 'slackChannels' });
+  assert.equal(partial.success, true);
+  assert.equal(partial.missing, 'groups:read');
+  slack.scopes.delete('channels:read');
+  const refused = await adminPost({ action: 'slackChannels' });
+  assert.equal(refused.success, false);
+  assert.equal(refused.slackError, 'missing_scope');
+  assert.equal(refused.needed, 'channels:read,groups:read');
 });
 
 test('a private channel the app is not in is saved, and the reason the hello failed is shown', async () => {
